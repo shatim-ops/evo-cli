@@ -152,3 +152,56 @@ func TestWorkflows_OpsProbesHaveTheirArea(t *testing.T) {
 		}
 	}
 }
+
+// sweepFixedArea is a sweep of one named area: «sweep PREFIX area», the
+// area a bare word that ends the line (the prefix may hold spaces).
+var sweepFixedArea = regexp.MustCompile(`cloud-live\.sh sweep .*\s([a-z0-9]+)$`)
+
+// The sweep reads the backups and the protection plans of the probes
+// (kinds backup and pplan of cloud-live.sh) by raw requests: they need the
+// project and the IAM key. A sweep step that reads those kinds — every
+// kind, the area of the matrix, or the area ops — without PROJECT, KEY_ID
+// and SECRET cannot read the lists and fails; a step nobody gave the
+// project to would turn every cleanup red (or, read as «nothing left»,
+// leave billable backups behind).
+func TestWorkflows_SweepOfBackupsHasTheProject(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "cloud-live.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := string(b)
+	// The areas whose kinds hold backup or pplan.
+	withBackups := map[string]bool{}
+	for _, m := range regexp.MustCompile(`(?m)^\s*([a-z0-9]+)\) echo "([^"]+)" ;;`).FindAllStringSubmatch(live, -1) {
+		if strings.Contains(" "+m[2]+" ", " backup ") || strings.Contains(" "+m[2]+" ", " pplan ") {
+			withBackups[m[1]] = true
+		}
+	}
+	if !withBackups["ops"] {
+		t.Fatal("cloud-live.sh: area ops does not sweep backup or pplan — the check sees nothing, update it")
+	}
+	seen := 0
+	for file, wf := range readWorkflows(t) {
+		for name, job := range wf.Jobs {
+			for _, s := range job.Steps {
+				for _, line := range strings.Split(s.Run, "\n") {
+					if !strings.Contains(line, "cloud-live.sh sweep ") {
+						continue
+					}
+					seen++
+					if m := sweepFixedArea.FindStringSubmatch(strings.TrimSpace(line)); m != nil && !withBackups[m[1]] {
+						continue
+					}
+					for _, v := range []string{"PROJECT", "KEY_ID", "SECRET"} {
+						if s.Env[v] == "" {
+							t.Errorf("%s, job %s, step %q: the sweep reads backups and protection plans, the step has no %s", file, name, s.Name, v)
+						}
+					}
+				}
+			}
+		}
+	}
+	if seen < 3 {
+		t.Fatalf("%d sweep steps found — the check sees nothing, update it", seen)
+	}
+}

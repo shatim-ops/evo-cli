@@ -173,8 +173,10 @@ func (c *disksCloud) ListDisks(context.Context, string) ([]map[string]any, error
 
 // Release plan 1.8, (и), PR-2 («Риск», conclusion 46): doctor reads the
 // list of what each intent names and closes the one whose outcome it shows
-// — a create whose resource is listed by its name, a delete whose target is
-// gone; any other stays, with what the list said.
+// — a create whose resource is listed by its name; any other stays, with
+// what the list said. A delete addressed by id is not read in the list of
+// the call's project (R-82): a disk has no read by id evo can close it on,
+// so its record stays until the same delete settles it.
 func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 	cloud := &disksCloud{}
 	r, dir := targetRegistry(t, cloud)
@@ -200,12 +202,12 @@ func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 	for _, in := range intent.Pending(intent.Dir(dir)) {
 		left[in.Name+in.Target] = true
 	}
-	if left["made"] || left["disk_id=d-gone"] || !left["not-yet"] || !left["disk_id=d-still"] {
+	if left["made"] || !left["disk_id=d-gone"] || !left["not-yet"] || !left["disk_id=d-still"] {
 		t.Errorf("left after doctor: %v\n%s", left, text)
 	}
 	// The record's values are quoted in doctor's words (FB180-2); JSON
 	// escapes the quotes.
-	for _, want := range []string{"the create took effect", `has no \"not-yet\" yet`, "the delete took effect", `still lists \"d-still\"`} {
+	for _, want := range []string{"the create took effect", `has no \"not-yet\" yet`, "no read by id"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("doctor does not say %q:\n%s", want, text)
 		}
@@ -215,26 +217,30 @@ func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 // «Риск», conclusion 47: the list is the active project's, and an intent
 // of another project cannot be read in it — the target of a delete there is
 // «not listed» here whatever happened to it. Such an intent stays, with
-// both projects named; one of the active project or of none closes as
-// before.
+// both projects named; one of the active project closes as before. The
+// delete here carries its project in the request (ar_delete): one
+// addressed by id alone names none and is read by id (R-82).
 func TestDoctor_IntentOfAnotherProjectStays(t *testing.T) {
-	cloud := &disksCloud{}
-	r, dir := targetRegistry(t, cloud)
-	srv := httptest.NewServer(http.NotFoundHandler())
-	defer srv.Close()
-	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
-	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
-	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
-	if _, err := intent.Begin(intent.Dir(dir), intent.Intent{Tool: "disk_delete", Target: "disk_id=d-other", ProjectID: "p-other"}); err != nil {
-		t.Fatal(err)
+	f := &ownerFake{}
+	r := ownerRegistry(t, f, false, ownProject)
+	eng, _ := r.newEngine(nil)
+	dir := intent.Dir(eng.StateDir)
+	for _, in := range []intent.Intent{
+		{Tool: "ar_delete", Target: "id=" + resGone, ProjectID: ownForeign},
+		{Tool: "ar_delete", Target: "id=" + resGone, ProjectID: ownProject},
+		{Tool: "ar_delete", Target: "id=" + resMine, ProjectID: ownProject},
+	} {
+		if _, err := intent.Begin(dir, in); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if _, err := intent.Begin(intent.Dir(dir), intent.Intent{Tool: "disk_delete", Target: "disk_id=d-here", ProjectID: "p"}); err != nil {
-		t.Fatal(err)
+	text := doctorOnFake(t, r)
+	left := map[string]bool{}
+	for _, in := range intent.Pending(dir) {
+		left[in.ProjectID+" "+in.Target] = true
 	}
-	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
-	left := intent.Pending(intent.Dir(dir))
-	if len(left) != 1 || left[0].ProjectID != "p-other" || !strings.Contains(text, "p-other") {
-		t.Errorf("left %+v\n%s", left, text)
+	if len(left) != 2 || !left[ownForeign+" id="+resGone] || !left[ownProject+" id="+resMine] || !strings.Contains(text, ownForeign) {
+		t.Errorf("left %v\n%s", left, text)
 	}
 }
 

@@ -54,6 +54,10 @@ type ownerKind struct {
 	// project does not hold the resource. The preview of a change
 	// addressed by id names it (namedProject).
 	project func(ctx context.Context, c *ownerCall, id string) (string, error)
+	// card reads the resource by id, whatever its project; nil when the
+	// kind is told by a list of the call's project. doctor checks a cut
+	// delete with it (checkByID).
+	card func(ctx context.Context, c *ownerCall, id string) (map[string]any, error)
 }
 
 // idArg is an argument that names a resource by id: the kind whose owner a
@@ -386,12 +390,18 @@ func notInProject(k *ownerKind, id string) error {
 // not have is notInProject, the answer of one of another project, so the
 // two read alike; any other error is as it is.
 func gone(k *ownerKind, id string, err error) error {
-	var ce *clierrors.CLIError
-	if stderrors.As(err, &ce) && (ce.Code == clierrors.CodeNotFound || ce.Code == clierrors.CodeVMNotFound) ||
-		apiStatus(err) == http.StatusNotFound {
+	if notThere(err) {
 		return notInProject(k, id)
 	}
 	return err
+}
+
+// notThere tells the error of a read by id that says the API has no such
+// resource: its code, or a 404.
+func notThere(err error) bool {
+	var ce *clierrors.CLIError
+	return stderrors.As(err, &ce) && (ce.Code == clierrors.CodeNotFound || ce.Code == clierrors.CodeVMNotFound) ||
+		apiStatus(err) == http.StatusNotFound
 }
 
 // projectField is the project of a resource as the API gives it:
@@ -411,7 +421,7 @@ func byProjectField(what, listTool string, get func(ctx context.Context, c *owne
 		m, err := get(ctx, c, id)
 		return projectField(m), err
 	}
-	return &ownerKind{what: what, listTool: listTool, project: project, check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
+	return &ownerKind{what: what, listTool: listTool, project: project, card: get, check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
 		p, err := project(ctx, c, id)
 		if err != nil {
 			return gone(k, id, err)

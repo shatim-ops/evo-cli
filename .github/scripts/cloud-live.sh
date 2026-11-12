@@ -224,8 +224,32 @@ lst() {
 	# Группы безопасности проб (область ops): только свои, по префиксу.
 	sg) out=$(evo tools call list_security_groups --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.security_groups[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
+	# Копии и планы защиты проб (область ops): у evo их нет — список прямо.
+	backup) lst_api backups "$p" ;;
+	pplan) lst_api protection-plans "$p" ;;
 	*) return 1 ;;
 	esac
+}
+# lst_api ПУТЬ ПРЕФИКС — lst для вида, которого в evo нет: GET списка
+# compute (project_id, limit — наибольший по спецификации) с токеном IAM.
+# Нет PROJECT или токена, не 2xx, ответ без items или отдано меньше, чем
+# total, — список не прочитан (код 1, причина — в lst.err, как у evo).
+# stdout — только строки списка: токен берёт sweep до чтения видов (маска
+# токена — команда в stdout шага), здесь — лишь запасной путь, в stderr.
+lst_api() {
+	local why=
+	if [ -z "${PROJECT:-}" ]; then why="нет PROJECT"
+	elif ! iam_fresh >&2; then why="нет токена IAM (KEY_ID, SECRET)"
+	else
+		api GET "https://compute.api.cloud.ru/api/v1/$1?project_id=$PROJECT&limit=1000"
+		case "$code" in
+		2??) jq -e '(.items | type == "array") and ((.total // 0) <= (.items | length))' "$tmp/api.json" >/dev/null 2>&1 ||
+			why="список не полон или без items" ;;
+		*) why="HTTP $code: $(api_why)" ;;
+		esac
+	fi
+	[ -z "$why" ] || { jq -nc --arg m "$1: $why" '{error: {reason: "API_ERROR", message: $m}}' >"$tmp/lst.err"; return 1; }
+	jq -r --arg p "$2" '.items[] | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' "$tmp/api.json"
 }
 # del ВИД ID — удалить один ресурс (ответ не печатается: в нём ID).
 del() {
@@ -267,9 +291,17 @@ del() {
 			reason="HTTP $code"
 			case "$code" in 2?? | 404) rc=0 ;; esac
 		fi ;;
+	backup | pplan)
+		rc=1 reason="нет токена IAM"
+		if iam_fresh; then
+			api DELETE "https://compute.api.cloud.ru/api/v1/$([ "$kind" = backup ] && echo backups || echo protection-plans)/$id"
+			reason="HTTP $code"
+			case "$code" in 2?? | 404) rc=0 ;; esac
+		fi ;;
 	esac
 }
-KINDS="ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert sg"
+# План защиты и копия — раньше ВМ и диска, которые они держат.
+KINDS="pplan backup ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert sg"
 # area_kinds ОБЛАСТЬ — виды ресурсов, которые область создаёт: её уборка
 # читает только их (список одного вида бывает медленным: ar_list 18.10 —
 # ~9,5 мин). Маршрут тестовой сети — только у net.
@@ -284,7 +316,7 @@ area_kinds() {
 	stack) echo "lb tg vm fip secret" ;;
 	mcp) echo "vm fip" ;;
 	pgnet) echo "vm fip subnet" ;;
-	ops) echo "vm fip disk sg" ;;
+	ops) echo "pplan backup vm fip disk sg" ;;
 	*) echo "${KINDS/route /}" ;;
 	esac
 }
@@ -310,6 +342,7 @@ sweep() {
 	esac
 	while :; do
 		left=0
+		case " $kinds " in *" backup "* | *" pplan "*) iam_fresh || true ;; esac
 		for kind in $kinds; do
 			t0=$(date +%s)
 			lst_done "$kind" "$p" >"$tmp/l" || {
@@ -327,7 +360,7 @@ sweep() {
 		done
 		[ "$left" = 0 ] && break
 		[ "$(date +%s)" -lt "$until" ] || break
-		sleep 30
+		sleep "${SWEEP_PAUSE:-30}"
 	done
 	left=0
 	for kind in $kinds; do
@@ -370,7 +403,14 @@ iam_token() {
 		curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
 		jq -r '.access_token // .accessToken // empty')
 	mask "$TOKEN"
+	TOKEN_AT=$SECONDS
 	[ -n "$TOKEN" ]
+}
+# iam_fresh — токен IAM не старше 10 минут: пробы области ops и уборка их
+# видов идут десятки минут, дольше жизни одного токена.
+iam_fresh() {
+	[ -n "${TOKEN:-}" ] && [ $((SECONDS - ${TOKEN_AT:-0})) -lt 600 ] && return 0
+	iam_token
 }
 
 # probe_ar_pages — как отвечает GET /v1/registries постранично (только
@@ -2004,11 +2044,250 @@ probe_g11() {
 	ok "Г-11: удаление группы и его повтор" "HTTP $r, повтор — HTTP $code$(case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac)"
 }
 
+# ops_settle URL СЕКУНД [gone] — читать карточку ресурса, пока её state
+# переходный (…ing); с gone — пока карточка есть вообще. Итог: $st —
+# последнее состояние («нет (404)» — карточки нет), $chain — состояния по
+# порядку. Код 1 — не дождались. Пауза между чтениями — PROBE_PAUSE.
+PROBE_PAUSE=${PROBE_PAUSE:-20}
+ops_settle() {
+	local url=$1 until=$(($(date +%s) + $2)) s
+	st='' chain=''
+	while :; do
+		iam_fresh || true
+		api GET "$url"
+		case "$code" in
+		2??) s=$(jq -r '.state? // "без state"' "$tmp/api.json" 2>/dev/null) || s="не JSON" ;;
+		404) s="нет (404)" ;;
+		*) s="HTTP $code" ;;
+		esac
+		[ "$s" = "$st" ] || chain="${chain:+$chain → }$s"
+		st=$s
+		case "${3:-}:$code:$s" in gone:2??:* | *:2??:*ing) ;; *) return 0 ;; esac
+		[ "$(date +%s)" -lt "$until" ] || return 1
+		sleep "$PROBE_PAUSE"
+	done
+}
+# why_tail — «: текст отказа» последнего ответа api, если он не 2xx.
+why_tail() { case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac; }
+
+# Проба Г-16: резервные копии и план защиты. Диск 10 ГБ и ВМ без
+# публичного адреса создаёт evo; дальше — прямые запросы. Что записывается:
+# коды и поля ответов создания копии диска и копии ВМ, состояния копии до
+# готовности и время, список копий и фильтр по имени, восстановление (оно
+# создаёт новый ресурс: диск и ВМ под именами пробы, диск ВМ назван и
+# привязан к загрузочному диску исходной — иначе уборка по префиксу его не
+# найдёт), удаление копии с повтором сразу и после исчезновения, остаётся
+# ли восстановленный диск без копии; план защиты диска с выключенным
+# расписанием и без немедленного запуска (копирования он не начинает):
+# создание, список, удаление и повтор. В конце — копии ресурсов пробы под
+# чужим именем (их создал бы план): уборка по префиксу их не видит, проба
+# удаляет их по id. Отказ платформы на любом шаге — ответ, не провал;
+# остальное с именем пробы убирает уборка области. Ожидания ограничены
+# (копия — 15 мин, восстановление — 10 и 5, удаление — 5): вместе с уборкой
+# проба укладывается в предел job live и при худшем ходе; не дождалась —
+# строка называет последнее состояние, проба идёт дальше.
+probe_g16() {
+	local zid=$1 n=$prefix-g16 disk='' vm='' boot bd='' bv='' pp r r2 t0 id left
+	iam_fresh || { gap "Г-16" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap "Г-16" "нет PROJECT"; return 0; }
+	tc disk_create --arg name="$n-d" --arg size_gb=10 --arg zone="$zid"
+	if [ "$rc" = 0 ]; then
+		disk=$(j -r '.disk_id // .disk.id // empty')
+		mask "$disk"
+	fi
+	[ -n "$disk" ] || gap "Г-16: диск" "disk_create: код $rc, $reason: $why"
+	tc provision --arg name="$n" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true
+	if [ "$rc" = 0 ]; then
+		vm=$(j -r '.vm_id // empty')
+		mask "$vm"
+	fi
+	[ -n "$vm" ] || gap "Г-16: ВМ" "provision: код $rc, $reason: $why"
+	# g16_backup ЧЕГО ИМЯ ТИП ID — копия ресурса; id готовой копии — в $bid.
+	g16_backup() {
+		bid=
+		api POST "$C1/backups" "$(jq -nc --arg p "$PROJECT" --arg n "$2" --arg t "$3" --arg id "$4" \
+			'{project_id: $p, name: $n, description: "evo e2e probe", resource: {resource_id: $id, resource_type: $t}}')"
+		case "$code" in 2??) ;; *)
+			ok "Г-16: копия $1" "отказ HTTP $code: $(api_why)"
+			return 0
+			;;
+		esac
+		bid=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || bid=
+		mask "$bid"
+		ok "Г-16: копия $1" "HTTP $code, state $(jq -r '.state? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), поля ответа: $(keys_of)"
+		[ -n "$bid" ] || { gap "Г-16: копия $1" "id не прочитан — остаток уберёт уборка области"; return 0; }
+		t0=$SECONDS
+		ops_settle "$C1/backups/$bid" 900 || true
+		ok "Г-16: копия $1, ожидание готовности" "состояния: $chain; $((SECONDS - t0)) с; type $(jq -r '.type? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), size больше нуля: $(jq -r 'if (.size? // 0) > 0 then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?'); поля карточки: $(keys_of)"
+		[ "$st" = created ] || bid_bad=1
+	}
+	local bid bid_bad=0 bd_ok=0 bv_ok=0
+	if [ -n "$disk" ]; then
+		g16_backup диска "$n-bd" disk "$disk"
+		bd=$bid
+		[ -z "$bd" ] || [ "$bid_bad" = 1 ] || bd_ok=1
+	fi
+	bid_bad=0
+	if [ -n "$vm" ]; then
+		g16_backup ВМ "$n-bv" virtual_machine "$vm"
+		bv=$bid
+		[ -z "$bv" ] || [ "$bid_bad" = 1 ] || bv_ok=1
+	fi
+	api GET "$C1/backups?project_id=$PROJECT&limit=1000"
+	r="HTTP $code$(why_tail), поля ответа: $(keys_of), поля элемента: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), копий пробы: $(jq -r --arg p "$n-b" '[.items[]? | select((.name // "") | startswith($p))] | length' "$tmp/api.json" 2>/dev/null || echo '?')"
+	if [ -n "$bd" ]; then
+		api GET "$C1/backups?project_id=$PROJECT&name=$n-bd"
+		r="$r; фильтр name по полному имени: HTTP $code, найдено $(jq -r '.items? | length' "$tmp/api.json" 2>/dev/null || echo '?')"
+	fi
+	ok "Г-16: список копий" "$r"
+	# g16_restore ЧЕГО ID_КОПИИ TARGET_CONFIG
+	g16_restore() {
+		api POST "$C1/backups/$2/action" "$(jq -nc --argjson c "$3" '{action: "restore", resource: {target_config: $c}}')"
+		r="HTTP $code$(case "$code" in 2??) echo ", поля ответа: $(keys_of)" ;; *) echo ": $(api_why)" ;; esac)"
+		case "$code" in 2??) ;; *)
+			ok "Г-16: восстановление $1" "отказ $r"
+			return 1
+			;;
+		esac
+		t0=$SECONDS
+		ops_settle "$C1/backups/$2" 600 || true
+		r="$r; состояния копии: $chain; last_restore_time задан: $(jq -r 'if (.last_restore_time? // null) != null then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+	}
+	if [ "$bd_ok" = 1 ]; then
+		if g16_restore диска "$bd" "$(jq -nc --arg n "$n-rd" '{name: $n, description: "evo e2e probe"}')"; then
+			rd_there() { [ -n "$(lst disk "$n-rd")" ]; }
+			if poll 300 "$PROBE_PAUSE" rd_there; then r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
+			ok "Г-16: восстановление диска" "$r"
+		fi
+	fi
+	if [ "$bv_ok" = 1 ]; then
+		boot=$(evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n" '[.disks[]? | select(.bootable == true and ((.attached_to // []) | index($vm)))][0].id // empty') || boot=
+		mask "$boot"
+		if [ -z "$boot" ]; then
+			gap "Г-16: восстановление ВМ" "загрузочный диск ВМ не найден в disk_list — без имени диска восстановление не шлю"
+		elif g16_restore ВМ "$bv" "$(jq -nc --arg n "$n-rv" --arg b "$boot" '{name: $n, description: "evo e2e probe", disks: [{name: ($n + "-boot"), related_disk_id: $b}]}')"; then
+			local vst=''
+			rv_up() { vst=$(evo tools call vm_get --arg name="$n-rv" --json 2>/dev/null | jq -r '.state // empty') || vst=; case "$vst" in "" | creating | *pending*) return 1 ;; esac; }
+			poll 300 "$PROBE_PAUSE" rv_up || true
+			# Диски восстановленной ВМ: с именем пробы их найдёт уборка
+			# области; с другим — проба удаляет сама, после ВМ.
+			evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n-rv" --arg p "$prefix" \
+				'.disks[]? | select((.attached_to // []) | index($vm)) | "\(.id)\t\(if (.name // "") | startswith($p) then "свой" else "чужой" end)"' >"$tmp/g16.rv" || : >"$tmp/g16.rv"
+			# Публичные адреса восстановленной ВМ (у исходной их нет; что
+			# восстановление делает с сетью, спецификация не говорит): из её
+			# карточки. Уборка находит адрес только по имени fip-<префикс>.
+			: >"$tmp/g16.fip"
+			local rvid
+			rvid=$(lst vm "$n-rv" | cut -f1 | head -1) || rvid=
+			mask "$rvid"
+			if [ -n "$rvid" ]; then
+				api GET "$C1/vms/$rvid"
+				jq -r --arg p "fip-$prefix" '.interfaces[]?.floating_ip? | select(type == "object" and (.id // "") != "") | "\(.id)\t\(if (.name // "") | startswith($p) then "свой" else "чужой" end)"' \
+					"$tmp/api.json" >"$tmp/g16.fip" 2>/dev/null || : >"$tmp/g16.fip"
+			fi
+			ok "Г-16: восстановление ВМ" "$r; ВМ: ${vst:-не появилась за 5 мин после копии}, $((SECONDS - t0)) с; дисков у неё: $(wc -l <"$tmp/g16.rv" | tr -d ' '), из них не под именем пробы: $(grep -c 'чужой$' "$tmp/g16.rv" || true); публичных адресов у неё: $(wc -l <"$tmp/g16.fip" | tr -d ' '), из них не под именем пробы: $(grep -c 'чужой$' "$tmp/g16.fip" || true)"
+			if grep -q 'чужой$' "$tmp/g16.rv" "$tmp/g16.fip"; then
+				[ -z "$rvid" ] || del vm "$rvid"
+				poll 300 "$PROBE_PAUSE" gone vm "$n-rv" || true
+				left=0
+				while IFS=$'\t' read -r id _; do
+					mask "$id"
+					tc disk_delete --arg disk_id="$id"
+					[ "$rc" = 0 ] || left=$((left + 1))
+				done < <(grep 'чужой$' "$tmp/g16.rv")
+				while IFS=$'\t' read -r id _; do
+					mask "$id"
+					tc release_floating_ip --arg id="$id"
+					[ "$rc" = 0 ] || left=$((left + 1))
+				done < <(grep 'чужой$' "$tmp/g16.fip")
+				if [ "$left" = 0 ]; then ok "Г-16: диски и адреса восстановленной ВМ не под именем пробы" "удалены по id"
+				else bad "Г-16: диски и адреса восстановленной ВМ не под именем пробы" "не удалено: $left — удалите в консоли Cloud.ru диски без ВМ и публичные адреса, созданные этим прогоном"; fi
+			fi
+		fi
+	fi
+	if [ -n "$bd" ]; then
+		api DELETE "$C1/backups/$bd"
+		r="HTTP $code$(why_tail)"
+		api DELETE "$C1/backups/$bd"
+		r="$r, повтор сразу — HTTP $code$(why_tail)"
+		t0=$SECONDS
+		ops_settle "$C1/backups/$bd" 300 gone || true
+		r="$r; состояния: $chain, $((SECONDS - t0)) с"
+		api DELETE "$C1/backups/$bd"
+		r="$r; повтор после исчезновения — HTTP $code$(why_tail)"
+		[ "$bd_ok" = 0 ] || r="$r; восстановленный диск без копии: $(if o=$(lst disk "$n-rd"); then [ -n "$o" ] && echo есть || echo нет; else echo "список не прочитан"; fi)"
+		ok "Г-16: удаление копии диска" "$r"
+	fi
+	if [ -n "$bv" ]; then
+		api DELETE "$C1/backups/$bv"
+		r="HTTP $code$(why_tail)"
+		t0=$SECONDS
+		ops_settle "$C1/backups/$bv" 300 gone || true
+		ok "Г-16: удаление копии ВМ" "$r; состояния: $chain, $((SECONDS - t0)) с"
+	fi
+	if [ -n "$disk" ]; then
+		api POST "$C1/protection-plans" "$(jq -nc --arg p "$PROJECT" --arg n "$n-pp" --arg id "$disk" --arg t "$(date -u -d '+30 days' +%Y-%m-%dT03:00:00Z)" \
+			'{project_id: $p, name: $n, description: "evo e2e probe", resources: [{resource_id: $id, resource_type: "disk"}],
+			  schedules: [{start_time: $t, days_of_week: [1], enabled: false}], execute_immediately: false, type: "full"}')"
+		pp=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || pp=
+		mask "$pp"
+		case "$code" in
+		2??)
+			r="HTTP $code, поля ответа: $(keys_of)"
+			if [ -n "$pp" ]; then
+				ops_settle "$C1/protection-plans/$pp" 300 || true
+				r="$r; состояния: $chain"
+				api GET "$C1/protection-plans?project_id=$PROJECT&limit=1000"
+				r="$r; список: HTTP $code, поля элемента: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?')"
+				api DELETE "$C1/protection-plans/$pp"
+				r="$r; удаление: HTTP $code$(why_tail)"
+				api DELETE "$C1/protection-plans/$pp"
+				r2="повтор сразу — HTTP $code$(why_tail)"
+				ops_settle "$C1/protection-plans/$pp" 300 gone || true
+				r="$r, $r2; состояния: $chain"
+			else r="$r; id не прочитан — остаток уберёт уборка области"; fi
+			ok "Г-16: план защиты" "$r"
+			;;
+		*) ok "Г-16: план защиты" "отказ HTTP $code: $(api_why)" ;;
+		esac
+	fi
+	# Копии, в которых назван диск или ВМ пробы, но имя не пробы.
+	api GET "$C1/backups?project_id=$PROJECT&limit=1000"
+	case "$code" in 2??) ;; *)
+		gap "Г-16: копии ресурсов пробы под чужим именем" "список не прочитан: HTTP $code: $(api_why)"
+		return 0
+		;;
+	esac
+	# Отбор — по полю resource.resource_id копии (спецификация), равному id
+	# диска или ВМ пробы, и только если этот id — UUID: id другого вида
+	# (пустой, обрезанный) отбор выключает — чужую копию проба не удаляет.
+	local uuid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' d='' v=''
+	if [[ $disk =~ $uuid ]]; then d=$disk; fi
+	if [[ $vm =~ $uuid ]]; then v=$vm; fi
+	if [ -z "$d$v" ]; then
+		gap "Г-16: копии ресурсов пробы под чужим именем" "id диска и ВМ пробы — не UUID: отбор по ним выключен"
+		return 0
+	fi
+	jq -r --arg p "$prefix" --arg d "$d" --arg v "$v" \
+		'.items[]? | select(((.name // "") | startswith($p) | not) and ((.resource.resource_id? // "") as $r | $r != "" and ($r == $d or $r == $v))) | .id' "$tmp/api.json" >"$tmp/g16.stray" 2>/dev/null || : >"$tmp/g16.stray"
+	left=0 r=0
+	while read -r id; do
+		[ -n "$id" ] || continue
+		mask "$id"
+		r=$((r + 1))
+		api DELETE "$C1/backups/$id"
+		case "$code" in 2?? | 404) ;; *) left=$((left + 1)) ;; esac
+	done <"$tmp/g16.stray"
+	if [ "$left" = 0 ]; then ok "Г-16: копии ресурсов пробы под чужим именем" "найдено $r, удалено по id"
+	else bad "Г-16: копии ресурсов пробы под чужим именем" "найдено $r, не удалено $left — удалите в консоли Cloud.ru копии диска и ВМ этого прогона"; fi
+}
+
 area_ops() {
 	local zid
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена в list_zones"; return 1; }
 	! probe_on g11 || probe_g11 "$zid"
+	! probe_on g16 || probe_g16 "$zid"
 }
 
 case "$area" in

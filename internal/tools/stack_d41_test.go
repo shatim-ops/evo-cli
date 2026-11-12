@@ -128,7 +128,7 @@ func TestStackAdvance_RefusedStepIsTerminal(t *testing.T) {
 				}
 				return toJSON(map[string]any{"records": []any{map[string]any{"id": "rec-foreign", "name": "www", "type": "a"}}}), false
 			}
-			got := callTool(t, r.handleStackApply, map[string]any{"job_id": j.ID, "confirmed": true})
+			got := callTool(t, r.gated("stack_apply", r.planStackApply), map[string]any{"job_id": j.ID, "confirmed": true})
 			if got["status"] != "error" {
 				t.Fatalf("a refused step must end the job: %v", got)
 			}
@@ -162,7 +162,7 @@ func TestStackAdvance_LostAnswerStillRetries(t *testing.T) {
 		return errResult(errors.New("create record: dns API 502: bad gateway")), true
 	}
 	r.handlers["dns_records"] = fakeOK(map[string]any{"records": []any{}})
-	got := callTool(t, r.handleStackApply, map[string]any{"job_id": j.ID, "confirmed": true})
+	got := callTool(t, r.gated("stack_apply", r.planStackApply), map[string]any{"job_id": j.ID, "confirmed": true})
 	if got["status"] == "error" {
 		t.Fatalf("a lost answer must stay retryable: %v", got)
 	}
@@ -189,7 +189,7 @@ func TestStackDestroy_DestroyedJobAnswersAlreadyDestroyed(t *testing.T) {
 		atomic.AddInt32(&deletes, 1)
 		return toJSON(map[string]any{"status": "already_deleted"}), false
 	}
-	text, isErr := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID})
+	text, isErr := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID})
 	if isErr || !strings.Contains(text, `"already_destroyed"`) || strings.Contains(text, "confirmation_required") {
 		t.Fatalf("a destroyed job: want already_destroyed without the question, got %s", text)
 	}
@@ -222,7 +222,7 @@ func TestStackDestroy_PendingDeletionsAreRechecked(t *testing.T) {
 	}
 	destroy := func(confirmed bool) map[string]any {
 		t.Helper()
-		text, _ := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": confirmed})
+		text, _ := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": confirmed})
 		var m map[string]any
 		if err := json.Unmarshal([]byte(text), &m); err != nil {
 			t.Fatalf("%v: %s", err, text)
@@ -266,8 +266,8 @@ func TestStackDestroy_ConfirmedOnDestroyedJobIsAlreadyDestroyed(t *testing.T) {
 		atomic.AddInt32(&deletes, 1)
 		return toJSON(map[string]any{"status": "already_deleted"}), false
 	}
-	preview, _ := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID})
-	confirmed, isErr := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	preview, _ := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID})
+	confirmed, isErr := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	if isErr || !strings.Contains(confirmed, `"already_destroyed"`) || confirmed != preview {
 		t.Fatalf("confirmed must answer as the preview:\npreview   %s\nconfirmed %s", preview, confirmed)
 	}
@@ -291,7 +291,7 @@ func TestStackApply_RefusedBeforeTheQuestion(t *testing.T) {
 		"absent":    {"stk-0123456789", "NOT_FOUND"},
 		"destroyed": {gone.ID, "USAGE"},
 	} {
-		text, isErr := r.handleStackApply(context.Background(), map[string]any{"job_id": tc.id})
+		text, isErr := r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": tc.id})
 		var m map[string]any
 		_ = json.Unmarshal([]byte(text), &m)
 		if !isErr || m["reason"] != tc.reason || m["status"] == "confirmation_required" {

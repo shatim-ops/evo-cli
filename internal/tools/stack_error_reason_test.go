@@ -31,7 +31,7 @@ func TestStackStatus_FailedStepNamesItsReason(t *testing.T) {
 				return toJSON(map[string]any{"error": "the step's tool refused", "reason": code}), true
 			}
 			r.handlers["vm_list"] = fakeOK(map[string]any{"vms": []any{}})
-			r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+			r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 			var text string
 			for range 4 {
 				text, _ = r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
