@@ -98,7 +98,10 @@ drop)
 	;;
 keep) awk -F'\t' -v re="$KEEP_RE" '$NF !~ re' ;;
 overdue)
-	rows=$(jq -r --arg re "$KEEP_RE" --argjson now "$(date +%s)" '.vms[] | select((.name // "") | test("^evo-e2e-") and test($re))
+	# Пустой ввод — не пустой список (jq на нём молчит с кодом 0): ответ
+	# должен нести массив vms.
+	in=$(cat)
+	rows=$(printf '%s' "$in" | jq -e '.vms | type == "array"' >/dev/null 2>&1 && printf '%s' "$in" | jq -r --arg re "$KEEP_RE" --argjson now "$(date +%s)" '.vms[] | select((.name // "") | test("^evo-e2e-") and test($re))
 		| "\(.name)\t\(.state // .status // "?")\t\(((.created_time // "") | fromdateiso8601? // null) as $t | if $t then (($now - $t) / 3600 | floor) else "?" end)"') || {
 		echo "::error::список ВМ не разобран — жива ли ВМ пробы цены Г-20 и сколько ей, неизвестно"
 		exit 1

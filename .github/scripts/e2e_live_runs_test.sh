@@ -101,6 +101,12 @@ rc=0
 out=$(printf 'мусор' | "$here/e2e_live_runs.sh" overdue 2>&1) || rc=$?
 want "overdue: список ВМ не прочитан — код" "$rc" 1
 rc=0
+out=$(: | "$here/e2e_live_runs.sh" overdue 2>&1) || rc=$?
+want "overdue: пустой ввод — не «ВМ нет», код" "$rc" 1
+rc=0
+out=$(printf '{"error":{"reason":"API_ERROR"}}' | "$here/e2e_live_runs.sh" overdue 2>&1) || rc=$?
+want "overdue: ответ без vms — код" "$rc" 1
+rc=0
 out=$(printf '{"vms":[]}' | "$here/e2e_live_runs.sh" overdue 2>&1) || rc=$?
 want "overdue: ВМ пробы цены нет — код" "$rc" 0
 
