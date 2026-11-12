@@ -90,6 +90,8 @@ var enumSource = map[string]struct{ service, path, field string }{
 	"tg_list.status":          {"nlb", "/v2/targetGroups", "target_groups[].status"},
 	"ar_list.status":          {"ar", "/v1/registries", "registries[].status"},
 	"ar_list.type":            {"ar", "/v1/registries", "registries[].registryType"},
+	"vpc_routes.status":       {"vpc", "/v1/vpcs/{vpcId}/routes/static", "routes[].status"},
+	"pg_backups.status":       {"postgresql", "/v1/clusters/{cluster_id}/backups", "backups[].status"},
 }
 
 // The values of a filter by state are the specification's, not evo's

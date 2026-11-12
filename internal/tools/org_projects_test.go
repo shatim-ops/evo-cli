@@ -125,3 +125,25 @@ func TestOrgProjects_FailuresAreErrors(t *testing.T) {
 		}
 	}
 }
+
+// org_projects under its filter by name (release plan 1.8.2, the other
+// lists): the projects with the part of the name, with what was applied
+// and of how many; a key the Organization API lists no projects for
+// answers as without the filter — its note, not an empty selection.
+func TestOrgProjects_FilterByName(t *testing.T) {
+	r := orgRegistry(t, fakeOrg{200, `{"projects":[{"id":"p1","name":"dev","status":"ACTIVE"},{"id":"p2","name":"prod","status":"ACTIVE"}]}`})
+	m, text, isErr := callNamed(t, r, "org_projects", map[string]any{"name": "PRO"})
+	rows, _ := m["projects"].([]any)
+	if isErr || len(rows) != 1 || m["count"] != float64(1) || m["total"] != float64(2) {
+		t.Fatalf("want prod alone, 1 of 2: %s", text)
+	}
+	if row, _ := rows[0].(map[string]any); row["id"] != "p2" {
+		t.Errorf("the project that passed: %v", rows[0])
+	}
+
+	noRight := orgRegistry(t, fakeOrg{400, `{"code":3,"message":"(user_id) is invalid argument: user not found"}`})
+	m, text, isErr = callNamed(t, noRight, "org_projects", map[string]any{"name": "pro"})
+	if _, selected := m["filters"]; isErr || selected || m["note"] != ScopeText(0, false) {
+		t.Errorf("a key that lists no projects: want the answer with its note, no selection: %s", text)
+	}
+}

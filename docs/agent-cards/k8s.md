@@ -22,7 +22,7 @@
 | `k8s_apply` | `evo k8s apply` | changes | `cluster_id` ← `k8s_list` |
 | `k8s_helm` | `evo k8s helm` | changes | `cluster_id` ← `k8s_list` |
 
-Filters of the lists (the rule of the `evo` skill): `k8s_list` — status, name; `k8s_nodepools` — status, name, cluster_id.
+Filters of the lists (the rule of the `evo` skill): `k8s_list` — status, name; `k8s_nodepools` — status, name, cluster_id; `k8s_addons` — query, category, billable.
 
 ## Notes
 
