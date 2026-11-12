@@ -118,6 +118,16 @@ CLUSTER='evo-e2e-*' run prefix-old 1 1 "$failed"
 fresh prefix-foreign
 CLUSTER='evo-*' run prefix-foreign 2 0 "$two"
 
+# Стенд (план 1.9, Г-50): кластер стенда уборка по префиксу запусков не
+# видит, а по своему имени скрипт его удалять отказывается.
+# shellcheck source-path=SCRIPTDIR source=e2e_stand.sh
+. "$here/e2e_stand.sh"
+stand='{"clusters":[{"id":"s","name":"'"$STAND_PREFIX"'-pg","status":"RUNNING"}]}'
+fresh stand
+CLUSTER='evo-e2e-*' run stand 0 0 "$stand"
+fresh stand-name
+CLUSTER="$STAND_PREFIX-pg" run stand-name 2 0 "$stand"
+
 # Отмена прогона (DBAAS_ONCE): кластер ещё создаётся — одна попытка, код 1,
 # без повторов раз в 60 с до 120 мин (run 147 не отменялся без force cancel).
 fresh once
