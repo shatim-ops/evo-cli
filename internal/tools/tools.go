@@ -74,15 +74,16 @@ func (s *Registry) registerTools() {
 				"image":      strProp("Boot image name or UUID, e.g. 'Ubuntu-24.04'. Not with image_id."),
 				"image_id":   strProp("Image UUID."),
 				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
-					"description": "Image metadata fields by name, e.g. {\"admin_password\": \"...\"}; they override evo's. An undeclared field is refused."},
+					"description": "Image metadata fields by name; they override evo's. An undeclared field is refused."},
 				"ports": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
 					"description": "Inbound ports to open from cidr, e.g. [\"80\", \"53/udp\"] (tcp by default), in the zone's shared security group; destroy deletes the rules evo created."},
 				"cidr":         cidrProp(portsCidrDesc),
 				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10 or the image's min_disk).")),
-				"subnet_id":    strProp("Subnet UUID or name (default: one in the zone)."),
-				"no_public_ip": boolProp("Private VM, no floating IP: a balancer target or an internal node."),
+				"subnet_id":    strProp("Subnet UUID or name (default: the zone's)."),
+				"no_public_ip": boolProp("Private VM, no floating IP."),
 				"confirmed":    confirmedProp(),
 				"wait":         boolProp(waitDesc),
+				continuedVMArg: uuidProp(continuedVMDesc),
 			}),
 		},
 		{
@@ -242,9 +243,10 @@ func (s *Registry) registerTools() {
 			Name:        "deploy_apply",
 			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. It creates the VM without the application: a compose project goes through deploy. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
-				"plan_id":   strProp("The plan_id returned by deploy_plan."),
-				"confirmed": confirmedProp(),
-				"wait":      boolProp(waitDesc),
+				"plan_id":      strProp("The plan_id returned by deploy_plan."),
+				"confirmed":    confirmedProp(),
+				"wait":         boolProp(waitDesc),
+				continuedVMArg: uuidProp(continuedVMDesc),
 			}, "plan_id"),
 		},
 		{
@@ -391,7 +393,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_operation",
-			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
+			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_nodepool_delete/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
 				"wait_seconds": opWaitProp(),
@@ -415,6 +417,15 @@ func (s *Registry) registerTools() {
 				"count":       inRange(0, maxPoolCount, intProp("The number of nodes the pool is to have.")),
 				"confirmed":   confirmedProp(),
 			}, "nodepool_id", "count"),
+		},
+		{
+			Name:        "k8s_nodepool_delete",
+			Description: "Permanently delete a node pool of a Managed Kubernetes cluster: its nodes are deleted with the data on their disks, and their pods are evicted. REQUIRES confirmed=true after the user approves; the preview names the cluster, the nodes and whether the cluster is left with no pool. The cluster itself stays. Async — returns operation_id: wait with k8s_operation.",
+			InputSchema: objSchema(map[string]any{
+				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
+				"confirmed":   confirmedProp(),
+				"wait":        boolProp(deleteWaitDesc),
+			}, "nodepool_id"),
 		},
 		{
 			Name:        "k8s_add_nodepool",
@@ -1462,6 +1473,7 @@ func (s *Registry) registerTools() {
 		"k8s_nodepools":        s.handleK8sNodePools,
 		"k8s_nodepool_get":     s.handleK8sNodePoolGet,
 		"k8s_nodepool_scale":   s.gated("k8s_nodepool_scale", s.planK8sNodePoolScale),
+		"k8s_nodepool_delete":  s.gated("k8s_nodepool_delete", s.planK8sNodePoolDelete),
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_add_addon":        s.gated("k8s_add_addon", s.planK8sAddAddon),
@@ -1807,6 +1819,11 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		// not a refusal: the VM may be booting, the person decides.
 		answer["upload"] = engine.SSHUpload(rec.VMIP)
 		if !u.Unchanged {
+			// A stopped VM takes no upload: refused before the question,
+			// as Deploy refuses it.
+			if err := eng.DeployVMStopped(ctx, &rec); err != nil {
+				return "", err
+			}
 			if probed, reach := eng.ReachSSH(ctx, rec.VMIP); probed {
 				answer["ssh_reachable"] = reach == nil
 				if reach != nil {
@@ -1888,6 +1905,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 // names it (D15, D48), so the CLI words the hint with its flag; and the
 // last lines of a failed docker compose up (output, #558).
 func deployFields(err error, fields map[string]any) map[string]any {
+	fields = engineStep(err, fields)
 	add := func(k string, v any) {
 		if fields == nil {
 			fields = map[string]any{}
@@ -1939,6 +1957,10 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	// included: image and image_id, or one of only spaces (break r4,
 	// R4-11).
 	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
+		return nil, err
+	}
+	// A step that goes on with a VM that is gone makes no new one (D102).
+	if err := s.continuedVM(ctx, "provision", args, stringArg(args, "name")); err != nil {
 		return nil, err
 	}
 	metaValues, err := metadataArg(args, "image_metadata")
@@ -2607,6 +2629,26 @@ func vmReadyText(name, zone, ip, ssh string, took time.Duration) string {
 		name, zone, ip, engine.ElapsedText(took), ssh)
 }
 
+// engineStep adds to fields the way on that an engine's refusal names in
+// its details, in the answer as in the CLI's: deploy for a deployment that
+// deploy has not finished (D76), vm_start for one whose VM is stopped
+// («Риск», conclusion 132, У2). Other errors keep their details to the CLI.
+func engineStep(err error, fields map[string]any) map[string]any {
+	var unfinished *engine.DeployUnfinishedError
+	var stopped *engine.VMStoppedError
+	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) {
+		return fields
+	}
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		if fields == nil {
+			fields = map[string]any{}
+		}
+		maps.Copy(fields, ce.Details)
+	}
+	return fields
+}
+
 // passwordOnce is the sentence of a provision answer that carries the
 // password evo generated for the image: no copy of it is kept.
 const passwordOnce = " The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
@@ -2661,16 +2703,7 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 	}
 	if err := eng.Logs(ctx, opts); err != nil {
 		fields := logField(buf.String())
-		// A deployment deploy has not finished: its status and deploy as
-		// the next step, in the answer as in the CLI's (D76).
-		var ue *engine.DeployUnfinishedError
-		if stderrors.As(err, &ue) {
-			var ce *clierrors.CLIError
-			if stderrors.As(err, &ce) {
-				maps.Copy(fields, ce.Details)
-			}
-		}
-		return failed(ctx, err, fields), true
+		return failed(ctx, err, engineStep(err, fields)), true
 	}
 	return buf.String(), false
 }

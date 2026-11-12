@@ -84,8 +84,10 @@ const (
 		"list_subnets) and refuses one that is not there"
 	whyFilter = "a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with " +
 		"the items that list read; it reaches no API as an id"
-	whyInProject      = "the request carries the project (projectId in the query), and the API looks the resource up in that project"
-	whyInParent       = "a part of the resource the call's other id argument names (checked): the API addresses it inside that resource"
+	whyInProject = "the request carries the project (projectId in the query), and the API looks the resource up in that project"
+	whyInParent  = "a part of the resource the call's other id argument names (checked): the API addresses it inside that resource"
+	whyContinued = "the VM the next step of a call goes on with (continuedVM, D102): the call only reads it by id, to refuse when it is gone; " +
+		"what the call writes lands in its own project, as without the argument"
 	whyContainerImage = "a container image reference (registry/name:tag) the app pulls, not a Cloud.ru resource id"
 	whyReference      = "a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; " +
 		"evo has no lookup of its project"
@@ -103,10 +105,10 @@ var idArgs = map[string][]idArg{
 	"image_delete": {{name: "image_id", kind: kindImage, target: true}},
 	"image_create": {{name: "disk_id", kind: kindDisk}},
 	"deploy":       {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "project_id", why: whyProjectArg}},
-	"provision": {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "subnet_id", why: whyListed},
+	"provision": {{name: "vm_id", why: whyContinued}, {name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "subnet_id", why: whyListed},
 		{name: "project_id", why: whyProjectArg}},
 	"deploy_plan":         {{name: "image", kind: kindImage}, {name: "base_plan_id", why: whyLocal}},
-	"deploy_apply":        {{name: "plan_id", why: whyLocal}},
+	"deploy_apply":        {{name: "plan_id", why: whyLocal}, {name: "vm_id", why: whyContinued}},
 	"fip_attach":          {{name: "fip", why: whyListed}, {name: "vm", why: whyListed}},
 	"release_floating_ip": {{name: "id", kind: kindFIP, target: true}},
 	"open_ports":          {{name: "security_group", why: whyListed}},
@@ -125,20 +127,21 @@ var idArgs = map[string][]idArg{
 	"tg_list":             {{name: "vpc_id", why: whyFilter}},
 
 	// Managed Kubernetes.
-	"k8s_get":            {{name: "cluster_id", kind: kindK8s}},
-	"k8s_kubeconfig":     {{name: "cluster_id", kind: kindK8s}},
-	"k8s_delete":         {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_operation":      {{name: "operation_id", kind: kindOperation}},
-	"k8s_nodepools":      {{name: "cluster_id", kind: kindK8s}},
-	"k8s_nodepool_get":   {{name: "nodepool_id", kind: kindK8sNodePool}},
-	"k8s_nodepool_scale": {{name: "nodepool_id", kind: kindK8sNodePool, target: true}},
-	"k8s_add_nodepool":   {{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}},
-	"k8s_add_addon":      {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_kubectl":        {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_apply":          {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_helm":           {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_plan":           {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
-	"k8s_create":         {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
+	"k8s_get":             {{name: "cluster_id", kind: kindK8s}},
+	"k8s_kubeconfig":      {{name: "cluster_id", kind: kindK8s}},
+	"k8s_delete":          {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_operation":       {{name: "operation_id", kind: kindOperation}},
+	"k8s_nodepools":       {{name: "cluster_id", kind: kindK8s}},
+	"k8s_nodepool_get":    {{name: "nodepool_id", kind: kindK8sNodePool}},
+	"k8s_nodepool_scale":  {{name: "nodepool_id", kind: kindK8sNodePool, target: true}},
+	"k8s_nodepool_delete": {{name: "nodepool_id", kind: kindK8sNodePool, target: true}},
+	"k8s_add_nodepool":    {{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}},
+	"k8s_add_addon":       {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_kubectl":         {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_apply":           {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_helm":            {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_plan":            {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
+	"k8s_create":          {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
 
 	// Managed PostgreSQL, Kafka, Redis.
 	"pg_get":           {{name: "id", kind: kindPG}, {name: "cluster_id", kind: kindPG}},

@@ -49,7 +49,7 @@ func TestDeleteOutcome_EveryAsyncDeleteReadsItsOperation(t *testing.T) {
 	first := opWaitFirstDelay
 	opWaitFirstDelay = time.Millisecond
 	t.Cleanup(func() { opWaitFirstDelay = first })
-	failed := `{"items":[],"total":0,"id":"` + contractID + `","name":"web","status":"ACTIVE","done":true,` +
+	failed := `{"items":[],"total":0,"id":"` + contractID + `","clusterId":"` + contractID + `","name":"web","status":"ACTIVE","done":true,` +
 		`"error":{"code":9,"message":"the platform kept it"}}`
 	names := make([]string, 0, len(deleteTargets))
 	for name := range deleteTargets {

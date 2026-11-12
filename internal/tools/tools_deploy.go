@@ -332,6 +332,10 @@ func (s *Registry) planDeployApply(ctx context.Context, args map[string]any) (*P
 		}
 		return nil, err
 	}
+	// A step that goes on with a VM that is gone makes no new one (D102).
+	if err := s.continuedVM(ctx, "deploy_apply", args, plan.VM.Name); err != nil {
+		return nil, err
+	}
 	// The keys deploy_apply appends are the ones the plan showed (R-68):
 	// a key added since gets no SSH login nobody saw — refused before
 	// anything is written, as deploy refuses a compose file changed since
@@ -444,8 +448,9 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 		// so far and the plan to repeat, which finishes the VM (D69).
 		out := map[string]any{"status": "creating", "vm_id": res.VMID, "vm_status": res.VMStatus, "plan_id": planID,
 			"elapsed_sec": res.ElapsedSec,
-			"next":        fmt.Sprintf("The VM is still being created. Call deploy_apply with plan_id %s and confirmed=true again: it adopts this VM (no second one), waits and finishes it (public IP, SSH, ports); vm_get vm_id=%s shows its state.", planID, res.VMID)}
-		nextStep(out, "deploy_apply", map[string]any{"plan_id": planID, "confirmed": true})
+			"next":        fmt.Sprintf("The VM is still being created. Call deploy_apply again with next_args (plan_id %s, confirmed=true, vm_id): it adopts this VM (no second one), waits and finishes it (public IP, SSH, ports); if the VM is gone by then, it refuses and creates nothing. vm_get vm_id=%s shows its state.", planID, res.VMID)}
+		// The consent goes on for this VM and no other (continuedVM, D102).
+		nextStep(out, "deploy_apply", map[string]any{"plan_id": planID, "confirmed": true, continuedVMArg: res.VMID})
 		if res.Password != "" {
 			out["password"] = res.Password
 			out["next"] = out["next"].(string) + passwordOnce
@@ -1125,7 +1130,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 			"id":       fipID,
 			"message":  fmt.Sprintf("floating IP %s released", fipIP),
 		}), false
-	}, state, fipID)}, nil
+	}, state, state, fipID)}, nil
 }
 
 // folderProvenance is engine.ProvenanceOf by the state of the folder dir,

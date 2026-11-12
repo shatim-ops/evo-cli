@@ -2063,6 +2063,7 @@
    "version_id"
   ],
   "mk8s DELETE /v3/clusters/{clusterId}": [],
+  "mk8s DELETE /v3/nodePools/{nodePoolId}": [],
   "mk8s GET /v3/addons": [
    "addons[]",
    "addons[].categories[]",

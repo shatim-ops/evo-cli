@@ -19,7 +19,7 @@ import (
 func TestDeleteWaitFalse_TreeEqualsToolsCall(t *testing.T) {
 	w := withParityWorld(t)
 	reg := tools.New(nil)
-	deletes := map[string]bool{"ar_delete": true, "ca_delete": true, "dns_record_delete": true, "k8s_delete": true,
+	deletes := map[string]bool{"ar_delete": true, "ca_delete": true, "dns_record_delete": true, "k8s_delete": true, "k8s_nodepool_delete": true,
 		"kafka_delete": true, "lb_delete": true, "tg_delete": true, "pg_delete": true, "redis_delete": true, "vpc_delete": true, "dns_zone_delete": true}
 	seen := 0
 	for _, g := range allTreeGroups() {

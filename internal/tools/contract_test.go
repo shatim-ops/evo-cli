@@ -93,7 +93,9 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 			code = 500
 		}
 		if code == 200 {
-			body = `{"items":[],"total":0,"id":"` + contractID + `","name":"web","done":true,"status":"ACTIVE"}`
+			// clusterId: a node pool names its cluster, which its delete
+			// reads the other pools of.
+			body = `{"items":[],"total":0,"id":"` + contractID + `","clusterId":"` + contractID + `","name":"web","done":true,"status":"ACTIVE"}`
 			if override != "" {
 				body = override
 			}
