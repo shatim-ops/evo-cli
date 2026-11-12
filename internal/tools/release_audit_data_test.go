@@ -326,7 +326,7 @@ func TestStack_TakenNameIsNotAdopted(t *testing.T) {
 	}
 	r.handlers["kafka_list"] = fakeOK(map[string]any{"clusters": []any{map[string]any{"id": "foreign", "name": "k", "status": "READY"}}})
 	r.handlers["kafka_get"] = fakeOK(map[string]any{"status": "READY"})
-	_, _ = r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	_, _ = r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	got, err := stack.LoadJob(j.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +359,7 @@ func TestStack_TakenNameOnRetryIsNotAdopted(t *testing.T) {
 	r.handlers["kafka_list"] = fakeOK(map[string]any{"clusters": []any{map[string]any{"id": "foreign", "name": "k", "status": "READY"}}})
 	r.handlers["kafka_get"] = fakeOK(map[string]any{"status": "READY"})
 	for i := 0; i < 3; i++ {
-		_, _ = r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+		_, _ = r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	}
 	got, err := stack.LoadJob(j.ID)
 	if err != nil {

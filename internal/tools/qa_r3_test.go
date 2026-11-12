@@ -67,7 +67,7 @@ func TestQAr3_StackDestroy_PlannedJobLeavesForeignAlone(t *testing.T) {
 		deleted, _ = a["cluster_id"].(string)
 		return toJSON(map[string]any{"status": "deleted"}), false
 	}
-	r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	if deleted != "" {
 		t.Fatalf("a planned job (created nothing) deleted cluster %s", deleted)
 	}

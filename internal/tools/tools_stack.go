@@ -1024,37 +1024,38 @@ func (s *Registry) normalizeManifest(ctx context.Context, m *stack.Manifest) ([]
 	return notes, flavor, nil
 }
 
-func (s *Registry) handleStackApply(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "job_id")
 	if id == "" {
-		return usageT("'job_id' is required (from stack_plan)", "нужен 'job_id' (из stack_plan)"), true
+		return answered(usageT("'job_id' is required (from stack_plan)", "нужен 'job_id' (из stack_plan)"), true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// What refuses the confirmed call refuses the preview, before the
-		// question (axis 1 of CLAUDE.md §6, D35): a job not there, of
-		// another project, or destroyed.
-		if _, err := s.appliableJob(id); err != nil {
+	// What refuses the call refuses it before the question (axis 1 of
+	// CLAUDE.md §6, D35): a job not there, of another project, or
+	// destroyed. The execution checks again under the job's lock: another
+	// process may have changed the job since.
+	if _, err := s.appliableJob(id); err != nil {
+		return nil, err
+	}
+	preview := map[string]any{"message": i18n.T("stack_apply provisions BILLABLE resources.",
+		"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", nil, nil)}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		unlock, err := s.lockJob(id)
+		if err != nil {
 			return errResult(err), true
 		}
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.T("stack_apply provisions BILLABLE resources.",
-			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", nil, nil)}), true
-	}
-	unlock, err := s.lockJob(id)
-	if err != nil {
-		return errResult(err), true
-	}
-	defer unlock()
-	job, err := s.appliableJob(id)
-	if err != nil {
-		return errResult(err), true
-	}
-	s.advance(ctx, job)
-	if e := job.Save(); e != nil {
-		return errResult(fmt.Errorf(i18n.T("persist job: %w", "сохранение задания: %w"), e)), true
-	}
-	out := job.Compact()
-	out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
-	return toJSON(out), job.Failed()
+		defer unlock()
+		job, err := s.appliableJob(id)
+		if err != nil {
+			return errResult(err), true
+		}
+		s.advance(ctx, job)
+		if e := job.Save(); e != nil {
+			return errResult(fmt.Errorf(i18n.T("persist job: %w", "сохранение задания: %w"), e)), true
+		}
+		out := job.Compact()
+		out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
+		return toJSON(out), job.Failed()
+	}}, nil
 }
 
 // appliableJob is the job stack_apply may advance: there, of this server's
@@ -1265,201 +1266,203 @@ func alreadyDestroyed(id string) string {
 			"Стек удалён раньше; все его удаления завершены.")})
 }
 
-func (s *Registry) handleStackDestroy(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planStackDestroy(_ context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "job_id")
 	if id == "" {
-		return usageT("'job_id' is required", "нужен 'job_id'"), true
+		return answered(usageT("'job_id' is required", "нужен 'job_id'"), true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		// The preview names what goes: each step's resource as the job
-		// knows it (release audit, R-04, re-run N-11).
+	// The execution checks the job again under its lock: another process
+	// may have changed it since the plan.
+	execute := func(ctx context.Context) (string, bool) {
+		unlock, err := s.lockJob(id)
+		if err != nil {
+			return errResult(err), true
+		}
+		defer unlock()
 		job, err := stack.LoadJob(id)
 		if err != nil {
 			return errResult(err), true
 		}
-		// The confirmed call refuses a job of another project: the preview
-		// does so before the question (Cursor review of PR #89).
+		// A 404 from another project would read as "already gone" and the job
+		// would be marked destroyed with its resources still billed (QA P2).
 		if err := s.checkJobProject(job); err != nil {
 			return errResult(err), true
 		}
-		// Its resources were deleted by an earlier stack_destroy and none
-		// was still being deleted: nothing to ask about (D26, G130-31; D41).
+		// confirmed=true answers as the preview: the CLI's --yes stops at the
+		// preview's already_destroyed, MCP gets here (TestParity_YesEqualsConfirmed).
 		if job.Destroyed() {
 			return alreadyDestroyed(id), false
 		}
-		// Deletions the cloud was still finishing: the question again, so
-		// that the CLI's --yes, which calls this preview first, gets to the
-		// confirmed call that re-checks them, as MCP does (cloud-e2e 1.3.1).
-		if job.DeletionsPending() {
-			res := make([]map[string]any, 0, len(job.Deleting))
-			for _, st := range job.Steps {
-				if slices.Contains(job.Deleting, st.Key) {
-					res = append(res, map[string]any{"step": st.Key, "status": "deleting", "id": job.Outputs[st.Key]})
+		// Reconcile ids from the STEPS before teardown: a resource created but not yet
+		// "done" (e.g. a k8s cluster still PROVISIONING) has its id on the step, not in
+		// Outputs — without this, destroying mid-deploy would ORPHAN it. Also resolve
+		// by-name for async resources whose op hadn't completed.
+		for _, st := range job.Steps {
+			if job.Outputs[st.Key] != "" {
+				continue
+			}
+			if st.ResourceID != "" {
+				job.Outputs[st.Key] = st.ResourceID
+			} else if st.MayHaveCreated() {
+				if id, _ := s.findStepResource(ctx, st); id != "" {
+					job.Outputs[st.Key] = id
 				}
 			}
-			return toJSON(map[string]any{"status": "confirmation_required", "resources": res,
-				"message": i18n.Tf("stack %s is being deleted: the cloud is still deleting %d resource(s) listed in resources; stack_destroy checks them again and deletes what is left.",
-					"стек %s удаляется: облако ещё удаляет ресурсы (%d), перечисленные в resources; stack_destroy проверит их снова и удалит, что осталось.", id, len(res))}), true
 		}
-		var res []map[string]any
-		for _, st := range job.Steps {
-			rid := firstNonEmptyStr(job.Outputs[st.Key], st.ResourceID)
-			if rid == "" && !st.MayHaveCreated() {
-				continue
-			}
-			row := map[string]any{"step": st.Key, "status": st.Status}
-			if rid != "" {
-				row["id"] = rid
-			}
-			if f, ok := stepFinder(st); ok {
-				row["name"] = f.name
-			}
-			res = append(res, row)
-		}
-		out := map[string]any{"status": "confirmation_required",
-			"message": i18n.Tf("stack_destroy PERMANENTLY deletes the %d resource(s) of stack %s listed in resources.",
-				"stack_destroy БЕЗВОЗВРАТНО удаляет ресурсы стека (%d) %s, перечисленные в resources.", len(res), id),
-			"resources": res}
-		if len(res) == 0 {
-			out["message"] = i18n.Tf("stack %s has created nothing yet; stack_destroy only marks it destroyed.",
-				"стек %s ещё ничего не создал; stack_destroy только отметит его удалённым.", id)
-		}
-		return toJSON(out), true
-	}
-	unlock, err := s.lockJob(id)
-	if err != nil {
-		return errResult(err), true
-	}
-	defer unlock()
-	job, err := stack.LoadJob(id)
-	if err != nil {
-		return errResult(err), true
-	}
-	// A 404 from another project would read as "already gone" and the job
-	// would be marked destroyed with its resources still billed (QA P2).
-	if err := s.checkJobProject(job); err != nil {
-		return errResult(err), true
-	}
-	// confirmed=true answers as the preview: the CLI's --yes stops at the
-	// preview's already_destroyed, MCP gets here (TestParity_YesEqualsConfirmed).
-	if job.Destroyed() {
-		return alreadyDestroyed(id), false
-	}
-	// Reconcile ids from the STEPS before teardown: a resource created but not yet
-	// "done" (e.g. a k8s cluster still PROVISIONING) has its id on the step, not in
-	// Outputs — without this, destroying mid-deploy would ORPHAN it. Also resolve
-	// by-name for async resources whose op hadn't completed.
-	for _, st := range job.Steps {
-		if job.Outputs[st.Key] != "" {
-			continue
-		}
-		if st.ResourceID != "" {
-			job.Outputs[st.Key] = st.ResourceID
-		} else if st.MayHaveCreated() {
-			if id, _ := s.findStepResource(ctx, st); id != "" {
-				job.Outputs[st.Key] = id
-			}
-		}
-	}
-	// Reverse teardown of what was created. A resource already gone is
-	// success: the delete tools answer already_deleted (D26), and on a
-	// server bound to its projects (H9) they keep NOT_FOUND, which reads
-	// the same here. The code (VM_NOT_FOUND, NOT_FOUND) is checked too: in the CLI the
-	// message is in the language of the CLI, and destroy of a VM already
-	// gone says "no VM … in project …; nothing was deleted" (live run 18.10:
-	// a second stack_destroy turned a destroyed job into destroy_failed).
-	// deleting: async deletions the cloud accepted but has not finished
-	// (status "deleting" with an operation): Postgres takes ~5 min, so the
-	// answer must not read as if it were gone already (release audit, L-37).
-	var deleted, deleting, failed []string
-	del := func(label, tool string, dargs map[string]any) {
-		dargs["confirmed"] = true
-		if res, e := s.callTool(ctx, tool, dargs); e != nil {
-			msg := e.Error()
-			reason, _ := res["reason"].(string)
-			// The code decides; the text only for an answer without one: a
-			// 404 the service did not write is API_ERROR and names the 404
-			// in its message (D63).
-			gone := reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound
-			if reason == "" {
-				gone = strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") ||
-					strings.Contains(strings.ToLower(msg), "not found") || strings.Contains(msg, "не найден")
-			}
-			if gone {
-				deleted = append(deleted, label+" (already gone)")
+		// Reverse teardown of what was created. A resource already gone is
+		// success: the delete tools answer already_deleted (D26), and on a
+		// server bound to its projects (H9) they keep NOT_FOUND, which reads
+		// the same here. The code (VM_NOT_FOUND, NOT_FOUND) is checked too: in the CLI the
+		// message is in the language of the CLI, and destroy of a VM already
+		// gone says "no VM … in project …; nothing was deleted" (live run 18.10:
+		// a second stack_destroy turned a destroyed job into destroy_failed).
+		// deleting: async deletions the cloud accepted but has not finished
+		// (status "deleting" with an operation): Postgres takes ~5 min, so the
+		// answer must not read as if it were gone already (release audit, L-37).
+		var deleted, deleting, failed []string
+		del := func(label, tool string, dargs map[string]any) {
+			dargs["confirmed"] = true
+			if res, e := s.callTool(ctx, tool, dargs); e != nil {
+				msg := e.Error()
+				reason, _ := res["reason"].(string)
+				// The code decides; the text only for an answer without one: a
+				// 404 the service did not write is API_ERROR and names the 404
+				// in its message (D63).
+				gone := reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound
+				if reason == "" {
+					gone = strings.Contains(msg, "404") || strings.Contains(msg, "NOT_FOUND") ||
+						strings.Contains(strings.ToLower(msg), "not found") || strings.Contains(msg, "не найден")
+				}
+				if gone {
+					deleted = append(deleted, label+" (already gone)")
+				} else {
+					failed = append(failed, label+": "+msg)
+				}
 			} else {
-				failed = append(failed, label+": "+msg)
-			}
-		} else {
-			switch st, _ := res["status"].(string); st {
-			case "already_deleted":
-				deleted = append(deleted, label+" (already gone)")
-			case "deleting":
-				// Not deleted yet: in deleting only (D96).
-				deleting = append(deleting, label)
-			default:
-				deleted = append(deleted, label)
+				switch st, _ := res["status"].(string); st {
+				case "already_deleted":
+					deleted = append(deleted, label+" (already gone)")
+				case "deleting":
+					// Not deleted yet: in deleting only (D96).
+					deleting = append(deleting, label)
+				default:
+					deleted = append(deleted, label)
+				}
 			}
 		}
-	}
-	for _, tool := range stackTeardown {
-		for _, st := range job.Steps {
-			ref := job.Outputs[st.Key]
-			if st.Tool != tool || ref == "" {
-				continue
-			}
-			c := createdIDs[tool]
-			dt := deleteTargets[c.delete]
-			if c.arg != "" {
-				// Deleted by the argument that named it (a secret by its
-				// path): its output only says it was made.
-				ref = stringArg(st.Args, c.arg)
-			} else if s.argRefused(c.delete, dt.arg, ref) {
-				// Not of the form the delete takes (its schema, D36): a job
-				// saved before G13-14 holds "ok" for its SNAT gateway. Its
-				// name finds it; nothing found is gone.
-				if ref = s.findStepID(ctx, st); ref == "" {
-					deleted = append(deleted, st.Key+" (already gone)")
+		for _, tool := range stackTeardown {
+			for _, st := range job.Steps {
+				ref := job.Outputs[st.Key]
+				if st.Tool != tool || ref == "" {
 					continue
 				}
+				c := createdIDs[tool]
+				dt := deleteTargets[c.delete]
+				if c.arg != "" {
+					// Deleted by the argument that named it (a secret by its
+					// path): its output only says it was made.
+					ref = stringArg(st.Args, c.arg)
+				} else if s.argRefused(c.delete, dt.arg, ref) {
+					// Not of the form the delete takes (its schema, D36): a job
+					// saved before G13-14 holds "ok" for its SNAT gateway. Its
+					// name finds it; nothing found is gone.
+					if ref = s.findStepID(ctx, st); ref == "" {
+						deleted = append(deleted, st.Key+" (already gone)")
+						continue
+					}
+				}
+				dargs := map[string]any{dt.arg: ref}
+				if dt.parent != "" {
+					dargs[dt.parent] = st.Args[dt.parent]
+				}
+				del(st.Key, c.delete, dargs)
 			}
-			dargs := map[string]any{dt.arg: ref}
-			if dt.parent != "" {
-				dargs[dt.parent] = st.Args[dt.parent]
+		}
+		// A job with a failed deletion, or one the cloud is still deleting,
+		// still holds resources: "destroyed" would hide it from the duplicate
+		// warning of stack_plan and read as gone (axis 3 of CLAUDE.md §6, D96).
+		// Calling stack_destroy again retries; what is gone already counts as
+		// deleted.
+		job.Status, job.Deleting = stack.TeardownStatus(deleting), deleting
+		if len(failed) > 0 {
+			job.Status = "destroy_failed"
+		}
+		if e := job.Save(); e != nil {
+			failed = append(failed, "persist job: "+e.Error())
+		}
+		out := map[string]any{"status": job.Status, "deleted": deleted, "failed": failed}
+		if len(deleting) > 0 {
+			out["deleting"] = deleting
+			out["note"] = "Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names."
+			// The same call checks them again and finishes what waits for
+			// them — a VM's floating IP and record (D69).
+			stackDestroyNext(out, id)
+		}
+		if len(failed) > 0 {
+			// Every error answer has a reason (docs/mcp.md «Ошибки»). This one
+			// is the reason the CLI has given the answer since it had none
+			// (toolError in internal/cli): NOT_FOUND when it says something
+			// was not found, else API_ERROR — the same code and exit code
+			// (spec.md REQ-8, TestParity_ErrorReasonEqualsTool).
+			out["reason"] = clierrors.CodeAPIError
+			if low := strings.ToLower(toJSON(out)); strings.Contains(low, "not found") || strings.Contains(low, "не найден") {
+				out["reason"] = clierrors.CodeNotFound
 			}
-			del(st.Key, c.delete, dargs)
 		}
+		return toJSON(out), len(failed) > 0
 	}
-	// A job with a failed deletion, or one the cloud is still deleting,
-	// still holds resources: "destroyed" would hide it from the duplicate
-	// warning of stack_plan and read as gone (axis 3 of CLAUDE.md §6, D96).
-	// Calling stack_destroy again retries; what is gone already counts as
-	// deleted.
-	job.Status, job.Deleting = stack.TeardownStatus(deleting), deleting
-	if len(failed) > 0 {
-		job.Status = "destroy_failed"
+	// The preview names what goes: each step's resource as the job
+	// knows it (release audit, R-04, re-run N-11).
+	job, err := stack.LoadJob(id)
+	if err != nil {
+		return nil, err
 	}
-	if e := job.Save(); e != nil {
-		failed = append(failed, "persist job: "+e.Error())
+	// The confirmed call refuses a job of another project: the preview
+	// does so before the question (Cursor review of PR #89).
+	if err := s.checkJobProject(job); err != nil {
+		return nil, err
 	}
-	out := map[string]any{"status": job.Status, "deleted": deleted, "failed": failed}
-	if len(deleting) > 0 {
-		out["deleting"] = deleting
-		out["note"] = "Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names."
-		// The same call checks them again and finishes what waits for
-		// them — a VM's floating IP and record (D69).
-		stackDestroyNext(out, id)
+	// Its resources were deleted by an earlier stack_destroy and none
+	// was still being deleted: nothing to ask about (D26, G130-31; D41).
+	if job.Destroyed() {
+		return answered(alreadyDestroyed(id), false), nil
 	}
-	if len(failed) > 0 {
-		// Every error answer has a reason (docs/mcp.md «Ошибки»). This one
-		// is the reason the CLI has given the answer since it had none
-		// (toolError in internal/cli): NOT_FOUND when it says something
-		// was not found, else API_ERROR — the same code and exit code
-		// (spec.md REQ-8, TestParity_ErrorReasonEqualsTool).
-		out["reason"] = clierrors.CodeAPIError
-		if low := strings.ToLower(toJSON(out)); strings.Contains(low, "not found") || strings.Contains(low, "не найден") {
-			out["reason"] = clierrors.CodeNotFound
+	// Deletions the cloud was still finishing: the question again, so
+	// that the CLI's --yes, which calls this preview first, gets to the
+	// confirmed call that re-checks them, as MCP does (cloud-e2e 1.3.1).
+	if job.DeletionsPending() {
+		res := make([]map[string]any, 0, len(job.Deleting))
+		for _, st := range job.Steps {
+			if slices.Contains(job.Deleting, st.Key) {
+				res = append(res, map[string]any{"step": st.Key, "status": "deleting", "id": job.Outputs[st.Key]})
+			}
 		}
+		return &Plan{Execute: execute, Preview: map[string]any{"resources": res,
+			"message": i18n.Tf("stack %s is being deleted: the cloud is still deleting %d resource(s) listed in resources; stack_destroy checks them again and deletes what is left.",
+				"стек %s удаляется: облако ещё удаляет ресурсы (%d), перечисленные в resources; stack_destroy проверит их снова и удалит, что осталось.", id, len(res))}}, nil
 	}
-	return toJSON(out), len(failed) > 0
+	var res []map[string]any
+	for _, st := range job.Steps {
+		rid := firstNonEmptyStr(job.Outputs[st.Key], st.ResourceID)
+		if rid == "" && !st.MayHaveCreated() {
+			continue
+		}
+		row := map[string]any{"step": st.Key, "status": st.Status}
+		if rid != "" {
+			row["id"] = rid
+		}
+		if f, ok := stepFinder(st); ok {
+			row["name"] = f.name
+		}
+		res = append(res, row)
+	}
+	out := map[string]any{
+		"message": i18n.Tf("stack_destroy PERMANENTLY deletes the %d resource(s) of stack %s listed in resources.",
+			"stack_destroy БЕЗВОЗВРАТНО удаляет ресурсы стека (%d) %s, перечисленные в resources.", len(res), id),
+		"resources": res}
+	if len(res) == 0 {
+		out["message"] = i18n.Tf("stack %s has created nothing yet; stack_destroy only marks it destroyed.",
+			"стек %s ещё ничего не создал; stack_destroy только отметит его удалённым.", id)
+	}
+	return &Plan{Execute: execute, Preview: out}, nil
 }
