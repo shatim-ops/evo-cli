@@ -600,8 +600,10 @@ jobs:
           else
             echo "price19_flavor_next         нет flavor или типа диска — не покрыто"
           fi
+          # Значения — из спецификации mk8s (CalculatePriceRequest): первый
+          # прогон слал тип диска "SSD" и получил 400 на собственный запрос.
           for x19 in "" -ext; do
-            r=$(jq -n --arg p "$PROJECT" '{projectId: $p, master: {count: 1, type: "MASTER_TYPE_SMALL"}, nodePools: [{count: 1, cpu: 2, ram: 4, disk: {size: "50", type: "SSD"}}]}' |
+            r=$(jq -n --arg p "$PROJECT" '{projectId: $p, master: {count: 1, type: "MASTER_TYPE_SMALL"}, nodePools: [{count: 1, cpu: 2, ram: 4, type: "FLAVOR_TYPE_GENERAL", oversubscription: "OVERSUBSCRIPTION_10", disk: {size: "50", type: "DISK_TYPE_SSD_NVME"}}]}' |
               curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}' "https://mk8s.api.cloud.ru/v2/billing/calculate-price$x19" 2>/dev/null || true)
             printf '%-28s http=%s %s\n' "price19_k8s$x19" "${r##*$'\n'}" "$(printf '%s' "${r%$'\n'*}" | jq -c 'if type == "object" then {top: keys, message: ((.message // .error // "") | tostring | .[0:160])} else {type: type} end' 2>/dev/null || echo 'не JSON')" | redact
           done
