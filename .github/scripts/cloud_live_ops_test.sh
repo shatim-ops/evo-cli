@@ -654,6 +654,33 @@ want "Г-13, квота: код" "$rc" 0
 want "Г-13, квота: один PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 1
 grep -q 'квота по машинному коду: да' "$tmp/out" || { echo "FAIL: Г-13: квота не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 
+# Кластер не вернулся в исходное состояние после смены класса: в него
+# уходит только возврат класса; PATCH диска и узлов не шлётся — каждый
+# PATCH поверх незавершённого повышает шанс кластера, который API не
+# удаляет (заключение «Риска» 144, К1).
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET! $S 200 {$C,"status":"RUNNING"}
+PATCH $S 200 {"id":"op"}
+GET $S 200 {$C,"status":"UPDATING"}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_WAIT=1 DB_RETURN_WAIT=1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, кластер не вернулся: код" "$rc" 0
+want "Г-13, кластер не вернулся: только класс и его возврат" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"specification_id":"s2"};{"specification_id":"s1"};'
+grep -q 'кластер не вернулся в RUNNING, дальше не меняю' "$tmp/out" || { echo "FAIL: Г-13: остановка пробы не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+# Срок всей пробы вышел: новый шаг не шлётся (К2).
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 200 {"id":"op"}
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_BUDGET=0 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, срок пробы вышел: ни одного PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls" || true)" 0
+grep -q 'срок пробы' "$tmp/out" || { echo "FAIL: Г-13: истёкший срок не назван"; fail=1; }
+
 # Redis: класс вверх и возврат, диск больше, затем одна попытка уменьшить
 # диск — ожидаемый отказ записан, кластер не тронут дальше.
 R='https://redis.api.cloud.ru/v1/clusters/c1'

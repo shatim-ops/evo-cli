@@ -2666,8 +2666,15 @@ DB_WAIT=${DB_WAIT:-2400}
 # DB_SETTLE — сколько секунд неизменного состояния после принятого шага
 # значат «шаг прошёл без смены состояния».
 DB_SETTLE=${DB_SETTLE:-120}
+# DB_BUDGET — срок всей пробы от её начала, секунд: после него новый шаг не
+# шлётся и ожидания кончаются; возврат класса шлётся и после срока и ждёт
+# не дольше DB_RETURN_WAIT. Худший ход пробы — DB_BUDGET + DB_RETURN_WAIT:
+# у job должно остаться время на удаление кластера (заключение «Риска» 144).
+DB_BUDGET=${DB_BUDGET:-3000}
+DB_RETURN_WAIT=${DB_RETURN_WAIT:-600}
 area_dbchange() {
 	local kind=${DB_KIND:-} id=${DB_CLUSTER_ID:-} g host url s0 up spec0 disk0 inst0 field step
+	local stuck=0 deadline=$(($(date +%s) + DB_BUDGET))
 	case "$kind" in
 	pg) g=Г-13 host=postgresql ;;
 	kafka) g=Г-14 host=kafka ;;
@@ -2695,11 +2702,25 @@ area_dbchange() {
 	up=$(evo tools call "${kind}_specs" --json 2>/dev/null | jq -r --arg cur "$spec0" '(.specifications // []) as $all | ($all[] | select(.id == $cur)) as $c
 		| [$all[] | select((.deployment_mode // "") == ($c.deployment_mode // "") and ([.cpu, .memory_gb] > [$c.cpu, $c.memory_gb]))] | sort_by(.cpu, .memory_gb) | .[0].id // empty' 2>/dev/null) || up=
 	mask "$up"
-	# db_step ПРОВЕРКА ТЕЛО — PATCH и ожидание исходного состояния; код 1 —
-	# отказ (уже записан).
+	# db_step ПРОВЕРКА ТЕЛО [return] — PATCH и ожидание исходного состояния;
+	# код 1 — шаг не послан, отказ (уже записан) или кластер не вернулся в
+	# исходное состояние (stuck=1). В кластер, который не вернулся, и после
+	# срока пробы уходит только возврат класса (return): он уменьшает цену;
+	# любой другой PATCH поверх незавершённого повышает шанс кластера,
+	# который API не удаляет.
 	db_step() {
-		local t0=$SECONDS until=$(($(date +%s) + DB_WAIT)) s chain='' st='' n=0 since
+		local t0=$SECONDS until s chain='' st='' n=0 since now
+		now=$(date +%s)
+		if [ "${3:-}" = return ]; then
+			until=$((now + DB_RETURN_WAIT))
+		else
+			[ "$stuck" = 0 ] || { gap "$1" "кластер не вернулся в $s0, дальше не меняю"; return 1; }
+			[ "$now" -lt "$deadline" ] || { gap "$1" "срок пробы ($((DB_BUDGET / 60)) мин) вышел — шаг не шлю"; return 1; }
+			until=$((now + DB_WAIT))
+			[ "$until" -le "$deadline" ] || until=$deadline
+		fi
 		iam_fresh || true
+		step=''
 		api PATCH "$url" "$(jq -c --arg id "$id" '{cluster_id: $id} + .' <<<"$2")"
 		case "$code" in 2??) ;; *) refusal "$1" синхронно; return 1 ;; esac
 		step="HTTP $code, поля ответа: $(keys_of)"
@@ -2714,20 +2735,20 @@ area_dbchange() {
 			# Исходное состояние после смены — шаг завершён; исходное без
 			# смены DB_SETTLE секунд — состояние не менялось.
 			if [ "$s" = "$s0" ] && { [ "$n" -gt 1 ] || [ $(($(date +%s) - since)) -ge "$DB_SETTLE" ]; }; then break; fi
-			[ "$(date +%s)" -lt "$until" ] || { chain="$chain (не дождались за $((DB_WAIT / 60)) мин)"; break; }
+			[ "$(date +%s)" -lt "$until" ] || { chain="$chain (исходного состояния не дождались)"; break; }
 			sleep "$PROBE_PAUSE"
 		done
 		ok "$1" "$step; состояния: $chain, $((SECONDS - t0)) с"
-		[ "$st" = "$s0" ]
+		[ "$st" = "$s0" ] || { stuck=1; return 1; }
 	}
 	class_steps() {
 		[ -n "$up" ] || { gap "$g: класс на шаг вверх" "в ${kind}_specs нет класса выше текущего в его режиме"; return 0; }
-		if db_step "$g: класс на шаг вверх" "$(jq -nc --arg s "$up" '{specification_id: $s}')"; then
-			db_step "$g: возврат класса" "$(jq -nc --arg s "$spec0" '{specification_id: $s}')" || true
-		elif [ "$QUOTA_HIT" = 0 ] && [ "${code#2}" != "$code" ]; then
-			# Шаг принят, но исходного состояния не дождались — возврат всё равно.
-			db_step "$g: возврат класса" "$(jq -nc --arg s "$spec0" '{specification_id: $s}')" || true
-		fi
+		local sent=0 step=""
+		db_step "$g: класс на шаг вверх" "$(jq -nc --arg s "$up" '{specification_id: $s}')" || true
+		# Шаг принят (и тогда, когда исходного состояния не дождались) —
+		# возврат класса в любом случае.
+		case "$step" in HTTP\ 2*) sent=1 ;; esac
+		[ "$sent" = 0 ] || db_step "$g: возврат класса" "$(jq -nc --arg s "$spec0" '{specification_id: $s}')" return || true
 	}
 	disk_body() {
 		case "$kind" in
