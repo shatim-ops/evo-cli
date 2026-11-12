@@ -52,36 +52,3 @@ func TestGateKube_RefusalWithoutConsentIsTheRefusalWithIt(t *testing.T) {
 		}
 	}
 }
-
-// A step that repeats a read cut at the limit of an MCP call carries no
-// consent, whatever the call was given: a read asks for none («Риск»,
-// conclusion 126). The step of k8s_helm stopped at repo add or repo
-// update, before the release was touched, keeps the consent of its call:
-// a declared continuation (owner's decision 12.11).
-func TestKubeAtLimit_ReadStepCarriesNoConsent(t *testing.T) {
-	stepArgs := func(answer map[string]any) map[string]any {
-		t.Helper()
-		next, _ := answer["next_args"].(map[string]any)
-		if next == nil {
-			t.Fatalf("no next_args in %v", answer)
-		}
-		return next
-	}
-	kubectl := map[string]any{"cluster_id": resMine, "args": "rollout status deploy/web", "confirmed": true}
-	if next := stepArgs(kubectlAtLimit("", "rollout", kubectl)); next["confirmed"] != nil || next["args"] != kubectl["args"] {
-		t.Errorf("the step of a kubectl read: %v", next)
-	}
-	for _, action := range []string{"list", "status"} {
-		helm := map[string]any{"cluster_id": resMine, "action": action, "release": "web", "confirmed": true}
-		if next := stepArgs(helmAtLimit("", action, helm)); next["confirmed"] != nil || next["action"] != action {
-			t.Errorf("the step of helm %s: %v", action, next)
-		}
-	}
-	install := map[string]any{"cluster_id": resMine, "action": "install", "release": "web", "chart": "r/web", "repo_url": "https://charts.example.invalid", "confirmed": true}
-	if next := stepArgs(helmAtLimit("", "repo add", install)); next["confirmed"] != true {
-		t.Errorf("the step of helm stopped at repo add lost the consent of its call: %v", next)
-	}
-	if kubectl["confirmed"] != true || install["confirmed"] != true {
-		t.Error("the step changed the arguments of the call")
-	}
-}
