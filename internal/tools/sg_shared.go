@@ -7,6 +7,8 @@ package tools
 import (
 	"context"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -83,4 +85,11 @@ func internetOnSharedGroup(group *provision.SecurityGroup, u sgrules.GroupUse, w
 // portsWords is ports and their protocol in words: «80,443/tcp».
 func portsWords(ports []string, proto string) string {
 	return strings.Join(ports, ",") + "/" + proto
+}
+
+// upperFirst is s with its first letter in upper case: a line of a
+// preview put at the start of a message.
+func upperFirst(s string) string {
+	r, n := utf8.DecodeRuneInString(s)
+	return string(unicode.ToUpper(r)) + s[n:]
 }

@@ -56,7 +56,9 @@ func TestDestroyTargeted_SaysWhatStaysOpenToTheInternet(t *testing.T) {
 		t.Fatalf("destroy by vm_id: open_to_internet_left = %s in %s", raw, text)
 	}
 	msg, _ := m["message"].(string)
-	if !strings.Contains(msg, "stay open to the internet") || !strings.Contains(msg, "tcp 22:22") || !strings.Contains(msg, "shared: 2 interface") {
+	// Said before the call for approval: a part of what is approved.
+	said, asked := strings.Index(msg, "Stay open to the internet"), strings.Index(msg, "Get the user's approval")
+	if said < 0 || asked >= 0 && said > asked || !strings.Contains(msg, "tcp 22:22") || !strings.Contains(msg, "shared: 2 interface") {
 		t.Errorf("the message does not say what stays open, in a group shared by 2 interfaces: %s", msg)
 	}
 	for _, bad := range []string{"sg_rule_delete", "close_ports"} {

@@ -3102,7 +3102,14 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	}
 	if left := eng.OpenLeft(ctx, projectID, target.ID, groupIDs, engine.ClosingRules(rulesPlanned)); left != nil {
 		preview["open_to_internet_left"] = left
-		preview["message"] = fmt.Sprint(preview["message"]) + " " + strings.Join(left.Lines(), "; ") + "."
+		// Before the call for approval: a part of what is approved.
+		fact := upperFirst(strings.Join(left.Lines(), "; ")) + ". "
+		msg, ask := fmt.Sprint(preview["message"]), i18n.T("Get the user's approval", "Получите согласие")
+		if at := strings.Index(msg, ask); at >= 0 {
+			preview["message"] = msg[:at] + fact + msg[at:]
+		} else {
+			preview["message"] = fact + msg
+		}
 	}
 	preview["provenance"] = engine.ProvenanceOf(engine.ProvenanceVM, target.ID, target.CreatedAt, nil, sf, readErr)
 	if uncheckedErr != nil {
