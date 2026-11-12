@@ -214,7 +214,7 @@ stand_sweep() {
 				echo "удаление $kind $name: принято (повтор)"
 			fi
 		done <"$now"
-		[ "$left" != 0 ] && [ "$rc" = 0 ] && [ "$(date +%s)" -lt "$until" ] || break
+		if [ "$left" = 0 ] || [ "$rc" != 0 ] || [ "$(date +%s)" -ge "$until" ]; then break; fi
 		echo "жду удаления: осталось $left, до предела $((until - $(date +%s))) с"
 		sleep "${STAND_PAUSE:-30}"
 	done
