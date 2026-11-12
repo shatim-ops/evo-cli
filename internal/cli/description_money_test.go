@@ -27,7 +27,6 @@ var (
 // Closes by 1.8.
 var descMoneyMisses = map[string]string{
 	"ca_deploy":        "billable",
-	"deploy_apply":     "billable",
 	"dns_zone_create":  "billable",
 	"k8s_add_addon":    "billable",
 	"pg_backup_create": "billable",

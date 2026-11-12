@@ -78,7 +78,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `deploy` | `evo deploy` | да | — | Deploy the local compose project to a VM evo-<project_name>, billable when it creates one, with a public floating IP: uploads the compose files over SSH, runs … | Развернуть локальный проект docker-compose на ВМ Cloud.ru |
+| `deploy` | `evo deploy` | да | — | Deploy the local compose project to a VM evo-<project_name> (billable when created) with a public floating IP: uploads the compose files over SSH, runs them … | Развернуть локальный проект docker-compose на ВМ Cloud.ru |
 | `status` | `evo status` | нет | — | Current deployment from the local state: VM id, public IP, flavor, region, health, ports. | Состояние текущего развёртывания |
 | `list` | `evo deploy list` | нет | — | List all recorded deployments for this project (VM IP, status, flavor, creation time). | Локальные записи развёртываний этого проекта |
 | `logs` | `evo logs` | нет | — | Retrieve container logs from the deployed VM via 'docker compose logs' over SSH. | Журналы контейнеров развёрнутой ВМ |
@@ -127,7 +127,7 @@
 | `image_list` | `evo image list` | нет | — | Search the VM image catalogue: OS images (type public), Marketplace products (marketplace), the project's own images (private). | Поиск образов: ОС (public), маркетплейс (marketplace), образы проекта (private) |
 | `marketplace_list` | `evo marketplace list` | нет | — | Read-only: what Cloud.ru offers to deploy, in one list: shared-catalogue VM images and Managed Kubernetes addons. | Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания |
 | `list_images` | `evo list-images` | нет | — | List available Cloud.ru VM boot images (UUID + name). | Загрузочные образы ВМ (UUID и имя) |
-| `image_create` | `evo image create` | да | `name`, `disk_id` | Create a VM image from a bootable disk (billable storage). | Создать образ ВМ из загрузочного диска (платно, асинхронно) |
+| `image_create` | `evo image create` | да | `name`, `disk_id` | Create a VM image from a bootable disk. | Создать образ ВМ из загрузочного диска (платно, асинхронно) |
 | `image_get` | `evo image get` | нет | `image` или `image_id` | Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with … | Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ |
 | `image_delete` | `evo image delete` | удаляет | `image_id` | Delete a VM image. | Удалить образ ВМ |
 
@@ -153,7 +153,7 @@
 | `k8s_add_addon` | `evo k8s add-addon` | удаляет | `cluster_id`, `name` | Install a Managed Kubernetes addon release into a cluster. | Установить плагин в кластер (асинхронно; версия по умолчанию — последняя активная) |
 | `k8s_kubectl` | `evo k8s kubectl` | удаляет | `cluster_id`, `args` | Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). | Команда kubectl в кластере (изменяющие — с подтверждением) |
 | `k8s_apply` | `evo k8s apply` | удаляет | `cluster_id`, `manifest` | Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. | Применить манифест Kubernetes (как kubectl apply -f -) |
-| `k8s_helm` | `evo k8s helm` | удаляет | `cluster_id`, `action` | Run Helm on a cluster. | Helm в кластере: install, upgrade, uninstall, list, status |
+| `k8s_helm` | `evo k8s helm` | удаляет | `cluster_id`, `action` | Helm on a cluster: install/upgrade/uninstall require confirmed=true after the user approves. | Helm в кластере: install, upgrade, uninstall, list, status |
 
 ## kafka
 
@@ -163,7 +163,7 @@
 | `kafka_get` | `evo kafka get` | нет | `cluster_id` | Get a Managed Kafka cluster by id (status, kafka_hosts, brokers, version). | Кластер Kafka по ID: состояние, адреса, брокеры, версия |
 | `kafka_versions` | `evo kafka versions` | нет | — | List available Managed Kafka versions (id + name). | Доступные версии Managed Kafka |
 | `kafka_specs` | `evo kafka specs` | нет | — | List Managed Kafka flavor specifications (id, cpu, memory_gb, min_storage_gb, min/max_brokers) for a version. | Конфигурации кластера Kafka для версии: CPU, память, хранилище, брокеры |
-| `kafka_create` | `evo kafka create` | да | `name` | Create a Managed Kafka cluster, billable. | Создать кластер Managed Kafka (платно, асинхронно) |
+| `kafka_create` | `evo kafka create` | да | `name` | Create a Managed Kafka cluster. | Создать кластер Managed Kafka (платно, асинхронно) |
 | `kafka_delete` | `evo kafka delete` | удаляет | `cluster_id` | Delete a Managed Kafka cluster by id AND its data. | Удалить кластер Kafka вместе с данными (асинхронно) |
 | `kafka_operation` | `evo kafka operation` | нет | `operation_id` | Poll a Managed Kafka async operation by id (from kafka_create/kafka_delete). | Состояние асинхронной операции Kafka |
 
@@ -203,7 +203,7 @@
 | `pg_get` | `evo pg get` | нет | `id` или `cluster_id` | Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status, access (placed in its … | Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние |
 | `pg_versions` | `evo pg versions` | нет | — | List available Managed PostgreSQL versions (e.g. | Доступные версии PostgreSQL |
 | `pg_specs` | `evo pg specs` | нет | — | List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard\|business, min_storage_gb) for a version. | Конфигурации кластера PostgreSQL для версии: CPU, память, минимальный объём |
-| `pg_create` | `evo pg create` | да | `name` | Create a Managed PostgreSQL cluster, billable. | Создать кластер PostgreSQL (платно, асинхронно) |
+| `pg_create` | `evo pg create` | да | `name` | Create a Managed PostgreSQL cluster. | Создать кластер PostgreSQL (платно, асинхронно) |
 | `pg_delete` | `evo pg delete` | удаляет | `id` или `cluster_id` | Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). | Удалить кластер PostgreSQL вместе с данными и всеми резервными копиями (асинхронно) |
 | `pg_operation` | `evo pg operation` | нет | `operation_id` | Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). | Состояние асинхронной операции PostgreSQL |
 | `pg_databases` | `evo pg databases` | нет | `cluster_id` | List databases in a PostgreSQL cluster (name, owner, size). | Базы данных кластера |
@@ -223,7 +223,7 @@
 | `redis_get` | `evo redis get` | нет | `cluster_id` | Get a Managed Redis cluster by id (status, redis_hosts, type, shards, replicas). | Кластер Redis по ID: состояние, адреса, тип, шарды, реплики |
 | `redis_versions` | `evo redis versions` | нет | — | List available Managed Redis versions (id + name). | Доступные версии Managed Redis |
 | `redis_specs` | `evo redis specs` | нет | — | List Managed Redis flavor specifications (id, cpu, memory_gb, deployment_mode, min_storage_gb) for a version. | Конфигурации кластера Redis для версии: CPU, память, режим, хранилище |
-| `redis_create` | `evo redis create` | да | `name` | Create a Managed Redis cluster, billable. | Создать кластер Managed Redis (платно, асинхронно) |
+| `redis_create` | `evo redis create` | да | `name` | Create a Managed Redis cluster. | Создать кластер Managed Redis (платно, асинхронно) |
 | `redis_delete` | `evo redis delete` | удаляет | `cluster_id` | Delete a Managed Redis cluster by id AND its data. | Удалить кластер Redis вместе с данными (асинхронно) |
 | `redis_operation` | `evo redis operation` | нет | `operation_id` | Poll a Managed Redis async operation by id (from redis_create/redis_delete). | Состояние асинхронной операции Redis |
 
@@ -271,7 +271,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `provision` | `evo vm create` | да | — | Provision a bare Cloud.ru VM (docker-compose: use 'deploy'), billable: confirmed=true. | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
+| `provision` | `evo vm create` | да | — | Provision a bare VM (docker-compose: use 'deploy'). | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
 | `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
 | `vm_start` | `evo vm start` | да | `vm_id` или `name` | Start a stopped VM (power_on) and wait until it is running. | Запустить остановленную ВМ и дождаться состояния running |
 | `vm_stop` | `evo vm stop` | удаляет | `vm_id` или `name` | Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. | Остановить работающую ВМ и дождаться состояния stopped |
