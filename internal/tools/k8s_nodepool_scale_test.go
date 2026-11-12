@@ -35,6 +35,7 @@ type poolWorld struct {
 	status   string
 	policy   string // scalePolicy of the pool, JSON
 	gone     bool   // the pool is not there
+	goneIn   int    // the pool goes after this many reads of it; 0 — it stays
 	after    string // status after an accepted PATCH; "" leaves status
 	patch    int    // HTTP status of the PATCH; 0 accepts
 	patchErr bool   // the answer to the PATCH is lost; the PATCH is applied when applied
@@ -57,6 +58,11 @@ func (w *poolWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 	rec := httptest.NewRecorder()
 	switch {
 	case r.URL.Path == "/v3/nodePools/"+poolFixed && r.Method == http.MethodGet:
+		if w.goneIn > 0 {
+			if w.goneIn--; w.goneIn == 0 {
+				w.gone = true
+			}
+		}
 		if w.gone {
 			http.Error(rec, `{"message":"node pool not found"}`, 404)
 			break
@@ -242,6 +248,27 @@ func TestK8sNodePoolScale_SettlingAtTheLimitOfTheCall(t *testing.T) {
 	if isErr || m["status"] != "waiting" || m["state"] != "OBJECT_STATUS_EDITING" || m["next_tool"] != "k8s_nodepool_scale" ||
 		args["nodepool_id"] != poolFixed || args["count"] == nil || args["confirmed"] != nil {
 		t.Errorf("want waiting with the status, the same call as the next step and no confirmed in it: %s", text)
+	}
+	if len(w.writes()) != 0 {
+		t.Errorf("sent %v", w.writes())
+	}
+}
+
+// A pool deleted while the call waits for another change to settle is not
+// found — the wait ends at once and does not answer «still settling» for
+// what is gone (D99, П5; audit of the reference).
+func TestK8sNodePoolScale_GoneWhileSettling(t *testing.T) {
+	w := &poolWorld{status: "OBJECT_STATUS_EDITING", goneIn: 3}
+	w.setCount(2)
+	r := poolRegistryWaiting(t, w, time.Minute)
+	started := time.Now()
+	m, text, isErr := callNamed(t, r, "k8s_nodepool_scale", map[string]any{"nodepool_id": poolFixed, "count": 3, "confirmed": true})
+	if !isErr || m["reason"] != clerrors.CodeNotFound || m["status"] == "waiting" {
+		t.Errorf("want NOT_FOUND, not a wait: %s", text)
+	}
+	// wall-clock: the wait is a minute in this world; a call that ends on the 404 takes milliseconds.
+	if took := time.Since(started); took > 10*time.Second {
+		t.Errorf("the call waited %s for a pool that is gone", took)
 	}
 	if len(w.writes()) != 0 {
 		t.Errorf("sent %v", w.writes())
