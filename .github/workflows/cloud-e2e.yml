@@ -102,7 +102,7 @@ on:
         description: "Which DBaaS jobs dbaas_smoke runs: pg, kafka, redis, separated by spaces"
         default: "pg kafka redis"
       probes:
-        description: "Billable probes of the platform, separated by spaces (plan cloud-e2e rc.1 1.6): access — dbaas-pg VMs in the cluster's subnet and in another subnet of the VPC probe TCP 5432 (DB-5, ~30 min more); nodes — the dbaas-pg cluster with 2 nodes and 100 GB, its storage per node read later from billing_consumption (cleanup_only prints it); p36 — disk: raw VM create with a flavor below the image's min_cpu; p41 — net: tg_create with a direct_ip VM target; p44 — secrets: a secret in a folder that does not exist; p45 — dbaas-pg: pg_create with backup_schedule @daily and */5 (a cluster the platform accepts is deleted); dnslink — dns: before the zone delete, DELETE with links and its operation, PATCH linkedVpcIds [] and links read before and after (owner decision #597 p. 27); shared — disk (needs disk_smoke): a second VM without a public IP, a shared and a plain 10 GB disk (raw POST /disks), each attached by evo to both VMs, the VMs of the disk read back (D81, CMP-27; owner decision 05.11); cmp7 — disk (needs disk_smoke): a raw VM create, then DELETE while it is creating, the HTTP code (409 or 422) written (CMP-7; owner decision 10.11); r3f1 — disk (needs disk_smoke): evo disk_create HDD 1 GB killed (SIGKILL) 3 s after its confirmation, the trace in the evo journal and the disk in the cloud written, the disk deleted (R-59; owner decision 10.11); probes of the plan 1.9 run in an area of their own, ops, and need no other input: g11 — a security group of its own without interfaces, its rules (TCP, UDP, ICMP, ingress and egress, a CIDR and 0.0.0.0/0) by raw requests, the repeat of a rule and of the deletes, the group deleted"
+        description: "Billable probes of the platform, separated by spaces (plan cloud-e2e rc.1 1.6): access — dbaas-pg VMs in the cluster's subnet and in another subnet of the VPC probe TCP 5432 (DB-5, ~30 min more); nodes — the dbaas-pg cluster with 2 nodes and 100 GB, its storage per node read later from billing_consumption (cleanup_only prints it); p36 — disk: raw VM create with a flavor below the image's min_cpu; p41 — net: tg_create with a direct_ip VM target; p44 — secrets: a secret in a folder that does not exist; p45 — dbaas-pg: pg_create with backup_schedule @daily and */5 (a cluster the platform accepts is deleted); dnslink — dns: before the zone delete, DELETE with links and its operation, PATCH linkedVpcIds [] and links read before and after (owner decision #597 p. 27); shared — disk (needs disk_smoke): a second VM without a public IP, a shared and a plain 10 GB disk (raw POST /disks), each attached by evo to both VMs, the VMs of the disk read back (D81, CMP-27; owner decision 05.11); cmp7 — disk (needs disk_smoke): a raw VM create, then DELETE while it is creating, the HTTP code (409 or 422) written (CMP-7; owner decision 10.11); r3f1 — disk (needs disk_smoke): evo disk_create HDD 1 GB killed (SIGKILL) 3 s after its confirmation, the trace in the evo journal and the disk in the cloud written, the disk deleted (R-59; owner decision 10.11); probes of the plan 1.9 run in an area of their own, ops, and need no other input: g11 — a security group of its own without interfaces, its rules (TCP, UDP, ICMP, ingress and egress, a CIDR and 0.0.0.0/0) by raw requests, the repeat of a rule and of the deletes, the group deleted; g16 — a 10 GB disk and a VM without a public IP (evo), a backup of each, the list, a restore of each into a new disk and a new VM, the backup delete and its repeat, a protection plan of the disk with a disabled schedule created and deleted (up to ~1.5 h)"
         default: ""
       redis_standalone_probe:
         description: "Probe G140-6 (billable, up to ~2.5 h): raw POST of a Redis STANDALONE cluster evo-e2e-redis-sa-<run> with replicas 0, without the field, 1 — the first accepted is created, read and deleted"
@@ -597,7 +597,7 @@ jobs:
           read -ra pw <<<"${PROBES:-}"
           for w in ${pw[@]+"${pw[@]}"}; do
             case "$w" in
-              g11) case " ${a[*]} " in *" ops "*) ;; *) a+=(ops) ;; esac ;;
+              g11 | g16) case " ${a[*]} " in *" ops "*) ;; *) a+=(ops) ;; esac ;;
             esac
           done
           if [ ${#a[@]} = 0 ]; then
@@ -685,6 +685,7 @@ jobs:
           AREA: ${{ matrix.area }}
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
           CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
           CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
         run: |
@@ -1094,6 +1095,8 @@ jobs:
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
           CLOUDRU_S3_ACCESS_KEY: ${{ secrets.CLOUDRU_S3_ACCESS_KEY }}
           CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
+          # Копии и планы защиты проб читаются прямым запросом с project_id.
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
         run: .github/scripts/cloud-live.sh sweep evo-e2e-
 
       # Диски evo-* без ВМ (загрузочные после destroy, реестр CMP-11):
@@ -1529,7 +1532,7 @@ jobs:
           read -ra words <<<"${PROBES:-}"
           for w in ${words[@]+"${words[@]}"}; do
             case "$w" in
-              access | p36 | p41 | p44 | p45 | dnslink | shared | cmp7 | r3f1 | g11) ;;
+              access | p36 | p41 | p44 | p45 | dnslink | shared | cmp7 | r3f1 | g11 | g16) ;;
               nodes) extra=(--arg instances=2 --arg storage_gb="$(jq -r '[(.min_storage_gb // 0), 100] | max' <<<"$spec")") ;;
               *) echo "::error::probes: «$w» — неизвестное слово (preflight их проверяет)"; exit 1 ;;
             esac
