@@ -104,6 +104,14 @@ run opsprobes 0 PROBES='g10 g11 g18 g20'
 fresh g16long
 run g16long 1 PROBES='g16 g18'
 has g16long "probes: «g16» идёт до 105 мин при пределе job 120 — запускайте её отдельно от g10 и g18"
+# Пробы изменения кластера — в job своего сервиса.
+fresh dbchange
+run dbchange 0 DBAAS_SMOKE=true DBAAS_SERVICES='pg kafka redis' PROBES='g13 g14 g15'
+fresh g14nokafka
+run g14nokafka 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES=g14
+has g14nokafka "probes: «g14» — проба джоба dbaas-kafka, а он не идёт (dbaas_smoke и kafka в dbaas_services)"
+fresh g15redissa
+run g15redissa 1 REDIS_SA=true PROBES=g15
 fresh g20alone
 run g20alone 1 PROBES='g11 g20'
 has g20alone "probes: «g20» — ВМ пробы цены оставляет проба g10, а её слова нет"
