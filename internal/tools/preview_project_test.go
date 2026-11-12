@@ -82,6 +82,12 @@ var previewCalls = map[string]map[string]any{
 	"vpc_route_create":  {"subnet": "192.0.2.0/24", "next_hop_vip_id": resMine},
 	"disk_resize":       {"size_gb": 100},
 	"disk_attach":       {"vm": resMine},
+	"disk_detach":       {"vm": resMine},
+	"k8s_add_addon":     {"name": ownerAddon},
+	"k8s_add_nodepool":  {"name": "pool", "zone": "ru.AZ-1"},
+	"pg_db_delete":      {"name": ownerChild},
+	"pg_user_delete":    {"name": ownerChild},
+	"vpc_route_delete":  {"route_id": ownerRoute},
 	// The tools that run a command in the cluster: a call that needs
 	// consent. Without it nothing runs: the preview only.
 	"k8s_kubectl": {"args": "delete pod web"},
@@ -91,19 +97,13 @@ var previewCalls = map[string]map[string]any{
 
 // previewNotReached are the tools with a target whose call reaches no
 // preview in the world of the owners, so the project their preview names
-// is checked by nothing: the world lacks what the call needs before the
-// question (a disk attached, a database, a route), or refuses the call. "tool" → what the world lacks. It only shrinks, and a new
+// is checked by nothing: the call is refused, or answered with nothing to
+// consent to, before the question. "tool" → what the world lacks. It only shrinks, and a new
 // tool does not join it: a new change addressed by id comes with a call
 // that reaches its preview (previewCalls). Closes by 1.9 (release plan
 // 1.9, «Превью называет проект записи»; the world is «Процесс»'s).
 var previewNotReached = map[string]string{
-	"disk_detach":       "no disk of the world is attached to the VM of the call: the answer is already_detached",
 	"dns_record_create": "the zone is looked up in the call's project: a zone of another is NOT_FOUND before any preview; the call's own zone is checked",
-	"k8s_add_addon":     "the call is refused with USAGE before the preview in this world, with the addon named",
-	"k8s_add_nodepool":  "the call is refused with CONFIG_INVALID before the preview in this world",
-	"pg_db_delete":      "the cluster of the world has no database: already_deleted",
-	"pg_user_delete":    "the cluster of the world has no user: already_deleted",
-	"vpc_route_delete":  "the VPC of the world has no route: already_deleted",
 }
 
 // With a key of the organization and no --allow-project, the preview of a
@@ -127,6 +127,10 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 		targeted[c.tool] = true
 		for _, id := range []string{resMine, resForeign} {
 			f := &ownerFake{}
+			if c.tool == "disk_detach" {
+				// A detach has a preview only of a disk that is attached.
+				f.diskOn = resMine
+			}
 			r := ownerRegistry(t, f, false, ownProject, ownOther, ownForeign)
 			args := c.args(id)
 			for k, v := range previewCalls[c.tool] {
