@@ -137,7 +137,7 @@ func TestPreviews_NameTheProject(t *testing.T) {
 
 	rec := runningRecord()
 	rec.ProjectID = projectA
-	p := destroyPreview(&rec, &state.File{}, nil, nil, nil, projectA, originRecord, time.Time{}, nil)
+	p := destroyPreview(&rec, &state.File{}, nil, nil, nil, nil, projectA, originRecord, time.Time{}, nil)
 	if want := "project:   " + projectA + " (where the deployment was created)"; len(p.Lines) == 0 || p.Lines[0] != want {
 		t.Errorf("destroy preview lines = %q, want %q first", p.Lines, want)
 	}
