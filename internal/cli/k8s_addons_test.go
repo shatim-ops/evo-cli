@@ -51,11 +51,16 @@ func (a *addonAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Path == "/v3/clusters" && r.Method == http.MethodGet:
 		_, _ = io.WriteString(w, `{"clusters":[]}`)
 	case r.URL.Path == "/v3/clusters/"+addonClusterID:
-		_, _ = io.WriteString(w, `{"id":"`+addonClusterID+`","name":"k8s-dev","version":"v1.31.4"}`)
+		_, _ = io.WriteString(w, `{"id":"`+addonClusterID+`","name":"k8s-dev","version":"v1.31.4","projectId":"`+pvProject+`"}`)
 	case r.URL.Path == "/v3/clusters/"+parityVM:
 		// The cluster the operation of the parity world is of (jsonOp):
 		// k8s_operation reads it for resource_status.
-		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"k8s-dev","version":"v1.31.4","status":"RUNNING"}`)
+		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"k8s-dev","version":"v1.31.4","status":"RUNNING","projectId":"`+pvProject+`"}`)
+	case r.URL.Path == "/v3/nodePools/"+parityVM:
+		// The node pool k8s_nodepool_get reads.
+		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","clusterId":"`+addonClusterID+`","name":"pool-1","zone":"ru.AZ-1","version":"v1.31.4","status":"OBJECT_STATUS_RUNNING",
+			"scalePolicy":{"fixedScale":{"count":2}},"machineConfiguration":{"flavor":{"name":"k8s-2-4","cpu":2,"ram":4},"disk":{"size":20,"typeName":"SSD"}},
+			"networkConfiguration":{"nodesSubnetId":"00000000-0000-4000-8000-0000000005b1","securityGroupId":"00000000-0000-4000-8000-0000000005c1"},"autoRepair":{"enabled":true}}`)
 	case r.URL.Path == "/v3/nodePools":
 		_, _ = io.WriteString(w, `{"nodePools":[{"scalePolicy":{"fixedScale":{"count":2}}}]}`)
 	case r.URL.Path == "/v3/clusterAddons" && r.Method == http.MethodGet:

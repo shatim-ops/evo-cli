@@ -104,7 +104,21 @@ func TestProjectBound_IDArgsDeclared(t *testing.T) {
 type ownerFake struct {
 	mu   sync.Mutex
 	reqs []string
+	// diskOn is the VM every disk of the fake is attached to; "" — none
+	// (a detach needs a disk that is attached to reach its preview).
+	diskOn string
 }
+
+// ownerChild is the name of the database and of the user every cluster of
+// the fake has, and ownerRoute the id of the static route every VPC has:
+// a delete of a child reaches its preview only when the child is there.
+const (
+	ownerChild = "app"
+	ownerRoute = "00000000-0000-4000-8000-00000000e0d1"
+)
+
+// ownerAddon is the addon of the catalogue of the fake.
+const ownerAddon = "ingress-nginx"
 
 func (f *ownerFake) RoundTrip(r *http.Request) (*http.Response, error) {
 	f.mu.Lock()
@@ -146,6 +160,9 @@ func ownerObject(id string) map[string]any {
 		"id": id, "name": "res-" + id[len(id)-2:], "status": "READY", "state": "available",
 		"project_id": p, "projectId": p, "type": provision.ImageTypePrivate,
 		"publicZoneId": zoneOf[id], "privateZoneId": zoneOf[id],
+		// A node pool names its cluster: the cluster of the same id, of
+		// the same project.
+		"clusterId": id,
 	}
 }
 
@@ -159,9 +176,33 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": seg, "done": true})
 		return
 	}
+	// The children of a resource and the catalogue of addons: what a call
+	// on a child reads before its question.
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/databases"):
+		_, _ = w.Write([]byte(`{"databases":[{"name":"` + ownerChild + `"}]}`))
+		return
+	case strings.HasSuffix(r.URL.Path, "/users"):
+		_, _ = w.Write([]byte(`{"users":[{"name":"` + ownerChild + `"}]}`))
+		return
+	case strings.HasSuffix(r.URL.Path, "/routes/static"):
+		_, _ = w.Write([]byte(`{"routes":[{"id":"` + ownerRoute + `","subnet":"198.51.100.0/24"}]}`))
+		return
+	case r.URL.Path == "/v3/addons/"+ownerAddon:
+		_, _ = w.Write([]byte(`{"releases":[{"addonVersion":"1.0.0","appVersion":"1.0.0","mode":"ACTIVE"}]}`))
+		return
+	case r.URL.Path == "/v3/addons":
+		_, _ = w.Write([]byte(`{"addons":[{"id":"` + resMine + `","name":"` + ownerAddon + `","isBillable":false}]}`))
+		return
+	}
 	for id := range projectOf {
 		if strings.Contains(r.URL.Path, id) {
-			_ = json.NewEncoder(w).Encode(ownerObject(id))
+			o := ownerObject(id)
+			if f.diskOn != "" && strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
+				o["state"] = "in_use"
+				o["vms"] = []any{map[string]any{"id": f.diskOn, "name": "vm"}}
+			}
+			_ = json.NewEncoder(w).Encode(o)
 			return
 		}
 	}

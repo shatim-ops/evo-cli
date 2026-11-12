@@ -428,6 +428,15 @@ var toolsRU = map[string]toolRU{
 			"cluster_id": "UUID кластера",
 		},
 	},
+	"k8s_nodepool_get": {
+		Short: "Группа узлов кластера Managed Kubernetes по id",
+		Long: "Группа узлов Managed Kubernetes по id: кластер, состояние, версия, зона, масштаб (фиксированный — desired, " +
+			"автомасштаб — min_count и max_count), flavor, диск, подсеть и группа безопасности узлов, метки и ограничения (taints), " +
+			"версии, до которых группу можно обновить. Только чтение. id группы — в выводе evo k8s nodepools <ID кластера>.",
+		Args: map[string]string{
+			"nodepool_id": "UUID группы узлов (список: evo k8s nodepools <ID кластера>), обязательный",
+		},
+	},
 	"k8s_operation": {
 		Short: "Состояние асинхронной операции Managed Kubernetes",
 		Long: "Состояние асинхронной операции Managed Kubernetes по id — его возвращают создание и удаление кластера и создание группы узлов: " +
