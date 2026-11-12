@@ -18,6 +18,7 @@ check "политика и mcp" "classes=policy${nl}before=${nl}after=mcp" "inte
 check "s3 — до слияния" "classes=tools${nl}before=s3${nl}after=" "internal/tools/tools_s3.go"
 check "dns и секреты — до слияния" "classes=tools${nl}before=dns secrets${nl}after=" "internal/tools/tools_dns.go internal/secret/client.go internal/tools/tools_certmanager.go"
 check "сеть, диски, ca, стек — после" "classes=tools${nl}before=${nl}after=ca disk net stack" "internal/nlb/nlb.go internal/tools/tools_disk.go internal/containerapp/app.go internal/stack/apply.go internal/tools/tools_snat.go"
+check "группы безопасности и подсети — net" "classes=tools${nl}before=${nl}after=net" "internal/tools/tools_sg.go internal/tools/tools_sg_create.go internal/tools/tools_subnet.go"
 check "k8s и pg — после" "classes=tools${nl}before=${nl}after=dbaas k8s" "internal/tools/tools_k8s.go internal/tools/tools_pg.go"
 check "движок — e2e до слияния" "classes=${nl}before=e2e${nl}after=" "internal/engine/deploy.go internal/sgrules/sgrules.go"
 check "ключи — секреты" "classes=secrets${nl}before=${nl}after=" "internal/tools/creds.go"
