@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
@@ -344,6 +345,10 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 	r.cliWrites = takeWrites()
 	done()
 	_ = os.Remove(state.DefaultPath(w.dir))
+	// The record of a call whose outcome is unknown (D92) is the next
+	// call's to name: not the tool's call of the same case, nor the next
+	// case's — each is a call of its own world.
+	_ = os.RemoveAll(intent.Dir(w.dir))
 
 	args, done = prepare()
 	args["confirmed"] = true
@@ -357,6 +362,7 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 	// What the command or the tool recorded (deploy writes the state) is
 	// not the next case's.
 	_ = os.Remove(state.DefaultPath(w.dir))
+	_ = os.RemoveAll(intent.Dir(w.dir))
 	r.out, r.text = sameVolatile(r.out), sameVolatile(r.text)
 	return r
 }

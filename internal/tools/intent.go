@@ -401,19 +401,23 @@ func intentTarget(in intent.Intent) (a idArg, id string, ok bool) {
 
 // answerReason is the reason of a tool's answer, "" when it has none.
 func answerReason(answer string) string {
-	var a struct {
-		Reason string `json:"reason"`
-		Error  struct {
-			Reason string `json:"reason"`
-		} `json:"error"`
-	}
+	// "error" is a string in a tool's answer and an object in the CLI's
+	// --json one: one struct of both failed to decode a tool's error, and
+	// every such answer read as one with no reason — an outcome — so the
+	// record of a call whose answer was lost was closed (the audit of
+	// #1544, Б2).
+	var a map[string]any
 	if json.Unmarshal([]byte(answer), &a) != nil {
 		return ""
 	}
-	if a.Reason != "" {
-		return a.Reason
+	if r, _ := a["reason"].(string); r != "" {
+		return r
 	}
-	return a.Error.Reason
+	if e, _ := a["error"].(map[string]any); e != nil {
+		r, _ := e["reason"].(string)
+		return r
+	}
+	return ""
 }
 
 // PendingNotes are the intents root's earlier runs left, in words: what

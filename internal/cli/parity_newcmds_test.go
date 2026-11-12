@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -240,6 +241,11 @@ func (c *emptyCloud) run(t *testing.T, bad *[]string, args ...string) (int, stri
 	c.mu.Lock()
 	c.deleted = map[string]bool{}
 	c.mu.Unlock()
+	// And a new directory of records (D92): a call whose outcome the empty
+	// cloud leaves unknown is not the other side's to name.
+	if wd, err := os.Getwd(); err == nil {
+		_ = os.RemoveAll(intent.Dir(wd))
+	}
 	newProcess()
 	start := time.Now()
 	code, out, errOut := runCLI(t, "", args...)
