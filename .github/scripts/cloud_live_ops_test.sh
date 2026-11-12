@@ -121,7 +121,7 @@ grep -q 'Г-11: удаление группы.*повтор после исче�
 # зависит ветка «без префикса — любой» в sgrules.Coverage, план 1.9).
 jq -e 'select(.port_range == "18093:18093") | (has("remote_ip_prefix") | not) and (has("remote_security_group_id") | not)' "$FAKE_DIR/bodies" >/dev/null ||
 	{ echo "FAIL: Г-11: тело правила без источника не то"; grep 18093 "$FAKE_DIR/bodies"; fail=1; }
-grep -q 'Г-11: правило без источника.*HTTP 201.*remote_ip_prefix в чтении по id: «<ip>/0».*remote_security_group: null' "$tmp/out" || { echo "FAIL: Г-11: что хранится у правила без источника, не записано"; grep 'без источника' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-11: правило без источника.*HTTP 201.*remote_ip_prefix в ответе создания: null.*remote_ip_prefix в чтении по id: весь IPv4.*remote_security_group: null' "$tmp/out" || { echo "FAIL: Г-11: что хранится у правила без источника, не записано"; grep 'без источника' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # ICMP — с port_range any: без диапазона платформа отвечает 422 (прогон 205).
 grep -q '"ip_protocol":"icmp","port_range":"any"' "$FAKE_DIR/bodies" || { echo "FAIL: Г-11: правило icmp без port_range any"; fail=1; }
 grep -q 'Г-11: повтор создания того же правила' "$tmp/out" || { echo "FAIL: нет строки о повторе правила"; fail=1; }
