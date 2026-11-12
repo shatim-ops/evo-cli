@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/stack"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -76,7 +77,6 @@ var repeatUndeclared = map[string]string{
 	"k8s_kubectl":        "the repeat is the cluster's (kubectl): not declared",
 	"s3_put":             "an object the bucket has: the repeat overwrites — not declared",
 	"secret_add_version": "every send is a new version: not declared",
-	"stack_destroy":      "a destroy of a stack destroyed answers already_destroyed: no world",
 }
 
 // repeatAsksUntilTheMajor are the changes shipped before the invariant
@@ -231,6 +231,11 @@ type consentWorld struct {
 	// that, without the question and without a write (D26, D81; agent run
 	// of 1.7.0, № 6: a repeated disk_attach asked, then failed with 422).
 	alreadyFor []string
+	// job is the stack job of the world, in place of the job of the
+	// tool's own setup: a job is read from the local store, not the cloud.
+	// A world with a job alone leaves the cloud as it is: it needs no
+	// answer and no cloud of its own.
+	job func(t *testing.T) *stack.Job
 }
 
 var consentWorlds = map[string]consentWorld{
@@ -346,6 +351,16 @@ var consentWorlds = map[string]consentWorld{
 		`{"id":"` + consentOtherID + `","direction":"ingress","ip_protocol":"tcp","port_range":"443:443","remote_ip_prefix":"0.0.0.0/0"}`),
 		alreadyFor: []string{"open_ports"}},
 	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports"}},
+	// The stack of stack_destroy was destroyed by an earlier call, and no
+	// deletion of it is still going (D26, D41).
+	"stack destroyed already": {job: func(t *testing.T) *stack.Job {
+		j := parityStackJob(t, parityVM)
+		j.Steps[0].Status, j.Status = "done", stack.StatusDestroyed
+		if err := j.Save(); err != nil {
+			t.Fatal(err)
+		}
+		return j
+	}, alreadyFor: []string{"stack_destroy"}},
 	// The profile has the bucket of s3_bucket_create already (D101).
 	"bucket of the profile": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "s3.cloud.ru" || strings.Trim(r.URL.Path, "/") != "" {
@@ -684,6 +699,9 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 				}
 			}
 			done = teardown
+		}
+		if c.world.job != nil {
+			a["job_id"] = c.world.job(t).ID
 		}
 		// The variant's cloud wraps the tool's own world (paritySetup),
 		// so what the variant breaks is what the tool reads.
