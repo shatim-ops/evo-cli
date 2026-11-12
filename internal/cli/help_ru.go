@@ -46,10 +46,13 @@ const usageTemplateRU = `Использование:{{if .Runnable}}
   {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
 
 Другие команды:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if filterFlags .}}
+
+Отбор:
+{{filterFlags . | trimTrailingWhitespaces | ruDefaults}}{{end}}{{if otherFlags .}}
 
 Флаги:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces | ruDefaults}}{{end}}{{if .HasAvailableInheritedFlags}}
+{{otherFlags . | trimTrailingWhitespaces | ruDefaults}}{{end}}{{if .HasAvailableInheritedFlags}}
 
 Глобальные флаги:
 {{.InheritedFlags.FlagUsages | trimTrailingWhitespaces | ruDefaults}}{{end}}{{if .HasHelpSubCommands}}
