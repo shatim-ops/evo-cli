@@ -481,6 +481,18 @@ CI `main` за 1.4.0 (27.10, `ci` на push): красный один раз —
 массив. Урок для бэклога: причина в перечне пропусков — это
 утверждение, и тест его проверяет.
 
+## Цепочка поставки 1.8.2 (12.11, «Процесс · 1.8 (3)»)
+
+Выпуск `v1.8.2` (тег на `48472836`, run 43155655267): immutable, не pre-release, 20 файлов. Проверка — та же, что у 1.8.1:
+- `sha256sum -c checksums.txt` — 12 из 12 OK;
+- SBOM — 6 из 6, SPDX-2.3: 51 пакет у Linux и macOS, 55 у Windows (как у 1.8.1);
+- sigstore-бандлы — 7 из 7: дайджест равен sha256 файла; identity — `release.yml@refs/tags/v1.8.2`, issuer — `https://token.actions.githubusercontent.com`; одна запись прозрачности у каждого; GitHub attestations — есть (checksums 1, архив linux_amd64 2);
+- первый выпуск на cosign-installer 4.1.3 (#1298): формат бандла не изменился — `application/vnd.dev.sigstore.bundle.v0.3+json`, как у 1.8.1;
+- бинарь linux_amd64: `evo version` — 1.8.2, коммит `48472836` = тег;
+- тело релиза начинается с `docs/release-notes/v1.8.2.md` на теге (65 строк).
+
+Не проверено здесь: `cosign verify-blob` и `gh attestation verify` (cosign в среде нет) — шаг владельца.
+
 ## Цепочка поставки 1.8.1 (12.11, «Процесс · 1.8 (3)»)
 
 Выпуск `v1.8.1` (тег на `48d4a13d`): immutable, не pre-release, 20 файлов. Проверка — та же, что у 1.8.0:
