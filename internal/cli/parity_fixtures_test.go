@@ -233,8 +233,9 @@ var parityArgs = map[string]map[string]any{
 	"metrics_history":      {"match": "up"},
 	"metrics_scrape":       {},
 	// auth
-	"whoami": {},
-	"doctor": {},
+	"whoami":      {},
+	"agent_skill": {"group": "pg"},
+	"doctor":      {},
 }
 
 // paritySetup prepares what a preview reads from disk; it returns the

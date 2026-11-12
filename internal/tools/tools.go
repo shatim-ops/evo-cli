@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -675,6 +676,13 @@ func (s *Registry) registerTools() {
 			Name:        "org_quotas",
 			Description: "List quota usages (resource code, its name, unit and product where the quota-type catalogue names them, limit, current usage) — for capacity planning. Read-only. Optionally scope to a project_id. (May be permission-limited depending on the service account's rights.)",
 			InputSchema: objSchema(map[string]any{"project_id": strProp("Project UUID to scope quotas to (optional).")}),
+		},
+		{
+			Name:        "agent_skill",
+			Description: "Read the card of a tool group: its tools, where their ids come from, what deletes what a create made, what to wait with, and the group's notes. Without group: the groups. Read-only and local: asks the cloud nothing. For when a tool's description leaves a question; a card is not a preview.",
+			InputSchema: objSchema(map[string]any{
+				"group": enumProp("Tool group; none: the list of groups.", Groups()...),
+			}),
 		},
 		{
 			Name:        "whoami",
@@ -1540,6 +1548,7 @@ func (s *Registry) registerTools() {
 		"org_projects":         s.handleOrgProjects,
 		"org_quotas":           s.handleOrgQuotas,
 		"whoami":               s.handleWhoami,
+		"agent_skill":          s.handleAgentSkill,
 		"doctor":               s.handleDoctor,
 		"pg_list":              s.handlePgList,
 		"pg_get":               s.handlePgGet,
@@ -3116,6 +3125,28 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
+	// What this delete leaves open to the internet in the VM's groups
+	// (engine.OpenLeft): the groups its records here name, else those of
+	// its interfaces.
+	var groupIDs []string
+	if readErr == nil {
+		for _, d := range sf.Deployments {
+			if d.VMID == target.ID && d.SecurityGroupID != "" && !slices.Contains(groupIDs, d.SecurityGroupID) {
+				groupIDs = append(groupIDs, d.SecurityGroupID)
+			}
+		}
+	}
+	if left := eng.OpenLeft(ctx, projectID, target.ID, groupIDs, engine.ClosingRules(rulesPlanned)); left != nil {
+		preview["open_to_internet_left"] = left
+		// Before the call for approval: a part of what is approved.
+		fact := upperFirst(strings.Join(left.Lines(), "; ")) + ". "
+		msg, ask := fmt.Sprint(preview["message"]), i18n.T("Get the user's approval", "Получите согласие")
+		if at := strings.Index(msg, ask); at >= 0 {
+			preview["message"] = msg[:at] + fact + msg[at:]
+		} else {
+			preview["message"] = fact + msg
+		}
+	}
 	preview["provenance"] = engine.ProvenanceOf(engine.ProvenanceVM, target.ID, target.CreatedAt, nil, sf, readErr)
 	if uncheckedErr != nil {
 		preview["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
@@ -3932,6 +3963,19 @@ func quotaRefusal(err error) string {
 	return ""
 }
 
+// quotaHint is the hint of a refusal for a quota, of a call (errAnswer) and
+// of an operation that ended in it (quotaFailure): one text, whose subject
+// is what fails again — the call, or the request the operation is of (a
+// call of *_operation again only reads it: «Риск», #1522, Р2).
+func quotaHint(ofOperation bool) string {
+	if ofOperation {
+		return i18n.T("The quota is used up, so the request of this operation (the create) again will fail the same way. org_quotas shows the limits and the use, with a key that may read them; the quota is raised through Cloud.ru support; what to free instead is the person's decision — ask them.",
+			"Квота исчерпана, поэтому запрос этой операции (создание) ещё раз откажет так же. Лимиты и использование показывает org_quotas — ключом, которому их можно читать; квоту увеличивает поддержка Cloud.ru; что освободить вместо этого — решает человек, спросите его.")
+	}
+	return i18n.T("The quota is used up, so the same call again will fail the same way. org_quotas shows the limits and the use, with a key that may read them; the quota is raised through Cloud.ru support; what to free instead is the person's decision — ask them.",
+		"Квота исчерпана, поэтому тот же вызов ещё раз откажет так же. Лимиты и использование показывает org_quotas — ключом, которому их можно читать; квоту увеличивает поддержка Cloud.ru; что освободить вместо этого — решает человек, спросите его.")
+}
+
 // quotaCode is the form of a code of the platform that goes into the
 // answer as a machine field: a token — lowercase letters, digits and
 // underscores, 64 at most — that ends in quota_exceeded. A body whose
@@ -4012,8 +4056,7 @@ func errAnswer(err error, fields map[string]any) string {
 		// what changes the answer («Риск», conclusion 147, Р1). What to
 		// free is the person's to decide: the hint does not tell the
 		// model to choose what is «not needed» and delete it.
-		hint = i18n.T("The quota is used up, so the same call again will fail the same way. org_quotas shows the limits and the use, with a key that may read them; the quota is raised through Cloud.ru support; what to free instead is the person's decision — ask them.",
-			"Квота исчерпана, поэтому тот же вызов ещё раз откажет так же. Лимиты и использование показывает org_quotas — ключом, которому их можно читать; квоту увеличивает поддержка Cloud.ru; что освободить вместо этого — решает человек, спросите его.")
+		hint = quotaHint(false)
 	}
 	if hint != "" {
 		res["hint"] = hint

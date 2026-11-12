@@ -147,3 +147,13 @@ func Use(group *provision.SecurityGroup, interfaces []*provision.Interface, read
 	u.Shared = group.Default || u.Interfaces > 1
 	return u
 }
+
+// OpenToInternet reports whether r lets the internet in now: an active
+// ingress rule whose source is a prefix that is the internet (Internet).
+// A rule from a group lets in that group's interfaces; a rule that names
+// no source is not judged — what the platform answers for «from anywhere»
+// is not verified.
+func OpenToInternet(r *provision.SGRule) bool {
+	return r != nil && r.Direction == "ingress" && !inactive[r.State] &&
+		r.RemoteSecurityGroup == nil && r.RemoteIPPrefix != "" && Internet(r.RemoteIPPrefix)
+}

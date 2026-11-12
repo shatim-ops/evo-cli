@@ -311,6 +311,7 @@ var listSpecs = withSets(map[string]listSpec{
 	"ca_logs":            {none: "the lines of a log, read by its own arguments, not a list of resources"},
 	"k8s_options":        {none: "a composite catalogue (versions, flavors, zones) read whole to plan a cluster"},
 	"doctor":             {none: "the checks of this machine and this key, each of which the person reads"},
+	"agent_skill":        {none: "the groups of the registry: a couple of dozen, read whole"},
 })
 
 // cardReads is how many cards one call reads for a filter by a field of

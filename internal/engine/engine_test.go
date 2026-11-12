@@ -45,6 +45,11 @@ type mockCloudAPI struct {
 
 	mu sync.Mutex
 
+	// listInterfacesFn answers the interfaces of the project; nil: none.
+	// interfaceReads counts the reads (D105: deploy makes none).
+	listInterfacesFn func(ctx context.Context, projectID string) ([]*provision.Interface, error)
+	interfaceReads   int
+
 	createVMFn              func(ctx context.Context, req provision.CreateVMRequest) (*provision.VM, error)
 	getVMFn                 func(ctx context.Context, id string) (*provision.VM, error)
 	deleteVMFn              func(ctx context.Context, id string) error
@@ -773,6 +778,18 @@ func (m *mockCloudAPI) ListSecurityGroups(ctx context.Context, projectID string)
 		return m.listSecurityGroupsFn(ctx, projectID)
 	}
 	return []*provision.SecurityGroup{{ID: "sg-1", Name: "SSH-access_ru-moscow-1"}}, nil
+}
+
+// ListInterfaces answers the interfaces of the project (the preview of a
+// delete reads them: OpenLeft), none by default.
+func (m *mockCloudAPI) ListInterfaces(ctx context.Context, projectID string) ([]*provision.Interface, error) {
+	m.mu.Lock()
+	m.interfaceReads++
+	m.mu.Unlock()
+	if m.listInterfacesFn != nil {
+		return m.listInterfacesFn(ctx, projectID)
+	}
+	return nil, nil
 }
 
 // AddSecurityGroupRule records the rule and, by default, answers as the
