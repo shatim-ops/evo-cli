@@ -218,6 +218,13 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 300 .github/scripts/dbaas_delete_test.sh
 
+      # Уборка cleanup_only рядом с живыми запусками (e2e_live_runs.sh) на
+      # заглушке gh и поддельном evo: ресурсы незавершённого запуска не
+      # удаляются; список запусков не прочитан — не удаляется ничего.
+      - name: e2e_live_runs.sh на заглушке gh
+        if: runner.os == 'Linux'
+        run: timeout 120 .github/scripts/e2e_live_runs_test.sh
+
       # D61 вживую (dbaas-passing-delete.sh) на поддельном evo: отказ USAGE —
       # 1 из 1, удаление принято — провал, кластер уже готов — не покрыто.
       - name: dbaas-passing-delete.sh на поддельном evo

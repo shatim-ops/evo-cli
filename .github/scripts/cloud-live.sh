@@ -275,6 +275,18 @@ area_kinds() {
 	*) echo "${KINDS/route /}" ;;
 	esac
 }
+# lst_done ВИД ПРЕФИКС — lst для уборки. Префикс своего прогона (область и
+# её страховка sweep evo-e2e-<область>-<прогон>) — всё; префикс без номера
+# прогона (sweep evo-e2e- из job cleanup, done_only) идёт рядом с живыми
+# запусками и видит только ресурсы завершённых (e2e_live_runs.sh). Какие
+# запуски живы, неизвестно — список считается непрочитанным: код 1.
+done_only=0
+lst_done() {
+	lst "$1" "$2" >"$tmp/l.all" 2>/dev/null || return 1
+	if [ "$done_only" = 1 ]; then
+		"$here/e2e_live_runs.sh" drop <"$tmp/l.all"
+	else cat "$tmp/l.all"; fi
+}
 # sweep ПРЕФИКС [ВИДЫ] — удалять ресурсы ПРЕФИКС* до 20 мин (удаления
 # асинхронны: балансировщик, ВМ, VPC), затем остаток — провал по каждому.
 sweep() {
@@ -287,7 +299,7 @@ sweep() {
 		left=0
 		for kind in $kinds; do
 			t0=$(date +%s)
-			lst "$kind" "$p" >"$tmp/l" 2>/dev/null || {
+			lst_done "$kind" "$p" >"$tmp/l" || {
 				echo "$kind: список не прочитан за $(($(date +%s) - t0)) с: $(jq -rR 'fromjson? | .error | "\(.reason): \(.message)"' "$tmp/lst.err" 2>/dev/null | head -1 | redact | cut -c1-240)"
 				continue
 			}
@@ -308,7 +320,7 @@ sweep() {
 	for kind in $kinds; do
 		# Список не прочитан (сбой или «список не полон») — остатки этого
 		# вида не проверены: провал, а не «остатков нет».
-		lst "$kind" "$p" >"$tmp/l" 2>/dev/null || {
+		lst_done "$kind" "$p" >"$tmp/l" || {
 			echo "::error::$kind: список не прочитан — остатки $p* не проверены: $(jq -rR 'fromjson? | .error | "\(.reason): \(.message)"' "$tmp/lst.err" 2>/dev/null | head -1 | redact | cut -c1-240)"
 			left=$((left + 1))
 			continue
@@ -1917,8 +1929,25 @@ sweep)
 	# Маршрут и правило тестовой сети — общие для всех прогонов: их убирает
 	# только net и общая уборка (evo-e2e-), не страховка другой области.
 	if [ -n "${3:-}" ]; then kinds=$(area_kinds "$3"); else kinds=$KINDS; fi
+	# Префикс без номера прогона — уборка всех прогонов: только завершённых.
+	case "$p" in *-r[0-9]*a[0-9]*) ;; *) done_only=1 ;; esac
+	# Правило и маршрут тестовой сети — без номера прогона в имени: рядом с
+	# другим живым запуском (e2e_live_runs.sh others) общая уборка их не
+	# трогает — их снимет область net этого запуска или следующая уборка.
+	others=0
+	if [ "$done_only" = 1 ]; then
+		others=$("$here/e2e_live_runs.sh" others) || { others=-1; failed=1; }
+	fi
 	case "$p" in
-	evo-e2e- | evo-e2e-net-*) delete_test_rules || failed=1 ;;
+	evo-e2e- | evo-e2e-net-*)
+		case "$others" in
+		0) delete_test_rules || failed=1 ;;
+		-1) kinds=${kinds/route /} ;; # список запусков не прочитан: ошибка уже названа
+		*)
+			echo "::notice::идёт запуск cloud-e2e — правило и маршрут тестовой сети не трогаю"
+			kinds=${kinds/route /}
+			;;
+		esac ;;
 	*) kinds=${kinds/route /} ;;
 	esac
 	sweep "$p" "$kinds" || failed=1
