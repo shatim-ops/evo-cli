@@ -97,7 +97,7 @@ POST /security-groups/sg1/rules 201 {"id":"rule1"}
 GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
 GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":"0.0.0.0/0","remote_security_group":null}
 GET /security-groups/sg1/rules/rule1 404
-GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0","state":"created"}],"total":1}
+GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0","state":"created"},{"id":"rule1","port_range":"18092:18092","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}],"total":2}
 DELETE! /security-groups/sg1/rules/rule1 204
 DELETE! /security-groups/sg1/rules/rule1 422 [{"code":"security_group_rule_can_not_be_deleted_from_current_state","message":"no"}]
 DELETE /security-groups/sg1/rules/rule1 404 [{"code":"security_group_rule_not_found","message":"no"}]
@@ -113,9 +113,12 @@ want "Г-11: код" "$rc" 0
 R=/security-groups/sg1/rules
 want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;GET /security-groups/sg1;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;POST $R;GET $R/rule1;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
 grep -q 'Г-11: готовность группы.*состояния: created' "$tmp/out" || { echo "FAIL: Г-11: готовность группы до правил не записана"; fail=1; }
-grep -q 'Г-11: чтение правил.*HTTP 200, правил: 1, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-11: чтение правил.*HTTP 200, правил: 2, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление правила.*HTTP 204, повтор сразу — HTTP 422, машинный код security_group_rule_can_not_be_deleted_from_current_state.*состояния: нет (404).*повтор после исчезновения — HTTP 404, машинный код security_group_rule_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления правила после исчезновения не записан"; grep 'удаление правила' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление группы.*повтор после исчезновения — HTTP 404, машинный код security_group_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления группы после исчезновения не записан"; grep 'удаление группы' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+# Правило с группой-источником в ответе списка (по списку его узнаёт evo):
+# форма источника и префикс — те же слова, что у чтения по id.
+grep -q 'Г-11: чтение правил.*правило с группой-источником в списке: объект remote_security_group с полями \["id","name"\], remote_ip_prefix: null' "$tmp/out" || { echo "FAIL: Г-11: форма группы-источника в списке не записана"; grep 'чтение правил' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # Правило «откуда угодно» без источника вовсе: в теле нет ни адреса, ни
 # группы; в строке — что платформа хранит в remote_ip_prefix (от этого
 # зависит ветка «без префикса — любой» в sgrules.Coverage, план 1.9).
