@@ -307,7 +307,7 @@ PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-16: код" "$rc" 0
 L='?project_id=p&limit=1000'
 want "Г-16: запросы по порядку" "$(calls)" "POST /backups;GET /backups/bd;GET /backups/bd;POST /backups;GET /backups/bv;GET /backups$L;GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd;POST /backups/bd/action;GET /backups/bd;POST /backups/bv/action;GET /backups/bv;DELETE /backups/bd;DELETE /backups/bd;GET /backups/bd;GET /backups/bd;DELETE /backups/bd;DELETE /backups/bv;GET /backups/bv;POST /protection-plans;GET /protection-plans/pp;GET /protection-plans$L;DELETE /protection-plans/pp;DELETE /protection-plans/pp;GET /protection-plans/pp;GET /backups$L;$SW"
-for s in 'Г-16: копия диска готова' 'creating → created' 'Г-16: восстановление диска' 'Г-16: восстановление ВМ' 'повтор сразу — HTTP 409' 'после исчезновения — HTTP 404' 'Г-16: план защиты' 'Г-16: копии ресурсов пробы под чужим именем'; do
+for s in 'Г-16: копия диска, ожидание готовности' 'creating → created' 'Г-16: восстановление диска' 'Г-16: восстановление ВМ' 'повтор сразу — HTTP 409' 'после исчезновения — HTTP 404' 'Г-16: план защиты' 'Г-16: копии ресурсов пробы под чужим именем'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-16: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
 # Восстановление: копия восстанавливается в новый ресурс с именем пробы
@@ -335,6 +335,24 @@ want "Г-16, отказы: код" "$rc" 0
 want "Г-16, отказы: запросы" "$(calls)" "POST /backups;GET /backups$L;POST /protection-plans;GET /backups$L;$SW"
 grep -q 'Г-16: копия диска.*отказ HTTP 422' "$tmp/out" || { echo "FAIL: Г-16: отказ копии не назван"; fail=1; }
 grep -q 'Г-16: ВМ.*QUOTA_EXCEEDED' "$tmp/out" || { echo "FAIL: Г-16: отказ ВМ не назван"; fail=1; }
+
+# Копия создана, но не дошла до created (error_creating): из неё не
+# восстанавливают; удаление копии и остальное идёт.
+g16_world
+fake_evo_answer provision 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
+cat >"$FAKE_DIR/http" <<'H'
+POST /backups 201 {"id":"bd","state":"creating"}
+GET! /backups/bd 200 {"id":"bd","state":"error_creating"}
+GET /backups/bd 404
+DELETE /backups/bd 204
+POST /protection-plans 422 {"code":"x"}
+H
+rc=0
+PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-16, копия не готова: код" "$rc" 0
+if grep -q '/action' "$FAKE_DIR/calls"; then echo "FAIL: Г-16: восстановление из копии, которая не дошла до created"; fail=1; fi
+grep -q 'Г-16: копия диска, ожидание готовности.*error_creating' "$tmp/out" || { echo "FAIL: Г-16: состояние неготовой копии не названо"; fail=1; }
+want "Г-16, копия не готова: копия удалена" "$(grep -c '^DELETE /backups/bd$' "$FAKE_DIR/calls")" 3
 
 # Копия ресурса пробы под чужим именем (её создал план защиты): уборка по
 # префиксу её не найдёт — проба удаляет её по id; копию чужого ресурса не
@@ -365,7 +383,9 @@ fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 rc=0
 PROBES="" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "список копий не полон и список планов не прочитан: код" "$rc" 1
-grep -q 'backup: список не прочитан' "$tmp/out" && grep -q 'pplan: список не прочитан' "$tmp/out" || { echo "FAIL: непрочитанные списки не названы"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+for s in 'backup: список не прочитан' 'pplan: список не прочитан'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: непрочитанный список не назван: $s"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
 
 # Общая уборка без PROJECT (шаг без секрета проекта): списки копий и планов
 # не прочитаны — провал, а не молчаливый пропуск вида.

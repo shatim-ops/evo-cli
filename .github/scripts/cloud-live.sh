@@ -2169,7 +2169,7 @@ probe_g16() {
 		[ -n "$bid" ] || { gap "Г-16: копия $1" "id не прочитан — остаток уберёт уборка области"; return 0; }
 		t0=$SECONDS
 		ops_settle "$C1/backups/$bid" 900 || true
-		ok "Г-16: копия $1 готова" "состояния: $chain; $((SECONDS - t0)) с; type $(jq -r '.type? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), size больше нуля: $(jq -r 'if (.size? // 0) > 0 then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?'); поля карточки: $(keys_of)"
+		ok "Г-16: копия $1, ожидание готовности" "состояния: $chain; $((SECONDS - t0)) с; type $(jq -r '.type? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), size больше нуля: $(jq -r 'if (.size? // 0) > 0 then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?'); поля карточки: $(keys_of)"
 		[ "$st" = created ] || bid_bad=1
 	}
 	local bid bid_bad=0 bd_ok=0 bv_ok=0
