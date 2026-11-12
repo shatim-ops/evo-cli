@@ -43,7 +43,11 @@ tell_prs() {
   [ "$WORKFLOW" = ci ] || return 0
   local prs n e
   e=$(mktemp)
-  prs=$(gh pr list --state open --base main --limit 100 --json number,isDraft --jq '.[] | select(.isDraft | not) | .number') || prs=""
+  prs=$(gh pr list --state open --base main --limit 100 --json number,isDraft --jq '.[] | select(.isDraft | not) | .number' 2>"$e") || {
+    echo "::warning title=main-red::список открытых PR не получен — строки в PR не оставлены: $(head -c 300 "$e" | tr '\n' ' ')" >&2
+    rm -f "$e"
+    return 0
+  }
   while read -r n; do
     [ -n "$n" ] || continue
     gh pr comment "$n" --body "$1" 2>"$e" ||

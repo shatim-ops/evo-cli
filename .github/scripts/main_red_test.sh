@@ -18,7 +18,9 @@ case "$1 $2" in
     [ "$2" != create ] || echo https://example.invalid/o/r/issues/55
     while [ $# -gt 0 ]; do [ "$1" = --body-file ] && cat "$2" >>"$FAKE_BODY"; [ "$1" = --body ] && printf '%s\n' "$2" >>"$FAKE_BODY"; shift; done ;;
   "issue close") ;;
-  "pr list") for n in ${FAKE_PRS:-}; do printf '%s\n' "$n"; done ;;
+  "pr list")
+    [ -z "${FAKE_PR_LIST_FAIL:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
+    for n in ${FAKE_PRS:-}; do printf '%s\n' "$n"; done ;;
   "pr comment")
     [ -z "${FAKE_PR_FAIL:-}" ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
     while [ $# -gt 0 ]; do [ "$1" = --body ] && printf '%s\n' "$2" >>"$FAKE_BODY"; shift; done ;;
@@ -43,7 +45,7 @@ run() { # ИМЯ исход открытое ждём… (WORKFLOW — ci, ес�
   rm -f "$work/reads"
   PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" FAKE_BODY="$work/body" FAKE_OPEN="$3" \
     FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" \
-    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" FAKE_PRS="${FAKE_PRS:-}" FAKE_PR_FAIL="${FAKE_PR_FAIL:-}" LOG_RETRY_SLEEP=0 LOG_WAIT="${LOG_WAIT:-120}" \
+    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" FAKE_PRS="${FAKE_PRS:-}" FAKE_PR_FAIL="${FAKE_PR_FAIL:-}" FAKE_PR_LIST_FAIL="${FAKE_PR_LIST_FAIL:-}" LOG_RETRY_SLEEP=0 LOG_WAIT="${LOG_WAIT:-120}" \
     WORKFLOW="${WORKFLOW:-ci}" GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" HEAD_SHA=0123456789abcdef \
     "$here/main_red.sh" >/dev/null 2>"$work/stderr" || { echo "FAIL $1: скрипт упал"; cat "$work/stderr"; fail=1; return; }
   local name=$1
@@ -120,4 +122,7 @@ FAKE_JOBS='104\treadonly\n' FAKE_LOG='FAIL\n' WORKFLOW=cloud-e2e FAKE_PRS="21" \
 FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21 22" FAKE_PR_FAIL=1 \
   run "строка в PR не принята — issue заведено, отказ назван" failure "" \
   "calls:issue create" "calls:pr comment 21" "calls:pr comment 22" "stderr:строка в PR 21 не оставлена" "stderr:HTTP 403"
+FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21" FAKE_PR_LIST_FAIL=1 \
+  run "список PR не получен — issue заведено, отказ назван, а не принят за «PR нет»" failure "" \
+  "calls:issue create" "nocalls:pr comment" "stderr:список открытых PR не получен" "stderr:HTTP 502"
 exit "$fail"
