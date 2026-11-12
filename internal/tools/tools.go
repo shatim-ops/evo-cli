@@ -348,7 +348,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "sg_rule_create",
-			Description: "Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). The preview names the rule, the group and the VMs it acts on. Ingress from the whole internet on a shared group is refused without allow_internet_on_shared_group. The same rule there answers already_exists. Billable, price unknown. Mutation: requires confirmed=true after the user approves.",
+			Description: "Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). The preview names the rule, the group and the VMs it acts on. Ingress from the whole internet on a shared group is refused without allow_internet_on_shared_group. The same rule there answers already_exists. Billable, price unknown.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Name or UUID (list_security_groups)."),
 				"direction":      enumProp("ingress or egress", "ingress", "egress"),
