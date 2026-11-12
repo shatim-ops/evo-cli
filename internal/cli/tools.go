@@ -570,6 +570,13 @@ func coerceArg(p param, value string) (any, error) {
 	switch p.Type {
 	case "integer":
 		n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if stderrors.Is(err, strconv.ErrRange) {
+			// Digits too long for the parser are an integer out of range:
+			// the tool's check refuses it in its own words, as over MCP.
+			if f, ferr := strconv.ParseFloat(strings.TrimSpace(value), 64); ferr == nil && !math.IsInf(f, 0) {
+				return f, nil
+			}
+		}
 		if err != nil {
 			return nil, fmt.Errorf(i18n.T("%q is not an integer", "%q — не целое число"), value)
 		}

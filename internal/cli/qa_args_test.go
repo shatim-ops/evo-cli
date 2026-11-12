@@ -140,11 +140,12 @@ func TestTrees_EmptyPositionalIsUsageError(t *testing.T) {
 }
 
 // FuzzCoerceArg: разбор --arg не паникует, а то, что он вернул, кодируется
-// в JSON и соответствует типу схемы.
+// в JSON и соответствует типу схемы; целое вне 32 бит отвергает проверка
+// инструмента, а не разбор.
 func FuzzCoerceArg(f *testing.F) {
 	for _, s := range []string{"", "0", "-1", "1.5", "1e3", "NaN", "Inf", "true", "T", "yes",
 		"a,b", ",,", " , ", "[1,2]", `["a","b"]`, "[", `{"k":"v"}`, `{"a":1},{"b":2}`, "é,ж", "\xff\xfe",
-		"9223372036854775808", "a=b", "[1,\"x\"]", "[{}]", "null"} {
+		"9223372036854775808", "2147483648", "-99999999999", "a=b", "[1,\"x\"]", "[{}]", "null"} {
 		for _, typ := range []string{"string", "integer", "number", "boolean", "array", "object", ""} {
 			f.Add(typ, "integer", s)
 		}
@@ -160,7 +161,9 @@ func FuzzCoerceArg(f *testing.F) {
 		if _, merr := json.Marshal(v); merr != nil {
 			t.Fatalf("coerceArg(%s/%s, %q) = %#v: not JSON-encodable: %v", typ, itemType, value, v, merr)
 		}
-		if cerr := matchesSchema(p, v); cerr != nil {
+		// An integer out of 32 bits is coerceArg's to pass on and the
+		// tool's check's to refuse, in its own words (int_range_test.go).
+		if cerr := matchesSchema(p, v); cerr != nil && !strings.Contains(cerr.Error(), "is out of range") {
 			t.Fatalf("coerceArg(%s/%s, %q) = %#v does not match the schema: %v", typ, itemType, value, v, cerr)
 		}
 	})
