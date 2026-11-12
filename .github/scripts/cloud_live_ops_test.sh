@@ -54,7 +54,7 @@ printf '%s' "$body" >"$out"
 printf '%s' "$code"
 FAKE
 chmod +x "$tmp/bin/curl"
-export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0
+export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0 SWEEP_PAUSE=1
 fail=0
 n=0
 world() {
@@ -69,8 +69,8 @@ world() {
 }
 # Уборка области читает списки планов защиты и копий (виды pplan и backup)
 # дважды: в цикле удаления и при проверке остатков.
-SW='GET /protection-plans?project_id=p&limit=1000;GET /backups?project_id=p&limit=1000;'
-SW="$SW$SW"
+SW1='GET /protection-plans?project_id=p&limit=1000;GET /backups?project_id=p&limit=1000;'
+SW="$SW1$SW1"
 want() { if [ "$2" != "$3" ]; then printf 'FAIL %s\n  got:  %s\n  want: %s\n' "$1" "$2" "$3"; fail=1; fi; }
 calls() { tr '\n' ';' <"$FAKE_DIR/calls"; }
 
@@ -100,7 +100,10 @@ fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11, отказ создания: код" "$rc" 0
-want "Г-11, отказ создания: один запрос" "$(calls)" "POST /security-groups;$SW"
+# Машинный код отказа — квота: строка считает, что осталось создано (ещё
+# одно чтение списков копий и планов).
+want "Г-11, отказ создания: один запрос" "$(calls)" "POST /security-groups;$SW1$SW"
+grep -q 'квота по машинному коду: да' "$tmp/out" || { echo "FAIL: Г-11: отказ по квоте не назван"; fail=1; }
 grep -q 'HTTP 422' "$tmp/out" || { echo "FAIL: отказ создания не назван кодом"; fail=1; }
 # UUID из текста отказа платформы в лог не попадает (api_why идёт через redact.sed).
 if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: id из текста отказа в логе"; fail=1; fi
@@ -136,6 +139,122 @@ rc=0
 GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e- ops >"$tmp/out" 2>&1 || rc=$?
 want "общая уборка рядом с живым запуском: код" "$rc" 0
 want "общая уборка: удалена только группа завершённого запуска" "$(grep -c '^DELETE /security-groups/' "$FAKE_DIR/calls") $(grep -c '^DELETE /security-groups/sgdone$' "$FAKE_DIR/calls")" "1 1"
+
+# Г-10: ВМ → карточка → остановка и её повтор → запуск и его повтор →
+# перезагрузка и повтор сразу → set-power по id, которого нет → flavor на
+# шаг вверх: на запущенной отказ не по квоте, остановка, смена, возврат.
+V='"id":"vm1","flavor":{"name":"lowcost10-2-4"},"interfaces":[{"ip":"203.0.113.7"}]'
+g10_world() {
+	world
+	fake_evo_answer provision 0 0 '{"vm_id":"vm1","vm_ip":"203.0.113.7","status":"ok"}'
+	fake_evo_answer list_flavors 0 0 '{"flavors":[{"name":"lowcost10-8-16","vcpus":8,"ram_gb":16},{"name":"lowcost10-4-8","vcpus":4,"ram_gb":8},{"name":"lowcost10-2-4","vcpus":2,"ram_gb":4},{"name":"gen-4-16","vcpus":4,"ram_gb":16}]}'
+	fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+	cat >"$FAKE_DIR/http" <<H
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /vms/vm1/set-power 204
+GET! /vms/vm1 200 {$V,"state":"stopping"}
+GET! /vms/vm1 200 {$V,"state":"stopped"}
+POST! /vms/vm1/set-power 422 {"code":"vm_wrong_state","message":"already stopped"}
+POST! /vms/vm1/set-power 204
+GET! /vms/vm1 200 {$V,"state":"starting"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /vms/vm1/set-power 204
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /vms/vm1/set-power 204
+POST! /vms/vm1/set-power 422 {"code":"vm_wrong_state","message":"rebooting"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+GET! /vms/vm1 200 {$V,"state":"rebooting"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST /vms/00000000-0000-4000-8000-000000000000/set-power 404 {"code":"vm_not_found"}
+H
+}
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT! /vms/vm1 422 {"code":"vm_must_be_stopped","message":"stop it"}
+POST! /vms/vm1/set-power 204
+GET! /vms/vm1 200 {$V,"state":"stopped"}
+PUT! /vms/vm1 200 {"state":"updating"}
+GET! /vms/vm1 200 {"id":"vm1","state":"updating"}
+GET! /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
+GET! /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
+PUT! /vms/vm1 200 {"state":"updating"}
+GET /vms/vm1 200 {$V,"state":"stopped"}
+H
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10: код" "$rc" 0
+P='POST /vms/vm1/set-power;' G='GET /vms/vm1;'
+want "Г-10: запросы по порядку" "$(calls)" "$G$P$G$G$P$P$G$G$P$G$P$P$G$G$G""POST /vms/00000000-0000-4000-8000-000000000000/set-power;PUT /vms/vm1;$P$G""PUT /vms/vm1;$G$G$G""PUT /vms/vm1;$G$G$SW"
+want "Г-10: шаг вверх — соседний flavor семейства, возврат — исходный" "$(jq -r .flavor_name "$FAKE_DIR/body.PUT.vms.vm1")" lowcost10-2-4
+for s in 'Г-10: остановка.*stopping → stopped' 'повтор остановки остановленной.*HTTP 422, машинный код vm_wrong_state' 'Г-10: запуск.*публичный адрес тот же: да' 'Г-10: перезагрузка.*running → rebooting → running' 'id, которого нет.*HTTP 404, машинный код vm_not_found' 'смена flavor на запущенной ВМ.*машинный код: vm_must_be_stopped' 'смена flavor на шаг вверх.*на остановленной.*тем, что просили' 'возврат исходного flavor.*тем, что просили'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-10: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
+if grep -v '::add-mask::' "$tmp/out" | grep -q 'vm1\|203\.0\.113\.7'; then echo "FAIL: Г-10: id или адрес в строке лога"; fail=1; fi
+if grep -q 'квота по машинному коду' "$tmp/out"; then echo "FAIL: Г-10: отказ не по квоте назван квотой"; fail=1; fi
+
+# Отказ по квоте на смене flavor (машинный код, не текст): шесть полей
+# одной строкой, остановки и второй попытки смены нет, возврата нет.
+g10_world
+echo 'PUT /vms/vm1 422 {"code":"organization_quota_exceeded","message":"limit of 3f2b8c1e-1111-4222-8333-444455556666 reached"}' >>"$FAKE_DIR/http"
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10, квота: код" "$rc" 0
+want "Г-10, квота: одна попытка смены, остановки после неё нет" "$(sed -n '/^PUT/,$p' "$FAKE_DIR/calls" | grep -c '^PUT\|set-power')" 1
+for s in 'отказ HTTP 422 (синхронно)' 'машинный код: organization_quota_exceeded' 'evo сегодня: операции в evo нет' 'квота по машинному коду: да' 'осталось создано: pplan 0, backup 0, vm 0, fip 0, disk 0, sg 0' 'строка Г-01'; do
+	grep -qF "$s" "$tmp/out" || { echo "FAIL: Г-10, квота: нет поля «$s»"; grep 'смена flavor' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+done
+if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: Г-10, квота: id из текста отказа в логе"; fail=1; fi
+# Слово «quota» только в тексте, машинного кода нет — квотой не называется
+# (разбор текста запрещён), проба идёт дальше: остановка и вторая попытка.
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT /vms/vm1 422 {"message":"quota exceeded"}
+POST /vms/vm1/set-power 204
+GET /vms/vm1 200 {$V,"state":"stopped"}
+H
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10, квота только в тексте: вторая попытка смены есть" "$(grep -c '^PUT' "$FAKE_DIR/calls")" 2
+if grep -q 'квота по машинному коду' "$tmp/out"; then echo "FAIL: Г-10: квота названа по тексту"; fail=1; fi
+
+# Г-20: со словом g20 ВМ называется …-g20, в конце остановлена и остаётся:
+# уборка области её, её диск и адрес не удаляет и остатком не считает.
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT /vms/vm1 422 {"code":"quota_exceeded"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+GET /vms/vm1 200 {$V,"state":"stopped"}
+POST /vms/vm1/set-power 204
+H
+fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm1","name":"evo-e2e-ops-r7a1-g20"}]}'
+fake_evo_answer list_floating_ips 0 0 '{"floating_ips":[{"id":"f1","name":"fip-evo-e2e-ops-r7a1-g20","state":"active"}]}'
+rc=0
+PROBES="g10 g20" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-20: код" "$rc" 0
+grep -q 'Г-20: ВМ пробы цены оставлена.*state stopped' "$tmp/out" || { echo "FAIL: Г-20: нет строки об оставленной ВМ"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+want "Г-20: последний запрос set-power — остановка" "$(jq -r .state "$FAKE_DIR/body.POST.vms.vm1.set-power")" power_off
+if grep -q '^destroy\|^release_floating_ip' "$FAKE_DIR/evo-calls"; then echo "FAIL: Г-20: уборка области удалила ВМ или адрес пробы цены"; fail=1; fi
+# Общая уборка завершённого запуска: без слова g20 ВМ пробы цены не
+# трогает, со словом — удаляет (сутки прошли, потребление прочитано).
+world
+: >"$FAKE_DIR/http"
+printf '#!/bin/sh\nexit 0\n' >"$tmp/bin/gh"
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm1","name":"evo-e2e-ops-r5a1-g20"}]}'
+rc=0
+GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e- ops >"$tmp/out" 2>&1 || rc=$?
+want "общая уборка без слова g20: код" "$rc" 0
+if grep -q '^destroy' "$FAKE_DIR/evo-calls"; then echo "FAIL: общая уборка без слова g20 удалила ВМ пробы цены"; fail=1; fi
+world
+: >"$FAKE_DIR/http"
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm1","name":"evo-e2e-ops-r5a1-g20"}]}'
+fake_evo_answer vm_list 1 0 '{"vms":[]}'
+fake_evo_answer destroy 0 0 '{"status":"deleted"}'
+rc=0
+PROBES=g20 GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e- ops >"$tmp/out" 2>&1 || rc=$?
+want "общая уборка со словом g20: код" "$rc" 0
+want "общая уборка со словом g20: ВМ пробы цены удалена" "$(grep -c '^destroy' "$FAKE_DIR/evo-calls")" 1
 
 # Г-16: диск и ВМ → копия диска и копия ВМ (ожидание created) → список и
 # фильтр по имени → восстановление диска и ВМ под именами с префиксом пробы

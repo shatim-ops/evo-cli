@@ -58,9 +58,28 @@ want "каждое состояние, кроме completed, прочитано"
 # Незавершённых запусков нет: выражение не пусто и ничего не называет.
 world
 re=$("$here/e2e_live_runs.sh")
-want "выражение без живых запусков" "$re" '(^|-)r(0)a[0-9]+([^0-9]|$)'
+want "выражение без живых запусков" "$re" '(^|-)r(0)a[0-9]+([^0-9]|$)|(^|-)g20(-|$)'
 got=$(printf 'a\tevo-e2e-pg-r185a1\n' | "$here/e2e_live_runs.sh" drop | cut -f1)
 want "без живых запусков остаток виден" "$got" a
+
+# Ресурсы пробы цены Г-20 (слово g20 в имени) переживают свой запуск: без
+# слова g20 во входе probes уборка их не видит, со словом — это остатки.
+# Похожее имя (g200, mg20x) — обычный остаток.
+names='a\tevo-e2e-ops-r184a1-g20\nb\tfip-evo-e2e-ops-r184a1-g20\nc\tevo-e2e-ops-r184a1-g20-boot\nd\tevo-e2e-ops-r184a1-g200\ne\tevo-e2e-ops-r184a1-g10\n'
+# shellcheck disable=SC2059 # строки с \t и \n — формат
+got=$(printf "$names" | "$here/e2e_live_runs.sh" drop | cut -f1 | tr '\n' ' ')
+want "проба цены без слова g20: её ресурсы не тронуты" "$got" "d e "
+# shellcheck disable=SC2059
+got=$(printf "$names" | PROBES="nodes g20" "$here/e2e_live_runs.sh" drop | cut -f1 | tr '\n' ' ')
+want "проба цены со словом g20: её ресурсы — остатки" "$got" "a b c d e "
+want "со словом g20 выражение — только запуски" "$(PROBES=g20 "$here/e2e_live_runs.sh")" '(^|-)r(0)a[0-9]+([^0-9]|$)'
+# keep — уборка области в конце своего запуска: список запусков не нужен
+# (gh не вызывается), ресурсы пробы цены не трогает и со словом g20.
+calls=$(wc -l <"$RUNS/calls")
+# shellcheck disable=SC2059
+got=$(printf "$names" | PROBES=g20 "$here/e2e_live_runs.sh" keep | cut -f1 | tr '\n' ' ')
+want "keep: ресурсы пробы цены не тронуты" "$got" "d e "
+want "keep: список запусков не читается" "$(wc -l <"$RUNS/calls")" "$calls"
 
 # others — сколько незавершённых запусков, кроме своего (сама уборка тоже
 # идёт): общие для всех прогонов правило и маршрут тестовой сети уборка
