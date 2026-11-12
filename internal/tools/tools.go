@@ -391,7 +391,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_operation",
-			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
+			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
 				"wait_seconds": opWaitProp(),
@@ -412,7 +412,7 @@ func (s *Registry) registerTools() {
 			Description: "Set the number of nodes of a Managed Kubernetes node pool with a fixed count. REQUIRES confirmed=true after the user approves: more nodes are billed; fewer nodes are deleted with the data on their disks, and their pods are evicted. A pool that has the count already answers already_scaled with no question; an autoscaled pool is refused. Async — returns operation_id: wait with k8s_operation.",
 			InputSchema: objSchema(map[string]any{
 				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
-				"count":       atLeast(0, intProp("The number of nodes the pool is to have.")),
+				"count":       inRange(0, maxPoolCount, intProp("The number of nodes the pool is to have.")),
 				"confirmed":   confirmedProp(),
 			}, "nodepool_id", "count"),
 		},

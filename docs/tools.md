@@ -142,7 +142,7 @@
 | `k8s_create` | `evo k8s create` | да | — | STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. | Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут) |
 | `k8s_kubeconfig` | `evo k8s kubeconfig` | нет | `cluster_id` | Get the kubeconfig for a Managed Kubernetes cluster. | kubeconfig кластера (по умолчанию со встроенным токеном примерно на час) |
 | `k8s_delete` | `evo k8s delete` | удаляет | `cluster_id` | Permanently delete a Managed Kubernetes cluster. | Удалить кластер Managed Kubernetes (асинхронно) |
-| `k8s_operation` | `evo k8s operation` | нет | `operation_id` | Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_delete). | Состояние асинхронной операции Managed Kubernetes |
+| `k8s_operation` | `evo k8s operation` | нет | `operation_id` | Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_delete). | Состояние асинхронной операции Managed Kubernetes |
 | `k8s_nodepools` | `evo k8s nodepools` | нет | `cluster_id` | List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). | Группы узлов кластера |
 | `k8s_nodepool_get` | `evo k8s nodepool-get` | нет | `nodepool_id` | Read one node pool of Managed Kubernetes by its id: cluster (id and name), status, version, zone, scale (fixed: desired; auto: min_count, max_count), flavor … | Группа узлов кластера Managed Kubernetes по id |
 | `k8s_nodepool_scale` | `evo k8s nodepool-scale` | удаляет | `nodepool_id`, `count` | Set the number of nodes of a Managed Kubernetes node pool with a fixed count. | Изменить число узлов группы узлов Managed Kubernetes |

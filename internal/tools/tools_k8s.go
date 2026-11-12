@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -583,6 +584,13 @@ var poolSettling = map[string]bool{
 // being deleted, or is deleted.
 var poolGoing = map[string]bool{"OBJECT_STATUS_DELETING": true, "OBJECT_STATUS_DELETED": true}
 
+// maxPoolCount is the largest count a request of mk8s carries: the
+// specification declares FixedScale.count an int32. A bound of the
+// request, not of what the platform accepts; the schema of the tool
+// refuses a count beyond it before the planner (D36) — over MCP a JSON
+// number of any size arrives, and int(float64) of it is another number.
+const maxPoolCount = math.MaxInt32
+
 // poolSettleTimeout bounds the wait before the question for a pool in a
 // transient status of another change, as a VM's (D53: 30 s).
 const poolSettleTimeout = 30 * time.Second
@@ -615,6 +623,7 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 	if _, ok := args["count"]; !ok {
 		return nil, usageErr("count is required", "нужен count")
 	}
+	// The bounds of count are the schema's (D36): 0 to maxPoolCount.
 	count := intArg(args, "count", 0)
 	cli, _, _, err := s.k8sClient(ctx)
 	if err != nil {
@@ -644,6 +653,13 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 			i18n.Tf("node pool %s: the answer of the platform names no scale policy, so evo cannot tell the number of nodes it has; nothing was sent", "группа узлов %s: в ответе платформы нет политики масштаба — сколько в группе узлов, evo сказать не может; ничего не отправлено", id),
 			i18n.T("k8s_nodepool_get shows the pool as the platform gives it.", "Группу, как её отдаёт платформа, показывает evo k8s nodepool-get."))
 	}
+	if _, isNumber := card["desired"].(float64); fixed && !isNumber {
+		// Not read as zero: the preview would count nodes from a number
+		// the pool does not have.
+		return nil, clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("node pool %s: the count in the answer of the platform is not a number, so evo cannot tell the number of nodes it has; nothing was sent", "группа узлов %s: число узлов в ответе платформы — не число; сколько в группе узлов, evo сказать не может; ничего не отправлено", id),
+			i18n.T("k8s_nodepool_get shows the pool as the platform gives it.", "Группу, как её отдаёт платформа, показывает evo k8s nodepool-get."))
+	}
 	if !fixed {
 		// The platform chooses the count of an autoscaled pool; evo does
 		// not change the policy of a pool.
@@ -671,7 +687,7 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 				return st, true, nil
 			},
 			func(st string) string {
-				return fmt.Sprintf(i18n.T("node pool %s: %s, waiting…", "группа узлов %s: %s, жду…"), id, st)
+				return fmt.Sprintf(i18n.T("node pool %s: %s, waiting…", "группа узлов %s: %s, жду…"), id, quoteCloud(st))
 			},
 			func(st string) (bool, error) { return !poolSettling[st], nil })
 		switch {
@@ -679,12 +695,12 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 			return nil, werr
 		case atLimit:
 			ans := map[string]any{"status": "waiting", "nodepool_id": id, "name": name, "state": last}
-			ans["next"] = fmt.Sprintf("Node pool %s is %s at the time limit of an MCP call; it cannot be scaled until its status settles. Call k8s_nodepool_scale again when it settles: it shows the preview and asks before it sends the request.", id, last)
+			ans["next"] = fmt.Sprintf("Node pool %s is %s at the time limit of an MCP call; it cannot be scaled until its status settles. Call k8s_nodepool_scale again when it settles: it shows the preview and asks before it sends the request.", id, quoteCloud(last))
 			nextSameCall(ans, "k8s_nodepool_scale", args)
 			return answered(toJSON(ans), false), nil
 		case timedOut > 0:
 			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("node pool %s is in status %s: it cannot be scaled until the status settles", "группа узлов %s в состоянии %s: менять число узлов можно, когда состояние устоится", id, last),
+				i18n.Tf("node pool %s is in status %s: it cannot be scaled until the status settles", "группа узлов %s в состоянии %s: менять число узлов можно, когда состояние устоится", id, quoteCloud(last)),
 				i18n.T("Repeat the call when k8s_nodepool_get shows the pool running.", "Повторите вызов, когда evo k8s nodepool-get покажет группу в OBJECT_STATUS_RUNNING."))
 		}
 		card = nodePoolCard(np)
@@ -701,19 +717,25 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 		return answered(toJSON(poolAnswer(card, "already_scaled", count)), false), nil
 	case onItsWay(status, desired):
 		ans := poolAnswer(card, "scaling", count)
-		ans["next"] = fmt.Sprintf("Node pool %s is on its way to %d nodes (%s). k8s_nodepool_get shows its status.", id, count, status)
+		ans["next"] = fmt.Sprintf("Node pool %s is on its way to %d nodes (%s). k8s_nodepool_get shows its status.", id, count, quoteCloud(status))
 		nextStep(ans, "k8s_nodepool_get", map[string]any{"nodepool_id": id})
 		return answered(toJSON(ans), false), nil
 	case poolGoing[status]:
 		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("node pool %s is in status %s: there is nothing to scale", "группа узлов %s в состоянии %s: менять число узлов не у чего", id, status),
+			i18n.Tf("node pool %s is in status %s: there is nothing to scale", "группа узлов %s в состоянии %s: менять число узлов не у чего", id, quoteCloud(status)),
+			i18n.T("k8s_nodepool_get shows the pool; what to do with it is the person's decision.", "Группу показывает evo k8s nodepool-get; что с ней делать — решает человек."))
+	case desired == count:
+		// The count is the pool's already and the pool is not running:
+		// there is no change to ask for, and a request of none is not sent.
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("node pool %s has %d node(s) already and is in status %s, not running: there is no change of the count to make; nothing was sent", "в группе узлов %[1]s уже %[2]d узл., и она в состоянии %[3]s, а не работает: менять число узлов не на что; ничего не отправлено", id, count, quoteCloud(status)),
 			i18n.T("k8s_nodepool_get shows the pool; what to do with it is the person's decision.", "Группу показывает evo k8s nodepool-get; что с ней делать — решает человек."))
 	case status != poolRunning && count > desired:
 		// A departure from П4: more nodes are billable nodes added to a
 		// pool that is not working. Fewer nodes go on to the preview — it
 		// is the way to stop paying for such a pool.
 		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("node pool %s is in status %s, not running: evo does not add billable nodes to it; nothing was sent", "группа узлов %s в состоянии %s, а не работает: evo не добавляет в неё платные узлы; ничего не отправлено", id, status),
+			i18n.Tf("node pool %s is in status %s, not running: evo does not add billable nodes to it; nothing was sent", "группа узлов %s в состоянии %s, а не работает: evo не добавляет в неё платные узлы; ничего не отправлено", id, quoteCloud(status)),
 			i18n.T("k8s_nodepool_get shows the pool; what to do with it is the person's decision.", "Группу показывает evo k8s nodepool-get; что с ней делать — решает человек."))
 	}
 
@@ -766,7 +788,7 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 		// Not refused: whether the platform takes the request in this
 		// status is not known (П4).
 		preview["warning"] = i18n.Tf("the pool is in status %s, not running: whether the platform accepts the scale is unknown",
-			"группа в состоянии %s, а не работает: примет ли платформа изменение — неизвестно", status)
+			"группа в состоянии %s, а не работает: примет ли платформа изменение — неизвестно", quoteCloud(status))
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := cli.ScaleNodePool(ctx, id, count)
@@ -791,10 +813,16 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 		}
 		if werr == nil && m != nil {
 			if msg, code, failed := opFailure(m["error"]); failed {
+				// The words of the platform are data: quoted on one line in
+				// the error, and as they are in details, marked untrusted.
+				details := map[string]any{"cause": "operation", "platform_message": msg}
+				if code != nil {
+					details["platform_code"] = code
+				}
 				return errAnswer(clierrors.New(clierrors.CodeAPIError,
-					i18n.Tf("the scale of node pool %s failed: %v (code %v)", "изменение числа узлов группы %s не удалось: %v (код %v)", id, msg, code),
+					i18n.Tf("the scale of node pool %s failed: its operation %s ended with the error %s", "изменение числа узлов группы %s не удалось: операция %s завершилась ошибкой %s", id, op.ID, quoteCloud(fmt.Sprint(msg))),
 					i18n.T("k8s_nodepool_get shows the pool as it is now.", "Группу, как она есть сейчас, показывает evo k8s nodepool-get.")),
-					map[string]any{"nodepool_id": id, "operation_id": op.ID}), true
+					map[string]any{"nodepool_id": id, "operation_id": op.ID, "details": details}), true
 			}
 			if done, _ := m["done"].(bool); done {
 				ans["status"] = "scaled"
@@ -826,12 +854,15 @@ func (s *Registry) poolScaleFailed(ctx context.Context, cli *mk8s.Client, id str
 	card := nodePoolCard(now)
 	status, _ := card["status"].(string)
 	desired, fixed := poolScale(card)
-	if fixed && desired == count {
+	// Only a request that may have been taken — an answer lost, a failure
+	// of the server — is told by the count the pool has now: a refusal is
+	// a refusal, whoever set that count.
+	if fixed && desired == count && !definiteRefusal(cause) {
 		if status == poolRunning {
 			return toJSON(poolAnswer(card, "scaled", count)), false
 		}
 		ans := poolAnswer(card, "scaling", count)
-		ans["next"] = fmt.Sprintf("Node pool %s is on its way to %d nodes (%s). k8s_nodepool_get shows its status.", id, count, status)
+		ans["next"] = fmt.Sprintf("Node pool %s is on its way to %d nodes (%s). k8s_nodepool_get shows its status.", id, count, quoteCloud(status))
 		nextStep(ans, "k8s_nodepool_get", map[string]any{"nodepool_id": id})
 		return toJSON(ans), false
 	}

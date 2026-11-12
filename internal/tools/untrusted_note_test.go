@@ -33,7 +33,7 @@ var untrustedMarkerOnly = map[string]string{
 	"vm_start":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"whoami":             "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
 	"k8s_nodepool_get":   "name, cluster_name, labels, taints: what the project's people named the pool, its cluster and its nodes, not the output of a workload",
-	"k8s_nodepool_scale": "preview, name: the name of the pool in the preview and the answer, not the output of a workload",
+	"k8s_nodepool_scale": "preview, name, details: the name of the pool in the preview and the answer and the platform's words of a failed operation, not the output of a workload",
 	"k8s_operation":      "error: the failure of an operation as Managed Kubernetes words it, not the output of a workload",
 }
 
