@@ -187,7 +187,9 @@ func TestToolsList_Annotations(t *testing.T) {
 		// memory (D99, §4.3).
 		"vm_stop": true,
 		// vm_reboot takes the service down for the time of the reboot (§5.2).
-		"vm_reboot": true}
+		"vm_reboot": true,
+		// A scale down deletes nodes with the data on their disks (D99).
+		"k8s_nodepool_scale": true}
 	seen := map[string]bool{}
 	for _, raw := range listed {
 		tl := raw.(map[string]any)

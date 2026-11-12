@@ -282,7 +282,7 @@ var faultMatrixOut = map[string]string{
 	"ar_delete": faultOutRemoves, "ca_delete": faultOutRemoves, "close_ports": faultOutRemoves, "ca_stop": faultOutRemoves,
 	"cert_delete": faultOutRemoves, "disk_delete": faultOutRemoves, "disk_detach": faultOutRemoves,
 	"dns_record_delete": faultOutRemoves, "dns_zone_delete": faultOutRemoves, "image_delete": faultOutRemoves,
-	"k8s_delete": faultOutRemoves, "kafka_delete": faultOutRemoves, "lb_delete": faultOutRemoves,
+	"k8s_delete": faultOutRemoves, "k8s_nodepool_delete": faultOutRemoves, "kafka_delete": faultOutRemoves, "lb_delete": faultOutRemoves,
 	"pg_db_delete": faultOutRemoves, "pg_delete": faultOutRemoves, "pg_user_delete": faultOutRemoves,
 	"redis_delete": faultOutRemoves, "release_floating_ip": faultOutRemoves, "s3_bucket_delete": faultOutRemoves,
 	"s3_rm": faultOutRemoves, "secret_delete": faultOutRemoves, "snat_delete": faultOutRemoves,
@@ -291,7 +291,10 @@ var faultMatrixOut = map[string]string{
 	"vpc_route_delete": faultOutRemoves,
 
 	"ca_start": faultOutChanges, "cert_renew": faultOutChanges, "disk_attach": faultOutChanges, "vm_start": faultOutChanges, "vm_stop": faultOutChanges, "vm_reboot": faultOutChanges,
-	"disk_resize": faultOutChanges, "fip_attach": faultOutChanges, "open_ports": faultOutChanges,
+	// Its faults — a lost answer taken and not, a refusal, a failed
+	// operation — are the worlds of k8s_nodepool_scale_test.go.
+	"k8s_nodepool_scale": faultOutChanges,
+	"disk_resize":        faultOutChanges, "fip_attach": faultOutChanges, "open_ports": faultOutChanges,
 
 	"k8s_apply": faultOutCluster, "k8s_helm": faultOutCluster, "k8s_kubectl": faultOutCluster,
 

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/stack"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -76,10 +77,8 @@ var repeatUndeclared = map[string]string{
 	"k8s_apply":          "the repeat is the cluster's (kubectl apply): not declared",
 	"k8s_helm":           "the repeat is the cluster's (helm): not declared",
 	"k8s_kubectl":        "the repeat is the cluster's (kubectl): not declared",
-	"s3_bucket_create":   "a bucket the profile has: no world, and no check of the name taken",
 	"s3_put":             "an object the bucket has: the repeat overwrites — not declared",
 	"secret_add_version": "every send is a new version: not declared",
-	"stack_destroy":      "a destroy of a stack destroyed answers already_destroyed: no world",
 }
 
 // repeatAsksUntilTheMajor are the changes shipped before the invariant
@@ -234,6 +233,11 @@ type consentWorld struct {
 	// that, without the question and without a write (D26, D81; agent run
 	// of 1.7.0, № 6: a repeated disk_attach asked, then failed with 422).
 	alreadyFor []string
+	// job is the stack job of the world, in place of the job of the
+	// tool's own setup: a job is read from the local store, not the cloud.
+	// A world with a job alone leaves the cloud as it is: it needs no
+	// answer and no cloud of its own.
+	job func(t *testing.T) *stack.Job
 }
 
 var consentWorlds = map[string]consentWorld{
@@ -349,6 +353,27 @@ var consentWorlds = map[string]consentWorld{
 		`{"id":"` + consentOtherID + `","direction":"ingress","ip_protocol":"tcp","port_range":"443:443","remote_ip_prefix":"0.0.0.0/0"}`),
 		alreadyFor: []string{"open_ports"}},
 	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports"}},
+	// The stack of stack_destroy was destroyed by an earlier call, and no
+	// deletion of it is still going (D26, D41).
+	"stack destroyed already": {job: func(t *testing.T) *stack.Job {
+		j := parityStackJob(t, parityVM)
+		j.Steps[0].Status, j.Status = "done", stack.StatusDestroyed
+		if err := j.Save(); err != nil {
+			t.Fatal(err)
+		}
+		return j
+	}, alreadyFor: []string{"stack_destroy"}},
+	// The profile has the bucket of s3_bucket_create already (D101).
+	"bucket of the profile": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "s3.cloud.ru" || strings.Trim(r.URL.Path, "/") != "" {
+			return nil
+		}
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>o</ID></Owner><Buckets>`+
+			`<Bucket><Name>bucket-new</Name><CreationDate>2026-10-20T10:00:00.000Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>`)
+		return w.Result()
+	}, alreadyFor: []string{"s3_bucket_create"}},
 	// The VM of vm_start runs already (D99, П3).
 	"vm running already": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityStoppedVM {
@@ -363,6 +388,22 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, runningVMJSON("stopped"))
 	}, alreadyFor: []string{"vm_stop"}},
+	// The pool of k8s_nodepool_scale has the count asked for (parityArgs:
+	// three nodes) and runs (D99, П3).
+	"node pool of the count asked": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "mk8s.api.cloud.ru" || r.URL.Path != "/v3/nodePools/"+parityVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","clusterId":"`+addonClusterID+`","name":"pool-1","status":"OBJECT_STATUS_RUNNING","scalePolicy":{"fixedScale":{"count":3}}}`)
+	}, alreadyFor: []string{"k8s_nodepool_scale"}},
+	// The pool of k8s_nodepool_scale is being deleted: there is nothing
+	// to scale, and a read tells it before the question.
+	"node pool being deleted": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "mk8s.api.cloud.ru" || r.URL.Path != "/v3/nodePools/"+parityVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","clusterId":"`+addonClusterID+`","name":"pool-1","status":"OBJECT_STATUS_DELETING","scalePolicy":{"fixedScale":{"count":2}}}`)
+	}, refusedBy: []string{"k8s_nodepool_scale"}, names: "DELETING"},
 	// The VM of vm_start is being deleted: the platform refuses a power
 	// command in this state (422), and a read tells it before the question.
 	"vm being deleted": {answer: func(r *http.Request) *http.Response {
@@ -667,6 +708,9 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 				}
 			}
 			done = teardown
+		}
+		if c.world.job != nil {
+			a["job_id"] = c.world.job(t).ID
 		}
 		// The variant's cloud wraps the tool's own world (paritySetup),
 		// so what the variant breaks is what the tool reads.

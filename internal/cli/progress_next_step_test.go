@@ -29,6 +29,8 @@ var statusGoingOn = map[string]bool{
 	"stopping": true,
 	// vm_reboot (D99, §5).
 	"rebooting": true,
+	// k8s_nodepool_scale (D99): the pool is on its way to the count.
+	"scaling": true,
 }
 
 // statusOver are the statuses of a change that is over, as far as the
@@ -44,6 +46,7 @@ var statusOver = map[string]bool{
 	// platform took whose transition evo did not see — over as far as the
 	// call goes, with the read of the VM as the step.
 	"rebooted": true, "reboot_accepted": true,
+	"scaled": true,
 }
 
 // noNextStep are the tools shipped before the invariant whose answer says

@@ -54,6 +54,12 @@ printf '%s' "$body" >"$out"
 printf '%s' "$code"
 FAKE
 chmod +x "$tmp/bin/curl"
+# Разовый ключ пробы (vm_meta) — без настоящего ssh-keygen.
+cat >"$tmp/bin/ssh-keygen" <<'FAKE'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do case $1 in -f) : >"$2"; echo "ssh-ed25519 AAAA evo-probe" >"$2.pub"; shift ;; esac; shift; done
+FAKE
+chmod +x "$tmp/bin/ssh-keygen"
 export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0 SWEEP_PAUSE=1
 fail=0
 n=0
@@ -65,12 +71,13 @@ world() {
 	fake_evo_answer vm_list 0 0 '{"vms":[]}'
 	fake_evo_answer list_floating_ips 0 0 '{"floating_ips":[]}'
 	fake_evo_answer disk_list 0 0 '{"disks":[]}'
+	fake_evo_answer list_subnets 0 0 '{"subnets":[]}'
 	printf '%s\n' 'GET /backups[?]* 200 {"items":[],"total":0}' 'GET /protection-plans[?]* 200 {"items":[],"total":0}' >"$FAKE_DIR/http.default"
 }
 # Уборка области читает списки планов защиты и копий (виды pplan и backup)
 # дважды: в цикле удаления и при проверке остатков.
-SW='GET /protection-plans?project_id=p&limit=1000;GET /backups?project_id=p&limit=1000;'
-SW="$SW$SW"
+SW1='GET /protection-plans?project_id=p&limit=1000;GET /backups?project_id=p&limit=1000;'
+SW="$SW1$SW1"
 want() { if [ "$2" != "$3" ]; then printf 'FAIL %s\n  got:  %s\n  want: %s\n' "$1" "$2" "$3"; fail=1; fi; }
 calls() { tr '\n' ';' <"$FAKE_DIR/calls"; }
 
@@ -100,7 +107,10 @@ fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11, отказ создания: код" "$rc" 0
-want "Г-11, отказ создания: один запрос" "$(calls)" "POST /security-groups;$SW"
+# Машинный код отказа — квота: строка считает, что осталось создано (ещё
+# одно чтение списков копий и планов).
+want "Г-11, отказ создания: один запрос" "$(calls)" "POST /security-groups;$SW1$SW"
+grep -q 'квота по машинному коду: да' "$tmp/out" || { echo "FAIL: Г-11: отказ по квоте не назван"; fail=1; }
 grep -q 'HTTP 422' "$tmp/out" || { echo "FAIL: отказ создания не назван кодом"; fail=1; }
 # UUID из текста отказа платформы в лог не попадает (api_why идёт через redact.sed).
 if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: id из текста отказа в логе"; fail=1; fi
@@ -136,6 +146,248 @@ rc=0
 GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e- ops >"$tmp/out" 2>&1 || rc=$?
 want "общая уборка рядом с живым запуском: код" "$rc" 0
 want "общая уборка: удалена только группа завершённого запуска" "$(grep -c '^DELETE /security-groups/' "$FAKE_DIR/calls") $(grep -c '^DELETE /security-groups/sgdone$' "$FAKE_DIR/calls")" "1 1"
+
+# Г-10: ВМ → карточка → остановка и её повтор → запуск и его повтор →
+# перезагрузка и повтор сразу → set-power по id, которого нет → flavor на
+# шаг вверх: на запущенной отказ не по квоте, остановка, смена, возврат.
+V='"id":"vm1","flavor":{"name":"lowcost10-2-4"},"interfaces":[{"ip":"203.0.113.7"}]'
+g10_world() {
+	world
+	fake_evo_answer provision 0 0 '{"vm_id":"vm1","vm_ip":"203.0.113.7","status":"ok"}'
+	fake_evo_answer list_flavors 0 0 '{"flavors":[{"name":"lowcost10-8-16","vcpus":8,"ram_gb":16},{"name":"lowcost10-4-8","vcpus":4,"ram_gb":8},{"name":"lowcost10-2-4","vcpus":2,"ram_gb":4},{"name":"gen-4-16","vcpus":4,"ram_gb":16}]}'
+	fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+	cat >"$FAKE_DIR/http" <<H
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /vms/vm1/set-power 204
+GET! /vms/vm1 200 {$V,"state":"stopping"}
+GET! /vms/vm1 200 {$V,"state":"stopped"}
+POST! /vms/vm1/set-power 422 {"code":"vm_wrong_state","message":"already stopped"}
+POST! /vms/vm1/set-power 204
+GET! /vms/vm1 200 {$V,"state":"starting"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /vms/vm1/set-power 204
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /vms/vm1/set-power 204
+POST! /vms/vm1/set-power 422 {"code":"vm_wrong_state","message":"rebooting"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+GET! /vms/vm1 200 {$V,"state":"rebooting"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST /vms/00000000-0000-4000-8000-000000000000/set-power 404 {"code":"vm_not_found"}
+H
+}
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT! /vms/vm1 422 {"code":"vm_must_be_stopped","message":"stop it"}
+POST! /vms/vm1/set-power 204
+GET! /vms/vm1 200 {$V,"state":"stopped"}
+PUT! /vms/vm1 200 {"state":"updating"}
+GET! /vms/vm1 200 {"id":"vm1","state":"updating"}
+GET! /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
+GET! /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
+PUT! /vms/vm1 200 {"state":"updating"}
+GET /vms/vm1 200 {$V,"state":"stopped"}
+H
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10: код" "$rc" 0
+P='POST /vms/vm1/set-power;' G='GET /vms/vm1;'
+want "Г-10: запросы по порядку" "$(calls)" "$G$P$G$G$P$P$G$G$P$G$P$P$G$G$G""POST /vms/00000000-0000-4000-8000-000000000000/set-power;PUT /vms/vm1;$P$G""PUT /vms/vm1;$G$G$G""PUT /vms/vm1;$G$G$SW"
+want "Г-10: шаг вверх — соседний flavor семейства, возврат — исходный" "$(jq -r .flavor_name "$FAKE_DIR/body.PUT.vms.vm1")" lowcost10-2-4
+for s in 'Г-10: остановка.*stopping → stopped' 'повтор остановки остановленной.*HTTP 422, машинный код vm_wrong_state' 'Г-10: запуск.*публичный адрес тот же: да' 'Г-10: перезагрузка.*running → rebooting → running' 'id, которого нет.*HTTP 404, машинный код vm_not_found' 'смена flavor на запущенной ВМ.*машинный код: vm_must_be_stopped' 'смена flavor на шаг вверх.*на остановленной.*тем, что просили' 'возврат исходного flavor.*тем, что просили'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-10: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
+if grep -v '::add-mask::' "$tmp/out" | grep -q 'vm1\|203\.0\.113\.7'; then echo "FAIL: Г-10: id или адрес в строке лога"; fail=1; fi
+if grep -q 'квота по машинному коду' "$tmp/out"; then echo "FAIL: Г-10: отказ не по квоте назван квотой"; fail=1; fi
+
+# Смена flavor принята на запущенной ВМ: состояние running — конечное, а не
+# переходное (оканчивается на «ing»): ожидание не тянется до предела.
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT /vms/vm1 200 {"state":"running"}
+GET /vms/vm1 200 {"id":"vm1","state":"running","flavor":{"name":"lowcost10-2-4"}}
+H
+rc=0
+PROBES=g10 timeout 30 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10, смена на запущенной: не ждёт предела, код" "$rc" 0
+grep -q 'смена flavor на шаг вверх.*на запущенной; состояния: running,' "$tmp/out" || { echo "FAIL: Г-10: running не принят как конечное состояние"; fail=1; }
+
+# Отказ по квоте на смене flavor (машинный код, не текст): шесть полей
+# одной строкой, остановки и второй попытки смены нет, возврата нет.
+g10_world
+echo 'PUT /vms/vm1 422 {"code":"organization_quota_exceeded","message":"limit of 3f2b8c1e-1111-4222-8333-444455556666 reached"}' >>"$FAKE_DIR/http"
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10, квота: код" "$rc" 0
+want "Г-10, квота: одна попытка смены, остановки после неё нет" "$(sed -n '/^PUT/,$p' "$FAKE_DIR/calls" | grep -c '^PUT\|set-power')" 1
+for s in 'отказ HTTP 422 (синхронно)' 'машинный код: organization_quota_exceeded' 'evo сегодня: операции в evo нет' 'квота по машинному коду: да' 'осталось создано: pplan 0, backup 0, vm 0, fip 0, disk 0, subnet 0, sg 0' 'строка Г-01'; do
+	grep -qF "$s" "$tmp/out" || { echo "FAIL: Г-10, квота: нет поля «$s»"; grep 'смена flavor' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+done
+if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: Г-10, квота: id из текста отказа в логе"; fail=1; fi
+# Слово «quota» только в тексте, машинного кода нет — квотой не называется
+# (разбор текста запрещён), проба идёт дальше: остановка и вторая попытка.
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT /vms/vm1 422 {"message":"quota exceeded"}
+POST /vms/vm1/set-power 204
+GET /vms/vm1 200 {$V,"state":"stopped"}
+H
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10, квота только в тексте: вторая попытка смены есть" "$(grep -c '^PUT' "$FAKE_DIR/calls")" 2
+if grep -q 'квота по машинному коду' "$tmp/out"; then echo "FAIL: Г-10: квота названа по тексту"; fail=1; fi
+
+# Г-20: со словом g20 ВМ называется …-g20, в конце остановлена и остаётся:
+# уборка области её, её диск и адрес не удаляет и остатком не считает.
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT /vms/vm1 422 {"code":"quota_exceeded"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+GET /vms/vm1 200 {$V,"state":"stopped"}
+POST /vms/vm1/set-power 204
+H
+fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm1","name":"evo-e2e-ops-r7a1-g20"}]}'
+fake_evo_answer list_floating_ips 0 0 '{"floating_ips":[{"id":"f1","name":"fip-evo-e2e-ops-r7a1-g20","state":"active"}]}'
+rc=0
+PROBES="g10 g20" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-20: код" "$rc" 0
+grep -q 'Г-20: ВМ пробы цены оставлена.*state stopped' "$tmp/out" || { echo "FAIL: Г-20: нет строки об оставленной ВМ"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+want "Г-20: последний запрос set-power — остановка" "$(jq -r .state "$FAKE_DIR/body.POST.vms.vm1.set-power")" power_off
+if grep -q '^destroy\|^release_floating_ip' "$FAKE_DIR/evo-calls"; then echo "FAIL: Г-20: уборка области удалила ВМ или адрес пробы цены"; fail=1; fi
+# Г-20, возврат исходного flavor не удался: ВМ на шаг дороже под
+# исключением не остаётся — проба удаляет её, её адрес и диск сразу
+# (заключение «Риска» 136, К2).
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT! /vms/vm1 200 {"state":"updating"}
+GET! /vms/vm1 200 {"id":"vm1","state":"running","flavor":{"name":"lowcost10-4-8"}}
+GET! /vms/vm1 200 {"id":"vm1","state":"running","flavor":{"name":"lowcost10-4-8"}}
+PUT /vms/vm1 500 {"message":"boom"}
+GET /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
+POST /vms/vm1/set-power 204
+H
+fake_evo_answer vm_list 0 0 '{"vms":[]}'
+fake_evo_answer list_floating_ips 0 0 '{"floating_ips":[{"id":"f1","name":"fip-evo-e2e-ops-r7a1-g20","state":"active"}]}'
+fake_evo_answer list_floating_ips 1 0 '{"floating_ips":[]}'
+fake_evo_answer destroy 0 0 '{"status":"deleted"}'
+fake_evo_answer release_floating_ip 0 0 '{"status":"released"}'
+rc=0
+PROBE_WAIT=1 PROBES="g10 g20" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+grep -q 'Г-20: проба цены не состоялась' "$tmp/out" || { echo "FAIL: Г-20: ВМ не в исходном flavor, а строки «не состоялась» нет"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if grep -q 'ВМ пробы цены оставлена' "$tmp/out"; then echo "FAIL: Г-20: ВМ с flavor на шаг выше оставлена"; fail=1; fi
+want "Г-20, flavor не исходный: ВМ удалена, адрес освобождён" "$(grep -c '^destroy yes=1' "$FAKE_DIR/evo-calls") $(grep -c '^release_floating_ip yes=1' "$FAKE_DIR/evo-calls")" "1 1"
+
+# Общая уборка завершённого запуска: без слова g20 ВМ пробы цены не
+# трогает, со словом — удаляет (сутки прошли, потребление прочитано).
+world
+: >"$FAKE_DIR/http"
+printf '#!/bin/sh\nexit 0\n' >"$tmp/bin/gh"
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm1","name":"evo-e2e-ops-r5a1-g20"}]}'
+rc=0
+GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e- ops >"$tmp/out" 2>&1 || rc=$?
+want "общая уборка без слова g20: код" "$rc" 0
+if grep -q '^destroy' "$FAKE_DIR/evo-calls"; then echo "FAIL: общая уборка без слова g20 удалила ВМ пробы цены"; fail=1; fi
+world
+: >"$FAKE_DIR/http"
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+fake_evo_answer vm_list 0 0 '{"vms":[{"id":"vm1","name":"evo-e2e-ops-r5a1-g20"}]}'
+fake_evo_answer vm_list 1 0 '{"vms":[]}'
+fake_evo_answer destroy 0 0 '{"status":"deleted"}'
+rc=0
+PROBES=g20 GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e- ops >"$tmp/out" 2>&1 || rc=$?
+want "общая уборка со словом g20: код" "$rc" 0
+want "общая уборка со словом g20: ВМ пробы цены удалена" "$(grep -c '^destroy' "$FAKE_DIR/evo-calls")" 1
+
+# Г-18: ВМ и подсеть → второй интерфейс, повтор его создания, список
+# интерфейсов ВМ, удаление своих и повтор удаления → пересоздание из
+# другого образа того же семейства: на запущенной отказ не по квоте,
+# остановка, вторая попытка; что с адресом и загрузочным диском.
+g18_world() {
+	world
+	fake_evo_answer provision 0 0 '{"vm_id":"vm1","vm_ip":"203.0.113.7","status":"ok"}'
+	fake_evo_answer subnet_create 0 0 '{"subnet_id":"sn1","status":"ok"}'
+	fake_evo_answer list_subnets 0 0 '{"subnets":[]}'
+	fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+	fake_evo_answer image_list 0 0 '{"images":[{"name":"debian-12","min_cpu":1},{"name":"ubuntu-22.04","min_cpu":1},{"name":"ubuntu-24.04","min_cpu":1},{"name":"ubuntu-gpu","min_cpu":8}]}'
+	fake_evo_answer image_get 0 0 '{"fields":[{"name":"hostname","filled_by":"evo","role":"vm_name"},{"name":"password","filled_by":"evo","role":"password"}]}'
+	fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g18-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g18"]}]}'
+}
+g18_world
+cat >"$FAKE_DIR/http" <<H
+POST! /interfaces 201 {"id":"if1","state":"creating"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /interfaces 422 {"code":"interface_name_exists","message":"dup"}
+GET /interfaces?project_id=p&vm_id=vm1&limit=100 200 {"items":[{"id":"if0","name":"main"},{"id":"if1","name":"evo-e2e-ops-r7a1-g18-if"}],"total":2}
+DELETE! /interfaces/if1 204
+DELETE /interfaces/if1 404 {"code":"interface_not_found"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /vms/vm1/rebuild 422 {"code":"vm_must_be_stopped","message":"stop it"}
+POST /vms/vm1/set-power 204
+GET! /vms/vm1 200 {$V,"state":"stopped"}
+POST! /vms/vm1/rebuild 200 {"id":"vm1","state":"rebuilding"}
+GET! /vms/vm1 200 {$V,"state":"rebuilding"}
+GET /vms/vm1 200 {$V,"state":"stopped","image":{"name":"ubuntu-24.04"}}
+H
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-18: код" "$rc" 0
+want "Г-18: запросы по порядку" "$(calls)" "POST /interfaces;GET /vms/vm1;POST /interfaces;GET /interfaces?project_id=p&vm_id=vm1&limit=100;DELETE /interfaces/if1;DELETE /interfaces/if1;GET /vms/vm1;POST /vms/vm1/rebuild;POST /vms/vm1/set-power;GET /vms/vm1;POST /vms/vm1/rebuild;GET /vms/vm1;GET /vms/vm1;$SW"
+jq -e --arg p p '.vm_id == "vm1" and .subnet_id == "sn1" and .name == "evo-e2e-ops-r7a1-g18-if" and .project_id == $p' "$FAKE_DIR/body.POST.interfaces" >/dev/null ||
+	{ echo "FAIL: Г-18: тело создания интерфейса не то: $(cat "$FAKE_DIR/body.POST.interfaces" 2>/dev/null)"; fail=1; }
+# Другой образ — того же семейства, что образ ВМ, и не требует больше её flavor.
+jq -e '.image_name == "ubuntu-24.04" and .image_metadata.hostname == "evo-e2e-ops-r7a1-g18" and (.image_metadata.password | test("^[0-9a-f]{32}$"))' "$FAKE_DIR/body.POST.vms.vm1.rebuild" >/dev/null ||
+	{ echo "FAIL: Г-18: тело пересоздания не то: $(cat "$FAKE_DIR/body.POST.vms.vm1.rebuild" 2>/dev/null)"; fail=1; }
+for s in 'Г-18: второй интерфейс.*HTTP 201' 'повтор создания с тем же именем.*HTTP 422, машинный код interface_name_exists' 'удаление интерфейса.*HTTP 204, повтор — HTTP 404' 'пересоздание на запущенной ВМ.*машинный код: vm_must_be_stopped' 'Г-18: пересоздание из ubuntu-24.04.*на остановленной.*rebuilding → stopped.*образ тот, что просили.*публичный адрес тот же: да.*загрузочный диск тот же: да'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-18: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
+if grep -v '::add-mask::' "$tmp/out" | grep -qw 'vm1\|if1\|sn1\|boot1\|203\.0\.113\.7'; then echo "FAIL: Г-18: id или адрес в строке лога"; fail=1; fi
+# Чужой интерфейс ВМ (основной, не под именем пробы) проба не удаляет.
+if grep -q 'DELETE /interfaces/if0' "$FAKE_DIR/calls"; then echo "FAIL: Г-18: удалён основной интерфейс ВМ"; fail=1; fi
+
+if grep -q '^disk_delete' "$FAKE_DIR/evo-calls"; then echo "FAIL: Г-18: загрузочный диск тот же, а диск удалён"; fail=1; fi
+
+# Пересоздание выдало ВМ новый загрузочный диск, а старый оставило без ВМ:
+# под именем пробы уборка его может не найти — проба удаляет его по id
+# (заключение «Риска» 140, К1).
+g18_world
+fake_evo_answer subnet_create 0 1 '{"error":{"reason":"USAGE","message":"cidr занят"}}'
+fake_evo_answer disk_list 1 0 '{"disks":[{"id":"boot2","name":"auto","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g18"]},{"id":"boot1","name":"old-boot","bootable":true,"attached_to":[]}]}'
+fake_evo_answer disk_delete 0 0 '{"status":"deleted"}'
+cat >"$FAKE_DIR/http" <<H
+POST /vms/vm1/rebuild 200 {"id":"vm1"}
+GET /vms/vm1 200 {$V,"state":"running","image":{"name":"ubuntu-24.04"}}
+H
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-18, диск сменился: код" "$rc" 0
+want "Г-18, диск сменился: старый удалён по id" "$(grep -c '^disk_delete yes=1' "$FAKE_DIR/evo-calls")" 1
+grep -q 'загрузочный диск тот же: нет.*старый диск без ВМ удалён по id' "$tmp/out" || { echo "FAIL: Г-18: удаление старого диска не названо"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
+# Подсеть не создана: интерфейс не создаётся, пересоздание идёт; отказ по
+# квоте на пересоздании — без остановки и второй попытки.
+g18_world
+fake_evo_answer subnet_create 0 1 '{"error":{"reason":"USAGE","message":"cidr занят"}}'
+cat >"$FAKE_DIR/http" <<H
+GET /vms/vm1 200 {$V,"state":"running"}
+POST /vms/vm1/rebuild 422 {"code":"quota_exceeded","message":"no"}
+H
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-18, без подсети и с квотой: код" "$rc" 0
+want "Г-18, без подсети и с квотой: запросы" "$(grep -c '/interfaces' "$FAKE_DIR/calls" || true) $(grep -c 'rebuild' "$FAKE_DIR/calls") $(grep -c 'set-power' "$FAKE_DIR/calls" || true)" "0 1 0"
+grep -q 'Г-18: подсеть.*USAGE' "$tmp/out" || { echo "FAIL: Г-18: отказ подсети не назван"; fail=1; }
+
+# Подсеть пробы — вид уборки области: остаток находится и удаляется.
+g18_world
+fake_evo_answer provision 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
+fake_evo_answer list_subnets 0 0 '{"subnets":[{"id":"snleft","name":"evo-e2e-ops-r7a1-g18-sn"},{"id":"snother","name":"default"}]}'
+fake_evo_answer list_subnets 1 0 '{"subnets":[{"id":"snother","name":"default"}]}'
+fake_evo_answer subnet_delete 0 0 '{"status":"deleted"}'
+: >"$FAKE_DIR/http"
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-18, остаток подсети: код" "$rc" 0
+want "Г-18, остаток подсети: удалена одна" "$(grep -c '^subnet_delete yes=1' "$FAKE_DIR/evo-calls")" 1
 
 # Г-16: диск и ВМ → копия диска и копия ВМ (ожидание created) → список и
 # фильтр по имени → восстановление диска и ВМ под именами с префиксом пробы
@@ -298,6 +550,24 @@ grep -q 'публичных адресов у неё: 1, из них не под
 want "Г-16, адрес восстановленной ВМ: ВМ удалена, адрес освобождён" "$(grep -c '^destroy yes=1' "$FAKE_DIR/evo-calls") $(grep -c '^release_floating_ip yes=1' "$FAKE_DIR/evo-calls")" "1 1"
 if grep -v '::add-mask::' "$tmp/out" | grep -qw 'fipx\|rvid'; then echo "FAIL: Г-16: id адреса или ВМ в строке лога"; fail=1; fi
 
+# Восстановление ВМ принято, а ВМ не появилась: предупреждение о дисках,
+# которые уборка по имени не найдёт.
+g16_world
+fake_evo_answer disk_create 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
+fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16"]}]}'
+fake_evo_answer vm_get 0 1 '{"error":{"reason":"NOT_FOUND","message":"нет"}}'
+cat >"$FAKE_DIR/http" <<'H'
+POST /backups 201 {"id":"bv","state":"created"}
+GET! /backups/bv 200 {"id":"bv","state":"created"}
+GET! /backups/bv 200 {"id":"bv","state":"created"}
+GET /backups/bv 404
+POST /backups/bv/action 201 {"id":"bv"}
+DELETE /backups/bv 204
+H
+rc=0
+PROBE_WAIT=1 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+grep -q '::warning::Г-16: восстановление ВМ принято, но ВМ не появилась' "$tmp/out" || { echo "FAIL: Г-16: нет предупреждения о ВМ, которая не появилась"; fail=1; }
+
 # Список копий не полон (total больше, чем отдано) или не прочитан: вид не
 # считается чистым — уборка области падает, а не говорит «остатков нет».
 world
@@ -321,6 +591,18 @@ rc=0
 PROJECT='' GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e-ops-r7a1 ops >"$tmp/out" 2>&1 || rc=$?
 want "уборка без PROJECT: код" "$rc" 1
 grep -q 'нет PROJECT' "$tmp/out" || { echo "FAIL: уборка без PROJECT не назвала причину"; fail=1; }
+
+# Отказ по квоте останавливает свою пробу, а не следующую: после квоты на
+# группе безопасности (Г-11) проба Г-16 делает копию своей ВМ.
+g16_world
+fake_evo_answer disk_create 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
+cat >"$FAKE_DIR/http" <<'H'
+POST /security-groups 422 {"code":"quota_exceeded"}
+POST /backups 500 {"message":"boom"}
+H
+rc=0
+PROBES="g11 g16" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "квота в Г-11 не выключает Г-16: копия ВМ запрошена" "$(grep -c '^POST /backups$' "$FAKE_DIR/calls")" 1
 
 # Слова проб нет — область ничего не шлёт.
 world

@@ -69,6 +69,11 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The name of a node pool and the labels and taints of its nodes:
 	// anyone with access to the project writes them.
 	"k8s_nodepool_get": {fields: []string{"name", "cluster_name", "labels", "taints"}},
+	// The name of the pool, in the preview and in the answer; the words
+	// and the code of the platform in a failed operation (details).
+	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},
+	// The cluster of the pool by its name, in the preview of the delete.
+	"k8s_nodepool_delete": {fields: []string{"preview"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of

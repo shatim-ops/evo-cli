@@ -633,6 +633,10 @@ var destructiveTools = map[string]bool{
 	"k8s_apply":           true,
 	"k8s_helm":            true,
 	"k8s_add_addon":       true,
+	// A scale down deletes nodes with the data on their disks; the hint is
+	// the tool's, not the call's, so a scale up asks too (D99; conclusion
+	// 112 of «Риск»).
+	"k8s_nodepool_scale": true,
 }
 
 // IsDestructive reports whether a mutating tool may delete or overwrite
