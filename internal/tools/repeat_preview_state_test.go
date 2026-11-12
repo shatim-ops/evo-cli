@@ -49,14 +49,14 @@ func TestK8sAddAddon_QuestionSaysWhatHappensToTheInstalled(t *testing.T) {
 // as it was (release plan 1.9, «Повтор у выпущенных инструментов», п. 4).
 func TestCaStartStop_QuestionNamesTheStateOfTheApp(t *testing.T) {
 	for _, tool := range []string{"ca_start", "ca_stop"} {
-		status := http.StatusOK
+		status, body := http.StatusOK, `{"name":"app-1","status":"running"}`
 		f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
 			if r.Method != http.MethodGet {
 				_, _ = io.WriteString(w, `{}`)
 				return true
 			}
 			w.WriteHeader(status)
-			_, _ = io.WriteString(w, `{"name":"app-1","status":"running"}`)
+			_, _ = io.WriteString(w, body)
 			return true
 		}}
 		r := apiFakeRegistry(t, f)
@@ -69,6 +69,25 @@ func TestCaStartStop_QuestionNamesTheStateOfTheApp(t *testing.T) {
 				t.Errorf("%s: the question sent %s", tool, q)
 			}
 		}
+		// The status is text of the cloud in the answer the model reads
+		// before it asks the person: marked, never instructions («Риск»,
+		// conclusion 142).
+		if !strings.Contains(fmt.Sprint(m["_untrusted"]), "app_status") {
+			t.Errorf("%s: app_status is not listed in _untrusted: %s", tool, text)
+		}
+		// An app that is not there: the question says so, and does not
+		// send to ca_get; an answer with no status names none.
+		status = http.StatusNotFound
+		m, text, _ = callNamed(t, r, tool, map[string]any{"name": "app-1"})
+		if note, _ := m["app_status_note"].(string); m["status"] != "confirmation_required" || !strings.Contains(note, "no app of this name was found") || strings.Contains(note, "ca_get") {
+			t.Errorf("%s: an app that is not there: %s", tool, text)
+		}
+		status, body = http.StatusOK, `{"name":"app-1"}`
+		m, text, _ = callNamed(t, r, tool, map[string]any{"name": "app-1"})
+		if _, has := m["app_status"]; has || m["app_status_note"] != nil {
+			t.Errorf("%s: an answer with no status: %s", tool, text)
+		}
+		body = `{"name":"app-1","status":"running"}`
 		status = http.StatusForbidden
 		m, text, _ = callNamed(t, r, tool, map[string]any{"name": "app-1"})
 		if note, _ := m["app_status_note"].(string); m["status"] != "confirmation_required" || m["app_status"] != nil || !strings.Contains(note, "could not be read") {

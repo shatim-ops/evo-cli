@@ -326,12 +326,19 @@ func (s *Registry) planCaStartStop(action string) Planner {
 		preview := func(ctx context.Context) (map[string]any, error) {
 			out := map[string]any{"message": msg}
 			state, err := s.caState(ctx, name)
-			if err != nil {
+			switch {
+			case err != nil && notThere(err):
+				// Asked all the same: a refusal here would change the
+				// exit code of a shipped command, which waits for the
+				// major. The question says what the platform will answer.
+				out["app_status_note"] = i18n.T("no app of this name was found: the call will be refused by the platform; ca_list shows the apps",
+					"приложение с таким именем не найдено: платформа откажет вызову; приложения показывает ca_list")
+			case err != nil:
 				reason, _, _ := errReason(err, nil)
 				out["app_status_note"] = i18n.Tf("the state of the app could not be read (%s): ca_get shows it", "состояние приложения прочитать не удалось (%s): его показывает ca_get", reason)
-				return out, nil
+			case state != "":
+				out["app_status"] = state
 			}
-			out["app_status"] = state
 			return out, nil
 		}
 		return &Plan{PreviewOf: preview, Execute: func(ctx context.Context) (string, bool) {
