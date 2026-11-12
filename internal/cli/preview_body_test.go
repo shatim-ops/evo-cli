@@ -99,6 +99,7 @@ var bodyNamedAs = map[string]string{
 	"ar_create isPublic": "public",
 	"vm_start state":     "command",
 	"vm_stop state":      "command",
+	"vm_reboot state":    "command",
 	"ca_deploy configuration.ingress.publiclyAccessible": "public",
 	"lb_create external_address_spec.allocate":           "external",
 

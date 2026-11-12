@@ -347,6 +347,7 @@ var mcpWaits = map[string]budgetWait{
 		}
 		return ""
 	}},
+	"vm_reboot": vmPowerBudget("vm_reboot", "running"),
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,

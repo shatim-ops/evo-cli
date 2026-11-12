@@ -35,7 +35,7 @@ func looksUUID(s string) bool {
 // released tools change their answer the same way is the owner's
 // decision, open — until then theirs stays, and this list is the one
 // place the difference lives.
-var strictVMRef = map[string]bool{"vm_start": true, "vm_stop": true}
+var strictVMRef = map[string]bool{"vm_start": true, "vm_stop": true, "vm_reboot": true}
 
 // resolveVM finds a VM by id or name, as the released tools do.
 func (s *Registry) resolveVM(ctx context.Context, ref, projectID string) (*provision.VM, error) {

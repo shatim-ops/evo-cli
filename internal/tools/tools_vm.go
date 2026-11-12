@@ -174,6 +174,10 @@ func (s *Registry) handleVMList(ctx context.Context, args map[string]any) (strin
 type vmPowerAction struct {
 	command, from, via, to string
 	already, done          string
+	// unseen is the status of a command the platform took whose
+	// transition evo did not see — of an action every send of which is a
+	// change (everySendIsAChange): its target state says nothing.
+	unseen string
 	// message is the preview's line, {en, ru}.
 	message [2]string
 	// verb and noun are the action in the words of a person, {en, ru}:
@@ -211,6 +215,35 @@ var vmPowerActions = map[string]vmPowerAction{
 			"цена неизвестна: остановка может не прекратить списания за ВМ, диск и публичный IP — на экономию без тарифа по tariff_url не рассчитывайте"},
 		interrupts: [2]string{"the VM and everything that runs on it stop answering until vm_start; unsaved data in the VM's memory may be lost",
 			"ВМ и всё, что на ней работает, перестаёт отвечать до vm_start; несохранённые данные в памяти ВМ могут быть потеряны"}},
+	// from and to are one state: every send is a reboot of its own (§5).
+	// No billed: a reboot starts and stops no charge.
+	"vm_reboot": {command: provision.PowerReboot, from: "running", via: "rebooting", to: "running",
+		done: "rebooted", unseen: "reboot_accepted",
+		message: [2]string{"vm_reboot reboots the running VM (reboot); every call is a new reboot: a repeat reboots the VM again. Whether its services come back on their own depends on the VM: verify checks.",
+			"vm_reboot перезагружает работающую ВМ (reboot); каждый вызов — новая перезагрузка: повтор перезагрузит ВМ ещё раз. Поднимутся ли её сервисы сами — зависит от ВМ: проверит verify."},
+		verb: [2]string{"reboot", "перезагружать"}, noun: [2]string{"the reboot", "перезагрузку"},
+		interrupts: [2]string{"the VM and everything that runs on it do not answer while it reboots; unsaved data in the VM's memory may be lost",
+			"ВМ и всё, что на ней работает, не отвечает, пока идёт перезагрузка; несохранённые данные в памяти ВМ могут быть потеряны"}},
+}
+
+// everySendIsAChange: the action has no state that means «made» — its
+// target is the state it starts from (a reboot). A repeat of it is not a
+// continuation, so its next step is a read, and its end counts only once
+// the transition was seen.
+func (a vmPowerAction) everySendIsAChange() bool { return a.from == a.to }
+
+// vmStable are the states a VM stays in until a command: the power
+// actions go between them.
+var vmStable = map[string]bool{"running": true, "stopped": true}
+
+// vmToolTo is the power tool that takes a VM to state, "" when none does.
+func vmToolTo(state string) string {
+	for name, a := range vmPowerActions {
+		if a.to == state && !a.everySendIsAChange() {
+			return name
+		}
+	}
+	return ""
 }
 
 // vmSettling are the states of a VM another change put it in and the
@@ -298,6 +331,19 @@ func (s *Registry) planVMPower(tool string) Planner {
 			since, _ := s.heldSince(eng, tool, "vm_id="+vm.ID)
 			text, isErr := s.finishVMPower(ctx, eng, tool, act, vm, args, false, since)
 			return answered(text, isErr), nil
+		case vmStable[state] && state != act.from:
+			// A stable state the action neither starts from nor ends in:
+			// nothing to do here, and the tool that takes the VM to where
+			// the action starts is the step — with a preview and a
+			// question of its own (§5.1: a reboot is not a way to start).
+			err := clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, state, i18n.T(act.verb[0], act.verb[1])),
+				i18n.Tf("It has to be %s first.", "Сначала она должна быть в %s.", act.from))
+			fields := map[string]any{"vm_id": vm.ID, "state": state}
+			if first := vmToolTo(act.from); first != "" {
+				nextStep(fields, first, map[string]any{"vm_id": vm.ID})
+			}
+			return answered(errAnswer(err, fields), true), nil
 		case vmNothingToChange[state]:
 			return nil, clierrors.New(clierrors.CodeUsage,
 				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, state, i18n.T(act.verb[0], act.verb[1])),
@@ -363,7 +409,10 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 		}
 		return errResult(cause), true
 	}
-	if now.State == act.to || now.State == act.via {
+	// On its way, or where the command takes it: the command was taken.
+	// The target of an action every send of which is a change proves
+	// nothing — the VM was there before the command.
+	if now.State == act.via || (now.State == act.to && !act.everySendIsAChange()) {
 		return s.finishVMPower(ctx, eng, tool, act, now, args, true, time.Time{})
 	}
 	if provision.HTTPStatus(cause) != http.StatusUnprocessableEntity {
@@ -450,6 +499,29 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 	// it there. Where the target is the state the VM was taken from, the
 	// target reads as reached only after the transition was seen.
 	moved := !sent
+	if sent && act.everySendIsAChange() && vm.State != act.via {
+		// The target is the state the VM is in already, so a wait for it
+		// says nothing: the VM is watched for leaving it. A command taken
+		// and no change seen in the time another change is given to
+		// settle is said as such — evo does not know whether the VM went
+		// through faster than it reads or has not begun; not the end, and
+		// not an error a repeat would answer with a second change (§5.2).
+		last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, vmSettleTimeout,
+			func(st string) (bool, error) { return st != act.from, nil })
+		switch {
+		case err != nil:
+			return errAnswer(err, map[string]any{"vm_id": vm.ID, "state": last}), true
+		case atLimit || timedOut > 0:
+			ans := vmAnswer(vm, act.unseen, last)
+			ans["elapsed_sec"] = int(clock.Since(started).Seconds())
+			ans["warning"] = i18n.Tf("the platform accepted %s and evo did not see the state of the VM change: whether it took place, the uptime of the guest OS tells",
+				"платформа приняла команду «%s», а смены состояния ВМ evo не увидел: состоялась ли она, скажет время работы гостевой ОС", i18n.T(act.noun[0], act.noun[1]))
+			ans["next"] = fmt.Sprintf("vm_get shows VM %s. Calling %s again is a new %s, not a way to go on with this one.", vm.ID, tool, act.verb[0])
+			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
+			return toJSON(ans), false
+		}
+		moved = last == act.via
+	}
 	last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, limit, func(st string) (bool, error) {
 		switch {
 		case st == act.to && (moved || act.to != act.from):
@@ -492,7 +564,12 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		if !since.IsZero() {
 			ans["since_start_sec"] = int(clock.Since(since).Seconds())
 		}
-		if atLimit && own {
+		if act.everySendIsAChange() {
+			// The same call, come after the end, would be the question of
+			// a second change: the step is the read.
+			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state. Calling %s again is a new %s, not a way to go on with this one.", vm.ID, last, tool, act.verb[0])
+			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
+		} else if atLimit && own {
 			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second command.", vm.ID, last, tool)
 			nextSameCall(ans, tool, vmRef(args, vm))
 		} else {
@@ -507,6 +584,12 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		vm = now
 	}
 	ans := vmAnswer(vm, act.done, act.to)
+	if !sent && act.everySendIsAChange() {
+		// The change seen to its end was not this call's: the state, not
+		// a claim of it.
+		ans["status"] = act.to
+		ans["note"] = i18n.Tf("%s that ended was not this call's: it sent no command", "%s, которая завершилась, начал не этот вызов: команды он не слал", i18n.T(act.noun[0], act.noun[1]))
+	}
 	ans["elapsed_sec"] = elapsed
 	return toJSON(ans), false
 }
