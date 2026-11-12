@@ -15,8 +15,17 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
+
+// runningVMCloud is a world whose VM of the record runs: an update reads
+// the VM before it probes port 22 (a stopped VM is refused with the cause).
+type runningVMCloud struct{ *cancelCloud }
+
+func (runningVMCloud) GetVM(_ context.Context, id string) (*provision.VM, error) {
+	return &provision.VM{ID: id, Status: "running"}, nil
+}
 
 // M2 (axis 4, axis 1): deploy uploads over SSH from this host. Its preview
 // names what that needs of this host's network — outbound TCP 22 to the
@@ -40,7 +49,7 @@ func TestDeploy_PreviewNamesTheSSHUploadAndProbesPort22(t *testing.T) {
 			return &engine.Engine{
 				Config:   config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s", ComposeFile: compose},
 				Auth:     staticToken{},
-				Cloud:    &cancelCloud{cancel: func() {}},
+				Cloud:    runningVMCloud{&cancelCloud{cancel: func() {}}},
 				Printer:  output.NewWithWriter(&buf, output.ModeText, false),
 				StateDir: dir,
 				SSHDial: func(ctx context.Context, addr string) error {
