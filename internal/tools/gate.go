@@ -30,7 +30,10 @@ type Plan struct {
 	// PreviewOf builds the preview when the question is asked, in place
 	// of Preview: for a preview that costs a request the execution does
 	// not need (the price), so a consented call does not make it. An
-	// error refuses the call, as the planner's.
+	// error refuses the call, as the planner's. It only builds the preview
+	// (the price, the quota, the names): every refusal of the call itself
+	// is the planner's — one made here would be skipped silently by a call
+	// with confirmed=true (conclusion 119 of «Риск»).
 	PreviewOf func(ctx context.Context) (map[string]any, error)
 	// Execute makes the call; the gate runs it only with consent.
 	Execute func(ctx context.Context) (string, bool)
