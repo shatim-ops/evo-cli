@@ -328,9 +328,11 @@ area_kinds() {
 done_only=0
 lst_done() {
 	lst "$1" "$2" >"$tmp/l.all" 2>/dev/null || return 1
+	# Ресурсы пробы цены Г-20 переживают свой запуск: уборка области их не
+	# трогает, общая — только со словом g20 (e2e_live_runs.sh).
 	if [ "$done_only" = 1 ]; then
 		"$here/e2e_live_runs.sh" drop <"$tmp/l.all"
-	else cat "$tmp/l.all"; fi
+	else "$here/e2e_live_runs.sh" keep <"$tmp/l.all"; fi
 }
 # sweep ПРЕФИКС [ВИДЫ] — удалять ресурсы ПРЕФИКС* до 20 мин (удаления
 # асинхронны: балансировщик, ВМ, VPC), затем остаток — провал по каждому.
@@ -1990,7 +1992,7 @@ probe_g11() {
 	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
 		'{project_id: $p, name: $n, availability_zone_id: $z, description: "evo e2e probe"}')"
 	case "$code" in 2??) ;; *)
-		ok "Г-11: создание группы" "отказ HTTP $code: $(api_why)"
+		refusal "Г-11: создание группы" синхронно
 		return 0
 		;;
 	esac
@@ -2049,6 +2051,8 @@ probe_g11() {
 # последнее состояние («нет (404)» — карточки нет), $chain — состояния по
 # порядку. Код 1 — не дождались. Пауза между чтениями — PROBE_PAUSE.
 PROBE_PAUSE=${PROBE_PAUSE:-20}
+# PROBE_WAIT — предел ожиданий через poll (появление восстановленного
+# ресурса, исчезновение ВМ), секунд; проверка на заглушках ставит 1.
 ops_settle() {
 	local url=$1 until=$(($(date +%s) + $2)) s
 	st='' chain=''
@@ -2069,6 +2073,55 @@ ops_settle() {
 }
 # why_tail — «: текст отказа» последнего ответа api, если он не 2xx.
 why_tail() { case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac; }
+# ops_reach URL СЕКУНД СОСТОЯНИЕ [changed] — читать карточку, пока state не
+# станет СОСТОЯНИЕМ; с changed — не раньше, чем state хоть раз сменился
+# (перезагрузка: running → … → running). Итог — $st и $chain, как у
+# ops_settle. Код 1 — не дождались или state error*.
+ops_reach() {
+	local url=$1 until=$(($(date +%s) + $2)) s n=0
+	st='' chain=''
+	while :; do
+		iam_fresh || true
+		api GET "$url"
+		case "$code" in
+		2??) s=$(jq -r '.state? // "без state"' "$tmp/api.json" 2>/dev/null) || s="не JSON" ;;
+		*) s="HTTP $code" ;;
+		esac
+		[ "$s" = "$st" ] || { chain="${chain:+$chain → }$s"; n=$((n + 1)); }
+		st=$s
+		if [ "$s" = "$3" ] && { [ -z "${4:-}" ] || [ "$n" -gt 1 ]; }; then return 0; fi
+		case "$s" in error*) return 1 ;; esac
+		[ "$(date +%s)" -lt "$until" ] || return 1
+		sleep "$PROBE_PAUSE"
+	done
+}
+# mcode — машинный код причины последнего ответа api (поля code,
+# error_code, type), без разбора текста.
+mcode() { jq -r '[.code?, .error_code?, .type?] | map(select(type == "string")) | join(",")' "$tmp/api.json" 2>/dev/null || true; }
+# refusal ПРОВЕРКА ШАГ — отказ платформы на создающий или меняющий запрос
+# (последний ответ api) одной строкой, поля по условиям «Риска» (R-77):
+# код HTTP и шаг (синхронно или в операции); имена полей тела и машинный
+# код причины; текст до 160 знаков без id; чем на это отвечает evo сегодня
+# (EVO_NOW; у проб операций, которых в evo нет, — так и сказано). Отказ по
+# квоте — только по машинному коду, не по тексту: тогда ещё что осталось
+# созданным (счёт по видам области; уберёт уборка области) и напоминание о
+# строке Г-01, а QUOTA_HIT=1 — проба больше ничего не создаёт и не
+# повторяет запрос с другими параметрами (повтор — отдельный запуск).
+QUOTA_HIT=0
+refusal() {
+	local mc d kind left=''
+	mc=$(mcode)
+	d="отказ HTTP $code ($2); поля тела: $(keys_of); машинный код: ${mc:-нет}; текст: $(api_why | cut -c1-160); evo сегодня: ${EVO_NOW:-операции в evo нет}"
+	case "$mc" in *[Qq][Uu][Oo][Tt][Aa]*)
+		QUOTA_HIT=1
+		for kind in $(area_kinds ops); do
+			left="$left${left:+, }$kind $(if o=$(lst "$kind" "$prefix" 2>/dev/null); then printf '%s' "$o" | grep -c . || true; else echo '?'; fi)"
+		done
+		d="$d; квота по машинному коду: да — проба больше не создаёт и не повторяет; осталось создано: $left (уберёт уборка области); строка Г-01 по этому типу — в отчёте прогона"
+		;;
+	esac
+	ok "$1" "$d"
+}
 
 # Проба Г-16: резервные копии и план защиты. Диск 10 ГБ и ВМ без
 # публичного адреса создаёт evo; дальше — прямые запросы. Что записывается:
@@ -2108,7 +2161,7 @@ probe_g16() {
 		api POST "$C1/backups" "$(jq -nc --arg p "$PROJECT" --arg n "$2" --arg t "$3" --arg id "$4" \
 			'{project_id: $p, name: $n, description: "evo e2e probe", resource: {resource_id: $id, resource_type: $t}}')"
 		case "$code" in 2??) ;; *)
-			ok "Г-16: копия $1" "отказ HTTP $code: $(api_why)"
+			refusal "Г-16: копия $1" синхронно
 			return 0
 			;;
 		esac
@@ -2128,7 +2181,7 @@ probe_g16() {
 		[ -z "$bd" ] || [ "$bid_bad" = 1 ] || bd_ok=1
 	fi
 	bid_bad=0
-	if [ -n "$vm" ]; then
+	if [ -n "$vm" ] && [ "$QUOTA_HIT" = 0 ]; then
 		g16_backup ВМ "$n-bv" virtual_machine "$vm"
 		bv=$bid
 		[ -z "$bv" ] || [ "$bid_bad" = 1 ] || bv_ok=1
@@ -2145,7 +2198,7 @@ probe_g16() {
 		api POST "$C1/backups/$2/action" "$(jq -nc --argjson c "$3" '{action: "restore", resource: {target_config: $c}}')"
 		r="HTTP $code$(case "$code" in 2??) echo ", поля ответа: $(keys_of)" ;; *) echo ": $(api_why)" ;; esac)"
 		case "$code" in 2??) ;; *)
-			ok "Г-16: восстановление $1" "отказ $r"
+			refusal "Г-16: восстановление $1" синхронно
 			return 1
 			;;
 		esac
@@ -2153,14 +2206,14 @@ probe_g16() {
 		ops_settle "$C1/backups/$2" 600 || true
 		r="$r; состояния копии: $chain; last_restore_time задан: $(jq -r 'if (.last_restore_time? // null) != null then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?')"
 	}
-	if [ "$bd_ok" = 1 ]; then
+	if [ "$bd_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
 		if g16_restore диска "$bd" "$(jq -nc --arg n "$n-rd" '{name: $n, description: "evo e2e probe"}')"; then
 			rd_there() { [ -n "$(lst disk "$n-rd")" ]; }
-			if poll 300 "$PROBE_PAUSE" rd_there; then r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
+			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
 			ok "Г-16: восстановление диска" "$r"
 		fi
 	fi
-	if [ "$bv_ok" = 1 ]; then
+	if [ "$bv_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
 		boot=$(evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n" '[.disks[]? | select(.bootable == true and ((.attached_to // []) | index($vm)))][0].id // empty') || boot=
 		mask "$boot"
 		if [ -z "$boot" ]; then
@@ -2168,7 +2221,10 @@ probe_g16() {
 		elif g16_restore ВМ "$bv" "$(jq -nc --arg n "$n-rv" --arg b "$boot" '{name: $n, description: "evo e2e probe", disks: [{name: ($n + "-boot"), related_disk_id: $b}]}')"; then
 			local vst=''
 			rv_up() { vst=$(evo tools call vm_get --arg name="$n-rv" --json 2>/dev/null | jq -r '.state // empty') || vst=; case "$vst" in "" | creating | *pending*) return 1 ;; esac; }
-			poll 300 "$PROBE_PAUSE" rv_up || true
+			poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rv_up || true
+			# Восстановление принято, а ВМ не видна: её диски, если платформа
+			# назвала их по-своему, не найдёт ни проба, ни уборка по имени.
+			[ -n "$vst" ] || echo "::warning::Г-16: восстановление ВМ принято, но ВМ не появилась — после прогона проверьте в консоли Cloud.ru диски без ВМ, созданные в это время"
 			# Диски восстановленной ВМ: с именем пробы их найдёт уборка
 			# области; с другим — проба удаляет сама, после ВМ.
 			evo tools call disk_list --json 2>/dev/null | jq -r --arg vm "$n-rv" --arg p "$prefix" \
@@ -2188,7 +2244,7 @@ probe_g16() {
 			ok "Г-16: восстановление ВМ" "$r; ВМ: ${vst:-не появилась за 5 мин после копии}, $((SECONDS - t0)) с; дисков у неё: $(wc -l <"$tmp/g16.rv" | tr -d ' '), из них не под именем пробы: $(grep -c 'чужой$' "$tmp/g16.rv" || true); публичных адресов у неё: $(wc -l <"$tmp/g16.fip" | tr -d ' '), из них не под именем пробы: $(grep -c 'чужой$' "$tmp/g16.fip" || true)"
 			if grep -q 'чужой$' "$tmp/g16.rv" "$tmp/g16.fip"; then
 				[ -z "$rvid" ] || del vm "$rvid"
-				poll 300 "$PROBE_PAUSE" gone vm "$n-rv" || true
+				poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" gone vm "$n-rv" || true
 				left=0
 				while IFS=$'\t' read -r id _; do
 					mask "$id"
@@ -2205,6 +2261,8 @@ probe_g16() {
 			fi
 		fi
 	fi
+	# Ожидания восстановления (poll) токен не обновляют — до удалений.
+	iam_fresh || true
 	if [ -n "$bd" ]; then
 		api DELETE "$C1/backups/$bd"
 		r="HTTP $code$(why_tail)"
@@ -2225,7 +2283,7 @@ probe_g16() {
 		ops_settle "$C1/backups/$bv" 300 gone || true
 		ok "Г-16: удаление копии ВМ" "$r; состояния: $chain, $((SECONDS - t0)) с"
 	fi
-	if [ -n "$disk" ]; then
+	if [ -n "$disk" ] && [ "$QUOTA_HIT" = 0 ]; then
 		api POST "$C1/protection-plans" "$(jq -nc --arg p "$PROJECT" --arg n "$n-pp" --arg id "$disk" --arg t "$(date -u -d '+30 days' +%Y-%m-%dT03:00:00Z)" \
 			'{project_id: $p, name: $n, description: "evo e2e probe", resources: [{resource_id: $id, resource_type: "disk"}],
 			  schedules: [{start_time: $t, days_of_week: [1], enabled: false}], execute_immediately: false, type: "full"}')"
@@ -2248,10 +2306,11 @@ probe_g16() {
 			else r="$r; id не прочитан — остаток уберёт уборка области"; fi
 			ok "Г-16: план защиты" "$r"
 			;;
-		*) ok "Г-16: план защиты" "отказ HTTP $code: $(api_why)" ;;
+		*) refusal "Г-16: план защиты" синхронно ;;
 		esac
 	fi
 	# Копии, в которых назван диск или ВМ пробы, но имя не пробы.
+	iam_fresh || true
 	api GET "$C1/backups?project_id=$PROJECT&limit=1000"
 	case "$code" in 2??) ;; *)
 		gap "Г-16: копии ресурсов пробы под чужим именем" "список не прочитан: HTTP $code: $(api_why)"
@@ -2282,11 +2341,172 @@ probe_g16() {
 	else bad "Г-16: копии ресурсов пробы под чужим именем" "найдено $r, не удалено $left — удалите в консоли Cloud.ru копии диска и ВМ этого прогона"; fi
 }
 
+# Проба Г-10 (и Г-20): действия над ВМ. ВМ с диском и публичным адресом
+# создаёт evo; дальше — прямые запросы set-power и PUT (ответ 204 без id
+# операции — ход читается состоянием ВМ). Что записывается: остановка —
+# состояния и время, остался ли публичный адрес в карточке; повтор
+# остановки остановленной; запуск — состояния, время, тот же ли адрес;
+# повтор запуска запущенной; перезагрузка и её повтор сразу; set-power по
+# id, которого нет; смена flavor на один шаг вверх в том же семействе —
+# сначала на запущенной (нужна ли остановка), при отказе не по квоте — на
+# остановленной; возврат исходного flavor — в любом случае. Отказ по квоте
+# (refusal) — конец пробы: без повтора с другими параметрами.
+# Со словом g20 ВМ называется …-g20 и в конце остаётся остановленной: её не
+# трогает ни уборка области, ни общая уборка, пока ту не запустят со словом
+# g20 (e2e_live_runs.sh) — сутки спустя, после чтения потребления.
+probe_g10() {
+	local zid=$1 n=$prefix-g10 vm ip0 f0 up r t0 keep=0
+	! probe_on g20 || { keep=1 n=$prefix-g20; }
+	iam_fresh || { gap "Г-10" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	tc provision --arg name="$n" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR"
+	[ "$rc" = 0 ] || { gap "Г-10: ВМ" "provision: код $rc, $reason: $why"; return 0; }
+	vm=$(j -r '.vm_id // empty')
+	ip0=$(j -r '.vm_ip // empty')
+	mask "$vm" "$ip0"
+	[ -n "$vm" ] || { gap "Г-10: ВМ" "provision не отдал vm_id"; return 0; }
+	local url="$C1/vms/$vm"
+	has_ip() { if [ -n "$ip0" ] && grep -qF "$ip0" "$tmp/api.json" 2>/dev/null; then echo да; else echo нет; fi; }
+	# power СЛОВО — set-power; код — в $code.
+	power() { api POST "$url/set-power" "$(jq -nc --arg s "$1" '{state: $s}')"; }
+	brief() { echo "HTTP $code$(case "$code" in 2??) ;; *) echo ", машинный код $(mcode): $(api_why | cut -c1-160)" ;; esac)"; }
+	api GET "$url"
+	f0=$(jq -r '.flavor.name? // empty' "$tmp/api.json" 2>/dev/null) || f0=
+	ok "Г-10: карточка ВМ" "HTTP $code, state $(jq -r '.state? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), публичный адрес в карточке: $(has_ip), поля: $(keys_of)"
+	# g10_stop ПРОВЕРКА — остановка и ожидание stopped; код 1 — отказ.
+	g10_stop() {
+		power power_off
+		case "$code" in 2??) ;; *) refusal "$1" синхронно; return 1 ;; esac
+		r="HTTP $code"
+		t0=$SECONDS
+		ops_reach "$url" 600 stopped || true
+		ok "$1" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес в карточке остановленной: $(has_ip)"
+	}
+	if g10_stop "Г-10: остановка"; then
+		power power_off
+		ok "Г-10: повтор остановки остановленной" "$(brief)"
+		power power_on
+		case "$code" in
+		2??)
+			r="HTTP $code"
+			t0=$SECONDS
+			ops_reach "$url" 600 running || true
+			ok "Г-10: запуск" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес тот же: $(has_ip)"
+			power power_on
+			ok "Г-10: повтор запуска запущенной" "$(brief)"
+			;;
+		*) refusal "Г-10: запуск" синхронно ;;
+		esac
+	fi
+	api GET "$url"
+	if [ "$(jq -r '.state? // empty' "$tmp/api.json" 2>/dev/null)" = running ]; then
+		power reboot
+		case "$code" in
+		2??)
+			r="HTTP $code"
+			power reboot
+			r="$r; повтор сразу — $(brief)"
+			t0=$SECONDS
+			ops_reach "$url" 600 running changed || true
+			ok "Г-10: перезагрузка" "$r; состояния: $chain, $((SECONDS - t0)) с"
+			;;
+		*) refusal "Г-10: перезагрузка" синхронно ;;
+		esac
+	fi
+	api POST "$C1/vms/00000000-0000-4000-8000-000000000000/set-power" '{"state":"power_on"}'
+	ok "Г-10: set-power по id, которого нет" "$(brief)"
+	# Смена flavor: один шаг вверх в том же семействе (имя до первого дефиса).
+	up=$(evo tools call list_flavors --arg zone="$ZONE" --arg gpu=false --arg spot=false --json 2>/dev/null |
+		jq -r --arg f "${f0:-$FLAVOR}" '(.flavors // []) as $all | ($all[] | select(.name == $f)) as $cur
+			| [$all[] | select((.name | split("-")[0]) == ($f | split("-")[0]) and ([.vcpus, .ram_gb] > [$cur.vcpus, $cur.ram_gb]))]
+			| sort_by(.vcpus, .ram_gb) | .[0].name // empty' 2>/dev/null) || up=
+	if [ -z "$up" ]; then
+		gap "Г-10: смена flavor" "в list_flavors нет flavor на шаг выше ${f0:-$FLAVOR} в его семействе"
+	else
+		resize() { api PUT "$url" "$(jq -nc --arg f "$1" '{flavor_name: $f}')"; }
+		flavor_now() { api GET "$url"; jq -r '.flavor.name? // "?"' "$tmp/api.json" 2>/dev/null || echo '?'; }
+		# resized ПРОВЕРКА — после принятой смены: состояния и flavor.
+		resized() {
+			t0=$SECONDS
+			ops_settle "$url" 600 || true
+			r="$r; состояния: $chain, $((SECONDS - t0)) с"
+			ok "$1" "$r; flavor стал $([ "$(flavor_now)" = "$2" ] && echo "тем, что просили" || echo "другим")"
+		}
+		local changed=0
+		resize "$up"
+		case "$code" in
+		2??)
+			r="HTTP $code на запущенной"
+			resized "Г-10: смена flavor на шаг вверх" "$up"
+			changed=1
+			;;
+		*)
+			refusal "Г-10: смена flavor на запущенной ВМ" синхронно
+			if [ "$QUOTA_HIT" = 0 ] && g10_stop "Г-10: остановка перед сменой flavor"; then
+				resize "$up"
+				case "$code" in
+				2??)
+					r="HTTP $code на остановленной"
+					resized "Г-10: смена flavor на шаг вверх" "$up"
+					changed=1
+					;;
+				*) refusal "Г-10: смена flavor на остановленной ВМ" синхронно ;;
+				esac
+			fi
+			;;
+		esac
+		# Возврат исходного flavor — в любом случае, если он сменился.
+		if [ "$changed" = 1 ]; then
+			resize "${f0:-$FLAVOR}"
+			case "$code" in
+			2??)
+				r="HTTP $code"
+				resized "Г-10: возврат исходного flavor" "${f0:-$FLAVOR}"
+				;;
+			*) bad "Г-10: возврат исходного flavor" "HTTP $code: $(api_why) — ВМ осталась с flavor на шаг выше; её удалит уборка$([ "$keep" = 1 ] && echo " со словом g20 — запустите её, не дожидаясь суток")" ;;
+			esac
+		fi
+	fi
+	[ "$keep" = 1 ] || return 0
+	api GET "$url"
+	if [ "$(jq -r '.state? // empty' "$tmp/api.json" 2>/dev/null)" != stopped ]; then
+		power power_off
+		ops_reach "$url" 600 stopped || true
+	fi
+	api GET "$url"
+	# Под исключением уборки остаётся только ВМ в исходном flavor: на шаг
+	# дороже она и стоит больше, и цену меряет не ту. Flavor не подтверждён
+	# — проба удаляет ВМ, её адрес и диск сама (уборка области их обходит).
+	if [ -n "$f0" ] && [ "$(jq -r '.flavor.name? // empty' "$tmp/api.json" 2>/dev/null)" = "$f0" ]; then
+		ok "Г-20: ВМ пробы цены оставлена" "state $(jq -r '.state? // "?"' "$tmp/api.json" 2>/dev/null || echo '?'), flavor исходный; ВМ, диск и адрес живут до уборки cleanup_only со словом g20 во входе probes (срок — 72 ч, дольше уборка без слова краснеет)"
+		return 0
+	fi
+	local kind id left=0
+	del vm "$vm"
+	[ "$rc" = 0 ] || left=1
+	poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" gone vm "$n" || left=1
+	for kind in fip disk; do
+		while IFS=$'\t' read -r id _; do
+			[ -n "$id" ] || continue
+			mask "$id"
+			del "$kind" "$id"
+			[ "$rc" = 0 ] || left=1
+		done < <(lst "$kind" "$n" || true)
+	done
+	if [ "$left" = 0 ]; then ok "Г-20: проба цены не состоялась" "flavor ВМ не подтверждён исходным — ВМ, адрес и диск удалены сразу; нужен новый запуск"
+	else bad "Г-20: проба цены не состоялась" "flavor ВМ не подтверждён исходным, а удаление не прошло — ВМ, адрес или диск остались: запустите cleanup_only со словом g20 во входе probes"; fi
+}
+
 area_ops() {
 	local zid
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена в list_zones"; return 1; }
+	# QUOTA_HIT — на одну пробу: отказ по квоте останавливает её, а не
+	# следующую (у той другие ресурсы и своя строка Г-01).
+	QUOTA_HIT=0
+	! probe_on g10 || probe_g10 "$zid"
+	QUOTA_HIT=0
 	! probe_on g11 || probe_g11 "$zid"
+	QUOTA_HIT=0
 	! probe_on g16 || probe_g16 "$zid"
 }
 
