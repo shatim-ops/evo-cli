@@ -344,6 +344,25 @@ if grep -v '::add-mask::' "$tmp/out" | grep -qw 'vm1\|if1\|sn1\|boot1\|203\.0\.1
 # Чужой интерфейс ВМ (основной, не под именем пробы) проба не удаляет.
 if grep -q 'DELETE /interfaces/if0' "$FAKE_DIR/calls"; then echo "FAIL: Г-18: удалён основной интерфейс ВМ"; fail=1; fi
 
+if grep -q '^disk_delete' "$FAKE_DIR/evo-calls"; then echo "FAIL: Г-18: загрузочный диск тот же, а диск удалён"; fail=1; fi
+
+# Пересоздание выдало ВМ новый загрузочный диск, а старый оставило без ВМ:
+# под именем пробы уборка его может не найти — проба удаляет его по id
+# (заключение «Риска» 140, К1).
+g18_world
+fake_evo_answer subnet_create 0 1 '{"error":{"reason":"USAGE","message":"cidr занят"}}'
+fake_evo_answer disk_list 1 0 '{"disks":[{"id":"boot2","name":"auto","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g18"]},{"id":"boot1","name":"old-boot","bootable":true,"attached_to":[]}]}'
+fake_evo_answer disk_delete 0 0 '{"status":"deleted"}'
+cat >"$FAKE_DIR/http" <<H
+POST /vms/vm1/rebuild 200 {"id":"vm1"}
+GET /vms/vm1 200 {$V,"state":"running","image":{"name":"ubuntu-24.04"}}
+H
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-18, диск сменился: код" "$rc" 0
+want "Г-18, диск сменился: старый удалён по id" "$(grep -c '^disk_delete yes=1' "$FAKE_DIR/evo-calls")" 1
+grep -q 'загрузочный диск тот же: нет.*старый диск без ВМ удалён по id' "$tmp/out" || { echo "FAIL: Г-18: удаление старого диска не названо"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
 # Подсеть не создана: интерфейс не создаётся, пересоздание идёт; отказ по
 # квоте на пересоздании — без остановки и второй попытки.
 g18_world
