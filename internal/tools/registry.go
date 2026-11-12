@@ -654,10 +654,11 @@ func (r *Registry) stateDir() (string, bool) { return r.stateDirOf, r.stateDirOf
 // reach the cloud and was told no directory for the records of its calls.
 func (r *Registry) stateDirUndeclared() bool { return r.newEngine != nil && r.stateDirOf == "" }
 
-// errNoStateDir refuses a call of a registry of stateDirUndeclared. It is
-// not the person's configuration: nothing they set repairs it.
+// errNoStateDir refuses a call of a registry of stateDirUndeclared. The
+// reason is the one evo has for «it cannot work as it was set up»; the
+// words say whose defect it is — nothing the person sets repairs it.
 func errNoStateDir() error {
-	return clierrors.New(clierrors.ReasonGeneral,
+	return clierrors.New(clierrors.CodeConfigInvalid,
 		i18n.T("evo was built without the directory of its call records: this is a defect of evo, not of your configuration",
 			"evo собран без каталога записей вызовов: это дефект evo, а не вашей конфигурации"),
 		i18n.T("Nothing was sent to the cloud. Report it: github.com/shatim-ops/evo-cli/issues.",
