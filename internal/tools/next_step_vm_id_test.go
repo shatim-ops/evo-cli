@@ -121,3 +121,61 @@ func TestNextStep_VMThereIsAdopted(t *testing.T) {
 		t.Errorf("CreateVM %d times, want 1: the step did not adopt the VM", n)
 	}
 }
+
+// The hint of the refusal names no way round the question («Риск»,
+// conclusion 129, У1): it says a new VM needs a new consent and that the
+// call to make is one without confirmed — not «a call without vm_id»,
+// which, sent with the step's consent, made the second VM. And it names
+// what the cut call may have left and its way out (У2, axis 3).
+func TestNextStep_VMGoneHintAsksForANewConsentAndNamesTheLeftover(t *testing.T) {
+	faultToolsIsolate(t)
+	cloud := &faultCloud{slow: true}
+	r := progressed(budgetComputeRegistry(t, cloud, t.TempDir(), engine.Timings{}))
+	text, _ := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	var first map[string]any
+	if err := json.Unmarshal([]byte(text), &first); err != nil {
+		t.Fatal(err)
+	}
+	next, _ := first["next_args"].(map[string]any)
+	cloud.mu.Lock()
+	cloud.vms = nil
+	cloud.mu.Unlock()
+	text, _ = r.handlers["provision"](context.Background(), next)
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil {
+		t.Fatal(err)
+	}
+	hint, _ := m["hint"].(string)
+	for _, want := range []string{"new consent", "ask the person", "without confirmed", "floating IP", "destroy vm_id=" + first["vm_id"].(string)} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("the hint does not say %q: %q", want, hint)
+		}
+	}
+}
+
+// A step whose vm_id is a VM of another name is not gone on with: the
+// adoption is by the name, and under another name the call would make a
+// new VM on the consent of this one. Refused before anything is made.
+func TestNextStep_VMOfAnotherNameIsRefused(t *testing.T) {
+	faultToolsIsolate(t)
+	cloud := &faultCloud{slow: true}
+	r := progressed(budgetComputeRegistry(t, cloud, t.TempDir(), engine.Timings{}))
+	text, _ := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
+	var first map[string]any
+	if err := json.Unmarshal([]byte(text), &first); err != nil {
+		t.Fatal(err)
+	}
+	next, _ := first["next_args"].(map[string]any)
+	next["name"] = "other"
+	text, isErr := r.handlers["provision"](context.Background(), next)
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil {
+		t.Fatal(err)
+	}
+	cloud.mu.Lock()
+	n := cloud.seen["CreateVM"]
+	cloud.mu.Unlock()
+	if !isErr || m["reason"] != clerrors.CodeUsage || n != 1 {
+		t.Errorf("the step under another name: %s (CreateVM %d times, want 1)", text, n)
+	}
+}

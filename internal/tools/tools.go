@@ -1934,7 +1934,7 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 		return nil, err
 	}
 	// A step that goes on with a VM that is gone makes no new one (D102).
-	if err := s.continuedVM(ctx, args); err != nil {
+	if err := s.continuedVM(ctx, "provision", args, stringArg(args, "name")); err != nil {
 		return nil, err
 	}
 	metaValues, err := metadataArg(args, "image_metadata")

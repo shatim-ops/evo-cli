@@ -110,9 +110,11 @@ const continuedVMDesc = "next_args: its VM"
 // nothing: the refusal says so and names no next call — whether to make a
 // new VM is the person's decision, and a call without the argument asks.
 // A read that fails otherwise refuses too: what is not known to be there
-// is not gone on with. nil when the call names no VM (a call of its own,
-// not a step) or the VM is there.
-func (s *Registry) continuedVM(ctx context.Context, args map[string]any) error {
+// is not gone on with. name is the name the call creates its VM under: a
+// VM of another name is not the one the call would adopt, and is refused
+// too. nil when the call names no VM (a call of its own, not a step) or
+// the VM is there under that name.
+func (s *Registry) continuedVM(ctx context.Context, tool string, args map[string]any, name string) error {
 	id := stringArg(args, continuedVMArg)
 	if id == "" {
 		return nil
@@ -121,13 +123,31 @@ func (s *Registry) continuedVM(ctx context.Context, args map[string]any) error {
 	if err != nil {
 		return err
 	}
-	_, err = eng.Cloud.GetVM(ctx, id)
+	vm, err := eng.Cloud.GetVM(ctx, id)
 	var ce *clierrors.CLIError
 	if stderrors.As(err, &ce) && ce.Code == clierrors.CodeVMNotFound {
+		// The hint names no way round the question: a call without the
+		// argument and with the consent of the step would make the new VM
+		// unasked («Риск», conclusion 129, У1). And what the cut call left
+		// — a floating IP, the folder's record — is named with its way
+		// out (axis 3, У2), for the person to decide.
 		return clierrors.New(clierrors.CodeVMNotFound,
 			i18n.Tf("the VM this call went on with (%s) is no longer there; no new VM was created", "ВМ, которую продолжал вызов (%s), больше нет; новая не создана", id),
-			i18n.T("The consent was for that VM. Whether to create a new one is the person's decision: a call without "+continuedVMArg+" shows the preview and asks.",
-				"Согласие было на ту ВМ. Создавать ли новую — решает человек: вызов без "+continuedVMArg+" покажет превью и спросит."))
+			i18n.Tf("A new VM needs a new consent: ask the person; a call of %[1]s without %[2]s and without confirmed shows its preview. The call that was cut may have left a floating IP and the folder's record of that VM: whether to remove them (destroy vm_id=%[3]s from the same folder) — ask the person.",
+				"Новой ВМ нужно новое согласие: спросите человека; вызов %[1]s без %[2]s и без confirmed покажет превью. Оборванный вызов мог оставить floating IP и запись этой ВМ в папке: убирать ли их (destroy vm_id=%[3]s из той же папки) — спросите человека.",
+				tool, continuedVMArg, id))
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	// The VM is there, but it is not the one the call names: the adoption
+	// goes by the name, and under another name the call would make a new
+	// VM on the consent of this one (the check of the shared files of
+	// D102, «разработка B»).
+	if name != "" && vm.Name != "" && vm.Name != name {
+		return clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("%s %s is VM %q, and the call names %q: the step goes on with the VM it was given, under its name", "%s %s — это ВМ %q, а вызов называет %q: шаг продолжает ту ВМ, что ему дана, под её именем", continuedVMArg, id, vm.Name, name),
+			i18n.T("Call the step with next_args as the answer gave them.", "Вызовите шаг с next_args, как их дал ответ."))
+	}
+	return nil
 }

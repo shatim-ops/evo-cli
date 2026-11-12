@@ -326,7 +326,7 @@ func (s *Registry) planDeployApply(ctx context.Context, args map[string]any) (*P
 		return nil, err
 	}
 	// A step that goes on with a VM that is gone makes no new one (D102).
-	if err := s.continuedVM(ctx, args); err != nil {
+	if err := s.continuedVM(ctx, "deploy_apply", args, plan.VM.Name); err != nil {
 		return nil, err
 	}
 	// The keys deploy_apply appends are the ones the plan showed (R-68):

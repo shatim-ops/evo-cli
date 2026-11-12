@@ -506,7 +506,7 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 	}
 	for _, list := range []map[string]string{nextStepKeepsConsent, nextStepConsentUnbound} {
 		for name := range list {
-			if ran[name] && !consented[name] {
+			if ran[name] && !consented[name] && !consentShownElsewhere(name) {
 				bad = append(bad, name+": listed as a tool whose next step carries confirmed, and it does not: take the line out")
 			}
 			if _, ok := mcpWaits[name]; !ok {
@@ -536,8 +536,15 @@ var nextStepKeepsConsent = map[string]string{
 	"disk_create":   "disk_id and vm in next_args: the attach of attach_to the person approved",
 	"disk_detach":   "disk_id and vm in next_args: the detach the person approved",
 	"disk_resize":   "disk_id and size_gb in next_args: the size the person approved",
+<<<<<<< HEAD
 	"deploy_apply":  "vm_id in next_args: the VM the call made; a step whose VM is gone refuses and creates nothing (D102, continuedVM)",
 	"provision":     "vm_id in next_args: the VM the call made; a step whose VM is gone refuses and creates nothing (D102, continuedVM)",
+=======
+	// Stopped while it adds the chart's repository, before the release is
+	// touched, helm names the same call (nextStepOtherWorlds; owner's
+	// decision 12.11, «Риск», conclusion 126).
+	"k8s_helm": "cluster_id and release in next_args: the install or upgrade of the release the person approved, stopped before the release was touched",
+>>>>>>> origin/main
 }
 
 // nextStepConsentUnbound are the tools shipped before the invariant whose
