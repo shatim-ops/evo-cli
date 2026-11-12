@@ -76,7 +76,8 @@ func groupCard(group string, terminal bool, served func(string) bool) (string, b
 		fmt.Fprintf(&b, "%d tools. Consent and untrusted answers: the description of each tool; its arguments: tools/list. "+
 			"A card is not a preview and no ground for confirmed=true.\n\n", len(rows))
 		if missing {
-			b.WriteString("What this server serves is the person's choice: a tool that is not on this server is not to be reached another way.\n\n")
+			b.WriteString("What this server serves is the person's choice: a tool that is not on this server is not to be reached another way. " +
+				"Tools named in the other columns may be absent too: tools/list is what this server has.\n\n")
 		}
 		b.WriteString("| Tool | Does | Ids from |\n|---|---|---|\n")
 	}
@@ -110,9 +111,9 @@ var cardNotes = map[string][]string{
 	},
 	"deploy": {
 		"`deploy` reaches the VM over SSH: outbound port 22 must be open from the machine evo runs on.",
-		"`deploy` refuses the compose file of another deployment of its directory; the VM is `evo-<project_name>`, `project_name` from `.evo.yaml`, else the directory's name.",
+		"`deploy` refuses the compose file of another deployment of its directory; the VM is `evo-<project_name>`: the project name of evo's configuration, else the directory's name.",
 		"One `deploy` at a time in a directory: another answers `STATE_LOCKED`; wait for the first.",
-		"The defaults of `deploy_plan` (flavor, zone, image) come from the profile, `.evo.yaml` and `CLOUDRU_FLAVOR`, `CLOUDRU_REGION`.",
+		"The defaults of `deploy_plan` (flavor, zone, image) come from evo's configuration; the plan names what it picked.",
 		"`destroy` answers status `partial` (an error) when Cloud.ru accepted the deletion but did not confirm it, and over MCP `deleting` with `next_tool` when it still runs at ~45 s.",
 	},
 	"image": {

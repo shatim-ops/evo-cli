@@ -116,8 +116,18 @@ func TestAgentSkill_MarksEveryToolTheServerDoesNotServe(t *testing.T) {
 			t.Errorf("served=%v marked=%v: %s", served, marked, line)
 		}
 	}
-	if !strings.Contains(card, "the person's choice") {
-		t.Errorf("the card does not say whose choice the limits of the server are: %s", card)
+	// The other columns name tools of other groups (deleted with destroy,
+	// ids from image_list) with no mark: the card says so once.
+	if !strings.Contains(card, "the person's choice") || !strings.Contains(card, "Tools named in the other columns may be absent too: tools/list is what this server has.") {
+		t.Errorf("the card does not say whose choice the limits of the server are, or that the other columns name tools unmarked: %s", card)
+	}
+	// A group the server serves no tool of: every row marked, the same
+	// lines above the table.
+	text, _ = tl.Handler(context.Background(), map[string]any{"group": "pg"})
+	_ = json.Unmarshal([]byte(text), &m)
+	other, _ := m["skill"].(string)
+	if strings.Count(other, "(not on this server)") != strings.Count(other, "\n| `") || !strings.Contains(other, "the person's choice") {
+		t.Errorf("a group with no tool on the server: not every row is marked, or the card does not say whose choice it is: %s", other)
 	}
 	// The groups say how many of their tools the server serves.
 	text, _ = tl.Handler(context.Background(), map[string]any{})

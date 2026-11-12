@@ -465,5 +465,5 @@ func runStdio(t *testing.T, s *mcp.Server, body []byte) []byte {
 // carries them.
 const (
 	cardNotServed  = " (not on this server)"
-	cardServerNote = `What this server serves is the person's choice: a tool that is not on this server is not to be reached another way.\n\n`
+	cardServerNote = `What this server serves is the person's choice: a tool that is not on this server is not to be reached another way. Tools named in the other columns may be absent too: tools/list is what this server has.\n\n`
 )
