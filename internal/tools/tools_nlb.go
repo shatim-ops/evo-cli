@@ -198,30 +198,30 @@ func tgTargetArgs(args map[string]any) error {
 	return nil
 }
 
-func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planTgCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	if name == "" {
-		return usageT("'name' is required", "нужен 'name'"), true
+		return answered(usageT("'name' is required", "нужен 'name'"), true), nil
 	}
 	if err := tgTargetArgs(args); err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	specs := targetSpecs(args)
 	if len(specs) == 0 {
-		return usageT("provide targets (array of {id[, interface_id]}) or vm_id", "укажите targets (массив {id[, interface_id]}) или vm_id"), true
+		return answered(usageT("provide targets (array of {id[, interface_id]}) or vm_id", "укажите targets (массив {id[, interface_id]}) или vm_id"), true), nil
 	}
 	cli, eng, err := s.nlbClientEng(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// A group of the name: a repeat after a lost answer made a second one
 	// (fault matrix, process audit 1.2.1).
 	existing, err := cli.ListTargetGroups(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list target groups: %w", "проверка, что имя свободно: список целевых групп: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list target groups: %w", "проверка, что имя свободно: список целевых групп: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult(i18n.T("target group", "целевая группа"), name, id, st, "tg_list")
+		return answered(nameTakenResult(i18n.T("target group", "целевая группа"), name, id, st, "tg_list")), nil
 	}
 	// Each target VM is read: its name goes to the preview (the person
 	// agrees to which VMs take the traffic, audit cli-ids-1.6, §3.2), and
@@ -238,12 +238,12 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 		vmid, _ := sp["id"].(string)
 		det, e := eng.Cloud.GetVMDetail(ctx, vmid)
 		if e != nil {
-			return errResult(fmt.Errorf(i18n.T("resolve interface for vm %s: %w", "разрешение интерфейса ВМ %s: %w"), vmid, e)), true
+			return nil, fmt.Errorf(i18n.T("resolve interface for vm %s: %w", "разрешение интерфейса ВМ %s: %w"), vmid, e)
 		}
 		if ifid, _ := sp["interface_id"].(string); ifid == "" {
 			ni := pickVMInterface(det)
 			if ni == nil {
-				return errResult(fmt.Errorf(i18n.T("vm %s has no usable network interface (NLB targets need a private VPC-subnet VM — provision with no_public_ip)", "у ВМ %s нет подходящего сетевого интерфейса (цель балансировщика — ВМ в подсети VPC без публичного IP: provision с no_public_ip)"), vmid)), true
+				return nil, fmt.Errorf(i18n.T("vm %s has no usable network interface (NLB targets need a private VPC-subnet VM — provision with no_public_ip)", "у ВМ %s нет подходящего сетевого интерфейса (цель балансировщика — ВМ в подсети VPC без публичного IP: provision с no_public_ip)"), vmid)
 			}
 			specs[i]["interface_id"] = ni.ID
 			if ni.Type != "" {
@@ -260,28 +260,27 @@ func (s *Registry) handleTgCreate(ctx context.Context, args map[string]any) (str
 		}
 		named = append(named, target)
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("tg_create creates target group %q with %d target(s).",
-				"tg_create создаёт группу целей %q (целей: %d).", name, len(specs)),
-			"targets": specs,
-			"preview": tgPreview(name, named, ifaceTypes),
-		}), true
+	preview := map[string]any{
+		"message": i18n.Tf("tg_create creates target group %q with %d target(s).",
+			"tg_create создаёт группу целей %q (целей: %d).", name, len(specs)),
+		"targets": specs,
+		"preview": tgPreview(name, named, ifaceTypes),
 	}
-	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "target_vm_specs": specs}
-	op, err := cli.CreateTargetGroup(ctx, body)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		body := map[string]any{"project_id": cli.ProjectID(), "name": name, "target_vm_specs": specs}
+		op, err := cli.CreateTargetGroup(ctx, body)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "tg_create", cli.ListTargetGroups, i18n.T("target group", "целевая группа"), name, nil, "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
 		}
-		return lostCreate(ctx, "tg_create", cli.ListTargetGroups, i18n.T("target group", "целевая группа"), name, nil, "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
-	}
-	out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll lb_operation(operation_id) until done=true; then tg_list for the id."}
-	if op.ResourceID != "" {
-		out["tg_id"] = op.ResourceID
-	}
-	return toJSON(out), false
+		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll lb_operation(operation_id) until done=true; then tg_list for the id."}
+		if op.ResourceID != "" {
+			out["tg_id"] = op.ResourceID
+		}
+		return toJSON(out), false
+	}}, nil
 }
 
 func (s *Registry) planTgDelete(ctx context.Context, args map[string]any) (*Plan, error) {

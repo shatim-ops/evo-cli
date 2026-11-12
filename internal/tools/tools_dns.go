@@ -192,15 +192,15 @@ func (s *Registry) handleDnsZoneGet(ctx context.Context, args map[string]any) (s
 	return toJSON(m), false
 }
 
-func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planDnsZoneCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	domain := stringArg(args, "domain")
 	if domain == "" {
-		return usageT("'domain' is required (FQDN, e.g. 'example.com.')", "нужен 'domain' (FQDN, например 'example.com.')"), true
+		return answered(usageT("'domain' is required (FQDN, e.g. 'example.com.')", "нужен 'domain' (FQDN, например 'example.com.')"), true), nil
 	}
 	vis := dnsVisibility(args)
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	name := stringArg(args, "name")
 	if name == "" {
@@ -210,7 +210,7 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 	// so a lost answer's zone found by the name is the call's own.
 	list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListZones(ctx, vis) }
 	if ans, refused := nameFree(ctx, list, i18n.T("DNS zone", "зона DNS"), name, "dns_zones"); refused {
-		return ans, true
+		return answered(ans, true), nil
 	}
 	// A private zone resolves only in the VPCs linked to it (release plan
 	// 1.6, #597 п. 15; axis 4): evo links the VPC of vpc_id, else the
@@ -224,43 +224,42 @@ func (s *Registry) handleDnsZoneCreate(ctx context.Context, args map[string]any)
 			err = dnsServerIn(ctx, cli, id, vname)
 		}
 		if err != nil {
-			return errResult(err), true
+			return nil, err
 		}
 		vpcID, will["vpc_id"], will["vpc_name"] = id, id, vname
 	case stringArg(args, "vpc_id") != "":
-		return usageT("vpc_id links a private zone (type=private); a public zone is served on the internet, not in a VPC",
-			"vpc_id привязывает приватную зону (type=private); публичная зона обслуживается в интернете, а не в VPC"), true
+		return answered(usageT("vpc_id links a private zone (type=private); a public zone is served on the internet, not in a VPC",
+			"vpc_id привязывает приватную зону (type=private); публичная зона обслуживается в интернете, а не в VPC"), true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("dns_zone_create creates a %s DNS zone for %q (async). A public zone needs domain-ownership delegation to serve traffic.",
-				"dns_zone_create создаёт зону DNS (%s) для %q (асинхронно). Публичная зона обслуживает запросы только после делегирования домена.", vis, domain),
-			"preview": willPreview(engine.ResourceDNSZone, domain, "", will,
-				[]string{"name", "visibility", "vpc_id", "vpc_name"}, dnsDelegationWarning(vis)),
-		}), true
+	preview := map[string]any{
+		"message": i18n.Tf("dns_zone_create creates a %s DNS zone for %q (async). A public zone needs domain-ownership delegation to serve traffic.",
+			"dns_zone_create создаёт зону DNS (%s) для %q (асинхронно). Публичная зона обслуживает запросы только после делегирования домена.", vis, domain),
+		"preview": willPreview(engine.ResourceDNSZone, domain, "", will,
+			[]string{"name", "visibility", "vpc_id", "vpc_name"}, dnsDelegationWarning(vis)),
 	}
-	body := map[string]any{"project_id": cli.ProjectID(), "name": name, "domain": domain}
-	if vpcID != "" {
-		body["linkedVpcIds"] = []string{vpcID}
-	}
-	if d := stringArg(args, "description"); d != "" {
-		body["description"] = d
-	}
-	op, err := cli.CreateZone(ctx, vis, body)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		body := map[string]any{"project_id": cli.ProjectID(), "name": name, "domain": domain}
+		if vpcID != "" {
+			body["linkedVpcIds"] = []string{vpcID}
 		}
-		return lostCreate(ctx, "dns_zone_create", list, i18n.T("DNS zone", "зона DNS"), name, nil, "dns_zone_get zone_id", fmt.Errorf(i18n.T("create zone: %w", "создание зоны: %w"), err))
-	}
-	out := map[string]any{"status": "creating", "visibility": vis, "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id); then dns_zones for the id (public zones return a verification_token to delegate)."}
-	// The zone's id is in the create's answer: named at once (fault matrix,
-	// process audit 1.2.1; as pg_create, N-07).
-	if op.ResourceID != "" {
-		out["zone_id"] = op.ResourceID
-	}
-	return toJSON(out), false
+		if d := stringArg(args, "description"); d != "" {
+			body["description"] = d
+		}
+		op, err := cli.CreateZone(ctx, vis, body)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "dns_zone_create", list, i18n.T("DNS zone", "зона DNS"), name, nil, "dns_zone_get zone_id", fmt.Errorf(i18n.T("create zone: %w", "создание зоны: %w"), err))
+		}
+		out := map[string]any{"status": "creating", "visibility": vis, "operation_id": op.ID, "note": "Async — poll dns_operation(operation_id); then dns_zones for the id (public zones return a verification_token to delegate)."}
+		// The zone's id is in the create's answer: named at once (fault matrix,
+		// process audit 1.2.1; as pg_create, N-07).
+		if op.ResourceID != "" {
+			out["zone_id"] = op.ResourceID
+		}
+		return toJSON(out), false
+	}}, nil
 }
 
 // dnsServerIn refuses a private zone's VPC without a DNS server of
