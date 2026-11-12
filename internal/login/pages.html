@@ -2,207 +2,279 @@
 <html lang="{{.Lang}}">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
 <style>
-/* Страницы входа evo на loopback (1.8, контракт B-1): макет «Дизайна» v15 в
-   стилистике cloud.ru. Без JS и ресурсов другого источника: шрифты SB Sans —
-   из бинарника evo (/fonts/, internal/login/fonts/NOTICE.md), системные — запасные. */
+/* Страницы входа evo на loopback (контракт B-1), макет V3 (пакет дизайнеров v2, 11.11).
+   Без JS и ресурсов другого источника: шрифты SB Sans — из бинарника evo
+   (/fonts/, internal/login/fonts/NOTICE.md), системные — запасные. Значения
+   из облака — только текстом: выделение ставит шаблон («Риск», заключение 100.5). */
 @font-face { font-family: 'SB Sans Display'; font-weight: 400; font-display: swap; src: url(/fonts/SBSansDisplayRegular.woff2) format('woff2'); }
 @font-face { font-family: 'SB Sans Display'; font-weight: 600; font-display: swap; src: url(/fonts/SBSansDisplaySemiBold.woff2) format('woff2'); }
 @font-face { font-family: 'SB Sans Text'; font-weight: 400; font-display: swap; src: url(/fonts/SBSansText.woff2) format('woff2'); }
 @font-face { font-family: 'SB Sans Text'; font-weight: 600; font-display: swap; src: url(/fonts/SBSansTextSemiBold.woff2) format('woff2'); }
 :root {
-  --bg: #eeeff3; --surface: #fdfdfd; --surface2: #ffffff; --ink: #222222; --text: #41424e; --support: #656774; --light: #8b8e9b; --disabled: #aaaebd;
-  --decor: #dde0ea; --decor-hover: #cfd2dc; --decor-disabled: #e6e8ef;
-  --green: #26d07c; --green-hover: #1fbf70; --green-deep: #0ea55b; --on-green: #042f1f; --green-bg: #e6f7ef; --green-decor: #bfebd5;
-  --dark: #222222; --dark-text: #ffffff; --dark-support: #a8abb8; --dark-decor: #3a3a3a;
-  --red-bg: #fdf1ef; --red-text: #7a2d2d; --red: #cb3f3e; --yellow-bg: #fef7e1; --yellow-text: #815f19;
+  --bg: #eeeff3; --bg1: #fdfdfd; --bg2: #ffffff;
+  --text: #41424e; --support: #6d707f; --light: #8b8e9b; --disabled: #aaaebd; --ink: #222222;
+  --decor: #dde0ea; --decor-hover: #cfd2dc; --neutral-accent: #787b8a;
+  --primary: #389f74; --primary-hover: #2f8c65; --primary-active: #277a57; --primary-decor: #99d7ba; --on-primary: #fbfffc;
+  --green: #57b762; --green-decor: #d2ead0;
+  --red: #cb3f3e; --red-decor: #fdd6cd; --red-text: #7a2d2d;
+  --yellow: #e2b134; --yellow-decor: #f0dfb1; --yellow-bg: #fef7e1; --yellow-text: #815f19;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #171717; --surface: #222222; --surface2: #2c2c2c; --ink: #f2f2f2; --text: #f2f2f2; --support: #a8abb8; --light: #787b8a; --disabled: #5a5a5a;
-    --decor: #3a3a3a; --decor-hover: #4a4a4a; --decor-disabled: #2c2c2c;
-    --green-bg: #12241b; --green-decor: #1f5a3a;
-    --dark: #0f0f0f; --dark-decor: #2c2c2c;
-    --red-bg: #292020; --red-text: #fee8e3; --red: #e7756a; --yellow-bg: #29221c; --yellow-text: #fcf0cc;
+    --bg: #1c1c24; --bg1: #242430; --bg2: #2a2a36;
+    --text: #e6e8ef; --support: #aaaebd; --light: #787b8a; --disabled: #5a5c6a; --ink: #f2f2f2;
+    --decor: #393a46; --decor-hover: #4a4b58; --neutral-accent: #aaaebd;
+    --primary-decor: #1f5a3a;
+    --green-decor: #1f3a26;
+    --red-decor: #3d2323; --red-text: #fee8e3;
+    --yellow-decor: #3d3420; --yellow-bg: #29221c; --yellow-text: #fcf0cc;
     color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--text); font: 400 16px/24px 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
-body { padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left)); }
-.sheet { max-width: 680px; margin: 0 auto; background: var(--surface); border-radius: 4px; padding: 32px; display: flex; flex-direction: column; gap: 28px; }
-/* The consent: one screen of a laptop, two columns (plan 1.8, B-5). */
-.top { display: flex; flex-direction: column; gap: 28px; }
-.sheet.wide { max-width: 1120px; padding: 12px 32px 16px; gap: 12px; }
-.wide .top { flex-direction: row; align-items: center; gap: 16px; }
-.wide .top .brand { padding-right: 16px; border-right: 1px solid var(--decor); }
-.wide .top .brand, .wide h1 { flex: none; white-space: nowrap; }
-.wide .top .until { flex: 1 1 0; min-width: 0; text-align: right; }
-.wide h1 { font-size: 22px; line-height: 28px; }
-.wide legend { margin-bottom: 2px; }
-.wide .seg label { padding: 6px 8px 8px; }
-.wide .seg label .d { display: inline; margin-left: 6px; }
-.wide .summary { padding: 10px 16px; gap: 6px; }
-.wide .actions { flex-wrap: nowrap; }
-.wide button { padding: 0 20px; height: 40px; }
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 32px; align-items: start; }
-.col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-h1 { margin: 0; font: 600 32px/40px 'SB Sans Display', 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: var(--ink); letter-spacing: -.2px; }
-h3 { margin: 0; font: 600 16px/24px 'SB Sans Display', 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
-p { margin: 0; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+body { font: 400 14px/20px 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; letter-spacing: .1px; padding: 16px 24px; min-height: 100vh; display: flex; flex-direction: column; }
+p, h1, h2, dl, dd, dt, fieldset, legend { margin: 0; padding: 0; border: 0; min-width: 0; }
+svg { display: block; flex: none; }
+/* типографика кита */
+.headline { font: 600 24px/32px 'SB Sans Display', 'SB Sans Text', sans-serif; letter-spacing: -.5px; color: var(--text); }
+.title-m { font: 600 16px/24px 'SB Sans Text', sans-serif; letter-spacing: .15px; color: var(--text); }
+.label-l { font-weight: 600; letter-spacing: 0; }
+.label-m { font: 600 12px/16px 'SB Sans Text', sans-serif; letter-spacing: 0; }
+.body-s { font-size: 12px; line-height: 16px; }
 .support { color: var(--support); }
-.small { font-size: 14px; line-height: 20px; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .95em; }
+.light { color: var(--light); }
+b { font-weight: 600; letter-spacing: 0; color: var(--text); }
+/* каркас */
+.container { width: 1040px; max-width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1 1 auto; }
+.header { width: 100%; height: 24px; display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 16px; }
+.brand .logo { width: 130px; height: 24px; color: var(--ink); }
+.brand .sep { width: 1px; height: 16px; background: var(--decor); }
+.brand .product { color: var(--support); }
+.until { color: var(--support); }
+.content { width: 680px; max-width: 100%; background: var(--bg1); border-radius: 12px; padding: 20px 0; display: flex; flex-direction: column; gap: 24px; }
+.content.consent { flex: 1 1 auto; justify-content: space-between; gap: 20px; }
+/* Отступы внутри согласия плотнее макета на 4–8 px, подсказки поля и строка
+   находки 90 — мелким кеглем (12/16): самое высокое состояние («Агенту»,
+   замена ключа, строка находки 90 и «право не проверено» вместе) помещается
+   в 1280×720 без прокрутки; вертикальные паддинги блока — 20, как в макете. */
+.cbody { padding: 0 32px; display: flex; flex-direction: column; gap: 16px; flex: 1 1 auto; }
+.sbody { padding: 0 32px; display: flex; flex-direction: column; gap: 24px; }
+.rule { height: 1px; background: var(--decor); }
+.footer { display: flex; flex-direction: column; gap: 20px; }
+.footer-row { padding: 0 32px; display: flex; align-items: center; gap: 24px; }
+.footer-note { padding: 0 32px; color: var(--support); }
+/* форма */
 form { display: contents; }
-fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-legend { padding: 0; margin-bottom: 4px; font: 600 16px/24px 'SB Sans Display', 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: var(--ink); }
-select { width: 100%; height: 44px; padding: 0 12px; border: 1px solid var(--decor); border-radius: 4px; background: var(--surface2); color: var(--ink); font: 400 16px/24px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.form { display: flex; flex-direction: column; gap: 8px; }
+.group { display: flex; flex-direction: column; gap: 4px; }
+.group.cards-group { gap: 8px; }
+.label-row { display: flex; align-items: center; gap: 4px; color: var(--support); font-weight: 600; }
+.label-row .caption { margin-left: auto; font-weight: 400; color: var(--light); }
+.q { position: relative; display: inline-flex; width: 16px; height: 16px; color: var(--light); cursor: default; }
+.q .tip { position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); width: max-content; max-width: 320px; padding: 8px 12px; border-radius: 4px; background: var(--bg2); color: var(--text); font-weight: 400; font-size: 12px; line-height: 16px; letter-spacing: .1px; box-shadow: 0 8px 16px rgba(0,0,0,.08), 0 0 8px rgba(0,0,0,.08); display: none; z-index: 2; white-space: normal; }
+.q:hover .tip, .q:focus-within .tip { display: block; }
+.q:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 50%; }
+.field { position: relative; }
+select { appearance: none; -webkit-appearance: none; width: 100%; height: 40px; padding: 0 36px 0 8px; border: 1px solid var(--decor); border-radius: 4px; background: var(--bg1); color: var(--text); font: inherit; letter-spacing: inherit; }
 select:hover { border-color: var(--decor-hover); }
-/* The radios stand in the fieldset of their labels: the focus a label gives
-   its radio does not scroll the page (B-5: they stood at the top of the
-   form, and a click at its bottom threw the page up). */
-input[type=radio] { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.opt { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px 10px 9px; border: 1px solid var(--decor); border-left: 4px solid transparent; border-radius: 4px; background: var(--surface2); cursor: pointer; }
-.opt::before { content: ""; flex: none; width: 20px; height: 20px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--decor-hover); background: var(--surface2); }
-.opt:hover { border-color: var(--decor-hover); border-left-color: transparent; }
-.opt .t { display: flex; flex-direction: column; gap: 2px; }
-.opt b { font: 600 16px/24px 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: var(--ink); }
-.seg { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--decor); }
-.seg label { text-align: center; padding: 6px 8px 8px; margin-bottom: -1px; border-bottom: 2px solid transparent; cursor: pointer; font: 600 16px/24px 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: var(--support); }
-.seg label .d { display: block; font-weight: 400; font-size: 14px; line-height: 20px; color: var(--support); }
-.seg label:hover { color: var(--ink); }
-.summary { padding: 16px 20px; border-radius: 4px; background: var(--dark); color: var(--dark-text); display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 20px; }
-.brand { display: flex; align-items: center; gap: 12px; }
-.logo { height: 24px; width: auto; display: block; color: var(--ink); }
-.logo .word { fill: currentColor; }
-.brand .tag { font: 600 12px/16px 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; letter-spacing: .4px; text-transform: uppercase; color: var(--support); padding-left: 12px; border-left: 1px solid var(--decor); }
-.summary h3 { color: var(--dark-text); }
-.summary .v { color: var(--green); font-weight: 600; }
-.summary .support { color: var(--dark-support); }
-.summary .x, .actions .x, .warn .x, .pick .x, .chosen .x { display: none; }
-.actions .pn { display: inline-block; max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
-.actions { display: flex; gap: 12px; justify-content: flex-start; flex-wrap: wrap; }
-button { font: 600 14px/20px 'SB Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; height: 44px; padding: 0 32px; border-radius: 2px; border: 1px solid transparent; cursor: pointer; }
-.primary { background: var(--green); color: var(--on-green); }
-.primary:hover { background: var(--green-hover); }
-.outline { background: transparent; color: var(--ink); border-color: var(--ink); }
-.outline:hover { background: var(--decor-disabled); }
-:focus-visible, input[type=radio]:focus-visible ~ div label[for] { outline: 2px solid var(--green-deep); outline-offset: 2px; }
-.alert { display: flex; gap: 12px; padding: 16px; border-radius: 4px; }
-.alert.error { background: var(--red-bg); color: var(--red-text); }
-.alert.warning { background: var(--yellow-bg); color: var(--yellow-text); }
-.wide .alert { padding: 10px 16px; font-size: 14px; line-height: 20px; }
-.warn { display: none; }
-.alert b { display: block; font-weight: 600; }
-.rows { display: grid; grid-template-columns: minmax(140px, 1fr) 2fr; gap: 8px 16px; margin: 0; }
-.rows dt { color: var(--support); margin: 0; }
-.rows dd { margin: 0; overflow-wrap: anywhere; }
-.result { display: flex; gap: 12px; align-items: center; }
-.result h1 { font-size: 22px; line-height: 28px; }
-.result .ic { width: 40px; height: 40px; border-radius: 2px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; flex: none; }
-.result .ic.ok { background: var(--green); color: var(--on-green); }
-.result .ic.no { background: var(--decor-disabled); color: var(--support); }
-.result .ic.err { background: var(--red-bg); color: var(--red); }
-a { color: var(--green-deep); }
-@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } .wide .actions { flex-wrap: wrap; } .wide .top { flex-direction: column; align-items: flex-start; gap: 12px; } .wide .top .brand { padding-right: 0; border-right: 0; } .wide h1 { white-space: normal; } .wide .top .until { text-align: left; } }
-@media (max-width: 520px) { .sheet { padding: 24px 16px; } h1 { font-size: 26px; line-height: 32px; } .seg { grid-template-columns: 1fr; } .seg label { text-align: left; } .rows { grid-template-columns: 1fr; gap: 2px 0; } .rows dd { margin-bottom: 8px; } .actions button { flex: 1 1 auto; } .pair { grid-template-columns: 1fr; } }
+select:focus { outline: none; border-color: var(--primary); background: var(--bg2); }
+select:focus-visible { outline: 2px solid var(--primary-decor); outline-offset: 0; }
+select:has(option[value=""]:checked) { color: var(--light); }
+select option { color: var(--text); }
+select option:disabled { color: var(--disabled); }
+.field .chev { position: absolute; right: 8px; top: 8px; width: 24px; height: 24px; color: var(--support); pointer-events: none; }
+.field .chev svg { width: 24px; height: 24px; }
+.field.is-error select { border-color: var(--red); }
+.field.is-warning select { border-color: var(--yellow); }
+.hint { display: flex; gap: 2px; align-items: flex-start; font-size: 12px; line-height: 16px; }
+.hint svg { width: 16px; height: 16px; margin: 2px; }
+.hint.error { color: var(--red-text); } .hint.error svg { color: var(--red); }
+.hint.warning { color: var(--yellow-text); } .hint.warning svg { color: var(--yellow); }
+/* карточки выбора */
+/* Радио стоят над .cbody (их выбор показывают селекторы ~) и закреплены во
+   вьюпорте: фокус, который дает им клик по метке внизу, не прокручивает
+   страницу (B-5). */
+input[type=radio] { position: fixed; top: 0; left: 0; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.cards { display: flex; gap: 8px; }
+.card { position: relative; flex: 1 1 0; min-width: 0; height: 72px; padding: 16px; border: 1px solid var(--decor); border-radius: 8px; background: var(--bg1); display: flex; flex-direction: column; gap: 2px; cursor: pointer; overflow: hidden; }
+.card::before { content: ""; position: absolute; inset: 0; background: var(--primary); opacity: 0; pointer-events: none; }
+.card:hover { border-color: var(--decor-hover); }
+.card .t { font: 600 16px/24px 'SB Sans Text', sans-serif; letter-spacing: .15px; color: var(--text); }
+.card .d { font-size: 12px; line-height: 16px; color: var(--support); }
+#a-me:checked ~ .cbody .card.me, #a-agent:checked ~ .cbody .card.agent { border-color: var(--primary-decor); }
+#a-me:checked ~ .cbody .card.me::before, #a-agent:checked ~ .cbody .card.agent::before { opacity: .08; }
+#a-me:focus-visible ~ .cbody .card.me, #a-agent:focus-visible ~ .cbody .card.agent { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* предупреждение агента */
+.alert { display: none; gap: 4px; align-items: flex-start; padding: 8px; border-radius: 4px; background: var(--yellow-bg); }
+.alert svg { width: 16px; height: 16px; margin: 2px; color: var(--yellow); }
+.alert .at { display: flex; flex-direction: column; gap: 4px; }
+.alert .at b { font-size: 12px; line-height: 16px; }
+.alert .at span { font-size: 12px; line-height: 16px; color: var(--support); }
+#a-agent:checked ~ .cbody .alert { display: flex; }
+/* сегмент */
+.seg { display: inline-flex; padding: 2px; border-radius: 4px; background: var(--bg); align-self: flex-start; }
+.seg label { height: 28px; padding: 0 16px; border-radius: 2px; display: inline-flex; align-items: center; font: 600 12px/16px 'SB Sans Text', sans-serif; color: var(--support); cursor: pointer; }
+.seg label:hover { color: var(--text); }
+/* строки plan и rows */
+.plan, .rows { display: flex; flex-direction: column; gap: 8px; }
+.plan { gap: 4px; }
+.plan { margin-top: auto; }
+.row { display: flex; align-items: flex-start; gap: 8px; color: var(--support); }
+.row > svg { width: 24px; height: 24px; color: var(--support); }
+.q svg { width: 16px; height: 16px; }
+.row .rt { padding: 2px 0; }
+.plan .row { align-items: center; } .plan .row .rt { padding: 0; }
+.row.xr { display: none; }
+#a-me:checked ~ .cbody .xr.s-a-me, #a-agent:checked ~ .cbody .xr.s-a-agent { display: flex; }
+.row.warning, .row.warning > svg { color: var(--yellow-text); }
+.row.warning .rt { font-size: 12px; line-height: 16px; }
+/* переключаемые куски текста */
+.x { display: none; }
+#a-me:checked ~ .cbody .s-a-me, #a-agent:checked ~ .cbody .s-a-agent { display: inline; }
+.s-any { display: inline; }
+.cbody:has(select option:not([value=""]):checked) .s-any { display: none; }
+/* кнопки: без переноса */
+.actions { display: flex; gap: 8px; }
+button { height: 40px; padding: 0 16px; border-radius: 4px; border: 1px solid transparent; font: 600 14px/20px 'SB Sans Text', sans-serif; cursor: pointer; white-space: nowrap; flex: none; }
+.actions { flex: none; }
+.primary { background: var(--primary); color: var(--on-primary); }
+.primary:hover { background: var(--primary-hover); }
+.primary:active { background: var(--primary-active); }
+.neutral { background: transparent; border-color: var(--decor); color: var(--neutral-accent); }
+.neutral:hover { border-color: var(--decor-hover); color: var(--text); }
+.neutral:active { background: var(--bg); }
+button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.secret { display: flex; align-items: center; gap: 8px; color: var(--support); flex: 1 1 0; min-width: 0; }
+.secret > svg { width: 24px; height: 24px; color: var(--support); }
+/* страницы конца */
+.head { display: flex; gap: 16px; align-items: flex-start; }
+.status-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.status-icon svg { width: 24px; height: 24px; }
+.status-icon.ok { background: var(--green-decor); color: var(--green); }
+.status-icon.no { background: var(--decor); color: var(--neutral-accent); }
+.status-icon.err { background: var(--red-decor); color: var(--red); }
+.status-text { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 0; }
+.tech { font-size: 12px; line-height: 16px; color: var(--support); }
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); }
 {{.Rules}}</style>
 </head>
 <body>
-<main class="sheet{{if .Wide}} wide{{end}}">
-  <header class="top">
-  <div class="brand"><svg class="logo" role="img" aria-label="cloud.ru" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 130 24"><path fill="#26D07C" d="M22 13v5l-9 4v-9zm0-2V6l-9-4v9zM2 6v12l9 4V2z"></path><path class="word" fill="#222" d="M35.313 5.226C30.56 5.226 28 7.92 28 12.671s2.56 7.445 7.182 7.445c3.037 0 5.49-1.532 6.468-4.647h-3.168c-.608 1.055-1.48 1.716-3.3 1.716-2.72 0-3.802-1.452-3.802-4.488v-.079c0-3.037 1.083-4.461 3.933-4.461 1.69 0 2.56.58 3.169 1.585h3.168c-.977-3.01-3.3-4.514-6.337-4.514zm33.268 8.793q0 3.168 3.168 3.168t3.168-3.168V5.544h3.327v14.258H75.13v-2.113c-.871 1.505-2.297 2.429-4.673 2.429-3.38 0-5.2-1.848-5.2-5.544v-9.03h3.326v8.475zm51.035 0q0 3.168 3.168 3.168t3.168-3.168V5.544h3.327v14.258h-3.115v-2.113c-.871 1.505-2.297 2.429-4.673 2.429-3.38 0-5.201-1.848-5.201-5.544v-9.03h3.327v8.475zm-31.867 3.168c2.852 0 3.96-1.452 3.96-4.489v-.078c0-3.037-1.108-4.436-3.96-4.436s-3.96 1.4-3.96 4.436v.079c0 3.036 1.108 4.488 3.96 4.488M94.93 0v19.802h-3.168v-2.113c-.899 1.426-2.27 2.429-4.62 2.429-4.489 0-6.733-3.115-6.733-7.235 0-4.514 2.244-7.63 6.733-7.63 1.954 0 3.827.952 4.46 2.22V0zM42.945 19.802h3.327V0h-3.328zm12.831.318c-4.541 0-7.392-2.825-7.392-7.445s2.853-7.445 7.392-7.445c4.54 0 7.392 2.825 7.392 7.445s-2.852 7.445-7.392 7.445m-4.013-7.42c0 3.037 1.108 4.489 4.013 4.489 2.906 0 4.014-1.452 4.014-4.489v-.078c0-3.037-1.108-4.461-4.014-4.461-2.905 0-4.013 1.426-4.013 4.46zm61.279-7.154h1.585v3.168h-2.376c-2.113 0-2.825.977-2.825 2.56v8.528h-3.327V5.518h3.168v2.64c.634-1.822 1.901-2.612 3.777-2.612zM100.5 20.12c1.452 0 2.376-.871 2.376-2.35s-.924-2.35-2.376-2.35-2.375.87-2.375 2.35.924 2.35 2.375 2.35"></path></svg><span class="tag">{{.Product}}</span></div>
-{{if .Heading}}  <h1>{{.Heading}}</h1>
-{{end}}{{if .Until}}  <p class="support small until">{{.Until}}</p>
-{{end}}
-  </header>
+<div class="container">
+  <header class="header">
+    <div class="brand">
+      <svg class="logo" role="img" aria-label="cloud.ru" viewBox="0 0 130 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill="#26D07C" d="M22 13V18L13 22V13H22ZM22 11V6L13 2V11H22ZM2 6V18L11 22V2L2 6Z"/><path fill="currentColor" d="M35.3134 5.2262C30.5601 5.2262 28 7.91966 28 12.6711C28 17.4225 30.5601 20.116 35.1819 20.116C38.2187 20.116 40.6729 18.5839 41.6499 15.4686H38.4816C37.8735 16.5241 37.0025 17.1851 35.1819 17.1851C32.4629 17.1851 31.38 15.7334 31.38 12.6967V12.6181C31.38 9.58138 32.4629 8.15705 35.3134 8.15705C37.0025 8.15705 37.8735 8.73774 38.4816 9.74208H41.6499C40.6729 6.73272 38.3501 5.22803 35.3134 5.22803V5.2262ZM68.5807 14.0187C68.5807 16.1315 69.6362 17.1869 71.7489 17.1869C73.8617 17.1869 74.9171 16.1315 74.9171 14.0187V5.54394H78.2442V19.8019H75.129V17.6891C74.2579 19.1938 72.8318 20.1178 70.4561 20.1178C67.076 20.1178 65.2554 18.2698 65.2554 14.5738V5.54394H68.5825V14.0187H68.5807ZM119.616 14.0187C119.616 16.1315 120.671 17.1869 122.784 17.1869C124.897 17.1869 125.952 16.1315 125.952 14.0187V5.54394H129.279V19.8019H126.164V17.6891C125.293 19.1938 123.867 20.1178 121.491 20.1178C118.111 20.1178 116.29 18.2698 116.29 14.5738V5.54394H119.617V14.0187H119.616ZM87.7489 17.1869C90.6012 17.1869 91.7096 15.7352 91.7096 12.6985V12.6199C91.7096 9.5832 90.6012 8.18443 87.7489 8.18443C84.8966 8.18443 83.7882 9.5832 83.7882 12.6199V12.6985C83.7882 15.7352 84.8966 17.1869 87.7489 17.1869ZM94.9308 0V19.8019H91.7626V17.6891C90.8642 19.1153 89.4928 20.1178 87.1427 20.1178C82.6542 20.1178 80.4099 17.0025 80.4099 12.8829C80.4099 8.36886 82.6542 5.2536 87.1427 5.2536C89.0965 5.2536 90.9701 6.20498 91.6037 7.47228V0H94.9308ZM42.9445 19.8019H46.2716V0H42.9445V19.8019ZM55.7763 20.1196C51.2349 20.1196 48.3844 17.2947 48.3844 12.6747C48.3844 8.05479 51.2367 5.22986 55.7763 5.22986C60.3159 5.22986 63.1682 8.05479 63.1682 12.6747C63.1682 17.2947 60.3159 20.1196 55.7763 20.1196ZM51.7626 12.7003C51.7626 15.737 52.871 17.1888 55.7763 17.1888C58.6816 17.1888 59.79 15.737 59.79 12.7003V12.6218C59.79 9.58503 58.6816 8.1607 55.7763 8.1607C52.871 8.1607 51.7626 9.58685 51.7626 12.6218V12.7003ZM113.042 5.54577H114.627V8.714H112.251C110.138 8.714 109.426 9.69094 109.426 11.2741V19.8019H106.099V5.51838H109.267V8.15887C109.901 6.33645 111.168 5.54577 113.044 5.54577H113.042ZM100.5 20.1196C101.952 20.1196 102.876 19.2486 102.876 17.7695C102.876 16.2903 101.952 15.4193 100.5 15.4193C99.0486 15.4193 98.1246 16.2903 98.1246 17.7695C98.1246 19.2486 99.0486 20.1196 100.5 20.1196Z"/></svg>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="product label-l">{{.Product}}</span>
+    </div>
+{{if or .User .Until}}    <p class="until body-s">{{if .User}}<span class="user">{{.User}}</span>{{end}}{{if and .User .Until}} · {{end}}{{if .Until}}{{.Until}}{{end}}</p>
+{{end}}  </header>
 {{end}}
 
-{{define "tail"}}</main>
+{{define "tail"}}</div>
 </body>
 </html>
 {{end}}
 
-{{define "consent"}}{{template "head" .}}{{if .Intro}}  <p class="support small">{{.Intro}}</p>
-{{end}}
+{{define "icon"}}{{if eq . "user"}}<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 20L7 15H17L21 20M15.5 7.5C15.5 5.567 13.933 4 12 4C10.067 4 8.5 5.567 8.5 7.5C8.5 9.433 10.067 11 12 11C13.933 11 15.5 9.433 15.5 7.5Z" stroke="currentColor" stroke-width="1.5"/></svg>{{else if eq . "key"}}<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.0938 13.0938L7.1875 20H4V16.8125L10.9062 9.90625M17 6.1875V7.78125M21 8.3125C21 11.2465 18.6215 13.625 15.6875 13.625C12.7535 13.625 10.375 11.2465 10.375 8.3125C10.375 5.37849 12.7535 3 15.6875 3C18.6215 3 21 5.37849 21 8.3125Z" stroke="currentColor" stroke-width="1.5"/></svg>{{else if eq . "lock"}}<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12.5 15C12.5 15.2761 12.2761 15.5 12 15.5C11.7239 15.5 11.5 15.2761 11.5 15C11.5 14.7239 11.7239 14.5 12 14.5C12.2761 14.5 12.5 14.7239 12.5 15Z" fill="currentColor"/><path d="M16 10V7.0625C16 6.1875 14.9476 4 12 4C10 4 8.26667 4.9625 8 7.0625V10M6 18.3333V11.6667L7.71429 10H16.2857L18 11.6667V18.3333L16.2857 20H7.71429L6 18.3333ZM12.5 15C12.5 15.2761 12.2761 15.5 12 15.5C11.7239 15.5 11.5 15.2761 11.5 15C11.5 14.7239 11.7239 14.5 12 14.5C12.2761 14.5 12.5 14.7239 12.5 15Z" stroke="currentColor" stroke-width="1.5"/></svg>{{else if eq . "check"}}<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 11L11 15L17 9" stroke="currentColor" stroke-width="1.5"/></svg>{{else if eq . "close"}}<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 18L18 6M6 6L18 18" stroke="currentColor" stroke-width="1.5"/></svg>{{else if eq . "alarm"}}<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 20H15L20 15V9L15 4H9L4 9V15L9 20ZM13.7778 13V5H10.2222V13H13.7778ZM13.7778 18.2222V14.6667H10.2222V18.2222H13.7778Z" fill="currentColor" stroke="currentColor" stroke-width="1.5"/></svg>{{else if eq . "alarm16"}}<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M6 14H10L14 10V6L10 2H6L2 6V10L6 14ZM9.5 9.5V3H6.5V9.5H9.5ZM9.5 13V10H6.5V13H9.5Z" fill="currentColor" stroke="currentColor" stroke-width="1.5"/></svg>{{else if eq . "question"}}<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.125 6.24977C6.125 5.66643 6.5 4.49977 8 4.49977C8.625 4.49977 9.875 4.84977 9.875 6.24977C9.875 7.12477 9.40625 7.56227 8.9375 7.99977L8.46875 8.43727C8.3749 8.52486 7.65091 9.1867 7.65091 9.74977M7.65091 10.5005C7.64849 11.0861 7.64472 12 7.64472 12M14 8C14 11.3137 11.3137 14 8 14C4.68629 14 2 11.3137 2 8C2 4.68629 4.68629 2 8 2C11.3137 2 14 4.68629 14 8Z" stroke="currentColor" stroke-width="1.5"/></svg>{{else if eq . "chevron"}}<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 9L12 14L17 9" stroke="currentColor" stroke-width="1.5"/></svg>{{end}}{{end}}
+
+{{define "q"}}{{if .Text}}<span class="q" tabindex="0" aria-describedby="{{.ID}}">{{template "icon" "question"}}<span class="tip" role="tooltip" id="{{.ID}}">{{.Text}}</span></span>{{end}}{{end}}
+
+{{define "parts"}}{{range .}}{{if .Bold}}<b>{{.Text}}</b>{{else}}{{.Text}}{{end}}{{end}}{{end}}
+
+{{define "consent"}}{{template "head" .}}
+  <main class="content consent">
   <form method="post" action="/grant">
-<input type="hidden" name="state" value="{{.State}}">
-<input type="hidden" name="consent" value="{{.Consent}}">
-    <div class="cols">
-    <div class="col">
-    <fieldset>
-      <legend id="project-l">{{.ProjectLegend}}</legend>
-      <select name="project" id="project" required aria-labelledby="project-l">
-{{if not .Picked}}        <option id="p-none" value="" selected>{{.ChooseProject}}</option>
-{{end}}{{range .Orgs}}{{if .Name}}        <optgroup label="{{.Name}}">
-{{end}}{{range .Projects}}        <option id="{{.HTMLID}}" value="{{.ID}}"{{if .Checked}} selected{{end}}{{if not .Allowed}} disabled{{end}}>{{.Name}}{{if .OrgName}} · {{.OrgName}}{{end}}{{if not .Allowed}} — {{$.NeedAdmin}}{{end}}</option>
-{{end}}{{if .Name}}        </optgroup>
-{{end}}{{end}}      </select>
-      <p class="support small pick">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.OrgName}}{{if and .OrgName .Source}} · {{end}}{{.Source}}</span>{{end}}</p>
-{{if .Unchecked}}      <div class="alert warning"><div>{{.Unchecked}}</div></div>
-{{end}}{{if .PreselectNote}}      <p class="support small">{{.PreselectNote}}</p>
-{{end}}{{if .OtherProfile}}      <p class="support small"><span class="x other s-{{.OtherAudience}}">{{.OtherProfile}}</span></p>
-{{end}}      <p class="support small">{{.NoRightNote}}</p>
-    </fieldset>
-    <fieldset>
-      <legend>{{.ForLegend}}</legend>
-      <input type="radio" name="audience" id="a-me" value="me"{{if eq .For "me"}} checked{{end}}>
-      <input type="radio" name="audience" id="a-agent" value="agent"{{if eq .For "agent"}} checked{{end}}>
-      <div class="pair">
-      <label class="opt" for="a-me"><span class="t"><b>{{.ForMe}}</b><span class="support small">{{.ForMeNote}}</span></span></label>
-      <label class="opt" for="a-agent"><span class="t"><b>{{.ForAgent}}</b><span class="support small">{{.ForAgentNote}}</span></span></label>
+    <input type="hidden" name="state" value="{{.State}}">
+    <input type="hidden" name="consent" value="{{.Consent}}">
+    <input type="radio" name="audience" id="a-me" value="me"{{if eq .For "me"}} checked{{end}}>
+    <input type="radio" name="audience" id="a-agent" value="agent"{{if eq .For "agent"}} checked{{end}}>
+{{range .Terms}}    <input type="radio" name="ttl" id="t-{{.Days}}" value="{{.Days}}"{{if .Checked}} checked{{end}}>
+{{end}}    <div class="cbody">
+      <h1 class="headline">{{.Heading}}</h1>
+      <div class="form">
+        <fieldset class="group">
+          <div class="label-row" id="project-l">
+            <span>{{.ProjectLegend}}</span> {{template "q" .ProjectHint}}
+            <span class="caption">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.OrgName}}{{if and .OrgName .Source}} · {{end}}{{.Source}}</span>{{end}}</span>
+          </div>
+          <div class="field{{if .FieldError}} is-error{{else if .FieldWarning}} is-warning{{end}}">
+            <select name="project" id="project" required aria-labelledby="project-l"{{if .FieldError}} aria-invalid="true" aria-describedby="project-h"{{else if .FieldWarning}} aria-describedby="project-h"{{end}}>
+{{if not .Picked}}              <option id="p-none" value="" selected>{{.ChooseProject}}</option>
+{{end}}{{range .Orgs}}{{if .Name}}              <optgroup label="{{.Name}}">
+{{end}}{{range .Projects}}              <option id="{{.HTMLID}}" value="{{.ID}}"{{if .Checked}} selected{{end}}{{if not .Allowed}} disabled{{end}}>{{.Name}}{{if not .Allowed}} — {{$.NeedAdmin}}{{end}}</option>
+{{end}}{{if .Name}}              </optgroup>
+{{end}}{{end}}            </select>
+            <span class="chev" aria-hidden="true">{{template "icon" "chevron"}}</span>
+          </div>
+{{if .FieldError}}          <p class="hint error" id="project-h">{{template "icon" "alarm16"}}<span>{{.FieldError}}</span></p>
+{{end}}{{if .FieldWarning}}          <p class="hint warning"{{if not .FieldError}} id="project-h"{{end}}>{{template "icon" "alarm16"}}<span>{{.FieldWarning}}</span></p>
+{{end}}        </fieldset>
+        <fieldset class="group cards-group">
+          <div class="label-row"><span>{{.ForLegend}}</span></div>
+          <div class="cards">
+            <label class="card me" for="a-me"><span class="t">{{.ForMe}}</span><span class="d">{{.ForMeNote}}</span></label>
+            <label class="card agent" for="a-agent"><span class="t">{{.ForAgent}}</span><span class="d">{{.ForAgentNote}}</span></label>
+          </div>
+        </fieldset>
+        <div class="alert" role="status">{{template "icon" "alarm16"}}<span class="at"><b>{{.AgentWarnTitle}}</b><span>{{.AgentWarnText}}</span></span></div>
+        <fieldset class="group">
+          <div class="label-row"><span>{{.TermLegend}}</span> {{template "q" .TermHint}}</div>
+          <div class="seg">
+{{range .Terms}}            <label for="t-{{.Days}}">{{.Label}}</label>
+{{end}}          </div>
+        </fieldset>
       </div>
-      <p class="support small">{{.RoleNote}}</p>
-    </fieldset>
-    <fieldset>
-      <legend>{{.TermLegend}}</legend>
-{{range .Terms}}      <input type="radio" name="ttl" id="t-{{.Days}}" value="{{.Days}}"{{if .Checked}} checked{{end}}>
-{{end}}      <div class="seg">
-{{range .Terms}}        <label for="t-{{.Days}}">{{.Label}}<span class="d">{{.Until}}</span></label>
+      <div class="plan" aria-live="polite">
+        <p class="row">{{template "icon" "user"}}<span class="rt">{{index .PlanAccount 0}}<b><span class="x s-a-me">{{.AccountMe}}</span><span class="x s-a-agent">{{.AccountAgent}}</span></b><span class="s-any">{{.PlanAnyProject}}</span>{{range .Projects}}<span class="x s-{{.HTMLID}}">{{index $.PlanAccount 1}}<b>{{.Name}}</b></span>{{end}}{{index .PlanAccount 2}}</span>{{template "q" .AccountHint}}</p>
+        <p class="row">{{template "icon" "key"}}<span class="rt">{{index .PlanRole 0}}<b>{{.RoleName}}</b>{{index .PlanRole 1}}<b>{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</b>{{index .PlanRole 2}}</span>{{template "q" .RoleHint}}</p>
+{{range .Replace}}        <p class="row xr s-{{.For}}">{{template "icon" "lock"}}<span class="rt">{{template "parts" .Parts}}</span></p>
+{{end}}{{range .Other}}        <p class="row xr warning s-{{.For}}">{{template "icon" "alarm16"}}<span class="rt">{{template "parts" .Parts}}</span></p>
 {{end}}      </div>
-      <p class="support small">{{.TermNote}}</p>
-    </fieldset>
     </div>
-    <div class="col">
-    <div class="alert warning warn" role="status"><div><b>{{.AgentWarnTitle}}</b>{{index .AgentWarn 0}}{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}{{index .AgentWarn 1}}</div></div>
-    <div class="summary" aria-live="polite">
-      <h3>{{.SummaryHeading}}</h3>
-      <p><span class="x s-chosen">{{index .Account 0}}<span class="mono v"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span>{{index .Account 1}}<span class="mono v">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .Account 2}}</span><span class="x s-any">{{index .AccountToChoose 0}}<span class="mono v"><span class="x s-a-me">evo</span><span class="x s-a-agent">evo-agent</span></span>{{index .AccountToChoose 1}}</span> {{index .Role 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Role 1}} {{index .Key 0}}<span class="v">{{range .Terms}}<span class="x s-t-{{.Days}}">{{.Until}}</span>{{end}}</span>{{index .Key 1}} {{.SummaryStays}}</p>
-    </div>
-    <div class="actions">
-      <button type="submit" class="primary"><span class="x s-chosen">{{index .GrantIn 0}}<span class="pn">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}</span>{{end}}</span>{{index .GrantIn 1}}</span><span class="x s-any">{{.Grant}}</span></button>
-      <button type="submit" class="outline" formaction="/cancel" formnovalidate>{{.Cancel}}</button>
-    </div>
-    <p class="support small chosen"><span class="x s-chosen">{{index .ChosenIn 0}}<span class="mono">{{range .Projects}}<span class="x s-{{.HTMLID}}">{{.Name}}{{if .OrgName}} · {{.OrgName}}{{end}}</span>{{end}}</span>{{index .ChosenIn 1}}</span></p>
-    <p class="support small">{{.SecretNote}}</p>
-    </div>
+    <div class="footer">
+      <div class="rule" aria-hidden="true"></div>
+      <div class="footer-row">
+        <div class="actions">
+          <button type="submit" class="primary">{{.Grant}}</button>
+          <button type="submit" class="neutral" formaction="/cancel" formnovalidate>{{.Cancel}}</button>
+        </div>
+        <p class="secret">{{template "icon" "lock"}}<span>{{.SecretNote}}</span>{{template "q" .SecretHint}}</p>
+      </div>
     </div>
   </form>
+  </main>
 {{template "tail" .}}{{end}}
 
-{{define "done"}}{{template "head" .}}  <div class="result"><span class="ic ok" aria-hidden="true">✓</span><h1>{{.Status}}</h1></div>
-  <p>{{.Text}}</p>
-{{if .Note}}  <p class="support">{{.Note}}</p>
-{{end}}
-  <dl class="rows">
-{{range .Rows}}    <dt>{{.Term}}</dt><dd>{{.Value}}</dd>
-{{end}}  </dl>
-  <p class="support small">{{.Footer}}</p>
+{{define "status"}}{{template "head" .}}
+  <main class="content">
+    <div class="sbody">
+      <div class="head">
+        <span class="status-icon {{.Kind}}" aria-hidden="true">{{template "icon" .Icon}}</span>
+        <div class="status-text">
+{{if .Status}}          <h1 class="headline">{{.Status}}</h1>
+{{end}}{{if .Text}}          <p class="support">{{.Text}}</p>
+{{end}}{{if .Note}}          <p class="support">{{.Note}}</p>
+{{end}}        </div>
+      </div>
+{{if .Rows}}      <div class="rows">
+{{range .Rows}}        <p class="row">{{template "icon" .Icon}}<span class="rt">{{template "parts" .Parts}}</span></p>
+{{end}}      </div>
+{{end}}{{if .Tech}}      <p class="tech">{{.Tech}}</p>
+{{end}}    </div>
+{{if .Footer}}    <div class="footer">
+      <div class="rule" aria-hidden="true"></div>
+      <p class="footer-note">{{.Footer}}</p>
+    </div>
+{{end}}  </main>
 {{template "tail" .}}{{end}}
 
-{{define "cancelled"}}{{template "head" .}}  <div class="result"><span class="ic no" aria-hidden="true">×</span><h1>{{.Status}}</h1></div>
-  <p>{{.Text}}</p>
-{{template "tail" .}}{{end}}
-
-{{define "refused"}}{{template "head" .}}  <p>{{.Text}}</p>
-{{template "tail" .}}{{end}}
-
-{{define "error"}}{{template "head" .}}  <div class="result"><span class="ic err" aria-hidden="true">!</span><h1>{{.Status}}</h1></div>
-{{if .Note}}  <p class="support">{{.Note}}</p>
-{{end}}  <div class="alert error"><div>{{.Text}}</div></div>
-  <p class="support small">{{.Footer}}</p>
-{{template "tail" .}}{{end}}
+{{define "done"}}{{template "status" .}}{{end}}
+{{define "cancelled"}}{{template "status" .}}{{end}}
+{{define "error"}}{{template "status" .}}{{end}}
+{{define "refused"}}{{template "status" .}}{{end}}

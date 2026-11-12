@@ -178,8 +178,8 @@ func (c *cdp) state() string {
 	default:
 	}
 	l := c.log.String()
-	if len(l) > 1500 {
-		l = "…" + l[len(l)-1500:]
+	if len(l) > 6000 {
+		l = "…" + l[len(l)-6000:]
 	}
 	return fmt.Sprintf("browser %s; its stderr:\n%s", st, l)
 }
@@ -201,6 +201,9 @@ func startChrome(t *testing.T, bin string) *cdp {
 		"--no-default-browser-check", "--disable-background-networking", "--disable-component-update",
 		"--disable-sync", "--disable-default-apps", "--disable-domain-reliability", "--metrics-recording-only",
 		"--no-pings", "--disable-features=Translate,OptimizationHints,MediaRouter",
+		// Its log on stderr, verbose: what a browser that does not answer
+		// was doing (state).
+		"--enable-logging=stderr", "--v=1",
 		"--remote-debugging-pipe", "--user-data-dir="+t.TempDir(), "about:blank")
 	cmd.ExtraFiles = []*os.File{cmdR, resW}
 	log := &lockedBuf{}
@@ -224,6 +227,17 @@ func startChrome(t *testing.T, bin string) *cdp {
 		<-c.exited
 	})
 	go c.read(resR)
+	// The first answer is the browser up, under its own bound: on the
+	// ubuntu runner (google-chrome) the browser ran 20 s and answered
+	// nothing, writing only D-Bus errors (11–12.11: #1328, #1330, #1334,
+	// #1347); its own network and the load of the suite did not explain it
+	// (#1339; a local start under 3× the CPUs took under a second). A slow
+	// start passes; a browser that never answers fails with its verbose log.
+	start := time.Now()
+	c.callWithin(t, "", "Browser.getVersion", nil, nil, browserStart)
+	if took := time.Since(start); took > browserCall { // wall-clock: names a slow start in the log of the run
+		t.Logf("the browser started in %s", took.Round(time.Second))
+	}
 	var target struct{ TargetID string }
 	c.call(t, "", "Target.createTarget", map[string]any{"url": "about:blank"}, &target)
 	var att struct{ SessionID string }
@@ -270,7 +284,19 @@ func (c *cdp) read(r io.Reader) {
 	}
 }
 
+// browserStart is how long the browser may take to start; browserCall,
+// how long it may take to answer a command once started.
+const (
+	browserStart = 90 * time.Second // wall-clock: a cold start of the browser on a busy runner
+	browserCall  = 20 * time.Second // wall-clock: one command of a browser that is up
+)
+
 func (c *cdp) call(t *testing.T, session, method string, params any, out any) {
+	t.Helper()
+	c.callWithin(t, session, method, params, out, browserCall)
+}
+
+func (c *cdp) callWithin(t *testing.T, session, method string, params any, out any, bound time.Duration) {
 	t.Helper()
 	c.mu.Lock()
 	c.id++
@@ -304,8 +330,8 @@ func (c *cdp) call(t *testing.T, session, method string, params any, out any) {
 		}
 	case <-c.exited:
 		t.Fatalf("%s: the browser ended before it answered: %s", method, c.state())
-	case <-time.After(20 * time.Second):
-		t.Fatalf("%s: no answer of the browser: %s", method, c.state())
+	case <-time.After(bound):
+		t.Fatalf("%s: no answer of the browser in %s: %s", method, bound, c.state())
 	}
 }
 
@@ -316,7 +342,7 @@ func (c *cdp) navigate(t *testing.T, u string) {
 		<-c.events
 	}
 	c.call(t, c.session, "Page.navigate", map[string]any{"url": u}, nil)
-	deadline := time.After(20 * time.Second)
+	deadline := time.After(browserCall)
 	for {
 		select {
 		case ev := <-c.events:

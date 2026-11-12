@@ -8,3 +8,5 @@
 |---|---|---|---|
 | `org_projects` | `evo org projects` | reads |  |
 | `org_quotas` | `evo org quotas` | reads |  |
+
+Filters of the lists (the rule of the `evo` skill): `org_projects` — name.

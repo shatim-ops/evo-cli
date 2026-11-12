@@ -21,7 +21,7 @@ func (*oneProfile) Profile(Audience) string { return "work" }
 // 10.11): the project is picked beforehand from the profile of the
 // audience the login started with; when the person chooses the other one
 // on the page, the key goes to another profile — the page says so when
-// that audience is chosen (by :has, no script). The full answer, a pick
+// that audience is chosen (by CSS, no script). The full answer, a pick
 // per audience, is A's (Choice, the form of /grant; backlog 1.9).
 func TestConsent_PreselectOfAnotherProfileIsNamed(t *testing.T) {
 	projects := []project{{ID: "p1", Name: "one", Allowed: true}, {ID: "p2", Name: "two", Allowed: true}}
@@ -37,20 +37,22 @@ func TestConsent_PreselectOfAnotherProfileIsNamed(t *testing.T) {
 		name string
 		c    Choice
 		st   Store
-		want string // the line under the class of the other audience; "" for none
+		// row is the plan's line of the other audience, line its text; ""
+		// for none.
+		row, line string
 	}{
-		{"me, the agent chosen on the page", fromDefault, &memStore{}, `<span class="x other s-a-agent">` + tPreselectOtherProfile("default", "agent")},
-		{"agent, me chosen on the page", fromAgent, &memStore{}, `<span class="x other s-a-me">` + tPreselectOtherProfile("agent", "default")},
-		{"one profile for both", fromDefault, &oneProfile{}, ""},
-		{"CLOUDRU_PROJECT_ID is for both", Choice{Preselect: "p1", PreselectFrom: TFromEnv(), PreselectEnv: true}, &memStore{}, ""},
-		{"nothing picked beforehand", Choice{}, &memStore{}, ""},
+		{"me, the agent chosen on the page", fromDefault, &memStore{}, `<p class="row xr warning s-a-agent">`, tPreselectOtherProfile("default", "agent")},
+		{"agent, me chosen on the page", fromAgent, &memStore{}, `<p class="row xr warning s-a-me">`, tPreselectOtherProfile("agent", "default")},
+		{"one profile for both", fromDefault, &oneProfile{}, "", ""},
+		{"CLOUDRU_PROJECT_ID is for both", Choice{Preselect: "p1", PreselectFrom: TFromEnv(), PreselectEnv: true}, &memStore{}, "", ""},
+		{"nothing picked beforehand", Choice{}, &memStore{}, "", ""},
 	}
 	for _, c := range cases {
 		page := render(c.c, c.st)
-		if c.want != "" && !strings.Contains(page, c.want) {
-			t.Errorf("%s: no line %q", c.name, c.want)
+		if c.row != "" && !(strings.Contains(page, c.row) && strings.Contains(visibleText(page), c.line)) {
+			t.Errorf("%s: no visible plan line %s %q", c.name, c.row, c.line)
 		}
-		if c.want == "" && strings.Contains(page, `class="x other`) {
+		if c.row == "" && strings.Contains(page, `class="row xr warning`) {
 			t.Errorf("%s: a line where the profile is the same", c.name)
 		}
 	}
