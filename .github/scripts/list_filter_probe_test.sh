@@ -2,7 +2,8 @@
 # Проверка list_filter_probe.sh без облака: curl — заглушка с ответами IAM
 # и Compute. Случаи: облако отбирает как evo (same), отдаёт весь список
 # (ignored), отбирает иначе (diff); повтор id в ответе облака — не diff;
-# id не попадают ни в stdout, ни в stderr.
+# id не попадают ни в stdout, ни в stderr. STRICT=1: параметр облака с
+# итогом не same — выход 1 и ::error:: с его именем; без STRICT — выход 0.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
@@ -33,8 +34,9 @@ printf '%s' "$b" >"$out"
 printf 200
 FAKE
 chmod +x "$work/bin/curl"
-out=$(PATH="$work/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p GITHUB_WORKSPACE="$here/../.." bash "$here/list_filter_probe.sh" 2>&1)
 fail=0
+out=$(PATH="$work/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p GITHUB_WORKSPACE="$here/../.." bash "$here/list_filter_probe.sh" 2>&1) ||
+	{ echo "FAIL: без STRICT выход не 0"; fail=1; }
 want() { grep -qE "$1" <<<"$out" || { echo "FAIL: нет строки /$1/"; fail=1; }; }
 want '^vms_zone +значение #1: всего=3 облако=2 evo=2 — same$'
 want '^vms_zone +значение #2: всего=3 облако=3 evo=1 — ignored$'
@@ -43,6 +45,17 @@ want '^vms_state +значение #2: всего=3 облако=1 evo=1 — sam
 want '^disks_zone +всего=0, значений нет — не проверено$'
 if grep -qE '0000000000e[0-9]|tok-fake|za|zb|f1|f2' <<<"$(grep -v '^::add-mask::' <<<"$out")"; then
 	echo "FAIL: в выводе id, токен или значения"
+	fail=1
+fi
+if grep -q '^::error::' <<<"$out"; then
+	echo "FAIL: без STRICT — ::error::"
+	fail=1
+fi
+code=0
+strict=$(PATH="$work/bin:$PATH" STRICT=1 KEY_ID=k SECRET=s PROJECT=p GITHUB_WORKSPACE="$here/../.." bash "$here/list_filter_probe.sh" 2>&1) || code=$?
+if [ "$code" != 1 ] || ! grep -qE '^::error::.* vms:availability_zone_ids vms:statuses — ' <<<"$strict"; then
+	echo "FAIL: STRICT=1 — выход $code, нужна ошибка по vms:availability_zone_ids и vms:statuses:"
+	grep '^::error::' <<<"$strict" || true
 	fail=1
 fi
 [ "$fail" = 0 ] && echo "list_filter_probe: ok"
