@@ -80,6 +80,13 @@ type Intent struct {
 	Surface   string    `json:"surface"`
 	PID       int       `json:"pid"`
 	StartedAt time.Time `json:"started_at"`
+	// Held tells a call that ended at its time limit with the operation
+	// still going (its answer named the same tool as the next step): the
+	// record stays until a call of that step ends the operation, and
+	// StartedAt is when the operation began — the limit of its repeats
+	// counts from there, not from each repeat (release plan 1.9, «Намерение
+	// D92 держит запись, пока операция идёт»).
+	Held bool `json:"held,omitempty"`
 	// Dir is the directory the intent was read from (Pending); not saved.
 	Dir string `json:"-"`
 }
@@ -114,32 +121,53 @@ func Dirs(root string) []string {
 // known (the call was cut). An error means nothing was written: the
 // caller refuses the call before it goes out.
 func Begin(dir string, in Intent) (done func(), err error) {
-	done, err = begin(dir, in)
+	rec, err := Open(dir, in)
 	if err != nil {
-		return nil, notWritten(dir, err)
+		return nil, err
 	}
-	return done, nil
+	return func() { Close(rec) }, nil
 }
 
-func begin(dir string, in Intent) (done func(), err error) {
+// Open writes in as Begin does and returns the record written, with its
+// id and directory: Close removes it, Hold keeps it as an operation that
+// goes on.
+func Open(dir string, in Intent) (Intent, error) {
 	if err := config.MkdirPrivate(dir); err != nil {
-		return nil, err
+		return Intent{}, notWritten(dir, err)
 	}
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return nil, err
+		return Intent{}, notWritten(dir, err)
 	}
-	in.ID = hex.EncodeToString(b[:])
+	in.ID, in.Dir = hex.EncodeToString(b[:]), dir
 	sort.Strings(in.Args)
+	if err := write(in); err != nil {
+		return Intent{}, notWritten(dir, err)
+	}
+	return in, nil
+}
+
+// write writes the record in whole (temp file and rename).
+func write(in Intent) error {
+	path := recordPath(in.Dir, in.ID)
+	if path == "" {
+		return os.ErrInvalid
+	}
 	data, err := json.MarshalIndent(in, "", "  ")
 	if err != nil {
-		return nil, err
+		return err
 	}
-	path := filepath.Join(dir, in.ID+".json")
-	if err := config.WriteFileAtomic(path, data, 0o600); err != nil {
-		return nil, err
-	}
-	return func() { _ = os.Remove(path) }, nil
+	return config.WriteFileAtomic(path, data, 0o600)
+}
+
+// Hold keeps the record in as an operation that goes on (Held), as the
+// caller names it now: by the resource its next step names — a call that
+// named a VM by name goes on by its id. A record that cannot be rewritten
+// stays as it was written — a cut call, which is what the next run then
+// says of it.
+func Hold(in Intent) {
+	in.Held = true
+	_ = write(in)
 }
 
 // notWritten is the refusal of a call whose intent could not be written:
@@ -228,7 +256,8 @@ func Settle(dir string, done Intent) (kept []Intent) {
 		return nil
 	}
 	for _, in := range Pending(dir) {
-		if in.Tool == done.Tool && in.Name == done.Name && in.Target == done.Target && in.ProjectID == done.ProjectID {
+		// done itself, when it is held, is not an earlier one.
+		if in.ID != done.ID && in.Tool == done.Tool && in.Name == done.Name && in.Target == done.Target && in.ProjectID == done.ProjectID {
 			if in.Key.Other(done.Key) {
 				kept = append(kept, in)
 				continue

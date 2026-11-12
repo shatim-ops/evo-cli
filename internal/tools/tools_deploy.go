@@ -323,6 +323,13 @@ func (s *Registry) planDeployApply(ctx context.Context, args map[string]any) (*P
 	}
 	plan, err := deployplan.Load(eng.StateDir, planID)
 	if err != nil {
+		// Only a plan that is gone: one that is there and expired or
+		// corrupt keeps Load's own words («Риск», conclusion 131, К1).
+		if deployplan.Gone(eng.StateDir, planID) {
+			if applied := appliedPlan(eng.StateDir, planID); applied != nil {
+				return nil, applied
+			}
+		}
 		return nil, err
 	}
 	// A step that goes on with a VM that is gone makes no new one (D102).
@@ -1123,7 +1130,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 			"id":       fipID,
 			"message":  fmt.Sprintf("floating IP %s released", fipIP),
 		}), false
-	}, state, fipID)}, nil
+	}, state, state, fipID)}, nil
 }
 
 // folderProvenance is engine.ProvenanceOf by the state of the folder dir,
@@ -1174,4 +1181,57 @@ func planNetworkView(plan *deployplan.Plan) map[string]any {
 		view["security_group_shared"] = true
 	}
 	return view
+}
+
+// appliedPlan is the refusal of a deploy_apply whose plan file is gone and
+// whose VM the folder's state records: the record of the deployment names
+// the plan that made it (D82). «Not found, it may have expired; run
+// deploy_plan again» named the state wrongly and led the agent to plan a
+// second VM (release plan 1.9, «Повтор у выпущенных инструментов», п. 3).
+// The words follow what the record says («Риск», conclusion 131, К2): the
+// plan was applied only when its VM came to run — the status the plan is
+// deleted on as done; a VM in error has its plan deleted too, and is not
+// «applied, nothing to apply» — it is a VM to decide about; any other
+// status is a VM that was not finished. The error is of the kind of a plan
+// that is not there — NOT_FOUND, the same exit code — with the words of
+// what happened. nil when no record of the folder names the plan.
+func appliedPlan(stateDir, planID string) error {
+	sf, err := state.Read(state.DefaultPath(stateDir))
+	if err != nil {
+		return nil
+	}
+	for i := range sf.Deployments {
+		d := &sf.Deployments[i]
+		if d.Source != state.SourceDeployApply || d.PlanID != planID {
+			continue
+		}
+		vm := d.VMID
+		if d.VMName != "" {
+			vm += " (" + d.VMName + ")"
+		}
+		switch d.Status {
+		case "running":
+			return clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("plan %q has been applied already: it made VM %s; there is nothing to apply",
+					"план %q уже применён: он создал ВМ %s; применять нечего", planID, vm),
+				i18n.T("status and vm_get show the VM.", "ВМ показывают status и vm_get."))
+		case "destroyed":
+			return clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("plan %q has been applied already: it made VM %s, which has been destroyed since; there is nothing to apply",
+					"план %q уже применён: он создал ВМ %s, с тех пор она удалена; применять нечего", planID, vm),
+				i18n.T("The plan is done with. Whether to make another VM is the person's decision.", "План исчерпан. Создавать ли другую ВМ — решает человек."))
+		case "error":
+			return clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("plan %q is gone: the VM it made, %s, is in an error state and the plan went with it",
+					"плана %q больше нет: ВМ, которую он создал, %s, в состоянии ошибки, и план снят вместе с ней", planID, vm),
+				i18n.Tf("The VM may still be there and billed. Whether to delete it (destroy vm_id %s) — ask the person; a new VM is a new deploy_plan.",
+					"ВМ, возможно, осталась и оплачивается. Удалять ли её (destroy vm_id %s) — спросите человека; новая ВМ — новый deploy_plan.", d.VMID))
+		}
+		return clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("plan %q is gone, and the VM it made, %s, was not finished (the record says %s)",
+				"плана %q больше нет, а ВМ, которую он создал, %s, не доведена (в записи — %s)", planID, vm, d.Status),
+			i18n.Tf("status and vm_get show the VM. It may still be there and billed: whether to delete it (destroy vm_id %s) — ask the person.",
+				"ВМ показывают status и vm_get. Она, возможно, ещё есть и оплачивается: удалять ли её (destroy vm_id %s) — спросите человека.", d.VMID))
+	}
+	return nil
 }
