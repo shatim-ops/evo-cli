@@ -132,7 +132,9 @@ func schemaProps(t tools.Tool) map[string]any {
 	return props
 }
 
-func genInventory() []byte {
+// genInventory is the inventory and, apart from it, the counts the file
+// does not keep.
+func genInventory() (doc []byte, counts string) {
 	reg := tools.New(nil)
 	cmds := inventoryCommands()
 	specs := specCmds(reg)
@@ -175,9 +177,14 @@ func genInventory() []byte {
      CI сверяет файл с кодом. -->
 
 `, inventoryRegenerateHint, allDocsRegenerateHint)
-	fmt.Fprintf(&w, "Инструментов в реестре: %d (изменяющих: %d). Команд из `CLISpec`: %d. "+
-		"Команд в бинаре вместе с корнем `evo`: %d — в docs/commands.md %d, скрытых %d, прочих %d (%s).\n\n",
-		len(reg.Tools()), mutating, len(specs), len(cmds)+1, documented, hidden, len(others), dash(strings.Join(others, ", ")))
+	// The file keeps no count that every new tool changes: two PRs that
+	// each add a tool would edit the same line and conflict (release plan
+	// 1.9, «Генерируемые файлы и цифры не конфликтуют»). The counts go to
+	// the log of the test; the file says what is not the rule, by name.
+	counts = fmt.Sprintf("tools: %d (mutating %d); commands of CLISpec: %d; commands of the binary with the root: %d — in docs/commands.md %d, hidden %d, others %d",
+		len(reg.Tools()), mutating, len(specs), len(cmds)+1, documented, hidden, len(others))
+	fmt.Fprintf(&w, "Счёта инструментов и команд файл не хранит: его печатает `go test ./internal/cli -run TestParityInventory -v`. "+
+		"Команды бинара вне docs/commands.md и не скрытые: %s.\n\n", dash(strings.Join(others, ", ")))
 
 	// --- 1. Tools by how the CLI calls them ---
 	kindOf := func(t tools.Tool) string {
@@ -189,23 +196,19 @@ func genInventory() []byte {
 		}
 		return "дерево"
 	}
-	kinds := []string{"дерево", "движок", "tools call"}
-	kindN, kindMut := map[string]int{}, map[string]int{}
-	groupKind := map[string]map[string]int{}
+	// Not the counts by kind: the tools that are not a tree command, by
+	// name. A new tree command changes nothing here.
+	byKind := map[string][]string{}
 	for _, t := range reg.Tools() {
-		k := kindOf(t)
-		kindN[k]++
-		if t.Mutating {
-			kindMut[k]++
+		if k := kindOf(t); k != "дерево" {
+			byKind[k] = append(byKind[k], "`"+t.Name+"`")
 		}
-		if groupKind[t.Group] == nil {
-			groupKind[t.Group] = map[string]int{}
-		}
-		groupKind[t.Group][k]++
 	}
-	fmt.Fprintf(&w, "## 1. Инструменты по способу вызова из CLI\n\n| Способ | Инструментов | из них изменяющих |\n|---|---|---|\n")
-	for _, k := range kinds {
-		fmt.Fprintf(&w, "| %s | %d | %d |\n", k, kindN[k], kindMut[k])
+	fmt.Fprintf(&w, "## 1. Инструменты по способу вызова из CLI\n\n| Способ | Инструменты |\n|---|---|\n")
+	fmt.Fprintf(&w, "| дерево | все, кроме названных ниже |\n")
+	for _, k := range []string{"движок", "tools call"} {
+		sort.Strings(byKind[k])
+		fmt.Fprintf(&w, "| %s | %s |\n", k, dash(strings.Join(byKind[k], ", ")))
 	}
 	var aliasPaths []string
 	for _, ec := range engineCommands {
@@ -223,32 +226,21 @@ func genInventory() []byte {
 		"со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); "+
 		"«tools call» — доступен из CLI только как `evo tools call <имя>`. ",
 		strings.Join(enginePaths, ", "))
-	if kindN["tools call"] == 0 {
+	if len(byKind["tools call"]) == 0 {
 		fmt.Fprintf(&w, "Таких нет: временный список «без команды» из PR 1 опустошён (PR 3), у каждого инструмента — своя команда, "+
 			"и TestParity_CommandsAndTools не даёт добавить инструмент без неё. ")
 	}
 	fmt.Fprintf(&w, "Алиасы (%s) — вторые команды тех же инструментов, с причиной в `engineCommands`.\n\n", strings.Join(aliasPaths, ", "))
 
-	fmt.Fprintf(&w, "### По группам\n\n| Группа | Всего | дерево | движок | tools call | RU-справка (short/long) |\n|---|---|---|---|---|---|\n")
-	for _, g := range tools.Groups() {
-		gk := groupKind[g]
-		total := gk["дерево"] + gk["движок"] + gk["tools call"]
-		if total == 0 {
-			continue
+	// Not the counts by group: the tools with no Russian help, by name.
+	var noRU []string
+	for _, t := range reg.Tools() {
+		if t.ShortRU == "" || t.DescriptionRU == "" {
+			noRU = append(noRU, "`"+t.Name+"`")
 		}
-		short, long := 0, 0
-		for _, t := range reg.Tools() {
-			if t.Group == g {
-				if t.ShortRU != "" {
-					short++
-				}
-				if t.DescriptionRU != "" {
-					long++
-				}
-			}
-		}
-		fmt.Fprintf(&w, "| %s | %d | %d | %d | %d | %d/%d |\n", g, total, gk["дерево"], gk["движок"], gk["tools call"], short, long)
 	}
+	sort.Strings(noRU)
+	fmt.Fprintf(&w, "### Русская справка инструментов\n\nИнструменты без краткого или подробного описания по-русски: %s.\n", listOrNone(noRU))
 
 	// --- 2. Tool → command ---
 	fmt.Fprintf(&w, "\n## 2. Инструмент → команда CLI\n\n| Группа | Инструмент | Меняет | Способ | Команда CLI | RU short/long |\n|---|---|---|---|---|---|\n")
@@ -409,49 +401,29 @@ func genInventory() []byte {
 		}
 	}
 	if drift == 0 {
-		fmt.Fprintf(&w, "Расхождений нет: флаги всех %d команд деревьев выведены из схемы; флаги %d команд движка сверяет со схемой TestParity_EngineCommands.\n",
-			len(specs)-engine, engine)
+		counts += fmt.Sprintf("; flags: %d tree commands derived from the schema, %d engine commands", len(specs)-engine, engine)
+		fmt.Fprintf(&w, "Расхождений нет: флаги всех команд деревьев выведены из схемы; флаги команд движка сверяет со схемой TestParity_EngineCommands.\n")
 	}
 
 	// --- 5. Russian help ---
-	flagsTree, flagsRU := 0, 0
-	for _, c := range specs {
-		if c.Engine {
-			continue
-		}
-		t, _ := reg.Lookup(c.Tool)
-		for _, name := range wantFlags(c, t) {
-			if name == "confirmed" {
-				continue
-			}
-			flagsTree++
-			if t.ArgDescriptionsRU[name] != "" {
-				flagsRU++
-			}
-		}
-	}
-	nShort, nLong, nArgs, argsRU := 0, 0, 0, 0
+	// Not the counts: what has no Russian text, by name.
+	var argsNoRU []string
 	for _, t := range reg.Tools() {
-		if t.ShortRU != "" {
-			nShort++
-		}
-		if t.DescriptionRU != "" {
-			nLong++
-		}
+		var names []string
 		for name := range schemaProps(t) {
-			nArgs++
-			if t.ArgDescriptionsRU[name] != "" {
-				argsRU++
+			if name != "confirmed" && t.ArgDescriptionsRU[name] == "" {
+				names = append(names, name)
 			}
 		}
+		if len(names) > 0 {
+			sort.Strings(names)
+			argsNoRU = append(argsNoRU, "`"+t.Name+"`: "+strings.Join(names, ", "))
+		}
 	}
-	n := len(reg.Tools())
-	fmt.Fprintf(&w, "\n## 5. Русская справка\n\n| Что | Есть по-русски | Всего |\n|---|---|---|\n")
-	fmt.Fprintf(&w, "| краткое описание инструмента (ShortRU) | %d | %d инструментов |\n", nShort, n)
-	fmt.Fprintf(&w, "| подробное описание инструмента (DescriptionRU) | %d | %d инструментов |\n", nLong, n)
-	fmt.Fprintf(&w, "| описания аргументов (ArgDescriptionsRU) | %d | %d аргументов |\n", argsRU, nArgs)
-	fmt.Fprintf(&w, "| из них флаги команд деревьев | %d | %d флагов |\n", flagsRU, flagsTree)
-	fmt.Fprintf(&w, "| описания инструментов в MCP | 0 | %d (всегда английские) |\n", n)
+	sort.Strings(argsNoRU)
+	fmt.Fprintf(&w, "\n## 5. Русская справка\n\n")
+	fmt.Fprintf(&w, "Описания инструментов по-русски (ShortRU, DescriptionRU) — раздел 1. Описания инструментов в MCP — всегда английские.\n\n")
+	fmt.Fprintf(&w, "Аргументы без описания по-русски (ArgDescriptionsRU): %s.\n", listOrNone(argsNoRU))
 
 	// --- 6. Exceptions ---
 	fmt.Fprintf(&w, "\n## 6. Исключения из паритета\n\nЗакрытые списки тестов паритета: запись без причины или без команды роняет тест. "+
@@ -485,7 +457,7 @@ func genInventory() []byte {
 	for _, k := range sortedStringKeys(engineCallsAllowed) {
 		fmt.Fprintf(&w, "| `%s` | %s |\n", k, cellText(engineCallsAllowed[k]))
 	}
-	return append(bytes.TrimRight(w.Bytes(), "\n"), '\n')
+	return append(bytes.TrimRight(w.Bytes(), "\n"), '\n'), counts
 }
 
 func yn(b bool) string {
@@ -517,7 +489,8 @@ func sortedStringKeys(m map[string]string) []string {
 }
 
 func TestParityInventory(t *testing.T) {
-	got := genInventory()
+	got, counts := genInventory()
+	t.Log(counts)
 	if *updateDocs {
 		if err := os.WriteFile(inventoryDocPath, got, 0o644); err != nil {
 			t.Fatal(err)
@@ -554,7 +527,7 @@ func TestParityInventory_Consistent(t *testing.T) {
 			t.Errorf("%s: calls %q, CLISpec of %s names it", c.Path, ic.tool, c.Tool)
 		}
 	}
-	if bytes.Contains(genInventory(), []byte("\n- `evo ")) {
+	if doc, _ := genInventory(); bytes.Contains(doc, []byte("\n- `evo ")) {
 		t.Error("inventory §4 reports flags drifting from the schema")
 	}
 }

@@ -1,0 +1,133 @@
+name: stand
+
+# Стенд 1.9 (план, Г-50…Г-54): ресурсы, которые живут дольше запусков
+# cloud-e2e. Уборка запусков стенд обходит (TestWorkflows_CleanupLeavesTheStand),
+# поэтому срок и уборка у него свои — этот workflow.
+#
+# list — каждый день и вручную: состав, возраст и срок стенда ключом только
+#   на чтение (окружение cloud-readonly, без одобрения). Красный: стенд за
+#   сроком, тег версии выпущен, а стенд не убран, список не прочитан. Стенда
+#   нет — зелёный.
+# sweep — только вручную: вход sweep, равный префиксу стенда. Окружение
+#   cloud-e2e — одобрение владельца на каждый запуск; удаляет то, что само
+#   показало перечнем (.github/scripts/e2e_stand.sh).
+# Код PR сюда не попадает: запуск — по расписанию и вручную, только из main.
+# Красный запуск по расписанию заводит issue «main красный: stand»
+# (main-red.yml), зелёный — закрывает.
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+    inputs:
+      sweep:
+        description: "Уборка стенда: введите его префикс (e2e_stand.sh prefix). Пусто — только чтение"
+        type: string
+        default: ""
+
+# Свои очереди, без отмены: уборку нельзя оборвать посередине, а чтение не
+# должно ждать ни cloud-e2e, ни уборку стенда, которые ждут одобрения. У
+# чтения и уборки очереди разные: очередь держит один ожидающий запуск, и
+# забытая неодобренная уборка иначе глушила бы ежедневный сигнал.
+concurrency:
+  group: ${{ inputs.sweep != '' && 'stand-sweep' || 'stand-list' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    environment: cloud-readonly
+    if: ${{ github.ref == 'refs/heads/main' && inputs.sweep == '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.11"
+          cache-dependency-path: go.sum
+
+      - name: Сборка
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      # Срок стенда — дата или тег версии, что раньше: выпущен ли тег, скрипту
+      # говорит этот шаг (репозиторий открыт, чтение тегов — без токена).
+      # Планы защиты ключу только на чтение платформа не отдаёт (403): вид
+      # назван непроверенным, а не роняет ежедневный job; стенд по умолчанию
+      # без плана, а sweep читает планы ключом записи.
+      - name: Стенд — состав, возраст, срок
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          STAND_FORBIDDEN_OK: pplan
+        run: |
+          # shellcheck source=.github/scripts/e2e_stand.sh
+          . .github/scripts/e2e_stand.sh
+          out=0
+          tags=$(timeout 60 git ls-remote --tags https://github.com/"$GITHUB_REPOSITORY" "refs/tags/$STAND_TAG") ||
+            { echo "::error::теги репозитория не прочитаны — выпущен ли $STAND_TAG, неизвестно"; exit 1; }
+          [ -z "$tags" ] || out=1
+          STAND_TAG_OUT=$out .github/scripts/e2e_stand.sh list
+
+  sweep:
+    environment: cloud-e2e
+    if: ${{ github.ref == 'refs/heads/main' && inputs.sweep != '' }}
+    runs-on: ubuntu-24.04
+    # Кластеры удаляются до получаса (STAND_WAIT), плюс сборка.
+    timeout-minutes: 60
+    env:
+      CLOUDRU_CONFIG_DIR: ${{ github.workspace }}/.e2e-config
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.11"
+          cache-dependency-path: go.sum
+
+      - name: Сборка
+        # stderr evo — через redact.sed (лог публичный): build_evo.sh.
+        run: .github/scripts/build_evo.sh
+
+      - name: configure
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+        run: |
+          [ -n "$KEY_ID" ] && [ -n "$SECRET" ] && [ -n "$PROJECT" ] || { echo "::error::нет секретов CLOUDRU_*"; exit 1; }
+          printf '%s' "$SECRET" | evo configure --key-id "$KEY_ID" --secret-stdin --project-id "$PROJECT" >/dev/null
+
+      # Подтверждение — текст входа: через env, не в скрипт шага. Скрипт
+      # сверяет его с префиксом на точное равенство до чтения облака.
+      - name: Уборка стенда
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          STAND_SWEEP: ${{ inputs.sweep }}
+        run: .github/scripts/e2e_stand.sh sweep

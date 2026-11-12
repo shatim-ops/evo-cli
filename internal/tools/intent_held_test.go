@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -106,7 +107,7 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 	})
 	t.Run("the words of the record", func(t *testing.T) {
 		r, dir, _ := start(t)
-		notes := r.PendingNotes(strings.TrimSuffix(dir, "/.evo/intents"))
+		notes := r.PendingNotes(filepath.Dir(filepath.Dir(dir)))
 		if len(notes) != 1 || !strings.Contains(notes[0], "the operation was still going") || strings.Contains(notes[0], "the outcome is unknown") {
 			t.Errorf("the note of a held record: %v", notes)
 		}
