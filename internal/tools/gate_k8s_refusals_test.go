@@ -26,6 +26,7 @@ func TestGateK8s_RefusalWithoutConsentIsTheRefusalWithIt(t *testing.T) {
 		{"a name the specification refuses", "k8s_create", map[string]any{"name": "a b"}, "USAGE"},
 		{"the name is taken", "k8s_create", map[string]any{"name": "res-a1"}, "USAGE"},
 		{"a subnet of another project", "k8s_create", map[string]any{"name": "cl-1", "subnet_id": resForeign}, ""},
+		{"a zone Managed Kubernetes does not offer", "k8s_create", map[string]any{"name": "cl-1", "zone": "ru.AZ-99"}, ""},
 		{"no cluster_id", "k8s_add_nodepool", map[string]any{"name": "np-1"}, "USAGE"},
 		{"the cluster reports no zone", "k8s_add_nodepool", map[string]any{"cluster_id": resMine, "name": "np-1"}, "CONFIG_INVALID"},
 		{"a subnet of another project", "k8s_add_nodepool", map[string]any{"cluster_id": resMine, "name": "np-1", "zone": "ru.AZ-1", "nodes_subnet_id": resForeign}, ""},
