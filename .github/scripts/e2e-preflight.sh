@@ -96,10 +96,19 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	shared | cmp7 | r3f1)
 		[ "${DISK_SMOKE:-}" = true ] || fail "probes: «$w» — проба области disk, а disk_smoke не включён"
 		;;
-	access | nodes | p45)
+	access | nodes | p45 | g13)
 		[ -n "${cluster_kinds[pg]:-}" ] || fail "probes: «$w» — проба джоба dbaas-pg, а он не идёт (dbaas_smoke и pg в dbaas_services)"
+		# READY до 60 мин + access ~30 + g13 до 60 + удаление до 120 —
+		# вплотную к пределу job 300 мин; без access запас 40+ мин.
+		[[ "$w" != g13 || " ${PROBES:-} " != *" access "* ]] || fail "probes: «g13» и «access» в одном запуске не идут — худший ход job dbaas-pg вплотную к пределу 300 мин"
 		;;
-	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g16, g18, g20" ;;
+	g14)
+		[ -n "${cluster_kinds[kafka]:-}" ] || fail "probes: «$w» — проба джоба dbaas-kafka, а он не идёт (dbaas_smoke и kafka в dbaas_services)"
+		;;
+	g15)
+		[[ " ${DBAAS_SERVICES:-} " == *" redis "* && "${DBAAS_SMOKE:-}" == true ]] || fail "probes: «$w» — проба джоба dbaas-redis, а он не идёт (dbaas_smoke и redis в dbaas_services)"
+		;;
+	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g13, g14, g15, g16, g18, g20" ;;
 	esac
 done
 
