@@ -37,7 +37,9 @@ windowsPRPackages=(./internal/cli ./internal/config ./internal/journal)
 
 # cliFirstHalf — имена тестов первой части internal/cli; вторая — все
 # остальные. Группы «каждый инструмент × каждый мир»: около половины времени
-# пакета под -race (замер 12.11).
+# пакета под -race (замер 12.11). Тест вне группы идёт во вторую часть сам;
+# группу меняют, когда части разошлись по времени — это две строки
+# internal/cli в выводе шага. От неё зависит только время, не охват.
 cliFirstHalf='^Test(Parity|Consent|Contract|Human)'
 together=no
 
