@@ -3633,6 +3633,7 @@ var consentWords = map[string]string{
 	"kafka_delete":        consentDeletes,
 	"redis_delete":        consentDeletes,
 	"k8s_nodepool_delete": consentDeletes,
+	"k8s_delete":          consentDeletes,
 	"vm_stop":             consentInterrupts,
 	"vm_reboot":           consentInterrupts,
 	"secret_value":        consentReveals,
