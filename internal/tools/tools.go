@@ -734,7 +734,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_list",
-			Description: "List Managed PostgreSQL clusters in the project (id, name, status, version, health). Read-only. Managed PostgreSQL is Cloud.ru's managed database service (postgresql.api.cloud.ru).",
+			Description: "List Managed PostgreSQL clusters in the project (id, name, status, version, health). Read-only.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
@@ -797,7 +797,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_list",
-			Description: "List Managed Kafka clusters (id, name, status, brokers, version). Read-only. kafka.api.cloud.ru.",
+			Description: "List Managed Kafka clusters (id, name, status, brokers, version). Read-only.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
@@ -815,7 +815,7 @@ func (s *Registry) registerTools() {
 			Description: "List Managed Kafka flavor specifications (id, cpu, memory_gb, min_storage_gb, min/max_brokers) for a version. Read-only. Use to choose specification_id for kafka_create.",
 			InputSchema: objSchema(map[string]any{
 				"version_id": strProp("Version UUID (from kafka_versions); optional — defaults to latest."),
-				"zone":       strProp("Availability zone, name (ru.AZ-2) or UUID; optional — defaults to the configured region, else ru.AZ-2. The API needs a zone."),
+				"zone":       strProp("Zone name (ru.AZ-2) or UUID. Default: the configured region's, else ru.AZ-2."),
 			}),
 		},
 		{
@@ -851,7 +851,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_list",
-			Description: "List Managed Redis clusters (id, name, status, type, shards, replicas). Read-only. redis.api.cloud.ru.",
+			Description: "List Managed Redis clusters (id, name, status, type, shards, replicas). Read-only.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
@@ -869,7 +869,7 @@ func (s *Registry) registerTools() {
 			Description: "List Managed Redis flavor specifications (id, cpu, memory_gb, deployment_mode, min_storage_gb) for a version. Read-only. Use to choose specification_id for redis_create.",
 			InputSchema: objSchema(map[string]any{
 				"version_id": strProp("Version UUID (from redis_versions); optional — defaults to latest."),
-				"zone":       strProp("Availability zone, name (ru.AZ-2) or UUID; optional — defaults to the configured region, else ru.AZ-2. The API needs a zone."),
+				"zone":       strProp("Zone name (ru.AZ-2) or UUID. Default: the configured region's, else ru.AZ-2."),
 			}),
 		},
 		{
@@ -1001,7 +1001,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "tg_create",
-			Description: "Create a target group (the set of VMs a load balancer distributes traffic to). Provide targets as just vm_id (single) or a 'targets' array of {id}. The VM's network interface is AUTO-RESOLVED — you do NOT need interface_id (only pass it to override). Targets must be private VPC-subnet VMs (provision with no_public_ip).",
+			Description: "Create a target group (the set of VMs a load balancer distributes traffic to). Provide targets as just vm_id (single) or a 'targets' array of {id}. evo finds the VM's network interface itself; interface_id only overrides it. Targets must be private VPC-subnet VMs (provision with no_public_ip).",
 			InputSchema: objSchema(map[string]any{
 				"name":         strProp("Target group name (unique in project). Required."),
 				"vm_id":        strProp("VM UUID for a single target. The interface is auto-resolved. vm_id or targets is required, not both."),
@@ -1228,7 +1228,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ar_list",
-			Description: "List Artifact Registry registries in the project (id, name, type, status, public, tariff). Read-only. ar.api.cloud.ru. A registry holds Docker images / Helm charts (the image source for Container Apps / mk8s that docker.io can't provide).",
+			Description: "List Artifact Registry registries in the project (id, name, type, status, public, tariff). Read-only. A registry holds Docker images and Helm charts: the image source for Container Apps and Kubernetes.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
@@ -1288,7 +1288,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "metrics_history",
-			Description: "Service Monitoring — read a metric's history over a recent window (read-only). Prefer THIS over polling vm_get/k8s_get to answer 'is the service healthy / how's CPU/load'. Returns time series {metric labels, values, timestamps}. NB: the metric only returns data if the project has a monitoring tenant provisioned; otherwise the API says 'tenant not found'.",
+			Description: "Read a metric's history over a recent window: time series {metric labels, values, timestamps}. Prefer it over polling vm_get/k8s_get for 'is the service healthy, how is the CPU'. Read-only. Data comes only if the project has a monitoring tenant; otherwise the API says 'tenant not found'.",
 			InputSchema: objSchema(map[string]any{
 				"match": strProp("Metric name / PromQL name selector (e.g. cpu_usage, node_load1). Required."),
 				"since": strProp("Look-back window: 30m, 1h, 6h, 1d or a number of minutes as a string, e.g. \"90\" (default 1h; at most 24h — the API's limit, longer is refused)."),
@@ -1303,7 +1303,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "audit_events",
-			Description: "Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time. Use to answer 'what happened on the stand / who deleted X / recent changes'. Paginated via next_page_token. NB: access to audit logs is enabled by Cloud.ru support; until then the API answers 401 and the tool says audit is not enabled for the project.",
+			Description: "Who did what in the project: control-plane events (create, delete, modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time — for 'who deleted X, what changed'. Read-only. Paginated via next_page_token. Cloud.ru support enables access to audit logs; until then the API answers 401 and the tool says audit is not enabled for the project.",
 			InputSchema: objSchema(map[string]any{
 				"since":      strProp("Look-back window: 30m, 1h, 3h, 1d or a number of minutes as a string, e.g. \"90\" (default 1h; keep short — API recommends ≤30min for chatty projects)."),
 				"page_size":  intProp("Max events per page (default 100, at most 500)."),
@@ -3631,7 +3631,7 @@ func atLeast(min int, p map[string]any) map[string]any {
 // opWaitProp is the wait_seconds of every *_operation tool: within D69's
 // budget of an MCP call, a static rule of the schema (D36).
 func opWaitProp() map[string]any {
-	return inRange(0, opWaitMaxSeconds, intProp(fmt.Sprintf("Optional: wait up to N seconds (%d at most) and answer the final state in one call. Omit for one instant check.", opWaitMaxSeconds)))
+	return inRange(0, opWaitMaxSeconds, intProp(fmt.Sprintf("Wait up to N seconds (%d at most) and answer the final state in one call. Omit for one instant check.", opWaitMaxSeconds)))
 }
 
 func inRange(min, max int, p map[string]any) map[string]any {
