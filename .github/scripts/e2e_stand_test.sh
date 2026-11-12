@@ -219,7 +219,10 @@ want "sweep: удаления evo" "$(grep 'yes=1' "$FAKE_DIR/evo-calls" | tr '\
 want "sweep: удаления API" "$(grep '^DELETE' "$FAKE_DIR/calls" | tr '\n' ';')" "DELETE /protection-plans/spp;DELETE /protection-plans/spp2;DELETE /backups/sbk;DELETE /backups/sbk2;DELETE /security-groups/ssg;"
 first_del=$(grep -n 'удаление ' "$FAKE_DIR/out" | head -1 | cut -d: -f1)
 last_listed=$(grep -n "^sg	$S-sg" "$FAKE_DIR/out" | head -1 | cut -d: -f1)
-[ -n "$first_del" ] && [ -n "$last_listed" ] && [ "$last_listed" -lt "$first_del" ] || { echo "FAIL sweep: перечень не напечатан до первого удаления"; fail=1; }
+if [ -z "$first_del" ] || [ -z "$last_listed" ] || [ "$last_listed" -ge "$first_del" ]; then
+	echo "FAIL sweep: перечень не напечатан до первого удаления"
+	fail=1
+fi
 
 # sweep идёт до получаса, дольше жизни одного токена IAM: токен старше
 # STAND_TOKEN_TTL берётся заново (здесь — на каждом чтении), а ход ожидания
