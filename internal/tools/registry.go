@@ -261,8 +261,8 @@ func New(factory EngineFactory) *Registry {
 			if projectTools[t.Name] {
 				h = r.requireProject(h)
 			}
-			if _, ok := createdIDs[t.Name]; ok {
-				h = r.namedProject(h)
+			if _, ok := createdIDs[t.Name]; ok || targetArgs(t.Name) != nil {
+				h = r.namedProject(*t, h)
 			}
 			if keys := echoedArgs[t.Name]; keys != nil {
 				h = namedArgs(keys, h)

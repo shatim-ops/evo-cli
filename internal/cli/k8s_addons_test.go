@@ -51,7 +51,11 @@ func (a *addonAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Path == "/v3/clusters" && r.Method == http.MethodGet:
 		_, _ = io.WriteString(w, `{"clusters":[]}`)
 	case r.URL.Path == "/v3/clusters/"+addonClusterID:
-		_, _ = io.WriteString(w, `{"id":"`+addonClusterID+`","name":"k8s-dev","version":"v1.31.4"}`)
+		_, _ = io.WriteString(w, `{"id":"`+addonClusterID+`","name":"k8s-dev","version":"v1.31.4","projectId":"`+pvProject+`"}`)
+	case r.URL.Path == "/v3/clusters/"+parityVM:
+		// The cluster the operation of the parity world is of (jsonOp):
+		// k8s_operation reads it for resource_status.
+		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"k8s-dev","version":"v1.31.4","status":"RUNNING","projectId":"`+pvProject+`"}`)
 	case r.URL.Path == "/v3/nodePools":
 		_, _ = io.WriteString(w, `{"nodePools":[{"scalePolicy":{"fixedScale":{"count":2}}}]}`)
 	case r.URL.Path == "/v3/clusterAddons" && r.Method == http.MethodGet:

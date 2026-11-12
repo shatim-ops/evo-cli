@@ -132,6 +132,10 @@ type Operation struct {
 	ResourceID string          `json:"resourceId,omitempty"`
 	Done       bool            `json:"done"`
 	Error      json.RawMessage `json:"error,omitempty"`
+	// CreatedAt and UpdatedAt are the operation's times, RFC 3339, as the
+	// specification names them (tools: elapsed_sec of k8s_operation).
+	CreatedAt string `json:"createdAt,omitempty"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
 }
 
 // CreateClusterReq mirrors the confirmed CreateClusterRequest.

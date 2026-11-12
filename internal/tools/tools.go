@@ -381,6 +381,14 @@ func (s *Registry) registerTools() {
 			}, "cluster_id"),
 		},
 		{
+			Name:        "k8s_operation",
+			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
+			InputSchema: objSchema(map[string]any{
+				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
+				"wait_seconds": opWaitProp(),
+			}, "operation_id"),
+		},
+		{
 			Name:        "k8s_nodepools",
 			Description: "List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only. The API has no list across clusters: get cluster_id from k8s_list.",
 			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (from k8s_list). Required.")}, "cluster_id"),
@@ -1425,6 +1433,7 @@ func (s *Registry) registerTools() {
 		"k8s_create":           s.handleK8sCreate,
 		"k8s_kubeconfig":       s.handleK8sKubeconfig,
 		"k8s_delete":           s.gated("k8s_delete", s.planK8sDelete),
+		"k8s_operation":        s.handleK8sOperation,
 		"k8s_add_nodepool":     s.handleK8sAddNodePool,
 		"k8s_nodepools":        s.handleK8sNodePools,
 		"k8s_addons":           s.handleK8sAddons,

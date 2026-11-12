@@ -33,6 +33,7 @@ var operationReads = map[string][]resourceRead{
 	"ar_operation":    {{"ar_get", "id"}},
 	"cert_operation":  {{"cert_get", "id"}},
 	"dns_operation":   {{"dns_zone_get", "id"}, {"dns_record_get", "record_id"}},
+	"k8s_operation":   {{"k8s_get", "cluster_id"}},
 	"kafka_operation": {{"kafka_get", "cluster_id"}},
 	"lb_operation":    {{"lb_get", "id"}, {"tg_get", "id"}},
 	"pg_operation":    {{"pg_get", "id"}},

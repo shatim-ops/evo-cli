@@ -462,6 +462,9 @@ func projectText(id, from string) string {
 const (
 	originRecord = "record"
 	originPlan   = "plan"
+	// OriginResource: the project of the resource the call addresses by
+	// id, read before the question (tools.namedProject).
+	OriginResource = "resource"
 )
 
 func originLabel(from string) string {
@@ -478,6 +481,8 @@ func originLabel(from string) string {
 		return i18n.T("where the deployment was created", "где создано развёртывание")
 	case originPlan:
 		return i18n.T("from the plan", "из плана")
+	case OriginResource:
+		return i18n.T("the project of the resource", "проект ресурса")
 	}
 	return ""
 }
