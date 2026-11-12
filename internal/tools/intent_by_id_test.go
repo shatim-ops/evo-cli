@@ -95,6 +95,9 @@ func TestDoctor_CutDeleteByIDIsCheckedByID(t *testing.T) {
 			// A delete by id is not sent to the list of the call's project,
 			// and a record of another key not to «the same delete», which
 			// would close it unchecked («Риск», conclusion 128).
+			if strings.Contains(text, "no read by id") && strings.Contains(text, "doctor checks it by id") {
+				t.Errorf("doctor says both that it checks by id and that it has no read by id:\n%s", text)
+			}
 			if strings.Contains(text, "_list") {
 				t.Errorf("doctor sends a delete by id to a list of the call's project:\n%s", text)
 			}

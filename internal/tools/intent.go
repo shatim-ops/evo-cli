@@ -196,7 +196,12 @@ func (r *Registry) pendingNote(in intent.Intent) string {
 	// A delete addressed by id is not looked up in the list of the call's
 	// project, which does not tell a deleted resource from one of another
 	// project (R-82): doctor reads it by id and says what to do.
-	if _, _, _, byID := deleteByID(in); byID {
+	if _, k, id, byID := deleteByID(in); byID {
+		if k.card == nil {
+			// No read by id closes it: doctor says the same and no more.
+			return head + i18n.Tf(" — evo has no read by id that tells a deleted %s from one of another project: check %s where it was — the same %s on it settles the record",
+				" — у evo нет чтения по id, которое отличит удалённый ресурс «%s» от ресурса другого проекта: проверьте %s там, где он был, — тот же %s на нём закроет запись", k.what, quoteCloud(id), tool)
+		}
 		return head + i18n.T(" — evo doctor checks it by id", " — evo doctor проверит по id")
 	}
 	return head + i18n.Tf(" — check %s for %s; the same %s on it settles it",
@@ -235,11 +240,12 @@ func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engi
 // key that sent the delete, closes the record: another key may not see
 // the resource, and a read that failed says nothing. A kind with no read
 // by id is never closed here — the same delete on it settles the record.
+// found is "" when doctor has nothing to add to the record's words.
 func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind, id string, cur *state.Maker) (found string, settled bool) {
 	what, tool := quoteCloud(id), quoteCloud(in.Tool)
 	if k.card == nil {
-		return i18n.Tf("evo has no read by id that tells a deleted %s from one of another project: check %s where it was — the same %s on it settles the record",
-			"у evo нет чтения по id, которое отличит удалённый ресурс «%s» от ресурса другого проекта: проверьте %s там, где он был, — тот же %s на нём закроет запись", k.what, what, tool), false
+		// Never closed here; the record's own words say why (pendingNote).
+		return "", false
 	}
 	if in.Key == nil || cur == nil || in.Key.Other(cur) {
 		by := i18n.T("a key the record does not name", "ключом, которого запись не называет")
