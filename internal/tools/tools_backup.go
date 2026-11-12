@@ -259,8 +259,8 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 		}
 		if len(deps) > 0 {
 			will["dependent_backups"] = deps
-			warnings = append(warnings, i18n.Tf("backups that name this one as their full backup: %d; what becomes of them evo has not checked",
-				"копий, которые называют эту своей полной: %d; что станет с ними, evo не проверял", len(deps)))
+			warnings = append(warnings, i18n.Tf("backups that name this one as their full backup: %d; whether they stay and can still be restored from once this one is deleted, evo has not checked",
+				"копий, которые называют эту своей полной: %d; останутся ли они и можно ли будет восстановить из них после удаления этой, evo не проверял", len(deps)))
 		}
 	} else {
 		return nil, clierrors.Wrap(clierrors.CodeAPIError,
@@ -309,12 +309,15 @@ func backupDeleteRefused(ctx context.Context, tool, id string, args map[string]a
 			return toJSON(map[string]any{"status": "deleting", "backup_id": id, "already_deleting": true,
 				"message": i18n.Tf("backup %s is already being deleted; nothing more was done", "копия %s уже удаляется; больше ничего не сделано", id)}), false
 		}
+		// What the platform refuses here and for how long no run has seen
+		// (creatingUnseen): the answer says what is known — the refusal
+		// and the state read after it — and how to check, not why.
 		ans := backupGetNext(id)
 		ans["details"] = map[string]any{"state": state, "platform_code": "backup_not_ready"}
 		return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-			i18n.Tf("backup %s is not deleted: the platform does not delete it in state %s", "копия %s не удалена: в состоянии %s платформа её не удаляет", id, quoteCloud(state)),
-			i18n.T("The backup stays and is billed. backup_get shows when it is created; then call backup_delete again.",
-				"Копия остаётся и тарифицируется. Когда она будет создана, покажет evo backup get; затем повторите удаление."), err), ans), true
+			i18n.Tf("backup %s is not deleted: the platform refused the delete as not ready (backup_not_ready), and the backup reads %s", "копия %s не удалена: платформа отвергла удаление как «не готова» (backup_not_ready), копия числится %s", id, quoteCloud(state)),
+			i18n.T("The backup stays and is billed. Why the platform refused it is unknown: backup_get shows its state; call backup_delete again once the state changes.",
+				"Копия остаётся и тарифицируется. Почему платформа отказала, неизвестно: состояние показывает evo backup get; повторите удаление, когда оно изменится."), err), ans), true
 	}
 	return s.deleteFailed(tool, id, err)
 }
