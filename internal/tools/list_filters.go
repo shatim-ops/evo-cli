@@ -222,6 +222,11 @@ var listSpecs = withSets(map[string]listSpec{
 		{arg: "type", kind: filterRef, ref: "list_disk_types", fields: []string{"disk_type"}, en: "Only of this disk type: name.", ru: "Только этого типа диска: имя"},
 		boolFilter("bootable", "true: only bootable; false: only the others.", "true — только загрузочные, false — только остальные"),
 	}},
+	"backup_list": {rows: "backups", filters: []listFilter{
+		enumFilter("state", backupStates...), nameFilter(),
+		enumFilter("resource_type", "virtual_machine", "disk"),
+		{arg: "resource_id", kind: filterExact, fields: []string{"resource_id"}, en: "Only the backups of this VM or disk: its id.", ru: "Только копии этой ВМ или диска: её id"},
+	}},
 	"list_floating_ips": {rows: "floating_ips", filters: []listFilter{
 		zoneFilter().inCloud("/api/v1/floating-ips", "availability_zone_id"), enumFilter("state", fipStates...), nameFilter(),
 		boolFilter("free", "true: only free to attach; false: only taken.", "true — только свободные для привязки, false — только занятые", "available"),

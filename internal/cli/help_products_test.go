@@ -19,7 +19,7 @@ func TestRootHelp_GroupsAreTheProducts(t *testing.T) {
 		ru   string
 		cmds []string
 	}{
-		{"Evolution Compute, Evolution Disk:", []string{"vm", "image", "marketplace", "disk", "list-zones"}},
+		{"Evolution Compute, Evolution Disk:", []string{"vm", "image", "marketplace", "disk", "backup", "list-zones"}},
 		{"Evolution VPC, Evolution DNS, Evolution Load Balancer, SNAT-шлюзы:", []string{"vpc", "dns", "lb", "tg", "snat"}},
 		{"Evolution Managed Kubernetes:", []string{"k8s"}},
 		{"Evolution Artifact Registry, Evolution Container Apps:", []string{"ar", "ca"}},

@@ -27,6 +27,9 @@
     - [evo ar operation](#evo-ar-operation)
   - [evo audit](#evo-audit)
     - [evo audit events](#evo-audit-events)
+  - [evo backup](#evo-backup)
+    - [evo backup get](#evo-backup-get)
+    - [evo backup list](#evo-backup-list)
   - [evo billing](#evo-billing)
     - [evo billing balance](#evo-billing-balance)
     - [evo billing consumption](#evo-billing-consumption)
@@ -276,6 +279,7 @@ Object Storage, секреты; развёртывание compose-проект�
 * [evo agent](#evo-agent)	 - Подключить evo к ИИ-агенту: MCP-клиент и правила для агента
 * [evo ar](#evo-ar)	 - Artifact Registry: реестры образов и пакетов
 * [evo audit](#evo-audit)	 - Журнал аудита: кто что сделал в проекте
+* [evo backup](#evo-backup)	 - Резервные копии ВМ и дисков
 * [evo billing](#evo-billing)	 - Биллинг: баланс, потребление, отчёт FinOps
 * [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
 * [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
@@ -876,6 +880,135 @@ evo audit events [flags]
 ### SEE ALSO
 
 * [evo audit](#evo-audit)	 - Журнал аудита: кто что сделал в проекте
+
+## evo backup
+
+Резервные копии ВМ и дисков
+
+```
+evo backup [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по backup
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo backup get](#evo-backup-get)	 - Резервная копия по id: исходный ресурс, существует ли он, план копирования
+* [evo backup list](#evo-backup-list)	 - Резервные копии ВМ и дисков: id, имя, состояние, тип, размер, исходный ресурс
+
+## evo backup get
+
+Резервная копия по id: исходный ресурс, существует ли он, план копирования
+
+### Synopsis
+
+```text
+Резервная копия по id: исходный ресурс, существует ли он, план копирования.
+
+Резервная копия по id (из 'evo backup list'): поля строки списка, описание и план копирования, существует ли ещё исходный ресурс и каким он был в копии (диск — размер, тип, зона; ВМ — flavor, диски, интерфейсы). Только чтение.
+
+Вызывает инструмент backup_get (подробнее: 'evo tools describe backup_get').
+```
+
+```
+evo backup get <backup-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo backup](#evo-backup)	 - Резервные копии ВМ и дисков
+
+## evo backup list
+
+Резервные копии ВМ и дисков: id, имя, состояние, тип, размер, исходный ресурс
+
+### Synopsis
+
+```text
+Резервные копии ВМ и дисков: id, имя, состояние, тип, размер, исходный ресурс.
+
+Резервные копии ВМ и дисков проекта: id, имя, состояние, тип (полная или инкрементальная), размер (МБ), время создания и последнего восстановления, исходный ресурс (вид, id, имя). Только чтение.
+
+Вызывает инструмент backup_list (подробнее: 'evo tools describe backup_list').
+
+Фильтры — отдельным блоком флагов ниже. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+```
+
+```
+evo backup list [flags]
+```
+
+### Examples
+
+```
+  evo backup list --state created --name web
+```
+
+### Options
+
+```
+  -h, --help                   Справка по list
+      --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string            Только с этой частью имени, регистр не важен
+      --resource-id string     Только копии этой ВМ или диска: её id
+      --resource-type string   Только в этом состоянии: disk, virtual_machine
+      --state string           Только в этом состоянии: creating, created, error_creating, updating, error, deleting, error_deleting
+      --states stringArray     Только в одном из этих состояний: значения — как у state (флаг повторяется или значения через запятую)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo backup](#evo-backup)	 - Резервные копии ВМ и дисков
 
 ## evo billing
 
@@ -9342,7 +9475,7 @@ evo tools list [flags]
 ### Options
 
 ```
-      --group string   Только эта группа (ar, audit, auth, billing, ca, cert, deploy, disk, dns, iam, image, k8s, kafka, monitoring, nlb, org, pg, redis, s3, secret, snat, stack, vm, vpc)
+      --group string   Только эта группа (ar, audit, auth, backup, billing, ca, cert, deploy, disk, dns, iam, image, k8s, kafka, monitoring, nlb, org, pg, redis, s3, secret, snat, stack, vm, vpc)
   -h, --help           Справка по list
 ```
 

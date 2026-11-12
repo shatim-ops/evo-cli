@@ -552,6 +552,16 @@ func (s *Registry) registerTools() {
 			}, "cluster_id", "action"),
 		},
 		{
+			Name:        "backup_list",
+			Description: "List the backups of VMs and disks in the project: id, name, state, type (full or incremental), size_mb, created_at, last_restore_time, and the source (resource_type, resource_id, resource_name). Read-only.",
+			InputSchema: objSchema(map[string]any{}),
+		},
+		{
+			Name:        "backup_get",
+			Description: "A backup by id (from backup_list): the fields of its row, its description and plan, whether its source still exists, and the source as the backup holds it (a disk: size, type, zone; a VM: flavor, disks, interfaces). Read-only.",
+			InputSchema: objSchema(map[string]any{"backup_id": uuidProp("Backup UUID (from backup_list).")}, "backup_id"),
+		},
+		{
 			Name:        "disk_list",
 			Description: "List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). Read-only.",
 			InputSchema: objSchema(map[string]any{}),
@@ -1511,6 +1521,8 @@ func (s *Registry) registerTools() {
 		"k8s_kubectl":          s.gated("k8s_kubectl", s.planK8sKubectl),
 		"k8s_apply":            s.gated("k8s_apply", s.planK8sApply),
 		"k8s_helm":             s.gated("k8s_helm", s.planK8sHelm),
+		"backup_list":          s.handleBackupList,
+		"backup_get":           s.handleBackupGet,
 		"disk_list":            s.handleDiskList,
 		"disk_create":          s.gated("disk_create", s.planDiskCreate),
 		"disk_attach":          s.gated("disk_attach", s.planDiskAttach),

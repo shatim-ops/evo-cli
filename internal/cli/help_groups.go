@@ -35,7 +35,7 @@ var commandGroups = []struct {
 	cmds       []string
 }{
 	{"compute", "Evolution Compute, Evolution Disk:", "Evolution Compute, Evolution Disk:",
-		[]string{"vm", "image", "marketplace", "disk", "list-zones"}},
+		[]string{"vm", "image", "marketplace", "disk", "backup", "list-zones"}},
 	{"network", "Evolution VPC, Evolution DNS, Evolution Load Balancer, SNAT gateways:",
 		"Evolution VPC, Evolution DNS, Evolution Load Balancer, SNAT-шлюзы:",
 		[]string{"vpc", "dns", "lb", "tg", "snat"}},

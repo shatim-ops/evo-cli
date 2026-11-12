@@ -7,13 +7,13 @@
      go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc|TestParityInventory' -update-docs
      CI сверяет файл с кодом. -->
 
-Инструментов в реестре: 166 (изменяющих: 75). Команд из `CLISpec`: 166. Команд в бинаре вместе с корнем `evo`: 226 — в docs/commands.md 221, скрытых 4, прочих 1 (`evo help`).
+Инструментов в реестре: 168 (изменяющих: 75). Команд из `CLISpec`: 168. Команд в бинаре вместе с корнем `evo`: 229 — в docs/commands.md 224, скрытых 4, прочих 1 (`evo help`).
 
 ## 1. Инструменты по способу вызова из CLI
 
 | Способ | Инструментов | из них изменяющих |
 |---|---|---|
-| дерево | 160 | 74 |
+| дерево | 162 | 74 |
 | движок | 6 | 1 |
 | tools call | 0 | 0 |
 
@@ -26,6 +26,7 @@
 | ar | 5 | 5 | 0 | 0 | 5/5 |
 | audit | 1 | 1 | 0 | 0 | 1/1 |
 | auth | 2 | 0 | 2 | 0 | 2/2 |
+| backup | 2 | 2 | 0 | 0 | 2/2 |
 | billing | 3 | 3 | 0 | 0 | 3/3 |
 | ca | 7 | 7 | 0 | 0 | 7/7 |
 | cert | 10 | 10 | 0 | 0 | 10/10 |
@@ -60,6 +61,8 @@
 | audit | `audit_events` | нет | дерево | `evo audit events` | да/да |
 | auth | `doctor` | нет | движок | `evo doctor` | да/да |
 | auth | `whoami` | нет | движок | `evo whoami` | да/да |
+| backup | `backup_get` | нет | дерево | `evo backup get` | да/да |
+| backup | `backup_list` | нет | дерево | `evo backup list` | да/да |
 | billing | `billing_balance` | нет | дерево | `evo billing balance` | да/да |
 | billing | `billing_consumption` | нет | дерево | `evo billing consumption` | да/да |
 | billing | `billing_finops` | нет | дерево | `evo billing finops` | да/да |
@@ -237,6 +240,8 @@
 | `evo ar list` | `ar_list` | — | — | — | — | — |
 | `evo ar operation` | `ar_operation` | operation_id | — | — | — | — |
 | `evo audit events` | `audit_events` | — | — | — | — | — |
+| `evo backup get` | `backup_get` | backup_id | — | — | — | — |
+| `evo backup list` | `backup_list` | — | — | — | — | — |
 | `evo billing balance` | `billing_balance` | — | — | — | — | render |
 | `evo billing consumption` | `billing_consumption` | — | project_id→--project-id | — | — | render |
 | `evo billing finops` | `billing_finops` | — | project_id→--project-id | — | — | render |
@@ -445,17 +450,17 @@
 
 Ожидаемый набор флагов выводится из схемы (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с флагами команды в дереве cobra. Пусто — расхождений нет.
 
-Расхождений нет: флаги всех 160 команд деревьев выведены из схемы; флаги 6 команд движка сверяет со схемой TestParity_EngineCommands.
+Расхождений нет: флаги всех 162 команд деревьев выведены из схемы; флаги 6 команд движка сверяет со схемой TestParity_EngineCommands.
 
 ## 5. Русская справка
 
 | Что | Есть по-русски | Всего |
 |---|---|---|
-| краткое описание инструмента (ShortRU) | 166 | 166 инструментов |
-| подробное описание инструмента (DescriptionRU) | 166 | 166 инструментов |
-| описания аргументов (ArgDescriptionsRU) | 616 | 616 аргументов |
-| из них флаги команд деревьев | 388 | 388 флагов |
-| описания инструментов в MCP | 0 | 166 (всегда английские) |
+| краткое описание инструмента (ShortRU) | 168 | 168 инструментов |
+| подробное описание инструмента (DescriptionRU) | 168 | 168 инструментов |
+| описания аргументов (ArgDescriptionsRU) | 623 | 623 аргументов |
+| из них флаги команд деревьев | 394 | 394 флагов |
+| описания инструментов в MCP | 0 | 168 (всегда английские) |
 
 ## 6. Исключения из паритета
 
