@@ -324,25 +324,37 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "open_ports",
-			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group.",
+			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
 				"cidr":           cidrProp("Source CIDR (default 0.0.0.0/0 = anywhere): ask the person which source."),
+				allowInternetArg: boolProp("true to open to the whole internet on a shared group: the person decides, not the model."),
 				"confirmed":      confirmedProp(),
 			}, "security_group", "ports"),
 		},
 		{
 			Name:        "close_ports",
-			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open). NOTE: security groups are shared per availability zone — closing a port affects every VM in that group.",
+			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open). A zone's group is shared: closing a port affects every VM in it. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to close, e.g. [8080]."},
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
 				"cidr":           cidrProp("Source CIDR of the rules (default 0.0.0.0/0 = anywhere)."),
+				"allow_cut_ssh":  boolProp("true to delete the last rule letting SSH in: the person decides, not the model."),
 				"confirmed":      confirmedProp(),
 			}, "security_group", "ports"),
+		},
+		{
+			Name:        "sg_rule_delete",
+			Description: "Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). The preview names the rule whole, the group and what stops getting through, and the other rules that still let that port in, with their source. A rule that is not there answers already_deleted with no question; a rule of another group is refused with the group it is in. The last rule that lets TCP 22 in to a group with a deployment of this folder is refused without allow_cut_ssh: evo and the person would lose SSH. evo does not know which rule this server itself is reached through: do not delete that one.",
+			InputSchema: objSchema(map[string]any{
+				"security_group": strProp("Security group name or UUID (see list_security_groups)."),
+				"rule_id":        uuidProp("Rule UUID (list_security_groups with rules=true)."),
+				"allow_cut_ssh":  boolProp("true to delete the last rule that lets SSH (TCP 22) in: the person decides, not the model."),
+				"confirmed":      confirmedProp(),
+			}, "security_group", "rule_id"),
 		},
 		{
 			Name:        "k8s_list",
@@ -1458,6 +1470,7 @@ func (s *Registry) registerTools() {
 		"release_floating_ip":  s.gated("release_floating_ip", s.planReleaseFloatingIP),
 		"open_ports":           s.gated("open_ports", s.planOpenPorts),
 		"close_ports":          s.gated("close_ports", s.planClosePorts),
+		"sg_rule_delete":       s.gated("sg_rule_delete", s.planSGRuleDelete),
 		"snat_list":            s.handleSnatList,
 		"snat_create":          s.gated("snat_create", s.planSnatCreate),
 		"snat_delete":          s.gated("snat_delete", s.planSnatDelete),

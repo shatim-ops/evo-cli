@@ -57,6 +57,7 @@ const unseenBeforeProbe = "no run has shown the refusal: after two runs of probe
 var deleteTargets = map[string]deleteTarget{
 	"ar_delete":         {arg: "id", what: "artifact registry", whRU: "реестр артефактов"},
 	"close_ports":       {arg: "ports", parent: "security_group", what: "port rule", whRU: "правило порта"},
+	"sg_rule_delete":    {arg: "rule_id", parent: "security_group", what: "security group rule", whRU: "правило группы безопасности"},
 	"ca_delete":         {arg: "name", what: "container app", whRU: "приложение Container Apps"},
 	"cert_delete":       {arg: "id", what: "certificate", whRU: "сертификат"},
 	"destroy":           {arg: "vm_id", what: "VM", whRU: "ВМ"},

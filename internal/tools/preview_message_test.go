@@ -121,7 +121,7 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	// (G13-23, D35): the zone's group of the fault cloud.
 	"open_ports": func(t *testing.T) string {
 		r, _ := faultToolsRegistry(t, &faultCloud{})
-		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}})
+		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}, allowInternetArg: true})
 		return text
 	},
 	// fip_attach finds the address and the VM before the question (W6): a
@@ -186,6 +186,12 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	"destroy": func(t *testing.T) string {
 		r, _ := targetRegistry(t, &targetCloud{})
 		_, text, _ := callNamed(t, r, "destroy", map[string]any{})
+		return text
+	},
+	// sg_rule_delete reads the group and its rules before the question.
+	"sg_rule_delete": func(t *testing.T) string {
+		r, _ := sgRuleRegistry(t, newSGWorld())
+		_, text, _ := callNamed(t, r, "sg_rule_delete", map[string]any{"security_group": sgZoneGroup, "rule_id": sgRuleWeb})
 		return text
 	},
 	// close_ports reads its group and the rules it would delete before the

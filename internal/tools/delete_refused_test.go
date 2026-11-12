@@ -53,6 +53,7 @@ var deleteRefusals = map[string]struct {
 
 	"ar_delete":         {none: "no refusal seen live (register, 28.10)"},
 	"close_ports":       {none: "a rule has no state"},
+	"sg_rule_delete":    {none: "no refusal seen live: the states the platform refuses a rule's delete in are for probe Г-11 (release plan 1.9)"},
 	"ca_delete":         {none: "no refusal seen live; a repeat during the deletion is a new operation (CAP-4)"},
 	"cert_delete":       {none: "no refusal seen live (register, 28.10)"},
 	"disk_delete":       {none: "an attached disk is refused before the question (disk_delete reads it)"},

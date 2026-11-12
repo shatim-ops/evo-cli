@@ -25,7 +25,8 @@ func TestOpenPorts_PreviewSaysTheSource(t *testing.T) {
 		{ID: faultID(0x71), Direction: "ingress", IPProtocol: "tcp", PortRange: "80:80", RemoteIPPrefix: "0.0.0.0/0"},
 	}}
 	r, _ := faultToolsRegistry(t, cloud)
-	m, _, isErr := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(8080)}})
+	// The default source on the zone's group, with the person's word for it (D105).
+	m, _, isErr := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(8080)}, allowInternetArg: true})
 	if !isErr || m["status"] != "confirmation_required" {
 		t.Fatalf("open_ports preview: %v", m)
 	}
@@ -106,7 +107,7 @@ func TestOpenPorts_AlreadyOpenCountsTheSource(t *testing.T) {
 		{ID: faultID(0x73), Direction: "ingress", IPProtocol: "tcp", PortRange: "8000:9000", RemoteIPPrefix: "0.0.0.0/0"},
 	}}
 	r, _ := faultToolsRegistry(t, cloud)
-	args := map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(8080)}}
+	args := map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(8080)}, allowInternetArg: true}
 	m, _, _ := callNamed(t, r, "open_ports", args)
 	if open, _ := m["will_open"].([]any); len(open) != 1 || open[0] != "80" {
 		t.Errorf("will_open %v, want [80]: a rule from 10.0.0.0/8 does not open 80 to 0.0.0.0/0", m["will_open"])

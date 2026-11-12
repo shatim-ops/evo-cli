@@ -46,7 +46,8 @@ func openRules(c *faultCloud) []string {
 func TestClosePorts_ClosesWhatOpenPortsOpened(t *testing.T) {
 	cloud := &faultCloud{}
 	r, _ := faultToolsRegistry(t, cloud)
-	if m, isErr := closeCall(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}, "confirmed": true}); isErr {
+	// The whole internet on the zone's group: with the person's word for it (D105).
+	if m, isErr := closeCall(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}, allowInternetArg: true, "confirmed": true}); isErr {
 		t.Fatalf("open_ports: %v", m)
 	}
 	args := map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}}

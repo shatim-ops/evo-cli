@@ -525,3 +525,9 @@ func (a *CloudRuAdapter) SetVMPower(ctx context.Context, id, command string) err
 	resp.Body.Close()
 	return nil
 }
+
+// ListInterfaces lists the project's network interfaces via
+// GET /api/v1/interfaces?project_id=….
+func (a *CloudRuAdapter) ListInterfaces(ctx context.Context, projectID string) ([]*Interface, error) {
+	return listProjectScoped[Interface](a, ctx, "/api/v1/interfaces", projectID)
+}
