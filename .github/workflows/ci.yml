@@ -218,6 +218,19 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 300 .github/scripts/dbaas_delete_test.sh
 
+      # Уборка cleanup_only рядом с живыми запусками (e2e_live_runs.sh) на
+      # заглушке gh и поддельном evo: ресурсы незавершённого запуска не
+      # удаляются; список запусков не прочитан — не удаляется ничего.
+      - name: e2e_live_runs.sh на заглушке gh
+        if: runner.os == 'Linux'
+        run: timeout 120 .github/scripts/e2e_live_runs_test.sh
+
+      # Пробы графика 1.9 (область ops cloud-live.sh) на поддельном evo и
+      # заглушке curl: порядок запросов, отказ платформы, уборка своего вида.
+      - name: область ops cloud-live.sh на заглушках
+        if: runner.os == 'Linux'
+        run: timeout 300 .github/scripts/cloud_live_ops_test.sh
+
       # D61 вживую (dbaas-passing-delete.sh) на поддельном evo: отказ USAGE —
       # 1 из 1, удаление принято — провал, кластер уже готов — не покрыто.
       - name: dbaas-passing-delete.sh на поддельном evo
@@ -255,6 +268,12 @@ jobs:
       - name: diag-check.py на образцах журнала
         if: runner.os == 'Linux'
         run: python3 scripts/diag-check-test.py
+
+      # Опись запросов живых проб (probe-requests.py) на спецификации из
+      # теста: поля тела, enum, запрос, которого в спецификации нет.
+      - name: probe-requests.py на образце спецификации
+        if: runner.os == 'Linux'
+        run: python3 scripts/probe-requests-test.py
 
       # Маска публичных логов cloud-e2e: имена групп и подсетей тестового проекта.
       - name: redact.sed на образцах вывода evo

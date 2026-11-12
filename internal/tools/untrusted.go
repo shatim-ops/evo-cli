@@ -58,6 +58,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The roles of the key, as IAM names them: anyone who may create a
 	// custom role in the organization names it (A0-2).
 	"whoami": {fields: []string{"roles"}},
+	// The error of an operation, as Managed Kubernetes words it: the
+	// service's text, with the names of the project's resources in it.
+	"k8s_operation": {fields: []string{"error"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of
