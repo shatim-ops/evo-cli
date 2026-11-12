@@ -27,7 +27,7 @@ var noPriceInPreview = map[string]string{
 	"disk_attach": priceNoNewResource, "disk_delete": priceNoNewResource, "disk_detach": priceNoNewResource,
 	"dns_record_create": priceNoNewResource, "dns_record_delete": priceNoNewResource, "dns_zone_delete": priceNoNewResource,
 	"fip_attach": priceNoNewResource, "image_delete": priceNoNewResource, "k8s_apply": priceNoNewResource,
-	"k8s_delete": priceNoNewResource, "k8s_nodepool_delete": priceNoNewResource, "k8s_helm": priceNoNewResource, "k8s_kubectl": priceNoNewResource,
+	"k8s_delete": priceNoNewResource, "k8s_nodepool_delete": priceNoNewResource, "backup_delete": priceNoNewResource, "k8s_helm": priceNoNewResource, "k8s_kubectl": priceNoNewResource,
 	"kafka_delete": priceNoNewResource, "lb_delete": priceNoNewResource, "close_ports": priceNoNewResource, "open_ports": priceNoNewResource, "sg_rule_delete": priceNoNewResource,
 	"pg_db_create": priceNoNewResource, "pg_db_delete": priceNoNewResource, "pg_delete": priceNoNewResource,
 	"pg_user_create": priceNoNewResource, "pg_user_delete": priceNoNewResource, "redis_delete": priceNoNewResource,
