@@ -51,6 +51,23 @@ last update, no more of the spec) it also reports, per request:
 --update-fields rewrites the baseline from the specs, once the new fields
 are read or accepted (a version's step, or a PR that reads a new field).
 
+With the states of the resources scripts/api-contract-states.json (the enums
+of the states of what evo creates, changes or deletes, as the specs write
+them; the worlds of the tests carry a resource in each,
+TestStates_EveryChangeHasAWorldForEveryStateOfTheSpec) it also reports, per
+enum:
+
+  state-new      a state the spec has and the file does not: `error` — no
+                 world carries the resource in it (release plan 1.9, «мир
+                 несёт каждое состояние из спецификации»)
+  state-gone     a state of the file the spec no longer has: `info`
+  state-enum-missing  the enum is not where the key says (a schema renamed
+                      or moved): `error`
+  state-spec-missing  the service of the key is not in the contract: `error`
+
+--update-states rewrites the states from the specs, key by key; the test of
+the worlds then asks for a row for each new state.
+
 Findings are `error` (the request contradicts the spec), `warn` (the spec
 says nothing, or the code reads a field the spec does not have) or `info`.
 Each request may carry "accepted": {"<finding id>": "<why>"} for known,
@@ -62,6 +79,7 @@ in CI.
 Usage: python3 scripts/api-contract-check.py [--specs .cache/cloudru-specs]
            [--contract scripts/api-contract.json] [--root .] [--code-only]
            [--fields scripts/api-contract-fields.json] [--update-fields]
+           [--states scripts/api-contract-states.json] [--update-states]
            [--markdown]
 """
 import argparse
@@ -278,6 +296,73 @@ def check_fields(svc, req, current, baseline):
     for path in sorted(known - set(current)):
         out.append(["info", f"field-gone:{path}", f"поля `{path}` в спецификации больше нет"])
     return out
+
+
+def spec_enum(spec, name):
+    """The enum of a key of the states: a schema, or a field of a schema.
+
+    Names of schemas have dots of their own (cloudru.dbaas.kafka.v1.Cluster),
+    so the whole name is tried as a schema first, then all but the last part
+    as the schema and the last as its field. None when it is not there.
+    """
+    schemas = (spec.doc.get("components") or {}).get("schemas") or spec.doc.get("definitions") or {}
+
+    def enum_of(node):
+        node = spec.resolve(node)
+        for _ in range(4):
+            if not isinstance(node, dict):
+                return None
+            if isinstance(node.get("enum"), list):
+                return list(node["enum"])
+            # A field that wraps its enum: an array of it, or allOf of one.
+            inner = [node.get("items")] if node.get("type") == "array" else list(node.get("allOf") or [])
+            node = next((n for n in inner if isinstance(n, dict)), None)
+        return None
+
+    if name in schemas:
+        return enum_of(schemas[name])
+    schema, _, field = name.rpartition(".")
+    if schema in schemas:
+        props = merge_schema(spec.resolve(schemas[schema]))[0]
+        if field in props:
+            return enum_of(props[field])
+    return None
+
+
+def check_states(states, spec_of):
+    """state-new / state-gone / state-enum-missing of every enum of the file.
+
+    spec_of gives the Spec of a service of the contract, or None. Returns the
+    rows (key, level, id, text) and the enums as the specs have them now.
+    """
+    rows, fresh = [], {}
+    for key in sorted(states):
+        svc, _, name = key.partition(":")
+        spec = spec_of(svc)
+        if spec is None:
+            fresh[key] = states[key]
+            rows.append((key, "error", "state-spec-missing", f"сервиса `{svc}` нет в описи или нет его спецификации"))
+            continue
+        current = spec_enum(spec, name)
+        if current is None:
+            fresh[key] = states[key]
+            rows.append((key, "error", "state-enum-missing",
+                         f"перечня `{name}` в спецификации нет: схему переименовали или перенесли — поправьте ключ"))
+            continue
+        fresh[key] = current
+        clean = True
+        for st in current:
+            if st not in states[key]:
+                clean = False
+                rows.append((key, "error", f"state-new:{st}",
+                             f"новое состояние `{st}`: мир его не несёт — обновите перечень (--update-states) и допишите строку мира"))
+        for st in states[key]:
+            if st not in current:
+                clean = False
+                rows.append((key, "info", f"state-gone:{st}", f"состояния `{st}` в спецификации больше нет"))
+        if clean:
+            rows.append((key, "ok", "", ""))
+    return rows, fresh
 
 
 def param_schema(p):
@@ -695,6 +780,9 @@ def main():
     ap.add_argument("--fields", default=os.path.join(os.path.dirname(__file__), "api-contract-fields.json"),
                     help="the baseline of the fields of the specs (field-new)")
     ap.add_argument("--update-fields", action="store_true", help="rewrite the baseline of the fields from the specs")
+    ap.add_argument("--states", default=os.path.join(os.path.dirname(__file__), "api-contract-states.json"),
+                    help="the states of the resources as the specs write them (state-new)")
+    ap.add_argument("--update-states", action="store_true", help="rewrite the states from the specs")
     args = ap.parse_args()
     try:
         baseline_doc = json.load(open(args.fields, encoding="utf-8"))
@@ -722,6 +810,7 @@ def main():
                 failed += 1
             rows.append((svc["name"], where, req.get("code", ""), level, fid, text))
 
+    specs = {}
     for svc in contract["services"]:
         if args.code_only:
             for req in svc["requests"]:
@@ -732,7 +821,7 @@ def main():
             rows.append((svc["name"], "—", "—", "error", "spec-missing", f"нет файла спецификации {svc['spec']}"))
             failed += 1
             continue
-        spec = Spec(files[0])
+        spec = specs[svc["name"]] = Spec(files[0])
         for req in svc["requests"]:
             current = request_fields(spec, req)
             # No operation in the spec (path-missing): an empty baseline, so
@@ -747,6 +836,25 @@ def main():
             json.dump(doc, f, ensure_ascii=False, indent=1)
             f.write("\n")
         print(f"эталон полей: {len(fresh)} запросов → {args.fields}", file=sys.stderr)
+
+    if not args.code_only:
+        try:
+            states_doc = json.load(open(args.states, encoding="utf-8"))
+        except FileNotFoundError:
+            states_doc = {}
+        found, current = check_states(states_doc.get("states") or {}, specs.get)
+        for key, level, fid, text in found:
+            if args.update_states and fid.startswith(("state-new:", "state-gone:")):
+                continue
+            if level == "error":
+                failed += 1
+            rows.append((key.partition(":")[0], key.partition(":")[2], os.path.basename(args.states), level, fid, text))
+        if args.update_states:
+            states_doc["states"] = current
+            with open(args.states, "w", encoding="utf-8") as f:
+                json.dump(states_doc, f, ensure_ascii=False, indent=1)
+                f.write("\n")
+            print(f"состояния: {len(current)} перечней → {args.states}", file=sys.stderr)
 
     if args.markdown:
         print("| сервис | запрос | код | уровень | проверка | детали |")

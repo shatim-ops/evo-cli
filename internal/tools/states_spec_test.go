@@ -46,9 +46,9 @@ var specStatesOf = map[string]string{
 	"subnet_create": "compute:SubnetState", "subnet_delete": "compute:SubnetState",
 	"vpc_route_create": "vpc:StaticRoute.status", "vpc_route_delete": "vpc:StaticRoute.status",
 
-	"k8s_create": "mk8s:Cluster.state", "k8s_delete": "mk8s:Cluster.state",
-	"k8s_add_nodepool": "mk8s:NodePool.state", "k8s_nodepool_delete": "mk8s:NodePool.state", "k8s_nodepool_scale": "mk8s:NodePool.state",
-	"k8s_add_addon": "mk8s:ClusterAddon.status",
+	"k8s_create": "mk8s:cloudru.containers.mk8s.v3.Cluster.status", "k8s_delete": "mk8s:cloudru.containers.mk8s.v3.Cluster.status",
+	"k8s_add_nodepool": "mk8s:cloudru.containers.mk8s.v3.NodePool.status", "k8s_nodepool_delete": "mk8s:cloudru.containers.mk8s.v3.NodePool.status", "k8s_nodepool_scale": "mk8s:cloudru.containers.mk8s.v3.NodePool.status",
+	"k8s_add_addon": "mk8s:cloudru.containers.mk8s.v3.ClusterAddon.status",
 
 	"kafka_create": "kafka:cloudru.dbaas.kafka.v1.Cluster.status", "kafka_delete": "kafka:cloudru.dbaas.kafka.v1.Cluster.status",
 	"redis_create": "redis:cloudru.dbaas.redis.v1.Cluster.status", "redis_delete": "redis:cloudru.dbaas.redis.v1.Cluster.status",
@@ -108,8 +108,8 @@ var stateRowsOf = func() map[string]map[string]bool {
 // stateWorldsPendingNew are the tools new in 1.9 with no row for every
 // state of the specification yet. Only shrinks. Closes by 1.9.
 var stateWorldsPendingNew = map[string]string{
-	"k8s_nodepool_delete": "worlds: the group ready, the last group, deleting (D61); not the 17 states of NodePool.state",
-	"k8s_nodepool_scale":  "worlds: the group ready and at the size; not the 17 states",
+	"k8s_nodepool_delete": "worlds: the group ready, the last group, deleting (D61); not the 16 states of NodePool.status",
+	"k8s_nodepool_scale":  "worlds: the group ready and at the size; not the 16 states",
 	"sg_rule_create":      "worlds: the rule there and not; not the 7 states of a rule (the window of deletion: cloud-e2e 205–209)",
 	"sg_rule_delete":      "worlds: the rule there, gone, being deleted; not the 7 states",
 }
