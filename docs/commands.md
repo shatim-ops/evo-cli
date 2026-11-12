@@ -3154,8 +3154,8 @@ evo disk list [flags]
 ### Options
 
 ```
-      --attached       true — только подключённые к ВМ, false — только свободные
-      --bootable       true — только загрузочные, false — только остальные
+      --attached       true — только подключённые к ВМ, false — только свободные (false задаётся так: --attached=false)
+      --bootable       true — только загрузочные, false — только остальные (false задаётся так: --bootable=false)
   -h, --help           Справка по list
       --name string    Только с этой частью имени, регистр не важен
       --state string   Только в этом состоянии: available, in_use, reserved, error, error_creating, error_deleting, creating, updating, deleting, attaching, detaching
@@ -3523,7 +3523,7 @@ evo dns record-get <record-id> [flags]
 
 Вызывает инструмент dns_records (подробнее: 'evo tools describe dns_records').
 
-Отбор: --name, --zone-id, --type. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --name, --type. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -4111,7 +4111,7 @@ evo image get <image-id|image> [flags]
 
 Вызывает инструмент image_list (подробнее: 'evo tools describe image_list').
 
-Отбор: --query, --type, --zone. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --type, --zone. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -4427,7 +4427,7 @@ evo k8s addon-versions <name> [flags]
 
 Вызывает инструмент k8s_addons (подробнее: 'evo tools describe k8s_addons').
 
-Отбор: --query, --category, --billable. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --category, --billable. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -4445,7 +4445,7 @@ evo k8s addons [query] [flags]
 ### Options
 
 ```
-      --billable          true — только платные плагины, false — только бесплатные. По умолчанию — все
+      --billable          true — только платные плагины, false — только бесплатные. По умолчанию — все (false задаётся так: --billable=false)
       --category string   Только плагины этой категории: точное совпадение без учёта регистра (категории перечислены в ответе)
   -h, --help              Справка по addons
 ```
@@ -4860,7 +4860,7 @@ evo k8s list [flags]
 
 Вызывает инструмент k8s_nodepools (подробнее: 'evo tools describe k8s_nodepools').
 
-Отбор: --status, --name, --cluster-id. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --status, --name. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -9426,12 +9426,12 @@ evo vm flavors [flags]
 
 ```
       --cpu int        Только flavor с таким числом vCPU
-      --gpu            true — только flavor с GPU, false — только без GPU
+      --gpu            true — только flavor с GPU, false — только без GPU (false задаётся так: --gpu=false)
   -h, --help           Справка по flavors
       --name string    Только с этой частью имени, регистр не важен
       --ram int        Только flavor с таким объёмом RAM, ГБ
       --share string   Только flavor с такой гарантированной долей vCPU, как её пишет каталог: 1:1, 1:3, 1:10
-      --spot           true — только прерываемые (spot) flavor, false — только остальные
+      --spot           true — только прерываемые (spot) flavor, false — только остальные (false задаётся так: --spot=false)
       --zone string    Только flavor, с которыми ВМ можно создать в этой зоне (имя из evo vm zones)
 ```
 
@@ -9535,7 +9535,7 @@ evo vm list [flags]
       --flavor string   Только с этим flavor: имя
   -h, --help            Справка по list
       --name string     Только с этой частью имени, регистр не важен
-      --public-ip       true — только с публичным IP, false — только без него
+      --public-ip       true — только с публичным IP, false — только без него (false задаётся так: --public-ip=false)
       --state string    Только в этом состоянии: running, stopped, error, error_creating, error_deleting, creating, starting, stopping, rebooting, deleting, updating
       --zone string     Только в этой зоне: имя или UUID
 ```
@@ -9897,7 +9897,7 @@ evo vpc fips [flags]
 ### Options
 
 ```
-      --free           true — только свободные для привязки, false — только занятые
+      --free           true — только свободные для привязки, false — только занятые (false задаётся так: --free=false)
   -h, --help           Справка по fips
       --name string    Только с этой частью имени, регистр не важен
       --state string   Только в этом состоянии: available, in_use, error, error_creating, error_deleting, creating, deleting, updating, attaching, detaching

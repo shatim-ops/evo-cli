@@ -31,11 +31,14 @@ func tHeading() string {
 }
 func tProject() string { return i18n.T("Project", "Проект") }
 
-// tPageUntil: after the wait the page's button meets a closed loopback.
-// It stands in the header by the person's e-mail (V3), one short line.
+// tPageUntil: after the wait the page's button meets a closed loopback,
+// and the browser shows only an error of the connection — so the line
+// says what to do then (FB182-4). It stands in the header by the
+// person's e-mail (V3), one line.
 func tPageUntil(t time.Time) string {
 	clock := t.Local().Format("15:04")
-	return i18n.Tf("This page works until %s", "Страница действует до %s", clock)
+	return i18n.Tf("This page works until %s. Later, go back to the terminal and run evo login again",
+		"Страница действует до %s. Позже вернитесь в терминал и запустите evo login снова", clock)
 }
 
 // tChooseProject is the empty first option of the list of projects.

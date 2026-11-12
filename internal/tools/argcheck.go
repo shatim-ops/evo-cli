@@ -132,7 +132,13 @@ func ruleArg(k string, p map[string]any, v any) error {
 		}
 	}
 	s, ok := v.(string)
-	if !ok || strings.TrimSpace(s) == "" {
+	if !ok {
+		return nil
+	}
+	if min, ok := p["minLength"].(int); ok && len(strings.TrimSpace(s)) < min {
+		return ruleErr(k, p, i18n.Tf("%s is empty", "%s пустой", k))
+	}
+	if strings.TrimSpace(s) == "" {
 		return nil
 	}
 	switch p["format"] {
@@ -181,7 +187,11 @@ func (r *Registry) argRefused(tool, arg string, v any) bool {
 
 // ruleHint points at the argument's description, which says where the
 // value comes from.
-func ruleHint(k string, _ map[string]any) string {
+func ruleHint(k string, p map[string]any) string {
+	if _, ok := p["minLength"]; ok {
+		return i18n.Tf("Give %s a value or drop it: an empty value is not read as no filter.",
+			"Задайте %s значение или уберите его: пустое значение не читается как отсутствие фильтра.", k)
+	}
 	return i18n.Tf("See %s in the tool's inputSchema.", "См. %s в inputSchema инструмента.", k)
 }
 

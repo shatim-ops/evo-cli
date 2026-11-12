@@ -85,7 +85,9 @@ type listSpec struct {
 	// own are the filters the handler applies itself, as it did before
 	// 1.8.2 (their names and the answer stay); they are declared in the
 	// schema of the tool. An argument that adds to the answer (rules of
-	// list_security_groups, all of image_list) is no filter.
+	// list_security_groups, all of image_list) is no filter, nor is the
+	// resource a list is read in (the cluster of k8s_nodepools, the zone
+	// of dns_records, FB182-1): it does not narrow the list it names.
 	own []string
 	// none is why a list takes no filter.
 	none string
@@ -178,11 +180,11 @@ var listSpecs = map[string]listSpec{
 		nameFilter(),
 		textFilter("domain", "Only with this in the domain, any case.", "Только с этой частью домена, регистр не важен"),
 	}},
-	"dns_records": {rows: "records", own: []string{"zone_id", "type"}, filters: []listFilter{nameFilter()}},
+	"dns_records": {rows: "records", own: []string{"type"}, filters: []listFilter{nameFilter()}},
 
 	// Managed Kubernetes, the databases
 	"k8s_list":      {rows: "clusters", filters: []listFilter{enumFilter("status", k8sStatuses...), nameFilter()}},
-	"k8s_nodepools": {rows: "node_pools", own: []string{"cluster_id"}, filters: []listFilter{enumFilter("status", k8sStatuses...), nameFilter()}},
+	"k8s_nodepools": {rows: "node_pools", filters: []listFilter{enumFilter("status", k8sStatuses...), nameFilter()}},
 	"pg_list":       {rows: "clusters", filters: []listFilter{enumFilter("status", dbaasStatuses...), nameFilter()}},
 	"kafka_list":    {rows: "clusters", filters: []listFilter{enumFilter("status", dbaasStatuses...), nameFilter()}},
 	"redis_list":    {rows: "clusters", filters: []listFilter{enumFilter("status", dbaasStatuses...), nameFilter()}},
@@ -254,15 +256,22 @@ func (f listFilter) itemFields() []string {
 	return []string{f.arg}
 }
 
-// prop is the property of f in the schema of its tool.
+// prop is the property of f in the schema of its tool. A string filter
+// takes no empty value (minLength, D36): an empty string, or one of
+// spaces, is USAGE before the request on both surfaces — not «no filter»
+// and the whole list (FB182-3).
 func (f listFilter) prop() map[string]any {
+	var p map[string]any
 	switch f.kind {
 	case filterEnum:
-		return enumProp(f.en, f.values...)
+		p = enumProp(f.en, f.values...)
 	case filterBool:
 		return boolProp(f.en)
+	default:
+		p = strProp(f.en)
 	}
-	return strProp(f.en)
+	p["minLength"] = 1
+	return p
 }
 
 // declare puts the filters of the tool into its schema and its Russian
