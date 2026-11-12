@@ -11,9 +11,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -73,7 +75,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		return func(string) {}, nil
 	}
 	dir := intent.Dir(root)
-	done, err := intent.Begin(dir, in)
+	rec, err := intent.Open(dir, in)
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +83,242 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), 0) {
 			return
 		}
-		done()
-		intent.Settle(dir, in)
+		// The call ended and the operation goes on: its answer names the
+		// same tool as the next step. The record stays, named as that
+		// step names the resource, until a call of the step ends the
+		// operation (settleHeld) — and its StartedAt is the start the
+		// limit of the repeats counts from.
+		if next, goesOn := sameToolNext(name, answer); goesOn {
+			// Named as a call of the step would be (the same rule of the
+			// project of a call addressed by id).
+			rec.Name, rec.Target = intentResource(name, next)
+			if _, _, byID := intentTarget(rec); byID && stringArg(next, "project_id") == "" {
+				rec.ProjectID = ""
+			}
+			intent.Hold(rec)
+			rec.Held = true
+			intent.Settle(dir, rec)
+			return
+		}
+		intent.Close(rec)
+		intent.Settle(dir, rec)
 	}, nil
+}
+
+// everySendIsAChange are the tools with no repeat that is a success: every
+// call that reaches the cloud is one more change (a reboot). "tool" → the
+// read that shows the resource after a call whose outcome is not known. A
+// tool declares itself here; the layer names no tool. For such a tool the
+// record of a cut call is not settled by «the same call again» — that
+// call would be a second change — so a consented call that finds one asks
+// again (askAgainAfterACut), and the record's words send to the read, not
+// to a repeat (release plan 1.9, «Слепой повтор действия, где каждый
+// вызов — новое изменение»; «Риск», conclusion 138). The list is of new
+// tools: a shipped tool does not join it without a decision — its
+// consented call would start to answer a question.
+var everySendIsAChange = map[string]string{}
+
+// cutCalls are the records of this caller's own cut calls of the tool name
+// on the resource the call names, for a tool of everySendIsAChange: the
+// same tool, the same resource, the same key, not held. A record of
+// another key is not this caller's cut call, and a held one is an
+// operation going on.
+func (r *Registry) cutCalls(name string, args map[string]any) []intent.Intent {
+	if everySendIsAChange[name] == "" {
+		return nil
+	}
+	resource, target := intentResource(name, args)
+	root, err := os.Getwd()
+	if err != nil || (resource == "" && target == "") {
+		return nil
+	}
+	var cut []intent.Intent
+	for _, in := range intent.Pending(intent.Dir(root)) {
+		if !in.Held && in.Tool == name && in.Name == resource && in.Target == target && in.Key != nil {
+			cut = append(cut, in)
+		}
+	}
+	if len(cut) == 0 {
+		return nil
+	}
+	cur := r.maker()
+	var mine []intent.Intent
+	for _, in := range cut {
+		if cur != nil && !in.Key.Other(cur) {
+			mine = append(mine, in)
+		}
+	}
+	return mine
+}
+
+// cutCallWarning is what the question says of the cut calls mine of tool
+// name, and the field that names them: the last one, and how many there
+// were — each may have taken effect. It sends to the person, not to
+// «confirmed again»: the consent given was to one change («Риск»,
+// conclusion 145, У1).
+func cutCallWarning(name string, mine []intent.Intent) (message string, interrupted map[string]any) {
+	last := mine[len(mine)-1]
+	what := firstNonEmptyStr(last.Name, last.Target)
+	return i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
+			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
+			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), everySendIsAChange[name], name),
+		map[string]any{"tool": name, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
+}
+
+// askAgainAfterACut answers a consented call of a tool of
+// everySendIsAChange that finds the record of its own cut call: the call
+// is not sent. A client that timed out and sends the same call again,
+// with the consent of the first one, would make a second change the
+// person consented to once. The answer is the question again, saying what
+// is known; the record is closed, so the next consented call is sent as
+// any other.
+func (r *Registry) askAgainAfterACut(name string, args map[string]any) (string, bool) {
+	mine := r.cutCalls(name, args)
+	if len(mine) == 0 {
+		return "", false
+	}
+	for _, in := range mine {
+		intent.Close(in)
+	}
+	message, interrupted := cutCallWarning(name, mine)
+	return toJSON(map[string]any{"status": "confirmation_required", "interrupted": interrupted, "message": message}), true
+}
+
+// questionNamesTheCut is the question of a call without consent, with the
+// caller's own cut call named in it: one question that says everything —
+// the preview and the cut call — and the record closed, so the consented
+// call that follows is sent as any other, not asked a second time
+// («Риск», conclusion 145, У2). An answer that is not a question (a
+// refusal, an answer with nothing to consent to) stays as it is, and so
+// does the record.
+func (r *Registry) questionNamesTheCut(name string, args map[string]any, answer string) string {
+	if answerStatus(answer) != "confirmation_required" {
+		return answer
+	}
+	mine := r.cutCalls(name, args)
+	if len(mine) == 0 {
+		return answer
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(answer), &m) != nil {
+		return answer
+	}
+	message, interrupted := cutCallWarning(name, mine)
+	if was, _ := m["message"].(string); was != "" {
+		message += " " + was
+	}
+	m["message"], m["interrupted"] = message, interrupted
+	for _, in := range mine {
+		intent.Close(in)
+	}
+	return toJSON(m)
+}
+
+// sameToolNext reads the next step of answer when it is a call of tool
+// itself (next_tool, next_args): the operation goes on, and that call
+// goes on with it.
+func sameToolNext(tool, answer string) (args map[string]any, ok bool) {
+	var a struct {
+		NextTool string         `json:"next_tool"`
+		NextArgs map[string]any `json:"next_args"`
+	}
+	if json.Unmarshal([]byte(answer), &a) != nil || a.NextTool != tool {
+		return nil, false
+	}
+	return a.NextArgs, true
+}
+
+// settleHeld closes the held records of this call of tool name once its
+// answer is an outcome with no further step of the same tool: evo itself
+// goes on with the operation no more — it ended, or the call handed the
+// wait to a read. The step of a wait carries no consent (nextSameCall), so
+// it writes no intent of its own, and nothing else would close the record
+// of the call that started the operation. A question is not an outcome,
+// and a record another key left is not this call's to close
+// (intent.Settle). The record is of this call when the call names its
+// resource as the record does — or when its answer does: a held record is
+// named by id (its step's), and a call that names the VM by its name
+// answers with that id («Риск», conclusion 137, У1).
+func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
+	resource, target := intentResource(name, args)
+	root, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	var held []intent.Intent
+	for _, in := range intent.Pending(intent.Dir(root)) {
+		if !in.Held || in.Tool != name {
+			continue
+		}
+		if (in.Name == resource && in.Target == target && (resource != "" || target != "")) || answerNames(answer, in.Target) {
+			held = append(held, in)
+		}
+	}
+	if len(held) == 0 || intent.OutcomeUnknown(answerReason(answer), 0) || answerStatus(answer) == "confirmation_required" ||
+		refusedTheCall[answerReason(answer)] {
+		return
+	}
+	if _, goesOn := sameToolNext(name, answer); goesOn {
+		return
+	}
+	cur := r.maker()
+	for _, in := range held {
+		if !in.Key.Other(cur) {
+			intent.Close(in)
+		}
+	}
+}
+
+// heldSince is the start of the operation of tool on target («argument=id»)
+// that a call with this key began and evo still goes on with — its held
+// record; ok false when there is none: the operation is somebody else's, or
+// another key's, or evo stopped waiting for it. The limit of the repeats
+// of the operation counts from there, not from each repeat.
+func (r *Registry) heldSince(eng *engine.Engine, tool, target string) (since time.Time, ok bool) {
+	if eng == nil || eng.StateDir == "" {
+		return time.Time{}, false
+	}
+	cur := eng.Maker()
+	for _, in := range intent.Pending(intent.Dir(eng.StateDir)) {
+		if in.Held && in.Tool == tool && in.Target == target && !in.Key.Other(cur) {
+			return in.StartedAt, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// refusedTheCall are the reasons of a refusal that speaks of the call, not
+// of the operation it asked about: the request was throttled, or the key
+// or the setup did not let it through. The operation may go on all the
+// same, so a held record stays. (For the call that sends the write they
+// are an outcome — nothing was sent: intent.OutcomeUnknown.)
+var refusedTheCall = map[string]bool{
+	clierrors.CodeAPIRateLimited: true, clierrors.CodeAuthRequired: true, clierrors.CodeAuthExpired: true,
+	clierrors.CodeAuthFailed: true, clierrors.CodeConfigInvalid: true,
+}
+
+// answerNames tells an answer that names the resource of target
+// («argument=id») in the field of that argument: vm_id of a VM's answer.
+func answerNames(answer, target string) bool {
+	arg, id, ok := strings.Cut(target, "=")
+	if !ok || id == "" {
+		return false
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(answer), &m) != nil {
+		return false
+	}
+	got, _ := m[arg].(string)
+	return got == id
+}
+
+// answerStatus is the status of a tool's answer, "" when it has none.
+func answerStatus(answer string) string {
+	var a struct {
+		Status string `json:"status"`
+	}
+	_ = json.Unmarshal([]byte(answer), &a)
+	return a.Status
 }
 
 // namedKept is the answer of a call of tool name with the records of the
@@ -233,11 +468,24 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	head := i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown",
 		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен",
 		tool, name, where, started, quoteCloud(in.Surface), in.PID)
+	// An operation that goes on: the call that started it ended at its
+	// time limit, and the step its answer named goes on with it.
+	if in.Held && !in.Key.Other(cur) {
+		return i18n.Tf("%s %s%s, started %s (%s, pid %d): the call ended at its time limit and the operation was still going — the same %s on it goes on; the record stays while evo goes on with the operation, and closes when a call of %s ends it or stops waiting for it",
+			"%s %s%s, начат %s (%s, pid %d): вызов закончился на пределе времени, операция ещё шла — тот же %s на нём продолжит; запись остаётся, пока evo сам продолжает операцию, и закрывается, когда вызов %s её завершит или перестанет её ждать",
+			tool, name, where, started, quoteCloud(in.Surface), in.PID, tool, tool)
+	}
 	// A record another key left: a call with this key does not settle it
 	// (intent.Settle), and this key may not see what that one changed.
 	if in.Key.Other(cur) {
 		return head + i18n.Tf(" — sent with another key (%s): a call with this key does not close the record; run evo doctor with that key",
 			" — отправлено другим ключом (%s): вызов этим ключом запись не закроет; запустите evo doctor с тем ключом", quoteCloud(in.Key.KeyID))
+	}
+	// Every call of the tool is one more change: the same call again does
+	// not settle the record, it changes the resource a second time.
+	if read := everySendIsAChange[in.Tool]; read != "" {
+		return head + i18n.Tf(" — %s shows it; the same %s again is one more change, not a repeat: whether to send it is the person's decision",
+			" — его показывает %s; тот же %s ещё раз — это ещё одно изменение, а не повтор: слать ли его — решает человек", quoteCloud(read), tool)
 	}
 	// A delete addressed by id is not looked up in the list of the call's
 	// project, which does not tell a deleted resource from one of another

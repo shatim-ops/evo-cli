@@ -39,10 +39,13 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		// engine the preview goes as it is. A change addressed by id
 		// (cert_renew) builds one to read the project of its resource; with
 		// no engine its preview says the project is not determined.
+		// ca_start and ca_stop build one to read the state of the app
+		// their preview names; with no engine the preview says the state
+		// could not be read.
 		engines int
 	}{
-		{"ca_start", map[string]any{"name": "app-1"}, "app-1", 0},
-		{"ca_stop", map[string]any{"name": "app-1"}, "app-1", 0},
+		{"ca_start", map[string]any{"name": "app-1"}, "app_status_note", 1},
+		{"ca_stop", map[string]any{"name": "app-1"}, "app_status_note", 1},
 		{"cert_issue_le", map[string]any{"name": "site", "dns_names": "example.ru"}, "example.ru", 1},
 		{"cert_import", map[string]any{"name": "byo", "server_certificate": "Y2VydA==", "private_key": "a2V5"}, "byo", 1},
 		{"cert_renew", map[string]any{"certificate_id": "cert-1"}, "cert-1", 1},

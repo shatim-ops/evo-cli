@@ -14,6 +14,23 @@
 #   e2e_live_runs.sh others — число незавершённых запусков, кроме своего
 #                            (GITHUB_RUN_NUMBER): для ресурсов, общих для всех
 #                            прогонов, у которых номера запуска в имени нет.
+#   e2e_live_runs.sh keep  — фильтр stdin, как drop, но только по ресурсам
+#                            пробы цены (ниже); список запусков не читает.
+#
+# Ресурсы пробы цены Г-20 (план 1.9: остановленная ВМ живёт сутки, потом
+# читается её потребление) несут в имени слово g20 и переживают свой запуск:
+# уборка их не трогает, пока её не запустили со словом g20 во входе probes
+# (PROBES) — тогда они обычные остатки. Выражение без аргумента и drop
+# включают их имена, пока слова нет: каждое место, которое спрашивает «чей
+# это ресурс», получает ответ из одной точки. Уборка самой области в конце
+# запуска (keep) не удаляет их никогда.
+#
+#   e2e_live_runs.sh overdue — срок этого исключения: stdin — ответ vm_list;
+#                            ВМ пробы цены печатаются с возрастом. ВМ старше
+#                            KEEP_HOURS (сутки пробы и запас), без времени
+#                            создания или список не разобран — код 1: уборка,
+#                            которую запустили без слова g20, краснеет, а не
+#                            оставляет платный ресурс без срока.
 #
 # Номер 0 в выражении есть всегда (запуска 0 не бывает): выражение не пусто
 # и тогда, когда незавершённых запусков нет. Список запусков не прочитан или
@@ -32,6 +49,13 @@ set -euo pipefail
 
 # Состояния запуска GitHub, кроме completed.
 STATES="queued in_progress waiting requested pending"
+KEEP_RE='(^|-)g20(-|$)'
+KEEP_HOURS=72
+# with_keep ВЫРАЖЕНИЕ — оно же и имена ресурсов пробы цены, пока уборку не
+# запустили со словом g20.
+with_keep() {
+	case " ${PROBES:-} " in *" g20 "*) printf '%s\n' "$1" ;; *) printf '%s|%s\n' "$1" "$KEEP_RE" ;; esac
+}
 
 live_re() {
 	local cache="${RUNNER_TEMP:-/tmp}/e2e-live-runs" ttl=${E2E_LIVE_TTL:-60} s nums='' n re
@@ -64,10 +88,34 @@ live_re() {
 }
 
 case "${1:-}" in
-'') live_re ;;
+'')
+	re=$(live_re)
+	with_keep "$re"
+	;;
 drop)
 	re=$(live_re)
-	awk -F'\t' -v re="$re" '$NF !~ re'
+	awk -F'\t' -v re="$(with_keep "$re")" '$NF !~ re'
+	;;
+keep) awk -F'\t' -v re="$KEEP_RE" '$NF !~ re' ;;
+overdue)
+	# Пустой ввод — не пустой список (jq на нём молчит с кодом 0): ответ
+	# должен нести массив vms.
+	in=$(cat)
+	rows=$(printf '%s' "$in" | jq -e '.vms | type == "array"' >/dev/null 2>&1 && printf '%s' "$in" | jq -r --arg re "$KEEP_RE" --argjson now "$(date +%s)" '.vms[] | select((.name // "") | test("^evo-e2e-") and test($re))
+		| "\(.name)\t\(.state // .status // "?")\t\(((.created_time // "") | fromdateiso8601? // null) as $t | if $t then (($now - $t) / 3600 | floor) else "?" end)"') || {
+		echo "::error::список ВМ не разобран — жива ли ВМ пробы цены Г-20 и сколько ей, неизвестно"
+		exit 1
+	}
+	late=0
+	while IFS=$'\t' read -r name state hours; do
+		[ -n "$name" ] || continue
+		echo "ВМ пробы цены $name: $state, возраст $hours ч (срок $KEEP_HOURS ч)"
+		case "$hours" in '?') late=1 ;; *) [ "$hours" -lt "$KEEP_HOURS" ] || late=1 ;; esac
+	done <<<"$rows"
+	[ "$late" = 0 ] || {
+		echo "::error::ВМ пробы цены Г-20 старше $KEEP_HOURS ч или без времени создания: она, её диск и адрес платные. Прочитать потребление и удалить — cleanup_only со словом g20 во входе probes"
+		exit 1
+	}
 	;;
 others)
 	re=$(live_re)

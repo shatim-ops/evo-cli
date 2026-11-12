@@ -137,7 +137,12 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		}
 		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) {
 			text, isErr := next(ctx, args)
+			r.settleHeld(t.Name, args, text)
+			text = r.questionNamesTheCut(t.Name, args, text)
 			return r.namedKept(t.Name, args, text), isErr
+		}
+		if text, asked := r.askAgainAfterACut(t.Name, args); asked {
+			return text, true
 		}
 		end, err := r.beginIntent(ctx, t.Name, args)
 		if err != nil {
@@ -145,6 +150,9 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		}
 		text, isErr := next(ctx, args)
 		end(text)
+		// A held record the call names by another argument than its step
+		// (a name, where the record has the id).
+		r.settleHeld(t.Name, args, text)
 		return r.namedKept(t.Name, args, text), isErr
 	}
 }

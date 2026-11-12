@@ -7,7 +7,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"slices"
 	"sort"
 	"strconv"
@@ -706,7 +705,7 @@ func pgCreateOfExisting(ctx context.Context, k pgNamed, name string, list func(c
 		hint := i18n.T(
 			fmt.Sprintf("%s %s is in the cluster, and this call may have created it: evo got no answer to the create. %s — ask the person what to do.", k.what, q, k.keep),
 			fmt.Sprintf("%s %s есть в кластере, и %s мог создать этот вызов: ответа на создание evo не получил. %s, — спросите человека, что делать.", k.whatRU, q, k.itRU, k.keepRU))
-		if st := apiStatus(err); st >= 400 && st < 500 && st != http.StatusRequestTimeout {
+		if definiteRefusal(err) {
 			hint = i18n.T(
 				fmt.Sprintf("%s %s already exists in the cluster; nothing was created or changed. %s — ask the person what to do.", k.what, q, k.keep),
 				fmt.Sprintf("%s %s уже существует в кластере; ничего не создано и не изменено. %s, — спросите человека, что делать.", k.whatRU, q, k.keepRU))

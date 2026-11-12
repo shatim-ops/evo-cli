@@ -109,7 +109,9 @@
     - [evo k8s kubeconfig](#evo-k8s-kubeconfig)
     - [evo k8s kubectl](#evo-k8s-kubectl)
     - [evo k8s list](#evo-k8s-list)
+    - [evo k8s nodepool-delete](#evo-k8s-nodepool-delete)
     - [evo k8s nodepool-get](#evo-k8s-nodepool-get)
+    - [evo k8s nodepool-scale](#evo-k8s-nodepool-scale)
     - [evo k8s nodepools](#evo-k8s-nodepools)
     - [evo k8s operation](#evo-k8s-operation)
     - [evo k8s options](#evo-k8s-options)
@@ -1863,7 +1865,7 @@ evo cert private-key <certificate-id> [flags]
 ```text
 Перевыпустить сертификат Let's Encrypt (асинхронно).
 
-Запустить перевыпуск сертификата Let's Encrypt. Операция асинхронная: ответ содержит id операции, ход — 'evo cert operation <operation-id>'.
+Запустить перевыпуск сертификата Let's Encrypt. Операция асинхронная: ответ содержит id операции, ход — 'evo cert operation <operation-id>'. Каждый вызов отправляет запрос на перевыпуск: повтор отправит ещё один.
 
 Вызывает инструмент cert_renew (подробнее: 'evo tools describe cert_renew').
 
@@ -2534,8 +2536,9 @@ evo deploy apply <plan-id> [flags]
 ### Options
 
 ```
-  -h, --help   Справка по apply
-      --wait   Ждать ли ВМ: по умолчанию команда ждёт, пока ВМ запустится; --wait=false — ответ сразу, как облако приняло создание (статус creating), закончит повтор той же командой
+  -h, --help           Справка по apply
+      --vm-id string   ВМ, которую продолжает вызов (next_args незаконченного вызова); ВМ больше нет — отказ, новая не создаётся
+      --wait           Ждать ли ВМ: по умолчанию команда ждёт, пока ВМ запустится; --wait=false — ответ сразу, как облако приняло создание (статус creating), закончит повтор той же командой
 ```
 
 ### Options inherited from parent commands
@@ -4257,7 +4260,9 @@ evo k8s [flags]
 * [evo k8s kubeconfig](#evo-k8s-kubeconfig)	 - kubeconfig кластера (по умолчанию со встроенным токеном примерно на час)
 * [evo k8s kubectl](#evo-k8s-kubectl)	 - Команда kubectl в кластере (изменяющие — с подтверждением)
 * [evo k8s list](#evo-k8s-list)	 - Кластеры Managed Kubernetes проекта
+* [evo k8s nodepool-delete](#evo-k8s-nodepool-delete)	 - Удалить группу узлов кластера Managed Kubernetes (асинхронно)
 * [evo k8s nodepool-get](#evo-k8s-nodepool-get)	 - Группа узлов кластера Managed Kubernetes по id
+* [evo k8s nodepool-scale](#evo-k8s-nodepool-scale)	 - Изменить число узлов группы узлов Managed Kubernetes
 * [evo k8s nodepools](#evo-k8s-nodepools)	 - Группы узлов кластера
 * [evo k8s operation](#evo-k8s-operation)	 - Состояние асинхронной операции Managed Kubernetes
 * [evo k8s options](#evo-k8s-options)	 - Версии Kubernetes, flavor узлов и зоны для кластеров
@@ -4665,7 +4670,7 @@ Helm в кластере: install, upgrade, uninstall, list, status
 ```text
 Helm в кластере: install, upgrade, uninstall, list, status.
 
-Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. install и upgrade идемпотентны (helm upgrade --install --wait). Изменяющие действия — с подтверждением. Узлам нужен выход в интернет, чтобы скачать образы чарта ('evo snat create'); размер группы узлов подбирайте под чарт.
+Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. Каждый вызов запускает helm заново: повторный install или upgrade обновляет тот же релиз (helm upgrade --install --wait), а не создаёт второй, и без --version может перевести его на более новый чарт. Изменяющие действия — с подтверждением. Узлам нужен выход в интернет, чтобы скачать образы чарта ('evo snat create'); размер группы узлов подбирайте под чарт.
 
 Вызывает инструмент k8s_helm (подробнее: 'evo tools describe k8s_helm').
 
@@ -4852,6 +4857,50 @@ evo k8s list [flags]
 
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
+## evo k8s nodepool-delete
+
+Удалить группу узлов кластера Managed Kubernetes (асинхронно)
+
+### Synopsis
+
+```text
+Удалить группу узлов кластера Managed Kubernetes (асинхронно).
+
+Удалить группу узлов безвозвратно: её узлы удаляются вместе с данными на их дисках, поды на них вытесняются. Превью называет кластер, узлы группы и то, останутся ли в кластере другие группы. Сам кластер остаётся. Операция асинхронная: её ход показывает evo k8s operation <ID операции>.
+
+Вызывает инструмент k8s_nodepool_delete (подробнее: 'evo tools describe k8s_nodepool_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo k8s nodepool-delete <nodepool-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по nodepool-delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
 ## evo k8s nodepool-get
 
 Группа узлов кластера Managed Kubernetes по id
@@ -4874,6 +4923,50 @@ evo k8s nodepool-get <nodepool-id> [flags]
 
 ```
   -h, --help   Справка по nodepool-get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
+## evo k8s nodepool-scale
+
+Изменить число узлов группы узлов Managed Kubernetes
+
+### Synopsis
+
+```text
+Изменить число узлов группы узлов Managed Kubernetes.
+
+Задать число узлов группы с фиксированным масштабом. Больше узлов — они оплачиваются; меньше — лишние узлы удаляются вместе с данными на их дисках, поды на них вытесняются. Если в группе уже столько узлов, команда отвечает already_scaled без вопроса; группе с автомасштабом отказывает: число узлов выбирает платформа. Операция асинхронная: её ход показывает evo k8s operation <ID операции>.
+
+Вызывает инструмент k8s_nodepool_scale (подробнее: 'evo tools describe k8s_nodepool_scale').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo k8s nodepool-scale <nodepool-id> [flags]
+```
+
+### Options
+
+```
+      --count int   сколько узлов должно быть в группе, обязательный
+  -h, --help        Справка по nodepool-scale
 ```
 
 ### Options inherited from parent commands
@@ -4953,7 +5046,7 @@ evo k8s nodepools <cluster-id> [flags]
 ```text
 Состояние асинхронной операции Managed Kubernetes.
 
-Состояние асинхронной операции Managed Kubernetes по id — его возвращают создание и удаление кластера и создание группы узлов: done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
+Состояние асинхронной операции Managed Kubernetes по id — его возвращают создание и удаление кластера, создание и удаление группы узлов и изменение числа её узлов: done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
 
 Вызывает инструмент k8s_operation (подробнее: 'evo tools describe k8s_operation').
 ```
@@ -7687,7 +7780,7 @@ evo s3 [flags]
 ```text
 Создать бакет.
 
-Создать бакет Object Storage — например, перед 'evo s3 put', которому нужен существующий бакет. Повторное создание своего бакета ошибкой не считается.
+Создать бакет Object Storage — например, перед 'evo s3 put', которому нужен существующий бакет. Свой бакет с таким именем уже есть — ответ already_exists без вопроса: этот вызов его не создавал.
 
 Вызывает инструмент s3_bucket_create (подробнее: 'evo tools describe s3_bucket_create').
 
@@ -8044,7 +8137,7 @@ evo secret [flags]
 ```text
 Добавить новую версию значения секрета (ротация).
 
-Добавить новую версию значения существующего секрета (ротация).
+Добавить новую версию значения существующего секрета (ротация). Каждый вызов добавляет версию: повтор добавит ещё одну.
 
 Вызывает инструмент secret_add_version (подробнее: 'evo tools describe secret_add_version').
 
@@ -9414,6 +9507,7 @@ evo vm create <name> [flags]
       --no-public-ip       Приватная ВМ без floating IP: узел за балансировщиком или внутренний сервер
       --port stringArray   Входящий порт для --cidr: 80, 53/udp (по умолчанию tcp), в общей группе безопасности зоны; evo vm delete удаляет правила, созданные evo (флаг повторяется или значения через запятую)
       --subnet-id string   UUID или имя подсети (по умолчанию — подсеть в зоне ВМ)
+      --vm-id string       ВМ, которую продолжает вызов (next_args незаконченного вызова); ВМ больше нет — отказ, новая не создаётся
       --wait               Ждать ли ВМ: по умолчанию команда ждёт, пока ВМ запустится; --wait=false — ответ сразу, как облако приняло создание (статус creating), закончит повтор той же командой
 ```
 

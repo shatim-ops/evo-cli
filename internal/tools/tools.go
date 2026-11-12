@@ -74,15 +74,16 @@ func (s *Registry) registerTools() {
 				"image":      strProp("Boot image name or UUID, e.g. 'Ubuntu-24.04'. Not with image_id."),
 				"image_id":   strProp("Image UUID."),
 				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
-					"description": "Image metadata fields by name, e.g. {\"admin_password\": \"...\"}; they override evo's. An undeclared field is refused."},
+					"description": "Image metadata fields by name; they override evo's. An undeclared field is refused."},
 				"ports": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
 					"description": "Inbound ports to open from cidr, e.g. [\"80\", \"53/udp\"] (tcp by default), in the zone's shared security group; destroy deletes the rules evo created."},
 				"cidr":         cidrProp(portsCidrDesc),
 				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10 or the image's min_disk).")),
-				"subnet_id":    strProp("Subnet UUID or name (default: one in the zone)."),
-				"no_public_ip": boolProp("Private VM, no floating IP: a balancer target or an internal node."),
+				"subnet_id":    strProp("Subnet UUID or name (default: the zone's)."),
+				"no_public_ip": boolProp("Private VM, no floating IP."),
 				"confirmed":    confirmedProp(),
 				"wait":         boolProp(waitDesc),
+				continuedVMArg: uuidProp(continuedVMDesc),
 			}),
 		},
 		{
@@ -242,9 +243,10 @@ func (s *Registry) registerTools() {
 			Name:        "deploy_apply",
 			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. It creates the VM without the application: a compose project goes through deploy. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
-				"plan_id":   strProp("The plan_id returned by deploy_plan."),
-				"confirmed": confirmedProp(),
-				"wait":      boolProp(waitDesc),
+				"plan_id":      strProp("The plan_id returned by deploy_plan."),
+				"confirmed":    confirmedProp(),
+				"wait":         boolProp(waitDesc),
+				continuedVMArg: uuidProp(continuedVMDesc),
 			}, "plan_id"),
 		},
 		{
@@ -391,7 +393,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_operation",
-			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
+			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_nodepool_delete/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
 				"wait_seconds": opWaitProp(),
@@ -406,6 +408,24 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_nodepool_get",
 			Description: "Read one node pool of Managed Kubernetes by its id: cluster (id and name), status, version, zone, scale (fixed: desired; auto: min_count, max_count), flavor, disk, subnet, security group, labels, taints, versions it can upgrade to. Read-only. Ids: k8s_nodepools.",
 			InputSchema: objSchema(map[string]any{"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools or k8s_add_nodepool).")}, "nodepool_id"),
+		},
+		{
+			Name:        "k8s_nodepool_scale",
+			Description: "Set the number of nodes of a Managed Kubernetes node pool with a fixed count. REQUIRES confirmed=true after the user approves: more nodes are billed; fewer nodes are deleted with the data on their disks, and their pods are evicted. A pool that has the count already answers already_scaled with no question; an autoscaled pool is refused. Async — returns operation_id: wait with k8s_operation.",
+			InputSchema: objSchema(map[string]any{
+				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
+				"count":       inRange(0, maxPoolCount, intProp("The number of nodes the pool is to have.")),
+				"confirmed":   confirmedProp(),
+			}, "nodepool_id", "count"),
+		},
+		{
+			Name:        "k8s_nodepool_delete",
+			Description: "Permanently delete a node pool of a Managed Kubernetes cluster: its nodes are deleted with the data on their disks, and their pods are evicted. REQUIRES confirmed=true after the user approves; the preview names the cluster, the nodes and whether the cluster is left with no pool. The cluster itself stays. Async — returns operation_id: wait with k8s_operation.",
+			InputSchema: objSchema(map[string]any{
+				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
+				"confirmed":   confirmedProp(),
+				"wait":        boolProp(deleteWaitDesc),
+			}, "nodepool_id"),
 		},
 		{
 			Name:        "k8s_add_nodepool",
@@ -455,7 +475,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_kubectl",
-			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
+			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. Every call runs the command again: a repeated mutating verb is a new change. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"args":       strProp("kubectl arguments as a single string, e.g. \"get pods -A -o wide\"."),
@@ -464,7 +484,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_apply",
-			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
+			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Every call applies the manifest again; what changes is the cluster's to decide. Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"manifest":   strProp("The manifest YAML/JSON to apply (multi-doc allowed)."),
@@ -474,7 +494,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_helm",
-			Description: "Run Helm on a cluster. install/upgrade are idempotent (helm upgrade --install); over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
+			Description: "Run Helm on a cluster. Every call runs helm again: a repeated install/upgrade upgrades the same release (helm upgrade --install), not a second one; over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),
@@ -1139,7 +1159,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_add_version",
-			Description: "Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the user approves.",
+			Description: "Add a new value version to an existing secret (rotation). Every call adds a version: a repeat adds one more. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
 				"value":     strProp("New secret value (plaintext). Required."),
@@ -1279,7 +1299,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_renew",
-			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Mutation: requires confirmed=true after the user approves.",
+			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Every call sends a renewal request: a repeat sends another. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
 		},
 		{
@@ -1339,7 +1359,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_put",
-			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves.",
+			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves. Every call writes the object again.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":         strProp("Bucket name. Required."),
 				"key":            strProp("Object key. Required."),
@@ -1360,7 +1380,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_bucket_create",
-			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the user approves.",
+			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). A bucket you already own answers already_exists with no question: this call did not create it. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("New bucket name: 3-63 lowercase letters, digits, dots and hyphens, unique within the tenant. Required."),
 				"region":    strProp("Region: only ru-central-1 is accepted (the API answers 'unexpected region' otherwise). Optional; default: the configured S3 region."),
@@ -1452,6 +1472,8 @@ func (s *Registry) registerTools() {
 		"k8s_add_nodepool":     s.gated("k8s_add_nodepool", s.planK8sAddNodePool),
 		"k8s_nodepools":        s.handleK8sNodePools,
 		"k8s_nodepool_get":     s.handleK8sNodePoolGet,
+		"k8s_nodepool_scale":   s.gated("k8s_nodepool_scale", s.planK8sNodePoolScale),
+		"k8s_nodepool_delete":  s.gated("k8s_nodepool_delete", s.planK8sNodePoolDelete),
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_add_addon":        s.gated("k8s_add_addon", s.planK8sAddAddon),
@@ -1797,6 +1819,11 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		// not a refusal: the VM may be booting, the person decides.
 		answer["upload"] = engine.SSHUpload(rec.VMIP)
 		if !u.Unchanged {
+			// A stopped VM takes no upload: refused before the question,
+			// as Deploy refuses it.
+			if err := eng.DeployVMStopped(ctx, &rec); err != nil {
+				return "", err
+			}
 			if probed, reach := eng.ReachSSH(ctx, rec.VMIP); probed {
 				answer["ssh_reachable"] = reach == nil
 				if reach != nil {
@@ -1878,6 +1905,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 // names it (D15, D48), so the CLI words the hint with its flag; and the
 // last lines of a failed docker compose up (output, #558).
 func deployFields(err error, fields map[string]any) map[string]any {
+	fields = engineStep(err, fields)
 	add := func(k string, v any) {
 		if fields == nil {
 			fields = map[string]any{}
@@ -1929,6 +1957,10 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	// included: image and image_id, or one of only spaces (break r4,
 	// R4-11).
 	if _, _, err := oneOfArgs(args, imageRefNotBoth(), "image", "image_id"); err != nil {
+		return nil, err
+	}
+	// A step that goes on with a VM that is gone makes no new one (D102).
+	if err := s.continuedVM(ctx, "provision", args, stringArg(args, "name")); err != nil {
 		return nil, err
 	}
 	metaValues, err := metadataArg(args, "image_metadata")
@@ -2597,6 +2629,26 @@ func vmReadyText(name, zone, ip, ssh string, took time.Duration) string {
 		name, zone, ip, engine.ElapsedText(took), ssh)
 }
 
+// engineStep adds to fields the way on that an engine's refusal names in
+// its details, in the answer as in the CLI's: deploy for a deployment that
+// deploy has not finished (D76), vm_start for one whose VM is stopped
+// («Риск», conclusion 132, У2). Other errors keep their details to the CLI.
+func engineStep(err error, fields map[string]any) map[string]any {
+	var unfinished *engine.DeployUnfinishedError
+	var stopped *engine.VMStoppedError
+	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) {
+		return fields
+	}
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		if fields == nil {
+			fields = map[string]any{}
+		}
+		maps.Copy(fields, ce.Details)
+	}
+	return fields
+}
+
 // passwordOnce is the sentence of a provision answer that carries the
 // password evo generated for the image: no copy of it is kept.
 const passwordOnce = " The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
@@ -2651,16 +2703,7 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 	}
 	if err := eng.Logs(ctx, opts); err != nil {
 		fields := logField(buf.String())
-		// A deployment deploy has not finished: its status and deploy as
-		// the next step, in the answer as in the CLI's (D76).
-		var ue *engine.DeployUnfinishedError
-		if stderrors.As(err, &ue) {
-			var ce *clierrors.CLIError
-			if stderrors.As(err, &ce) {
-				maps.Copy(fields, ce.Details)
-			}
-		}
-		return failed(ctx, err, fields), true
+		return failed(ctx, err, engineStep(err, fields)), true
 	}
 	return buf.String(), false
 }

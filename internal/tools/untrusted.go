@@ -47,6 +47,10 @@ var untrustedFields = map[string]untrustedAnswer{
 	// deploy: the output of docker compose up — its log over MCP, the last
 	// lines of a failure (#558).
 	"deploy": {fields: []string{"log", "output"}, workload: true},
+	// The status of the app the question of ca_start and ca_stop names, as
+	// the API gives it («Риск», conclusion 142).
+	"ca_start": {fields: []string{"app_status"}},
+	"ca_stop":  {fields: []string{"app_status"}},
 	// The VMs a disk is attached to, as the cloud names them: the refusal
 	// of disk_delete (D59) names them for the way out. Names, not the
 	// output of a workload: no note.
@@ -67,6 +71,11 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The name of a node pool and the labels and taints of its nodes:
 	// anyone with access to the project writes them.
 	"k8s_nodepool_get": {fields: []string{"name", "cluster_name", "labels", "taints"}},
+	// The name of the pool, in the preview and in the answer; the words
+	// and the code of the platform in a failed operation (details).
+	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},
+	// The cluster of the pool by its name, in the preview of the delete.
+	"k8s_nodepool_delete": {fields: []string{"preview"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of

@@ -60,16 +60,20 @@ var deleteRefusals = map[string]struct {
 	"dns_zone_delete":   {none: "a zone in creating is deleted, slowly (NET-13): no refusal"},
 	"image_delete":      {none: "no refusal seen live (register, 28.10)"},
 	"k8s_delete":        {none: "no refusal seen live (register, 28.10)"},
-	"lb_delete":         {none: "no refusal seen live (register, 28.10)"},
-	"pg_db_delete":      {none: "lives in a cluster: the cluster's state is pg_delete's"},
-	"pg_user_delete":    {none: "lives in a cluster: the cluster's state is pg_delete's"},
-	"s3_bucket_delete":  {none: "a bucket with objects is refused before the question (D26 world: s3Parity)"},
-	"s3_rm":             {none: "an object has no state"},
-	"secret_delete":     {none: "no refusal seen live (register, 28.10)"},
-	"subnet_delete":     {none: "a subnet with resources in it is refused before the question (can_delete); the spec's 422 by state not seen live"},
-	"tg_delete":         {none: "no refusal seen live (register, 28.10)"},
-	"vpc_delete":        {none: "no refusal seen live (register, 28.10)"},
-	"vpc_route_delete":  {none: "a route has no state"},
+	// The states of a pool the platform refuses a delete in are hypotheses
+	// until probe Г-12 (docs/internal/briefs/k8s-nodepools.md, questions 9
+	// and 14); its worlds are k8s_nodepool_delete_test.go.
+	"k8s_nodepool_delete": {none: "no delete of a pool seen live before probe Г-12"},
+	"lb_delete":           {none: "no refusal seen live (register, 28.10)"},
+	"pg_db_delete":        {none: "lives in a cluster: the cluster's state is pg_delete's"},
+	"pg_user_delete":      {none: "lives in a cluster: the cluster's state is pg_delete's"},
+	"s3_bucket_delete":    {none: "a bucket with objects is refused before the question (D26 world: s3Parity)"},
+	"s3_rm":               {none: "an object has no state"},
+	"secret_delete":       {none: "no refusal seen live (register, 28.10)"},
+	"subnet_delete":       {none: "a subnet with resources in it is refused before the question (can_delete); the spec's 422 by state not seen live"},
+	"tg_delete":           {none: "no refusal seen live (register, 28.10)"},
+	"vpc_delete":          {none: "no refusal seen live (register, 28.10)"},
+	"vpc_route_delete":    {none: "a route has no state"},
 }
 
 // passingWaited are the deletes that wait for a resource still being

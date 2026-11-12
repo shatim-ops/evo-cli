@@ -255,6 +255,10 @@ func (j *Job) Destroyed() bool {
 // Planned reports a job stack_plan made and stack_apply has not started.
 func (j *Job) Planned() bool { return j.Status == "planned" }
 
+// Done reports a job whose steps are all done: stack_apply has nothing
+// left to create.
+func (j *Job) Done() bool { return j.Status == "done" }
+
 // Running reports a job stack_apply started whose steps are not all done.
 func (j *Job) Running() bool { return j.Status == "running" }
 
