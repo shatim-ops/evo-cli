@@ -8,6 +8,7 @@ import (
 	"context"
 	"testing"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -39,14 +40,16 @@ func TestIntent_UnknownOutcomeKeptThenClosedByAKnownOne(t *testing.T) {
 	args := func() map[string]any { return map[string]any{"certificate_id": resMine, "confirmed": true} }
 	for _, second := range []string{
 		`{"status":"ok"}`, // made
-		`{"status":"error","error":"USAGE: refused","reason":"USAGE"}`, // refused before anything was made
+		errResult(clierrors.New(clierrors.CodeUsage, "refused", "")), // refused before anything was made
 	} {
 		r := ownerRegistry(t, &ownerFake{}, false, ownProject)
 		eng, _ := r.newEngine(nil)
 		t.Chdir(eng.StateDir)
 		dir := intent.Dir(eng.StateDir)
 		tl, _ := r.Lookup(tool)
-		answer := `{"status":"error","error":"renew: API_ERROR: 502","reason":"API_ERROR"}`
+		// The answer of a tool whose request got no answer, as errAnswer
+		// makes it: "error" a string, the reason beside it.
+		answer := errResult(clierrors.New(clierrors.CodeAPIError, "renew: 502", ""))
 		call := r.intended(tl, func(context.Context, map[string]any) (string, bool) { return answer, true })
 		call(context.Background(), args())
 		if left := intent.Pending(dir); len(left) != 1 {
