@@ -46,8 +46,8 @@ type deleteTarget struct {
 
 // unseenBeforeProbe is the reason of creatingUnseen and failedUnseen of
 // the deletes whose service writes a status with a prefix: the rules of
-// D61 never applied to them, and the owner's decision of 12.11 turns on
-// only what the platform itself says — being deleted, deleted. What it
+// D61 never applied to them, and D103 turns on only what the platform
+// itself says — being deleted, deleted. What it
 // refuses is for two runs of a probe to show (release plan 1.9, «Правило
 // D61 действует у k8s_delete, lb_delete, tg_delete»).
 const unseenBeforeProbe = "no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9)"

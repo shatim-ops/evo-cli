@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
@@ -25,8 +26,10 @@ import (
 // writes one — a create, a delete, a change: each can leave the cloud in a
 // state no record names. end takes the answer: an answer with an outcome
 // removes the intent and settles the earlier ones of the same tool and
-// name; a cut call (its context done, INTERRUPTED) keeps it. An intent
-// that cannot be written refuses the call before it goes out.
+// name; a cut call (its context done, INTERRUPTED) keeps it. A record of
+// the same call another key left is not settled by this one
+// (intent.Settle), and the answer names it (namedKept). An intent that
+// cannot be written refuses the call before it goes out.
 func (r *Registry) beginIntent(ctx context.Context, name string, args map[string]any) (end func(answer string), err error) {
 	if r.newEngine == nil {
 		return func(string) {}, nil
@@ -81,6 +84,43 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		done()
 		intent.Settle(dir, in)
 	}, nil
+}
+
+// namedKept is the answer of a call of tool name with the records of the
+// same call on the same resource that another key left
+// (pending_operations): this call does not settle them, with consent or
+// without — an already_deleted of this key says what this key sees — so
+// every answer of it names them, not only the first answer of the process
+// («Риск», conclusions 128 and 135).
+func (r *Registry) namedKept(name string, args map[string]any, answer string) string {
+	resource, target := intentResource(name, args)
+	root, err := os.Getwd()
+	if err != nil || (resource == "" && target == "") {
+		return answer
+	}
+	// The records of this directory, as withPending reads them; the key
+	// of the call is asked for only when one of them is of this call — a
+	// call with nothing left builds no engine.
+	var same []intent.Intent
+	for _, in := range intent.Pending(intent.Dir(root)) {
+		if in.Tool == name && in.Name == resource && in.Target == target && in.Key != nil {
+			same = append(same, in)
+		}
+	}
+	if len(same) == 0 {
+		return answer
+	}
+	cur := r.maker()
+	var notes []string
+	for _, in := range same {
+		if in.Key.Other(cur) {
+			notes = append(notes, r.pendingNote(in, cur))
+		}
+	}
+	if named, ok := withNotes(answer, notes); ok {
+		return named
+	}
+	return answer
 }
 
 // intentResource is what a call names its resource by: the argument the create
@@ -144,7 +184,7 @@ func answerReason(answer string) string {
 func (r *Registry) PendingNotes(root string) []string {
 	var out []string
 	for _, in := range pendingIntents(root) {
-		out = append(out, r.pendingNote(in))
+		out = append(out, r.pendingNote(in, r.maker()))
 	}
 	return out
 }
@@ -163,7 +203,7 @@ func pendingIntents(root string) []intent.Intent {
 // directory, which comes with git clone as well as evo wrote it: each of
 // its strings goes into evo's sentence on one line and in quotes, as a
 // name from the cloud does (quoteCloud; FB180-2, R-67).
-func (r *Registry) pendingNote(in intent.Intent) string {
+func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	started := in.StartedAt.Local().Format("02.01.2006 15:04")
 	if in.Note != "" {
 		// Its own words; the record stays until the person removes it:
@@ -193,6 +233,12 @@ func (r *Registry) pendingNote(in intent.Intent) string {
 	head := i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown",
 		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен",
 		tool, name, where, started, quoteCloud(in.Surface), in.PID)
+	// A record another key left: a call with this key does not settle it
+	// (intent.Settle), and this key may not see what that one changed.
+	if in.Key.Other(cur) {
+		return head + i18n.Tf(" — sent with another key (%s): a call with this key does not close the record; run evo doctor with that key",
+			" — отправлено другим ключом (%s): вызов этим ключом запись не закроет; запустите evo doctor с тем ключом", quoteCloud(in.Key.KeyID))
+	}
 	// A delete addressed by id is not looked up in the list of the call's
 	// project, which does not tell a deleted resource from one of another
 	// project (R-82): doctor reads it by id and says what to do.
@@ -206,6 +252,18 @@ func (r *Registry) pendingNote(in intent.Intent) string {
 	}
 	return head + i18n.Tf(" — check %s for %s; the same %s on it settles it",
 		" — проверьте %s по %s; тот же %s на нём закроет запись", quoteCloud(r.listToolOf(in.Tool)), name, tool)
+}
+
+// maker is the key the registry now runs with; nil when there is none.
+func (r *Registry) maker() *state.Maker {
+	if r.newEngine == nil {
+		return nil
+	}
+	eng, err := r.newEngine(nil)
+	if err != nil || eng == nil {
+		return nil
+	}
+	return eng.Maker()
 }
 
 // deleteByID tells an intent of a delete of the resource it addresses by
@@ -247,16 +305,13 @@ func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind
 		// Never closed here; the record's own words say why (pendingNote).
 		return "", false
 	}
-	if in.Key == nil || cur == nil || in.Key.Other(cur) {
-		by := i18n.T("a key the record does not name", "ключом, которого запись не называет")
-		if in.Key != nil {
-			by = i18n.Tf("the key %s", "ключом %s", quoteCloud(in.Key.KeyID))
-		}
-		// No «the same delete»: with a key that does not see the resource
-		// it answers already_deleted and closes the record unchecked
-		// («Риск», conclusion 128).
-		return i18n.Tf("not checked with this key: the delete was sent with %s, and another key may not see %s — run doctor with that key",
-			"не проверено этим ключом: удаление отправлено %s, а другой ключ может не видеть %s — запустите doctor с тем ключом", by, what), false
+	if in.Key.Other(cur) {
+		// The record's own words say it (pendingNote).
+		return "", false
+	}
+	if in.Key == nil || cur == nil {
+		return i18n.Tf("not checked: the record or this run names no key, and another key may not see %s — run doctor with the key that sent the delete",
+			"не проверено: запись или этот запуск не называет ключ, а другой ключ может не видеть %s — запустите doctor с ключом, который отправил удаление", what), false
 	}
 	m, err := k.card(ctx, &ownerCall{r: r, args: map[string]any{}}, id)
 	switch {
@@ -364,7 +419,12 @@ func (r *Registry) withPending(answer string) (string, bool) {
 	if err != nil {
 		return answer, true
 	}
-	notes := r.PendingNotes(root)
+	return withNotes(answer, r.PendingNotes(root))
+}
+
+// withNotes is answer with notes in pending_operations; false when the
+// answer is not an object.
+func withNotes(answer string, notes []string) (string, bool) {
 	if len(notes) == 0 {
 		return answer, true
 	}
@@ -374,7 +434,9 @@ func (r *Registry) withPending(answer string) (string, bool) {
 	}
 	m["pending_operations"] = notes
 	// The records' text is the project directory's, not evo's (FB180-2).
-	if u, _ := m["_untrusted"].([]any); u != nil {
+	if u, _ := m["_untrusted"].([]any); slices.Contains(u, any("pending_operations")) {
+		// Named already: the answer of a call that kept a record.
+	} else if u != nil {
 		m["_untrusted"] = append(u, "pending_operations")
 	} else {
 		m["_untrusted"] = []string{"pending_operations"}

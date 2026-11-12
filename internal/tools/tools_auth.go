@@ -362,7 +362,7 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 				checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckOK, Detail: found})
 				continue
 			}
-			detail := s.pendingNote(in)
+			detail := s.pendingNote(in, eng.Maker())
 			if found != "" {
 				detail += "; " + found
 			}

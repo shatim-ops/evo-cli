@@ -25,7 +25,7 @@ var prefixedDeletes = map[string]string{
 // a prefix: a cluster, a balancer or a target group the platform was
 // already deleting got the usual preview, and with the consent a second
 // DELETE (release plan 1.9, «Правило D61 действует у k8s_delete,
-// lb_delete, tg_delete»; the owner's decision 12.11). Being deleted is
+// lb_delete, tg_delete»; D103). Being deleted is
 // answered deleting and deleted is answered already_deleted, both with no
 // question and no DELETE.
 func TestDelete_PrefixedStateOfADeleteUnderWayOrDone(t *testing.T) {

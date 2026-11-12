@@ -95,6 +95,14 @@ fresh r3f1disk
 run r3f1disk 1 PROBES=r3f1
 has r3f1disk "probes: «r3f1» — проба области disk, а disk_smoke не включён"
 
+# Пробы графика 1.9 (область ops): слова известны; g20 — только с g10 (ВМ
+# пробы цены оставляет проба g10).
+fresh opsprobes
+run opsprobes 0 PROBES='g10 g11 g16 g20'
+fresh g20alone
+run g20alone 1 PROBES='g11 g20'
+has g20alone "probes: «g20» — ВМ пробы цены оставляет проба g10, а её слова нет"
+
 # Зона прогона без подсети и группы — провал; открытая зона ru.AZ-1 без
 # них, куда прогон не идёт, — строка «перезапуск туда не выйдет».
 fresh nosubnet

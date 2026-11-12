@@ -74,7 +74,6 @@ var repeatUndeclared = map[string]string{
 	"k8s_apply":          "the repeat is the cluster's (kubectl apply): not declared",
 	"k8s_helm":           "the repeat is the cluster's (helm): not declared",
 	"k8s_kubectl":        "the repeat is the cluster's (kubectl): not declared",
-	"s3_bucket_create":   "a bucket the profile has: no world, and no check of the name taken",
 	"s3_put":             "an object the bucket has: the repeat overwrites — not declared",
 	"secret_add_version": "every send is a new version: not declared",
 	"stack_destroy":      "a destroy of a stack destroyed answers already_destroyed: no world",
@@ -347,6 +346,17 @@ var consentWorlds = map[string]consentWorld{
 		`{"id":"` + consentOtherID + `","direction":"ingress","ip_protocol":"tcp","port_range":"443:443","remote_ip_prefix":"0.0.0.0/0"}`),
 		alreadyFor: []string{"open_ports"}},
 	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports"}},
+	// The profile has the bucket of s3_bucket_create already (D101).
+	"bucket of the profile": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "s3.cloud.ru" || strings.Trim(r.URL.Path, "/") != "" {
+			return nil
+		}
+		w := httptest.NewRecorder()
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?><ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>o</ID></Owner><Buckets>`+
+			`<Bucket><Name>bucket-new</Name><CreationDate>2026-10-20T10:00:00.000Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>`)
+		return w.Result()
+	}, alreadyFor: []string{"s3_bucket_create"}},
 	// The VM of vm_start runs already (D99, П3).
 	"vm running already": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityStoppedVM {
