@@ -56,6 +56,21 @@ var vmPowerStateRows = map[string]map[string]vmStateRow{
 		"error":          rowAsksWarned,
 		vmStateUnknown:   rowAsksWarned,
 	},
+	// The brief, §4.1.
+	"vm_stop": {
+		"running":        rowAsks,
+		"stopped":        rowAlready,
+		"stopping":       rowWaits,
+		"starting":       rowRefused,
+		"rebooting":      rowRefused,
+		"creating":       rowRefused,
+		"updating":       rowRefused,
+		"deleting":       rowRefused,
+		"error_deleting": rowRefused,
+		"error_creating": rowRefused,
+		"error":          rowAsksWarned,
+		vmStateUnknown:   rowAsksWarned,
+	},
 }
 
 // vmStatesOfTheProduct are the states the planner of a power tool decides

@@ -62,6 +62,7 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The VM a power tool names in its preview and its answer, as the
 	// cloud names it.
 	"vm_start": {fields: []string{"preview", "name", "details"}},
+	"vm_stop":  {fields: []string{"preview", "name", "details"}},
 	// The roles of the key, as IAM names them: anyone who may create a
 	// custom role in the organization names it (A0-2).
 	"whoami": {fields: []string{"roles"}},

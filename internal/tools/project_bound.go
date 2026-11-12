@@ -100,6 +100,7 @@ var idArgs = map[string][]idArg{
 	// Compute.
 	"vm_get":       {{name: "vm_id", kind: kindVM}},
 	"vm_start":     {{name: "vm_id", kind: kindVM, target: true}},
+	"vm_stop":      {{name: "vm_id", kind: kindVM, target: true}},
 	"destroy":      {{name: "vm_id", why: whyListed}},
 	"image_get":    {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}},
 	"image_delete": {{name: "image_id", kind: kindImage, target: true}},

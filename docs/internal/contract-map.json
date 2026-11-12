@@ -459,6 +459,9 @@
   "vm_start": {
     "destructive": false
   },
+  "vm_stop": {
+    "destructive": true
+  },
   "vpc_create": {
     "destructive": false,
     "taken": "checked",
