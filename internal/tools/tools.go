@@ -4063,8 +4063,15 @@ func errAnswer(err error, fields map[string]any) string {
 	// A refusal of rights reads as such in fields of its own, whatever the
 	// service and its reason (decision 21.10): "no role" told apart from
 	// the other errors not by the text only.
-	if st := apiStatus(err); st == 403 {
+	st := apiStatus(err)
+	if st == 403 {
 		res["access_denied"] = true
+	}
+	// The status of the API's answer, when an API answered: a refusal of
+	// the platform (4xx) is an outcome known, an error of the server (5xx)
+	// is not — the record of the call (D92) parts them by it
+	// (intent.OutcomeUnknown; «Риск», conclusion 170, У1).
+	if st >= 400 && st < 600 {
 		res["http_status"] = st
 	}
 	if _, ok := res["hint"]; !ok {

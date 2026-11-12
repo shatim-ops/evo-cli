@@ -80,7 +80,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		return nil, err
 	}
 	return func(answer string) {
-		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), 0) {
+		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			return
 		}
 		// The call ended and the operation goes on: its answer names the
@@ -258,7 +258,7 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 			held = append(held, in)
 		}
 	}
-	if len(held) == 0 || intent.OutcomeUnknown(answerReason(answer), 0) || answerStatus(answer) == "confirmation_required" ||
+	if len(held) == 0 || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) || answerStatus(answer) == "confirmation_required" ||
 		refusedTheCall[answerReason(answer)] {
 		return
 	}
@@ -400,6 +400,19 @@ func intentTarget(in intent.Intent) (a idArg, id string, ok bool) {
 }
 
 // answerReason is the reason of a tool's answer, "" when it has none.
+// answerHTTPStatus is the status of the API's answer a tool's error answer
+// carries (http_status, errAnswer), 0 when none: a refusal of the platform
+// (4xx) is an outcome known, though its reason is API_ERROR as a 5xx's is.
+func answerHTTPStatus(answer string) int {
+	var a struct {
+		Status float64 `json:"http_status"`
+	}
+	if json.Unmarshal([]byte(answer), &a) != nil {
+		return 0
+	}
+	return int(a.Status)
+}
+
 func answerReason(answer string) string {
 	// "error" is a string in a tool's answer and an object in the CLI's
 	// --json one: one struct of both failed to decode a tool's error, and

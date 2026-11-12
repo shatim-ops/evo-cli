@@ -6,6 +6,8 @@ package tools
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -60,5 +62,61 @@ func TestIntent_UnknownOutcomeKeptThenClosedByAKnownOne(t *testing.T) {
 		if left := intent.Pending(dir); len(left) != 0 {
 			t.Errorf("the next call with a known outcome (%s): want the record closed, got %+v", second, left)
 		}
+	}
+}
+
+// A refusal of the platform (4xx) is an outcome known: the record of the
+// call closes, whatever the tool («Риск», conclusion 170, У1). Its reason
+// is API_ERROR, as a 5xx's is; the status of the answer (http_status,
+// errAnswer) parts them. Every tool that takes consent, on a cloud that
+// answers 400, 403, 409 or 422 to everything: no record is left.
+func TestIntent_RefusalOfThePlatformClosesTheRecord(t *testing.T) {
+	rt := &contractRT{}
+	reg := contractReg(t, rt)
+	eng, _ := reg.newEngine(nil)
+	t.Chdir(eng.StateDir)
+	dir := intent.Dir(eng.StateDir)
+	seen := 0
+	for _, kind := range []string{"400", "403", "409", "422"} {
+		for _, tl := range reg.Tools() {
+			if !tl.Mutating || contractHTTPSkip[tl.Name] {
+				continue
+			}
+			args := contractArgs(tl)
+			args["confirmed"] = true
+			rt.kind = kind
+			rt.take()
+			_, _, _ = contractCall(tl, args, contractCallLimit)
+			if left := intent.Pending(dir); len(left) != 0 {
+				t.Errorf("%s, the cloud refuses with %s: the record of the call is kept as if its outcome were unknown: %+v", tl.Name, kind, left[0])
+				_ = os.RemoveAll(dir)
+			}
+			seen++
+		}
+	}
+	if seen == 0 {
+		t.Fatal("no tool that takes consent was called")
+	}
+}
+
+// vm_reboot, after a refusal of the platform: the next call with the
+// consent is not answered «the earlier call was cut, the change may have
+// happened» — the platform said no, and the record closed (conclusion 170,
+// У2).
+func TestIntent_RebootAfterARefusalIsNotACut(t *testing.T) {
+	r, w, dir := rebootWorldInADir(t)
+	w.powerRefused = "zone_changes_prohibited" // a 422 of the platform
+	tl, _ := r.Lookup("vm_reboot")
+	args := func() map[string]any { return map[string]any{"name": "web", "confirmed": true} }
+	if text, isErr := tl.Handler(context.Background(), args()); !isErr {
+		t.Fatalf("want the refusal: %s", text)
+	}
+	if left := intent.Pending(dir); len(left) != 0 {
+		t.Fatalf("a refusal of the platform left the record of the call: %+v", left)
+	}
+	w.powerRefused = ""
+	text, _ := tl.Handler(context.Background(), args())
+	if strings.Contains(text, "interrupted") || strings.Contains(text, "outcome is unknown") {
+		t.Errorf("the call after a refusal is answered as one after a cut call: %.400s", text)
 	}
 }
