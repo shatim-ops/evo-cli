@@ -124,19 +124,9 @@ func TestOperation_ElapsedOnlyWhereTheTimesAre(t *testing.T) {
 // operationErrorUnmarked are the *_operation tools shipped before the
 // invariant whose answer carries the error of the operation, as the
 // service words it, with no "_untrusted" marker. It only shrinks, and a new
-// *_operation does not join it. Closes by 1.9 (release plan 1.9, «Текст
-// ошибки операции — недоверенный у каждого *_operation», R-83): the line
-// of untrustedFields is «разработка»'s.
-var operationErrorUnmarked = map[string]string{
-	"ar_operation":    "Artifact Registry words the error",
-	"cert_operation":  "Certificate Manager words the error",
-	"dns_operation":   "DNS words the error",
-	"kafka_operation": "Managed Kafka words the error",
-	"lb_operation":    "the load balancer service words the error",
-	"pg_operation":    "Managed PostgreSQL words the error",
-	"redis_operation": "Managed Redis words the error",
-	"vpc_operation":   "VPC words the error",
-}
+// *_operation does not join it. Empty since 1.9 (release plan 1.9, «Текст
+// ошибки операции — недоверенный у каждого *_operation», R-83).
+var operationErrorUnmarked = map[string]string{}
 
 // The error of an operation is the service's text, with the names of the
 // project's resources in it — anyone with access to the project writes

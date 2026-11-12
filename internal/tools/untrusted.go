@@ -70,6 +70,16 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The error of an operation, as Managed Kubernetes words it: the
 	// service's text, with the names of the project's resources in it.
 	"k8s_operation": {fields: []string{"error"}},
+	// The error of an operation is the service's text, with the names of
+	// the project's resources in it (R-83): every *_operation marks it.
+	"ar_operation":    {fields: []string{"error"}},
+	"cert_operation":  {fields: []string{"error"}},
+	"dns_operation":   {fields: []string{"error"}},
+	"kafka_operation": {fields: []string{"error"}},
+	"lb_operation":    {fields: []string{"error"}},
+	"pg_operation":    {fields: []string{"error"}},
+	"redis_operation": {fields: []string{"error"}},
+	"vpc_operation":   {fields: []string{"error"}},
 	// The name of a node pool and the labels and taints of its nodes:
 	// anyone with access to the project writes them.
 	"k8s_nodepool_get": {fields: []string{"name", "cluster_name", "labels", "taints"}},
