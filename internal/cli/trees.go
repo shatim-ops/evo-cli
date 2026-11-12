@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -393,8 +394,13 @@ func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 			// --x=false turns it off. An unset flag still goes to the
 			// tool as nothing (treeArgs takes changed flags only).
 			on, _ := p.Default.(bool)
-			if on {
+			switch {
+			case on:
 				desc = defaultTrueRE.ReplaceAllString(desc, "") + note(" To turn off: --"+name+"=false", " Выключить: --"+name+"=false")
+			case slices.Contains(tools.ListFilters(t), p.Name):
+				// A filter of «yes» or «no»: «no» is --x=false, not
+				// --x false (FB182-2).
+				desc += note(" (false is given as --"+name+"=false)", " (false задаётся так: --"+name+"=false)")
 			}
 			cmd.Flags().Bool(name, on, desc)
 		case "array":
@@ -406,13 +412,19 @@ func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 	noEmptyScope(cmd.Flags())
 	if filters := tools.ListFilters(t); filters != nil {
 		// The filters of a list, as one group, and an example with them
-		// (release plan 1.8.2).
-		names := make([]string, len(filters))
-		for i, a := range filters {
-			names[i] = "--" + c.flagName(a)
+		// (release plan 1.8.2). The line names flags only: a filter the
+		// command takes as a positional (the query of image list) is in
+		// its usage, not here (FB182-1).
+		names := make([]string, 0, len(filters))
+		for _, a := range filters {
+			if cmd.Flags().Lookup(c.flagName(a)) != nil {
+				names = append(names, "--"+c.flagName(a))
+			}
 		}
-		cmd.Long += "\n\n" + i18n.Tf("Filters: %s. Several are «and»; an empty selection is not «none in the project».",
-			"Отбор: %s. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».", strings.Join(names, ", "))
+		if len(names) > 0 {
+			cmd.Long += "\n\n" + i18n.Tf("Filters: %s. Several are «and»; an empty selection is not «none in the project».",
+				"Отбор: %s. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».", strings.Join(names, ", "))
+		}
 		if samples := tools.ListFilterSamples(t); len(samples) > 0 {
 			var ex []string
 			for _, u := range use[1:] {

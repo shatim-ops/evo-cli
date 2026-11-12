@@ -163,7 +163,7 @@ evo pg list --status READY
 | `--state`, `--status` | состояние — флаг назван как поле ответа | список допустимых — в `--help` команды, Tab дополняет |
 | `--name` | часть имени | любая подстрока |
 | `--vpc-id`, `--flavor`, `--type` | VPC, flavor, тип диска или реестра | имя; у VPC — имя или UUID |
-| `--public-ip`, `--attached`, `--free`, `--bootable` | признак «да» или «нет» | `true` или `false` |
+| `--public-ip`, `--attached`, `--free`, `--bootable` | признак «да» или «нет» | «да» — `--attached`, «нет» — `--attached=false` |
 
 Какие фильтры есть у списка, показывает его `--help`. Правила одни для всех
 списков, в CLI и у MCP-сервера:
