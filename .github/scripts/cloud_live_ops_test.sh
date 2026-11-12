@@ -653,6 +653,15 @@ DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/ou
 want "Г-13, квота: код" "$rc" 0
 want "Г-13, квота: один PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 1
 grep -q 'квота по машинному коду: да' "$tmp/out" || { echo "FAIL: Г-13: квота не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+# То же, когда details — объект, а не массив объектов.
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 429 {"code":"RESOURCE_EXHAUSTED","details":{"reason":"QUOTA_EXCEEDED"}}
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, квота, details — объект: один PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 1
 
 # Кластер не вернулся в исходное состояние после смены класса: в него
 # уходит только возврат класса; PATCH диска и узлов не шлётся — каждый

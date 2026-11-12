@@ -2110,7 +2110,7 @@ ops_reach() {
 # mcode — машинный код причины последнего ответа api (поля code,
 # error_code, type и reason в details — так отвечают API DBaaS), без
 # разбора текста.
-mcode() { jq -r '[.code?, .error_code?, .type?, (.details? | arrays | .[]? | objects | .reason?)] | map(select(type == "string")) | join(",")' "$tmp/api.json" 2>/dev/null || true; }
+mcode() { jq -r '[.code?, .error_code?, .type?, (.details? | if type == "array" then .[] else . end | objects | .reason?)] | map(select(type == "string")) | join(",")' "$tmp/api.json" 2>/dev/null || true; }
 # refusal ПРОВЕРКА ШАГ — отказ платформы на создающий или меняющий запрос
 # (последний ответ api) одной строкой, поля по условиям «Риска» (R-77):
 # код HTTP и шаг (синхронно или в операции); имена полей тела и машинный
