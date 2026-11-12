@@ -27,7 +27,10 @@ type deleteTarget struct {
 	what, whRU string
 	// statePrefix is what the service writes before the name of a status
 	// ("OBJECT_STATUS_" of Managed Kubernetes): deletePlan reads the status
-	// without it, so the states of every delete (D61) are the pool's too.
+	// without it, so a resource the platform says is going, gone or failed
+	// is answered as by every delete (D61, D26). The refusal of a resource
+	// still being created is not applied to such a service: no run has
+	// shown it refuse that delete (the owner's decision 12.11).
 	statePrefix string
 }
 

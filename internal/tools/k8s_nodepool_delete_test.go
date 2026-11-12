@@ -32,7 +32,6 @@ func TestK8sNodePoolDelete_AnsweredBeforeTheQuestion(t *testing.T) {
 		{name: "the pool is not there: a repeated delete", world: func() *poolWorld { return &poolWorld{gone: true} }, status: "already_deleted"},
 		{name: "the platform is deleting it", world: func() *poolWorld { return &poolWorld{status: "OBJECT_STATUS_DELETING"} }, status: "deleting", says: "OBJECT_STATUS_DELETING"},
 		{name: "readable after its delete", world: func() *poolWorld { return &poolWorld{status: "OBJECT_STATUS_DELETED"} }, status: "already_deleted"},
-		{name: "still being created", world: func() *poolWorld { return &poolWorld{status: "OBJECT_STATUS_PROVISIONING"} }, isErr: true, reason: "USAGE", says: "OBJECT_STATUS_PROVISIONING"},
 		{name: "the pools of its cluster are not read", world: func() *poolWorld { return &poolWorld{status: poolRunning, listFails: true} }, isErr: true, reason: "API_ERROR"},
 	}
 	for _, c := range cases {
@@ -116,8 +115,11 @@ func TestK8sNodePoolDelete_LastPoolOfTheCluster(t *testing.T) {
 // delete (engine.DeleteWayOut), by the state without the service's prefix.
 func TestK8sNodePoolDelete_StatusWithAnUnknownOutcome(t *testing.T) {
 	for st, says := range map[string]string{
-		poolError:                     "may refuse",
-		poolScalingUp:                 poolScalingUp + ", not running: whether the platform accepts the delete is unknown",
+		poolError:     "may refuse",
+		poolScalingUp: poolScalingUp + ", not running: whether the platform accepts the delete is unknown",
+		// Whether the platform deletes a pool it is still creating is not
+		// known for Managed Kubernetes: no refusal before the question.
+		"OBJECT_STATUS_PROVISIONING":  "OBJECT_STATUS_PROVISIONING, not running: whether the platform accepts the delete is unknown",
 		"OBJECT_STATUS_SOMETHING_NEW": "OBJECT_STATUS_SOMETHING_NEW, not running: whether the platform accepts the delete is unknown",
 	} {
 		w := &poolWorld{status: st, others: []string{poolRunning}}
