@@ -20,6 +20,21 @@ var noOperationOutcome = map[string]string{
 	"ca_delete": "the Container Apps API publishes no operation; the delete reads the app until it is gone (TestDeleteOutcome_ContainerAppReadsTheApp)",
 }
 
+// unreachedDeletes are the deletes of deleteTargets the world of the
+// contract refuses before their request, with the reason the class does
+// not need them there: their client has no operation to read (the compute
+// API and S3 answer the delete itself; evo reads the resource). A closed
+// list: any other delete refused in that world fails the class — a refusal
+// is not «the cloud ended it in its answer» (k8s_nodepool_delete went past
+// D74 so, refused for want of clusterId in the body of the world, #1465).
+var unreachedDeletes = map[string]string{
+	"close_ports":         "compute: the rule is deleted by its own request, no operation; the world has no security group of the id",
+	"destroy":             "compute: the VM is read until it is gone; the arguments of the world name it twice (vm_id and name)",
+	"release_floating_ip": "compute: no operation; the arguments of the world name it twice (id and ip_address)",
+	"s3_bucket_delete":    "S3: no operation; the world of the contract does not speak S3",
+	"s3_rm":               "S3: no operation; the world of the contract does not speak S3",
+}
+
 // D74 as a class (cloud-e2e run 151: an async delete answered deleting
 // and read nothing back, so a failed operation looked like a delete under
 // way, exit 0). Every delete of deleteTargets whose answer names the
@@ -55,9 +70,21 @@ func TestDeleteOutcome_EveryAsyncDeleteReadsItsOperation(t *testing.T) {
 		args := contractArgs(tl)
 		args["confirmed"] = true
 		delete(args, "wait") // the default: wait for the outcome
-		text, _, _ := contractCall(tl, args, 5*time.Second)
+		text, refused, _ := contractCall(tl, args, 5*time.Second)
 		var m map[string]any
 		_ = json.Unmarshal([]byte(text), &m)
+		if _, declared := unreachedDeletes[name]; declared {
+			if !refused {
+				t.Errorf("unreachedDeletes names %s, which the world of the contract reaches now: remove the line", name)
+			}
+			continue
+		}
+		if refused {
+			// Not «the cloud ended it in its answer»: the call did not get
+			// to its delete, and the class did not see the tool.
+			t.Errorf("%s is refused in the world of the contract, so the class cannot tell whether its delete reads an operation: give the world what the call needs (contractArgs, the body of contractRT): %.300s", name, text)
+			continue
+		}
 		if _, ok := m["operation_id"]; !ok {
 			continue // a delete the cloud ends in its answer: nothing to read
 		}
@@ -72,6 +99,11 @@ func TestDeleteOutcome_EveryAsyncDeleteReadsItsOperation(t *testing.T) {
 		}
 		if name != "dns_zone_delete" && !slices.Contains(deleteOutcomeTools, name) {
 			t.Errorf("%s reads the operation of its delete but is not in deleteOutcomeTools: the tests of D74 (done, not done, wait=false) do not cover it", name)
+		}
+	}
+	for name := range unreachedDeletes {
+		if _, ok := deleteTargets[name]; !ok {
+			t.Errorf("unreachedDeletes names %s, which deleteTargets does not declare", name)
 		}
 	}
 	for name := range noOperationOutcome {
