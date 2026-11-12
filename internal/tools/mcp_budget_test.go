@@ -398,6 +398,9 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 	t.Cleanup(func() { deployplan.SSHPortWait = prev })
 	over := map[string]string{}
 	ran := map[string]bool{} // the cases -run left in
+	// consented: the tools whose answer names a next step that carries
+	// confirmed (consentInNextStep).
+	consented := map[string]bool{}
 	tools := map[string]Tool{}
 	for _, tl := range New(nil).Tools() {
 		tools[tl.Name] = tl
@@ -438,6 +441,9 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 			select {
 			case a := <-got:
 				checkNoTerminalCodes(t, name, a.text)
+				if consentInNextStep(a.text) {
+					consented[name] = true
+				}
 				if _, listed := mcpOverBudget[name]; listed {
 					return // a line the call no longer needs: the check below
 				}
@@ -470,11 +476,68 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 			bad = append(bad, name+": in mcpOverBudget, but answers within the budget; take the line out (the list only shrinks)")
 		}
 	}
+	// The consent does not move into the next step (R-85; «Риск · 1.9»,
+	// conclusion 123): an agent that calls the step the answer names sends
+	// the call with the consent in it — the person was asked once, for the
+	// call cut short, not for its repeat.
+	for name := range consented {
+		if nextStepKeepsConsent[name] == "" && nextStepConsentUntilTheMajor[name] == "" {
+			bad = append(bad, name+": its answer cut by the budget names a next step with confirmed in next_args — a next step is a read, or the same call without confirmed; the repeat reads the state and does not write (D99, П3)")
+		}
+	}
+	for _, list := range []map[string]string{nextStepKeepsConsent, nextStepConsentUntilTheMajor} {
+		for name := range list {
+			if ran[name] && !consented[name] {
+				bad = append(bad, name+": listed as a tool whose next step carries confirmed, and it does not: take the line out")
+			}
+			if _, ok := mcpWaits[name]; !ok {
+				bad = append(bad, name+": listed as a tool whose next step carries confirmed, not in mcpWaits")
+			}
+		}
+	}
 	sort.Strings(bad)
 	if len(bad) > 0 {
 		t.Error(strings.Join(bad, "\n"))
 	}
 	t.Logf("mcpOverBudget: %d lines (Closes by 1.7)", len(mcpOverBudget))
+}
+
+// nextStepKeepsConsent are the declared continuations: a next step that
+// carries confirmed and is bound to what the person consented to, so that
+// the repeat cannot be of anything else. "tool" → the binding. A closed
+// list: a new tool does not join it without a decision.
+var nextStepKeepsConsent = map[string]string{
+	"deploy": "compose_hash in next_args: the repeat is of the compose file the person approved, another one asks again (D82)",
+}
+
+// nextStepConsentUntilTheMajor are the tools shipped before the invariant
+// whose answer cut by the budget names a next step with confirmed and no
+// binding to what was approved. Taking confirmed out changes the answer of
+// a shipped tool — the continuation would ask again, exit 3 — which is
+// breaking (release plan 1.9, «Согласие не переезжает в следующий шаг»,
+// R-85). "tool" → what the next step is. It only shrinks, and a new tool
+// does not join it. Closes by 2.0.
+var nextStepConsentUntilTheMajor = map[string]string{
+	"deploy_apply":  "deploy_apply plan_id, confirmed: the plan is the one approved",
+	"destroy":       "destroy vm_id, confirmed: a delete repeated with the consent in the step",
+	"disk_attach":   "disk_attach disk_id, vm, confirmed",
+	"disk_create":   "disk_attach disk_id, vm, confirmed: the attach of attach_to",
+	"disk_detach":   "disk_detach disk_id, vm, confirmed",
+	"disk_resize":   "disk_resize disk_id, size_gb, confirmed",
+	"provision":     "provision name, confirmed",
+	"stack_destroy": "stack_destroy job_id, confirmed: a delete repeated with the consent in the step",
+}
+
+// consentInNextStep reports whether the answer names a next step whose
+// arguments carry confirmed.
+func consentInNextStep(text string) bool {
+	var m map[string]any
+	if json.Unmarshal([]byte(text), &m) != nil {
+		return false
+	}
+	args, _ := m["next_args"].(map[string]any)
+	_, has := args["confirmed"]
+	return has
 }
 
 // finalStatus are the states of a call that is over: an answer cut by the
