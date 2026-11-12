@@ -25,6 +25,24 @@ all=$(gh issue list --state open --search "\"$TITLE\" in:title" --limit 100 --js
   --jq ".[] | select(.title == \"$TITLE\") | .number")
 open=$(head -n 1 <<<"$all")
 
+# tell_prs ТЕКСТ — one line into every open pull request to main: an issue
+# has no addressee (12.11 it stood six hours unread, plan 1.9, «CI», М5),
+# and a comment in a pull request reaches the one who follows it. Only a
+# red ci speaks there — it is ci that a merge leans on. A comment refused
+# is named and does not undo the issue.
+tell_prs() {
+  [ "$WORKFLOW" = ci ] || return 0
+  local prs n e
+  e=$(mktemp)
+  prs=$(gh pr list --state open --base main --limit 100 --json number --jq '.[].number') || prs=""
+  while read -r n; do
+    [ -n "$n" ] || continue
+    gh pr comment "$n" --body "$1" 2>"$e" ||
+      echo "::warning title=main-red::строка в PR $n не оставлена: $(head -c 300 "$e" | tr '\n' ' ')" >&2
+  done <<<"$prs"
+  rm -f "$e"
+}
+
 if [ "$CONCLUSION" = success ]; then
   # Every one of them: a duplicate made by hand is closed too.
   while read -r n; do
@@ -32,6 +50,7 @@ if [ "$CONCLUSION" = success ]; then
     gh issue comment "$n" --body "Зелёный прогон $RUN_URL (\`${HEAD_SHA:0:8}\`): main снова зелёный."
     gh issue close "$n"
   done <<<"$all"
+  [ -z "$open" ] || tell_prs "main снова зелёный: прогон $RUN_URL (\`${HEAD_SHA:0:8}\`). Запрет на автослияние из-за красного main снят."
   exit 0
 fi
 [ "$CONCLUSION" = failure ] || exit 0
@@ -80,5 +99,7 @@ trap 'rm -f "$body" "$err"' EXIT
 if [ -n "$open" ]; then
   gh issue comment "$open" --body-file "$body"
 else
-  gh issue create --title "$TITLE" --body-file "$body"
+  url=$(gh issue create --title "$TITLE" --body-file "$body")
+  echo "$url"
+  tell_prs "main красный: прогон $RUN_URL (\`${HEAD_SHA:0:8}\`), разбор — в $url. До зелёного main автослияние продуктового PR не включается, а «готово к слиянию» называет причину красного (план 1.9, строка «CI», М5). Этот PR красным не объявлен — строка идёт во все открытые."
 fi
