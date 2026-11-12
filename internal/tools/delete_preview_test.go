@@ -17,7 +17,9 @@ import (
 // TestDeletePreview_WarnsInFailedState (G13-19).
 func TestDeletePreview_WarnsWhileBeingCreated(t *testing.T) {
 	for status, refused := range map[string]bool{"DEPLOYING": true, "creating": true, "READY": false} {
-		p := New(nil).deletePlan("k8s_delete", "x_delete deletes %s.", "x_delete удаляет %s.", "id-1", func() (map[string]any, error) {
+		// A delete whose service writes these states (DB-17): the states of
+		// Managed Kubernetes carry a prefix and have their own declaration.
+		p := New(nil).deletePlan("kafka_delete", "x_delete deletes %s.", "x_delete удаляет %s.", "id-1", func() (map[string]any, error) {
 			return map[string]any{"name": "c1", "status": status}, nil
 		}, nil)
 		if got := p.Preview == nil && p.answerErr && strings.Contains(p.answer, `"USAGE"`); got != refused {
