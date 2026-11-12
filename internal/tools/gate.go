@@ -27,6 +27,11 @@ type Plan struct {
 	// Preview is the answer the consent is asked on, without its status:
 	// the gate answers it as confirmation_required.
 	Preview map[string]any
+	// PreviewOf builds the preview when the question is asked, in place
+	// of Preview: for a preview that costs a request the execution does
+	// not need (the price), so a consented call does not make it. An
+	// error refuses the call, as the planner's.
+	PreviewOf func(ctx context.Context) (map[string]any, error)
 	// Execute makes the call; the gate runs it only with consent.
 	Execute func(ctx context.Context) (string, bool)
 	// answer is the whole answer of a call with nothing to consent to.
@@ -58,8 +63,14 @@ func (r *Registry) gated(name string, plan Planner) Handler {
 		}
 		t, _ := r.Lookup(name)
 		if confirmed, _ := args["confirmed"].(bool); !confirmed && NeedsConsent(t, args) {
+			preview := p.Preview
+			if p.PreviewOf != nil {
+				if preview, err = p.PreviewOf(ctx); err != nil {
+					return errResult(err), true
+				}
+			}
 			out := map[string]any{"status": "confirmation_required"}
-			for k, v := range p.Preview {
+			for k, v := range preview {
 				out[k] = v
 			}
 			return toJSON(out), true
