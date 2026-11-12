@@ -20,7 +20,13 @@ case "$1 $2" in
   "issue close") ;;
   "pr list")
     [ -z "${FAKE_PR_LIST_FAIL:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
-    for n in ${FAKE_PRS:-}; do printf '%s\n' "$n"; done ;;
+    # The list as gh gives it — JSON through the caller's own --jq, so the
+    # filter of main_red.sh is what picks the numbers; «23d» is a draft.
+    q=.
+    while [ $# -gt 0 ]; do [ "$1" != --jq ] || q=$2; shift; done
+    for n in ${FAKE_PRS:-}; do
+      case "$n" in *d) printf '{"number":%s,"isDraft":true}\n' "${n%d}" ;; *) printf '{"number":%s,"isDraft":false}\n' "$n" ;; esac
+    done | jq -s . | jq -r "$q" ;;
   "pr comment")
     [ -z "${FAKE_PR_FAIL:-}" ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
     while [ $# -gt 0 ]; do [ "$1" = --body ] && printf '%s\n' "$2" >>"$FAKE_BODY"; shift; done ;;
@@ -99,12 +105,12 @@ FAKE_JOBS='104\treadonly\n' FAKE_LOG='FAIL\n' WORKFLOW=cloud-e2e \
 # Новый красный ci — строка в каждый открытый PR в main со ссылкой на
 # issue; зелёный, закрывший issue, — строка «снова зелёный». Дописывание
 # открытого issue, cloud-e2e и stand в PR не пишут: слияние держит ci.
-FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21 22" \
-  run "красный, issue нет — строка в каждый открытый PR" failure "" \
+FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21 22 23d" \
+  run "красный, issue нет — строка в каждый открытый PR, кроме черновика" failure "" \
   "calls:issue create" "calls:pr list --state open --base main" "calls:pr comment 21" "calls:pr comment 22" \
   "body:main красный" "body:https://example.invalid/o/r/issues/55" "body:автослияние" \
   "body:Эта строка — уведомление workflow main-red" "body:состояние main — issue «main красный: ci»" \
-  "calls:isDraft"
+  "nocalls:pr comment 23"
 FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21 22" \
   run "красный, issue открыто — в PR второй раз не пишет" failure 7 \
   "calls:issue comment 7" "nocalls:pr comment"
