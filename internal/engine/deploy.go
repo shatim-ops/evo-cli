@@ -497,6 +497,10 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			"project_id": e.projectOf(&rec), "region": rec.Region, "flavor": rec.VMFlavor,
 			"ports": rec.ExposedPorts, "verify": results,
 		}
+		if len(e.portsOnlyFromGroups) > 0 {
+			// Not open to the source of the deploy: said apart from ports.
+			out["ports_open_only_to_groups"] = e.portsOnlyFromGroups
+		}
 		for k, v := range map[string]string{"vm_name": rec.VMName, "zone_name": rec.ZoneName, "flavor_name": rec.FlavorName} {
 			if v != "" {
 				out[k] = v

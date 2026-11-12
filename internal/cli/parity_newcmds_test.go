@@ -21,6 +21,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -240,6 +241,14 @@ func (c *emptyCloud) run(t *testing.T, bad *[]string, args ...string) (int, stri
 	c.mu.Lock()
 	c.deleted = map[string]bool{}
 	c.mu.Unlock()
+	// ...and a new directory of the records of calls (D92): a call whose
+	// outcome is not known keeps its record, and the other side of the
+	// pair would be told of it and asked again.
+	if wd, err := os.Getwd(); err == nil {
+		for _, dir := range intent.Dirs(wd) {
+			_ = os.RemoveAll(dir)
+		}
+	}
 	newProcess()
 	start := time.Now()
 	code, out, errOut := runCLI(t, "", args...)

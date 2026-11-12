@@ -67,6 +67,11 @@ var deleteTargets = map[string]deleteTarget{
 	"image_delete":      {arg: "image_id", what: "image", whRU: "образ"},
 	"k8s_delete": {arg: "cluster_id", what: "Kubernetes cluster", whRU: "кластер Kubernetes",
 		statePrefix: "OBJECT_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe},
+	// A backup's states are lower case (BackupState): the rule of a state
+	// under way, of a state being created and of a final one is the same.
+	"backup_delete": {arg: "backup_id", what: "backup", whRU: "резервная копия",
+		creatingUnseen: "no run has deleted a backup still being created: the third run of probe Г-16 (docs/internal/briefs/backups.md)",
+		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16 (docs/internal/briefs/backups.md)"},
 	"k8s_nodepool_delete": {arg: "nodepool_id", what: "node pool", whRU: "группа узлов", statePrefix: "OBJECT_STATUS_",
 		creatingUnseen: "probe Г-12, question 16 of docs/internal/briefs/k8s-nodepools.md"},
 	"kafka_delete": {arg: "cluster_id", what: "Kafka cluster", whRU: "кластер Kafka"},

@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/intent"
-	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -139,7 +138,7 @@ func TestGate_IntentBeforeTheCloudGoneAfter(t *testing.T) {
 					_ = os.Remove(p)
 				}
 			}
-			_ = os.Remove(state.DefaultPath(w.dir))
+			forgetRun(w)
 			if !wrote {
 				continue // nothing reached the cloud: nothing to leave behind
 			}

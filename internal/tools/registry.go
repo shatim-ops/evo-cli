@@ -358,8 +358,9 @@ func (r *Registry) SetReadOnly() { r.readOnly = true }
 // registry serves calls.
 func (r *Registry) SetProjectBound() { r.projectBound = true }
 
-// ErrResult formats an error as a JSON tool result, as the handlers do.
-func ErrResult(err error) string { return errResult(err) }
+// ErrResult formats an error as a JSON tool result, as a handler's answer
+// reads to its caller (outer: without the status of the record).
+func ErrResult(err error) string { return withoutAPIStatus(errResult(err)) }
 
 // BoolArg reads a boolean argument, def when it is absent.
 func BoolArg(args map[string]any, key string, def bool) bool { return boolArg(args, key, def) }

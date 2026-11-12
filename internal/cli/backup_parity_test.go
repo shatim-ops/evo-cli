@@ -18,7 +18,13 @@ func (parityCloud) ListBackups(context.Context, string) ([]map[string]any, error
 	return []map[string]any{parityBackup()}, nil
 }
 
-func (parityCloud) GetBackup(_ context.Context, id string) (map[string]any, error) {
+// GetBackup reads the HTTP world when the parity cloud is the real adapter
+// over it: after its DELETE the backup is gone there (a 404), and a delete
+// that waits for that (D74) does not wait the production minute.
+func (p parityCloud) GetBackup(ctx context.Context, id string) (map[string]any, error) {
+	if b, ok := p.CloudAPI.(provision.BackupAPI); ok {
+		return b.GetBackup(ctx, id)
+	}
 	b := parityBackup()
 	b["id"] = id
 	return b, nil
@@ -69,4 +75,11 @@ func init() {
 		cloud:      func(c provision.CloudAPI) provision.CloudAPI { return backupKeptCloud{c} },
 		alreadyFor: []string{"backup_create"},
 	}
+}
+
+func (p parityCloud) DeleteBackup(ctx context.Context, id string) error {
+	if b, ok := p.CloudAPI.(provision.BackupAPI); ok {
+		return b.DeleteBackup(ctx, id)
+	}
+	return nil
 }

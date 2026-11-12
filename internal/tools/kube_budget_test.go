@@ -32,8 +32,12 @@ func TestKubectl_StoppedAtTheLimitSaysWhatHolds(t *testing.T) {
 	} {
 		t.Run(tc.args, func(t *testing.T) {
 			args := map[string]any{"cluster_id": faultCluster, "args": tc.args, "confirmed": true}
-			call, _ := kubeBudget("k8s_kubectl", args)(t)
-			text, isErr := call(context.Background())
+			// progressBudget, not the budget of the slow world: the test
+			// reads how far kubectl got — the line it printed — and on a
+			// loaded runner the process does not start and print within
+			// 250 ms (macOS, run 43267821110: "output": "", #793's class).
+			r := progressed(kubeWorld(t, `echo "$(basename "$0"): waiting"; exec sleep 600`))
+			text, isErr := r.handlers["k8s_kubectl"](context.Background(), args)
 			var m map[string]any
 			if err := json.Unmarshal([]byte(text), &m); err != nil || isErr {
 				t.Fatalf("answer (isError=%v): %s", isErr, text)

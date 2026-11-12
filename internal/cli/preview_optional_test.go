@@ -7,12 +7,10 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"testing"
 
-	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -156,7 +154,7 @@ func TestPreview_NamesEveryOptionalArgument(t *testing.T) {
 			text, _ := tl.Handler(context.Background(), args)
 			writes := fake.takeWrites()
 			end()
-			_ = os.Remove(state.DefaultPath(w.dir))
+			forgetRun(w)
 			return text, writes
 		}
 		preview, _ := call(false)

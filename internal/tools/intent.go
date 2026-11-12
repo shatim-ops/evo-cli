@@ -80,7 +80,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		return nil, err
 	}
 	return func(answer string) {
-		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), 0) {
+		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			return
 		}
 		// The call ended and the operation goes on: its answer names the
@@ -263,7 +263,7 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 			held = append(held, in)
 		}
 	}
-	if len(held) == 0 || intent.OutcomeUnknown(answerReason(answer), 0) || answerStatus(answer) == "confirmation_required" ||
+	if len(held) == 0 || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) || answerStatus(answer) == "confirmation_required" ||
 		refusedTheCall[answerReason(answer)] {
 		return
 	}
@@ -404,21 +404,58 @@ func intentTarget(in intent.Intent) (a idArg, id string, ok bool) {
 	return idArg{}, "", false
 }
 
+// apiStatusField carries the status of the API's answer from errAnswer to
+// the record of the call, inside the handler; outer takes it out of the
+// answer (withoutAPIStatus).
+const apiStatusField = "_api_status"
+
+// answerHTTPStatus is the status of the API's answer a tool's error answer
+// carries (apiStatusField), 0 when none: a refusal of the platform (4xx)
+// is an outcome known, though its reason is API_ERROR as a 5xx's is.
+func answerHTTPStatus(answer string) int {
+	var a struct {
+		Status float64 `json:"_api_status"`
+	}
+	if json.Unmarshal([]byte(answer), &a) != nil {
+		return 0
+	}
+	return int(a.Status)
+}
+
+// withoutAPIStatus is answer without apiStatusField: the status is the
+// record's, not the caller's — the answer stays the same whichever 4xx
+// the platform gave (CMP-7).
+func withoutAPIStatus(answer string) string {
+	if !strings.Contains(answer, `"`+apiStatusField+`"`) {
+		return answer
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(answer), &m) != nil {
+		return answer
+	}
+	delete(m, apiStatusField)
+	return toJSON(m)
+}
+
 // answerReason is the reason of a tool's answer, "" when it has none.
 func answerReason(answer string) string {
-	var a struct {
-		Reason string `json:"reason"`
-		Error  struct {
-			Reason string `json:"reason"`
-		} `json:"error"`
-	}
+	// "error" is a string in a tool's answer and an object in the CLI's
+	// --json one: one struct of both failed to decode a tool's error, and
+	// every such answer read as one with no reason — an outcome — so the
+	// record of a call whose answer was lost was closed (the audit of
+	// #1544, Б2).
+	var a map[string]any
 	if json.Unmarshal([]byte(answer), &a) != nil {
 		return ""
 	}
-	if a.Reason != "" {
-		return a.Reason
+	if r, _ := a["reason"].(string); r != "" {
+		return r
 	}
-	return a.Error.Reason
+	if e, _ := a["error"].(map[string]any); e != nil {
+		r, _ := e["reason"].(string)
+		return r
+	}
+	return ""
 }
 
 // PendingNotes are the intents root's earlier runs left, in words: what

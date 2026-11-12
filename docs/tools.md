@@ -30,7 +30,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `audit_events` | `evo audit events` | нет | — | Audit Logging — who did what in the project (read-only): control-plane events (create/delete/modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource … | Журнал аудита проекта: кто, что и когда сделал |
+| `audit_events` | `evo audit events` | нет | — | Who did what in the project: control-plane events (create, delete, modify of VMs, DBs, k8s, S3, IAM, …) with actor, action, resource, time — for 'who deleted … | Журнал аудита проекта: кто, что и когда сделал |
 
 ## auth
 
@@ -47,6 +47,7 @@
 | `backup_list` | `evo backup list` | нет | — | List the backups of VMs and disks in the project: id, name, state, type (full or incremental), size_mb, created_at, last_restore_time, and the source … | Резервные копии ВМ и дисков: id, имя, состояние, тип, размер, исходный ресурс |
 | `backup_get` | `evo backup get` | нет | `backup_id` | A backup by id (from backup_list): the fields of its row, its description and plan, whether its source still exists, and the source as the backup holds it (a … | Резервная копия по id: исходный ресурс, существует ли он, план копирования |
 | `backup_create` | `evo backup create` | да | `name`, `vm_id` или `disk_id` | Back up a VM or a disk (vm_id or disk_id). | Резервная копия ВМ или диска (платно) |
+| `backup_delete` | `evo backup delete` | удаляет | `backup_id` | Permanently delete a backup: what it holds cannot be restored after; resources restored from it stay. | Удалить резервную копию |
 
 ## billing
 
@@ -180,7 +181,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `metrics_history` | `evo metrics history` | нет | `match` | Service Monitoring — read a metric's history over a recent window (read-only). | История метрики за недавний период (Service Monitoring) |
+| `metrics_history` | `evo metrics history` | нет | `match` | Read a metric's history over a recent window: time series {metric labels, values, timestamps}. | История метрики за недавний период (Service Monitoring) |
 | `metrics_scrape` | `evo metrics scrape` | нет | — | Service Monitoring — current metric values in Prometheus text exposition (read-only snapshot of all/matched metrics right now). | Текущие значения метрик в текстовом формате Prometheus |
 
 ## nlb

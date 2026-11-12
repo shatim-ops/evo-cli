@@ -7,7 +7,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/engine"
-	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // previewForm are the keys of a preview's details that are its form, not
@@ -105,7 +103,7 @@ func TestPreview_HumanShowsEveryValue(t *testing.T) {
 			newProcess()
 			code, out, errOut := runCLI(t, stdin, append(append([]string{}, extra...), line...)...)
 			done()
-			_ = os.Remove(state.DefaultPath(w.dir))
+			forgetRun(w)
 			return code, out, errOut
 		}
 		_, jsonOut, _ := run(c.stdin, "--dry-run", "--json")
