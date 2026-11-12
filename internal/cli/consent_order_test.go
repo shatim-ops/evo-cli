@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -39,6 +40,132 @@ var lateRefusals = map[string]string{}
 // — and waits for the major; release plan 1.8).
 var alreadyAsks = map[string]string{
 	"open_ports: world: ports open already": "every port open already: asks for consent to nothing (exit 3); in 1.8 its preview says so (variant Г), the answer without the question is breaking — 2.0",
+}
+
+// repeatIsANewChange are the changes with no repeat that is a success:
+// every send is a change of its own (a reboot, a new version), so there is
+// no "already" to answer (D99, П3). The value is the words of the tool's
+// description that say so: the agent learns it there, before the call.
+var repeatIsANewChange = map[string]string{}
+
+// repeatUndeclared are the changes shipped before the invariant whose
+// repeat nothing declares: no world has the change already, and no
+// declaration says a repeat is a new change. "tool" → what a repeat does
+// as far as the code shows, for the session that declares it. It only
+// shrinks, and a new tool does not join it: a new change comes with its
+// world (consentWorld.alreadyFor) or its line of repeatIsANewChange.
+// Closes by 1.9: each line is a world or a declaration of «разработка»
+// (release plan 1.9, «Инварианты до новых изменяющих операций», Н1).
+var repeatUndeclared = map[string]string{
+	"ca_start":           "a start of a running container app: no world",
+	"ca_stop":            "a stop of a stopped container app: no world",
+	"cert_renew":         "a renewal of a certificate being renewed: no world; or every send is a renewal",
+	"deploy":             "a deploy over its own record: no world of consent has it",
+	"deploy_apply":       "an apply of a plan applied: no world",
+	"disk_resize":        "a resize to the size the disk has: no world («disk larger than requested» is the shrink)",
+	"k8s_add_addon":      "an addon the cluster has: no world",
+	"k8s_apply":          "the repeat is the cluster's (kubectl apply): not declared",
+	"k8s_helm":           "the repeat is the cluster's (helm): not declared",
+	"k8s_kubectl":        "the repeat is the cluster's (kubectl): not declared",
+	"pg_db_create":       "a database the cluster has: no world, and no check of the name taken",
+	"pg_user_create":     "a user the cluster has: no world, and no check of the name taken",
+	"s3_bucket_create":   "a bucket the profile has: no world, and no check of the name taken",
+	"s3_put":             "an object the bucket has: the repeat overwrites — not declared",
+	"secret_add_version": "every send is a new version: not declared",
+	"stack_apply":        "an apply of a stack applied: the repeat is the job's (stack_status), no world",
+	"stack_destroy":      "a destroy of a stack destroyed answers already_destroyed: no world",
+}
+
+// TestConsent_EveryChangeDeclaresItsRepeat keeps the repeat of every
+// change declared (CLAUDE.md §1: a repeat is safe; owner's decision 11.11,
+// Н1). A tool that changes the cloud is of one of the classes:
+//
+//   - a delete — the registry declares what it deletes, and a repeat
+//     answers already_deleted (D26; the contract map's "deletes");
+//   - a create whose name is checked against what is there (axis 1; the
+//     contract map's "taken");
+//   - a change of a state — a world of consentWorlds has the change
+//     already (alreadyFor), and TestConsent_RefusalWithoutWriteComesBefore
+//     TheQuestion calls the tool in it: no question, no write, a status
+//     already_<outcome>;
+//   - a change every send of which is new (repeatIsANewChange), said in
+//     the tool's description.
+//
+// The classes of the registry are read from docs/internal/contract-map.json,
+// which TestContractMap keeps equal to the declarations.
+func TestConsent_EveryChangeDeclaresItsRepeat(t *testing.T) {
+	var declared map[string]struct {
+		Taken   string          `json:"taken"`
+		Deletes json.RawMessage `json:"deletes"`
+	}
+	if err := json.Unmarshal(mustReadRepo(t, "docs/internal/contract-map.json"), &declared); err != nil {
+		t.Fatalf("docs/internal/contract-map.json: %v", err)
+	}
+	worlds := map[string][]string{}
+	for name, w := range consentWorlds {
+		for _, tool := range w.alreadyFor {
+			worlds[tool] = append(worlds[tool], name)
+		}
+	}
+	byName := map[string]tools.Tool{}
+	for _, tl := range newRegistry().Tools() {
+		byName[tl.Name] = tl
+		if !tl.Mutating {
+			continue
+		}
+		var classes []string
+		if d, ok := declared[tl.Name]; ok {
+			if len(d.Deletes) > 0 {
+				classes = append(classes, "a delete (deleteTargets)")
+			}
+			if d.Taken != "" {
+				classes = append(classes, "a create with its name checked (taken)")
+			}
+		} else {
+			t.Errorf("%s changes the cloud and is not in docs/internal/contract-map.json: regenerate it (go test ./internal/tools -run TestContractMap -update-contract-map)", tl.Name)
+		}
+		if len(worlds[tl.Name]) > 0 {
+			classes = append(classes, "a change a world already has (alreadyFor)")
+			// The world counts only if the test of the worlds calls the
+			// tool in it: it skips a tool without arguments of parity.
+			if base, ok := parityArgs[tl.Name]; !ok || !tools.NeedsConsent(tl, base) {
+				t.Errorf("%s: the world %q has its change already, but the tool has no call that asks for consent in parityArgs — the repeat is never called", tl.Name, worlds[tl.Name][0])
+			}
+		}
+		if words := repeatIsANewChange[tl.Name]; words != "" {
+			classes = append(classes, "a change every send of which is new (repeatIsANewChange)")
+			if !strings.Contains(tl.Description, words) {
+				t.Errorf("%s: repeatIsANewChange quotes %q, and the description does not say it — the agent learns from the description that a repeat is a new change", tl.Name, words)
+			}
+		}
+		pending := repeatUndeclared[tl.Name] != ""
+		switch {
+		case len(classes) == 0 && !pending:
+			t.Errorf("%s changes the cloud and does not declare its repeat: add a world of consentWorlds that has the change already (alreadyFor) — the repeat answers already_<outcome> without the question and without a write — or, if every send is a change of its own, a line of repeatIsANewChange with the words of the description that say so (D99, П3)", tl.Name)
+		case len(classes) > 1 && repeatIsANewChange[tl.Name] != "":
+			// A delete or a create may have a world of its repeat too
+			// (close_ports); a change every send of which is new has no
+			// repeat that is a success, so no other class.
+			t.Errorf("%s declares that every send is a new change, and a repeat that is not one (%s)", tl.Name, strings.Join(classes, "; "))
+		case len(classes) > 0 && pending:
+			t.Errorf("repeatUndeclared names %s, which now is %s: remove the line (the list only shrinks)", tl.Name, classes[0])
+		}
+	}
+	for _, table := range []struct {
+		name  string
+		tools map[string]string
+	}{{"repeatIsANewChange", repeatIsANewChange}, {"repeatUndeclared", repeatUndeclared}} {
+		for name := range table.tools {
+			if tl, ok := byName[name]; !ok || !tl.Mutating {
+				t.Errorf("%s names %s, which is not a tool that changes the cloud: remove the line", table.name, name)
+			}
+		}
+	}
+	for tool, names := range worlds {
+		if tl, ok := byName[tool]; !ok || !tl.Mutating {
+			t.Errorf("the world %q has the change of %s already, which is not a tool that changes the cloud", names[0], tool)
+		}
+	}
 }
 
 // jobStarts answer a refused write as a success by design: the call starts
@@ -545,6 +672,11 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 					already[key] = fmt.Sprintf("writes %d time(s) for a change the world already has", writes)
 				case before["status"] != after["status"]:
 					already[key] = fmt.Sprintf("answers %v without confirmed, %v with it", before["status"], after["status"])
+				case !strings.HasPrefix(fmt.Sprint(before["status"]), "already_"):
+					// One form for every repeat (D26's already_deleted, D81,
+					// D99 П3): the agent tells a repeat from a change by the
+					// status, without reading the text.
+					already[key] = fmt.Sprintf("answers a change the world already has with status %v, not already_<outcome>", before["status"])
 				}
 				continue
 			}
