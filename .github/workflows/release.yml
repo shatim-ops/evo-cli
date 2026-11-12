@@ -68,7 +68,7 @@ jobs:
           # заново и сверяются с go.sum.
           cache: false
 
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       # Кэш TUF (~/.sigstore) — до goreleaser. Блоки signs идут параллельно,
       # и каждый процесс cosign при старте пишет root.json в кэш и сверяет
@@ -188,7 +188,7 @@ jobs:
           MCP_SMOKE_READONLY=http://localhost:8081 .github/scripts/mcp-smoke.sh http://localhost:8080 release-smoke-0123456789abcdef0123456789 "$VERSION"
           docker rm -f mcp mcp-ro
 
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         if: steps.ar.outputs.enabled == 'true'
 
       - name: docker push

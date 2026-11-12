@@ -14,6 +14,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // Filters of the lists (release plan 1.8.2, briefs/list-filters.md): a list
@@ -62,6 +63,18 @@ type listFilter struct {
 	// en and ru describe the argument, in one line: the schema and the
 	// flag of the command.
 	en, ru string
+	// cloudPath and cloudParam: the list of the API (its path) takes the
+	// value — the id of a reference, the value of a closed list — as this
+	// query parameter and answers what evo's rule answers, or more. Only a
+	// parameter the probe found so in two runs (api-probe, release plan
+	// 1.8.2); evo checks the items by its rule all the same.
+	cloudPath, cloudParam string
+}
+
+// inCloud is f that the list of the API narrows too (cloudParam).
+func (f listFilter) inCloud(path, param string) listFilter {
+	f.cloudPath, f.cloudParam = path, param
+	return f
 }
 
 // listSpec is a list tool and its filters.
@@ -129,25 +142,27 @@ var (
 var listSpecs = map[string]listSpec{
 	// Compute
 	"vm_list": {rows: "vms", filters: []listFilter{
-		zoneFilter(), enumFilter("state", vmStates...), nameFilter(),
+		zoneFilter().inCloud("/api/v1/vms", "availability_zone_ids"),
+		enumFilter("state", vmStates...).inCloud("/api/v1/vms", "statuses"), nameFilter(),
 		{arg: "flavor", kind: filterRef, ref: "list_flavors", en: "Only of this flavor: name.", ru: "Только с этим flavor: имя"},
 		boolFilter("public_ip", "true: only with a public IP; false: only without.", "true — только с публичным IP, false — только без него"),
 	}},
 	"disk_list": {rows: "disks", filters: []listFilter{
-		zoneFilter(), enumFilter("state", diskStates...), nameFilter(),
+		zoneFilter().inCloud("/api/v1/disks", "availability_zone_id"), enumFilter("state", diskStates...), nameFilter(),
 		boolFilter("attached", "true: only attached to a VM; false: only free.", "true — только подключённые к ВМ, false — только свободные", "attached_to"),
 		{arg: "type", kind: filterRef, ref: "list_disk_types", fields: []string{"disk_type"}, en: "Only of this disk type: name.", ru: "Только этого типа диска: имя"},
 		boolFilter("bootable", "true: only bootable; false: only the others.", "true — только загрузочные, false — только остальные"),
 	}},
 	"list_floating_ips": {rows: "floating_ips", filters: []listFilter{
-		zoneFilter(), enumFilter("state", fipStates...), nameFilter(),
+		zoneFilter().inCloud("/api/v1/floating-ips", "availability_zone_id"), enumFilter("state", fipStates...), nameFilter(),
 		boolFilter("free", "true: only free to attach; false: only taken.", "true — только свободные для привязки, false — только занятые", "available"),
 	}},
 	"list_subnets": {rows: "subnets", filters: []listFilter{
-		zoneFilter("availability_zone_id", "availability_zone_name"), enumFilter("state", networkStates...), nameFilter(), vpcFilter(),
+		zoneFilter("availability_zone_id", "availability_zone_name").inCloud("/api/v1/subnets", "availability_zone_ids"),
+		enumFilter("state", networkStates...), nameFilter(), vpcFilter(),
 	}},
 	"list_security_groups": {rows: "security_groups", filters: []listFilter{
-		zoneFilter("availability_zone_id", "availability_zone_name"), nameFilter(),
+		zoneFilter("availability_zone_id", "availability_zone_name").inCloud("/api/v1/security-groups", "availability_zone_id"), nameFilter(),
 	}},
 	"snat_list": {rows: "nat_gateways", filters: []listFilter{
 		zoneFilter("availability_zone_id", "availability_zone"), enumFilter("status", networkStates...), nameFilter(),
@@ -307,6 +322,10 @@ type condition struct {
 	// filterRef: the id and the name of the entry; filterText: the part).
 	want []string
 	on   bool
+	// cloud is the value the list of the API takes for the filter
+	// (listFilter.cloudParam): the id of a reference, the value of a
+	// closed list.
+	cloud string
 	// shown is the filter as the answer names it: a reference as
 	// «name (id)».
 	shown any
@@ -403,9 +422,17 @@ func (r *Registry) filtered(s listSpec, next Handler) Handler {
 			}
 			conds = append(conds, c)
 		}
-		ownGiven := false
+		// narrowed: something besides evo selected — the handler by its
+		// own filters, or the cloud by a parameter.
+		narrowed, by := false, "evo"
 		for _, a := range s.own {
-			ownGiven = ownGiven || given(args, a)
+			narrowed = narrowed || given(args, a)
+		}
+		for _, c := range conds {
+			if c.f.cloudParam != "" && c.cloud != "" {
+				ctx = provision.Narrowed(ctx, c.f.cloudPath, c.f.cloudParam, c.cloud)
+				narrowed, by = true, "cloud, evo"
+			}
 		}
 		rest := args
 		if len(conds) > 0 {
@@ -421,7 +448,7 @@ func (r *Registry) filtered(s listSpec, next Handler) Handler {
 		if isErr {
 			return text, true
 		}
-		if len(conds) == 0 && ownGiven {
+		if len(conds) == 0 && narrowed {
 			return text, false
 		}
 		m, rows, err := listRows(text, s.rows)
@@ -436,8 +463,8 @@ func (r *Registry) filtered(s listSpec, next Handler) Handler {
 			if len(rows) <= filterHintRows {
 				return text, false
 			}
-			m["hint"] = i18n.Tf("%d items; narrow the list with: %s.", "Элементов: %d; сузить список: %s.",
-				len(rows), strings.Join(s.args(), ", "))
+			addHint(m, i18n.Tf("%d items; narrow the list with: %s.", "Элементов: %d; сузить список: %s.",
+				len(rows), strings.Join(s.args(), ", ")))
 			return toJSON(m), false
 		}
 		kept := make([]any, 0, len(rows))
@@ -465,24 +492,32 @@ func (r *Registry) filtered(s listSpec, next Handler) Handler {
 		m[s.rows] = kept
 		m["filters"] = applied
 		m["count"] = len(kept)
-		m["filtered_by"] = "evo"
-		// What the handler narrowed itself is not in rows: the total is
-		// known only when evo alone selected.
-		if !ownGiven {
+		m["filtered_by"] = by
+		// What the handler or the cloud narrowed is not in rows: the
+		// total is known only when evo alone selected.
+		if !narrowed {
 			m["total"] = len(rows)
 		}
 		if len(kept) == 0 {
-			m["hint"] = emptySelectionHint(names, len(rows), ownGiven)
+			addHint(m, emptySelectionHint(names, len(rows), narrowed))
 		}
 		return toJSON(m), false
 	}
 }
 
+// addHint puts hint into the answer, after the hint the list gave itself.
+func addHint(m map[string]any, hint string) {
+	if own := stringOf(m["hint"]); own != "" {
+		hint = own + " " + hint
+	}
+	m["hint"] = hint
+}
+
 // emptySelectionHint says what an empty selection is and is not: nothing
 // passed the filters — which is not «the project has none».
-func emptySelectionHint(filters []string, total int, ownGiven bool) string {
+func emptySelectionHint(filters []string, total int, narrowed bool) string {
 	drop := strings.Join(filters, ", ")
-	if ownGiven {
+	if narrowed {
 		return i18n.Tf("Nothing passed the filters; resources outside the selection may exist. Drop a filter (%s) or list without filters before deciding there is none.",
 			"Под отбор ничего не подошло; вне отбора ресурсы могут быть. Снимите фильтр (%s) или запросите список без фильтров, прежде чем считать, что ресурса нет.", drop)
 	}
@@ -530,12 +565,14 @@ func (r *Registry) condition(ctx context.Context, f listFilter, v any) (_ condit
 		c.want, c.shown = []string{strings.ToLower(s)}, s
 	case filterEnum:
 		c.want = []string{stringOf(v)}
+		c.cloud = stringOf(v)
 	case filterRef:
 		id, name, refusal, err := r.listed(ctx, f, strings.TrimSpace(stringOf(v)))
 		if err != nil || refusal != "" {
 			return c, refusal, err
 		}
 		c.want = nonEmpty(id, name)
+		c.cloud = id
 		c.shown = addrLabel(name, id)
 	}
 	return c, "", nil
