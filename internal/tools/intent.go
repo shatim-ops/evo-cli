@@ -162,7 +162,7 @@ func (r *Registry) askAgainAfterACut(name string, args map[string]any) (string, 
 	last := mine[len(mine)-1]
 	what := firstNonEmptyStr(last.Name, last.Target)
 	return toJSON(map[string]any{
-		"status":      "confirmation_required",
+		"status": "confirmation_required",
 		// The last of them, and how many there were: each may have taken
 		// effect.
 		"interrupted": map[string]any{"tool": name, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)},
