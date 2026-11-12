@@ -81,11 +81,29 @@ var previewCalls = map[string]map[string]any{
 	"dns_record_create": {"name": "www", "record_type": "A", "value": "192.0.2.10"},
 	"vpc_route_create":  {"subnet": "192.0.2.0/24", "next_hop_vip_id": resMine},
 	"disk_resize":       {"size_gb": 100},
+	"disk_attach":       {"vm": resMine},
+	"disk_detach":       {"vm": resMine},
+	"k8s_add_addon":     {"name": ownerAddon},
+	"k8s_add_nodepool":  {"name": "pool", "zone": "ru.AZ-1"},
+	"pg_db_delete":      {"name": ownerChild},
+	"pg_user_delete":    {"name": ownerChild},
+	"vpc_route_delete":  {"route_id": ownerRoute},
 	// The tools that run a command in the cluster: a call that needs
 	// consent. Without it nothing runs: the preview only.
 	"k8s_kubectl": {"args": "delete pod web"},
 	"k8s_apply":   {"manifest": "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: web\n"},
 	"k8s_helm":    {"action": "uninstall", "release": "web"},
+}
+
+// previewNotReached are the tools with a target whose call reaches no
+// preview in the world of the owners, so the project their preview names
+// is checked by nothing: the call is refused, or answered with nothing to
+// consent to, before the question. "tool" → what the world lacks. It only shrinks, and a new
+// tool does not join it: a new change addressed by id comes with a call
+// that reaches its preview (previewCalls). Closes by 1.9 (release plan
+// 1.9, «Превью называет проект записи»; the world is «Процесс»'s).
+var previewNotReached = map[string]string{
+	"dns_record_create": "the zone is looked up in the call's project: a zone of another is NOT_FOUND before any preview; the call's own zone is checked",
 }
 
 // With a key of the organization and no --allow-project, the preview of a
@@ -101,12 +119,18 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 	stackHome(t)
 	seen := 0
 	reached := map[string]bool{}
+	targeted := map[string]bool{}
 	for _, c := range ownerCases(t) {
 		if !c.arg.target {
 			continue
 		}
+		targeted[c.tool] = true
 		for _, id := range []string{resMine, resForeign} {
 			f := &ownerFake{}
+			if c.tool == "disk_detach" {
+				// A detach has a preview only of a disk that is attached.
+				f.diskOn = resMine
+			}
 			r := ownerRegistry(t, f, false, ownProject, ownOther, ownForeign)
 			args := c.args(id)
 			for k, v := range previewCalls[c.tool] {
@@ -153,11 +177,22 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 	if seen < 40 {
 		t.Fatalf("only %d previews checked", seen)
 	}
-	// The calls named here must reach their preview: a tool whose call
-	// stops being a preview would leave the check above without it.
-	for tool := range previewCalls {
-		if tool != "dns_record_create" && !reached[tool] {
-			t.Errorf("%s: its call reached no preview, so its project was not checked", tool)
+	// Every tool with a target reaches its preview here: one whose call
+	// stops before the question — a refusal, an answer with nothing to
+	// consent to — leaves the project of its preview checked by nothing,
+	// and a green test says nothing of it.
+	for tool := range targeted {
+		_, pending := previewNotReached[tool]
+		switch {
+		case !reached[tool] && !pending:
+			t.Errorf("%s: its call reached no preview, so the project its preview names was not checked: give the call what it needs before the question (previewCalls, the world of the owners)", tool)
+		case reached[tool] && pending && tool != "dns_record_create":
+			t.Errorf("previewNotReached names %s, whose call reaches its preview now: remove the line (the list only shrinks)", tool)
+		}
+	}
+	for tool := range previewNotReached {
+		if !targeted[tool] {
+			t.Errorf("previewNotReached names %s, which has no target: remove the line", tool)
 		}
 	}
 }
