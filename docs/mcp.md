@@ -1,7 +1,7 @@
 # MCP-сервер
 
 `evo mcp` — сервер [Model Context Protocol](https://modelcontextprotocol.io):
-AI-агент (Claude Code, Cursor и любой другой MCP-клиент) получает ~150
+AI-агент (Claude Code, Cursor и любой другой MCP-клиент) получает более 150
 инструментов Cloud.ru — ВМ, диски, сети, DNS, балансировщики, Kubernetes,
 PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact Registry,
 мониторинг, биллинг, `deploy` docker-compose на ВМ. Каталог всех
@@ -372,12 +372,12 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 
 ## Только нужные группы инструментов
 
-По умолчанию сервер предлагает агенту все 158 инструментов. Это около 110 КБ
-`tools/list`, и агент читает их в каждой сессии. Если нужен только deploy и
+По умолчанию сервер предлагает агенту все инструменты (их более 150). Это
+около 120 КБ `tools/list`, и агент читает их в каждой сессии. Если нужен только deploy и
 работа с ВМ и сетью, оставьте эти группы:
 
 ```sh
-evo mcp --toolsets deploy,vm,vpc     # 29 инструментов, ~23 КБ
+evo mcp --toolsets deploy,vm,vpc     # около 30 инструментов, ~27 КБ
 ```
 
 Группы перечислены в столбце ГРУППА вывода `evo tools list`: deploy, vm,
@@ -406,9 +406,9 @@ evo mcp --http 127.0.0.1:8080 --read-only    # HTTP
 ([ниже](#автономный-агент-только-на-чтение)).
 
 - Инструменты, которым согласие нужно при каждом вызове, — все изменяющие,
-  `secret_value` и `cert_private_key` — в `tools/list` не попадают: из 158
-  остаются 90 (~52 КБ). Вызов такого инструмента по имени — ошибка `USAGE`
-  до превью и до облака: `deploy is refused:
+  `secret_value` и `cert_private_key` — в `tools/list` не попадают:
+  остаётся около 90 инструментов (~60 КБ). Вызов такого инструмента по имени —
+  ошибка `USAGE` до превью и до облака: `deploy is refused:
   this server runs with --read-only, and the call needs the user's consent
   (confirmed=true), as it changes the cloud or reveals a secret; a read-only
   server makes no such call, confirmed or not`, в `hint` — `Calls that only
@@ -517,10 +517,11 @@ evo mcp --http 127.0.0.1:8080 --auth bearer --read-only --toolsets vm,vpc,disk,i
 ([Streamable HTTP](#streamable-http)).
 
 **`--toolsets` обязателен.** Без него агент получает все инструменты (с
-`--read-only` — 90, ~52 КБ схем; без него — 158, ~110 КБ) в каждой сессии, а у
-части API моделей предел — 128 инструментов в запросе: клиент такой сервер не
-подключит или обрежет список. Оставьте группы задачи: `vm,vpc,disk,image` —
-17 инструментов на чтение, ~9 КБ.
+`--read-only` — около 90, ~60 КБ схем; без него — более 150, ~120 КБ) в каждой
+сессии. У клиентов есть и предел числа: VS Code с GitHub Copilot принимает не
+больше 128 инструментов в одном запросе чата и сверх этого отвечает ошибкой
+([документация VS Code](https://code.visualstudio.com/docs/copilot/agents/agent-tools)).
+Оставьте группы задачи: `vm,vpc,disk,image` — 17 инструментов на чтение, ~12 КБ.
 
 **Тайм-аут вызова.** Часть инструментов ждёт внутри вызова: `*_operation` с
 `wait_seconds` (до 45 с), `stack_status` (до 20 с за вызов), `k8s_kubectl`
