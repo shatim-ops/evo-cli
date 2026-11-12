@@ -67,6 +67,11 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 			}
 			msg, _ := m["message"].(string)
 			cut, _ := m["interrupted"].(map[string]any)
+			// The words send to the person, not to «confirmed again»: the
+			// consent given was to one change («Риск», conclusion 145, У1).
+			if !strings.Contains(msg, "ask the person whether to send one more") || strings.Contains(msg, "confirmed=true again") {
+				t.Errorf("the question tells the model how to go round the person: %s", msg)
+			}
 			if !strings.Contains(msg, "its outcome is unknown") || !strings.Contains(msg, "cert_get") || cut["calls"] != float64(1) {
 				t.Errorf("the question does not say what is known: %s", text)
 			}
@@ -110,4 +115,114 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 			t.Errorf("the note: %v", notes)
 		}
 	})
+}
+
+// A call without consent that finds the caller's own cut call asks one
+// question that says everything: the preview and the cut call, with the
+// record closed — so the consented call that follows is sent, and the
+// person is not asked twice for one action («Риск», conclusion 145, У2).
+// An answer that is no question leaves the record.
+func TestIntent_QuestionWithoutConsentNamesTheCutCall(t *testing.T) {
+	const tool = "cert_renew"
+	everySendIsAChange[tool] = "cert_get"
+	t.Cleanup(func() { delete(everySendIsAChange, tool) })
+	this := &state.Maker{KeyID: config.MaskKeyID("k")}
+	for _, c := range []struct {
+		name, preview string
+		named         bool
+	}{
+		{"a question", `{"status":"confirmation_required","message":"cert_renew renews the certificate."}`, true},
+		{"a refusal", `{"status":"error","reason":"USAGE"}`, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := ownerRegistry(t, &ownerFake{}, false, ownProject)
+			eng, _ := r.newEngine(nil)
+			t.Chdir(eng.StateDir)
+			dir := intent.Dir(eng.StateDir)
+			if _, err := intent.Open(dir, intent.Intent{Tool: tool, Target: "certificate_id=" + resMine, Key: this}); err != nil {
+				t.Fatal(err)
+			}
+			sent := 0
+			tl, _ := r.Lookup(tool)
+			call := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+				if confirmed, _ := args["confirmed"].(bool); !confirmed {
+					return c.preview, true
+				}
+				sent++
+				return `{"status":"ok"}`, false
+			})
+			text, _ := call(context.Background(), map[string]any{"certificate_id": resMine})
+			var m map[string]any
+			_ = json.Unmarshal([]byte(text), &m)
+			msg, _ := m["message"].(string)
+			named := m["interrupted"] != nil && strings.Contains(msg, "its outcome is unknown") && strings.Contains(msg, "cert_renew renews the certificate.")
+			if named != c.named || (len(intent.Pending(dir)) == 0) != c.named {
+				t.Fatalf("named %v, want %v; records %+v\n%s", named, c.named, intent.Pending(dir), text)
+			}
+			if !c.named {
+				return
+			}
+			// One question: the consented call that follows is sent.
+			if text, _ := call(context.Background(), map[string]any{"certificate_id": resMine, "confirmed": true}); sent != 1 || strings.Contains(text, "confirmation_required") {
+				t.Errorf("the consented call after the question: sent %d\n%s", sent, text)
+			}
+		})
+	}
+}
+
+// unnamedBy are the ways to call tl — each argument of its one-of group,
+// else each required argument — by which its intent names no resource: a
+// record of such a call is found by no later call, and the tool's line of
+// everySendIsAChange does nothing, with no one to notice («Риск»,
+// conclusion 145, У3).
+func unnamedBy(tl Tool) []string {
+	ways := [][]string{}
+	for _, group := range requiredOneOf[tl.Name] {
+		for _, arg := range group {
+			ways = append(ways, []string{arg})
+		}
+	}
+	if len(ways) == 0 {
+		required, _ := tl.InputSchema["required"].([]string)
+		ways = append(ways, required)
+	}
+	var bad []string
+	for _, way := range ways {
+		args := map[string]any{}
+		for _, arg := range way {
+			args[arg] = "x"
+		}
+		if name, target := intentResource(tl.Name, args); name == "" && target == "" {
+			bad = append(bad, strings.Join(way, "+"))
+		}
+	}
+	return bad
+}
+
+// A tool of everySendIsAChange names its resource in its intent however
+// it is called, and its read is a tool of the registry: else the line is
+// a declaration that does nothing.
+func TestEverySendIsAChange_ToolNamesItsResource(t *testing.T) {
+	r := New(nil)
+	for tool, read := range everySendIsAChange {
+		tl, ok := r.Lookup(tool)
+		if !ok {
+			t.Errorf("everySendIsAChange names %s, which is no tool", tool)
+			continue
+		}
+		if _, ok := r.Lookup(read); !ok {
+			t.Errorf("everySendIsAChange: the read of %s is %q, which is no tool", tool, read)
+		}
+		if bad := unnamedBy(tl); len(bad) > 0 {
+			t.Errorf("%s is in everySendIsAChange, and its intent names no resource when it is called by %v: a cut call of it is found by no later call — name the resource (idArgs, or the argument name)", tool, bad)
+		}
+	}
+	// The rule tells the two apart: a tool addressed by an id or a name,
+	// in each of its spellings, and one whose intent names nothing.
+	for tool, wantBad := range map[string]bool{"vm_start": false, "cert_renew": false, "secret_add_version": true} {
+		tl, _ := r.Lookup(tool)
+		if got := len(unnamedBy(tl)) > 0; got != wantBad {
+			t.Errorf("%s: unnamed %v (%v), want %v", tool, got, unnamedBy(tl), wantBad)
+		}
+	}
 }

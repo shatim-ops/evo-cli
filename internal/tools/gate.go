@@ -138,6 +138,7 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) {
 			text, isErr := next(ctx, args)
 			r.settleHeld(t.Name, args, text)
+			text = r.questionNamesTheCut(t.Name, args, text)
 			return r.namedKept(t.Name, args, text), isErr
 		}
 		if text, asked := r.askAgainAfterACut(t.Name, args); asked {
