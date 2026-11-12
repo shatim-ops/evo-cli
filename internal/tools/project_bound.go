@@ -114,6 +114,7 @@ var idArgs = map[string][]idArg{
 	"k8s_get":          {{name: "cluster_id", kind: kindK8s}},
 	"k8s_kubeconfig":   {{name: "cluster_id", kind: kindK8s}},
 	"k8s_delete":       {{name: "cluster_id", kind: kindK8s}},
+	"k8s_operation":    {{name: "operation_id", kind: kindOperation}},
 	"k8s_nodepools":    {{name: "cluster_id", kind: kindK8s}},
 	"k8s_add_nodepool": {{name: "cluster_id", kind: kindK8s}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}},
 	"k8s_add_addon":    {{name: "cluster_id", kind: kindK8s}},

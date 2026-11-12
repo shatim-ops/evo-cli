@@ -464,6 +464,19 @@ func (s *Registry) planK8sDelete(ctx context.Context, args map[string]any) (*Pla
 		}), nil
 }
 
+// handleK8sOperation polls an operation of Managed Kubernetes by id.
+func (s *Registry) handleK8sOperation(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "operation_id")
+	if id == "" {
+		return usageT("'operation_id' is required", "нужен 'operation_id'"), true
+	}
+	cli, _, _, err := s.k8sClient(ctx)
+	if err != nil {
+		return errResult(err), true
+	}
+	return s.operation(ctx, "k8s_operation", args, func(ctx context.Context) (any, error) { return cli.GetOperation(ctx, id) })
+}
+
 // handleK8sNodePools lists node pools of a cluster. The API has no list
 // across clusters: GET /v3/nodePools requires clusterId (the tool used to
 // call it without one and got API_ERROR, cloud-e2e readonly #23).

@@ -124,6 +124,7 @@ var cliSpecs = map[string]CLISpec{
 	"k8s_plan":           {Group: "k8s", Verb: "plan"},
 	"k8s_create":         {Group: "k8s", Verb: "create"},
 	"k8s_delete":         {Group: "k8s", Verb: "delete", Args: []string{"cluster_id"}},
+	"k8s_operation":      {Group: "k8s", Verb: "operation", Args: []string{"operation_id"}},
 	"k8s_kubeconfig":     {Group: "k8s", Verb: "kubeconfig", Args: []string{"cluster_id"}},
 	"k8s_nodepools":      {Group: "k8s", Verb: "nodepools", Args: []string{"cluster_id"}},
 	"k8s_add_nodepool":   {Group: "k8s", Verb: "add-nodepool", Args: []string{"cluster_id"}},
