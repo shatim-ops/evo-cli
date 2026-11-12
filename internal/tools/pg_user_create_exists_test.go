@@ -128,6 +128,9 @@ func TestPgUserCreate_RefusedForAUserThatExistsSaysSo(t *testing.T) {
 	for name, w := range map[string]func() *pgUsersWorld{
 		"lost answer": func() *pgUsersWorld { return &pgUsersWorld{drop: true} },
 		"500":         func() *pgUsersWorld { return &pgUsersWorld{status: 500, body: `{"message":"internal"}`} },
+		// A 408 is a timeout, not a refusal: the request may have reached
+		// the service (question of «релиз» to #1414).
+		"408": func() *pgUsersWorld { return &pgUsersWorld{status: 408, body: `{"message":"request timeout"}`} },
 	} {
 		there := w()
 		there.users = `{"name":"app"}`

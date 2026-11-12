@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"sort"
 	"strconv"
@@ -632,46 +633,72 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 		u, err := cli.CreateUser(ctx, cid, body)
 		if err != nil {
 			err = fmt.Errorf(i18n.T("create user: %w", "создание пользователя: %w"), err)
-			return errResult(pgUserExists(ctx, cli, cid, name, err)), true
+			users := func(ctx context.Context) ([]map[string]any, error) { return cli.ListUsers(ctx, cid) }
+			return errResult(pgCreateOfExisting(ctx, pgUser, name, users, err)), true
 		}
 		// Never echo the password back.
 		return toJSON(map[string]any{"status": "created", "user": u}), false
 	}}, nil
 }
 
-// pgUserExists is the failure err of a create of user name, said in full
-// when the cluster has the user: the platform's text alone leaves an agent
-// to find the way on by itself, and the one it finds — delete the user and
-// create it anew — changes the password under the applications that use
-// it (release plan 1.9, «Повтор у выпущенных инструментов»; conclusions
-// 120 and 121 of «Риск»). The reason and the exit code are those of err.
+// pgNamed is a thing of a PostgreSQL cluster known by its name — a user, a
+// database — for the answer of a create that failed while the cluster has
+// one of the name (pgCreateOfExisting): what it is called, and the
+// sentence that says why deleting it and creating it anew is not the way.
+type pgNamed struct {
+	what, whatRU string
+	// itRU is the Russian pronoun of the thing, in the accusative.
+	itRU string
+	// keep, keepRU: "Do not delete it and create it again: …", with no
+	// punctuation at the end.
+	keep, keepRU string
+}
+
+// pgUser is a user of a cluster: a delete and a new create change its
+// password under the applications that use it.
+var pgUser = pgNamed{
+	what: "User", whatRU: "Пользователь", itRU: "его",
+	keep:   "Do not delete it and create it again: that changes its password, and the applications that use it stop connecting",
+	keepRU: "Не удаляйте его и не создавайте заново: это сменит пароль, и приложения, которые им пользуются, перестанут подключаться",
+}
+
+// pgCreateOfExisting is the failure err of a create of the thing named
+// name, said in full when the cluster has it: the platform's text alone
+// leaves an agent to find the way on by itself, and the one it finds —
+// delete and create anew — breaks what uses the thing (release plan 1.9,
+// «Повтор у выпущенных инструментов»; conclusions 120 and 121 of «Риск»).
+// list reads the things of the cluster. The reason and the exit code are
+// those of err.
 //
 // What the answer says of this call depends on what err is. A refusal of
-// the platform (4xx) made nothing: the user was there before. A lost
-// answer, a timeout or a 5xx is an outcome evo does not know — the create
-// may have reached the cluster, and the user in the list may be this
-// call's own: the answer says so and claims nothing was created of
-// neither.
+// the platform (4xx) made nothing: the thing was there before. A lost
+// answer, a timeout — a 408 is one, the request may have reached the
+// service — or a 5xx is an outcome evo does not know: the create may have
+// reached the cluster, and the thing in the list may be this call's own;
+// the answer says so and does not claim nothing was created.
 //
-// A cluster whose users are not read, or that has no such user, leaves
-// err as it is: evo says «exists» only of what it read. How the platform
-// refuses a taken name is in no specification, so the rule reads the
-// users, not the refusal.
-func pgUserExists(ctx context.Context, cli *postgresql.Client, clusterID, name string, err error) error {
-	users, lerr := cli.ListUsers(ctx, clusterID)
+// A cluster whose things are not read, or that has none of the name,
+// leaves err as it is: evo says «exists» only of what it read. How the
+// platform refuses a taken name is in no specification, so the rule reads
+// the list, not the refusal.
+func pgCreateOfExisting(ctx context.Context, k pgNamed, name string, list func(context.Context) ([]map[string]any, error), err error) error {
+	items, lerr := list(ctx)
 	if lerr != nil {
 		return err
 	}
-	for _, u := range users {
-		if n, _ := u["name"].(string); n != name {
+	for _, it := range items {
+		if n, _ := it["name"].(string); n != name {
 			continue
 		}
 		reason, msg, _ := errReason(err, nil)
-		hint := i18n.Tf("User %s is in the cluster, and this call may have created it: evo got no answer to the create. Do not delete it and create it again: that changes its password, and the applications that use it stop connecting — ask the person what to do.",
-			"Пользователь %s есть в кластере, и его мог создать этот вызов: ответа на создание evo не получил. Не удаляйте его и не создавайте заново: это сменит пароль, и приложения, которые им пользуются, перестанут подключаться, — спросите человека, что делать.", quoteCloud(name))
-		if st := apiStatus(err); st >= 400 && st < 500 {
-			hint = i18n.Tf("User %s already exists in the cluster; nothing was created or changed. Do not delete it and create it again: that changes its password, and the applications that use it stop connecting — ask the person what to do.",
-				"Пользователь %s уже существует в кластере; ничего не создано и не изменено. Не удаляйте его и не создавайте заново: это сменит пароль, и приложения, которые им пользуются, перестанут подключаться, — спросите человека, что делать.", quoteCloud(name))
+		q := quoteCloud(name)
+		hint := i18n.T(
+			fmt.Sprintf("%s %s is in the cluster, and this call may have created it: evo got no answer to the create. %s — ask the person what to do.", k.what, q, k.keep),
+			fmt.Sprintf("%s %s есть в кластере, и %s мог создать этот вызов: ответа на создание evo не получил. %s, — спросите человека, что делать.", k.whatRU, q, k.itRU, k.keepRU))
+		if st := apiStatus(err); st >= 400 && st < 500 && st != http.StatusRequestTimeout {
+			hint = i18n.T(
+				fmt.Sprintf("%s %s already exists in the cluster; nothing was created or changed. %s — ask the person what to do.", k.what, q, k.keep),
+				fmt.Sprintf("%s %s уже существует в кластере; ничего не создано и не изменено. %s, — спросите человека, что делать.", k.whatRU, q, k.keepRU))
 		}
 		return clierrors.Wrap(reason, msg, hint, err)
 	}
