@@ -79,7 +79,7 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.
-	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by"}},
+	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of

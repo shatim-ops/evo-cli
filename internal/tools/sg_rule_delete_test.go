@@ -295,3 +295,57 @@ func TestSGRuleDelete_SlowAndRefused(t *testing.T) {
 		t.Errorf("a DELETE the platform refuses: %s", text)
 	}
 }
+
+// A rule whose source is a group lets in that group's interfaces — not the
+// person, not evo. It is not «another rule that lets SSH in», and the
+// preview names it by its group, apart from the rules that let addresses
+// in; nor is a rule still being created («Риск», conclusion to #1490, У2).
+func TestSGRuleDelete_ARuleFromAGroupIsNotAnywhere(t *testing.T) {
+	record := state.DeploymentRecord{ID: faultID(0x11), VMID: faultID(0x11), VMName: "web", VMIP: "203.0.113.9",
+		SecurityGroupID: sgZoneGroup, SecurityGroupName: "SSH-access_ru.AZ-1", Status: "running"}
+	fromGroup := provision.SGRule{ID: sgRuleOther, Direction: "ingress", EtherType: "IPv4", IPProtocol: "tcp", PortRange: "22:22",
+		RemoteSecurityGroup: &provision.SGRuleGroup{ID: sgOtherGroup, Name: "db"}, State: "created"}
+	beingMade := provision.SGRule{ID: sgRuleOther, Direction: "ingress", EtherType: "IPv4", IPProtocol: "tcp", PortRange: "22:22",
+		RemoteIPPrefix: "10.0.0.0/8", State: "creating"}
+	for name, other := range map[string]provision.SGRule{"22 from a group": fromGroup, "22 still being created": beingMade} {
+		w := newSGWorld()
+		w.rules[sgZoneGroup] = append(w.rules[sgZoneGroup], other)
+		r, dir := sgRuleRegistry(t, w)
+		writeRecords(t, dir, record)
+		m, text, isErr := callNamed(t, r, "sg_rule_delete", map[string]any{"security_group": sgZoneGroup, "rule_id": sgRuleSSH, "confirmed": true})
+		if !isErr || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, "allow_cut_ssh") || w.deleted() != 0 {
+			t.Errorf("%s as the only other rule on 22: %s (deletes %d), want the refusal of the last SSH rule", name, text, w.deleted())
+		}
+	}
+	// The preview: a rule from a group is named by the group, apart.
+	w := newSGWorld()
+	w.rules[sgZoneGroup] = append(w.rules[sgZoneGroup], provision.SGRule{ID: sgRuleOther, Direction: "ingress", EtherType: "IPv4",
+		IPProtocol: "tcp", PortRange: "443:443", RemoteSecurityGroup: &provision.SGRuleGroup{ID: sgOtherGroup, Name: "db"}, State: "created"})
+	r, _ := sgRuleRegistry(t, w)
+	m, text, _ := callNamed(t, r, "sg_rule_delete", map[string]any{"security_group": sgZoneGroup, "rule_id": sgRuleWeb})
+	if m["still_allowed_by"] != nil {
+		t.Errorf("a rule from a group is listed as one that still lets addresses in: %s", text)
+	}
+	groups, _ := m["still_allowed_from_groups"].([]any)
+	if len(groups) != 1 {
+		t.Fatalf("still_allowed_from_groups: %s", text)
+	}
+	if one, _ := groups[0].(map[string]any); one["id"] != sgRuleOther || one["source"] != "security group db" {
+		t.Errorf("the rule from a group is not named by its group: %s", text)
+	}
+}
+
+// The last SSH rule the platform is deleting already: the delete under
+// way is answered as every one is — there is nothing left to refuse.
+func TestSGRuleDelete_TheLastSSHRuleBeingDeletedIsAlreadyDeleting(t *testing.T) {
+	w := newSGWorld()
+	w.stuck = true
+	w.setRule(sgZoneGroup, sgRuleSSH, func(r *provision.SGRule) { r.State = "deleting" })
+	r, dir := sgRuleRegistry(t, w)
+	writeRecords(t, dir, state.DeploymentRecord{ID: faultID(0x11), VMID: faultID(0x11), VMName: "web",
+		SecurityGroupID: sgZoneGroup, Status: "running"})
+	m, text, isErr := callNamed(t, r, "sg_rule_delete", map[string]any{"security_group": sgZoneGroup, "rule_id": sgRuleSSH, "confirmed": true})
+	if isErr || m["status"] != "deleting" || m["already_deleting"] != true || w.deleted() != 0 {
+		t.Errorf("the last SSH rule in deleting: %s", text)
+	}
+}

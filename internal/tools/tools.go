@@ -330,7 +330,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "sg_rule_delete",
-			Description: "Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). The preview names the rule whole, the group and what stops getting through, and the other rules that still let that port in, with their source. A rule that is not there answers already_deleted with no question; a rule of another group is refused with the group it is in. The last rule that lets TCP 22 in to a group with a deployment of this folder is refused without allow_cut_ssh: evo and the person would lose SSH. evo does not know which rule this server itself is reached through: do not delete that one. For rules by port use close_ports. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). The preview names the rule whole, the group and what stops getting through, and the other rules that still let that port in, with their source. A rule that is not there answers already_deleted with no question; a rule of another group is refused with the group it is in. The last rule that lets TCP 22 in to a group with a deployment of this folder is refused without allow_cut_ssh: evo and the person would lose SSH. evo does not know which rule this server itself is reached through: do not delete that one. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name or UUID (see list_security_groups)."),
 				"rule_id":        uuidProp("Rule UUID (list_security_groups with rules=true)."),

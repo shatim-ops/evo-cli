@@ -28,10 +28,15 @@ const sgRuleGoneTimeout = 30 * time.Second
 const sgRuleGone = "gone"
 
 // sgRuleSource is the source of a rule in words: its prefix, or the group
-// it lets in; a rule that names neither lets in any address.
+// it lets in — named as a group, never as «anywhere» («Риск», conclusion
+// to #1490, У2: a person who reads «22 stays open to anyone» and deletes
+// the other rule loses SSH); a rule that names neither lets in any address.
 func sgRuleSource(r *provision.SGRule) string {
-	if r.RemoteIPPrefix != "" {
+	switch {
+	case r.RemoteIPPrefix != "":
 		return r.RemoteIPPrefix
+	case r.RemoteSecurityGroup != nil:
+		return "security group " + firstNonEmptyStr(r.RemoteSecurityGroup.Name, r.RemoteSecurityGroup.ID)
 	}
 	return sgrules.Anywhere
 }
@@ -49,7 +54,14 @@ func sgRuleFields(r *provision.SGRule) map[string]any {
 // sgRuleLetsIn reports whether r is an active ingress rule that lets
 // proto/port in from its own source — the rule of «a port is open»
 // (sgrules.Coverage), asked of one rule.
+//
+// A rule whose source is a group lets in that group's interfaces, not an
+// address a person or evo comes from, and a rule still being created lets
+// in nothing yet: neither counts.
 func sgRuleLetsIn(r *provision.SGRule, proto string, port int) bool {
+	if r.RemoteSecurityGroup != nil || r.State == "creating" {
+		return false
+	}
 	covered, _ := sgrules.Coverage([]*provision.SGRule{r}, proto, port, sgRuleSource(r))
 	return covered
 }
@@ -101,7 +113,9 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 	// SSH: evo manages a deployment over port 22. The last rule that lets
 	// it in to a group of a deployment of this folder goes only with the
 	// word for it — what address the caller comes from evo does not know.
-	cutsSSH := sgRuleLetsIn(rule, "tcp", 22) && folderDeploymentInGroup(eng.StateDir, group.ID)
+	// A rule the platform is deleting already is answered as every delete
+	// under way (deletePlan): there is nothing left to refuse.
+	cutsSSH := !engine.DeletingState(rule.State) && sgRuleLetsIn(rule, "tcp", 22) && folderDeploymentInGroup(eng.StateDir, group.ID)
 	if cutsSSH {
 		for _, r := range rules {
 			if r != nil && r.ID != rule.ID && sgRuleLetsIn(r, "tcp", 22) {
@@ -143,8 +157,14 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 	if rule.Direction == "ingress" {
 		p.Preview["cuts_access"] = i18n.Tf("after the delete %s %s from %s no longer gets to the VMs of the group, unless another rule lets it in",
 			"после удаления %s %s с %s к ВМ группы не пройдёт, если это не разрешает другое правило", rule.IPProtocol, rule.PortRange, sgRuleSource(rule))
-		if still := sgStillAllowed(rules, rule); len(still) > 0 {
+		still, fromGroups := sgStillAllowed(rules, rule)
+		if len(still) > 0 {
 			p.Preview["still_allowed_by"] = still
+		}
+		if len(fromGroups) > 0 {
+			// Not «still allowed» for an address: only for the interfaces
+			// of those groups.
+			p.Preview["still_allowed_from_groups"] = fromGroups
 		}
 	}
 	return p, nil
@@ -152,23 +172,36 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 
 // sgStillAllowed are the other active rules of the group that let the port
 // of rule in — with their source: who still gets in is the person's to
-// read. Only for a rule of one tcp or udp port: a range and a rule of any
-// protocol are not compared.
-func sgStillAllowed(rules []*provision.SGRule, rule *provision.SGRule) []map[string]any {
+// read. byPrefix let addresses in; fromGroups let in only the interfaces
+// of their source group, and are named apart — never as «anywhere». Only
+// for a rule of one tcp or udp port: a range and a rule of any protocol
+// are not compared.
+func sgStillAllowed(rules []*provision.SGRule, rule *provision.SGRule) (byPrefix, fromGroups []map[string]any) {
 	var port int
 	if _, err := fmt.Sscanf(rule.PortRange, "%d:%d", &port, new(int)); err != nil || rule.PortRange != fmt.Sprintf("%d:%d", port, port) {
-		return nil
+		return nil, nil
 	}
 	if rule.IPProtocol != "tcp" && rule.IPProtocol != "udp" {
-		return nil
+		return nil, nil
 	}
-	var out []map[string]any
 	for _, r := range rules {
-		if r != nil && r.ID != rule.ID && sgRuleLetsIn(r, rule.IPProtocol, port) {
-			out = append(out, sgRuleFields(r))
+		if r == nil || r.ID == rule.ID {
+			continue
+		}
+		if r.RemoteSecurityGroup != nil {
+			// The same rule of «a port is open», asked without the source.
+			asPrefix := *r
+			asPrefix.RemoteSecurityGroup = nil
+			if sgRuleLetsIn(&asPrefix, rule.IPProtocol, port) {
+				fromGroups = append(fromGroups, sgRuleFields(r))
+			}
+			continue
+		}
+		if sgRuleLetsIn(r, rule.IPProtocol, port) {
+			byPrefix = append(byPrefix, sgRuleFields(r))
 		}
 	}
-	return out
+	return byPrefix, fromGroups
 }
 
 // sgRuleElsewhere is the other group of the project that has the rule,
