@@ -721,6 +721,34 @@ for s in 'backup: список не прочитан' 'pplan: список не 
 	grep -q "$s" "$tmp/out" || { echo "FAIL: непрочитанный список не назван: $s"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
 
+# Стенд (план 1.9, Г-50): общая уборка завершённых запусков видит в
+# списках ВМ, адрес, диск, подсеть, группу, копию и план стенда и ничего из
+# них не удаляет; уборка по префиксу стенда — отказ до чтения списков.
+# shellcheck source-path=SCRIPTDIR source=e2e_stand.sh
+. "$here/e2e_stand.sh"
+world
+: >"$FAKE_DIR/http"
+printf '#!/bin/sh\nexit 0\n' >"$tmp/bin/gh"
+chmod +x "$tmp/bin/gh"
+S=$STAND_PREFIX
+fake_evo_answer vm_list 0 0 '{"vms":[{"id":"svm","name":"'"$S"'-vm"}]}'
+fake_evo_answer list_floating_ips 0 0 '{"floating_ips":[{"id":"sfip","name":"fip-'"$S"'-vm-abc123","available":true}]}'
+fake_evo_answer disk_list 0 0 '{"disks":[{"id":"sdisk","name":"'"$S"'-data","attached_to":[]}]}'
+fake_evo_answer list_subnets 0 0 '{"subnets":[{"id":"ssn","name":"'"$S"'-sn"}]}'
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[{"id":"ssg","name":"'"$S"'-sg"}]}'
+printf '%s\n' 'GET /backups[?]* 200 {"items":[{"id":"sbk","name":"'"$S"'-bk"}],"total":1}' 'GET /protection-plans[?]* 200 {"items":[{"id":"spp","name":"'"$S"'-pp"}],"total":1}' >"$FAKE_DIR/http.default"
+rc=0
+PROBES=g20 GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e- ops >"$tmp/out" 2>&1 || rc=$?
+want "стенд, общая уборка: код" "$rc" 0
+if grep -q '^DELETE' "$FAKE_DIR/calls" || grep -q 'yes=1' "$FAKE_DIR/evo-calls"; then echo "FAIL: общая уборка тронула стенд: $(calls) $(tr '\n' ';' <"$FAKE_DIR/evo-calls")"; fail=1; fi
+world
+: >"$FAKE_DIR/http"
+rc=0
+GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep "$S" ops >"$tmp/out" 2>&1 || rc=$?
+want "стенд, уборка по его префиксу: отказ" "$rc" 1
+grep -q 'не evo-e2e-\*' "$tmp/out" || { echo "FAIL: отказ уборки по префиксу стенда не назван"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if [ -s "$FAKE_DIR/calls" ] || grep -q 'yes=1' "$FAKE_DIR/evo-calls" 2>/dev/null; then echo "FAIL: уборка по префиксу стенда что-то слала"; fail=1; fi
+
 # Общая уборка без PROJECT (шаг без секрета проекта): списки копий и планов
 # не прочитаны — провал, а не молчаливый пропуск вида.
 world
