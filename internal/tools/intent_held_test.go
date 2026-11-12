@@ -56,7 +56,8 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 		{"the step did not reach the cloud", `{"status":"error","reason":"API_UNREACHABLE"}`, false},
 		{"the operation ended", `{"status":"started"}`, true},
 		{"the operation was refused with a code", `{"status":"error","reason":"USAGE"}`, true},
-		{"the next step is another tool", `{"status":"starting","next_tool":"vm_get","next_args":{"vm_id":"` + resMine + `"}}`, true},
+		// evo goes on with it no more: the wait is handed to a read.
+		{"the step hands the wait to a read", `{"status":"starting","next_tool":"vm_get","next_args":{"vm_id":"` + resMine + `"}}`, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r, dir, _ := start(t)
@@ -66,6 +67,22 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 			}
 		})
 	}
+	// The call names the VM by its name, the record by its id: the answer
+	// names the id («Риск», conclusion 137, У1).
+	t.Run("a call by the name, whose answer names the id", func(t *testing.T) {
+		r, dir, _ := start(t)
+		r.settleHeld("vm_start", map[string]any{"name": "web"}, `{"status":"already_running","vm_id":"`+resMine+`"}`)
+		if left := intent.Pending(dir); len(left) != 0 {
+			t.Errorf("left %+v", left)
+		}
+	})
+	t.Run("a call by the name of another VM", func(t *testing.T) {
+		r, dir, _ := start(t)
+		r.settleHeld("vm_start", map[string]any{"name": "db"}, `{"status":"already_running","vm_id":"`+resForeign+`"}`)
+		if len(intent.Pending(dir)) != 1 {
+			t.Error("a call on another VM closed the record")
+		}
+	})
 	t.Run("a step on another resource", func(t *testing.T) {
 		r, dir, _ := start(t)
 		r.settleHeld("vm_start", map[string]any{"vm_id": resForeign}, `{"status":"started"}`)
@@ -159,5 +176,36 @@ func TestIntent_HeldThroughTheCallsOfATool(t *testing.T) {
 	call(context.Background(), map[string]any{"vm_id": resMine})
 	if left := intent.Pending(dir); len(left) != 0 {
 		t.Errorf("after the step that ended the operation: %+v", left)
+	}
+}
+
+// A declared continuation with consent (provision at the limit of an MCP
+// call): the record of the call that made the VM is held, the preview of
+// the repeat keeps it, and the repeat — a consented call with an intent of
+// its own — finishes the VM and leaves no record («Риск», conclusion 137).
+func TestIntent_HeldThroughADeclaredContinuation(t *testing.T) {
+	cloud, dir, r := provisionWorld(t)
+	t.Chdir(dir)
+	first := decode(t, mustCall(t, r, "provision", map[string]any{"name": "web", "ports": []any{"80"}, "confirmed": true}))
+	next, _ := first["next_args"].(map[string]any)
+	left := intent.Pending(intent.Dir(dir))
+	if first["next_tool"] != "provision" || len(left) != 1 || !left[0].Held {
+		t.Fatalf("after the first call: %v\n%+v", first, left)
+	}
+	mustCallErr(t, r, "provision", map[string]any{"name": "web", "ports": []any{"80"}})
+	if left := intent.Pending(intent.Dir(dir)); len(left) != 1 {
+		t.Fatalf("the preview of the repeat changed the records: %+v", left)
+	}
+	cloud.mu.Lock()
+	cloud.slow = false
+	for i := range cloud.vms {
+		cloud.vms[i].Status = "active"
+	}
+	cloud.mu.Unlock()
+	if m := decode(t, mustCall(t, r, "provision", next)); m["status"] != "ok" {
+		t.Fatalf("the repeat: %v", m)
+	}
+	if left := intent.Pending(intent.Dir(dir)); len(left) != 0 {
+		t.Errorf("after the repeat finished the VM: %+v", left)
 	}
 }

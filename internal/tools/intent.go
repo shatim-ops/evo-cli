@@ -118,20 +118,28 @@ func sameToolNext(tool, answer string) (args map[string]any, ok bool) {
 }
 
 // settleHeld closes the held records of this call of tool name once its
-// answer ends the operation: an outcome, and no further step of the same
-// tool. The step of a wait carries no consent (nextSameCall), so it
-// writes no intent of its own, and nothing else would close the record of
-// the call that started the operation. A question is not an outcome, and
-// a record another key left is not this call's to close (intent.Settle).
+// answer is an outcome with no further step of the same tool: evo itself
+// goes on with the operation no more — it ended, or the call handed the
+// wait to a read. The step of a wait carries no consent (nextSameCall), so
+// it writes no intent of its own, and nothing else would close the record
+// of the call that started the operation. A question is not an outcome,
+// and a record another key left is not this call's to close
+// (intent.Settle). The record is of this call when the call names its
+// resource as the record does — or when its answer does: a held record is
+// named by id (its step's), and a call that names the VM by its name
+// answers with that id («Риск», conclusion 137, У1).
 func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 	resource, target := intentResource(name, args)
 	root, err := os.Getwd()
-	if err != nil || (resource == "" && target == "") {
+	if err != nil {
 		return
 	}
 	var held []intent.Intent
 	for _, in := range intent.Pending(intent.Dir(root)) {
-		if in.Held && in.Tool == name && in.Name == resource && in.Target == target {
+		if !in.Held || in.Tool != name {
+			continue
+		}
+		if (in.Name == resource && in.Target == target && (resource != "" || target != "")) || answerNames(answer, in.Target) {
 			held = append(held, in)
 		}
 	}
@@ -147,6 +155,21 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 			intent.Close(in)
 		}
 	}
+}
+
+// answerNames tells an answer that names the resource of target
+// («argument=id») in the field of that argument: vm_id of a VM's answer.
+func answerNames(answer, target string) bool {
+	arg, id, ok := strings.Cut(target, "=")
+	if !ok || id == "" {
+		return false
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(answer), &m) != nil {
+		return false
+	}
+	got, _ := m[arg].(string)
+	return got == id
 }
 
 // answerStatus is the status of a tool's answer, "" when it has none.
@@ -308,9 +331,9 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	// An operation that goes on: the call that started it ended at its
 	// time limit, and the step its answer named goes on with it.
 	if in.Held && !in.Key.Other(cur) {
-		return i18n.Tf("%s %s%s, started %s (%s, pid %d): the call ended at its time limit and the operation was still going — the same %s on it goes on; the record closes when it ends",
-			"%s %s%s, начат %s (%s, pid %d): вызов закончился на пределе времени, операция ещё шла — тот же %s на нём продолжит; запись закроется, когда операция завершится",
-			tool, name, where, started, quoteCloud(in.Surface), in.PID, tool)
+		return i18n.Tf("%s %s%s, started %s (%s, pid %d): the call ended at its time limit and the operation was still going — the same %s on it goes on; the record stays while evo goes on with the operation, and closes when a call of %s ends it or stops waiting for it",
+			"%s %s%s, начат %s (%s, pid %d): вызов закончился на пределе времени, операция ещё шла — тот же %s на нём продолжит; запись остаётся, пока evo сам продолжает операцию, и закрывается, когда вызов %s её завершит или перестанет её ждать",
+			tool, name, where, started, quoteCloud(in.Surface), in.PID, tool, tool)
 	}
 	// A record another key left: a call with this key does not settle it
 	// (intent.Settle), and this key may not see what that one changed.

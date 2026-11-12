@@ -146,6 +146,9 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		}
 		text, isErr := next(ctx, args)
 		end(text)
+		// A held record the call names by another argument than its step
+		// (a name, where the record has the id).
+		r.settleHeld(t.Name, args, text)
 		return r.namedKept(t.Name, args, text), isErr
 	}
 }
