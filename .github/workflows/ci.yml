@@ -44,6 +44,9 @@ jobs:
     timeout-minutes: 5
     outputs:
       macos: ${{ steps.paths.outputs.macos }}
+      # internal/tools на Windows в PR, если PR трогает код путей (classify.sh,
+      # строка wintools=; план 1.9, «CI: main красный на Windows…», М4).
+      wintools: ${{ steps.paths.outputs.wintools }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
@@ -64,6 +67,7 @@ jobs:
             exit 0
           fi
           git diff --no-renames --name-only "$BASE...HEAD" | .github/scripts/classify.sh | grep '^macos=' >> "$GITHUB_OUTPUT"
+          git diff --no-renames --name-only "$BASE...HEAD" | .github/scripts/classify.sh | grep '^wintools=' >> "$GITHUB_OUTPUT"
 
   # Обязательная проверка test (macos-latest) на PR без macOS: успех с
   # причиной, а не «ожидает» — ruleset main ждёт её по имени. Имя — только
@@ -181,6 +185,7 @@ jobs:
         run: .github/scripts/go_test_ci.sh go test -race -count=1 -timeout 20m -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }}
         env:
           GORACE: atexit_sleep_ms=0
+          WINDOWS_PR_TOOLS: ${{ needs.scope.outputs.wintools }}
       - name: "go test: повтор после сбоя рантайма Go"
         if: steps.gotest.outputs.retry != ''
         shell: bash
