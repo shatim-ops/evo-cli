@@ -347,6 +347,21 @@ var consentWorlds = map[string]consentWorld{
 		`{"id":"` + consentOtherID + `","direction":"ingress","ip_protocol":"tcp","port_range":"443:443","remote_ip_prefix":"0.0.0.0/0"}`),
 		alreadyFor: []string{"open_ports"}},
 	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports"}},
+	// The VM of vm_start runs already (D99, П3).
+	"vm running already": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityStoppedVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, stoppedVMJSON("running"))
+	}, alreadyFor: []string{"vm_start"}},
+	// The VM of vm_start is being deleted: the platform refuses a power
+	// command in this state (422), and a read tells it before the question.
+	"vm being deleted": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityStoppedVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, stoppedVMJSON("deleting"))
+	}, refusedBy: []string{"vm_start"}, names: "deleting"},
 	// The disk has the size disk_resize asks for (parityArgs: 50 GB): the
 	// repeat of a resize is refused before the question, and the refusal
 	// names the size the disk has (repeatRefused).

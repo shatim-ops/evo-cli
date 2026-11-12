@@ -372,6 +372,7 @@ var requiredOneOf = map[string][][]string{
 	"pg_get":              {{"id", "cluster_id"}},
 	"pg_delete":           {{"id", "cluster_id"}},
 	"vm_get":              {{"vm_id", "name"}},
+	"vm_start":            {{"vm_id", "name"}},
 	"image_get":           {{"image", "image_id"}},
 	"release_floating_ip": {{"id", "ip_address"}},
 	"tg_create":           {{"vm_id", "targets"}},
@@ -436,6 +437,7 @@ var groupByName = map[string]string{
 
 	"provision":    "vm",
 	"vm_get":       "vm",
+	"vm_start":     "vm",
 	"list_zones":   "vm",
 	"list_flavors": "vm",
 

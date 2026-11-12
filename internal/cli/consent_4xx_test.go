@@ -55,6 +55,8 @@ var writeRules = map[string]struct{ world, why, item string }{
 	"DELETE /api/v1/vms/{vm_id} 409": {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"DELETE /api/v1/vms/{vm_id} 422": {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 
+	"POST /api/v1/vms/{vm_id}/set-power 422": {world: "vm being deleted"},
+
 	"POST /api/v1/images 409":                          {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"POST /api/v1/images 422":                          {why: ruleGap, item: "release plan 1.5, «Миры 4xx (ось 1), пробелы consentWorlds» (#457)"},
 	"DELETE /api/v1/images/{image_id} 404":             {why: ruleAbsentID},
