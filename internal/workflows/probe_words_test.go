@@ -92,3 +92,63 @@ func TestWorkflows_ProbeWordsAcceptedEverywhere(t *testing.T) {
 		t.Error(b)
 	}
 }
+
+// A probe of the schedule 1.9 (probe_on in area_ops of cloud-live.sh) runs
+// only when live-plan puts the area ops into the matrix for its word, and
+// the area's sweep knows every kind of resource the area's probes create
+// (area_kinds ops is a part of KINDS, which cleanup_only sweeps): a probe
+// whose word starts nothing, or whose resource no cleanup finds, is not run
+// (docs/internal/phase-0/1.9.md, 1.1 rule 3).
+func TestWorkflows_OpsProbesHaveTheirArea(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "cloud-live.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := string(b)
+	i := strings.Index(live, "\narea_ops() {")
+	if i < 0 {
+		t.Fatal("cloud-live.sh: no area_ops — the area moved, update the test")
+	}
+	body := live[i:]
+	body = body[:strings.Index(body, "\n}\n")]
+	words := probeOn.FindAllStringSubmatch(body, -1)
+	if len(words) == 0 {
+		t.Fatal("cloud-live.sh: area_ops runs no probe — the check sees nothing")
+	}
+	var plan string
+	for _, s := range readWorkflows(t)["cloud-e2e.yml"].Jobs["live-plan"].Steps {
+		if s.ID == "areas" {
+			plan = s.Run
+		}
+	}
+	j := strings.Index(plan, "for w in ${pw")
+	if j < 0 {
+		t.Fatal("live-plan: no loop over the probe words — update the test")
+	}
+	loop := plan[j:]
+	loop = loop[:strings.Index(loop, "done")]
+	accepted := map[string]bool{}
+	for _, m := range casePattern.FindAllStringSubmatch(loop, -1) {
+		for _, w := range strings.Split(m[1], "|") {
+			accepted[strings.TrimSpace(w)] = true
+		}
+	}
+	for _, m := range words {
+		if !accepted[m[1]] {
+			t.Errorf("probe %s of area ops: live-plan does not start the area for the word — add it to its case", m[1])
+		}
+	}
+	if !strings.Contains(plan, "a+=(ops)") {
+		t.Error("live-plan: the words of area ops do not add the area ops")
+	}
+	kinds := regexp.MustCompile(`(?m)^KINDS="([^"]+)"`).FindStringSubmatch(live)
+	ops := regexp.MustCompile(`(?m)^\s*ops\) echo "([^"]+)"`).FindStringSubmatch(live)
+	if kinds == nil || ops == nil {
+		t.Fatal("cloud-live.sh: no KINDS or no kinds of area ops — update the test")
+	}
+	for _, k := range strings.Fields(ops[1]) {
+		if !strings.Contains(" "+kinds[1]+" ", " "+k+" ") {
+			t.Errorf("area ops creates %q, which the sweep of cleanup_only (KINDS) does not know", k)
+		}
+	}
+}
