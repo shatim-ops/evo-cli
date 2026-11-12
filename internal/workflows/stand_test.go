@@ -148,6 +148,12 @@ func TestWorkflows_StandKindsAreKindsOfTheCleanup(t *testing.T) {
 	if len(kinds) < 2 || kinds[0] != "pplan" || kinds[1] != "backup" {
 		t.Errorf("e2e_stand.sh: STAND_KINDS starts with %v, want pplan and backup first — a plan left for last goes on making paid backups", kinds)
 	}
+	// The whole order is the order of deletion: clusters before the VM,
+	// the VM before its addresses and disks, the network last — what holds
+	// another resource goes before it.
+	if got, want := strings.Join(kinds, " "), "pplan backup k8s pg vm fip disk subnet sg"; got != want {
+		t.Errorf("e2e_stand.sh: STAND_KINDS is %q, want %q — a new kind takes its place in the order of deletion here, with the reason", got, want)
+	}
 }
 
 // The stand has a workflow of its own (plan 1.9, Г-50; conclusion 158 of the

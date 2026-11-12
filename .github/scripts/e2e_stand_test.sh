@@ -190,10 +190,11 @@ STAND_TAG_OUT=1 run_ list
 want "tagged-empty: код" "$rc" 0
 
 # sweep: без точного подтверждения — отказ до чтения облака.
-for confirm in "" "evo-stand" "${S}x" "evo-e2e-"; do
+for confirm in "" "evo-stand" "${S}x" "evo-e2e-" "evo-stand-18"; do
 	full "refuse-$confirm"
 	STAND_SWEEP=$confirm run_ sweep
 	want "sweep с подтверждением «$confirm»: код" "$rc" 2
+	has "sweep с подтверждением «$confirm»" "ждём «$S», получено «$confirm»"
 	if [ -s "$FAKE_DIR/evo-calls" ] || [ -s "$FAKE_DIR/calls" ]; then echo "FAIL sweep «$confirm»: облако читалось до отказа"; fail=1; fi
 done
 

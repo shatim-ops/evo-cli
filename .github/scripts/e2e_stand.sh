@@ -194,7 +194,7 @@ stand_sweep() {
 	declare -A failed=() stuck=()
 	# Подтверждение — точное равенство префиксу, до любого чтения облака.
 	if [ "${STAND_SWEEP:-}" != "$STAND_PREFIX" ]; then
-		echo "::error::уборка стенда — только с STAND_SWEEP, равным его префиксу; получено «${STAND_SWEEP:-}»" >&2
+		echo "::error::уборка стенда — только с STAND_SWEEP, равным его префиксу: ждём «$STAND_PREFIX», получено «${STAND_SWEEP:-}»" >&2
 		return 2
 	fi
 	# Послабление ключа чтения — только у list: удаление требует полного снимка.
