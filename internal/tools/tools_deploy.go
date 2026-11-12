@@ -803,6 +803,15 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 			alreadyOpen = append(alreadyOpen, strconv.Itoa(p))
 		}
 	}
+	// Who the rules act on, and the rule of D105: the whole internet on a
+	// shared group needs the person's word — refused before the question,
+	// with or without the consent. Only when a rule would be added.
+	use := sgGroupUse(ctx, eng, target)
+	if len(willOpen) > 0 {
+		if err := internetOnSharedGroup(target, use, portsWords(willOpen, proto), cidr, boolArg(args, allowInternetArg, false)); err != nil {
+			return nil, err
+		}
+	}
 	message := i18n.Tf("open_ports would open %s/%s from %s on security group %q (shared per zone — affects every VM in it).",
 		"open_ports откроет %s/%s из %s в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней).",
 		strings.Join(willOpen, ","), proto, cidr, target.Name)
@@ -821,6 +830,10 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 		"cidr":           cidr,
 		"will_open":      willOpen,
 		"already_open":   alreadyOpen,
+	}
+	sgUseFields(preview, use)
+	if len(willOpen) > 0 && sgrules.Internet(cidr) {
+		preview["open_to_internet"] = true
 	}
 	if len(wider) > 0 {
 		// Open by a rule wider than asked (a range, any protocol, a wider
