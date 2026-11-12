@@ -108,6 +108,15 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_start",
+			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. A VM that runs already answers already_running with no question; one that is starting is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. Mutation (billable: a running VM is charged for its flavor): requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
+				"name":      strProp("VM name (alternative to vm_id)."),
+				"confirmed": confirmedProp(),
+			}),
+		},
+		{
 			Name:        "vm_list",
 			Description: "List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. Read-only. For IPs and interfaces of one VM use vm_get. Unlike 'list' (local deployment records of this directory), this shows every VM in the project.",
 			InputSchema: objSchema(nil),
@@ -1405,6 +1414,7 @@ func (s *Registry) registerTools() {
 		"status":               s.handleStatus,
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
+		"vm_start":             s.gated("vm_start", s.planVMPower("vm_start")),
 		"vm_list":              s.handleVMList,
 		"logs":                 s.handleLogs,
 		"destroy":              s.handleDestroy,

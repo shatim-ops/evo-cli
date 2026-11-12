@@ -209,6 +209,7 @@
     - [evo vm flavors](#evo-vm-flavors)
     - [evo vm get](#evo-vm-get)
     - [evo vm list](#evo-vm-list)
+    - [evo vm start](#evo-vm-start)
     - [evo vm zones](#evo-vm-zones)
   - [evo vpc](#evo-vpc)
     - [evo vpc close-ports](#evo-vpc-close-ports)
@@ -9358,6 +9359,7 @@ evo vm [flags]
 * [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц
 * [evo vm get](#evo-vm-get)	 - ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы
 * [evo vm list](#evo-vm-list)	 - Список ВМ проекта: id, имя, состояние, зона, время создания
+* [evo vm start](#evo-vm-start)	 - Запустить остановленную ВМ и дождаться состояния running
 * [evo vm zones](#evo-vm-zones)	 - Зоны доступности (UUID и имя)
 
 ## evo vm create
@@ -9625,6 +9627,49 @@ evo vm list [flags]
       --public-ip       true — только с публичным IP, false — только без него (false задаётся так: --public-ip=false)
       --state string    Только в этом состоянии: running, stopped, error, error_creating, error_deleting, creating, starting, stopping, rebooting, deleting, updating
       --zone string     Только в этой зоне: имя или UUID
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vm](#evo-vm)	 - Виртуальные машины
+
+## evo vm start
+
+Запустить остановленную ВМ и дождаться состояния running
+
+### Synopsis
+
+```text
+Запустить остановленную ВМ и дождаться состояния running.
+
+Запустить остановленную ВМ (power_on) и дождаться, пока она заработает. До вопроса evo читает ВМ и показывает её имя, id и состояние. ВМ уже работает — ответ already_running без вопроса; ВМ уже запускается — evo ждёт и второй команды не шлёт, поэтому повтор безопасен; повтор, которому нужно отправить команду, спрашивает заново. Запущенная ВМ тарифицируется по своей конфигурации: цена неизвестна, ресурс платный.
+
+Вызывает инструмент vm_start (подробнее: 'evo tools describe vm_start').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vm start <vm-id|name> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по start
 ```
 
 ### Options inherited from parent commands

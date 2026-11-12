@@ -141,6 +141,12 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "disk_detach", diskChanges["disk_detach"])
 		return text
 	},
+	// vm_start reads the VM before the question (D99): a stopped VM.
+	"vm_start": func(t *testing.T) string {
+		r, _ := vmStartWorld(t, "stopped")
+		_, text, _ := callNamed(t, r, "vm_start", map[string]any{"name": "web"})
+		return text
+	},
 	// destroy with no deployment answers status none with no question, as
 	// the CLI (W5): its preview needs a deployment in the state.
 	"destroy": func(t *testing.T) string {

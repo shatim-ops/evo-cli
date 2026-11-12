@@ -55,6 +55,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	// as the cloud names them.
 	"disk_attach": {fields: []string{"will_attach", "attached_vms"}},
 	"disk_detach": {fields: []string{"will_detach", "attached_vms"}},
+	// The VM a power tool names in its preview and its answer, as the
+	// cloud names it.
+	"vm_start": {fields: []string{"preview", "name", "details"}},
 	// The roles of the key, as IAM names them: anyone who may create a
 	// custom role in the organization names it (A0-2).
 	"whoami": {fields: []string{"roles"}},

@@ -97,6 +97,7 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 // The value must match, as for any key; a line no write reaches fails.
 var bodyNamedAs = map[string]string{
 	"ar_create isPublic": "public",
+	"vm_start state":     "command",
 	"ca_deploy configuration.ingress.publiclyAccessible": "public",
 	"lb_create external_address_spec.allocate":           "external",
 
