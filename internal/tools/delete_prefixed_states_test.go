@@ -63,7 +63,10 @@ func TestDelete_PrefixedStateOfADeleteUnderWayOrDone(t *testing.T) {
 // of a refusal no run has seen.
 func TestDelete_PrefixedStateWithNoRuleYet(t *testing.T) {
 	for name, prefix := range prefixedDeletes {
-		for _, state := range []string{"CREATING", "PROVISIONING", "ERROR", "ERROR_DELETING"} {
+		// ERROR_CREATING and ERROR_UPDATING are the failed states the load
+		// balancers do write; the others are the names the rules of every
+		// delete know.
+		for _, state := range []string{"CREATING", "PROVISIONING", "ERROR", "ERROR_DELETING", "ERROR_CREATING", "ERROR_UPDATING"} {
 			status := prefix + state
 			p := New(nil).deletePlan(name, "x_delete deletes %s.", "x_delete удаляет %s.", "id-1", func() (map[string]any, error) {
 				return map[string]any{"name": "c1", "status": status}, nil
