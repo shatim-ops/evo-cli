@@ -141,6 +141,47 @@ type cdp struct {
 	waiting map[int]chan json.RawMessage
 	events  chan string
 	session string
+	// log is the browser's stderr and exited is closed when it ends: a
+	// browser that does not answer says why (three red ci on ubuntu,
+	// 11–12.11, «no answer of the browser» with nothing else).
+	log    *lockedBuf
+	exited chan struct{}
+	err    error
+}
+
+// lockedBuf is a buffer the browser's stderr is copied into while the test
+// reads it.
+type lockedBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuf) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+// state is what is known of the browser when it does not answer: whether
+// it ended, and the end of its stderr.
+func (c *cdp) state() string {
+	st := "still running"
+	select {
+	case <-c.exited:
+		st = fmt.Sprintf("exited: %v", c.err)
+	default:
+	}
+	l := c.log.String()
+	if len(l) > 1500 {
+		l = "…" + l[len(l)-1500:]
+	}
+	return fmt.Sprintf("browser %s; its stderr:\n%s", st, l)
 }
 
 func startChrome(t *testing.T, bin string) *cdp {
@@ -153,9 +194,17 @@ func startChrome(t *testing.T, bin string) *cdp {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// No network of the browser's own at start (updates of components,
+	// sync, field trials, metrics): the world is the loopback's, and a
+	// browser waiting on a host the runner cannot reach would not answer.
 	cmd := exec.Command(bin, "--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run",
-		"--no-default-browser-check", "--remote-debugging-pipe", "--user-data-dir="+t.TempDir(), "about:blank")
+		"--no-default-browser-check", "--disable-background-networking", "--disable-component-update",
+		"--disable-sync", "--disable-default-apps", "--disable-domain-reliability", "--metrics-recording-only",
+		"--no-pings", "--disable-features=Translate,OptimizationHints,MediaRouter",
+		"--remote-debugging-pipe", "--user-data-dir="+t.TempDir(), "about:blank")
 	cmd.ExtraFiles = []*os.File{cmdR, resW}
+	log := &lockedBuf{}
+	cmd.Stderr = log
 	// Its own process group: the cleanup ends the browser's helpers too,
 	// before its profile directory is removed.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -164,12 +213,16 @@ func startChrome(t *testing.T, bin string) *cdp {
 	}
 	cmdR.Close()
 	resW.Close()
+	c := &cdp{in: cmdW, waiting: map[int]chan json.RawMessage{}, events: make(chan string, 64), log: log, exited: make(chan struct{})}
+	go func() {
+		c.err = cmd.Wait()
+		close(c.exited)
+	}()
 	t.Cleanup(func() {
 		cmdW.Close()
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		_ = cmd.Wait()
+		<-c.exited
 	})
-	c := &cdp{in: cmdW, waiting: map[int]chan json.RawMessage{}, events: make(chan string, 64)}
 	go c.read(resR)
 	var target struct{ TargetID string }
 	c.call(t, "", "Target.createTarget", map[string]any{"url": "about:blank"}, &target)
@@ -249,8 +302,10 @@ func (c *cdp) call(t *testing.T, session, method string, params any, out any) {
 				t.Fatalf("%s: %v", method, err)
 			}
 		}
+	case <-c.exited:
+		t.Fatalf("%s: the browser ended before it answered: %s", method, c.state())
 	case <-time.After(20 * time.Second):
-		t.Fatalf("%s: no answer of the browser", method)
+		t.Fatalf("%s: no answer of the browser: %s", method, c.state())
 	}
 }
 
