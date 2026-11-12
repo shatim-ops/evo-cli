@@ -6,6 +6,7 @@ package workflows
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -63,8 +64,10 @@ func TestWorkflows_NightlyCloudIsReadOnly(t *testing.T) {
 
 	red := ws["main-red.yml"]
 	trig, _ := red.On["workflow_run"].(map[string]any)
-	if fmt.Sprint(trig["workflows"]) != "[ci cloud-e2e]" {
-		t.Errorf("main-red: follows %v, want ci and cloud-e2e", trig["workflows"])
+	// The whole list is TestWorkflows_RedMainOpensAnIssue's; here — that the
+	// nightly reading is in it.
+	if followed, _ := trig["workflows"].([]any); !slices.Contains(followed, any("cloud-e2e")) {
+		t.Errorf("main-red: follows %v, want cloud-e2e among them — a red nightly reading reaches no one", trig["workflows"])
 	}
 	for name, j := range red.Jobs {
 		for _, s := range j.Steps {
