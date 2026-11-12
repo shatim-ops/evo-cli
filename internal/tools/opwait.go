@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -190,10 +191,19 @@ func stillRunning(m map[string]any, waitSeconds int) map[string]any {
 
 // nextStep puts into an answer that a budget or wait=false cut short the
 // tool to call next and its arguments (D69): the machine's next step,
-// beside the text of "next" for the person.
+// beside the text of "next" for the person. A scope argument with no value
+// is left out: the next call would be refused for it (D100), and an agent
+// follows next_args to the letter.
 func nextStep(answer map[string]any, tool string, args map[string]any) {
+	next := make(map[string]any, len(args))
+	for k, v := range args {
+		if s, ok := v.(string); ok && strings.TrimSpace(s) == "" && slices.Contains(scopeArgs, k) {
+			continue
+		}
+		next[k] = v
+	}
 	answer["next_tool"] = tool
-	answer["next_args"] = args
+	answer["next_args"] = next
 }
 
 // waitState polls the state of a resource until done says the state ends
