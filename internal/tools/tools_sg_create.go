@@ -6,7 +6,9 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"unicode/utf8"
 
@@ -187,10 +189,24 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 			// there. The rules are read again — the same rule, there now
 			// and not before the request, is the one this call made.
 			again, listErr := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
+			var there *provision.SGRule
 			for _, r := range again {
+				// The first such rule: of several the same, one is named.
 				if r != nil && sgrules.Same(r, want) && !engine.DeletingState(r.State) && !sgRuleFailed(r.State) {
-					id = r.ID
+					there = r
+					break
 				}
+			}
+			var refused *provision.StatusError
+			if there != nil && errors.As(err, &refused) && refused.Status == http.StatusConflict {
+				// The platform refused the write as a conflict and the
+				// rule is there: another call made it between the read of
+				// the plan and the write — not this one.
+				return toJSON(map[string]any{"status": "already_exists", "rule_id": there.ID, "rule": sgRuleFields(there),
+					"security_group": group.Name, "security_group_id": group.ID}), false
+			}
+			if there != nil {
+				id = there.ID
 			}
 			if id == "" {
 				if err == nil {

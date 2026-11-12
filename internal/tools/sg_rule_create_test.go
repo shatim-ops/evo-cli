@@ -28,8 +28,10 @@ type sgMakeWorld struct {
 	slow   bool
 	broken bool
 	lose   bool
-	refuse error
-	reads  map[string]int
+	// conflict: the write finds the rule made by another call and answers 409.
+	conflict bool
+	refuse   error
+	reads    map[string]int
 }
 
 func newSGMakeWorld() *sgMakeWorld {
@@ -51,6 +53,9 @@ func (w *sgMakeWorld) AddSecurityGroupRule(_ context.Context, sgID, _ string, r 
 	w.rules[sgID] = append(w.rules[sgID], r)
 	if w.lose {
 		return nil, clerrors.New(clerrors.CodeAPIUnreachable, "connection reset", "")
+	}
+	if w.conflict {
+		return nil, clerrors.Wrap(clerrors.CodeAPIError, "conflict", "", &provision.StatusError{Status: 409, Body: `[{"code":"conflict","message":"exists"}]`})
 	}
 	return &r, nil
 }
@@ -282,6 +287,14 @@ func TestSGRuleCreate_SlowBrokenLostRefused(t *testing.T) {
 	}
 	if m, text, _ := callNamed(t, r, "sg_rule_create", args); m["status"] != "already_exists" || w.added() != 1 {
 		t.Errorf("the repeat after a lost answer: %s (writes %d)", text, w.added())
+	}
+	// A conflict (409) with the rule there: another call made it between
+	// the plan and the write — already_exists, not «created» by this one.
+	w = newSGMakeWorld()
+	w.conflict = true
+	m, text, isErr = callNamed(t, sgMakeRegistry(t, w), "sg_rule_create", args)
+	if isErr || m["status"] != "already_exists" || m["rule_id"] == "" || w.added() != 1 {
+		t.Errorf("a conflict with the rule there: %s (writes %d)", text, w.added())
 	}
 	w = newSGMakeWorld()
 	w.refuse = clerrors.Wrap(clerrors.CodeAPIError, "refused", "", &provision.StatusError{Status: 422, Body: `[{"code":"zone_changes_prohibited","message":"refused"}]`})
