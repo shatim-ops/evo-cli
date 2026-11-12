@@ -621,6 +621,7 @@ var parityAnswers = map[string]string{
 	"DELETE compute.api.cloud.ru/api/v1/disks/{id}":                  `{}`,
 	"PUT compute.api.cloud.ru/api/v1/disks/{id}":                     `{}`,
 	"POST compute.api.cloud.ru/api/v1/disks/{id}/attach":             `{}`,
+	"DELETE compute.api.cloud.ru/api/v1/backups/{id}":                `{}`,
 	"POST compute.api.cloud.ru/api/v1/disks/{id}/detach":             `{}`,
 	"DELETE compute.api.cloud.ru/api/v1/floating-ips/{id}":           `{}`,
 	"DELETE compute.api.cloud.ru/api/v1/images/{id}":                 `{}`,
