@@ -81,3 +81,38 @@ func TestNextStep_StackDestroyStepSendsNothingButTheApprovedDelete(t *testing.T)
 		t.Errorf("the world has %d VMs after the destroy and its step, %d before: the step made one", len(cloud.vms), made)
 	}
 }
+
+// nextStepOtherWorlds are the worlds, beside the cases of mcpWaits, in
+// which a tool is cut by the budget at another place and names another
+// next step: a tool has one case in mcpWaits, and the step of that case
+// need not be the only one (k8s_helm: the case of mcpWaits stops helm at
+// the release, where the step is a read; stopped at the chart's repository
+// the step is the same call). "tool" → the call in that world.
+var nextStepOtherWorlds = map[string]func(t *testing.T) (func(ctx context.Context) (string, bool), func()){
+	"k8s_helm": kubeBudget("k8s_helm", map[string]any{"cluster_id": faultCluster, "action": "install", "release": "web",
+		"chart": "repo/web", "repo_url": "https://charts.example.com", "namespace": "app", "confirmed": true}),
+}
+
+// The rule of TestMCP_NoCallOutlivesTheBudget — a next step carries
+// confirmed only for a tool of the closed lists — in the other worlds a
+// tool is cut in (nextStepOtherWorlds; «1.9 — релиз», 12.11: helm stopped
+// at "repo add" passes the arguments of the call on, confirmed among
+// them, and the case of mcpWaits does not reach that place).
+func TestNextStep_ConsentOnlyFromTheListsInOtherWorlds(t *testing.T) {
+	for name, run := range nextStepOtherWorlds {
+		t.Run(name, func(t *testing.T) {
+			call, cleanup := run(t)
+			if cleanup != nil {
+				t.Cleanup(cleanup)
+			}
+			text, _ := call(context.Background())
+			listed := nextStepKeepsConsent[name] != "" || nextStepConsentUnbound[name] != ""
+			switch carries := consentInNextStep(text); {
+			case carries && !listed:
+				t.Errorf("%s: its answer names a next step with confirmed in next_args, and the tool is in none of the lists\n%s", name, text)
+			case !carries && listed:
+				t.Errorf("%s: listed as a tool whose next step carries confirmed, and in this world it does not: take the line out, or the world\n%s", name, text)
+			}
+		})
+	}
+}

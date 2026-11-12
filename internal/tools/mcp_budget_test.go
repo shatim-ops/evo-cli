@@ -487,7 +487,7 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 	}
 	for _, list := range []map[string]string{nextStepKeepsConsent, nextStepConsentUnbound} {
 		for name := range list {
-			if ran[name] && !consented[name] {
+			if _, elsewhere := nextStepOtherWorlds[name]; ran[name] && !consented[name] && !elsewhere {
 				bad = append(bad, name+": listed as a tool whose next step carries confirmed, and it does not: take the line out")
 			}
 			if _, ok := mcpWaits[name]; !ok {
@@ -529,6 +529,11 @@ var nextStepKeepsConsent = map[string]string{
 var nextStepConsentUnbound = map[string]string{
 	"deploy_apply": "deploy_apply plan_id, confirmed: no id of the VM in the step",
 	"provision":    "provision name, confirmed: the VM by its name, not its id",
+	// Stopped while it adds the chart's repository, before the release is
+	// touched, helm names the same call with the arguments of the call —
+	// confirmed among them (nextStepOtherWorlds). The class is not decided:
+	// the conclusion of «Риск» comes first.
+	"k8s_helm": "k8s_helm with the arguments of the call, confirmed among them, when stopped at repo add",
 }
 
 // consentInNextStep reports whether the answer names a next step whose
