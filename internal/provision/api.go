@@ -38,6 +38,9 @@ type CloudAPI interface {
 	GetSubnet(ctx context.Context, id string) (map[string]any, error)
 	DeleteSubnet(ctx context.Context, id, projectID string) error
 	ListSecurityGroups(ctx context.Context, projectID string) ([]*SecurityGroup, error)
+	// ListInterfaces lists the project's network interfaces with their VM
+	// and security groups: how many interfaces a rule of a group acts on.
+	ListInterfaces(ctx context.Context, projectID string) ([]*Interface, error)
 	ListFloatingIPs(ctx context.Context, projectID string) ([]*FloatingIP, error)
 	// AttachFloatingIP binds an existing floating IP to a VM interface (PUT).
 	AttachFloatingIP(ctx context.Context, fipID, projectID, interfaceID, name string) (*FloatingIP, error)

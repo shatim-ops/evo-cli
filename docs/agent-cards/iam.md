@@ -8,4 +8,4 @@
 |---|---|---|---|
 | `iam_service_accounts` | `evo iam service-accounts` | reads |  |
 
-Filters of the lists (the rule of the `evo` skill): `iam_service_accounts` — name.
+Filters of the lists (the rule of the `evo` skill): `iam_service_accounts` — name, ids.

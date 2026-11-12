@@ -33,11 +33,15 @@ var untrustedMarkerOnly = map[string]string{
 	"disk_attach":         "will_attach: the names of the disk and the VM in the preview, not the output of a workload",
 	"disk_detach":         "will_detach: the names of the disk and the VM in the preview, not the output of a workload",
 	"vm_start":            "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
+	"vm_stop":             "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
+	"vm_reboot":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"whoami":              "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
 	"k8s_nodepool_get":    "name, cluster_name, labels, taints: what the project's people named the pool, its cluster and its nodes, not the output of a workload",
 	"k8s_nodepool_delete": "preview: the name of the cluster of the pool in the preview, not the output of a workload",
 	"k8s_nodepool_scale":  "preview, name, details: the name of the pool in the preview and the answer and the platform's words of a failed operation, not the output of a workload",
 	"k8s_operation":       "error: the failure of an operation as Managed Kubernetes words it, not the output of a workload",
+	"sg_rule_create":      "security_group, rule, preview: the name of the group and the descriptions of its rules in the preview and the answer, not the output of a workload",
+	"sg_rule_delete":      "security_group, rule, still_allowed_by, still_allowed_from_groups: the name of the group and the descriptions of its rules in the preview and the answer, not the output of a workload",
 }
 
 // Release plan 1.7, «Недоверенный вывод без маркера» (the analysis of

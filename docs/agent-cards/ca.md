@@ -14,7 +14,7 @@
 | `ca_start` | `evo ca start` | changes |  |
 | `ca_stop` | `evo ca stop` | changes |  |
 
-Filters of the lists (the rule of the `evo` skill): `ca_list` — name.
+Filters of the lists (the rule of the `evo` skill): `ca_list` — name, ids.
 
 ## Notes
 

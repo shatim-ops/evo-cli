@@ -100,6 +100,8 @@ var idArgs = map[string][]idArg{
 	// Compute.
 	"vm_get":       {{name: "vm_id", kind: kindVM}},
 	"vm_start":     {{name: "vm_id", kind: kindVM, target: true}},
+	"vm_stop":      {{name: "vm_id", kind: kindVM, target: true}},
+	"vm_reboot":    {{name: "vm_id", kind: kindVM, target: true}},
 	"destroy":      {{name: "vm_id", why: whyListed}},
 	"image_get":    {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}},
 	"image_delete": {{name: "image_id", kind: kindImage, target: true}},
@@ -113,6 +115,8 @@ var idArgs = map[string][]idArg{
 	"release_floating_ip": {{name: "id", kind: kindFIP, target: true}},
 	"open_ports":          {{name: "security_group", why: whyListed}},
 	"close_ports":         {{name: "security_group", why: whyListed}},
+	"sg_rule_create":      {{name: "security_group", why: whyListed}, {name: "remote_group", why: whyListed}},
+	"sg_rule_delete":      {{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}},
 	"disk_create":         {{name: "attach_to", why: whyListed}},
 	"disk_attach":         {{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}},
 	"disk_detach":         {{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}},

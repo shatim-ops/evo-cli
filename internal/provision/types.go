@@ -209,8 +209,32 @@ type SecurityGroup struct {
 	// {id, name, enabled}).
 	AvailabilityZoneName string `json:"-"`
 	// Default: the zone's default group (API field "default").
-	Default bool     `json:"default,omitempty"`
-	Rules   []SGRule `json:"rules,omitempty"`
+	Default bool `json:"default,omitempty"`
+	// HasInterfaces: the API says interfaces are in the group
+	// (has_interfaces); how many, the list of interfaces tells.
+	HasInterfaces bool     `json:"has_interfaces,omitempty"`
+	Rules         []SGRule `json:"rules,omitempty"`
+}
+
+// Interface is a network interface of the project
+// (GET /api/v1/interfaces): the VM it belongs to and the security groups
+// it is in — what a rule of a group acts on.
+type Interface struct {
+	ID             string           `json:"id"`
+	VM             *InterfaceVM     `json:"vm,omitempty"`
+	SecurityGroups []InterfaceGroup `json:"security_groups,omitempty"`
+}
+
+// InterfaceGroup is a security group of an interface, as the list names it.
+type InterfaceGroup struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+}
+
+// InterfaceVM is the VM of an interface, as the list names it.
+type InterfaceVM struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
 }
 
 // UnmarshalJSON reads the zone from the nested availability_zone{id}, as
@@ -248,6 +272,20 @@ type SGRule struct {
 	RemoteIPPrefix string `json:"remote_ip_prefix,omitempty"`
 	Description    string `json:"description,omitempty"`
 	State          string `json:"state,omitempty"` // read only: created, creating, deleting, error…
+	// RemoteSecurityGroup is the group the rule lets in, when its source
+	// is a group and not a prefix (read only: the answer's
+	// remote_security_group; a request names the group by another field).
+	// Such a rule lets in the interfaces of that group, not any address.
+	RemoteSecurityGroup *SGRuleGroup `json:"remote_security_group,omitempty"`
+	// RemoteSecurityGroupID names the source group in a request (write
+	// only: the answer names it in RemoteSecurityGroup).
+	RemoteSecurityGroupID string `json:"remote_security_group_id,omitempty"`
+}
+
+// SGRuleGroup is the source group of a rule, as the API names it.
+type SGRuleGroup struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
 }
 
 // DiskType represents a Cloud.ru disk type (GET /api/v1/disk-types).
@@ -635,6 +673,9 @@ type VMDetail struct {
 	Name       string        `json:"name"`
 	State      string        `json:"state"`
 	Interfaces []VMInterface `json:"interfaces"`
+	// Image is the image the VM was made of (image{id,name} of the card;
+	// the item of the list of VMs carries none).
+	Image *ZoneRef `json:"image,omitempty"`
 }
 
 // AttachedFloatingIP is the address and ID of the first floating IP bound to

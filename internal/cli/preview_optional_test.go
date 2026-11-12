@@ -45,19 +45,24 @@ const optionalSubnet = "00000000-0000-0000-0000-0000000000d1"
 // "tool argument" → why. An alternative of another argument (image or
 // image_id) goes here, the other one is set.
 var optionalLeftOut = map[string]string{
-	"deploy image":                              "an alternative of image_id",
-	"deploy compose_hash":                       "a check of the consent (R-38), not a value the write takes: another hash answers the preview",
-	"deploy_apply vm_id":                        "the VM the step of a cut call goes on with (D102), not a value the write takes: a VM of another name is refused",
-	"provision vm_id":                           "the VM the step of a cut call goes on with (D102), not a value the write takes: a VM of another name is refused",
-	"provision image":                           "an alternative of image_id",
-	"destroy name":                              "an alternative of vm_id",
-	"vm_start name":                             "an alternative of vm_id",
-	"k8s_add_nodepool flavor":                   "an alternative of cpu and ram_gb",
-	"k8s_create flavor":                         "an alternative of cpu and ram_gb",
-	"release_floating_ip ip_address":            "an alternative of id",
-	"s3_put content_base64":                     "an alternative of content",
-	"vpc_route_create next_hop_vip_id":          "an alternative of next_hop_vm_id",
-	"vpc_route_create next_hop_magic_router_id": "an alternative of next_hop_vm_id",
+	"deploy image":                                  "an alternative of image_id",
+	"sg_rule_create remote_group":                   "an alternative of cidr",
+	"sg_rule_create allow_internet_on_shared_group": "the word for a refusal (the internet on a shared group, D105), not a value the write takes: the preview says open_to_internet when it applies",
+	"sg_rule_delete allow_cut_ssh":                  "the word for a refusal (the last rule that lets SSH in), not a value the write takes: the preview says cuts_ssh when it applies",
+	"deploy compose_hash":                           "a check of the consent (R-38), not a value the write takes: another hash answers the preview",
+	"deploy_apply vm_id":                            "the VM the step of a cut call goes on with (D102), not a value the write takes: a VM of another name is refused",
+	"provision vm_id":                               "the VM the step of a cut call goes on with (D102), not a value the write takes: a VM of another name is refused",
+	"provision image":                               "an alternative of image_id",
+	"destroy name":                                  "an alternative of vm_id",
+	"vm_start name":                                 "an alternative of vm_id",
+	"vm_stop name":                                  "an alternative of vm_id",
+	"vm_reboot name":                                "an alternative of vm_id",
+	"k8s_add_nodepool flavor":                       "an alternative of cpu and ram_gb",
+	"k8s_create flavor":                             "an alternative of cpu and ram_gb",
+	"release_floating_ip ip_address":                "an alternative of id",
+	"s3_put content_base64":                         "an alternative of content",
+	"vpc_route_create next_hop_vip_id":              "an alternative of next_hop_vm_id",
+	"vpc_route_create next_hop_magic_router_id":     "an alternative of next_hop_vm_id",
 }
 
 // optionalUnnamed are the optional arguments known to reach the write

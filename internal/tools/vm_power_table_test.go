@@ -56,6 +56,36 @@ var vmPowerStateRows = map[string]map[string]vmStateRow{
 		"error":          rowAsksWarned,
 		vmStateUnknown:   rowAsksWarned,
 	},
+	// The brief, §4.1.
+	"vm_stop": {
+		"running":        rowAsks,
+		"stopped":        rowAlready,
+		"stopping":       rowWaits,
+		"starting":       rowRefused,
+		"rebooting":      rowRefused,
+		"creating":       rowRefused,
+		"updating":       rowRefused,
+		"deleting":       rowRefused,
+		"error_deleting": rowRefused,
+		"error_creating": rowRefused,
+		"error":          rowAsksWarned,
+		vmStateUnknown:   rowAsksWarned,
+	},
+	// The brief, §5.1. No row is «already»: every send is a reboot.
+	"vm_reboot": {
+		"running":        rowAsks,
+		"rebooting":      rowWaits,
+		"stopped":        rowRefused,
+		"starting":       rowRefused,
+		"stopping":       rowRefused,
+		"creating":       rowRefused,
+		"updating":       rowRefused,
+		"deleting":       rowRefused,
+		"error_deleting": rowRefused,
+		"error_creating": rowRefused,
+		"error":          rowAsksWarned,
+		vmStateUnknown:   rowAsksWarned,
+	},
 }
 
 // vmStatesOfTheProduct are the states the planner of a power tool decides
@@ -63,6 +93,11 @@ var vmPowerStateRows = map[string]map[string]vmStateRow{
 // to change in, error, and one it does not know.
 func vmStatesOfTheProduct(act vmPowerAction) []string {
 	set := map[string]bool{act.from: true, act.via: true, act.to: true, "error": true, vmStateUnknown: true}
+	// The stable states: one that is neither the action's from nor its to
+	// is refused with the tool that takes the VM there (§5.1).
+	for st := range vmStable {
+		set[st] = true
+	}
 	for st := range vmSettling {
 		set[st] = true
 	}

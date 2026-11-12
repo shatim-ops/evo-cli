@@ -51,6 +51,8 @@ var parityArgs = map[string]map[string]any{
 	"logs":         {"tail": float64(100)},
 	"vm_get":       {"vm_id": parityVM},
 	"vm_start":     {"vm_id": parityStoppedVM},
+	"vm_stop":      {"vm_id": parityRunningVM},
+	"vm_reboot":    {"vm_id": parityRunningVM},
 	"vm_list":      {},
 	"list_zones":   {},
 	"list_flavors": {},
@@ -72,8 +74,12 @@ var parityArgs = map[string]map[string]any{
 	// vpc
 	// The zone's group, in the worlds of the previews and of the answers
 	// alike: open_ports reads it before the question (G13-23).
-	"open_ports":           {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(443)}},
+	// The web ports to the whole internet on the zone's group: with the
+	// person's word for it (D105).
+	"open_ports":           {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(443)}, "allow_internet_on_shared_group": true},
 	"close_ports":          {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80)}},
+	"sg_rule_create":       {"security_group": "SSH-access_ru.AZ-1", "direction": "ingress", "protocol": "tcp", "ports": "8443", "cidr": "10.0.0.0/8"},
+	"sg_rule_delete":       {"security_group": "SSH-access_ru.AZ-1", "rule_id": parityNIC},
 	"vpc_list":             {},
 	"vpc_get":              {"id": parityVM},
 	"vpc_operation":        {"operation_id": parityVM},
@@ -292,6 +298,66 @@ var paritySetup = map[string]func(t *testing.T, w parityWorld) (map[string]any, 
 			}
 			return contractRT{status: 200, body: `{"items":[{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp",` +
 				`"port_range":"80:80","remote_ip_prefix":"0.0.0.0/0"}],"total":1}`}.RoundTrip(r)
+		}
+		return nil, func() { w.rt.extra = world }
+	},
+	// sg_rule_create: the zone's group has no rule until the POST of the
+	// call; after it the group lists the rule as created — the call sees
+	// its outcome.
+	"sg_rule_create": func(t *testing.T, w parityWorld) (map[string]any, func()) {
+		world := w.rt.extra
+		var mu sync.Mutex
+		made := false
+		w.rt.extra = func(r *http.Request) (*http.Response, error) {
+			if world != nil {
+				if resp, err := world(r); resp != nil || err != nil {
+					return resp, err
+				}
+			}
+			if r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/security-groups/") || !strings.Contains(r.URL.Path, "/rules") {
+				return nil, nil
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if r.Method == http.MethodPost {
+				made = true
+				return nil, nil // the world's answer to the write
+			}
+			if !made {
+				return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(r)
+			}
+			return contractRT{status: 200, body: `{"items":[{"id":"` + parityVM + `","direction":"ingress","ip_protocol":"tcp",` +
+				`"port_range":"8443:8443","remote_ip_prefix":"10.0.0.0/8","state":"created"}],"total":1}`}.RoundTrip(r)
+		}
+		return nil, func() { w.rt.extra = world }
+	},
+	// sg_rule_delete: the zone's group holds the rule of the call until
+	// its DELETE; after it the group lists the rule no more — the call
+	// sees it gone.
+	"sg_rule_delete": func(t *testing.T, w parityWorld) (map[string]any, func()) {
+		world := w.rt.extra
+		var mu sync.Mutex
+		deleted := false
+		w.rt.extra = func(r *http.Request) (*http.Response, error) {
+			if world != nil {
+				if resp, err := world(r); resp != nil || err != nil {
+					return resp, err
+				}
+			}
+			if r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/security-groups/") || !strings.Contains(r.URL.Path, "/rules") {
+				return nil, nil
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if r.Method == http.MethodDelete {
+				deleted = true
+				return contractRT{status: http.StatusNoContent}.RoundTrip(r)
+			}
+			if deleted {
+				return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(r)
+			}
+			return contractRT{status: 200, body: `{"items":[{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp",` +
+				`"port_range":"8080:8080","remote_ip_prefix":"0.0.0.0/0","state":"created"}],"total":1}`}.RoundTrip(r)
 		}
 		return nil, func() { w.rt.extra = world }
 	},
@@ -570,6 +636,7 @@ var parityEmptyLists = map[string]string{
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/versions": "no versions: cert_get lists none",
 	"GET compute.api.cloud.ru/api/v1/images":                           "no private image: image_create's name is free, image_list empty",
 	"GET compute.api.cloud.ru/api/v1/security-groups/{id}/rules":       "a group without rules: open_ports adds them all",
+	"GET compute.api.cloud.ru/api/v1/interfaces":                       "no interface listed: the zone's group is shared as the default one, open_ports says 0 interfaces",
 	"GET containers.api.cloud.ru/v2/containers":                        "no container app yet: ca_deploy's name is free",
 	"GET containers.api.cloud.ru/v2/containers/app/logs":               "no log lines",
 	"GET dns.api.cloud.ru/v1/privateZones":                             "no private zone: the zone of dns_record_create is public",
@@ -606,6 +673,18 @@ func stoppedVMJSON(state string) string {
 		`","name":"eth0","type":"regular","ip_address":"192.0.2.6","primary":true,"state":"created"}]}`
 }
 
+// parityRunningVM is a third VM of the project, running: vm_stop stops it.
+// Not parityVM: the other tools of the world read that one running, and a
+// stop of it would change their world.
+const parityRunningVM = "00000000-0000-4000-8000-0000000000f4"
+
+// runningVMJSON is the VM parityRunningVM as the compute API reads it, in
+// state.
+func runningVMJSON(state string) string {
+	return `{"id":"` + parityRunningVM + `","name":"cron","state":"` + state + `","interfaces":[{"id":"` + parityNIC +
+		`","name":"eth0","type":"regular","ip_address":"192.0.2.7","primary":true,"state":"created"}]}`
+}
+
 // computeParity: the compute API beyond previewCloud — the VM with its
 // interface (tg_create picks it), the project's disks and SNAT gateway
 // (disk_delete and snat_delete look them up; image_create takes the zone
@@ -620,6 +699,11 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 			return nil
 		}
 		_, _ = io.WriteString(w, stoppedVMJSON("stopped"))
+	case "/api/v1/vms/" + parityRunningVM:
+		if r.Method != http.MethodGet {
+			return nil
+		}
+		_, _ = io.WriteString(w, runningVMJSON("running"))
 	case "/api/v1/disks/" + parityAttachedDisk:
 		if r.Method != http.MethodGet {
 			return nil

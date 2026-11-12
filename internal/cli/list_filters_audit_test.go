@@ -9,11 +9,14 @@ import (
 	"encoding/json"
 	"os"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -62,22 +65,63 @@ func filterCommands(t *testing.T) []filterCommand {
 	return out
 }
 
-var filtersLine = regexp.MustCompile(`(?:Filters|Отбор): ([^.]*)\.`)
+var helpFlag = regexp.MustCompile(`(?m)^\s+(?:-\w, )?--([a-z0-9-]+)`)
 
-// FB182-1 (a): «Отбор: --status, --name, --cluster-id» named a flag
-// k8s_nodepools has not (cluster_id is its positional argument).
-func TestListFilters_HelpNamesOnlyFlags(t *testing.T) {
+// helpBlock are the flags of the block of the help under heading, and
+// whether the help has the block.
+func helpBlock(help, heading string) (flags []string, ok bool) {
+	_, rest, ok := strings.Cut(help, "\n"+heading+"\n")
+	if !ok {
+		return nil, false
+	}
+	block, _, _ := strings.Cut(rest, "\n\n")
+	for _, m := range helpFlag.FindAllStringSubmatch(block, -1) {
+		flags = append(flags, m[1])
+	}
+	return flags, true
+}
+
+// Release plan 1.9 (the rest of #1340): the filters of a list are a block
+// of flags of their own in the help — «Filters:» with every filter the
+// command takes as a flag and nothing else, then «Flags:» with the rest —
+// not a paragraph that lists their names. FB182-1 (a) holds as before: a
+// filter the command takes as a positional (cluster_id of k8s_nodepools)
+// is not in the block.
+func TestListFilters_HelpShowsFiltersAsABlock(t *testing.T) {
 	for _, fc := range filterCommands(t) {
-		m := filtersLine.FindStringSubmatch(fc.cmd.Long)
-		if m == nil {
-			t.Errorf("%s: the help names no filters", fc.tool.Name)
+		// cobra adds --help when the command runs; the help is read here
+		// without a run.
+		fc.cmd.InitDefaultHelpFlag()
+		help := fc.cmd.UsageString()
+		var want []string
+		for _, a := range tools.ListFilters(fc.tool) {
+			if name := strings.ReplaceAll(a, "_", "-"); fc.cmd.Flags().Lookup(name) != nil {
+				want = append(want, name)
+			}
+		}
+		got, ok := helpBlock(help, i18n.T("Filters:", "Отбор:"))
+		if len(want) == 0 {
+			if ok {
+				t.Errorf("%s: a block of filters with no filter flag:\n%s", fc.tool.Name, help)
+			}
 			continue
 		}
-		for _, f := range strings.Split(m[1], ", ") {
-			name := strings.TrimPrefix(f, "--")
-			if fc.cmd.Flags().Lookup(name) == nil {
-				t.Errorf("%s: the help names %s, which is not a flag of %q", fc.tool.Name, f, fc.cmd.CommandPath())
+		sort.Strings(want)
+		sort.Strings(got)
+		if !ok || strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("%s: the block of filters holds %v, want %v:\n%s", fc.tool.Name, got, want, help)
+		}
+		rest, ok := helpBlock(help, i18n.T("Flags:", "Флаги:"))
+		if !ok || !slices.Contains(rest, "help") {
+			t.Errorf("%s: no block of the other flags with --help:\n%s", fc.tool.Name, help)
+		}
+		for _, f := range rest {
+			if slices.Contains(want, f) {
+				t.Errorf("%s: filter --%s is in the block of the other flags too", fc.tool.Name, f)
 			}
+		}
+		if strings.Contains(fc.cmd.Long, "--") && strings.Contains(fc.cmd.Long, i18n.T("Filters: --", "Отбор: --")) {
+			t.Errorf("%s: the description still lists the filters as a paragraph", fc.tool.Name)
 		}
 	}
 }
@@ -178,4 +222,48 @@ func reasonOf(s string) string {
 		return m[1]
 	}
 	return ""
+}
+
+// Release plan 1.9, Вп-10: a filter by several values (--ids, --states)
+// refuses an empty value as MCP does — `--ids a,,b` and `--ids ""` are
+// USAGE naming the empty value, not the list of «a, b» and not the whole list —
+// and takes its values repeated or between commas, as one list.
+func TestListFilters_ListFlagsRefuseAnEmptyValue(t *testing.T) {
+	reg := newRegistry()
+	seen := 0
+	for _, fc := range filterCommands(t) {
+		props, _ := fc.tool.InputSchema["properties"].(map[string]any)
+		tl, _ := reg.Lookup(fc.tool.Name)
+		for _, a := range tools.ListFilters(fc.tool) {
+			p, _ := props[a].(map[string]any)
+			if p["type"] != "array" {
+				continue
+			}
+			fl := fc.cmd.Flags().Lookup(strings.ReplaceAll(a, "_", "-"))
+			if fl == nil {
+				t.Errorf("%s: filter %s is no flag of the command", fc.tool.Name, a)
+				continue
+			}
+			seen++
+			for _, v := range []string{"", "x,,y", " , "} {
+				args := append(append([]string{}, fc.path...), "--"+fl.Name, v)
+				_, stderr, _ := execCLI(t, args...)
+				if reasonOf(stderr) != "USAGE" || !strings.Contains(stderr, a+"[") {
+					t.Errorf("%s --%s %q: want USAGE naming the empty value, got %.300s", fc.tool.Name, fl.Name, v, stderr)
+				}
+			}
+			mcpArgs := map[string]any{a: []any{"x", ""}}
+			for i, pos := range fc.tool.CLI.Args {
+				if !strings.HasSuffix(pos, "?") && !strings.HasSuffix(pos, "...") {
+					mcpArgs[strings.SplitN(pos, "|", 2)[0]] = fc.path[len(fc.path)-len(fc.tool.CLI.Args)+i]
+				}
+			}
+			if text, _ := tl.Handler(context.Background(), mcpArgs); reasonOf(text) != "USAGE" {
+				t.Errorf("%s with %s [x, \"\"] over MCP: want USAGE, got %.200s", fc.tool.Name, a, text)
+			}
+		}
+	}
+	if seen < 30 {
+		t.Fatalf("%d list flags of the filters: the rule reads few", seen)
+	}
 }

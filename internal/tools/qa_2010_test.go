@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +122,12 @@ type failRulesCloud struct {
 	sgCloud
 	fail  map[string]bool
 	added []string
+}
+
+// ListInterfaces: the world has no list of interfaces — the use of a group
+// is unread, as when the read fails.
+func (*failRulesCloud) ListInterfaces(context.Context, string) ([]*provision.Interface, error) {
+	return nil, errors.New("no interfaces in this fake")
 }
 
 func (c *failRulesCloud) AddSecurityGroupRule(_ context.Context, _, _ string, r provision.SGRule) (*provision.SGRule, error) {

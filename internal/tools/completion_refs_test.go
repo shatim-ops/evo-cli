@@ -46,6 +46,7 @@ var refUncompleted = map[string]struct{ why, item string }{
 	"k8s_nodepool_delete nodepool_id":           {why: refParent},
 	"k8s_nodepool_get nodepool_id":              {why: refParent},
 	"k8s_nodepool_scale nodepool_id":            {why: refParent},
+	"sg_rule_delete rule_id":                    {why: refParent},
 	"k8s_operation operation_id":                {why: refReturned},
 	"kafka_operation operation_id":              {why: refReturned},
 	"lb_operation operation_id":                 {why: refReturned},

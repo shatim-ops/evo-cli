@@ -849,6 +849,25 @@ func (c *faultCloud) ListSecurityGroups(context.Context, string) ([]*provision.S
 	}}, nil
 }
 
+// ListInterfaces: one interface per VM of the world, each in the zone's
+// group — the group every VM of the world is placed in.
+func (c *faultCloud) ListInterfaces(context.Context, string) ([]*provision.Interface, error) {
+	if err := c.gate("ListInterfaces"); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []*provision.Interface
+	for i, vm := range c.vms {
+		if vm.gone {
+			continue
+		}
+		out = append(out, &provision.Interface{ID: faultID(0x40 + i), VM: &provision.InterfaceVM{ID: vm.ID, Name: vm.Name},
+			SecurityGroups: []provision.InterfaceGroup{{ID: faultSG, Name: "SSH-access_ru.AZ-1"}}})
+	}
+	return out, nil
+}
+
 func (c *faultCloud) GetVMDetail(_ context.Context, id string) (*provision.VMDetail, error) {
 	if err := c.gate("GetVMDetail"); err != nil {
 		return nil, err

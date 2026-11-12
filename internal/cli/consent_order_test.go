@@ -54,6 +54,7 @@ var repeatIsANewChange = map[string]string{
 	"k8s_kubectl":        "Every call runs the command again: a repeated mutating verb is a new change.",
 	"s3_put":             "Every call writes the object again.",
 	"secret_add_version": "Every call adds a version: a repeat adds one more.",
+	"vm_reboot":          "every call is a new reboot: a repeat reboots the VM again",
 }
 
 // repeatRefused are the changes shipped before the invariant whose repeat
@@ -351,7 +352,10 @@ var consentWorlds = map[string]consentWorld{
 	"ports open already": {answer: consentRulesAnswer(`{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp","port_range":"80:80","remote_ip_prefix":"0.0.0.0/0"},` +
 		`{"id":"` + consentOtherID + `","direction":"ingress","ip_protocol":"tcp","port_range":"443:443","remote_ip_prefix":"0.0.0.0/0"}`),
 		alreadyFor: []string{"open_ports"}},
-	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports"}},
+	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports", "sg_rule_delete"}},
+	// The group of sg_rule_create has the rule of the call already.
+	"rule there already": {answer: consentRulesAnswer(`{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp","port_range":"8443:8443","remote_ip_prefix":"10.0.0.0/8","state":"created"}`),
+		alreadyFor: []string{"sg_rule_create"}},
 	// The stack of stack_destroy was destroyed by an earlier call, and no
 	// deletion of it is still going (D26, D41).
 	"stack destroyed already": {job: func(t *testing.T) *stack.Job {
@@ -380,6 +384,13 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, stoppedVMJSON("running"))
 	}, alreadyFor: []string{"vm_start"}},
+	// The VM of vm_stop is stopped already (D99, П3).
+	"vm stopped already": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityRunningVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, runningVMJSON("stopped"))
+	}, alreadyFor: []string{"vm_stop"}},
 	// The pool of k8s_nodepool_scale has the count asked for (parityArgs:
 	// three nodes) and runs (D99, П3).
 	"node pool of the count asked": {answer: func(r *http.Request) *http.Response {

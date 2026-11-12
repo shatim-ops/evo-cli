@@ -28,7 +28,7 @@ func TestConfirmedDescription_PreviewFirst(t *testing.T) {
 		if strings.Contains(desc, "Must be true") {
 			t.Errorf("%s: confirmed reads as an order to set it: %q", tl.Name, desc)
 		}
-		if !strings.Contains(desc, "Omit it to get the preview") || !strings.Contains(desc, "person approved that preview") {
+		if !strings.Contains(desc, "Omit for the preview") || !strings.Contains(desc, "only after the person approved it") {
 			t.Errorf("%s: confirmed does not say preview first, then the person's consent: %q", tl.Name, desc)
 		}
 	}

@@ -16,7 +16,7 @@
 
 A change of this group that answers an `operation_id` runs on: wait for it with `kafka_operation` and its `wait_seconds`, not by polling a list.
 
-Filters of the lists (the rule of the `evo` skill): `kafka_list` — status, name; `kafka_specs` — version_id, zone.
+Filters of the lists (the rule of the `evo` skill): `kafka_list` — status, name, ids, statuses; `kafka_specs` — version_id, zone.
 
 ## Notes
 

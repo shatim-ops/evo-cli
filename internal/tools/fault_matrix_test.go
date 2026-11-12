@@ -80,6 +80,32 @@ func computeCase(tool string, args map[string]any, noDial bool, setup func(t *te
 	}}
 }
 
+// rulesWorld is the compute world read for the rules of its security
+// group: what sg_rule_create makes. The rules deploy and provision open
+// are theirs to track (sgrules.Open, the record of the deployment), so the
+// world of their cases does not count rules.
+type rulesWorld struct{ *faultCloud }
+
+func (w rulesWorld) billed() []faultBilled {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var out []faultBilled
+	for _, r := range w.rules {
+		out = append(out, faultBilled{what: "security group rule " + r.ID, names: []string{r.ID}})
+	}
+	return out
+}
+
+// rulesCase is a case of the compute world whose made resource is a rule
+// of a security group.
+func rulesCase(tool string, args map[string]any) faultMatrixCase {
+	return faultMatrixCase{tool: tool, args: args, world: func(t *testing.T, cancel context.CancelFunc) (faultWorld, *Registry, string) {
+		cloud := &faultCloud{cancel: cancel}
+		r, dir := faultToolsRegistry(t, cloud)
+		return rulesWorld{cloud}, r, dir
+	}}
+}
+
 // apiCase is a case of the HTTP world (faultAPI); made is what the world
 // holds before the call (a bucket to put an object in).
 func apiCase(tool string, args map[string]any, made ...faultResource) faultMatrixCase {
@@ -104,6 +130,8 @@ var faultMatrixCases = []faultMatrixCase{
 				t.Fatal(err)
 			}
 		}),
+	rulesCase("sg_rule_create", map[string]any{"security_group": "SSH-access_ru.AZ-1", "direction": "ingress", "protocol": "tcp",
+		"ports": "8080", "cidr": "10.0.0.0/8", "confirmed": true}),
 	apiCase("kafka_create", map[string]any{"name": "evo-k", "cpu": 2, "ram": 4, "confirmed": true}),
 	apiCase("redis_create", map[string]any{"name": "evo-r", "cpu": 2, "ram": 4, "confirmed": true}),
 	apiCase("pg_create", map[string]any{"name": "evo-p", "cpu": 2, "ram": 4, "confirmed": true}),
@@ -279,7 +307,7 @@ const (
 // faultMatrixOut is the closed list of the tools that ask for consent and
 // are not in faultMatrixCases, with the reason.
 var faultMatrixOut = map[string]string{
-	"ar_delete": faultOutRemoves, "ca_delete": faultOutRemoves, "close_ports": faultOutRemoves, "ca_stop": faultOutRemoves,
+	"ar_delete": faultOutRemoves, "ca_delete": faultOutRemoves, "close_ports": faultOutRemoves, "sg_rule_delete": faultOutRemoves, "ca_stop": faultOutRemoves,
 	"cert_delete": faultOutRemoves, "disk_delete": faultOutRemoves, "disk_detach": faultOutRemoves,
 	"dns_record_delete": faultOutRemoves, "dns_zone_delete": faultOutRemoves, "image_delete": faultOutRemoves,
 	"k8s_delete": faultOutRemoves, "k8s_nodepool_delete": faultOutRemoves, "kafka_delete": faultOutRemoves, "lb_delete": faultOutRemoves,
@@ -290,7 +318,7 @@ var faultMatrixOut = map[string]string{
 	"stack_destroy": faultOutRemoves, "tg_delete": faultOutRemoves, "vpc_delete": faultOutRemoves,
 	"vpc_route_delete": faultOutRemoves,
 
-	"ca_start": faultOutChanges, "cert_renew": faultOutChanges, "disk_attach": faultOutChanges, "vm_start": faultOutChanges,
+	"ca_start": faultOutChanges, "cert_renew": faultOutChanges, "disk_attach": faultOutChanges, "vm_start": faultOutChanges, "vm_stop": faultOutChanges, "vm_reboot": faultOutChanges,
 	// Its faults — a lost answer taken and not, a refusal, a failed
 	// operation — are the worlds of k8s_nodepool_scale_test.go.
 	"k8s_nodepool_scale": faultOutChanges,

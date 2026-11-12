@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/netip"
 	"slices"
@@ -90,29 +91,96 @@ func checkArgs(name string, schema map[string]any, args map[string]any) error {
 	}
 	for k, v := range args {
 		p, _ := props[k].(map[string]any)
-		enum, _ := p["enum"].([]any)
-		s, isStr := v.(string)
-		if len(enum) == 0 || !isStr || s == "" {
+		if _, ruled := p["minItems"]; ruled {
+			list, err := ruledList(k, p, v)
+			if err != nil {
+				return err
+			}
+			if list != nil {
+				args[k] = list
+			}
 			continue
 		}
-		canon := ""
-		var allowed []string
-		for _, e := range enum {
-			es, _ := e.(string)
-			allowed = append(allowed, es)
-			// Spaces around the value are not part of it (" public ").
-			if strings.EqualFold(es, strings.TrimSpace(s)) {
-				canon = es
+		if s, isStr := v.(string); isStr {
+			canon, err := enumValue(k, p, s)
+			if err != nil {
+				return err
 			}
+			args[k] = canon
 		}
-		if canon == "" {
-			return clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("%s %q is not one of %s", "%s %q не входит в список: %s", k, s, strings.Join(allowed, ", ")),
-				i18n.Tf("Pass %s as one of: %s.", "Допустимые значения %s: %s.", k, strings.Join(allowed, ", ")))
-		}
-		args[k] = canon
 	}
 	return nil
+}
+
+// enumValue is s in the spelling of the enum of its schema p (any case,
+// no spaces around); s itself when p has no enum or s is empty.
+func enumValue(k string, p map[string]any, s string) (string, error) {
+	enum, _ := p["enum"].([]any)
+	if len(enum) == 0 || s == "" {
+		return s, nil
+	}
+	var allowed []string
+	for _, e := range enum {
+		es, _ := e.(string)
+		allowed = append(allowed, es)
+		// Spaces around the value are not part of it (" public ").
+		if strings.EqualFold(es, strings.TrimSpace(s)) {
+			return es, nil
+		}
+	}
+	return "", clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("%s %q is not one of %s", "%s %q не входит в список: %s", k, s, strings.Join(allowed, ", ")),
+		i18n.Tf("Pass %s as one of: %s.", "Допустимые значения %s: %s.", k, strings.Join(allowed, ", ")))
+}
+
+// ruledList is list argument k checked against its schema p, with every
+// value in the spelling of the items' enum, for a schema that declares
+// minItems. Such a list is a list of strings by the rules of its items (ruleArg, enumValue): not a list, an empty
+// one, an empty value in it are USAGE — never «not set» (D36; the filters
+// of lists by several values, release plan 1.9). The lists released
+// without minItems stay the handler's: it takes them in more than one
+// form (CheckArgs).
+func ruledList(k string, p map[string]any, v any) ([]any, error) {
+	min, _ := p["minItems"].(int)
+	if v == nil {
+		return nil, nil
+	}
+	list, ok := v.([]any)
+	if !ok {
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("%s must be a list, got %s", "%s должен быть списком, получено: %s", k, describeValue(v)),
+			i18n.Tf("Pass %s as a JSON array of strings.", "Передайте %s как JSON-массив строк.", k))
+	}
+	if len(list) < min {
+		return nil, ruleErr(k, p, i18n.Tf("%s is empty", "%s пустой", k),
+			i18n.Tf("Give %s a value or drop the argument: an empty list is not read as «not set».",
+				"Задайте %s значение или уберите аргумент: пустой список не читается как «не задано».", k))
+	}
+	items, _ := p["items"].(map[string]any)
+	out := make([]any, len(list))
+	for i, it := range list {
+		name := fmt.Sprintf("%s[%d]", k, i)
+		s, ok := it.(string)
+		if !ok {
+			return nil, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("%s must be a string, got %s", "%s должен быть строкой, получено: %s", name, describeValue(it)),
+				i18n.Tf("Pass %s as a JSON array of strings.", "Передайте %s как JSON-массив строк.", k))
+		}
+		if strings.TrimSpace(s) == "" {
+			return nil, ruleErr(k, p, i18n.Tf("%s is empty", "%s пустой", name),
+				i18n.Tf("Take the empty value out of %s: it is not read as «not set».",
+					"Уберите пустое значение из %s: оно не читается как «не задано».", k))
+		}
+		if err := ruleArg(name, items, s); err != nil {
+			return nil, err
+		}
+		canon, err := enumValue(name, items, s)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = canon
+	}
+	return out, nil
 }
 
 // ruleArg checks v against the static rules of its schema p (D36): the

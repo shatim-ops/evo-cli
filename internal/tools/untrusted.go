@@ -61,7 +61,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	"disk_detach": {fields: []string{"will_detach", "attached_vms"}},
 	// The VM a power tool names in its preview and its answer, as the
 	// cloud names it.
-	"vm_start": {fields: []string{"preview", "name", "details"}},
+	"vm_start":  {fields: []string{"preview", "name", "details"}},
+	"vm_stop":   {fields: []string{"preview", "name", "details"}},
+	"vm_reboot": {fields: []string{"preview", "name", "details"}},
 	// The roles of the key, as IAM names them: anyone who may create a
 	// custom role in the organization names it (A0-2).
 	"whoami": {fields: []string{"roles"}},
@@ -76,6 +78,11 @@ var untrustedFields = map[string]untrustedAnswer{
 	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},
 	// The cluster of the pool by its name, in the preview of the delete.
 	"k8s_nodepool_delete": {fields: []string{"preview"}},
+	// The name of the group and the descriptions of its rules, in the
+	// preview and in the answer: anyone with access to the project writes
+	// them.
+	"sg_rule_create": {fields: []string{"security_group", "rule", "preview"}},
+	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of

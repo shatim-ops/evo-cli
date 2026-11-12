@@ -14,4 +14,4 @@
 | `disk_resize` | `evo disk resize` | changes | `disk_id` ← `disk_list` |
 | `disk_delete` | `evo disk delete` | deletes; a repeat answers `already_deleted` | `disk_id` ← `disk_list` |
 
-Filters of the lists (the rule of the `evo` skill): `disk_list` — zone, state, name, attached, type, bootable.
+Filters of the lists (the rule of the `evo` skill): `disk_list` — zone, state, name, attached, type, bootable, ids, states.

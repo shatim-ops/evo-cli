@@ -24,6 +24,8 @@ import (
 
 func init() {
 	cobra.AddTemplateFunc("exitCodesHelp", clerrors.ExitCodesHelp)
+	cobra.AddTemplateFunc("filterFlags", filterFlagUsages)
+	cobra.AddTemplateFunc("otherFlags", otherFlagUsages)
 }
 
 // commandGroups: group ID, English and Russian title, the commands in it.
@@ -82,5 +84,5 @@ func groupCommands(root *cobra.Command) {
 			c.GroupID = id
 		}
 	}
-	root.SetUsageTemplate(strings.TrimSuffix(root.UsageTemplate(), "\n") + exitCodesTail)
+	root.SetUsageTemplate(strings.Replace(strings.TrimSuffix(root.UsageTemplate(), "\n"), flagsBlockEN, flagBlocksEN, 1) + exitCodesTail)
 }

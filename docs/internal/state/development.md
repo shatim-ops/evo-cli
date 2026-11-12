@@ -4,8 +4,8 @@
 
 ## Очередь
 
-1. C: гейт и R-82 слиты; открыты #1453 (D101), #1473 (намерение держит запись). Дальше: повторы Н1; R-83; `X-Request-Id`; `cause: quota`.
-2. A: открыты #1461 `vm_stop`, #1486 ТЗ `sg_rule_*`; `vm_reboot` — после #1461, #1485. Дальше: D105, `sg_rule_create`, `sg_rule_delete`.
+1. C: гейт, R-82, D101, слой намерений, повторы Н1 слиты; открыты #1488 (`cause: quota`), #1494 (фильтры `ids`, `states`). Дальше: `images`; R-83; `X-Request-Id`.
+2. A: В1 слита (`vm_start`, `vm_stop`, `vm_reboot`, `sg_rule_delete`, `sg_rule_create`, D105); открыт #1512 (превью `destroy`). Дальше: после второго Г-11 — `icmp`/`any`, повтор `sg_rule_delete`.
 3. B: `k8s_nodepool_scale`, `k8s_nodepool_delete`; чтение хода операции кластера.
 4. A: `vm_resize`. C: фильтры — список id, образ; остатки #1340.
 5. B: версия Kubernetes; PostgreSQL, Kafka, Redis — после двух прогонов проб.

@@ -121,7 +121,7 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	// (G13-23, D35): the zone's group of the fault cloud.
 	"open_ports": func(t *testing.T) string {
 		r, _ := faultToolsRegistry(t, &faultCloud{})
-		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}})
+		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}, allowInternetArg: true})
 		return text
 	},
 	// fip_attach finds the address and the VM before the question (W6): a
@@ -169,11 +169,36 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "vm_start", map[string]any{"name": "web"})
 		return text
 	},
+	// vm_stop reads the VM before the question (D99): a running VM.
+	"vm_stop": func(t *testing.T) string {
+		r, _ := vmStartWorld(t, "running")
+		_, text, _ := callNamed(t, r, "vm_stop", map[string]any{"name": "web"})
+		return text
+	},
+	// vm_reboot reads the VM before the question (D99): a running VM.
+	"vm_reboot": func(t *testing.T) string {
+		r, _ := vmStartWorld(t, "running")
+		_, text, _ := callNamed(t, r, "vm_reboot", map[string]any{"name": "web"})
+		return text
+	},
 	// destroy with no deployment answers status none with no question, as
 	// the CLI (W5): its preview needs a deployment in the state.
 	"destroy": func(t *testing.T) string {
 		r, _ := targetRegistry(t, &targetCloud{})
 		_, text, _ := callNamed(t, r, "destroy", map[string]any{})
+		return text
+	},
+	// sg_rule_create reads the group, its rules and its interfaces before
+	// the question.
+	"sg_rule_create": func(t *testing.T) string {
+		r, _ := sgRegistryOver(t, newSGMakeWorld())
+		_, text, _ := callNamed(t, r, "sg_rule_create", map[string]any{"security_group": sgZoneGroup, "direction": "ingress", "protocol": "tcp", "ports": "8080", "cidr": "10.0.0.0/8"})
+		return text
+	},
+	// sg_rule_delete reads the group and its rules before the question.
+	"sg_rule_delete": func(t *testing.T) string {
+		r, _ := sgRuleRegistry(t, newSGWorld())
+		_, text, _ := callNamed(t, r, "sg_rule_delete", map[string]any{"security_group": sgZoneGroup, "rule_id": sgRuleWeb})
 		return text
 	},
 	// close_ports reads its group and the rules it would delete before the

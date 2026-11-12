@@ -80,6 +80,8 @@ var cliSpecs = map[string]CLISpec{
 	"vm_list":      {Group: "vm", Verb: "list", Columns: []string{"id", "name", "state", "zone", "created_time"}},
 	"vm_get":       {Group: "vm", Verb: "get", Args: []string{"vm_id|name"}},
 	"vm_start":     {Group: "vm", Verb: "start", Args: []string{"vm_id|name"}},
+	"vm_stop":      {Group: "vm", Verb: "stop", Args: []string{"vm_id|name"}},
+	"vm_reboot":    {Group: "vm", Verb: "reboot", Args: []string{"vm_id|name"}},
 	"provision":    {Group: "vm", Verb: "create", Args: []string{"name"}, Rename: map[string]string{"image_metadata": "meta", "ports": "port"}, Pairs: map[string]bool{"image_metadata": true}, Render: "vm-created"},
 	"destroy":      {Group: "vm", Verb: "delete", Args: []string{"vm_id|name"}},
 	"list_zones":   {Group: "vm", Verb: "zones"},
@@ -291,8 +293,10 @@ var cliSpecs = map[string]CLISpec{
 	"org_projects": {Group: "org", Verb: "projects", Render: "project-list"},
 
 	// image, vpc: commands added to the trees of v1.1.
-	"image_create": {Group: "image", Verb: "create", Args: []string{"name"}},
-	"image_delete": {Group: "image", Verb: "delete", Args: []string{"image_id"}},
-	"open_ports":   {Group: "vpc", Verb: "open-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
-	"close_ports":  {Group: "vpc", Verb: "close-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
+	"image_create":   {Group: "image", Verb: "create", Args: []string{"name"}},
+	"image_delete":   {Group: "image", Verb: "delete", Args: []string{"image_id"}},
+	"open_ports":     {Group: "vpc", Verb: "open-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
+	"close_ports":    {Group: "vpc", Verb: "close-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
+	"sg_rule_create": {Group: "vpc", Verb: "sg-rule-create", Args: []string{"security_group"}},
+	"sg_rule_delete": {Group: "vpc", Verb: "sg-rule-delete", Args: []string{"security_group"}},
 }

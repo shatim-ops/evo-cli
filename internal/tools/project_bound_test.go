@@ -109,6 +109,9 @@ type ownerFake struct {
 	diskOn string
 	// goneStatus is the status of a read of resGone by id; 0 — 404.
 	goneStatus int
+	// refuseWrites answers every write with this body and 422; "" — the
+	// write is taken.
+	refuseWrites string
 }
 
 // ownerChild is the name of the database and of the user every cluster of
@@ -172,6 +175,10 @@ func ownerObject(id string) map[string]any {
 
 func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		if f.refuseWrites != "" {
+			http.Error(w, f.refuseWrites, http.StatusUnprocessableEntity)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "op-new", "done": false, "resource_id": resMine})
 		return
 	}
@@ -579,6 +586,9 @@ func listedCases(id string) map[string]map[string]any {
 		"fip_attach.vm":                    {"fip": resMine, "vm": id},
 		"open_ports.security_group":        {"security_group": id, "ports": []any{float64(80)}},
 		"close_ports.security_group":       {"security_group": id, "ports": []any{float64(80)}},
+		"sg_rule_delete.security_group":    {"security_group": id, "rule_id": resMine},
+		"sg_rule_create.security_group":    {"security_group": id, "direction": "ingress", "protocol": "tcp", "ports": "8080", "cidr": "10.0.0.0/8"},
+		"sg_rule_create.remote_group":      {"security_group": resMine, "direction": "ingress", "protocol": "tcp", "ports": "8080", "remote_group": id},
 		"disk_create.attach_to":            {"name": "data", "size_gb": float64(20), "attach_to": id},
 		"disk_attach.vm":                   {"disk_id": resMine, "vm": id},
 		"disk_detach.vm":                   {"disk_id": resMine, "vm": id},

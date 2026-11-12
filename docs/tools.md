@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (162) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo (166) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -36,16 +36,16 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `whoami` | `evo whoami` | нет | — | Show whom the tools work as: the profile, the access key ID (masked), where the key and the project come from (profile, env, project file, flag), the project … | Активный профиль и проверка его ключа |
-| `doctor` | `evo doctor` | нет | — | Check the setup the tools use: the configuration (profile, where the key and the project come from, its warnings), whether the IAM and Compute APIs are … | Проверить настройки, ключ доступа и связь с API |
+| `whoami` | `evo whoami` | нет | — | Whom the tools work as: profile, masked access key ID, where the key and the project come from (profile, env, project file, flag), the project, the IAM token's … | Активный профиль и проверка его ключа |
+| `doctor` | `evo doctor` | нет | — | Check the setup the tools use: the configuration (profile, key and project sources, warnings), whether IAM and Compute APIs are reachable (http_status is what … | Проверить настройки, ключ доступа и связь с API |
 
 ## billing
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `billing_balance` | `evo billing balance` | нет | — | Account balance for the billing agreement (RUB, active flag, raw agreement object). | Баланс по договору: сумма в рублях, признак активности |
-| `billing_consumption` | `evo billing consumption` | нет | `start` | Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. | Стоимость потребления за период по сервисам: по договору или по проекту |
-| `billing_finops` | `evo billing finops` | нет | — | FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in … | Отчёт FinOps: распределение затрат, аномалии, темп расходов, запас баланса |
+| `billing_balance` | `evo billing balance` | нет | — | Balance of the billing agreement (RUB, active flag, raw agreement object). | Баланс по договору: сумма в рублях, признак активности |
+| `billing_consumption` | `evo billing consumption` | нет | `start` | Consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. | Стоимость потребления за период по сервисам: по договору или по проекту |
+| `billing_finops` | `evo billing finops` | нет | — | FinOps report (read-only): cost by service, anomalies vs the previous same-length period, daily burn-rate, balance runway in days, projected zero date … | Отчёт FinOps: распределение затрат, аномалии, темп расходов, запас баланса |
 
 ## ca
 
@@ -78,13 +78,13 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `deploy` | `evo deploy` | да | — | Deploy the local compose project to a VM evo-<project_name>, billable when it creates one, with a public floating IP: uploads the compose files over SSH, runs … | Развернуть локальный проект docker-compose на ВМ Cloud.ru |
-| `status` | `evo status` | нет | — | Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports, from the local state. | Состояние текущего развёртывания |
+| `deploy` | `evo deploy` | да | — | Deploy the local compose project to a VM evo-<project_name> (billable when created) with a public floating IP: uploads the compose files over SSH, runs them … | Развернуть локальный проект docker-compose на ВМ Cloud.ru |
+| `status` | `evo status` | нет | — | Current deployment from the local state: VM id, public IP, flavor, region, health, ports. | Состояние текущего развёртывания |
 | `list` | `evo deploy list` | нет | — | List all recorded deployments for this project (VM IP, status, flavor, creation time). | Локальные записи развёртываний этого проекта |
 | `logs` | `evo logs` | нет | — | Retrieve container logs from the deployed VM via 'docker compose logs' over SSH. | Журналы контейнеров развёрнутой ВМ |
 | `destroy` | `evo vm delete` | удаляет | — | Permanently delete a VM and all data on it. | Удалить ВМ и все данные на ней (безвозвратно) |
 | `deploy_plan` | `evo deploy plan` | нет | — | Step 1 of the deploy wizard, read-only: resolves a VM configuration (flavor, image, zone, disk, network, SSH) with its monthly cost and a plan_id (cost.source … | Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая |
-| `deploy_apply` | `evo deploy apply` | да | `plan_id` | STEP 2 of the deploy wizard. | Шаг 2 мастера развёртывания: выполнить рассчитанный план |
+| `deploy_apply` | `evo deploy apply` | да | `plan_id` | STEP 2 of the deploy wizard: executes a plan from deploy_plan. | Шаг 2 мастера развёртывания: выполнить рассчитанный план |
 | `open_ports` | `evo vpc open-ports` | да | `security_group`, `ports` | Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). | Открыть входящие порты в группе безопасности |
 | `close_ports` | `evo vpc close-ports` | да | `security_group`, `ports` | Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. | Закрыть входящие порты в группе безопасности |
 
@@ -127,7 +127,7 @@
 | `image_list` | `evo image list` | нет | — | Search the VM image catalogue: OS images (type public), Marketplace products (marketplace), the project's own images (private). | Поиск образов: ОС (public), маркетплейс (marketplace), образы проекта (private) |
 | `marketplace_list` | `evo marketplace list` | нет | — | Read-only: what Cloud.ru offers to deploy, in one list: shared-catalogue VM images and Managed Kubernetes addons. | Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания |
 | `list_images` | `evo list-images` | нет | — | List available Cloud.ru VM boot images (UUID + name). | Загрузочные образы ВМ (UUID и имя) |
-| `image_create` | `evo image create` | да | `name`, `disk_id` | Create a VM image from a bootable disk (billable storage). | Создать образ ВМ из загрузочного диска (платно, асинхронно) |
+| `image_create` | `evo image create` | да | `name`, `disk_id` | Create a VM image from a bootable disk. | Создать образ ВМ из загрузочного диска (платно, асинхронно) |
 | `image_get` | `evo image get` | нет | `image` или `image_id` | Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with … | Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ |
 | `image_delete` | `evo image delete` | удаляет | `image_id` | Delete a VM image. | Удалить образ ВМ |
 
@@ -153,7 +153,7 @@
 | `k8s_add_addon` | `evo k8s add-addon` | удаляет | `cluster_id`, `name` | Install a Managed Kubernetes addon release into a cluster. | Установить плагин в кластер (асинхронно; версия по умолчанию — последняя активная) |
 | `k8s_kubectl` | `evo k8s kubectl` | удаляет | `cluster_id`, `args` | Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). | Команда kubectl в кластере (изменяющие — с подтверждением) |
 | `k8s_apply` | `evo k8s apply` | удаляет | `cluster_id`, `manifest` | Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. | Применить манифест Kubernetes (как kubectl apply -f -) |
-| `k8s_helm` | `evo k8s helm` | удаляет | `cluster_id`, `action` | Run Helm on a cluster. | Helm в кластере: install, upgrade, uninstall, list, status |
+| `k8s_helm` | `evo k8s helm` | удаляет | `cluster_id`, `action` | Helm on a cluster: install/upgrade/uninstall require confirmed=true after the user approves. | Helm в кластере: install, upgrade, uninstall, list, status |
 
 ## kafka
 
@@ -163,7 +163,7 @@
 | `kafka_get` | `evo kafka get` | нет | `cluster_id` | Get a Managed Kafka cluster by id (status, kafka_hosts, brokers, version). | Кластер Kafka по ID: состояние, адреса, брокеры, версия |
 | `kafka_versions` | `evo kafka versions` | нет | — | List available Managed Kafka versions (id + name). | Доступные версии Managed Kafka |
 | `kafka_specs` | `evo kafka specs` | нет | — | List Managed Kafka flavor specifications (id, cpu, memory_gb, min_storage_gb, min/max_brokers) for a version. | Конфигурации кластера Kafka для версии: CPU, память, хранилище, брокеры |
-| `kafka_create` | `evo kafka create` | да | `name` | Create a Managed Kafka cluster, billable. | Создать кластер Managed Kafka (платно, асинхронно) |
+| `kafka_create` | `evo kafka create` | да | `name` | Create a Managed Kafka cluster. | Создать кластер Managed Kafka (платно, асинхронно) |
 | `kafka_delete` | `evo kafka delete` | удаляет | `cluster_id` | Delete a Managed Kafka cluster by id AND its data. | Удалить кластер Kafka вместе с данными (асинхронно) |
 | `kafka_operation` | `evo kafka operation` | нет | `operation_id` | Poll a Managed Kafka async operation by id (from kafka_create/kafka_delete). | Состояние асинхронной операции Kafka |
 
@@ -203,7 +203,7 @@
 | `pg_get` | `evo pg get` | нет | `id` или `cluster_id` | Get full details of one Managed PostgreSQL cluster by id (from pg_list): version, instances, storage, connection_string, subnets, status, access (placed in its … | Кластер PostgreSQL по ID: версия, хранилище, строка подключения, состояние |
 | `pg_versions` | `evo pg versions` | нет | — | List available Managed PostgreSQL versions (e.g. | Доступные версии PostgreSQL |
 | `pg_specs` | `evo pg specs` | нет | — | List Managed PostgreSQL specifications (id, cpu, memory_gb, deployment_mode standard\|business, min_storage_gb) for a version. | Конфигурации кластера PostgreSQL для версии: CPU, память, минимальный объём |
-| `pg_create` | `evo pg create` | да | `name` | Create a Managed PostgreSQL cluster, billable. | Создать кластер PostgreSQL (платно, асинхронно) |
+| `pg_create` | `evo pg create` | да | `name` | Create a Managed PostgreSQL cluster. | Создать кластер PostgreSQL (платно, асинхронно) |
 | `pg_delete` | `evo pg delete` | удаляет | `id` или `cluster_id` | Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). | Удалить кластер PostgreSQL вместе с данными и всеми резервными копиями (асинхронно) |
 | `pg_operation` | `evo pg operation` | нет | `operation_id` | Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). | Состояние асинхронной операции PostgreSQL |
 | `pg_databases` | `evo pg databases` | нет | `cluster_id` | List databases in a PostgreSQL cluster (name, owner, size). | Базы данных кластера |
@@ -223,7 +223,7 @@
 | `redis_get` | `evo redis get` | нет | `cluster_id` | Get a Managed Redis cluster by id (status, redis_hosts, type, shards, replicas). | Кластер Redis по ID: состояние, адреса, тип, шарды, реплики |
 | `redis_versions` | `evo redis versions` | нет | — | List available Managed Redis versions (id + name). | Доступные версии Managed Redis |
 | `redis_specs` | `evo redis specs` | нет | — | List Managed Redis flavor specifications (id, cpu, memory_gb, deployment_mode, min_storage_gb) for a version. | Конфигурации кластера Redis для версии: CPU, память, режим, хранилище |
-| `redis_create` | `evo redis create` | да | `name` | Create a Managed Redis cluster, billable. | Создать кластер Managed Redis (платно, асинхронно) |
+| `redis_create` | `evo redis create` | да | `name` | Create a Managed Redis cluster. | Создать кластер Managed Redis (платно, асинхронно) |
 | `redis_delete` | `evo redis delete` | удаляет | `cluster_id` | Delete a Managed Redis cluster by id AND its data. | Удалить кластер Redis вместе с данными (асинхронно) |
 | `redis_operation` | `evo redis operation` | нет | `operation_id` | Poll a Managed Redis async operation by id (from redis_create/redis_delete). | Состояние асинхронной операции Redis |
 
@@ -234,7 +234,7 @@
 | `s3_buckets` | `evo s3 buckets` | нет | — | List Object Storage (S3) buckets. | Бакеты Object Storage |
 | `s3_ls` | `evo s3 ls` | нет | `bucket` | List objects in an S3 bucket (key, size, last_modified). | Объекты бакета: ключ, размер, время изменения |
 | `s3_get` | `evo s3 get` | нет | `bucket`, `key` | Download an S3 object up to 10 MiB (a larger one is refused with USAGE: use an S3 client or the console). | Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль) |
-| `s3_put` | `evo s3 put` | удаляет | `bucket`, `key` | Upload an S3 object from inline content (content) or base64 (content_base64). | Загрузить объект (существующий ключ перезаписывается) |
+| `s3_put` | `evo s3 put` | удаляет | `bucket`, `key` | Upload an S3 object from inline content (content) or base64 (content_base64); stored objects are billed. | Загрузить объект (существующий ключ перезаписывается) |
 | `s3_rm` | `evo s3 rm` | удаляет | `bucket`, `key` | Delete an S3 object. | Удалить объект |
 | `s3_bucket_create` | `evo s3 bucket-create` | да | `bucket` | Create an Object Storage (S3) bucket. | Создать бакет |
 | `s3_bucket_delete` | `evo s3 bucket-delete` | удаляет | `bucket` | Delete an EMPTY S3 bucket. | Удалить пустой бакет |
@@ -262,18 +262,20 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `stack_plan` | `evo stack plan` | нет | `manifest` | Plan a multi-resource STACK from ONE declarative manifest. | Спланировать стек ресурсов по одному манифесту (ничего не создаёт) |
+| `stack_plan` | `evo stack plan` | нет | `manifest` | Plan a multi-resource stack from one declarative manifest. | Спланировать стек ресурсов по одному манифесту (ничего не создаёт) |
 | `stack_apply` | `evo stack apply` | да | `job_id` | Apply a planned stack (from stack_plan). | Создать ресурсы спланированного стека (платно) |
-| `stack_status` | `evo stack status` | нет | `job_id` | Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], details{step: reason} of a step that is not done, error_reasons{step … | Ход развёртывания стека |
-| `stack_destroy` | `evo stack destroy` | удаляет | `job_id` | Tear down every resource in a stack (reverse order, idempotent). | Удалить все ресурсы стека (безвозвратно) |
+| `stack_status` | `evo stack status` | нет | `job_id` | Poll a stack: compact progress {status, done[], running[], pending[], details{step: reason} of a step not done, error_reasons{step: reason code, e.g. | Ход развёртывания стека |
+| `stack_destroy` | `evo stack destroy` | удаляет | `job_id` | Tear down every resource of a stack, in reverse order. | Удалить все ресурсы стека (безвозвратно) |
 
 ## vm
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `provision` | `evo vm create` | да | — | Provision a bare Cloud.ru VM (docker-compose: use 'deploy'), billable: confirmed=true. | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
+| `provision` | `evo vm create` | да | — | Provision a bare VM (docker-compose: use 'deploy'). | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
 | `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
 | `vm_start` | `evo vm start` | да | `vm_id` или `name` | Start a stopped VM (power_on) and wait until it is running. | Запустить остановленную ВМ и дождаться состояния running |
+| `vm_stop` | `evo vm stop` | удаляет | `vm_id` или `name` | Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. | Остановить работающую ВМ и дождаться состояния stopped |
+| `vm_reboot` | `evo vm reboot` | удаляет | `vm_id` или `name` | Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. | Перезагрузить работающую ВМ и дождаться состояния running |
 | `vm_list` | `evo vm list` | нет | — | List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. | Список ВМ проекта: id, имя, состояние, зона, время создания |
 | `list_zones` | `evo vm zones` | нет | — | List available Cloud.ru availability zones (UUID + name). | Зоны доступности (UUID и имя) |
 | `list_flavors` | `evo vm flavors` | нет | — | List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each, and what the catalogue says beyond the size: cpu_share … | Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц |
@@ -288,6 +290,8 @@
 | `subnet_delete` | `evo vpc subnet-delete` | удаляет | `subnet_id` | Delete a subnet by id (from list_subnets). | Удалить подсеть |
 | `list_security_groups` | `evo vpc security-groups` | нет | — | List Cloud.ru security groups (UUID, name, availability zone). | Группы безопасности (с --rules — вместе с правилами) |
 | `list_floating_ips` | `evo vpc fips` | нет | — | List Cloud.ru floating IPs (address, state, whether available to attach, zone when the API names it). | Floating IP: адрес, состояние, свободен ли |
+| `sg_rule_create` | `evo vpc sg-rule-create` | да | `security_group`, `direction`, `protocol`, `ports` | Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). | Добавить правило в группу безопасности |
+| `sg_rule_delete` | `evo vpc sg-rule-delete` | удаляет | `security_group`, `rule_id` | Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). | Удалить правило группы безопасности по его id |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |
 | `vpc_list` | `evo vpc list` | нет | — | List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). | Список VPC проекта |
 | `vpc_get` | `evo vpc get` | нет | `id` | Get full details of one VPC by id (from vpc_list). | VPC по ID: все сведения |
