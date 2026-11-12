@@ -413,6 +413,7 @@ func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp
 		group = sgID
 	}
 	ShowOpenedPorts(e.Printer, res, rec, group)
+	e.portsOnlyFromGroups = res.OnlyFromGroups
 }
 
 // ShowOpenedPorts tells on p what sgrules.Open did with the ports of rec in
@@ -427,6 +428,15 @@ func ShowOpenedPorts(p *output.Printer, res sgrules.OpenResult, rec *state.Deplo
 	// none for destroy to delete: say so, it was silent (v1.0.1).
 	if theirs := res.NotOurs(rec); len(theirs) > 0 {
 		p.StepDone(alreadyOpenText(theirs, group))
+	}
+	// A port a rule lets in only from another security group is not open
+	// to the source of the deploy: no rule is made for it (as before), and
+	// it is not called open — the address will not answer on it from
+	// outside that group.
+	for _, g := range res.OnlyFromGroups {
+		p.Warning(i18n.Tf("port %s is NOT open to the source of this deploy: in group %s a rule lets it in only from security group %s — no rule created; to open it, the person adds the rule (evo vpc sg-rule-create)",
+			"порт %s НЕ открыт для источника этого deploy: в группе %s правило пускает его только из группы безопасности %s — правило не создавалось; чтобы открыть, правило добавляет человек (evo vpc sg-rule-create)",
+			g.Port, group, strings.Join(g.Groups, ", ")))
 	}
 	if len(res.Failed) > 0 {
 		p.Warning(i18n.Tf("Could not open ports %s — open them in the security group in the Cloud.ru console",

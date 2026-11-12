@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -88,6 +89,57 @@ type OpenResult struct {
 	// Untracked rules were created, but the API returned no rule ID and the
 	// rule was not found afterwards: destroy cannot close them.
 	Untracked []string `json:"untracked,omitempty"`
+	// OnlyFromGroups are the ports no rule lets in from the source asked
+	// for: a rule lets them in only from another security group. No rule
+	// was created for them (as for AlreadyOpen), and they are not said to
+	// be open (GroupsOnly).
+	OnlyFromGroups []GroupOnlyPort `json:"open_only_to_groups,omitempty"`
+}
+
+// GroupOnlyPort is a port a group lets in only from other security groups.
+type GroupOnlyPort struct {
+	Port   string   `json:"port"`
+	Groups []string `json:"groups"`
+}
+
+// GroupsOnly names the security groups that alone let proto/port in, when
+// Coverage counts the port as open and no rule lets it in from an address:
+// each rule that covers it has another group as its source, so only the
+// interfaces of those groups get through — not cidr. nil when a rule with
+// an address source (or none named) covers the port, or none covers it.
+// Coverage is not changed by it: no second rule is made for such a port
+// (owner's decision 12.11, variant «б») — what is said about it is.
+func GroupsOnly(rules []*provision.SGRule, proto string, port int, cidr string) []string {
+	var byAddress, byGroup []*provision.SGRule
+	for _, r := range rules {
+		switch {
+		case r == nil:
+		case r.RemoteSecurityGroup != nil:
+			byGroup = append(byGroup, r)
+		default:
+			byAddress = append(byAddress, r)
+		}
+	}
+	if covered, _ := Coverage(byAddress, proto, port, cidr); covered {
+		return nil
+	}
+	seen := map[string]bool{}
+	var names []string
+	for _, r := range byGroup {
+		if covered, _ := Coverage([]*provision.SGRule{r}, proto, port, cidr); !covered {
+			continue
+		}
+		name := r.RemoteSecurityGroup.Name
+		if name == "" {
+			name = r.RemoteSecurityGroup.ID
+		}
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // inactive rule states: such a rule does not (or soon will not) open a port.
@@ -233,7 +285,13 @@ func Open(ctx context.Context, cloud provision.CloudAPI, projectID, sgID string,
 			pr := fmt.Sprintf("%d:%d", p, p)
 			label := Label(key)
 			if covered, _ := Coverage(rules, set.proto, p, source); covered || openedHere[key] {
-				res.AlreadyOpen = append(res.AlreadyOpen, label)
+				if groups := GroupsOnly(rules, set.proto, p, source); len(groups) > 0 && !openedHere[key] {
+					// Let in only from other groups: no rule is made, as
+					// before, and the port is not called open.
+					res.OnlyFromGroups = append(res.OnlyFromGroups, GroupOnlyPort{Port: label, Groups: groups})
+				} else {
+					res.AlreadyOpen = append(res.AlreadyOpen, label)
+				}
 				if !ownsPort(rec, key) {
 					addKey(&rec.PortsAlreadyOpen, key)
 				}
@@ -354,6 +412,13 @@ func addRule(rec *state.DeploymentRecord, r state.SGRule) {
 	rec.OpenedRules = append(rec.OpenedRules, r)
 }
 
+// GroupOnlyNote says a port of OnlyFromGroups in words: not open to the
+// source asked for, and what opens it — after the person's word.
+func GroupOnlyNote(g GroupOnlyPort) string {
+	return "port " + g.Port + " is NOT open to the source asked for: a rule lets it in only from security group " +
+		strings.Join(g.Groups, ", ") + " — no rule created; to open it, ask the person and add the rule with sg_rule_create"
+}
+
 // Note is a one-line summary of an OpenResult for MCP results.
 func (r OpenResult) Note() string {
 	var parts []string
@@ -362,6 +427,9 @@ func (r OpenResult) Note() string {
 	}
 	if len(r.AlreadyOpen) > 0 {
 		parts = append(parts, "already open "+strings.Join(r.AlreadyOpen, ","))
+	}
+	for _, g := range r.OnlyFromGroups {
+		parts = append(parts, GroupOnlyNote(g))
 	}
 	if len(r.Failed) > 0 {
 		parts = append(parts, "FAILED to open "+strings.Join(r.Failed, ",")+" — open them manually in the console")

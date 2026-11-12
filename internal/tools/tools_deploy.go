@@ -792,10 +792,17 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 	// protocol (release audit, L-25) — one rule with deploy (D52).
 	rules, _ := eng.Cloud.ListSecurityGroupRules(ctx, target.ID)
 	willOpen, alreadyOpen, wider := []string{}, []string{}, []string{}
+	// Ports a rule lets in only from another security group: not open to
+	// cidr, and no rule is added for them (sgrules.GroupsOnly) — named
+	// apart, never as «already open».
+	var groupOnly []sgrules.GroupOnlyPort
 	for _, p := range ports {
+		groups := sgrules.GroupsOnly(rules, proto, p, cidr)
 		switch covered, w := sgrules.Coverage(rules, proto, p, cidr); {
 		case !covered:
 			willOpen = append(willOpen, strconv.Itoa(p))
+		case len(groups) > 0:
+			groupOnly = append(groupOnly, sgrules.GroupOnlyPort{Port: strconv.Itoa(p), Groups: groups})
 		case w:
 			wider = append(wider, strconv.Itoa(p))
 			fallthrough
@@ -815,7 +822,11 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 	message := i18n.Tf("open_ports would open %s/%s from %s on security group %q (shared per zone — affects every VM in it).",
 		"open_ports откроет %s/%s из %s в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней).",
 		strings.Join(willOpen, ","), proto, cidr, target.Name)
-	if len(willOpen) == 0 {
+	if len(willOpen) == 0 && len(groupOnly) > 0 && len(alreadyOpen) == 0 {
+		message = i18n.Tf("None of the ports asked for is open to %s on security group %q, and open_ports adds no rule for them: a rule lets them in only from another security group (open_only_to_groups). The consent changes nothing.",
+			"Ни один из запрошенных портов не открыт для %s в группе безопасности %q, и open_ports правило для них не добавит: правило пускает их только из другой группы безопасности (open_only_to_groups). Подтверждение ничего не изменит.",
+			cidr, target.Name)
+	} else if len(willOpen) == 0 {
 		// Nothing to open: the question stays until major (owner's decision
 		// 06.11, variant Г; a repeat without it is the class of D81), and
 		// the preview says the consent changes nothing.
@@ -831,6 +842,7 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 		"will_open":      willOpen,
 		"already_open":   alreadyOpen,
 	}
+	openOnlyToGroups(preview, groupOnly, target, proto, cidr, false)
 	sgUseFields(preview, use)
 	if len(willOpen) > 0 && sgrules.Internet(cidr) {
 		preview["open_to_internet"] = true
@@ -851,6 +863,10 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 		for _, p := range ports {
 			pr := fmt.Sprintf("%d:%d", p, p)
 			if covered, wider := sgrules.Coverage(rules, proto, p, cidr); covered || openedHere[p] {
+				if !openedHere[p] && len(sgrules.GroupsOnly(rules, proto, p, cidr)) > 0 {
+					// Not open to cidr and no rule added: not «already open».
+					continue
+				}
 				skipped = append(skipped, strconv.Itoa(p))
 				if wider {
 					skippedWider = append(skippedWider, strconv.Itoa(p))
@@ -886,6 +902,7 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 			"already_open":   skipped,
 			"failed":         failed,
 		}
+		openOnlyToGroups(res, groupOnly, target, proto, cidr, true)
 		if len(skippedWider) > 0 {
 			// As the preview said it (already_open_wider).
 			res["already_open_wider"] = skippedWider
