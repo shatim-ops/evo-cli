@@ -208,7 +208,7 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 		},
 		func(ctx context.Context) (string, bool) {
 			if err := api.DeleteBackup(ctx, id); err != nil {
-				return backupDeleteRefused(tool, id, args, err, s)
+				return backupDeleteRefused(ctx, tool, id, args, err, s, read)
 			}
 			return deleteOutcome(ctx, args, goneWatch(tool, id, map[string]any{"backup_id": id}, "", "backup_get", read))
 		})
@@ -241,8 +241,16 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 			"восстановление из этой копии запрошено в последние минуты: пока оно идёт, платформа отвергает удаление, хотя копия числится готовой"))
 	}
 	// The backups whose full one this is (parent_full_backup_id: a field
-	// both runs of Г-16 saw, the specification does not name).
-	if all, err := api.ListBackups(ctx, eng.Config.ProjectID); err == nil {
+	// both runs of Г-16 saw, the specification does not name), read in the
+	// project of the backup — not the call's, which a key of the
+	// organization may name otherwise («Риск», 164, У3). A backup that
+	// does not name its project: the preview says they were not checked.
+	project, _ := card["project_id"].(string)
+	if project == "" {
+		will["dependent_backups_checked"] = false
+		warnings = append(warnings, i18n.T("the backup does not name its project, so evo did not check which backups name it as their full one",
+			"копия не называет свой проект — какие копии называют её своей полной, evo не проверил"))
+	} else if all, err := api.ListBackups(ctx, project); err == nil {
 		var deps []map[string]any
 		for _, b := range all {
 			if b["parent_full_backup_id"] == id {
@@ -251,8 +259,8 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 		}
 		if len(deps) > 0 {
 			will["dependent_backups"] = deps
-			warnings = append(warnings, i18n.Tf("%d backups name this one as their full backup: what becomes of them evo has not checked",
-				"%d копий называют эту своей полной: что станет с ними, evo не проверял", len(deps)))
+			warnings = append(warnings, i18n.Tf("backups that name this one as their full backup: %d; what becomes of them evo has not checked",
+				"копий, которые называют эту своей полной: %d; что станет с ними, evo не проверял", len(deps)))
 		}
 	} else {
 		return nil, clierrors.Wrap(clierrors.CodeAPIError,
@@ -270,10 +278,14 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 // restore under way (backup_restore_in_progress, one run of Г-16): the
 // backup is not deleted, the same call again — without the consent, which
 // does not carry over (R-85) — once the restore ends, no new reason
-// («Риск», conclusion 164, answer 2). A delete already under way
-// (backup_not_ready right after one): deleting (D61). Any other refusal is
-// the delete's own (deleteFailed).
-func backupDeleteRefused(tool, id string, args map[string]any, err error, s *Registry) (string, bool) {
+// («Риск», conclusion 164, answer 2). Not ready (backup_not_ready): the
+// runs saw it on a repeat of a delete only, and a backup still being
+// created may be refused with it too — the backup is read: deleting is a
+// delete under way (D61), gone is already_deleted, any other state an
+// error that names it and the way on («Риск», 164, У1). Any other refusal
+// is the delete's own (deleteFailed).
+func backupDeleteRefused(ctx context.Context, tool, id string, args map[string]any, err error, s *Registry,
+	read func(context.Context) (map[string]any, error)) (string, bool) {
 	switch platformCode(err) {
 	case "backup_restore_in_progress":
 		ans := map[string]any{"backup_id": id, "details": map[string]any{"cause": "restore_in_progress", "platform_code": "backup_restore_in_progress"},
@@ -283,8 +295,32 @@ func backupDeleteRefused(tool, id string, args map[string]any, err error, s *Reg
 		return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
 			i18n.Tf("backup %s is not deleted: a restore from it is under way", "копия %s не удалена: из неё идёт восстановление", id), "", err), ans), true
 	case "backup_not_ready":
-		return toJSON(map[string]any{"status": "deleting", "backup_id": id, "already_deleting": true,
-			"message": i18n.Tf("backup %s is already being deleted; nothing more was done", "копия %s уже удаляется; больше ничего не сделано", id)}), false
+		card, rerr := read(ctx)
+		if rerr != nil {
+			if isGone(rerr) {
+				return s.deleteFailed(tool, id, rerr)
+			}
+			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
+				i18n.Tf("backup %s is not deleted: the platform answered it is not ready, and its state could not be read", "копия %s не удалена: платформа ответила, что она не готова, а её состояние прочитать не удалось", id),
+				i18n.T("backup_get shows its state.", "Состояние показывает evo backup get."), err), backupGetNext(id)), true
+		}
+		state, _ := card["state"].(string)
+		if state == "deleting" {
+			return toJSON(map[string]any{"status": "deleting", "backup_id": id, "already_deleting": true,
+				"message": i18n.Tf("backup %s is already being deleted; nothing more was done", "копия %s уже удаляется; больше ничего не сделано", id)}), false
+		}
+		ans := backupGetNext(id)
+		ans["details"] = map[string]any{"state": state, "platform_code": "backup_not_ready"}
+		return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
+			i18n.Tf("backup %s is not deleted: the platform does not delete it in state %s", "копия %s не удалена: в состоянии %s платформа её не удаляет", id, quoteCloud(state)),
+			i18n.T("The backup stays and is billed. backup_get shows when it is created; then call backup_delete again.",
+				"Копия остаётся и тарифицируется. Когда она будет создана, покажет evo backup get; затем повторите удаление."), err), ans), true
 	}
 	return s.deleteFailed(tool, id, err)
+}
+
+// backupGetNext is the next step of a delete the platform refused for the
+// state of the backup: backup_get shows it.
+func backupGetNext(id string) map[string]any {
+	return map[string]any{"backup_id": id, "next_tool": "backup_get", "next_args": map[string]any{"backup_id": id}}
 }
