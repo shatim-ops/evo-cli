@@ -97,7 +97,7 @@
 | `disk_create` | `evo disk create` | да | `name`, `size_gb` | Create a block-storage disk. | Создать диск (с --attach-to — в зоне ВМ и сразу подключить) |
 | `disk_attach` | `evo disk attach` | да | `disk_id`, `vm` | Attach an existing disk to a VM (POST /disks/{id}/attach). | Подключить диск к ВМ (диск и ВМ должны быть в одной зоне) |
 | `disk_detach` | `evo disk detach` | да | `disk_id`, `vm` | Detach a disk from a VM (POST /disks/{id}/detach). | Отключить диск от ВМ |
-| `disk_resize` | `evo disk resize` | да | `disk_id`, `size_gb` | Grow a disk in place via PUT /disks/{id} (up to 16384 GB). | Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ) |
+| `disk_resize` | `evo disk resize` | да | `disk_id`, `size_gb` | Grow a disk in place (up to 16384 GB). | Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ) |
 | `disk_delete` | `evo disk delete` | удаляет | `disk_id` | Permanently delete a disk and all its data (irreversible). | Удалить диск и все данные на нём (безвозвратно) |
 
 ## dns
@@ -128,7 +128,7 @@
 | `marketplace_list` | `evo marketplace list` | нет | — | Read-only: what Cloud.ru offers to deploy, in one list: shared-catalogue VM images and Managed Kubernetes addons. | Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания |
 | `list_images` | `evo list-images` | нет | — | List available Cloud.ru VM boot images (UUID + name). | Загрузочные образы ВМ (UUID и имя) |
 | `image_create` | `evo image create` | да | `name`, `disk_id` | Create a VM image from a bootable disk. | Создать образ ВМ из загрузочного диска (платно, асинхронно) |
-| `image_get` | `evo image get` | нет | `image` или `image_id` | Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with … | Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ |
+| `image_get` | `evo image get` | нет | `image` или `image_id` | Get one VM image by name, display name or UUID (exact name, exact display_name, then a unique substring; several matches: USAGE with candidates[]). | Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ |
 | `image_delete` | `evo image delete` | удаляет | `image_id` | Delete a VM image. | Удалить образ ВМ |
 
 ## k8s
@@ -254,8 +254,8 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `snat_list` | `evo snat list` | нет | — | List SNAT gateways in the project. | SNAT-шлюзы проекта |
-| `snat_create` | `evo snat create` | да | `name` | Create a public SNAT gateway: outbound internet for every ROUTED subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out … | Создать публичный SNAT-шлюз: исходящий интернет для подсетей зоны (платно) |
+| `snat_list` | `evo snat list` | нет | — | List SNAT gateways of the project. | SNAT-шлюзы проекта |
+| `snat_create` | `evo snat create` | да | `name` | Create a public SNAT gateway: outbound internet for every routed subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out … | Создать публичный SNAT-шлюз: исходящий интернет для подсетей зоны (платно) |
 | `snat_delete` | `evo snat delete` | удаляет | `id` | Delete a SNAT gateway by id (from snat_list). | Удалить SNAT-шлюз (узлы зоны теряют исходящий интернет) |
 
 ## stack
@@ -272,13 +272,13 @@
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
 | `provision` | `evo vm create` | да | — | Provision a bare VM (docker-compose: use 'deploy'). | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
-| `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
+| `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
 | `vm_start` | `evo vm start` | да | `vm_id` или `name` | Start a stopped VM (power_on) and wait until it is running. | Запустить остановленную ВМ и дождаться состояния running |
 | `vm_stop` | `evo vm stop` | удаляет | `vm_id` или `name` | Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. | Остановить работающую ВМ и дождаться состояния stopped |
 | `vm_reboot` | `evo vm reboot` | удаляет | `vm_id` или `name` | Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. | Перезагрузить работающую ВМ и дождаться состояния running |
 | `vm_list` | `evo vm list` | нет | — | List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. | Список ВМ проекта: id, имя, состояние, зона, время создания |
 | `list_zones` | `evo vm zones` | нет | — | List available Cloud.ru availability zones (UUID + name). | Зоны доступности (UUID и имя) |
-| `list_flavors` | `evo vm flavors` | нет | — | List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each, and what the catalogue says beyond the size: cpu_share … | Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц |
+| `list_flavors` | `evo vm flavors` | нет | — | VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each, and what the catalogue says beyond the size: cpu_share (the guaranteed share of … | Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц |
 
 ## vpc
 

@@ -100,7 +100,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_get",
-			Description: "Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. Use this whenever you need a VM's IP — e.g. to wire a private service endpoint into a config or secret after creating the VM. Unlike 'list'/'status' (which read local state and omit the private IP), this calls the live API. Never shell out to curl/ssh to discover a VM's IP — use this tool.",
+			Description: "Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface. Use it whenever you need a VM's IP: 'list' and 'status' read the local state and omit the private IP. Do not shell out to curl or ssh for it.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id": strProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required."),
 				"name":  strProp("VM name (alternative to vm_id)."),
@@ -108,7 +108,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_start",
-			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. A VM that runs already answers already_running with no question; one that is starting is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. A running VM is charged for its flavor.",
+			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. Already running: already_running, no question. Starting: waited for, no second command. A repeat that must send the command asks again. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. A running VM is charged for its flavor.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
 				"name":      strProp("VM name (alternative to vm_id)."),
@@ -117,7 +117,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_stop",
-			Description: "Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. A VM that is stopped already answers already_stopped with no question; one that is stopping is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status stopping with next_tool. Do not stop the VM this server runs on. A stopped VM may stay billable: tariff_url.",
+			Description: "Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. Already stopped: already_stopped, no question. Stopping: waited for, no second command. A repeat that must send the command asks again. At the time limit of an MCP call the answer is status stopping with next_tool. Do not stop the VM this server runs on. A stopped VM may stay billable: tariff_url.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
 				"name":      strProp("VM name (alternative to vm_id)."),
@@ -126,7 +126,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_reboot",
-			Description: "Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. There is no «already»: every call is a new reboot: a repeat reboots the VM again, so each one asks. A VM that is rebooting is waited for and no command is sent; a stopped one is refused with vm_start as the step. At the time limit of an MCP call the answer is status rebooting with next_tool vm_get; reboot_accepted means the platform took the command and evo did not see the state change. Do not reboot the VM this server runs on.",
+			Description: "Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. Every call reboots the VM again and asks first. A VM that is rebooting is waited for and no command is sent; a stopped one is refused with vm_start as the step. At the time limit of an MCP call the answer is status rebooting with next_tool vm_get; reboot_accepted means the platform took the command and evo did not see the state change. Do not reboot the VM this server runs on.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
 				"name":      strProp("VM name (alternative to vm_id)."),
@@ -211,11 +211,8 @@ func (s *Registry) registerTools() {
 			}, "fip", "vm"),
 		},
 		{
-			Name: "image_get",
-			Description: "Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with candidates[]). " +
-				"Returns the image, ready and zones_ready, and fields[]: each image_metadata field with filled_by — evo (SSH key, VM name, login, random password), default, user (mandatory, evo cannot fill it) or none — plus create{cli, tool, args}. " +
-				"An image the project cannot use comes with available_in_project=false, a note and no create. " +
-				"The icon and the cloud-init user_data_template only with full=true. Read-only. Also the way to poll an image build until ready=true.",
+			Name:        "image_get",
+			Description: "Get one VM image by name, display name or UUID (exact name, exact display_name, then a unique substring; several matches: USAGE with candidates[]). Returns the image, ready and zones_ready, fields[] — each image_metadata field with filled_by: evo (SSH key, VM name, login, random password), default, user (mandatory, evo cannot fill it) or none — and create{cli, tool, args}. An image the project cannot use: available_in_project=false, a note, no create. The icon and the cloud-init user_data_template only with full=true. Read-only. Also polls an image build until ready=true.",
 			InputSchema: objSchema(map[string]any{
 				"image":    strProp("Image name, display name or UUID (from image_list). image or image_id is required."),
 				"image_id": strProp("Image UUID (from image_list); 'image' takes a name as well."),
@@ -267,7 +264,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "list_flavors",
-			Description: "List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each, and what the catalogue says beyond the size: cpu_share (the guaranteed share of a vCPU as the catalogue writes it; 1:1 — 100%, 1:3 — 30%, 1:10 — 10%, the Cloud.ru specification), gpu, spot (interruptible), zones (where a VM can be created; empty when the catalogue names zones and none is open). A key the catalogue does not send is left out. The filters keep only the flavors whose catalogue entry says so. Use a flavor name as the 'flavor' argument for deploy_plan in manual mode.",
+			Description: "VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each, and what the catalogue says beyond the size: cpu_share (the guaranteed share of a vCPU: 1:1 — 100%, 1:3 — 30%, 1:10 — 10%), gpu, spot (interruptible), zones (where a VM can be created; empty when the catalogue names zones and none is open). A key the catalogue does not send is left out. The filters keep only the flavors whose catalogue entry says so. A flavor's name is the 'flavor' argument of deploy_plan.",
 			InputSchema: objSchema(map[string]any{
 				"cpu":   atLeast(1, intProp("Only flavors with this many vCPUs.")),
 				"ram":   atLeast(1, intProp("Only flavors with this RAM, GB.")),
@@ -588,7 +585,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "disk_resize",
-			Description: "Grow a disk in place via PUT /disks/{id} (up to 16384 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead).",
+			Description: "Grow a disk in place (up to 16384 GB). Grow only: the API rejects a shrink and free-tier disks (free_tier_disk_resize_is_prohibited). Then grow the partition and the filesystem on the VM (growpart, resize2fs). A free-tier boot disk cannot be resized: recreate the VM with a paid disk.",
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   uuidProp("Disk UUID (from disk_list)."),
 				"size_gb":   intProp("New size in GB (must be larger than current; max 16384)."),
@@ -687,12 +684,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "snat_list",
-			Description: "List SNAT gateways in the project. A SNAT gateway gives private-subnet nodes (e.g. mk8s worker nodes) OUTBOUND internet access — needed to pull public container images (docker.io etc.), apt, or call external APIs. It is separate from a cluster's kubeApiInternet (which is inbound API-server access). Read-only.",
+			Description: "List SNAT gateways of the project. A SNAT gateway gives the nodes of private subnets (e.g. mk8s workers) outbound internet: public container images, apt, external APIs. It is not a cluster's kubeApiInternet, which is inbound access to the API server. Read-only.",
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
 			Name:        "snat_create",
-			Description: "Create a public SNAT gateway: outbound internet for every ROUTED subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out directly). One gateway per zone; it gets a public IP that counts against the public-IP quota and is released only with the gateway. Zone-level: defaults to the configured region; override with 'zone' (name) or 'availability_zone_id'. NOTE: this is NOT part of k8s_create — mk8s clusters come up without egress; create a SNAT gateway in the cluster's node zone if workloads need to pull public images.",
+			Description: "Create a public SNAT gateway: outbound internet for every routed subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out directly). One gateway per zone; its public IP counts against the public-IP quota and is released only with the gateway. Defaults to the configured zone; another: 'zone' (name) or 'availability_zone_id'. Not part of k8s_create: a cluster comes up without egress — create a gateway in its node zone if workloads pull public images.",
 			InputSchema: objSchema(map[string]any{
 				"name":                 strProp("Name for the SNAT gateway (required)."),
 				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-2'). Optional; resolved to a UUID. Defaults to the configured region."),
