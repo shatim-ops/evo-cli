@@ -459,6 +459,18 @@ PROJECT='' GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh"
 want "уборка без PROJECT: код" "$rc" 1
 grep -q 'нет PROJECT' "$tmp/out" || { echo "FAIL: уборка без PROJECT не назвала причину"; fail=1; }
 
+# Отказ по квоте останавливает свою пробу, а не следующую: после квоты на
+# группе безопасности (Г-11) проба Г-16 делает копию своей ВМ.
+g16_world
+fake_evo_answer disk_create 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
+cat >"$FAKE_DIR/http" <<'H'
+POST /security-groups 422 {"code":"quota_exceeded"}
+POST /backups 500 {"message":"boom"}
+H
+rc=0
+PROBES="g11 g16" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "квота в Г-11 не выключает Г-16: копия ВМ запрошена" "$(grep -c '^POST /backups$' "$FAKE_DIR/calls")" 1
+
 # Слова проб нет — область ничего не шлёт.
 world
 : >"$FAKE_DIR/http"

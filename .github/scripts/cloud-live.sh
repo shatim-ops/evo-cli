@@ -2480,8 +2480,13 @@ area_ops() {
 	local zid
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена в list_zones"; return 1; }
+	# QUOTA_HIT — на одну пробу: отказ по квоте останавливает её, а не
+	# следующую (у той другие ресурсы и своя строка Г-01).
+	QUOTA_HIT=0
 	! probe_on g10 || probe_g10 "$zid"
+	QUOTA_HIT=0
 	! probe_on g11 || probe_g11 "$zid"
+	QUOTA_HIT=0
 	! probe_on g16 || probe_g16 "$zid"
 }
 

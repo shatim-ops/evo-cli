@@ -216,6 +216,12 @@ func TestWorkflows_CleanupGetsTheProbeWords(t *testing.T) {
 	if !ok {
 		t.Fatal("cloud-e2e.yml: no job cleanup — update the test")
 	}
+	wf := readWorkflows(t)["cloud-e2e.yml"]
+	dispatch, _ := wf.On["workflow_dispatch"].(map[string]any)
+	inputs, _ := dispatch["inputs"].(map[string]any)
+	if _, ok := inputs["probes"]; !ok {
+		t.Error("cloud-e2e.yml: no input probes — the word g20 could never be given to cleanup_only")
+	}
 	if got := job.Env["PROBES"]; got != "${{ inputs.probes }}" {
 		t.Errorf("job cleanup: env PROBES = %q, want the input probes: the word g20 would not reach e2e_live_runs.sh", got)
 	}
