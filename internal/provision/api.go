@@ -23,6 +23,10 @@ type CloudAPI interface {
 	CreateImage(ctx context.Context, req CreateImageReq) (map[string]any, error)
 	DeleteImage(ctx context.Context, imageID, projectID string) error
 	GetVMDetail(ctx context.Context, id string) (*VMDetail, error)
+	// SetVMPower sends a power command to a VM (POST /vms/{id}/set-power):
+	// PowerOn, PowerOff or PowerReboot. The platform answers with no body
+	// and no operation: the progress is the state of the VM.
+	SetVMPower(ctx context.Context, id, command string) error
 	CreateFloatingIP(ctx context.Context, req CreateFloatingIPRequest) (*FloatingIP, error)
 	GetFloatingIP(ctx context.Context, id string) (*FloatingIP, error)
 

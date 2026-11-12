@@ -205,3 +205,63 @@ func nextStep(answer map[string]any, tool string, args map[string]any) {
 	answer["next_tool"] = tool
 	answer["next_args"] = next
 }
+
+// waitState polls the state of a resource until done says the state ends
+// the wait, at the VM poll interval (Engine.Timings.VMPollInterval, 5 s by
+// default), for at most limit (or Timings.VMPollTimeout when shorter). read
+// gives the state and whether the read saw the resource; a read that did
+// not (a fault of the network, a 5xx) is tried again, and read's error
+// ends the wait at once — the resource is not there any more, and a wait
+// that went on would answer «still on its way» for what is gone. waiting words each state that does not end the wait,
+// and the wait says it when the state changes: a wait is not silent, in the CLI and over MCP alike
+// (CLAUDE.md §6, axis 2). It returns the last state read and how the wait
+// ended: by done (err is done's), by its own limit (timedOut is how long it
+// waited) or by the budget of an MCP call (atLimit, D69) — the resource
+// goes on in the cloud, and the caller answers its state and the next
+// step, not an error. One loop for the waits on a state: a disk's, a VM's
+// (D99, П4 and П5).
+func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
+	read func(context.Context) (state string, seen bool, err error), waiting func(state string) string,
+	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, err error) {
+	pp, _ := progressOf(ctx)
+	every := 5 * time.Second
+	if eng.Timings.VMPollInterval > 0 {
+		every = eng.Timings.VMPollInterval
+	}
+	timeout := limit
+	if t := eng.Timings.VMPollTimeout; t > 0 && t < timeout {
+		timeout = t
+	}
+	// Within an MCP call the call's budget ends the wait too (D69).
+	timeout, capped := callBound(ctx, timeout)
+	deadline := time.Now().Add(timeout)
+	last = "unknown"
+	for {
+		st, seen, err := read(ctx)
+		if err != nil {
+			// The resource is gone: nothing to wait for.
+			return last, 0, false, err
+		}
+		if seen {
+			ok, err := done(st)
+			if st != last && !ok {
+				pp.Step(0, 0, waiting(st))
+			}
+			last = st
+			if ok {
+				return st, 0, false, err
+			}
+		}
+		if !time.Now().Before(deadline) {
+			if capped {
+				return last, 0, true, nil
+			}
+			return last, timeout, false, nil
+		}
+		select {
+		case <-ctx.Done():
+			return last, 0, false, ctx.Err()
+		case <-time.After(min(every, time.Until(deadline))):
+		}
+	}
+}

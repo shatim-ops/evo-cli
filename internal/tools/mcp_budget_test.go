@@ -195,6 +195,24 @@ func apiBudget(tool string, args map[string]any, made ...faultResource) budgetWa
 	}}
 }
 
+// vmPowerBudget is a call of a power tool on a VM in state whose
+// transition the cloud never ends (the fake's VM stays in the transient
+// state: no test steps it): the call can end only by its budget.
+func vmPowerBudget(tool, state string) budgetWait {
+	return budgetWait{run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
+		faultToolsIsolate(t)
+		cloud := &faultCloud{}
+		vm, err := cloud.CreateVM(context.Background(), provision.CreateVMRequest{Name: "web"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cloud.setVMState(vm.ID, state)
+		r := budgeted(budgetComputeRegistry(t, cloud, t.TempDir(), engine.Timings{}))
+		args := map[string]any{"name": "web", "confirmed": true}
+		return func(ctx context.Context) (string, bool) { return r.handlers[tool](ctx, args) }, nil
+	}}
+}
+
 // opBudget is a *_operation call that asks to wait longer than the budget
 // for an operation that never ends.
 func opBudget(tool string) budgetWait {
@@ -314,6 +332,7 @@ var mcpWaits = map[string]budgetWait{
 	"disk_attach":  apiBudget("disk_attach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
 	"disk_detach":  apiBudget("disk_detach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
 	"disk_resize":  apiBudget("disk_resize", map[string]any{"disk_id": faultDisk, "size_gb": 20, "confirmed": true}, slowDisk),
+	"vm_start":     vmPowerBudget("vm_start", "stopped"),
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,
