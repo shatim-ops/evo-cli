@@ -77,9 +77,13 @@ func TestListFilters_EmptyFilterIsUsage(t *testing.T) {
 }
 
 // FB182-1 (b): a list narrowed by evo alone answers how many there were
-// (total, condition 2 of the risk conclusion 104). An argument of scope
-// (cluster_id of k8s_nodepools, zone_id of dns_records) is not a filter:
-// evo read every item of the scope, so total stands under «name» too.
+// (total, condition 2 of the risk conclusion 104), and filters names only
+// what selected. An argument of scope (cluster_id of k8s_nodepools,
+// zone_id of dns_records) is not a filter: evo read every item of the
+// scope, so total stands under «name» too. The help, the hint of a long
+// list and the card of the group name the filters from one source
+// (ListFilters, listSpec.args): TestListFilters_HelpNamesOnlyFlags
+// (internal/cli) holds the three.
 func TestListFilters_NameFilterAnswersTotal(t *testing.T) {
 	r := filterRegistry(t)
 	seen := 0
@@ -104,6 +108,10 @@ func TestListFilters_NameFilterAnswersTotal(t *testing.T) {
 		_ = json.Unmarshal([]byte(text), &m)
 		if _, ok := m["total"]; !ok {
 			t.Errorf("%s under name: no total (filters %v, filtered_by %v) — evo read the whole list of its scope", name, m["filters"], m["filtered_by"])
+		}
+		// filters names what selected: the filter, not the scope.
+		if f, _ := m["filters"].(map[string]any); len(f) != 1 || f["name"] == nil {
+			t.Errorf("%s under name: filters %v — want name alone, an argument of scope is not a filter", name, m["filters"])
 		}
 	}
 	if seen < 15 {
