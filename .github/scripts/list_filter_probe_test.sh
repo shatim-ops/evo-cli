@@ -4,6 +4,7 @@
 # (ignored), отбирает иначе (diff); повтор id в ответе облака — не diff;
 # id не попадают ни в stdout, ни в stderr. STRICT=1: параметр облака с
 # итогом не same — выход 1 и ::error:: с его именем; без STRICT — выход 0.
+# Список, заполнивший страницу, — «не проверено» и ::warning::.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
@@ -56,6 +57,15 @@ strict=$(PATH="$work/bin:$PATH" STRICT=1 KEY_ID=k SECRET=s PROJECT=p GITHUB_WORK
 if [ "$code" != 1 ] || ! grep -qE '^::error::.* vms:availability_zone_ids vms:statuses — ' <<<"$strict"; then
 	echo "FAIL: STRICT=1 — выход $code, нужна ошибка по vms:availability_zone_ids и vms:statuses:"
 	grep '^::error::' <<<"$strict" || true
+	fail=1
+fi
+# Полная страница: в заглушке у vms 3 элемента — при PROBE_PAGE=3 vms не
+# проверяется, а говорит об этом.
+page=$(PATH="$work/bin:$PATH" PROBE_PAGE=3 KEY_ID=k SECRET=s PROJECT=p GITHUB_WORKSPACE="$here/../.." bash "$here/list_filter_probe.sh" 2>&1)
+if ! grep -qE '^vms_zone +всего=3 — страница полная, не проверено$' <<<"$page" ||
+	! grep -q '^::warning::vms_zone: список заполнил страницу (3)' <<<"$page" ||
+	grep -qE '^vms_zone +значение' <<<"$page"; then
+	echo "FAIL: полная страница не названа или проверена"
 	fail=1
 fi
 [ "$fail" = 0 ] && echo "list_filter_probe: ok"

@@ -40,6 +40,8 @@ TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
 echo "::add-mask::$TOKEN"
 
 C=https://compute.api.cloud.ru/api/v1
+# PAGE — размер страницы: проба читает одну (PROBE_PAGE — для теста).
+PAGE=${PROBE_PAGE:-100}
 
 # IN_CLOUD — параметры, которые evo передаёт облаку (путь:параметр), как
 # их объявляет inCloud в internal/tools/list_filters.go; список держит
@@ -65,7 +67,7 @@ items() { jq -c 'if type == "array" then . else ([.[] | arrays] | first // []) e
 #   VALUES_JQ — уникальные значения параметра по полному списку;
 #   RULE_JQ   — правило evo: select(...) над элементом с $v.
 check() {
-	local name=$1 param=$3 values=$4 rule=$5 base="$C/$2?limit=100" i=0
+	local name=$1 param=$3 values=$4 rule=$5 base="$C/$2?limit=$PAGE" i=0
 	[ "${6:-project}" = project ] && base="$base&project_id=$PROJECT"
 	local code
 	code=$(get "$base" "$tmp/all")
@@ -76,6 +78,14 @@ check() {
 	items "$tmp/all" >"$tmp/all.items"
 	local total
 	total=$(jq length "$tmp/all.items")
+	# Одна страница (limit=100): полная — значит, в проекте может быть больше,
+	# и обе выборки строились бы по её части (Г2 аудита 1.8.2). Не проверено,
+	# а не same.
+	if [ "$total" -ge "$PAGE" ]; then
+		printf '%-34s всего=%s — страница полная, не проверено\n' "$name" "$total"
+		echo "::warning::$name: список заполнил страницу ($PAGE) — проба по первой странице не проверяет параметр"
+		return
+	fi
 	# Не больше 4 значений на параметр: зон 2–3, состояний 2–4 — все; у
 	# flavor, cpu и ram — первые 4: семантика параметра одна на все значения,
 	# а каждая проверка — запрос к API.
