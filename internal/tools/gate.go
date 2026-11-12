@@ -33,7 +33,7 @@ type Plan struct {
 	// error refuses the call, as the planner's. It only builds the preview
 	// (the price, the quota, the names): every refusal of the call itself
 	// is the planner's — one made here would be skipped silently by a call
-	// with confirmed=true (conclusion 119 of «Риск»).
+	// with confirmed=true (docs/internal/risk/1.9.md, conclusion 119).
 	PreviewOf func(ctx context.Context) (map[string]any, error)
 	// Execute makes the call; the gate runs it only with consent.
 	Execute func(ctx context.Context) (string, bool)

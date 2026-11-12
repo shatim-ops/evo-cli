@@ -161,6 +161,12 @@ func provenanceRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, stri
 type fipCloud struct{ provision.CloudAPI }
 
 func (*fipCloud) SetToken(string) {}
+
+// The list of the project, which the preview reads for the project of the
+// floating IP (namedProject): empty, the tests here read the provenance.
+func (*fipCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return nil, nil
+}
 func (*fipCloud) GetFloatingIP(_ context.Context, id string) (*provision.FloatingIP, error) {
 	return &provision.FloatingIP{ID: id, IPAddress: "203.0.113.5", State: "available"}, nil
 }

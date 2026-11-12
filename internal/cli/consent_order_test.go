@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -39,6 +40,163 @@ var lateRefusals = map[string]string{}
 // — and waits for the major; release plan 1.8).
 var alreadyAsks = map[string]string{
 	"open_ports: world: ports open already": "every port open already: asks for consent to nothing (exit 3); in 1.8 its preview says so (variant Г), the answer without the question is breaking — 2.0",
+}
+
+// repeatIsANewChange are the changes with no repeat that is a success:
+// every send is a change of its own (a reboot, a new version), so there is
+// no "already" to answer (D99, П3). The value is the words of the tool's
+// description that say so: the agent learns it there, before the call.
+var repeatIsANewChange = map[string]string{}
+
+// repeatRefused are the changes shipped before the invariant whose repeat
+// is refused before the question, with the state named, and not answered
+// already_<outcome>: safe — no question, no write — and kept as it is,
+// since the answer of a shipped tool does not change without a decision
+// (USAGE, exit 1 → 0 is breaking). "tool" → the world of consentWorlds
+// that has the change already and names the tool in refusedBy. The list
+// is closed: a new change answers already_<outcome> (D99, П3; «1.9 —
+// релиз», 12.11, variant «а»).
+var repeatRefused = map[string]string{
+	"disk_resize": "disk of the size asked",
+}
+
+// repeatUndeclared are the changes shipped before the invariant whose
+// repeat nothing declares: no world has the change already, and no
+// declaration says a repeat is a new change. "tool" → what a repeat does
+// as far as the code shows, for the session that declares it. It only
+// shrinks, and a new tool does not join it: a new change comes with its
+// world (consentWorld.alreadyFor) or its line of repeatIsANewChange.
+// Closes by 1.9: each line is a world or a declaration of «разработка»
+// (release plan 1.9, «Инварианты до новых изменяющих операций», Н1).
+var repeatUndeclared = map[string]string{
+	"cert_renew":         "a renewal of a certificate being renewed: no world; or every send is a renewal",
+	"deploy_apply":       "an apply of a plan applied: no world",
+	"k8s_apply":          "the repeat is the cluster's (kubectl apply): not declared",
+	"k8s_helm":           "the repeat is the cluster's (helm): not declared",
+	"k8s_kubectl":        "the repeat is the cluster's (kubectl): not declared",
+	"s3_bucket_create":   "a bucket the profile has: no world, and no check of the name taken",
+	"s3_put":             "an object the bucket has: the repeat overwrites — not declared",
+	"secret_add_version": "every send is a new version: not declared",
+	"stack_destroy":      "a destroy of a stack destroyed answers already_destroyed: no world",
+}
+
+// repeatAsksUntilTheMajor are the changes shipped before the invariant
+// whose repeat asks for consent to nothing, or is refused by the platform
+// after the question: answering it without the question changes an exit
+// code (3 → 0, 5 → 0), which is breaking and waits for the major (owner's
+// decision 12.11, release plan 1.9, «Повтор у выпущенных инструментов»,
+// п. 4; «Риск», заключение 120). "tool" → what a repeat does, and what 1.9
+// makes honest without changing the code. It only shrinks. Closes by 2.0.
+var repeatAsksUntilTheMajor = map[string]string{
+	"ca_start":       "a start of a running container app asks for consent; in 1.9 the state is read and named in the preview",
+	"ca_stop":        "a stop of a stopped container app asks for consent; in 1.9 the state is read and named in the preview",
+	"deploy":         "over MCP an unchanged compose file answers confirmation_required with unchanged: true and then changes nothing; the CLI asks nothing",
+	"k8s_add_addon":  "an addon the cluster has is asked about and sent; in 1.9 the preview says what OVERWRITE does to the installed one",
+	"pg_db_create":   "a database the cluster has: the platform refuses after the question; in 1.9 the refusal says it exists",
+	"pg_user_create": "a user the cluster has: the platform refuses after the question, and the refusal says it exists (internal/tools/pg_user_create_exists_test.go)",
+	"stack_apply":    "an apply of a job done asks for consent and creates nothing; in 1.9 the question says so and carries unchanged: true",
+}
+
+// TestConsent_EveryChangeDeclaresItsRepeat keeps the repeat of every
+// change declared (CLAUDE.md §1: a repeat is safe; owner's decision 11.11,
+// Н1). A tool that changes the cloud is of one of the classes:
+//
+//   - a delete — the registry declares what it deletes, and a repeat
+//     answers already_deleted (D26; the contract map's "deletes");
+//   - a create whose name is checked against what is there (axis 1; the
+//     contract map's "taken");
+//   - a change of a state — a world of consentWorlds has the change
+//     already (alreadyFor), and TestConsent_RefusalWithoutWriteComesBefore
+//     TheQuestion calls the tool in it: no question, no write, a status
+//     already_<outcome>;
+//   - a change every send of which is new (repeatIsANewChange), said in
+//     the tool's description;
+//   - of the tools shipped before the invariant, a repeat refused before
+//     the question with the state named (repeatRefused).
+//
+// The classes of the registry are read from docs/internal/contract-map.json,
+// which TestContractMap keeps equal to the declarations.
+func TestConsent_EveryChangeDeclaresItsRepeat(t *testing.T) {
+	var declared map[string]struct {
+		Taken   string          `json:"taken"`
+		Deletes json.RawMessage `json:"deletes"`
+	}
+	if err := json.Unmarshal(mustReadRepo(t, "docs/internal/contract-map.json"), &declared); err != nil {
+		t.Fatalf("docs/internal/contract-map.json: %v", err)
+	}
+	worlds := map[string][]string{}
+	for name, w := range consentWorlds {
+		for _, tool := range w.alreadyFor {
+			worlds[tool] = append(worlds[tool], name)
+		}
+	}
+	byName := map[string]tools.Tool{}
+	for _, tl := range newRegistry().Tools() {
+		byName[tl.Name] = tl
+		if !tl.Mutating {
+			continue
+		}
+		var classes []string
+		if d, ok := declared[tl.Name]; ok {
+			if len(d.Deletes) > 0 {
+				classes = append(classes, "a delete (deleteTargets)")
+			}
+			if d.Taken != "" {
+				classes = append(classes, "a create with its name checked (taken)")
+			}
+		} else {
+			t.Errorf("%s changes the cloud and is not in docs/internal/contract-map.json: regenerate it (go test ./internal/tools -run TestContractMap -update-contract-map)", tl.Name)
+		}
+		if len(worlds[tl.Name]) > 0 {
+			classes = append(classes, "a change a world already has (alreadyFor)")
+			// The world counts only if the test of the worlds calls the
+			// tool in it: it skips a tool without arguments of parity.
+			if base, ok := parityArgs[tl.Name]; !ok || !tools.NeedsConsent(tl, base) {
+				t.Errorf("%s: the world %q has its change already, but the tool has no call that asks for consent in parityArgs — the repeat is never called", tl.Name, worlds[tl.Name][0])
+			}
+		}
+		if words := repeatIsANewChange[tl.Name]; words != "" {
+			classes = append(classes, "a change every send of which is new (repeatIsANewChange)")
+			if !strings.Contains(tl.Description, words) {
+				t.Errorf("%s: repeatIsANewChange quotes %q, and the description does not say it — the agent learns from the description that a repeat is a new change", tl.Name, words)
+			}
+		}
+		if world := repeatRefused[tl.Name]; world != "" {
+			classes = append(classes, "a repeat refused before the question (repeatRefused)")
+			if w, ok := consentWorlds[world]; !ok || !slices.Contains(w.refusedBy, tl.Name) || w.names == "" {
+				t.Errorf("%s: repeatRefused names the world %q, which is not a world of consentWorlds that the tool refuses in (refusedBy) with the state named (names)", tl.Name, world)
+			}
+		}
+		pending := repeatUndeclared[tl.Name] != "" || repeatAsksUntilTheMajor[tl.Name] != ""
+		switch {
+		case len(classes) == 0 && !pending:
+			t.Errorf("%s changes the cloud and does not declare its repeat: add a world of consentWorlds that has the change already (alreadyFor) — the repeat answers already_<outcome> without the question and without a write — or, if every send is a change of its own, a line of repeatIsANewChange with the words of the description that say so (D99, П3)", tl.Name)
+		case len(classes) > 1 && repeatIsANewChange[tl.Name] != "":
+			// A delete or a create may have a world of its repeat too
+			// (close_ports); a change every send of which is new has no
+			// repeat that is a success, so no other class.
+			t.Errorf("%s declares that every send is a new change, and a repeat that is not one (%s)", tl.Name, strings.Join(classes, "; "))
+		case len(classes) > 0 && pending:
+			t.Errorf("repeatUndeclared or repeatAsksUntilTheMajor names %s, which now is %s: remove the line (the lists only shrink)", tl.Name, classes[0])
+		case repeatUndeclared[tl.Name] != "" && repeatAsksUntilTheMajor[tl.Name] != "":
+			t.Errorf("%s is in repeatUndeclared and in repeatAsksUntilTheMajor: one list a tool", tl.Name)
+		}
+	}
+	for _, table := range []struct {
+		name  string
+		tools map[string]string
+	}{{"repeatIsANewChange", repeatIsANewChange}, {"repeatRefused", repeatRefused}, {"repeatUndeclared", repeatUndeclared}, {"repeatAsksUntilTheMajor", repeatAsksUntilTheMajor}} {
+		for name := range table.tools {
+			if tl, ok := byName[name]; !ok || !tl.Mutating {
+				t.Errorf("%s names %s, which is not a tool that changes the cloud: remove the line", table.name, name)
+			}
+		}
+	}
+	for tool, names := range worlds {
+		if tl, ok := byName[tool]; !ok || !tl.Mutating {
+			t.Errorf("the world %q has the change of %s already, which is not a tool that changes the cloud", names[0], tool)
+		}
+	}
 }
 
 // jobStarts answer a refused write as a success by design: the call starts
@@ -189,6 +347,15 @@ var consentWorlds = map[string]consentWorld{
 		`{"id":"` + consentOtherID + `","direction":"ingress","ip_protocol":"tcp","port_range":"443:443","remote_ip_prefix":"0.0.0.0/0"}`),
 		alreadyFor: []string{"open_ports"}},
 	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports"}},
+	// The disk has the size disk_resize asks for (parityArgs: 50 GB): the
+	// repeat of a resize is refused before the question, and the refusal
+	// names the size the disk has (repeatRefused).
+	"disk of the size asked": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","name":"old","size":50,"state":"available"}`)
+	}, refusedBy: []string{"disk_resize"}, names: "50 GB"},
 	"disk larger than requested": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 			return nil
@@ -426,6 +593,10 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		variant  consentWorld
 		refuse   bool
 		attempts int
+		// reads are the requests of the last call;
+		// absent are the requests the world answers 404 to (previewOnly).
+		reads  map[string]bool
+		absent map[string]bool
 	)
 	world := w.rt.extra
 	w.rt.extra = func(r *http.Request) (*http.Response, error) {
@@ -436,7 +607,17 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		if write && refusing {
 			attempts++
 		}
+		read := r.Method + " " + r.URL.Host + r.URL.Path
+		// A POST without consent is a read by meaning (the price of a
+		// preview): every request of the call counts.
+		if reads != nil {
+			reads[read] = true
+		}
+		gone := absent[read]
 		mu.Unlock()
+		if gone {
+			return consentJSON(http.StatusNotFound, `{"code":"NOT_FOUND","message":"the test has no such resource"}`), nil
+		}
 		if write && refusing {
 			return consentJSON(http.StatusForbidden, `{"code":"FORBIDDEN","message":"the test refuses every write"}`), nil
 		}
@@ -497,6 +678,7 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		w.rt.takeWrites()
 		mu.Lock()
 		variant, refuse, attempts = c.world, confirmed, 0
+		reads = map[string]bool{}
 		mu.Unlock()
 		ans := first(srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": a}))
 		mu.Lock()
@@ -524,10 +706,49 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			}
 		}
 	}
+	// readsOf are the requests of the last call.
+	readsOf := func() map[string]bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return reads
+	}
 	for _, tl := range newRegistry().Tools() {
 		base, ok := parityArgs[tl.Name]
 		if !ok || !tools.NeedsConsent(tl, base) {
 			continue
+		}
+		// A request only the preview makes does not decide the call
+		// («Риск · 1.9», заключение 119: a check that lives in the lazy
+		// building of the preview, Plan.PreviewOf, is skipped by an agent
+		// that sends confirmed=true at once). The requests the call makes
+		// without consent and not with it are the preview's own; in a
+		// world that has none of them (404), a call refused before the
+		// question must be refused with consent too, and not write.
+		plain := consentCase{name: "the preview's own reads are gone", args: copyArgs(base)}
+		call(tl, plain, false)
+		previewOnly := readsOf()
+		call(tl, plain, true)
+		for r := range readsOf() {
+			delete(previewOnly, r)
+		}
+		if len(previewOnly) > 0 {
+			mu.Lock()
+			absent = previewOnly
+			mu.Unlock()
+			if before, refused, _ := call(tl, plain, false); refused && before["status"] != "confirmation_required" {
+				if after, _, writes := call(tl, plain, true); writes > 0 || after["reason"] != before["reason"] {
+					names := make([]string, 0, len(previewOnly))
+					for r := range previewOnly {
+						names = append(names, r)
+					}
+					sort.Strings(names)
+					found[tl.Name+": "+plain.name] = fmt.Sprintf("refused with %v before the question, when %s answers 404; with confirmed=true the call does not read it and sends %d write(s), reason %v — the check belongs to the planner, not to the preview",
+						before["reason"], strings.Join(names, ", "), writes, after["reason"])
+				}
+			}
+			mu.Lock()
+			absent = nil
+			mu.Unlock()
 		}
 		for _, c := range consentCases(tl, base) {
 			key := tl.Name + ": " + c.name
@@ -545,6 +766,11 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 					already[key] = fmt.Sprintf("writes %d time(s) for a change the world already has", writes)
 				case before["status"] != after["status"]:
 					already[key] = fmt.Sprintf("answers %v without confirmed, %v with it", before["status"], after["status"])
+				case !strings.HasPrefix(fmt.Sprint(before["status"]), "already_"):
+					// One form for every repeat (D26's already_deleted, D81,
+					// D99 П3): the agent tells a repeat from a change by the
+					// status, without reading the text.
+					already[key] = fmt.Sprintf("answers a change the world already has with status %v, not already_<outcome>", before["status"])
 				}
 				continue
 			}
@@ -569,6 +795,19 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			}
 			after, failed, writes := call(tl, c, true)
 			emptyIn(key+" (after consent)", after)
+			// A refusal before the question is the call's, not the
+			// preview's: the same call with confirmed=true is refused
+			// with the same reason and writes nothing. A check that
+			// lives in the building of the preview (Plan.PreviewOf) is
+			// skipped on the path of an agent that sends confirmed at
+			// once («Риск · 1.9», заключение 119).
+			if before, refused, _ := call(tl, c, false); refused && before["status"] != "confirmation_required" {
+				if !failed || writes > 0 || after["reason"] != before["reason"] {
+					found[key+" (refusal skipped with consent)"] = fmt.Sprintf("refused with %v before the question; with confirmed=true the answer is %s after %d write(s)",
+						before["reason"], clipLine(fmt.Sprint(after)), writes)
+				}
+				continue
+			}
 			if writes > 0 && !failed && jobStarts[tl.Name] == "" {
 				// The world refused the write: a success is a resource
 				// that is not there, or not the call's (K1 after the

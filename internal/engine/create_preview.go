@@ -69,9 +69,13 @@ type CreatePreview struct {
 	Name     string `json:"name,omitempty"`
 	// ProjectFrom is where the project comes from: profile, project, env,
 	// flag (the configuration's origins), argument (the call's own), record
-	// (a deployment's state record) or plan (the saved plan of deploy_apply).
+	// (a deployment's state record), plan (the saved plan of deploy_apply)
+	// or resource (OriginResource: the project of the resource the call
+	// addresses by id). ProjectNote stands with a project that is not the
+	// call's, or instead of one that could not be read (tools.namedProject).
 	ProjectID   string              `json:"project_id,omitempty"`
 	ProjectFrom string              `json:"project_from,omitempty"`
+	ProjectNote string              `json:"project_note,omitempty"`
 	Zone        *deployplan.RefSpec `json:"zone,omitempty"` // of a resource other than a VM
 	VM          *deployplan.VMSpec  `json:"vm,omitempty"`
 	PublicIP    *bool               `json:"public_ip,omitempty"`
@@ -672,8 +676,14 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 
 	var lines []string
 	lines = append(lines, createdLine(p))
-	if p.ProjectID != "" {
+	switch {
+	case p.ProjectID != "":
 		lines = append(lines, previewLabel("project", "проект")+projectText(p.ProjectID, p.ProjectFrom))
+		if p.ProjectNote != "" {
+			lines = append(lines, previewLabel("warning", "внимание")+p.ProjectNote)
+		}
+	case p.ProjectNote != "":
+		lines = append(lines, previewLabel("project", "проект")+p.ProjectNote)
 	}
 	if vm := p.VM; vm != nil {
 		if vm.Flavor.Name != "" || vm.Flavor.ID != "" {

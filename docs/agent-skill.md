@@ -121,7 +121,7 @@ of a group before its first change.
 | `dns` | `evo dns …` | 9 | 4 |
 | `iam` | `evo iam …` | 1 | 0 |
 | `image` | `evo image create`, `evo image delete`, `evo image get`, `evo image list`, `evo marketplace list` | 6 | 2 |
-| `k8s` | `evo k8s …` | 16 | 7 |
+| `k8s` | `evo k8s …` | 17 | 7 |
 | `kafka` | `evo kafka …` | 7 | 2 |
 | `monitoring` | `evo metrics …` | 2 | 0 |
 | `nlb` | `evo lb create`, `evo lb delete`, `evo lb get`, `evo lb list`, `evo lb operation`, `evo tg create`, `evo tg delete`, `evo tg get`, `evo tg list` | 9 | 4 |

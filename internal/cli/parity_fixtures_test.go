@@ -100,6 +100,7 @@ var parityArgs = map[string]map[string]any{
 	"k8s_kubeconfig":     {"cluster_id": addonClusterID},
 	"k8s_operation":      {"operation_id": parityVM},
 	"k8s_nodepools":      {"cluster_id": addonClusterID},
+	"k8s_nodepool_get":   {"nodepool_id": parityVM},
 	"k8s_addons":         {"query": "cert"},
 	"k8s_addon_versions": {"name": "cert-manager"},
 	"k8s_delete":         {"cluster_id": addonClusterID},
@@ -491,8 +492,12 @@ func parityRequest(r *http.Request) string {
 }
 
 // parityObject is one resource of the world: the fields the tools read
-// first, in the shape most Cloud.ru APIs use.
-const parityObject = `{"id":"` + parityVM + `","name":"web","status":"ACTIVE","state":"ACTIVE"}`
+// first, in the shape most Cloud.ru APIs use. It names its project in both
+// spellings, as the cards of these APIs do (scripts/api-contract-fields.json:
+// project_id of a balancer and a target group, projectId of a VPC and a
+// certificate): the preview of a change addressed by id reads it
+// (namedProject).
+const parityObject = `{"id":"` + parityVM + `","name":"web","status":"ACTIVE","state":"ACTIVE","project_id":"` + pvProject + `","projectId":"` + pvProject + `"}`
 
 // parityAnswers answer the reads of one resource and the writes that the
 // fixtures above do not model: an empty list there would be no resource at
@@ -655,7 +660,7 @@ func pgParity(r *http.Request) (*http.Response, error) {
 	case r.URL.Path == "/v1/clusters":
 		_, _ = io.WriteString(w, `{"clusters":[]}`)
 	case r.URL.Path == "/v1/clusters/"+parityVM:
-		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","status":"RUNNING"}`)
+		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","status":"RUNNING","project_id":"`+pvProject+`"}`)
 	case r.URL.Path == "/v1/versions":
 		_, _ = io.WriteString(w, `{"versions":[{"id":"v17","name":"17"}]}`)
 	case r.URL.Path == "/v1/specifications":

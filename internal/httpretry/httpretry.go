@@ -11,6 +11,7 @@ package httpretry
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io"
 	"mime"
@@ -36,12 +37,22 @@ const (
 	h2PingTimeout = 15 * time.Second
 )
 
+// MinTLS is the oldest TLS evo speaks: its own declaration, not the default
+// of the Go release it is built with (release plan 1.9). TLS 1.3 as the
+// minimum waits for a probe of every address evo calls.
+const MinTLS = tls.VersionTLS12
+
 // NewBaseTransport is a new transport with the settings of
 // http.DefaultTransport (the proxy of the environment, dial and TLS
-// timeouts, HTTP/2) and the health check of an HTTP/2 connection. Each call
-// makes its own, for a caller that changes it (verify's TLS).
+// timeouts, HTTP/2), the minimum of TLS (MinTLS) and the health check of an
+// HTTP/2 connection. Each call makes its own, for a caller that changes it
+// (verify's TLS).
 func NewBaseTransport() *http.Transport {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
+	if tr.TLSClientConfig == nil {
+		tr.TLSClientConfig = &tls.Config{}
+	}
+	tr.TLSClientConfig.MinVersion = MinTLS
 	tr.HTTP2 = &http.HTTP2Config{SendPingTimeout: h2ReadIdle, PingTimeout: h2PingTimeout}
 	return tr
 }
