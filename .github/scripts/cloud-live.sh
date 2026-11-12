@@ -2308,8 +2308,9 @@ probe_g16() {
 		elif g16_restore ВМ "$bv" "$(jq -nc --arg n "$n-rv" --arg b "$boot" --arg t "$boot_type" '{name: $n, description: "evo e2e probe", disks: [{name: ($n + "-boot"), related_disk_id: $b, disk_type_name: $t}]}')"; then
 			local vst=''
 			rv_up() { vst=$(evo tools call vm_get --arg name="$n-rv" --json 2>/dev/null | jq -r '.state // empty') || vst=; case "$vst" in "" | creating | *pending*) return 1 ;; esac; }
-			# ВМ из копии создаётся дольше 5 минут (прогон 206: 312 с в creating).
-			poll "${PROBE_WAIT:-900}" "$PROBE_PAUSE" rv_up || true
+			# ВМ из копии создаётся дольше 5 минут (прогон 206: 312 с в creating):
+			# ждём до 10.
+			poll "${PROBE_WAIT:-600}" "$PROBE_PAUSE" rv_up || true
 			# Восстановление принято, а ВМ не видна: её диски, если платформа
 			# назвала их по-своему, не найдёт ни проба, ни уборка по имени.
 			[ -n "$vst" ] || echo "::warning::Г-16: восстановление ВМ принято, но ВМ не появилась — после прогона проверьте в консоли Cloud.ru диски без ВМ, созданные в это время"
@@ -2351,13 +2352,13 @@ probe_g16() {
 	fi
 	# Ожидания восстановления (poll) токен не обновляют — до удалений.
 	iam_fresh || true
-	# g16_delete ЧЕГО ID — удаление копии: пока идёт восстановление из неё,
+	# g16_delete ЧЕГО ID ПРЕДЕЛ_СЕК — удаление копии: пока идёт восстановление из неё,
 	# платформа отказывает (422 backup_restore_in_progress при состоянии
 	# created; прогоны 202 и 206) — запрос повторяется до снятия запрета,
 	# время записывается; затем повтор сразу, ожидание исчезновения и
 	# повтор после него. Итог — в $r.
 	g16_delete() {
-		local tries=1 held=$SECONDS until=$(($(date +%s) + ${PROBE_WAIT:-900}))
+		local tries=1 held=$SECONDS until=$(($(date +%s) + ${PROBE_WAIT:-$3}))
 		api DELETE "$C1/backups/$2"
 		r="HTTP $code$(why_tail)"
 		while [ "$code" = 422 ] && [[ ",$(mcode)," == *,backup_restore_in_progress,* ]] && [ "$(date +%s)" -lt "$until" ]; do
@@ -2381,12 +2382,13 @@ probe_g16() {
 		r="$r; повтор после исчезновения — HTTP $code$(why_tail)"
 	}
 	if [ -n "$bd" ]; then
-		g16_delete диска "$bd"
+		# Диск восстановлен давно (пока ждали ВМ): запрет, если есть, короткий.
+		g16_delete диска "$bd" 300
 		[ "$bd_ok" = 0 ] || r="$r; восстановленный диск без копии: $(if o=$(lst disk "$n-rd"); then [ -n "$o" ] && echo есть || echo нет; else echo "список не прочитан"; fi)"
 		ok "Г-16: удаление копии диска" "$r"
 	fi
 	if [ -n "$bv" ]; then
-		g16_delete ВМ "$bv"
+		g16_delete ВМ "$bv" 600
 		ok "Г-16: удаление копии ВМ" "$r"
 	fi
 	if [ -n "$disk" ] && [ "$QUOTA_HIT" = 0 ]; then
