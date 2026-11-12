@@ -147,6 +147,15 @@ var parseAnswerRE = regexp.MustCompile(`\bparse [a-z_ ]+: |(?:^|[\s(:])разб�
 // operationFailedRE is an asynchronous operation the cloud reported failed.
 var operationFailedRE = regexp.MustCompile(`\boperation\b[^"]*\bfailed\b`)
 
+// definiteRefusal reports whether err is an answer of the API that says
+// the request was not carried out: a 4xx other than 408. Anything else —
+// no answer, a timeout, a 5xx — may be a request taken, and a call that
+// re-reads the resource after it must not take a refusal for one.
+func definiteRefusal(err error) bool {
+	st := apiStatus(err)
+	return st >= 400 && st < 500 && st != http.StatusRequestTimeout
+}
+
 // apiStatus is the HTTP status of the API answer behind err, 0 without one.
 func apiStatus(err error) int {
 	if st := provision.HTTPStatus(err); st != 0 {

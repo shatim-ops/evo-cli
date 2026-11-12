@@ -17,7 +17,7 @@ import (
 // deleteOutcomeTools are the deletes of D74 that read the operation they
 // start (as dns_zone_delete does, D66); ca_delete has no operation to read
 // (the Container Apps API publishes none) and waits for its app instead.
-var deleteOutcomeTools = []string{"ar_delete", "dns_record_delete", "k8s_delete", "kafka_delete", "lb_delete",
+var deleteOutcomeTools = []string{"ar_delete", "dns_record_delete", "k8s_delete", "k8s_nodepool_delete", "kafka_delete", "lb_delete",
 	"tg_delete", "pg_delete", "redis_delete", "vpc_delete"}
 
 // D74 (the owner's decision 03.11; cloud-e2e run 151, D66): an async delete
@@ -29,7 +29,7 @@ func TestDeleteOutcome_OperationErrorIsARefusal(t *testing.T) {
 	first := opWaitFirstDelay
 	opWaitFirstDelay = time.Millisecond
 	t.Cleanup(func() { opWaitFirstDelay = first })
-	failed := `{"items":[],"total":0,"id":"` + contractID + `","name":"web","status":"ACTIVE","done":true,` +
+	failed := `{"items":[],"total":0,"id":"` + contractID + `","clusterId":"` + contractID + `","name":"web","status":"ACTIVE","done":true,` +
 		`"error":{"code":9,"message":"the platform kept it"}}`
 	for _, name := range deleteOutcomeTools {
 		t.Run(name, func(t *testing.T) {
@@ -60,7 +60,7 @@ func TestDeleteOutcome_OperationErrorIsARefusal(t *testing.T) {
 			wait := deleteOutcomeWait
 			deleteOutcomeWait = 0
 			defer func() { deleteOutcomeWait = wait }()
-			rt = &contractRT{kind: "200", body: `{"items":[],"total":0,"id":"` + contractID + `","name":"web","status":"ACTIVE","done":false}`}
+			rt = &contractRT{kind: "200", body: `{"items":[],"total":0,"id":"` + contractID + `","clusterId":"` + contractID + `","name":"web","status":"ACTIVE","done":false}`}
 			reg = contractReg(t, rt)
 			tl, _ = reg.Lookup(name)
 			text, isErr, _ = contractCall(tl, args, 5*time.Second)

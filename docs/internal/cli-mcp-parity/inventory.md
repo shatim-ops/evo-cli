@@ -7,13 +7,13 @@
      go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc|TestParityInventory' -update-docs
      CI сверяет файл с кодом. -->
 
-Инструментов в реестре: 160 (изменяющих: 69). Команд из `CLISpec`: 160. Команд в бинаре вместе с корнем `evo`: 220 — в docs/commands.md 215, скрытых 4, прочих 1 (`evo help`).
+Инструментов в реестре: 162 (изменяющих: 71). Команд из `CLISpec`: 162. Команд в бинаре вместе с корнем `evo`: 222 — в docs/commands.md 217, скрытых 4, прочих 1 (`evo help`).
 
 ## 1. Инструменты по способу вызова из CLI
 
 | Способ | Инструментов | из них изменяющих |
 |---|---|---|
-| дерево | 154 | 68 |
+| дерево | 156 | 70 |
 | движок | 6 | 1 |
 | tools call | 0 | 0 |
 
@@ -34,7 +34,7 @@
 | dns | 9 | 9 | 0 | 0 | 9/9 |
 | iam | 1 | 1 | 0 | 0 | 1/1 |
 | image | 6 | 5 | 1 | 0 | 6/6 |
-| k8s | 17 | 17 | 0 | 0 | 17/17 |
+| k8s | 19 | 19 | 0 | 0 | 19/19 |
 | kafka | 7 | 7 | 0 | 0 | 7/7 |
 | monitoring | 2 | 2 | 0 | 0 | 2/2 |
 | nlb | 9 | 9 | 0 | 0 | 9/9 |
@@ -124,7 +124,9 @@
 | k8s | `k8s_kubeconfig` | нет | дерево | `evo k8s kubeconfig` | да/да |
 | k8s | `k8s_kubectl` | да | дерево | `evo k8s kubectl` | да/да |
 | k8s | `k8s_list` | нет | дерево | `evo k8s list` | да/да |
+| k8s | `k8s_nodepool_delete` | да | дерево | `evo k8s nodepool-delete` | да/да |
 | k8s | `k8s_nodepool_get` | нет | дерево | `evo k8s nodepool-get` | да/да |
+| k8s | `k8s_nodepool_scale` | да | дерево | `evo k8s nodepool-scale` | да/да |
 | k8s | `k8s_nodepools` | нет | дерево | `evo k8s nodepools` | да/да |
 | k8s | `k8s_operation` | нет | дерево | `evo k8s operation` | да/да |
 | k8s | `k8s_options` | нет | дерево | `evo k8s options` | да/да |
@@ -287,7 +289,9 @@
 | `evo k8s kubeconfig` | `k8s_kubeconfig` | cluster_id | — | — | — | — |
 | `evo k8s kubectl` | `k8s_kubectl` | cluster_id args... | — | — | confirmed | raw |
 | `evo k8s list` | `k8s_list` | — | — | — | — | — |
+| `evo k8s nodepool-delete` | `k8s_nodepool_delete` | nodepool_id | — | — | confirmed | — |
 | `evo k8s nodepool-get` | `k8s_nodepool_get` | nodepool_id | — | — | — | — |
+| `evo k8s nodepool-scale` | `k8s_nodepool_scale` | nodepool_id | — | — | confirmed | — |
 | `evo k8s nodepools` | `k8s_nodepools` | cluster_id | — | — | — | — |
 | `evo k8s operation` | `k8s_operation` | operation_id | — | — | — | — |
 | `evo k8s options` | `k8s_options` | — | — | — | — | — |
@@ -433,17 +437,17 @@
 
 Ожидаемый набор флагов выводится из схемы (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с флагами команды в дереве cobra. Пусто — расхождений нет.
 
-Расхождений нет: флаги всех 154 команд деревьев выведены из схемы; флаги 6 команд движка сверяет со схемой TestParity_EngineCommands.
+Расхождений нет: флаги всех 156 команд деревьев выведены из схемы; флаги 6 команд движка сверяет со схемой TestParity_EngineCommands.
 
 ## 5. Русская справка
 
 | Что | Есть по-русски | Всего |
 |---|---|---|
-| краткое описание инструмента (ShortRU) | 160 | 160 инструментов |
-| подробное описание инструмента (DescriptionRU) | 160 | 160 инструментов |
-| описания аргументов (ArgDescriptionsRU) | 548 | 548 аргументов |
-| из них флаги команд деревьев | 334 | 334 флагов |
-| описания инструментов в MCP | 0 | 160 (всегда английские) |
+| краткое описание инструмента (ShortRU) | 162 | 162 инструментов |
+| подробное описание инструмента (DescriptionRU) | 162 | 162 инструментов |
+| описания аргументов (ArgDescriptionsRU) | 554 | 554 аргументов |
+| из них флаги команд деревьев | 336 | 336 флагов |
+| описания инструментов в MCP | 0 | 162 (всегда английские) |
 
 ## 6. Исключения из паритета
 

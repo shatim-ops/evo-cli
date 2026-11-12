@@ -223,6 +223,18 @@ func Load(stateDir, planID string) (*Plan, error) {
 	return &p, nil
 }
 
+// Gone reports whether planID has the form of a plan's id and no plan file:
+// the plan was applied and deleted, or never was. A plan that is there —
+// expired, corrupt, without its term — is not gone: Load says what is
+// wrong with it.
+func Gone(stateDir, planID string) bool {
+	if !validPlanID(planID) {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(plansPath(stateDir), planID+".json"))
+	return os.IsNotExist(err)
+}
+
 // Delete removes a plan file (best-effort; called after a successful apply).
 func Delete(stateDir, planID string) {
 	if !validPlanID(planID) {

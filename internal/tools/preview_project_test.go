@@ -85,9 +85,12 @@ var previewCalls = map[string]map[string]any{
 	"disk_detach":       {"vm": resMine},
 	"k8s_add_addon":     {"name": ownerAddon},
 	"k8s_add_nodepool":  {"name": "pool", "zone": "ru.AZ-1"},
-	"pg_db_delete":      {"name": ownerChild},
-	"pg_user_delete":    {"name": ownerChild},
-	"vpc_route_delete":  {"route_id": ownerRoute},
+	// Fewer nodes than the pool of the world has: the preview, whatever
+	// the status of the pool.
+	"k8s_nodepool_scale": {"count": 1},
+	"pg_db_delete":       {"name": ownerChild},
+	"pg_user_delete":     {"name": ownerChild},
+	"vpc_route_delete":   {"route_id": ownerRoute},
 	// The tools that run a command in the cluster: a call that needs
 	// consent. Without it nothing runs: the preview only.
 	"k8s_kubectl": {"args": "delete pod web"},

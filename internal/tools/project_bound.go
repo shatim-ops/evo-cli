@@ -125,19 +125,21 @@ var idArgs = map[string][]idArg{
 	"tg_list":             {{name: "vpc_id", why: whyFilter}},
 
 	// Managed Kubernetes.
-	"k8s_get":          {{name: "cluster_id", kind: kindK8s}},
-	"k8s_kubeconfig":   {{name: "cluster_id", kind: kindK8s}},
-	"k8s_delete":       {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_operation":    {{name: "operation_id", kind: kindOperation}},
-	"k8s_nodepools":    {{name: "cluster_id", kind: kindK8s}},
-	"k8s_nodepool_get": {{name: "nodepool_id", kind: kindK8sNodePool}},
-	"k8s_add_nodepool": {{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}},
-	"k8s_add_addon":    {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_kubectl":      {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_apply":        {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_helm":         {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_plan":         {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
-	"k8s_create":       {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
+	"k8s_get":             {{name: "cluster_id", kind: kindK8s}},
+	"k8s_kubeconfig":      {{name: "cluster_id", kind: kindK8s}},
+	"k8s_delete":          {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_operation":       {{name: "operation_id", kind: kindOperation}},
+	"k8s_nodepools":       {{name: "cluster_id", kind: kindK8s}},
+	"k8s_nodepool_get":    {{name: "nodepool_id", kind: kindK8sNodePool}},
+	"k8s_nodepool_scale":  {{name: "nodepool_id", kind: kindK8sNodePool, target: true}},
+	"k8s_nodepool_delete": {{name: "nodepool_id", kind: kindK8sNodePool, target: true}},
+	"k8s_add_nodepool":    {{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}},
+	"k8s_add_addon":       {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_kubectl":         {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_apply":           {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_helm":            {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_plan":            {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
+	"k8s_create":          {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
 
 	// Managed PostgreSQL, Kafka, Redis.
 	"pg_get":           {{name: "id", kind: kindPG}, {name: "cluster_id", kind: kindPG}},
@@ -627,25 +629,14 @@ var (
 	// A node pool names its cluster, not a project: it is of the project
 	// of the cluster. A pool that names no cluster, or whose cluster is
 	// not read, is refused — never passed unchecked.
-	kindK8sNodePool = &ownerKind{what: "node pool", listTool: "k8s_nodepools", check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
-		cli, _, _, err := c.r.k8sClient(ctx)
-		if err != nil {
-			return err
-		}
-		np, err := cli.GetNodePool(ctx, id)
-		if err != nil {
-			return gone(k, id, err)
-		}
-		cluster, _ := np["clusterId"].(string)
-		if cluster == "" {
-			return c.admit(k, id, "")
-		}
-		m, err := cli.GetCluster(ctx, cluster)
-		if err != nil {
-			return gone(k, id, err)
-		}
-		return c.admit(k, id, projectField(m))
-	}}
+	kindK8sNodePool = &ownerKind{what: "node pool", listTool: "k8s_nodepools", project: nodePoolProject,
+		check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
+			p, err := nodePoolProject(ctx, c, id)
+			if err != nil {
+				return gone(k, id, err)
+			}
+			return c.admit(k, id, p)
+		}}
 	kindCert = byProjectField("certificate", "cert_list", func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
 		cli, err := c.r.certClient(ctx)
 		if err != nil {
@@ -762,6 +753,30 @@ func dnsRecordZone(ctx context.Context, c *ownerCall, id string) (zone string, s
 		}
 	}
 	return "", false, nil
+}
+
+// nodePoolProject is the project of a node pool: of its cluster (the pool
+// names the cluster, the cluster the project). "" for a pool that names no
+// cluster; an error when the pool or its cluster is not read. The one read
+// the check of --allow-project and the preview's project stand on.
+func nodePoolProject(ctx context.Context, c *ownerCall, id string) (string, error) {
+	cli, _, _, err := c.r.k8sClient(ctx)
+	if err != nil {
+		return "", err
+	}
+	np, err := cli.GetNodePool(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	cluster, _ := np["clusterId"].(string)
+	if cluster == "" {
+		return "", nil
+	}
+	m, err := cli.GetCluster(ctx, cluster)
+	if err != nil {
+		return "", err
+	}
+	return projectField(m), nil
 }
 
 // dnsZoneIDs are the project's public and private DNS zones, as
