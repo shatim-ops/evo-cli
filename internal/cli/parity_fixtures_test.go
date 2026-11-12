@@ -74,7 +74,9 @@ var parityArgs = map[string]map[string]any{
 	// vpc
 	// The zone's group, in the worlds of the previews and of the answers
 	// alike: open_ports reads it before the question (G13-23).
-	"open_ports":           {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(443)}},
+	// The web ports to the whole internet on the zone's group: with the
+	// person's word for it (D105).
+	"open_ports":           {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(443)}, "allow_internet_on_shared_group": true},
 	"close_ports":          {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80)}},
 	"sg_rule_delete":       {"security_group": "SSH-access_ru.AZ-1", "rule_id": parityNIC},
 	"vpc_list":             {},
@@ -603,6 +605,7 @@ var parityEmptyLists = map[string]string{
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/versions": "no versions: cert_get lists none",
 	"GET compute.api.cloud.ru/api/v1/images":                           "no private image: image_create's name is free, image_list empty",
 	"GET compute.api.cloud.ru/api/v1/security-groups/{id}/rules":       "a group without rules: open_ports adds them all",
+	"GET compute.api.cloud.ru/api/v1/interfaces":                       "no interface listed: the zone's group is shared as the default one, open_ports says 0 interfaces",
 	"GET containers.api.cloud.ru/v2/containers":                        "no container app yet: ca_deploy's name is free",
 	"GET containers.api.cloud.ru/v2/containers/app/logs":               "no log lines",
 	"GET dns.api.cloud.ru/v1/privateZones":                             "no private zone: the zone of dns_record_create is public",

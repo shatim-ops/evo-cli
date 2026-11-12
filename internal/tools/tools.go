@@ -326,23 +326,25 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "open_ports",
-			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group. Mutation: requires confirmed=true after the user approves.",
+			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
 				"cidr":           cidrProp("Source CIDR (default 0.0.0.0/0 = anywhere): ask the person which source."),
+				allowInternetArg: boolProp("true to open to the whole internet on a shared group: the person decides, not the model."),
 				"confirmed":      confirmedProp(),
 			}, "security_group", "ports"),
 		},
 		{
 			Name:        "close_ports",
-			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open). NOTE: security groups are shared per availability zone — closing a port affects every VM in that group. Mutation: requires confirmed=true after the user approves.",
+			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open). A zone's group is shared: closing a port affects every VM in it. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to close, e.g. [8080]."},
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
 				"cidr":           cidrProp("Source CIDR of the rules (default 0.0.0.0/0 = anywhere)."),
+				"allow_cut_ssh":  boolProp("true to delete the last rule letting SSH in: the person decides, not the model."),
 				"confirmed":      confirmedProp(),
 			}, "security_group", "ports"),
 		},

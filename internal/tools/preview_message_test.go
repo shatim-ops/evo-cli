@@ -121,7 +121,7 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	// (G13-23, D35): the zone's group of the fault cloud.
 	"open_ports": func(t *testing.T) string {
 		r, _ := faultToolsRegistry(t, &faultCloud{})
-		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}})
+		_, text, _ := callNamed(t, r, "open_ports", map[string]any{"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(8080)}, allowInternetArg: true})
 		return text
 	},
 	// fip_attach finds the address and the VM before the question (W6): a

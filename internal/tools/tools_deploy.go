@@ -803,6 +803,15 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 			alreadyOpen = append(alreadyOpen, strconv.Itoa(p))
 		}
 	}
+	// Who the rules act on, and the rule of D105: the whole internet on a
+	// shared group needs the person's word — refused before the question,
+	// with or without the consent. Only when a rule would be added.
+	use := sgGroupUse(ctx, eng, target)
+	if len(willOpen) > 0 {
+		if err := internetOnSharedGroup(target, use, portsWords(willOpen, proto), cidr, boolArg(args, allowInternetArg, false)); err != nil {
+			return nil, err
+		}
+	}
 	message := i18n.Tf("open_ports would open %s/%s from %s on security group %q (shared per zone — affects every VM in it).",
 		"open_ports откроет %s/%s из %s в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней).",
 		strings.Join(willOpen, ","), proto, cidr, target.Name)
@@ -821,6 +830,10 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 		"cidr":           cidr,
 		"will_open":      willOpen,
 		"already_open":   alreadyOpen,
+	}
+	sgUseFields(preview, use)
+	if len(willOpen) > 0 && sgrules.Internet(cidr) {
+		preview["open_to_internet"] = true
 	}
 	if len(wider) > 0 {
 		// Open by a rule wider than asked (a range, any protocol, a wider
@@ -965,11 +978,13 @@ func (s *Registry) planClosePorts(ctx context.Context, args map[string]any) (*Pl
 	}
 	var toClose []closing
 	var closedAlready []string
+	going := map[string]bool{}
 	for _, p := range ports {
 		found := false
 		for _, r := range rules {
 			if r.Direction == "ingress" && r.IPProtocol == proto && r.PortRange == fmt.Sprintf("%d:%d", p, p) && r.RemoteIPPrefix == cidr {
 				toClose = append(toClose, closing{p, r.ID})
+				going[r.ID] = true
 				found = true
 			}
 		}
@@ -982,8 +997,15 @@ func (s *Registry) planClosePorts(ctx context.Context, args map[string]any) (*Pl
 		return answered(s.deleteFailedAs("close_ports", "ports", ref, clierrors.New(clierrors.CodeNotFound,
 			i18n.Tf("no rule %s in security group %q", "правила %s в группе безопасности %q нет", ref, target.Name), ""))), nil
 	}
+	// The last rule that lets SSH in to a deployment of this folder: the
+	// decision of sg_rule_delete, for the call whole — the other ports of
+	// it are not closed either.
+	cutsSSH := sgCutsSSH(eng.StateDir, target, rules, going)
 	listed := make([]map[string]any, 0, len(toClose))
 	for _, c := range toClose {
+		if cutsSSH && c.port == 22 && !boolArg(args, allowCutSSHArg, false) {
+			return nil, cutSSHRefusal(c.id, target)
+		}
 		listed = append(listed, map[string]any{"id": c.id, "port": c.port, "protocol": proto, "cidr": cidr})
 	}
 	preview := map[string]any{
@@ -992,6 +1014,9 @@ func (s *Registry) planClosePorts(ctx context.Context, args map[string]any) (*Pl
 		"security_group": target.Name,
 		"rules":          listed,
 		"already_closed": closedAlready,
+	}
+	if cutsSSH {
+		preview["cuts_ssh"] = true
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		var closed, failed []string

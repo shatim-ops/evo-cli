@@ -209,8 +209,32 @@ type SecurityGroup struct {
 	// {id, name, enabled}).
 	AvailabilityZoneName string `json:"-"`
 	// Default: the zone's default group (API field "default").
-	Default bool     `json:"default,omitempty"`
-	Rules   []SGRule `json:"rules,omitempty"`
+	Default bool `json:"default,omitempty"`
+	// HasInterfaces: the API says interfaces are in the group
+	// (has_interfaces); how many, the list of interfaces tells.
+	HasInterfaces bool     `json:"has_interfaces,omitempty"`
+	Rules         []SGRule `json:"rules,omitempty"`
+}
+
+// Interface is a network interface of the project
+// (GET /api/v1/interfaces): the VM it belongs to and the security groups
+// it is in — what a rule of a group acts on.
+type Interface struct {
+	ID             string           `json:"id"`
+	VM             *InterfaceVM     `json:"vm,omitempty"`
+	SecurityGroups []InterfaceGroup `json:"security_groups,omitempty"`
+}
+
+// InterfaceGroup is a security group of an interface, as the list names it.
+type InterfaceGroup struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+}
+
+// InterfaceVM is the VM of an interface, as the list names it.
+type InterfaceVM struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
 }
 
 // UnmarshalJSON reads the zone from the nested availability_zone{id}, as

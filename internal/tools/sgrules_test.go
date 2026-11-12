@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,12 @@ type sgCloud struct {
 	vm      *provision.VM
 	rules   []*provision.SGRule
 	deleted []string
+}
+
+// ListInterfaces: the world has no list of interfaces — the use of a group
+// is unread, as when the read fails.
+func (*sgCloud) ListInterfaces(context.Context, string) ([]*provision.Interface, error) {
+	return nil, errors.New("no interfaces in this fake")
 }
 
 func (*sgCloud) SetToken(string) {}

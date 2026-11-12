@@ -110,26 +110,11 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 		return answered(s.deleteFailed("sg_rule_delete", ruleID, clierrors.New(clierrors.CodeNotFound,
 			i18n.Tf("no rule %s in security group %s", "правила %s в группе безопасности %s нет", ruleID, quoteCloud(group.Name)), ""))), nil
 	}
-	// SSH: evo manages a deployment over port 22. The last rule that lets
-	// it in to a group of a deployment of this folder goes only with the
-	// word for it — what address the caller comes from evo does not know.
 	// A rule the platform is deleting already is answered as every delete
 	// under way (deletePlan): there is nothing left to refuse.
-	cutsSSH := !engine.DeletingState(rule.State) && sgRuleLetsIn(rule, "tcp", 22) && folderDeploymentInGroup(eng.StateDir, group.ID)
-	if cutsSSH {
-		for _, r := range rules {
-			if r != nil && r.ID != rule.ID && sgRuleLetsIn(r, "tcp", 22) {
-				cutsSSH = false
-			}
-		}
-	}
-	if cutsSSH && !boolArg(args, "allow_cut_ssh", false) {
-		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("rule %s is the last one that lets TCP 22 in to security group %s, and a deployment of this folder is in it: without it evo (deploy, logs) and the person lose SSH to the VM",
-				"правило %s — последнее, которое пропускает TCP 22 в группу безопасности %s, а в ней развёртывание этой папки: без него evo (deploy, logs) и человек теряют SSH к ВМ",
-				ruleID, quoteCloud(group.Name)),
-			i18n.T("Ask the person. To delete it all the same, call again with allow_cut_ssh=true: the preview will say that SSH is cut.",
-				"Спросите человека. Чтобы всё же удалить, повторите вызов с allow_cut_ssh=true: превью скажет, что SSH будет отрезан."))
+	cutsSSH := sgCutsSSH(eng.StateDir, group, rules, map[string]bool{rule.ID: true})
+	if cutsSSH && !boolArg(args, allowCutSSHArg, false) {
+		return nil, cutSSHRefusal(ruleID, group)
 	}
 	words := fmt.Sprintf("%s %s %s %s", rule.Direction, rule.IPProtocol, rule.PortRange, sgRuleSource(rule))
 	p := s.deletePlan("sg_rule_delete",
@@ -147,10 +132,7 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 	}
 	p.Preview["rule"] = sgRuleFields(rule)
 	p.Preview["security_group"] = map[string]any{"id": group.ID, "name": group.Name, "default": group.Default}
-	// The zone's default group holds every VM placed in the zone (how many
-	// interfaces are under a group the preview will say once evo reads
-	// them: the brief, §3.2).
-	p.Preview["shared"] = group.Default
+	sgUseFields(p.Preview, sgGroupUse(ctx, eng, group))
 	if cutsSSH {
 		p.Preview["cuts_ssh"] = true
 	}
@@ -168,6 +150,42 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 		}
 	}
 	return p, nil
+}
+
+// allowCutSSHArg is the word of the person for deleting the last rule that
+// lets SSH in: one name at every tool that deletes rules.
+const allowCutSSHArg = "allow_cut_ssh"
+
+// sgCutsSSH is the one decision of «the last SSH rule» for a tool that
+// deletes rules of a group (sg_rule_delete, close_ports; D105): evo
+// manages a deployment over port 22, and what address the caller comes
+// from it does not know. True when a rule in going lets TCP 22 in, no rule
+// that stays does, and a deployment of this folder is in the group. A rule
+// the platform is deleting already lets nothing in soon: it is neither
+// taken away by this call nor counted as one that stays.
+func sgCutsSSH(stateDir string, group *provision.SecurityGroup, rules []*provision.SGRule, going map[string]bool) bool {
+	takes := false
+	for _, r := range rules {
+		if r == nil || engine.DeletingState(r.State) || !sgRuleLetsIn(r, "tcp", 22) {
+			continue
+		}
+		if !going[r.ID] {
+			return false
+		}
+		takes = true
+	}
+	return takes && folderDeploymentInGroup(stateDir, group.ID)
+}
+
+// cutSSHRefusal refuses, before the question, the delete of ruleID that
+// sgCutsSSH found to be the last way in over SSH.
+func cutSSHRefusal(ruleID string, group *provision.SecurityGroup) error {
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("rule %s is the last one that lets TCP 22 in to security group %s, and a deployment of this folder is in it: without it evo (deploy, logs) and the person lose SSH to the VM",
+			"правило %s — последнее, которое пропускает TCP 22 в группу безопасности %s, а в ней развёртывание этой папки: без него evo (deploy, logs) и человек теряют SSH к ВМ",
+			ruleID, quoteCloud(group.Name)),
+		i18n.Tf("Ask the person. To delete it all the same, call again with %s=true: the preview will say that SSH is cut.",
+			"Спросите человека. Чтобы всё же удалить, повторите вызов с %s=true: превью скажет, что SSH будет отрезан.", allowCutSSHArg))
 }
 
 // sgStillAllowed are the other active rules of the group that let the port

@@ -148,6 +148,10 @@ func TestSGRuleDelete_AsksWithAPreviewAndDeletesOnce(t *testing.T) {
 	if group["id"] != sgZoneGroup || group["name"] != "SSH-access_ru.AZ-1" || m["shared"] != true {
 		t.Errorf("the preview does not name the group and that it is shared: %s", text)
 	}
+	// Who a rule of the group acts on: the count open_ports gives (D105).
+	if _, counted := m["interfaces"]; !counted {
+		t.Errorf("the preview does not say how many interfaces are in the group: %s", text)
+	}
 	if cuts, _ := m["cuts_access"].(string); !strings.Contains(cuts, "tcp") || !strings.Contains(cuts, "443") {
 		t.Errorf("the preview does not say what stops getting through: %q", cuts)
 	}
