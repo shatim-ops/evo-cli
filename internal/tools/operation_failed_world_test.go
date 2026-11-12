@@ -6,7 +6,6 @@ package tools
 
 import (
 	"encoding/json"
-	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -22,24 +21,9 @@ import (
 // with an operation that is done and failed. Its answer says the
 // operation is done, carries the service's error and marks it untrusted
 // (R-83) — and a failure by quota names its cause, so that an agent does
-// not send the create again into the same quota.
-
-// operationQuotaUnnamed are the *_operation tools shipped before the
-// invariant whose answer to an operation failed by quota does not name
-// the cause (details.cause "quota"). The fix is one point of the answer
-// of *_operation («разработка B»). It only shrinks, and a new *_operation
-// does not join it. Closes by 1.9.
-var operationQuotaUnnamed = map[string]string{
-	"ar_operation":    "the operation as the service gave it",
-	"cert_operation":  "the operation as the service gave it",
-	"dns_operation":   "the operation as the service gave it",
-	"k8s_operation":   "the operation as the service gave it",
-	"kafka_operation": "the operation as the service gave it",
-	"lb_operation":    "the operation as the service gave it",
-	"pg_operation":    "the operation as the service gave it; cloud-e2e 203, 208",
-	"redis_operation": "the operation as the service gave it",
-	"vpc_operation":   "the operation as the service gave it",
-}
+// not send the create again into the same quota (one point of the answer
+// of *_operation since #1522; a new *_operation that answers past it
+// fails here).
 
 // failedOperation is the body of an operation that is done with an error
 // of the service's wording.
@@ -86,21 +70,14 @@ func TestOperation_EveryOneHasAWorldOfAFailedOperation(t *testing.T) {
 			t.Errorf("%s of an operation that is done with an error: want done, the service's text and the error marked untrusted — the world of the contract does not reach the tool, or the answer drops the failure: %.400s", name, text)
 			continue
 		}
+		if d, _ := m["details"].(map[string]any); d["cause"] == "quota" {
+			t.Errorf("%s names quota as the cause of a failure that says nothing of one: %.400s", name, text)
+		}
 		// A failure by quota names its cause.
 		m, text, _ = call(name, "acquire_quota failed: quota exceeded")
 		details, _ := m["details"].(map[string]any)
-		named := details["cause"] == "quota"
-		_, pending := operationQuotaUnnamed[name]
-		switch {
-		case !named && !pending:
+		if details["cause"] != "quota" {
 			t.Errorf("%s of an operation failed by quota does not name the cause (details.cause \"quota\"): an agent sends the create again into the same quota: %.400s", name, text)
-		case named && pending:
-			t.Errorf("operationQuotaUnnamed names %s, which names the cause now: remove the line (the list only shrinks)", name)
-		}
-	}
-	for name := range operationQuotaUnnamed {
-		if !slices.Contains(names, name) {
-			t.Errorf("operationQuotaUnnamed names %s, which is no *_operation of the registry: remove the line", name)
 		}
 	}
 }
