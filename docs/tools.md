@@ -40,6 +40,13 @@
 | `whoami` | `evo whoami` | нет | — | Whom the tools work as: profile, masked access key ID, where the key and the project come from (profile, env, project file, flag), the project, the IAM token's … | Активный профиль и проверка его ключа |
 | `doctor` | `evo doctor` | нет | — | Check the setup the tools use: the configuration (profile, key and project sources, warnings), whether IAM and Compute APIs are reachable (http_status is what … | Проверить настройки, ключ доступа и связь с API |
 
+## backup
+
+| Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
+|---|---|---|---|---|---|
+| `backup_list` | `evo backup list` | нет | — | List the backups of VMs and disks in the project: id, name, state, type (full or incremental), size_mb, created_at, last_restore_time, and the source … | Резервные копии ВМ и дисков: id, имя, состояние, тип, размер, исходный ресурс |
+| `backup_get` | `evo backup get` | нет | `backup_id` | A backup by id (from backup_list): the fields of its row, its description and plan, whether its source still exists, and the source as the backup holds it (a … | Резервная копия по id: исходный ресурс, существует ли он, план копирования |
+
 ## billing
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |

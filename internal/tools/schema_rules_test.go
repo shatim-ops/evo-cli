@@ -251,6 +251,7 @@ var idWithoutFormat = map[string]string{
 	"provision.project_id":                      idUndeclared,
 	"provision.subnet_id":                       idUndeclared,
 	"list_subnets.vpc_id":                       idFilter,
+	"backup_list.resource_id":                   idFilter,
 	"lb_list.vpc_id":                            idFilter,
 	"tg_list.vpc_id":                            idFilter,
 	"redis_create.specification_id":             idUndeclared,

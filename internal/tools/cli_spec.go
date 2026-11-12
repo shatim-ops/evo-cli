@@ -95,6 +95,8 @@ var cliSpecs = map[string]CLISpec{
 	"marketplace_list": {Group: "marketplace", Verb: "list", Args: []string{"query?"}, Render: "marketplace-list"},
 
 	// disk
+	"backup_list":     {Group: "backup", Verb: "list", Columns: []string{"id", "name", "state", "type", "size_mb", "resource_type", "resource_name", "created_at"}},
+	"backup_get":      {Group: "backup", Verb: "get", Args: []string{"backup_id"}},
 	"disk_list":       {Group: "disk", Verb: "list", Columns: []string{"id", "name", "size_gb", "state", "disk_type", "zone", "attached_to"}},
 	"list_disk_types": {Group: "disk", Verb: "types"},
 	"disk_create":     {Group: "disk", Verb: "create", Args: []string{"name"}},

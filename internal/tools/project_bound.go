@@ -103,6 +103,7 @@ var idArgs = map[string][]idArg{
 	"vm_stop":      {{name: "vm_id", kind: kindVM, target: true}},
 	"vm_reboot":    {{name: "vm_id", kind: kindVM, target: true}},
 	"destroy":      {{name: "vm_id", why: whyListed}},
+	"backup_get":   {{name: "backup_id", kind: kindBackup}},
 	"image_get":    {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}},
 	"image_delete": {{name: "image_id", kind: kindImage, target: true}},
 	"image_create": {{name: "disk_id", kind: kindDisk}},
@@ -127,6 +128,7 @@ var idArgs = map[string][]idArg{
 	"subnet_create":       {{name: "vpc_id", kind: kindVPC}, {name: "availability_zone_id", why: whyCatalogue}},
 	"subnet_delete":       {{name: "subnet_id", kind: kindSubnet, target: true}},
 	"list_subnets":        {{name: "vpc_id", why: whyFilter}},
+	"backup_list":         {{name: "resource_id", why: whyFilter}},
 	"lb_list":             {{name: "vpc_id", why: whyFilter}},
 	"tg_list":             {{name: "vpc_id", why: whyFilter}},
 
@@ -506,6 +508,14 @@ var (
 		}
 		return ids, err
 	})))
+	kindBackup = inProjectList("backup", "backup_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+		api, err := backupAPI(eng)
+		if err != nil {
+			return nil, err
+		}
+		backups, err := api.ListBackups(ctx, eng.Config.ProjectID)
+		return mapIDs(backups), err
+	}))
 	kindDisk = inProjectList("disk", "disk_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		disks, err := eng.Cloud.ListDisks(ctx, eng.Config.ProjectID)
 		return mapIDs(disks), err

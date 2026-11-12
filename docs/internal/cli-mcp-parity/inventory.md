@@ -36,6 +36,8 @@
 | auth | `agent_skill` | нет | движок | `evo agent skill` | да/да |
 | auth | `doctor` | нет | движок | `evo doctor` | да/да |
 | auth | `whoami` | нет | движок | `evo whoami` | да/да |
+| backup | `backup_get` | нет | дерево | `evo backup get` | да/да |
+| backup | `backup_list` | нет | дерево | `evo backup list` | да/да |
 | billing | `billing_balance` | нет | дерево | `evo billing balance` | да/да |
 | billing | `billing_consumption` | нет | дерево | `evo billing consumption` | да/да |
 | billing | `billing_finops` | нет | дерево | `evo billing finops` | да/да |
@@ -214,6 +216,8 @@
 | `evo ar list` | `ar_list` | — | — | — | — | — |
 | `evo ar operation` | `ar_operation` | operation_id | — | — | — | — |
 | `evo audit events` | `audit_events` | — | — | — | — | — |
+| `evo backup get` | `backup_get` | backup_id | — | — | — | — |
+| `evo backup list` | `backup_list` | — | — | — | — | — |
 | `evo billing balance` | `billing_balance` | — | — | — | — | render |
 | `evo billing consumption` | `billing_consumption` | — | project_id→--project-id | — | — | render |
 | `evo billing finops` | `billing_finops` | — | project_id→--project-id | — | — | render |
