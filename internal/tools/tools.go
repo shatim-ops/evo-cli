@@ -3814,11 +3814,18 @@ func errResult(err error) string { return errAnswer(err, nil) }
 // later (release plan 1.9, Вп-8). A service whose refusal for a quota has
 // another form is not told apart here until a run shows the form.
 func quotaRefusal(err error) string {
-	if code := platformCode(err); strings.HasSuffix(code, "quota_exceeded") {
+	if code := platformCode(err); quotaCode.MatchString(code) {
 		return code
 	}
 	return ""
 }
+
+// quotaCode is the form of a code of the platform that goes into the
+// answer as a machine field: a token — lowercase letters, digits and
+// underscores, 64 at most — that ends in quota_exceeded. A body whose
+// «code» is a sentence, or is long, is not told apart as a quota refusal:
+// the field would carry whatever the body says («Риск», conclusion 147).
+var quotaCode = regexp.MustCompile(`^[a-z0-9_]{0,50}quota_exceeded$`)
 
 // errAnswer is the error answer of a tool: fields (vm_id, output, …) plus
 // "status": "error" (unless fields set another status), "reason", "error"
@@ -3887,6 +3894,12 @@ func errAnswer(err error, fields map[string]any) string {
 		// Whatever the client says of a 5xx: the address, not the
 		// service's state (D63).
 		hint = clierrors.RouteNotFoundHint()
+	}
+	if quotaRefusal(err) != "" {
+		// The same call again fails the same way: say what to read, and
+		// what changes the answer («Риск», conclusion 147, Р1).
+		hint = i18n.T("The quota is used up, so the same call again will fail the same way. org_quotas shows the limits and the use, with a key that may read them; the quota is raised through Cloud.ru support, or free what is not needed.",
+			"Квота исчерпана, поэтому тот же вызов ещё раз откажет так же. Лимиты и использование показывает org_quotas — ключом, которому их можно читать; квоту увеличивает поддержка Cloud.ru, либо освободите ненужное.")
 	}
 	if hint != "" {
 		res["hint"] = hint
