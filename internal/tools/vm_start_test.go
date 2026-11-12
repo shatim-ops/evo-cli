@@ -379,3 +379,61 @@ func TestVMStart_NameOfTwoVMsIsRefusedWithBothIDs(t *testing.T) {
 		t.Errorf("written: %d power calls", n)
 	}
 }
+
+// A start that began and fell back — the VM was starting and is stopped
+// again — did not take place: an error with the state and no next step,
+// not «still waiting». A wait with a next step would send the command
+// again on the consent already given («Риск», conclusion 123, К2).
+func TestVMStart_StartThatFallsBackIsAnErrorWithNoNextStep(t *testing.T) {
+	r, w := vmStartWorld(t, "stopped")
+	w.stepAfter, w.stepTo = 3, []string{"stopped"}
+	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if !isErr || m["reason"] != clerrors.CodeAPIError || m["state"] != "stopped" {
+		t.Fatalf("vm_start whose VM fell back to stopped: %s", text)
+	}
+	if _, has := m["next_tool"]; has {
+		t.Errorf("a start that did not take place names a next step: %s", text)
+	}
+	if n := w.powerCalls(); n != 1 {
+		t.Errorf("power calls = %d, want 1", n)
+	}
+}
+
+// The platform took the command and the VM never left stopped: by the
+// limit of the call that is an error with no next step either — nothing
+// is going on that a repeat would go on with (К2).
+func TestVMStart_CommandAcceptedAndIgnoredIsAnErrorWithNoNextStep(t *testing.T) {
+	r, w := vmStartWorldWaiting(t, "stopped", 0)
+	budgeted(r)
+	w.powerIgnored = true
+	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if !isErr || m["reason"] != clerrors.CodeAPIError || m["state"] != "stopped" {
+		t.Fatalf("vm_start whose command the platform took and ignored: %s", text)
+	}
+	if _, has := m["next_tool"]; has {
+		t.Errorf("a command that changed nothing names a next step: %s", text)
+	}
+}
+
+// A 422 for a VM in the very state the command is accepted in is not
+// about the state (changes prohibited in the zone): the cause is not
+// "state", the hint does not say «repeat when it is stopped» — it is
+// stopped — and no next step is named (conclusion 123, К3).
+func TestVMStart_RefusalFromStoppedIsNotAboutTheState(t *testing.T) {
+	r, w := vmStartWorld(t, "stopped")
+	w.powerRefused = "changes_prohibited"
+	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if !isErr || m["reason"] != clerrors.CodeAPIError || m["state"] != "stopped" {
+		t.Fatalf("vm_start refused from stopped: %s", text)
+	}
+	d, _ := m["details"].(map[string]any)
+	if d["cause"] == "state" || d["platform_code"] != "changes_prohibited" {
+		t.Errorf("details = %v: the cause of a refusal from stopped is not the state, and the platform's code goes beside it", d)
+	}
+	if strings.Contains(text, "repeat the call when") || strings.Contains(text, "повторите вызов, когда") {
+		t.Errorf("the hint says to repeat when the VM is stopped, and it is: %s", text)
+	}
+	if _, has := m["next_tool"]; has {
+		t.Errorf("a refusal a repeat does not get past names a next step: %s", text)
+	}
+}

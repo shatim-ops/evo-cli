@@ -362,15 +362,24 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 	if provision.HTTPStatus(cause) != http.StatusUnprocessableEntity {
 		return errAnswer(cause, map[string]any{"vm_id": vm.ID, "state": now.State}), true
 	}
-	hint := i18n.T("vm_get shows the state of the VM; repeat the call when it is "+act.from+".", "Состояние ВМ показывает vm_get; повторите вызов, когда оно станет "+act.from+".")
-	if planned != act.from {
-		hint = i18n.T("A repeat will not help: the platform does not take this command in this state. The Cloud.ru console or support is the way.",
-			"Повтор не поможет: платформа не принимает эту команду в этом состоянии. Путь — консоль Cloud.ru или поддержка.")
-	}
 	// One machine field for the cause, of the form of a quota refusal's
 	// (details.cause); the platform's own code goes beside it as the
-	// platform worded it (conclusion 111, У4).
+	// platform worded it (conclusion 111, У4). The state the command is
+	// accepted in is not the cause of its refusal: the platform refuses
+	// for a reason of its own (changes prohibited in the zone), which a
+	// repeat does not get past (conclusion 123, К3); nor does a repeat
+	// from the state the preview warned of. Only a state that moved
+	// between the plan and the command is one to wait out.
+	noRepeat := i18n.T("A repeat will not help: the platform does not take this command for this VM now. The Cloud.ru console or support is the way.",
+		"Повтор не поможет: платформа сейчас не принимает эту команду для этой ВМ. Путь — консоль Cloud.ru или поддержка.")
 	details := map[string]any{"cause": "state"}
+	hint := noRepeat
+	switch {
+	case now.State == act.from:
+		details["cause"] = "refused"
+	case now.State != planned:
+		hint = i18n.T("vm_get shows the state of the VM; repeat the call when it is "+act.from+".", "Состояние ВМ показывает vm_get; повторите вызов, когда оно станет "+act.from+".")
+	}
 	if code := platformCode(cause); code != "" {
 		details["platform_code"] = code
 	}
@@ -408,13 +417,27 @@ func platformCode(err error) string {
 func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool string, act vmPowerAction,
 	vm *provision.VMDetail, args map[string]any, sent bool) (string, bool) {
 	started := clock.Now()
+	// moved: the VM was seen on its way. A call that sent no command found
+	// it there.
+	moved := !sent
 	last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, vmPowerTimeout, func(st string) (bool, error) {
-		switch st {
-		case act.to:
+		switch {
+		case st == act.to:
 			return true, nil
-		case act.via, act.from:
+		case st == act.via:
+			moved = true
+			return false, nil
+		case st == act.from && !moved:
 			// The command is taken and the state has not moved yet.
 			return false, nil
+		case st == act.from:
+			// On its way, and back where it was: the change did not take
+			// place. Not «still waiting» — a wait here, with a next step,
+			// would send the command again on the consent already given
+			// («Риск», conclusion 123, К2).
+			return true, clierrors.New(clierrors.CodeAPIError,
+				i18n.Tf("%s of VM %s did not take place: the VM was %s and is %s again", "%s для ВМ %s не состоялся: ВМ была в %s и снова в %s", act.command, vm.ID, act.via, st),
+				i18n.T("What to do with the VM is the person's decision; vm_get shows it.", "Что делать с ВМ — решает человек; её показывает vm_get."))
 		}
 		return true, clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("VM %s is in state %s after %s, not %s", "ВМ %s после %s в состоянии %s, а не %s", vm.ID, st, act.command, act.to),
@@ -424,6 +447,13 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 	switch {
 	case err != nil:
 		return errAnswer(err, map[string]any{"vm_id": vm.ID, "state": last}), true
+	case (atLimit || timedOut > 0) && !moved:
+		// The platform took the command and the VM never left its state:
+		// not a change going on, and not one a repeat goes on with (К2).
+		return errAnswer(clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("the platform accepted %s of VM %s, and its state has not changed in %d s: still %s", "платформа приняла %s для ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", act.command, vm.ID, elapsed, last),
+			i18n.T("vm_get shows the VM; whether to send the command again is the person's decision.", "ВМ показывает vm_get; слать ли команду снова — решает человек.")),
+			map[string]any{"vm_id": vm.ID, "state": last, "elapsed_sec": elapsed}), true
 	case atLimit || timedOut > 0:
 		ans := vmAnswer(vm, last, last)
 		ans["elapsed_sec"] = elapsed

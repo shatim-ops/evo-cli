@@ -126,6 +126,13 @@ type faultCloud struct {
 	// Which of the two the platform does is not known (probe Г-10), so a
 	// world can be either and the product may rely on neither.
 	powerRepeatAccepted bool
+	// powerRefused, when set, is the code the platform refuses every power
+	// command with, whatever the state of the VM: a refusal that is not
+	// about the state (changes prohibited in the zone).
+	powerRefused string
+	// powerIgnored makes the platform take a power command (204) and
+	// leave the VM as it was: a command accepted and never acted on.
+	powerIgnored bool
 }
 
 type faultVM struct {
@@ -491,6 +498,9 @@ func (c *faultCloud) SetVMPower(_ context.Context, id, command string) error {
 			continue
 		}
 		switch {
+		case c.powerRefused != "":
+			return faultPowerRefused(c.powerRefused)
+		case c.powerIgnored:
 		case vm.Status == p.from:
 			vm.Status = p.via
 			vm.powerTo = p.to
