@@ -30,9 +30,11 @@ var bareRefs = map[string]string{}
 // person sees the bare id, and the declaration says why it stays so. A
 // line no output carries fails the test, as in bareRefs.
 var unnamedRefs = map[string]string{
-	"* project_id":                     "the name of a project is read by the Organization API with a key of the organization; a project's key gets 400 there (handleOrgProjects), and every tool would pay that call for a name",
-	"billing_consumption agreement_id": "the billing API has no read of an agreement: agreement_id is only its filter (billing/swagger.yaml), so there is no name to read",
-	"billing_finops agreement_id":      "the billing API has no read of an agreement: agreement_id is only its filter (billing/swagger.yaml), so there is no name to read",
+	"* project_id":                       "the name of a project is read by the Organization API with a key of the organization; a project's key gets 400 there (handleOrgProjects), and every tool would pay that call for a name",
+	"k8s_nodepool_get nodes_subnet_id":   "the name is a read of the VPC API at every call, and an operation of a pool reads the card at every poll (operationReads); the card's note names list_subnets",
+	"k8s_nodepool_get security_group_id": "the name is a read of the Compute API at every call, and an operation of a pool reads the card at every poll (operationReads); the card's note names list_security_groups",
+	"billing_consumption agreement_id":   "the billing API has no read of an agreement: agreement_id is only its filter (billing/swagger.yaml), so there is no name to read",
+	"billing_finops agreement_id":        "the billing API has no read of an agreement: agreement_id is only its filter (billing/swagger.yaml), so there is no name to read",
 }
 
 // notRefs are the UUIDs of the human output that are no reference: "tool

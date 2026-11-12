@@ -243,6 +243,8 @@ func New(factory EngineFactory) *Registry {
 		t.ArgDescriptionsRU = argDescriptionsRU(*t, ru.Args)
 		spec, isList := listSpecs[t.Name]
 		spec.declare(t)
+		noEmptyValue(t, scopeArgs...)
+		noEmptyValue(t, spec.own...)
 		if h := r.handlers[t.Name]; h != nil {
 			// Innermost: every policy of the call stands over the list
 			// the selection is made from.
@@ -259,8 +261,8 @@ func New(factory EngineFactory) *Registry {
 			if projectTools[t.Name] {
 				h = r.requireProject(h)
 			}
-			if _, ok := createdIDs[t.Name]; ok {
-				h = r.namedProject(h)
+			if _, ok := createdIDs[t.Name]; ok || targetArgs(t.Name) != nil {
+				h = r.namedProject(*t, h)
 			}
 			if keys := echoedArgs[t.Name]; keys != nil {
 				h = namedArgs(keys, h)
