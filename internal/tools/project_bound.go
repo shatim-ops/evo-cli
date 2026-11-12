@@ -49,6 +49,11 @@ type ownerKind struct {
 	listTool string
 	// check refuses id unless it names a resource of an allowed project.
 	check func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error
+	// project is the project that owns id, read without a write; "" when
+	// the kind cannot tell: its answer by id names none and the call's
+	// project does not hold the resource. The preview of a change
+	// addressed by id names it (namedProject).
+	project func(ctx context.Context, c *ownerCall, id string) (string, error)
 }
 
 // idArg is an argument that names a resource by id: the kind whose owner a
@@ -57,6 +62,10 @@ type idArg struct {
 	name string
 	kind *ownerKind
 	why  string
+	// target: the call changes this resource or creates inside it, and its
+	// request names no project of its own, so the write lands in the
+	// project of this resource (namedProject).
+	target bool
 	// ids reads the argument; nil reads it as one string.
 	ids func(args map[string]any) []string
 }
@@ -86,7 +95,7 @@ var idArgs = map[string][]idArg{
 	"vm_get":       {{name: "vm_id", kind: kindVM}},
 	"destroy":      {{name: "vm_id", why: whyListed}},
 	"image_get":    {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}},
-	"image_delete": {{name: "image_id", kind: kindImage}},
+	"image_delete": {{name: "image_id", kind: kindImage, target: true}},
 	"image_create": {{name: "disk_id", kind: kindDisk}},
 	"deploy":       {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "project_id", why: whyProjectArg}},
 	"provision": {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "subnet_id", why: whyListed},
@@ -94,18 +103,18 @@ var idArgs = map[string][]idArg{
 	"deploy_plan":         {{name: "image", kind: kindImage}, {name: "base_plan_id", why: whyLocal}},
 	"deploy_apply":        {{name: "plan_id", why: whyLocal}},
 	"fip_attach":          {{name: "fip", why: whyListed}, {name: "vm", why: whyListed}},
-	"release_floating_ip": {{name: "id", kind: kindFIP}},
+	"release_floating_ip": {{name: "id", kind: kindFIP, target: true}},
 	"open_ports":          {{name: "security_group", why: whyListed}},
 	"close_ports":         {{name: "security_group", why: whyListed}},
 	"disk_create":         {{name: "attach_to", why: whyListed}},
-	"disk_attach":         {{name: "disk_id", kind: kindDisk}, {name: "vm", why: whyListed}},
-	"disk_detach":         {{name: "disk_id", kind: kindDisk}, {name: "vm", why: whyListed}},
-	"disk_resize":         {{name: "disk_id", kind: kindDisk}},
-	"disk_delete":         {{name: "disk_id", kind: kindDisk}},
+	"disk_attach":         {{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}},
+	"disk_detach":         {{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}},
+	"disk_resize":         {{name: "disk_id", kind: kindDisk, target: true}},
+	"disk_delete":         {{name: "disk_id", kind: kindDisk, target: true}},
 	"snat_create":         {{name: "availability_zone_id", why: whyCatalogue}},
-	"snat_delete":         {{name: "id", kind: kindNAT}},
+	"snat_delete":         {{name: "id", kind: kindNAT, target: true}},
 	"subnet_create":       {{name: "vpc_id", kind: kindVPC}, {name: "availability_zone_id", why: whyCatalogue}},
-	"subnet_delete":       {{name: "subnet_id", kind: kindSubnet}},
+	"subnet_delete":       {{name: "subnet_id", kind: kindSubnet, target: true}},
 	"list_subnets":        {{name: "vpc_id", why: whyFilter}},
 	"lb_list":             {{name: "vpc_id", why: whyFilter}},
 	"tg_list":             {{name: "vpc_id", why: whyFilter}},
@@ -113,76 +122,76 @@ var idArgs = map[string][]idArg{
 	// Managed Kubernetes.
 	"k8s_get":          {{name: "cluster_id", kind: kindK8s}},
 	"k8s_kubeconfig":   {{name: "cluster_id", kind: kindK8s}},
-	"k8s_delete":       {{name: "cluster_id", kind: kindK8s}},
+	"k8s_delete":       {{name: "cluster_id", kind: kindK8s, target: true}},
 	"k8s_operation":    {{name: "operation_id", kind: kindOperation}},
 	"k8s_nodepools":    {{name: "cluster_id", kind: kindK8s}},
-	"k8s_add_nodepool": {{name: "cluster_id", kind: kindK8s}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}},
-	"k8s_add_addon":    {{name: "cluster_id", kind: kindK8s}},
-	"k8s_kubectl":      {{name: "cluster_id", kind: kindK8s}},
-	"k8s_apply":        {{name: "cluster_id", kind: kindK8s}},
-	"k8s_helm":         {{name: "cluster_id", kind: kindK8s}},
+	"k8s_add_nodepool": {{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}},
+	"k8s_add_addon":    {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_kubectl":      {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_apply":        {{name: "cluster_id", kind: kindK8s, target: true}},
+	"k8s_helm":         {{name: "cluster_id", kind: kindK8s, target: true}},
 	"k8s_plan":         {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
 	"k8s_create":       {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
 
 	// Managed PostgreSQL, Kafka, Redis.
 	"pg_get":           {{name: "id", kind: kindPG}, {name: "cluster_id", kind: kindPG}},
-	"pg_delete":        {{name: "id", kind: kindPG}, {name: "cluster_id", kind: kindPG}},
+	"pg_delete":        {{name: "id", kind: kindPG, target: true}, {name: "cluster_id", kind: kindPG, target: true}},
 	"pg_databases":     {{name: "cluster_id", kind: kindPG}},
-	"pg_db_create":     {{name: "cluster_id", kind: kindPG}},
-	"pg_db_delete":     {{name: "cluster_id", kind: kindPG}},
+	"pg_db_create":     {{name: "cluster_id", kind: kindPG, target: true}},
+	"pg_db_delete":     {{name: "cluster_id", kind: kindPG, target: true}},
 	"pg_users":         {{name: "cluster_id", kind: kindPG}},
-	"pg_user_create":   {{name: "cluster_id", kind: kindPG}},
-	"pg_user_delete":   {{name: "cluster_id", kind: kindPG}},
+	"pg_user_create":   {{name: "cluster_id", kind: kindPG, target: true}},
+	"pg_user_delete":   {{name: "cluster_id", kind: kindPG, target: true}},
 	"pg_backups":       {{name: "cluster_id", kind: kindPG}},
-	"pg_backup_create": {{name: "cluster_id", kind: kindPG}},
+	"pg_backup_create": {{name: "cluster_id", kind: kindPG, target: true}},
 	"pg_create":        {{name: "specification_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}},
 	"pg_operation":     {{name: "operation_id", kind: kindOperation}},
 	"kafka_get":        {{name: "cluster_id", kind: kindKafka}},
-	"kafka_delete":     {{name: "cluster_id", kind: kindKafka}},
+	"kafka_delete":     {{name: "cluster_id", kind: kindKafka, target: true}},
 	"kafka_specs":      {{name: "version_id", why: whyCatalogue}},
 	"kafka_create":     {{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}},
 	"kafka_operation":  {{name: "operation_id", kind: kindOperation}},
 	"redis_get":        {{name: "cluster_id", kind: kindRedis}},
-	"redis_delete":     {{name: "cluster_id", kind: kindRedis}},
+	"redis_delete":     {{name: "cluster_id", kind: kindRedis, target: true}},
 	"redis_specs":      {{name: "version_id", why: whyCatalogue}},
 	"redis_create":     {{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}},
 	"redis_operation":  {{name: "operation_id", kind: kindOperation}},
 
 	// Network Load Balancer.
 	"lb_get":       {{name: "id", kind: kindNLB}},
-	"lb_delete":    {{name: "id", kind: kindNLB}},
+	"lb_delete":    {{name: "id", kind: kindNLB, target: true}},
 	"lb_create":    {{name: "target_group_id", kind: kindTG}, {name: "vpc_id", kind: kindVPC}, {name: "subnet_id", why: whyListed}},
 	"lb_operation": {{name: "operation_id", kind: kindOperation}},
 	"tg_get":       {{name: "id", kind: kindTG}},
-	"tg_delete":    {{name: "id", kind: kindTG}},
+	"tg_delete":    {{name: "id", kind: kindTG, target: true}},
 	"tg_create":    {{name: "vm_id", kind: kindVM}, {name: "targets", kind: kindVM, ids: targetIDs}, {name: "interface_id", why: whyInParent}},
 
 	// VPC.
 	"vpc_get":       {{name: "id", kind: kindVPC}},
-	"vpc_delete":    {{name: "id", kind: kindVPC}},
+	"vpc_delete":    {{name: "id", kind: kindVPC, target: true}},
 	"vpc_operation": {{name: "operation_id", kind: kindOperation}},
 	"vpc_routes":    {{name: "vpc_id", kind: kindVPC}},
-	"vpc_route_create": {{name: "vpc_id", kind: kindVPC}, {name: "next_hop_vm_id", kind: kindVM}, {name: "next_hop_interface_id", why: whyInParent},
+	"vpc_route_create": {{name: "vpc_id", kind: kindVPC, target: true}, {name: "next_hop_vm_id", kind: kindVM}, {name: "next_hop_interface_id", why: whyInParent},
 		{name: "next_hop_vip_id", why: whyReference}, {name: "next_hop_magic_router_id", why: whyReference}},
-	"vpc_route_delete": {{name: "vpc_id", kind: kindVPC}, {name: "route_id", why: whyInParent}},
+	"vpc_route_delete": {{name: "vpc_id", kind: kindVPC, target: true}, {name: "route_id", why: whyInParent}},
 
 	// DNS.
 	"dns_zone_create":   {{name: "vpc_id", kind: kindVPC}},
 	"dns_zone_get":      {{name: "id", kind: kindDNSZone}},
-	"dns_zone_delete":   {{name: "id", kind: kindDNSZone}},
+	"dns_zone_delete":   {{name: "id", kind: kindDNSZone, target: true}},
 	"dns_records":       {{name: "zone_id", kind: kindDNSZone}},
-	"dns_record_create": {{name: "zone_id", kind: kindDNSZone}},
+	"dns_record_create": {{name: "zone_id", kind: kindDNSZone, target: true}},
 	"dns_record_get":    {{name: "record_id", kind: kindDNSRecord}},
-	"dns_record_delete": {{name: "record_id", kind: kindDNSRecord}},
+	"dns_record_delete": {{name: "record_id", kind: kindDNSRecord, target: true}},
 	"dns_operation":     {{name: "operation_id", kind: kindOperation}},
 
 	// Certificate Manager.
 	"cert_get":         {{name: "id", kind: kindCert}},
-	"cert_delete":      {{name: "id", kind: kindCert}},
+	"cert_delete":      {{name: "id", kind: kindCert, target: true}},
 	"cert_usage":       {{name: "id", kind: kindCert}},
-	"cert_renew":       {{name: "certificate_id", kind: kindCert}},
+	"cert_renew":       {{name: "certificate_id", kind: kindCert, target: true}},
 	"cert_versions":    {{name: "certificate_id", kind: kindCert}},
-	"cert_private_key": {{name: "certificate_id", kind: kindCert}, {name: "version_id", why: whyInParent}},
+	"cert_private_key": {{name: "certificate_id", kind: kindCert, target: true}, {name: "version_id", why: whyInParent}},
 	"cert_operation":   {{name: "operation_id", kind: kindOperation}},
 
 	// Artifact Registry: GET and DELETE /v1/registries/{id} take projectId
@@ -219,6 +228,18 @@ func targetIDs(args map[string]any) []string {
 			if id, _ := m["id"].(string); id != "" {
 				out = append(out, id)
 			}
+		}
+	}
+	return out
+}
+
+// targetArgs are the arguments of the tool that name the resource its
+// write lands in (idArg.target).
+func targetArgs(tool string) []idArg {
+	var out []idArg
+	for _, a := range idArgs[tool] {
+		if a.target {
+			out = append(out, a)
 		}
 	}
 	return out
@@ -304,6 +325,15 @@ func (c *ownerCall) engine(ctx context.Context) (*engine.Engine, error) {
 	return eng, nil
 }
 
+// project is the project of the call (engine).
+func (c *ownerCall) project(ctx context.Context) (string, error) {
+	eng, err := c.engine(ctx)
+	if err != nil {
+		return "", err
+	}
+	return eng.Config.ProjectID, nil
+}
+
 // ErrProjectNotAllowed marks the factory's refusal of a project outside
 // the server's (evo mcp --allow-project, checkAllowedProject): admit
 // answers it as notInProject, and any other error of the factory as it is.
@@ -374,12 +404,16 @@ func projectField(m map[string]any) string {
 
 // byProjectField is a kind whose answer by id names its project.
 func byProjectField(what, listTool string, get func(ctx context.Context, c *ownerCall, id string) (map[string]any, error)) *ownerKind {
-	return &ownerKind{what: what, listTool: listTool, check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
+	project := func(ctx context.Context, c *ownerCall, id string) (string, error) {
 		m, err := get(ctx, c, id)
+		return projectField(m), err
+	}
+	return &ownerKind{what: what, listTool: listTool, project: project, check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
+		p, err := project(ctx, c, id)
 		if err != nil {
 			return gone(k, id, err)
 		}
-		return c.admit(k, id, projectField(m))
+		return c.admit(k, id, p)
 	}}
 }
 
@@ -387,21 +421,29 @@ func byProjectField(what, listTool string, get func(ctx context.Context, c *owne
 // the call's project (admitted by the factory when its engine was built)
 // must hold the id.
 func inProjectList(what, listTool string, list func(ctx context.Context, c *ownerCall) ([]string, error)) *ownerKind {
-	return &ownerKind{what: what, listTool: listTool, check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
+	k := &ownerKind{what: what, listTool: listTool}
+	// held: the call's project holds id (a name is the handler's to find
+	// there, byName).
+	held := func(ctx context.Context, c *ownerCall, id string) (bool, error) {
 		if k.byName && !looksUUID(id) {
-			return nil
+			return true, nil
 		}
 		ids, err := list(ctx, c)
-		if err != nil {
+		return slices.Contains(ids, id), err
+	}
+	k.check = func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
+		if ok, err := held(ctx, c, id); err != nil || ok {
 			return err
 		}
-		for _, x := range ids {
-			if x == id {
-				return nil
-			}
-		}
 		return notInProject(k, id)
-	}}
+	}
+	k.project = func(ctx context.Context, c *ownerCall, id string) (string, error) {
+		if ok, err := held(ctx, c, id); err != nil || !ok {
+			return "", err
+		}
+		return c.project(ctx)
+	}
+	return k
 }
 
 // byName marks k as taking a name where a UUID is not given (byName).
@@ -502,38 +544,38 @@ var (
 	// A DNS record names its zone (publicZoneId, privateZoneId in
 	// dns/openapi.yaml), not its project: the zone must be the project's.
 	// The refusal names the record, not the zone of another project.
-	kindDNSRecord = &ownerKind{what: "DNS record", listTool: "dns_records", check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
-		cli, err := c.r.dnsClient(ctx)
-		if err != nil {
-			return err
-		}
-		vis, err := dnsRecordVisibility(ctx, cli, c.args, id)
-		if err != nil {
-			return gone(k, id, err)
-		}
-		m, err := dnsGetRecord(ctx, cli, vis, id)
-		if err != nil {
-			return gone(k, id, err)
-		}
-		zone := ""
-		for _, f := range []string{"publicZoneId", "public_zone_id", "privateZoneId", "private_zone_id"} {
-			if v, _ := m[f].(string); v != "" {
-				zone = v
-				break
+	kindDNSRecord = &ownerKind{what: "DNS record", listTool: "dns_records",
+		check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
+			zone, setup, err := dnsRecordZone(ctx, c, id)
+			if err != nil {
+				if setup {
+					return err
+				}
+				return gone(k, id, err)
 			}
-		}
-		if zone == "" {
-			return c.admit(k, id, "")
-		}
-		zones, err := dnsZoneIDs(ctx, c)
-		if err != nil {
-			return err
-		}
-		if !slices.Contains(zones, zone) {
-			return notInProject(k, id)
-		}
-		return nil
-	}}
+			if zone == "" {
+				return c.admit(k, id, "")
+			}
+			zones, err := dnsZoneIDs(ctx, c)
+			if err != nil {
+				return err
+			}
+			if !slices.Contains(zones, zone) {
+				return notInProject(k, id)
+			}
+			return nil
+		},
+		project: func(ctx context.Context, c *ownerCall, id string) (string, error) {
+			zone, _, err := dnsRecordZone(ctx, c, id)
+			if err != nil || zone == "" {
+				return "", err
+			}
+			zones, err := dnsZoneIDs(ctx, c)
+			if err != nil || !slices.Contains(zones, zone) {
+				return "", err
+			}
+			return c.project(ctx)
+		}}
 
 	kindPG = byProjectField("PostgreSQL cluster", "pg_list", func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
 		cli, err := c.r.pgClient(ctx)
@@ -583,7 +625,7 @@ var (
 	// catalogue as the call's project sees it. A name is resolved within
 	// that catalogue and the project's own images, where another project's
 	// image is not.
-	kindImage = &ownerKind{what: "image", listTool: "image_list", check: func(ctx context.Context, c *ownerCall, k *ownerKind, ref string) error {
+	kindImage = &ownerKind{what: "image", listTool: "image_list", project: imageProject, check: func(ctx context.Context, c *ownerCall, k *ownerKind, ref string) error {
 		if !images.IsUUID(strings.TrimSpace(ref)) {
 			return nil
 		}
@@ -629,6 +671,64 @@ var (
 				"Прочитайте сам ресурс (инструмент *_get или *_list) или опрашивайте операцию там, где её запустили."))
 	}}
 )
+
+// imageProject is the project of image ref (kindImage.project): the one
+// its card names, else the call's when the call's project lists it. A
+// name is resolved within the call's project; a public or Marketplace
+// image is no project's.
+func imageProject(ctx context.Context, c *ownerCall, ref string) (string, error) {
+	id := strings.TrimSpace(ref)
+	if !images.IsUUID(id) {
+		return c.project(ctx)
+	}
+	eng, err := c.engine(ctx)
+	if err != nil {
+		return "", err
+	}
+	d, err := eng.Cloud.GetImage(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if d.ProjectID != "" {
+		return d.ProjectID, nil
+	}
+	if d.Public || d.Type == provision.ImageTypePublic || d.Type == provision.ImageTypeMarketplace {
+		return "", nil
+	}
+	list, err := eng.Cloud.ListImagesInProject(ctx, eng.Config.ProjectID)
+	if err != nil {
+		return "", err
+	}
+	for _, img := range list {
+		if img.ID == id {
+			return eng.Config.ProjectID, nil
+		}
+	}
+	return "", nil
+}
+
+// dnsRecordZone is the zone of DNS record id. setup marks an error of the
+// client's setup, not of the read of the record.
+func dnsRecordZone(ctx context.Context, c *ownerCall, id string) (zone string, setup bool, _ error) {
+	cli, err := c.r.dnsClient(ctx)
+	if err != nil {
+		return "", true, err
+	}
+	vis, err := dnsRecordVisibility(ctx, cli, c.args, id)
+	if err != nil {
+		return "", false, err
+	}
+	m, err := dnsGetRecord(ctx, cli, vis, id)
+	if err != nil {
+		return "", false, err
+	}
+	for _, f := range []string{"publicZoneId", "public_zone_id", "privateZoneId", "private_zone_id"} {
+		if v, _ := m[f].(string); v != "" {
+			return v, false, nil
+		}
+	}
+	return "", false, nil
+}
 
 // dnsZoneIDs are the project's public and private DNS zones, as
 // dnsZoneVisibility looks a zone up.
