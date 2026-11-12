@@ -225,6 +225,12 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 120 .github/scripts/e2e_live_runs_test.sh
 
+      # Пробы графика 1.9 (область ops cloud-live.sh) на поддельном evo и
+      # заглушке curl: порядок запросов, отказ платформы, уборка своего вида.
+      - name: область ops cloud-live.sh на заглушках
+        if: runner.os == 'Linux'
+        run: timeout 300 .github/scripts/cloud_live_ops_test.sh
+
       # D61 вживую (dbaas-passing-delete.sh) на поддельном evo: отказ USAGE —
       # 1 из 1, удаление принято — провал, кластер уже готов — не покрыто.
       - name: dbaas-passing-delete.sh на поддельном evo
