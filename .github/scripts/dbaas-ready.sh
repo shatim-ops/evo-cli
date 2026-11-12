@@ -17,7 +17,8 @@ redact() { sed -E -f "$here/redact.sed"; }
 # Only the fields that can name a cause, never the whole answer: a field is
 # taken by its own name (the last path element), and not printed at all when
 # any element of its path looks like a credential or an address. Credentials
-# inside the text (URI userinfo, key=value) are masked here; IDs and IPs — by
+# inside the text (URI userinfo, Bearer, key=value and key: value, quoted or
+# not) are masked here; IDs and IPs — by
 # redact.sed; the text is cut to 160 characters after that, so a cut never
 # splits what a mask would have caught.
 # shellcheck disable=SC2016 # jq programs: $p is jq's variable
@@ -25,7 +26,7 @@ cause='[paths(scalars) as $p
   | select(($p | last | tostring) | test("^(status|state|phase|reason|message|code|done)$|^(error|fail)|_(reason|message)$"; "i"))
   | select(any($p[] | tostring; test("pass|secret|token|key|cred|uri|url|dsn|conn|host|endpoint|kubeconfig|cert|address"; "i")) | not)
   | {key: ($p | map(tostring) | join(".")),
-     value: (getpath($p) | if type == "string" then gsub("://[^/@ ]*@"; "://<cred>@") | gsub("(?<k>token|secret|password|key)=[^ ]*"; "\(.k)=<secret>"; "i") else . end)}]
+     value: (getpath($p) | if type == "string" then gsub("://[^/@ ]*@"; "://<cred>@") | gsub("bearer\\s+[^ \",]+"; "Bearer <secret>"; "i") | gsub("(?<k>pass\\w*|pwd|secret|token|key|bearer|authorization)\\\\?\"?\\s*[=:]\\s*\\\\?\"?[^ \",\\\\]*"; "\(.k)=<secret>"; "i") else . end)}]
   | from_entries'
 cut160='map_values(if type == "string" then .[0:160] else . end)'
 brief() { jq -c "$cause" | redact | jq -c "$cut160"; }

@@ -61,7 +61,7 @@ grep -q '^pg_operation ' "$FAKE_DIR/evo-calls" || { echo "FAIL failed: опер�
 # текст режется до 160 знаков.
 world nested
 long=$(printf 'x%.0s' $(seq 1 300))
-fake_evo_answer pg_get 0 0 '{"status":"FAILED","status_details":{"credentials":{"password":"NestedPw-2","adminPassword":"NestedPw-3","state":"CredState-9"},"connection":{"uri":"postgres://dbadmin:UriPw-4@db.internal/x","message":"ConnMsg-8"},"access_key":"AccessKey-5","kubeconfig":"Kube-6"},"conditions":[{"type":"Ready","reason":"NoCapacity","message":"dial postgres://u:UriPw-7@node/db failed token=Tok-1 password=Pw-0 '"$long"'","secret_ref":"Ref-7"}]}'
+fake_evo_answer pg_get 0 0 '{"status":"FAILED","status_details":{"credentials":{"password":"NestedPw-2","adminPassword":"NestedPw-3","state":"CredState-9"},"connection":{"uri":"postgres://dbadmin:UriPw-4@db.internal/x","message":"ConnMsg-8"},"access_key":"AccessKey-5","kubeconfig":"Kube-6"},"conditions":[{"type":"Ready","reason":"NoCapacity","message":"dial postgres://u:UriPw-7@node/db failed token=Tok-1 password=Pw-0 '"$long"'","secret_ref":"Ref-7"},{"reason":"auth secret: Colon-8 token: Tok-12 pwd=Pwd-13 passwd: Pw-14","message":"got {\"password\":\"JsonPw-7\"} with Authorization: Bearer eyJhbGci.Jwt-15 sent"}]}'
 run_ nested 60
 want "nested: код" "$rc" 1
 has nested 'кластер: .*"status":"FAILED"'
@@ -69,7 +69,7 @@ has nested 'кластер: .*"conditions.0.reason":"NoCapacity"'
 has nested 'кластер: .*://<cred>@'
 has nested 'кластер: .*token=<secret>'
 has nested 'кластер: .*password=<secret>'
-if grep -q 'NestedPw\|UriPw\|AccessKey-5\|Kube-6\|Ref-7\|Tok-1\|Pw-0\|CredState-9\|ConnMsg-8' "$FAKE_DIR/out"; then echo "FAIL nested: секрет в логе"; sed 's/^/  | /' "$FAKE_DIR/out"; fail=1; fi
+if grep -q 'NestedPw\|UriPw\|AccessKey-5\|Kube-6\|Ref-7\|Tok-1\|Pw-0\|CredState-9\|ConnMsg-8\|Colon-8\|Tok-12\|Pwd-13\|Pw-14\|JsonPw-7\|Jwt-15\|eyJ' "$FAKE_DIR/out"; then echo "FAIL nested: секрет в логе"; sed 's/^/  | /' "$FAKE_DIR/out"; fail=1; fi
 if grep -q 'x\{161\}' "$FAKE_DIR/out"; then echo "FAIL nested: текст длиннее 160 знаков"; fail=1; fi
 
 # Нет OP_ID — операцию не читаем и говорим это; чтение кластера упало — тоже
