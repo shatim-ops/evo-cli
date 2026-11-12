@@ -163,12 +163,16 @@ func tPlanReplace(key string) string {
 // of 11.11, «Риск», conclusion 100.1, R-71).
 func tGrant() string  { return i18n.T("Grant access", "Выдать доступ") }
 func tCancel() string { return i18n.T("Cancel", "Отмена") }
+
+// tSecretNote stays visible whole: the owner's decisions of 11.11 moved
+// three explanations into hints, not this one (R-47); the hint says who
+// makes the key.
 func tSecretNote() string {
-	return i18n.T("The key's secret never passes through the browser", "Секрет ключа не проходит через браузер")
+	return i18n.T("The key's secret never passes through the browser and is never shown", "Секрет ключа не проходит через браузер и нигде не показывается")
 }
 func tSecretHint() string {
-	return i18n.Tf("The secret is never shown: %s on this computer creates the account and the key with your rights and saves the key to the profile",
-		"Секрет нигде не показывается: аккаунт и ключ создает %s на этом компьютере с вашими правами и записывает ключ в профиль",
+	return i18n.Tf("%s on this computer creates the account and the key with your rights and saves the key to the profile",
+		"Аккаунт и ключ создает %s на этом компьютере с вашими правами и записывает ключ в профиль",
 		product.PageName)
 }
 
