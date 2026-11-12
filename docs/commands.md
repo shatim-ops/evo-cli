@@ -1866,7 +1866,7 @@ evo cert private-key <certificate-id> [flags]
 ```text
 Перевыпустить сертификат Let's Encrypt (асинхронно).
 
-Запустить перевыпуск сертификата Let's Encrypt. Операция асинхронная: ответ содержит id операции, ход — 'evo cert operation <operation-id>'.
+Запустить перевыпуск сертификата Let's Encrypt. Операция асинхронная: ответ содержит id операции, ход — 'evo cert operation <operation-id>'. Каждый вызов отправляет запрос на перевыпуск: повтор отправит ещё один.
 
 Вызывает инструмент cert_renew (подробнее: 'evo tools describe cert_renew').
 
@@ -4671,7 +4671,7 @@ Helm в кластере: install, upgrade, uninstall, list, status
 ```text
 Helm в кластере: install, upgrade, uninstall, list, status.
 
-Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. install и upgrade идемпотентны (helm upgrade --install --wait). Изменяющие действия — с подтверждением. Узлам нужен выход в интернет, чтобы скачать образы чарта ('evo snat create'); размер группы узлов подбирайте под чарт.
+Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. Каждый вызов запускает helm заново: повторный install или upgrade обновляет тот же релиз (helm upgrade --install --wait), а не создаёт второй, и без --version может перевести его на более новый чарт. Изменяющие действия — с подтверждением. Узлам нужен выход в интернет, чтобы скачать образы чарта ('evo snat create'); размер группы узлов подбирайте под чарт.
 
 Вызывает инструмент k8s_helm (подробнее: 'evo tools describe k8s_helm').
 
@@ -8138,7 +8138,7 @@ evo secret [flags]
 ```text
 Добавить новую версию значения секрета (ротация).
 
-Добавить новую версию значения существующего секрета (ротация).
+Добавить новую версию значения существующего секрета (ротация). Каждый вызов добавляет версию: повтор добавит ещё одну.
 
 Вызывает инструмент secret_add_version (подробнее: 'evo tools describe secret_add_version').
 
