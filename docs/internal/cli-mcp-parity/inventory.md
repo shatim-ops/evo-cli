@@ -7,13 +7,13 @@
      go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc|TestParityInventory' -update-docs
      CI сверяет файл с кодом. -->
 
-Инструментов в реестре: 162 (изменяющих: 71). Команд из `CLISpec`: 162. Команд в бинаре вместе с корнем `evo`: 222 — в docs/commands.md 217, скрытых 4, прочих 1 (`evo help`).
+Инструментов в реестре: 163 (изменяющих: 72). Команд из `CLISpec`: 163. Команд в бинаре вместе с корнем `evo`: 223 — в docs/commands.md 218, скрытых 4, прочих 1 (`evo help`).
 
 ## 1. Инструменты по способу вызова из CLI
 
 | Способ | Инструментов | из них изменяющих |
 |---|---|---|
-| дерево | 156 | 70 |
+| дерево | 157 | 71 |
 | движок | 6 | 1 |
 | tools call | 0 | 0 |
 
@@ -46,7 +46,7 @@
 | snat | 3 | 3 | 0 | 0 | 3/3 |
 | stack | 4 | 4 | 0 | 0 | 4/4 |
 | vm | 6 | 6 | 0 | 0 | 6/6 |
-| vpc | 15 | 15 | 0 | 0 | 15/15 |
+| vpc | 16 | 16 | 0 | 0 | 16/16 |
 
 ## 2. Инструмент → команда CLI
 
@@ -204,6 +204,7 @@
 | vpc | `list_security_groups` | нет | дерево | `evo vpc security-groups` | да/да |
 | vpc | `list_subnets` | нет | дерево | `evo vpc subnets` | да/да |
 | vpc | `release_floating_ip` | да | дерево | `evo vpc fip-release` | да/да |
+| vpc | `sg_rule_delete` | да | дерево | `evo vpc sg-rule-delete` | да/да |
 | vpc | `subnet_create` | да | дерево | `evo vpc subnet-create` | да/да |
 | vpc | `subnet_delete` | да | дерево | `evo vpc subnet-delete` | да/да |
 | vpc | `vpc_create` | да | дерево | `evo vpc create` | да/да |
@@ -380,6 +381,7 @@
 | `evo vpc route-delete` | `vpc_route_delete` | vpc_id route_id | — | — | confirmed | — |
 | `evo vpc routes` | `vpc_routes` | vpc_id | — | — | — | — |
 | `evo vpc security-groups` | `list_security_groups` | — | — | — | — | — |
+| `evo vpc sg-rule-delete` | `sg_rule_delete` | security_group | — | — | confirmed | — |
 | `evo vpc subnet-create` | `subnet_create` | name | — | — | confirmed | — |
 | `evo vpc subnet-delete` | `subnet_delete` | subnet_id | — | — | confirmed | — |
 | `evo vpc subnets` | `list_subnets` | — | — | — | — | — |
@@ -437,17 +439,17 @@
 
 Ожидаемый набор флагов выводится из схемы (snake_case → kebab-case, минус позиционные, Omit и rootArgs, плюс Rename) и сравнивается с флагами команды в дереве cobra. Пусто — расхождений нет.
 
-Расхождений нет: флаги всех 156 команд деревьев выведены из схемы; флаги 6 команд движка сверяет со схемой TestParity_EngineCommands.
+Расхождений нет: флаги всех 157 команд деревьев выведены из схемы; флаги 6 команд движка сверяет со схемой TestParity_EngineCommands.
 
 ## 5. Русская справка
 
 | Что | Есть по-русски | Всего |
 |---|---|---|
-| краткое описание инструмента (ShortRU) | 162 | 162 инструментов |
-| подробное описание инструмента (DescriptionRU) | 162 | 162 инструментов |
-| описания аргументов (ArgDescriptionsRU) | 556 | 556 аргументов |
-| из них флаги команд деревьев | 338 | 338 флагов |
-| описания инструментов в MCP | 0 | 162 (всегда английские) |
+| краткое описание инструмента (ShortRU) | 163 | 163 инструментов |
+| подробное описание инструмента (DescriptionRU) | 163 | 163 инструментов |
+| описания аргументов (ArgDescriptionsRU) | 560 | 560 аргументов |
+| из них флаги команд деревьев | 340 | 340 флагов |
+| описания инструментов в MCP | 0 | 163 (всегда английские) |
 
 ## 6. Исключения из паритета
 

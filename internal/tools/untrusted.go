@@ -76,6 +76,10 @@ var untrustedFields = map[string]untrustedAnswer{
 	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},
 	// The cluster of the pool by its name, in the preview of the delete.
 	"k8s_nodepool_delete": {fields: []string{"preview"}},
+	// The name of the group and the descriptions of its rules, in the
+	// preview and in the answer: anyone with access to the project writes
+	// them.
+	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of

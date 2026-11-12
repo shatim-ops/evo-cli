@@ -228,6 +228,7 @@
     - [evo vpc route-delete](#evo-vpc-route-delete)
     - [evo vpc routes](#evo-vpc-routes)
     - [evo vpc security-groups](#evo-vpc-security-groups)
+    - [evo vpc sg-rule-delete](#evo-vpc-sg-rule-delete)
     - [evo vpc subnet-create](#evo-vpc-subnet-create)
     - [evo vpc subnet-delete](#evo-vpc-subnet-delete)
     - [evo vpc subnets](#evo-vpc-subnets)
@@ -9868,6 +9869,7 @@ evo vpc [flags]
 * [evo vpc route-delete](#evo-vpc-route-delete)	 - Удалить статический маршрут из VPC (асинхронно)
 * [evo vpc routes](#evo-vpc-routes)	 - Статические маршруты VPC
 * [evo vpc security-groups](#evo-vpc-security-groups)	 - Группы безопасности (с --rules — вместе с правилами)
+* [evo vpc sg-rule-delete](#evo-vpc-sg-rule-delete)	 - Удалить правило группы безопасности по его id
 * [evo vpc subnet-create](#evo-vpc-subnet-create)	 - Создать подсеть в VPC
 * [evo vpc subnet-delete](#evo-vpc-subnet-delete)	 - Удалить подсеть
 * [evo vpc subnets](#evo-vpc-subnets)	 - Подсети: UUID, имя, зона доступности
@@ -10504,6 +10506,51 @@ evo vpc security-groups [flags]
       --name string   Только с этой частью имени, регистр не важен
       --rules         Вывести и правила каждой группы (по одному запросу к API на группу)
       --zone string   Только в этой зоне: имя или UUID
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+
+## evo vpc sg-rule-delete
+
+Удалить правило группы безопасности по его id
+
+### Synopsis
+
+```text
+Удалить правило группы безопасности по его id.
+
+Удалить одно правило группы безопасности Cloud.ru по id (id — в 'evo vpc security-groups --rules'). До вопроса evo показывает правило целиком, группу, что перестанет проходить и какие правила всё ещё пропускают этот порт — с их источником. Правила нет — ответ already_deleted без вопроса; правило другой группы — отказ с группой, в которой оно есть. Последнее правило, которое пропускает TCP 22 в группу с развёртыванием этой папки, без --allow-cut-ssh не удаляется: evo и человек потеряли бы SSH. Через какое правило доступен сам сервер evo, evo не знает — его не удаляйте. Правила по порту закрывает 'evo vpc close-ports'.
+
+Вызывает инструмент sg_rule_delete (подробнее: 'evo tools describe sg_rule_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vpc sg-rule-delete <security-group> [flags]
+```
+
+### Options
+
+```
+      --allow-cut-ssh    Удалить последнее правило, которое пропускает SSH (TCP 22): решает человек, не модель
+  -h, --help             Справка по sg-rule-delete
+      --rule-id string   UUID правила (список: evo vpc security-groups --rules)
 ```
 
 ### Options inherited from parent commands

@@ -46,6 +46,7 @@ const optionalSubnet = "00000000-0000-0000-0000-0000000000d1"
 // image_id) goes here, the other one is set.
 var optionalLeftOut = map[string]string{
 	"deploy image":                              "an alternative of image_id",
+	"sg_rule_delete allow_cut_ssh":              "the word for a refusal (the last rule that lets SSH in), not a value the write takes: the preview says cuts_ssh when it applies",
 	"deploy compose_hash":                       "a check of the consent (R-38), not a value the write takes: another hash answers the preview",
 	"deploy_apply vm_id":                        "the VM the step of a cut call goes on with (D102), not a value the write takes: a VM of another name is refused",
 	"provision vm_id":                           "the VM the step of a cut call goes on with (D102), not a value the write takes: a VM of another name is refused",

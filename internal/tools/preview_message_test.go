@@ -176,6 +176,12 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "destroy", map[string]any{})
 		return text
 	},
+	// sg_rule_delete reads the group and its rules before the question.
+	"sg_rule_delete": func(t *testing.T) string {
+		r, _ := sgRuleRegistry(t, newSGWorld())
+		_, text, _ := callNamed(t, r, "sg_rule_delete", map[string]any{"security_group": sgZoneGroup, "rule_id": sgRuleWeb})
+		return text
+	},
 	// close_ports reads its group and the rules it would delete before the
 	// question (D37): the zone's group with the rule of port 80.
 	"close_ports": func(t *testing.T) string {

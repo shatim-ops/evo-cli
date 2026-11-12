@@ -400,6 +400,14 @@
       "no_refusal": "no refusal seen live (register, 28.10)"
     }
   },
+  "sg_rule_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "rule_id",
+      "parent": "security_group",
+      "no_refusal": "no refusal seen live: the states the platform refuses a rule's delete in are for probe Г-11 (release plan 1.9)"
+    }
+  },
   "snat_create": {
     "destructive": false,
     "taken": "checked",
