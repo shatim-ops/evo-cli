@@ -61,83 +61,81 @@ func (s *Registry) handleCertGet(ctx context.Context, args map[string]any) (stri
 	return toJSON(c), false
 }
 
-func (s *Registry) handleCertIssueLE(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planCertIssueLE(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	dnsNames := stringSliceArg(args, "dns_names")
 	if name == "" || len(dnsNames) == 0 {
-		return usageT("'name' and 'dns_names' (non-empty) are required", "нужны 'name' и непустой 'dns_names'"), true
+		return answered(usageT("'name' and 'dns_names' (non-empty) are required", "нужны 'name' и непустой 'dns_names'"), true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("cert_issue_le will request a Let's Encrypt certificate %q for %v (the domains must be delegated to Evolution DNS).",
-				"cert_issue_le запросит сертификат Let's Encrypt %q для %v (домены должны быть делегированы в Evolution DNS).", name, dnsNames),
-		}), true
+	preview := map[string]any{
+		"message": i18n.Tf("cert_issue_le will request a Let's Encrypt certificate %q for %v (the domains must be delegated to Evolution DNS).",
+			"cert_issue_le запросит сертификат Let's Encrypt %q для %v (домены должны быть делегированы в Evolution DNS).", name, dnsNames),
 	}
-	cli, err := s.certClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	list, taken := certNameTaken(ctx, cli, name)
-	if taken != "" {
-		return taken, true
-	}
-	op, err := cli.IssueLetsEncrypt(ctx, name, stringArg(args, "description"), dnsNames)
-	if id, _ := op["id"].(string); err != nil || id == "" {
-		if err == nil {
-			err = noID("operation")
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		cli, err := s.certClient(ctx)
+		if err != nil {
+			return errResult(err), true
 		}
-		return lostCreate(ctx, "cert_issue_le", list, i18n.T("certificate", "сертификат"), name, nil, "cert_get id", fmt.Errorf(i18n.T("issue certificate: %w", "выпуск сертификата: %w"), err))
-	}
-	// Async: return the operation; the caller polls cert_operation until done.
-	out := map[string]any{"status": "issuing", "note": "Let's Encrypt issuance is async — poll cert_operation with this operation id until done=true. Domains must have delegated zones in Evolution DNS.", "operation": op}
-	// The operation does not name the certificate; the list does, at once
-	// (fault matrix, process audit 1.2.1).
-	if items, err := list(ctx); err == nil {
-		if id, _, ok := takenName(items, name); ok {
-			out["certificate_id"] = id
+		list, taken := certNameTaken(ctx, cli, name)
+		if taken != "" {
+			return taken, true
 		}
-	}
-	return toJSON(out), false
+		op, err := cli.IssueLetsEncrypt(ctx, name, stringArg(args, "description"), dnsNames)
+		if id, _ := op["id"].(string); err != nil || id == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "cert_issue_le", list, i18n.T("certificate", "сертификат"), name, nil, "cert_get id", fmt.Errorf(i18n.T("issue certificate: %w", "выпуск сертификата: %w"), err))
+		}
+		// Async: return the operation; the caller polls cert_operation until done.
+		out := map[string]any{"status": "issuing", "note": "Let's Encrypt issuance is async — poll cert_operation with this operation id until done=true. Domains must have delegated zones in Evolution DNS.", "operation": op}
+		// The operation does not name the certificate; the list does, at once
+		// (fault matrix, process audit 1.2.1).
+		if items, err := list(ctx); err == nil {
+			if id, _, ok := takenName(items, name); ok {
+				out["certificate_id"] = id
+			}
+		}
+		return toJSON(out), false
+	}}, nil
 }
 
-func (s *Registry) handleCertImport(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planCertImport(ctx context.Context, args map[string]any) (*Plan, error) {
 	name := stringArg(args, "name")
 	server := pemArg(args, "server_certificate")
 	key := pemArg(args, "private_key")
 	if name == "" || server == "" || key == "" {
-		return usageT("'name', 'server_certificate' and 'private_key' (PEM, or Base64 of it) are required", "нужны 'name', 'server_certificate' и 'private_key' (PEM или он же в Base64)"), true
+		return answered(usageT("'name', 'server_certificate' and 'private_key' (PEM, or Base64 of it) are required", "нужны 'name', 'server_certificate' и 'private_key' (PEM или он же в Base64)"), true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("cert_import will upload certificate %q and its private key to Certificate Manager.",
-				"cert_import загрузит сертификат %q и его закрытый ключ в Certificate Manager.", name),
-		}), true
+	preview := map[string]any{
+		"message": i18n.Tf("cert_import will upload certificate %q and its private key to Certificate Manager.",
+			"cert_import загрузит сертификат %q и его закрытый ключ в Certificate Manager.", name),
 	}
-	cli, err := s.certClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	list, taken := certNameTaken(ctx, cli, name)
-	if taken != "" {
-		return taken, true
-	}
-	body := map[string]any{"name": name, "serverCertificate": server, "privateKey": key}
-	if v := pemArg(args, "intermediate_certificate"); v != "" {
-		body["intermediateCertificate"] = v
-	}
-	if v := stringArg(args, "description"); v != "" {
-		body["description"] = v
-	}
-	c, err := cli.Import(ctx, body)
-	if id, _ := c["id"].(string); err != nil || id == "" {
-		if err == nil {
-			err = noID("certificate")
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		cli, err := s.certClient(ctx)
+		if err != nil {
+			return errResult(err), true
 		}
-		return lostCreate(ctx, "cert_import", list, i18n.T("certificate", "сертификат"), name, nil, "cert_get id", fmt.Errorf(i18n.T("import certificate: %w", "импорт сертификата: %w"), err))
-	}
-	return toJSON(map[string]any{"status": "imported", "certificate": c}), false
+		list, taken := certNameTaken(ctx, cli, name)
+		if taken != "" {
+			return taken, true
+		}
+		body := map[string]any{"name": name, "serverCertificate": server, "privateKey": key}
+		if v := pemArg(args, "intermediate_certificate"); v != "" {
+			body["intermediateCertificate"] = v
+		}
+		if v := stringArg(args, "description"); v != "" {
+			body["description"] = v
+		}
+		c, err := cli.Import(ctx, body)
+		if id, _ := c["id"].(string); err != nil || id == "" {
+			if err == nil {
+				err = noID("certificate")
+			}
+			return lostCreate(ctx, "cert_import", list, i18n.T("certificate", "сертификат"), name, nil, "cert_get id", fmt.Errorf(i18n.T("import certificate: %w", "импорт сертификата: %w"), err))
+		}
+		return toJSON(map[string]any{"status": "imported", "certificate": c}), false
+	}}, nil
 }
 
 // pemArg is a PEM argument of cert_import as Certificate Manager takes it,
@@ -171,27 +169,26 @@ func certNameTaken(ctx context.Context, cli *certmanager.Client, name string) (l
 	return list, taken
 }
 
-func (s *Registry) handleCertRenew(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planCertRenew(ctx context.Context, args map[string]any) (*Plan, error) {
 	id := stringArg(args, "certificate_id")
 	if id == "" {
-		return usageT("'certificate_id' is required", "нужен 'certificate_id'"), true
+		return answered(usageT("'certificate_id' is required", "нужен 'certificate_id'"), true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.Tf("cert_renew will trigger Let's Encrypt renewal of certificate %q.",
-				"cert_renew запустит перевыпуск Let's Encrypt для сертификата %q.", id),
-		}), true
+	preview := map[string]any{
+		"message": i18n.Tf("cert_renew will trigger Let's Encrypt renewal of certificate %q.",
+			"cert_renew запустит перевыпуск Let's Encrypt для сертификата %q.", id),
 	}
-	cli, err := s.certClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	op, err := cli.Renew(ctx, id)
-	if err != nil {
-		return errResult(err), true
-	}
-	return toJSON(map[string]any{"status": "renewing", "operation": op}), false
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		cli, err := s.certClient(ctx)
+		if err != nil {
+			return errResult(err), true
+		}
+		op, err := cli.Renew(ctx, id)
+		if err != nil {
+			return errResult(err), true
+		}
+		return toJSON(map[string]any{"status": "renewing", "operation": op}), false
+	}}, nil
 }
 
 func (s *Registry) planCertDelete(ctx context.Context, args map[string]any) (*Plan, error) {
