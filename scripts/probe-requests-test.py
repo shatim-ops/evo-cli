@@ -25,10 +25,13 @@ SPEC = {
             "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Update"}}}},
             "responses": {"200": {}}}},
         "/api/v1/backups": {
-            "get": {"parameters": [{"name": "project_id", "in": "query", "required": True},
-                                   {"name": "state", "in": "query"}],
+            # A parameter of the path level belongs to each of its requests.
+            "parameters": [{"name": "project_id", "in": "query", "required": True}],
+            "get": {"parameters": [{"name": "state", "in": "query"}],
                     "responses": {"200": {}}},
-            "post": {"requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Backup"}}}},
+            "post": {"requestBody": {"content": {
+                "application/yaml": {"schema": {"$ref": "#/components/schemas/Power"}},
+                "application/json": {"schema": {"$ref": "#/components/schemas/Backup"}}}},
                      "responses": {"201": {}}}},
     },
     "components": {"schemas": {
@@ -69,6 +72,19 @@ class Requests(unittest.TestCase):
         # A schema that refers to itself is named once, not walked for ever.
         self.assertEqual(names.count("self"), 1)
         self.assertNotIn("self.self.self.self.self.name", names)
+
+    def test_json_body_before_other_content(self):
+        r = pr.describe(SPEC, "POST", "/api/v1/backups")
+        self.assertNotIn("state", [f["name"] for f in r["body"]])
+
+    def test_deep_nesting_is_walked(self):
+        schema = {"properties": {"leaf": {"type": "string"}}}
+        for i in range(6):
+            schema = {"properties": {f"l{i}": schema}}
+        doc = {"paths": {"/x": {"post": {"requestBody": {"content": {"application/json": {"schema": schema}}},
+                                         "responses": {}}}}}
+        names = [f["name"] for f in pr.describe(doc, "POST", "/x")["body"]]
+        self.assertIn("l5.l4.l3.l2.l1.l0.leaf", names)
 
     def test_query(self):
         r = pr.describe(SPEC, "GET", "/api/v1/backups")

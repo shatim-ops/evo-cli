@@ -22,7 +22,9 @@ import json
 import os
 import sys
 
-MAX_DEPTH = 4
+# Nesting of properties walked; a schema that refers to itself stops by
+# its $ref (seen), the limit is for a spec that nests without refs.
+MAX_DEPTH = 8
 COMBINERS = ("allOf", "anyOf", "oneOf")
 
 
@@ -95,7 +97,7 @@ def describe(doc, method, path):
     if "requestBody" in op:
         rb, _ = _deref(doc, op["requestBody"], ())
         content = (rb or {}).get("content") or {}
-        body = next(iter(content.values()), {}).get("schema")
+        body = (content.get("application/json") or next(iter(content.values()), {})).get("schema")
     else:  # Swagger 2
         body = next((p.get("schema") for p in params if p.get("in") == "body"), None)
     fields = []
