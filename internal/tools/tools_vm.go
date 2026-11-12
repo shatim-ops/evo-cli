@@ -92,14 +92,38 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 		ifaces = append(ifaces, row)
 	}
 
-	return toJSON(map[string]any{
+	out := map[string]any{
 		"id":         det.ID,
 		"name":       det.Name,
 		"state":      det.State,
 		"private_ip": privateIP,
 		"public_ip":  publicIP,
 		"interfaces": ifaces,
-	}), false
+	}
+	// The image the VM was made of: what vm_list selects by (images).
+	if img := vmImage(det); img != nil {
+		out["image"] = img
+	}
+	return toJSON(out), false
+}
+
+// vmImage is the image of a VM as its card names it, id and name; nil
+// when the card names none.
+func vmImage(det *provision.VMDetail) any {
+	if det.Image == nil || det.Image.ID == "" {
+		return nil
+	}
+	return map[string]any{"id": det.Image.ID, "name": det.Image.Name}
+}
+
+// vmImageByID reads the image of VM id from its card: the filter «images»
+// of vm_list (listFilter.card).
+func vmImageByID(ctx context.Context, eng *engine.Engine, id string) (any, error) {
+	det, err := eng.Cloud.GetVMDetail(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return vmImage(det), nil
 }
 
 // vmIPs are the private and the public address of a VM, by the rule of
