@@ -82,6 +82,8 @@ var deleteSpecStateRows = map[string]map[string]delRow{
 	},
 }
 
+func init() { addStateRows(stateRowsOf, deleteSpecStateRows) }
+
 func TestDelete_EveryStateOfTheSpecHasAWorld(t *testing.T) {
 	for name, rows := range deleteSpecStateRows {
 		for status, row := range rows {
