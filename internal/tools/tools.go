@@ -1819,6 +1819,11 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		// not a refusal: the VM may be booting, the person decides.
 		answer["upload"] = engine.SSHUpload(rec.VMIP)
 		if !u.Unchanged {
+			// A stopped VM takes no upload: refused before the question,
+			// as Deploy refuses it.
+			if err := eng.DeployVMStopped(ctx, &rec); err != nil {
+				return "", err
+			}
 			if probed, reach := eng.ReachSSH(ctx, rec.VMIP); probed {
 				answer["ssh_reachable"] = reach == nil
 				if reach != nil {
@@ -1900,6 +1905,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 // names it (D15, D48), so the CLI words the hint with its flag; and the
 // last lines of a failed docker compose up (output, #558).
 func deployFields(err error, fields map[string]any) map[string]any {
+	fields = engineStep(err, fields)
 	add := func(k string, v any) {
 		if fields == nil {
 			fields = map[string]any{}
@@ -2623,6 +2629,26 @@ func vmReadyText(name, zone, ip, ssh string, took time.Duration) string {
 		name, zone, ip, engine.ElapsedText(took), ssh)
 }
 
+// engineStep adds to fields the way on that an engine's refusal names in
+// its details, in the answer as in the CLI's: deploy for a deployment that
+// deploy has not finished (D76), vm_start for one whose VM is stopped
+// («Риск», conclusion 132, У2). Other errors keep their details to the CLI.
+func engineStep(err error, fields map[string]any) map[string]any {
+	var unfinished *engine.DeployUnfinishedError
+	var stopped *engine.VMStoppedError
+	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) {
+		return fields
+	}
+	var ce *clierrors.CLIError
+	if stderrors.As(err, &ce) {
+		if fields == nil {
+			fields = map[string]any{}
+		}
+		maps.Copy(fields, ce.Details)
+	}
+	return fields
+}
+
 // passwordOnce is the sentence of a provision answer that carries the
 // password evo generated for the image: no copy of it is kept.
 const passwordOnce = " The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
@@ -2677,16 +2703,7 @@ func (s *Registry) handleLogs(ctx context.Context, args map[string]any) (string,
 	}
 	if err := eng.Logs(ctx, opts); err != nil {
 		fields := logField(buf.String())
-		// A deployment deploy has not finished: its status and deploy as
-		// the next step, in the answer as in the CLI's (D76).
-		var ue *engine.DeployUnfinishedError
-		if stderrors.As(err, &ue) {
-			var ce *clierrors.CLIError
-			if stderrors.As(err, &ce) {
-				maps.Copy(fields, ce.Details)
-			}
-		}
-		return failed(ctx, err, fields), true
+		return failed(ctx, err, engineStep(err, fields)), true
 	}
 	return buf.String(), false
 }
