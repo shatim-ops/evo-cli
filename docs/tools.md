@@ -234,7 +234,7 @@
 | `s3_buckets` | `evo s3 buckets` | нет | — | List Object Storage (S3) buckets. | Бакеты Object Storage |
 | `s3_ls` | `evo s3 ls` | нет | `bucket` | List objects in an S3 bucket (key, size, last_modified). | Объекты бакета: ключ, размер, время изменения |
 | `s3_get` | `evo s3 get` | нет | `bucket`, `key` | Download an S3 object up to 10 MiB (a larger one is refused with USAGE: use an S3 client or the console). | Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль) |
-| `s3_put` | `evo s3 put` | удаляет | `bucket`, `key` | Upload an S3 object from inline content (content) or base64 (content_base64). | Загрузить объект (существующий ключ перезаписывается) |
+| `s3_put` | `evo s3 put` | удаляет | `bucket`, `key` | Upload an S3 object from inline content (content) or base64 (content_base64); stored objects are billed. | Загрузить объект (существующий ключ перезаписывается) |
 | `s3_rm` | `evo s3 rm` | удаляет | `bucket`, `key` | Delete an S3 object. | Удалить объект |
 | `s3_bucket_create` | `evo s3 bucket-create` | да | `bucket` | Create an Object Storage (S3) bucket. | Создать бакет |
 | `s3_bucket_delete` | `evo s3 bucket-delete` | удаляет | `bucket` | Delete an EMPTY S3 bucket. | Удалить пустой бакет |
