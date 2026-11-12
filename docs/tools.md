@@ -64,16 +64,16 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `cert_list` | `evo cert list` | нет | — | Certificate Manager — list TLS certificates in the project (read-only). | TLS-сертификаты проекта в Certificate Manager |
-| `cert_get` | `evo cert get` | нет | `id` | Certificate Manager — get one certificate by id (metadata, primary version, expiry, status). | Сертификат по ID: метаданные, основная версия, срок действия, состояние |
-| `cert_issue_le` | `evo cert issue-le` | да | `name`, `dns_names` | Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). | Выпустить бесплатный сертификат Let's Encrypt (асинхронно) |
-| `cert_import` | `evo cert import` | да | `name`, `server_certificate`, `private_key` | Certificate Manager — import a user-managed certificate (bring-your-own). | Загрузить в Certificate Manager свой сертификат и закрытый ключ |
-| `cert_renew` | `evo cert renew` | да | `certificate_id` | Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). | Перевыпустить сертификат Let's Encrypt (асинхронно) |
-| `cert_delete` | `evo cert delete` | удаляет | `id` | Certificate Manager — permanently delete a certificate. | Удалить сертификат (безвозвратно) |
-| `cert_usage` | `evo cert usage` | нет | `id` | Certificate Manager — list resources (load balancers/listeners) that USE a certificate. | Ресурсы, которые используют сертификат |
-| `cert_versions` | `evo cert versions` | нет | `certificate_id` | Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry), all pages. | Версии сертификата |
-| `cert_private_key` | `evo cert private-key` | нет, секрет | `certificate_id` | Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's … | Закрытый ключ версии сертификата — открытым текстом |
-| `cert_operation` | `evo cert operation` | нет | `operation_id` | Certificate Manager — poll an async operation (issue/renew) by id until done=true. | Состояние асинхронной операции Certificate Manager |
+| `cert_list` | `evo cert list` | нет | — | List TLS certificates in the project; filter by name, dns_name, common_name, type, state. | TLS-сертификаты проекта в Certificate Manager |
+| `cert_get` | `evo cert get` | нет | `id` | Get one certificate by id (metadata, primary version, expiry, status). | Сертификат по ID: метаданные, основная версия, срок действия, состояние |
+| `cert_issue_le` | `evo cert issue-le` | да | `name`, `dns_names` | Issue a FREE Let's Encrypt TLS certificate for one or more domains (async). | Выпустить бесплатный сертификат Let's Encrypt (асинхронно) |
+| `cert_import` | `evo cert import` | да | `name`, `server_certificate`, `private_key` | Import your own certificate. | Загрузить в Certificate Manager свой сертификат и закрытый ключ |
+| `cert_renew` | `evo cert renew` | да | `certificate_id` | Ask Let's Encrypt to renew a certificate (async). | Перевыпустить сертификат Let's Encrypt (асинхронно) |
+| `cert_delete` | `evo cert delete` | удаляет | `id` | Permanently delete a certificate. | Удалить сертификат (безвозвратно) |
+| `cert_usage` | `evo cert usage` | нет | `id` | List the resources that USE a certificate. | Ресурсы, которые используют сертификат |
+| `cert_versions` | `evo cert versions` | нет | `certificate_id` | List a certificate's versions (id, CN, DNS names, status, expiry), all pages. | Версии сертификата |
+| `cert_private_key` | `evo cert private-key` | нет, секрет | `certificate_id` | Return the SECRET private key of a certificate version: privateKey is PEM text, decoded from the API's Base64 (key_format: pem; base64 if the API's value is … | Закрытый ключ версии сертификата — открытым текстом |
+| `cert_operation` | `evo cert operation` | нет | `operation_id` | Poll a certificate operation (issue/renew) by id until done=true. | Состояние асинхронной операции Certificate Manager |
 
 ## deploy
 
@@ -105,9 +105,9 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `dns_zones` | `evo dns zones` | нет | — | List Evolution DNS zones in the project (both public and private), with id, name, domain, visibility, state (and confirm_state of a public zone), valid … | Зоны DNS проекта: публичные и приватные |
+| `dns_zones` | `evo dns zones` | нет | — | List DNS zones in the project, public and private (id, name, domain, visibility, state, confirm_state of a public zone, valid, delegated). | Зоны DNS проекта: публичные и приватные |
 | `dns_zone_get` | `evo dns zone-get` | нет | `id` | Get full details of one DNS zone by id (from dns_zones). | Зона DNS по ID: все сведения |
-| `dns_zone_create` | `evo dns zone-create` | да | `domain` | Create a DNS zone. | Создать зону DNS: публичную или приватную |
+| `dns_zone_create` | `evo dns zone-create` | да | `domain` | Create a DNS zone, public or private. | Создать зону DNS: публичную или приватную |
 | `dns_zone_delete` | `evo dns zone-delete` | удаляет | `id` | Delete a DNS zone by id (from dns_zones) AND its records. | Удалить зону DNS вместе с её записями |
 | `dns_operation` | `evo dns operation` | нет | `operation_id` | Poll a DNS async operation by id (from dns_zone_create/delete, dns_record_create/delete). | Состояние асинхронной операции DNS |
 | `dns_records` | `evo dns records` | нет | `zone_id` | List resource records of a DNS zone (id, name, type, values, ttl). | Записи зоны DNS |
@@ -179,7 +179,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `lb_list` | `evo lb list` | нет | — | List Evolution Load Balancers (L4/network) in the project (id, name, status, vpc, external_ip). | Балансировщики нагрузки проекта (L4) |
+| `lb_list` | `evo lb list` | нет | — | List L4 load balancers in the project (id, name, status, vpc, external_ip). | Балансировщики нагрузки проекта (L4) |
 | `lb_get` | `evo lb get` | нет | `id` | Get full details of one load balancer by id (from lb_list): rules, listeners, addresses, AZs, status. | Балансировщик по ID: правила, обработчики, адреса, зоны |
 | `lb_operation` | `evo lb operation` | нет | `operation_id` | Poll a Load Balancer async operation by id (from lb_create/lb_delete/tg_create/tg_delete). | Состояние асинхронной операции балансировщика |
 | `tg_list` | `evo tg list` | нет | — | List Load Balancer target groups in the project (id, name, status, vpc). | Группы целей балансировщиков проекта |
@@ -294,9 +294,9 @@
 | `sg_rule_create` | `evo vpc sg-rule-create` | да | `security_group`, `direction`, `protocol`, `ports` | Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). | Добавить правило в группу безопасности |
 | `sg_rule_delete` | `evo vpc sg-rule-delete` | удаляет | `security_group`, `rule_id` | Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). | Удалить правило группы безопасности по его id |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |
-| `vpc_list` | `evo vpc list` | нет | — | List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). | Список VPC проекта |
+| `vpc_list` | `evo vpc list` | нет | — | List VPCs in the project (id, name, default, type). | Список VPC проекта |
 | `vpc_get` | `evo vpc get` | нет | `id` | Get full details of one VPC by id (from vpc_list). | VPC по ID: все сведения |
-| `vpc_create` | `evo vpc create` | да | `name` | Create a new VPC (virtual private cloud) (async). | Создать VPC (асинхронно) |
+| `vpc_create` | `evo vpc create` | да | `name` | Create a VPC (async). | Создать VPC (асинхронно) |
 | `vpc_delete` | `evo vpc delete` | удаляет | `id` | Delete a VPC by id (from vpc_list) (async). | Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы) |
 | `vpc_operation` | `evo vpc operation` | нет | `operation_id` | Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). | Состояние асинхронной операции VPC |
 | `vpc_routes` | `evo vpc routes` | нет | `vpc_id` | List static routes of a VPC (id, subnet, next_hop_type, status). | Статические маршруты VPC |
