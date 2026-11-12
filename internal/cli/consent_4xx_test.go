@@ -80,6 +80,11 @@ var writeRules = map[string]struct{ world, why, item string }{
 	"PUT /api/v1/disks/{disk_id} 422":         {world: "disk larger than requested"},
 	"DELETE /api/v1/disks/{disk_id} 404":      {why: ruleAbsentID},
 	"DELETE /api/v1/disks/{disk_id} 422":      {world: "disk in use by a VM"},
+	"DELETE /api/v1/backups/{backup_id} 404":  {why: ruleAbsentID},
+	// A restore from the backup under way (one run of Г-16): the backup
+	// reads created, so no read before the question shows it; the answer
+	// after the consent says the cause and the same call (D106).
+	"DELETE /api/v1/backups/{backup_id} 422": {why: "a restore under way, which no read shows: the refusal after the consent names it and the same call (D106)"},
 
 	"POST /api/v1/subnets 409": {world: "subnet overlaps the VPC's"},
 	// A closed zone, a quota: no read tells them all yet.

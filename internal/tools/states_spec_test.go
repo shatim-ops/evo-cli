@@ -57,6 +57,8 @@ var specStatesOf = map[string]string{
 	"pg_user_create": "postgresql:cloudru.dbaas.postgresql.v1.Cluster.status", "pg_user_delete": "postgresql:cloudru.dbaas.postgresql.v1.Cluster.status",
 	"pg_backup_create": "postgresql:cloudru.dbaas.postgresql.v1.Backup.status",
 
+	"backup_delete": "compute:BackupState",
+
 	"lb_create": "nlb:v2NLBStatus", "lb_delete": "nlb:v2NLBStatus",
 	"tg_create": "nlb:v2TargetGroupStatus", "tg_delete": "nlb:v2TargetGroupStatus",
 

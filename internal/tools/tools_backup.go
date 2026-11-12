@@ -6,7 +6,11 @@ package tools
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -162,4 +166,164 @@ func backupTagNames(v any) []any {
 		}
 	}
 	return out
+}
+
+// restoreWindow is how long after a restore the preview of backup_delete
+// warns that the platform may still refuse the delete: one run of Г-16 saw
+// the refusal for up to about six minutes after the restore was asked for,
+// while the backup read created (a hypothesis until the third run).
+const restoreWindow = 10 * time.Minute
+
+// planBackupDelete plans the delete of a backup (D106; D26, D61, D74, D103).
+// A backup is data: what it held is lost with it. The preview names the
+// backup, its source and whether the source still exists — a backup of a
+// resource that is gone is the last copy of its data («Риск», conclusion
+// 164, У3а) — the backups that name it as their full one, whose fate evo has
+// not seen (У3б), and a restore of the last minutes, which the platform
+// does not let a delete through while it runs. That refusal, seen after the
+// consent, is an error with its cause and the same call again, not a
+// failure of the delete.
+func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*Plan, error) {
+	const tool = "backup_delete"
+	id := stringArg(args, "backup_id")
+	if id == "" {
+		return nil, usageErr("backup_id is required", "нужен backup_id")
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	api, err := backupAPI(eng)
+	if err != nil {
+		return nil, err
+	}
+	var card map[string]any
+	read := func(ctx context.Context) (map[string]any, error) { return api.GetBackup(ctx, id) }
+	p := s.deletePlan(tool,
+		"backup_delete permanently deletes backup %s: what it holds cannot be restored after.",
+		"backup_delete безвозвратно удаляет резервную копию %s: восстановить из неё после этого нельзя.",
+		id, func() (m map[string]any, err error) {
+			card, err = read(ctx)
+			return card, err
+		},
+		func(ctx context.Context) (string, bool) {
+			if err := api.DeleteBackup(ctx, id); err != nil {
+				return backupDeleteRefused(ctx, tool, id, args, err, s, read)
+			}
+			return deleteOutcome(ctx, args, goneWatch(tool, id, map[string]any{"backup_id": id}, "", "backup_get", read))
+		})
+	if p.Execute == nil {
+		return p, nil
+	}
+	row := backupRow(card)
+	will := map[string]any{}
+	for _, k := range []string{"type", "size_mb", "created_at", "last_restore_time", "resource_type", "resource_id", "resource_name"} {
+		if v := row[k]; v != nil {
+			will[k] = v
+		}
+	}
+	var warnings []string
+	if w, _ := p.Preview["warning"].(string); w != "" {
+		warnings = append(warnings, w)
+	}
+	if r, ok := card["resource"].(map[string]any); ok {
+		if exists, ok := r["resource_exists"].(bool); ok {
+			will["resource_exists"] = exists
+			if !exists {
+				warnings = append(warnings, i18n.T("this is a backup of a resource that no longer exists: once it is deleted, the data it holds cannot be restored from anywhere",
+					"это копия ресурса, которого больше нет: после её удаления данные из неё не восстановить ниоткуда"))
+			}
+		}
+	}
+	will["restored_resources_stay"] = i18n.T("resources restored from this backup stay; its source is not touched", "ресурсы, восстановленные из этой копии, остаются; исходный ресурс не затрагивается")
+	if at, err := time.Parse(time.RFC3339, fmt.Sprint(row["last_restore_time"])); err == nil && clock.Now().Sub(at) < restoreWindow {
+		warnings = append(warnings, i18n.T("a restore from this backup was asked for in the last minutes: while it runs, the platform refuses the delete, though the backup reads created",
+			"восстановление из этой копии запрошено в последние минуты: пока оно идёт, платформа отвергает удаление, хотя копия числится готовой"))
+	}
+	// The backups whose full one this is (parent_full_backup_id: a field
+	// both runs of Г-16 saw, the specification does not name), read in the
+	// project of the backup — not the call's, which a key of the
+	// organization may name otherwise («Риск», 164, У3). A backup that
+	// does not name its project: the preview says they were not checked.
+	project, _ := card["project_id"].(string)
+	if project == "" {
+		will["dependent_backups_checked"] = false
+		warnings = append(warnings, i18n.T("the backup does not name its project, so evo did not check which backups name it as their full one",
+			"копия не называет свой проект — какие копии называют её своей полной, evo не проверил"))
+	} else if all, err := api.ListBackups(ctx, project); err == nil {
+		var deps []map[string]any
+		for _, b := range all {
+			if b["parent_full_backup_id"] == id {
+				deps = append(deps, map[string]any{"id": b["id"], "name": b["name"], "type": b["type"]})
+			}
+		}
+		if len(deps) > 0 {
+			will["dependent_backups"] = deps
+			warnings = append(warnings, i18n.Tf("backups that name this one as their full backup: %d; whether they stay and can still be restored from once this one is deleted, evo has not checked",
+				"копий, которые называют эту своей полной: %d; останутся ли они и можно ли будет восстановить из них после удаления этой, evo не проверял", len(deps)))
+		}
+	} else {
+		return nil, clierrors.Wrap(clierrors.CodeAPIError,
+			i18n.Tf("backup %s: the backups of the project could not be read, so evo cannot tell which depend on it; nothing was sent", "копия %s: список копий проекта не прочитан — какие копии от неё зависят, evo сказать не может; ничего не отправлено", id),
+			i18n.T("Repeat the call; backup_list shows the backups.", "Повторите вызов; копии показывает evo backup list."), err)
+	}
+	p.Preview["will_delete"] = will
+	if len(warnings) > 0 {
+		p.Preview["warning"] = strings.Join(warnings, "; ")
+	}
+	return p, nil
+}
+
+// backupDeleteRefused is the answer of a DELETE the platform refused. A
+// restore under way (backup_restore_in_progress, one run of Г-16): the
+// backup is not deleted, the same call again — without the consent, which
+// does not carry over (R-85) — once the restore ends, no new reason
+// («Риск», conclusion 164, answer 2). Not ready (backup_not_ready): the
+// runs saw it on a repeat of a delete only, and a backup still being
+// created may be refused with it too — the backup is read: deleting is a
+// delete under way (D61), gone is already_deleted, any other state an
+// error that names it and the way on («Риск», 164, У1). Any other refusal
+// is the delete's own (deleteFailed).
+func backupDeleteRefused(ctx context.Context, tool, id string, args map[string]any, err error, s *Registry,
+	read func(context.Context) (map[string]any, error)) (string, bool) {
+	switch platformCode(err) {
+	case "backup_restore_in_progress":
+		ans := map[string]any{"backup_id": id, "details": map[string]any{"cause": "restore_in_progress", "platform_code": "backup_restore_in_progress"},
+			"next": i18n.T("A restore from the backup is under way: the platform deletes it once the restore ends. Call backup_delete again in a few minutes.",
+				"Из копии идёт восстановление: платформа удалит её, когда оно закончится. Повторите backup_delete через несколько минут.")}
+		nextSameCall(ans, tool, args)
+		return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
+			i18n.Tf("backup %s is not deleted: a restore from it is under way", "копия %s не удалена: из неё идёт восстановление", id), "", err), ans), true
+	case "backup_not_ready":
+		card, rerr := read(ctx)
+		if rerr != nil {
+			if isGone(rerr) {
+				return s.deleteFailed(tool, id, rerr)
+			}
+			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
+				i18n.Tf("backup %s is not deleted: the platform answered it is not ready, and its state could not be read", "копия %s не удалена: платформа ответила, что она не готова, а её состояние прочитать не удалось", id),
+				i18n.T("backup_get shows its state.", "Состояние показывает evo backup get."), err), backupGetNext(id)), true
+		}
+		state, _ := card["state"].(string)
+		if state == "deleting" {
+			return toJSON(map[string]any{"status": "deleting", "backup_id": id, "already_deleting": true,
+				"message": i18n.Tf("backup %s is already being deleted; nothing more was done", "копия %s уже удаляется; больше ничего не сделано", id)}), false
+		}
+		// What the platform refuses here and for how long no run has seen
+		// (creatingUnseen): the answer says what is known — the refusal
+		// and the state read after it — and how to check, not why.
+		ans := backupGetNext(id)
+		ans["details"] = map[string]any{"state": state, "platform_code": "backup_not_ready"}
+		return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
+			i18n.Tf("backup %s is not deleted: the platform refused the delete as not ready (backup_not_ready), and the backup reads %s", "копия %s не удалена: платформа отвергла удаление как «не готова» (backup_not_ready), копия числится %s", id, quoteCloud(state)),
+			i18n.T("The backup stays and is billed. Why the platform refused it is unknown: backup_get shows its state; call backup_delete again once the state changes.",
+				"Копия остаётся и тарифицируется. Почему платформа отказала, неизвестно: состояние показывает evo backup get; повторите удаление, когда оно изменится."), err), ans), true
+	}
+	return s.deleteFailed(tool, id, err)
+}
+
+// backupGetNext is the next step of a delete the platform refused for the
+// state of the backup: backup_get shows it.
+func backupGetNext(id string) map[string]any {
+	return map[string]any{"backup_id": id, "next_tool": "backup_get", "next_args": map[string]any{"backup_id": id}}
 }
