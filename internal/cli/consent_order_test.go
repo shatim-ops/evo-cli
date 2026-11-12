@@ -54,7 +54,7 @@ var repeatIsANewChange = map[string]string{
 	"k8s_kubectl":        "Every call runs the command again: a repeated mutating verb is a new change.",
 	"s3_put":             "Every call writes the object again.",
 	"secret_add_version": "Every call adds a version: a repeat adds one more.",
-	"vm_reboot":          "every call is a new reboot: a repeat reboots the VM again",
+	"vm_reboot":          "Every call reboots the VM again",
 }
 
 // repeatRefused are the changes shipped before the invariant whose repeat

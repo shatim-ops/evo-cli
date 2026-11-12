@@ -44,6 +44,9 @@ jobs:
     timeout-minutes: 5
     outputs:
       macos: ${{ steps.paths.outputs.macos }}
+      # internal/tools на Windows в PR, если PR трогает код путей (classify.sh,
+      # строка wintools=; план 1.9, «CI: main красный на Windows…», М4).
+      wintools: ${{ steps.paths.outputs.wintools }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
@@ -64,6 +67,7 @@ jobs:
             exit 0
           fi
           git diff --no-renames --name-only "$BASE...HEAD" | .github/scripts/classify.sh | grep '^macos=' >> "$GITHUB_OUTPUT"
+          git diff --no-renames --name-only "$BASE...HEAD" | .github/scripts/classify.sh | grep '^wintools=' >> "$GITHUB_OUTPUT"
 
   # Обязательная проверка test (macos-latest) на PR без macOS: успех с
   # причиной, а не «ожидает» — ruleset main ждёт её по имени. Имя — только
@@ -168,18 +172,26 @@ jobs:
       # рантайма без падения теста — retry с упавшими пакетами и один шаг
       # повтора ниже, второй сбой — красный. Шаги повтора за неделю считает
       # weekly-race (go_runtime_crash_week.sh).
+      # -timeout 20m: предел пакета задан явно. Умолчание go test — 10
+      # минут — никто не выбирал, и 12.11 internal/cli на macOS под -race
+      # дошёл до него: 323 с 11.11 → 588 с на зелёном main и 600,5 с
+      # (panic: test timed out) на PR, менявшем только тексты (#1524).
+      # Число — умолчание × 2: запас на рост до правки самих тестов (план
+      # 1.9, «CI: main красный на Windows… и предел macOS», М1 и М2). Это
+      # не лечение: время пакета растёт как «инструменты × миры».
       - id: gotest
         name: go test
         shell: bash
-        run: .github/scripts/go_test_ci.sh go test -race -count=1 -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }}
+        run: .github/scripts/go_test_ci.sh go test -race -count=1 -timeout 20m -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }}
         env:
           GORACE: atexit_sleep_ms=0
+          WINDOWS_PR_TOOLS: ${{ needs.scope.outputs.wintools }}
       - name: "go test: повтор после сбоя рантайма Go"
         if: steps.gotest.outputs.retry != ''
         shell: bash
         run: |
           # shellcheck disable=SC2086 # the package list is split on purpose
-          go test -race -count=1 -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} $RETRY
+          go test -race -count=1 -timeout 20m -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} $RETRY
         env:
           GORACE: atexit_sleep_ms=0
           RETRY: ${{ steps.gotest.outputs.retry }}
@@ -243,6 +255,13 @@ jobs:
       - name: dbaas-ready.sh на поддельном evo
         if: runner.os == 'Linux'
         run: timeout 60 .github/scripts/dbaas_ready_test.sh
+
+      # Стенд (план 1.9, Г-50): list находит всё его содержимое и только
+      # его; sweep отказывает без точного подтверждения, удаляет только
+      # показанное и кончается пустым списком или перечнем остатков.
+      - name: e2e_stand.sh на поддельном evo
+        if: runner.os == 'Linux'
+        run: timeout 60 .github/scripts/e2e_stand_test.sh
 
       # Проба P45 (pg-schedule-probe.sh) на поддельных evo и dbaas-delete.sh:
       # отказ — строка, принятый кластер удаляется, не удалён — код 1.

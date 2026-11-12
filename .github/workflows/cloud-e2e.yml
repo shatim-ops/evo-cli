@@ -618,7 +618,10 @@ jobs:
     if: ${{ !inputs.cleanup_only && needs.live-plan.outputs.areas != '[]' }}
     environment: cloud-e2e
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # Самая долгая область — ops с пробой g16: до 115 мин с ожиданиями и
+    # уборкой (e2e-preflight.sh); запас — чтобы обрыв по времени не оставил
+    # платных остатков.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:

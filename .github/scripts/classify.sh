@@ -4,18 +4,29 @@
 # Пути PR — только данные: читаются построчно, сравниваются с шаблонами и
 # не печатаются. Вызов: список изменённых путей на stdin; MIGRATION=1, если
 # PR добавляет раздел «Миграция» в CHANGELOG; REGISTRY — классы по diff
-# реестра (classify_registry.sh) через пробел. Печатает три строки:
+# реестра (classify_registry.sh) через пробел. Печатает строки:
 #   classes=<классы через пробел>
 #   before=<области cloud-e2e до слияния: дешёвые — ВМ, DNS, S3, секреты>
 #   after=<области после слияния из main: остальные, k8s и DBaaS>
 #   macos=<yes | no: no — только если все пути — docs/internal/*.md>
+#   wintools=<yes | no: yes — PR трогает код путей в internal/tools>
 # Порог «до/после» — решение владельца В5 (22.10). macos=no снимает
 # test (macos-latest) с PR (CLAUDE.md §4, решение владельца 03.11: у GitHub
 # не больше 5 macOS-задач одновременно); пустой список — macos=yes.
+# wintools=yes добавляет internal/tools к пакетам Windows на PR
+# (go_test_ci.sh): по решению владельца 29.10 PR гоняет на Windows только
+# пакеты с кодом Windows, и internal/tools в них нет — тест, разбиравший
+# путь как строку со слэшем, прошёл PR и шесть часов держал main красным
+# (12.11, #1473 → #1535; план 1.9, «CI: main красный на Windows…», М4).
+# Код путей — это слой намерений (internal/tools/intent*.go,
+# internal/intent) и любой файл internal/tools, который импортирует
+# path/filepath: для этого скрипт читает сам файл по пути из diff — только
+# grep по строке импорта, файл не выполняется. Часы (разрешение таймера
+# Windows) по пути не узнать — их правило не видит.
 set -euo pipefail
 
 declare -A cls=() before=() after=()
-macos=''
+macos='' wintools=''
 add() { cls[$1]=1; }
 area() {
 	case $1 in
@@ -31,6 +42,13 @@ while IFS= read -r p; do
 	case $p in
 	docs/internal/*.md) macos=${macos:-no} ;;
 	*) macos=yes ;;
+	esac
+	# Before the tests are set aside: a test takes a path apart too.
+	case $p in
+	internal/tools/intent*.go | internal/intent/*.go) wintools=yes ;;
+	internal/tools/*.go)
+		if [ -f "$p" ] && grep -q '"path/filepath"' -- "$p"; then wintools=yes; fi
+		;;
 	esac
 	case $p in
 	*_test.go) add tests; continue ;;
@@ -76,3 +94,4 @@ echo "before=$(keys "${!before[@]}")"
 echo "after=$(keys "${!after[@]}")"
 # No paths at all: nothing shows the PR is only internal docs.
 echo "macos=${macos:-yes}"
+echo "wintools=${wintools:-no}"

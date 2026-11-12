@@ -315,8 +315,8 @@ var toolsRU = map[string]toolRU{
 	},
 	"vpc_create": {
 		Short: "Создать VPC (асинхронно)",
-		Long: "Создать VPC (виртуальное частное облако) — только VPC: подсеть создаётся отдельно (в консоли; " +
-			"создания подсетей в evo пока нет), а evo lb create для VPC без подсети отказывает. Операция " +
+		Long: "Создать VPC (виртуальное частное облако) — только VPC: подсеть создаётся отдельно " +
+			"('evo vpc subnet-create'), а evo lb create для VPC без подсети отказывает. Операция " +
 			"асинхронная: ход — " +
 			"'evo vpc operation <operation-id>'.",
 		Args: map[string]string{

@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (169) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -71,16 +71,16 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `cert_list` | `evo cert list` | нет | — | Certificate Manager — list TLS certificates in the project (read-only). | TLS-сертификаты проекта в Certificate Manager |
-| `cert_get` | `evo cert get` | нет | `id` | Certificate Manager — get one certificate by id (metadata, primary version, expiry, status). | Сертификат по ID: метаданные, основная версия, срок действия, состояние |
-| `cert_issue_le` | `evo cert issue-le` | да | `name`, `dns_names` | Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). | Выпустить бесплатный сертификат Let's Encrypt (асинхронно) |
-| `cert_import` | `evo cert import` | да | `name`, `server_certificate`, `private_key` | Certificate Manager — import a user-managed certificate (bring-your-own). | Загрузить в Certificate Manager свой сертификат и закрытый ключ |
-| `cert_renew` | `evo cert renew` | да | `certificate_id` | Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). | Перевыпустить сертификат Let's Encrypt (асинхронно) |
-| `cert_delete` | `evo cert delete` | удаляет | `id` | Certificate Manager — permanently delete a certificate. | Удалить сертификат (безвозвратно) |
-| `cert_usage` | `evo cert usage` | нет | `id` | Certificate Manager — list resources (load balancers/listeners) that USE a certificate. | Ресурсы, которые используют сертификат |
-| `cert_versions` | `evo cert versions` | нет | `certificate_id` | Certificate Manager — list a certificate's versions (id, CN, DNS names, status, expiry), all pages. | Версии сертификата |
-| `cert_private_key` | `evo cert private-key` | нет, секрет | `certificate_id` | Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's … | Закрытый ключ версии сертификата — открытым текстом |
-| `cert_operation` | `evo cert operation` | нет | `operation_id` | Certificate Manager — poll an async operation (issue/renew) by id until done=true. | Состояние асинхронной операции Certificate Manager |
+| `cert_list` | `evo cert list` | нет | — | List TLS certificates in the project; filter by name, dns_name, common_name, type, state. | TLS-сертификаты проекта в Certificate Manager |
+| `cert_get` | `evo cert get` | нет | `id` | Get one certificate by id (metadata, primary version, expiry, status). | Сертификат по ID: метаданные, основная версия, срок действия, состояние |
+| `cert_issue_le` | `evo cert issue-le` | да | `name`, `dns_names` | Issue a FREE Let's Encrypt TLS certificate for one or more domains (async). | Выпустить бесплатный сертификат Let's Encrypt (асинхронно) |
+| `cert_import` | `evo cert import` | да | `name`, `server_certificate`, `private_key` | Import your own certificate. | Загрузить в Certificate Manager свой сертификат и закрытый ключ |
+| `cert_renew` | `evo cert renew` | да | `certificate_id` | Ask Let's Encrypt to renew a certificate (async). | Перевыпустить сертификат Let's Encrypt (асинхронно) |
+| `cert_delete` | `evo cert delete` | удаляет | `id` | Permanently delete a certificate. | Удалить сертификат (безвозвратно) |
+| `cert_usage` | `evo cert usage` | нет | `id` | List the resources that USE a certificate. | Ресурсы, которые используют сертификат |
+| `cert_versions` | `evo cert versions` | нет | `certificate_id` | List a certificate's versions (id, CN, DNS names, status, expiry), all pages. | Версии сертификата |
+| `cert_private_key` | `evo cert private-key` | нет, секрет | `certificate_id` | Return the SECRET private key of a certificate version: privateKey is PEM text, decoded from the API's Base64 (key_format: pem; base64 if the API's value is … | Закрытый ключ версии сертификата — открытым текстом |
+| `cert_operation` | `evo cert operation` | нет | `operation_id` | Poll a certificate operation (issue/renew) by id until done=true. | Состояние асинхронной операции Certificate Manager |
 
 ## deploy
 
@@ -105,16 +105,16 @@
 | `disk_create` | `evo disk create` | да | `name`, `size_gb` | Create a block-storage disk. | Создать диск (с --attach-to — в зоне ВМ и сразу подключить) |
 | `disk_attach` | `evo disk attach` | да | `disk_id`, `vm` | Attach an existing disk to a VM (POST /disks/{id}/attach). | Подключить диск к ВМ (диск и ВМ должны быть в одной зоне) |
 | `disk_detach` | `evo disk detach` | да | `disk_id`, `vm` | Detach a disk from a VM (POST /disks/{id}/detach). | Отключить диск от ВМ |
-| `disk_resize` | `evo disk resize` | да | `disk_id`, `size_gb` | Grow a disk in place via PUT /disks/{id} (up to 16384 GB). | Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ) |
+| `disk_resize` | `evo disk resize` | да | `disk_id`, `size_gb` | Grow a disk in place (up to 16384 GB). | Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ) |
 | `disk_delete` | `evo disk delete` | удаляет | `disk_id` | Permanently delete a disk and all its data (irreversible). | Удалить диск и все данные на нём (безвозвратно) |
 
 ## dns
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `dns_zones` | `evo dns zones` | нет | — | List Evolution DNS zones in the project (both public and private), with id, name, domain, visibility, state (and confirm_state of a public zone), valid … | Зоны DNS проекта: публичные и приватные |
+| `dns_zones` | `evo dns zones` | нет | — | List DNS zones in the project, public and private (id, name, domain, visibility, state, confirm_state of a public zone, valid, delegated). | Зоны DNS проекта: публичные и приватные |
 | `dns_zone_get` | `evo dns zone-get` | нет | `id` | Get full details of one DNS zone by id (from dns_zones). | Зона DNS по ID: все сведения |
-| `dns_zone_create` | `evo dns zone-create` | да | `domain` | Create a DNS zone. | Создать зону DNS: публичную или приватную |
+| `dns_zone_create` | `evo dns zone-create` | да | `domain` | Create a DNS zone, public or private. | Создать зону DNS: публичную или приватную |
 | `dns_zone_delete` | `evo dns zone-delete` | удаляет | `id` | Delete a DNS zone by id (from dns_zones) AND its records. | Удалить зону DNS вместе с её записями |
 | `dns_operation` | `evo dns operation` | нет | `operation_id` | Poll a DNS async operation by id (from dns_zone_create/delete, dns_record_create/delete). | Состояние асинхронной операции DNS |
 | `dns_records` | `evo dns records` | нет | `zone_id` | List resource records of a DNS zone (id, name, type, values, ttl). | Записи зоны DNS |
@@ -136,7 +136,7 @@
 | `marketplace_list` | `evo marketplace list` | нет | — | Read-only: what Cloud.ru offers to deploy, in one list: shared-catalogue VM images and Managed Kubernetes addons. | Витрина: ОС, продукты маркетплейса и плагины Kubernetes одним списком, с командой развёртывания |
 | `list_images` | `evo list-images` | нет | — | List available Cloud.ru VM boot images (UUID + name). | Загрузочные образы ВМ (UUID и имя) |
 | `image_create` | `evo image create` | да | `name`, `disk_id` | Create a VM image from a bootable disk. | Создать образ ВМ из загрузочного диска (платно, асинхронно) |
-| `image_get` | `evo image get` | нет | `image` или `image_id` | Get one VM image by name, display name or UUID (resolved like image_list: exact name, exact display_name, then a unique substring; several matches → USAGE with … | Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ |
+| `image_get` | `evo image get` | нет | `image` или `image_id` | Get one VM image by name, display name or UUID (exact name, exact display_name, then a unique substring; several matches: USAGE with candidates[]). | Образ по имени или UUID: минимум ресурсов, зоны, поля и кто их заполнит, команда создания ВМ |
 | `image_delete` | `evo image delete` | удаляет | `image_id` | Delete a VM image. | Удалить образ ВМ |
 
 ## k8s
@@ -186,7 +186,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `lb_list` | `evo lb list` | нет | — | List Evolution Load Balancers (L4/network) in the project (id, name, status, vpc, external_ip). | Балансировщики нагрузки проекта (L4) |
+| `lb_list` | `evo lb list` | нет | — | List L4 load balancers in the project (id, name, status, vpc, external_ip). | Балансировщики нагрузки проекта (L4) |
 | `lb_get` | `evo lb get` | нет | `id` | Get full details of one load balancer by id (from lb_list): rules, listeners, addresses, AZs, status. | Балансировщик по ID: правила, обработчики, адреса, зоны |
 | `lb_operation` | `evo lb operation` | нет | `operation_id` | Poll a Load Balancer async operation by id (from lb_create/lb_delete/tg_create/tg_delete). | Состояние асинхронной операции балансировщика |
 | `tg_list` | `evo tg list` | нет | — | List Load Balancer target groups in the project (id, name, status, vpc). | Группы целей балансировщиков проекта |
@@ -262,8 +262,8 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `snat_list` | `evo snat list` | нет | — | List SNAT gateways in the project. | SNAT-шлюзы проекта |
-| `snat_create` | `evo snat create` | да | `name` | Create a public SNAT gateway: outbound internet for every ROUTED subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out … | Создать публичный SNAT-шлюз: исходящий интернет для подсетей зоны (платно) |
+| `snat_list` | `evo snat list` | нет | — | List SNAT gateways of the project. | SNAT-шлюзы проекта |
+| `snat_create` | `evo snat create` | да | `name` | Create a public SNAT gateway: outbound internet for every routed subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out … | Создать публичный SNAT-шлюз: исходящий интернет для подсетей зоны (платно) |
 | `snat_delete` | `evo snat delete` | удаляет | `id` | Delete a SNAT gateway by id (from snat_list). | Удалить SNAT-шлюз (узлы зоны теряют исходящий интернет) |
 
 ## stack
@@ -280,13 +280,13 @@
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
 | `provision` | `evo vm create` | да | — | Provision a bare VM (docker-compose: use 'deploy'). | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
-| `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
+| `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
 | `vm_start` | `evo vm start` | да | `vm_id` или `name` | Start a stopped VM (power_on) and wait until it is running. | Запустить остановленную ВМ и дождаться состояния running |
 | `vm_stop` | `evo vm stop` | удаляет | `vm_id` или `name` | Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. | Остановить работающую ВМ и дождаться состояния stopped |
 | `vm_reboot` | `evo vm reboot` | удаляет | `vm_id` или `name` | Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. | Перезагрузить работающую ВМ и дождаться состояния running |
 | `vm_list` | `evo vm list` | нет | — | List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. | Список ВМ проекта: id, имя, состояние, зона, время создания |
 | `list_zones` | `evo vm zones` | нет | — | List available Cloud.ru availability zones (UUID + name). | Зоны доступности (UUID и имя) |
-| `list_flavors` | `evo vm flavors` | нет | — | List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each, and what the catalogue says beyond the size: cpu_share … | Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц |
+| `list_flavors` | `evo vm flavors` | нет | — | VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each, and what the catalogue says beyond the size: cpu_share (the guaranteed share of … | Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц |
 
 ## vpc
 
@@ -301,9 +301,9 @@
 | `sg_rule_create` | `evo vpc sg-rule-create` | да | `security_group`, `direction`, `protocol`, `ports` | Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). | Добавить правило в группу безопасности |
 | `sg_rule_delete` | `evo vpc sg-rule-delete` | удаляет | `security_group`, `rule_id` | Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). | Удалить правило группы безопасности по его id |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |
-| `vpc_list` | `evo vpc list` | нет | — | List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). | Список VPC проекта |
+| `vpc_list` | `evo vpc list` | нет | — | List VPCs in the project (id, name, default, type). | Список VPC проекта |
 | `vpc_get` | `evo vpc get` | нет | `id` | Get full details of one VPC by id (from vpc_list). | VPC по ID: все сведения |
-| `vpc_create` | `evo vpc create` | да | `name` | Create a new VPC (virtual private cloud) (async). | Создать VPC (асинхронно) |
+| `vpc_create` | `evo vpc create` | да | `name` | Create a VPC (async). | Создать VPC (асинхронно) |
 | `vpc_delete` | `evo vpc delete` | удаляет | `id` | Delete a VPC by id (from vpc_list) (async). | Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы) |
 | `vpc_operation` | `evo vpc operation` | нет | `operation_id` | Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). | Состояние асинхронной операции VPC |
 | `vpc_routes` | `evo vpc routes` | нет | `vpc_id` | List static routes of a VPC (id, subnet, next_hop_type, status). | Статические маршруты VPC |

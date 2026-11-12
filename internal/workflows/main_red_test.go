@@ -27,8 +27,11 @@ func TestWorkflows_RedMainOpensAnIssue(t *testing.T) {
 		t.Fatal("no main-red.yml: a red ci on main reaches no one")
 	}
 	trig, _ := w.On["workflow_run"].(map[string]any)
-	if fmt.Sprint(trig["workflows"]) != "[ci cloud-e2e]" || !slices.Contains(trig["types"].([]any), any("completed")) || fmt.Sprint(trig["branches"]) != "[main]" {
-		t.Errorf("main-red: on workflow_run %v, want ci and cloud-e2e completed on main", trig)
+	// stand — the daily reading of the stand (plan 1.9, Г-50): a stand past
+	// its date is red in a run by schedule, and a red nobody is told about
+	// is no signal.
+	if fmt.Sprint(trig["workflows"]) != "[ci cloud-e2e stand]" || !slices.Contains(trig["types"].([]any), any("completed")) || fmt.Sprint(trig["branches"]) != "[main]" {
+		t.Errorf("main-red: on workflow_run %v, want ci, cloud-e2e and stand completed on main", trig)
 	}
 	if len(w.On) != 1 {
 		t.Errorf("main-red: triggers %v, want workflow_run alone", w.On)
