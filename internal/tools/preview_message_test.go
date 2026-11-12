@@ -149,6 +149,14 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := scale(t, w, 3, false)
 		return text
 	},
+	// k8s_nodepool_delete reads the pool and the pools of its cluster
+	// before the question: a running pool next to another one.
+	"k8s_nodepool_delete": func(t *testing.T) string {
+		w := &poolWorld{status: poolRunning, others: []string{poolRunning}}
+		w.setCount(2)
+		_, text, _ := poolDelete(t, w, false)
+		return text
+	},
 	// vm_start reads the VM before the question (D99): a stopped VM.
 	"vm_start": func(t *testing.T) string {
 		r, _ := vmStartWorld(t, "stopped")

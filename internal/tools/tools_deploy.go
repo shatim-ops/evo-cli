@@ -1118,7 +1118,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 			"id":       fipID,
 			"message":  fmt.Sprintf("floating IP %s released", fipIP),
 		}), false
-	}, state, fipID)}, nil
+	}, state, state, fipID)}, nil
 }
 
 // folderProvenance is engine.ProvenanceOf by the state of the folder dir,

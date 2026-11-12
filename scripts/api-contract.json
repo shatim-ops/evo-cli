@@ -206,6 +206,7 @@
         {"method": "PATCH", "path": "/v3/nodePools/{nodePoolId}", "code": "internal/mk8s/nodepool.go:140", "query": ["project_id"],
          "body": ["scalePolicy.fixedScale.count"], "reads": ["id", "resourceId"],
          "accepted": {"query-unknown:project_id": "см. clusters/{id}", "body-required:nodePoolId": "идентификатор берётся из пути, как clusterId у clusters/{id}; живого прогона нет — гипотеза до пробы Г-12"}},
+        {"method": "DELETE", "path": "/v3/nodePools/{nodePoolId}", "code": "internal/mk8s/nodepool.go:157", "query": ["project_id"], "reads": ["id", "resourceId", "done"], "accepted": {"query-unknown:project_id": "см. clusters/{id}"}},
         {"method": "GET", "path": "/v3/nodePools/{nodePoolId}", "code": "internal/mk8s/nodepool.go:112", "query": ["project_id"],
          "reads": ["id", "clusterId", "name", "zone", "version", "status", "scalePolicy.fixedScale.count", "scalePolicy.autoScale.minCount", "scalePolicy.autoScale.maxCount", "machineConfiguration.flavor.name", "machineConfiguration.flavor.cpu", "machineConfiguration.flavor.ram", "machineConfiguration.disk.size", "machineConfiguration.disk.typeName", "networkConfiguration.nodesSubnetId", "networkConfiguration.securityGroupId", "autoRepair.enabled", "labels.labels", "taints.taints", "versionUpgrade.availableVersions"],
          "accepted": {"query-unknown:project_id": "см. clusters/{id}"}},

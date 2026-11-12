@@ -417,6 +417,15 @@ func (s *Registry) registerTools() {
 			}, "nodepool_id", "count"),
 		},
 		{
+			Name:        "k8s_nodepool_delete",
+			Description: "Permanently delete a node pool of a Managed Kubernetes cluster: its nodes are deleted with the data on their disks, and their pods are evicted. REQUIRES confirmed=true after the user approves; the preview names the cluster, the nodes and whether the cluster is left with no pool. The cluster itself stays. Async — returns operation_id: wait with k8s_operation.",
+			InputSchema: objSchema(map[string]any{
+				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
+				"confirmed":   confirmedProp(),
+				"wait":        boolProp(deleteWaitDesc),
+			}, "nodepool_id"),
+		},
+		{
 			Name:        "k8s_add_nodepool",
 			Description: "Add a worker node pool to a Managed Kubernetes cluster (pods need workers; a fresh cluster has none). Billable, async. A 503 'no healthy upstream' of the node-pool backend is transient: retry.",
 			InputSchema: objSchema(map[string]any{
@@ -1462,6 +1471,7 @@ func (s *Registry) registerTools() {
 		"k8s_nodepools":        s.handleK8sNodePools,
 		"k8s_nodepool_get":     s.handleK8sNodePoolGet,
 		"k8s_nodepool_scale":   s.gated("k8s_nodepool_scale", s.planK8sNodePoolScale),
+		"k8s_nodepool_delete":  s.gated("k8s_nodepool_delete", s.planK8sNodePoolDelete),
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_add_addon":        s.gated("k8s_add_addon", s.planK8sAddAddon),

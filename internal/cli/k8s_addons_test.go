@@ -56,8 +56,8 @@ func (a *addonAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		// The cluster the operation of the parity world is of (jsonOp):
 		// k8s_operation reads it for resource_status.
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"k8s-dev","version":"v1.31.4","status":"RUNNING","projectId":"`+pvProject+`"}`)
-	case r.URL.Path == "/v3/nodePools/"+parityVM && r.Method == http.MethodPatch:
-		// The scale of the pool below: its operation.
+	case r.URL.Path == "/v3/nodePools/"+parityVM && (r.Method == http.MethodPatch || r.Method == http.MethodDelete):
+		// The scale and the delete of the pool below: its operation.
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","resourceId":"`+parityVM+`","done":false}`)
 	case r.URL.Path == "/v3/nodePools/"+parityVM:
 		// The node pool k8s_nodepool_get reads.

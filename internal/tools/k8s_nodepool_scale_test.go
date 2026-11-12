@@ -45,6 +45,12 @@ type poolWorld struct {
 	statuses []string
 	patches  []string // bodies of the PATCHes
 	reqs     []string
+	// The delete of the pool (k8s_nodepool_delete): others are the other
+	// pools of the cluster, by their statuses; listFails fails the list of
+	// the cluster's pools; del is the HTTP status of the DELETE, 0 accepts.
+	others    []string
+	listFails bool
+	del       int
 }
 
 func (w *poolWorld) setCount(n int) {
@@ -105,6 +111,22 @@ func (w *poolWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 			apply()
 			_, _ = io.WriteString(rec, `{"id":"op-scale","resourceId":"`+poolFixed+`","done":false}`)
 		}
+	case r.URL.Path == "/v3/nodePools/"+poolFixed && r.Method == http.MethodDelete:
+		if w.del != 0 {
+			http.Error(rec, `{"code":9,"message":"the platform refused"}`, w.del)
+			break
+		}
+		_, _ = io.WriteString(rec, `{"id":"op-scale","resourceId":"`+poolFixed+`","done":false}`)
+	case r.URL.Path == "/v3/nodePools" && r.Method == http.MethodGet:
+		if w.listFails {
+			http.Error(rec, `{"code":13,"message":"internal"}`, 500)
+			break
+		}
+		pools := []string{poolBody(poolFixed, w.status, w.policy)}
+		for i, st := range w.others {
+			pools = append(pools, fmt.Sprintf(`{"id":"00000000-0000-4000-8000-0000000000%02d","clusterId":%q,"name":"other-%d","status":%q}`, i+1, addonCluster, i, st))
+		}
+		_, _ = io.WriteString(rec, `{"nodePools":[`+strings.Join(pools, ",")+`]}`)
 	case r.URL.Path == "/v3/operations/op-scale":
 		op := map[string]any{"id": "op-scale", "resourceId": poolFixed, "done": !w.opRuns,
 			"createdAt": "2026-11-12T09:00:00Z", "updatedAt": "2026-11-12T09:00:30Z"}

@@ -25,6 +25,10 @@ type deleteTarget struct {
 	arg        string // names the resource
 	parent     string // names the resource it lives in; "" for none
 	what, whRU string
+	// statePrefix is what the service writes before the name of a status
+	// ("OBJECT_STATUS_" of Managed Kubernetes): deletePlan reads the status
+	// without it, so the states of every delete (D61) are the pool's too.
+	statePrefix string
 }
 
 // deleteTargets are the tools that delete a resource
@@ -40,6 +44,7 @@ var deleteTargets = map[string]deleteTarget{
 	"dns_zone_delete":     {arg: "id", what: "DNS zone", whRU: "DNS-зона"},
 	"image_delete":        {arg: "image_id", what: "image", whRU: "образ"},
 	"k8s_delete":          {arg: "cluster_id", what: "Kubernetes cluster", whRU: "кластер Kubernetes"},
+	"k8s_nodepool_delete": {arg: "nodepool_id", what: "node pool", whRU: "группа узлов", statePrefix: "OBJECT_STATUS_"},
 	"kafka_delete":        {arg: "cluster_id", what: "Kafka cluster", whRU: "кластер Kafka"},
 	"lb_delete":           {arg: "id", what: "load balancer", whRU: "балансировщик"},
 	"pg_db_delete":        {arg: "name", parent: "cluster_id", what: "database", whRU: "база данных"},

@@ -150,3 +150,20 @@ func (c *Client) ScaleNodePool(ctx context.Context, id string, count int) (*Oper
 	}
 	return &op, nil
 }
+
+// DeleteNodePool deletes the node pool id (DELETE /v3/nodePools/{id});
+// the answer is the operation of the delete.
+func (c *Client) DeleteNodePool(ctx context.Context, id string) (*Operation, error) {
+	data, st, err := c.do(ctx, http.MethodDelete, "/v3/nodePools/"+seg(id), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if st != 200 {
+		return nil, apiError(st, data)
+	}
+	var op Operation
+	if err := json.Unmarshal(data, &op); err != nil {
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
+	}
+	return &op, nil
+}

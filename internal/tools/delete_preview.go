@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -41,15 +42,18 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	// for a while, and a second DELETE of it is a 500 FailedPrecondition
 	// (Grok live run on 1.3.0, N1). It is gone: already_deleted, without the
 	// question and without a DELETE (D26).
-	if statusGone(status) {
+	// The state as every delete names it; status stays the service's own
+	// word in the answer's fields.
+	state := strings.TrimPrefix(status, deleteTargets[tool].statePrefix)
+	if statusGone(state) {
 		return answered(s.deleteFailed(tool, id, clierrors.New(clierrors.CodeNotFound,
 			i18n.Tf("%s is %s", "%s в состоянии %s", label, status), "")))
 	}
 	target := map[string]any{"id": id, "name": name, "status": status}
-	if refused := passingRefusal(label, id, status, target); refused != nil {
+	if refused := passingRefusal(label, id, state, target); refused != nil {
 		return refused
 	}
-	if deleting := alreadyDeleting(label, status, target); deleting != nil {
+	if deleting := alreadyDeleting(label, state, target); deleting != nil {
 		return deleting
 	}
 	out := map[string]any{
@@ -59,10 +63,10 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 		// one rule of every delete preview (P3).
 		"provenance": engine.ProvenanceOf(deleteTargets[tool].what, id, time.Time{}, nil, nil, nil),
 	}
-	if warning, _ := engine.DeleteWayOut(status, id); warning != "" {
+	if warning, _ := engine.DeleteWayOut(state, id); warning != "" {
 		out["warning"] = warning
 	}
-	return &Plan{Preview: out, Execute: withWayOut(execute, status, id)}
+	return &Plan{Preview: out, Execute: withWayOut(execute, state, status, id)}
 }
 
 // passingRefusal is the answer of a delete of a resource still being
@@ -78,7 +82,7 @@ func passingRefusal(label, id, status string, target map[string]any) *Plan {
 	return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("%s is still being created (%s): Cloud.ru does not delete it until it is ready; nothing was done",
 			"%s ещё создаётся (%s): Cloud.ru не удалит его, пока он не будет готов; ничего не сделано", label, status), hint),
-		map[string]any{"resource_status": status, "target": target}), true)
+		map[string]any{"resource_status": target["status"], "target": target}), true)
 }
 
 // alreadyDeleting is the answer of a delete of a resource Cloud.ru is
@@ -92,7 +96,7 @@ func alreadyDeleting(label, status string, target map[string]any) *Plan {
 	return answered(toJSON(map[string]any{
 		"status":           "deleting",
 		"already_deleting": true,
-		"resource_status":  status,
+		"resource_status":  target["status"],
 		"target":           target,
 		"message": i18n.Tf("%s is already being deleted by Cloud.ru (%s); nothing was sent — check later that it is gone",
 			"%s уже удаляется Cloud.ru (%s); ничего не отправлено — позже проверьте, что его нет", label, status),
@@ -112,13 +116,13 @@ var notTheState = map[string]bool{
 	clierrors.CodeAPIUnreachable: true,
 }
 
-// withWayOut is execute whose refusal, of a resource read in status
-// before the question, says what the preview said: the status and the way
+// withWayOut is execute whose refusal, of a resource read in state (status
+// as its service writes it) before the question, says what the preview said: the status and the way
 // out (engine.DeleteWayOut), not the platform's bare error. The reason stays the
 // platform's (owner's decision 28.10, #455, option (б)); an error the
 // status does not explain (notTheState) keeps its own hint, with the status.
-func withWayOut(execute func(context.Context) (string, bool), status, id string) func(context.Context) (string, bool) {
-	_, hint := engine.DeleteWayOut(status, id)
+func withWayOut(execute func(context.Context) (string, bool), state, status, id string) func(context.Context) (string, bool) {
+	_, hint := engine.DeleteWayOut(state, id)
 	if hint == "" {
 		return execute
 	}
