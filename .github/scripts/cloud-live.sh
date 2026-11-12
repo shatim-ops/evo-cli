@@ -536,7 +536,7 @@ api_rid() {
 # «HTTP 422: » без текста не отличает отказ платформы от ошибки пробы.
 api_why() {
 	local w
-	w=$(jq -r '[.code?, .message?, .detail?, .error?] | map(select(. != null) | tostring) | join(": ")' "$tmp/api.json" 2>/dev/null) || w=
+	w=$(jq -r '[(if type == "array" then .[] else . end) | objects | [.code?, .message?, .detail?, .error?] | map(select(. != null) | tostring) | join(": ")] | join("; ")' "$tmp/api.json" 2>/dev/null) || w=
 	[ -n "$w" ] || w=$(head -c 200 "$tmp/api.json" 2>/dev/null | tr '\n' ' ')
 	printf '%s\n' "${w:-тело пустое}" | redact | cut -c1-200
 }
@@ -2108,9 +2108,10 @@ ops_reach() {
 	done
 }
 # mcode — машинный код причины последнего ответа api (поля code,
-# error_code, type и reason в details — так отвечают API DBaaS), без
-# разбора текста.
-mcode() { jq -r '[.code?, .error_code?, .type?, (.details? | if type == "array" then .[] else . end | objects | .reason?)] | map(select(type == "string")) | join(",")' "$tmp/api.json" 2>/dev/null || true; }
+# error_code, type и reason в details — так отвечают API DBaaS; тело —
+# объект или массив объектов, как у Compute, прогон 201), без разбора
+# текста.
+mcode() { jq -r '[(if type == "array" then .[] else . end) | objects | (.code?, .error_code?, .type?, (.details? | if type == "array" then .[] else . end | objects | .reason?))] | map(select(type == "string")) | unique | join(",")' "$tmp/api.json" 2>/dev/null || true; }
 # refusal ПРОВЕРКА ШАГ — отказ платформы на создающий или меняющий запрос
 # (последний ответ api) одной строкой, поля по условиям «Риска» (R-77):
 # код HTTP и шаг (синхронно или в операции); имена полей тела и машинный

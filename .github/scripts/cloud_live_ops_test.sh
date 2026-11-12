@@ -224,6 +224,16 @@ for s in 'отказ HTTP 422 (синхронно)' 'машинный код: or
 	grep -qF "$s" "$tmp/out" || { echo "FAIL: Г-10, квота: нет поля «$s»"; grep 'смена flavor' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 done
 if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: Г-10, квота: id из текста отказа в логе"; fail=1; fi
+# Compute отвечает на отказ телом-массивом [{"message":…,"code":…}]
+# (прогон 201): машинный код читается и из него — иначе квота не
+# распознаётся, и проба идёт дальше.
+g10_world
+echo 'PUT /vms/vm1 422 [{"message":"Quota exceeded","code":"project_quota_exceeded"}]' >>"$FAKE_DIR/http"
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10, квота в теле-массиве: одна попытка смены" "$(sed -n '/^PUT/,$p' "$FAKE_DIR/calls" | grep -c '^PUT\|set-power')" 1
+grep -qF 'машинный код: project_quota_exceeded' "$tmp/out" || { echo "FAIL: Г-10: машинный код из тела-массива не прочитан"; grep 'смена flavor' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+
 # Слово «quota» только в тексте, машинного кода нет — квотой не называется
 # (разбор текста запрещён), проба идёт дальше: остановка и вторая попытка.
 g10_world
