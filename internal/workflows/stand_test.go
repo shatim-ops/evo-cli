@@ -175,8 +175,13 @@ func TestWorkflows_StandHasAWorkflowOfItsOwn(t *testing.T) {
 	if _, byHand := w.On["workflow_dispatch"]; !byHand || len(w.On) != 2 {
 		t.Errorf("stand.yml: triggers %v, want schedule and workflow_dispatch only — code of a pull request must not reach the keys", w.On)
 	}
-	if w.Concurrency.Group != "stand" || w.Concurrency.CancelInProgress != "false" {
-		t.Errorf("stand.yml: concurrency %+v, want the group stand without cancel — a sweep must not be cut in the middle", w.Concurrency)
+	// The reading and the sweep wait in queues of their own: a sweep that
+	// waits for the approval of the owner must not hold the daily reading
+	// back — a queue keeps one waiting run, so a forgotten sweep would keep
+	// the signal silent for as long as it is forgotten (conclusion 167 of
+	// the risk role).
+	if g := w.Concurrency.Group; g != "${{ inputs.sweep != '' && 'stand-sweep' || 'stand-list' }}" || w.Concurrency.CancelInProgress != "false" {
+		t.Errorf("stand.yml: concurrency %+v, want the group stand-sweep for a sweep and stand-list for the reading, without cancel — a sweep must not be cut in the middle and must not hold the reading", w.Concurrency)
 	}
 	list, sweep := w.Jobs["list"], w.Jobs["sweep"]
 	var listRun, sweepRun strings.Builder
