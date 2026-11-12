@@ -13,9 +13,9 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 )
 
-// The next step of provision and deploy_apply carries confirmed and is
-// bound to nothing but a name or a plan (nextStepConsentUnbound; R-85,
-// «Риск», conclusion 125; D102). The person approved one VM. When that VM
+// The next step of provision and deploy_apply carries confirmed, and until
+// D102 was bound to nothing but a name or a plan (R-85; «Риск», conclusion
+// 125); it names the VM by its id now (nextStepKeepsConsent). The person approved one VM. When that VM
 // is gone between the call cut by the budget and the step — deleted in the
 // console, by another agent — the step, called as the answer names it,
 // makes a second VM with the consent of the first: a billed resource the

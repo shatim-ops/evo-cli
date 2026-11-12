@@ -536,6 +536,8 @@ var nextStepKeepsConsent = map[string]string{
 	"disk_create":   "disk_id and vm in next_args: the attach of attach_to the person approved",
 	"disk_detach":   "disk_id and vm in next_args: the detach the person approved",
 	"disk_resize":   "disk_id and size_gb in next_args: the size the person approved",
+	"deploy_apply":  "vm_id in next_args: the VM the call made; a step whose VM is gone refuses and creates nothing (D102, continuedVM)",
+	"provision":     "vm_id in next_args: the VM the call made; a step whose VM is gone refuses and creates nothing (D102, continuedVM)",
 }
 
 // nextStepConsentUnbound are the tools shipped before the invariant whose
@@ -545,10 +547,7 @@ var nextStepKeepsConsent = map[string]string{
 // gets bound to the id of the VM (D102, «разработка A»); then the line
 // moves to nextStepKeepsConsent. "tool" → what the next step is. It only
 // shrinks, and a new tool does not join it. Closes by 1.9.
-var nextStepConsentUnbound = map[string]string{
-	"deploy_apply": "deploy_apply plan_id, confirmed: no id of the VM in the step",
-	"provision":    "provision name, confirmed: the VM by its name, not its id",
-}
+var nextStepConsentUnbound = map[string]string{}
 
 // consentInNextStep reports whether the answer names a next step whose
 // arguments carry confirmed.
