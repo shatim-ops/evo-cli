@@ -553,6 +553,10 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		variant  consentWorld
 		refuse   bool
 		attempts int
+		// reads are the requests of the last call;
+		// absent are the requests the world answers 404 to (previewOnly).
+		reads  map[string]bool
+		absent map[string]bool
 	)
 	world := w.rt.extra
 	w.rt.extra = func(r *http.Request) (*http.Response, error) {
@@ -563,7 +567,17 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		if write && refusing {
 			attempts++
 		}
+		read := r.Method + " " + r.URL.Host + r.URL.Path
+		// A POST without consent is a read by meaning (the price of a
+		// preview): every request of the call counts.
+		if reads != nil {
+			reads[read] = true
+		}
+		gone := absent[read]
 		mu.Unlock()
+		if gone {
+			return consentJSON(http.StatusNotFound, `{"code":"NOT_FOUND","message":"the test has no such resource"}`), nil
+		}
 		if write && refusing {
 			return consentJSON(http.StatusForbidden, `{"code":"FORBIDDEN","message":"the test refuses every write"}`), nil
 		}
@@ -624,6 +638,7 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		w.rt.takeWrites()
 		mu.Lock()
 		variant, refuse, attempts = c.world, confirmed, 0
+		reads = map[string]bool{}
 		mu.Unlock()
 		ans := first(srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": a}))
 		mu.Lock()
@@ -651,10 +666,49 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			}
 		}
 	}
+	// readsOf are the requests of the last call.
+	readsOf := func() map[string]bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return reads
+	}
 	for _, tl := range newRegistry().Tools() {
 		base, ok := parityArgs[tl.Name]
 		if !ok || !tools.NeedsConsent(tl, base) {
 			continue
+		}
+		// A request only the preview makes does not decide the call
+		// («Риск · 1.9», заключение 119: a check that lives in the lazy
+		// building of the preview, Plan.PreviewOf, is skipped by an agent
+		// that sends confirmed=true at once). The requests the call makes
+		// without consent and not with it are the preview's own; in a
+		// world that has none of them (404), a call refused before the
+		// question must be refused with consent too, and not write.
+		plain := consentCase{name: "the preview's own reads are gone", args: copyArgs(base)}
+		call(tl, plain, false)
+		previewOnly := readsOf()
+		call(tl, plain, true)
+		for r := range readsOf() {
+			delete(previewOnly, r)
+		}
+		if len(previewOnly) > 0 {
+			mu.Lock()
+			absent = previewOnly
+			mu.Unlock()
+			if before, refused, _ := call(tl, plain, false); refused && before["status"] != "confirmation_required" {
+				if after, _, writes := call(tl, plain, true); writes > 0 || after["reason"] != before["reason"] {
+					names := make([]string, 0, len(previewOnly))
+					for r := range previewOnly {
+						names = append(names, r)
+					}
+					sort.Strings(names)
+					found[tl.Name+": "+plain.name] = fmt.Sprintf("refused with %v before the question, when %s answers 404; with confirmed=true the call does not read it and sends %d write(s), reason %v — the check belongs to the planner, not to the preview",
+						before["reason"], strings.Join(names, ", "), writes, after["reason"])
+				}
+			}
+			mu.Lock()
+			absent = nil
+			mu.Unlock()
 		}
 		for _, c := range consentCases(tl, base) {
 			key := tl.Name + ": " + c.name
@@ -701,6 +755,19 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			}
 			after, failed, writes := call(tl, c, true)
 			emptyIn(key+" (after consent)", after)
+			// A refusal before the question is the call's, not the
+			// preview's: the same call with confirmed=true is refused
+			// with the same reason and writes nothing. A check that
+			// lives in the building of the preview (Plan.PreviewOf) is
+			// skipped on the path of an agent that sends confirmed at
+			// once («Риск · 1.9», заключение 119).
+			if before, refused, _ := call(tl, c, false); refused && before["status"] != "confirmation_required" {
+				if !failed || writes > 0 || after["reason"] != before["reason"] {
+					found[key+" (refusal skipped with consent)"] = fmt.Sprintf("refused with %v before the question; with confirmed=true the answer is %s after %d write(s)",
+						before["reason"], clipLine(fmt.Sprint(after)), writes)
+				}
+				continue
+			}
 			if writes > 0 && !failed && jobStarts[tl.Name] == "" {
 				// The world refused the write: a success is a resource
 				// that is not there, or not the call's (K1 after the
