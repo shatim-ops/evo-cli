@@ -400,7 +400,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_operation",
-			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
+			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_nodepool_delete/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
 				"wait_seconds": opWaitProp(),
@@ -415,6 +415,24 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_nodepool_get",
 			Description: "Read one node pool of Managed Kubernetes by its id: cluster (id and name), status, version, zone, scale (fixed: desired; auto: min_count, max_count), flavor, disk, subnet, security group, labels, taints, versions it can upgrade to. Read-only. Ids: k8s_nodepools.",
 			InputSchema: objSchema(map[string]any{"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools or k8s_add_nodepool).")}, "nodepool_id"),
+		},
+		{
+			Name:        "k8s_nodepool_scale",
+			Description: "Set the number of nodes of a Managed Kubernetes node pool with a fixed count. REQUIRES confirmed=true after the user approves: more nodes are billed; fewer nodes are deleted with the data on their disks, and their pods are evicted. A pool that has the count already answers already_scaled with no question; an autoscaled pool is refused. Async — returns operation_id: wait with k8s_operation.",
+			InputSchema: objSchema(map[string]any{
+				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
+				"count":       inRange(0, maxPoolCount, intProp("The number of nodes the pool is to have.")),
+				"confirmed":   confirmedProp(),
+			}, "nodepool_id", "count"),
+		},
+		{
+			Name:        "k8s_nodepool_delete",
+			Description: "Permanently delete a node pool of a Managed Kubernetes cluster: its nodes are deleted with the data on their disks, and their pods are evicted. REQUIRES confirmed=true after the user approves; the preview names the cluster, the nodes and whether the cluster is left with no pool. The cluster itself stays. Async — returns operation_id: wait with k8s_operation.",
+			InputSchema: objSchema(map[string]any{
+				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
+				"confirmed":   confirmedProp(),
+				"wait":        boolProp(deleteWaitDesc),
+			}, "nodepool_id"),
 		},
 		{
 			Name:        "k8s_add_nodepool",
@@ -1369,7 +1387,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_bucket_create",
-			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). Idempotent — a bucket you already own is not an error. Mutation: requires confirmed=true after the user approves.",
+			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). A bucket you already own answers already_exists with no question: this call did not create it. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("New bucket name: 3-63 lowercase letters, digits, dots and hyphens, unique within the tenant. Required."),
 				"region":    strProp("Region: only ru-central-1 is accepted (the API answers 'unexpected region' otherwise). Optional; default: the configured S3 region."),
@@ -1462,6 +1480,8 @@ func (s *Registry) registerTools() {
 		"k8s_add_nodepool":     s.gated("k8s_add_nodepool", s.planK8sAddNodePool),
 		"k8s_nodepools":        s.handleK8sNodePools,
 		"k8s_nodepool_get":     s.handleK8sNodePoolGet,
+		"k8s_nodepool_scale":   s.gated("k8s_nodepool_scale", s.planK8sNodePoolScale),
+		"k8s_nodepool_delete":  s.gated("k8s_nodepool_delete", s.planK8sNodePoolDelete),
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_add_addon":        s.gated("k8s_add_addon", s.planK8sAddAddon),

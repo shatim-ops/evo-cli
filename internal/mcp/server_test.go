@@ -185,7 +185,9 @@ func TestToolsList_Annotations(t *testing.T) {
 		"s3_rm": true, "s3_put": true, "k8s_kubectl": true, "k8s_apply": true, "k8s_helm": true, "k8s_add_addon": true,
 		// vm_stop takes the service down and may lose what the VM held in
 		// memory (D99, §4.3).
-		"vm_stop": true}
+		"vm_stop": true,
+		// A scale down deletes nodes with the data on their disks (D99).
+		"k8s_nodepool_scale": true}
 	seen := map[string]bool{}
 	for _, raw := range listed {
 		tl := raw.(map[string]any)

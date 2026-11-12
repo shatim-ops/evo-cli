@@ -165,6 +165,8 @@ func ownerObject(id string) map[string]any {
 		// A node pool names its cluster: the cluster of the same id, of
 		// the same project.
 		"clusterId": id,
+		// A node pool has a scale policy: two nodes, fixed.
+		"scalePolicy": map[string]any{"fixedScale": map[string]any{"count": 2}},
 	}
 }
 
@@ -423,7 +425,7 @@ func TestProjectBound_AllowedResourceAsBefore(t *testing.T) {
 
 // isFieldKind reports a kind whose answer names its project (not a list).
 func isFieldKind(k *ownerKind) bool {
-	for _, f := range []*ownerKind{kindPG, kindNLB, kindTG, kindVPC, kindK8s, kindCert, kindImage} {
+	for _, f := range []*ownerKind{kindPG, kindNLB, kindTG, kindVPC, kindK8s, kindK8sNodePool, kindCert, kindImage} {
 		if k == f {
 			return true
 		}

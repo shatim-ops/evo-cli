@@ -122,3 +122,48 @@ func (c *Client) GetNodePool(ctx context.Context, id string) (map[string]any, er
 	}
 	return m, nil
 }
+
+// scaleNodePoolReq is the body of a scale: the fixed count of the pool and
+// nothing else. UpdateNodePoolRequest of the specification takes labels
+// and taints too, and «an object that is created and holds no data
+// removes them all»: the body of a scale carries neither, so it cannot
+// wipe what the call did not name.
+type scaleNodePoolReq struct {
+	ScalePolicy ScalePolicy `json:"scalePolicy"`
+}
+
+// ScaleNodePool sets the fixed number of nodes of a pool
+// (NodePoolService_Update, PATCH /v3/nodePools/{id}) and returns the async
+// operation.
+func (c *Client) ScaleNodePool(ctx context.Context, id string, count int) (*Operation, error) {
+	req := scaleNodePoolReq{ScalePolicy: ScalePolicy{FixedScale: &FixedScale{Count: count}}}
+	data, st, err := c.do(ctx, http.MethodPatch, "/v3/nodePools/"+seg(id), nil, req)
+	if err != nil {
+		return nil, err
+	}
+	if st != 200 {
+		return nil, apiError(st, data)
+	}
+	var op Operation
+	if err := json.Unmarshal(data, &op); err != nil {
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
+	}
+	return &op, nil
+}
+
+// DeleteNodePool deletes the node pool id (DELETE /v3/nodePools/{id});
+// the answer is the operation of the delete.
+func (c *Client) DeleteNodePool(ctx context.Context, id string) (*Operation, error) {
+	data, st, err := c.do(ctx, http.MethodDelete, "/v3/nodePools/"+seg(id), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if st != 200 {
+		return nil, apiError(st, data)
+	}
+	var op Operation
+	if err := json.Unmarshal(data, &op); err != nil {
+		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
+	}
+	return &op, nil
+}

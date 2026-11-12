@@ -334,6 +334,19 @@ var mcpWaits = map[string]budgetWait{
 	"disk_resize":  apiBudget("disk_resize", map[string]any{"disk_id": faultDisk, "size_gb": 20, "confirmed": true}, slowDisk),
 	"vm_start":     vmPowerBudget("vm_start", "stopped"),
 	"vm_stop":      vmPowerBudget("vm_stop", "running"),
+	// k8s_nodepool_scale waits for its operation: one that never ends.
+	"k8s_nodepool_scale": {run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
+		w := &poolWorld{status: poolRunning, after: poolScalingUp, opRuns: true}
+		w.setCount(2)
+		r := budgeted(poolRegistry(t, w))
+		args := map[string]any{"nodepool_id": poolFixed, "count": 3, "confirmed": true}
+		return func(ctx context.Context) (string, bool) { return r.handlers["k8s_nodepool_scale"](ctx, args) }, nil
+	}, done: func(m map[string]any) string {
+		if m["status"] != "scaling" || m["next_tool"] != "k8s_operation" {
+			return "a scale whose operation runs on is scaling, with k8s_operation as the next step"
+		}
+		return ""
+	}},
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,

@@ -25,21 +25,35 @@ type deleteTarget struct {
 	arg        string // names the resource
 	parent     string // names the resource it lives in; "" for none
 	what, whRU string
+	// statePrefix is what the service writes before the name of a status
+	// ("OBJECT_STATUS_" of Managed Kubernetes): deletePlan reads the status
+	// without it, so the states of every delete (D61, D26) are its too.
+	// How a service writes a status says nothing of what it refuses: that
+	// is creatingUnseen.
+	statePrefix string
+	// creatingUnseen is why a resource still being created is not refused
+	// before the question (D61): no run has shown the service refuse that
+	// delete, so the preview says the outcome is unknown instead of a
+	// claim about the platform (the owner's decision 12.11). It names the
+	// probe that will tell; "" is the rule of D61.
+	creatingUnseen string
 }
 
 // deleteTargets are the tools that delete a resource
 // (TestAlreadyDeleted_EveryDeleteDeclared keeps the list closed).
 var deleteTargets = map[string]deleteTarget{
-	"ar_delete":           {arg: "id", what: "artifact registry", whRU: "реестр артефактов"},
-	"close_ports":         {arg: "ports", parent: "security_group", what: "port rule", whRU: "правило порта"},
-	"ca_delete":           {arg: "name", what: "container app", whRU: "приложение Container Apps"},
-	"cert_delete":         {arg: "id", what: "certificate", whRU: "сертификат"},
-	"destroy":             {arg: "vm_id", what: "VM", whRU: "ВМ"},
-	"disk_delete":         {arg: "disk_id", what: "disk", whRU: "диск"},
-	"dns_record_delete":   {arg: "record_id", what: "DNS record", whRU: "DNS-запись"},
-	"dns_zone_delete":     {arg: "id", what: "DNS zone", whRU: "DNS-зона"},
-	"image_delete":        {arg: "image_id", what: "image", whRU: "образ"},
-	"k8s_delete":          {arg: "cluster_id", what: "Kubernetes cluster", whRU: "кластер Kubernetes"},
+	"ar_delete":         {arg: "id", what: "artifact registry", whRU: "реестр артефактов"},
+	"close_ports":       {arg: "ports", parent: "security_group", what: "port rule", whRU: "правило порта"},
+	"ca_delete":         {arg: "name", what: "container app", whRU: "приложение Container Apps"},
+	"cert_delete":       {arg: "id", what: "certificate", whRU: "сертификат"},
+	"destroy":           {arg: "vm_id", what: "VM", whRU: "ВМ"},
+	"disk_delete":       {arg: "disk_id", what: "disk", whRU: "диск"},
+	"dns_record_delete": {arg: "record_id", what: "DNS record", whRU: "DNS-запись"},
+	"dns_zone_delete":   {arg: "id", what: "DNS zone", whRU: "DNS-зона"},
+	"image_delete":      {arg: "image_id", what: "image", whRU: "образ"},
+	"k8s_delete":        {arg: "cluster_id", what: "Kubernetes cluster", whRU: "кластер Kubernetes"},
+	"k8s_nodepool_delete": {arg: "nodepool_id", what: "node pool", whRU: "группа узлов", statePrefix: "OBJECT_STATUS_",
+		creatingUnseen: "probe Г-12, question 16 of docs/internal/briefs/k8s-nodepools.md"},
 	"kafka_delete":        {arg: "cluster_id", what: "Kafka cluster", whRU: "кластер Kafka"},
 	"lb_delete":           {arg: "id", what: "load balancer", whRU: "балансировщик"},
 	"pg_db_delete":        {arg: "name", parent: "cluster_id", what: "database", whRU: "база данных"},

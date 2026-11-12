@@ -205,3 +205,43 @@ func TestWorkflows_SweepOfBackupsHasTheProject(t *testing.T) {
 		t.Fatalf("%d sweep steps found — the check sees nothing, update it", seen)
 	}
 }
+
+// The resources of the price probe Г-20 (the word g20 in the name) outlive
+// their run: e2e_live_runs.sh keeps them from every sweep until cleanup_only
+// runs with the word g20 in the input probes. The word reaches the script
+// through PROBES of the job cleanup; without it the kept VM, its disk and
+// its address would never be deleted (plan 1.9, Г-20; R-77).
+func TestWorkflows_CleanupGetsTheProbeWords(t *testing.T) {
+	job, ok := readWorkflows(t)["cloud-e2e.yml"].Jobs["cleanup"]
+	if !ok {
+		t.Fatal("cloud-e2e.yml: no job cleanup — update the test")
+	}
+	wf := readWorkflows(t)["cloud-e2e.yml"]
+	dispatch, _ := wf.On["workflow_dispatch"].(map[string]any)
+	inputs, _ := dispatch["inputs"].(map[string]any)
+	if _, ok := inputs["probes"]; !ok {
+		t.Error("cloud-e2e.yml: no input probes — the word g20 could never be given to cleanup_only")
+	}
+	if got := job.Env["PROBES"]; got != "${{ inputs.probes }}" {
+		t.Errorf("job cleanup: env PROBES = %q, want the input probes: the word g20 would not reach e2e_live_runs.sh", got)
+	}
+	// The exception has a term: the last word of every cleanup is the age
+	// of the kept VM, and a VM past the term fails the job (risk
+	// conclusion 136: a resource no sweep deletes must not live unseen).
+	term := false
+	for _, s := range job.Steps {
+		if strings.Contains(s.Run, "e2e_live_runs.sh overdue") && strings.Contains(s.If, "always()") {
+			term = true
+		}
+	}
+	if !term {
+		t.Error("job cleanup: no always() step runs e2e_live_runs.sh overdue — the VM of the price probe would live without a term")
+	}
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "e2e_live_runs.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `case " ${PROBES:-} " in *" g20 "*)`) {
+		t.Error("e2e_live_runs.sh: the word g20 of PROBES is not read — update the test or the script")
+	}
+}
