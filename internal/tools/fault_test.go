@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -77,6 +78,13 @@ func faultToolsTimings() engine.Timings {
 }
 
 func faultToolsRegistry(t *testing.T, cloud *faultCloud) (*Registry, string) {
+	t.Helper()
+	return faultToolsRegistryOver(t, cloud)
+}
+
+// faultToolsRegistryOver is faultToolsRegistry over a cloud that wraps the
+// fake: one that carries an API the fake does not (backupCloud).
+func faultToolsRegistryOver(t *testing.T, cloud provision.CloudAPI) (*Registry, string) {
 	t.Helper()
 	faultToolsIsolate(t)
 	dir := t.TempDir()
