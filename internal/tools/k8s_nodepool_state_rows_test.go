@@ -81,6 +81,8 @@ var poolStateRows = map[string]map[string]poolRow{
 	},
 }
 
+func init() { addStateRows(stateRowsOf, poolStateRows) }
+
 func TestK8sNodePool_EveryStatusOfTheTableHasAWorld(t *testing.T) {
 	for tool, rows := range poolStateRows {
 		for status, row := range rows {

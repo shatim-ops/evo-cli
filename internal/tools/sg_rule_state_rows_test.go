@@ -65,6 +65,8 @@ var sgRuleStateRows = map[string]map[string]sgRuleRow{
 	},
 }
 
+func init() { addStateRows(stateRowsOf, sgRuleStateRows) }
+
 // sgRuleStateCalls are the calls of the table: each names the rule
 // sgRuleWeb of the world, by its id or by its fields.
 var sgRuleStateCalls = map[string]map[string]any{
