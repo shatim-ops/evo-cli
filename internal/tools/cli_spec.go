@@ -281,6 +281,7 @@ var cliSpecs = map[string]CLISpec{
 	"logs":        {Verb: "logs"},
 	"list_images": {Verb: "list-images"},
 	"whoami":      {Verb: "whoami"},
+	"agent_skill": {Group: "agent", Verb: "skill"},
 	"doctor":      {Verb: "doctor"},
 	// The deploy wizard and the records: subcommands of the engine command
 	// evo deploy, which is a command with an action of its own and a group

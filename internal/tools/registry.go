@@ -90,6 +90,11 @@ type Registry struct {
 	// every call whatever a transport adds (G13-1).
 	unchecked map[string]Handler
 
+	// served reports whether the server serves the tool named (evo mcp
+	// --toolsets, --read-only); nil: every tool. agent_skill marks by it
+	// the tools of a card that are not on the server (SetServed).
+	served func(name string) bool
+
 	// jobLocks serialize the stack tools per job_id (see lockJob).
 	jobMu    sync.Mutex
 	jobLocks map[string]*sync.Mutex
@@ -468,7 +473,9 @@ var groupByName = map[string]string{
 	"org_quotas":           "org",
 
 	"whoami": "auth",
-	"doctor": "auth",
+	// With the tools an agent reaches by default (evo agent setup).
+	"agent_skill": "auth",
+	"doctor":      "auth",
 }
 
 // groupPrefixes assigns the rest by name prefix.
@@ -612,6 +619,19 @@ var sideEffectTools = map[string]string{
 	"k8s_kubeconfig": "returns a kubeconfig; mints a token of the cluster",
 	"stack_status":   "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it",
 }
+
+// alwaysListed are the tools a server lists and serves whatever its
+// --toolsets, with why.
+var alwaysListed = map[string]string{
+	"agent_skill": "the card of a group is read by the agent that works with that group, whichever groups the server serves",
+}
+
+// AlwaysListed reports whether a server serves t under any --toolsets.
+func AlwaysListed(t Tool) bool { return alwaysListed[t.Name] != "" }
+
+// SetServed tells the registry which tools the server serves (nil: all):
+// the cards of agent_skill mark the rest.
+func (r *Registry) SetServed(served func(name string) bool) { r.served = served }
 
 // HasSideEffects reports whether a tool that takes no consent is not a
 // read (sideEffectTools).

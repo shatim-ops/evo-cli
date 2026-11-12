@@ -59,7 +59,43 @@ type jsonCompat struct {
 // a key or a value away from one of the two surfaces (in 1.2 only Q1
 // breaks). An entry whose command does give the tool's answer fails
 // TestParity_JSONEqualsTool: it is dropped, not kept "just in case".
+// agentSkillCompat: the card of a terminal and the card of the server.
+var agentSkillCompat = jsonCompat{
+	reason: "карточка группы: команда печатает её для терминала (колонка Command, отсылки к evo …), инструмент по MCP — без них: ответ сервера не называет путь в обход его ограничений (заключение «Риска» 160); строки инструментов те же",
+	check: func(cmdOut, _, text string) string {
+		cmd, tool := parseObject(cmdOut), parseObject(text)
+		if cmd["group"] == nil {
+			// No group: the command prints the rules of the skill for an
+			// agent with a terminal, a local text; the tool lists the
+			// groups.
+			if s, _ := cmd["skill"].(string); s == "" || tool["groups"] == nil {
+				return "without a group: the command gives no rules, or the tool no groups"
+			}
+			return ""
+		}
+		ofCmd, ofTool := fmt.Sprint(cmd["skill"]), fmt.Sprint(tool["skill"])
+		if cmd["group"] != tool["group"] || !strings.Contains(ofCmd, "| Command |") {
+			return "the card of the command is not the card of a terminal for the same group"
+		}
+		row := regexp.MustCompile("(?m)^\\| `([a-z0-9_]+)`")
+		a, b := row.FindAllStringSubmatch(ofCmd, -1), row.FindAllStringSubmatch(ofTool, -1)
+		if len(a) == 0 || len(a) != len(b) {
+			return "the two cards name other tools"
+		}
+		for i := range a {
+			if a[i][1] != b[i][1] {
+				return "the two cards name other tools"
+			}
+		}
+		if strings.Contains(ofTool, "`evo ") {
+			return "the card of the tool names a command of the terminal"
+		}
+		return ""
+	},
+}
+
 var jsonAliasCompat = map[string]jsonCompat{
+	"evo agent skill": agentSkillCompat,
 	"evo list-zones": {
 		reason: "скрытый устаревший алиас evo vm zones: --json — массив zones из ответа инструмента, как с v1.0; до v2.0 (spec.md §4)",
 		check: func(cmdOut, cmdErr, text string) string {
