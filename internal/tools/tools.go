@@ -408,6 +408,15 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools or k8s_add_nodepool).")}, "nodepool_id"),
 		},
 		{
+			Name:        "k8s_nodepool_scale",
+			Description: "Set the number of nodes of a Managed Kubernetes node pool with a fixed count. REQUIRES confirmed=true after the user approves: more nodes are billed; fewer nodes are deleted with the data on their disks, and their pods are evicted. A pool that has the count already answers already_scaled with no question; an autoscaled pool is refused. Async — returns operation_id: wait with k8s_operation.",
+			InputSchema: objSchema(map[string]any{
+				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
+				"count":       atLeast(0, intProp("The number of nodes the pool is to have.")),
+				"confirmed":   confirmedProp(),
+			}, "nodepool_id", "count"),
+		},
+		{
 			Name:        "k8s_add_nodepool",
 			Description: "Add a worker node pool to a Managed Kubernetes cluster (pods need workers; a fresh cluster has none). Billable, async. A 503 'no healthy upstream' of the node-pool backend is transient: retry.",
 			InputSchema: objSchema(map[string]any{
@@ -1452,6 +1461,7 @@ func (s *Registry) registerTools() {
 		"k8s_add_nodepool":     s.gated("k8s_add_nodepool", s.planK8sAddNodePool),
 		"k8s_nodepools":        s.handleK8sNodePools,
 		"k8s_nodepool_get":     s.handleK8sNodePoolGet,
+		"k8s_nodepool_scale":   s.gated("k8s_nodepool_scale", s.planK8sNodePoolScale),
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_add_addon":        s.gated("k8s_add_addon", s.planK8sAddAddon),

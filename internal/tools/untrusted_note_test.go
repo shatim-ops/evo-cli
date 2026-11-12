@@ -27,13 +27,14 @@ var untrustedNoteOnly = map[string]string{}
 // description has no note, with why: the note speaks of the output of a
 // workload, and the field is not one.
 var untrustedMarkerOnly = map[string]string{
-	"disk_delete":      "attached_vms: the names of VMs in a refusal (D59), not the output of a workload",
-	"disk_attach":      "will_attach: the names of the disk and the VM in the preview, not the output of a workload",
-	"disk_detach":      "will_detach: the names of the disk and the VM in the preview, not the output of a workload",
-	"vm_start":         "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
-	"whoami":           "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
-	"k8s_nodepool_get": "name, cluster_name, labels, taints: what the project's people named the pool, its cluster and its nodes, not the output of a workload",
-	"k8s_operation":    "error: the failure of an operation as Managed Kubernetes words it, not the output of a workload",
+	"disk_delete":        "attached_vms: the names of VMs in a refusal (D59), not the output of a workload",
+	"disk_attach":        "will_attach: the names of the disk and the VM in the preview, not the output of a workload",
+	"disk_detach":        "will_detach: the names of the disk and the VM in the preview, not the output of a workload",
+	"vm_start":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
+	"whoami":             "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
+	"k8s_nodepool_get":   "name, cluster_name, labels, taints: what the project's people named the pool, its cluster and its nodes, not the output of a workload",
+	"k8s_nodepool_scale": "preview, name: the name of the pool in the preview and the answer, not the output of a workload",
+	"k8s_operation":      "error: the failure of an operation as Managed Kubernetes words it, not the output of a workload",
 }
 
 // Release plan 1.7, «Недоверенный вывод без маркера» (the analysis of

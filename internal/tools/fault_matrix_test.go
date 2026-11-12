@@ -291,7 +291,10 @@ var faultMatrixOut = map[string]string{
 	"vpc_route_delete": faultOutRemoves,
 
 	"ca_start": faultOutChanges, "cert_renew": faultOutChanges, "disk_attach": faultOutChanges, "vm_start": faultOutChanges,
-	"disk_resize": faultOutChanges, "fip_attach": faultOutChanges, "open_ports": faultOutChanges,
+	// Its faults — a lost answer taken and not, a refusal, a failed
+	// operation — are the worlds of k8s_nodepool_scale_test.go.
+	"k8s_nodepool_scale": faultOutChanges,
+	"disk_resize":        faultOutChanges, "fip_attach": faultOutChanges, "open_ports": faultOutChanges,
 
 	"k8s_apply": faultOutCluster, "k8s_helm": faultOutCluster, "k8s_kubectl": faultOutCluster,
 
