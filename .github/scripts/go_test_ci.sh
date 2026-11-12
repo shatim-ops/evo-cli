@@ -94,8 +94,10 @@ if [ -n "$flag" ] && [ -z "$limit" ]; then
 	echo "::warning::go test: предел -timeout «$flag» не разобран — сигнала о времени пакетов не будет (go_test_ci.sh понимает число с h, m или s)"
 fi
 module=${tools%/internal/tools}
-cat "$logs"/*.log 2>/dev/null | awk -F'\t' -v os="${RUNNER_OS:-local}" -v limit="$limit" -v module="$module" \
-	-v summary="${GITHUB_STEP_SUMMARY:-/dev/null}" '
+# Путь сводки идёт в awk через окружение, а не -v: в значении -v awk
+# разбирает escape-последовательности, и путь Windows (D:\a\_temp\…)
+# становился другим файлом.
+cat "$logs"/*.log 2>/dev/null | SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}" awk -F'\t' -v os="${RUNNER_OS:-local}" -v limit="$limit" -v module="$module" '
 	($1 ~ /^(ok|FAIL)[ ]*$/) && $3 ~ /^[0-9.]+s$/ {
 		p = $2
 		if (module != "" && index(p, module "/") == 1) p = substr(p, length(module) + 2)
@@ -103,6 +105,7 @@ cat "$logs"/*.log 2>/dev/null | awk -F'\t' -v os="${RUNNER_OS:-local}" -v limit=
 		if (!(p in sec) || t > sec[p]) sec[p] = t
 	}
 	END {
+		summary = ENVIRON["SUMMARY"]
 		n = 0
 		for (p in sec) n++
 		if (n == 0) exit

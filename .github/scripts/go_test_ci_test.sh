@@ -175,6 +175,16 @@ has times-odd-limit out '^::warning::go test: предел -timeout «1h30m» н
 has times-odd-limit summary 'Время пакетов go test — Linux'
 hasnt times-odd-limit summary 'сигнал от'
 
+# Путь сводки с обратными слэшами (Windows: D:\\a\\_temp\\…): awk -v
+# разбирает в значении escape-последовательности и писал бы в другой файл
+# (прогон ci PR #1571: «escape sequence \\_ treated as plain _»; в имени теста — \\t и \\n, их разбирает любой awk).
+fresh times-backslash
+answer 1 0 <<<"$slow"
+PATH="$work/bin:$PATH" RUNNER_OS=Windows GITHUB_EVENT_NAME=pull_request GITHUB_OUTPUT="$FAKE_DIR/output" GITHUB_STEP_SUMMARY="$FAKE_DIR/a\\tmp\\nstep" \
+	"$here/go_test_ci.sh" go test -race -timeout 20m >"$FAKE_DIR/out" 2>&1
+[ -s "$FAKE_DIR/a\\tmp\\nstep" ] || { echo "FAIL times-backslash: сводка не в файле с обратными слэшами в имени"; ls "$FAKE_DIR"; fail=1; }
+hasnt times-backslash out 'escape sequence'
+
 # Упавший пакет тоже в таблице (FAIL с временем); код красный, как был.
 fresh times-fail
 answer 1 1 <<<"$(printf -- '--- FAIL: TestX (0.01s)\nFAIL\nFAIL\t%s/internal/cli\t700.0s\n' "$m")"
