@@ -50,6 +50,7 @@ var untrustedMarkerOnly = map[string]string{
 	"pg_operation":        "error: the failure of an operation as Managed PostgreSQL words it, not the output of a workload",
 	"redis_operation":     "error: the failure of an operation as Managed Redis words it, not the output of a workload",
 	"vpc_operation":       "error: the failure of an operation as VPC words it, not the output of a workload",
+	"open_ports":          "open_only_to_groups: the names of the security groups a rule lets a port in from, in the preview and the answer, not the output of a workload",
 	"sg_rule_create":      "security_group, rule, preview: the name of the group and the descriptions of its rules in the preview and the answer, not the output of a workload",
 	"sg_rule_delete":      "security_group, rule, still_allowed_by, still_allowed_from_groups: the name of the group and the descriptions of its rules in the preview and the answer, not the output of a workload",
 }
