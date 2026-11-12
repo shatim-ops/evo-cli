@@ -549,7 +549,8 @@ func backupOfTheName(b map[string]any) (string, bool) {
 	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("a backup of the source named %s is in state %s: nothing can be restored from it, and no new backup was made", "копия ресурса с именем %s в состоянии %s: восстановить из неё нельзя, новая копия не сделана", quoteCloud(fmt.Sprint(b["name"])), quoteCloud(st)),
-		i18n.T("Take another name, or delete that backup first with backup_delete: it is kept and billed.", "Возьмите другое имя или сначала удалите ту копию через evo backup delete: она хранится и тарифицируется.")),
+		i18n.T("Take another name. That backup is kept and billed: whether to delete it is the person's decision — ask the person; with their yes, backup_delete deletes it.",
+			"Возьмите другое имя. Та копия хранится и тарифицируется: удалять ли её, решает человек — спросите человека; с его «да» её удалит evo backup delete.")),
 		map[string]any{"backup_id": id, "state": st}), true
 }
 
@@ -609,8 +610,8 @@ func (s *Registry) backupCreated(ctx context.Context, eng *engine.Engine, api pr
 		ans["state"] = state
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("Cloud.ru did not make backup %s: it is %s", "Cloud.ru не сделал копию %s: она в состоянии %s", id, quoteCloud(state)),
-			i18n.T("The backup in error is kept and billed: delete it with backup_delete, then make the backup again. Whether the platform deletes a backup in error no run has shown yet: if it refuses, the Cloud.ru console or support.",
-				"Копия в ошибке хранится и тарифицируется: удалите её через evo backup delete, затем сделайте копию снова. Удаляет ли платформа копию в ошибке, ни один прогон ещё не показал: если откажет — консоль Cloud.ru или поддержка.")), ans), true
+			i18n.T("The backup in error is kept and billed. Whether to delete it is the person's decision: ask the person; with their yes, backup_delete deletes it (whether the platform deletes a backup in error no run has shown yet: if it refuses, the Cloud.ru console or support). Then make the backup again.",
+				"Копия в ошибке хранится и тарифицируется. Удалять ли её — решает человек: спросите человека; с его «да» её удалит evo backup delete (удаляет ли платформа копию в ошибке, ни один прогон ещё не показал: если откажет — консоль Cloud.ru или поддержка). Затем сделайте копию снова.")), ans), true
 	default:
 		ans["status"] = "creating"
 		ans["state"] = state

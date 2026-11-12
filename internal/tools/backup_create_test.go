@@ -321,14 +321,14 @@ var backupCreateStateRows = []struct {
 	{"error_deleting", "", "USAGE", "", true},
 }
 
-// backupCreateRowsByState is backupCreateStateRows by the state, for the
-// invariant of the states (stateRowsOf).
-func backupCreateRowsByState() map[string]string {
-	out := map[string]string{}
+// The table joins the invariant of the states (stateRowsOf) from here, by
+// the state: the shared file is not touched by every new table.
+func init() {
+	rows := map[string]string{}
 	for _, r := range backupCreateStateRows {
-		out[r.state] = r.status + r.reason
+		rows[r.state] = r.status + r.reason
 	}
-	return out
+	addStateRows(stateRowsOf, map[string]map[string]string{"backup_create": rows})
 }
 
 // Exactly one source, refused before any request (probe П2): both, or none.
