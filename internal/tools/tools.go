@@ -394,6 +394,11 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (from k8s_list). Required.")}, "cluster_id"),
 		},
 		{
+			Name:        "k8s_nodepool_get",
+			Description: "Read one node pool of Managed Kubernetes by its id: cluster (id and name), status, version, zone, scale (fixed: desired; auto: min_count, max_count), flavor, disk, subnet, security group, labels, taints, versions it can upgrade to. Read-only. Ids: k8s_nodepools.",
+			InputSchema: objSchema(map[string]any{"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools or k8s_add_nodepool).")}, "nodepool_id"),
+		},
+		{
 			Name:        "k8s_add_nodepool",
 			Description: "Add a worker node pool to a Managed Kubernetes cluster (pods need workers; a fresh cluster has none). Billable, async. A 503 'no healthy upstream' of the node-pool backend is transient: retry.",
 			InputSchema: objSchema(map[string]any{
@@ -1436,6 +1441,7 @@ func (s *Registry) registerTools() {
 		"k8s_operation":        s.handleK8sOperation,
 		"k8s_add_nodepool":     s.handleK8sAddNodePool,
 		"k8s_nodepools":        s.handleK8sNodePools,
+		"k8s_nodepool_get":     s.handleK8sNodePoolGet,
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_add_addon":        s.handleK8sAddAddon,

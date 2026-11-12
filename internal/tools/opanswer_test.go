@@ -120,3 +120,49 @@ func TestOperation_ElapsedOnlyWhereTheTimesAre(t *testing.T) {
 		t.Errorf("done: elapsed_sec %v, want 90", m["elapsed_sec"])
 	}
 }
+
+// operationErrorUnmarked are the *_operation tools shipped before the
+// invariant whose answer carries the error of the operation, as the
+// service words it, with no "_untrusted" marker. It only shrinks, and a new
+// *_operation does not join it. Closes by 1.9 (release plan 1.9, «Текст
+// ошибки операции — недоверенный у каждого *_operation», R-83): the line
+// of untrustedFields is «разработка»'s.
+var operationErrorUnmarked = map[string]string{
+	"ar_operation":    "Artifact Registry words the error",
+	"cert_operation":  "Certificate Manager words the error",
+	"dns_operation":   "DNS words the error",
+	"kafka_operation": "Managed Kafka words the error",
+	"lb_operation":    "the load balancer service words the error",
+	"pg_operation":    "Managed PostgreSQL words the error",
+	"redis_operation": "Managed Redis words the error",
+	"vpc_operation":   "VPC words the error",
+}
+
+// The error of an operation is the service's text, with the names of the
+// project's resources in it — anyone with access to the project writes
+// those. Every tool that reads an operation (operationReads) declares the
+// field untrusted, so that its answer carries the marker and its
+// description the note («Риск · 1.9», заключение 115, R-83: only the new
+// k8s_operation declared it).
+func TestOperation_ErrorIsUntrusted(t *testing.T) {
+	for name := range operationReads {
+		marked := false
+		for _, f := range untrustedFields[name].fields {
+			if f == "error" {
+				marked = true
+			}
+		}
+		_, pending := operationErrorUnmarked[name]
+		switch {
+		case !marked && !pending:
+			t.Errorf("%s answers the error of an operation as the service words it, and untrustedFields does not declare its field error: add {fields: []string{\"error\"}}", name)
+		case marked && pending:
+			t.Errorf("operationErrorUnmarked names %s, whose error is declared untrusted now: remove the line (the list only shrinks)", name)
+		}
+	}
+	for name := range operationErrorUnmarked {
+		if _, ok := operationReads[name]; !ok {
+			t.Errorf("operationErrorUnmarked names %s, which reads no operation (operationReads): remove the line", name)
+		}
+	}
+}
