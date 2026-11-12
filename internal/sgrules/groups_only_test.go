@@ -81,7 +81,9 @@ func TestOpen_APortOnlyAGroupLetsInIsNamedApart(t *testing.T) {
 		t.Errorf("already open %v, opened %v — want 80 and 9090; 8080 is neither", res.AlreadyOpen, res.Opened)
 	}
 	note := res.Note()
-	if !strings.Contains(note, "8080 is NOT open") || !strings.Contains(note, "db") || strings.Contains(note, "already open 80,8080") {
-		t.Errorf("the note calls 8080 open, or does not name the group: %s", note)
+	// The note goes into fields no answer marks as text of the cloud: it
+	// does not carry the name of the group.
+	if !strings.Contains(note, "8080 is NOT open") || strings.Contains(note, "db") || strings.Contains(note, "already open 80,8080") {
+		t.Errorf("the note calls 8080 open, or carries the name of the group: %s", note)
 	}
 }

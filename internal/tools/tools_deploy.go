@@ -822,10 +822,20 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 	message := i18n.Tf("open_ports would open %s/%s from %s on security group %q (shared per zone — affects every VM in it).",
 		"open_ports откроет %s/%s из %s в группе безопасности %q (она общая для зоны — затронет каждую ВМ в ней).",
 		strings.Join(willOpen, ","), proto, cidr, target.Name)
-	if len(willOpen) == 0 && len(groupOnly) > 0 && len(alreadyOpen) == 0 {
-		message = i18n.Tf("None of the ports asked for is open to %s on security group %q, and open_ports adds no rule for them: a rule lets them in only from another security group (open_only_to_groups). The consent changes nothing.",
-			"Ни один из запрошенных портов не открыт для %s в группе безопасности %q, и open_ports правило для них не добавит: правило пускает их только из другой группы безопасности (open_only_to_groups). Подтверждение ничего не изменит.",
-			cidr, target.Name)
+	if len(willOpen) == 0 && len(groupOnly) > 0 {
+		// No «every port is open» next to a port that is not: the open
+		// ones and the others are named apart.
+		var only []string
+		for _, g := range groupOnly {
+			only = append(only, g.Port)
+		}
+		open := i18n.T("none", "ни одного")
+		if len(alreadyOpen) > 0 {
+			open = strings.Join(alreadyOpen, ",")
+		}
+		message = i18n.Tf("On security group %q (%s from %s) already open: %s. NOT open, and open_ports adds no rule for them: %s — a rule lets them in only from another security group (open_only_to_groups). The consent changes nothing.",
+			"В группе безопасности %q (%s из %s) уже открыты: %s. НЕ открыты, и open_ports правило для них не добавит: %s — правило пускает их только из другой группы безопасности (open_only_to_groups). Подтверждение ничего не изменит.",
+			target.Name, proto, cidr, open, strings.Join(only, ","))
 	} else if len(willOpen) == 0 {
 		// Nothing to open: the question stays until major (owner's decision
 		// 06.11, variant Г; a repeat without it is the class of D81), and

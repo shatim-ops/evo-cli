@@ -26,7 +26,7 @@ func TestShowOpenedPorts_APortOnlyAGroupLetsInIsNotCalledOpen(t *testing.T) {
 	res := sgrules.OpenResult{AlreadyOpen: []string{"80"}, OnlyFromGroups: []sgrules.GroupOnlyPort{{Port: "8080", Groups: []string{"db"}}}}
 	ShowOpenedPorts(p, res, &state.DeploymentRecord{}, "SSH-access_ru.AZ-1")
 	text := buf.String()
-	if !strings.Contains(text, "8080 is NOT open") || !strings.Contains(text, "db") || !strings.Contains(text, "sg-rule-create") {
+	if !strings.Contains(text, "8080 is NOT open") || !strings.Contains(text, `"db"`) || !strings.Contains(text, "sg-rule-create") {
 		t.Errorf("deploy does not say 8080 is let in only from the group: %s", text)
 	}
 	if strings.Contains(text, "8080 is already open") || strings.Contains(text, "80,8080") {

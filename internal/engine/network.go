@@ -10,6 +10,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -436,7 +437,7 @@ func ShowOpenedPorts(p *output.Printer, res sgrules.OpenResult, rec *state.Deplo
 	for _, g := range res.OnlyFromGroups {
 		p.Warning(i18n.Tf("port %s is NOT open to the source of this deploy: in group %s a rule lets it in only from security group %s — no rule created; to open it, the person adds the rule (evo vpc sg-rule-create)",
 			"порт %s НЕ открыт для источника этого deploy: в группе %s правило пускает его только из группы безопасности %s — правило не создавалось; чтобы открыть, правило добавляет человек (evo vpc sg-rule-create)",
-			g.Port, group, strings.Join(g.Groups, ", ")))
+			g.Port, group, quoted(g.Groups)))
 	}
 	if len(res.Failed) > 0 {
 		p.Warning(i18n.Tf("Could not open ports %s — open them in the security group in the Cloud.ru console",
@@ -447,6 +448,15 @@ func ShowOpenedPorts(p *output.Printer, res sgrules.OpenResult, rec *state.Deplo
 			"Порты %s открыты, но API не вернул ID правил: destroy их не закроет — после destroy удалите эти правила в консоли Cloud.ru",
 			strings.Join(res.Untracked, ",")))
 	}
+}
+
+// quoted are names the cloud holds, each in quotes: data, not words of evo.
+func quoted(names []string) string {
+	q := make([]string, len(names))
+	for i, n := range names {
+		q[i] = strconv.Quote(n)
+	}
+	return strings.Join(q, ", ")
 }
 
 // alreadyOpenText is the deploy line about ports another rule opens.

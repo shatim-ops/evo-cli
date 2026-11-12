@@ -59,12 +59,25 @@ func TestOpenPorts_APortOnlyAGroupLetsInIsNotCalledOpen(t *testing.T) {
 	r = sgMakeRegistry(t, w)
 	one := map[string]any{"security_group": sgOtherGroup, "ports": []any{float64(8080)}, "cidr": "10.0.0.0/8"}
 	m, text, _ = callNamed(t, r, "open_ports", one)
-	if msg, _ := m["message"].(string); m["status"] != "confirmation_required" || strings.Contains(msg, "already open") || !strings.Contains(msg, "None of the ports") {
+	if msg, _ := m["message"].(string); m["status"] != "confirmation_required" || strings.Contains(msg, "Every port") || !strings.Contains(msg, "already open: none") || !strings.Contains(msg, "NOT open") {
 		t.Errorf("the preview of a port only a group lets in: %s", text)
 	}
 	one["confirmed"] = true
 	if m, text, isErr := callNamed(t, r, "open_ports", one); isErr || m["status"] != "ok" || w.added() != 0 {
 		t.Errorf("with consent: %s (writes %d), want ok and no rule, as before", text, w.added())
+	}
+	// One port only a group lets in, another open by an address rule,
+	// nothing to add: the message does not say «every port is open».
+	w = groupOnlyWorld()
+	r = sgMakeRegistry(t, w)
+	m, text, _ = callNamed(t, r, "open_ports", map[string]any{"security_group": sgOtherGroup, "ports": []any{float64(8080), float64(5432)}, "cidr": "10.0.0.0/8"})
+	msg, _ := m["message"].(string)
+	if strings.Contains(msg, "Every port") || !strings.Contains(msg, "already open: 5432") || !strings.Contains(msg, "NOT open") || !strings.Contains(msg, ": 8080 ") {
+		t.Errorf("a port open and a port only a group lets in: the message is %q", msg)
+	}
+	// The names of the source groups are text of the cloud: marked.
+	if marked, _ := json.Marshal(m["_untrusted"]); !strings.Contains(string(marked), "open_only_to_groups") {
+		t.Errorf("open_only_to_groups is not marked as untrusted: %s", text)
 	}
 	// A rule with an address source next to it: already open, as before.
 	w = groupOnlyWorld()

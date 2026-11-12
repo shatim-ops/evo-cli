@@ -413,10 +413,13 @@ func addRule(rec *state.DeploymentRecord, r state.SGRule) {
 }
 
 // GroupOnlyNote says a port of OnlyFromGroups in words: not open to the
-// source asked for, and what opens it — after the person's word.
+// source asked for, and what opens it — after the person's word. The
+// groups are not named in it: a name is text of the cloud, and the note
+// goes into fields of answers that are not marked as such; the rules of
+// the group name them (list_security_groups).
 func GroupOnlyNote(g GroupOnlyPort) string {
-	return "port " + g.Port + " is NOT open to the source asked for: a rule lets it in only from security group " +
-		strings.Join(g.Groups, ", ") + " — no rule created; to open it, ask the person and add the rule with sg_rule_create"
+	return "port " + g.Port + " is NOT open to the source asked for: a rule lets it in only from another security group " +
+		"(list_security_groups with rules=true names it) — no rule created; to open it, ask the person and add the rule with sg_rule_create"
 }
 
 // Note is a one-line summary of an OpenResult for MCP results.
