@@ -234,6 +234,9 @@ func New(factory EngineFactory) *Registry {
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
 		t.RequiredOneOf = requiredOneOf[t.Name]
+		if _, partial := partialConsent[t.Name]; takesConsent(*t) && !partial {
+			t.Description += " " + consentText(t.Name)
+		}
 		if t.UntrustedOutput = untrustedFields[t.Name].workload; t.UntrustedOutput {
 			t.Description += " " + untrustedOutputNote
 		}
