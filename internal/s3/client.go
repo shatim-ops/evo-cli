@@ -230,17 +230,35 @@ func (c *Client) RemoveObject(ctx context.Context, bucket, key string) error {
 	return nil
 }
 
+// AccessDenied tells an error of S3 that refuses the request to this key
+// (403 AccessDenied): the key may not do this, which says nothing of the
+// resource.
+func AccessDenied(err error) bool {
+	var resp minio.ErrorResponse
+	return errors.As(err, &resp) && (resp.Code == "AccessDenied" || resp.StatusCode == http.StatusForbidden)
+}
+
 // MakeBucket creates a bucket. region defaults to the client's configured
 // region. existed tells a bucket S3 refused to create because the caller
-// has it already: not an error, and not a bucket this call made.
+// has it already: not an error, and not a bucket this call made. The
+// bucket is the caller's only when S3 says so (BucketAlreadyOwnedByYou)
+// or the caller's own list holds it: a HEAD answers for a bucket of
+// another account with public read as well, so it does not tell
+// («Риск», conclusion 130).
 func (c *Client) MakeBucket(ctx context.Context, bucket, region string) (existed bool, err error) {
 	if region == "" {
 		region = c.region
 	}
 	if err := c.mc.MakeBucket(ctx, bucket, minio.MakeBucketOptions{Region: region}); err != nil {
-		exists, errEx := c.mc.BucketExists(ctx, bucket)
-		if errEx == nil && exists {
+		if minio.ToErrorResponse(err).Code == "BucketAlreadyOwnedByYou" {
 			return true, nil
+		}
+		if own, errList := c.ListBuckets(ctx); errList == nil {
+			for _, b := range own {
+				if b.Name == bucket {
+					return true, nil
+				}
+			}
 		}
 		return false, fmt.Errorf(i18n.T("create bucket: %w", "создание бакета: %w"), err)
 	}

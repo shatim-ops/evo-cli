@@ -194,8 +194,10 @@ func (s *Registry) planS3BucketCreate(ctx context.Context, args map[string]any) 
 	// A bucket the profile has already: nothing to create and nothing to
 	// ask (D101). A bucket of another tenant is not in this list: S3
 	// refuses its create.
+	// A key that may not list the buckets goes on as before D101: the
+	// question, then the create, where S3 itself says whose the name is.
 	own, err := cli.ListBuckets(ctx)
-	if err != nil {
+	if err != nil && !s3.AccessDenied(err) {
 		return nil, err
 	}
 	if slices.ContainsFunc(own, func(b s3.Bucket) bool { return b.Name == bucket }) {
