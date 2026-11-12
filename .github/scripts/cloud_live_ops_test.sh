@@ -189,6 +189,7 @@ PUT! /vms/vm1 422 {"code":"vm_must_be_stopped","message":"stop it"}
 POST! /vms/vm1/set-power 204
 GET! /vms/vm1 200 {$V,"state":"stopped"}
 PUT! /vms/vm1 200 {"state":"updating"}
+GET! /vms/vm1 200 {"id":"vm1","state":"updating","flavor":{"name":"lowcost10-4-8"}}
 GET! /vms/vm1 200 {"id":"vm1","state":"updating"}
 GET! /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
 GET! /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
@@ -199,9 +200,9 @@ rc=0
 PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-10: код" "$rc" 0
 P='POST /vms/vm1/set-power;' G='GET /vms/vm1;'
-want "Г-10: запросы по порядку" "$(calls)" "$G$P$G$G$P$P$G$G$P$G$P$P$G$G$G""POST /vms/00000000-0000-4000-8000-000000000000/set-power;PUT /vms/vm1;$P$G""PUT /vms/vm1;$G$G$G""PUT /vms/vm1;$G$G$SW"
+want "Г-10: запросы по порядку" "$(calls)" "$G$P$G$G$P$P$G$G$P$G$P$P$G$G$G""POST /vms/00000000-0000-4000-8000-000000000000/set-power;PUT /vms/vm1;$P$G""PUT /vms/vm1;$G$G$G$G""PUT /vms/vm1;$G$G$G$SW"
 want "Г-10: шаг вверх — соседний flavor семейства, возврат — исходный" "$(jq -r .flavor_name "$FAKE_DIR/body.PUT.vms.vm1")" lowcost10-2-4
-for s in 'Г-10: остановка.*stopping → stopped' 'повтор остановки остановленной.*HTTP 422, машинный код vm_wrong_state' 'Г-10: запуск.*публичный адрес тот же: да' 'Г-10: перезагрузка.*running → rebooting → running' 'id, которого нет.*HTTP 404, машинный код vm_not_found' 'смена flavor на запущенной ВМ.*машинный код: vm_must_be_stopped' 'смена flavor на шаг вверх.*на остановленной.*тем, что просили' 'возврат исходного flavor.*тем, что просили'; do
+for s in 'Г-10: остановка.*stopping → stopped' 'повтор остановки остановленной.*HTTP 422, машинный код vm_wrong_state' 'Г-10: запуск.*публичный адрес тот же: да' 'Г-10: перезагрузка.*running → rebooting → running' 'id, которого нет.*HTTP 404, машинный код vm_not_found' 'смена flavor на запущенной ВМ.*машинный код: vm_must_be_stopped' 'смена flavor на шаг вверх, ВМ остановленной.*в первом чтении после запроса: state updating, flavor целевой.*вышла в stopped.*тем, что просили' 'возврат исходного flavor, ВМ остановленной.*тем, что просили'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-10: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'vm1\|203\.0\.113\.7'; then echo "FAIL: Г-10: id или адрес в строке лога"; fail=1; fi
@@ -217,7 +218,7 @@ H
 rc=0
 PROBES=g10 timeout 30 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-10, смена на запущенной: не ждёт предела, код" "$rc" 0
-grep -q 'смена flavor на шаг вверх.*на запущенной; состояния: running,' "$tmp/out" || { echo "FAIL: Г-10: running не принят как конечное состояние"; fail=1; }
+grep -q 'смена flavor на шаг вверх, ВМ запущенной.*состояния: running,.*вышла в running' "$tmp/out" || { echo "FAIL: Г-10: running не принят как конечное состояние"; fail=1; }
 
 # Отказ по квоте на смене flavor (машинный код, не текст): шесть полей
 # одной строкой, остановки и второй попытки смены нет, возврата нет.

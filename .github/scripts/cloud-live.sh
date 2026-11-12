@@ -2414,7 +2414,7 @@ probe_g10() {
 		case "$code" in 2??) ;; *) refusal "$1" синхронно; return 1 ;; esac
 		r="HTTP $code"
 		t0=$SECONDS
-		ops_reach "$url" 600 stopped || true
+		ops_reach "$url" "${PROBE_WAIT:-600}" stopped || true
 		ok "$1" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес в карточке остановленной: $(has_ip)"
 	}
 	if g10_stop "Г-10: остановка"; then
@@ -2460,46 +2460,42 @@ probe_g10() {
 	else
 		resize() { api PUT "$url" "$(jq -nc --arg f "$1" '{flavor_name: $f}')"; }
 		flavor_now() { api GET "$url"; jq -r '.flavor.name? // "?"' "$tmp/api.json" 2>/dev/null || echo '?'; }
-		# resized ПРОВЕРКА — после принятой смены: состояния и flavor.
+		# resized ПРОВЕРКА ЦЕЛЕВОЙ ПРЕЖНИЙ — после принятой смены: какой flavor
+		# показывает карточка, пока ВМ в updating (целевой или прежний — по
+		# этому шаг evo узнаёт свою операцию), состояния по порядку, в каком
+		# состоянии питания ВМ вышла и какой flavor в итоге.
 		resized() {
+			local mid f
 			t0=$SECONDS
+			api GET "$url"
+			f=$(jq -r '.flavor.name? // "?"' "$tmp/api.json" 2>/dev/null) || f='?'
+			mid="в первом чтении после запроса: state $(jq -r '.state? // "?"' "$tmp/api.json" 2>/dev/null || echo '?'), flavor $(if [ "$f" = "$2" ]; then echo целевой; elif [ "$f" = "$3" ]; then echo прежний; else echo "другой или не назван"; fi)"
 			ops_settle "$url" 600 || true
-			r="$r; состояния: $chain, $((SECONDS - t0)) с"
+			r="$r; $mid; состояния: $chain, $((SECONDS - t0)) с; вышла в $st"
 			ok "$1" "$r; flavor стал $([ "$(flavor_now)" = "$2" ] && echo "тем, что просили" || echo "другим")"
 		}
-		local changed=0
-		resize "$up"
-		case "$code" in
-		2??)
-			r="HTTP $code на запущенной"
-			resized "Г-10: смена flavor на шаг вверх" "$up"
-			changed=1
-			;;
-		*)
-			refusal "Г-10: смена flavor на запущенной ВМ" синхронно
-			if [ "$QUOTA_HIT" = 0 ] && g10_stop "Г-10: остановка перед сменой flavor"; then
-				resize "$up"
-				case "$code" in
-				2??)
-					r="HTTP $code на остановленной"
-					resized "Г-10: смена flavor на шаг вверх" "$up"
-					changed=1
-					;;
-				*) refusal "Г-10: смена flavor на остановленной ВМ" синхронно ;;
-				esac
-			fi
-			;;
-		esac
-		# Возврат исходного flavor — в любом случае, если он сменился.
-		if [ "$changed" = 1 ]; then
+		# g10_round ГДЕ — шаг вверх и возврат исходного flavor на ВМ в её
+		# нынешнем состоянии питания. Возврат — в любом случае, если flavor
+		# сменился. Код 1 — отказ шага вверх (записан).
+		g10_round() {
+			resize "$up"
+			case "$code" in 2??) ;; *) refusal "Г-10: смена flavor на $1 ВМ" синхронно; return 1 ;; esac
+			r="HTTP $code на $1"
+			resized "Г-10: смена flavor на шаг вверх, ВМ $1" "$up" "${f0:-$FLAVOR}"
 			resize "${f0:-$FLAVOR}"
 			case "$code" in
 			2??)
-				r="HTTP $code"
-				resized "Г-10: возврат исходного flavor" "${f0:-$FLAVOR}"
+				r="HTTP $code на $1"
+				resized "Г-10: возврат исходного flavor, ВМ $1" "${f0:-$FLAVOR}" "$up"
 				;;
-			*) bad "Г-10: возврат исходного flavor" "HTTP $code: $(api_why) — ВМ осталась с flavor на шаг выше; её удалит уборка$([ "$keep" = 1 ] && echo " со словом g20 — запустите её, не дожидаясь суток")" ;;
+			*) bad "Г-10: возврат исходного flavor, ВМ $1" "HTTP $code: $(api_why) — ВМ осталась с flavor на шаг выше; её удалит уборка$([ "$keep" = 1 ] && echo " со словом g20 — запустите её, не дожидаясь суток")" ;;
 			esac
+		}
+		# На запущенной ВМ, затем на остановленной (нужна ли остановка; в
+		# каком состоянии ВМ выходит из updating). Квота — конец пробы.
+		g10_round запущенной || true
+		if [ "$QUOTA_HIT" = 0 ] && g10_stop "Г-10: остановка перед сменой flavor на остановленной ВМ"; then
+			g10_round остановленной || true
 		fi
 	fi
 	[ "$keep" = 1 ] || return 0
