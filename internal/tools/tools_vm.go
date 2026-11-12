@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
@@ -168,7 +167,10 @@ func (s *Registry) handleVMList(ctx context.Context, args map[string]any) (strin
 // command of POST /vms/{id}/set-power, the state the VM is taken from,
 // the transient state the command puts it in and the state the transition
 // ends in; already and done are the statuses of the answer — of a repeat
-// that finds the change made and of the change this call made.
+// that finds the change made and of the change this call made. An action
+// every send of which is a change of its own (a reboot: from and to are
+// one state) has no already: the target state before the command is not
+// a change made, and after it counts only once the transition was seen.
 type vmPowerAction struct {
 	command, from, via, to string
 	already, done          string
@@ -208,44 +210,6 @@ const vmSettleTimeout = 30 * time.Second
 // the 1.9 plan): the bound is the one evo holds a new disk to.
 const vmPowerTimeout = 5 * time.Minute
 
-// strictVMName are the tools that refuse a name two VMs of the project
-// have, naming both, where resolveVM takes the first («Риск», conclusion
-// 111, У2). The platform refuses a second VM of a name (409 on create), so
-// this is a guard, not a path. Whether the released tools over resolveVM
-// change their answer the same way is the owner's decision, open: until
-// then theirs stays.
-var strictVMName = map[string]bool{"vm_start": true}
-
-// vmOf finds the VM a power tool names — by vm_id, or by name through the
-// project's list — and reads it.
-func (s *Registry) vmOf(ctx context.Context, tool string, eng *engine.Engine, ref string) (*provision.VMDetail, error) {
-	id := ref
-	if !looksUUID(ref) {
-		vms, err := eng.Cloud.ListVMsInProject(ctx, eng.Config.ProjectID)
-		if err != nil {
-			return nil, err
-		}
-		var ids []string
-		for _, v := range vms {
-			if v.Name == ref {
-				ids = append(ids, v.ID)
-			}
-		}
-		switch {
-		case len(ids) == 0:
-			return nil, clierrors.New(clierrors.CodeVMNotFound,
-				i18n.Tf("VM %q not found", "ВМ %q не найдена", ref),
-				i18n.T("vm_list shows the VMs of the project.", "ВМ проекта показывает vm_list."))
-		case len(ids) > 1 && strictVMName[tool]:
-			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("%d VMs of the project are named %q: %s", "в проекте %d ВМ с именем %q: %s", len(ids), ref, strings.Join(ids, ", ")),
-				i18n.T("Pass vm_id of the one you mean.", "Передайте vm_id нужной ВМ."))
-		}
-		id = ids[0]
-	}
-	return eng.Cloud.GetVMDetail(ctx, id)
-}
-
 // planVMPower is the planner of a power tool (gate.go; D99, П1–П6): it
 // reads the VM before the question and answers by its state — the change
 // is made already (a repeat: success with no question and no write), it
@@ -266,7 +230,17 @@ func (s *Registry) planVMPower(tool string) Planner {
 		if err != nil {
 			return nil, err
 		}
-		vm, err := s.vmOf(ctx, tool, eng, ref)
+		// An id is read as it is; a name is resolved at the one point
+		// names are (resolveVMFor), strictly.
+		id := ref
+		if !looksUUID(ref) {
+			found, err := s.resolveVMFor(ctx, tool, ref, eng.Config.ProjectID)
+			if err != nil {
+				return nil, err
+			}
+			id = found.ID
+		}
+		vm, err := eng.Cloud.GetVMDetail(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -282,7 +256,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 				return nil, err
 			case atLimit:
 				// No question yet: the state, and the same call again.
-				ans := vmAnswer(vm, last, last)
+				ans := vmAnswer(vm, "waiting", last)
 				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; it cannot be changed until its state settles. Call %s to go on.", vm.ID, last, tool)
 				nextStep(ans, tool, maps.Clone(args))
 				return answered(toJSON(ans), false), nil
@@ -294,7 +268,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			state = last
 		}
 		switch {
-		case state == act.to:
+		case state == act.to && act.already != "":
 			return answered(toJSON(vmAnswer(vm, act.already, state)), false), nil
 		case state == act.via:
 			// A start in flight: this call's own, cut before its end, or
@@ -418,11 +392,12 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 	vm *provision.VMDetail, args map[string]any, sent bool) (string, bool) {
 	started := clock.Now()
 	// moved: the VM was seen on its way. A call that sent no command found
-	// it there.
+	// it there. Where the target is the state the VM was taken from, the
+	// target reads as reached only after the transition was seen.
 	moved := !sent
 	last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, vmPowerTimeout, func(st string) (bool, error) {
 		switch {
-		case st == act.to:
+		case st == act.to && (moved || act.to != act.from):
 			return true, nil
 		case st == act.via:
 			moved = true
@@ -455,7 +430,9 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 			i18n.T("vm_get shows the VM; whether to send the command again is the person's decision.", "ВМ показывает vm_get; слать ли команду снова — решает человек.")),
 			map[string]any{"vm_id": vm.ID, "state": last, "elapsed_sec": elapsed}), true
 	case atLimit || timedOut > 0:
-		ans := vmAnswer(vm, last, last)
+		// The status is the action's word for «on its way», not the raw
+		// state: the statuses of a tool are a closed list.
+		ans := vmAnswer(vm, act.via, last)
 		ans["elapsed_sec"] = elapsed
 		if atLimit && sent {
 			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second command.", vm.ID, last, tool)
@@ -481,12 +458,18 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 func (s *Registry) waitVM(ctx context.Context, eng *engine.Engine, vm *provision.VMDetail, limit time.Duration,
 	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, err error) {
 	return waitState(ctx, eng, limit,
-		func(ctx context.Context) (string, bool) {
+		func(ctx context.Context) (string, bool, error) {
 			d, err := eng.Cloud.GetVMDetail(ctx, vm.ID)
-			if err != nil {
-				return "", false
+			var ce *clierrors.CLIError
+			switch {
+			case errors.As(err, &ce) && ce.Code == clierrors.CodeVMNotFound:
+				// The VM was deleted while the call waited: not found, not
+				// «still starting» (П6; audit of the reference, Н2).
+				return "", false, err
+			case err != nil:
+				return "", false, nil
 			}
-			return d.State, true
+			return d.State, true, nil
 		},
 		func(st string) string {
 			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), vm.ID, st)

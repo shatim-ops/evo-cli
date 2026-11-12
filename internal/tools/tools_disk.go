@@ -25,8 +25,26 @@ func looksUUID(s string) bool {
 	return len(s) == 36 && strings.Count(s, "-") == 4
 }
 
-// resolveVM finds a VM by id or name.
+// strictVMRef are the tools whose reference to a VM resolves strictly: a
+// name two VMs of the project have is refused with both ids, where the
+// others get the first («Риск», conclusion 111, У2), and a VM that is not
+// there is VM_NOT_FOUND, where the others answer without a code. The
+// platform refuses a second VM of a name (409 on create), so the first is
+// a guard, not a path. The tools of the first wave of second-day
+// operations (D99) are strict from their first release; whether the
+// released tools change their answer the same way is the owner's
+// decision, open — until then theirs stays, and this list is the one
+// place the difference lives.
+var strictVMRef = map[string]bool{"vm_start": true}
+
+// resolveVM finds a VM by id or name, as the released tools do.
 func (s *Registry) resolveVM(ctx context.Context, ref, projectID string) (*provision.VM, error) {
+	return s.resolveVMFor(ctx, "", ref, projectID)
+}
+
+// resolveVMFor finds the VM tool names by id or name in the project's
+// list: the one point a reference to a VM is resolved at (strictVMRef).
+func (s *Registry) resolveVMFor(ctx context.Context, tool, ref, projectID string) (*provision.VM, error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -35,12 +53,30 @@ func (s *Registry) resolveVM(ctx context.Context, ref, projectID string) (*provi
 	if err != nil {
 		return nil, err
 	}
+	var found []*provision.VM
 	for _, v := range vms {
 		if v.ID == ref || v.Name == ref {
-			return v, nil
+			found = append(found, v)
 		}
 	}
-	return nil, fmt.Errorf(i18n.T("VM %q not found", "ВМ %q не найдена"), ref)
+	strict := strictVMRef[tool]
+	switch {
+	case len(found) == 0 && strict:
+		return nil, clierrors.New(clierrors.CodeVMNotFound,
+			i18n.Tf("VM %q not found", "ВМ %q не найдена", ref),
+			i18n.T("vm_list shows the VMs of the project.", "ВМ проекта показывает vm_list."))
+	case len(found) == 0:
+		return nil, fmt.Errorf(i18n.T("VM %q not found", "ВМ %q не найдена"), ref)
+	case len(found) > 1 && strict:
+		ids := make([]string, len(found))
+		for i, v := range found {
+			ids[i] = v.ID
+		}
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("%d VMs of the project are named %q: %s", "в проекте %d ВМ с именем %q: %s", len(found), ref, strings.Join(ids, ", ")),
+			i18n.T("Pass vm_id of the one you mean.", "Передайте vm_id нужной ВМ."))
+	}
+	return found[0], nil
 }
 
 // handleDiskList lists disks (block storage) with a compact projection.
@@ -279,18 +315,18 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string, limit time.Duration,
 	waiting string, done func(state string) (bool, error)) (last string, timedOut time.Duration, err error) {
 	last, timedOut, atLimit, err := waitState(ctx, eng, limit,
-		func(ctx context.Context) (string, bool) {
+		func(ctx context.Context) (string, bool, error) {
 			disks, err := eng.Cloud.ListDisks(ctx, projectID)
 			if err != nil {
-				return "", false
+				return "", false, nil
 			}
 			for _, d := range disks {
 				if id, _ := d["id"].(string); id == diskID {
 					st, _ := d["state"].(string)
-					return st, true
+					return st, true, nil
 				}
 			}
-			return "", false
+			return "", false, nil
 		},
 		func(st string) string { return fmt.Sprintf(waiting, diskID, st) }, done)
 	if atLimit {

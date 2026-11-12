@@ -34,6 +34,12 @@ type powerWorld struct {
 	id        string
 	stepAfter int
 	stepTo    []string
+	// settleTo, when set, is the state the VM is put in at that read
+	// instead: the end of a change that is not a power transition of the
+	// fake (creating, updating), or the VM deleted ("gone").
+	settleTo string
+	// onPower, when set, runs in place of the fake's power command.
+	onPower func() error
 
 	mu    sync.Mutex
 	reads int
@@ -46,9 +52,35 @@ func (w *powerWorld) read() {
 		return
 	}
 	w.reads++
-	if w.reads >= w.stepAfter {
-		w.stepVMPower(w.id, w.stepTo...)
+	if w.reads < w.stepAfter {
+		return
 	}
+	switch w.settleTo {
+	case "":
+		w.stepVMPower(w.id, w.stepTo...)
+	case "gone":
+		w.removeVM()
+	default:
+		w.setVMState(w.id, w.settleTo)
+	}
+}
+
+// removeVM deletes the VM of the world, as another caller would.
+func (w *powerWorld) removeVM() {
+	w.faultCloud.mu.Lock()
+	defer w.faultCloud.mu.Unlock()
+	for i := range w.vms {
+		if w.vms[i].ID == w.id {
+			w.vms[i].gone = true
+		}
+	}
+}
+
+func (w *powerWorld) SetVMPower(ctx context.Context, id, command string) error {
+	if w.onPower != nil {
+		return w.onPower()
+	}
+	return w.faultCloud.SetVMPower(ctx, id, command)
 }
 
 func (w *powerWorld) GetVM(ctx context.Context, id string) (*provision.VM, error) {
@@ -435,5 +467,185 @@ func TestVMStart_RefusalFromStoppedIsNotAboutTheState(t *testing.T) {
 	}
 	if _, has := m["next_tool"]; has {
 		t.Errorf("a refusal a repeat does not get past names a next step: %s", text)
+	}
+}
+
+// The states of another change (П4, the table of §3.1): each is waited
+// for before the question, and a VM that does not settle is refused with
+// its state and no write — not asked about, not sent a command the
+// platform would refuse after the yes.
+func TestVMStart_UnsettledStateIsRefusedBeforeTheQuestion(t *testing.T) {
+	for _, state := range []string{"stopping", "rebooting", "creating", "updating"} {
+		for _, confirmed := range []bool{false, true} {
+			r, w := vmStartWorld(t, state)
+			m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": confirmed})
+			if !isErr || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, state) {
+				t.Errorf("%s, confirmed=%v: %s", state, confirmed, text)
+			}
+			if n := w.powerCalls(); n != 0 {
+				t.Errorf("%s, confirmed=%v: written: %d power calls", state, confirmed, n)
+			}
+		}
+	}
+}
+
+// ...and one that settles is decided by the state it settled in: a
+// rebooted VM runs (a repeat), a created or updated one that is stopped is
+// asked about.
+func TestVMStart_SettledStateDecides(t *testing.T) {
+	for _, tc := range []struct{ from, to, status string }{
+		{"rebooting", "running", "already_running"},
+		{"creating", "running", "already_running"},
+		{"updating", "stopped", "confirmation_required"},
+		{"creating", "stopped", "confirmation_required"},
+	} {
+		r, w := vmStartWorld(t, tc.from)
+		w.stepAfter, w.settleTo = 2, tc.to
+		m, text, _ := callNamed(t, r, "vm_start", map[string]any{"name": "web"})
+		if m["status"] != tc.status {
+			t.Errorf("%s that settled in %s: %s", tc.from, tc.to, text)
+		}
+		if n := w.powerCalls(); n != 0 {
+			t.Errorf("%s → %s: written before consent: %d power calls", tc.from, tc.to, n)
+		}
+	}
+}
+
+// At the limit of an MCP call a VM still in another change's state is
+// neither asked about nor refused: the answer says it waits, with the same
+// call as the next step — and that step writes nothing either (the audit
+// of the reference: a test of «the step does not write» for every answer
+// that names a next step).
+func TestVMStart_UnsettledAtTheLimitOfAnMCPCallWaitsAndTheNextStepDoesNotWrite(t *testing.T) {
+	r, w := vmStartWorldWaiting(t, "stopping", 0)
+	budgeted(r)
+	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if isErr || m["status"] != "waiting" || m["state"] != "stopping" || m["next_tool"] != "vm_start" {
+		t.Fatalf("vm_start of a VM that is stopping past the limit: %s", text)
+	}
+	next, _ := m["next_args"].(map[string]any)
+	if _, text, _ = callNamed(t, r, "vm_start", next); w.powerCalls() != 0 {
+		t.Errorf("the next step wrote on a VM still stopping: %s", text)
+	}
+}
+
+// A state evo does not know is the platform's to decide (as a disk's
+// before D53): asked about, with the state named and the warning, not
+// refused and not taken for stopped.
+func TestVMStart_UnknownStateIsAskedAboutWithAWarning(t *testing.T) {
+	for _, state := range []string{"error", "paused"} {
+		r, w := vmStartWorld(t, state)
+		m, text, _ := callNamed(t, r, "vm_start", map[string]any{"name": "web"})
+		warning, _ := m["warning"].(string)
+		if m["status"] != "confirmation_required" || !strings.Contains(warning, state) {
+			t.Errorf("%s: the preview does not warn of the state: %s", state, text)
+		}
+		if n := w.powerCalls(); n != 0 {
+			t.Errorf("%s: written before consent: %d power calls", state, n)
+		}
+	}
+	r, _ := vmStartWorld(t, "stopped")
+	if m, text, _ := callNamed(t, r, "vm_start", map[string]any{"name": "web"}); m["warning"] != nil {
+		t.Errorf("the preview of a stopped VM warns of nothing: %s", text)
+	}
+}
+
+// The answer of a start says how long it took (axis 2).
+func TestVMStart_AnswerSaysHowLongItTook(t *testing.T) {
+	r, w := vmStartWorld(t, "stopped")
+	w.stepAfter = 3
+	m, text, _ := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if _, ok := m["elapsed_sec"]; m["status"] != "started" || !ok {
+		t.Fatalf("the answer of a start has no elapsed_sec: %s", text)
+	}
+}
+
+// The VM was deleted while the call waited for it to run: not found, not
+// «still starting» to the end of the wait (П6; the audit of the reference,
+// Н2).
+func TestVMStart_VMDeletedWhileStartingIsNotFound(t *testing.T) {
+	r, w := vmStartWorldWaiting(t, "stopped", 0)
+	budgeted(r)
+	w.stepAfter, w.settleTo = 4, "gone"
+	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if !isErr || m["reason"] != clerrors.CodeVMNotFound {
+		t.Fatalf("vm_start whose VM was deleted while it started: %s", text)
+	}
+	if _, has := m["next_tool"]; has {
+		t.Errorf("a VM that is gone names a next step: %s", text)
+	}
+}
+
+// The platform's refusal of a VM that is gone by then is not found (П6):
+// the specification gives the power request no 404, the 422 says it.
+func TestVMStart_RefusalOfAVMGoneIsNotFound(t *testing.T) {
+	r, w := vmStartWorld(t, "stopped")
+	w.onPower = func() error {
+		w.removeVM()
+		return w.faultCloud.SetVMPower(context.Background(), w.id, "power_on")
+	}
+	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if !isErr || m["reason"] != clerrors.CodeVMNotFound {
+		t.Fatalf("vm_start refused for a VM deleted after the plan: %s", text)
+	}
+}
+
+// The platform refuses the command because the VM runs by then — another
+// caller started it between the plan and the command: the goal is
+// reached, the answer is the success, not the 422 (П6).
+func TestVMStart_RefusalWithTheGoalReachedIsTheSuccess(t *testing.T) {
+	r, w := vmStartWorld(t, "stopped")
+	w.onPower = func() error {
+		w.setVMState(w.id, "running")
+		return w.faultCloud.SetVMPower(context.Background(), w.id, "power_on")
+	}
+	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+	if isErr || m["status"] != "started" || m["state"] != "running" {
+		t.Fatalf("vm_start refused while the VM runs already: %s", text)
+	}
+}
+
+// A call cut while the command was out (Ctrl-C, the client gone) answers
+// the cut and reads nothing more: the context is done, a read would only
+// fail in its place.
+func TestVMStart_CutCallReadsNothingMore(t *testing.T) {
+	r, w := vmStartWorld(t, "stopped")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	w.onPower = func() error {
+		cancel()
+		return context.Canceled
+	}
+	tl, _ := r.Lookup("vm_start")
+	before := len(w.callLog())
+	if _, isErr := tl.Handler(ctx, map[string]any{"name": "web", "confirmed": true}); !isErr {
+		t.Fatal("a cut call answered a success")
+	}
+	if after := w.callLog()[before:]; len(after) != 2 {
+		// The plan's two reads: the list and the VM. Nothing after the cut.
+		t.Errorf("calls of the cloud in a cut call: %v, want the plan's two reads only", after)
+	}
+}
+
+// The key may not start VMs (403), and the platform's rate (429): the
+// platform's refusal as it is, an error with no next step — the rights of
+// the key are not evo's to widen, and nothing was changed.
+func TestVMStart_ForbiddenAndRateLimitedAreTheErrors(t *testing.T) {
+	for name, fault := range map[string]error{
+		"403": clerrors.Wrap(clerrors.CodeAPIError, "forbidden", "", &provision.StatusError{Status: 403, Body: `[{"code":"forbidden","message":"no"}]`}),
+		"429": clerrors.New(clerrors.CodeAPIRateLimited, "too many requests", ""),
+	} {
+		r, w := vmStartWorld(t, "stopped")
+		w.onPower = func() error { return fault }
+		m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
+		if !isErr || m["state"] != "stopped" {
+			t.Errorf("%s: %s", name, text)
+		}
+		if _, has := m["next_tool"]; has {
+			t.Errorf("%s: names a next step: %s", name, text)
+		}
+		if d, _ := m["details"].(map[string]any); d["cause"] == "state" {
+			t.Errorf("%s: the cause of the refusal is not the state of the VM: %s", name, text)
+		}
 	}
 }
