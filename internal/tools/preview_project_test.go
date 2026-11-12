@@ -69,6 +69,11 @@ var previewCalls = map[string]map[string]any{
 	"dns_record_create": {"name": "www", "record_type": "A", "value": "192.0.2.10"},
 	"vpc_route_create":  {"subnet": "192.0.2.0/24", "next_hop_vip_id": resMine},
 	"disk_resize":       {"size_gb": 100},
+	// The tools that run a command in the cluster: a call that needs
+	// consent. Without it nothing runs: the preview only.
+	"k8s_kubectl": {"args": "delete pod web"},
+	"k8s_apply":   {"manifest": "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: web\n"},
+	"k8s_helm":    {"action": "uninstall", "release": "web"},
 }
 
 // With a key of the organization and no --allow-project, the preview of a
@@ -83,6 +88,7 @@ var previewCalls = map[string]map[string]any{
 func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 	stackHome(t)
 	seen := 0
+	reached := map[string]bool{}
 	for _, c := range ownerCases(t) {
 		if !c.arg.target {
 			continue
@@ -101,6 +107,7 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 				continue
 			}
 			seen++
+			reached[c.tool] = true
 			project, note := previewProject(m)
 			switch {
 			case id == resMine:
@@ -134,6 +141,13 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 	if seen < 40 {
 		t.Fatalf("only %d previews checked", seen)
 	}
+	// The calls named here must reach their preview: a tool whose call
+	// stops being a preview would leave the check above without it.
+	for tool := range previewCalls {
+		if tool != "dns_record_create" && !reached[tool] {
+			t.Errorf("%s: its call reached no preview, so its project was not checked", tool)
+		}
+	}
 }
 
 // The creates inside a parent of #616 reach their preview in this world,
@@ -162,21 +176,30 @@ func TestPreviewProject_NestedCreatesReachPreview(t *testing.T) {
 }
 
 // The reads of the preview's project are made for a preview only: a call
-// with consent sends what it sent before — the planner's read, the delete
-// and the poll of its operation.
+// with consent sends what it sent before — the planner's read, the write
+// and the poll of its operation, and no read of the project.
 func TestPreviewProject_ConfirmedCallReadsNothingMore(t *testing.T) {
-	f := &ownerFake{}
-	r := ownerRegistry(t, f, false, ownProject, ownForeign)
-	_, text, isErr := callOwned(t, r, "pg_delete", map[string]any{"id": resForeign}, true)
-	if isErr {
-		t.Fatalf("pg_delete: %s", text)
-	}
-	want := []string{
-		"GET postgresql.api.cloud.ru/v1/clusters/" + resForeign,
-		"DELETE postgresql.api.cloud.ru/v1/clusters/" + resForeign,
-		"GET postgresql.api.cloud.ru/v1/operations/op-new",
-	}
-	if got := f.log(); !slices.Equal(got, want) {
-		t.Errorf("requests %v, want %v", got, want)
+	for _, c := range []struct {
+		tool, arg string
+		want      []string
+	}{
+		{"pg_delete", "id", []string{
+			"GET postgresql.api.cloud.ru/v1/clusters/" + resForeign,
+			"DELETE postgresql.api.cloud.ru/v1/clusters/" + resForeign,
+			"GET postgresql.api.cloud.ru/v1/operations/op-new",
+		}},
+		{"cert_renew", "certificate_id", []string{
+			"POST certificatemanager.api.cloud.ru/v1/certificate/" + resForeign + ":renew",
+		}},
+	} {
+		f := &ownerFake{}
+		r := ownerRegistry(t, f, false, ownProject, ownForeign)
+		_, text, isErr := callOwned(t, r, c.tool, map[string]any{c.arg: resForeign}, true)
+		if isErr {
+			t.Fatalf("%s: %s", c.tool, text)
+		}
+		if got := f.log(); !slices.Equal(got, c.want) {
+			t.Errorf("%s: requests %v, want %v", c.tool, got, c.want)
+		}
 	}
 }
