@@ -87,10 +87,8 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
-			Name: "status",
-			Description: "Current deployment from the local state: VM id, public IP, flavor, region, health, ports. Read-only. Also asks the cloud for the VM's live state (one GET, at most 8 s): cloud_checked, cloud_state, not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record), or cloud_error with cloud_reason (why the cloud was not checked; the local state is still returned). vm_name, zone_name and flavor_name come from the cloud's answer." +
-				"Read-only. By default it also asks the cloud for the VM's live state (one GET, at most 8 s) and adds cloud_checked, cloud_state, " +
-				"not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record) and cloud_error with cloud_reason (why the cloud was not checked, as a phrase and an error code; the local state is still returned). When the cloud answered, vm_name, zone_name and flavor_name name the VM, its zone and its flavor.",
+			Name:        "status",
+			Description: "Current deployment from the local state: VM id, public IP, flavor, region, health, ports. Read-only. Also asks the cloud for the VM's live state (one GET, at most 8 s): cloud_checked, cloud_state, not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record), or cloud_error with cloud_reason (why the cloud was not checked; the local state is still returned). vm_name, zone_name and flavor_name come from the cloud's answer.",
 			InputSchema: objSchema(map[string]any{
 				"refresh": boolPropTrue("Ask the cloud for the VM's live state (default: true). false: local state only, no API call."),
 			}),
@@ -1214,12 +1212,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_balance",
-			Description: "Balance of the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: no API gives the balance by project, and only organization and cost administrators see the agreement id. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. The endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. For a task that only reads, the person can run the server with evo mcp --read-only: it makes no change in the cloud." + readOnlyTaskNote,
+			Description: "Balance of the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: no API gives the balance by project, and only organization and cost administrators see the agreement id. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. The endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. " + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
 			Name:        "billing_consumption",
-			Description: "Consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. By service: total and by_service (sorted by cost) exclude VAT, total_with_nds and cost_with_nds include it; records. Read-only. Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). For a task that only reads, the person can run the server with evo mcp --read-only: it makes no change in the cloud." + readOnlyTaskNote,
+			Description: "Consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. By service: total and by_service (sorted by cost) exclude VAT, total_with_nds and cost_with_nds include it; records. Read-only. Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). " + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Required."),
 				"end":        strProp("End date YYYY-MM-DD (default = start)."),
@@ -1228,7 +1226,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_finops",
-			Description: "FinOps report (read-only): cost by service, anomalies vs the previous same-length period, daily burn-rate, balance runway in days, projected zero date, optional budget check. Costs exclude VAT; total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it; runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. For a task that only reads, the person can run the server with evo mcp --read-only: it makes no change in the cloud." + readOnlyTaskNote,
+			Description: "FinOps report (read-only): cost by service, anomalies vs the previous same-length period, daily burn-rate, balance runway in days, projected zero date, optional budget check. Costs exclude VAT; total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it; runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. " + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
 				"end":        strProp("End date YYYY-MM-DD. Optional; default = today."),
