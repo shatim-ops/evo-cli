@@ -1219,14 +1219,14 @@ func appliedPlan(stateDir, planID string) error {
 			return clierrors.New(clierrors.CodeNotFound,
 				i18n.Tf("plan %q is gone: the VM it made, %s, is in an error state and the plan went with it",
 					"плана %q больше нет: ВМ, которую он создал, %s, в состоянии ошибки, и план снят вместе с ней", planID, vm),
-				i18n.Tf("The VM is still there and billed. Whether to delete it (destroy vm_id %s) — ask the person; a new VM is a new deploy_plan.",
-					"ВМ осталась и оплачивается. Удалять ли её (destroy vm_id %s) — спросите человека; новая ВМ — новый deploy_plan.", d.VMID))
+				i18n.Tf("The VM may still be there and billed. Whether to delete it (destroy vm_id %s) — ask the person; a new VM is a new deploy_plan.",
+					"ВМ, возможно, осталась и оплачивается. Удалять ли её (destroy vm_id %s) — спросите человека; новая ВМ — новый deploy_plan.", d.VMID))
 		}
 		return clierrors.New(clierrors.CodeNotFound,
 			i18n.Tf("plan %q is gone, and the VM it made, %s, was not finished (the record says %s)",
 				"плана %q больше нет, а ВМ, которую он создал, %s, не доведена (в записи — %s)", planID, vm, d.Status),
-			i18n.Tf("status and vm_get show the VM. It is there and billed: whether to delete it (destroy vm_id %s) — ask the person.",
-				"ВМ показывают status и vm_get. Она есть и оплачивается: удалять ли её (destroy vm_id %s) — спросите человека.", d.VMID))
+			i18n.Tf("status and vm_get show the VM. It may still be there and billed: whether to delete it (destroy vm_id %s) — ask the person.",
+				"ВМ показывают status и vm_get. Она, возможно, ещё есть и оплачивается: удалять ли её (destroy vm_id %s) — спросите человека.", d.VMID))
 	}
 	return nil
 }
