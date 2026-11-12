@@ -410,6 +410,14 @@ func roCase(t *testing.T, srv roServers, w parityWorld, tl tools.Tool, args map[
 					bad = append(bad, tl.Name+" over "+surface+": "+why)
 				}
 			}
+			if tl.Name == "agent_skill" {
+				// The card marks each tool --read-only does not serve
+				// («Риск», conclusion 160): the rest is the same card.
+				if !strings.Contains(a.text, cardNotServed) {
+					bad = append(bad, tl.Name+" over "+surface+": the card under --read-only marks no tool the server does not serve")
+				}
+				a.text = strings.ReplaceAll(strings.ReplaceAll(a.text, cardNotServed, ""), cardServerNote, "")
+			}
 			if roSame(a.text) != roSame(want) || a.isErr != plain.isErr {
 				bad = append(bad, fmt.Sprintf("%s over %s: a read answers otherwise with --read-only: %s", tl.Name, surface, textDiff(roSame(a.text), roSame(want))))
 			}
@@ -451,3 +459,11 @@ func runStdio(t *testing.T, s *mcp.Server, body []byte) []byte {
 	_, rest, _ := bytes.Cut(out.Bytes(), []byte("\n"))
 	return rest
 }
+
+// cardNotServed and cardServerNote are what a card of agent_skill adds on
+// a server that serves a part of the tools, as the JSON of the answer
+// carries them.
+const (
+	cardNotServed  = " (not on this server)"
+	cardServerNote = `What this server serves is the person's choice: a tool that is not on this server is not to be reached another way. Tools named in the other columns may be absent too: tools/list is what this server has.\n\n`
+)

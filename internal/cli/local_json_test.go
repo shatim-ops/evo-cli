@@ -49,7 +49,6 @@ var localJSONCases = map[string]localJSONCase{
 	"evo tools describe":  {args: []string{"vm_get"}, ok: true},
 	"evo tools call":      {args: []string{"list_zones"}, ok: true},
 	"evo agent setup":     {args: []string{"--client", "claude-code", "--yes"}, ok: true},
-	"evo agent skill":     {ok: true},
 	"evo diag on":         {ok: true},
 	"evo diag status":     {ok: true},
 	"evo diag off":        {ok: true},
@@ -70,7 +69,6 @@ var localJSONCases = map[string]localJSONCase{
 var localJSONExempt = map[string]string{
 	"evo project":               "a group: prints its help",
 	"evo tools":                 "a group: prints its help",
-	"evo agent":                 "a group: prints its help",
 	"evo diag":                  "a group: prints its help",
 	"evo completion":            "a group: prints its help",
 	"evo help":                  "cobra's help",

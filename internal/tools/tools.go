@@ -664,6 +664,13 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{"project_id": strProp("Project UUID to scope quotas to (optional).")}),
 		},
 		{
+			Name:        "agent_skill",
+			Description: "Read the card of a tool group: its tools, where their ids come from, what deletes what a create made, what to wait with, and the group's notes. Without group: the groups. Read-only and local: asks the cloud nothing. For when a tool's description leaves a question; a card is not a preview.",
+			InputSchema: objSchema(map[string]any{
+				"group": enumProp("Tool group; none: the list of groups.", Groups()...),
+			}),
+		},
+		{
 			Name:        "whoami",
 			Description: "Whom the tools work as: profile, masked access key ID, where the key and the project come from (profile, env, project file, flag), the project, the IAM token's expiry and whether it was cached or issued now, visible_projects (absent when the Organization API lists none for the key: not an error), roles on the project with the term of each (roles_note: why they are unknown, or that a role on the organization is not seen here), key_expires_at (key_expires_soon within 5 days: a person issues the next key; key_term_note when unknown). Read-only; IAM is asked for a token only without a valid cached one. Fails with AUTH_REQUIRED, AUTH_FAILED or CONFIG_INVALID. Call it first when calls fail with an authentication error or land in an unexpected project.",
 			InputSchema: objSchema(nil),
@@ -1525,6 +1532,7 @@ func (s *Registry) registerTools() {
 		"org_projects":         s.handleOrgProjects,
 		"org_quotas":           s.handleOrgQuotas,
 		"whoami":               s.handleWhoami,
+		"agent_skill":          s.handleAgentSkill,
 		"doctor":               s.handleDoctor,
 		"pg_list":              s.handlePgList,
 		"pg_get":               s.handlePgGet,
