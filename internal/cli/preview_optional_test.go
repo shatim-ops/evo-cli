@@ -47,6 +47,8 @@ const optionalSubnet = "00000000-0000-0000-0000-0000000000d1"
 var optionalLeftOut = map[string]string{
 	"deploy image":                              "an alternative of image_id",
 	"deploy compose_hash":                       "a check of the consent (R-38), not a value the write takes: another hash answers the preview",
+	"deploy_apply vm_id":                        "the VM the step of a cut call goes on with (D102), not a value the write takes: a VM of another name is refused",
+	"provision vm_id":                           "the VM the step of a cut call goes on with (D102), not a value the write takes: a VM of another name is refused",
 	"provision image":                           "an alternative of image_id",
 	"destroy name":                              "an alternative of vm_id",
 	"vm_start name":                             "an alternative of vm_id",

@@ -83,7 +83,12 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	case "$w" in
 	p36 | p41 | p44 | dnslink) ;;
 	# Пробы графика 1.9 — область ops (live-plan включает её по этим словам).
-	g10 | g11 | g16) ;;
+	g10 | g11 | g18) ;;
+	# g16 с ожиданиями и уборкой — до 105 мин при пределе job области 120:
+	# с другой долгой пробой обрыв по времени оставил бы платные остатки.
+	g16)
+		[[ ! " ${PROBES:-} " =~ " g10 "|" g18 " ]] || fail "probes: «g16» идёт до 105 мин при пределе job 120 — запускайте её отдельно от g10 и g18"
+		;;
 	# Проба цены: ВМ пробы g10 остаётся остановленной на сутки.
 	g20)
 		[[ " ${PROBES:-} " == *" g10 "* ]] || fail "probes: «g20» — ВМ пробы цены оставляет проба g10, а её слова нет"
@@ -94,7 +99,7 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	access | nodes | p45)
 		[ -n "${cluster_kinds[pg]:-}" ] || fail "probes: «$w» — проба джоба dbaas-pg, а он не идёт (dbaas_smoke и pg в dbaas_services)"
 		;;
-	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g16, g20" ;;
+	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g16, g18, g20" ;;
 	esac
 done
 
