@@ -6,7 +6,6 @@ package verify
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -120,7 +119,7 @@ func get(ctx context.Context, scheme, ip string, port int, timeout time.Duration
 	}
 	if scheme == "https" {
 		tr := httpretry.NewBaseTransport()
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // liveness probe of an IP
+		tr.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec // liveness probe of an IP
 		client.Transport = tr
 		defer tr.CloseIdleConnections()
 	}
