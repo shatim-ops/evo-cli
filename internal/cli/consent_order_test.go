@@ -380,6 +380,13 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, stoppedVMJSON("running"))
 	}, alreadyFor: []string{"vm_start"}},
+	// The VM of vm_stop is stopped already (D99, П3).
+	"vm stopped already": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityRunningVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, runningVMJSON("stopped"))
+	}, alreadyFor: []string{"vm_stop"}},
 	// The pool of k8s_nodepool_scale has the count asked for (parityArgs:
 	// three nodes) and runs (D99, П3).
 	"node pool of the count asked": {answer: func(r *http.Request) *http.Response {

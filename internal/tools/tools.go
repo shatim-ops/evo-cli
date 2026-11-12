@@ -118,6 +118,15 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_stop",
+			Description: "Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. A VM that is stopped already answers already_stopped with no question; one that is stopping is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status stopping with next_tool. Do not stop the VM this server runs on. Mutation (interrupts the service; a stopped VM may stay billable: tariff_url): requires confirmed=true.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
+				"name":      strProp("VM name (alternative to vm_id)."),
+				"confirmed": confirmedProp(),
+			}),
+		},
+		{
 			Name:        "vm_list",
 			Description: "List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. Read-only. For IPs and interfaces of one VM use vm_get. Unlike 'list' (local deployment records of this directory), this shows every VM in the project.",
 			InputSchema: objSchema(nil),
@@ -1445,6 +1454,7 @@ func (s *Registry) registerTools() {
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
 		"vm_start":             s.gated("vm_start", s.planVMPower("vm_start")),
+		"vm_stop":              s.gated("vm_stop", s.planVMPower("vm_stop")),
 		"vm_list":              s.handleVMList,
 		"logs":                 s.handleLogs,
 		"destroy":              s.handleDestroy,

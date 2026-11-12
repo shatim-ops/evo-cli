@@ -28,7 +28,7 @@ var budgetReach = map[string][]string{
 	"internal/engine/destroy.go\tEngine.waitAndDeleteVM":        {"destroy", "stack_destroy"},
 	"internal/tools/tools.go\tRegistry.provisionVM":             {"provision", "stack_apply"},
 	"internal/tools/opwait.go\twaitForOpJSON":                   {"ar_operation", "cert_operation", "dns_operation", "k8s_nodepool_scale", "k8s_operation", "kafka_operation", "lb_operation", "pg_operation", "redis_operation", "vpc_operation", "dns_zone_delete"},
-	"internal/tools/opwait.go\twaitState":                       {"disk_create", "disk_attach", "disk_detach", "disk_resize", "vm_start", "k8s_nodepool_scale"},
+	"internal/tools/opwait.go\twaitState":                       {"disk_create", "disk_attach", "disk_detach", "disk_resize", "vm_start", "vm_stop", "k8s_nodepool_scale"},
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {"stack_status"},
 	"internal/engine/deploy.go\tassignFloatingIP":               {"deploy", "provision", "stack_apply"},
 	"internal/engine/deploy.go\tEngine.findBootFIP":             {"deploy", "provision", "stack_apply"},

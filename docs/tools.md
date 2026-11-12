@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (163) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo (164) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -274,6 +274,7 @@
 | `provision` | `evo vm create` | да | — | Provision a bare Cloud.ru VM (docker-compose: use 'deploy'), billable: confirmed=true. | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
 | `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Get LIVE details for one VM by vm_id or name: its PRIVATE IP (private_ip), any public/floating IP (public_ip), state, and every network interface. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
 | `vm_start` | `evo vm start` | да | `vm_id` или `name` | Start a stopped VM (power_on) and wait until it is running. | Запустить остановленную ВМ и дождаться состояния running |
+| `vm_stop` | `evo vm stop` | удаляет | `vm_id` или `name` | Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. | Остановить работающую ВМ и дождаться состояния stopped |
 | `vm_list` | `evo vm list` | нет | — | List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. | Список ВМ проекта: id, имя, состояние, зона, время создания |
 | `list_zones` | `evo vm zones` | нет | — | List available Cloud.ru availability zones (UUID + name). | Зоны доступности (UUID и имя) |
 | `list_flavors` | `evo vm flavors` | нет | — | List available Cloud.ru VM flavors (name, vCPU, RAM, free-tier flag) with a monthly cost estimate each, and what the catalogue says beyond the size: cpu_share … | Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц |
