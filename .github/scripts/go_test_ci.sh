@@ -28,8 +28,12 @@ tools=$(go list ./internal/tools)
 # держит TestWorkflows_WindowsPRCoversWindowsCode.
 windowsPRPackages=(./internal/cli ./internal/config ./internal/journal)
 
+# WINDOWS_PR_TOOLS=yes (classify.sh, строка wintools=): PR трогает код путей
+# internal/tools — пакет идёт на Windows и в PR, вторым проходом, один,
+# как на main (сбой рантайма Go приходил под нагрузкой соседних пакетов).
 if [ "${RUNNER_OS:-}" = Windows ] && [ "${GITHUB_EVENT_NAME:-}" = pull_request ]; then
 	passes=("${windowsPRPackages[*]}")
+	[ "${WINDOWS_PR_TOOLS:-}" != yes ] || passes+=("$tools")
 elif [ "${RUNNER_OS:-}" = Windows ]; then
 	# shellcheck disable=SC2207 # import paths have no spaces
 	rest=($(go list ./... | grep -vxF "$tools"))
