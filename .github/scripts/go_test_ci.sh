@@ -65,6 +65,57 @@ for pkgs in "${passes[@]}"; do
 	retry="${retry:+$retry }$failed"
 done
 
+# Время пакетов — в сводку прогона, по ОС (план 1.9, строка «CI», М3):
+# пять самых долгих и сигнал, когда пакет идёт дольше половины предела
+# -timeout. Рост времени виден до отказа: 12.11 internal/cli на macOS дошёл
+# до предела за сутки, и заметил это только красный job. Сигнал — строка
+# сводки и warning, job не красный. Предел берётся из флагов этого же
+# вызова go test, второго числа нет. Сортировка — в awk: sort на Windows
+# может оказаться не тем.
+limit=""
+prev=""
+for a in "$@"; do
+	case "$a" in -timeout=*) limit=${a#-timeout=} ;; esac
+	[ "$prev" != -timeout ] || limit=$a
+	prev=$a
+done
+case "$limit" in
+*h) limit=$((${limit%h} * 3600)) ;;
+*m) limit=$((${limit%m} * 60)) ;;
+*s) limit=${limit%s} ;;
+*) limit="" ;;
+esac
+case "$limit" in *[!0-9]* | 0) limit="" ;; esac
+module=${tools%/internal/tools}
+cat "$logs"/*.log 2>/dev/null | awk -F'\t' -v os="${RUNNER_OS:-local}" -v limit="$limit" -v module="$module" \
+	-v summary="${GITHUB_STEP_SUMMARY:-/dev/null}" '
+	($1 ~ /^(ok|FAIL)[ ]*$/) && $3 ~ /^[0-9.]+s$/ {
+		p = $2
+		if (module != "" && index(p, module "/") == 1) p = substr(p, length(module) + 2)
+		t = int($3 + 0)
+		if (!(p in sec) || t > sec[p]) sec[p] = t
+	}
+	END {
+		n = 0
+		for (p in sec) n++
+		if (n == 0) exit
+		head = "### Время пакетов go test — " os
+		if (limit != "") head = head " (предел пакета " limit " с, сигнал от " int(limit / 2) " с)"
+		print head "\n\n| Пакет | Секунд |\n|---|---|" >>summary
+		for (k = 0; k < 5 && k < n; k++) {
+			best = ""
+			for (p in sec) if (!(p in done) && (best == "" || sec[p] > sec[best] || (sec[p] == sec[best] && p < best))) best = p
+			done[best] = 1
+			print "| " best " | " sec[best] " |" >>summary
+		}
+		print "" >>summary
+		if (limit == "") exit
+		for (p in sec) if (sec[p] > limit / 2) {
+			print "**" p " — " sec[p] " с: больше половины предела пакета (" limit " с). Время растёт — снижать до отказа, а не после.**\n" >>summary
+			print "::warning::go test, " os ": " p " — " sec[p] " с, больше половины предела пакета (" limit " с)"
+		}
+	}'
+
 [ "$red" = 0 ] || exit 1
 printf '%s' "$notes"
 if [ -n "$retry" ]; then

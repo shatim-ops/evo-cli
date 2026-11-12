@@ -120,5 +120,65 @@ fresh no-package
 answer 1 1 <<<"$(printf 'fatal error: found pointer to free object\nruntime.bgsweep(0x0)\n')"
 case_ no-package Linux 1 "" "$flags ./..."
 
+# Время пакетов — в сводке прогона (план 1.9, строка «CI», М3): самые
+# долгие пакеты по ОС; пакет дольше половины предела -timeout — заметная
+# строка и warning, job не красный. times_ ИМЯ ОС КОД ФЛАГИ…: код выхода;
+# сводка — в $FAKE_DIR/summary, вывод — в $FAKE_DIR/out.
+times_() {
+	local name=$1 os=$2 want=$3 rc
+	shift 3
+	PATH="$work/bin:$PATH" RUNNER_OS=$os GITHUB_EVENT_NAME=push GITHUB_OUTPUT="$FAKE_DIR/output" GITHUB_STEP_SUMMARY="$FAKE_DIR/summary" \
+		"$here/go_test_ci.sh" go test "$@" >"$FAKE_DIR/out" 2>&1
+	rc=$?
+	[ "$rc" = "$want" ] || { echo "FAIL $name: код $rc (ждём $want)"; sed 's/^/  | /' "$FAKE_DIR/out"; fail=1; }
+}
+has() { grep -q -- "$3" "$FAKE_DIR/$2" 2>/dev/null || { echo "FAIL $1: в $2 нет «$3»"; sed 's/^/  | /' "$FAKE_DIR/$2" 2>/dev/null; fail=1; }; }
+hasnt() { if grep -q -- "$3" "$FAKE_DIR/$2" 2>/dev/null; then echo "FAIL $1: в $2 есть «$3»"; fail=1; fi; }
+slow=$(printf 'ok  \t%s/internal/cli\t640.2s\nok  \t%s/cmd/evo\t3.1s\n?   \t%s/internal/x\t[no test files]\nok  \t%s/internal/tools\t216.0s\n' "$m" "$m" "$m" "$m")
+
+# Пакет дольше половины предела (20m → сигнал от 600 с): строка и warning,
+# код 0; в таблице — по убыванию, без пакетов без тестов.
+fresh times-over
+answer 1 0 <<<"$slow"
+times_ times-over macOS 0 -race -timeout 20m
+has times-over summary 'Время пакетов go test — macOS'
+has times-over summary 'предел пакета 1200 с, сигнал от 600 с'
+has times-over summary '^| internal/cli | 640 |'
+has times-over summary 'internal/cli — 640 с: больше половины предела'
+has times-over out '^::warning::go test, macOS: internal/cli — 640 с, больше половины предела пакета (1200 с)'
+hasnt times-over summary 'internal/x'
+[ "$(grep -c '^| [a-z]' "$FAKE_DIR/summary")" = 3 ] || { echo "FAIL times-over: строк таблицы не три"; cat "$FAKE_DIR/summary"; fail=1; }
+[ "$(grep '^| internal' "$FAKE_DIR/summary" | head -1)" = '| internal/cli | 640 |' ] || { echo "FAIL times-over: первый в таблице — не самый долгий"; fail=1; }
+
+# Все пакеты в пределах: таблица есть, сигнала нет. Предел в форме -timeout=30m.
+fresh times-under
+answer 1 0 <<<"$slow"
+times_ times-under Linux 0 -race -timeout=30m
+has times-under summary 'предел пакета 1800 с, сигнал от 900 с'
+hasnt times-under summary 'больше половины'
+hasnt times-under out '::warning::go test'
+
+# Предел не задан: таблица без порога и без сигнала.
+fresh times-no-limit
+answer 1 0 <<<"$slow"
+times_ times-no-limit Linux 0 -race
+has times-no-limit summary 'Время пакетов go test — Linux'
+hasnt times-no-limit summary 'сигнал'
+hasnt times-no-limit out '::warning::go test'
+
+# Упавший пакет тоже в таблице (FAIL с временем); код красный, как был.
+fresh times-fail
+answer 1 1 <<<"$(printf -- '--- FAIL: TestX (0.01s)\nFAIL\nFAIL\t%s/internal/cli\t700.0s\n' "$m")"
+times_ times-fail Linux 1 -race -timeout 20m
+has times-fail summary '^| internal/cli | 700 |'
+
+# Два прохода Windows — одна таблица на оба.
+fresh times-windows
+answer 1 0 <<<"$(printf 'ok  \t%s/internal/cli\t100.0s\n' "$m")"
+answer 2 0 <<<"$(printf 'ok  \t%s/internal/tools\t300.0s\n' "$m")"
+times_ times-windows Windows 0 -race -timeout 20m
+[ "$(grep -c 'Время пакетов go test' "$FAKE_DIR/summary")" = 1 ] || { echo "FAIL times-windows: таблица не одна"; fail=1; }
+[ "$(grep '^| internal' "$FAKE_DIR/summary" | head -1)" = '| internal/tools | 300 |' ] || { echo "FAIL times-windows: порядок"; cat "$FAKE_DIR/summary"; fail=1; }
+
 [ "$fail" = 0 ] && echo "go_test_ci: ok"
 exit "$fail"
