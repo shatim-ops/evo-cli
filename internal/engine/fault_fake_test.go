@@ -120,6 +120,12 @@ type faultCloud struct {
 	// slow keeps every VM "creating" and a deleted one "deleting": the
 	// slow cloud of D69's world, where a call can end only by its budget.
 	slow bool
+	// powerRepeatAccepted makes a power command to a VM already in or on
+	// the way to the command's target a success that changes nothing; by
+	// default it is refused as any other command the state does not allow.
+	// Which of the two the platform does is not known (probe Г-10), so a
+	// world can be either and the product may rely on neither.
+	powerRepeatAccepted bool
 }
 
 type faultVM struct {
@@ -129,6 +135,8 @@ type faultVM struct {
 	CreatedAt time.Time
 	FIPID     string
 	gone      bool
+	// powerTo is the state a power transition in flight ends in.
+	powerTo string
 }
 
 type faultFIP struct {
@@ -438,6 +446,105 @@ func (c *faultCloud) DeleteVM(_ context.Context, id string) error {
 		}
 	}
 	return clerrors.New(clerrors.CodeVMNotFound, "gone", "")
+}
+
+// The power of a VM (D99, docs/internal/briefs/ops-wave-1.md §2): one
+// request with a command, answered with no body and no operation id, so
+// the only progress there is to read is the state of the VM. The table is
+// the specification's: the state a command is accepted in, the transient
+// state it puts the VM in and the state the transition ends in.
+var faultPower = map[string]struct{ from, via, to string }{
+	"power_on":  {"stopped", "starting", "running"},
+	"power_off": {"running", "stopping", "stopped"},
+	"reboot":    {"running", "rebooting", "running"},
+}
+
+// faultPowerRefused is the platform's one refusal of a power command: 422
+// for a VM it does not find and for a state the command is not accepted
+// in alike. code is the body's: bad_vm_id is the specification's example;
+// the code of a wrong state is not published — wrong_vm_state is the
+// fake's own name, and no production code may match it.
+func faultPowerRefused(code string) error {
+	return clerrors.Wrap(clerrors.CodeAPIError, "power refused", "", &provision.StatusError{Status: 422, Body: code})
+}
+
+// SetVMPower takes a power command for a VM. The VM enters the transient
+// state and stays in it until the test moves it (stepVMPower): no wall
+// clock decides. A lost answer is a command that was taken. The calls are
+// counted as every other's (powerCalls): a repeat that must not write is
+// checked by their number.
+func (c *faultCloud) SetVMPower(_ context.Context, id, command string) error {
+	err := c.gate("SetVMPower")
+	if err != nil && !errors.Is(err, errFaultLost) {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	p, known := faultPower[command]
+	if !known {
+		return faultPowerRefused("validation_error")
+	}
+	for i := range c.vms {
+		vm := &c.vms[i]
+		if vm.ID != id || vm.gone {
+			continue
+		}
+		switch {
+		case vm.Status == p.from:
+			vm.Status = p.via
+			vm.powerTo = p.to
+		case c.powerRepeatAccepted && command != "reboot" && (vm.Status == p.to || vm.Status == p.via):
+		default:
+			return faultPowerRefused("wrong_vm_state")
+		}
+		return err
+	}
+	return faultPowerRefused("bad_vm_id")
+}
+
+// stepVMPower ends the power transition of a VM: the VM leaves its
+// transient state for the state the command led to — or for failed, when
+// the test gives one (a start that ends in error). It reports whether the
+// VM was in a transition.
+func (c *faultCloud) stepVMPower(id string, failed ...string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.vms {
+		vm := &c.vms[i]
+		if vm.ID != id || vm.gone || vm.powerTo == "" {
+			continue
+		}
+		vm.Status, vm.powerTo = vm.powerTo, ""
+		if len(failed) > 0 {
+			vm.Status = failed[0]
+		}
+		return true
+	}
+	return false
+}
+
+// setVMState puts a VM in a state as the cloud would have it before the
+// call under test: stopped, a transient state of another change, an error.
+func (c *faultCloud) setVMState(id, state string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.vms {
+		if c.vms[i].ID == id {
+			c.vms[i].Status, c.vms[i].powerTo = state, ""
+		}
+	}
+}
+
+// powerCalls is the number of power commands the world has taken or
+// refused: the writes of the power tools.
+func (c *faultCloud) powerCalls() int {
+	n := 0
+	for _, op := range c.callLog() {
+		if op == "SetVMPower" {
+			n++
+		}
+	}
+	return n
 }
 
 func (c *faultCloud) DeleteVMInProject(ctx context.Context, id, _ string) error {
