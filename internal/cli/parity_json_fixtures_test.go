@@ -24,6 +24,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/vmstage"
@@ -382,6 +383,19 @@ func withJSONWorld(t *testing.T) (parityWorld, *jsonFake) {
 	}
 	t.Cleanup(func() { toolEngine = world })
 	return w, fake
+}
+
+// forgetRun takes away what a run of a case left in the directory of the
+// world: the state of the deployment, and the records of the calls (D92)
+// — a call whose outcome is not known keeps its record, and the next case
+// of the same world would be told of an interrupted call of another case
+// and asked again. A case that reads the records of its own call reads
+// them before this.
+func forgetRun(w parityWorld) {
+	_ = os.Remove(state.DefaultPath(w.dir))
+	for _, dir := range intent.Dirs(w.dir) {
+		_ = os.RemoveAll(dir)
+	}
 }
 
 // recordUnchanged is deploy's third state: the deployment of the directory

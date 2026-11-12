@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/shatim-ops/evo-cli/internal/intent"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +21,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -241,10 +241,13 @@ func (c *emptyCloud) run(t *testing.T, bad *[]string, args ...string) (int, stri
 	c.mu.Lock()
 	c.deleted = map[string]bool{}
 	c.mu.Unlock()
-	// And a new directory of records (D92): a call whose outcome the empty
-	// cloud leaves unknown is not the other side's to name.
+	// ...and a new directory of the records of calls (D92): a call whose
+	// outcome is not known keeps its record, and the other side of the
+	// pair would be told of it and asked again.
 	if wd, err := os.Getwd(); err == nil {
-		_ = os.RemoveAll(intent.Dir(wd))
+		for _, dir := range intent.Dirs(wd) {
+			_ = os.RemoveAll(dir)
+		}
 	}
 	newProcess()
 	start := time.Now()

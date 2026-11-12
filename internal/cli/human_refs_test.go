@@ -6,13 +6,10 @@ package cli
 
 import (
 	"encoding/json"
-	"os"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // bareRefs are the references known to reach the human output as a bare
@@ -118,7 +115,7 @@ func TestHuman_NoBareReferenceUUID(t *testing.T) {
 		newProcess()
 		_, out, errOut := runCLI(t, c.stdin, append(append(append([]string{}, cl.mode...), extra...), line...)...)
 		end()
-		_ = os.Remove(state.DefaultPath(w.dir))
+		forgetRun(w)
 		given := map[string]bool{}
 		for _, v := range args {
 			if s, ok := v.(string); ok {
