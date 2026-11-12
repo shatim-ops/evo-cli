@@ -187,7 +187,7 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			}
 			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`)
 		case strings.HasPrefix(p, "/api/v1/security-groups/") && strings.HasSuffix(p, "/rules") && r.Method == http.MethodPost:
-			return write(`{"id":"` + parityVM + `","direction":"ingress","ip_protocol":"tcp"}`)
+			return write(`{"id":"` + parityVM + `","direction":"ingress","ip_protocol":"tcp","state":"created"}`)
 		}
 	case "s3.cloud.ru":
 		return s3Parity(r)

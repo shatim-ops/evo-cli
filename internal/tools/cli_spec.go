@@ -297,5 +297,6 @@ var cliSpecs = map[string]CLISpec{
 	"image_delete":   {Group: "image", Verb: "delete", Args: []string{"image_id"}},
 	"open_ports":     {Group: "vpc", Verb: "open-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
 	"close_ports":    {Group: "vpc", Verb: "close-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
+	"sg_rule_create": {Group: "vpc", Verb: "sg-rule-create", Args: []string{"security_group"}},
 	"sg_rule_delete": {Group: "vpc", Verb: "sg-rule-delete", Args: []string{"security_group"}},
 }

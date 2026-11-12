@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (165) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo (166) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -290,6 +290,7 @@
 | `subnet_delete` | `evo vpc subnet-delete` | удаляет | `subnet_id` | Delete a subnet by id (from list_subnets). | Удалить подсеть |
 | `list_security_groups` | `evo vpc security-groups` | нет | — | List Cloud.ru security groups (UUID, name, availability zone). | Группы безопасности (с --rules — вместе с правилами) |
 | `list_floating_ips` | `evo vpc fips` | нет | — | List Cloud.ru floating IPs (address, state, whether available to attach, zone when the API names it). | Floating IP: адрес, состояние, свободен ли |
+| `sg_rule_create` | `evo vpc sg-rule-create` | да | `security_group`, `direction`, `protocol`, `ports` | Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). | Добавить правило в группу безопасности |
 | `sg_rule_delete` | `evo vpc sg-rule-delete` | удаляет | `security_group`, `rule_id` | Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). | Удалить правило группы безопасности по его id |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |
 | `vpc_list` | `evo vpc list` | нет | — | List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). | Список VPC проекта |

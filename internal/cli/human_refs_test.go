@@ -56,6 +56,7 @@ var notRefs = map[string]string{
 	"redis_create cluster_id":        "own id: what redis_create made",
 	"stack_apply vpc":                "own id: outputs are the ids of what the stack's steps made, by step key",
 	"status vm_id":                   "own id: the VM of the deployment status describes",
+	"sg_rule_create rule_id":         "own id: what sg_rule_create made",
 	"vpc_create vpc_id":              "own id: what vpc_create made",
 }
 
