@@ -627,11 +627,40 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 		body := map[string]any{"cluster_id": cid, "name": name, "password": password}
 		u, err := cli.CreateUser(ctx, cid, body)
 		if err != nil {
-			return errResult(fmt.Errorf(i18n.T("create user: %w", "создание пользователя: %w"), err)), true
+			err = fmt.Errorf(i18n.T("create user: %w", "создание пользователя: %w"), err)
+			return errResult(pgUserExists(ctx, cli, cid, name, err)), true
 		}
 		// Never echo the password back.
 		return toJSON(map[string]any{"status": "created", "user": u}), false
 	}}, nil
+}
+
+// pgUserExists is the refusal err of a create of user name, said in full
+// when the cluster has the user: the platform's text alone leaves an agent
+// to find the way on by itself, and the one it finds — delete the user and
+// create it anew — changes the password under the applications that use
+// it (release plan 1.9, «Повтор у выпущенных инструментов»; conclusion 120
+// of «Риск»). The reason and the exit code are those of err. A cluster
+// whose users are not read, or that has no such user, leaves err as it
+// is: evo says «exists» only of what it read. How the platform refuses a
+// taken name is in no specification, so the rule reads the users, not the
+// refusal.
+func pgUserExists(ctx context.Context, cli *postgresql.Client, clusterID, name string, err error) error {
+	users, lerr := cli.ListUsers(ctx, clusterID)
+	if lerr != nil {
+		return err
+	}
+	for _, u := range users {
+		if n, _ := u["name"].(string); n != name {
+			continue
+		}
+		reason, msg, _ := errReason(err, nil)
+		return clierrors.Wrap(reason, msg,
+			i18n.Tf("User %s already exists in the cluster; nothing was created or changed. Do not delete it and create it again: that changes its password, and the applications that use it stop connecting — ask the person what to do.",
+				"Пользователь %s уже существует в кластере; ничего не создано и не изменено. Не удаляйте его и не создавайте заново: это сменит пароль, и приложения, которые им пользуются, перестанут подключаться, — спросите человека, что делать.", quoteCloud(name)),
+			err)
+	}
+	return err
 }
 
 // pgPasswordSpecials is the one rule of the password of a PostgreSQL user
