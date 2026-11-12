@@ -45,9 +45,9 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local compose project to a VM evo-<project_name>, billable when it creates one, with a public floating IP: uploads the compose files over SSH, runs them; ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: server's). Updates need confirmed=true (preview: compose_changed).",
+			Description: "Deploy the local compose project to a VM evo-<project_name> (billable when created) with a public floating IP: uploads the compose files over SSH, runs them; ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: server's). Updates ask too (preview: compose_changed).",
 			InputSchema: objSchema(map[string]any{
-				"compose_file": strProp("Compose file (default docker-compose.yml)."),
+				"compose_file": strProp("Default: docker-compose.yml."),
 				"flavor":       strProp("Flavor or 'auto' (default)."),
 				"region":       strProp("Zone UUID."),
 				"project_id":   strProp("Project UUID."),
@@ -62,7 +62,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "provision",
-			Description: "Provision a bare Cloud.ru VM (docker-compose: use 'deploy'), billable: confirmed=true. Public floating IP unless no_public_ip. " +
+			Description: "Provision a bare VM (docker-compose: use 'deploy'). Public floating IP unless no_public_ip. " +
 				"evo fills the image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata. " +
 				"Refused before anything is created: no image or region ('missing' names it), an image the project cannot use, a mandatory field not given. " +
 				"Returns ssh, password (generated; this answer only), state_dir (key, state).",
@@ -87,10 +87,8 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
-			Name: "status",
-			Description: "Show the current deployment status, including VM ID, public IP, flavor, region, health state and exposed ports, from the local state. " +
-				"Read-only. By default it also asks the cloud for the VM's live state (one GET, at most 8 s) and adds cloud_checked, cloud_state, " +
-				"not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record) and cloud_error with cloud_reason (why the cloud was not checked, as a phrase and an error code; the local state is still returned). When the cloud answered, vm_name, zone_name and flavor_name name the VM, its zone and its flavor.",
+			Name:        "status",
+			Description: "Current deployment from the local state: VM id, public IP, flavor, region, health, ports. Read-only. Also asks the cloud for the VM's live state (one GET, at most 8 s): cloud_checked, cloud_state, not_found_in_cloud=true (the VM was deleted outside evo: destroy cleans up the record), or cloud_error with cloud_reason (why the cloud was not checked; the local state is still returned). vm_name, zone_name and flavor_name come from the cloud's answer.",
 			InputSchema: objSchema(map[string]any{
 				"refresh": boolPropTrue("Ask the cloud for the VM's live state (default: true). false: local state only, no API call."),
 			}),
@@ -110,7 +108,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_start",
-			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. A VM that runs already answers already_running with no question; one that is starting is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. Mutation (billable: a running VM is charged for its flavor): requires confirmed=true.",
+			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. A VM that runs already answers already_running with no question; one that is starting is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. A running VM is charged for its flavor.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
 				"name":      strProp("VM name (alternative to vm_id)."),
@@ -119,7 +117,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_stop",
-			Description: "Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. A VM that is stopped already answers already_stopped with no question; one that is stopping is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status stopping with next_tool. Do not stop the VM this server runs on. Mutation (interrupts the service; a stopped VM may stay billable: tariff_url): requires confirmed=true.",
+			Description: "Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. A VM that is stopped already answers already_stopped with no question; one that is stopping is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status stopping with next_tool. Do not stop the VM this server runs on. A stopped VM may stay billable: tariff_url.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
 				"name":      strProp("VM name (alternative to vm_id)."),
@@ -128,7 +126,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_reboot",
-			Description: "Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. There is no «already»: every call is a new reboot: a repeat reboots the VM again, so each one asks. A VM that is rebooting is waited for and no command is sent; a stopped one is refused with vm_start as the step. At the time limit of an MCP call the answer is status rebooting with next_tool vm_get; reboot_accepted means the platform took the command and evo did not see the state change. Do not reboot the VM this server runs on. Mutation (interrupts the service): requires confirmed=true.",
+			Description: "Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. The preview names the VM, its state and the downtime. There is no «already»: every call is a new reboot: a repeat reboots the VM again, so each one asks. A VM that is rebooting is waited for and no command is sent; a stopped one is refused with vm_start as the step. At the time limit of an MCP call the answer is status rebooting with next_tool vm_get; reboot_accepted means the platform took the command and evo did not see the state change. Do not reboot the VM this server runs on.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
 				"name":      strProp("VM name (alternative to vm_id)."),
@@ -182,10 +180,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "image_create",
-			Description: "Create a VM image from a bootable disk (billable storage). The disk must be detached: disk_detach, then disk_list state 'available'. " +
-				"A Marketplace image needs user_data_template and image_metadata for its every {{ var }}. Async: poll image_get until ready=true.",
+			Description: "Create a VM image from a bootable disk. The disk must be detached (disk_detach; disk_list state 'available'). " +
+				"A Marketplace image needs user_data_template and image_metadata for every {{ var }}. Async: poll image_get until ready=true.",
 			InputSchema: objSchema(map[string]any{
-				"name":               strProp("Image name, unique in the project."),
+				"name":               strProp("Unique image name."),
 				"disk_id":            strProp("Source disk UUID."),
 				"display_name":       strProp("Console name."),
 				"description":        strProp("At most 255 characters."),
@@ -205,7 +203,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "fip_attach",
-			Description: "Bind an existing FREE floating IP to a VM's primary interface, giving it a public address. Use when a VM has no public_ip — e.g. provisioning from a large custom image outran the wizard's wait and it returned before assigning one. Pick a free address from list_floating_ips. Mutation: requires confirmed=true.",
+			Description: "Bind an existing FREE floating IP to a VM's primary interface, giving it a public address. Use when a VM has no public_ip — e.g. provisioning from a large custom image outran the wizard's wait and it returned before assigning one. Pick a free address from list_floating_ips.",
 			InputSchema: objSchema(map[string]any{
 				"fip":       strProp("Floating IP address (e.g. '203.0.113.10') or its UUID, from list_floating_ips."),
 				"vm":        strProp("VM name or UUID to attach it to."),
@@ -226,7 +224,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "image_delete",
-			Description: "Delete a VM image. Running VMs keep working, but no new VM can be created from it. Mutation: requires confirmed=true.",
+			Description: "Delete a VM image. Running VMs keep working, but no new VM can be created from it.",
 			InputSchema: objSchema(map[string]any{
 				"image_id":  uuidProp("Image UUID (from image_list)."),
 				"confirmed": confirmedProp(),
@@ -259,7 +257,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_apply",
-			Description: "STEP 2 of the deploy wizard. Executes a plan previously returned by deploy_plan. It creates the VM without the application: a compose project goes through deploy. REQUIRES the user's approval: only call with confirmed=true AFTER the user has explicitly approved the plan and its cost. Idempotent: its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args — repeat the same call to finish it.",
+			Description: "STEP 2 of the deploy wizard: executes a plan from deploy_plan. Creates the VM without the application: a compose project goes through deploy. Its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args: repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
 				"plan_id":      strProp("The plan_id returned by deploy_plan."),
 				"confirmed":    confirmedProp(),
@@ -306,7 +304,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "subnet_delete",
-			Description: "Delete a subnet by id (from list_subnets). A subnet with VMs, balancers or clusters in it is refused before the question. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a subnet by id (from list_subnets). A subnet with VMs, balancers or clusters in it is refused before the question.",
 			InputSchema: objSchema(map[string]any{
 				"subnet_id": uuidProp("Subnet UUID (from list_subnets). Required."),
 				"confirmed": confirmedProp(),
@@ -326,7 +324,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "open_ports",
-			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group. Mutation: requires confirmed=true after the user approves.",
+			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
@@ -338,7 +336,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "close_ports",
-			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open). A zone's group is shared: closing a port affects every VM in it. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh. Mutation: requires confirmed=true after the user approves.",
+			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open). A zone's group is shared: closing a port affects every VM in it. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to close, e.g. [8080]."},
@@ -350,7 +348,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "sg_rule_delete",
-			Description: "Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). The preview names the rule whole, the group and what stops getting through, and the other rules that still let that port in, with their source. A rule that is not there answers already_deleted with no question; a rule of another group is refused with the group it is in. The last rule that lets TCP 22 in to a group with a deployment of this folder is refused without allow_cut_ssh: evo and the person would lose SSH. evo does not know which rule this server itself is reached through: do not delete that one. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). The preview names the rule whole, the group and what stops getting through, and the other rules that still let that port in, with their source. A rule that is not there answers already_deleted with no question; a rule of another group is refused with the group it is in. The last rule that lets TCP 22 in to a group with a deployment of this folder is refused without allow_cut_ssh: evo and the person would lose SSH. evo does not know which rule this server itself is reached through: do not delete that one.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name or UUID (see list_security_groups)."),
 				"rule_id":        uuidProp("Rule UUID (list_security_groups with rules=true)."),
@@ -392,7 +390,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_create",
-			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. REQUIRES confirmed=true after the user approves (billable). Async — returns cluster_id + operation_id; the cluster provisions in about 10 min (5-10 per the docs; poll k8s_get). Accepts the same args as k8s_plan.",
+			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. Async — returns cluster_id + operation_id; the cluster provisions in about 10 min (5-10 per the docs; poll k8s_get). Accepts the same args as k8s_plan.",
 			InputSchema: objSchema(map[string]any{
 				"product": strProp("What the cluster is for."), "name": strProp("Cluster name."),
 				"version": strProp("Kubernetes version."), "flavor": strProp("Control-plane flavor name."),
@@ -414,7 +412,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_delete",
-			Description: "Permanently delete a Managed Kubernetes cluster. REQUIRES confirmed=true after the user approves. Async.",
+			Description: "Permanently delete a Managed Kubernetes cluster. Async.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": uuidProp("Cluster UUID."),
 				"confirmed":  confirmedProp(),
@@ -441,7 +439,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_nodepool_scale",
-			Description: "Set the number of nodes of a Managed Kubernetes node pool with a fixed count. REQUIRES confirmed=true after the user approves: more nodes are billed; fewer nodes are deleted with the data on their disks, and their pods are evicted. A pool that has the count already answers already_scaled with no question; an autoscaled pool is refused. Async — returns operation_id: wait with k8s_operation.",
+			Description: "Set the number of nodes of a Managed Kubernetes node pool with a fixed count. More nodes are billed; fewer nodes are deleted with the data on their disks, and their pods are evicted. A pool that has the count already answers already_scaled with no question; an autoscaled pool is refused. Async — returns operation_id: wait with k8s_operation.",
 			InputSchema: objSchema(map[string]any{
 				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
 				"count":       inRange(0, maxPoolCount, intProp("The number of nodes the pool is to have.")),
@@ -450,7 +448,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_nodepool_delete",
-			Description: "Permanently delete a node pool of a Managed Kubernetes cluster: its nodes are deleted with the data on their disks, and their pods are evicted. REQUIRES confirmed=true after the user approves; the preview names the cluster, the nodes and whether the cluster is left with no pool. The cluster itself stays. Async — returns operation_id: wait with k8s_operation.",
+			Description: "Permanently delete a node pool of a Managed Kubernetes cluster: its nodes are deleted with the data on their disks, and their pods are evicted. The preview names the cluster, the nodes and whether the cluster is left with no pool. The cluster itself stays. Async — returns operation_id: wait with k8s_operation.",
 			InputSchema: objSchema(map[string]any{
 				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
 				"confirmed":   confirmedProp(),
@@ -459,7 +457,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_add_nodepool",
-			Description: "Add a worker node pool to a Managed Kubernetes cluster (pods need workers; a fresh cluster has none). Billable, async. A 503 'no healthy upstream' of the node-pool backend is transient: retry.",
+			Description: "Add a worker node pool to a Managed Kubernetes cluster (pods need workers; a fresh cluster has none). Async. A 503 'no healthy upstream' of the node-pool backend is transient: retry.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":        strProp("Cluster UUID."),
 				"name":              strProp("Pool name, 4-60 (default nodepool-1)."),
@@ -505,7 +503,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_kubectl",
-			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. Every call runs the command again: a repeated mutating verb is a new change. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
+			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true after the user approves, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. Every call runs the command again: a repeated mutating verb is a new change. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"args":       strProp("kubectl arguments as a single string, e.g. \"get pods -A -o wide\"."),
@@ -514,7 +512,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_apply",
-			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Every call applies the manifest again; what changes is the cluster's to decide. Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
+			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Every call applies the manifest again; what changes is the cluster's to decide. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"manifest":   strProp("The manifest YAML/JSON to apply (multi-doc allowed)."),
@@ -524,7 +522,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_helm",
-			Description: "Run Helm on a cluster. Every call runs helm again: a repeated install/upgrade upgrades the same release (helm upgrade --install), not a second one; over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
+			Description: "Helm on a cluster: install/upgrade/uninstall require confirmed=true after the user approves. Every call runs helm again: a repeated install/upgrade upgrades the same release, not a second one; over MCP: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),
@@ -532,7 +530,7 @@ func (s *Registry) registerTools() {
 				"chart":      strProp("Chart ref, e.g. 'bitnami/nginx' (install/upgrade)."),
 				"repo_url":   strProp("Chart repo URL to add first, named by the chart's prefix."),
 				"namespace":  strProp("Namespace (created on install/upgrade)."),
-				"version":    strProp("Chart version (default latest)."),
+				"version":    strProp("Chart version (default latest: a repeat may change it)."),
 				"values":     strProp("Inline values.yaml."),
 				"set":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "'key=value' --set overrides."},
 				"confirmed":  confirmedPropNote("Only for install/upgrade/uninstall."),
@@ -545,7 +543,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "disk_create",
-			Description: "Create a block-storage disk. Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only). Mutation (billable): requires confirmed=true.",
+			Description: "Create a block-storage disk. Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only).",
 			InputSchema: objSchema(map[string]any{
 				"name":      strProp("Disk name."),
 				"size_gb":   intProp("Disk size in GB (required; max 16384)."),
@@ -557,7 +555,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "disk_attach",
-			Description: "Attach an existing disk to a VM (POST /disks/{id}/attach). Disk and VM must be in the same zone. Mutation: requires confirmed=true.",
+			Description: "Attach an existing disk to a VM (POST /disks/{id}/attach). Disk and VM must be in the same zone.",
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   uuidProp("Disk UUID (from disk_list)."),
 				"vm":        strProp("VM name or UUID."),
@@ -566,7 +564,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "disk_detach",
-			Description: "Detach a disk from a VM (POST /disks/{id}/detach). Do NOT detach a bootable/in-use disk carelessly. Mutation: requires confirmed=true.",
+			Description: "Detach a disk from a VM (POST /disks/{id}/detach). Do NOT detach a bootable/in-use disk carelessly.",
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   uuidProp("Disk UUID (from disk_list)."),
 				"vm":        strProp("VM name or UUID the disk is attached to."),
@@ -575,7 +573,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "disk_resize",
-			Description: "Grow a disk in place via PUT /disks/{id} (up to 16384 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead). Mutation: requires confirmed=true.",
+			Description: "Grow a disk in place via PUT /disks/{id} (up to 16384 GB). GROW ONLY — the API rejects shrink and FREE-TIER disks (free_tier_disk_resize_is_prohibited). After resizing, grow the partition+filesystem on the VM (growpart + resize2fs). This is how you'd enlarge a VM's disk without a new volume — but a free-tier boot disk can't be resized (recreate the VM with a paid disk instead).",
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   uuidProp("Disk UUID (from disk_list)."),
 				"size_gb":   intProp("New size in GB (must be larger than current; max 16384)."),
@@ -584,7 +582,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "disk_delete",
-			Description: "Permanently delete a disk and all its data (irreversible). Detach it first if attached. Mutation: requires confirmed=true.",
+			Description: "Permanently delete a disk and all its data (irreversible). Detach it first if attached.",
 			InputSchema: objSchema(map[string]any{
 				"disk_id":   uuidProp("Disk UUID (from disk_list)."),
 				"confirmed": confirmedProp(),
@@ -605,13 +603,13 @@ func (s *Registry) registerTools() {
 			Description: "Deploy a serverless Container App from an image; the preview lists every setting, root included. Async: ca_get gives its status and URL.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("App name, unique: an RFC 1123 label."),
-				"image":         strProp("Image URI (this project's Artifact Registry or a public one), linux/amd64, listening on 0.0.0.0:$PORT."),
+				"image":         strProp("Image URI (this project's Artifact Registry or public), linux/amd64, listening on 0.0.0.0:$PORT."),
 				"cpu":           strProp("CPU, e.g. '1' (default 0.1)."),
 				"memory":        strProp("Memory, e.g. '1Gi' (default 256Mi)."),
 				"port":          intProp("Container port (default 8080). Refused: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090-9092."),
 				"privileged":    boolProp("Run as root, privileged (default false)."),
 				"public":        boolPropTrue("Public URL (default true)."),
-				"min_instances": intProp("Minimum instances (default 0: scale to zero). Above 0 they run, and are billed, all the time."),
+				"min_instances": intProp("Minimum instances (default 0: scale to zero). Above 0: billed all the time."),
 				"max_instances": intProp("Maximum instances (default 1)."),
 				"env":           map[string]any{"type": "object", "description": "Environment variables by name.", "additionalProperties": map[string]any{"type": "string"}},
 				"description":   strProp("Description."),
@@ -620,7 +618,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ca_delete",
-			Description: "Delete a Container App by name. REQUIRES confirmed=true after the user approves. Async.",
+			Description: "Delete a Container App by name. Async.",
 			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp(), "wait": boolProp(deleteWaitDesc)}, "name"),
 		},
 		{
@@ -630,12 +628,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ca_start",
-			Description: "Start a stopped Container App (it is billed while running). Mutation: requires confirmed=true after the user approves.",
+			Description: "Start a stopped Container App (it is billed while running).",
 			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp()}, "name"),
 		},
 		{
 			Name:        "ca_stop",
-			Description: "Stop a running Container App (it stops serving requests). Mutation: requires confirmed=true after the user approves.",
+			Description: "Stop a running Container App (it stops serving requests).",
 			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp()}, "name"),
 		},
 		{
@@ -654,34 +652,18 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{"project_id": strProp("Project UUID to scope quotas to (optional).")}),
 		},
 		{
-			Name: "whoami",
-			Description: "Show whom the tools work as: the profile, the access key ID (masked), where the key and the project come from " +
-				"(profile, env, project file, flag), the project, when the IAM token expires and whether it was cached or issued now, " +
-				"and how many projects the key sees (no visible_projects when the Organization API lists none for the key: not an error), " +
-				"and roles: the key's roles on the project by name, with the term of each that has one; roles_note says why they are " +
-				"unknown (IAM did not tell, no project) or that a role on the organization is not seen here; key_expires_at: when the " +
-				"access key expires (key_expires_soon within 5 days: a person issues the next key; key_term_note when unknown). " +
-				"Read-only; IAM is asked for a token only when no valid cached token exists. Fails with AUTH_REQUIRED or AUTH_FAILED (no key, " +
-				"key rejected) and CONFIG_INVALID (broken configuration). Call it first when calls fail with an authentication error " +
-				"or land in an unexpected project.",
+			Name:        "whoami",
+			Description: "Whom the tools work as: profile, masked access key ID, where the key and the project come from (profile, env, project file, flag), the project, the IAM token's expiry and whether it was cached or issued now, visible_projects (absent when the Organization API lists none for the key: not an error), roles on the project with the term of each (roles_note: why they are unknown, or that a role on the organization is not seen here), key_expires_at (key_expires_soon within 5 days: a person issues the next key; key_term_note when unknown). Read-only; IAM is asked for a token only without a valid cached one. Fails with AUTH_REQUIRED, AUTH_FAILED or CONFIG_INVALID. Call it first when calls fail with an authentication error or land in an unexpected project.",
 			InputSchema: objSchema(nil),
 		},
 		{
-			Name: "doctor",
-			Description: "Check the setup the tools use: the configuration (profile, where the key and the project come from, " +
-				"its warnings), whether the IAM and Compute APIs are reachable, the access key (an IAM token), how many projects " +
-				"it sees, its roles on the project (key roles: skip when IAM does not tell, warn with none) and its term (key term: " +
-				"warn within 5 days), what cut calls left (pending operation, warn; one its list settles: .evo/intents file removed, " +
-				"even with --read-only) and foreign intent record (not evo's, kept). Read-only for the cloud. Answers checks ({name, status: ok, warn, fail or skip, detail, http_status}) and ok; " +
-				"http_status of IAM API and Compute API is what the API root answered: any answer, 404 included, means reachable. A failed " +
-				"check fails the call, with the checks in the error answer: CONFIG_INVALID when the configuration or the key is " +
-				"broken (no project included), API_UNREACHABLE when only connectivity failed. The CLI's 'evo doctor' also checks " +
-				"the config files of its machine and kubectl/helm in PATH.",
+			Name:        "doctor",
+			Description: "Check the setup the tools use: the configuration (profile, key and project sources, warnings), whether IAM and Compute APIs are reachable (http_status is what the API root answered: any answer, 404 included, means reachable), the access key (an IAM token), how many projects it sees, its roles (key roles: skip when IAM does not tell, warn with none) and term (key term: warn within 5 days), and what cut calls left: pending operation (warn; one its list settles: .evo/intents file removed, even with --read-only) and foreign intent record (not evo's, kept). Read-only for the cloud. Answers ok and checks ({name, status: ok, warn, fail or skip, detail, http_status}). A failed check fails the call, with the checks in the error: CONFIG_INVALID (configuration or key broken, no project included), API_UNREACHABLE (only connectivity). The CLI's 'evo doctor' also checks its machine's config files and kubectl/helm in PATH.",
 			InputSchema: objSchema(nil),
 		},
 		{
 			Name:        "release_floating_ip",
-			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: snat_delete). Mutation: requires confirmed=true after the user approves.",
+			Description: "Release (delete) a floating IP, freeing it from the project. Identify it by 'id' or 'ip_address'. REFUSES to release an IP that is currently in use by a VM (detach or destroy the VM first) or that belongs to a SNAT gateway (it goes with the gateway: snat_delete).",
 			InputSchema: objSchema(map[string]any{
 				"id":         uuidProp("Floating IP UUID (from list_floating_ips). Either id or ip_address is required, not both."),
 				"ip_address": strProp("Floating IP address, e.g. '203.0.113.11' (alternative to id; not with it)."),
@@ -695,7 +677,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "snat_create",
-			Description: "Create a public SNAT gateway: outbound internet for every ROUTED subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out directly). One gateway per zone; it gets a public IP that counts against the public-IP quota and is released only with the gateway. Zone-level: defaults to the configured region; override with 'zone' (name) or 'availability_zone_id'. Without confirmed=true this returns a preview only. Mutation (billable): requires confirmed=true after the user approves. NOTE: this is NOT part of k8s_create — mk8s clusters come up without egress; create a SNAT gateway in the cluster's node zone if workloads need to pull public images.",
+			Description: "Create a public SNAT gateway: outbound internet for every ROUTED subnet of its zone (an isolated subnet is not served; a VM with its own public IP goes out directly). One gateway per zone; it gets a public IP that counts against the public-IP quota and is released only with the gateway. Zone-level: defaults to the configured region; override with 'zone' (name) or 'availability_zone_id'. NOTE: this is NOT part of k8s_create — mk8s clusters come up without egress; create a SNAT gateway in the cluster's node zone if workloads need to pull public images.",
 			InputSchema: objSchema(map[string]any{
 				"name":                 strProp("Name for the SNAT gateway (required)."),
 				"zone":                 strProp("Availability-zone NAME (e.g. 'ru.AZ-2'). Optional; resolved to a UUID. Defaults to the configured region."),
@@ -705,7 +687,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "snat_delete",
-			Description: "Delete a SNAT gateway by id (from snat_list). Nodes in that zone lose outbound internet. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a SNAT gateway by id (from snat_list). Nodes in that zone lose outbound internet.",
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("SNAT gateway UUID (from snat_list). Required."),
 				"confirmed": confirmedProp(),
@@ -738,27 +720,27 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster, billable. Refuses a name an existing cluster has. Default subnet: the main subnet of the profile's zone. No public access: the API takes no such parameter.",
+			Description: "Create a Managed PostgreSQL cluster. Refuses a taken name. Default subnet: the main subnet of the profile's zone. No public access: the API has no such parameter.",
 			InputSchema: objSchema(map[string]any{
 				"name":                  strProp("Cluster name."),
-				"version":               strProp("PostgreSQL version. Default: latest."),
+				"version":               strProp("Version. Default: latest."),
 				"specification_id":      strProp("Specification UUID, or cpu and ram."),
 				"cpu":                   intProp("vCPU, with ram: picks the spec."),
-				"ram":                   intProp("RAM, GB, with cpu."),
-				"storage_gb":            atLeast(1, intProp("Data disk, GB. Default: the spec minimum.")),
+				"ram":                   intProp("RAM GB, with cpu."),
+				"storage_gb":            atLeast(1, intProp("Disk, GB. Default: the spec minimum.")),
 				"instances":             atLeast(1, intProp("Nodes: 1-2 standard, 1-3 business (default 1).")),
 				"subnet_id":             strProp("Subnet UUID or name; sets the zone."),
-				"initial_database":      strProp("Database made with the cluster (default 'defaultdb'), with no owner: an owned one is pg_db_create."),
+				"initial_database":      strProp("Database made with the cluster (default 'defaultdb'), ownerless; pg_db_create makes an owned one."),
 				"description":           strProp("Description."),
-				"no_backup":             boolProp("Disable automatic backups (on by default): CANNOT be toggled after creation."),
-				"backup_schedule":       strProp("Backup CRON (default '0 3 * * 0'; at most every 6h)."),
-				"backup_retention_days": inRange(1, 30, intProp("Backup retention, days (default 14).")),
+				"no_backup":             boolProp("true: no automatic backups (they are on by default); CANNOT be changed after creation."),
+				"backup_schedule":       strProp("Backup CRON (default '0 3 * * 0'; every 6h at most)."),
+				"backup_retention_days": inRange(1, 30, intProp("Backup retention days (default 14).")),
 				"confirmed":             confirmedProp(),
 			}, "name"),
 		},
 		{
 			Name:        "pg_delete",
-			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored). Mutation (async): requires confirmed=true after the user approves.",
+			Description: "Delete a Managed PostgreSQL cluster by id (from pg_list) AND its data, including all its backups (they cannot be restored).",
 			InputSchema: objSchema(map[string]any{
 				"id":         uuidProp("Cluster UUID (from pg_list). Required (alias: cluster_id)."),
 				"cluster_id": uuidProp("Alias for id."),
@@ -799,16 +781,16 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster, billable. Refuses a name an existing cluster has. Default subnet: the main subnet of the configured zone, else of the first zone with one (ru.AZ-2 first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication. Controllers: combined; dedicated (controller_spec): Cloud.ru console only.",
+			Description: "Create a Managed Kafka cluster. Refuses a taken name. Default subnet: the main subnet of the configured zone, else of the first zone with one (ru.AZ-2 first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication. Controllers: combined; dedicated (controller_spec): Cloud.ru console only.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name, 2-63 characters."),
 				"version_id":       strProp("Kafka version UUID. Default: latest."),
 				"specification_id": strProp("Specification UUID, or cpu and ram."),
 				"cpu":              intProp("vCPU, with ram: picks the spec."),
-				"ram":              intProp("RAM, GB, with cpu."),
+				"ram":              intProp("RAM GB, with cpu."),
 				"storage_gib":      atLeast(1, intProp("Disk, GiB. Default: the spec minimum.")),
-				"brokers":          intProp("Broker count, 3 for a replicated cluster; checked against the spec's min/max_brokers when it has them."),
-				"ui_enabled":       boolProp("Enable the Kafka UI (default false)."),
+				"brokers":          intProp("Broker count, 3 for a replicated cluster; checked against the spec's min/max_brokers, if any."),
+				"ui_enabled":       boolProp("Kafka UI (default false)."),
 				"subnet_id":        strProp("Subnet UUID or name."),
 				"description":      strProp("Description."),
 				"confirmed":        confirmedProp(),
@@ -816,7 +798,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_delete",
-			Description: "Delete a Managed Kafka cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
+			Description: "Delete a Managed Kafka cluster by id AND its data.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": uuidProp("Cluster UUID (from kafka_list). Required."),
 				"confirmed":  confirmedProp(),
@@ -853,13 +835,13 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster, billable. Refuses a name an existing cluster has. All hosts go to the subnet's zone (default: the configured zone's main subnet, else another zone's). MASTER_REPLICA (default): a master and two replicas, three billed hosts per shard; STANDALONE: one host.",
+			Description: "Create a Managed Redis cluster. Refuses a taken name. All hosts go to the subnet's zone (default: the configured zone's main subnet, else another zone's). MASTER_REPLICA (default): a master and two replicas, three billed hosts per shard; STANDALONE: one host.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name."),
-				"version_id":       strProp("Redis version UUID. Default: latest."),
+				"version_id":       strProp("Version UUID. Default: latest."),
 				"specification_id": strProp("Specification UUID, or cpu and ram."),
 				"cpu":              intProp("vCPU, with ram: picks the spec."),
-				"ram":              intProp("RAM, GB, with cpu."),
+				"ram":              intProp("RAM GB, with cpu."),
 				"storage_gb":       atLeast(1, intProp("Disk, GB. Default: the spec minimum.")),
 				"shards":           intProp("Shards, 1-8 (default 1)."),
 				"replicas":         intProp("Replicas per shard WITHOUT the master: 2 for MASTER_REPLICA (default), 0 for STANDALONE; redis_get counts the master too."),
@@ -871,7 +853,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_delete",
-			Description: "Delete a Managed Redis cluster by id AND its data. Mutation (async): requires confirmed=true after the user approves.",
+			Description: "Delete a Managed Redis cluster by id AND its data.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": uuidProp("Cluster UUID (from redis_list). Required."),
 				"confirmed":  confirmedProp(),
@@ -892,7 +874,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_db_create",
-			Description: "Create a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The preview does not check the name is free (pg_databases).",
+			Description: "Create a database in a PostgreSQL cluster. The preview does not check the name is free (pg_databases).",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
@@ -904,7 +886,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_db_delete",
-			Description: "Drop a database in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
+			Description: "Drop a database in a PostgreSQL cluster.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": uuidProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
@@ -920,7 +902,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_user_create",
-			Description: "Create a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves. The preview does not check the name is free (pg_users). The password is never echoed back.",
+			Description: "Create a user in a PostgreSQL cluster. The preview does not check the name is free (pg_users). The password is never echoed back.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
@@ -930,7 +912,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_user_delete",
-			Description: "Delete a user in a PostgreSQL cluster. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a user in a PostgreSQL cluster.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": uuidProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
@@ -946,7 +928,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_backup_create",
-			Description: "Start a manual backup of a PostgreSQL cluster (async). Mutation: requires confirmed=true after the user approves.",
+			Description: "Start a manual backup of a PostgreSQL cluster (async).",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID. Required."),
 				"name":       strProp("Backup name (letters/digits/hyphens/dots; not starting/ending with - or .). Required."),
@@ -980,7 +962,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "tg_create",
-			Description: "Create a target group (the set of VMs a load balancer distributes traffic to). Provide targets as just vm_id (single) or a 'targets' array of {id}. The VM's network interface is AUTO-RESOLVED — you do NOT need interface_id (only pass it to override). Targets must be private VPC-subnet VMs (provision with no_public_ip). Mutation (async): requires confirmed=true after the user approves.",
+			Description: "Create a target group (the set of VMs a load balancer distributes traffic to). Provide targets as just vm_id (single) or a 'targets' array of {id}. The VM's network interface is AUTO-RESOLVED — you do NOT need interface_id (only pass it to override). Targets must be private VPC-subnet VMs (provision with no_public_ip).",
 			InputSchema: objSchema(map[string]any{
 				"name":         strProp("Target group name (unique in project). Required."),
 				"vm_id":        strProp("VM UUID for a single target. The interface is auto-resolved. vm_id or targets is required, not both."),
@@ -991,7 +973,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "tg_delete",
-			Description: "Delete a target group by id (from tg_list). Mutation (async): requires confirmed=true after the user approves.",
+			Description: "Delete a target group by id (from tg_list).",
 			InputSchema: objSchema(map[string]any{"id": uuidProp("Target group UUID. Required."), "confirmed": confirmedProp(), "wait": boolProp(deleteWaitDesc)}, "id"),
 		},
 		{
@@ -1012,7 +994,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "lb_delete",
-			Description: "Delete a load balancer by id (from lb_list). Mutation (async): requires confirmed=true after the user approves.",
+			Description: "Delete a load balancer by id (from lb_list).",
 			InputSchema: objSchema(map[string]any{"id": uuidProp("Load balancer UUID. Required."), "confirmed": confirmedProp(), "wait": boolProp(deleteWaitDesc)}, "id"),
 		},
 		{
@@ -1027,7 +1009,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_create",
-			Description: "Create a new VPC (virtual private cloud) (async). It creates the VPC only: a subnet is created separately (in the console; evo has no subnet create yet), and lb_create refuses a VPC without one. Mutation: requires confirmed=true after the user approves.",
+			Description: "Create a new VPC (virtual private cloud) (async). It creates the VPC only: a subnet is created separately (in the console; evo has no subnet create yet), and lb_create refuses a VPC without one.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("VPC name. Required."),
 				"description": strProp("Optional description."),
@@ -1036,7 +1018,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_delete",
-			Description: "Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a VPC by id (from vpc_list) (async). Its subnets/resources must be removed first.",
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("VPC UUID (from vpc_list). Required."),
 				"confirmed": confirmedProp(),
@@ -1055,7 +1037,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_route_create",
-			Description: "Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az). Mutation: requires confirmed=true after the user approves.",
+			Description: "Add a static route to a VPC (async). Destination is a CIDR (subnet); the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az).",
 			InputSchema: objSchema(map[string]any{
 				"vpc_id":                   strProp("VPC UUID. Required."),
 				"subnet":                   cidrProp("Destination CIDR, e.g. '192.168.0.0/24'. Required."),
@@ -1070,7 +1052,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_route_delete",
-			Description: "Delete a static route from a VPC by id (from vpc_routes) (async). Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a static route from a VPC by id (from vpc_routes) (async).",
 			InputSchema: objSchema(map[string]any{
 				"vpc_id":    uuidProp("VPC UUID. Required."),
 				"route_id":  uuidProp("Static route UUID (from vpc_routes). Required."),
@@ -1092,7 +1074,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zone_create",
-			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone resolves only in the VPC it is linked to: vpc_id, else the project's default VPC (named in the preview). Mutation: requires confirmed=true after the user approves.",
+			Description: "Create a DNS zone. type=public (default) or private. A public zone needs domain-ownership delegation (returns a validation record) to serve traffic; a private zone resolves only in the VPC it is linked to: vpc_id, else the project's default VPC (named in the preview).",
 			InputSchema: objSchema(map[string]any{
 				"domain":      strProp("Zone FQDN, e.g. 'example.com.' (required)."),
 				"name":        strProp("Zone display name. Optional; default = domain."),
@@ -1104,7 +1086,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_zone_delete",
-			Description: "Delete a DNS zone by id (from dns_zones) AND its records. type (public|private) is optional: evo finds it by the zone id. A private zone linked to VPCs is refused: Cloud.ru deletes it only once its links are removed in the console. Waits up to 45 s: deleted, or deleting with operation_id (dns_operation). Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a DNS zone by id (from dns_zones) AND its records. type (public|private) is optional: evo finds it by the zone id. A private zone linked to VPCs is refused: Cloud.ru deletes it only once its links are removed in the console. Waits up to 45 s: deleted, or deleting with operation_id (dns_operation).",
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("Zone UUID (from dns_zones). Required."),
 				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
@@ -1135,7 +1117,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_record_create",
-			Description: "Add a DNS record to a zone (async). Mutation: requires confirmed=true after the user approves.",
+			Description: "Add a DNS record to a zone (async).",
 			InputSchema: objSchema(map[string]any{
 				"zone_id":     strProp("Zone UUID (from dns_zones). Required."),
 				"name":        strProp("Record name/host (e.g. 'www' or '@'). Required."),
@@ -1149,7 +1131,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "dns_record_delete",
-			Description: "Delete a DNS record by id (from dns_records) (async). Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a DNS record by id (from dns_records) (async).",
 			InputSchema: objSchema(map[string]any{
 				"record_id": uuidProp("Record UUID (from dns_records). Required."),
 				"type":      enumProp("Zone visibility: 'public' or 'private'. Optional: without it evo finds the visibility by id.", "public", "private"),
@@ -1169,7 +1151,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_value",
-			Description: "Retrieve the DECRYPTED value of a secret by path. Sensitive — returns the plaintext value; never store it in logs or files. Changes nothing, but gated: requires confirmed=true (returns the plaintext secret).",
+			Description: "Retrieve the DECRYPTED value of a secret by path. Sensitive — returns the plaintext value; never store it in logs or files. Changes nothing.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (folder/name). Required."),
 				"version":   intProp("Specific version number (default: latest)."),
@@ -1178,7 +1160,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_create",
-			Description: "Store a new secret at a path (value is Base64-encoded internally; never echoed back). Path 'folder/name' places it in a folder. Mutation: requires confirmed=true after the user approves.",
+			Description: "Store a new secret at a path (value is Base64-encoded internally; never echoed back). Path 'folder/name' places it in a folder.",
 			InputSchema: objSchema(map[string]any{
 				"path":        strProp("Secret path: 'name' at root, or 'folder/name'. Required."),
 				"value":       strProp("Secret value (plaintext; stored encrypted). Required."),
@@ -1189,7 +1171,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_add_version",
-			Description: "Add a new value version to an existing secret (rotation). Every call adds a version: a repeat adds one more. Mutation: requires confirmed=true after the user approves.",
+			Description: "Add a new value version to an existing secret (rotation). Every call adds a version: a repeat adds one more.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
 				"value":     strProp("New secret value (plaintext). Required."),
@@ -1198,7 +1180,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_delete",
-			Description: "Delete a secret by path AND all its versions. force defaults to true (a secret with active versions is deleted too); force=false lets the API refuse such a secret. Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete a secret by path AND all its versions. force defaults to true (a secret with active versions is deleted too); force=false lets the API refuse such a secret.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
 				"force":     boolPropTrue("Delete the secret even if it has active versions (default true)."),
@@ -1217,7 +1199,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ar_create",
-			Description: "Create an Artifact Registry registry (async); refuses a name an existing registry has (ar_list). registry_type=DOCKER (default), DEBIAN, RPM, GENERIC, PYPI or NPM. Mutation (BILLABLE): requires confirmed=true after the user approves. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
+			Description: "Create an Artifact Registry registry (async); refuses a name an existing registry has (ar_list). registry_type=DOCKER (default), DEBIAN, RPM, GENERIC, PYPI or NPM. Poll ar_operation; then push images via docker login to <registry>.cr.cloud.ru.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("Registry name. Required."),
 				"registry_type": enumProp("Registry type: DOCKER (default), DEBIAN, RPM, GENERIC, PYPI, NPM.", "DOCKER", "DEBIAN", "RPM", "GENERIC", "PYPI", "NPM"),
@@ -1228,7 +1210,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ar_delete",
-			Description: "Delete an Artifact Registry registry by id (from ar_list) AND its artifacts (async). Mutation: requires confirmed=true after the user approves.",
+			Description: "Delete an Artifact Registry registry by id (from ar_list) AND its artifacts (async).",
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("Registry UUID (from ar_list). Required."),
 				"confirmed": confirmedProp(),
@@ -1242,12 +1224,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_balance",
-			Description: "Account balance for the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: the balance belongs to the agreement, no API gives it by project; the agreement id is seen only by the organization and cost administrators. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. billing.api.cloud.ru/v1/agreement/{agreement_id} — this endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. Use to check the tenant's remaining runway. " + readOnlyTaskNote,
+			Description: "Balance of the billing agreement (RUB, active flag, raw agreement object). Read-only. Needs CLOUDRU_AGREEMENT_ID: no API gives the balance by project, and only organization and cost administrators see the agreement id. A server bound to its project (evo mcp --allow-project) refuses it: CONFIG_INVALID. The endpoint is not in Cloud.ru's published API specs: best effort, may change without notice. " + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
 			Name:        "billing_consumption",
-			Description: "Usage/consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. Aggregated by service: total (excluding VAT, sum of amount), total_with_nds (including VAT, sum of amount_nds), records, by_service sorted by cost (excluding VAT) with cost_with_nds (including VAT). Read-only. organization.api.cloud.ru/v2/consumption (paginated). Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). Use for FinOps/cost analysis. " + readOnlyTaskNote,
+			Description: "Consumption cost for a date range, by the agreement (CLOUDRU_AGREEMENT_ID) or, without it, by the project; scope in the answer says which. By service: total and by_service (sorted by cost) exclude VAT, total_with_nds and cost_with_nds include it; records. Read-only. Roles: the agreement — organization or cost administrator; the project — project administrator (platform.project.admin). " + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Required."),
 				"end":        strProp("End date YYYY-MM-DD (default = start)."),
@@ -1256,7 +1238,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "billing_finops",
-			Description: "FinOps report (read-only): INFORM (cost allocation by service, anomalies vs the previous same-length period) + QUANTIFY (daily burn-rate, balance runway in days, projected zero date, optional budget check). Costs exclude VAT (amount); total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it (amount_nds); runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. Ported from finops_report.py. Use for cost analysis, runway warnings, budget checks. " + readOnlyTaskNote,
+			Description: "FinOps report (read-only): cost by service, anomalies vs the previous same-length period, daily burn-rate, balance runway in days, projected zero date, optional budget check. Costs exclude VAT; total_cost_with_nds, daily_burn_with_nds, cost_with_nds of by_service and prev_with_nds/now_with_nds of anomalies include it; runway and budget use the costs excluding VAT. Same filter as billing_consumption; without CLOUDRU_AGREEMENT_ID the balance and runway are unknown. " + readOnlyTaskNote,
 			InputSchema: objSchema(map[string]any{
 				"start":      strProp("Start date YYYY-MM-DD. Optional; default = end - days + 1."),
 				"end":        strProp("End date YYYY-MM-DD. Optional; default = today."),
@@ -1307,7 +1289,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_issue_le",
-			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). The certificate goes to the application: the load balancer (lb_create) is L4 TCP and terminates no TLS, so HTTPS ends on the VM (a web server such as Caddy or nginx holds the certificate, or issues its own). ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true. Mutation: requires confirmed=true after the user approves.",
+			Description: "Certificate Manager — issue a FREE Let's Encrypt TLS certificate for one or more domains (async). The certificate goes to the application: the load balancer (lb_create) is L4 TCP and terminates no TLS, so HTTPS ends on the VM (a web server such as Caddy or nginx holds the certificate, or issues its own). ⚠️ The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Display name for the certificate. Required."),
 				"dns_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"]. Required."},
@@ -1317,7 +1299,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_import",
-			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are PEM, as it is or Base64-encoded. Mutation: requires confirmed=true after the user approves.",
+			Description: "Certificate Manager — import a user-managed certificate (bring-your-own). server_certificate and private_key are PEM, as it is or Base64-encoded.",
 			InputSchema: objSchema(map[string]any{
 				"name":                     strProp("Display name. Required."),
 				"server_certificate":       strProp("Public cert: PEM, as it is or Base64-encoded. Required."),
@@ -1329,12 +1311,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_renew",
-			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Every call sends a renewal request: a repeat sends another. Mutation: requires confirmed=true after the user approves.",
+			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Every call sends a renewal request: a repeat sends another.",
 			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
 		},
 		{
 			Name:        "cert_delete",
-			Description: "Certificate Manager — permanently delete a certificate. Gated: requires confirmed=true. If bound to a load balancer, deletion can break HTTPS (use force=true to delete anyway).",
+			Description: "Certificate Manager — permanently delete a certificate. If bound to a load balancer, deletion can break HTTPS (use force=true to delete anyway).",
 			InputSchema: objSchema(map[string]any{
 				"id":        uuidProp("Certificate id. Required."),
 				"confirmed": confirmedProp(),
@@ -1353,7 +1335,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_private_key",
-			Description: "Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's Base64 (key_format: pem; base64 if the API's value is not a Base64 PEM). cert_import takes the key Base64-encoded. Gated: requires confirmed=true (returns plaintext key material).",
+			Description: "Certificate Manager — return the SECRET private key for a version: privateKey (private_key in the live API) is PEM text (-----BEGIN …), decoded from the API's Base64 (key_format: pem; base64 if the API's value is not a Base64 PEM). cert_import takes the key Base64-encoded.",
 			InputSchema: objSchema(map[string]any{
 				"certificate_id": strProp("Certificate id. Required."),
 				"version_id":     intProp("Version number; 0 or omitted = latest version."),
@@ -1389,7 +1371,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_put",
-			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves. Every call writes the object again.",
+			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Every call writes the object again.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":         strProp("Bucket name. Required."),
 				"key":            strProp("Object key. Required."),
@@ -1401,7 +1383,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_rm",
-			Description: "Delete an S3 object. Destructive mutation: requires confirmed=true after the user approves.",
+			Description: "Delete an S3 object.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("Bucket name. Required."),
 				"key":       strProp("Object key. Required."),
@@ -1410,7 +1392,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_bucket_create",
-			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). A bucket you already own answers already_exists with no question: this call did not create it. Mutation: requires confirmed=true after the user approves.",
+			Description: "Create an Object Storage (S3) bucket. Use this when a bucket doesn't exist yet (s3_put needs an existing bucket). A bucket you already own answers already_exists with no question: this call did not create it.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("New bucket name: 3-63 lowercase letters, digits, dots and hyphens, unique within the tenant. Required."),
 				"region":    strProp("Region: only ru-central-1 is accepted (the API answers 'unexpected region' otherwise). Optional; default: the configured S3 region."),
@@ -1419,7 +1401,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_bucket_delete",
-			Description: "Delete an EMPTY S3 bucket. Destructive mutation: requires confirmed=true after the user approves.",
+			Description: "Delete an EMPTY S3 bucket.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":    strProp("Bucket name. Required."),
 				"confirmed": confirmedProp(),
@@ -1427,14 +1409,14 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_plan",
-			Description: "Plan a multi-resource STACK from ONE declarative manifest. Read-only (creates nothing): returns a job_id and a rate-card cost estimate — show it to the user, get explicit approval, THEN stack_apply. Use it for ANY multi-service deploy instead of calling pg_create, provision, … yourself: the engine runs the chain server-side. manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]} (a taken path or key is refused). vm.image and vm.zone (name or UUID) default to the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION; a VM stack is refused when either is missing or unknown.",
+			Description: "Plan a multi-resource stack from one declarative manifest. Read-only: returns a job_id and a rate-card cost estimate — show it to the user, get explicit approval, then stack_apply. Use it for any multi-service deploy instead of calling pg_create, provision, … yourself: the engine runs the chain. manifest = {name, vpc?{name}, postgres?{name,cpu,ram,storage_gb,no_backup}, kafka?{name,cpu,ram,storage_gib,brokers}, redis?{name,cpu,ram,storage_gb,shards,replicas,type}, k8s?{name,version,cpu,ram_gb,master_count,kube_api_internet}, registry?{name,registry_type,public}, snat?{name,zone}, vm?{name,private,flavor,image,zone}, nlb?{name,port,target_port,external,target(default 'vm')}, dns?{zone_id,name,record_type,target(default 'lb'→LB public IP)}, secrets?[{path,value}], s3?[{bucket,key,content}]} (a taken path or key is refused). vm.image and vm.zone (name or UUID) default to the server's CLOUDRU_IMAGE_ID and CLOUDRU_REGION; a VM stack is refused when either is missing or unknown.",
 			InputSchema: objSchema(map[string]any{
 				"manifest": map[string]any{"type": "object", "description": "Declarative stack spec (see description)."},
 			}, "manifest"),
 		},
 		{
 			Name:        "stack_apply",
-			Description: "Apply a planned stack (from stack_plan). BILLABLE mutation: requires confirmed=true after the user approved the cost. The call starts the steps that are ready and returns a compact status: over MCP within ~45 s — a VM step whose VM is still coming up stays pending (details: creating) and stack_status finishes it; the CLI waits for the VM (~3 min seen live). The async resources (Postgres, Kafka, Redis, k8s, NLB) only start. passwords{step} is the password evo generated for a step's VM, in that answer only. Then poll stack_status(job_id) until status=done. You do NOT orchestrate the resources yourself.",
+			Description: "Apply a planned stack (from stack_plan). Starts the steps that are ready and returns a compact status: over MCP within ~45 s — a VM still coming up stays pending (details: creating) and stack_status finishes it; the CLI waits for the VM. Postgres, Kafka, Redis, k8s and NLB only start. passwords{step} is the password evo generated for a step's VM, in that answer only. Then poll stack_status(job_id) until status=done; do not orchestrate the resources yourself.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id from stack_plan. Required."),
 				"confirmed": confirmedProp(),
@@ -1442,7 +1424,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_status",
-			Description: "Poll a stack deploy: returns COMPACT progress {status, done[], running[], pending[], details{step: reason} of a step that is not done, error_reasons{step: reason code of what ended it, e.g. USAGE, NOT_FOUND, API_ERROR} of a step in error, attempts{step: n}, outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}, passwords{step} of a VM evo generated, in that answer only}. For a job started by stack_apply, each call advances the deploy AND waits internally (up to wait_seconds) so you need only a handful of calls for a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. For a deploy, keep polling until status=done (then read outputs; lb_external_ip is there only for a balancer with a public address) or status=error. status=deleting (with deleting[]): a teardown not finished, which stack_status does not move — call stack_destroy again (next_tool) until destroyed. Resilient to context loss — the job lives on disk, just re-poll the job_id.",
+			Description: "Poll a stack: compact progress {status, done[], running[], pending[], details{step: reason} of a step not done, error_reasons{step: reason code, e.g. USAGE, NOT_FOUND, API_ERROR} of a step in error, attempts{step: n}, outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}, passwords{step} of a VM evo generated, in that answer only}. For a job started by stack_apply each call advances the deploy and waits (up to wait_seconds): a few calls cover a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs) or status=error. status=deleting (with deleting[]): a teardown not finished, which stack_status does not move — call stack_destroy again (next_tool) until destroyed. The job lives on disk: after a lost context poll the job_id again.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":       strProp("Job id. Required."),
 				"wait_seconds": inRange(1, stackStatusMaxWait, intProp("How long this call may block while advancing, in seconds (default and at most 20). Fewer calls for a long deploy.")),
@@ -1450,7 +1432,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "stack_destroy",
-			Description: "Tear down every resource in a stack (reverse order, idempotent). Destructive mutation: requires confirmed=true after the user approved. status=destroyed means everything is gone. status=deleting (exit 0) means the VM, secrets and S3 objects are gone, while the async resources listed in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes (Postgres ~5 min seen live): call stack_destroy with confirmed=true again (next_tool) until it answers destroyed. A destroyed job answers already_destroyed without the question; a deleting one is asked about again and re-checked.",
+			Description: "Tear down every resource of a stack, in reverse order. status=destroyed: everything is gone. status=deleting (exit 0): the VM, secrets and S3 objects are gone, the resources in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes — call stack_destroy with confirmed=true again (next_tool) until it answers destroyed. A destroyed job answers already_destroyed without the question; a deleting one is asked about again and re-checked.",
 			InputSchema: objSchema(map[string]any{
 				"job_id":    strProp("Job id. Required."),
 				"confirmed": confirmedProp(),
@@ -3583,7 +3565,7 @@ func atLeast(min int, p map[string]any) map[string]any {
 // opWaitProp is the wait_seconds of every *_operation tool: within D69's
 // budget of an MCP call, a static rule of the schema (D36).
 func opWaitProp() map[string]any {
-	return inRange(0, opWaitMaxSeconds, intProp(fmt.Sprintf("Optional: poll up to N seconds (at most %d) with backoff and return the FINAL state in ONE call — instead of the agent re-checking every few seconds. Omit for a single instant check.", opWaitMaxSeconds)))
+	return inRange(0, opWaitMaxSeconds, intProp(fmt.Sprintf("Optional: wait up to N seconds (%d at most) and answer the final state in one call. Omit for one instant check.", opWaitMaxSeconds)))
 }
 
 func inRange(min, max int, p map[string]any) map[string]any {
@@ -3607,6 +3589,66 @@ func cidrProp(desc string) map[string]any {
 	return p
 }
 
+// consentNote ends the description of every tool that asks for consent:
+// one wording for all of them («Риск», conclusion 152; there were 15, a
+// dozen of them without the person). What is approved — the preview — is
+// named by the argument (confirmedDesc), at the same tool. The registry
+// adds the note (New), with the word of the tool's class before it
+// (consentWords); a description does not write it by hand. A tool that
+// asks for a part of its calls only (partialConsent) says which in its own
+// sentence instead: the note of all would be false of the rest.
+const consentNote = "Requires confirmed=true after the user approves."
+
+// The words of a class of consent: a closed list.
+const (
+	consentBillable   = "Billable."
+	consentDeletes    = "Deletes data."
+	consentInterrupts = "Interrupts the service."
+	consentReveals    = "Returns a plaintext secret."
+	consentOverwrites = "Overwrites an existing key."
+)
+
+// consentWords are the tools whose consent note names the class of what
+// the person approves, by the word of the closed list. The word is true of
+// the tool: «Deletes data» only where data is lost with the resource.
+var consentWords = map[string]string{
+	"provision":           consentBillable,
+	"deploy_apply":        consentBillable,
+	"stack_apply":         consentBillable,
+	"vm_start":            consentBillable,
+	"k8s_create":          consentBillable,
+	"disk_create":         consentBillable,
+	"snat_create":         consentBillable,
+	"ar_create":           consentBillable,
+	"image_create":        consentBillable,
+	"pg_create":           consentBillable,
+	"kafka_create":        consentBillable,
+	"redis_create":        consentBillable,
+	"k8s_add_nodepool":    consentBillable,
+	"destroy":             consentDeletes,
+	"stack_destroy":       consentDeletes,
+	"s3_rm":               consentDeletes,
+	"s3_bucket_delete":    consentDeletes,
+	"pg_delete":           consentDeletes,
+	"kafka_delete":        consentDeletes,
+	"redis_delete":        consentDeletes,
+	"k8s_nodepool_delete": consentDeletes,
+	"k8s_delete":          consentDeletes,
+	"vm_stop":             consentInterrupts,
+	"vm_reboot":           consentInterrupts,
+	"secret_value":        consentReveals,
+	"cert_private_key":    consentReveals,
+	"s3_put":              consentOverwrites,
+}
+
+// consentText is the consent note of tool name, with the word of its class.
+func consentText(name string) string {
+	if w := consentWords[name]; w != "" {
+		return w + " " + consentNote
+	}
+	return consentNote
+}
+
 // confirmedDesc describes the confirmed argument of every gated tool. One
 // text for all of them (there were 15 wordings of the same rule), so the
 // schema says the same thing everywhere; the gate itself is in each handler.
@@ -3620,14 +3662,14 @@ const readOnlyTaskNoteRU = "Для задачи только на чтение �
 
 // deleteWaitDesc is the wait argument of a delete that reads its outcome
 // (D74).
-const deleteWaitDesc = "Optional. false: answer deleting at once, not reading the outcome. Default: wait for it up to ~45 s."
+const deleteWaitDesc = "false: answer deleting at once. Default: wait up to ~45 s."
 
 // waitDesc is the wait argument of a tool that waits for what it creates
 // (D69): over MCP the call answers within MCPCallBudget, in the CLI it
 // waits until the work ends.
-const waitDesc = "Omitted: over MCP answers within ~45 s (status creating), the CLI waits until the VM runs. false: answer once the cloud took the create. true: wait until it runs (raise the client's tool timeout)."
+const waitDesc = "Omitted: MCP answers within ~45 s (status creating), the CLI waits for the VM. false: answer once the cloud took the create. true: wait until it runs (raise the client's tool timeout)."
 
-const confirmedDesc = "Omit it to get the preview; set true only after the person approved that preview."
+const confirmedDesc = "Omit for the preview; true only after the person approved it."
 
 // confirmedProp is the confirmed argument of a gated tool.
 func confirmedProp() map[string]any { return boolProp(confirmedDesc) }

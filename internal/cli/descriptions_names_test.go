@@ -21,7 +21,6 @@ var descriptionWords = map[string]string{
 	"access_ru":                           "part of a group name, SSH-access_ru.AZ-2",
 	"connection_string":                   "a field of the PostgreSQL API answer, passed on as is",
 	"cpu_usage":                           "a metric of Cloud.ru Monitoring",
-	"finops_report":                       "the script billing_finops ports",
 	"free_tier_disk_resize_is_prohibited": "an error code of the compute API",
 	"is_required":                         "a field the image API rejects in image_metadata",
 	"kafka_hosts":                         "a field of the Kafka API answer, passed on as is",
