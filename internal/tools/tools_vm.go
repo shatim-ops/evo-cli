@@ -400,9 +400,11 @@ func platformCode(err error) string {
 // it (П5): the target state is the success; the limit of an MCP call
 // (D69) is the transient state and — for the call that sent the command
 // (sent) — the same call as the next step, which finds the VM on its way
-// and waits again without a command; a transition somebody else started
-// names no next step. A VM that left the transition for another state is
-// an error with that state.
+// and waits again without a command; a transition somebody else started,
+// and one this call's own limit ran out on, name the read of the VM
+// (vm_get) as the next step — a status that says the change is going on
+// always names one (Н3). A VM that left the transition for another state
+// is an error with that state.
 func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool string, act vmPowerAction,
 	vm *provision.VMDetail, args map[string]any, sent bool) (string, bool) {
 	started := clock.Now()
@@ -429,7 +431,9 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second command.", vm.ID, last, tool)
 			nextStep(ans, tool, maps.Clone(args))
 		} else {
+			// Not this call's to go on with: the next step is the read.
 			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state.", vm.ID, last)
+			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
 		}
 		return toJSON(ans), false
 	}

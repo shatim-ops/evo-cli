@@ -274,7 +274,7 @@ func TestVMStart_AtTheLimitOfAnMCPCallAnswersStartingAndTheNextStepDoesNotWrite(
 		t.Fatalf("next_args do not name the VM: %s", text)
 	}
 	m, text, isErr = callNamed(t, r, "vm_start", next)
-	if isErr || m["status"] != "starting" {
+	if isErr || m["status"] != "starting" || m["next_tool"] != "vm_get" {
 		t.Fatalf("the next step on a VM still starting: %s", text)
 	}
 	if n := w.powerCalls(); n != 1 {
@@ -290,10 +290,11 @@ func TestVMStart_AtTheLimitOfAnMCPCallAnswersStartingAndTheNextStepDoesNotWrite(
 	}
 }
 
-// A start somebody else began names no next step when the call's limit
-// ends the wait: evo sent nothing, so it has nothing of its own to go on
-// with (П5; conclusion 111, У1).
-func TestVMStart_ForeignStartAtTheLimitNamesNoNextStep(t *testing.T) {
+// A start somebody else began, when the call's limit ends the wait, names
+// the read of the VM as the next step, not the same call: evo sent
+// nothing, so it has no change of its own to go on with, and the chain of
+// repeats ends (П5; conclusion 111, У1).
+func TestVMStart_ForeignStartAtTheLimitNamesTheReadAsTheNextStep(t *testing.T) {
 	r, w := vmStartWorldWaiting(t, "stopped", 0)
 	budgeted(r)
 	if err := w.SetVMPower(context.Background(), w.id, "power_on"); err != nil {
@@ -303,8 +304,8 @@ func TestVMStart_ForeignStartAtTheLimitNamesNoNextStep(t *testing.T) {
 	if isErr || m["status"] != "starting" {
 		t.Fatalf("vm_start of a VM somebody else is starting: %s", text)
 	}
-	if _, has := m["next_tool"]; has {
-		t.Errorf("a start evo did not send names a next step: %s", text)
+	if next, _ := m["next_args"].(map[string]any); m["next_tool"] != "vm_get" || next["vm_id"] != w.id {
+		t.Errorf("a start evo did not send names %v as the next step, want the read vm_get of the VM: %s", m["next_tool"], text)
 	}
 }
 
