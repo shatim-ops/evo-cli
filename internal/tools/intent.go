@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -102,6 +103,71 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		intent.Close(rec)
 		intent.Settle(dir, rec)
 	}, nil
+}
+
+// everySendIsAChange are the tools with no repeat that is a success: every
+// call that reaches the cloud is one more change (a reboot). "tool" → the
+// read that shows the resource after a call whose outcome is not known. A
+// tool declares itself here; the layer names no tool. For such a tool the
+// record of a cut call is not settled by «the same call again» — that
+// call would be a second change — so a consented call that finds one asks
+// again (askAgainAfterACut), and the record's words send to the read, not
+// to a repeat (release plan 1.9, «Слепой повтор действия, где каждый
+// вызов — новое изменение»; «Риск», conclusion 138). The list is of new
+// tools: a shipped tool does not join it without a decision — its
+// consented call would start to answer a question.
+var everySendIsAChange = map[string]string{}
+
+// askAgainAfterACut answers a consented call of a tool of
+// everySendIsAChange that finds the record of a cut call of the same tool
+// on the same resource, left by the same key: the call is not sent. A
+// client that timed out and sends the same call again, with the consent
+// of the first one, would make a second change the person consented to
+// once. The answer is the question again, saying what is known; the record
+// is closed, so the next consented call is sent as any other. A record of
+// another key is not this caller's cut call, and a held one is an
+// operation going on: neither asks.
+func (r *Registry) askAgainAfterACut(name string, args map[string]any) (string, bool) {
+	read := everySendIsAChange[name]
+	if read == "" {
+		return "", false
+	}
+	resource, target := intentResource(name, args)
+	root, err := os.Getwd()
+	if err != nil || (resource == "" && target == "") {
+		return "", false
+	}
+	var cut []intent.Intent
+	for _, in := range intent.Pending(intent.Dir(root)) {
+		if !in.Held && in.Tool == name && in.Name == resource && in.Target == target && in.Key != nil {
+			cut = append(cut, in)
+		}
+	}
+	if len(cut) == 0 {
+		return "", false
+	}
+	cur := r.maker()
+	var mine []intent.Intent
+	for _, in := range cut {
+		if cur != nil && !in.Key.Other(cur) {
+			mine = append(mine, in)
+		}
+	}
+	if len(mine) == 0 {
+		return "", false
+	}
+	for _, in := range mine {
+		intent.Close(in)
+	}
+	last := mine[len(mine)-1]
+	what := firstNonEmptyStr(last.Name, last.Target)
+	return toJSON(map[string]any{
+		"status":      "confirmation_required",
+		"interrupted": map[string]any{"tool": name, "started_at": last.StartedAt.UTC().Format(time.RFC3339)},
+		"message": i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. This call was not sent: it would be one more change, not a repeat of that one. %s shows the resource now; call %s with confirmed=true again to send it.",
+			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Этот вызов не отправлен: он был бы ещё одним изменением, а не повтором того. Ресурс сейчас показывает %s; чтобы отправить, вызовите %s с confirmed=true ещё раз.",
+			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), read, name),
+	}), true
 }
 
 // sameToolNext reads the next step of answer when it is a call of tool
@@ -352,6 +418,12 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	if in.Key.Other(cur) {
 		return head + i18n.Tf(" — sent with another key (%s): a call with this key does not close the record; run evo doctor with that key",
 			" — отправлено другим ключом (%s): вызов этим ключом запись не закроет; запустите evo doctor с тем ключом", quoteCloud(in.Key.KeyID))
+	}
+	// Every call of the tool is one more change: the same call again does
+	// not settle the record, it changes the resource a second time.
+	if read := everySendIsAChange[in.Tool]; read != "" {
+		return head + i18n.Tf(" — %s shows it; the same %s again is one more change, not a repeat",
+			" — его показывает %s; тот же %s ещё раз — это ещё одно изменение, а не повтор", quoteCloud(read), tool)
 	}
 	// A delete addressed by id is not looked up in the list of the call's
 	// project, which does not tell a deleted resource from one of another
