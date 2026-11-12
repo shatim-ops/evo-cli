@@ -244,6 +244,15 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 	if err := provision.ValidName(i18n.T("backup", "резервной копии"), name); err != nil {
 		return nil, err
 	}
+	// Exactly one source, before any request («Риск», 164, probe П2): with
+	// both the call backed up the disk silently, with none it read a VM of
+	// an empty id.
+	switch vm, disk := stringArg(args, "vm_id"), stringArg(args, "disk_id"); {
+	case vm != "" && disk != "":
+		return answered(usageT("pass vm_id or disk_id, not both: one backup is of one resource", "передайте vm_id или disk_id, не оба: копия — одного ресурса"), true), nil
+	case vm == "" && disk == "":
+		return answered(usageT("vm_id or disk_id is required: the resource to back up", "нужен vm_id или disk_id: ресурс, копию которого сделать"), true), nil
+	}
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -278,7 +287,7 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 	sizeMB := 0.0
 	for _, b := range kept {
 		if b["name"] == name {
-			return answered(backupExists(b), false), nil
+			return answered(backupOfTheName(b)), nil
 		}
 		sizeMB += numberOf(b["size_mb"])
 	}
@@ -326,6 +335,36 @@ func backupKindWord(kind string) string {
 		return i18n.T("disk", "диска")
 	}
 	return i18n.T("VM", "ВМ")
+}
+
+// backupOfTheName is the answer when a backup of the source has the name
+// already, by its state («Риск», 164, probe П1): only a backup made is
+// «exists»; one being made is the one to wait for; one in error holds
+// nothing to restore from; one being deleted is not there to rely on — the
+// call waits for it to go, or takes another name. None is a success that
+// would let an agent change the resource «under a backup» it has not got.
+func backupOfTheName(b map[string]any) (string, bool) {
+	id, _ := b["id"].(string)
+	st, _ := b["status"].(string)
+	switch st {
+	case "created":
+		return backupExists(b), false
+	case "creating", "updating":
+		ans := map[string]any{"status": "creating", "backup_id": id, "name": b["name"], "state": st,
+			"note": i18n.T("A backup of the source with this name is still being made: no second one was asked for. backup_get shows when it is created.",
+				"Копия ресурса с этим именем ещё делается: вторая не запрошена. backup_get покажет, когда она будет готова.")}
+		nextStep(ans, "backup_get", map[string]any{"backup_id": id})
+		return toJSON(ans), false
+	case "deleting":
+		return errAnswer(clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("a backup of the source named %s is being deleted (%s): no new backup was made", "копия ресурса с именем %s удаляется (%s): новая копия не сделана", quoteCloud(fmt.Sprint(b["name"])), id),
+			i18n.T("Wait until backup_get answers it is gone, or take another name.", "Дождитесь, пока backup_get ответит, что её нет, или возьмите другое имя.")),
+			map[string]any{"backup_id": id, "state": st}), true
+	}
+	return errAnswer(clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("a backup of the source named %s is in state %s: nothing can be restored from it, and no new backup was made", "копия ресурса с именем %s в состоянии %s: восстановить из неё нельзя, новая копия не сделана", quoteCloud(fmt.Sprint(b["name"])), quoteCloud(st)),
+		i18n.T("Take another name, or delete that backup first: it is kept and billed.", "Возьмите другое имя или сначала удалите ту копию: она хранится и тарифицируется.")),
+		map[string]any{"backup_id": id, "state": st}), true
 }
 
 // backupExists is the answer of a repeat: the backup of the source by the

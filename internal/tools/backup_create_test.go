@@ -93,7 +93,11 @@ func (w *createWorld) newBackup(state string) string {
 }
 
 func keptBackup(id, name, createdAt string) string {
-	return `{"id":"` + id + `","name":"` + name + `","state":"created","type":"full","size":2048,"created_at":"` + createdAt + `",` +
+	return keptBackupIn(id, name, createdAt, "created")
+}
+
+func keptBackupIn(id, name, createdAt, state string) string {
+	return `{"id":"` + id + `","name":"` + name + `","state":"` + state + `","type":"full","size":2048,"created_at":"` + createdAt + `",` +
 		`"resource":{"resource_id":"` + bcDisk + `","resource_type":"disk","resource_state":{"name":"data"}}}`
 }
 
@@ -137,7 +141,7 @@ func TestBackupCreate_Preview(t *testing.T) {
 			t.Errorf("will_create.%s is %v, want %v: %s", k, will[k], want, text)
 		}
 	}
-	if !strings.Contains(text, "paid_unpriced") || !strings.Contains(text, "until it is deleted") {
+	if !strings.Contains(text, "paid_unpriced") || !strings.Contains(text, "until it is deleted") || !strings.Contains(text, "billable backup") {
 		t.Errorf("the preview: want the price class «unknown, billable» and the term of keeping: %s", text)
 	}
 	if len(w.posts) != 0 {
@@ -247,5 +251,49 @@ func TestBackupCreate_IDBeforeTheWait(t *testing.T) {
 	defer mu.Unlock()
 	if len(lines) == 0 || !strings.Contains(lines[0], bcNew) || !strings.Contains(lines[0], "is being made") {
 		t.Errorf("want the id in the first line of progress, before the wait: %q (%s)", lines, text)
+	}
+}
+
+// A backup of the source with the name, by its state («Риск», 164, probe
+// П1): only one made is already_exists; one being made is waited for; one in
+// error or being deleted is no backup to rely on — a refusal, never a
+// success. None sends a write.
+func TestBackupCreate_TheNameTakenByState(t *testing.T) {
+	for _, c := range []struct {
+		state, status, reason, next string
+		isErr                       bool
+	}{
+		{"created", "already_exists", "", "", false},
+		{"creating", "creating", "", "backup_get", false},
+		{"error_creating", "", "USAGE", "", true},
+		{"error", "", "USAGE", "", true},
+		{"deleting", "", "USAGE", "", true},
+	} {
+		w := &createWorld{kept: []string{keptBackupIn("k1", "before-change", "2026-11-12T00:00:00Z", c.state)}}
+		m, text, isErr := callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"disk_id": bcDisk, "name": "before-change", "confirmed": true})
+		if isErr != c.isErr || c.status != "" && m["status"] != c.status || c.reason != "" && m["reason"] != c.reason ||
+			c.next != "" && m["next_tool"] != c.next || m["backup_id"] != "k1" {
+			t.Errorf("%s: want status %q reason %q next %q with its id: %s", c.state, c.status, c.reason, c.next, text)
+		}
+		if c.state != "created" && strings.Contains(text, "already_exists") {
+			t.Errorf("%s: a backup that is not made reads as one that exists: %s", c.state, text)
+		}
+		if len(w.posts) != 0 {
+			t.Errorf("%s: sent %v", c.state, w.posts)
+		}
+	}
+}
+
+// Exactly one source, refused before any request (probe П2): both, or none.
+func TestBackupCreate_ExactlyOneSource(t *testing.T) {
+	for _, args := range []map[string]any{
+		{"vm_id": bcVM, "disk_id": bcDisk, "name": "x", "confirmed": true},
+		{"name": "x", "confirmed": true},
+	} {
+		w := &createWorld{}
+		m, text, isErr := callNamed(t, createRegistry(t, w), "backup_create", args)
+		if !isErr || m["reason"] != "USAGE" || len(w.posts) != 0 || w.reads != 0 {
+			t.Errorf("%v: want USAGE and no request: %s", args, text)
+		}
 	}
 }
