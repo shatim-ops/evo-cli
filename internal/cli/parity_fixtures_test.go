@@ -593,11 +593,13 @@ var parityAnswers = map[string]string{
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}:usage":                 `{"usage":[]}`,
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/version/0:private_key": `{"private_key":"-----BEGIN PRIVATE KEY-----\nparity\n-----END PRIVATE KEY-----\n"}`,
 	"GET certificatemanager.api.cloud.ru/v1/operation/{id}":                         jsonOp,
-	"GET compute.api.cloud.ru/api/v1/disks/{id}":                                    `{"id":"` + parityVM + `","name":"old","size":20,"state":"available"}`,
-	"GET compute.api.cloud.ru/api/v1/floating-ips/{id}":                             `{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`,
-	"GET containers.api.cloud.ru/v2/containers/app":                                 `{"name":"app","status":"RUNNING"}`,
-	"GET dns.api.cloud.ru/v1/publicRecordsSole/{id}":                                `{"id":"` + parityVM + `","name":"www","type":"A","values":["192.0.2.5"]}`,
-	"GET dns.api.cloud.ru/v1/publicZones/{id}":                                      `{"id":"` + parityVM + `","name":"example","domain":"example.com.","state":"ok"}`,
+	"GET compute.api.cloud.ru/api/v1/backups/{id}": `{"id":"` + parityVM + `","name":"web-copy","state":"created","type":"full","size":20480,"created_at":"2026-11-12T10:00:00Z","tags":[],` +
+		`"resource":{"resource_id":"` + parityVM + `","resource_type":"virtual_machine","resource_exists":true,"resource_state":{"name":"web"}}}`,
+	"GET compute.api.cloud.ru/api/v1/disks/{id}":        `{"id":"` + parityVM + `","name":"old","size":20,"state":"available"}`,
+	"GET compute.api.cloud.ru/api/v1/floating-ips/{id}": `{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`,
+	"GET containers.api.cloud.ru/v2/containers/app":     `{"name":"app","status":"RUNNING"}`,
+	"GET dns.api.cloud.ru/v1/publicRecordsSole/{id}":    `{"id":"` + parityVM + `","name":"www","type":"A","values":["192.0.2.5"]}`,
+	"GET dns.api.cloud.ru/v1/publicZones/{id}":          `{"id":"` + parityVM + `","name":"example","domain":"example.com.","state":"ok"}`,
 	// The zone dns_record_create adds to: it looks the zone up before the
 	// question (W6).
 	"GET dns.api.cloud.ru/v1/publicZones":               `{"zones":[{"id":"` + parityVM + `","name":"example","domain":"example.com.","state":"ok"}]}`,
