@@ -2016,7 +2016,7 @@ keys_of() { jq -c 'if type == "object" then keys else type end' "$tmp/api.json" 
 # ICMP идёт с пустым port_range: поле обязательно, формат для ICMP
 # спецификация не называет — отказ и его текст и есть ответ.
 probe_g11() {
-	local zid=$1 sg rule first='' made='' n0 n1 r t0 dir proto ports cidr
+	local zid=$1 sg rule by_group first='' made='' n0 n1 r t0 dir proto ports cidr
 	iam_token || { gap "Г-11" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap "Г-11" "нет PROJECT"; return 0; }
 	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
@@ -2068,19 +2068,42 @@ probe_g11() {
 		r="HTTP $code"
 		if [ -n "$rule" ]; then
 			api GET "$C1/security-groups/$sg/rules/$rule"
-			r="$r; источник в ответе чтения по id: $(jq -r 'if (.remote_security_group? | type) == "object" then "объект remote_security_group с полями \(.remote_security_group | keys | tojson)" elif has("remote_security_group_id") then "плоское поле remote_security_group_id" else "группы в ответе нет, поля: \(keys | tojson)" end' "$tmp/api.json" 2>/dev/null || echo "не прочитан (HTTP $code)"); remote_ip_prefix: $(jq -r '.remote_ip_prefix | if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "0.0.0.0/0" else "CIDR" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+			r="$r; чтение по id: $(case "$code" in 2??) echo "источник в ответе чтения по id: $(source_kind); remote_ip_prefix: $(prefix_kind)" ;; *) brief ;; esac)"
 		fi
 		ok "Г-11: правило с группой-источником" "$r"
 		;;
 	*) ok "Г-11: правило с группой-источником" "$(brief)" ;;
 	esac
+	# Правило «откуда угодно» без источника вовсе — ни адреса, ни группы:
+	# что платформа хранит в remote_ip_prefix — пустое значение или
+	# 0.0.0.0/0. От этого зависит, читать ли правило без префикса как «для
+	# любого адреса» (sgrules.Coverage, строка плана 1.9). Группа пробы ни к
+	# чему не привязана; правило уходит вместе с ней.
+	api POST "$C1/security-groups/$sg/rules" "$(jq -nc \
+		'{direction: "ingress", ether_type: "IPv4", ip_protocol: "tcp", port_range: "18093:18093", description: "evo e2e probe"}')"
+	rule=$(jq -r '(if type == "array" then .[0] else . end) | .id? // empty' "$tmp/api.json" 2>/dev/null) || rule=
+	mask "$rule"
+	case "$code" in
+	2??)
+		r="HTTP $code, remote_ip_prefix в ответе создания: $(prefix_kind)"
+		if [ -n "$rule" ]; then
+			api GET "$C1/security-groups/$sg/rules/$rule"
+			r="$r; чтение по id: $(case "$code" in 2??) echo "remote_ip_prefix в чтении по id: $(prefix_kind); remote_security_group: $(jq -r '.remote_security_group? | if . == null then "null" else "объект" end' "$tmp/api.json" 2>/dev/null || echo '?')" ;; *) brief ;; esac)"
+		fi
+		ok "Г-11: правило без источника" "$r"
+		;;
+	*) ok "Г-11: правило без источника" "$(brief)" ;;
+	esac
 	# Правила — отдельным списком группы: в карточке группы их нет, только
 	# счётчики (прогон 205 читал карточку и видел «правил: 0»).
 	rules_get() { api GET "$C1/security-groups/$sg/rules?limit=100"; }
 	count_rules() { jq -r '.items? | length' "$tmp/api.json" 2>/dev/null || echo "?"; }
+	# Правило с группой-источником в ответе списка: по списку, а не по
+	# чтению по id, evo узнаёт такое правило (sgrules, данные «разработки A»).
+	by_group='first(.items[]? | select(.port_range? == "18092:18092"))'
 	rules_get
 	n0=$(count_rules)
-	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?')"
+	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?'), правило с группой-источником в списке: $(if jq -e "$by_group" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_group"), remote_ip_prefix: $(prefix_kind "$by_group")"; else echo "не найдено"; fi)"
 	# Повтор правила, которое создано (не первого в списке: в прогоне 207
 	# оно не создалось, и «повтор» создал его впервые): 2xx и новое
 	# правило, 2xx без нового или отказ.
@@ -2454,6 +2477,13 @@ probe_g16() {
 # power СЛОВО — set-power ВМ пробы (её адрес — в $url вызывающей пробы);
 # код — в $code.
 power() { api POST "$url/set-power" "$(jq -nc --arg s "$1" '{state: $s}')"; }
+# prefix_kind [ОТБОР] — что правило хранит в remote_ip_prefix, словами,
+# которые маска адресов не стирает: null, пусто, весь IPv4, весь IPv6 или
+# другой CIDR. source_kind [ОТБОР] — в какой форме ответ отдаёт
+# группу-источник. ОТБОР — фильтр jq до правила в ответе (по умолчанию сам
+# ответ). Один разбор на все шаги Г-11, которые это записывают.
+prefix_kind() { jq -er "${1:-.}"' | (if type == "array" then .[0] else . end) | .remote_ip_prefix? | if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "весь IPv4" elif . == "::/0" then "весь IPv6" else "CIDR" end' "$tmp/api.json" 2>/dev/null || echo '?'; }
+source_kind() { jq -er "${1:-.}"' | if (.remote_security_group? | type) == "object" then "объект remote_security_group с полями \(.remote_security_group | keys | tojson)" elif has("remote_security_group_id") then "плоское поле remote_security_group_id" else "группы в ответе нет, поля: \(keys | tojson)" end' "$tmp/api.json" 2>/dev/null || echo "не разобран"; }
 # brief — последний ответ api коротко: код, а у отказа — машинный код и текст.
 brief() { echo "HTTP $code$(case "$code" in 2??) ;; *) echo ", машинный код $(mcode): $(api_why | cut -c1-160)" ;; esac)"; }
 

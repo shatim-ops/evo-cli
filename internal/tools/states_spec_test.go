@@ -96,26 +96,27 @@ var noSpecStates = map[string]string{
 }
 
 // stateRowsOf are the rows «state → answer» a tool has, by the state: the
-// tables the worlds run by. A tool joins it with its table.
-var stateRowsOf = func() map[string]map[string]bool {
-	out := map[string]map[string]bool{}
-	addStateRows(out, vmPowerStateRows)
-	addStateRows(out, sgRuleStateRows)
-	addStateRows(out, deleteSpecStateRows)
-	addStateRows(out, poolStateRows)
-	addStateRows(out, map[string]map[string]string{"backup_delete": backupDeleteStateRows})
-	return out
-}()
+// tables the worlds run by. A table joins it from its own file, in an
+// init — addStateRows(stateRowsOf, <the table>) — so that two tools' tables
+// do not meet in this one.
+var stateRowsOf = map[string]map[string]bool{}
 
-// addStateRows names in out the states each tool of table has a row for.
+// addStateRows names in out the states each tool of table has a row for. A
+// tool with two tables is a mistake of the second: said by the test.
 func addStateRows[R ~string](out map[string]map[string]bool, table map[string]map[string]R) {
 	for tool, rows := range table {
+		if out[tool] != nil {
+			stateRowsTwice = append(stateRowsTwice, tool)
+		}
 		out[tool] = map[string]bool{}
 		for state := range rows {
 			out[tool][state] = true
 		}
 	}
 }
+
+// stateRowsTwice are the tools two tables named.
+var stateRowsTwice []string
 
 // stateWorldsPendingShipped are the tools shipped before the invariant
 // with no row for every state of the specification. Only shrinks, and a
@@ -147,6 +148,9 @@ func TestStates_EveryChangeHasAWorldForEveryStateOfTheSpec(t *testing.T) {
 	}
 	if err := json.Unmarshal(b, &file); err != nil || len(file.States) == 0 {
 		t.Fatalf("scripts/api-contract-states.json: no states: %v", err)
+	}
+	for _, tool := range stateRowsTwice {
+		t.Errorf("%s: two tables «state → answer» name it (addStateRows): one tool, one table", tool)
 	}
 	mutating := map[string]bool{}
 	used := map[string]bool{}
