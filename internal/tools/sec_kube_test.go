@@ -12,7 +12,7 @@ import (
 // k8s_apply put namespace after "-n" unchecked, unlike k8s_helm.
 func TestSec_ApplyRejectsFlagAsNamespace(t *testing.T) {
 	r := newTestServer()
-	got := callTool(t, r.handleK8sApply, map[string]any{
+	got := callTool(t, r.gated("k8s_apply", r.planK8sApply), map[string]any{
 		"cluster_id": "c", "manifest": "kind: Namespace", "namespace": "--kubeconfig=/etc/x", "confirmed": true,
 	})
 	if msg, _ := got["error"].(string); !strings.Contains(msg, "must not start with '-'") {

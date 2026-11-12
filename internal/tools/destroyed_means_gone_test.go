@@ -69,7 +69,7 @@ func TestStackDestroy_DestroyedOnlyWhenNothingIsDeleting(t *testing.T) {
 	}
 	destroy := func() map[string]any {
 		t.Helper()
-		text, _ := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+		text, _ := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 		var m map[string]any
 		if err := json.Unmarshal([]byte(text), &m); err != nil {
 			t.Fatalf("%v: %s", err, text)

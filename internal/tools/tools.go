@@ -391,7 +391,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_operation",
-			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
+			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_nodepool_delete/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
 				"wait_seconds": opWaitProp(),
@@ -412,7 +412,7 @@ func (s *Registry) registerTools() {
 			Description: "Set the number of nodes of a Managed Kubernetes node pool with a fixed count. REQUIRES confirmed=true after the user approves: more nodes are billed; fewer nodes are deleted with the data on their disks, and their pods are evicted. A pool that has the count already answers already_scaled with no question; an autoscaled pool is refused. Async — returns operation_id: wait with k8s_operation.",
 			InputSchema: objSchema(map[string]any{
 				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
-				"count":       atLeast(0, intProp("The number of nodes the pool is to have.")),
+				"count":       inRange(0, maxPoolCount, intProp("The number of nodes the pool is to have.")),
 				"confirmed":   confirmedProp(),
 			}, "nodepool_id", "count"),
 		},
@@ -1475,9 +1475,9 @@ func (s *Registry) registerTools() {
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_add_addon":        s.gated("k8s_add_addon", s.planK8sAddAddon),
-		"k8s_kubectl":          s.handleK8sKubectl,
-		"k8s_apply":            s.handleK8sApply,
-		"k8s_helm":             s.handleK8sHelm,
+		"k8s_kubectl":          s.gated("k8s_kubectl", s.planK8sKubectl),
+		"k8s_apply":            s.gated("k8s_apply", s.planK8sApply),
+		"k8s_helm":             s.gated("k8s_helm", s.planK8sHelm),
 		"disk_list":            s.handleDiskList,
 		"disk_create":          s.gated("disk_create", s.planDiskCreate),
 		"disk_attach":          s.gated("disk_attach", s.planDiskAttach),
@@ -1586,9 +1586,9 @@ func (s *Registry) registerTools() {
 		"s3_bucket_create":     s.gated("s3_bucket_create", s.planS3BucketCreate),
 		"s3_bucket_delete":     s.gated("s3_bucket_delete", s.planS3BucketDelete),
 		"stack_plan":           s.handleStackPlan,
-		"stack_apply":          s.handleStackApply,
+		"stack_apply":          s.gated("stack_apply", s.planStackApply),
 		"stack_status":         s.handleStackStatus,
-		"stack_destroy":        s.handleStackDestroy,
+		"stack_destroy":        s.gated("stack_destroy", s.planStackDestroy),
 	}
 }
 

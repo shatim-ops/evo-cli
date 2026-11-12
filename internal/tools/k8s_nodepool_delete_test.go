@@ -116,11 +116,11 @@ func TestK8sNodePoolDelete_LastPoolOfTheCluster(t *testing.T) {
 func TestK8sNodePoolDelete_StatusWithAnUnknownOutcome(t *testing.T) {
 	for st, says := range map[string]string{
 		poolError:     "may refuse",
-		poolScalingUp: poolScalingUp + ", not running: whether the platform accepts the delete is unknown",
+		poolScalingUp: `"` + poolScalingUp + `", not running: whether the platform accepts the delete is unknown`,
 		// Whether the platform deletes a pool it is still creating is not
 		// known for Managed Kubernetes: no refusal before the question.
-		"OBJECT_STATUS_PROVISIONING":  "OBJECT_STATUS_PROVISIONING, not running: whether the platform accepts the delete is unknown",
-		"OBJECT_STATUS_SOMETHING_NEW": "OBJECT_STATUS_SOMETHING_NEW, not running: whether the platform accepts the delete is unknown",
+		"OBJECT_STATUS_PROVISIONING":  `"OBJECT_STATUS_PROVISIONING", not running: whether the platform accepts the delete is unknown`,
+		"OBJECT_STATUS_SOMETHING_NEW": `"OBJECT_STATUS_SOMETHING_NEW", not running: whether the platform accepts the delete is unknown`,
 	} {
 		w := &poolWorld{status: st, others: []string{poolRunning}}
 		w.setCount(2)

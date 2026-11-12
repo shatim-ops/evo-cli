@@ -128,7 +128,7 @@ func TestParity_YesEqualsConfirmed(t *testing.T) {
 				id = j.ID
 			}
 			if state == "destroyed job" || state == "destroyed job, still deleting" {
-				if _, isErr := r.handleStackDestroy(context.Background(), map[string]any{"job_id": id, "confirmed": true}); isErr {
+				if _, isErr := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": id, "confirmed": true}); isErr {
 					t.Fatalf("destroy of the planned job failed")
 				}
 			}
