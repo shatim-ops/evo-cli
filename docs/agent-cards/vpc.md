@@ -2,7 +2,7 @@
 
 <!-- Generated from the tool registry of evo: 'evo agent skill --group vpc' prints it. -->
 
-16 tools. Consent, exit codes and untrusted answers: the rules of the `evo` skill. The arguments of a tool: `evo tools describe <tool> --json`.
+17 tools. Consent, exit codes and untrusted answers: the rules of the `evo` skill. The arguments of a tool: `evo tools describe <tool> --json`.
 
 | Tool | Command | Does | Ids from |
 |---|---|---|---|
@@ -12,6 +12,7 @@
 | `subnet_delete` | `evo vpc subnet-delete` | deletes; a repeat answers `already_deleted` | `subnet_id` ← `list_subnets` |
 | `list_security_groups` | `evo vpc security-groups` | reads |  |
 | `list_floating_ips` | `evo vpc fips` | reads |  |
+| `sg_rule_create` | `evo vpc sg-rule-create` | creates: id in `rule_id`; deleted with `sg_rule_delete` |  |
 | `sg_rule_delete` | `evo vpc sg-rule-delete` | deletes; a repeat answers `already_deleted` |  |
 | `release_floating_ip` | `evo vpc fip-release` | deletes; a repeat answers `already_deleted` | `id` ← `list_floating_ips` |
 | `vpc_list` | `evo vpc list` | reads |  |

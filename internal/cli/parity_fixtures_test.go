@@ -78,6 +78,7 @@ var parityArgs = map[string]map[string]any{
 	// person's word for it (D105).
 	"open_ports":           {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80), float64(443)}, "allow_internet_on_shared_group": true},
 	"close_ports":          {"security_group": "SSH-access_ru.AZ-1", "ports": []any{float64(80)}},
+	"sg_rule_create":       {"security_group": "SSH-access_ru.AZ-1", "direction": "ingress", "protocol": "tcp", "ports": "8443", "cidr": "10.0.0.0/8"},
 	"sg_rule_delete":       {"security_group": "SSH-access_ru.AZ-1", "rule_id": parityNIC},
 	"vpc_list":             {},
 	"vpc_get":              {"id": parityVM},
@@ -298,6 +299,36 @@ var paritySetup = map[string]func(t *testing.T, w parityWorld) (map[string]any, 
 			}
 			return contractRT{status: 200, body: `{"items":[{"id":"` + parityNIC + `","direction":"ingress","ip_protocol":"tcp",` +
 				`"port_range":"80:80","remote_ip_prefix":"0.0.0.0/0"}],"total":1}`}.RoundTrip(r)
+		}
+		return nil, func() { w.rt.extra = world }
+	},
+	// sg_rule_create: the zone's group has no rule until the POST of the
+	// call; after it the group lists the rule as created — the call sees
+	// its outcome.
+	"sg_rule_create": func(t *testing.T, w parityWorld) (map[string]any, func()) {
+		world := w.rt.extra
+		var mu sync.Mutex
+		made := false
+		w.rt.extra = func(r *http.Request) (*http.Response, error) {
+			if world != nil {
+				if resp, err := world(r); resp != nil || err != nil {
+					return resp, err
+				}
+			}
+			if r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/security-groups/") || !strings.Contains(r.URL.Path, "/rules") {
+				return nil, nil
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if r.Method == http.MethodPost {
+				made = true
+				return nil, nil // the world's answer to the write
+			}
+			if !made {
+				return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(r)
+			}
+			return contractRT{status: 200, body: `{"items":[{"id":"` + parityVM + `","direction":"ingress","ip_protocol":"tcp",` +
+				`"port_range":"8443:8443","remote_ip_prefix":"10.0.0.0/8","state":"created"}],"total":1}`}.RoundTrip(r)
 		}
 		return nil, func() { w.rt.extra = world }
 	},
