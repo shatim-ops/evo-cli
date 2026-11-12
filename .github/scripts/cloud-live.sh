@@ -1940,10 +1940,14 @@ sweep)
 	fi
 	case "$p" in
 	evo-e2e- | evo-e2e-net-*)
-		if [ "$others" = 0 ]; then delete_test_rules || failed=1; else
+		case "$others" in
+		0) delete_test_rules || failed=1 ;;
+		-1) kinds=${kinds/route /} ;; # список запусков не прочитан: ошибка уже названа
+		*)
 			echo "::notice::идёт запуск cloud-e2e — правило и маршрут тестовой сети не трогаю"
 			kinds=${kinds/route /}
-		fi ;;
+			;;
+		esac ;;
 	*) kinds=${kinds/route /} ;;
 	esac
 	sweep "$p" "$kinds" || failed=1

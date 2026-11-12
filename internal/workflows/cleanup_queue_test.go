@@ -14,7 +14,7 @@ import (
 
 // deletes is a call of a cleanup step that removes a cloud resource: a
 // deleting tool or command of evo, a raw DELETE, a script of the cleanup.
-var deletes = regexp.MustCompile(`tools call (destroy|release_floating_ip|\w*delete\w*)|evo [^|\n]*\bdelete\b [^|\n]*"\$|-X DELETE|dbaas-delete\.sh|cloud-live\.sh sweep|e2e_rules_sweep\.sh`)
+var deletes = regexp.MustCompile(`tools call (destroy|release_floating_ip|\w*delete\w*)|evo [^|\n]*\b(destroy|delete)\b [^|\n]*"\$|-X DELETE|dbaas-delete\.sh|cloud-live\.sh sweep|e2e_rules_sweep\.sh`)
 
 // stepScript is a script of .github/scripts a step runs.
 var stepScript = regexp.MustCompile(`\.github/scripts/([a-z0-9_-]+\.sh)`)

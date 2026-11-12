@@ -78,6 +78,9 @@ want "сбой gh: вывода нет" "${out:-}" ""
 if out=$(printf 'a\tevo-e2e-pg-r1a1\n' | "$here/e2e_live_runs.sh" drop 2>/dev/null); then echo "FAIL: сбой gh у фильтра — код 0"; fail=1; fi
 want "сбой gh у фильтра: ни одной строки" "${out:-}" ""
 
+if out=$("$here/e2e_live_runs.sh" others 2>/dev/null); then echo "FAIL: сбой gh у others — код 0"; fail=1; fi
+want "сбой gh у others: вывода нет" "${out:-}" ""
+
 # В списке не номер — тоже отказ.
 world
 echo "185 x" >"$RUNS/in_progress"
