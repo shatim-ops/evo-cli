@@ -456,7 +456,11 @@ func (p *parityRT) takeWrites() []string {
 }
 
 func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
-	app := r.URL.Host == "containers.api.cloud.ru" && strings.Count(r.URL.Path, "/") == 3
+	// The resources whose delete is read until they are gone (goneWatch):
+	// an app of Container Apps, a backup of Compute. After their DELETE the
+	// next read is a 404, as the platform's.
+	app := r.URL.Host == "containers.api.cloud.ru" && strings.Count(r.URL.Path, "/") == 3 ||
+		r.URL.Host == "compute.api.cloud.ru" && strings.HasPrefix(r.URL.Path, "/api/v1/backups/") && strings.Count(r.URL.Path, "/") == 4
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		p.mu.Lock()
 		p.writes = append(p.writes, r.Method+" "+r.URL.Host+r.URL.Path)
