@@ -44,12 +44,11 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	// question and without a DELETE (D26).
 	// The state as every delete names it; status stays the service's own
 	// word in the answer's fields.
-	state := status
-	if prefix := deleteTargets[tool].statePrefix; prefix != "" {
-		if state = strings.TrimPrefix(status, prefix); engine.PassingDeleteState(state) {
-			// No rule of this service for a resource being created.
-			state = ""
-		}
+	decl := deleteTargets[tool]
+	state := strings.TrimPrefix(status, decl.statePrefix)
+	if decl.creatingUnseen != "" && engine.PassingDeleteState(state) {
+		// No rule of this service for a resource being created.
+		state = ""
 	}
 	if statusGone(state) {
 		return answered(s.deleteFailed(tool, id, clierrors.New(clierrors.CodeNotFound,
