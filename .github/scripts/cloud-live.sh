@@ -597,9 +597,10 @@ vm_post() {
 # ломала разбор — проба писала «image_get не отдал fields» и не слала запрос.
 vm_pw() {
 	[ -z "${VM_PW:-}" ] || return 0
-	# Заглавная буква, строчная и цифра: без заглавной платформа отвергла
-	# метаданные образа (прогон 204, vm_metadata_validation).
-	VM_PW=Ev1$(openssl rand -hex 16)
+	# Правила пароля ВМ по спецификации Compute (VmSetPasswordRequest):
+	# заглавная и строчная буква, цифра, спецсимвол. Пароль из одних
+	# hex-цифр платформа отвергла (прогон 204, vm_metadata_validation).
+	VM_PW=Ev1-$(openssl rand -hex 16)
 	mask "$VM_PW"
 }
 vm_meta() {
