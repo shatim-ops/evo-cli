@@ -51,6 +51,7 @@ var parityArgs = map[string]map[string]any{
 	"logs":         {"tail": float64(100)},
 	"vm_get":       {"vm_id": parityVM},
 	"vm_start":     {"vm_id": parityStoppedVM},
+	"vm_stop":      {"vm_id": parityRunningVM},
 	"vm_list":      {},
 	"list_zones":   {},
 	"list_flavors": {},
@@ -603,6 +604,18 @@ func stoppedVMJSON(state string) string {
 		`","name":"eth0","type":"regular","ip_address":"192.0.2.6","primary":true,"state":"created"}]}`
 }
 
+// parityRunningVM is a third VM of the project, running: vm_stop stops it.
+// Not parityVM: the other tools of the world read that one running, and a
+// stop of it would change their world.
+const parityRunningVM = "00000000-0000-4000-8000-0000000000f4"
+
+// runningVMJSON is the VM parityRunningVM as the compute API reads it, in
+// state.
+func runningVMJSON(state string) string {
+	return `{"id":"` + parityRunningVM + `","name":"cron","state":"` + state + `","interfaces":[{"id":"` + parityNIC +
+		`","name":"eth0","type":"regular","ip_address":"192.0.2.7","primary":true,"state":"created"}]}`
+}
+
 // computeParity: the compute API beyond previewCloud — the VM with its
 // interface (tg_create picks it), the project's disks and SNAT gateway
 // (disk_delete and snat_delete look them up; image_create takes the zone
@@ -617,6 +630,11 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 			return nil
 		}
 		_, _ = io.WriteString(w, stoppedVMJSON("stopped"))
+	case "/api/v1/vms/" + parityRunningVM:
+		if r.Method != http.MethodGet {
+			return nil
+		}
+		_, _ = io.WriteString(w, runningVMJSON("running"))
 	case "/api/v1/disks/" + parityAttachedDisk:
 		if r.Method != http.MethodGet {
 			return nil

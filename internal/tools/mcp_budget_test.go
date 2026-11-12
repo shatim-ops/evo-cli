@@ -333,6 +333,7 @@ var mcpWaits = map[string]budgetWait{
 	"disk_detach":  apiBudget("disk_detach", map[string]any{"disk_id": faultDisk, "vm": faultTargetVM, "confirmed": true}, slowDisk),
 	"disk_resize":  apiBudget("disk_resize", map[string]any{"disk_id": faultDisk, "size_gb": 20, "confirmed": true}, slowDisk),
 	"vm_start":     vmPowerBudget("vm_start", "stopped"),
+	"vm_stop":      vmPowerBudget("vm_stop", "running"),
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,

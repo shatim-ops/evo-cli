@@ -290,7 +290,7 @@ var faultMatrixOut = map[string]string{
 	"stack_destroy": faultOutRemoves, "tg_delete": faultOutRemoves, "vpc_delete": faultOutRemoves,
 	"vpc_route_delete": faultOutRemoves,
 
-	"ca_start": faultOutChanges, "cert_renew": faultOutChanges, "disk_attach": faultOutChanges, "vm_start": faultOutChanges,
+	"ca_start": faultOutChanges, "cert_renew": faultOutChanges, "disk_attach": faultOutChanges, "vm_start": faultOutChanges, "vm_stop": faultOutChanges,
 	"disk_resize": faultOutChanges, "fip_attach": faultOutChanges, "open_ports": faultOutChanges,
 
 	"k8s_apply": faultOutCluster, "k8s_helm": faultOutCluster, "k8s_kubectl": faultOutCluster,

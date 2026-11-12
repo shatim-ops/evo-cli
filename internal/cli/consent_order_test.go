@@ -354,6 +354,13 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, stoppedVMJSON("running"))
 	}, alreadyFor: []string{"vm_start"}},
+	// The VM of vm_stop is stopped already (D99, П3).
+	"vm stopped already": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityRunningVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, runningVMJSON("stopped"))
+	}, alreadyFor: []string{"vm_stop"}},
 	// The VM of vm_start is being deleted: the platform refuses a power
 	// command in this state (422), and a read tells it before the question.
 	"vm being deleted": {answer: func(r *http.Request) *http.Response {

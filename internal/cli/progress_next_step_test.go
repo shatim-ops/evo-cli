@@ -25,6 +25,8 @@ var statusGoingOn = map[string]bool{
 	// vm_start (D99): the VM is on its way; and the state of another
 	// change has not settled by the limit of the call.
 	"starting": true, "waiting": true,
+	// vm_stop (D99, §4).
+	"stopping": true,
 }
 
 // statusOver are the statuses of a change that is over, as far as the
@@ -35,6 +37,7 @@ var statusOver = map[string]bool{
 	"none": true, "ok": true, "resized": true, "running": true,
 	"version_added": true,
 	"started":       true,
+	"stopped":       true,
 }
 
 // noNextStep are the tools shipped before the invariant whose answer says

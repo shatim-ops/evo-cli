@@ -210,6 +210,7 @@
     - [evo vm get](#evo-vm-get)
     - [evo vm list](#evo-vm-list)
     - [evo vm start](#evo-vm-start)
+    - [evo vm stop](#evo-vm-stop)
     - [evo vm zones](#evo-vm-zones)
   - [evo vpc](#evo-vpc)
     - [evo vpc close-ports](#evo-vpc-close-ports)
@@ -9360,6 +9361,7 @@ evo vm [flags]
 * [evo vm get](#evo-vm-get)	 - ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы
 * [evo vm list](#evo-vm-list)	 - Список ВМ проекта: id, имя, состояние, зона, время создания
 * [evo vm start](#evo-vm-start)	 - Запустить остановленную ВМ и дождаться состояния running
+* [evo vm stop](#evo-vm-stop)	 - Остановить работающую ВМ и дождаться состояния stopped
 * [evo vm zones](#evo-vm-zones)	 - Зоны доступности (UUID и имя)
 
 ## evo vm create
@@ -9670,6 +9672,49 @@ evo vm start <vm-id|name> [flags]
 
 ```
   -h, --help   Справка по start
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vm](#evo-vm)	 - Виртуальные машины
+
+## evo vm stop
+
+Остановить работающую ВМ и дождаться состояния stopped
+
+### Synopsis
+
+```text
+Остановить работающую ВМ и дождаться состояния stopped.
+
+Остановить работающую ВМ (power_off) и дождаться остановки: ВМ и всё, что на ней работает, перестаёт отвечать до 'evo vm start', несохранённые данные в памяти могут быть потеряны. До вопроса evo читает ВМ и показывает её имя, id, состояние и то, что остановится. ВМ уже остановлена — ответ already_stopped без вопроса; ВМ уже останавливается — evo ждёт и второй команды не шлёт, поэтому повтор безопасен; повтор, которому нужно отправить команду, спрашивает заново. Что тарифицируется у остановленной ВМ, evo не знает: тарифы — по ссылке в превью.
+
+Вызывает инструмент vm_stop (подробнее: 'evo tools describe vm_stop').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vm stop <vm-id|name> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по stop
 ```
 
 ### Options inherited from parent commands

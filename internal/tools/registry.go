@@ -373,6 +373,7 @@ var requiredOneOf = map[string][][]string{
 	"pg_delete":           {{"id", "cluster_id"}},
 	"vm_get":              {{"vm_id", "name"}},
 	"vm_start":            {{"vm_id", "name"}},
+	"vm_stop":             {{"vm_id", "name"}},
 	"image_get":           {{"image", "image_id"}},
 	"release_floating_ip": {{"id", "ip_address"}},
 	"tg_create":           {{"vm_id", "targets"}},
@@ -438,6 +439,7 @@ var groupByName = map[string]string{
 	"provision":    "vm",
 	"vm_get":       "vm",
 	"vm_start":     "vm",
+	"vm_stop":      "vm",
 	"list_zones":   "vm",
 	"list_flavors": "vm",
 
@@ -614,7 +616,11 @@ func HasSideEffects(t Tool) bool { return sideEffectTools[t.Name] != "" }
 // (delete, uninstall); s3_put overwrites an existing key; k8s_add_addon with
 // resolve_mode OVERWRITE replaces objects already in the cluster.
 var destructiveTools = map[string]bool{
-	"destroy":             true,
+	"destroy": true,
+	// vm_stop deletes nothing on a disk, but it takes the service down and
+	// may lose what the VM held in memory: a client asks the person every
+	// time (D99, §4.3).
+	"vm_stop":             true,
 	"stack_destroy":       true,
 	"release_floating_ip": true,
 	"s3_rm":               true,
