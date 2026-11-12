@@ -13,7 +13,6 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"sync"
 	"testing"
 
@@ -30,6 +29,7 @@ import (
 // create sent with a token of refused (401 "Jwt is expired") — a 401 is
 // refused before the request is applied — and makes one VPC for any other.
 type refusingVPC struct {
+	iamTokens
 	mu        sync.Mutex
 	refuseAll bool
 	exchanges int
@@ -45,12 +45,12 @@ func (c *refusingVPC) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch {
 	case r.URL.Host == "iam.api.cloud.ru":
 		c.exchanges++
-		_, _ = io.WriteString(w, `{"access_token":"tok-`+strconv.Itoa(c.exchanges)+`","expires_in":3600}`)
+		_, _ = io.WriteString(w, `{"access_token":"`+c.token(c.exchanges)+`","expires_in":3600}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/vpcs":
 		_, _ = io.WriteString(w, `{"vpcs":[]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v1/vpcs":
 		c.posted = append(c.posted, r.Header.Get("Authorization"))
-		if c.refuseAll || r.Header.Get("Authorization") == "Bearer tok-1" {
+		if c.refuseAll || r.Header.Get("Authorization") == "Bearer "+c.token(1) {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = io.WriteString(w, `{"code":16,"message":"Jwt is expired"}`)
 			break
