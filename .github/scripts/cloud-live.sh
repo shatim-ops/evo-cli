@@ -2004,7 +2004,7 @@ keys_of() { jq -c 'if type == "object" then keys else type end' "$tmp/api.json" 
 # ICMP идёт с пустым port_range: поле обязательно, формат для ICMP
 # спецификация не называет — отказ и его текст и есть ответ.
 probe_g11() {
-	local zid=$1 sg rule first='' n0 n1 r dir proto ports cidr
+	local zid=$1 sg rule first='' n0 n1 r t0 dir proto ports cidr
 	iam_token || { gap "Г-11" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap "Г-11" "нет PROJECT"; return 0; }
 	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
@@ -2024,17 +2024,16 @@ probe_g11() {
 			'{direction: $d, ether_type: "IPv4", ip_protocol: $pr, port_range: $ports, remote_ip_prefix: $c, description: "evo e2e probe"}'
 	}
 	while read -r dir proto ports cidr; do
-		[ "$ports" != - ] || ports=
 		api POST "$C1/security-groups/$sg/rules" "$(rule_body "$dir" "$proto" "$ports" "$cidr")"
 		rule=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || rule=
 		mask "$rule"
 		[ -n "$first" ] || first=$rule
-		ok "Г-11: правило $dir $proto ${ports:-без портов} $([ "$cidr" = 0.0.0.0/0 ] && echo "весь интернет" || echo CIDR)" \
+		ok "Г-11: правило $dir $proto $ports $([ "$cidr" = 0.0.0.0/0 ] && echo "весь интернет" || echo CIDR)" \
 			"HTTP $code$(case "$code" in 2??) echo ", поля ответа: $(keys_of)" ;; *) echo ": $(api_why)" ;; esac)"
 	done <<-RULES
 		ingress tcp 18090:18090 198.18.255.1/32
 		ingress udp 18090:18090 198.18.255.1/32
-		ingress icmp - 198.18.255.1/32
+		ingress icmp any 198.18.255.1/32
 		egress tcp 18090:18090 198.18.255.1/32
 		ingress tcp 18091:18091 0.0.0.0/0
 	RULES
@@ -2057,30 +2056,44 @@ probe_g11() {
 		;;
 	*) ok "Г-11: правило с группой-источником" "$(brief)" ;;
 	esac
-	count_rules() { jq -r '[(.rules // .security_group_rules // [])[]?] | length' "$tmp/api.json" 2>/dev/null || echo "?"; }
-	api GET "$C1/security-groups/$sg"
+	# Правила — отдельным списком группы: в карточке группы их нет, только
+	# счётчики (прогон 205 читал карточку и видел «правил: 0»).
+	rules_get() { api GET "$C1/security-groups/$sg/rules?limit=100"; }
+	count_rules() { jq -r '.items? | length' "$tmp/api.json" 2>/dev/null || echo "?"; }
+	rules_get
 	n0=$(count_rules)
-	ok "Г-11: чтение группы" "HTTP $code, правил: $n0, поля правила: $(jq -c '[(.rules // .security_group_rules // [])[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[(.rules // .security_group_rules // [])[]? | .remote_ip_prefix] | map(if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "0.0.0.0/0" else "CIDR" end) | unique | join(", ")' "$tmp/api.json" 2>/dev/null || echo '?')"
+	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?')"
 	# Повтор того же правила: 2xx и новое правило, 2xx без нового или отказ.
 	api POST "$C1/security-groups/$sg/rules" "$(rule_body ingress tcp 18090:18090 198.18.255.1/32)"
-	r=$code
 	mask "$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)"
-	why=$(api_why)
-	api GET "$C1/security-groups/$sg"
+	r=$(brief)
+	rules_get
 	n1=$(count_rules)
-	ok "Г-11: повтор создания того же правила" "HTTP $r$(case "$r" in 2??) ;; *) echo ": $why" ;; esac); правил было $n0, стало $n1"
+	ok "Г-11: повтор создания того же правила" "$r; правил было $n0, стало $n1"
+	# g11_delete ЧТО URL — удаление, повтор сразу, ожидание исчезновения и
+	# повтор после него (D26: что отвечает удаление уже удалённого; повтор
+	# сразу в прогоне 205 получил отказ по состоянию, а не «нет такого»).
+	g11_delete() {
+		api DELETE "$2"
+		r="HTTP $code$(why_tail)"
+		api DELETE "$2"
+		r="$r, повтор сразу — $(brief)"
+		t0=$SECONDS
+		if ops_settle "$2" 120 gone; then
+			r="$r; состояния: $chain, $((SECONDS - t0)) с"
+			api DELETE "$2"
+			r="$r; повтор после исчезновения — $(brief)"
+		else
+			r="$r; не исчезло за 2 мин (состояния: $chain) — повтор после исчезновения не шлю"
+		fi
+		ok "Г-11: удаление $1" "$r"
+	}
 	if [ -n "$first" ]; then
-		api DELETE "$C1/security-groups/$sg/rules/$first"
-		r=$code
-		api DELETE "$C1/security-groups/$sg/rules/$first"
-		ok "Г-11: удаление правила и его повтор" "HTTP $r, повтор — HTTP $code$(case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac)"
+		g11_delete правила "$C1/security-groups/$sg/rules/$first"
 	else
 		gap "Г-11: удаление правила" "ни одно правило не создано"
 	fi
-	api DELETE "$C1/security-groups/$sg"
-	r=$code
-	api DELETE "$C1/security-groups/$sg"
-	ok "Г-11: удаление группы и его повтор" "HTTP $r, повтор — HTTP $code$(case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac)"
+	g11_delete группы "$C1/security-groups/$sg"
 }
 
 # ops_settle URL СЕКУНД [gone] — читать карточку ресурса, пока её state

@@ -85,22 +85,36 @@ SW="$SW1$SW1"
 want() { if [ "$2" != "$3" ]; then printf 'FAIL %s\n  got:  %s\n  want: %s\n' "$1" "$2" "$3"; fail=1; fi; }
 calls() { tr '\n' ';' <"$FAKE_DIR/calls"; }
 
-# Г-11: группа → пять правил → чтение → повтор правила → удаление правила
-# и его повтор → удаление группы и его повтор. Группы после пробы нет.
+# Г-11: группа → пять правил и правило с группой-источником → чтение правил
+# списком группы (в карточке группы правил нет — только счётчики, прогон
+# 205) → повтор правила → удаление правила: повтор сразу, ожидание
+# исчезновения, повтор после → то же для группы. Группы после пробы нет.
 world
 cat >"$FAKE_DIR/http" <<'H'
 POST /security-groups 201 {"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}
 POST /security-groups/sg1/rules 201 {"id":"rule1"}
-GET /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
-GET /security-groups/sg1 200 {"id":"sg1","rules":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0"}]}
-DELETE /security-groups/sg1/rules/rule1 204
-DELETE /security-groups/sg1 204
+GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
+GET /security-groups/sg1/rules/rule1 404
+GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0","state":"created"}],"total":1}
+DELETE! /security-groups/sg1/rules/rule1 204
+DELETE! /security-groups/sg1/rules/rule1 422 [{"code":"security_group_rule_can_not_be_deleted_from_current_state","message":"no"}]
+DELETE /security-groups/sg1/rules/rule1 404 [{"code":"security_group_rule_not_found","message":"no"}]
+DELETE! /security-groups/sg1 204
+DELETE! /security-groups/sg1 422 [{"code":"security_group_can_not_be_deleted_from_current_state","message":"no"}]
+DELETE /security-groups/sg1 404 [{"code":"security_group_not_found","message":"no"}]
+GET /security-groups/sg1 404
 H
 fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11: код" "$rc" 0
-want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;POST /security-groups/sg1/rules;GET /security-groups/sg1/rules/rule1;GET /security-groups/sg1;POST /security-groups/sg1/rules;GET /security-groups/sg1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1/rules/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+R=/security-groups/sg1/rules
+want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+grep -q 'Г-11: чтение правил.*HTTP 200, правил: 1, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-11: удаление правила.*HTTP 204, повтор сразу — HTTP 422, машинный код security_group_rule_can_not_be_deleted_from_current_state.*состояния: нет (404).*повтор после исчезновения — HTTP 404, машинный код security_group_rule_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления правила после исчезновения не записан"; grep 'удаление правила' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-11: удаление группы.*повтор после исчезновения — HTTP 404, машинный код security_group_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления группы после исчезновения не записан"; grep 'удаление группы' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+# ICMP — с port_range any: без диапазона платформа отвечает 422 (прогон 205).
+grep -q '"ip_protocol":"icmp","port_range":"any"' "$FAKE_DIR/bodies" || { echo "FAIL: Г-11: правило icmp без port_range any"; fail=1; }
 grep -q 'Г-11: повтор создания того же правила' "$tmp/out" || { echo "FAIL: нет строки о повторе правила"; fail=1; }
 # Правило с группой-источником: в теле — remote_security_group_id самой
 # группы, без remote_ip_prefix; в строке — форма источника в ответе чтения.
