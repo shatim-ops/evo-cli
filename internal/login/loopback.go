@@ -190,6 +190,7 @@ func (l *loopback) close() {
 
 // show writes the page that ends the consent and keeps it for a repeat.
 func (l *loopback) show(w http.ResponseWriter, p page) {
+	p = p.signed(l.s.user())
 	l.last = &p
 	writePage(w, http.StatusOK, p)
 }
@@ -264,9 +265,9 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 		// rest of the surface stays plain text.
 		switch {
 		case own:
-			writePage(w, http.StatusForbidden, refusedPage(tAlreadyOpen()))
+			writePage(w, http.StatusForbidden, refusedPage(tAlreadyOpenTitle(), tAlreadyOpen()).signed(l.s.user()))
 		case q.Get("state") != "":
-			writePage(w, http.StatusForbidden, refusedPage(tForeignLink()))
+			writePage(w, http.StatusForbidden, refusedPage(tForeignTitle(), tForeignLink()))
 		default:
 			refuse(w, http.StatusForbidden)
 		}
@@ -290,7 +291,7 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 	// is refused, and the login waits on for the redirect (№ 10, R3-F5).
 	code := q.Get("code")
 	if code == "" {
-		writePage(w, http.StatusForbidden, refusedPage(tNoProviderAnswer()))
+		writePage(w, http.StatusForbidden, refusedPage("", tNoProviderAnswer()))
 		return
 	}
 	if err := l.s.exchange(ctx, code); err != nil {
@@ -299,7 +300,7 @@ func (l *loopback) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := l.s.prepare(ctx); err != nil {
-		writePage(w, http.StatusOK, errorPage(err))
+		writePage(w, http.StatusOK, errorPage(err).signed(l.s.user()))
 		l.end(outcome{err: err})
 		return
 	}

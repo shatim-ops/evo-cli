@@ -76,7 +76,8 @@ var deleteAdviceOwn = map[string]string{
 	"internal/cli/tools.go\tapplyWait":          "--wait of the delete tools",
 	"internal/cli/agent.go\tnewAgentSkillCmd":   "the card says which delete undoes which create",
 	// The key evo login made, and its profile.
-	"internal/login/texts.go\ttDoneReused":            "the previous key of evo login on this computer was deleted",
+	"internal/login/texts.go\ttDoneKey":               "the previous key of evo login on this computer was deleted",
+	"internal/login/texts.go\ttPlanReplace":           "the previous key of evo login on this computer will be deleted (step 18)",
 	"internal/login/texts.go\tTResultReused":          "the previous key of evo login was deleted",
 	"internal/login/texts.go\ttRevokeHow":             "the key this login made",
 	"internal/login/texts.go\ttAgentRevokeLine":       "evo logout deletes the key of evo login",
