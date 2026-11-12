@@ -60,9 +60,9 @@ func TestStackTools_RefuseJobOfAnotherProject(t *testing.T) {
 		}
 	}
 	for name, h := range map[string]Handler{
-		"stack_apply":   r.handleStackApply,
+		"stack_apply":   r.gated("stack_apply", r.planStackApply),
 		"stack_status":  r.handleStackStatus,
-		"stack_destroy": r.handleStackDestroy,
+		"stack_destroy": r.gated("stack_destroy", r.planStackDestroy),
 	} {
 		text, isErr := h(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true, "wait_seconds": float64(1)})
 		if !isErr || !strings.Contains(text, "p-A") {

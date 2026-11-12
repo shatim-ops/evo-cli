@@ -144,14 +144,14 @@ func kubectlReachesHost(verb string, args []string) bool {
 // that mutate the cluster require confirmed=true. This is the general escape
 // hatch for whatever a product's deploy/operate needs beyond helm/apply
 // (create secret/configmap, scale, rollout restart, label, exec, cordon, …).
-func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planK8sKubectl(_ context.Context, args map[string]any) (*Plan, error) {
 	clusterID := stringArg(args, "cluster_id")
 	if clusterID == "" {
-		return usageT("cluster_id is required", "нужен cluster_id"), true
+		return answered(usageT("cluster_id is required", "нужен cluster_id"), true), nil
 	}
 	raw := stringArg(args, "args")
 	if raw == "" {
-		return usageT("'args' is required, e.g. \"get pods -A\"", "нужен 'args', например \"get pods -A\""), true
+		return answered(usageT("'args' is required, e.g. \"get pods -A\"", "нужен 'args', например \"get pods -A\""), true), nil
 	}
 	fields := strings.Fields(raw)
 	verb := ""
@@ -161,30 +161,27 @@ func (s *Registry) handleK8sKubectl(ctx context.Context, args map[string]any) (s
 	// Before the read-only check: "get pods --server=…" is a read verb
 	// that would send the cluster's token to another server unasked.
 	if err := kubetools.CheckConnectionFlags(fields); err != nil {
-		return usageResult(err), true
+		return answered(usageResult(err), true), nil
 	}
-	if kubectlNeedsConsent(args) {
-		if confirmed, _ := args["confirmed"].(bool); !confirmed {
-			return toJSON(map[string]any{
-				"status": "confirmation_required",
-				"message": i18n.Tf("kubectl %q changes the cluster. (Read-only verbs run without confirmation.)",
-					"kubectl %q меняет кластер. (Команды чтения выполняются без подтверждения.)", verb),
-			}), true
+	preview := map[string]any{
+		"message": i18n.Tf("kubectl %q changes the cluster. (Read-only verbs run without confirmation.)",
+			"kubectl %q меняет кластер. (Команды чтения выполняются без подтверждения.)", verb),
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		kc, err := s.kubeconfigForCluster(ctx, clusterID)
+		if err != nil {
+			return errResult(err), true
 		}
-	}
-	kc, err := s.kubeconfigForCluster(ctx, clusterID)
-	if err != nil {
-		return errResult(err), true
-	}
-	timeout, capped := callBound(ctx, 90*time.Second)
-	out, err := kubetools.Kubectl(ctx, kc, "", timeout, fields...)
-	if capped && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
-		return toJSON(kubectlAtLimit(out, verb, args)), false
-	}
-	if err != nil {
-		return errAnswer(err, map[string]any{"output": out}), true
-	}
-	return toJSON(map[string]any{"status": "ok", "output": out}), false
+		timeout, capped := callBound(ctx, 90*time.Second)
+		out, err := kubetools.Kubectl(ctx, kc, "", timeout, fields...)
+		if capped && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return toJSON(kubectlAtLimit(out, verb, args)), false
+		}
+		if err != nil {
+			return errAnswer(err, map[string]any{"output": out}), true
+		}
+		return toJSON(map[string]any{"status": "ok", "output": out}), false
+	}}, nil
 }
 
 // kubectlAtLimit is the answer of kubectl stopped at the limit of an MCP
@@ -199,7 +196,9 @@ func kubectlAtLimit(out, verb string, args map[string]any) map[string]any {
 	}
 	if kubectlReadOnly(strings.Fields(stringArg(args, "args"))) {
 		answer["next"] = fmt.Sprintf("kubectl %s was stopped at the time limit of an MCP call; it reads and changes nothing. Call k8s_kubectl again: a command that waits (rollout status, wait, logs -f) goes on from the cluster's state; give it --timeout under 40s to answer within one call.", verb)
-		nextStep(answer, "k8s_kubectl", maps.Clone(args))
+		// A read needs no consent: the step carries none («Риск»,
+		// conclusion 126).
+		nextSameCall(answer, "k8s_kubectl", args)
 		return answer
 	}
 	answer["next"] = fmt.Sprintf("kubectl %s was stopped at the time limit of an MCP call. What it sent the cluster before that goes on there; check the result with a read (k8s_kubectl \"get …\") before you repeat the change.", verb)
@@ -207,37 +206,36 @@ func kubectlAtLimit(out, verb string, args map[string]any) map[string]any {
 }
 
 // handleK8sApply applies a manifest (YAML/JSON) to the cluster. Mutation → confirmed.
-func (s *Registry) handleK8sApply(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planK8sApply(_ context.Context, args map[string]any) (*Plan, error) {
 	clusterID := stringArg(args, "cluster_id")
 	manifest := stringArg(args, "manifest")
 	if clusterID == "" || manifest == "" {
-		return usageT("cluster_id and manifest are required", "нужны cluster_id и manifest"), true
+		return answered(usageT("cluster_id and manifest are required", "нужны cluster_id и manifest"), true), nil
 	}
 	// namespace goes to kubectl as an argument: a value starting with '-'
 	// would be read as another flag (as for k8s_helm).
 	if strings.HasPrefix(stringArg(args, "namespace"), "-") {
-		return usageT("'namespace' must not start with '-'", "'namespace' не может начинаться с '-'"), true
+		return answered(usageT("'namespace' must not start with '-'", "'namespace' не может начинаться с '-'"), true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{
-			"status": "confirmation_required",
-			"message": i18n.T("k8s_apply changes the cluster.",
-				"k8s_apply меняет кластер."),
-		}), true
+	preview := map[string]any{
+		"message": i18n.T("k8s_apply changes the cluster.",
+			"k8s_apply меняет кластер."),
 	}
-	kc, err := s.kubeconfigForCluster(ctx, clusterID)
-	if err != nil {
-		return errResult(err), true
-	}
-	kargs := []string{"apply", "-f", "-"}
-	if ns := stringArg(args, "namespace"); ns != "" {
-		kargs = append(kargs, "-n", ns)
-	}
-	out, err := kubetools.Kubectl(ctx, kc, manifest, 120*time.Second, kargs...)
-	if err != nil {
-		return errAnswer(err, map[string]any{"output": out}), true
-	}
-	return toJSON(map[string]any{"status": "applied", "output": out}), false
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		kc, err := s.kubeconfigForCluster(ctx, clusterID)
+		if err != nil {
+			return errResult(err), true
+		}
+		kargs := []string{"apply", "-f", "-"}
+		if ns := stringArg(args, "namespace"); ns != "" {
+			kargs = append(kargs, "-n", ns)
+		}
+		out, err := kubetools.Kubectl(ctx, kc, manifest, 120*time.Second, kargs...)
+		if err != nil {
+			return errAnswer(err, map[string]any{"output": out}), true
+		}
+		return toJSON(map[string]any{"status": "applied", "output": out}), false
+	}}, nil
 }
 
 // helmMutatingActions are the k8s_helm actions that change the cluster.
@@ -251,19 +249,19 @@ func helmNeedsConsent(args map[string]any) bool {
 
 // handleK8sHelm drives helm (install/upgrade/uninstall/list/status). Mutating
 // actions (install/upgrade/uninstall) need confirmed=true.
-func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planK8sHelm(_ context.Context, args map[string]any) (*Plan, error) {
 	clusterID := stringArg(args, "cluster_id")
 	action := strings.ToLower(stringArg(args, "action"))
 	if clusterID == "" || action == "" {
-		return usageT("cluster_id and action are required (install|upgrade|uninstall|list|status)",
-			"нужны cluster_id и action (install|upgrade|uninstall|list|status)"), true
+		return answered(usageT("cluster_id and action are required (install|upgrade|uninstall|list|status)",
+			"нужны cluster_id и action (install|upgrade|uninstall|list|status)"), true), nil
 	}
 	// release and chart go to helm as positional arguments: a value starting
 	// with '-' would be parsed as a flag (--post-renderer runs a program on
 	// the server's host).
 	for _, k := range []string{"release", "chart", "namespace", "version"} {
 		if strings.HasPrefix(stringArg(args, k), "-") {
-			return usageT("'%s' must not start with '-'", "'%s' не может начинаться с '-'", k), true
+			return answered(usageT("'%s' must not start with '-'", "'%s' не может начинаться с '-'", k), true), nil
 		}
 	}
 	// The action and its own arguments are checked before the confirmation
@@ -275,147 +273,144 @@ func (s *Registry) handleK8sHelm(ctx context.Context, args map[string]any) (stri
 	switch action {
 	case "install", "upgrade":
 		if release == "" || chart == "" {
-			return usageT("install/upgrade need release and chart", "для install и upgrade нужны release и chart"), true
+			return answered(usageT("install/upgrade need release and chart", "для install и upgrade нужны release и chart"), true), nil
 		}
 	case "uninstall", "delete":
 		if release == "" {
-			return usageT("uninstall needs release", "для uninstall нужен release"), true
+			return answered(usageT("uninstall needs release", "для uninstall нужен release"), true), nil
 		}
 	case "status":
 		if release == "" {
-			return usageT("status needs release", "для status нужен release"), true
+			return answered(usageT("status needs release", "для status нужен release"), true), nil
 		}
 	case "list":
 	default:
-		return usageT("unknown action %q (install|upgrade|uninstall|list|status)", "неизвестное действие %q (install|upgrade|uninstall|list|status)", action), true
+		return answered(usageT("unknown action %q (install|upgrade|uninstall|list|status)", "неизвестное действие %q (install|upgrade|uninstall|list|status)", action), true), nil
 	}
 	// helm itself refused a relative repo_url ("non-absolute URLs"), and
 	// that read as an API error (release audit, A-003).
 	if raw := stringArg(args, "repo_url"); raw != "" {
 		if u, err := url.Parse(raw); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "oci") {
-			return usageT("'repo_url' must be an absolute https://, http:// or oci:// URL, got %q",
-				"'repo_url' должен быть абсолютным URL https://, http:// или oci://, передано %q", raw), true
+			return answered(usageT("'repo_url' must be an absolute https://, http:// or oci:// URL, got %q",
+				"'repo_url' должен быть абсолютным URL https://, http:// или oci://, передано %q", raw), true), nil
 		}
 	}
-	if helmNeedsConsent(args) {
-		if confirmed, _ := args["confirmed"].(bool); !confirmed {
-			return toJSON(map[string]any{
-				"status": "confirmation_required",
-				"message": i18n.Tf("helm %s changes the cluster (billable workloads).",
-					"helm %s меняет кластер (платные нагрузки).", action),
-			}), true
+	preview := map[string]any{
+		"message": i18n.Tf("helm %s changes the cluster (billable workloads).",
+			"helm %s меняет кластер (платные нагрузки).", action),
+	}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		kc, err := s.kubeconfigForCluster(ctx, clusterID)
+		if err != nil {
+			return errResult(err), true
 		}
-	}
-	kc, err := s.kubeconfigForCluster(ctx, clusterID)
-	if err != nil {
-		return errResult(err), true
-	}
-	ns := stringArg(args, "namespace")
+		ns := stringArg(args, "namespace")
 
-	// Optionally register a chart repo first (repo_url + a repo name derived
-	// from the chart's "<repo>/<name>" prefix).
-	if repoURL := stringArg(args, "repo_url"); repoURL != "" && (action == "install" || action == "upgrade") {
-		repoName := "repo"
-		if i := strings.Index(chart, "/"); i > 0 {
-			repoName = chart[:i]
-		}
-		for _, st := range []struct {
-			name string
-			own  time.Duration
-			args []string
-		}{
-			{"repo add", 60 * time.Second, []string{"repo", "add", repoName, repoURL, "--force-update"}},
-			{"repo update", 90 * time.Second, []string{"repo", "update"}},
-		} {
-			timeout, capped := callBound(ctx, st.own)
-			out, e := kubetools.Helm(ctx, kc, timeout, st.args...)
-			if capped && errors.Is(e, context.DeadlineExceeded) && ctx.Err() == nil {
-				return toJSON(helmAtLimit(out, st.name, args)), false
+		// Optionally register a chart repo first (repo_url + a repo name derived
+		// from the chart's "<repo>/<name>" prefix).
+		if repoURL := stringArg(args, "repo_url"); repoURL != "" && (action == "install" || action == "upgrade") {
+			repoName := "repo"
+			if i := strings.Index(chart, "/"); i > 0 {
+				repoName = chart[:i]
 			}
-			if e != nil {
-				return errAnswer(e, map[string]any{"stage": st.name, "output": out}), true
-			}
-		}
-	}
-
-	var hargs []string
-	switch action {
-	case "install", "upgrade":
-		hargs = []string{"upgrade", "--install", release, chart}
-		if ns != "" {
-			hargs = append(hargs, "-n", ns, "--create-namespace")
-		}
-		if v := stringArg(args, "version"); v != "" {
-			hargs = append(hargs, "--version", v)
-		}
-		// Inline values YAML → temp file passed as -f.
-		if values := stringArg(args, "values"); values != "" {
-			// A failed write must not install the chart with its defaults.
-			vf, e := os.CreateTemp("", "helm-values-*.yaml")
-			if e != nil {
-				return errResult(fmt.Errorf(i18n.T("values file: %w", "файл values: %w"), e)), true
-			}
-			defer os.Remove(vf.Name())
-			_, e = vf.WriteString(values)
-			if ce := vf.Close(); e == nil {
-				e = ce
-			}
-			if e != nil {
-				return errResult(fmt.Errorf(i18n.T("values file: %w", "файл values: %w"), e)), true
-			}
-			hargs = append(hargs, "-f", vf.Name())
-		}
-		// --set overrides (comma-safe: passed as repeated --set).
-		if sets, ok := args["set"].([]any); ok {
-			for _, kv := range sets {
-				if s, _ := kv.(string); s != "" {
-					hargs = append(hargs, "--set", s)
+			for _, st := range []struct {
+				name string
+				own  time.Duration
+				args []string
+			}{
+				{"repo add", 60 * time.Second, []string{"repo", "add", repoName, repoURL, "--force-update"}},
+				{"repo update", 90 * time.Second, []string{"repo", "update"}},
+			} {
+				timeout, capped := callBound(ctx, st.own)
+				out, e := kubetools.Helm(ctx, kc, timeout, st.args...)
+				if capped && errors.Is(e, context.DeadlineExceeded) && ctx.Err() == nil {
+					return toJSON(helmAtLimit(out, st.name, args)), false
+				}
+				if e != nil {
+					return errAnswer(e, map[string]any{"stage": st.name, "output": out}), true
 				}
 			}
 		}
-		// The CLI waits for the pods as before (H14). An MCP call does not
-		// (D69): helm answers once the cluster took the manifests, the
-		// answer says deploying, and the next step reads the release; its
-		// own --timeout (hooks) ends within the call's budget, so helm ends
-		// a hook itself rather than being killed mid-operation.
-		if t, capped := callBound(ctx, helmWaitTimeout); capped {
-			hargs = append(hargs, "--timeout", (t - min(t/10, 3*time.Second)).Round(time.Second).String())
-		} else {
-			hargs = append(hargs, "--wait", "--timeout", "8m")
-		}
-	case "uninstall", "delete":
-		hargs = []string{"uninstall", release}
-		if ns != "" {
-			hargs = append(hargs, "-n", ns)
-		}
-	case "list":
-		hargs = []string{"list", "-A"}
-	case "status":
-		hargs = []string{"status", release}
-		if ns != "" {
-			hargs = append(hargs, "-n", ns)
-		}
-	}
 
-	own := 120 * time.Second
-	if action == "install" || action == "upgrade" {
-		own = helmWaitTimeout // --wait can take a while pulling images
-	}
-	timeout, capped := callBound(ctx, own)
-	out, err := kubetools.Helm(ctx, kc, timeout, hargs...)
-	if capped && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
-		return toJSON(helmAtLimit(out, action, args)), false
-	}
-	if err != nil {
-		return errAnswer(err, map[string]any{"output": out}), true
-	}
-	if capped && (action == "install" || action == "upgrade") {
-		answer := map[string]any{"status": "deploying", "action": action, "output": out,
-			"next": fmt.Sprintf("helm %s: the cluster took the release's manifests (helm says deployed); its pods may still be starting — deployed does not mean ready. Read the release with k8s_helm action=status, and the pods with k8s_kubectl \"get pods -n <namespace>\".", action)}
-		nextStep(answer, "k8s_helm", helmStatusArgs(args))
-		return toJSON(answer), false
-	}
-	return toJSON(map[string]any{"status": "ok", "action": action, "output": out}), false
+		var hargs []string
+		switch action {
+		case "install", "upgrade":
+			hargs = []string{"upgrade", "--install", release, chart}
+			if ns != "" {
+				hargs = append(hargs, "-n", ns, "--create-namespace")
+			}
+			if v := stringArg(args, "version"); v != "" {
+				hargs = append(hargs, "--version", v)
+			}
+			// Inline values YAML → temp file passed as -f.
+			if values := stringArg(args, "values"); values != "" {
+				// A failed write must not install the chart with its defaults.
+				vf, e := os.CreateTemp("", "helm-values-*.yaml")
+				if e != nil {
+					return errResult(fmt.Errorf(i18n.T("values file: %w", "файл values: %w"), e)), true
+				}
+				defer os.Remove(vf.Name())
+				_, e = vf.WriteString(values)
+				if ce := vf.Close(); e == nil {
+					e = ce
+				}
+				if e != nil {
+					return errResult(fmt.Errorf(i18n.T("values file: %w", "файл values: %w"), e)), true
+				}
+				hargs = append(hargs, "-f", vf.Name())
+			}
+			// --set overrides (comma-safe: passed as repeated --set).
+			if sets, ok := args["set"].([]any); ok {
+				for _, kv := range sets {
+					if s, _ := kv.(string); s != "" {
+						hargs = append(hargs, "--set", s)
+					}
+				}
+			}
+			// The CLI waits for the pods as before (H14). An MCP call does not
+			// (D69): helm answers once the cluster took the manifests, the
+			// answer says deploying, and the next step reads the release; its
+			// own --timeout (hooks) ends within the call's budget, so helm ends
+			// a hook itself rather than being killed mid-operation.
+			if t, capped := callBound(ctx, helmWaitTimeout); capped {
+				hargs = append(hargs, "--timeout", (t - min(t/10, 3*time.Second)).Round(time.Second).String())
+			} else {
+				hargs = append(hargs, "--wait", "--timeout", "8m")
+			}
+		case "uninstall", "delete":
+			hargs = []string{"uninstall", release}
+			if ns != "" {
+				hargs = append(hargs, "-n", ns)
+			}
+		case "list":
+			hargs = []string{"list", "-A"}
+		case "status":
+			hargs = []string{"status", release}
+			if ns != "" {
+				hargs = append(hargs, "-n", ns)
+			}
+		}
+
+		own := 120 * time.Second
+		if action == "install" || action == "upgrade" {
+			own = helmWaitTimeout // --wait can take a while pulling images
+		}
+		timeout, capped := callBound(ctx, own)
+		out, err := kubetools.Helm(ctx, kc, timeout, hargs...)
+		if capped && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return toJSON(helmAtLimit(out, action, args)), false
+		}
+		if err != nil {
+			return errAnswer(err, map[string]any{"output": out}), true
+		}
+		if capped && (action == "install" || action == "upgrade") {
+			answer := map[string]any{"status": "deploying", "action": action, "output": out,
+				"next": fmt.Sprintf("helm %s: the cluster took the release's manifests (helm says deployed); its pods may still be starting — deployed does not mean ready. Read the release with k8s_helm action=status, and the pods with k8s_kubectl \"get pods -n <namespace>\".", action)}
+			nextStep(answer, "k8s_helm", helmStatusArgs(args))
+			return toJSON(answer), false
+		}
+		return toJSON(map[string]any{"status": "ok", "action": action, "output": out}), false
+	}}, nil
 }
 
 // helmWaitTimeout bounds helm install and upgrade in the CLI: --wait
@@ -439,12 +434,14 @@ func helmAtLimit(out, stage string, args map[string]any) map[string]any {
 	answer := map[string]any{"status": "stopped_at_limit", "stage": stage, "output": out}
 	switch action := strings.ToLower(stringArg(args, "action")); {
 	case strings.HasPrefix(stage, "repo "):
-		// Before helm touched the cluster: the same call again.
+		// Before helm touched the cluster: the same call again, with the
+		// consent it was given — a declared continuation (owner's
+		// decision 12.11; «Риск», conclusion 126).
 		answer["next"] = fmt.Sprintf("helm %s was stopped at the time limit of an MCP call, before the release was touched. Call k8s_helm again with the same arguments.", stage)
 		nextStep(answer, "k8s_helm", maps.Clone(args))
 	case action == "list" || action == "status":
 		answer["next"] = fmt.Sprintf("helm %s was stopped at the time limit of an MCP call; it changes nothing. Call k8s_helm again.", action)
-		nextStep(answer, "k8s_helm", maps.Clone(args))
+		nextSameCall(answer, "k8s_helm", args)
 	default:
 		answer["next"] = fmt.Sprintf("helm (%s) was stopped at the time limit of an MCP call; the release may be left mid-operation. Read it with k8s_helm action=status: a release in pending-install or pending-upgrade is ended with helm rollback or uninstall.", stage)
 		nextStep(answer, "k8s_helm", helmStatusArgs(args))

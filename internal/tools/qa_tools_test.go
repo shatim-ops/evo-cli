@@ -139,13 +139,13 @@ func TestQA_KubectlWritingSubcommandsNeedConfirmation(t *testing.T) {
 	r := newTestServer()
 	for _, a := range []string{"rollout restart deploy/x", "rollout undo deploy/x", "rollout pause deploy/x",
 		"rollout resume deploy/x", "rollout", "auth reconcile -f rbac.yaml", "delete pod x"} {
-		got := callTool(t, r.handleK8sKubectl, map[string]any{"cluster_id": "c", "args": a})
+		got := callTool(t, r.gated("k8s_kubectl", r.planK8sKubectl), map[string]any{"cluster_id": "c", "args": a})
 		if got["status"] != "confirmation_required" {
 			t.Errorf("%q ran without confirmation: %v", a, got)
 		}
 	}
 	for _, a := range []string{"get pods -A", "rollout status deploy/x", "rollout history deploy/x", "auth can-i get pods", "logs x"} {
-		got := callTool(t, r.handleK8sKubectl, map[string]any{"cluster_id": "c", "args": a})
+		got := callTool(t, r.gated("k8s_kubectl", r.planK8sKubectl), map[string]any{"cluster_id": "c", "args": a})
 		if got["status"] == "confirmation_required" {
 			t.Errorf("read %q asks for confirmation", a)
 		}
@@ -163,7 +163,7 @@ func TestQA_HelmRejectsFlagsInPositionalArgs(t *testing.T) {
 		{"release": "r", "chart": "c", "namespace": "--kubeconfig=/etc/x"},
 	} {
 		a["cluster_id"], a["action"], a["confirmed"] = "c", "install", true
-		got := callTool(t, r.handleK8sHelm, a)
+		got := callTool(t, r.gated("k8s_helm", r.planK8sHelm), a)
 		if msg, _ := got["error"].(string); !strings.Contains(msg, "must not start with '-'") {
 			t.Errorf("%v: %v", a, got)
 		}
