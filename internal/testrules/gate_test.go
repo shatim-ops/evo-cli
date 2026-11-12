@@ -24,21 +24,13 @@ const gateFile = "internal/tools/gate.go"
 // handler onto the gate. The list only shrinks: a read not here fails the
 // test, so does a line with no read, and inlineGatesLeft is lowered with
 // each line removed (G13-3, class K1).
-// Closes by 1.9: a line lives at most two versions (release plan 1.6,
-// «храповики со сроком»; TestMisses_HaveADeadline). Moved from 1.8 by the
-// owner's decision 06.11: the handlers go onto the gate with the K1 line
-// of development, a candidate of 1.9.
-var inlineGates = map[string]string{
-	"internal/tools/tools_kube.go: handleK8sApply":      "1.9",
-	"internal/tools/tools_kube.go: handleK8sHelm":       "1.9",
-	"internal/tools/tools_kube.go: handleK8sKubectl":    "1.9",
-	"internal/tools/tools_stack.go: handleStackApply":   "1.9",
-	"internal/tools/tools_stack.go: handleStackDestroy": "1.9",
-}
+// Empty since 1.9: every handler gates on its planner, and a new read of
+// confirmed outside the gate fails the test (release plan 1.9, block 0в).
+var inlineGates = map[string]string{}
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 5
+const inlineGatesLeft = 0
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{
