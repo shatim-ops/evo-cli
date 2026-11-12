@@ -277,7 +277,8 @@ func (s *Registry) planVMPower(tool string) Planner {
 		case state == act.via:
 			// A start in flight: this call's own, cut before its end, or
 			// another caller's. No command is sent, so no question.
-			text, isErr := s.finishVMPower(ctx, eng, tool, act, vm, args, false)
+			since, _ := s.heldSince(eng, tool, "vm_id="+vm.ID)
+			text, isErr := s.finishVMPower(ctx, eng, tool, act, vm, args, false, since)
 			return answered(text, isErr), nil
 		case vmNothingToChange[state]:
 			return nil, clierrors.New(clierrors.CodeUsage,
@@ -309,7 +310,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			if err := eng.Cloud.SetVMPower(ctx, vm.ID, act.command); err != nil {
 				return s.vmPowerRefused(ctx, eng, tool, act, vm, args, state, err)
 			}
-			return s.finishVMPower(ctx, eng, tool, act, vm, args, true)
+			return s.finishVMPower(ctx, eng, tool, act, vm, args, true, time.Time{})
 		}}, nil
 	}
 }
@@ -335,7 +336,7 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 		return errResult(cause), true
 	}
 	if now.State == act.to || now.State == act.via {
-		return s.finishVMPower(ctx, eng, tool, act, now, args, true)
+		return s.finishVMPower(ctx, eng, tool, act, now, args, true, time.Time{})
 	}
 	if provision.HTTPStatus(cause) != http.StatusUnprocessableEntity {
 		return errAnswer(cause, map[string]any{"vm_id": vm.ID, "state": now.State}), true
@@ -395,14 +396,33 @@ func platformCode(err error) string {
 // (vm_get) as the next step — a status that says the change is going on
 // always names one (Н3). A VM that left the transition for another state
 // is an error with that state.
+//
+// since, when not zero, is the start of this very operation by an earlier
+// call of this key (heldSince): the call is a step of evo's own change and
+// goes on with it as the call that sent the command does — but only until
+// the limit of the operation, counted from its start and not from each
+// repeat; past it evo waits no more, and the next step is the read.
 func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool string, act vmPowerAction,
-	vm *provision.VMDetail, args map[string]any, sent bool) (string, bool) {
+	vm *provision.VMDetail, args map[string]any, sent bool, since time.Time) (string, bool) {
 	started := clock.Now()
+	limit, own := vmPowerTimeout, sent
+	if !since.IsZero() {
+		// wall-clock: the age of the operation decides whether evo goes on
+		// with it; the value is also said in the answer (since_start_sec).
+		if limit = vmPowerTimeout - clock.Since(since); limit <= 0 {
+			ans := vmAnswer(vm, act.via, vm.State)
+			ans["since_start_sec"] = int(clock.Since(since).Seconds())
+			ans["next"] = fmt.Sprintf("VM %s is still %s %d s after %s began it; evo waits for it no more. vm_get shows its state.", vm.ID, vm.State, int(clock.Since(since).Seconds()), tool)
+			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
+			return toJSON(ans), false
+		}
+		own = true
+	}
 	// moved: the VM was seen on its way. A call that sent no command found
 	// it there. Where the target is the state the VM was taken from, the
 	// target reads as reached only after the transition was seen.
 	moved := !sent
-	last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, vmPowerTimeout, func(st string) (bool, error) {
+	last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, limit, func(st string) (bool, error) {
 		switch {
 		case st == act.to && (moved || act.to != act.from):
 			return true, nil
@@ -441,7 +461,10 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		// state: the statuses of a tool are a closed list.
 		ans := vmAnswer(vm, act.via, last)
 		ans["elapsed_sec"] = elapsed
-		if atLimit && sent {
+		if !since.IsZero() {
+			ans["since_start_sec"] = int(clock.Since(since).Seconds())
+		}
+		if atLimit && own {
 			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second command.", vm.ID, last, tool)
 			nextSameCall(ans, tool, vmRef(args, vm))
 		} else {
