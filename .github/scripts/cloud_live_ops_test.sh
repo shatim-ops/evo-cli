@@ -132,6 +132,30 @@ jq -e '.remote_security_group_id == "sg1" and (has("remote_ip_prefix") | not)' "
 grep -q 'Г-11: правило с группой-источником.*HTTP 201.*источник в ответе чтения по id: объект remote_security_group с полями \["id","name"\].*remote_ip_prefix: null' "$tmp/out" || { echo "FAIL: Г-11: форма группы-источника не записана"; grep 'группой-источником' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'sg1\|rule1'; then echo "FAIL: id в строке лога"; fail=1; fi
 
+# Правило создано, а чтение по id не удалось (404 без тела): строка
+# называет код чтения, а не «null» — непрочитанное не выдаётся за ответ
+# платформы о том, что хранит правило.
+world
+cat >"$FAKE_DIR/http" <<'H'
+POST /security-groups 201 {"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}
+GET! /security-groups/sg1 200 {"id":"sg1","state":"created"}
+POST /security-groups/sg1/rules 201 {"id":"rule1"}
+GET /security-groups/sg1/rules/rule1 404
+GET /security-groups/sg1/rules?limit=100 200 {"items":[],"total":0}
+DELETE /security-groups/sg1/rules/rule1 404 [{"code":"security_group_rule_not_found","message":"no"}]
+DELETE! /security-groups/sg1 204
+DELETE /security-groups/sg1 404 [{"code":"security_group_not_found","message":"no"}]
+GET /security-groups/sg1 404
+H
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+rc=0
+PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-11, правило не прочитано: код" "$rc" 0
+for step in 'правило с группой-источником' 'правило без источника'; do
+	grep -q "Г-11: $step.*HTTP 201.*чтение по id: HTTP 404" "$tmp/out" || { echo "FAIL: Г-11: $step — непрочитанное правило не названо кодом"; grep "$step" "$tmp/out" | sed 's/^/  | /'; fail=1; }
+	if grep "Г-11: $step" "$tmp/out" | grep -q 'чтени[ия] по id.*remote_ip_prefix'; then echo "FAIL: Г-11: $step — префикс записан по непрочитанному правилу"; fail=1; fi
+done
+
 # Группа не создана (отказ платформы): дальше проба не идёт, код 0 — это
 # ответ платформы, а не провал; правил и удалений нет.
 world

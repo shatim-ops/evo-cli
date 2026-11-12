@@ -2068,7 +2068,7 @@ probe_g11() {
 		r="HTTP $code"
 		if [ -n "$rule" ]; then
 			api GET "$C1/security-groups/$sg/rules/$rule"
-			r="$r; источник в ответе чтения по id: $(jq -r 'if (.remote_security_group? | type) == "object" then "объект remote_security_group с полями \(.remote_security_group | keys | tojson)" elif has("remote_security_group_id") then "плоское поле remote_security_group_id" else "группы в ответе нет, поля: \(keys | tojson)" end' "$tmp/api.json" 2>/dev/null || echo "не прочитан (HTTP $code)"); remote_ip_prefix: $(prefix_kind)"
+			r="$r; чтение по id: $(case "$code" in 2??) echo "источник в ответе чтения по id: $(jq -r 'if (.remote_security_group? | type) == "object" then "объект remote_security_group с полями \(.remote_security_group | keys | tojson)" elif has("remote_security_group_id") then "плоское поле remote_security_group_id" else "группы в ответе нет, поля: \(keys | tojson)" end' "$tmp/api.json" 2>/dev/null || echo "не разобран"); remote_ip_prefix: $(prefix_kind)" ;; *) brief ;; esac)"
 		fi
 		ok "Г-11: правило с группой-источником" "$r"
 		;;
@@ -2477,7 +2477,7 @@ power() { api POST "$url/set-power" "$(jq -nc --arg s "$1" '{state: $s}')"; }
 # prefix_kind — что правило хранит в remote_ip_prefix, словами, которые
 # маска адресов не стирает: null, пусто, весь IPv4, весь IPv6 или другой
 # CIDR. Один разбор на все шаги Г-11, которые это записывают.
-prefix_kind() { jq -r '(if type == "array" then .[0] else . end) | .remote_ip_prefix? | if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "весь IPv4" elif . == "::/0" then "весь IPv6" else "CIDR" end' "$tmp/api.json" 2>/dev/null || echo '?'; }
+prefix_kind() { jq -er '(if type == "array" then .[0] else . end) | .remote_ip_prefix? | if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "весь IPv4" elif . == "::/0" then "весь IPv6" else "CIDR" end' "$tmp/api.json" 2>/dev/null || echo '?'; }
 # brief — последний ответ api коротко: код, а у отказа — машинный код и текст.
 brief() { echo "HTTP $code$(case "$code" in 2??) ;; *) echo ", машинный код $(mcode): $(api_why | cut -c1-160)" ;; esac)"; }
 
