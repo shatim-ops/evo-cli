@@ -211,6 +211,7 @@
     - [evo vm flavors](#evo-vm-flavors)
     - [evo vm get](#evo-vm-get)
     - [evo vm list](#evo-vm-list)
+    - [evo vm reboot](#evo-vm-reboot)
     - [evo vm start](#evo-vm-start)
     - [evo vm stop](#evo-vm-stop)
     - [evo vm zones](#evo-vm-zones)
@@ -9453,6 +9454,7 @@ evo vm [flags]
 * [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц
 * [evo vm get](#evo-vm-get)	 - ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы
 * [evo vm list](#evo-vm-list)	 - Список ВМ проекта: id, имя, состояние, зона, время создания
+* [evo vm reboot](#evo-vm-reboot)	 - Перезагрузить работающую ВМ и дождаться состояния running
 * [evo vm start](#evo-vm-start)	 - Запустить остановленную ВМ и дождаться состояния running
 * [evo vm stop](#evo-vm-stop)	 - Остановить работающую ВМ и дождаться состояния stopped
 * [evo vm zones](#evo-vm-zones)	 - Зоны доступности (UUID и имя)
@@ -9723,6 +9725,49 @@ evo vm list [flags]
       --public-ip       true — только с публичным IP, false — только без него (false задаётся так: --public-ip=false)
       --state string    Только в этом состоянии: running, stopped, error, error_creating, error_deleting, creating, starting, stopping, rebooting, deleting, updating
       --zone string     Только в этой зоне: имя или UUID
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vm](#evo-vm)	 - Виртуальные машины
+
+## evo vm reboot
+
+Перезагрузить работающую ВМ и дождаться состояния running
+
+### Synopsis
+
+```text
+Перезагрузить работающую ВМ и дождаться состояния running.
+
+Перезагрузить работающую ВМ (reboot) и дождаться, пока она снова заработает: ВМ и всё, что на ней работает, в это время не отвечает, несохранённые данные в памяти могут быть потеряны. До вопроса evo читает ВМ и показывает её имя, id, состояние и простой. «Уже сделано» у перезагрузки нет: каждый вызов — новая перезагрузка, повтор перезагрузит ВМ ещё раз и поэтому спрашивает заново. ВМ уже перезагружается — evo ждёт и команды не шлёт; ВМ остановлена — отказ, запуск — 'evo vm start'. Ответ reboot_accepted: платформа приняла команду, а смены состояния evo не увидел. Не перезагружайте ВМ, на которой работает сам evo.
+
+Вызывает инструмент vm_reboot (подробнее: 'evo tools describe vm_reboot').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vm reboot <vm-id|name> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по reboot
 ```
 
 ### Options inherited from parent commands

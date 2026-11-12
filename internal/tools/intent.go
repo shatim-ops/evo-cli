@@ -116,7 +116,11 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 // вызов — новое изменение»; «Риск», conclusion 138). The list is of new
 // tools: a shipped tool does not join it without a decision — its
 // consented call would start to answer a question.
-var everySendIsAChange = map[string]string{}
+var everySendIsAChange = map[string]string{
+	// A reboot has no «already»: the VM runs before it and after it
+	// (docs/internal/briefs/ops-wave-1.md §5).
+	"vm_reboot": "vm_get",
+}
 
 // cutCalls are the records of this caller's own cut calls of the tool name
 // on the resource the call names, for a tool of everySendIsAChange: the

@@ -2,7 +2,7 @@
 
 <!-- Generated from the tool registry of evo: 'evo agent skill --group vm' prints it. -->
 
-7 tools. Consent, exit codes and untrusted answers: the rules of the `evo` skill. The arguments of a tool: `evo tools describe <tool> --json`.
+8 tools. Consent, exit codes and untrusted answers: the rules of the `evo` skill. The arguments of a tool: `evo tools describe <tool> --json`.
 
 | Tool | Command | Does | Ids from |
 |---|---|---|---|
@@ -10,6 +10,7 @@
 | `vm_get` | `evo vm get` | reads | `vm_id` ← `vm_list` |
 | `vm_start` | `evo vm start` | changes | `vm_id` ← `vm_list` |
 | `vm_stop` | `evo vm stop` | changes | `vm_id` ← `vm_list` |
+| `vm_reboot` | `evo vm reboot` | changes | `vm_id` ← `vm_list` |
 | `vm_list` | `evo vm list` | reads |  |
 | `list_zones` | `evo vm zones` | reads |  |
 | `list_flavors` | `evo vm flavors` | reads |  |
