@@ -52,6 +52,7 @@ var parityArgs = map[string]map[string]any{
 	"vm_get":       {"vm_id": parityVM},
 	"vm_start":     {"vm_id": parityStoppedVM},
 	"vm_stop":      {"vm_id": parityRunningVM},
+	"vm_reboot":    {"vm_id": parityRunningVM},
 	"vm_list":      {},
 	"list_zones":   {},
 	"list_flavors": {},

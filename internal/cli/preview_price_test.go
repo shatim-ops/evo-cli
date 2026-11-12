@@ -35,6 +35,8 @@ var noPriceInPreview = map[string]string{
 	"secret_add_version": priceNoNewResource, "secret_delete": priceNoNewResource, "snat_delete": priceNoNewResource, "subnet_delete": priceNoNewResource,
 	"stack_destroy": priceNoNewResource, "tg_delete": priceNoNewResource, "vpc_delete": priceNoNewResource,
 	"vpc_route_delete": priceNoNewResource,
+	// A reboot starts and stops no charge (the brief, §5.2).
+	"vm_reboot": priceNoNewResource,
 }
 
 // A preview the person consents to says what the call costs (cost) or where

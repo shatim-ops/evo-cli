@@ -290,7 +290,7 @@ var faultMatrixOut = map[string]string{
 	"stack_destroy": faultOutRemoves, "tg_delete": faultOutRemoves, "vpc_delete": faultOutRemoves,
 	"vpc_route_delete": faultOutRemoves,
 
-	"ca_start": faultOutChanges, "cert_renew": faultOutChanges, "disk_attach": faultOutChanges, "vm_start": faultOutChanges, "vm_stop": faultOutChanges,
+	"ca_start": faultOutChanges, "cert_renew": faultOutChanges, "disk_attach": faultOutChanges, "vm_start": faultOutChanges, "vm_stop": faultOutChanges, "vm_reboot": faultOutChanges,
 	// Its faults — a lost answer taken and not, a refusal, a failed
 	// operation — are the worlds of k8s_nodepool_scale_test.go.
 	"k8s_nodepool_scale": faultOutChanges,

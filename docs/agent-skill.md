@@ -132,7 +132,7 @@ of a group before its first change.
 | `secret` | `evo secret …` | 6 | 3 |
 | `snat` | `evo snat …` | 3 | 2 |
 | `stack` | `evo stack …` | 4 | 2 |
-| `vm` | `evo vm …` | 7 | 3 |
+| `vm` | `evo vm …` | 8 | 4 |
 | `vpc` | `evo vpc …` | 16 | 9 |
 
 ## Examples
