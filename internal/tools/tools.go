@@ -405,7 +405,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_create",
-			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. Async — returns cluster_id + operation_id; the cluster provisions in about 10 min (5-10 per the docs; poll k8s_get). Accepts the same args as k8s_plan.",
+			Description: "STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan, with the same args. Async: returns cluster_id and operation_id; the cluster takes about 10 min (poll k8s_get).",
 			InputSchema: objSchema(map[string]any{
 				"product": strProp("What the cluster is for."), "name": strProp("Cluster name."),
 				"version": strProp("Kubernetes version."), "flavor": strProp("Control-plane flavor name."),
@@ -418,11 +418,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_kubeconfig",
-			Description: "Get the kubeconfig for a Managed Kubernetes cluster. By DEFAULT it embeds a static bearer token so kubectl/helm work as-is (the raw Cloud.ru kubeconfig needs a 'cloudlogin' exec-plugin that isn't installed → kubectl would fail 'executable cloudlogin not found'). Token TTL ~1h. Pass embed_token=false for the raw exec-plugin kubeconfig.",
+			Description: "Get the kubeconfig of a Managed Kubernetes cluster. By default it embeds a static bearer token (TTL ~1h): the raw Cloud.ru kubeconfig needs the 'cloudlogin' exec plugin. The answer holds that token: a secret — do not print it or pass it on. embed_token=false gives the raw one.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":  strProp("Cluster UUID."),
 				"network":     enumProp("NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default).", "NETWORK_TYPE_PUBLIC", "NETWORK_TYPE_PRIVATE"),
-				"embed_token": boolPropTrue("Embed a static bearer token so kubectl works without the cloudlogin plugin (default true)."),
+				"embed_token": boolPropTrue("Embed a static bearer token (default true)."),
 			}, "cluster_id"),
 		},
 		{
@@ -436,7 +436,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_operation",
-			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_nodepool_delete/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
+			Description: "Poll a Managed Kubernetes async operation by id (from k8s_create, k8s_delete and the node pool changes). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
 				"wait_seconds": opWaitProp(),
@@ -489,16 +489,16 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_addons",
-			Description: "Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). Read-only. Compact rows {name, display_name, categories, billable, deploy_with}; categories are Russian words of the console (e.g. 'Сети', 'Безопасность', 'Мониторинг'), the answer lists them all. Next: k8s_addon_versions for versions and requirements, k8s_add_addon to install.",
+			Description: "Search the Managed Kubernetes addon catalogue (ingress, cert-manager, monitoring, CSI drivers, …). Read-only. Rows {name, display_name, categories, billable, deploy_with}; categories are the console's Russian words (e.g. 'Сети', 'Безопасность'), the answer lists them all. Next: k8s_addon_versions for versions and requirements, k8s_add_addon to install.",
 			InputSchema: objSchema(map[string]any{
-				"query":    strProp("Substring of the name, display name or description, case-insensitive (e.g. 'cert', 'ingress'). Default: the whole catalogue."),
-				"category": strProp("Only addons of this category, exact and case-insensitive (see 'categories' in the answer)."),
+				"query":    strProp("Part of the name, display name or description, any case (e.g. 'cert'). Default: the whole catalogue."),
+				"category": strProp("Only this category, exact, any case (see 'categories' in the answer)."),
 				"billable": boolProp("true: only billable addons; false: only free ones. Default: both."),
 			}),
 		},
 		{
 			Name:        "k8s_addon_versions",
-			Description: "List the releases of one Managed Kubernetes addon, newest first: version (appVersion, what k8s_add_addon takes), addon_version, mode (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), kube_versions (semver range the cluster must satisfy), ready_workers (ready worker nodes needed), namespace, has_schema and schema_bytes of the configuration JSON Schema, latest (the release k8s_add_addon picks by default: newest ACTIVE). Read-only. The schema itself (up to ~94 KB) only with full=true.",
+			Description: "Releases of one Managed Kubernetes addon, newest first: version (appVersion, what k8s_add_addon takes), addon_version, mode (ACTIVE, EXPERIMENTAL, END_OF_SUPPORT, END_OF_LIFE, INACTIVE), kube_versions (semver range the cluster must satisfy), ready_workers (ready worker nodes needed), namespace, has_schema and schema_bytes of the configuration JSON Schema, latest (what k8s_add_addon picks by default: newest ACTIVE). Read-only. The schema itself (up to ~94 KB) only with full=true.",
 			InputSchema: objSchema(map[string]any{
 				"name": strProp("Addon name from k8s_addons, e.g. 'cert-manager'."),
 				"full": boolProp("Include configuration_schema of every release (large; default false)."),
@@ -518,7 +518,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_kubectl",
-			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true after the user approves, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. Every call runs the command again: a repeated mutating verb is a new change. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
+			Description: "Run any kubectl command on a cluster (the token is embedded). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true after the user approves, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. Every call runs the command again: a repeated mutating verb is a new change. Prefer k8s_apply and k8s_helm for manifests and charts. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"args":       strProp("kubectl arguments as a single string, e.g. \"get pods -A -o wide\"."),
@@ -527,7 +527,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_apply",
-			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Every call applies the manifest again; what changes is the cluster's to decide. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
+			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster, like `kubectl apply -f -`. Every call applies the manifest again; what changes is the cluster's to decide. A fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"manifest":   strProp("The manifest YAML/JSON to apply (multi-doc allowed)."),
