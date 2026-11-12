@@ -50,7 +50,7 @@ svg { display: block; flex: none; }
 .light { color: var(--light); }
 b { font-weight: 600; letter-spacing: 0; color: var(--text); }
 /* каркас */
-.container { width: 1040px; max-width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 12px; flex: 1 1 auto; }
+.container { width: 1040px; max-width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1 1 auto; }
 .header { width: 100%; height: 24px; display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; align-items: center; gap: 16px; }
 .brand .logo { width: 130px; height: 24px; color: var(--ink); }
@@ -59,9 +59,10 @@ b { font-weight: 600; letter-spacing: 0; color: var(--text); }
 .until { color: var(--support); }
 .content { width: 680px; max-width: 100%; background: var(--bg1); border-radius: 12px; padding: 20px 0; display: flex; flex-direction: column; gap: 24px; }
 .content.consent { flex: 1 1 auto; justify-content: space-between; gap: 20px; }
-/* Отступы внутри согласия плотнее макета на 8 и 4 px: самое высокое
-   состояние (08: «Агенту», замена ключа, строка находки 90) помещается в
-   1280×720 без прокрутки; вертикальные паддинги блока — 20, как в макете. */
+/* Отступы внутри согласия плотнее макета на 4–8 px, подсказки поля и строка
+   находки 90 — мелким кеглем (12/16): самое высокое состояние («Агенту»,
+   замена ключа, строка находки 90 и «право не проверено» вместе) помещается
+   в 1280×720 без прокрутки; вертикальные паддинги блока — 20, как в макете. */
 .cbody { padding: 0 32px; display: flex; flex-direction: column; gap: 16px; flex: 1 1 auto; }
 .sbody { padding: 0 32px; display: flex; flex-direction: column; gap: 24px; }
 .rule { height: 1px; background: var(--decor); }
@@ -70,7 +71,7 @@ b { font-weight: 600; letter-spacing: 0; color: var(--text); }
 .footer-note { padding: 0 32px; color: var(--support); }
 /* форма */
 form { display: contents; }
-.form { display: flex; flex-direction: column; gap: 12px; }
+.form { display: flex; flex-direction: column; gap: 8px; }
 .group { display: flex; flex-direction: column; gap: 4px; }
 .group.cards-group { gap: 8px; }
 .label-row { display: flex; align-items: center; gap: 4px; color: var(--support); font-weight: 600; }
@@ -91,7 +92,7 @@ select option:disabled { color: var(--disabled); }
 .field .chev svg { width: 24px; height: 24px; }
 .field.is-error select { border-color: var(--red); }
 .field.is-warning select { border-color: var(--yellow); }
-.hint { display: flex; gap: 2px; align-items: flex-start; }
+.hint { display: flex; gap: 2px; align-items: flex-start; font-size: 12px; line-height: 16px; }
 .hint svg { width: 16px; height: 16px; margin: 2px; }
 .hint.error { color: var(--red-text); } .hint.error svg { color: var(--red); }
 .hint.warning { color: var(--yellow-text); } .hint.warning svg { color: var(--yellow); }
@@ -112,7 +113,7 @@ input[type=radio] { position: fixed; top: 0; left: 0; width: 1px; height: 1px; m
 /* предупреждение агента */
 .alert { display: none; gap: 4px; align-items: flex-start; padding: 8px; border-radius: 4px; background: var(--yellow-bg); }
 .alert svg { width: 16px; height: 16px; margin: 2px; color: var(--yellow); }
-.alert .at { display: flex; flex-direction: column; gap: 8px; }
+.alert .at { display: flex; flex-direction: column; gap: 4px; }
 .alert .at b { font-size: 12px; line-height: 16px; }
 .alert .at span { font-size: 12px; line-height: 16px; color: var(--support); }
 #a-agent:checked ~ .cbody .alert { display: flex; }
@@ -122,6 +123,7 @@ input[type=radio] { position: fixed; top: 0; left: 0; width: 1px; height: 1px; m
 .seg label:hover { color: var(--text); }
 /* строки plan и rows */
 .plan, .rows { display: flex; flex-direction: column; gap: 8px; }
+.plan { gap: 4px; }
 .plan { margin-top: auto; }
 .row { display: flex; align-items: flex-start; gap: 8px; color: var(--support); }
 .row > svg { width: 24px; height: 24px; color: var(--support); }
@@ -131,6 +133,7 @@ input[type=radio] { position: fixed; top: 0; left: 0; width: 1px; height: 1px; m
 .row.xr { display: none; }
 #a-me:checked ~ .cbody .xr.s-a-me, #a-agent:checked ~ .cbody .xr.s-a-agent { display: flex; }
 .row.warning, .row.warning > svg { color: var(--yellow-text); }
+.row.warning .rt { font-size: 12px; line-height: 16px; }
 /* переключаемые куски текста */
 .x { display: none; }
 #a-me:checked ~ .cbody .s-a-me, #a-agent:checked ~ .cbody .s-a-agent { display: inline; }
