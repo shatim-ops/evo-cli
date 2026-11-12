@@ -18,7 +18,10 @@ import (
 // alike: the session journal over the check of the arguments, so a call
 // the check refuses is recorded too (D46).
 func outer(name string, schema map[string]any, h Handler) Handler {
-	return journaled(name, schema, checkedArgs(name, schema, h))
+	return journaled(name, schema, checkedArgs(name, schema, func(ctx context.Context, args map[string]any) (string, bool) {
+		text, isErr := h(ctx, args)
+		return withoutAPIStatus(text), isErr
+	}))
 }
 
 type journalDepthKey struct{}

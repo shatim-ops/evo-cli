@@ -19,6 +19,7 @@ import (
 type BackupAPI interface {
 	ListBackups(ctx context.Context, projectID string) ([]map[string]any, error)
 	GetBackup(ctx context.Context, backupID string) (map[string]any, error)
+	DeleteBackup(ctx context.Context, backupID string) error
 }
 
 var _ BackupAPI = (*CloudRuAdapter)(nil)
@@ -42,4 +43,15 @@ func (a *CloudRuAdapter) GetBackup(ctx context.Context, backupID string) (map[st
 		return nil, err
 	}
 	return m, nil
+}
+
+// DeleteBackup asks to delete a backup; the platform answers 204 and deletes
+// it after (state deleting, then 404). A DELETE is not repeated after a
+// dropped connection (computeRetry).
+func (a *CloudRuAdapter) DeleteBackup(ctx context.Context, backupID string) error {
+	resp, err := a.doWithRetry(ctx, http.MethodDelete, fmt.Sprintf("/api/v1/backups/%s", seg(backupID)), nil)
+	if err != nil {
+		return err
+	}
+	return resp.Body.Close()
 }

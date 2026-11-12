@@ -1,0 +1,238 @@
+{
+ "_comment": "Перечни состояний ресурсов из опубликованных спецификаций Cloud.ru (scripts/cloudru-specs.py): ключ — «сервис:схема» или «сервис:схема.поле», значение — значения enum как в спецификации. Только ресурсы, которые evo создаёт, меняет или удаляет. Читает TestStates_EveryChangeHasAWorldForEveryStateOfTheSpec (internal/tools): мир изменяющего инструмента несёт ресурс в каждом из этих состояний. Сверяет со спецификациями job contract (scripts/api-contract-check.py: state-new, state-enum-missing); новое состояние в спецификации — обновить флагом --update-states и дописать строку мира.",
+ "states": {
+  "ar:v1RegistryStatus": [
+   "CREATING",
+   "ACTIVE",
+   "ERROR"
+  ],
+  "certificatemanager:v1CertificateState": [
+   "CERTIFICATE_STATE_UNSPECIFIED",
+   "CERTIFICATE_STATE_ACTIVE",
+   "CERTIFICATE_STATE_EXPIRED"
+  ],
+  "compute:BackupState": [
+   "creating",
+   "created",
+   "error_creating",
+   "updating",
+   "error",
+   "deleting",
+   "error_deleting"
+  ],
+  "compute:DiskState": [
+   "available",
+   "in_use",
+   "reserved",
+   "error",
+   "error_creating",
+   "error_deleting",
+   "creating",
+   "updating",
+   "deleting",
+   "attaching",
+   "detaching"
+  ],
+  "compute:FloatingIpState": [
+   "available",
+   "in_use",
+   "error",
+   "error_creating",
+   "error_deleting",
+   "creating",
+   "deleting",
+   "updating",
+   "attaching",
+   "detaching"
+  ],
+  "compute:NATGatewayState": [
+   "created",
+   "error",
+   "error_creating",
+   "error_deleting",
+   "creating",
+   "deleting",
+   "updating"
+  ],
+  "compute:SecurityGroupRuleState": [
+   "created",
+   "error",
+   "error_creating",
+   "error_deleting",
+   "creating",
+   "deleting",
+   "updating"
+  ],
+  "compute:SubnetState": [
+   "created",
+   "error",
+   "error_creating",
+   "error_deleting",
+   "creating",
+   "deleting",
+   "updating"
+  ],
+  "compute:VmState": [
+   "running",
+   "stopped",
+   "error",
+   "error_creating",
+   "error_deleting",
+   "creating",
+   "starting",
+   "stopping",
+   "rebooting",
+   "deleting",
+   "updating"
+  ],
+  "kafka:cloudru.dbaas.kafka.v1.Cluster.status": [
+   "STATUS_UNSPECIFIED",
+   "PENDING",
+   "DEPLOYING",
+   "FAILED",
+   "UPDATING",
+   "READY",
+   "SUSPENDED",
+   "SUSPENDING",
+   "ERASED",
+   "ERASING",
+   "ROLLING_BACK"
+  ],
+  "mk8s:cloudru.containers.mk8s.v3.Cluster.status": [
+   "OBJECT_STATUS_PENDING",
+   "OBJECT_STATUS_PROVISIONING",
+   "OBJECT_STATUS_RUNNING",
+   "OBJECT_STATUS_RESUMING",
+   "OBJECT_STATUS_DELETING",
+   "OBJECT_STATUS_ERROR",
+   "OBJECT_STATUS_SCALING_UP",
+   "OBJECT_STATUS_SCALING_DOWN",
+   "OBJECT_STATUS_STOPPING",
+   "OBJECT_STATUS_STOPPED",
+   "OBJECT_STATUS_SUSPENDING",
+   "OBJECT_STATUS_SUSPENDED",
+   "OBJECT_STATUS_UPGRADING",
+   "OBJECT_STATUS_EDITING",
+   "OBJECT_STATUS_ADDING",
+   "OBJECT_STATUS_DELETED"
+  ],
+  "mk8s:cloudru.containers.mk8s.v3.ClusterAddon.status": [
+   "OBJECT_STATUS_PENDING",
+   "OBJECT_STATUS_PROVISIONING",
+   "OBJECT_STATUS_RUNNING",
+   "OBJECT_STATUS_RESUMING",
+   "OBJECT_STATUS_DELETING",
+   "OBJECT_STATUS_ERROR",
+   "OBJECT_STATUS_SCALING_UP",
+   "OBJECT_STATUS_SCALING_DOWN",
+   "OBJECT_STATUS_STOPPING",
+   "OBJECT_STATUS_STOPPED",
+   "OBJECT_STATUS_SUSPENDING",
+   "OBJECT_STATUS_SUSPENDED",
+   "OBJECT_STATUS_UPGRADING",
+   "OBJECT_STATUS_EDITING",
+   "OBJECT_STATUS_ADDING",
+   "OBJECT_STATUS_DELETED"
+  ],
+  "mk8s:cloudru.containers.mk8s.v3.NodePool.status": [
+   "OBJECT_STATUS_PENDING",
+   "OBJECT_STATUS_PROVISIONING",
+   "OBJECT_STATUS_RUNNING",
+   "OBJECT_STATUS_RESUMING",
+   "OBJECT_STATUS_DELETING",
+   "OBJECT_STATUS_ERROR",
+   "OBJECT_STATUS_SCALING_UP",
+   "OBJECT_STATUS_SCALING_DOWN",
+   "OBJECT_STATUS_STOPPING",
+   "OBJECT_STATUS_STOPPED",
+   "OBJECT_STATUS_SUSPENDING",
+   "OBJECT_STATUS_SUSPENDED",
+   "OBJECT_STATUS_UPGRADING",
+   "OBJECT_STATUS_EDITING",
+   "OBJECT_STATUS_ADDING",
+   "OBJECT_STATUS_DELETED"
+  ],
+  "nlb:v2NLBStatus": [
+   "NLB_STATUS_UNSPECIFIED",
+   "NLB_STATUS_CREATING",
+   "NLB_STATUS_ERROR_CREATING",
+   "NLB_STATUS_RUNNING",
+   "NLB_STATUS_UPDATING",
+   "NLB_STATUS_ERROR_UPDATING",
+   "NLB_STATUS_DELETING",
+   "NLB_STATUS_ERROR_DELETING",
+   "NLB_STATUS_DELETED",
+   "NLB_STATUS_SUSPENDING",
+   "NLB_STATUS_SUSPENDED",
+   "NLB_STATUS_ERROR_SUSPENDING",
+   "NLB_STATUS_RESUMING",
+   "NLB_STATUS_ERROR_RESUMING"
+  ],
+  "nlb:v2TargetGroupStatus": [
+   "TARGET_GROUP_STATUS_UNSPECIFIED",
+   "TARGET_GROUP_STATUS_CREATING",
+   "TARGET_GROUP_STATUS_ERROR_CREATING",
+   "TARGET_GROUP_STATUS_CREATED",
+   "TARGET_GROUP_STATUS_UPDATING",
+   "TARGET_GROUP_STATUS_ERROR_UPDATING",
+   "TARGET_GROUP_STATUS_DELETING",
+   "TARGET_GROUP_STATUS_ERROR_DELETING",
+   "TARGET_GROUP_STATUS_DELETED"
+  ],
+  "postgresql:cloudru.dbaas.postgresql.v1.Backup.status": [
+   "BACKUP_STATUS_UNSPECIFIED",
+   "BACKUP_STATUS_PENDING",
+   "BACKUP_STATUS_STARTED",
+   "BACKUP_STATUS_COMPLETED",
+   "BACKUP_STATUS_FAILED"
+  ],
+  "postgresql:cloudru.dbaas.postgresql.v1.Cluster.status": [
+   "STATUS_UNSPECIFIED",
+   "PENDING",
+   "DEPLOYING",
+   "FAILED",
+   "UPDATING",
+   "READY",
+   "SUSPENDED",
+   "SUSPENDING",
+   "ERASED",
+   "ERASING",
+   "ROLLING_BACK"
+  ],
+  "redis:cloudru.dbaas.redis.v1.Cluster.status": [
+   "STATUS_UNSPECIFIED",
+   "PENDING",
+   "DEPLOYING",
+   "FAILED",
+   "UPDATING",
+   "READY",
+   "SUSPENDED",
+   "SUSPENDING",
+   "ERASED",
+   "ERASING",
+   "ROLLING_BACK"
+  ],
+  "secretmanager:v1State": [
+   "STATE_UNSPECIFIED",
+   "ENABLED",
+   "DISABLED",
+   "DESTROYED"
+  ],
+  "secretmanager:v2VersionState": [
+   "STATE_UNSPECIFIED",
+   "ENABLED",
+   "DISABLED",
+   "DESTROYED"
+  ],
+  "vpc:StaticRoute.status": [
+   "ROUTE_STATUS_UNSPECIFIED",
+   "ROUTE_STATUS_NEW",
+   "ROUTE_STATUS_CREATING",
+   "ROUTE_STATUS_CREATED",
+   "ROUTE_STATUS_FAILED_CREATE",
+   "ROUTE_STATUS_DELETING",
+   "ROUTE_STATUS_DELETED",
+   "ROUTE_STATUS_FAILED_DELETE"
+  ]
+ }
+}

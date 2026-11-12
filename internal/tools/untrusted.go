@@ -87,6 +87,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	// them (docs/internal/briefs/backups.md).
 	"backup_get":  {fields: []string{"name", "description", "tags", "resource_name", "source"}},
 	"backup_list": {fields: []string{"backups"}},
+	// The names of the backup, its source and the backups that depend on
+	// it, in the preview.
+	"backup_delete": {fields: []string{"will_delete", "target"}},
 	// The name of the pool, in the preview and in the answer; the words
 	// and the code of the platform in a failed operation (details).
 	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},
@@ -95,6 +98,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.
+	// The names of the source groups of a port only groups let in: not
+	// named by the caller, unlike the group of the call.
+	"open_ports":     {fields: []string{"open_only_to_groups"}},
 	"sg_rule_create": {fields: []string{"security_group", "rule", "preview"}},
 	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups"}},
 }

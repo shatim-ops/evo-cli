@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/verify"
 	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
@@ -62,6 +63,9 @@ type Engine struct {
 	// phase is the step of the deploy that runs, as InProgress names it:
 	// a step cut by the bound is going on from there (atBound).
 	phase string
+	// portsOnlyFromGroups are the ports the last openPorts found let in
+	// only from other security groups: the answer of deploy names them.
+	portsOnlyFromGroups []sgrules.GroupOnlyPort
 	// now is the clock of the bound (past); nil: time.Now. A test brings
 	// the bound at a point of the deploy with it, not by the wall clock.
 	now func() time.Time

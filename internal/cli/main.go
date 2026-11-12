@@ -289,6 +289,9 @@ func unknownSubcommand(cmd *cobra.Command, args []string) error {
 }
 
 func newRootCmd() *cobra.Command {
+	// One registry for the run: the trees, the completions and the
+	// command that runs read the same one (registryOf).
+	reg := newRegistry()
 	cmd := &cobra.Command{
 		Use: "evo",
 		Short: product.Name + i18n.T(": CLI and MCP server for VMs, networks, k8s, PostgreSQL and deploy of compose projects",
@@ -309,6 +312,11 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			commandStarted = true
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			cmd.SetContext(withRegistry(ctx, reg))
 			if err := emptyFlagGiven(cmd); err != nil {
 				return err
 			}
@@ -325,7 +333,7 @@ func newRootCmd() *cobra.Command {
 			// (release plan 1.8, (и)): every command of this directory says
 			// it until it is settled; over MCP the first answer carries it.
 			if cwd, err := os.Getwd(); err == nil {
-				printWarnings(output.New(flagJSON, flagNoColor), newRegistry().PendingNotes(cwd))
+				printWarnings(output.New(flagJSON, flagNoColor), reg.PendingNotes(cwd))
 			}
 			return nil
 		},
@@ -369,8 +377,8 @@ func newRootCmd() *cobra.Command {
 		newAgentCmd(),
 		newDiagCmd(),
 	)
-	cmd.AddCommand(newTreeCmds(cmd)...)
-	registerEngineCompletions(cmd)
+	cmd.AddCommand(newTreeCmds(cmd, reg)...)
+	registerEngineCompletions(cmd, reg)
 	applyExamples(cmd)
 	groupCommands(cmd)
 	localizeHelp(cmd)
