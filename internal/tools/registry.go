@@ -222,12 +222,21 @@ func callEndCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	return ctx, func() {}
 }
 
-// budgeted stamps a call with its start (withCallStart).
+// callRecords are the records the call itself opened (beginIntent), by
+// id: its own answer says how it ended and does not name them as what an
+// earlier run left (notePending).
+type callRecords struct{ ids []string }
+
+type callRecordsKey struct{}
+
+// budgeted stamps a call with its start (withCallStart) and notes in its
+// answer what earlier calls left.
 func (r *Registry) budgeted(next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
-		text, isErr := next(r.withCallStart(ctx), args)
+		own := &callRecords{}
+		text, isErr := next(context.WithValue(r.withCallStart(ctx), callRecordsKey{}, own), args)
 		if callerOf(ctx) == nil {
-			text = r.notePending(text)
+			text = r.notePending(text, own.ids)
 		}
 		return text, isErr
 	}

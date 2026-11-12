@@ -208,3 +208,43 @@ func TestStateDir_NoArgumentOfACallMovesIt(t *testing.T) {
 		t.Fatalf("records: %d in the declared directory, %d in another; want 1 and 0", a, b)
 	}
 }
+
+// The answer of a call does not name the record the call itself left as
+// what an earlier run left: it says how the call ended, and the CLI's
+// answer has no such note. The record is left out by its id, in that one
+// answer only: the next answer of the server names it, and the same call
+// again is asked about, not sent («Риск», conclusion 172, У7–У9).
+func TestStateDir_ACallsOwnRecordIsNotInItsOwnAnswer(t *testing.T) {
+	dir := t.TempDir()
+	r, _ := stateDirRegistry(dir, dir)
+	reboot, _ := r.Lookup("vm_reboot")
+	args := func() map[string]any { return map[string]any{"vm_id": resMine, "confirmed": true} }
+	sent := 0
+	call := r.budgeted(r.intended(reboot, func(context.Context, map[string]any) (string, bool) {
+		sent++
+		return `{"status":"error","error":"reboot: API_ERROR: 502","reason":"API_ERROR"}`, true
+	}))
+
+	text, _ := call(context.Background(), args())
+	var cut map[string]any
+	_ = json.Unmarshal([]byte(text), &cut)
+	if _, named := cut["pending_operations"]; named || cut["reason"] != "API_ERROR" || sent != 1 {
+		t.Fatalf("the answer of the cut call: sent %d\n%s", sent, text)
+	}
+	if n := len(intent.Pending(intent.Dir(dir))); n != 1 {
+		t.Fatalf("%d records after the cut call, want 1", n)
+	}
+
+	// Another call of the same server: its answer names the record.
+	skill, _ := r.Lookup("agent_skill")
+	other, _ := skill.Handler(context.Background(), map[string]any{"group": "vm"})
+	if !strings.Contains(other, "pending_operations") || !strings.Contains(other, "vm_reboot") {
+		t.Fatalf("the next answer does not name the record the cut call left:\n%s", other)
+	}
+
+	// The same call again, with the consent of the first: asked, not sent.
+	again, _ := call(context.Background(), args())
+	if !strings.Contains(again, `"confirmation_required"`) || sent != 1 {
+		t.Fatalf("the same call after its cut one: sent %d\n%s", sent, again)
+	}
+}
