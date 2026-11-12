@@ -97,3 +97,25 @@ func upperFirst(s string) string {
 	r, n := utf8.DecodeRuneInString(s)
 	return string(unicode.ToUpper(r)) + s[n:]
 }
+
+// openOnlyToGroups says, in a preview or an answer of open_ports, the
+// ports a rule lets in only from another security group: they are not
+// open to cidr and open_ports adds no rule for them (owner's decision
+// 12.11: the access is not changed, the claim is). The way to open one is
+// sg_rule_create, after the person's word — the next step of an answer
+// (step), for the first of them.
+func openOnlyToGroups(out map[string]any, ports []sgrules.GroupOnlyPort, group *provision.SecurityGroup, proto, cidr string, step bool) {
+	if len(ports) == 0 {
+		return
+	}
+	out["open_only_to_groups"] = ports
+	out["open_only_to_groups_note"] = i18n.Tf("these ports are NOT open to %s: a rule lets them in only from the security groups named, and open_ports adds no rule for them. To open one to %s, ask the person, then sg_rule_create",
+		"эти порты НЕ открыты для %s: правило пускает их только из названных групп безопасности, и open_ports правило для них не добавляет. Чтобы открыть порт для %s, спросите человека, затем sg_rule_create",
+		cidr, cidr)
+	if !step {
+		// A preview asks for the consent to this call: no other step in it.
+		return
+	}
+	nextStep(out, "sg_rule_create", map[string]any{"security_group": group.ID, "direction": "ingress", "protocol": proto,
+		"ports": ports[0].Port, "cidr": cidr})
+}
