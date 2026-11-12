@@ -12,7 +12,8 @@
 // <data dir>/intents/<id>.json, 0600, written whole (temp file and
 // rename). It holds no secret and no value of an argument but the name of
 // the resource, the project and the zone: the names of the arguments, the
-// tool, the surface and the pid.
+// tool, the surface, the pid and the key the call was sent with (its
+// account and its masked Key ID, as a deployment record keeps them).
 package intent
 
 import (
@@ -29,6 +30,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // OutcomeUnknown tells a failed write whose outcome the cloud did not
@@ -61,9 +63,16 @@ type Intent struct {
 	Name string   `json:"name,omitempty"`
 	// Target is the resource a call on an existing one names, as
 	// «argument=id» (vm_id=…): a delete, a resize. Not a secret.
-	Target    string `json:"target,omitempty"`
+	Target string `json:"target,omitempty"`
+	// ProjectID is the project the request names. A call that addresses
+	// its resource by id and sends no project has none: the write lands
+	// where the resource is, which the call's project does not tell (R-82).
 	ProjectID string `json:"project_id,omitempty"`
 	Zone      string `json:"zone,omitempty"`
+	// Key is the key the call was sent with: a read by id answers for the
+	// resource only with the key that saw it (state.Maker.Other). Nil in a
+	// record of evo before 1.9.
+	Key *state.Maker `json:"key,omitempty"`
 	// Note is what the next run says of the intent when the words of a
 	// call that the cloud did not answer do not fit it (evo login killed
 	// after its key: findings ledger 1.8, № 37); "" for a tool's call.

@@ -12,8 +12,10 @@ import (
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // beginIntent writes the intent of a consented call before it goes to the
@@ -49,6 +51,13 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		}
 	}
 	in.Name, in.Target = intentResource(name, args)
+	in.Key = eng.Maker()
+	// The write of a call addressed by id lands in the project of the
+	// resource, which the call's project does not tell (namedProject): the
+	// record names no project rather than the profile's (R-82).
+	if _, _, byID := intentTarget(in); byID {
+		in.ProjectID = ""
+	}
 	if p, _ := args["project_id"].(string); p != "" {
 		in.ProjectID = p
 	}
@@ -93,6 +102,22 @@ func intentResource(tool string, args map[string]any) (name, target string) {
 		}
 	}
 	return name, ""
+}
+
+// intentTarget is the resource in addresses by id when its write lands
+// there: the declared target of its tool (idArg.target) that the record
+// names (Target, «argument=id»).
+func intentTarget(in intent.Intent) (a idArg, id string, ok bool) {
+	arg, id, found := strings.Cut(in.Target, "=")
+	if !found || id == "" {
+		return idArg{}, "", false
+	}
+	for _, a := range targetArgs(in.Tool) {
+		if a.name == arg {
+			return a, id, true
+		}
+	}
+	return idArg{}, "", false
 }
 
 // answerReason is the reason of a tool's answer, "" when it has none.
@@ -168,6 +193,57 @@ func (r *Registry) pendingNote(in intent.Intent) string {
 	return i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown — check %s for %s; the same %s on it settles it",
 		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен — проверьте %s по %s; тот же %s на нём закроет запись",
 		tool, name, where, started, quoteCloud(in.Surface), in.PID, quoteCloud(r.listToolOf(in.Tool)), name, tool)
+}
+
+// checkPending is what doctor finds out about the intent in and whether
+// its outcome is now known (the record closes): a delete of a resource
+// addressed by id is checked by a read of that id (checkByID), any other
+// by the list of what it names (checkByList).
+func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool) {
+	if a, id, ok := intentTarget(in); ok {
+		// The target of a delete inside a parent is the parent: reading
+		// it tells nothing of the child.
+		if d, isDelete := deleteTargets[in.Tool]; isDelete && d.parent != a.name {
+			return r.checkByID(ctx, in, a.kind, id, eng.Maker())
+		}
+	}
+	return r.checkByList(ctx, in, eng.Config.ProjectID)
+}
+
+// checkByID checks a cut delete of the resource id by reading it by id:
+// the list of the call's project does not tell a deleted resource from
+// one of another project, which a key of the organization deletes as
+// well (R-82; «Риск», conclusion 114). Only «not there», answered to the
+// key that sent the delete, closes the record: another key may not see
+// the resource, and a read that failed says nothing. A kind with no read
+// by id is never closed here — the same delete on it settles the record.
+func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind, id string, cur *state.Maker) (found string, settled bool) {
+	what, tool := quoteCloud(id), quoteCloud(in.Tool)
+	if k.card == nil {
+		return i18n.Tf("evo has no read by id that tells a deleted %s from one of another project: check %s where it was — the same %s on it settles the record",
+			"у evo нет чтения по id, которое отличит удалённый ресурс «%s» от ресурса другого проекта: проверьте %s там, где он был, — тот же %s на нём закроет запись", k.what, what, tool), false
+	}
+	if in.Key == nil || cur == nil || in.Key.Other(cur) {
+		by := i18n.T("a key the record does not name", "ключом, которого запись не называет")
+		if in.Key != nil {
+			by = i18n.Tf("the key %s", "ключом %s", quoteCloud(in.Key.KeyID))
+		}
+		return i18n.Tf("not checked with this key: the delete was sent with %s, and another key may not see %s — run doctor with that key, or the same %s",
+			"не проверено этим ключом: удаление отправлено %s, а другой ключ может не видеть %s — запустите doctor с тем ключом или тот же %s", by, what, tool), false
+	}
+	m, err := k.card(ctx, &ownerCall{r: r, args: map[string]any{}}, id)
+	switch {
+	case err == nil:
+		status := firstNonEmptyStr(stringArg(m, "status"), stringArg(m, "state"))
+		return i18n.Tf("%s %s is still there (status %s): the delete did not take effect, or is still going — run doctor again, or the same %s",
+			"%s %s ещё есть (статус %s): удаление не прошло или ещё идёт — повторите doctor или тот же %s", k.what, what, quoteCloud(status), tool), false
+	case notThere(err):
+		return i18n.Tf("the read of %s %s by id, with the key that sent the delete, answers that it is not there: the delete took effect; the record is closed",
+			"чтение ресурса «%s» %s по id ключом, который отправил удаление, отвечает, что его нет: удаление прошло; запись закрыта", k.what, what), true
+	}
+	reason, _, _ := errReason(err, nil)
+	return i18n.Tf("could not read %s %s by id (%s): not checked — run doctor again",
+		"не удалось прочитать ресурс «%s» %s по id (%s): не проверено — повторите doctor", k.what, what, reason), false
 }
 
 // checkByList reads the list of what in names (createdIDs: list, field),
