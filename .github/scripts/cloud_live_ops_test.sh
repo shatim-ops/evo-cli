@@ -95,6 +95,7 @@ POST /security-groups 201 {"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}
 GET! /security-groups/sg1 200 {"id":"sg1","state":"created"}
 POST /security-groups/sg1/rules 201 {"id":"rule1"}
 GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
+GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":"0.0.0.0/0","remote_security_group":null}
 GET /security-groups/sg1/rules/rule1 404
 GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0","state":"created"}],"total":1}
 DELETE! /security-groups/sg1/rules/rule1 204
@@ -110,11 +111,17 @@ rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11: код" "$rc" 0
 R=/security-groups/sg1/rules
-want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;GET /security-groups/sg1;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;GET /security-groups/sg1;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;POST $R;GET $R/rule1;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
 grep -q 'Г-11: готовность группы.*состояния: created' "$tmp/out" || { echo "FAIL: Г-11: готовность группы до правил не записана"; fail=1; }
 grep -q 'Г-11: чтение правил.*HTTP 200, правил: 1, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление правила.*HTTP 204, повтор сразу — HTTP 422, машинный код security_group_rule_can_not_be_deleted_from_current_state.*состояния: нет (404).*повтор после исчезновения — HTTP 404, машинный код security_group_rule_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления правила после исчезновения не записан"; grep 'удаление правила' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление группы.*повтор после исчезновения — HTTP 404, машинный код security_group_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления группы после исчезновения не записан"; grep 'удаление группы' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+# Правило «откуда угодно» без источника вовсе: в теле нет ни адреса, ни
+# группы; в строке — что платформа хранит в remote_ip_prefix (от этого
+# зависит ветка «без префикса — любой» в sgrules.Coverage, план 1.9).
+jq -e 'select(.port_range == "18093:18093") | (has("remote_ip_prefix") | not) and (has("remote_security_group_id") | not)' "$FAKE_DIR/bodies" >/dev/null ||
+	{ echo "FAIL: Г-11: тело правила без источника не то"; grep 18093 "$FAKE_DIR/bodies"; fail=1; }
+grep -q 'Г-11: правило без источника.*HTTP 201.*remote_ip_prefix в чтении по id: «<ip>/0».*remote_security_group: null' "$tmp/out" || { echo "FAIL: Г-11: что хранится у правила без источника, не записано"; grep 'без источника' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # ICMP — с port_range any: без диапазона платформа отвечает 422 (прогон 205).
 grep -q '"ip_protocol":"icmp","port_range":"any"' "$FAKE_DIR/bodies" || { echo "FAIL: Г-11: правило icmp без port_range any"; fail=1; }
 grep -q 'Г-11: повтор создания того же правила' "$tmp/out" || { echo "FAIL: нет строки о повторе правила"; fail=1; }
@@ -464,10 +471,12 @@ rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11, группа не сразу готова: чтение без ответа повторено" "$(grep -c '^GET /security-groups/sg1$' "$FAKE_DIR/calls")" 3
 grep -q 'Г-11: готовность группы.*состояния: created' "$tmp/out" || { echo "FAIL: Г-11: чтение группы после обрыва не повторено"; grep 'готовность' "$tmp/out" | sed 's/^/  | /'; fail=1; }
-# Тела по порядку: группа, пять правил, правило с группой-источником,
-# повтор. Повтор — восьмое: второе правило (udp), а не первое (tcp),
-# которое не создалось.
-[ "$(sed -n 8p "$FAKE_DIR/bodies" | jq -r .ip_protocol)" = udp ] || { echo "FAIL: Г-11: повторено не то правило, что создано: $(sed -n 8p "$FAKE_DIR/bodies")"; fail=1; }
+# Повтор — последний запрос правила в журнале тел: он повторяет второе
+# правило (udp), а не первое (tcp), которое не создалось. По номеру строки
+# сверять нельзя: журнал начинается с тела запроса токена, и прежняя
+# проверка «восьмая строка» смотрела не на повтор.
+[ "$(grep '"port_range":"18090:18090"' "$FAKE_DIR/bodies" | tail -1 | jq -r .ip_protocol)" = udp ] || { echo "FAIL: Г-11: повторено не то правило, что создано: $(grep '"port_range":"18090:18090"' "$FAKE_DIR/bodies" | tail -1)"; fail=1; }
+[ "$(grep -c '"ip_protocol":"udp"' "$FAKE_DIR/bodies")" = 2 ] || { echo "FAIL: Г-11: правило udp отправлено не дважды (создание и повтор)"; fail=1; }
 grep -q '^DELETE /security-groups/sg1/rules/rule2$' "$FAKE_DIR/calls" || { echo "FAIL: Г-11: удаляется не созданное правило"; fail=1; }
 
 g18_world

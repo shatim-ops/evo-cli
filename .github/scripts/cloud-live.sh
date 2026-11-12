@@ -2074,6 +2074,26 @@ probe_g11() {
 		;;
 	*) ok "Г-11: правило с группой-источником" "$(brief)" ;;
 	esac
+	# Правило «откуда угодно» без источника вовсе — ни адреса, ни группы:
+	# что платформа хранит в remote_ip_prefix — пустое значение или
+	# 0.0.0.0/0. От этого зависит, читать ли правило без префикса как «для
+	# любого адреса» (sgrules.Coverage, строка плана 1.9). Группа пробы ни к
+	# чему не привязана; правило уходит вместе с ней.
+	api POST "$C1/security-groups/$sg/rules" "$(jq -nc \
+		'{direction: "ingress", ether_type: "IPv4", ip_protocol: "tcp", port_range: "18093:18093", description: "evo e2e probe"}')"
+	rule=$(jq -r '(if type == "array" then .[0] else . end) | .id? // empty' "$tmp/api.json" 2>/dev/null) || rule=
+	mask "$rule"
+	case "$code" in
+	2??)
+		r="HTTP $code, remote_ip_prefix в ответе создания: «$(jq -r '.remote_ip_prefix? | if . == null then "null" else tostring end' "$tmp/api.json" 2>/dev/null || echo '?')»"
+		if [ -n "$rule" ]; then
+			api GET "$C1/security-groups/$sg/rules/$rule"
+			r="$r; чтение по id: $(case "$code" in 2??) jq -r '"remote_ip_prefix в чтении по id: «\(.remote_ip_prefix? | if . == null then "null" else tostring end)»; remote_security_group: \(.remote_security_group? | if . == null then "null" else "объект" end)"' "$tmp/api.json" 2>/dev/null || echo "не разобрано" ;; *) brief ;; esac)"
+		fi
+		ok "Г-11: правило без источника" "$r"
+		;;
+	*) ok "Г-11: правило без источника" "$(brief)" ;;
+	esac
 	# Правила — отдельным списком группы: в карточке группы их нет, только
 	# счётчики (прогон 205 читал карточку и видел «правил: 0»).
 	rules_get() { api GET "$C1/security-groups/$sg/rules?limit=100"; }
