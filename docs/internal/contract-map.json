@@ -15,6 +15,15 @@
       "no_refusal": "no refusal seen live (register, 28.10)"
     }
   },
+  "backup_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "backup_id",
+      "list": "backup_list",
+      "delete": "backup_delete"
+    }
+  },
   "backup_delete": {
     "destructive": true,
     "deletes": {

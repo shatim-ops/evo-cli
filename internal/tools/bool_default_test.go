@@ -27,6 +27,7 @@ var boolDefaultsTrue = map[string][]string{
 	"external":          {"lb_create"},
 	"routed_network":    {"subnet_create"},
 	"refresh":           {"status"},
+	"wait":              {"backup_create"},
 }
 
 // handlerTrueRE finds a boolean argument read with a default of true:

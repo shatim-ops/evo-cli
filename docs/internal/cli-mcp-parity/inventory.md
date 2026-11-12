@@ -36,6 +36,7 @@
 | auth | `agent_skill` | нет | движок | `evo agent skill` | да/да |
 | auth | `doctor` | нет | движок | `evo doctor` | да/да |
 | auth | `whoami` | нет | движок | `evo whoami` | да/да |
+| backup | `backup_create` | да | дерево | `evo backup create` | да/да |
 | backup | `backup_delete` | да | дерево | `evo backup delete` | да/да |
 | backup | `backup_get` | нет | дерево | `evo backup get` | да/да |
 | backup | `backup_list` | нет | дерево | `evo backup list` | да/да |
@@ -217,6 +218,7 @@
 | `evo ar list` | `ar_list` | — | — | — | — | — |
 | `evo ar operation` | `ar_operation` | operation_id | — | — | — | — |
 | `evo audit events` | `audit_events` | — | — | — | — | — |
+| `evo backup create` | `backup_create` | name | — | — | confirmed | — |
 | `evo backup delete` | `backup_delete` | backup_id | — | — | confirmed | — |
 | `evo backup get` | `backup_get` | backup_id | — | — | — | — |
 | `evo backup list` | `backup_list` | — | — | — | — | — |

@@ -123,6 +123,11 @@ var everySendIsAChange = map[string]string{
 	// A reboot has no «already»: the VM runs before it and after it
 	// (docs/internal/briefs/ops-wave-1.md §5).
 	"vm_reboot": "vm_get",
+	// A backup by the same name is found before the question, but a lost
+	// answer may leave it not yet listed: a repeat would make a second,
+	// billed with no term («Риск», conclusion 164, У5; the audit of #1544,
+	// Б2).
+	"backup_create": "backup_list",
 }
 
 // cutCalls are the records of this caller's own cut calls of the tool name
