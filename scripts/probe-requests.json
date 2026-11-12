@@ -52,6 +52,7 @@
       {"spec": "compute/openapi-v3.yaml", "method": "DELETE", "path": "/api/v1/backups/{backup_id}"},
       {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/protection-plans"},
       {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/protection-plans"},
+      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/protection-plans/{protection_plan_id}", "note": "состояние плана после создания и удаления"},
       {"spec": "compute/openapi-v3.yaml", "method": "DELETE", "path": "/api/v1/protection-plans/{protection_plan_id}"}
     ]},
     {"id": "Г-17", "title": "Теги", "requests": [
