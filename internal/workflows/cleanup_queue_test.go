@@ -43,6 +43,17 @@ func TestWorkflows_CleanupTouchesOnlyFinishedRuns(t *testing.T) {
 	if j.Env["GH_TOKEN"] != "${{ github.token }}" {
 		t.Errorf("cloud-e2e: job cleanup has no GH_TOKEN — e2e_live_runs.sh cannot read the runs")
 	}
+	// The token reads the runs and nothing else, and no code of a pull
+	// request meets it: the workflow starts by hand or on schedule only, and
+	// the job waits for the owner's approval of environment cloud-e2e.
+	for trigger := range w.On {
+		if trigger != "schedule" && trigger != "workflow_dispatch" {
+			t.Errorf("cloud-e2e: trigger %q — the cleanup's GH_TOKEN and the cloud keys would meet code nobody approved", trigger)
+		}
+	}
+	if j.Environment != "cloud-e2e" || !strings.Contains(j.If, "inputs.cleanup_only") {
+		t.Errorf("cloud-e2e: job cleanup (environment %q, if %q) — want the owner's approval and the input cleanup_only", j.Environment, j.If)
+	}
 	const filter = "e2e_live_runs.sh"
 	found := 0
 	for _, s := range j.Steps {
