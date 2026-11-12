@@ -29,7 +29,7 @@ func TestNextStep_StackDestroyStepSendsNothingButTheApprovedDelete(t *testing.T)
 	dir := t.TempDir()
 	j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
 	setup := budgetComputeRegistry(t, cloud, dir, faultToolsTimings())
-	if text, isErr := setup.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
+	if text, isErr := setup.gated("stack_apply", setup.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true}); isErr {
 		t.Fatalf("stack_apply before stack_destroy: %s", text)
 	}
 	cloud.mu.Lock()
@@ -127,10 +127,7 @@ func consentShownElsewhere(tool string) bool {
 // condition of «Риск», conclusion 126). "world" → where the step is made.
 // It only shrinks. Closes by 1.9 («разработка C»: the steps of a read are
 // made without confirmed).
-var readStepCarriesConsent = map[string]string{
-	"k8s_helm: status with confirmed":    "helmAtLimit, list and status: the arguments of the call are passed on as they are",
-	"k8s_kubectl: a read with confirmed": "kubectlAtLimit, a read: the arguments of the call are passed on as they are",
-}
+var readStepCarriesConsent = map[string]string{}
 
 // The rule of TestMCP_NoCallOutlivesTheBudget — a next step carries
 // confirmed only for a tool of the closed lists — in the other worlds a

@@ -107,6 +107,8 @@ type ownerFake struct {
 	// diskOn is the VM every disk of the fake is attached to; "" — none
 	// (a detach needs a disk that is attached to reach its preview).
 	diskOn string
+	// goneStatus is the status of a read of resGone by id; 0 — 404.
+	goneStatus int
 }
 
 // ownerChild is the name of the database and of the user every cluster of
@@ -218,7 +220,11 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.Contains(r.URL.Path, resGone) {
-		http.Error(w, `{"message":"not found"}`, http.StatusNotFound)
+		status := http.StatusNotFound
+		if f.goneStatus != 0 {
+			status = f.goneStatus
+		}
+		http.Error(w, `{"message":"refused"}`, status)
 		return
 	}
 	// A list: the resource of the project the query names.
@@ -234,7 +240,7 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"items": items, "total": len(items), "clusters": items, "zones": zones, "vpcs": items,
-		"balancers": items, "target_groups": items, "certificates": items, "records": items,
+		"balancers": items, "target_groups": items, "certificates": items, "records": items, "registries": items,
 	})
 }
 

@@ -38,7 +38,7 @@ func TestStackDestroy_DeletingUntilTheCloudFinishes(t *testing.T) {
 	}
 	destroy := func(confirmed bool) (map[string]any, bool) {
 		t.Helper()
-		text, isErr := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID, "confirmed": confirmed})
+		text, isErr := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": confirmed})
 		var m map[string]any
 		if err := json.Unmarshal([]byte(text), &m); err != nil {
 			t.Fatalf("%v: %s", err, text)
@@ -96,12 +96,12 @@ func TestStackDestroy_OldDestroyedWithDeletingIsUnfinished(t *testing.T) {
 	if refs := stack.FindResourcefulJobs("g", ""); len(refs) != 1 {
 		t.Errorf("an old job with deletions in progress holds resources, got %v", refs)
 	}
-	text, _ := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID})
+	text, _ := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID})
 	if !strings.Contains(text, "confirmation_required") {
 		t.Errorf("preview: %s", text)
 	}
 	r.handlers["secret_delete"] = fakeOK(map[string]any{"status": "deleting"})
-	got := callTool(t, r.handleStackDestroy, map[string]any{"job_id": j.ID, "confirmed": true})
+	got := callTool(t, r.gated("stack_destroy", r.planStackDestroy), map[string]any{"job_id": j.ID, "confirmed": true})
 	if got["status"] != "deleting" {
 		t.Errorf("re-check still deleting: %v", got)
 	}

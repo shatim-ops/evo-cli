@@ -1457,9 +1457,9 @@ func (s *Registry) registerTools() {
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_add_addon":        s.gated("k8s_add_addon", s.planK8sAddAddon),
-		"k8s_kubectl":          s.handleK8sKubectl,
-		"k8s_apply":            s.handleK8sApply,
-		"k8s_helm":             s.handleK8sHelm,
+		"k8s_kubectl":          s.gated("k8s_kubectl", s.planK8sKubectl),
+		"k8s_apply":            s.gated("k8s_apply", s.planK8sApply),
+		"k8s_helm":             s.gated("k8s_helm", s.planK8sHelm),
 		"disk_list":            s.handleDiskList,
 		"disk_create":          s.gated("disk_create", s.planDiskCreate),
 		"disk_attach":          s.gated("disk_attach", s.planDiskAttach),
@@ -1568,9 +1568,9 @@ func (s *Registry) registerTools() {
 		"s3_bucket_create":     s.gated("s3_bucket_create", s.planS3BucketCreate),
 		"s3_bucket_delete":     s.gated("s3_bucket_delete", s.planS3BucketDelete),
 		"stack_plan":           s.handleStackPlan,
-		"stack_apply":          s.handleStackApply,
+		"stack_apply":          s.gated("stack_apply", s.planStackApply),
 		"stack_status":         s.handleStackStatus,
-		"stack_destroy":        s.handleStackDestroy,
+		"stack_destroy":        s.gated("stack_destroy", s.planStackDestroy),
 	}
 }
 
