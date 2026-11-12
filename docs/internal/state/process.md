@@ -15,7 +15,6 @@
 
 ## Ждёт решения
 
-- Вп-13 (macOS на PR) — раздел 2.4 плана.
 - Охват Windows на PR (#1155); страницы входа в `sensitivePaths` Qwen (#1347); `discrepancies-check.py` в `RELEASING.md`.
 
 ## Постоянные разрешения
