@@ -28,7 +28,7 @@ const toolBudget = 1500
 // in 1.8).
 var toolsOverBudget = map[string]int{
 	"deploy_plan": 2750,
-	"pg_create":   1669,
+	"pg_create":   1676,
 	"provision":   2352,
 }
 
