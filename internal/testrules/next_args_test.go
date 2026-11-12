@@ -38,7 +38,7 @@ var consentWriters = map[string]string{
 	"internal/tools/tools_disk.go: diskAttachArgs":         "the step of disk_attach and of disk_create attach_to: a declared continuation, bound to disk_id and vm",
 	"internal/tools/tools_stack.go: stackDestroyNext":      "the step of stack_destroy: a declared continuation, bound to job_id",
 	"internal/tools/tools_stack.go: advance":               "not a step: stack_apply, consented for the whole stack, calls the tool of each step",
-	"internal/tools/tools_stack.go: handleStackDestroy":    "not a step: stack_destroy, consented for the whole job, calls the delete of each resource",
+	"internal/tools/tools_stack.go: planStackDestroy":      "not a step: stack_destroy, consented for the whole job, calls the delete of each resource",
 }
 
 // argsCopies are the functions of internal/tools that copy the arguments

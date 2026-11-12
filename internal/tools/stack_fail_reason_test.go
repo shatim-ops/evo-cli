@@ -37,7 +37,7 @@ func TestStackStatus_EveryFailedStepNamesItsReason(t *testing.T) {
 			r := newTestServer()
 			j := planJob(t, `{"name":"s","postgres":{"name":"p"}}`)
 			tc.setup(r)
-			r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+			r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 			var text string
 			for range 3 {
 				text, _ = r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})

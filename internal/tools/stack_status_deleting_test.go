@@ -71,7 +71,7 @@ func TestStackDestroy_PreviewOfDeletingJobDoesNotSayDestroyed(t *testing.T) {
 	if err := j.Save(); err != nil {
 		t.Fatal(err)
 	}
-	text, _ := r.handleStackDestroy(context.Background(), map[string]any{"job_id": j.ID})
+	text, _ := r.gated("stack_destroy", r.planStackDestroy)(context.Background(), map[string]any{"job_id": j.ID})
 	var m map[string]any
 	if err := json.Unmarshal([]byte(text), &m); err != nil {
 		t.Fatalf("%v: %s", err, text)
