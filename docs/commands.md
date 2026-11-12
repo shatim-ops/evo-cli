@@ -9729,7 +9729,7 @@ evo vm get <vm-id|name> [flags]
 
 Вызывает инструмент vm_list (подробнее: 'evo tools describe vm_list').
 
-Отбор: --zone, --state, --name, --flavor, --public-ip, --ids, --states. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+Отбор: --zone, --state, --name, --flavor, --public-ip, --images, --ids, --states. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
 ```
 
 ```
@@ -9751,6 +9751,7 @@ evo vm list [flags]
       --flavor string        Только с этим flavor: имя
   -h, --help                 Справка по list
       --ids stringArray      Только с одним из этих id (флаг повторяется или значения через запятую)
+      --images stringArray   Только из этих образов: id или имя. Читает каждую ВМ, оставшуюся после остальных фильтров, — сузьте ими (флаг повторяется или значения через запятую)
       --name string          Только с этой частью имени, регистр не важен
       --public-ip            true — только с публичным IP, false — только без него (false задаётся так: --public-ip=false)
       --state string         Только в этом состоянии: running, stopped, error, error_creating, error_deleting, creating, starting, stopping, rebooting, deleting, updating
