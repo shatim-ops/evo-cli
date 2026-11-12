@@ -514,12 +514,16 @@ probe_on() { case " ${PROBES:-} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; 
 api() {
 	local rid=()
 	[ -z "${API_RID:-}" ] || rid=(-H "X-Request-Id: $API_RID")
-	rm -f "$tmp/api.h" # заголовки прошлого ответа — не этого запроса
+	# Заголовки и тело прошлого ответа — не этого запроса: без ответа
+	# (обрыв, код 000) прошлое тело читалось как ответ (прогон 204).
+	rm -f "$tmp/api.h"
+	: >"$tmp/api.json" # пустой, а не удалённый: jq читает его без ошибки
+	API_RC=0
 	if [ -n "${3:-}" ]; then
 		code=$(printf '%s' "$3" | curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
-			-H "Authorization: Bearer $TOKEN" "${rid[@]}" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || code=000
+			-H "Authorization: Bearer $TOKEN" "${rid[@]}" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || { API_RC=$? code=000; }
 	else
-		code=$(curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || code=000
+		code=$(curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || { API_RC=$? code=000; }
 	fi
 }
 # api_rid — заголовки id запроса последнего ответа api (request, trace,
@@ -593,7 +597,9 @@ vm_post() {
 # ломала разбор — проба писала «image_get не отдал fields» и не слала запрос.
 vm_pw() {
 	[ -z "${VM_PW:-}" ] || return 0
-	VM_PW=$(openssl rand -hex 16)
+	# Заглавная буква, строчная и цифра: без заглавной платформа отвергла
+	# метаданные образа (прогон 204, vm_metadata_validation).
+	VM_PW=Ev1$(openssl rand -hex 16)
 	mask "$VM_PW"
 }
 vm_meta() {
@@ -2143,6 +2149,12 @@ mcode() { jq -r '[(if type == "array" then .[] else . end) | objects | (.code?, 
 QUOTA_HIT=0
 refusal() {
 	local mc d kind left=''
+	# No answer at all is not a refusal of the platform: the outcome of the
+	# request is unknown (run 204 printed it as «отказ HTTP 000»).
+	if [ "$code" = 000 ]; then
+		gap "$1" "ответа нет (curl: код ${API_RC:-?}) — исход запроса неизвестен; evo сегодня: ${EVO_NOW:-операции в evo нет}"
+		return 0
+	fi
 	mc=$(mcode)
 	d="отказ HTTP $code ($2); поля тела: $(keys_of); машинный код: ${mc:-нет}; текст: $(api_why | cut -c1-160); evo сегодня: ${EVO_NOW:-операции в evo нет}"
 	case "$mc" in *[Qq][Uu][Oo][Tt][Aa]*)
@@ -2605,8 +2617,18 @@ probe_g18() {
 			ok "Г-18: повтор создания с тем же именем" "$(brief)"
 			# Свои интерфейсы — по имени пробы из списка интерфейсов этой ВМ.
 			api GET "$C1/interfaces?project_id=$PROJECT&vm_id=$vm&limit=100"
-			jq -r --arg n "$n-if" '.items[]? | select((.name // "") == $n) | .id' "$tmp/api.json" >"$tmp/g18.if" 2>/dev/null || : >"$tmp/g18.if"
-			r="список: HTTP $code, своих интерфейсов: $(grep -c . "$tmp/g18.if" || true)"
+			case "$code" in
+			2??)
+				jq -r --arg n "$n-if" '.items[]? | select((.name // "") == $n) | .id' "$tmp/api.json" >"$tmp/g18.if" 2>/dev/null || : >"$tmp/g18.if"
+				r="список: HTTP $code, своих интерфейсов: $(grep -c . "$tmp/g18.if" || true)"
+				;;
+			*)
+				# Список отказал (прогон 204: 422 на запрос по спецификации):
+				# интерфейс удаляется по id из ответа создания.
+				r="список: $(brief) — удаляю по id из ответа создания"
+				printf '%s\n' "$ifc" >"$tmp/g18.if"
+				;;
+			esac
 			while read -r id; do
 				[ -n "$id" ] || continue
 				mask "$id"

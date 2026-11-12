@@ -16,7 +16,7 @@ fake_evo_install "$tmp/bin"
 # $FAKE_DIR/http, чей образец (МЕТОД и окончание пути, glob) подходит:
 # «МЕТОД ОБРАЗЕЦ КОД [ТЕЛО]»; «МЕТОД!» — строка на один запрос (следующий
 # такой же запрос получит следующую подходящую строку: состояния по
-# очереди). Нет подходящей — так же по $FAKE_DIR/http.default (пустые
+# очереди; код 000 — обрыв без ответа). Нет подходящей — так же по $FAKE_DIR/http.default (пустые
 # списки копий и планов для уборки области); нет и там — 404 с телом {}.
 cat >"$tmp/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
@@ -52,6 +52,8 @@ while read -r m pat c b; do
 		;;
 	esac
 done < <(cat "$FAKE_DIR/http" "$FAKE_DIR/http.default" 2>/dev/null)
+# Код 000 — curl не получил ответа: тела нет, код выхода 56 (обрыв).
+[ "$code" != 000 ] || { printf '000'; exit 56; }
 printf '%s' "$body" >"$out"
 printf '%s' "$code"
 FAKE
@@ -373,7 +375,7 @@ want "Г-18: запросы по порядку" "$(calls)" "POST /interfaces;GE
 jq -e --arg p p '.vm_id == "vm1" and .subnet_id == "sn1" and .name == "evo-e2e-ops-r7a1-g18-if" and .project_id == $p' "$FAKE_DIR/body.POST.interfaces" >/dev/null ||
 	{ echo "FAIL: Г-18: тело создания интерфейса не то: $(cat "$FAKE_DIR/body.POST.interfaces" 2>/dev/null)"; fail=1; }
 # Другой образ — того же семейства, что образ ВМ, и не требует больше её flavor.
-jq -e '.image_id == "img-24" and (has("image_name") | not) and .image_metadata.hostname == "evo-e2e-ops-r7a1-g18" and (.image_metadata.password | test("^[0-9a-f]{32}$"))' "$FAKE_DIR/body.POST.vms.vm1.rebuild" >/dev/null ||
+jq -e '.image_id == "img-24" and (has("image_name") | not) and .image_metadata.hostname == "evo-e2e-ops-r7a1-g18" and (.image_metadata.password | test("^Ev1[0-9a-f]{32}$"))' "$FAKE_DIR/body.POST.vms.vm1.rebuild" >/dev/null ||
 	{ echo "FAIL: Г-18: тело пересоздания не то: $(cat "$FAKE_DIR/body.POST.vms.vm1.rebuild" 2>/dev/null)"; fail=1; }
 for s in 'Г-18: второй интерфейс.*HTTP 201' 'повтор создания с тем же именем.*HTTP 422, машинный код interface_name_exists' 'удаление интерфейса.*HTTP 204, повтор — HTTP 404' 'пересоздание на запущенной ВМ.*машинный код: vm_can_not_be_changed' 'Г-18: пересоздание из ubuntu-24.04.*на остановленной.*rebuilding → stopped.*образ тот, что просили.*публичный адрес тот же: да.*загрузочный диск тот же: да'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-18: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
@@ -399,6 +401,29 @@ H
 rc=0
 PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-18, отказ не про состояние: одна попытка, без остановки" "$(grep -c 'rebuild' "$FAKE_DIR/calls") $(grep -c 'set-power' "$FAKE_DIR/calls" || true)" "1 0"
+
+# Прогон 204. Список интерфейсов ВМ отвечает отказом: интерфейс удаляется по
+# id из ответа создания, а отказ списка записан с машинным кодом. Запрос без
+# ответа (обрыв, код 000) — не «отказ платформы»: строка «не покрыто», исход
+# неизвестен; тело прошлого ответа за ответ не выдаётся.
+g18_world
+cat >"$FAKE_DIR/http" <<H
+POST! /interfaces 201 {"id":"if1","state":"creating"}
+GET! /vms/vm1 200 {$V,"state":"running"}
+POST! /interfaces 422 [{"code":"only_one_interface","message":"dup"}]
+GET /interfaces?* 422 [{"code":"list_refused","message":"no"}]
+DELETE! /interfaces/if1 204
+DELETE /interfaces/if1 404 [{"code":"interface_not_found"}]
+GET /vms/vm1 200 {$V,"state":"running"}
+POST /vms/vm1/rebuild 000
+H
+rc=0
+PROBES=g18 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-18, список отказал: интерфейс удалён по id создания" "$(grep -c '^DELETE /interfaces/if1$' "$FAKE_DIR/calls")" 2
+grep -q 'Г-18: удаление интерфейса.*список: HTTP 422, машинный код list_refused.*удаление интерфейса: HTTP 204' "$tmp/out" || { echo "FAIL: Г-18: отказ списка интерфейсов не записан или интерфейс не удалён"; grep 'Г-18' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-18: пересоздание на запущенной ВМ.*не покрыто.*ответа нет (curl: код 56)' "$tmp/out" || { echo "FAIL: Г-18: обрыв без ответа записан не как «не покрыто»"; grep 'пересоздание' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+if grep -q 'отказ HTTP 000\|"state":"running"' "$tmp/out"; then echo "FAIL: Г-18: обрыв выдан за отказ или напечатано тело прошлого ответа"; fail=1; fi
+want "Г-18, обрыв: второй попытки и остановки нет" "$(grep -c 'rebuild' "$FAKE_DIR/calls") $(grep -c 'set-power' "$FAKE_DIR/calls" || true)" "1 0"
 
 # Пересоздание выдало ВМ новый загрузочный диск, а старый оставило без ВМ:
 # под именем пробы уборка его может не найти — проба удаляет его по id
