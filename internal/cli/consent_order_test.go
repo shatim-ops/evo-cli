@@ -48,6 +48,18 @@ var alreadyAsks = map[string]string{
 // description that say so: the agent learns it there, before the call.
 var repeatIsANewChange = map[string]string{}
 
+// repeatRefused are the changes shipped before the invariant whose repeat
+// is refused before the question, with the state named, and not answered
+// already_<outcome>: safe — no question, no write — and kept as it is,
+// since the answer of a shipped tool does not change without a decision
+// (USAGE, exit 1 → 0 is breaking). "tool" → the world of consentWorlds
+// that has the change already and names the tool in refusedBy. The list
+// is closed: a new change answers already_<outcome> (D99, П3; «1.9 —
+// релиз», 12.11, variant «а»).
+var repeatRefused = map[string]string{
+	"disk_resize": "disk of the size asked",
+}
+
 // repeatUndeclared are the changes shipped before the invariant whose
 // repeat nothing declares: no world has the change already, and no
 // declaration says a repeat is a new change. "tool" → what a repeat does
@@ -62,7 +74,6 @@ var repeatUndeclared = map[string]string{
 	"cert_renew":         "a renewal of a certificate being renewed: no world; or every send is a renewal",
 	"deploy":             "a deploy over its own record: no world of consent has it",
 	"deploy_apply":       "an apply of a plan applied: no world",
-	"disk_resize":        "a resize to the size the disk has: no world («disk larger than requested» is the shrink)",
 	"k8s_add_addon":      "an addon the cluster has: no world",
 	"k8s_apply":          "the repeat is the cluster's (kubectl apply): not declared",
 	"k8s_helm":           "the repeat is the cluster's (helm): not declared",
@@ -89,7 +100,9 @@ var repeatUndeclared = map[string]string{
 //     TheQuestion calls the tool in it: no question, no write, a status
 //     already_<outcome>;
 //   - a change every send of which is new (repeatIsANewChange), said in
-//     the tool's description.
+//     the tool's description;
+//   - of the tools shipped before the invariant, a repeat refused before
+//     the question with the state named (repeatRefused).
 //
 // The classes of the registry are read from docs/internal/contract-map.json,
 // which TestContractMap keeps equal to the declarations.
@@ -138,6 +151,12 @@ func TestConsent_EveryChangeDeclaresItsRepeat(t *testing.T) {
 				t.Errorf("%s: repeatIsANewChange quotes %q, and the description does not say it — the agent learns from the description that a repeat is a new change", tl.Name, words)
 			}
 		}
+		if world := repeatRefused[tl.Name]; world != "" {
+			classes = append(classes, "a repeat refused before the question (repeatRefused)")
+			if w, ok := consentWorlds[world]; !ok || !slices.Contains(w.refusedBy, tl.Name) || w.names == "" {
+				t.Errorf("%s: repeatRefused names the world %q, which is not a world of consentWorlds that the tool refuses in (refusedBy) with the state named (names)", tl.Name, world)
+			}
+		}
 		pending := repeatUndeclared[tl.Name] != ""
 		switch {
 		case len(classes) == 0 && !pending:
@@ -154,7 +173,7 @@ func TestConsent_EveryChangeDeclaresItsRepeat(t *testing.T) {
 	for _, table := range []struct {
 		name  string
 		tools map[string]string
-	}{{"repeatIsANewChange", repeatIsANewChange}, {"repeatUndeclared", repeatUndeclared}} {
+	}{{"repeatIsANewChange", repeatIsANewChange}, {"repeatRefused", repeatRefused}, {"repeatUndeclared", repeatUndeclared}} {
 		for name := range table.tools {
 			if tl, ok := byName[name]; !ok || !tl.Mutating {
 				t.Errorf("%s names %s, which is not a tool that changes the cloud: remove the line", table.name, name)
@@ -316,6 +335,15 @@ var consentWorlds = map[string]consentWorld{
 		`{"id":"` + consentOtherID + `","direction":"ingress","ip_protocol":"tcp","port_range":"443:443","remote_ip_prefix":"0.0.0.0/0"}`),
 		alreadyFor: []string{"open_ports"}},
 	"ports closed already": {answer: consentRulesAnswer(``), alreadyFor: []string{"close_ports"}},
+	// The disk has the size disk_resize asks for (parityArgs: 50 GB): the
+	// repeat of a resize is refused before the question, and the refusal
+	// names the size the disk has (repeatRefused).
+	"disk of the size asked": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
+			return nil
+		}
+		return consentJSON(http.StatusOK, `{"id":"`+parityVM+`","name":"old","size":50,"state":"available"}`)
+	}, refusedBy: []string{"disk_resize"}, names: "50 GB"},
 	"disk larger than requested": {answer: func(r *http.Request) *http.Response {
 		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || !strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 			return nil
