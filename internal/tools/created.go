@@ -73,6 +73,7 @@ var createdIDs = map[string]created{
 	"s3_bucket_create":  {arg: "bucket", delete: "s3_bucket_delete"},
 	"s3_put":            {arg: "key", delete: "s3_rm"},
 	"secret_create":     {arg: "path", lost: "secret_id", list: "secret_list", field: "secrets", delete: "secret_delete"},
+	"sg_rule_create":    {id: "rule_id", delete: "sg_rule_delete"},
 	"snat_create":       {id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"},
 	"subnet_create":     {id: "subnet_id", list: "list_subnets", field: "subnets", delete: "subnet_delete"},
 	"tg_create":         {id: "tg_id", list: "tg_list", field: "target_groups", delete: "tg_delete"},

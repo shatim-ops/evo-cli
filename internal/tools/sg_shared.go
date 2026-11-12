@@ -22,6 +22,10 @@ import (
 // applies to.
 const allowInternetArg = "allow_internet_on_shared_group"
 
+// allowInternetDesc describes allowInternetArg in the schema of each tool
+// that has it.
+const allowInternetDesc = "true to open to the whole internet on a shared group: the person decides, not the model."
+
 // sgGroupUse reads who a rule of group acts on: the interfaces of the
 // project that are in it. A list that cannot be read is said as such, and
 // the group is judged on the careful side (sgrules.Use).

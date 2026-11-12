@@ -96,10 +96,12 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 // tool they come from, not under the API's word: "tool path" → the key.
 // The value must match, as for any key; a line no write reaches fails.
 var bodyNamedAs = map[string]string{
-	"ar_create isPublic": "public",
-	"vm_start state":     "command",
-	"vm_stop state":      "command",
-	"vm_reboot state":    "command",
+	"ar_create isPublic":              "public",
+	"sg_rule_create ip_protocol":      "protocol",
+	"sg_rule_create remote_ip_prefix": "source",
+	"vm_start state":                  "command",
+	"vm_stop state":                   "command",
+	"vm_reboot state":                 "command",
 	"ca_deploy configuration.ingress.publiclyAccessible": "public",
 	"lb_create external_address_spec.allocate":           "external",
 

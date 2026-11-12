@@ -188,6 +188,13 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "destroy", map[string]any{})
 		return text
 	},
+	// sg_rule_create reads the group, its rules and its interfaces before
+	// the question.
+	"sg_rule_create": func(t *testing.T) string {
+		r, _ := sgRegistryOver(t, newSGMakeWorld())
+		_, text, _ := callNamed(t, r, "sg_rule_create", map[string]any{"security_group": sgZoneGroup, "direction": "ingress", "protocol": "tcp", "ports": "8080", "cidr": "10.0.0.0/8"})
+		return text
+	},
 	// sg_rule_delete reads the group and its rules before the question.
 	"sg_rule_delete": func(t *testing.T) string {
 		r, _ := sgRuleRegistry(t, newSGWorld())

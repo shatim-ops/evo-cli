@@ -439,6 +439,7 @@ var groupByName = map[string]string{
 	"destroy":        "deploy",
 	"open_ports":     "deploy",
 	"close_ports":    "deploy",
+	"sg_rule_create": "vpc",
 	"sg_rule_delete": "vpc",
 
 	"provision":    "vm",

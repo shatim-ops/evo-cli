@@ -115,6 +115,12 @@ func (w *sgWorld) deleted() int {
 
 func sgRuleRegistry(t *testing.T, w *sgWorld) (*Registry, string) {
 	t.Helper()
+	return sgRegistryOver(t, w)
+}
+
+// sgRegistryOver is a registry whose engine talks to cloud, and its folder.
+func sgRegistryOver(t *testing.T, w provision.CloudAPI) (*Registry, string) {
+	t.Helper()
 	dir := t.TempDir()
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer

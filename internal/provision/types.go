@@ -277,6 +277,9 @@ type SGRule struct {
 	// remote_security_group; a request names the group by another field).
 	// Such a rule lets in the interfaces of that group, not any address.
 	RemoteSecurityGroup *SGRuleGroup `json:"remote_security_group,omitempty"`
+	// RemoteSecurityGroupID names the source group in a request (write
+	// only: the answer names it in RemoteSecurityGroup).
+	RemoteSecurityGroupID string `json:"remote_security_group_id,omitempty"`
 }
 
 // SGRuleGroup is the source group of a rule, as the API names it.

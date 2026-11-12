@@ -248,4 +248,4 @@ func TestWorkflows_WritesDeclareCreates(t *testing.T) {
 // a resource of a tool without declaring it (floating IP, a rule of a
 // security group, a cluster addon, a secret version): it only shrinks.
 // Closes by 1.9 (process backlog, #990).
-const createsUndeclared = 4
+const createsUndeclared = 3

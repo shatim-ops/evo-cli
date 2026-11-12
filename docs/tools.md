@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (165) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo (166) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -234,7 +234,7 @@
 | `s3_buckets` | `evo s3 buckets` | нет | — | List Object Storage (S3) buckets. | Бакеты Object Storage |
 | `s3_ls` | `evo s3 ls` | нет | `bucket` | List objects in an S3 bucket (key, size, last_modified). | Объекты бакета: ключ, размер, время изменения |
 | `s3_get` | `evo s3 get` | нет | `bucket`, `key` | Download an S3 object up to 10 MiB (a larger one is refused with USAGE: use an S3 client or the console). | Скачать объект до 10 МиБ (небольшой текст — как есть, остальное — в base64; больший объект — через S3-клиент или консоль) |
-| `s3_put` | `evo s3 put` | удаляет | `bucket`, `key` | Upload an S3 object from inline content (content) or base64 (content_base64). | Загрузить объект (существующий ключ перезаписывается) |
+| `s3_put` | `evo s3 put` | удаляет | `bucket`, `key` | Upload an S3 object from inline content (content) or base64 (content_base64); stored objects are billed. | Загрузить объект (существующий ключ перезаписывается) |
 | `s3_rm` | `evo s3 rm` | удаляет | `bucket`, `key` | Delete an S3 object. | Удалить объект |
 | `s3_bucket_create` | `evo s3 bucket-create` | да | `bucket` | Create an Object Storage (S3) bucket. | Создать бакет |
 | `s3_bucket_delete` | `evo s3 bucket-delete` | удаляет | `bucket` | Delete an EMPTY S3 bucket. | Удалить пустой бакет |
@@ -290,6 +290,7 @@
 | `subnet_delete` | `evo vpc subnet-delete` | удаляет | `subnet_id` | Delete a subnet by id (from list_subnets). | Удалить подсеть |
 | `list_security_groups` | `evo vpc security-groups` | нет | — | List Cloud.ru security groups (UUID, name, availability zone). | Группы безопасности (с --rules — вместе с правилами) |
 | `list_floating_ips` | `evo vpc fips` | нет | — | List Cloud.ru floating IPs (address, state, whether available to attach, zone when the API names it). | Floating IP: адрес, состояние, свободен ли |
+| `sg_rule_create` | `evo vpc sg-rule-create` | да | `security_group`, `direction`, `protocol`, `ports` | Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). | Добавить правило в группу безопасности |
 | `sg_rule_delete` | `evo vpc sg-rule-delete` | удаляет | `security_group`, `rule_id` | Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). | Удалить правило группы безопасности по его id |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |
 | `vpc_list` | `evo vpc list` | нет | — | List Evolution VPCs (virtual private clouds) in the project (id, name, default, type). | Список VPC проекта |
