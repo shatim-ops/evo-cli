@@ -342,12 +342,11 @@ func TestListFilters_WithTheHandlersOwn(t *testing.T) {
 	}
 }
 
-// cloudProbed are the parameters of the Compute lists the probe found to
-// answer what evo's rule answers, in two runs of two (api-probe, runs of
-// 11–12.11; release plan 1.8.2): the only ones a filter may hand to the
-// cloud (condition 3 of the risk conclusion 104). A parameter the probe
-// found to differ (free of the floating IPs, the zone of the flavors) or
-// could not check (the SNAT gateways, the VPC of the subnets) stays evo's.
+// cloudProbed are the parameters of the Compute lists the probe confirmed
+// to answer what evo's rule answers, in two runs of two (api-probe; release
+// plan 1.8.2): the only ones a filter may hand to the cloud (condition 3
+// of the risk conclusion 104). A parameter the probe did not confirm stays
+// evo's; the results are in the closed repository.
 var cloudProbed = map[string]bool{
 	"/api/v1/vms availability_zone_ids":            true,
 	"/api/v1/vms statuses":                         true,
