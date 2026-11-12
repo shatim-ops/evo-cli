@@ -169,3 +169,29 @@ func TestPages_ButtonsDoNotWrap(t *testing.T) {
 		t.Errorf("the buttons may wrap: %q", rule)
 	}
 }
+
+// FB182-4 (delta audit 1.8.2; release plan 1.8.2, «Правки дельта-аудита»):
+// the line of the page's term says what to do after it — run evo login
+// again from the terminal. V3 left only «until 08:40»: after the term the
+// button meets a closed loopback and the browser shows a connection error,
+// with no word of the terminal. The line is visible: state 09 still fits
+// 1280×720 (TestPages_FitTheScreenAndButtonsStayOnOneLine).
+func TestConsent_PageTermSaysWhatToDoAfter(t *testing.T) {
+	prev := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	until := time.Date(2026, 11, 10, 9, 10, 0, 0, time.Local)
+	for _, lang := range []string{i18n.RU, i18n.EN} {
+		i18n.SetLang(lang)
+		s := &session{cfg: Config{Now: time.Now}, until: until,
+			projects: []project{{ID: "a", Name: "alpha", Allowed: true}}}
+		text := visibleText(renderPage(t, consentPage(s)))
+		i := strings.Index(text, "09:10")
+		if i < 0 {
+			t.Errorf("%s: the page does not name its term", lang)
+			continue
+		}
+		if after := text[i:min(len(text), i+160)]; !strings.Contains(after, "evo login") {
+			t.Errorf("%s: the term does not say to run evo login again after it: %q", lang, after)
+		}
+	}
+}
