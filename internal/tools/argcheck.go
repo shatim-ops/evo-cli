@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/netip"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -136,10 +137,9 @@ func ruleArg(k string, p map[string]any, v any) error {
 		return nil
 	}
 	if min, ok := p["minLength"].(int); ok && len(strings.TrimSpace(s)) < min {
-		re := ruleErr(k, p, i18n.Tf("%s is empty", "%s пустой", k))
-		re.ce.Hint = i18n.Tf("Give %s a value or drop the argument: an empty value is not read as «not set».",
-			"Задайте %s значение или уберите аргумент: пустое значение не читается как «не задано».", k)
-		return re
+		return ruleErr(k, p, i18n.Tf("%s is empty", "%s пустой", k),
+			i18n.Tf("Give %s a value or drop the argument: an empty value is not read as «not set».",
+				"Задайте %s значение или уберите аргумент: пустое значение не читается как «не задано».", k))
 	}
 	if strings.TrimSpace(s) == "" {
 		return nil
@@ -168,10 +168,16 @@ type ruleError struct {
 func (e *ruleError) Error() string { return e.ce.Error() }
 func (e *ruleError) Unwrap() error { return e.ce }
 
-func ruleErr(k string, p map[string]any, msg string) *ruleError {
+// ruleErr is the refusal of argument k by a rule of its schema p; hint,
+// when given, replaces the one that points at the argument's description.
+func ruleErr(k string, p map[string]any, msg string, hint ...string) error {
+	h := ruleHint(k)
+	if len(hint) > 0 {
+		h = hint[0]
+	}
 	re := &ruleError{
 		Arg: k,
-		ce:  clierrors.New(clierrors.CodeUsage, msg, ruleHint(k, p)),
+		ce:  clierrors.New(clierrors.CodeUsage, msg, h),
 	}
 	if f, ok := p["format"].(string); ok && f != "" {
 		re.Format = f
@@ -206,9 +212,38 @@ func noEmptyValue(t *Tool, names ...string) {
 	}
 }
 
+// emptyScopeField is the path of the first scope field (scopeArgs) with an
+// empty string value in the object v, a manifest of steps: "" when there
+// is none. path names v itself.
+func emptyScopeField(v any, path string) string {
+	switch x := v.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
+			if s, ok := x[k].(string); ok && strings.TrimSpace(s) == "" && slices.Contains(scopeArgs, k) {
+				return path + "." + k
+			}
+			if p := emptyScopeField(x[k], path+"."+k); p != "" {
+				return p
+			}
+		}
+	case []any:
+		for i, e := range x {
+			if p := emptyScopeField(e, path+"["+strconv.Itoa(i)+"]"); p != "" {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
 // ruleHint points at the argument's description, which says where the
 // value comes from.
-func ruleHint(k string, _ map[string]any) string {
+func ruleHint(k string) string {
 	return i18n.Tf("See %s in the tool's inputSchema.", "См. %s в inputSchema инструмента.", k)
 }
 

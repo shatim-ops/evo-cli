@@ -64,3 +64,57 @@ func TestScopeArgs_EmptyIsUsage(t *testing.T) {
 		t.Fatalf("checked %d scope arguments and %d own filters", scoped, own)
 	}
 }
+
+// evo's own next step never carries an empty scope argument: an agent that
+// follows next_args to the letter would get USAGE from evo's own hint
+// (conclusion 117 of «Риск», У1). The one point of every next step leaves
+// such an argument out; any other argument goes as it is.
+func TestScopeArgs_NextStepCarriesNoEmptyScope(t *testing.T) {
+	answer := map[string]any{}
+	nextStep(answer, "provision", map[string]any{
+		"name": "web", "zone": "", "region": "  ", "project_id": "", "availability_zone_id": "",
+		"image": "", "confirmed": true,
+	})
+	next, _ := answer["next_args"].(map[string]any)
+	for _, a := range scopeArgs {
+		if _, ok := next[a]; ok {
+			t.Errorf("next_args carries the empty %s: %v", a, next)
+		}
+	}
+	if next["name"] != "web" || next["confirmed"] != true || answer["next_tool"] != "provision" {
+		t.Errorf("the next step lost an argument: %v", answer)
+	}
+	if _, ok := next["image"]; !ok {
+		t.Errorf("an empty argument that is no scope was dropped: %v", next)
+	}
+	tl, _ := New(nil).Lookup("provision")
+	if err := CheckArgs(tl, map[string]any{"name": "web", "confirmed": true}); err != nil {
+		t.Errorf("the next step is not a call the tool takes: %v", err)
+	}
+}
+
+// A composite call refuses an empty scope at its plan, before the question
+// and before anything is made — not in the middle of stack_apply, with
+// half a stack live (conclusion 117, У2): a manifest with an empty zone
+// of one resource is USAGE of stack_plan naming the field, with no
+// request; deploy_plan refuses its own empty zone by the schema.
+func TestScopeArgs_CompositeRefusesAtThePlan(t *testing.T) {
+	f := &apiFake{}
+	r := apiFakeRegistry(t, f)
+	m, text, isErr := callNamed(t, r, "stack_plan", map[string]any{"manifest": map[string]any{
+		"name": "shop", "vm": map[string]any{"name": "web", "zone": ""},
+	}})
+	if !isErr || m["reason"] != clierrors.CodeUsage || !strings.Contains(text, "manifest.vm.zone") {
+		t.Errorf("stack_plan with an empty zone: %s", text)
+	}
+	if n := f.count(); n != 0 {
+		t.Errorf("stack_plan sent %d requests before refusing", n)
+	}
+	m, text, isErr = callNamed(t, r, "deploy_plan", map[string]any{"product": "shop", "zone": ""})
+	if !isErr || m["reason"] != clierrors.CodeUsage || m["argument"] != "zone" {
+		t.Errorf("deploy_plan with an empty zone: %s", text)
+	}
+	if n := f.count(); n != 0 {
+		t.Errorf("deploy_plan sent %d requests before refusing", n)
+	}
+}
