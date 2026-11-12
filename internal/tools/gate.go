@@ -137,6 +137,7 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		}
 		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) {
 			text, isErr := next(ctx, args)
+			r.settleHeld(t.Name, args, text)
 			return r.namedKept(t.Name, args, text), isErr
 		}
 		end, err := r.beginIntent(ctx, t.Name, args)

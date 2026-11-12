@@ -73,7 +73,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		return func(string) {}, nil
 	}
 	dir := intent.Dir(root)
-	done, err := intent.Begin(dir, in)
+	rec, err := intent.Open(dir, in)
 	if err != nil {
 		return nil, err
 	}
@@ -81,9 +81,81 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), 0) {
 			return
 		}
-		done()
-		intent.Settle(dir, in)
+		// The call ended and the operation goes on: its answer names the
+		// same tool as the next step. The record stays, named as that
+		// step names the resource, until a call of the step ends the
+		// operation (settleHeld) — and its StartedAt is the start the
+		// limit of the repeats counts from.
+		if next, goesOn := sameToolNext(name, answer); goesOn {
+			// Named as a call of the step would be (the same rule of the
+			// project of a call addressed by id).
+			rec.Name, rec.Target = intentResource(name, next)
+			if _, _, byID := intentTarget(rec); byID && stringArg(next, "project_id") == "" {
+				rec.ProjectID = ""
+			}
+			intent.Hold(rec)
+			rec.Held = true
+			intent.Settle(dir, rec)
+			return
+		}
+		intent.Close(rec)
+		intent.Settle(dir, rec)
 	}, nil
+}
+
+// sameToolNext reads the next step of answer when it is a call of tool
+// itself (next_tool, next_args): the operation goes on, and that call
+// goes on with it.
+func sameToolNext(tool, answer string) (args map[string]any, ok bool) {
+	var a struct {
+		NextTool string         `json:"next_tool"`
+		NextArgs map[string]any `json:"next_args"`
+	}
+	if json.Unmarshal([]byte(answer), &a) != nil || a.NextTool != tool {
+		return nil, false
+	}
+	return a.NextArgs, true
+}
+
+// settleHeld closes the held records of this call of tool name once its
+// answer ends the operation: an outcome, and no further step of the same
+// tool. The step of a wait carries no consent (nextSameCall), so it
+// writes no intent of its own, and nothing else would close the record of
+// the call that started the operation. A question is not an outcome, and
+// a record another key left is not this call's to close (intent.Settle).
+func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
+	resource, target := intentResource(name, args)
+	root, err := os.Getwd()
+	if err != nil || (resource == "" && target == "") {
+		return
+	}
+	var held []intent.Intent
+	for _, in := range intent.Pending(intent.Dir(root)) {
+		if in.Held && in.Tool == name && in.Name == resource && in.Target == target {
+			held = append(held, in)
+		}
+	}
+	if len(held) == 0 || intent.OutcomeUnknown(answerReason(answer), 0) || answerStatus(answer) == "confirmation_required" {
+		return
+	}
+	if _, goesOn := sameToolNext(name, answer); goesOn {
+		return
+	}
+	cur := r.maker()
+	for _, in := range held {
+		if !in.Key.Other(cur) {
+			intent.Close(in)
+		}
+	}
+}
+
+// answerStatus is the status of a tool's answer, "" when it has none.
+func answerStatus(answer string) string {
+	var a struct {
+		Status string `json:"status"`
+	}
+	_ = json.Unmarshal([]byte(answer), &a)
+	return a.Status
 }
 
 // namedKept is the answer of a call of tool name with the records of the
@@ -233,6 +305,13 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	head := i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown",
 		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен",
 		tool, name, where, started, quoteCloud(in.Surface), in.PID)
+	// An operation that goes on: the call that started it ended at its
+	// time limit, and the step its answer named goes on with it.
+	if in.Held && !in.Key.Other(cur) {
+		return i18n.Tf("%s %s%s, started %s (%s, pid %d): the call ended at its time limit and the operation was still going — the same %s on it goes on; the record closes when it ends",
+			"%s %s%s, начат %s (%s, pid %d): вызов закончился на пределе времени, операция ещё шла — тот же %s на нём продолжит; запись закроется, когда операция завершится",
+			tool, name, where, started, quoteCloud(in.Surface), in.PID, tool)
+	}
 	// A record another key left: a call with this key does not settle it
 	// (intent.Settle), and this key may not see what that one changed.
 	if in.Key.Other(cur) {
