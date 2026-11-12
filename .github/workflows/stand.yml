@@ -84,7 +84,7 @@ jobs:
           # shellcheck source=.github/scripts/e2e_stand.sh
           . .github/scripts/e2e_stand.sh
           out=0
-          tags=$(git ls-remote --tags https://github.com/"$GITHUB_REPOSITORY" "refs/tags/$STAND_TAG") ||
+          tags=$(timeout 60 git ls-remote --tags https://github.com/"$GITHUB_REPOSITORY" "refs/tags/$STAND_TAG") ||
             { echo "::error::теги репозитория не прочитаны — выпущен ли $STAND_TAG, неизвестно"; exit 1; }
           [ -z "$tags" ] || out=1
           STAND_TAG_OUT=$out .github/scripts/e2e_stand.sh list
