@@ -375,9 +375,9 @@ func backupOfTheName(b map[string]any) (string, bool) {
 	case "created":
 		return backupExists(b), false
 	case "creating", "updating":
-		ans := map[string]any{"status": "creating", "backup_id": id, "name": b["name"], "state": st,
-			"note": i18n.T("A backup of the source with this name is still being made: no second one was asked for. backup_get shows when it is created.",
-				"Копия ресурса с этим именем ещё делается: вторая не запрошена. backup_get покажет, когда она будет готова.")}
+		ans := map[string]any{"status": "creating", "backup_id": id, "name": b["name"], "state": st, "created_at": b["created_at"],
+			"note": i18n.Tf("A backup of the source with this name, asked for at %v, is still being made: no second one was asked for. backup_get shows when it is created.",
+				"Копия ресурса с этим именем, запрошенная %v, ещё делается: вторая не запрошена. backup_get покажет, когда она будет готова.", b["created_at"])}
 		nextStep(ans, "backup_get", map[string]any{"backup_id": id})
 		return toJSON(ans), false
 	case "deleting":

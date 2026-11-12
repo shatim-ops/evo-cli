@@ -300,6 +300,9 @@ func TestBackupCreate_TheNameTakenByState(t *testing.T) {
 			c.next != "" && m["next_tool"] != c.next || m["backup_id"] != "k1" {
 			t.Errorf("%s: want status %q reason %q next %q with its id: %s", c.state, c.status, c.reason, c.next, text)
 		}
+		if c.state == "creating" && m["created_at"] != "2026-11-12T00:00:00Z" {
+			t.Errorf("creating: want the time the backup was asked for, to tell it from the call's own: %s", text)
+		}
 		if c.state != "created" && strings.Contains(text, "already_exists") {
 			t.Errorf("%s: a backup that is not made reads as one that exists: %s", c.state, text)
 		}
