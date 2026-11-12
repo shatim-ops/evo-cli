@@ -272,31 +272,8 @@ func rebootWorldInADir(t *testing.T) (*Registry, *powerWorld, string) {
 // record of the cut call makes the repeat ask instead: one command, and
 // the next consented call is a reboot of its own.
 func TestVMReboot_RepeatAfterACutCallAsksAndSendsNothing(t *testing.T) {
-	r, w, dir := rebootWorldInADir(t)
-	tl, _ := r.Lookup("vm_reboot")
+	_, w, dir, tl := cutReboot(t)
 	args := func() map[string]any { return map[string]any{"name": "web", "confirmed": true} }
-
-	// The first call: the platform takes the command, the client is gone
-	// before the answer.
-	ctx, cancel := context.WithCancel(context.Background())
-	w.onPower = func() error {
-		err := w.faultCloud.SetVMPower(context.Background(), w.id, "reboot")
-		cancel()
-		if err != nil {
-			return err
-		}
-		return ctx.Err()
-	}
-	tl.Handler(ctx, args())
-	w.onPower = nil
-	if n := w.powerCalls(); n != 1 {
-		t.Fatalf("power calls after the cut call = %d, want 1", n)
-	}
-	if left := intent.Pending(dir); len(left) != 1 || left[0].Tool != "vm_reboot" || left[0].Held {
-		t.Fatalf("the record of the cut call: %+v, want one, not held", left)
-	}
-	// The reboot ends; the VM runs as it did before the call.
-	w.stepVMPower(w.id)
 
 	// The repeat with the consent of the first call: a question, nothing
 	// sent, the record closed.
@@ -324,6 +301,67 @@ func TestVMReboot_RepeatAfterACutCallAsksAndSendsNothing(t *testing.T) {
 	_ = json.Unmarshal([]byte(text), &m)
 	if isErr || m["status"] != "rebooted" || w.powerCalls() != 2 {
 		t.Errorf("the consented call after the question: %s (power calls %d, want 2)", text, w.powerCalls())
+	}
+}
+
+// cutReboot is rebootWorldInADir after a consented vm_reboot of "web" that
+// the client cut: the platform took the command, the client was gone
+// before the answer, and the reboot has ended since — the VM runs as it
+// did before the call, and the record of the call is left.
+func cutReboot(t *testing.T) (*Registry, *powerWorld, string, Tool) {
+	t.Helper()
+	r, w, dir := rebootWorldInADir(t)
+	tl, _ := r.Lookup("vm_reboot")
+	ctx, cancel := context.WithCancel(context.Background())
+	w.onPower = func() error {
+		err := w.faultCloud.SetVMPower(context.Background(), w.id, "reboot")
+		cancel()
+		if err != nil {
+			return err
+		}
+		return ctx.Err()
+	}
+	tl.Handler(ctx, map[string]any{"name": "web", "confirmed": true})
+	w.onPower = nil
+	if n := w.powerCalls(); n != 1 {
+		t.Fatalf("power calls after the cut call = %d, want 1", n)
+	}
+	if left := intent.Pending(dir); len(left) != 1 || left[0].Tool != "vm_reboot" || left[0].Held {
+		t.Fatalf("the record of the cut call: %+v, want one, not held", left)
+	}
+	w.stepVMPower(w.id)
+	return r, w, dir, tl
+}
+
+// The other way after a cut call: the model asks first, without the
+// consent. The preview says what was cut, the record closes with that —
+// the person has been told — and the consented call that follows is sent
+// as any other: no second question («Риск», conclusion 145).
+func TestVMReboot_PreviewAfterACutCallSaysSoAndTheYesIsSent(t *testing.T) {
+	_, w, dir, tl := cutReboot(t)
+	text, _ := tl.Handler(context.Background(), map[string]any{"name": "web"})
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil {
+		t.Fatalf("not JSON: %s", text)
+	}
+	msg, _ := m["message"].(string)
+	if m["status"] != "confirmation_required" || m["interrupted"] == nil || !strings.Contains(msg, "outcome is unknown") || !strings.Contains(msg, "every call is a new reboot") {
+		t.Fatalf("the preview after a cut call: %s, want what was cut said before the tool's own preview", text)
+	}
+	if p, _ := m["preview"].(map[string]any); p["command"] != "reboot" || p["vm_id"] != w.id {
+		t.Errorf("the preview lost what the write sends: %s", text)
+	}
+	if n := w.powerCalls(); n != 1 {
+		t.Fatalf("power calls after the preview = %d, want 1", n)
+	}
+	if left := intent.Pending(dir); len(left) != 0 {
+		t.Errorf("the record after the person was told: %+v, want none", left)
+	}
+	w.stepAfter = w.reads + 6
+	text, isErr := tl.Handler(context.Background(), map[string]any{"name": "web", "confirmed": true})
+	_ = json.Unmarshal([]byte(text), &m)
+	if isErr || m["status"] != "rebooted" || w.powerCalls() != 2 {
+		t.Errorf("the consented call after the preview: %s (power calls %d, want 2)", text, w.powerCalls())
 	}
 }
 
