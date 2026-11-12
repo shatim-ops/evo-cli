@@ -57,8 +57,10 @@ stand_token() {
 }
 
 # stand_lst ВИД — «id<TAB>имя<TAB>состояние» ресурсов стенда этого вида; код 1
-# — список не прочитан. Свои — по префиксу; копии — ещё и по id ВМ и дисков
-# стенда ($stand_tmp/owners): копию по расписанию платформа называет сама.
+# — список не прочитан. Свои — по префиксу; копии и планы защиты — ещё и по
+# id ВМ и дисков стенда ($stand_tmp/owners): копию по расписанию платформа
+# называет сама. Ресурс копии — в resource, ресурсы плана — списком
+# resources[] (так план создаёт проба Г-16).
 stand_lst() {
 	local out q
 	# shellcheck disable=SC2016 # $p — переменная jq, не shell
@@ -79,7 +81,7 @@ stand_lst() {
 		# Список длиннее страницы — не прочитан: остаток был бы невидим.
 		jq -e '(.items | type == "array") and ((.total // 0) <= (.items | length))' "$stand_tmp/api.json" >/dev/null 2>&1 || return 1
 		jq -r --arg p "$STAND_PREFIX" --rawfile o "$stand_tmp/owners" '($o | split("\n") | map(select(. != ""))) as $own
-			| .items[] | select(((.name // "") | startswith($p)) or ((.resource.resource_id? // "") as $r | $r != "" and ($own | index($r))))
+			| .items[] | select(((.name // "") | startswith($p)) or any((.resource.resource_id?, .resources[]?.resource_id?) | strings; . as $r | $own | index($r)))
 			| "\(.id)\t\(.name)\t\(.state // "")"' "$stand_tmp/api.json" ;;
 	*) return 1 ;;
 	esac

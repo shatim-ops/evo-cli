@@ -91,7 +91,7 @@ full() {
 	fake_evo_answer pg_list 0 0 '{"clusters":[{"id":"x8","name":"evo-e2e-pg-r5a1","status":"READY"},{"id":"spg","name":"'"$S"'-pg","status":"READY"}]}'
 	cat >"$FAKE_DIR/http" <<H
 GET /backups[?]* 200 {"items":[{"id":"x9","name":"evo-e2e-ops-r5a1-g16-bd","resource":{"resource_id":"x4"}},{"id":"sbk","name":"$S-bk","resource":{"resource_id":"sboot"}},{"id":"sbk2","name":"auto-2026-11-18","resource":{"resource_id":"svm"}}],"total":3}
-GET /protection-plans[?]* 200 {"items":[{"id":"spp","name":"$S-pp"}],"total":1}
+GET /protection-plans[?]* 200 {"items":[{"id":"spp","name":"$S-pp"},{"id":"spp2","name":"daily","resources":[{"resource_id":"svm","resource_type":"virtual_machine"}]},{"id":"x10","name":"prod-plan","resources":[{"resource_id":"x2"}]}],"total":3}
 DELETE /backups/* 204
 DELETE /protection-plans/* 204
 DELETE /security-groups/* 204
@@ -108,7 +108,7 @@ gone() {
 	fake_evo_answer pg_list 1 0 '{"clusters":[]}'
 	{
 		echo 'GET! /backups[?]* 200 {"items":[{"id":"sbk","name":"'"$S"'-bk","resource":{"resource_id":"sboot"}},{"id":"sbk2","name":"auto-2026-11-18","resource":{"resource_id":"svm"}}],"total":2}'
-		echo 'GET! /protection-plans[?]* 200 {"items":[{"id":"spp","name":"'"$S"'-pp"}],"total":1}'
+		echo 'GET! /protection-plans[?]* 200 {"items":[{"id":"spp","name":"'"$S"'-pp"},{"id":"spp2","name":"daily","resources":[{"resource_id":"svm"}]}],"total":2}'
 		echo 'GET /backups[?]* 200 {"items":[],"total":0}'
 		echo 'GET /protection-plans[?]* 200 {"items":[],"total":0}'
 		echo 'DELETE /backups/* 204'
@@ -128,17 +128,18 @@ has empty 'стенда нет'
 hasnt empty 'evo-e2e-\|prod-'
 
 # list: всё содержимое стенда, по одному на вид, с возрастом; чужое не
-# названо; копия с чужим именем найдена по id ВМ стенда; id — под маской.
+# названо; копия и план защиты с чужим именем найдены по id ВМ стенда (у
+# плана ресурсы — списком resources[]); id — под маской.
 full all
 run_ list
 want "all: код" "$rc" 0
-for l in "pplan	$S-pp" "backup	$S-bk" "backup	auto-2026-11-18" "k8s	$S-k8s" "pg	$S-pg" "vm	$S-vm" "fip	fip-$S-vm-abc123" "disk	$S-vm-boot" "subnet	$S-sn" "sg	$S-sg"; do
+for l in "pplan	$S-pp" "pplan	daily" "backup	$S-bk" "backup	auto-2026-11-18" "k8s	$S-k8s" "pg	$S-pg" "vm	$S-vm" "fip	fip-$S-vm-abc123" "disk	$S-vm-boot" "subnet	$S-sn" "sg	$S-sg"; do
 	has all "^$l"
 done
 has all 'возраст стенда: 2 сут'
 has all "срок: до $STAND_UNTIL"
 hasnt all 'evo-e2e-\|prod-\|Default_\|default_'
-if grep -v '::add-mask::' "$FAKE_DIR/out" | grep -qw 'svm\|sfip\|sboot\|sk8s\|spg\|sbk\|spp\|ssn\|ssg'; then echo "FAIL all: id в строке лога"; fail=1; fi
+if grep -v '::add-mask::' "$FAKE_DIR/out" | grep -qw 'svm\|sfip\|sboot\|sk8s\|spg\|sbk\|spp\|spp2\|ssn\|ssg'; then echo "FAIL all: id в строке лога"; fail=1; fi
 if grep -q 'yes=1' "$FAKE_DIR/evo-calls" || grep -q '^DELETE' "$FAKE_DIR/calls"; then echo "FAIL all: list что-то удалял"; fail=1; fi
 
 # list: стенд за сроком — код 1 (как overdue у запусков); пустой проект за
@@ -176,7 +177,7 @@ want "sweep: код" "$rc" 0
 has sweep 'остатков стенда нет'
 want "sweep: порядок удалений" "$({ grep -n '' "$FAKE_DIR/out" | grep -o 'удаление [a-z0-9]*' | awk '!seen[$0]++' | tr '\n' ';'; })" "удаление pplan;удаление backup;удаление k8s;удаление pg;удаление vm;удаление fip;удаление disk;удаление subnet;удаление sg;"
 want "sweep: удаления evo" "$(grep 'yes=1' "$FAKE_DIR/evo-calls" | tr '\n' ';')" "k8s_delete yes=1;pg_delete yes=1;destroy yes=1;release_floating_ip yes=1;disk_delete yes=1;subnet_delete yes=1;"
-want "sweep: удаления API" "$(grep '^DELETE' "$FAKE_DIR/calls" | tr '\n' ';')" "DELETE /protection-plans/spp;DELETE /backups/sbk;DELETE /backups/sbk2;DELETE /security-groups/ssg;"
+want "sweep: удаления API" "$(grep '^DELETE' "$FAKE_DIR/calls" | tr '\n' ';')" "DELETE /protection-plans/spp;DELETE /protection-plans/spp2;DELETE /backups/sbk;DELETE /backups/sbk2;DELETE /security-groups/ssg;"
 first_del=$(grep -n 'удаление ' "$FAKE_DIR/out" | head -1 | cut -d: -f1)
 last_listed=$(grep -n "^sg	$S-sg" "$FAKE_DIR/out" | head -1 | cut -d: -f1)
 [ -n "$first_del" ] && [ -n "$last_listed" ] && [ "$last_listed" -lt "$first_del" ] || { echo "FAIL sweep: перечень не напечатан до первого удаления"; fail=1; }
