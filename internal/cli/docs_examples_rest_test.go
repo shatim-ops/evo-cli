@@ -45,7 +45,7 @@ func TestDocsExamples_Counts(t *testing.T) {
 		}
 	}
 	subset := groups["deploy"] + groups["vm"] + groups["vpc"]
-	if len(list) != 157 || len(groups) != 24 || readOnly != 89 || subset != 29 || readOnlySlice != 17 {
+	if len(list) != 158 || len(groups) != 24 || readOnly != 90 || subset != 29 || readOnlySlice != 17 {
 		names := make([]string, 0, len(groups))
 		for g, n := range groups {
 			names = append(names, fmt.Sprintf("%s=%d", g, n))
@@ -64,16 +64,16 @@ func TestDocsExamples_Counts(t *testing.T) {
 	readme := flat("README.md")
 	dog := flat("docs/internal/dogfood-protocol.md")
 	for _, text := range []string{mcp, readme, dog} {
-		if !strings.Contains(text, "157") {
-			t.Errorf("a user doc dropped the tool count 157")
+		if !strings.Contains(text, "158") {
+			t.Errorf("a user doc dropped the tool count 158")
 			break
 		}
 	}
-	if !strings.Contains(mcp, "остаются 89") || !strings.Contains(mcp, "29 инструментов") || !strings.Contains(mcp, "17 инструментов") {
-		t.Errorf("docs/mcp.md no longer states 89 read-only, 29 in deploy,vm,vpc, or 17 in vm,vpc,disk,image")
+	if !strings.Contains(mcp, "остаются 90") || !strings.Contains(mcp, "29 инструментов") || !strings.Contains(mcp, "17 инструментов") {
+		t.Errorf("docs/mcp.md no longer states 90 read-only, 29 in deploy,vm,vpc, or 17 in vm,vpc,disk,image")
 	}
-	if !strings.Contains(dog, "29 инструментов") || !strings.Contains(dog, "157 инструментов") {
-		t.Errorf("docs/internal/dogfood-protocol.md no longer states 157 tools or 29 in deploy,vm,vpc")
+	if !strings.Contains(dog, "29 инструментов") || !strings.Contains(dog, "158 инструментов") {
+		t.Errorf("docs/internal/dogfood-protocol.md no longer states 158 tools or 29 in deploy,vm,vpc")
 	}
 }
 

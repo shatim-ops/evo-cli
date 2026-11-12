@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (157) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo (158) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -142,6 +142,7 @@
 | `k8s_create` | `evo k8s create` | да | — | STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. | Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут) |
 | `k8s_kubeconfig` | `evo k8s kubeconfig` | нет | `cluster_id` | Get the kubeconfig for a Managed Kubernetes cluster. | kubeconfig кластера (по умолчанию со встроенным токеном примерно на час) |
 | `k8s_delete` | `evo k8s delete` | удаляет | `cluster_id` | Permanently delete a Managed Kubernetes cluster. | Удалить кластер Managed Kubernetes (асинхронно) |
+| `k8s_operation` | `evo k8s operation` | нет | `operation_id` | Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_delete). | Состояние асинхронной операции Managed Kubernetes |
 | `k8s_nodepools` | `evo k8s nodepools` | нет | `cluster_id` | List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). | Группы узлов кластера |
 | `k8s_add_nodepool` | `evo k8s add-nodepool` | да | `cluster_id` | Add a worker node pool to a Managed Kubernetes cluster (pods need workers; a fresh cluster has none). | Добавить группу рабочих узлов (платно, асинхронно) |
 | `k8s_addons` | `evo k8s addons` | нет | — | Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). | Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность |
