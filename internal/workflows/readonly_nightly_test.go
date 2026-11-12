@@ -25,7 +25,7 @@ func TestWorkflows_NightlyCloudIsReadOnly(t *testing.T) {
 	if s, _ := w.On["schedule"].([]any); len(s) != 1 {
 		t.Fatalf("cloud-e2e: schedule %v, want one nightly run", w.On["schedule"])
 	}
-	if strings.ReplaceAll(w.Concurrency.Group, " ", "") != "${{github.event_name=='schedule'&&'cloud-readonly-nightly'||'cloud-e2e'}}" {
+	if strings.ReplaceAll(w.Concurrency.Group, " ", "") != "${{github.event_name=='schedule'&&'cloud-readonly-nightly'||inputs.cleanup_only&&'cloud-e2e-cleanup'||'cloud-e2e'}}" {
 		t.Errorf("cloud-e2e: concurrency group %q, want its own group for the nightly run", w.Concurrency.Group)
 	}
 	ro, ok := w.Jobs["readonly"]
