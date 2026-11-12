@@ -428,6 +428,16 @@ var toolsRU = map[string]toolRU{
 			"cluster_id": "UUID кластера",
 		},
 	},
+	"k8s_operation": {
+		Short: "Состояние асинхронной операции Managed Kubernetes",
+		Long: "Состояние асинхронной операции Managed Kubernetes по id — его возвращают создание и удаление кластера и создание группы узлов: " +
+			"done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N " +
+			"секунд и выводит итоговое состояние. Только чтение.",
+		Args: map[string]string{
+			"operation_id": "id операции из ответа вызова, который её начал (обязательный)",
+			"wait_seconds": opWaitDescRU,
+		},
+	},
 	"k8s_kubeconfig": {
 		Short: "kubeconfig кластера (по умолчанию со встроенным токеном примерно на час)",
 		Long: "kubeconfig кластера Managed Kubernetes. По умолчанию в него встроен статический токен, и kubectl " +

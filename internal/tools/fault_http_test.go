@@ -392,7 +392,7 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		a.mu.Unlock()
 		_, _ = io.WriteString(w, `{"id":"`+op+`","done":false}`)
 	case strings.HasPrefix(path, "/v1/operations/"), strings.HasPrefix(path, "/v1/operation/"),
-		strings.HasPrefix(path, "/v2/operations/"), strings.HasPrefix(path, "/v1/vpcs/operations/"):
+		strings.HasPrefix(path, "/v2/operations/"), strings.HasPrefix(path, "/v3/operations/"), strings.HasPrefix(path, "/v1/vpcs/operations/"):
 		a.mu.Lock()
 		done := !a.slow
 		a.mu.Unlock()

@@ -110,6 +110,7 @@
     - [evo k8s kubectl](#evo-k8s-kubectl)
     - [evo k8s list](#evo-k8s-list)
     - [evo k8s nodepools](#evo-k8s-nodepools)
+    - [evo k8s operation](#evo-k8s-operation)
     - [evo k8s options](#evo-k8s-options)
     - [evo k8s plan](#evo-k8s-plan)
   - [evo kafka](#evo-kafka)
@@ -4255,6 +4256,7 @@ evo k8s [flags]
 * [evo k8s kubectl](#evo-k8s-kubectl)	 - Команда kubectl в кластере (изменяющие — с подтверждением)
 * [evo k8s list](#evo-k8s-list)	 - Кластеры Managed Kubernetes проекта
 * [evo k8s nodepools](#evo-k8s-nodepools)	 - Группы узлов кластера
+* [evo k8s operation](#evo-k8s-operation)	 - Состояние асинхронной операции Managed Kubernetes
 * [evo k8s options](#evo-k8s-options)	 - Версии Kubernetes, flavor узлов и зоны для кластеров
 * [evo k8s plan](#evo-k8s-plan)	 - Шаг 1: рассчитать конфигурацию кластера, ничего не создавая
 
@@ -4879,6 +4881,48 @@ evo k8s nodepools <cluster-id> [flags]
   -h, --help            Справка по nodepools
       --name string     Только с этой частью имени, регистр не важен
       --status string   Только в этом состоянии: OBJECT_STATUS_PENDING, OBJECT_STATUS_PROVISIONING, OBJECT_STATUS_RUNNING, OBJECT_STATUS_RESUMING, OBJECT_STATUS_DELETING, OBJECT_STATUS_ERROR, OBJECT_STATUS_SCALING_UP, OBJECT_STATUS_SCALING_DOWN, OBJECT_STATUS_STOPPING, OBJECT_STATUS_STOPPED, OBJECT_STATUS_SUSPENDING, OBJECT_STATUS_SUSPENDED, OBJECT_STATUS_UPGRADING, OBJECT_STATUS_EDITING, OBJECT_STATUS_ADDING, OBJECT_STATUS_DELETED
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
+## evo k8s operation
+
+Состояние асинхронной операции Managed Kubernetes
+
+### Synopsis
+
+```text
+Состояние асинхронной операции Managed Kubernetes.
+
+Состояние асинхронной операции Managed Kubernetes по id — его возвращают создание и удаление кластера и создание группы узлов: done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
+
+Вызывает инструмент k8s_operation (подробнее: 'evo tools describe k8s_operation').
+```
+
+```
+evo k8s operation <operation-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help               Справка по operation
+      --wait-seconds int   Ждать итогового состояния до N секунд (не больше 45), опрашивая операцию с нарастающим интервалом. Без флага — одна проверка
 ```
 
 ### Options inherited from parent commands

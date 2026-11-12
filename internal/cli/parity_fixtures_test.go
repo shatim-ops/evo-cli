@@ -98,6 +98,7 @@ var parityArgs = map[string]map[string]any{
 	"k8s_get":            {"cluster_id": addonClusterID},
 	"k8s_options":        {},
 	"k8s_kubeconfig":     {"cluster_id": addonClusterID},
+	"k8s_operation":      {"operation_id": parityVM},
 	"k8s_nodepools":      {"cluster_id": addonClusterID},
 	"k8s_addons":         {"query": "cert"},
 	"k8s_addon_versions": {"name": "cert-manager"},

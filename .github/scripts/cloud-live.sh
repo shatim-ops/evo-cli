@@ -33,7 +33,7 @@
 # shellcheck disable=SC2015,SC2016,SC2329
 set -euo pipefail
 
-area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet или sweep ПРЕФИКС}
+area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet, ops или sweep ПРЕФИКС}
 here=$(cd "$(dirname "$0")" && pwd)
 ZONE=${ZONE:-ru.AZ-2}
 IMAGE=${IMAGE:-ubuntu-22.04}
@@ -221,6 +221,9 @@ lst() {
 		jq -r --arg p "$p" '.secrets[]? | select(((.path // .name // "") | startswith($p))) | "\(.path // .name)\t\(.path // .name)"' <<<"$out" ;;
 	cert) out=$(evo tools call cert_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.certificates[]? | select((.name // .displayName // "") | startswith($p)) | "\(.id)\t\(.name // .displayName)"' <<<"$out" ;;
+	# Группы безопасности проб (область ops): только свои, по префиксу.
+	sg) out=$(evo tools call list_security_groups --json 2>"$tmp/lst.err") &&
+		jq -r --arg p "$p" '.security_groups[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	*) return 1 ;;
 	esac
 }
@@ -255,9 +258,18 @@ del() {
 		tc s3_bucket_delete --arg bucket="$id" ;;
 	secret) tc secret_delete --arg path="$id" ;;
 	cert) tc cert_delete --arg id="$id" ;;
+	# У evo нет удаления группы безопасности: прямой DELETE (как правила в
+	# e2e_rules_sweep.sh); код HTTP — в $reason.
+	sg)
+		rc=1 reason="нет токена IAM"
+		if [ -n "${TOKEN:-}" ] || iam_token; then
+			api DELETE "https://compute.api.cloud.ru/api/v1/security-groups/$id"
+			reason="HTTP $code"
+			case "$code" in 2?? | 404) rc=0 ;; esac
+		fi ;;
 	esac
 }
-KINDS="ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert"
+KINDS="ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert sg"
 # area_kinds ОБЛАСТЬ — виды ресурсов, которые область создаёт: её уборка
 # читает только их (список одного вида бывает медленным: ar_list 18.10 —
 # ~9,5 мин). Маршрут тестовой сети — только у net.
@@ -272,8 +284,21 @@ area_kinds() {
 	stack) echo "lb tg vm fip secret" ;;
 	mcp) echo "vm fip" ;;
 	pgnet) echo "vm fip subnet" ;;
+	ops) echo "vm fip disk sg" ;;
 	*) echo "${KINDS/route /}" ;;
 	esac
+}
+# lst_done ВИД ПРЕФИКС — lst для уборки. Префикс своего прогона (область и
+# её страховка sweep evo-e2e-<область>-<прогон>) — всё; префикс без номера
+# прогона (sweep evo-e2e- из job cleanup, done_only) идёт рядом с живыми
+# запусками и видит только ресурсы завершённых (e2e_live_runs.sh). Какие
+# запуски живы, неизвестно — список считается непрочитанным: код 1.
+done_only=0
+lst_done() {
+	lst "$1" "$2" >"$tmp/l.all" 2>/dev/null || return 1
+	if [ "$done_only" = 1 ]; then
+		"$here/e2e_live_runs.sh" drop <"$tmp/l.all"
+	else cat "$tmp/l.all"; fi
 }
 # sweep ПРЕФИКС [ВИДЫ] — удалять ресурсы ПРЕФИКС* до 20 мин (удаления
 # асинхронны: балансировщик, ВМ, VPC), затем остаток — провал по каждому.
@@ -287,7 +312,7 @@ sweep() {
 		left=0
 		for kind in $kinds; do
 			t0=$(date +%s)
-			lst "$kind" "$p" >"$tmp/l" 2>/dev/null || {
+			lst_done "$kind" "$p" >"$tmp/l" || {
 				echo "$kind: список не прочитан за $(($(date +%s) - t0)) с: $(jq -rR 'fromjson? | .error | "\(.reason): \(.message)"' "$tmp/lst.err" 2>/dev/null | head -1 | redact | cut -c1-240)"
 				continue
 			}
@@ -308,7 +333,7 @@ sweep() {
 	for kind in $kinds; do
 		# Список не прочитан (сбой или «список не полон») — остатки этого
 		# вида не проверены: провал, а не «остатков нет».
-		lst "$kind" "$p" >"$tmp/l" 2>/dev/null || {
+		lst_done "$kind" "$p" >"$tmp/l" || {
 			echo "::error::$kind: список не прочитан — остатки $p* не проверены: $(jq -rR 'fromjson? | .error | "\(.reason): \(.message)"' "$tmp/lst.err" 2>/dev/null | head -1 | redact | cut -c1-240)"
 			left=$((left + 1))
 			continue
@@ -1898,8 +1923,96 @@ area_mcp() {
 	else bad "provision для release_floating_ip" "код $rc, $reason"; fi
 }
 
+# --- Область ops: пробы операций второго дня (план 1.9, раздел 1.3) ----------
+# Кода этих операций в evo ещё нет: проба шлёт запросы прямо, по описи
+# docs/internal/probes/requests-1.9.md, и пишет ответ платформы — код HTTP,
+# имена полей, состояния; значения, id и адреса — нет. Строка пробы — ответ
+# платформы, а не провал: вывод делается из двух прогонов. Область идёт
+# только по словам входа probes (g11…), своих проверок evo у неё нет;
+# ресурсы — evo-e2e-ops-<прогон>-*, уборка — sweep области (виды —
+# area_kinds ops: проба без уборки своего вида ресурса не запускается).
+C1=https://compute.api.cloud.ru/api/v1
+# keys_of — имена полей верхнего уровня последнего ответа api.
+keys_of() { jq -c 'if type == "object" then keys else type end' "$tmp/api.json" 2>/dev/null || echo '"не JSON"'; }
+
+# Проба Г-11: своя группа безопасности и её правила. Группа — без
+# интерфейсов, правило «весь интернет» в ней никого не открывает. Что
+# записывается: коды создания группы и правил (TCP, UDP, ICMP, вход и выход,
+# источник CIDR и 0.0.0.0/0), что группа хранит как источник «весь
+# интернет», ответ на повтор того же правила и число правил после него,
+# коды удаления правила и его повтора, удаления группы и его повтора.
+# ICMP идёт с пустым port_range: поле обязательно, формат для ICMP
+# спецификация не называет — отказ и его текст и есть ответ.
+probe_g11() {
+	local zid=$1 sg rule first='' n0 n1 r dir proto ports cidr
+	iam_token || { gap "Г-11" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap "Г-11" "нет PROJECT"; return 0; }
+	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
+		'{project_id: $p, name: $n, availability_zone_id: $z, description: "evo e2e probe"}')"
+	case "$code" in 2??) ;; *)
+		ok "Г-11: создание группы" "отказ HTTP $code: $(api_why)"
+		return 0
+		;;
+	esac
+	sg=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || sg=
+	ok "Г-11: создание группы" "HTTP $code, поля ответа: $(keys_of)"
+	[ -n "$sg" ] || sg=$(lst sg "$prefix-sg" | cut -f1 | head -1) || sg=
+	[ -n "$sg" ] || { gap "Г-11: группа" "id не прочитан — остаток уберёт уборка области"; return 0; }
+	mask "$sg"
+	rule_body() {
+		jq -nc --arg d "$1" --arg pr "$2" --arg ports "$3" --arg c "$4" \
+			'{direction: $d, ether_type: "IPv4", ip_protocol: $pr, port_range: $ports, remote_ip_prefix: $c, description: "evo e2e probe"}'
+	}
+	while read -r dir proto ports cidr; do
+		[ "$ports" != - ] || ports=
+		api POST "$C1/security-groups/$sg/rules" "$(rule_body "$dir" "$proto" "$ports" "$cidr")"
+		rule=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || rule=
+		mask "$rule"
+		[ -n "$first" ] || first=$rule
+		ok "Г-11: правило $dir $proto ${ports:-без портов} $([ "$cidr" = 0.0.0.0/0 ] && echo "весь интернет" || echo CIDR)" \
+			"HTTP $code$(case "$code" in 2??) echo ", поля ответа: $(keys_of)" ;; *) echo ": $(api_why)" ;; esac)"
+	done <<-RULES
+		ingress tcp 18090:18090 198.18.255.1/32
+		ingress udp 18090:18090 198.18.255.1/32
+		ingress icmp - 198.18.255.1/32
+		egress tcp 18090:18090 198.18.255.1/32
+		ingress tcp 18091:18091 0.0.0.0/0
+	RULES
+	count_rules() { jq -r '[(.rules // .security_group_rules // [])[]?] | length' "$tmp/api.json" 2>/dev/null || echo "?"; }
+	api GET "$C1/security-groups/$sg"
+	n0=$(count_rules)
+	ok "Г-11: чтение группы" "HTTP $code, правил: $n0, поля правила: $(jq -c '[(.rules // .security_group_rules // [])[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[(.rules // .security_group_rules // [])[]? | .remote_ip_prefix] | map(if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "0.0.0.0/0" else "CIDR" end) | unique | join(", ")' "$tmp/api.json" 2>/dev/null || echo '?')"
+	# Повтор того же правила: 2xx и новое правило, 2xx без нового или отказ.
+	api POST "$C1/security-groups/$sg/rules" "$(rule_body ingress tcp 18090:18090 198.18.255.1/32)"
+	r=$code
+	mask "$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)"
+	why=$(api_why)
+	api GET "$C1/security-groups/$sg"
+	n1=$(count_rules)
+	ok "Г-11: повтор создания того же правила" "HTTP $r$(case "$r" in 2??) ;; *) echo ": $why" ;; esac); правил было $n0, стало $n1"
+	if [ -n "$first" ]; then
+		api DELETE "$C1/security-groups/$sg/rules/$first"
+		r=$code
+		api DELETE "$C1/security-groups/$sg/rules/$first"
+		ok "Г-11: удаление правила и его повтор" "HTTP $r, повтор — HTTP $code$(case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac)"
+	else
+		gap "Г-11: удаление правила" "ни одно правило не создано"
+	fi
+	api DELETE "$C1/security-groups/$sg"
+	r=$code
+	api DELETE "$C1/security-groups/$sg"
+	ok "Г-11: удаление группы и его повтор" "HTTP $r, повтор — HTTP $code$(case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac)"
+}
+
+area_ops() {
+	local zid
+	zid=$(zone_id)
+	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена в list_zones"; return 1; }
+	! probe_on g11 || probe_g11 "$zid"
+}
+
 case "$area" in
-disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet)
+disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops)
 	echo "== $area: префикс $prefix"
 	{
 		echo
@@ -1917,8 +2030,25 @@ sweep)
 	# Маршрут и правило тестовой сети — общие для всех прогонов: их убирает
 	# только net и общая уборка (evo-e2e-), не страховка другой области.
 	if [ -n "${3:-}" ]; then kinds=$(area_kinds "$3"); else kinds=$KINDS; fi
+	# Префикс без номера прогона — уборка всех прогонов: только завершённых.
+	case "$p" in *-r[0-9]*a[0-9]*) ;; *) done_only=1 ;; esac
+	# Правило и маршрут тестовой сети — без номера прогона в имени: рядом с
+	# другим живым запуском (e2e_live_runs.sh others) общая уборка их не
+	# трогает — их снимет область net этого запуска или следующая уборка.
+	others=0
+	if [ "$done_only" = 1 ]; then
+		others=$("$here/e2e_live_runs.sh" others) || { others=-1; failed=1; }
+	fi
 	case "$p" in
-	evo-e2e- | evo-e2e-net-*) delete_test_rules || failed=1 ;;
+	evo-e2e- | evo-e2e-net-*)
+		case "$others" in
+		0) delete_test_rules || failed=1 ;;
+		-1) kinds=${kinds/route /} ;; # список запусков не прочитан: ошибка уже названа
+		*)
+			echo "::notice::идёт запуск cloud-e2e — правило и маршрут тестовой сети не трогаю"
+			kinds=${kinds/route /}
+			;;
+		esac ;;
 	*) kinds=${kinds/route /} ;;
 	esac
 	sweep "$p" "$kinds" || failed=1

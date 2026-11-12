@@ -27,7 +27,7 @@ var budgetReach = map[string][]string{
 	"internal/engine/destroy.go\tEngine.releaseFloatingIP":      {"destroy", "stack_destroy"},
 	"internal/engine/destroy.go\tEngine.waitAndDeleteVM":        {"destroy", "stack_destroy"},
 	"internal/tools/tools.go\tRegistry.provisionVM":             {"provision", "stack_apply"},
-	"internal/tools/opwait.go\twaitForOpJSON":                   {"ar_operation", "cert_operation", "dns_operation", "kafka_operation", "lb_operation", "pg_operation", "redis_operation", "vpc_operation", "dns_zone_delete"},
+	"internal/tools/opwait.go\twaitForOpJSON":                   {"ar_operation", "cert_operation", "dns_operation", "k8s_operation", "kafka_operation", "lb_operation", "pg_operation", "redis_operation", "vpc_operation", "dns_zone_delete"},
 	"internal/tools/tools_disk.go\twaitDisk":                    {"disk_create", "disk_attach", "disk_detach", "disk_resize"},
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {"stack_status"},
 	"internal/engine/deploy.go\tassignFloatingIP":               {"deploy", "provision", "stack_apply"},
