@@ -1033,11 +1033,21 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 	// CLAUDE.md §6, D35): a job not there, of another project, or
 	// destroyed. The execution checks again under the job's lock: another
 	// process may have changed the job since.
-	if _, err := s.appliableJob(id); err != nil {
+	job, err := s.appliableJob(id)
+	if err != nil {
 		return nil, err
 	}
 	preview := map[string]any{"message": i18n.T("stack_apply provisions BILLABLE resources.",
 		"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", nil, nil)}
+	// A job done: the question is asked as before — answering without it
+	// would change an exit code, which waits for the major — and says that
+	// the consent creates nothing, as deploy's does of an unchanged
+	// compose file (unchanged: true).
+	if job.Done() {
+		preview["unchanged"] = true
+		preview["message"] = i18n.Tf("Stack job %s is done already: every step is made. stack_apply has nothing to do, and called with confirmed=true it creates nothing; stack_status shows the stack.",
+			"Задание стека %s уже выполнено: все шаги сделаны. stack_apply делать нечего, вызов с confirmed=true ничего не создаст; стек показывает stack_status.", id)
+	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		unlock, err := s.lockJob(id)
 		if err != nil {
