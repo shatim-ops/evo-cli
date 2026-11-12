@@ -225,6 +225,18 @@ func TestWorkflows_CleanupGetsTheProbeWords(t *testing.T) {
 	if got := job.Env["PROBES"]; got != "${{ inputs.probes }}" {
 		t.Errorf("job cleanup: env PROBES = %q, want the input probes: the word g20 would not reach e2e_live_runs.sh", got)
 	}
+	// The exception has a term: the last word of every cleanup is the age
+	// of the kept VM, and a VM past the term fails the job (risk
+	// conclusion 136: a resource no sweep deletes must not live unseen).
+	term := false
+	for _, s := range job.Steps {
+		if strings.Contains(s.Run, "e2e_live_runs.sh overdue") && strings.Contains(s.If, "always()") {
+			term = true
+		}
+	}
+	if !term {
+		t.Error("job cleanup: no always() step runs e2e_live_runs.sh overdue — the VM of the price probe would live without a term")
+	}
 	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "e2e_live_runs.sh"))
 	if err != nil {
 		t.Fatal(err)

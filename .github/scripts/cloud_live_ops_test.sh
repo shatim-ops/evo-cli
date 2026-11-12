@@ -234,6 +234,29 @@ want "Г-20: код" "$rc" 0
 grep -q 'Г-20: ВМ пробы цены оставлена.*state stopped' "$tmp/out" || { echo "FAIL: Г-20: нет строки об оставленной ВМ"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 want "Г-20: последний запрос set-power — остановка" "$(jq -r .state "$FAKE_DIR/body.POST.vms.vm1.set-power")" power_off
 if grep -q '^destroy\|^release_floating_ip' "$FAKE_DIR/evo-calls"; then echo "FAIL: Г-20: уборка области удалила ВМ или адрес пробы цены"; fail=1; fi
+# Г-20, возврат исходного flavor не удался: ВМ на шаг дороже под
+# исключением не остаётся — проба удаляет её, её адрес и диск сразу
+# (заключение «Риска» 136, К2).
+g10_world
+cat >>"$FAKE_DIR/http" <<H
+PUT! /vms/vm1 200 {"state":"updating"}
+GET! /vms/vm1 200 {"id":"vm1","state":"running","flavor":{"name":"lowcost10-4-8"}}
+GET! /vms/vm1 200 {"id":"vm1","state":"running","flavor":{"name":"lowcost10-4-8"}}
+PUT /vms/vm1 500 {"message":"boom"}
+GET /vms/vm1 200 {"id":"vm1","state":"stopped","flavor":{"name":"lowcost10-4-8"}}
+POST /vms/vm1/set-power 204
+H
+fake_evo_answer vm_list 0 0 '{"vms":[]}'
+fake_evo_answer list_floating_ips 0 0 '{"floating_ips":[{"id":"f1","name":"fip-evo-e2e-ops-r7a1-g20","state":"active"}]}'
+fake_evo_answer list_floating_ips 1 0 '{"floating_ips":[]}'
+fake_evo_answer destroy 0 0 '{"status":"deleted"}'
+fake_evo_answer release_floating_ip 0 0 '{"status":"released"}'
+rc=0
+PROBE_WAIT=1 PROBES="g10 g20" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+grep -q 'Г-20: проба цены не состоялась' "$tmp/out" || { echo "FAIL: Г-20: ВМ не в исходном flavor, а строки «не состоялась» нет"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if grep -q 'ВМ пробы цены оставлена' "$tmp/out"; then echo "FAIL: Г-20: ВМ с flavor на шаг выше оставлена"; fail=1; fi
+want "Г-20, flavor не исходный: ВМ удалена, адрес освобождён" "$(grep -c '^destroy yes=1' "$FAKE_DIR/evo-calls") $(grep -c '^release_floating_ip yes=1' "$FAKE_DIR/evo-calls")" "1 1"
+
 # Общая уборка завершённого запуска: без слова g20 ВМ пробы цены не
 # трогает, со словом — удаляет (сутки прошли, потребление прочитано).
 world

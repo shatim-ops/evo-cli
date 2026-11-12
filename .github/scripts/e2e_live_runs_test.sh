@@ -81,6 +81,29 @@ got=$(printf "$names" | PROBES=g20 "$here/e2e_live_runs.sh" keep | cut -f1 | tr 
 want "keep: ресурсы пробы цены не тронуты" "$got" "d e "
 want "keep: список запусков не читается" "$(wc -l <"$RUNS/calls")" "$calls"
 
+# overdue — срок исключения (заключение «Риска» 136, К1): ВМ пробы цены
+# старше 72 часов или без времени создания — код 1 (уборка красная), моложе
+# — код 0 и строка о ней; ВМ с другим именем срок не касается.
+vm() { printf '{"name":"%s","state":"stopped","created_time":"%s"}' "$1" "$(date -u -d "$2" +%Y-%m-%dT%H:%M:%SZ)"; }
+rc=0
+out=$(printf '{"vms":[%s,%s]}' "$(vm evo-e2e-ops-r5a1-g20 '-30 hours')" "$(vm evo-e2e-ops-r5a1-g10 '-300 hours')" | "$here/e2e_live_runs.sh" overdue 2>&1) || rc=$?
+want "overdue: ВМ пробы цены моложе срока — код" "$rc" 0
+case "$out" in *"evo-e2e-ops-r5a1-g20"*"30 ч"*) ;; *) echo "FAIL: overdue не назвал ВМ и возраст: $out"; fail=1 ;; esac
+case "$out" in *g10*) echo "FAIL: overdue назвал ВМ не пробы цены: $out"; fail=1 ;; esac
+rc=0
+out=$(printf '{"vms":[%s]}' "$(vm evo-e2e-ops-r5a1-g20 '-73 hours')" | "$here/e2e_live_runs.sh" overdue 2>&1) || rc=$?
+want "overdue: ВМ пробы цены старше срока — код" "$rc" 1
+case "$out" in *"::error::"*"cleanup_only"*"g20"*) ;; *) echo "FAIL: overdue не назвал путь: $out"; fail=1 ;; esac
+rc=0
+out=$(printf '{"vms":[{"name":"evo-e2e-ops-r5a1-g20","state":"stopped"}]}' | "$here/e2e_live_runs.sh" overdue 2>&1) || rc=$?
+want "overdue: времени создания нет — код" "$rc" 1
+rc=0
+out=$(printf 'мусор' | "$here/e2e_live_runs.sh" overdue 2>&1) || rc=$?
+want "overdue: список ВМ не прочитан — код" "$rc" 1
+rc=0
+out=$(printf '{"vms":[]}' | "$here/e2e_live_runs.sh" overdue 2>&1) || rc=$?
+want "overdue: ВМ пробы цены нет — код" "$rc" 0
+
 # others — сколько незавершённых запусков, кроме своего (сама уборка тоже
 # идёт): общие для всех прогонов правило и маршрут тестовой сети уборка
 # снимает, только когда других нет.

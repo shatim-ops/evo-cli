@@ -2473,7 +2473,27 @@ probe_g10() {
 		ops_reach "$url" 600 stopped || true
 	fi
 	api GET "$url"
-	ok "Г-20: ВМ пробы цены оставлена" "state $(jq -r '.state? // "?"' "$tmp/api.json" 2>/dev/null || echo '?'), flavor исходный: $([ "$(jq -r '.flavor.name? // empty' "$tmp/api.json" 2>/dev/null)" = "${f0:-$FLAVOR}" ] && echo да || echo нет); ВМ, диск и адрес живут до уборки cleanup_only со словом g20 во входе probes"
+	# Под исключением уборки остаётся только ВМ в исходном flavor: на шаг
+	# дороже она и стоит больше, и цену меряет не ту. Flavor не подтверждён
+	# — проба удаляет ВМ, её адрес и диск сама (уборка области их обходит).
+	if [ -n "$f0" ] && [ "$(jq -r '.flavor.name? // empty' "$tmp/api.json" 2>/dev/null)" = "$f0" ]; then
+		ok "Г-20: ВМ пробы цены оставлена" "state $(jq -r '.state? // "?"' "$tmp/api.json" 2>/dev/null || echo '?'), flavor исходный; ВМ, диск и адрес живут до уборки cleanup_only со словом g20 во входе probes (срок — 72 ч, дольше уборка без слова краснеет)"
+		return 0
+	fi
+	local kind id left=0
+	del vm "$vm"
+	[ "$rc" = 0 ] || left=1
+	poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" gone vm "$n" || left=1
+	for kind in fip disk; do
+		while IFS=$'\t' read -r id _; do
+			[ -n "$id" ] || continue
+			mask "$id"
+			del "$kind" "$id"
+			[ "$rc" = 0 ] || left=1
+		done < <(lst "$kind" "$n" || true)
+	done
+	if [ "$left" = 0 ]; then ok "Г-20: проба цены не состоялась" "flavor ВМ не подтверждён исходным — ВМ, адрес и диск удалены сразу; нужен новый запуск"
+	else bad "Г-20: проба цены не состоялась" "flavor ВМ не подтверждён исходным, а удаление не прошло — ВМ, адрес или диск остались: запустите cleanup_only со словом g20 во входе probes"; fi
 }
 
 area_ops() {

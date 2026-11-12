@@ -1149,6 +1149,14 @@ jobs:
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
         run: .github/scripts/e2e_rules_sweep.sh
 
+      # Срок исключения пробы цены Г-20 (e2e_live_runs.sh, KEEP_HOURS): ВМ
+      # пробы цены, которая после этой уборки ещё жива и старше срока, —
+      # красная уборка, а не предупреждение. Последним шагом: остальное уже
+      # убрано; со словом g20 ВМ к этому шагу удалена.
+      - name: ВМ пробы цены Г-20 не старше срока
+        if: always()
+        run: evo tools call vm_list --json | .github/scripts/e2e_live_runs.sh overdue
+
   # Managed Kubernetes вживую (до 16.10.2026 не проверялся ни разу): кластер
   # с одним мастером → пул из одного узла → плагин cert-manager → поды
   # плагина через kubectl → удаление кластера. Платно (~40–60 мин работы
