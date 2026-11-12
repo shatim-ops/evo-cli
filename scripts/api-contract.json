@@ -12,6 +12,7 @@
     "compute POST /api/v1/security-groups/{security_group_id}/rules": "создаёт: правило группы безопасности (open_ports, deploy) — безопасность; creates/impact не объявлены — бэклог процесса, 1.9",
     "compute POST /api/v1/disks/{disk_id}/attach": "не создаёт: подключает существующий диск к ВМ",
     "compute POST /api/v1/vms/{vm_id}/set-power": "не создаёт: меняет питание существующей ВМ",
+    "mk8s PATCH /v3/nodePools/{nodePoolId}": "не создаёт: меняет число узлов существующей группы; добавленные узлы платные (класс цены называет превью k8s_nodepool_scale) и убираются уменьшением числа или вместе с группой",
     "compute POST /api/v1/disks/{disk_id}/detach": "не создаёт: отключает существующий диск от ВМ",
     "compute PUT /api/v1/disks/{disk_id}": "не создаёт: меняет размер существующего диска (цену называет превью disk_resize)",
     "compute POST /api/v1/projects/{project_id}/price-calculation": "не создаёт: расчёт цены — чтение по смыслу, метод POST",
