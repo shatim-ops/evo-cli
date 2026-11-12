@@ -62,6 +62,11 @@ func TestErrAnswer_QuotaRefusalNamesItsCause(t *testing.T) {
 		if says := strings.Contains(hint, "org_quotas") && strings.Contains(hint, "will fail the same way"); says != (c.cause != nil) {
 			t.Errorf("%s: hint %q; the hint of a quota refusal names the read and that a repeat fails: want %v", c.name, hint, c.cause != nil)
 		}
+		// What to free is the person's decision: the hint does not tell
+		// the model to delete what it finds «not needed».
+		if c.cause != nil && (!strings.Contains(hint, "the person's decision") || strings.Contains(hint, "free what is not needed")) {
+			t.Errorf("%s: the hint leaves the choice of what to free to the model: %q", c.name, hint)
+		}
 		if c.reason != "" && m["reason"] != c.reason {
 			t.Errorf("%s: reason %v, want %s as before", c.name, m["reason"], c.reason)
 		}
