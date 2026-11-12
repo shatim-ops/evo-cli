@@ -65,6 +65,7 @@ var namelessCreates = map[string]string{
 	"k8s_add_addon":      "the addon is named by the catalogue (k8s_addons)",
 	"s3_put":             "an object key may hold spaces anywhere: S3 takes any UTF-8",
 	"secret_add_version": "a version of a secret that is there",
+	"sg_rule_create":     "a rule has no name: it is known by its fields, and the same rule there answers already_exists",
 	"vpc_route_create":   "a route is known by its destination, named by no argument",
 }
 

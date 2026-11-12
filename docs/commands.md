@@ -230,6 +230,7 @@
     - [evo vpc route-delete](#evo-vpc-route-delete)
     - [evo vpc routes](#evo-vpc-routes)
     - [evo vpc security-groups](#evo-vpc-security-groups)
+    - [evo vpc sg-rule-create](#evo-vpc-sg-rule-create)
     - [evo vpc sg-rule-delete](#evo-vpc-sg-rule-delete)
     - [evo vpc subnet-create](#evo-vpc-subnet-create)
     - [evo vpc subnet-delete](#evo-vpc-subnet-delete)
@@ -9991,6 +9992,7 @@ evo vpc [flags]
 * [evo vpc route-delete](#evo-vpc-route-delete)	 - Удалить статический маршрут из VPC (асинхронно)
 * [evo vpc routes](#evo-vpc-routes)	 - Статические маршруты VPC
 * [evo vpc security-groups](#evo-vpc-security-groups)	 - Группы безопасности (с --rules — вместе с правилами)
+* [evo vpc sg-rule-create](#evo-vpc-sg-rule-create)	 - Добавить правило в группу безопасности
 * [evo vpc sg-rule-delete](#evo-vpc-sg-rule-delete)	 - Удалить правило группы безопасности по его id
 * [evo vpc subnet-create](#evo-vpc-subnet-create)	 - Создать подсеть в VPC
 * [evo vpc subnet-delete](#evo-vpc-subnet-delete)	 - Удалить подсеть
@@ -10636,6 +10638,56 @@ evo vpc security-groups [flags]
       --name string       Только с этой частью имени, регистр не важен
       --rules             Вывести и правила каждой группы (по одному запросу к API на группу)
       --zone string       Только в этой зоне: имя или UUID
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+
+## evo vpc sg-rule-create
+
+Добавить правило в группу безопасности
+
+### Synopsis
+
+```text
+Добавить правило в группу безопасности.
+
+Добавить одно правило в группу безопасности Cloud.ru: направление, протокол (tcp или udp; icmp и any появятся позже), порты и источник — CIDR или другая группа; источника по умолчанию нет. До вопроса evo показывает правило, группу, общая ли она и на сколько интерфейсов каких ВМ правило подействует, и говорит «открыто в интернет», если это так. Входящее правило со всего интернета в общей группе без --allow-internet-on-shared-group отклоняется. Такое правило уже есть — ответ already_exists без вопроса; более широкое — названо в превью (covered_by). Цена правила неизвестна, ресурс платный.
+
+Вызывает инструмент sg_rule_create (подробнее: 'evo tools describe sg_rule_create').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vpc sg-rule-create <security-group> [flags]
+```
+
+### Options
+
+```
+      --allow-internet-on-shared-group   Открыть всему интернету в общей группе: решает человек, не модель
+      --cidr string                      CIDR источника (для egress — назначения), IPv4 или IPv6; один из --cidr и --remote-group
+      --description string               Описание правила, до 255 знаков
+      --direction string                 Направление: ingress (к ВМ) или egress (от них)
+  -h, --help                             Справка по sg-rule-create
+      --ports string                     Один порт (443) или диапазон (8000:8100)
+      --protocol string                  Протокол: tcp или udp
+      --remote-group string              Группа безопасности (имя или UUID), чьи интерфейсы — источник; один из --cidr и --remote-group
 ```
 
 ### Options inherited from parent commands

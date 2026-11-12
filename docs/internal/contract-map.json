@@ -400,6 +400,13 @@
       "no_refusal": "no refusal seen live (register, 28.10)"
     }
   },
+  "sg_rule_create": {
+    "destructive": false,
+    "creates": {
+      "id": "rule_id",
+      "delete": "sg_rule_delete"
+    }
+  },
   "sg_rule_delete": {
     "destructive": true,
     "deletes": {
