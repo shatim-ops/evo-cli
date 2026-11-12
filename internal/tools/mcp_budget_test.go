@@ -481,11 +481,11 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 	// the call with the consent in it — the person was asked once, for the
 	// call cut short, not for its repeat.
 	for name := range consented {
-		if nextStepKeepsConsent[name] == "" && nextStepConsentUntilTheMajor[name] == "" && nextStepConsentUndecided[name] == "" {
-			bad = append(bad, name+": its answer cut by the budget names a next step with confirmed in next_args — a next step is a read, or the same call without confirmed; the repeat reads the state and does not write (D99, П3)")
+		if nextStepKeepsConsent[name] == "" && nextStepConsentUnbound[name] == "" {
+			bad = append(bad, name+": its answer cut by the budget names a next step with confirmed in next_args — a next step is a read, or the same call without confirmed; the repeat reads the state and does not write (D99, П3). A continuation that keeps the consent is a decision: bound to the id of what was approved, and declared in nextStepKeepsConsent")
 		}
 	}
-	for _, list := range []map[string]string{nextStepKeepsConsent, nextStepConsentUntilTheMajor, nextStepConsentUndecided} {
+	for _, list := range []map[string]string{nextStepKeepsConsent, nextStepConsentUnbound} {
 		for name := range list {
 			if ran[name] && !consented[name] {
 				bad = append(bad, name+": listed as a tool whose next step carries confirmed, and it does not: take the line out")
@@ -504,42 +504,31 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 
 // nextStepKeepsConsent are the declared continuations: a next step that
 // carries confirmed and is bound to what the person consented to, so that
-// the repeat cannot be of anything else. "tool" → the binding. A closed
-// list: a new tool does not join it without a decision.
+// the repeat cannot be of anything else (owner's decision 12.11 on R-85;
+// «Риск», conclusion 125, with a probe on the worlds: destroy sends no
+// second delete, the write of disk_detach and disk_resize is the one
+// approved). "tool" → the binding. A closed list: a new tool does not
+// join it without a decision.
 var nextStepKeepsConsent = map[string]string{
-	"deploy": "compose_hash in next_args: the repeat is of the compose file the person approved, another one asks again (D82)",
+	"deploy":        "compose_hash in next_args: the repeat is of the compose file the person approved, another one asks again (D82)",
+	"destroy":       "vm_id in next_args: the delete of the VM the person approved, by its id",
+	"stack_destroy": "job_id in next_args: the destroy of the job the person approved, by its id",
+	"disk_attach":   "disk_id and vm in next_args: the attach the person approved; a disk of another VM is refused with the consent too (D81)",
+	"disk_create":   "disk_id and vm in next_args: the attach of attach_to the person approved",
+	"disk_detach":   "disk_id and vm in next_args: the detach the person approved",
+	"disk_resize":   "disk_id and size_gb in next_args: the size the person approved",
 }
 
-// nextStepConsentUntilTheMajor are the tools shipped before the invariant
-// whose answer cut by the budget names a next step with confirmed and no
-// binding to what was approved, and whose fate is decided: taking
-// confirmed out changes the answer of a shipped tool — the continuation
-// would ask again, exit 3 — which is breaking and waits for the major
-// (release plan 1.9, «Согласие не переезжает в следующий шаг», R-85;
-// «Риск», conclusion 123: the target is the one of the preview, and a
-// disk of another VM is refused with the consent too, D81). "tool" → what
-// the next step is. It only shrinks, and a new tool does not join it.
-// Closes by 2.0.
-var nextStepConsentUntilTheMajor = map[string]string{
-	"disk_attach": "disk_attach disk_id, vm, confirmed",
-	"disk_create": "disk_attach disk_id, vm, confirmed: the attach of attach_to",
-}
-
-// nextStepConsentUndecided are the tools shipped before the invariant
-// whose next step carries confirmed and which the plan did not know of:
-// the measurement of 12.11 found them, among them two deletes. The class
-// is not decided — the conclusion of «Риск» and the owner's answer come
-// first: to bind the step to what was approved, as deploy does, to take
-// confirmed out (breaking), or to keep it until the major. "tool" → what
-// the next step is. It only shrinks, and a new tool does not join it.
-// Closes by 1.9: by rc.1 each line is a decision.
-var nextStepConsentUndecided = map[string]string{
-	"deploy_apply":  "deploy_apply plan_id, confirmed",
-	"destroy":       "destroy vm_id, confirmed: a delete repeated with the consent in the step",
-	"disk_detach":   "disk_detach disk_id, vm, confirmed",
-	"disk_resize":   "disk_resize disk_id, size_gb, confirmed",
-	"provision":     "provision name, confirmed",
-	"stack_destroy": "stack_destroy job_id, confirmed: a delete repeated with the consent in the step",
+// nextStepConsentUnbound are the tools shipped before the invariant whose
+// next step carries confirmed and is bound to nothing: the step names the
+// VM by its name or by the plan, and a VM gone between the two calls is
+// made a second time («Риск», conclusion 125: CreateVM 1 → 2). The step
+// gets bound to the id of the VM (D102, «разработка A»); then the line
+// moves to nextStepKeepsConsent. "tool" → what the next step is. It only
+// shrinks, and a new tool does not join it. Closes by 1.9.
+var nextStepConsentUnbound = map[string]string{
+	"deploy_apply": "deploy_apply plan_id, confirmed: no id of the VM in the step",
+	"provision":    "provision name, confirmed: the VM by its name, not its id",
 }
 
 // consentInNextStep reports whether the answer names a next step whose
