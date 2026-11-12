@@ -27,6 +27,7 @@ import (
 // as a service does with a token whose expiry evo misjudged (a paused VM,
 // G140-3), and accepts any later one.
 type expiringCloud struct {
+	iamTokens
 	mu        sync.Mutex
 	exchanges int
 }
@@ -39,9 +40,9 @@ func (c *expiringCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 	case "iam.api.cloud.ru":
 		c.exchanges++
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"access_token":"tok-`+string(rune('0'+c.exchanges))+`","expires_in":3600}`)
+		_, _ = io.WriteString(w, `{"access_token":"`+c.token(c.exchanges)+`","expires_in":3600}`)
 	case "mk8s.api.cloud.ru":
-		if r.Header.Get("Authorization") == "Bearer tok-1" {
+		if r.Header.Get("Authorization") == "Bearer "+c.token(1) {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = io.WriteString(w, `{"code":16,"message":"Jwt is expired"}`)
 			break

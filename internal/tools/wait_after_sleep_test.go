@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -38,6 +37,7 @@ import (
 // valid (G140-3). What became of the operation meanwhile is after: done,
 // failed, or gone.
 type sleptCloud struct {
+	iamTokens
 	mu        sync.Mutex
 	after     string // done, failed, gone
 	keepToken bool   // the service still takes tok-1 after the sleep
@@ -53,7 +53,7 @@ func (c *sleptCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.URL.Host == "iam.api.cloud.ru" {
 		c.exchanges++
-		_, _ = io.WriteString(w, `{"access_token":"tok-`+strconv.Itoa(c.exchanges)+`","expires_in":3600}`)
+		_, _ = io.WriteString(w, `{"access_token":"`+c.token(c.exchanges)+`","expires_in":3600}`)
 		return w.Result(), nil
 	}
 	if r.Method != http.MethodGet {
@@ -61,7 +61,7 @@ func (c *sleptCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 		return w.Result(), nil
 	}
 	slept := c.polls > 0
-	if slept && !c.keepToken && r.Header.Get("Authorization") == "Bearer tok-1" {
+	if slept && !c.keepToken && r.Header.Get("Authorization") == "Bearer "+c.token(1) {
 		c.refused++
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = io.WriteString(w, `{"code":16,"message":"Jwt is expired"}`)
