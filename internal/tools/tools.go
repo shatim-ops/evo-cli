@@ -109,7 +109,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_start",
-			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. A VM that runs already answers already_running with no question; one that is starting is waited for and no second command is sent, so a repeat is safe. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. Mutation (billable: a running VM is charged for its flavor): requires confirmed=true.",
+			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. A VM that runs already answers already_running with no question; one that is starting is waited for and no second command is sent, so a repeat is safe; a repeat that has to send the command asks again. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. Mutation (billable: a running VM is charged for its flavor): requires confirmed=true.",
 			InputSchema: objSchema(map[string]any{
 				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
 				"name":      strProp("VM name (alternative to vm_id)."),

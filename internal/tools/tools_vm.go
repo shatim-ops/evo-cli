@@ -261,7 +261,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			case atLimit:
 				// No question yet: the state, and the same call again.
 				ans := vmAnswer(vm, "waiting", last)
-				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; it cannot be changed until its state settles. Call %s to go on.", vm.ID, last, tool)
+				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; it cannot be changed until its state settles. Call %s again when it settles: it shows the preview and asks before it sends the command.", vm.ID, last, tool)
 				nextSameCall(ans, tool, vmRef(args, vm))
 				return answered(toJSON(ans), false), nil
 			case timedOut > 0:
