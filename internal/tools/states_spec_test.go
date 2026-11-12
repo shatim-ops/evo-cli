@@ -108,16 +108,20 @@ var stateRowsOf = func() map[string]map[string]bool {
 			out[tool][state] = true
 		}
 	}
+	for tool, rows := range poolStateRows {
+		out[tool] = map[string]bool{}
+		for state := range rows {
+			out[tool][state] = true
+		}
+	}
 	return out
 }()
 
 // stateWorldsPendingNew are the tools new in 1.9 with no row for every
 // state of the specification yet. Only shrinks. Closes by 1.9.
 var stateWorldsPendingNew = map[string]string{
-	"k8s_nodepool_delete": "worlds: the group ready, the last group, deleting (D61); not the 16 states of NodePool.status",
-	"k8s_nodepool_scale":  "worlds: the group ready and at the size; not the 16 states",
-	"sg_rule_create":      "worlds: the rule there and not; not the 7 states of a rule (the window of deletion: cloud-e2e 205–209)",
-	"sg_rule_delete":      "worlds: the rule there, gone, being deleted; not the 7 states",
+	"sg_rule_create": "worlds: the rule there and not; not the 7 states of a rule (the window of deletion: cloud-e2e 205–209)",
+	"sg_rule_delete": "worlds: the rule there, gone, being deleted; not the 7 states",
 }
 
 // stateWorldsPendingShipped are the tools shipped before the invariant
