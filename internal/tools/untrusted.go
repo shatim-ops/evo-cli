@@ -87,6 +87,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	// them (docs/internal/briefs/backups.md).
 	"backup_get":  {fields: []string{"name", "description", "tags", "resource_name", "source"}},
 	"backup_list": {fields: []string{"backups"}},
+	// The names of the backup and of its source, in the preview and the
+	// answer (the audit of #1544, С1).
+	"backup_create": {fields: []string{"preview", "will_create", "backup", "name"}},
 	// The name of the pool, in the preview and in the answer; the words
 	// and the code of the platform in a failed operation (details).
 	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},

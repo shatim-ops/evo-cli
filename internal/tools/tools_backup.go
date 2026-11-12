@@ -6,8 +6,10 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
@@ -179,8 +181,8 @@ var backupWaitLimit = 20 * time.Minute
 // a VM, the sum of its disks) and how many disks. A source that is not
 // there is NOT_FOUND, its read's error.
 type backupSourceInfo struct {
-	kind, id, name, zone string
-	sizeGB, disks        int
+	kind, id, name, zone, state string
+	sizeGB, disks               int
 }
 
 func backupSourceOf(ctx context.Context, eng *engine.Engine, args map[string]any) (*backupSourceInfo, error) {
@@ -191,6 +193,13 @@ func backupSourceOf(ctx context.Context, eng *engine.Engine, args map[string]any
 		}
 		src := &backupSourceInfo{kind: "disk", id: id, disks: 1}
 		src.name, _ = d["name"].(string)
+		src.state, _ = d["state"].(string)
+		// The backup goes to the call's project: a disk of another one, by
+		// the project its card names, is refused, so the project of the
+		// write is the source's (the audit of #1544, С2).
+		if pid, _ := d["project_id"].(string); pid != "" && pid != eng.Config.ProjectID {
+			return nil, backupSourceElsewhere("disk", "диск", id, eng.Config.ProjectID)
+		}
 		src.sizeGB = int(numberOf(d["size"]))
 		if z, ok := nameOf(d["availability_zone"]).(string); ok {
 			src.zone = z
@@ -202,7 +211,14 @@ func backupSourceOf(ctx context.Context, eng *engine.Engine, args map[string]any
 	if err != nil {
 		return nil, err
 	}
-	src := &backupSourceInfo{kind: "virtual_machine", id: id, name: vm.Name}
+	src := &backupSourceInfo{kind: "virtual_machine", id: id, name: vm.Name, state: vm.State}
+	vms, err := eng.Cloud.ListVMsInProject(ctx, eng.Config.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.ContainsFunc(vms, func(v *provision.VM) bool { return v.ID == id }) {
+		return nil, backupSourceElsewhere("VM", "ВМ", id, eng.Config.ProjectID)
+	}
 	disks, err := eng.Cloud.ListDisks(ctx, eng.Config.ProjectID)
 	if err != nil {
 		return nil, err
@@ -220,6 +236,14 @@ func backupSourceOf(ctx context.Context, eng *engine.Engine, args map[string]any
 		}
 	}
 	return src, nil
+}
+
+// backupSourceElsewhere refuses a source that is not in the call's project: the
+// backup would go to another project than its source's.
+func backupSourceElsewhere(what, whatRU, id, project string) error {
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("%s %s is not in project %s: a backup goes to the project of the call, and of its source", "%s %s не в проекте %s: копия создаётся в проекте вызова, и он должен быть проектом источника", i18n.T(what, whatRU), id, project),
+		i18n.T("Pass project_id of the source's project.", "Передайте project_id проекта источника."))
 }
 
 // numberOf is a JSON number as a float, 0 for anything else.
@@ -294,7 +318,8 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 	req := provision.CreateBackupReq{Name: name, Description: stringArg(args, "description"), ProjectID: eng.Config.ProjectID,
 		Resource: provision.BackupResource{ResourceID: src.id, ResourceType: src.kind}}
 	will := map[string]any{
-		"name": name, "resource_type": src.kind, "resource_id": src.id, "resource_name": src.name,
+		"name": name, "resource_type": src.kind, "resource_state": src.state,
+		"type": i18n.T("chosen by the platform: full or incremental", "выбирает платформа: полная или инкрементальная"), "resource_id": src.id, "resource_name": src.name,
 		"resource_size_gb": src.sizeGB, "resource_disks": src.disks,
 		"backups_of_resource": len(kept), "backups_of_resource_size_mb": sizeMB,
 		"kept":     i18n.T("until it is deleted: the platform keeps backups with no term", "пока её не удалят: платформа хранит копии бессрочно"),
@@ -307,7 +332,7 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 	preview := map[string]any{
 		"message": i18n.Tf("backup_create makes a billable backup of %s %s (%s).", "backup_create делает платную резервную копию %s %s (%s).",
 			backupKindWord(src.kind), quoteCloud(src.name), src.id),
-		"preview":     willPreview(engine.ResourceBackup, name, src.zone, will, []string{"resource_type", "resource_id", "resource_name", "resource_size_gb", "resource_disks", "backups_of_resource", "backups_of_resource_size_mb", "kept", "outlives", "description", "wait"}),
+		"preview":     willPreview(engine.ResourceBackup, name, src.zone, will, []string{"resource_type", "resource_state", "type", "resource_id", "resource_name", "resource_size_gb", "resource_disks", "backups_of_resource", "backups_of_resource_size_mb", "kept", "outlives", "description", "wait"}),
 		"will_create": will,
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
@@ -317,14 +342,14 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 			if err == nil {
 				err = noID("backup")
 			}
-			return lostCreate(ctx, "backup_create", ofSource, i18n.T("backup", "резервная копия"), name, nil, "backup_get backup_id",
+			text, isErr := lostCreate(ctx, "backup_create", ofSource, i18n.T("backup", "резервная копия"), name,
+				map[string]any{"name": name, "resource_id": src.id}, "backup_get backup_id",
 				fmt.Errorf(i18n.T("create backup: %w", "создание копии: %w"), err))
+			return backupFoundNext(text), isErr
 		}
 		// The id before the wait: Ctrl-C in the tenth minute leaves no billed
 		// backup without its id on the screen (conclusion 164, У6).
-		if pp, ok := progressOf(ctx); ok {
-			pp.Step(0, 0, i18n.Tf("backup %s (%s) is being made", "копия %s (%s) делается", name, id))
-		}
+		announce(ctx, i18n.Tf("backup %s (%s) is being made", "копия %s (%s) делается", name, id))
 		return s.backupCreated(ctx, eng, api, args, id, b)
 	}}, nil
 }
@@ -394,7 +419,12 @@ func (s *Registry) backupCreated(ctx context.Context, eng *engine.Engine, api pr
 		read := func(ctx context.Context) (string, bool, error) {
 			cur, err := api.GetBackup(ctx, id)
 			if err != nil {
-				return "", false, err
+				// Only a backup that is gone ends the wait: a failed read
+				// (a 5xx, the network) is read again (the audit, С5).
+				if isGone(err) {
+					return "", false, err
+				}
+				return "", false, nil
 			}
 			st, _ := cur["state"].(string)
 			b = cur
@@ -427,4 +457,35 @@ func (s *Registry) backupCreated(ctx context.Context, eng *engine.Engine, api pr
 		nextStep(ans, "backup_get", map[string]any{"backup_id": id})
 	}
 	return toJSON(ans), false
+}
+
+// announce says msg to the person while the call goes on, in every mode of
+// the CLI: a line of progress, and in --json a {"progress": msg} line on
+// stderr, which Step leaves out (the audit of #1544, Б3); over MCP, the
+// line of progress.
+func announce(ctx context.Context, msg string) {
+	pp, ok := progressOf(ctx)
+	if !ok {
+		return
+	}
+	if pp.IsJSON() {
+		_ = json.NewEncoder(pp.ErrWriter()).Encode(map[string]string{"progress": msg})
+		return
+	}
+	pp.Step(0, 0, msg)
+}
+
+// backupFoundNext is the answer of a lost create whose backup was found
+// (lostCreate): its read, backup_get, as the next step (the audit, С4).
+func backupFoundNext(text string) string {
+	var m map[string]any
+	if json.Unmarshal([]byte(text), &m) != nil {
+		return text
+	}
+	id, _ := m["backup_id"].(string)
+	if id == "" || m["status"] == nil || m["status"] == "error" {
+		return text
+	}
+	nextStep(m, "backup_get", map[string]any{"backup_id": id})
+	return toJSON(m)
 }

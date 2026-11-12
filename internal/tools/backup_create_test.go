@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +29,8 @@ const (
 	bcDisk = "00000000-0000-4000-8000-0000000000d2"
 	bcVM   = "00000000-0000-4000-8000-0000000000a2"
 	bcNew  = "00000000-0000-4000-8000-0000000000b9"
+	// bcForeign is a disk of another project.
+	bcForeign = "00000000-0000-4000-8000-0000000000d9"
 )
 
 // createWorld is the compute API of backup_create: a disk and a VM to back
@@ -41,6 +44,10 @@ type createWorld struct {
 	reads      int
 	finalState string // "" for created
 	postFails  bool   // the POST is answered 502: a lost answer
+	// unlisted: the backup of a lost answer is not in the list yet.
+	unlisted bool
+	// failReads: the first reads of the new backup are answered 503.
+	failReads int
 }
 
 func (w *createWorld) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -49,15 +56,20 @@ func (w *createWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 	rec := httptest.NewRecorder()
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disks/"+bcDisk:
-		_, _ = rec.WriteString(`{"id":"` + bcDisk + `","name":"data","size":10,"availability_zone":{"name":"ru.AZ-1"}}`)
+		_, _ = rec.WriteString(`{"id":"` + bcDisk + `","name":"data","size":10,"project_id":"` + raProject + `","availability_zone":{"name":"ru.AZ-1"}}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disks/"+bcForeign:
+		_, _ = rec.WriteString(`{"id":"` + bcForeign + `","name":"theirs","size":10,"project_id":"00000000-0000-4000-8000-0000000000f0"}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/vms/"+bcVM:
 		_, _ = rec.WriteString(`{"id":"` + bcVM + `","name":"web","state":"running"}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disks":
 		_, _ = rec.WriteString(`{"items":[{"id":"x1","name":"boot","size":20,"availability_zone":{"name":"ru.AZ-1"},"vms":[{"id":"` + bcVM + `"}]},` +
-			`{"id":"x2","name":"data","size":30,"vms":[{"id":"` + bcVM + `"}]},{"id":"x3","name":"other","size":99,"vms":[]}],"total":3}`)
+			`{"id":"x2","name":"data","size":30,"vms":[{"id":"` + bcVM + `"}]},{"id":"x3","name":"other","size":99,"vms":[]},` +
+			`{"id":"` + bcDisk + `","name":"data","size":10,"vms":[]}],"total":4}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/vms":
+		_, _ = rec.WriteString(`{"items":[{"id":"` + bcVM + `","name":"web","state":"running"}],"total":1}`)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/backups":
 		items := append([]string{}, w.kept...)
-		if len(w.posts) > 0 && !w.postFails || w.postFails && len(w.posts) > 0 {
+		if len(w.posts) > 0 && !w.unlisted {
 			items = append(items, w.newBackup("creating"))
 		}
 		_, _ = rec.WriteString(`{"items":[` + strings.Join(items, ",") + `],"total":` + jsonInt(len(items)) + `}`)
@@ -71,6 +83,11 @@ func (w *createWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 		rec.WriteHeader(http.StatusCreated)
 		_, _ = rec.WriteString(w.newBackup("creating"))
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/backups/"+bcNew:
+		if w.failReads > 0 {
+			w.failReads--
+			rec.WriteHeader(http.StatusServiceUnavailable)
+			return rec.Result(), nil
+		}
 		w.reads++
 		st := "creating"
 		if w.reads >= w.readyAfter {
@@ -107,6 +124,13 @@ func jsonInt(n int) string { b, _ := json.Marshal(n); return string(b) }
 // millisecond: the world does not wait the production interval (CLAUDE.md §5).
 func createRegistry(t *testing.T, w *createWorld) *Registry {
 	t.Helper()
+	return createRegistryIn(t, w, "")
+}
+
+// createRegistryIn is createRegistry whose engine keeps its state in dir:
+// the records of the calls with consent (D92) are written there.
+func createRegistryIn(t *testing.T, w *createWorld, dir string) *Registry {
+	t.Helper()
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: w}, "")
 	cloud.SetToken("t")
 	old := httpretry.DefaultBase
@@ -115,11 +139,12 @@ func createRegistry(t *testing.T, w *createWorld) *Registry {
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
-			Config:  config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"},
-			Auth:    staticToken{},
-			Cloud:   cloud,
-			Printer: output.NewWithWriter(&buf, output.ModeText, false),
-			Timings: engine.Timings{VMPollInterval: time.Millisecond},
+			Config:   config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"},
+			Auth:     staticToken{},
+			Cloud:    cloud,
+			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
+			Timings:  engine.Timings{VMPollInterval: time.Millisecond},
+			StateDir: dir,
 		}, nil
 	})
 }
@@ -295,5 +320,66 @@ func TestBackupCreate_ExactlyOneSource(t *testing.T) {
 		if !isErr || m["reason"] != "USAGE" || len(w.posts) != 0 || w.reads != 0 {
 			t.Errorf("%v: want USAGE and no request: %s", args, text)
 		}
+	}
+}
+
+// The answer of the POST is lost, the backup found by its name: the answer
+// names it and backup_get as the next step (the audit, С4).
+func TestBackupCreate_LostAnswerFoundNamesTheNextStep(t *testing.T) {
+	w := &createWorld{postFails: true}
+	m, text, _ := callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"disk_id": bcDisk, "name": "before-change", "confirmed": true})
+	next, _ := m["next_args"].(map[string]any)
+	if m["backup_id"] != bcNew || m["next_tool"] != "backup_get" || next["backup_id"] != bcNew || len(w.posts) != 1 {
+		t.Errorf("want the found backup and backup_get: %s", text)
+	}
+}
+
+// A failed read during the wait does not end it: only a backup that is gone
+// does (the audit, С5).
+func TestBackupCreate_FailedReadDoesNotEndTheWait(t *testing.T) {
+	w := &createWorld{readyAfter: 1, failReads: 2}
+	m, text, isErr := callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"disk_id": bcDisk, "name": "before-change", "confirmed": true})
+	if isErr || m["status"] != "created" {
+		t.Errorf("want created after the failed reads: %s", text)
+	}
+}
+
+// A source of another project: refused before the question — the backup
+// would go to the call's project, not the source's (the audit, С2).
+func TestBackupCreate_SourceOfAnotherProject(t *testing.T) {
+	w := &createWorld{}
+	m, text, isErr := callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"disk_id": bcForeign, "name": "x"})
+	if !isErr || m["reason"] != "USAGE" || !strings.Contains(text, "not in project") || len(w.posts) != 0 {
+		t.Errorf("want the refusal naming the project, nothing sent: %s", text)
+	}
+}
+
+// The preview names the state of the source and that the platform chooses
+// the type (the audit, С6); a backup of another resource with the same name
+// is not this one's (mutation M2); the description goes into the POST and
+// the preview alike (mutation M7).
+func TestBackupCreate_PreviewStateTypeAndOnlyItsOwn(t *testing.T) {
+	other := `{"id":"o1","name":"before-change","state":"created","created_at":"2026-01-01T00:00:00Z","resource":{"resource_id":"someone-else","resource_type":"disk"}}`
+	w := &createWorld{kept: []string{other}, readyAfter: 1}
+	m, text, _ := callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"vm_id": bcVM, "name": "before-change", "description": "pre-upgrade"})
+	will, _ := m["will_create"].(map[string]any)
+	if m["status"] != "confirmation_required" || will["resource_state"] != "running" || !strings.Contains(fmt.Sprint(will["type"]), "platform") ||
+		will["backups_of_resource"] != float64(0) || will["description"] != "pre-upgrade" {
+		t.Fatalf("want the question with the state, the type, no backup of its own and the description: %s", text)
+	}
+	_, _, _ = callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"vm_id": bcVM, "name": "before-change", "description": "pre-upgrade", "confirmed": true})
+	if len(w.posts) != 1 || !strings.Contains(w.posts[0], `"description":"pre-upgrade"`) {
+		t.Errorf("want one POST with the description: %v", w.posts)
+	}
+}
+
+// In --json the line with the id goes to stderr as well: Step says nothing
+// in that mode (the audit, Б3).
+func TestBackupCreate_AnnounceInJSON(t *testing.T) {
+	var out, errOut bytes.Buffer
+	ctx := WithCaller(context.Background(), &Caller{Progress: output.NewWithWriters(&out, &errOut, output.ModeJSON, false)})
+	announce(ctx, "backup x ("+bcNew+") is being made")
+	if !strings.Contains(errOut.String(), `"progress"`) || !strings.Contains(errOut.String(), bcNew) || out.Len() != 0 {
+		t.Errorf("want a progress line with the id on stderr: out %q, err %q", out.String(), errOut.String())
 	}
 }
