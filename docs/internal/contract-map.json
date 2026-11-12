@@ -20,7 +20,8 @@
     "taken": "checked",
     "creates": {
       "id": "backup_id",
-      "list": "backup_list"
+      "list": "backup_list",
+      "delete": "backup_delete"
     }
   },
   "backup_delete": {

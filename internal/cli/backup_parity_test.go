@@ -63,6 +63,10 @@ func (c backupKeptCloud) GetBackup(ctx context.Context, id string) (map[string]a
 	return parityCloud{}.GetBackup(ctx, id)
 }
 
+func (c backupKeptCloud) DeleteBackup(ctx context.Context, id string) error {
+	return parityCloud{}.DeleteBackup(ctx, id)
+}
+
 func (c backupKeptCloud) CreateBackup(ctx context.Context, req provision.CreateBackupReq) (map[string]any, error) {
 	if b, ok := c.CloudAPI.(provision.BackupAPI); ok {
 		return b.CreateBackup(ctx, req)

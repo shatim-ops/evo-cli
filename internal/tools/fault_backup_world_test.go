@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -49,6 +50,17 @@ func (c *backupCloud) GetBackup(_ context.Context, id string) (map[string]any, e
 		}
 	}
 	return nil, clerrors.New(clerrors.CodeNotFound, "backup not found", "")
+}
+
+// DeleteBackup takes the backup away, through the gate as the rest.
+func (c *backupCloud) DeleteBackup(_ context.Context, id string) error {
+	if err := c.gate("DeleteBackup"); err != nil {
+		return err
+	}
+	c.bmu.Lock()
+	defer c.bmu.Unlock()
+	c.backups = slices.DeleteFunc(c.backups, func(b map[string]any) bool { return b["id"] == id })
+	return nil
 }
 
 func (c *backupCloud) CreateBackup(_ context.Context, req provision.CreateBackupReq) (map[string]any, error) {

@@ -284,23 +284,14 @@ func TestBackupCreate_IDBeforeTheWait(t *testing.T) {
 // error or being deleted is no backup to rely on — a refusal, never a
 // success. None sends a write.
 func TestBackupCreate_TheNameTakenByState(t *testing.T) {
-	for _, c := range []struct {
-		state, status, reason, next string
-		isErr                       bool
-	}{
-		{"created", "already_exists", "", "", false},
-		{"creating", "creating", "", "backup_get", false},
-		{"error_creating", "", "USAGE", "", true},
-		{"error", "", "USAGE", "", true},
-		{"deleting", "", "USAGE", "", true},
-	} {
+	for _, c := range backupCreateStateRows {
 		w := &createWorld{kept: []string{keptBackupIn("k1", "before-change", "2026-11-12T00:00:00Z", c.state)}}
 		m, text, isErr := callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"disk_id": bcDisk, "name": "before-change", "confirmed": true})
 		if isErr != c.isErr || c.status != "" && m["status"] != c.status || c.reason != "" && m["reason"] != c.reason ||
 			c.next != "" && m["next_tool"] != c.next || m["backup_id"] != "k1" {
 			t.Errorf("%s: want status %q reason %q next %q with its id: %s", c.state, c.status, c.reason, c.next, text)
 		}
-		if c.state == "creating" && m["created_at"] != "2026-11-12T00:00:00Z" {
+		if c.status == "creating" && m["created_at"] != "2026-11-12T00:00:00Z" {
 			t.Errorf("creating: want the time the backup was asked for, to tell it from the call's own: %s", text)
 		}
 		if c.state != "created" && strings.Contains(text, "already_exists") {
@@ -310,6 +301,34 @@ func TestBackupCreate_TheNameTakenByState(t *testing.T) {
 			t.Errorf("%s: sent %v", c.state, w.posts)
 		}
 	}
+}
+
+// backupCreateStateRows is what backup_create answers, with the consent,
+// when a backup of the name is there already, for each state of the
+// specification (compute:BackupState): made — already_exists; being made —
+// the one to wait for; being deleted or in error — a refusal, nothing sent.
+// The world of the states (release plan 1.9).
+var backupCreateStateRows = []struct {
+	state, status, reason, next string
+	isErr                       bool
+}{
+	{"created", "already_exists", "", "", false},
+	{"creating", "creating", "", "backup_get", false},
+	{"updating", "creating", "", "backup_get", false},
+	{"error_creating", "", "USAGE", "", true},
+	{"error", "", "USAGE", "", true},
+	{"deleting", "", "USAGE", "", true},
+	{"error_deleting", "", "USAGE", "", true},
+}
+
+// backupCreateRowsByState is backupCreateStateRows by the state, for the
+// invariant of the states (stateRowsOf).
+func backupCreateRowsByState() map[string]string {
+	out := map[string]string{}
+	for _, r := range backupCreateStateRows {
+		out[r.state] = r.status + r.reason
+	}
+	return out
 }
 
 // Exactly one source, refused before any request (probe П2): both, or none.

@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `backup_list` | `evo backup list` | reads |  |
 | `backup_get` | `evo backup get` | reads | `backup_id` ← `backup_list` |
-| `backup_create` | `evo backup create` | creates: id in `backup_id`; found with `backup_list` | `vm_id` ← `vm_list`, `disk_id` ← `disk_list` |
+| `backup_create` | `evo backup create` | creates: id in `backup_id`; found with `backup_list`; deleted with `backup_delete` | `vm_id` ← `vm_list`, `disk_id` ← `disk_list` |
 | `backup_delete` | `evo backup delete` | deletes; a repeat answers `already_deleted` | `backup_id` ← `backup_list` |
 
 Filters of the lists (the rule of the `evo` skill): `backup_list` — state, name, resource_type, resource_id, ids, states.
