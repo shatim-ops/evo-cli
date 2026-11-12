@@ -66,7 +66,8 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 				return
 			}
 			msg, _ := m["message"].(string)
-			if !strings.Contains(msg, "its outcome is unknown") || !strings.Contains(msg, "cert_get") || m["interrupted"] == nil {
+			cut, _ := m["interrupted"].(map[string]any)
+			if !strings.Contains(msg, "its outcome is unknown") || !strings.Contains(msg, "cert_get") || cut["calls"] != float64(1) {
 				t.Errorf("the question does not say what is known: %s", text)
 			}
 			if left := intent.Pending(dir); len(left) != 0 {
@@ -105,7 +106,7 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 			t.Fatal(err)
 		}
 		notes := r.PendingNotes(eng.StateDir)
-		if len(notes) != 1 || !strings.Contains(notes[0], "one more change, not a repeat") || strings.Contains(notes[0], "settles it") || strings.Contains(notes[0], "doctor checks it") {
+		if len(notes) != 1 || !strings.Contains(notes[0], "one more change, not a repeat: whether to send it is the person's decision") || strings.Contains(notes[0], "settles it") || strings.Contains(notes[0], "doctor checks it") {
 			t.Errorf("the note: %v", notes)
 		}
 	})

@@ -163,7 +163,9 @@ func (r *Registry) askAgainAfterACut(name string, args map[string]any) (string, 
 	what := firstNonEmptyStr(last.Name, last.Target)
 	return toJSON(map[string]any{
 		"status":      "confirmation_required",
-		"interrupted": map[string]any{"tool": name, "started_at": last.StartedAt.UTC().Format(time.RFC3339)},
+		// The last of them, and how many there were: each may have taken
+		// effect.
+		"interrupted": map[string]any{"tool": name, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)},
 		"message": i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. This call was not sent: it would be one more change, not a repeat of that one. %s shows the resource now; call %s with confirmed=true again to send it.",
 			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Этот вызов не отправлен: он был бы ещё одним изменением, а не повтором того. Ресурс сейчас показывает %s; чтобы отправить, вызовите %s с confirmed=true ещё раз.",
 			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), read, name),
@@ -422,8 +424,8 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	// Every call of the tool is one more change: the same call again does
 	// not settle the record, it changes the resource a second time.
 	if read := everySendIsAChange[in.Tool]; read != "" {
-		return head + i18n.Tf(" — %s shows it; the same %s again is one more change, not a repeat",
-			" — его показывает %s; тот же %s ещё раз — это ещё одно изменение, а не повтор", quoteCloud(read), tool)
+		return head + i18n.Tf(" — %s shows it; the same %s again is one more change, not a repeat: whether to send it is the person's decision",
+			" — его показывает %s; тот же %s ещё раз — это ещё одно изменение, а не повтор: слать ли его — решает человек", quoteCloud(read), tool)
 	}
 	// A delete addressed by id is not looked up in the list of the call's
 	// project, which does not tell a deleted resource from one of another
