@@ -8,10 +8,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -61,6 +63,13 @@ type listFilter struct {
 	fields []string
 	// values are the values of a filterEnum.
 	values []string
+	// card: the item of the list does not carry the field — the card of
+	// the resource does, and card reads the field from it by the id of
+	// the item (nil: the card names none). evo reads the card of each
+	// item the other filters left (cardReads at most) and puts the field
+	// into the row: the selection is checked by evo, and the answer shows
+	// what it was selected by.
+	card func(ctx context.Context, eng *engine.Engine, id string) (any, error)
 	// many: the value is a list, and an item passes when its field is one
 	// of the values (ids, states). An empty list and an empty value in it
 	// are USAGE by the schema (prop), as an empty string of a filter is.
@@ -201,6 +210,11 @@ var listSpecs = withSets(map[string]listSpec{
 		enumFilter("state", vmStates...).inCloud("/api/v1/vms", "statuses"), nameFilter(),
 		{arg: "flavor", kind: filterRef, ref: "list_flavors", en: "Only of this flavor: name.", ru: "Только с этим flavor: имя"},
 		boolFilter("public_ip", "true: only with a public IP; false: only without.", "true — только с публичным IP, false — только без него"),
+		// The item of GET /api/v1/vms carries no image (the published
+		// specification of Compute); the card does.
+		{arg: "images", kind: filterExact, many: true, fields: []string{"image"}, card: vmImageByID,
+			en: "Only of these images: id or name. Reads each VM left by the other filters; narrow with them.",
+			ru: "Только из этих образов: id или имя. Читает каждую ВМ, оставшуюся после остальных фильтров, — сузьте ими"},
 	}},
 	"disk_list": {rows: "disks", filters: []listFilter{
 		zoneFilter().inCloud("/api/v1/disks", "availability_zone_id"), enumFilter("state", diskStates...), nameFilter(),
@@ -293,6 +307,12 @@ var listSpecs = withSets(map[string]listSpec{
 	"k8s_options":        {none: "a composite catalogue (versions, flavors, zones) read whole to plan a cluster"},
 	"doctor":             {none: "the checks of this machine and this key, each of which the person reads"},
 })
+
+// cardReads is how many cards one call reads for a filter by a field of
+// the card (listFilter.card): a request each. More items than that left by
+// the other filters is a refusal that says to narrow, not a part of the
+// selection and not minutes of requests.
+const cardReads = 50
 
 // filterHintRows is how many items a list answers without a filter before
 // it says, in one line, which filters narrow it: one number for every
@@ -587,16 +607,22 @@ func (r *Registry) filtered(s listSpec, next Handler) Handler {
 				len(rows), strings.Join(s.args(), ", ")))
 			return toJSON(m), false
 		}
-		kept := make([]any, 0, len(rows))
-		for _, row := range rows {
-			item, _ := row.(map[string]any)
-			pass := item != nil
-			for _, c := range conds {
-				pass = pass && c.matches(item)
+		// The filters of the item first; then the filters of the card,
+		// over what those left.
+		var ofItem, ofCard []condition
+		for _, c := range conds {
+			if c.f.card != nil {
+				ofCard = append(ofCard, c)
+			} else {
+				ofItem = append(ofItem, c)
 			}
-			if pass {
-				kept = append(kept, row)
+		}
+		kept := selected(rows, ofItem)
+		if len(ofCard) > 0 {
+			if err := r.readCards(ctx, s, kept, ofCard); err != nil {
+				return errResult(err), true
 			}
+			kept = selected(kept, ofCard)
 		}
 		applied := make(map[string]any, len(conds))
 		names := make([]string, 0, len(conds))
@@ -623,6 +649,90 @@ func (r *Registry) filtered(s listSpec, next Handler) Handler {
 		}
 		return toJSON(m), false
 	}
+}
+
+// selected are the rows that pass every condition.
+func selected(rows []any, conds []condition) []any {
+	kept := make([]any, 0, len(rows))
+	for _, row := range rows {
+		item, _ := row.(map[string]any)
+		pass := item != nil
+		for _, c := range conds {
+			pass = pass && c.matches(item)
+		}
+		if pass {
+			kept = append(kept, row)
+		}
+	}
+	return kept
+}
+
+// readCards puts into each of rows the fields the conditions read from
+// the card of its resource (listFilter.card). More rows than cardReads is
+// USAGE naming the filters of the item that narrow; a card that cannot be
+// read, or names no such field, is an error — a row is never «did not
+// pass» because evo could not tell.
+func (r *Registry) readCards(ctx context.Context, s listSpec, rows []any, conds []condition) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	var narrow []string
+	for _, f := range s.filters {
+		if f.card == nil {
+			narrow = append(narrow, f.arg)
+		}
+	}
+	if len(rows) > cardReads {
+		return clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("filter %s reads the card of each item, and %d are left to read: %d at most in one call; nothing was selected",
+				"фильтр %s читает карточку каждого элемента, а читать осталось %d: за вызов — не больше %d; отбор не выполнен", conds[0].f.arg, len(rows), cardReads),
+			i18n.Tf("Narrow the list with: %s.", "Сузьте список: %s.", strings.Join(narrow, ", ")))
+	}
+	eng, err := r.authedEngine(ctx, nil)
+	if err != nil {
+		return err
+	}
+	for read, row := range rows {
+		item, _ := row.(map[string]any)
+		for _, c := range conds {
+			field, id := c.f.itemFields()[0], stringOf(item["id"])
+			v, err := c.f.card(ctx, eng, id)
+			if err != nil {
+				return cardError(ctx, c.f.arg, id, read, len(rows), narrow, err)
+			}
+			if v == nil {
+				return fmt.Errorf(i18n.T("filter %s: the card of %s names no %s, so the selection cannot be answered", "фильтр %s: карточка %s не называет %s — отбор выполнить нельзя"),
+					c.f.arg, id, field)
+			}
+			item[field] = v
+		}
+	}
+	return nil
+}
+
+// cardError is the failure to read a card under a filter, with what the
+// bare error of the read does not say («Риск», conclusion 149): which
+// filter read it, of which item, how many cards were read of how many, and
+// that nothing was selected. The reason stays the read's. The hint is the
+// read's too, but for two failures whose cause is the selection itself: an
+// item gone between the list and its card — the same call again reads the
+// list anew; and a call out of its time — the same call runs out the same
+// way, so the hint says to narrow, not to retry later.
+func cardError(ctx context.Context, filter, id string, read, of int, narrow []string, err error) error {
+	reason, msg, hint := errReason(err, nil)
+	switch {
+	case stderrors.Is(err, context.DeadlineExceeded) || stderrors.Is(ctx.Err(), context.DeadlineExceeded):
+		msg = i18n.T("the call ran out of its time", "вызову не хватило времени")
+		hint = i18n.Tf("The same call again will run out the same way: narrow the list with: %s.",
+			"Тот же вызов ещё раз закончится так же: сузьте список: %s.", strings.Join(narrow, ", "))
+	case notThere(err):
+		msg = i18n.T("it is gone from the list since evo read it", "его уже нет в списке, который прочитал evo")
+		hint = i18n.T("Send the same call again: it reads the list anew.", "Повторите тот же вызов: он прочитает список заново.")
+	}
+	return clierrors.Wrap(reason,
+		i18n.Tf("filter %s: the card of %s was not read (%d of %d read): %s; nothing was selected",
+			"фильтр %s: карточка %s не прочитана (прочитано %d из %d): %s; отбор не выполнен", filter, id, read, of, msg),
+		hint, err)
 }
 
 // addHint puts hint into the answer, after the hint the list gave itself.

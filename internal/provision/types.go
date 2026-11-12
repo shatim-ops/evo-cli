@@ -635,6 +635,9 @@ type VMDetail struct {
 	Name       string        `json:"name"`
 	State      string        `json:"state"`
 	Interfaces []VMInterface `json:"interfaces"`
+	// Image is the image the VM was made of (image{id,name} of the card;
+	// the item of the list of VMs carries none).
+	Image *ZoneRef `json:"image,omitempty"`
 }
 
 // AttachedFloatingIP is the address and ID of the first floating IP bound to
