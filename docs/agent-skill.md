@@ -42,7 +42,8 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
    are named as the fields of the items (`zone`, `state` or `status`, `name`;
    the tool's schema lists them), several are «and»; a filter in the plural
    (`ids`, `states`, `statuses`) takes a list and keeps the items of any of
-   its values. `"count": 0` under a
+   its values; an id missing from the selection is no proof the resource is
+   gone (another project, another filter) — its get tool tells. `"count": 0` under a
    filter is not «none in the project»: before you create or delete on it,
    list without the filter.
 
