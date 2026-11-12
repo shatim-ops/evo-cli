@@ -46,8 +46,42 @@ func listProjectScoped[T any](a *CloudRuAdapter, ctx context.Context, path, proj
 	if projectID == "" {
 		return nil, clierrors.ProjectRequired()
 	}
-	items, err := listAll[T](a, ctx, path, url.Values{"project_id": {projectID}}, true)
+	q := url.Values{"project_id": {projectID}}
+	for k, v := range NarrowOf(ctx, path) {
+		q.Set(k, v)
+	}
+	items, err := listAll[T](a, ctx, path, q, true)
 	return items, projectNotVisible(err, projectID)
+}
+
+type narrowKey struct{}
+
+// Narrowed is ctx under which the project's list of path is asked with
+// query parameter param=value besides its own: the list of a read that
+// selects (tools, listSpecs), narrowed by the API as well. Only the list
+// of that path under that ctx — a list read for a write or a cleanup has
+// no such ctx and stays whole. The caller still checks the items by its
+// own rule: the parameter is a speed-up, not the selection.
+func Narrowed(ctx context.Context, path, param, value string) context.Context {
+	old, _ := ctx.Value(narrowKey{}).(map[string]map[string]string)
+	next := make(map[string]map[string]string, len(old)+1)
+	for p, q := range old {
+		next[p] = q
+	}
+	q := make(map[string]string, len(old[path])+1)
+	for k, v := range old[path] {
+		q[k] = v
+	}
+	q[param] = value
+	next[path] = q
+	return context.WithValue(ctx, narrowKey{}, next)
+}
+
+// NarrowOf are the query parameters Narrowed put on the list of path under
+// ctx; nil without any.
+func NarrowOf(ctx context.Context, path string) map[string]string {
+	m, _ := ctx.Value(narrowKey{}).(map[string]map[string]string)
+	return m[path]
 }
 
 // projectNotVisible is a 404 on a list of a project: Cloud.ru answers so
