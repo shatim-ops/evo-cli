@@ -152,3 +152,31 @@ func TestWorkflows_APIProbeReadsTheSecondDay(t *testing.T) {
 		}
 	}
 }
+
+// The price of a Kubernetes cluster is asked with the values of the
+// published specification (mk8s, CalculatePriceRequest): the type of a disk
+// is DISK_TYPE_SSD_NVME, the type of a node pool is one of FLAVOR_TYPE_*.
+// The first run of the probe sent "SSD", got 400 on its own request and
+// learned nothing about the price (api-probe run 52).
+func TestWorkflows_APIProbeAsksThePriceOfKubernetesBySpec(t *testing.T) {
+	j, ok := readWorkflows(t)["api-probe.yml"].Jobs["probe"]
+	if !ok {
+		t.Fatal("api-probe: no job probe")
+	}
+	var body string
+	for _, s := range j.Steps {
+		for _, l := range strings.Split(s.Run, "\n") {
+			if strings.Contains(l, "nodePools: [") {
+				body = l
+			}
+		}
+	}
+	if body == "" {
+		t.Fatal("api-probe: no request of the price of Kubernetes (nodePools)")
+	}
+	for _, want := range []string{`type: "MASTER_TYPE_SMALL"`, `type: "DISK_TYPE_SSD_NVME"`, `type: "FLAVOR_TYPE_GENERAL"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("api-probe: the price of Kubernetes is asked without %s: %s", want, strings.TrimSpace(body))
+		}
+	}
+}
