@@ -11,6 +11,15 @@
    "CERTIFICATE_STATE_ACTIVE",
    "CERTIFICATE_STATE_EXPIRED"
   ],
+  "compute:BackupState": [
+   "creating",
+   "created",
+   "error_creating",
+   "updating",
+   "error",
+   "deleting",
+   "error_deleting"
+  ],
   "compute:DiskState": [
    "available",
    "in_use",

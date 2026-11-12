@@ -35,6 +35,7 @@ var deleteRefusals = map[string]struct {
 	states []refusedState
 	none   string // why no state is declared
 }{
+	"backup_delete": {none: "the refusal of a restore under way comes with a backup in created (one run of Г-16): no state to refuse in; the third run of Г-16 for the rest"},
 	"destroy": {states: []refusedState{{state: "creating", code: http.StatusConflict,
 		message: "VM in status creating cannot be deleted", register: "CMP-7", passing: true}}},
 	"release_floating_ip": {states: []refusedState{{state: "error_deleting", code: http.StatusUnprocessableEntity,

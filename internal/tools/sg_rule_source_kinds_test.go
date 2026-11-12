@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // The source of a rule of a security group (the journal of 1.9, the
@@ -24,7 +27,8 @@ import (
 // baseline of the fields holds them (scripts/api-contract-fields.json; the
 // job contract fails for a new one until evo reads it) — and a rule with
 // none of them. Every tool that decides by the rules of a group has a row
-// for each kind, and a world runs it.
+// for each kind, and a world runs it; deploy, provision and deploy_apply
+// have theirs in the decision they share (sgOpenOfDeploy).
 
 // sgRulesRequest is the request of the baseline whose answer is the rules.
 const sgRulesRequest = "compute GET /api/v1/security-groups/{security_group_id}/rules"
@@ -96,7 +100,17 @@ var sgSourceRows = map[string]map[string]sgSourceRow{
 		"remote_security_group": srcNamesGroup,
 		sgSourceNone:            srcNamesAnywhere,
 	},
+	sgOpenOfDeploy: {
+		"remote_ip_prefix":      srcOpen,
+		"remote_security_group": srcOnlyGroups,
+		sgSourceNone:            srcOpen,
+	},
 }
+
+// sgOpenOfDeploy stands for deploy, provision and deploy_apply: the three
+// open their ports by sgrules.Open, the one decision of what a rule there
+// already lets in — the row runs it, not a deployment.
+const sgOpenOfDeploy = "deploy (sgrules.Open)"
 
 // sgSourceCalls are the calls of the table: the port 8080 of the group
 // sgOtherGroup, whose one rule for it is sgRuleNone.
@@ -167,7 +181,19 @@ func TestSGRules_EveryKindOfSourceHasAWorld(t *testing.T) {
 				rule := provision.SGRule{ID: sgRuleNone, Direction: "ingress", EtherType: "IPv4", IPProtocol: "tcp", PortRange: "8080:8080", State: "created"}
 				set(&rule)
 				w.rules[sgOtherGroup] = append(w.rules[sgOtherGroup], rule)
-				m, text, isErr := callNamed(t, sgMakeRegistry(t, w), tool, withConfirmed(sgSourceCalls[tool], confirmed))
+				var m map[string]any
+				var text string
+				var isErr bool
+				if tool == sgOpenOfDeploy {
+					// No consent of its own: the deployment's. Read as the
+					// answer of a tool, by the names of its fields.
+					res := sgrules.Open(context.Background(), w, faultProject, sgOtherGroup, []int{8080}, nil, sgSourcePrefix, "vm-1", &state.DeploymentRecord{})
+					b, _ := json.Marshal(res)
+					text = string(b)
+					_ = json.Unmarshal(b, &m)
+				} else {
+					m, text, isErr = callNamed(t, sgMakeRegistry(t, w), tool, withConfirmed(sgSourceCalls[tool], confirmed))
+				}
 				preview, _ := m["preview"].(map[string]any)
 				if preview == nil {
 					preview = m
