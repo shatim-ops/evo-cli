@@ -33,8 +33,6 @@ var inlineGates = map[string]string{
 	"internal/tools/tools_certmanager.go: handleCertImport":  "1.9",
 	"internal/tools/tools_certmanager.go: handleCertIssueLE": "1.9",
 	"internal/tools/tools_certmanager.go: handleCertRenew":   "1.9",
-	"internal/tools/tools_disk.go: handleDiskCreate":         "1.9",
-	"internal/tools/tools_image.go: handleImageCreate":       "1.9",
 	"internal/tools/tools_k8s_addons.go: handleK8sAddAddon":  "1.9",
 	"internal/tools/tools_kube.go: handleK8sApply":           "1.9",
 	"internal/tools/tools_kube.go: handleK8sHelm":            "1.9",
@@ -50,7 +48,7 @@ var inlineGates = map[string]string{
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 17
+const inlineGatesLeft = 15
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{
