@@ -73,13 +73,15 @@ if grep -v '::add-mask::' "$tmp/out" | grep -q 'sg1\|rule1'; then echo "FAIL: id
 # Группа не создана (отказ платформы): дальше проба не идёт, код 0 — это
 # ответ платформы, а не провал; правил и удалений нет.
 world
-echo 'POST /security-groups 422 {"code":"quota_exceeded","message":"limit"}' >"$FAKE_DIR/http"
+echo 'POST /security-groups 422 {"code":"quota_exceeded","message":"limit of 3f2b8c1e-1111-4222-8333-444455556666"}' >"$FAKE_DIR/http"
 fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11, отказ создания: код" "$rc" 0
 want "Г-11, отказ создания: один запрос" "$(calls)" "POST /security-groups;"
 grep -q 'HTTP 422' "$tmp/out" || { echo "FAIL: отказ создания не назван кодом"; fail=1; }
+# UUID из текста отказа платформы в лог не попадает (api_why идёт через redact.sed).
+if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: id из текста отказа в логе"; fail=1; fi
 
 # Проба оборвалась после создания (удаление группы не принято): уборка
 # области находит группу по префиксу и удаляет её; остаток — провал.
@@ -98,6 +100,20 @@ PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11, остаток: код" "$rc" 0
 grep -q '^DELETE /security-groups/sgleft$' "$FAKE_DIR/calls" || { echo "FAIL: уборка области не удалила группу пробы"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 if grep -q 'DELETE /security-groups/other' "$FAKE_DIR/calls"; then echo "FAIL: уборка удалила чужую группу"; fail=1; fi
+
+# Общая уборка cleanup_only (sweep evo-e2e-) рядом с живым запуском 185:
+# его группа не удаляется, группа завершённого запуска 184 удаляется
+# (фильтр e2e_live_runs.sh действует на каждый вид, и на новый sg).
+world
+printf '#!/bin/sh\ncase "$*" in *status=in_progress*) echo 185 ;; esac\n' >"$tmp/bin/gh"
+chmod +x "$tmp/bin/gh"
+echo 'DELETE /security-groups/* 204' >"$FAKE_DIR/http"
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[{"id":"sglive","name":"evo-e2e-ops-r185a1-sg"},{"id":"sgdone","name":"evo-e2e-ops-r184a1-sg"}]}'
+fake_evo_answer list_security_groups 1 0 '{"security_groups":[{"id":"sglive","name":"evo-e2e-ops-r185a1-sg"}]}'
+rc=0
+GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e- ops >"$tmp/out" 2>&1 || rc=$?
+want "общая уборка рядом с живым запуском: код" "$rc" 0
+want "общая уборка: удалена только группа завершённого запуска" "$(grep -c '^DELETE /security-groups/' "$FAKE_DIR/calls") $(grep -c '^DELETE /security-groups/sgdone$' "$FAKE_DIR/calls")" "1 1"
 
 # Слова проб нет — область ничего не шлёт.
 world
