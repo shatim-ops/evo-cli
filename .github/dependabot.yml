@@ -11,6 +11,13 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # pflag 1.1.0 печатает каждый булев флаг в справке как
+      # `--флаг[=true|false]`, выключателя нет: справка всех команд evo
+      # меняется. Остаёмся на 1.0.x; пересмотр — когда в pflag появится
+      # выключатель или исправление безопасности (release-plan.md, 1.9).
+      - dependency-name: github.com/spf13/pflag
+        update-types: ["version-update:semver-minor"]
   - package-ecosystem: docker
     directory: /
     schedule:
