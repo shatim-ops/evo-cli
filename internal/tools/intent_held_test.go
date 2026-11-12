@@ -116,3 +116,48 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 		}
 	})
 }
+
+// The whole path of a call (intended): the consented call ends at its
+// limit with the operation going on and its record is held; the step of
+// the wait — the same tool, without consent — goes on waiting and keeps
+// it, then ends the operation and closes it. A read of another tool in
+// between closes nothing: only the tool's own step knows its outcome.
+func TestIntent_HeldThroughTheCallsOfATool(t *testing.T) {
+	r := ownerRegistry(t, &ownerFake{}, false, ownProject)
+	eng, _ := r.newEngine(nil)
+	t.Chdir(eng.StateDir)
+	dir := intent.Dir(eng.StateDir)
+	const goesOn = `{"status":"starting","next_tool":"vm_start","next_args":{"vm_id":"` + resMine + `"}}`
+	answers := []string{goesOn, goesOn, `{"status":"started"}`}
+	tl, _ := r.Lookup("vm_start")
+	call := r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+		text := answers[0]
+		answers = answers[1:]
+		return text, false
+	})
+	held := func() int {
+		n := 0
+		for _, in := range intent.Pending(dir) {
+			if in.Held {
+				n++
+			}
+		}
+		return n
+	}
+	call(context.Background(), map[string]any{"name": "web", "confirmed": true})
+	if held() != 1 {
+		t.Fatalf("after the consented call: %+v", intent.Pending(dir))
+	}
+	started := intent.Pending(dir)[0].StartedAt
+	get, _ := r.Lookup("vm_get")
+	r.intended(get, func(context.Context, map[string]any) (string, bool) { return `{"status":"ok"}`, false })(
+		context.Background(), map[string]any{"vm_id": resMine})
+	call(context.Background(), map[string]any{"vm_id": resMine})
+	if left := intent.Pending(dir); held() != 1 || !left[0].StartedAt.Equal(started) {
+		t.Fatalf("after a step that still waits: %+v", left)
+	}
+	call(context.Background(), map[string]any{"vm_id": resMine})
+	if left := intent.Pending(dir); len(left) != 0 {
+		t.Errorf("after the step that ended the operation: %+v", left)
+	}
+}
