@@ -11,9 +11,11 @@
 # Запуск: e2e_stand.sh prefix | names | list | sweep.
 #   list  — всё содержимое стенда «вид<TAB>имя<TAB>состояние», возраст и срок;
 #           только чтение. Список не прочитан — код 1, а не «стенда нет»;
-#           стенд за сроком STAND_UNTIL — код 1 (сигнал, как overdue у ВМ
-#           пробы цены: уборка запусков стенд обходит, значит срок у него
-#           свой).
+#           стенд за сроком STAND_UNTIL или при выпущенном теге
+#           (STAND_TAG_OUT=1) — код 1 (сигнал, как overdue у ВМ пробы цены:
+#           уборка запусков стенд обходит, значит срок у него свой).
+#           STAND_FORBIDDEN_OK="вид …" — для ключа только на чтение: 403 на
+#           список такого вида — предупреждение «не проверен», а не код 1.
 #   sweep — удаление стенда (Г-54): только с STAND_SWEEP, равным префиксу
 #           (иначе отказ до чтения облака); удаляет то, что само показало
 #           перечнем, и ничего сверх; порядок — STAND_KINDS; в конце list
@@ -21,7 +23,9 @@
 # Нужны evo (configure), а для копий, планов защиты и групп безопасности —
 # KEY_ID, SECRET, PROJECT (у evo их удаления нет: прямой запрос Compute).
 STAND_PREFIX=evo-stand-19
-# Срок стенда: тег v1.9.0 или эта дата (план 1.9, решение B) — что раньше.
+# Срок стенда: тег STAND_TAG или дата STAND_UNTIL (план 1.9, решение B) —
+# что раньше. Выпущен ли тег, скрипту говорит вызывающий: STAND_TAG_OUT=1.
+STAND_TAG=v1.9.0
 STAND_UNTIL=2026-12-15
 # Виды ресурсов стенда в порядке удаления: сначала то, что само тратит и
 # порождает (планы защиты, копии), затем кластеры, ВМ, адреса, диски, сеть.
@@ -81,7 +85,11 @@ stand_lst() {
 		# Токен берёт stand_scan: команда маски не должна попасть в строки списка.
 		[ -n "${STAND_TOKEN:-}" ] || return 1
 		stand_api GET "/$([ "$1" = backup ] && echo backups || echo protection-plans)?project_id=$PROJECT&limit=1000"
-		case "$code" in 2??) ;; *) return 1 ;; esac
+		case "$code" in 2??) ;; *)
+			echo "$code" >"$stand_tmp/code.$1"
+			return 1
+			;;
+		esac
 		# Список длиннее страницы — не прочитан: остаток был бы невидим.
 		jq -e '(.items | type == "array") and ((.total // 0) <= (.items | length))' "$stand_tmp/api.json" >/dev/null 2>&1 || return 1
 		jq -r --arg p "$STAND_PREFIX" --rawfile o "$stand_tmp/owners" '($o | split("\n") | map(select(. != ""))) as $own
@@ -97,6 +105,7 @@ stand_scan() {
 	local kind bad=0 read_=" "
 	: >"$1"
 	: >"$stand_tmp/owners"
+	rm -f "$stand_tmp"/code.*
 	stand_token || true
 	# ВМ и диски читаются первыми: их id — владельцы копий.
 	for kind in vm disk $STAND_KINDS; do
@@ -106,8 +115,14 @@ stand_scan() {
 			case "$kind" in vm | disk) cut -f1 "$stand_tmp/rows.$kind" >>"$stand_tmp/owners" ;; esac
 		else
 			: >"$stand_tmp/rows.$kind"
-			echo "::error::$kind: список не прочитан"
-			bad=1
+			# Ключ только на чтение видит не всё: названный вид на 403 — не
+			# проверен, и это сказано, а не скрыто.
+			if [ "$(cat "$stand_tmp/code.$kind" 2>/dev/null)" = 403 ] && [[ " ${STAND_FORBIDDEN_OK:-} " == *" $kind "* ]]; then
+				echo "::warning::$kind: HTTP 403 этому ключу — вид не проверен; его читает list и sweep с ключом записи"
+			else
+				echo "::error::$kind: список не прочитан"
+				bad=1
+			fi
 		fi
 	done
 	for kind in $STAND_KINDS; do
@@ -159,9 +174,13 @@ stand_list() {
 	today=${STAND_TODAY:-$(date -u +%F)}
 	born=$(jq -r --arg p "$STAND_PREFIX" '[.vms[]? | select((.name // "") | startswith($p)) | .created_time // empty] | min // empty | .[0:10]' "$stand_tmp/vms.json" 2>/dev/null) || born=
 	if [ -n "$born" ] && days=$((($(date -u -d "$today" +%s) - $(date -u -d "$born" +%s)) / 86400)) 2>/dev/null; then
-		echo "возраст стенда: $days сут (по ВМ); срок: до $STAND_UNTIL или тега v1.9.0"
+		echo "возраст стенда: $days сут (по ВМ); срок: до $STAND_UNTIL или тега $STAND_TAG"
 	else
-		echo "возраст стенда: не определён (ВМ стенда или её времени создания нет); срок: до $STAND_UNTIL или тега v1.9.0"
+		echo "возраст стенда: не определён (ВМ стенда или её времени создания нет); срок: до $STAND_UNTIL или тега $STAND_TAG"
+	fi
+	if [ -s "$scan" ] && [ "${STAND_TAG_OUT:-}" = 1 ]; then
+		echo "::error::тег $STAND_TAG выпущен, а стенд не убран: уберите его (e2e_stand.sh sweep)"
+		rc=1
 	fi
 	if [ -s "$scan" ] && [[ "$today" > "$STAND_UNTIL" ]]; then
 		echo "::error::стенд за сроком ($STAND_UNTIL): уберите его (e2e_stand.sh sweep) или продлите срок решением владельца"
@@ -175,9 +194,11 @@ stand_sweep() {
 	declare -A failed=() stuck=()
 	# Подтверждение — точное равенство префиксу, до любого чтения облака.
 	if [ "${STAND_SWEEP:-}" != "$STAND_PREFIX" ]; then
-		echo "::error::уборка стенда — только с STAND_SWEEP, равным его префиксу; получено «${STAND_SWEEP:-}»" >&2
+		echo "::error::уборка стенда — только с STAND_SWEEP, равным его префиксу: ждём «$STAND_PREFIX», получено «${STAND_SWEEP:-}»" >&2
 		return 2
 	fi
+	# Послабление ключа чтения — только у list: удаление требует полного снимка.
+	STAND_FORBIDDEN_OK=
 	if ! stand_scan "$snap"; then
 		echo "::error::содержимое стенда прочитано не целиком — не удаляю: остаток был бы невидим"
 		return 1

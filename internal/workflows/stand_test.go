@@ -148,4 +148,82 @@ func TestWorkflows_StandKindsAreKindsOfTheCleanup(t *testing.T) {
 	if len(kinds) < 2 || kinds[0] != "pplan" || kinds[1] != "backup" {
 		t.Errorf("e2e_stand.sh: STAND_KINDS starts with %v, want pplan and backup first — a plan left for last goes on making paid backups", kinds)
 	}
+	// The whole order is the order of deletion: clusters before the VM,
+	// the VM before its addresses and disks, the network last — what holds
+	// another resource goes before it.
+	if got, want := strings.Join(kinds, " "), "pplan backup k8s pg vm fip disk subnet sg"; got != want {
+		t.Errorf("e2e_stand.sh: STAND_KINDS is %q, want %q — a new kind takes its place in the order of deletion here, with the reason", got, want)
+	}
+}
+
+// The stand has a workflow of its own (plan 1.9, Г-50; conclusion 158 of the
+// risk role): the cleanup of the runs passes it by, so nothing else would
+// say that it is still there. stand.yml reads it every day with the key
+// that only reads — no approval, red when it is past its date or its tag —
+// and sweeps it only by hand: the job of the sweep runs in the environment
+// that asks the owner, takes the confirmation from the input of the run
+// through the environment of the step, and is not the job that reads.
+func TestWorkflows_StandHasAWorkflowOfItsOwn(t *testing.T) {
+	ws := readWorkflows(t)
+	w, ok := ws["stand.yml"]
+	if !ok {
+		t.Fatal("no workflow stand.yml")
+	}
+	if _, daily := w.On["schedule"]; !daily {
+		t.Error("stand.yml: no schedule — the date of the stand is checked only when somebody remembers")
+	}
+	if _, byHand := w.On["workflow_dispatch"]; !byHand || len(w.On) != 2 {
+		t.Errorf("stand.yml: triggers %v, want schedule and workflow_dispatch only — code of a pull request must not reach the keys", w.On)
+	}
+	// The reading and the sweep wait in queues of their own: a sweep that
+	// waits for the approval of the owner must not hold the daily reading
+	// back — a queue keeps one waiting run, so a forgotten sweep would keep
+	// the signal silent for as long as it is forgotten (conclusion 167 of
+	// the risk role).
+	if g := w.Concurrency.Group; g != "${{ inputs.sweep != '' && 'stand-sweep' || 'stand-list' }}" || w.Concurrency.CancelInProgress != "false" {
+		t.Errorf("stand.yml: concurrency %+v, want the group stand-sweep for a sweep and stand-list for the reading, without cancel — a sweep must not be cut in the middle and must not hold the reading", w.Concurrency)
+	}
+	list, sweep := w.Jobs["list"], w.Jobs["sweep"]
+	var listRun, sweepRun strings.Builder
+	for _, s := range list.Steps {
+		listRun.WriteString(s.Run + "\n")
+		if _, has := s.Env["STAND_SWEEP"]; has {
+			t.Errorf("stand.yml, job list, step %q: has STAND_SWEEP — the job that reads must not be able to delete", s.Name)
+		}
+	}
+	confirmed := false
+	for _, s := range sweep.Steps {
+		sweepRun.WriteString(s.Run + "\n")
+		if strings.Contains(s.Run, "inputs.") {
+			t.Errorf("stand.yml, job sweep, step %q: the input of the run is in the script — pass it through env", s.Name)
+		}
+		if s.Env["STAND_SWEEP"] == "${{ inputs.sweep }}" {
+			confirmed = true
+		}
+	}
+	if list.Environment != "cloud-readonly" || !strings.Contains(listRun.String(), "e2e_stand.sh list") || strings.Contains(listRun.String(), "e2e_stand.sh sweep") {
+		t.Errorf("stand.yml, job list: environment %q, want cloud-readonly, and only e2e_stand.sh list in its steps", list.Environment)
+	}
+	if !strings.Contains(list.If, "inputs.sweep == ''") || !strings.Contains(list.If, "refs/heads/main") {
+		t.Errorf("stand.yml, job list: if %q, want main and no sweep asked", list.If)
+	}
+	if sweep.Environment != "cloud-e2e" || !strings.Contains(sweepRun.String(), "e2e_stand.sh sweep") || !confirmed {
+		t.Errorf("stand.yml, job sweep: environment %q (want cloud-e2e, the approval of the owner), e2e_stand.sh sweep in the steps, STAND_SWEEP from inputs.sweep through env: %v", sweep.Environment, confirmed)
+	}
+	if !strings.Contains(sweep.If, "inputs.sweep != ''") || !strings.Contains(sweep.If, "refs/heads/main") {
+		t.Errorf("stand.yml, job sweep: if %q, want main and the confirmation typed", sweep.If)
+	}
+	// Nobody else sweeps the stand.
+	for name, other := range ws {
+		if name == "stand.yml" {
+			continue
+		}
+		for jn, j := range other.Jobs {
+			for _, s := range j.Steps {
+				if strings.Contains(s.Run, "e2e_stand.sh sweep") || s.Env["STAND_SWEEP"] != "" {
+					t.Errorf("%s, job %s, step %q: sweeps the stand — only stand.yml does", name, jn, s.Name)
+				}
+			}
+		}
+	}
 }
