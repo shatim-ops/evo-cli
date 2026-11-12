@@ -21,7 +21,7 @@ import (
 func TestFable_REL12_2_NameValuePairs(t *testing.T) {
 	const body = `{"template":{"containers":[{"env":[{"name":"DB_PASSWORD","value":"S3cret"},{"name":"LOG_LEVEL","value":"debug"}]}]}}`
 	for _, readOnly := range []bool{false, true} {
-		s := newTestServer()
+		s := newTestServer(t)
 		fakeResult(s, "ca_get", body)
 		if readOnly {
 			s.SetReadOnly()
@@ -109,7 +109,7 @@ func TestFable_REL12_5_ReadOnlyRefusalOutermostOverHTTP(t *testing.T) {
 	}
 	t.Cleanup(func() { lookupIP = orig })
 
-	s := newTestServer()
+	s := newTestServer(t)
 	s.SetReadOnly()
 	NewHTTPHandler(s, HTTPOptions{}).Close()
 	for _, c := range []struct {

@@ -23,8 +23,8 @@ func TestJournal_OneRecordPerCallInEveryMode(t *testing.T) {
 	t.Cleanup(func() { binaryAvailable = orig })
 	binaryAvailable = func(string) bool { return false }
 	for mode, build := range map[string]func() *Server{
-		"read-only over http": func() *Server { s := newTestServer(); s.SetReadOnly(); s.restrictForHTTP(false); return s },
-		"http":                func() *Server { s := newTestServer(); s.restrictForHTTP(true); return s },
+		"read-only over http": func() *Server { s := newTestServer(t); s.SetReadOnly(); s.restrictForHTTP(false); return s },
+		"http":                func() *Server { s := newTestServer(t); s.restrictForHTTP(true); return s },
 	} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv(config.EnvConfigDir, filepath.Join(t.TempDir(), "evo"))

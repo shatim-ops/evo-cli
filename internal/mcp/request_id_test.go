@@ -58,7 +58,7 @@ func TestRequestWithID_GetsOneAnswer(t *testing.T) {
 	for i, m := range methods {
 		id := 100 + i
 		req := fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":%q,"params":{}}`, id, m)
-		got := runLines(t, newTestServer(), req)
+		got := runLines(t, newTestServer(t), req)
 		if len(got) != 1 {
 			t.Errorf("%s with id %d: %d answers, want one", m, id, len(got))
 			continue

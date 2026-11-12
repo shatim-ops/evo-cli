@@ -58,6 +58,7 @@ func TestS3BucketCreate_ListRefusedGoesOnAndForeignIsNotYours(t *testing.T) {
 					Printer: output.NewWithWriter(&buf, output.ModeText, false),
 				}, nil
 			})
+			r.SetStateDir(t.TempDir())
 			m, text, _ := callNamed(t, r, "s3_bucket_create", map[string]any{"bucket": "new-bucket"})
 			if m["status"] != "confirmation_required" {
 				t.Fatalf("without consent: %s, want the question", text)

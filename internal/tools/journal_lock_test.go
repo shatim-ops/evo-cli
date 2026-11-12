@@ -36,7 +36,7 @@ func TestJournal_HeldLockDoesNotDelayTheAnswer(t *testing.T) {
 	}
 	defer func() { _ = config.UnlockFile(f) }()
 
-	tl, _ := newTestServer().Lookup("vm_list")
+	tl, _ := newTestServer(t).Lookup("vm_list")
 	start := time.Now()
 	tl.Handler(context.Background(), map[string]any{})
 	// The journal waits up to two seconds (lockWait) for the lock: an

@@ -18,7 +18,7 @@ import (
 // k8s_helm among them; with --toolsets it is the intersection, in either
 // order of the two settings.
 func TestReadOnly_ToolsList(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	s.SetReadOnly()
 	s.SetReadOnly() // a second call changes nothing
 	listed := map[string]bool{}
@@ -42,7 +42,7 @@ func TestReadOnly_ToolsList(t *testing.T) {
 	}
 
 	for _, readOnlyFirst := range []bool{true, false} {
-		s := newTestServer()
+		s := newTestServer(t)
 		if readOnlyFirst {
 			s.SetReadOnly()
 		}
@@ -75,7 +75,7 @@ func TestReadOnly_ToolsList(t *testing.T) {
 // as over HTTP without --allow-secret-export (H3, H6), worded for
 // --read-only; results are masked (H7).
 func TestReadOnly_Calls(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	reached := map[string]int{}
 	for _, tl := range s.reg.Tools() {
 		name := tl.Name
@@ -171,7 +171,7 @@ func TestReadOnly_Wording(t *testing.T) {
 	if httpWording.mask != "[redacted over HTTP: start the server with --allow-secret-export]" {
 		t.Errorf("the mask over HTTP changed: %s", httpWording.mask)
 	}
-	s := newTestServer()
+	s := newTestServer(t)
 	s.restrictForHTTP(false)
 	if text, _ := call(s, "k8s_kubectl", map[string]any{"cluster_id": "c", "args": "config view"}); !strings.Contains(text,
 		"k8s_kubectl config is disabled over HTTP: the kubeconfig holds the cluster token. Start the server with --allow-secret-export to enable it") {

@@ -46,6 +46,7 @@ func TestDeploy_ANameTakenBySomeoneElseIsRefusedBeforeTheQuestion(t *testing.T) 
 			Timings:   faultToolsTimings(),
 		}, nil
 	})
+	r.SetStateDir(dir)
 	for _, args := range []map[string]any{{}, {"confirmed": true}} {
 		text, isErr := r.handlers["deploy"](context.Background(), args)
 		label := "deploy " + jsonArgs(args)

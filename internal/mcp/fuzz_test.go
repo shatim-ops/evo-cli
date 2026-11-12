@@ -19,8 +19,8 @@ import (
 
 // fuzzServer is a server whose tool handlers are stubs: the fuzzers target
 // the transport (framing, decoding, dispatch), not the cloud.
-func fuzzServer() *Server {
-	s := newTestServer()
+func fuzzServer(t testing.TB) *Server {
+	s := newTestServer(t)
 	for name := range s.handlers {
 		s.handlers[name] = func(_ context.Context, args map[string]any) (string, bool) {
 			if args["panic"] == true {
@@ -54,7 +54,7 @@ func FuzzStdioMessages(f *testing.F) {
 		f.Add([]byte(s))
 	}
 	panicLog = io.Discard
-	srv := fuzzServer()
+	srv := fuzzServer(f)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		out := &bytes.Buffer{}
 		// A session begins with initialize (D89): the fuzz reaches the tools.
@@ -116,7 +116,7 @@ func FuzzHTTPPost(f *testing.F) {
 		f.Add([]byte(s), true)
 	}
 	panicLog = io.Discard
-	h := NewHTTPHandler(fuzzServer(), HTTPOptions{})
+	h := NewHTTPHandler(fuzzServer(f), HTTPOptions{})
 	f.Fuzz(func(t *testing.T, body []byte, sse bool) {
 		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/mcp", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")

@@ -40,7 +40,7 @@ func noProjectRegistry(t *testing.T) (*Registry, *recorder) {
 	s3srv := httptest.NewServer(rec)
 	t.Cleanup(s3srv.Close)
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config: config.Config{Region: id, ImageID: id, KeyID: "k", Secret: "s",
@@ -50,7 +50,9 @@ func noProjectRegistry(t *testing.T) (*Registry, *recorder) {
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
 			StateDir: dir,
 		}, nil
-	}), rec
+	})
+	r.SetStateDir(dir)
+	return r, rec
 }
 
 // fullArgs fills every argument of the schema (project_id aside), so the

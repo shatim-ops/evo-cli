@@ -43,6 +43,7 @@ func fastRegistry(t *testing.T, cloud provision.CloudAPI, cfg config.Config) (*R
 				FIPRetryInterval: time.Millisecond, DestroyPollInterval: time.Millisecond, DestroyPollTimeout: 20 * time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	return r, dir
 }
 
@@ -328,6 +329,7 @@ func TestAudit_DestroyTargetedUnconfirmedIsPartial(t *testing.T) {
 		}
 		return eng, err
 	})
+	r2.SetStateDir(dir)
 	m, text, isErr = callNamed(t, r2, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if isErr || m["status"] != "already_deleted" || gone.releasedFIP != "fip-1" {
 		t.Fatalf("re-run: %s (released %q)", text, gone.releasedFIP)

@@ -25,7 +25,7 @@ func TestStackStatus_FailedStepNamesItsReason(t *testing.T) {
 	for _, code := range []string{clierrors.CodeUsage, clierrors.CodeConfigInvalid, clierrors.CodeNotFound} {
 		t.Run(code, func(t *testing.T) {
 			stackHome(t)
-			r := newTestServer()
+			r := newTestServer(t)
 			j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
 			r.handlers["provision"] = func(context.Context, map[string]any) (string, bool) {
 				return toJSON(map[string]any{"error": "the step's tool refused", "reason": code}), true

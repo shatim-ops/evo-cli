@@ -114,7 +114,7 @@ func sleepWorld(t *testing.T, c *sleptCloud) *Registry {
 	// handler done with the registry leaves it to the collector mid-wait —
 	// its weak entry gone, no provider renews the refused token.
 	t.Cleanup(func() { runtime.KeepAlive(p) })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: addonProject, KeyID: "k", Secret: "s"},
@@ -123,6 +123,8 @@ func sleepWorld(t *testing.T, c *sleptCloud) *Registry {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // waitTools are the tools of the registry an agent waits with

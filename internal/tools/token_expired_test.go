@@ -81,6 +81,7 @@ func TestTokenRefusedAsExpired_NextCallExchangesAnew(t *testing.T) {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
 	first, failed := r.handlers["k8s_list"](context.Background(), map[string]any{})
 	if failed || c.exchanges != 2 {
 		t.Fatalf("a call refused with 401 \"Jwt is expired\" should go once more with a new token (%d exchanges of the key): %s", c.exchanges, first)

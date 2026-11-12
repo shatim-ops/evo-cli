@@ -68,7 +68,7 @@ func TestQA_HTTPPolicyBlocksKubectlConfig(t *testing.T) {
 	binaryAvailable = func(string) bool { return true }
 	t.Cleanup(func() { binaryAvailable = orig })
 
-	s := newTestServer()
+	s := newTestServer(t)
 	s.restrictForHTTP(false)
 	for _, a := range []string{"config view --raw", "-n x config view --raw --minify"} {
 		text, isErr := s.handlers["k8s_kubectl"](context.Background(), map[string]any{"cluster_id": "c", "args": a, "confirmed": true})
@@ -80,7 +80,7 @@ func TestQA_HTTPPolicyBlocksKubectlConfig(t *testing.T) {
 		t.Errorf("get pods refused by the policy: %s", text)
 	}
 
-	allowed := newTestServer()
+	allowed := newTestServer(t)
 	allowed.restrictForHTTP(true)
 	if text, _ := allowed.handlers["k8s_kubectl"](context.Background(), map[string]any{"cluster_id": "c", "args": "config view --raw", "confirmed": true}); strings.Contains(text, "allow-secret-export") {
 		t.Errorf("--allow-secret-export: %s", text)

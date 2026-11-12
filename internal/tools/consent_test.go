@@ -21,6 +21,7 @@ import (
 // TestReadOnly_EveryTool (internal/cli).
 func TestNeedsConsent_Classified(t *testing.T) {
 	reg := New(func(map[string]any) (*engine.Engine, error) { return nil, errors.New("no engine in tests") })
+	reg.SetStateDir(t.TempDir())
 	for name := range partialConsent {
 		tl, ok := reg.Lookup(name)
 		if !ok || !takesConsent(tl) {

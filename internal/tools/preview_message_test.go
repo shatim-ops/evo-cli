@@ -138,12 +138,12 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	// disk_attach and disk_detach find the VM and read the disk's state
 	// before the question (D53): a VM and a settled disk.
 	"disk_attach": func(t *testing.T) string {
-		r := transientDiskRegistry(&transientDiskCloud{faultCloud: &faultCloud{}, from: "available"})
+		r := transientDiskRegistry(t, &transientDiskCloud{faultCloud: &faultCloud{}, from: "available"})
 		_, text, _ := callNamed(t, r, "disk_attach", diskChanges["disk_attach"])
 		return text
 	},
 	"disk_detach": func(t *testing.T) string {
-		r := transientDiskRegistry(&transientDiskCloud{faultCloud: &faultCloud{}, from: "in_use"})
+		r := transientDiskRegistry(t, &transientDiskCloud{faultCloud: &faultCloud{}, from: "in_use"})
 		_, text, _ := callNamed(t, r, "disk_detach", diskChanges["disk_detach"])
 		return text
 	},

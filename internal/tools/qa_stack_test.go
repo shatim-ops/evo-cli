@@ -53,7 +53,7 @@ func fakeOK(v map[string]any) Handler {
 // confirmation_required, 4 попытки и status=error — уже создав остальное.
 func TestQA_StackGatedStepsAreConfirmed(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"s","vpc":{"name":"v"},"postgres":{"name":"p"},"kafka":{"name":"k"},"redis":{"name":"r"},"k8s":{"name":"k8"},"registry":{"name":"reg"},"snat":{"name":"sn"},"vm":{"name":"vm"},"nlb":{"name":"lb","port":80},"dns":{"zone_id":"z","name":"www"},"secrets":[{"path":"a","value":"b"}],"s3":[{"bucket":"b","key":"k","content":"c"}]}`)
 	for _, st := range j.Steps {
 		tl, ok := r.Lookup(st.Tool)
@@ -84,9 +84,11 @@ func TestQA_StackGatedStepsAreConfirmed(t *testing.T) {
 	// The gate of provision, on a configuration it can create a VM with
 	// (without one it refuses before the gate).
 	const id = "00000000-0000-4000-8000-000000000001"
-	inner := New(func(map[string]any) (*engine.Engine, error) {
+	innerReg := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: config.Config{ProjectID: id, Region: id, ImageID: id}}, nil
-	}).handlers["provision"]
+	})
+	innerReg.SetStateDir(t.TempDir())
+	inner := innerReg.handlers["provision"]
 	r.handlers["provision"] = func(ctx context.Context, a map[string]any) (string, bool) {
 		gotVM = a
 		if text, isErr := inner(ctx, map[string]any{"name": a["name"]}); !strings.Contains(text, "confirmation_required") || !isErr {
@@ -140,7 +142,7 @@ func TestQA_StackPlanRejectsBrokenDependencies(t *testing.T) {
 // пока первый ещё идёт) видели шаг pending и оба создавали ресурс.
 func TestQA_StackConcurrentCranksCreateOnce(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"c","postgres":{"name":"p"}}`)
 	var creates atomic.Int32
 	r.handlers["pg_create"] = func(context.Context, map[string]any) (string, bool) {
@@ -169,7 +171,7 @@ func TestQA_StackConcurrentCranksCreateOnce(t *testing.T) {
 // «done» с первого apply, ресурсов же нет.
 func TestQA_StackApplyRefusesDestroyedJob(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"d","secrets":[{"path":"a","value":"b"}]}`)
 	r.handlers["secret_create"] = fakeOK(map[string]any{"status": "created", "id": "sec-1"})
 	r.handlers["secret_delete"] = fakeOK(map[string]any{"status": "deleted"})
@@ -189,7 +191,7 @@ func TestQA_StackApplyRefusesDestroyedJob(t *testing.T) {
 // предупреждать о живых ресурсах, а ответ был без isError.
 func TestQA_StackDestroyFailureKeepsJobVisible(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"f","vpc":{"name":"v"}}`)
 	// A VPC is named by a UUID (vpc_delete, D36).
 	j.Steps[0].Status, j.Steps[0].ResourceID, j.Status = "done", faultID(1), "done"
@@ -216,7 +218,7 @@ func TestQA_StackDestroyFailureKeepsJobVisible(t *testing.T) {
 // только по тексту (404, NOT_FOUND, not found). Код ответа — тоже признак.
 func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","vm":{"name":"g-vm","private":true}}`)
 	for _, st := range j.Steps {
 		st.Status = "done"
@@ -269,7 +271,7 @@ func TestQA_StackDestroyAgainVMGoneIsDeleted(t *testing.T) {
 // и stack_apply исполнял его шаги.
 func TestQA_StackJobIDCannotLeaveJobsDir(t *testing.T) {
 	home := stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"t","secrets":[{"path":"a","value":"b"}]}`)
 	data, _ := os.ReadFile(filepath.Join(home, ".evo", "stack-jobs", j.ID+".json"))
 	if err := os.WriteFile(filepath.Join(home, "evil.json"), data, 0o600); err != nil {
@@ -295,7 +297,7 @@ func TestQA_StackJobIDCannotLeaveJobsDir(t *testing.T) {
 // ответ через ~9 с вместо ~1 с.
 func TestQA_StackStatusHonoursShortBudget(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"w","postgres":{"name":"p"}}`)
 	j.Status = "running"
 	j.Steps[0].Status, j.Steps[0].ResourceID = "waiting", "pg-1"
@@ -319,7 +321,7 @@ func TestQA_StackStatusHonoursShortBudget(t *testing.T) {
 // of a stack_plan without stack_apply/confirmed=true (QA 15.10.2026, C1).
 func TestQA_StackStatusDoesNotStartPlannedJob(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","postgres":{"name":"p"},"secrets":[{"path":"a","value":"b"}]}`)
 	var calls atomic.Int32
 	for _, name := range []string{"pg_create", "secret_create", "pg_list", "pg_get"} {

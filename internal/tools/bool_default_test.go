@@ -66,7 +66,7 @@ func TestBoolDefaultsTrue(t *testing.T) {
 	}
 
 	declared := map[string]bool{}
-	for _, tl := range newTestServer().Tools() {
+	for _, tl := range newTestServer(t).Tools() {
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for name, v := range props {
 			if m, _ := v.(map[string]any); m["default"] == true {

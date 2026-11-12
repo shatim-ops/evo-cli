@@ -155,7 +155,7 @@ func TestStackStatus_GoesOnAfterOneRefusedToken(t *testing.T) {
 	prev := stackCrankInterval
 	stackCrankInterval = time.Millisecond
 	t.Cleanup(func() { stackCrankInterval = prev })
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"w","vpc":{"name":"v"},"postgres":{"name":"p"}}`)
 	j.Status = "running"
 	for _, st := range j.Steps {

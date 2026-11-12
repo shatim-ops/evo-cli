@@ -22,7 +22,7 @@ import (
 // External review 11.11, item (1); Risk conclusion 98.
 func TestStackDestroy_DeletingUntilTheCloudFinishes(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	key := j.Steps[0].Key
 	j.Steps[0].Status, j.Status = "done", "done"
@@ -84,7 +84,7 @@ func TestStackDestroy_DeletingUntilTheCloudFinishes(t *testing.T) {
 // preview asks, stack_plan warns, the confirmed call re-checks.
 func TestStackDestroy_OldDestroyedWithDeletingIsUnfinished(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	key := j.Steps[0].Key
 	j.Steps[0].Status = "done"
@@ -115,7 +115,7 @@ func TestStackDestroy_OldDestroyedWithDeletingIsUnfinished(t *testing.T) {
 func TestStackStatus_DestroyedHasNoNextStep(t *testing.T) {
 	// Destroyed, nothing left: no next step.
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	j.Steps[0].Status, j.Status = "done", "destroyed"
 	if err := j.Save(); err != nil {
@@ -124,7 +124,7 @@ func TestStackStatus_DestroyedHasNoNextStep(t *testing.T) {
 	if got := callTool(t, r.handleStackStatus, map[string]any{"job_id": j.ID, "wait_seconds": float64(1)}); got["status"] != "destroyed" || got["next_tool"] != nil || got["deleting"] != nil {
 		t.Errorf("stack_status of a destroyed job: want destroyed without a next step, got %v", got)
 	}
-	tl, _ := newTestServer().Lookup("stack_status")
+	tl, _ := newTestServer(t).Lookup("stack_status")
 	if !strings.Contains(tl.Description, "status=deleting") {
 		t.Errorf("the stack_status description does not name the deleting outcome: %s", tl.Description)
 	}

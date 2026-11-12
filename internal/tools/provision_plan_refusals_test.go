@@ -154,6 +154,7 @@ func TestProvision_ExplicitSubnetRefusedBeforePreview(t *testing.T) {
 						StateDir: t.TempDir(), SSHKeyPEM: []byte("key"), SSHPubKey: "ssh-ed25519 AAAA test",
 					}, nil
 				})
+				r.SetStateDir(t.TempDir())
 				text, isErr := r.handlers["provision"](context.Background(),
 					map[string]any{"name": "web", "subnet_id": tc.subnetID, "confirmed": confirmed})
 				if !isErr || !strings.Contains(text, tc.want) || !strings.Contains(text, clierrors.CodeConfigInvalid) {

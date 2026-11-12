@@ -85,6 +85,7 @@ func TestPreviewThatReadsTheCloud_NoKeyBeforeTheQuestion(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		return nil, clerrors.New(clerrors.CodeAuthRequired, "no access key", "Run 'evo configure'")
 	})
+	r.SetStateDir(t.TempDir())
 	for tool, args := range map[string]map[string]any{
 		"open_ports":  {"security_group": "web", "ports": []any{float64(8080)}},
 		"disk_resize": {"disk_id": faultID(0x91), "size_gb": float64(20)},

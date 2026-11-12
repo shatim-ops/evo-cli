@@ -93,6 +93,7 @@ func TestQA_MutatingToolsWriteNothingWithoutConfirmed(t *testing.T) {
 			StateDir: dir,
 		}, nil
 	})
+	r.SetStateDir(dir)
 	for _, tl := range r.Tools() {
 		if !tl.Mutating {
 			continue
@@ -136,7 +137,7 @@ func TestQA_MutatingToolsWriteNothingWithoutConfirmed(t *testing.T) {
 // resume» и «auth reconcile» шли без подтверждения, хотя описание
 // инструмента называет rollout restart изменяющим.
 func TestQA_KubectlWritingSubcommandsNeedConfirmation(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	for _, a := range []string{"rollout restart deploy/x", "rollout undo deploy/x", "rollout pause deploy/x",
 		"rollout resume deploy/x", "rollout", "auth reconcile -f rbac.yaml", "delete pod x"} {
 		got := callTool(t, r.gated("k8s_kubectl", r.planK8sKubectl), map[string]any{"cluster_id": "c", "args": a})
@@ -156,7 +157,7 @@ func TestQA_KubectlWritingSubcommandsNeedConfirmation(t *testing.T) {
 // '-' в начале helm читал как флаг (--post-renderer запускает программу
 // на хосте сервера).
 func TestQA_HelmRejectsFlagsInPositionalArgs(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	for _, a := range []map[string]any{
 		{"release": "--post-renderer=/bin/sh", "chart": "c"},
 		{"release": "r", "chart": "--post-renderer=/bin/sh"},

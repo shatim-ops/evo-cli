@@ -112,6 +112,7 @@ func TestDeployPlan_ReadOnlyKeyLater(t *testing.T) {
 					return []byte("key"), "ssh-ed25519 AAAA test", nil
 				}}, nil
 		})
+		r.SetStateDir(dir)
 		if readOnly {
 			r.SetReadOnly()
 		}

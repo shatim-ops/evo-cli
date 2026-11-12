@@ -17,6 +17,7 @@ func TestDiskSize_OverMaximumIsUsage(t *testing.T) {
 		t.Fatal("the engine is built for a size over the maximum")
 		return nil, nil
 	})
+	r.SetStateDir(t.TempDir())
 	for _, c := range []struct {
 		tool string
 		args map[string]any

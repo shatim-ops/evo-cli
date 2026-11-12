@@ -85,7 +85,7 @@ func apiFakeRegistry(t *testing.T, f *apiFake) *Registry {
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = f
 	t.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s"},
@@ -94,6 +94,8 @@ func apiFakeRegistry(t *testing.T, f *apiFake) *Registry {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // dbaasCreateOK отвечает операцией на POST /v1/clusters Kafka и Redis.
@@ -319,7 +321,7 @@ func TestArCreate_RefusesTakenName(t *testing.T) {
 // «adopt by name» (иначе stack_destroy удалил бы чужой кластер).
 func TestStack_TakenNameIsNotAdopted(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"s","kafka":{"name":"k"}}`)
 	r.handlers["kafka_create"] = func(context.Context, map[string]any) (string, bool) {
 		return nameTakenResult("Kafka cluster", "k", "foreign", "READY", "kafka_get cluster_id=foreign")
@@ -346,7 +348,7 @@ func TestStack_TakenNameIsNotAdopted(t *testing.T) {
 // усыновлять (раньше отказ был только на первой попытке).
 func TestStack_TakenNameOnRetryIsNotAdopted(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"s","kafka":{"name":"k"}}`)
 	calls := 0
 	r.handlers["kafka_create"] = func(context.Context, map[string]any) (string, bool) {
@@ -421,7 +423,7 @@ func TestMetricsHistory_Since(t *testing.T) {
 			t.Errorf("%q: %v %v", c.in, got, err)
 		}
 	}
-	r := newTestServer()
+	r := newTestServer(t)
 	for _, since := range []string{"2d", "48h", "25h", "bogus"} {
 		m, text, isErr := callNamed(t, r, "metrics_history", map[string]any{"match": "cpu", "since": since})
 		if !isErr || m["reason"] != "USAGE" {
@@ -522,6 +524,7 @@ func TestS3Get_MissingIsNotFound(t *testing.T) {
 		r := New(func(map[string]any) (*engine.Engine, error) {
 			return &engine.Engine{Config: config.Config{S3: config.S3Config{Endpoint: srv.URL, AccessKey: "a", SecretKey: "s"}}}, nil
 		})
+		r.SetStateDir(t.TempDir())
 		m, text, isErr := callNamed(t, r, "s3_get", map[string]any{"bucket": "bucket", "key": c.key})
 		if !isErr || m["reason"] != "NOT_FOUND" || m["hint"] == nil {
 			t.Errorf("%s: %s", c.code, text)
@@ -536,7 +539,7 @@ func TestS3Get_MissingIsNotFound(t *testing.T) {
 // проекту API не даёт — без договора отказ, до движка.
 func TestBilling_NoAgreementIsConfigInvalid(t *testing.T) {
 	t.Setenv("CLOUDRU_AGREEMENT_ID", "")
-	m, text, isErr := callNamed(t, newTestServer(), "billing_balance", nil)
+	m, text, isErr := callNamed(t, newTestServer(t), "billing_balance", nil)
 	if hint, _ := m["hint"].(string); !isErr || m["reason"] != "CONFIG_INVALID" || !strings.Contains(hint, "CLOUDRU_AGREEMENT_ID") {
 		t.Errorf("billing_balance: %s", text)
 	}

@@ -20,13 +20,15 @@ func nilFactory(map[string]any) (*engine.Engine, error) {
 }
 
 // newTestServer keeps the name the handler tests had in internal/mcp.
-func newTestServer() *Registry {
-	return New(nilFactory)
+func newTestServer(t testing.TB) *Registry {
+	r := New(nilFactory)
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // Every tool has exactly one handler and every handler belongs to a tool.
 func TestRegistry_OneHandlerPerTool(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	seen := map[string]bool{}
 	for _, tl := range r.Tools() {
 		if seen[tl.Name] {
@@ -53,7 +55,7 @@ func TestRegistry_EveryToolHasAKnownGroup(t *testing.T) {
 		t.Errorf("%d groups, want 25: %v", len(known), Groups())
 	}
 	used := map[string]bool{}
-	for _, tl := range newTestServer().Tools() {
+	for _, tl := range newTestServer(t).Tools() {
 		if !known[tl.Group] {
 			t.Errorf("tool %q: group %q is not a known group", tl.Name, tl.Group)
 		}
@@ -67,7 +69,7 @@ func TestRegistry_EveryToolHasAKnownGroup(t *testing.T) {
 }
 
 func TestRegistry_Mutating(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	cases := map[string]bool{
 		"disk_delete":      true,
 		"deploy":           true,
@@ -98,7 +100,7 @@ func TestRegistry_Mutating(t *testing.T) {
 // tool asks only for some verbs): agents read the same rule everywhere.
 func TestRegistry_ConfirmedHasOneDescription(t *testing.T) {
 	n := 0
-	for _, tl := range New(nilFactory).Tools() {
+	for _, tl := range newTestServer(t).Tools() {
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		p, ok := props["confirmed"].(map[string]any)
 		if !ok {
@@ -115,7 +117,7 @@ func TestRegistry_ConfirmedHasOneDescription(t *testing.T) {
 }
 
 func TestRegistry_WrapReachesInProcessCalls(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	ok := r.Wrap("cert_private_key", func(Handler) Handler {
 		return func(context.Context, map[string]any) (string, bool) {
 			return ErrResult(errors.New("blocked by policy")), true
@@ -140,7 +142,7 @@ func TestRegistry_WrapReachesInProcessCalls(t *testing.T) {
 // exits 1 (bad input) rather than 5 (API error) — and nothing reaches the
 // cloud. The code is in "reason", not in the text.
 func TestUsageResult_MarksArgumentErrors(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	text, isErr := r.handlers["vm_get"](context.Background(), map[string]any{})
 	if !isErr || !strings.Contains(text, `"reason": "USAGE"`) || !strings.Contains(text, `"error": "vm_id or name is required"`) {
 		t.Fatalf("vm_get without arguments: %s", text)

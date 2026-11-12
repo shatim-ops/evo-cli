@@ -106,7 +106,7 @@ func TestParity_YesEqualsConfirmed(t *testing.T) {
 	stackHome(t)
 	for _, state := range []string{"planned job", "destroyed job", "destroyed job, still deleting", "absent job"} {
 		for _, name := range []string{"stack_apply", "stack_destroy"} {
-			r := newTestServer()
+			r := newTestServer(t)
 			r.handlers["secret_create"] = fakeOK(map[string]any{"status": "created", "id": "s1"})
 			r.handlers["secret_delete"] = fakeOK(map[string]any{"status": "already_deleted"})
 			if state == "destroyed job, still deleting" {

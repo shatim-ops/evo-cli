@@ -54,6 +54,7 @@ func stoppedDeployment(t *testing.T, vmState string) (*Registry, *faultCloud, st
 			},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	return r, c, vm.ID
 }
 

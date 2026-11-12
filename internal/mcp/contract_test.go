@@ -31,14 +31,14 @@ func TestContract_ProtocolVersionFallsBack(t *testing.T) {
 		`{"protocolVersion":""}`,
 		`{}`,
 	} {
-		got := roundTrip(t, newTestServer(), `{"jsonrpc":"2.0","id":1,"method":"initialize","params":`+params+`}`)
+		got := roundTrip(t, newTestServer(t), `{"jsonrpc":"2.0","id":1,"method":"initialize","params":`+params+`}`)
 		res, _ := got["result"].(map[string]any)
 		if res["protocolVersion"] != defaultProtocolVersion {
 			t.Errorf("%s: protocolVersion %v, want %s", params, res["protocolVersion"], defaultProtocolVersion)
 		}
 	}
 	// A known version is echoed. docs/mcp.md lists these three.
-	got := roundTrip(t, newTestServer(), `{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`)
+	got := roundTrip(t, newTestServer(t), `{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`)
 	res, _ := got["result"].(map[string]any)
 	if res["protocolVersion"] != "2024-11-05" {
 		t.Fatalf("known version: %v", res["protocolVersion"])
@@ -51,7 +51,7 @@ func TestContract_ProtocolVersionFallsBack(t *testing.T) {
 // notifications pass. A second initialize is accepted, and the next run
 // is a session of its own.
 func TestContract_InitializeRequiredOnStdio(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	got := rawLines(t, s,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status","arguments":{}}}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
@@ -91,7 +91,7 @@ func TestContract_InitializeRequiredOnStdio(t *testing.T) {
 // initialized; a client without an id is served statelessly, by design
 // (D89; «Риск», conclusion 38).
 func TestContract_HTTPSessionIDOnlyAfterInitialize(t *testing.T) {
-	h := NewHTTPHandler(newTestServer(), HTTPOptions{BearerToken: "t"})
+	h := NewHTTPHandler(newTestServer(t), HTTPOptions{BearerToken: "t"})
 	t.Cleanup(h.Close)
 	post := func(sid, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
@@ -134,7 +134,7 @@ func TestContract_StdioFraming(t *testing.T) {
 	})
 	t.Cleanup(func() { httpretry.DefaultBase = old })
 
-	got := runLines(t, newTestServer(),
+	got := runLines(t, newTestServer(t),
 		`{"jsonrpc":"2.0","id":1,"method":"ping"}{"jsonrpc":"2.0","id":2,"method":"ping"}`,
 	)
 	if len(got) != 1 || rpcCode(got[0]) != codeParseError {
@@ -146,7 +146,7 @@ func TestContract_StdioFraming(t *testing.T) {
 
 	out := &bytes.Buffer{}
 	line := "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\"}\r\n"
-	if err := newTestServer().Run(strings.NewReader(line), out); err != nil {
+	if err := newTestServer(t).Run(strings.NewReader(line), out); err != nil {
 		t.Fatal(err)
 	}
 	var resp map[string]any
@@ -160,7 +160,7 @@ func TestContract_StdioFraming(t *testing.T) {
 
 // resources/list is not a method this server implements. JSON-RPC -32601.
 func TestContract_ResourcesListIsMethodNotFound(t *testing.T) {
-	got := roundTrip(t, newTestServer(), `{"jsonrpc":"2.0","id":1,"method":"resources/list"}`)
+	got := roundTrip(t, newTestServer(t), `{"jsonrpc":"2.0","id":1,"method":"resources/list"}`)
 	if rpcCode(got) != codeMethodNotFound {
 		t.Fatalf("resources/list: %v", got)
 	}
@@ -190,7 +190,7 @@ func TestContract_LineLimitBoundary(t *testing.T) {
 	body = append(body, `{"jsonrpc":"2.0","id":2,"method":"ping"}`...)
 	body = append(body, '\n')
 	out := &bytes.Buffer{}
-	if err := newTestServer().Run(bytes.NewReader(body), out); err != nil {
+	if err := newTestServer(t).Run(bytes.NewReader(body), out); err != nil {
 		t.Fatal(err)
 	}
 	var msgs []map[string]any
@@ -218,6 +218,7 @@ func TestContract_StdinCloseDoesNotCancel(t *testing.T) {
 	s := New(func(map[string]any) (*engine.Engine, error) {
 		return nil, io.EOF
 	}, "test")
+	s.SetStateDir(dir)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	s.handlers["status"] = func(context.Context, map[string]any) (string, bool) {

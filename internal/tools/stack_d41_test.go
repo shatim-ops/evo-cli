@@ -112,7 +112,7 @@ func TestStackAdvance_RefusedStepIsTerminal(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			stackHome(t)
-			r := newTestServer()
+			r := newTestServer(t)
 			j := planJob(t, `{"name":"d","dns":{"zone_id":"z-1","name":"www","target":"203.0.113.10"}}`)
 			var calls int32
 			r.handlers["dns_record_create"] = func(context.Context, map[string]any) (string, bool) {
@@ -154,7 +154,7 @@ func TestStackAdvance_RefusedStepIsTerminal(t *testing.T) {
 // the create may have gone through.
 func TestStackAdvance_LostAnswerStillRetries(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"d","dns":{"zone_id":"z-1","name":"www","target":"203.0.113.10"}}`)
 	var calls int32
 	r.handlers["dns_record_create"] = func(context.Context, map[string]any) (string, bool) {
@@ -177,7 +177,7 @@ func TestStackAdvance_LostAnswerStillRetries(t *testing.T) {
 // teardown again, to re-check deletions still in progress.
 func TestStackDestroy_DestroyedJobAnswersAlreadyDestroyed(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	j.Steps[0].Status, j.Status = "done", "destroyed"
 	j.Outputs[j.Steps[0].Key] = "ok"
@@ -206,7 +206,7 @@ func TestStackDestroy_DestroyedJobAnswersAlreadyDestroyed(t *testing.T) {
 // re-check finds them gone, the job is already_destroyed.
 func TestStackDestroy_PendingDeletionsAreRechecked(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	key := j.Steps[0].Key
 	j.Steps[0].Status = "done"
@@ -254,7 +254,7 @@ func TestStackDestroy_PendingDeletionsAreRechecked(t *testing.T) {
 // same (TestParity_YesEqualsConfirmed, Process, #405).
 func TestStackDestroy_ConfirmedOnDestroyedJobIsAlreadyDestroyed(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	j.Steps[0].Status, j.Status = "done", "destroyed"
 	j.Outputs[j.Steps[0].Key] = "ok"
@@ -281,7 +281,7 @@ func TestStackDestroy_ConfirmedOnDestroyedJobIsAlreadyDestroyed(t *testing.T) {
 // run (axis 1 of CLAUDE.md §6, D35; W8 of Process, #405).
 func TestStackApply_RefusedBeforeTheQuestion(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	gone := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	gone.Status = "destroyed"
 	if err := gone.Save(); err != nil {

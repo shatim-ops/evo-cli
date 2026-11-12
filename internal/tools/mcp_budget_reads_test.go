@@ -64,6 +64,7 @@ func TestProvisionMCP_AnswersWithinBudgetWhenReadsAreSlow(t *testing.T) {
 			Timings: engine.Timings{VMPollInterval: 10 * time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	r.SetCallBudget(worldBudget)
 	m, text := callWithin(t, func(ctx context.Context) (string, bool) {
 		return r.handlers["provision"](ctx, map[string]any{"name": "web", "confirmed": true})

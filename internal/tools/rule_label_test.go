@@ -70,7 +70,7 @@ func newLabelCloud(listed bool) *labelCloud {
 func folderB(t *testing.T, cloud provision.CloudAPI) *Registry {
 	t.Helper()
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:   config.Config{ProjectID: "p", KeyID: "k", Secret: "s"},
@@ -81,6 +81,8 @@ func folderB(t *testing.T, cloud provision.CloudAPI) *Registry {
 			Timings:  engine.Timings{FIPRetryInterval: time.Millisecond, DestroyPollInterval: time.Millisecond, DestroyPollTimeout: time.Second},
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 // P6 (G2-2): a port rule opened for a VM from folder A is closed by the

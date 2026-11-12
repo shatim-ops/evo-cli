@@ -81,7 +81,7 @@ func erasedRegistry(t *testing.T, own func(http.ResponseWriter, *http.Request) b
 	httpretry.DefaultBase = f
 	t.Cleanup(func() { httpretry.DefaultBase = old })
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:   config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s"},
@@ -91,4 +91,6 @@ func erasedRegistry(t *testing.T, own func(http.ResponseWriter, *http.Request) b
 			StateDir: dir,
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }

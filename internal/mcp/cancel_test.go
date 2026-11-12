@@ -126,7 +126,7 @@ func waitRun(t *testing.T, done chan error) error {
 }
 
 func TestCancel_StdioNotificationCancelsCallWithoutAnswer(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	b := blockTool(s)
 	in, out, done := runStdio(t, context.Background(), s)
 	write(t, in, callLine)
@@ -150,7 +150,7 @@ func TestCancel_StdioNotificationCancelsCallWithoutAnswer(t *testing.T) {
 
 // Вызов, ещё ждущий в очереди за другим, тоже отменяется по id.
 func TestCancel_StdioNotificationCancelsQueuedCall(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	b := blockTool(s)
 	in, out, _ := runStdio(t, context.Background(), s)
 	write(t, in, callLine)
@@ -171,7 +171,7 @@ func TestCancel_StdioNotificationCancelsQueuedCall(t *testing.T) {
 // закрывают stdin сразу после запроса и ждут ответа. Вызов доходит до
 // конца, ответ пишется, затем Run завершается.
 func TestCancel_StdioEOFLetsCallFinish(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	started, release := make(chan struct{}), make(chan struct{})
 	cause := make(chan error, 1)
 	s.wrapHandler("vm_list", func(tools.Handler) tools.Handler {
@@ -210,7 +210,7 @@ func TestCancel_StdioEOFLetsCallFinish(t *testing.T) {
 // SIGINT/SIGTERM (контекст из main) отменяет вызов; RunContext возвращает
 // ctx.Err(), дождавшись обработчика.
 func TestCancel_StdioSignalCancelsCall(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	b := blockTool(s)
 	ctx, cancel := context.WithCancel(context.Background())
 	in, _, done := runStdio(t, ctx, s)
@@ -227,7 +227,7 @@ func TestCancel_StdioSignalCancelsCall(t *testing.T) {
 
 func newCancelHTTP(t *testing.T) (*httptest.Server, *HTTPHandler, *blocker) {
 	t.Helper()
-	s := newTestServer()
+	s := newTestServer(t)
 	b := blockTool(s) // до NewHTTPHandler: его обёртки ложатся поверх
 	h := NewHTTPHandler(s, HTTPOptions{BearerToken: testToken})
 	ts := httptest.NewServer(h)

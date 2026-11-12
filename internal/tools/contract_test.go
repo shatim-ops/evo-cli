@@ -165,7 +165,7 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: rt}, "")
 	cloud.Backoff = time.Millisecond
 	cloud.SetToken("a.eyJzdWIiOiJ4In0.c")
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		cfg := config.Config{
 			ProjectID: contractID, Region: contractID, ImageID: contractID,
@@ -188,6 +188,8 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 			},
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 func contractCall(tl Tool, args map[string]any, limit time.Duration) (text string, isErr bool, pan string) {
@@ -416,6 +418,7 @@ func TestContract_GatePreviewDoesNotWrite(t *testing.T) {
 // a secret (internal/tools/registry.go). Annotations are TestToolsList_Annotations.
 func TestContract_Schema(t *testing.T) {
 	reg := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	reg.SetStateDir(t.TempDir())
 	known := map[string]bool{"string": true, "integer": true, "number": true, "boolean": true, "array": true, "object": true}
 	for _, tl := range reg.Tools() {
 		props := schemaProps(tl)

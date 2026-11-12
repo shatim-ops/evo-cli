@@ -73,8 +73,8 @@ func (c *transientDiskCloud) ResizeDisk(context.Context, string, int, string) (m
 	return c.wrote("ResizeDisk")
 }
 
-func transientDiskRegistry(c *transientDiskCloud) *Registry {
-	return New(func(map[string]any) (*engine.Engine, error) {
+func transientDiskRegistry(t testing.TB, c *transientDiskCloud) *Registry {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
@@ -84,6 +84,8 @@ func transientDiskRegistry(c *transientDiskCloud) *Registry {
 			Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 50 * time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 var diskChanges = map[string]map[string]any{
@@ -110,7 +112,7 @@ func TestDiskChange_TransientStateRefusedBeforeTheQuestion(t *testing.T) {
 		for _, st := range []string{"attaching", "detaching", "extending", "creating"} {
 			for _, confirmed := range []bool{false, true} {
 				c := &transientDiskCloud{faultCloud: &faultCloud{}, from: st}
-				m, text, isErr := callNamed(t, transientDiskRegistry(c), name, withConfirmed(args, confirmed))
+				m, text, isErr := callNamed(t, transientDiskRegistry(t, c), name, withConfirmed(args, confirmed))
 				if !isErr || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, st) || len(c.writes) > 0 {
 					t.Errorf("%s, disk %s, confirmed=%v: %s (writes %v)", name, st, confirmed, text, c.writes)
 				}
@@ -124,11 +126,11 @@ func TestDiskChange_TransientStateRefusedBeforeTheQuestion(t *testing.T) {
 func TestDiskChange_WaitsForATransientStateToSettle(t *testing.T) {
 	for name, args := range diskChanges {
 		c := &transientDiskCloud{faultCloud: &faultCloud{}, from: "extending", settleAt: 3}
-		if m, text, _ := callNamed(t, transientDiskRegistry(c), name, withConfirmed(args, false)); m["status"] != "confirmation_required" {
+		if m, text, _ := callNamed(t, transientDiskRegistry(t, c), name, withConfirmed(args, false)); m["status"] != "confirmation_required" {
 			t.Errorf("%s without consent: %s", name, text)
 		}
 		c = &transientDiskCloud{faultCloud: &faultCloud{}, from: "extending", settleAt: 3}
-		if _, text, isErr := callNamed(t, transientDiskRegistry(c), name, withConfirmed(args, true)); isErr || len(c.writes) != 1 {
+		if _, text, isErr := callNamed(t, transientDiskRegistry(t, c), name, withConfirmed(args, true)); isErr || len(c.writes) != 1 {
 			t.Errorf("%s with consent: %s (writes %v)", name, text, c.writes)
 		}
 	}
@@ -140,7 +142,7 @@ func TestDiskChange_SaysTheStateWhileWaiting(t *testing.T) {
 	var lines []string
 	ctx := WithProgress(context.Background(), func(l string) { mu.Lock(); lines = append(lines, l); mu.Unlock() })
 	c := &transientDiskCloud{faultCloud: &faultCloud{}, from: "extending", settleAt: 3}
-	tl, _ := transientDiskRegistry(c).Lookup("disk_detach")
+	tl, _ := transientDiskRegistry(t, c).Lookup("disk_detach")
 	if text, isErr := tl.Handler(ctx, withConfirmed(diskChanges["disk_detach"], true)); isErr {
 		t.Fatal(text)
 	}

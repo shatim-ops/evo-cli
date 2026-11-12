@@ -44,7 +44,7 @@ func orgRegistryIn(t *testing.T, f fakeOrg, project string) *Registry {
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = f
 	t.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: project, KeyID: "k", Secret: "s"},
@@ -52,6 +52,8 @@ func orgRegistryIn(t *testing.T, f fakeOrg, project string) *Registry {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // Ключ уровня проекта: Organization API отвечает 400 «user not found».

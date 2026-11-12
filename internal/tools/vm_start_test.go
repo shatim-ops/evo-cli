@@ -117,7 +117,7 @@ func vmStartWorldWaiting(t *testing.T, state string, ownLimit time.Duration) (*R
 	}
 	c.setVMState(vm.ID, state)
 	w := &powerWorld{faultCloud: c, id: vm.ID}
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
@@ -126,7 +126,9 @@ func vmStartWorldWaiting(t *testing.T, state string, ownLimit time.Duration) (*R
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 			Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: ownLimit},
 		}, nil
-	}), w
+	})
+	r.SetStateDir(t.TempDir())
+	return r, w
 }
 
 // A stopped VM: the preview names what will be done and to what, and
