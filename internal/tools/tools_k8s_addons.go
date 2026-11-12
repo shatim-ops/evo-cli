@@ -426,9 +426,6 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 			}
 		}
 		p.installed = &inst
-		if inst {
-			p.warnings = append(p.warnings, addon.Name+" is already installed in this cluster: the API may refuse, or resolve_mode decides what happens to it")
-		}
 	} else {
 		p.notChecked = append(p.notChecked, "installed")
 	}
@@ -511,6 +508,17 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 		return nil, clierrors.New(clierrors.CodeUsage, strings.Join(plan.blockers, "; "),
 			i18n.Tf("Versions and their requirements: evo k8s addon-versions %s; worker nodes: evo k8s add-nodepool.",
 				"Версии и их требования: evo k8s addon-versions %s; рабочие узлы: evo k8s add-nodepool.", plan.addon.Name))
+	}
+	// A repeat on a cluster that has the addon: the question is asked as
+	// before, and says what this call does to the installed one — by the
+	// resolve_mode it sends (release plan 1.9, «Повтор у выпущенных
+	// инструментов», п. 4).
+	if plan.installed != nil && *plan.installed {
+		if resolveMode == mk8s.DefaultResolveMode {
+			plan.warnings = append(plan.warnings, plan.addon.Name+" is already installed in this cluster: with resolve_mode NONE its objects are kept, and the install may fail")
+		} else {
+			plan.warnings = append(plan.warnings, plan.addon.Name+" is already installed in this cluster: resolve_mode OVERWRITE replaces its objects in the cluster with this install's")
+		}
 	}
 	requirements := map[string]any{"kube_versions": r.Requirements.KubeVersions, "ready_workers": int(r.Requirements.ReadyWorkers)}
 	versionFrom := "latest"
