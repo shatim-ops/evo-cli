@@ -13,15 +13,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
-// The pages of the loopback (the design of 05.11, «Дизайн — окно создания
-// сервисного аккаунта»): no script, nothing from another site; the theme
-// follows the system's; the choice shows in the summary by CSS alone.
+// The pages of the loopback (the design V3 of 11.11, the designers'
+// package v2): no script, nothing from another site; the theme follows the
+// system's; the choice shows in the plan by CSS alone.
 //
 //go:embed pages.html
 var pagesHTML string
@@ -38,19 +39,30 @@ type page struct {
 type head struct {
 	Lang, Title, Heading, Product string
 	Rules                         template.CSS
-	// Wide: the consent's two columns, one screen of a laptop (B-5).
-	Wide bool
-	// Until is a line by the heading: on the consent, until when the page
-	// works (after the wait the loopback is closed, B-5). Not Note: a page
-	// with a Note of its own would show it here too (G12, round 3 of Grok).
+	// User is the e-mail or the user name of the person signed in, in the
+	// header; "" before the sign-in and when the ID token names neither
+	// (sub is not shown, plan 1.8, B-3).
+	User string
+	// Until is, on the consent, until when the page works (after the wait
+	// the loopback is closed, B-5); it stands by User.
 	Until string
 }
 
-// newHead is the head of a page; only the consent has the heading «… requests
-// access»: a page of the end has its status as the heading (B-5: with it,
-// the page of an error looked like a working one).
 func newHead(title string) head {
 	return head{Lang: i18n.Lang(), Title: title, Product: product.PageName}
+}
+
+// signed is the page with the person's name in its header.
+func (p page) signed(user string) page {
+	switch d := p.data.(type) {
+	case resultData:
+		d.User = user
+		p.data = d
+	case consentData:
+		d.User = user
+		p.data = d
+	}
+	return p
 }
 
 func writePage(w http.ResponseWriter, code int, p page) {
@@ -62,6 +74,64 @@ func writePage(w http.ResponseWriter, code int, p page) {
 	w.WriteHeader(code)
 	_ = pages.ExecuteTemplate(w, p.name, p.data)
 }
+
+// part is a piece of a line of the plan or of the result. Both kinds are
+// plain strings that html/template escapes: a name that came from the
+// cloud is never markup; Bold is set in bold by the template («Риск»,
+// conclusion 100.5).
+type part struct {
+	Text string
+	Bold bool
+}
+
+func bold(s string) part  { return part{Text: s, Bold: true} }
+func plain(s string) part { return part{Text: s} }
+
+// mark is the i-th place of a value in a text: a text is made with marks
+// and filled with parts, so that the template sets the names in bold.
+func mark(i int) string { return "\x00" + string(rune('a'+i)) }
+
+// fill cuts a text made with marks and puts the i-th part at mark(i),
+// wherever the language put it.
+func fill(text string, values ...part) []part {
+	var out []part
+	for {
+		at, n := -1, 0
+		for i := range values {
+			if j := strings.Index(text, mark(i)); j >= 0 && (at < 0 || j < at) {
+				at, n = j, i
+			}
+		}
+		if at < 0 {
+			break
+		}
+		if at > 0 {
+			out = append(out, plain(text[:at]))
+		}
+		if values[n].Text != "" {
+			out = append(out, values[n])
+		}
+		text = text[at+len(mark(n)):]
+	}
+	if text != "" {
+		out = append(out, plain(text))
+	}
+	return out
+}
+
+// cut is a text with marks, cut at them: the page puts its choices there.
+func cut(text string, marks ...string) []string {
+	var out []string
+	for _, m := range marks {
+		before, after, _ := strings.Cut(text, m)
+		out = append(out, before)
+		text = after
+	}
+	return append(out, text)
+}
+
+// hint is a «?» with its tooltip; ID ties the two for a screen reader.
+type hint struct{ ID, Text string }
 
 type consentProject struct {
 	// Source says where a preselected project came from (R-48).
@@ -84,86 +154,83 @@ type consentTerm struct {
 	Checked      bool
 }
 
+// planRow is a line of the plan shown for one audience only (its radio's
+// id): the previous key replaced, a project picked by another profile.
+type planRow struct {
+	For   string
+	Parts []part
+}
+
 type consentData struct {
 	head
-	Intro, ProjectLegend, NeedAdmin, NoRightNote                  string
-	ForLegend, ForMe, ForMeNote, ForAgent, ForAgentNote, RoleNote string
-	TermLegend, TermNote, SummaryHeading                          string
-	// Account and Role are the summary's lines, cut where the chosen
-	// account, project and day go in.
-	Account                         [3]string
-	AccountToChoose                 [2]string
-	Role, Key                       [2]string
-	SummaryStays, Cancel            string
-	SecretNote, State, Consent, For string
-	Unchecked, PreselectNote        string
-	// OtherProfile is the line of a project picked by the profile of one
-	// audience, shown when the other is chosen (OtherAudience, its id).
-	OtherProfile, OtherAudience string
-	// ChooseProject is the empty first option when no project is picked
-	// beforehand; FromList names the project where :has() is not there to
-	// name the chosen one («Риск», conclusion 34).
-	ChooseProject, Grant string
-	Picked               bool
-	AgentWarnTitle       string
-	AgentWarn, GrantIn   [2]string
-	// ChosenIn is the line at the button: the chosen project and its
-	// organization (R-71), shown by the :has of the choice.
-	ChosenIn [2]string
-	Projects []consentProject
-	Orgs     []consentOrg
-	Terms    []consentTerm
+	State, Consent string
+
+	ProjectLegend, ChooseProject, NeedAdmin string
+	ProjectHint                             hint
+	Picked                                  bool
+	Orgs                                    []consentOrg
+	Projects                                []consentProject
+	// FieldError: the project picked beforehand is not chosen, for want of
+	// the right; FieldWarning: the right is not confirmed (U-9, R-49).
+	FieldError, FieldWarning string
+
+	ForLegend, ForMe, ForMeNote, ForAgent, ForAgentNote, For string
+	AgentWarnTitle, AgentWarnText                            string
+
+	TermLegend string
+	TermHint   hint
+	Terms      []consentTerm
+
+	// PlanAccount and PlanRole are the plan's lines, cut where the
+	// account, the project, the role and the day go in.
+	PlanAccount               [3]string
+	AccountMe, AccountAgent   string
+	PlanAnyProject, RoleName  string
+	PlanRole                  [3]string
+	AccountHint, RoleHint     hint
+	Replace, Other            []planRow
+	Grant, Cancel, SecretNote string
+	SecretHint                hint
 }
 
-// introLine is «You signed in as …» with the e-mail or the user name of
-// the ID token; with neither, no line: sub is not shown (plan 1.8, B-3).
-func (s *session) introLine() string {
-	if s.who.Login == "" || s.who.Login == s.who.Sub {
+// user is the person as the pages name them: the e-mail or the user name
+// of the ID token; with neither, none — sub is not shown (plan 1.8, B-3).
+func (s *session) user() string {
+	if s.who.Login == s.who.Sub {
 		return ""
 	}
-	return tSignedIn(s.who.Login)
-}
-
-// cut is a text with marks, cut at them: the page puts its choices there.
-func cut(text string, marks ...string) []string {
-	var out []string
-	for _, m := range marks {
-		before, after, _ := strings.Cut(text, m)
-		out = append(out, before)
-		text = after
-	}
-	return append(out, text)
+	return s.who.Login
 }
 
 func consentPage(s *session) page {
 	h := newHead(tHeading())
-	h.Heading, h.Wide = tHeading(), true
-	d := consentData{head: h,
-		Intro: s.introLine(), ProjectLegend: tProject(), NeedAdmin: tNoRightMark(), NoRightNote: tNoRightNote(),
-		ForLegend: tForWhom(), ForMe: tForMe(), ForMeNote: tForMeNote(), ForAgent: tForAgent(), ForAgentNote: tForAgentNote(),
-		RoleNote: tRoleNote(), TermLegend: tTerm(), TermNote: tForeverInConsole(), SummaryHeading: tWhatWillBeMade(),
-		SummaryStays: tSumStaysPage(), Cancel: tCancel(), SecretNote: tSecretNote(),
-		State: s.state, Consent: s.consent, For: string(ForMe),
+	h.Heading, h.User = tHeading(), s.user()
+	d := consentData{head: h, State: s.state, Consent: s.consent,
+		ProjectLegend: tProject(), ChooseProject: tChooseProject(), NeedAdmin: tNoRightMark(),
+		ProjectHint: hint{"h-project", tNoRightNote()},
+		ForLegend:   tForWhom(), ForMe: tForMe(), ForMeNote: tForMeNote(), ForAgent: tForAgent(), ForAgentNote: tForAgentNote(),
+		For:            string(ForMe),
+		AgentWarnTitle: tAgentWarnTitle(), AgentWarnText: tAgentWarn(),
+		TermLegend: tTerm(), TermHint: hint{"h-term", tForeverInConsole()},
+		AccountMe: ForMe.account(), AccountAgent: ForAgent.account(),
+		PlanAnyProject: tPlanAccountToChoose(), RoleName: tQuoted(auth.LoginRoleDisplayName),
+		AccountHint: hint{"h-account", tAccountHint()}, RoleHint: hint{"h-role", tRoleNote()},
+		Grant: tGrant(), Cancel: tCancel(), SecretNote: tSecretNote(), SecretHint: hint{"h-secret", tSecretHint()},
 	}
-	copy(d.Account[:], cut(tSumAccountNew("\x00a", "\x00p"), "\x00a", "\x00p"))
-	copy(d.Role[:], cut(tSumRole("\x00d"), "\x00d"))
-	copy(d.Key[:], cut(tSumKey("\x00d"), "\x00d"))
+	copy(d.PlanAccount[:], cut(tPlanAccount(mark(0), mark(1)), mark(0), mark(1)))
+	copy(d.PlanRole[:], cut(tPlanRole(mark(0), mark(1)), mark(0), mark(1)))
 	// «Мне» unless --for agent: a key for an agent is only an explicit
 	// choice (the owner's decision of 06.11, R-47).
 	if s.choice.For == ForAgent {
 		d.For = string(ForAgent)
 	}
 	if s.unchecked != "" {
-		d.Unchecked = tUnchecked()
+		d.FieldWarning = tUnchecked()
 	}
-	copy(d.GrantIn[:], cut(tGrantInProject("\x00p"), "\x00p"))
-	copy(d.ChosenIn[:], cut(tChosenIn("\x00p"), "\x00p"))
-	d.AgentWarnTitle = tAgentWarnTitle()
-	copy(d.AgentWarn[:], cut(tAgentWarn("\x00d"), "\x00d"))
 	var rules strings.Builder
 	pre := s.preselected()
 	if pre < 0 && s.choice.Preselect != "" && s.preselectDenied() {
-		d.PreselectNote = projectNoRight(s.choice.PreselectEnv)
+		d.FieldError = projectNoRight(s.choice.PreselectEnv)
 	}
 	// Picked beforehand: the project of the profile or the variable, the
 	// one --project leaves, or the only one to choose; otherwise none — the
@@ -195,9 +262,19 @@ func consentPage(s *session) page {
 		rules.WriteString(shown(cp.HTMLID))
 	}
 	d.Picked = checked
-	d.OtherProfile, d.OtherAudience = s.otherProfile(pre)
-	d.ChooseProject, d.Grant = tChooseProject(), tGrant()
-	copy(d.AccountToChoose[:], cut(tSumAccountToChoose("\x00a"), "\x00a"))
+	if line, id := s.otherProfile(pre); line != "" {
+		d.Other = []planRow{{For: id, Parts: []part{plain(line)}}}
+	}
+	// The previous key of each audience's profile, deleted after the new
+	// one is kept (step 18): a line only where there is one.
+	if s.store != nil {
+		for _, a := range []Audience{ForMe, ForAgent} {
+			if prev := s.store.Previous(a); prev != nil && prev.AccessKeyID != "" {
+				d.Replace = append(d.Replace, planRow{For: "a-" + string(a),
+					Parts: fill(tPlanReplace(mark(0)), bold(config.MaskKeyID(prev.KeyID)))})
+			}
+		}
+	}
 	if !s.until.IsZero() {
 		d.Until = tPageUntil(s.until)
 	}
@@ -210,20 +287,10 @@ func consentPage(s *session) page {
 		d.Terms = append(d.Terms, consentTerm{Days: n, Label: tDays(n),
 			Until: day(now.Add(time.Duration(n) * 24 * time.Hour)), Checked: n == days})
 		id := fmt.Sprintf("t-%d", n)
-		rules.WriteString("#" + id + ":checked ~ .seg label[for=" + id + "] { color: var(--ink); border-bottom-color: var(--green); }\n" + shown(id))
+		rules.WriteString("#" + id + ":checked ~ .cbody .s-" + id + " { display: inline; }\n" +
+			"#" + id + ":checked ~ .cbody .seg label[for=" + id + "] { background: var(--bg2); color: var(--text); }\n" +
+			"#" + id + ":focus-visible ~ .cbody .seg label[for=" + id + "] { outline: 2px solid var(--primary); outline-offset: 2px; }\n")
 	}
-	for _, id := range []string{"a-me", "a-agent"} {
-		rules.WriteString(choiceRule(id, ".pair label[for="+id+"]") + shown(id))
-	}
-	// The warning of a key for an agent shows when the agent is chosen.
-	// The summary and the button name the project once one is chosen;
-	// before, and without :has(), they say «the project you choose» and
-	// «Grant access». Without :has() the warning shows always: more said,
-	// never less (R-47).
-	rules.WriteString(".sheet:has(#a-agent:checked) .warn { display: flex; }\n" +
-		".sheet:has(#project option:checked:not(#p-none)) .s-chosen { display: inline; }\n" +
-		".sheet:has(#p-none:checked) .s-any { display: inline; }\n" +
-		"@supports not selector(:has(*)) { .warn { display: flex; } .x.s-any, .x.other { display: inline; } }\n")
 	// Ids are evo's own (p0…, t-7…, a-me): no text of the cloud in the CSS.
 	d.Rules = template.CSS(rules.String())
 	return page{"consent", d}
@@ -248,49 +315,50 @@ func (s *session) otherProfile(pre int) (line, id string) {
 	return "", ""
 }
 
-// choiceRule is the CSS of a chosen radio: its label marked.
-func choiceRule(id, label string) string {
-	return "#" + id + ":checked ~ " + label + " { border-left-color: var(--green); background: var(--green-bg); } #" +
-		id + ":checked ~ " + label + "::before { border-color: var(--green); background: radial-gradient(circle, var(--green) 45%, var(--surface2) 50%); }\n"
-}
-
-// shown is the CSS that names a chosen radio or option in the summary, the
-// warning, on the button (R-48) and under the list: by :has, wherever the
-// choice stands in the form.
+// shown is the CSS that names a chosen project in the caption of the list
+// and in the plan (R-48, R-71): by :has, wherever the choice stands.
 func shown(id string) string {
-	return ".sheet:has(#" + id + ":checked) .s-" + id + " { display: inline; }\n"
+	return ".cbody:has(#" + id + ":checked) .s-" + id + " { display: inline; }\n"
 }
 
-type row struct{ Term, Value string }
-
+// resultData is a page of the end: done, cancelled, an error, a refusal.
 type resultData struct {
 	head
-	Status, Text, Note, Footer string
-	Rows                       []row
+	// Kind is ok, no or err; Icon is check, close or alarm.
+	Kind, Icon string
+	Status     string
+	Text, Note string
+	Rows       []resultRow
+	// Tech is the reason, code and step of an error, as the terminal names
+	// them.
+	Tech, Footer string
+}
+
+// resultRow is a line of the result: Icon is user, key or lock.
+type resultRow struct {
+	Icon  string
+	Parts []part
 }
 
 func donePage(r Result) page {
-	// Macket v15: what the login reused or revoked is a line of its own,
-	// not a remark in the rows; a new account has none.
-	note := ""
-	if r.AccountReused {
-		prev := ""
-		if r.RevokedKeyID != "" {
-			prev = config.MaskKeyID(r.RevokedKeyID)
-		}
-		note = tDoneReused(r.Account, tRoleTerm(roleTerm(r), r.RoleUnbounded), prev)
+	org := ""
+	if r.CustomerName != "" {
+		org = " · " + r.CustomerName
 	}
-	rows := tRowsPage()
-	return page{"done", resultData{head: newHead(pageTitle(tDone())), Status: tDone(),
-		Text: tDoneText(config.MaskKeyID(r.KeyID), r.Profile, r.KeyExpiresAt, r.Account == ForAgent.account()),
-		Note: note,
-		Rows: []row{
-			{rows[0], projectIn(r.ProjectName, r.CustomerName)},
-			{rows[1], r.Account},
-			{rows[2], tRoleUntil(tRoleTerm(roleTerm(r), r.RoleUnbounded))},
-			{rows[3], config.MaskKeyID(r.KeyID)},
-			{rows[4], r.Profile},
-		},
+	account := fill(tDoneAccount(mark(0), mark(1)+mark(2), r.AccountReused), bold(r.Account), bold(r.ProjectName), plain(org))
+	role := fill(tDoneRole(mark(0), tUnbounded()), bold(tQuoted(auth.LoginRoleDisplayName)))
+	if !r.RoleUnbounded {
+		role = fill(tDoneRole(mark(0), tUntil(mark(1))), bold(tQuoted(auth.LoginRoleDisplayName)), bold(day(roleTerm(r))))
+	}
+	prev := ""
+	if r.RevokedKeyID != "" {
+		prev = mark(3)
+	}
+	key := fill(tDoneKey(mark(0), mark(1), mark(2), prev), bold(config.MaskKeyID(r.KeyID)), bold(tQuoted(r.Profile)),
+		bold(day(r.KeyExpiresAt)), bold(config.MaskKeyID(r.RevokedKeyID)))
+	return page{"done", resultData{head: newHead(pageTitle(tDone())), Kind: "ok", Icon: "check", Status: tDone(),
+		Text:   tDoneText(r.Account == ForAgent.account()),
+		Rows:   []resultRow{{"user", account}, {"key", role}, {"lock", key}},
 		Footer: tRevokeHow(),
 	}}
 }
@@ -304,30 +372,24 @@ func roleTerm(r Result) time.Time {
 	return r.RoleExpiresAt
 }
 
-// projectIn is a project with its organization, when it is known.
-func projectIn(project, org string) string {
-	if org == "" {
-		return project
-	}
-	return project + " · " + org
-}
-
 func cancelledPage() page {
-	return page{"cancelled", resultData{head: newHead(pageTitle(tCancelledTitle())), Status: tCancelledTitle(), Text: tCancelled()}}
+	return page{"cancelled", resultData{head: newHead(pageTitle(tCancelledTitle())), Kind: "no", Icon: "close",
+		Status: tCancelledTitle(), Text: tCancelled()}}
 }
 
-// errorPage names the error as the terminal does, with its code; the hint
-// with its command stays the terminal's and JSON's, but for the way to
-// delete what a rollback left. Never a secret: the
-// errors of the login carry none. The heading follows the step (№ 182,
-// «Риск», conclusion 57): before any write the sign-in or the choice
-// failed and nothing was made; a write step, or none named, keeps «could
-// not grant» — the unknown is not told as safe.
+// errorPage names the error as the terminal does, with its reason, code
+// and step; the hint with its command stays the terminal's and JSON's, but
+// for the way to delete what a rollback left. Never a secret: the errors
+// of the login carry none. The heading follows the step (№ 182, «Риск»,
+// conclusion 57): before any write the sign-in or the choice failed and
+// nothing was made; a write step, or none named, keeps «could not grant» —
+// the unknown is not told as safe.
 func errorPage(err error) page {
-	status, note := tNotComplete(), ""
+	status, note, step := tNotComplete(), "", ""
 	var ce *clierrors.CLIError
 	if errors.As(err, &ce) {
-		switch step, _ := ce.Details["step"].(string); step {
+		step, _ = ce.Details["step"].(string)
+		switch step {
 		case stepCallback, stepToken, stepIDToken, stepCustomers, stepProjects, stepBulk:
 			status, note = tSignInFailed(), tNothingMade()
 		case stepChoice, stepEvaluate:
@@ -344,14 +406,15 @@ func errorPage(err error) page {
 			}
 		}
 	}
-	return page{"error", resultData{head: newHead(pageTitle(status)), Status: status, Note: note, Text: err.Error(),
-		Footer: tDetails(clierrors.Reason(err), clierrors.ExitCode(err))}}
+	return page{"error", resultData{head: newHead(pageTitle(status)), Kind: "err", Icon: "alarm", Status: status,
+		Text: err.Error(), Note: note, Tech: tTech(clierrors.Reason(err), clierrors.ExitCode(err), step), Footer: tRetryFooter()}}
 }
 
-// refusedPage is a refusal of the loopback: its text under the product's
-// name, so that the tab is not a bare address (№ 26).
-func refusedPage(text string) page {
-	return page{"refused", resultData{head: newHead(product.PageName), Text: text}}
+// refusedPage is a refusal of the loopback that a person's tab meets: its
+// text under the product's name, so that the tab is not a bare address
+// (№ 26); title heads it where the refusal has one.
+func refusedPage(title, text string) page {
+	return page{"refused", resultData{head: newHead(product.PageName), Kind: "no", Icon: "alarm", Status: title, Text: text}}
 }
 
 // pageTitle is the tab of a page of the end: its status and the product,

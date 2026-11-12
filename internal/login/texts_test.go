@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
@@ -21,10 +22,16 @@ import (
 // on by itself, a person goes back to the terminal.
 func TestDonePage_ByAudience(t *testing.T) {
 	term := time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC)
-	agent := donePage(Result{Account: ForAgent.account(), Profile: "agent", KeyID: "k", KeyExpiresAt: term}).data.(resultData).Text
-	me := donePage(Result{Account: ForMe.account(), Profile: "default", KeyID: "k", KeyExpiresAt: term}).data.(resultData).Text
-	if agent != tDoneText(config.MaskKeyID("k"), "agent", term, true) || me != tDoneText(config.MaskKeyID("k"), "default", term, false) || agent == me {
-		t.Errorf("agent %q, me %q", agent, me)
+	agent := donePage(Result{Account: ForAgent.account(), Profile: "agent", KeyID: "k", KeyExpiresAt: term})
+	me := donePage(Result{Account: ForMe.account(), Profile: "default", KeyID: "k", KeyExpiresAt: term})
+	if a, m := agent.data.(resultData).Text, me.data.(resultData).Text; a != tDoneText(true) || m != tDoneText(false) || a == m {
+		t.Errorf("agent %q, me %q", a, m)
+	}
+	// The key, its profile and its day are the rows', by the audience.
+	for p, profile := range map[*page]string{&agent: "agent", &me: "default"} {
+		if got, want := flatText(renderPage(t, *p)), flatText(tDoneKey(config.MaskKeyID("k"), tQuoted(profile), day(term), "")); !strings.Contains(got, want) {
+			t.Errorf("no row %q in %q", want, got)
+		}
 	}
 }
 
@@ -58,7 +65,8 @@ func TestNoRightHint_NoLoginOfTheAdministrator(t *testing.T) {
 
 // R-48: the page offers checked the project of the profile or of
 // CLOUDRU_PROJECT_ID and says where it came from; one without the right is
-// not checked, and the page says why; the button names the project.
+// not checked, and the page says why; the plan above the button names the
+// project (V3: the button is «Grant access», the owner's decision of 11.11).
 func TestConsentPage_Preselect(t *testing.T) {
 	render := func(pre string, env bool) string {
 		s := &session{cfg: Config{Now: time.Now}, choice: Choice{Preselect: pre, PreselectFrom: "из CLOUDRU_PROJECT_ID", PreselectEnv: env},
@@ -75,10 +83,10 @@ func TestConsentPage_Preselect(t *testing.T) {
 	if m := checked.FindStringSubmatch(page); m == nil || m[1] != "b" || !strings.Contains(page, tEnvProjectPicked()) {
 		t.Errorf("the variable's project is not checked with its source: %v", m)
 	}
-	grant := cut(tGrantInProject("\x00p"), "\x00p")
-	if !strings.Contains(page, `<span class="x s-chosen">`+grant[0]+`<span class="pn">`) || !strings.Contains(page, `</span>`+grant[1]+`</span>`) ||
-		!strings.Contains(page, `.sheet:has(#p1:checked) .s-p1`) {
-		t.Errorf("the button does not name the project")
+	plan := cut(tPlanAccount(mark(0), mark(1)), mark(0), mark(1))
+	if !strings.Contains(page, `<span class="x s-p1">`+html.EscapeString(plan[1])+`<b>beta</b></span>`) ||
+		!strings.Contains(page, `.cbody:has(#p1:checked) .s-p1`) {
+		t.Errorf("the plan does not name the project")
 	}
 	for env, note := range map[bool]string{true: tEnvProjectNoRight(), false: tProfileProjectNoRight()} {
 		page = render("c", env)
@@ -92,9 +100,9 @@ func TestConsentPage_Preselect(t *testing.T) {
 	}
 }
 
-// Macket v13: «You signed in as» names the e-mail or the user name, never
-// sub (plan 1.8, B-3); a key for an agent shows the warning of its rights
-// by CSS; the result names the organization of the project.
+// Macket v13, V3: the header names the e-mail or the user name, never sub
+// (plan 1.8, B-3); a key for an agent shows the warning of its rights by
+// CSS; the result names the organization of the project.
 func TestPages_MacketV13(t *testing.T) {
 	render := func(p page) string {
 		var b strings.Builder
@@ -105,19 +113,19 @@ func TestPages_MacketV13(t *testing.T) {
 	}
 	s := &session{cfg: Config{Now: time.Now}, who: person{Sub: "u-1", Login: "u-1"},
 		projects: []project{{ID: "a", Name: "alpha", Allowed: true}}}
-	if page := render(consentPage(s)); strings.Contains(page, "u-1") || strings.Contains(page, tSignedIn("u-1")) {
+	if page := render(consentPage(s)); strings.Contains(page, "u-1") || strings.Contains(page, `class="user"`) {
 		t.Errorf("sub shown on the page")
 	}
 	s.who.Login = "ivan@example.com"
 	page := render(consentPage(s))
-	if !strings.Contains(page, tSignedIn("ivan@example.com")) {
+	if !strings.Contains(page, `<span class="user">ivan@example.com</span>`) {
 		t.Errorf("no e-mail")
 	}
-	if !strings.Contains(page, tAgentWarnTitle()) || !strings.Contains(page, ".sheet:has(#a-agent:checked) .warn { display: flex; }") {
+	if !strings.Contains(page, tAgentWarnTitle()) || !strings.Contains(pagesHTML, "#a-agent:checked ~ .cbody .alert { display: flex; }") {
 		t.Errorf("no warning for an agent")
 	}
 	done := render(donePage(Result{Account: "evo", ProjectName: "alpha", CustomerName: "Radar", KeyID: "k", KeyExpiresAt: time.Now()}))
-	if !strings.Contains(done, "alpha · Radar") {
+	if !strings.Contains(done, "<b>alpha</b> · Radar") {
 		t.Errorf("the result does not name the organization")
 	}
 }
@@ -128,20 +136,23 @@ func TestPages_MacketV13(t *testing.T) {
 func TestPages_MacketV15(t *testing.T) {
 	var b strings.Builder
 	term := time.Now()
-	p := donePage(Result{Account: "evo-agent", AccountReused: true, RevokedKeyID: "zzzzc019", KeyID: "k", KeyExpiresAt: term})
+	p := donePage(Result{Account: "evo-agent", AccountReused: true, RevokedKeyID: "zzzzc019zzzzc019", KeyID: "kkkk0000kkkk0000", KeyExpiresAt: term})
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	if note := tDoneReused("evo-agent", tRoleTerm(term, false), config.MaskKeyID("zzzzc019")); !strings.Contains(b.String(), note) {
-		t.Errorf("no line of the reused account and the deleted key: %q", note)
+	page := flatText(b.String())
+	for _, line := range []string{tDoneAccount("evo-agent", "", true), tDoneKey(config.MaskKeyID("kkkk0000kkkk0000"), tQuoted(""), day(term), config.MaskKeyID("zzzzc019zzzzc019"))} {
+		if !strings.Contains(page, flatText(line)) {
+			t.Errorf("no line of the reused account and the deleted key: %q", line)
+		}
 	}
 	b.Reset()
-	p = donePage(Result{Account: "evo-agent", KeyID: "k", KeyExpiresAt: term})
+	p = donePage(Result{Account: "evo-agent", KeyID: "kkkk0000kkkk0000", KeyExpiresAt: term})
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(b.String(), tDoneReused("evo-agent", tRoleTerm(term, false), "")) {
-		t.Errorf("a new account is told as reused")
+	if page := flatText(b.String()); strings.Contains(page, flatText(tDoneAccount("evo-agent", "", true))) || strings.Contains(page, config.MaskKeyID("zzzzc019zzzzc019")) {
+		t.Errorf("a new account is told as reused, or a key as deleted")
 	}
 	if !strings.Contains(b.String(), `<svg class="logo"`) || strings.Contains(b.String(), "<img") || strings.Contains(b.String(), "http://") && !strings.Contains(b.String(), "xmlns=\"http://www.w3.org/2000/svg\"") {
 		t.Errorf("the logo is not inline")
@@ -185,7 +196,7 @@ func TestConsentPage_OneRightsMark(t *testing.T) {
 		t.Errorf("%d marks of the rights, want 1", strings.Count(page, mark))
 	}
 	projects, _, _ := strings.Cut(page, tForWhom())
-	if !strings.Contains(projects, tUnchecked()) || !strings.Contains(projects, `>`+tProject()+`</legend>`) {
+	if !strings.Contains(projects, tUnchecked()) || !strings.Contains(projects, `<span>`+tProject()+`</span>`) {
 		t.Errorf("the mark is not by the list of projects")
 	}
 }
@@ -199,7 +210,8 @@ func TestDonePage_RoleTerm(t *testing.T) {
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(b.String(), tRoleUntil(tRoleTerm(role, false))) {
+	roleLine := func(term string) string { return flatText(tDoneRole(tQuoted(auth.LoginRoleDisplayName), term)) }
+	if !strings.Contains(flatText(b.String()), roleLine(tRoleTerm(role, false))) {
 		t.Errorf("the role's term is not the actual one")
 	}
 	// A18-26: an unbounded role is named so, not by the key's term.
@@ -208,9 +220,9 @@ func TestDonePage_RoleTerm(t *testing.T) {
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	unbounded := tRoleTerm(time.Time{}, true)
-	if !strings.Contains(b.String(), tRoleUntil(unbounded)) || !strings.Contains(b.String(), tDoneReused("evo", unbounded, "")) ||
-		strings.Contains(b.String(), tRoleUntil(tRoleTerm(key, false))) {
+	page := flatText(b.String())
+	if !strings.Contains(page, roleLine(tUnbounded())) || !strings.Contains(page, flatText(tDoneAccount("evo", "", true))) ||
+		strings.Contains(page, roleLine(tRoleTerm(key, false))) {
 		t.Errorf("an unbounded role is not named so:\n%s", b.String())
 	}
 }
@@ -257,7 +269,7 @@ func TestConsentPage_OneListByOrganization(t *testing.T) {
 			t.Errorf("no group %s", org)
 		}
 	}
-	if !strings.Contains(page, `<option id="p1" value="b" disabled>beta · Org One — `+tNoRightMark()) {
+	if !strings.Contains(page, `<option id="p1" value="b" disabled>beta — `+tNoRightMark()) {
 		t.Errorf("a project without the right is not disabled with its mark")
 	}
 	// «Риск», conclusion 34.3: nothing picked beforehand — an empty first
@@ -303,7 +315,7 @@ func TestPages_EndHeadingIsTheStatus(t *testing.T) {
 }
 
 // Plan 1.8, #1084 («релиз», 06.11): before a project is chosen the
-// button is «Grant access» with no project, and the summary says «in the
+// button is «Grant access» with no project, and the plan says «in the
 // project you choose»; the list is required.
 func TestConsentPage_BeforeTheChoice(t *testing.T) {
 	prev := i18n.Lang()
@@ -316,7 +328,7 @@ func TestConsentPage_BeforeTheChoice(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := b.String()
-	for _, want := range []string{`<span class="x s-any">Выдать доступ</span>`, `в проекте, который вы выберете, будет создан`,
+	for _, want := range []string{`<button type="submit" class="primary">Выдать доступ</button>`, `<span class="s-any"> в проекте, который вы выберете</span>`,
 		`<select name="project" id="project" required`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("no %q on the page before the choice", want)
@@ -331,7 +343,7 @@ func TestConsentPage_BeforeTheChoice(t *testing.T) {
 // reused» stood twice on the result page — by the heading and under the
 // text: the header of every page took the page's Note as its own line
 // «until when the page works». It stands once; the consent keeps its line
-// by the heading.
+// in the header.
 func TestDonePage_ReusedLineOnce(t *testing.T) {
 	r := Result{Account: ForAgent.account(), AccountReused: true, RevokedKeyID: "f67f00000000000000000000000000007839",
 		Profile: "agent", KeyID: "k", KeyExpiresAt: time.Now()}
@@ -340,9 +352,9 @@ func TestDonePage_ReusedLineOnce(t *testing.T) {
 	if err := pages.ExecuteTemplate(&b, p.name, p.data); err != nil {
 		t.Fatal(err)
 	}
-	page := b.String()
-	line := tDoneReused(r.Account, tRoleTerm(roleTerm(r), r.RoleUnbounded), config.MaskKeyID(r.RevokedKeyID))
-	if n := strings.Count(page, html.EscapeString(line)); n != 1 {
+	page := flatText(b.String())
+	line := flatText(tDoneAccount(r.Account, "", true))
+	if n := strings.Count(page, line); n != 1 {
 		t.Errorf("the reused line is %d times on the result page, want once", n)
 	}
 }
