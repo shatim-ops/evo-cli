@@ -31,6 +31,7 @@ done
 # Тело запроса — ещё и в body.<МЕТОД>.<путь через точки> (последнее).
 p=${url#https://compute.api.cloud.ru/api/v1/}
 [ ! -s "$FAKE_DIR/body" ] || cp "$FAKE_DIR/body" "$FAKE_DIR/body.$method.$(printf '%s' "${p%%\?*}" | tr / .)"
+[ ! -s "$FAKE_DIR/body" ] || { cat "$FAKE_DIR/body"; echo; } >>"$FAKE_DIR/bodies"
 : >"$FAKE_DIR/body"
 case "$url" in */auth/token) printf '{"access_token":"tok"}'; exit 0 ;; esac
 echo "$method ${url#https://compute.api.cloud.ru/api/v1}" >>"$FAKE_DIR/calls"
@@ -223,6 +224,16 @@ for s in 'отказ HTTP 422 (синхронно)' 'машинный код: or
 	grep -qF "$s" "$tmp/out" || { echo "FAIL: Г-10, квота: нет поля «$s»"; grep 'смена flavor' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 done
 if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: Г-10, квота: id из текста отказа в логе"; fail=1; fi
+# Compute отвечает на отказ телом-массивом [{"message":…,"code":…}]
+# (прогон 201): машинный код читается и из него — иначе квота не
+# распознаётся, и проба идёт дальше.
+g10_world
+echo 'PUT /vms/vm1 422 [{"message":"Quota exceeded","code":"project_quota_exceeded"}]' >>"$FAKE_DIR/http"
+rc=0
+PROBES=g10 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-10, квота в теле-массиве: одна попытка смены" "$(sed -n '/^PUT/,$p' "$FAKE_DIR/calls" | grep -c '^PUT\|set-power')" 1
+grep -qF 'машинный код: project_quota_exceeded' "$tmp/out" || { echo "FAIL: Г-10: машинный код из тела-массива не прочитан"; grep 'смена flavor' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+
 # Слово «quota» только в тексте, машинного кода нет — квотой не называется
 # (разбор текста запрещён), проба идёт дальше: остановка и вторая попытка.
 g10_world
@@ -603,6 +614,132 @@ H
 rc=0
 PROBES="g11 g16" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "квота в Г-11 не выключает Г-16: копия ВМ запрошена" "$(grep -c '^POST /backups$' "$FAKE_DIR/calls")" 1
+
+# Область dbchange (пробы Г-13…Г-15): изменение готового кластера DBaaS
+# прямым PATCH. PostgreSQL: класс на шаг вверх → возврат класса → диск
+# больше → число узлов; после каждого принятого шага — ожидание исходного
+# состояния кластера. Ресурсов область не создаёт.
+S='https://postgresql.api.cloud.ru/v1/clusters/c1'
+db_world() {
+	world
+	fake_evo_answer pg_specs 0 0 '{"specifications":[{"id":"s1","cpu":2,"memory_gb":4,"deployment_mode":"standard","max_hosts":3},{"id":"s3","cpu":8,"memory_gb":16,"deployment_mode":"standard"},{"id":"s2","cpu":4,"memory_gb":8,"deployment_mode":"standard"},{"id":"h2","cpu":4,"memory_gb":4,"deployment_mode":"ha"}]}'
+	fake_evo_answer redis_specs 0 0 '{"specifications":[{"id":"s1","cpu":2,"memory_gb":4,"deployment_mode":"standard"},{"id":"s2","cpu":4,"memory_gb":8,"deployment_mode":"standard"}]}'
+}
+C='"id":"c1","specification_id":"s1","instances":1,"storage":{"pg_data_gb":20}'
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET! $S 200 {$C,"status":"RUNNING"}
+PATCH! $S 200 {"id":"op1"}
+GET! $S 200 {$C,"status":"UPDATING"}
+GET! $S 200 {$C,"status":"RUNNING"}
+PATCH! $S 200 {"id":"op2"}
+GET! $S 200 {$C,"status":"UPDATING"}
+GET! $S 200 {$C,"status":"RUNNING"}
+PATCH! $S 400 {"code":"INVALID_ARGUMENT","message":"storage step is 50"}
+PATCH! $S 200 {"id":"op4"}
+GET! $S 200 {$C,"status":"UPDATING"}
+GET $S 200 {$C,"status":"RUNNING"}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13: код" "$rc" 0
+want "Г-13: запросы по порядку" "$(sed "s#$S#C#" "$FAKE_DIR/calls" | tr '\n' ';')" "GET C;PATCH C;GET C;GET C;PATCH C;GET C;GET C;PATCH C;PATCH C;GET C;GET C;"
+want "Г-13: тела PATCH — класс вверх, возврат, диск, узлы" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"specification_id":"s2"};{"specification_id":"s1"};{"storage":{"pg_data_gb":30}};{"instances":2};'
+for s in 'Г-13: класс на шаг вверх.*HTTP 200.*UPDATING → RUNNING' 'Г-13: возврат класса.*HTTP 200' 'Г-13: диск больше.*отказ HTTP 400.*машинный код: INVALID_ARGUMENT' 'Г-13: число узлов.*HTTP 200'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-13: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
+if grep -v '::add-mask::' "$tmp/out" | grep -qw 'c1\|op1'; then echo "FAIL: Г-13: id в строке лога"; fail=1; fi
+if grep -q '^DELETE\|yes=1' "$FAKE_DIR/calls" "$FAKE_DIR/evo-calls"; then echo "FAIL: dbchange что-то удаляла или создавала через evo"; fail=1; fi
+
+# Отказ по квоте на классе вверх (машинный код): возврата и следующих шагов нет.
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 429 {"code":"RESOURCE_EXHAUSTED","message":"quota of 3f2b8c1e-1111-4222-8333-444455556666","details":[{"reason":"QUOTA_EXCEEDED"}]}
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, квота: код" "$rc" 0
+want "Г-13, квота: один PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 1
+grep -q 'квота по машинному коду: да' "$tmp/out" || { echo "FAIL: Г-13: квота не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+# То же, когда details — объект, а не массив объектов.
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 429 {"code":"RESOURCE_EXHAUSTED","details":{"reason":"QUOTA_EXCEEDED"}}
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, квота, details — объект: один PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 1
+
+# Кластер не вернулся в исходное состояние после смены класса: в него
+# уходит только возврат класса; PATCH диска и узлов не шлётся — каждый
+# PATCH поверх незавершённого повышает шанс кластера, который API не
+# удаляет (заключение «Риска» 144, К1).
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET! $S 200 {$C,"status":"RUNNING"}
+PATCH $S 200 {"id":"op"}
+GET $S 200 {$C,"status":"UPDATING"}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_WAIT=1 DB_RETURN_WAIT=1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, кластер не вернулся: код" "$rc" 0
+want "Г-13, кластер не вернулся: только класс и его возврат" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"specification_id":"s2"};{"specification_id":"s1"};'
+grep -q 'кластер не вернулся в RUNNING, дальше не меняю' "$tmp/out" || { echo "FAIL: Г-13: остановка пробы не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+# Срок всей пробы вышел: новый шаг не шлётся (К2).
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 200 {"id":"op"}
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_BUDGET=0 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, срок пробы вышел: ни одного PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls" || true)" 0
+grep -q 'срок пробы' "$tmp/out" || { echo "FAIL: Г-13: истёкший срок не назван"; fail=1; }
+
+# Redis: класс вверх и возврат, диск больше, затем одна попытка уменьшить
+# диск — ожидаемый отказ записан, кластер не тронут дальше.
+R='https://redis.api.cloud.ru/v1/clusters/c1'
+db_world
+cat >"$FAKE_DIR/http" <<H
+PATCH! $R 200 {"id":"op"}
+PATCH! $R 200 {"id":"op"}
+PATCH! $R 200 {"id":"op"}
+PATCH! $R 400 {"code":"FAILED_PRECONDITION","message":"cannot shrink"}
+GET $R 200 {"id":"c1","specification_id":"s1","storage_gib":8,"status":"RUNNING"}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=redis DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-15: код" "$rc" 0
+want "Г-15: тела PATCH" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"specification_id":"s2"};{"specification_id":"s1"};{"storage_gib":9};{"storage_gib":8};'
+grep -q 'Г-15: диск меньше (ожидаемый отказ).*отказ HTTP 400' "$tmp/out" || { echo "FAIL: Г-15: отказ уменьшения диска не записан"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
+# Kafka: диск больше, класс вверх, возврат — поле диска storage_gib.
+K='https://kafka.api.cloud.ru/v1/clusters/c1'
+db_world
+fake_evo_answer kafka_specs 0 0 '{"specifications":[{"id":"k1","cpu":2,"memory_gb":4,"deployment_mode":"standard"},{"id":"k2","cpu":4,"memory_gb":8,"deployment_mode":"standard"}]}'
+cat >"$FAKE_DIR/http" <<H
+PATCH $K 200 {"id":"op"}
+GET $K 200 {"cluster":{"id":"c1","specification_id":"k1","storage_gib":100,"status":"RUNNING"}}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=kafka DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-14: код" "$rc" 0
+want "Г-14: тела PATCH" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"storage_gib":110};{"specification_id":"k2"};{"specification_id":"k1"};'
+grep -q 'Г-14: возврат класса.*HTTP 200' "$tmp/out" || { echo "FAIL: Г-14: возврат класса не записан"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
+# Нет кластера или вида — область отказывает, запросов нет.
+db_world
+: >"$FAKE_DIR/http"
+rc=0
+DB_KIND=mysql DB_CLUSTER_ID=c1 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "dbchange, чужой вид: код" "$rc" 1
+[ ! -s "$FAKE_DIR/calls" ] || { echo "FAIL: dbchange с чужим видом слала запросы"; fail=1; }
 
 # Слова проб нет — область ничего не шлёт.
 world
