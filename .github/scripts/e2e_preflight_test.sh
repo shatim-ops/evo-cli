@@ -103,7 +103,7 @@ run opsprobes 0 PROBES='g10 g11 g18 g20'
 # другой долгой пробой (g10, g18) в одном запуске не идёт.
 fresh g16long
 run g16long 1 PROBES='g16 g18'
-has g16long "probes: «g16» идёт до 105 мин при пределе job 120 — запускайте её отдельно от g10 и g18"
+has g16long "probes: «g16» идёт до 115 мин при пределе job 150 — запускайте её отдельно от g10 и g18"
 # Пробы изменения кластера — в job своего сервиса.
 fresh dbchange
 run dbchange 0 DBAAS_SMOKE=true DBAAS_SERVICES='pg kafka redis' PROBES='g13 g14 g15'
