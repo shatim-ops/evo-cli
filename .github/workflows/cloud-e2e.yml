@@ -270,6 +270,21 @@ jobs:
           CLOUDRU_S3_SECRET_KEY: ${{ secrets.CLOUDRU_S3_SECRET_KEY }}
         run: .github/scripts/cloud-readonly.sh
 
+      # Фильтры списков: то, что evo передаёт облаку (inCloud), облако
+      # отбирает так же, как правило evo — на каждом кандидате (снижение
+      # R-76, заключение «Риска» 106; строка плана 1.8.2 «проба отбора в
+      # облаке — на каждом кандидате»). Только GET, ключ наблюдателя; id в
+      # лог не попадают. STRICT=1: параметр облака с итогом не same — шаг
+      # красный; параметр выходит из inCloud, пункт — в реестр расхождений.
+      - name: Фильтры списков — отбор в облаке против evo
+        if: ${{ !cancelled() }}
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
+          STRICT: "1"
+        run: .github/scripts/list_filter_probe.sh
+
       # Ссылки tariff_url превью (internal/engine, tariffs) отвечают 200 на
       # HEAD без редиректа: Cloud.ru может перенести страницы тарифов (ревью
       # Qwen #170). Ключ не нужен; идёт и после красного шага выше.

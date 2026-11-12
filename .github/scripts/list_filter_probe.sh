@@ -15,9 +15,15 @@
 # расхождений evo-internal); ignored — облако вернуло весь список (параметр
 # не работает); error — запрос с параметром не прошёл.
 #
-# Нужны KEY_ID, SECRET, PROJECT. Выход 1 — только без секретов или без
-# токена (как у шага «Проверки» api-probe); любая проверка, упавшая в облаке,
-# печатает строку и выход не меняет.
+# Нужны KEY_ID, SECRET, PROJECT. Выход 1 — без секретов или без токена (как у
+# шага «Проверки» api-probe); любая проверка, упавшая в облаке, печатает
+# строку и выход не меняет.
+#
+# STRICT=1 (job readonly cloud-e2e на каждом кандидате; снижение R-76,
+# заключение «Риска» 106): параметр, который evo уже передаёт облаку
+# (IN_CLOUD), с итогом не same — выход 1 и строка ::error::. Такой
+# параметр выходит из отбора в облаке (inCloud в internal/tools/list_filters.go),
+# пункт — в реестр расхождений evo-internal.
 set -euo pipefail
 if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ] || [ -z "${PROJECT:-}" ]; then
 	echo "::error::нет KEY_ID / SECRET / PROJECT"
@@ -34,6 +40,19 @@ TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
 echo "::add-mask::$TOKEN"
 
 C=https://compute.api.cloud.ru/api/v1
+
+# IN_CLOUD — параметры, которые evo передаёт облаку (путь:параметр), как
+# их объявляет inCloud в internal/tools/list_filters.go; список держит
+# TestListFilters_CloudParamsAreProbed.
+IN_CLOUD="vms:availability_zone_ids vms:statuses disks:availability_zone_id floating-ips:availability_zone_id subnets:availability_zone_ids security-groups:availability_zone_id"
+broken=""
+# strict PATH PARAM VERDICT — запоминает параметр облака с итогом не same.
+strict() {
+	[ "${STRICT:-}" = 1 ] || return 0
+	case " $IN_CLOUD " in *" $1:$2 "*) ;; *) return 0 ;; esac
+	[ "$3" = same ] && return 0
+	case " $broken " in *" $1:$2 "*) ;; *) broken="$broken $1:$2" ;; esac
+}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
@@ -71,6 +90,7 @@ check() {
 		code=$(get "$base&$param=$(jq -rn --arg v "$v" '$v | @uri')" "$tmp/cloud")
 		if [ "$code" != 200 ]; then
 			printf '%-34s значение #%d: http=%s — error\n' "$name" "$i" "$code" | redact
+			strict "$2" "$param" error
 			continue
 		fi
 		# unique: повтор id в ответе облака — не повод для diff.
@@ -82,6 +102,7 @@ check() {
 		else verdict="diff"
 		fi
 		printf '%-34s значение #%d: всего=%s облако=%s evo=%s — %s\n' "$name" "$i" "$total" "$nc" "$ne" "$verdict"
+		strict "$2" "$param" "$verdict"
 	done
 }
 
@@ -100,4 +121,8 @@ check snat_zone         nat-gateways     availability_zone_ids '[.[] | .availabi
 check flavors_zone      flavors          availability_zone_id  '[.[] | .availability_zones[]? | .availability_zone_id] | unique' 'select([.availability_zones[]? | .availability_zone_id] | index($v))' global
 check flavors_cpu       flavors          cpu                   '[.[] | .cpu] | unique'                 'select((.cpu | tostring) == $v)' global
 check flavors_ram       flavors          ram                   '[.[] | .ram] | unique'                 'select((.ram | tostring) == $v)' global
+if [ -n "$broken" ]; then
+	echo "::error::облако отбирает не так, как evo, по параметрам, которые evo ему передаёт:$broken — убрать из inCloud, пункт в реестр расхождений"
+	exit 1
+fi
 exit 0
