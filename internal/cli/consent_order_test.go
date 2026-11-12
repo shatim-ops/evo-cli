@@ -50,7 +50,7 @@ var alreadyAsks = map[string]string{
 var repeatIsANewChange = map[string]string{
 	"cert_renew":         "Every call sends a renewal request: a repeat sends another.",
 	"k8s_apply":          "Every call applies the manifest again",
-	"k8s_helm":           "Every call runs helm again",
+	"k8s_helm":           "Every call runs helm again: a repeated install/upgrade upgrades the same release",
 	"k8s_kubectl":        "Every call runs the command again: a repeated mutating verb is a new change.",
 	"s3_put":             "Every call writes the object again.",
 	"secret_add_version": "Every call adds a version: a repeat adds one more.",

@@ -492,7 +492,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_helm",
-			Description: "Run Helm on a cluster. Every call runs helm again: there is no \"already done\" answer. install/upgrade are idempotent (helm upgrade --install); over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
+			Description: "Run Helm on a cluster. Every call runs helm again: a repeated install/upgrade upgrades the same release (helm upgrade --install), not a second one; over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),

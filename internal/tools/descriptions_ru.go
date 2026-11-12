@@ -549,8 +549,9 @@ var toolsRU = map[string]toolRU{
 	},
 	"k8s_helm": {
 		Short: "Helm в кластере: install, upgrade, uninstall, list, status",
-		Long: "Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. install и upgrade " +
-			"идемпотентны (helm upgrade --install --wait). Изменяющие действия — с подтверждением. Узлам нужен выход в " +
+		Long: "Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. Каждый вызов запускает " +
+			"helm заново: повторный install или upgrade обновляет тот же релиз (helm upgrade --install --wait), а не " +
+			"создаёт второй, и без --version может перевести его на более новый чарт. Изменяющие действия — с подтверждением. Узлам нужен выход в " +
 			"интернет, чтобы скачать образы чарта ('evo snat create'); размер группы узлов подбирайте под чарт.",
 		Args: map[string]string{
 			"action":     "install, upgrade, uninstall, list или status",
