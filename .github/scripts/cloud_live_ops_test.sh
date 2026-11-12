@@ -343,7 +343,7 @@ g18_world() {
 	fake_evo_answer subnet_create 0 0 '{"subnet_id":"sn1","status":"ok"}'
 	# Подсеть сначала создаётся, затем готова; дальше списки — для уборки.
 	fake_evo_answer list_subnets 0 0 '{"subnets":[{"id":"sn1","name":"evo-e2e-ops-r7a1-g18-sn","state":"creating"}]}'
-	fake_evo_answer list_subnets 1 0 '{"subnets":[{"id":"sn1","name":"evo-e2e-ops-r7a1-g18-sn","state":"created"}]}'
+	fake_evo_answer list_subnets 1 0 '{"subnets":[{"id":"sn1","name":"evo-e2e-ops-r7a1-g18-sn","state":"CREATED"}]}'
 	fake_evo_answer list_subnets 2 0 '{"subnets":[]}'
 	fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 	fake_evo_answer image_list 0 0 '{"images":[{"id":"img-d","name":"debian-12","min_cpu":1},{"id":"img-22","name":"ubuntu-22.04","min_cpu":1},{"id":"img-24","name":"ubuntu-24.04","min_cpu":1},{"id":"img-g","name":"ubuntu-gpu","min_cpu":8}]}'
@@ -386,7 +386,7 @@ if grep -q '^disk_delete' "$FAKE_DIR/evo-calls"; then echo "FAIL: Г-18: заг�
 # Интерфейс создаётся только в готовой подсети (прогон 201: запрос сразу
 # после subnet_create получил «состояние подсети не даёт создать интерфейс»).
 want "Г-18: подсеть читалась до готовности" "$(grep -c '^list_subnets' "$FAKE_DIR/evo-calls")" 4
-grep -q 'Г-18: подсеть.*creating → created' "$tmp/out" || { echo "FAIL: Г-18: готовность подсети не записана"; fail=1; }
+grep -q 'Г-18: подсеть.*creating → CREATED' "$tmp/out" || { echo "FAIL: Г-18: готовность подсети не записана"; fail=1; }
 
 # Отказ пересоздания не про состояние ВМ (проверка тела): остановки и второй
 # попытки нет — прогон 201 останавливал ВМ зря.
@@ -458,7 +458,7 @@ g16_world() {
 	fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
 }
 g16_world
-fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16"]},{"id":"rd1","name":"evo-e2e-ops-r7a1-g16-rd","attached_to":[]},{"id":"rb1","name":"evo-e2e-ops-r7a1-g16-rv-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16-rv"]}]}'
+fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"disk_type":"SSD-NVMe","attached_to":["evo-e2e-ops-r7a1-g16"]},{"id":"rd1","name":"evo-e2e-ops-r7a1-g16-rd","attached_to":[]},{"id":"rb1","name":"evo-e2e-ops-r7a1-g16-rv-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16-rv"]}]}'
 # disk_list читают: появление восстановленного диска, загрузочный диск ВМ,
 # диски восстановленной ВМ, диск после удаления копии; дальше — уборка.
 for i in 1 2 3; do cp "$FAKE_DIR/disk_list.0.json" "$FAKE_DIR/disk_list.$i.json"; done
@@ -500,7 +500,7 @@ done
 # Восстановление: копия восстанавливается в новый ресурс с именем пробы
 # (уборка области найдёт его по префиксу); диск восстановленной ВМ назван
 # и привязан к загрузочному диску исходной.
-jq -e '.action == "restore" and .resource.target_config.name == "evo-e2e-ops-r7a1-g16-rv" and (.resource.target_config.disks == [{"name":"evo-e2e-ops-r7a1-g16-rv-boot","related_disk_id":"boot1"}])' "$FAKE_DIR/body.POST.backups.bv.action" >/dev/null ||
+jq -e '.action == "restore" and .resource.target_config.name == "evo-e2e-ops-r7a1-g16-rv" and (.resource.target_config.disks == [{"name":"evo-e2e-ops-r7a1-g16-rv-boot","related_disk_id":"boot1","disk_type_name":"SSD-NVMe"}])' "$FAKE_DIR/body.POST.backups.bv.action" >/dev/null ||
 	{ echo "FAIL: Г-16: тело восстановления ВМ не то: $(cat "$FAKE_DIR/body.POST.backups.bv.action" 2>/dev/null)"; fail=1; }
 # План защиты не запускает копирование: расписание выключено, немедленного
 # запуска нет.
@@ -522,6 +522,53 @@ want "Г-16, отказы: код" "$rc" 0
 want "Г-16, отказы: запросы" "$(calls)" "POST /backups;GET /backups$L;POST /protection-plans;GET /backups$L;$SW"
 grep -q 'Г-16: копия диска.*отказ HTTP 422' "$tmp/out" || { echo "FAIL: Г-16: отказ копии не назван"; fail=1; }
 grep -q 'Г-16: ВМ.*QUOTA_EXCEEDED' "$tmp/out" || { echo "FAIL: Г-16: отказ ВМ не назван"; fail=1; }
+
+# После восстановления копию какое-то время нельзя удалить (прогон 202:
+# 422 backup_restore_in_progress при состоянии created): проба повторяет
+# удаление, пока запрет не снят, и записывает, сколько он держался.
+g16_world
+fake_evo_answer provision 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
+fake_evo_answer disk_list 0 0 '{"disks":[{"id":"rd1","name":"evo-e2e-ops-r7a1-g16-rd","attached_to":[]}]}'
+# disk_list читают: появление восстановленного диска и диск после удаления
+# копии; дальше — уборка.
+cp "$FAKE_DIR/disk_list.0.json" "$FAKE_DIR/disk_list.1.json"
+fake_evo_answer disk_list 2 0 '{"disks":[]}'
+cat >"$FAKE_DIR/http" <<'H'
+POST /backups 201 {"id":"bd","state":"created"}
+POST /backups/bd/action 201 {"resource":{}}
+DELETE! /backups/bd 422 [{"message":"Backup cannot be deleted while restore is in progress","code":"backup_restore_in_progress"}]
+DELETE! /backups/bd 422 [{"message":"Backup cannot be deleted while restore is in progress","code":"backup_restore_in_progress"}]
+DELETE! /backups/bd 422 [{"message":"Backup cannot be deleted while restore is in progress","code":"backup_restore_in_progress"}]
+DELETE! /backups/bd 204
+DELETE /backups/bd 404 [{"code":"backup_not_found"}]
+GET! /backups/bd 200 {"id":"bd","state":"created"}
+GET! /backups/bd 200 {"id":"bd","state":"created","last_restore_time":"t"}
+GET /backups/bd 404
+POST /protection-plans 422 [{"code":"value_error"}]
+H
+rc=0
+PROBE_WAIT=1 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-16, запрет после восстановления: код" "$rc" 0
+want "Г-16, запрет после восстановления: DELETE до принятия и повтор после исчезновения" "$(grep -c '^DELETE /backups/bd$' "$FAKE_DIR/calls")" 6
+grep -q 'удаление копии диска.*запрет «идёт восстановление» снят через .* с (попыток: 4).*повтор после исчезновения — HTTP 404' "$tmp/out" || { echo "FAIL: Г-16: время запрета после восстановления не записано"; grep 'удаление копии' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+
+# У загрузочного диска в disk_list нет типа: без него платформа отвергает
+# восстановление ВМ (прогон 202), проба его не шлёт и говорит почему.
+g16_world
+fake_evo_answer disk_create 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
+fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16"]}]}'
+fake_evo_answer disk_list 1 0 '{"disks":[]}'
+cat >"$FAKE_DIR/http" <<'H'
+POST /backups 201 {"id":"bv","state":"created"}
+GET! /backups/bv 200 {"id":"bv","state":"created"}
+GET /backups/bv 404
+DELETE /backups/bv 204
+H
+rc=0
+PROBE_WAIT=1 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-16, диск без типа: код" "$rc" 0
+if grep -q '^POST /backups/bv/action' "$FAKE_DIR/calls"; then echo "FAIL: Г-16: восстановление ВМ ушло без типа диска"; fail=1; fi
+grep -q 'Г-16: восстановление ВМ.*тип не найден' "$tmp/out" || { echo "FAIL: Г-16: не сказано, что типа диска нет"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 
 # Копия создана, но не дошла до created (error_creating): из неё не
 # восстанавливают; удаление копии и остальное идёт.
@@ -585,7 +632,7 @@ grep -q 'не UUID: отбор по ним выключен' "$tmp/out" || { ech
 # удаляет ВМ и освобождает адрес по id (заключение 133, К2).
 g16_world
 fake_evo_answer disk_create 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
-fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16"]}]}'
+fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"disk_type":"SSD-NVMe","attached_to":["evo-e2e-ops-r7a1-g16"]}]}'
 fake_evo_answer vm_list 0 0 '{"vms":[{"id":"rvid","name":"evo-e2e-ops-r7a1-g16-rv"}]}'
 fake_evo_answer vm_list 1 0 '{"vms":[]}'
 fake_evo_answer release_floating_ip 0 0 '{"status":"released"}'
@@ -608,7 +655,7 @@ if grep -v '::add-mask::' "$tmp/out" | grep -qw 'fipx\|rvid'; then echo "FAIL: �
 # которые уборка по имени не найдёт.
 g16_world
 fake_evo_answer disk_create 0 1 '{"error":{"reason":"API_ERROR","message":"boom"}}'
-fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16"]}]}'
+fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"disk_type":"SSD-NVMe","attached_to":["evo-e2e-ops-r7a1-g16"]}]}'
 fake_evo_answer vm_get 0 1 '{"error":{"reason":"NOT_FOUND","message":"нет"}}'
 cat >"$FAKE_DIR/http" <<'H'
 POST /backups 201 {"id":"bv","state":"created"}
