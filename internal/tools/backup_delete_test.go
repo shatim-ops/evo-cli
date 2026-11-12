@@ -170,6 +170,16 @@ func TestBackupDelete_Deletes(t *testing.T) {
 	}
 }
 
+// With wait=false: one DELETE, and the answer is deleting with the read
+// that shows the end — no wait, and no operation to name (D74).
+func TestBackupDelete_NoWait(t *testing.T) {
+	w := &deleteWorld{state: "created", exists: true}
+	m, text, isErr := callNamed(t, deleteRegistry(t, w), "backup_delete", map[string]any{"backup_id": bdID, "confirmed": true, "wait": false})
+	if _, named := m["operation_id"]; isErr || m["status"] != "deleting" || w.deletes != 1 || m["next_tool"] != "backup_get" || named {
+		t.Errorf("want deleting after one DELETE, backup_get next and no operation_id (sent %d): %s", w.deletes, text)
+	}
+}
+
 // A restore under way: the platform refuses the DELETE though the backup
 // reads created (one run of Г-16). The answer is an error with its cause and
 // the same call, without the consent, as the next step — not a failure of
