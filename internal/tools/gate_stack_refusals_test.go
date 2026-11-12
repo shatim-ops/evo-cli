@@ -114,6 +114,10 @@ func TestStackApply_JobDoneAsksAndSaysItCreatesNothing(t *testing.T) {
 		t.Errorf("the question of a job done: %s", text)
 	}
 	text, isErr = r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	_ = json.Unmarshal([]byte(text), &m)
+	if m["unchanged"] != true {
+		t.Errorf("the answer with consent does not say the call created nothing: %s", text)
+	}
 	if after, err := stack.LoadJob(j.ID); isErr || err != nil || !after.Done() || calls.Load() != 0 {
 		t.Errorf("with consent: %s; job %+v, %d step call(s)", text, after, calls.Load())
 	}

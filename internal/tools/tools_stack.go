@@ -1058,11 +1058,18 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 		if err != nil {
 			return errResult(err), true
 		}
+		// Done before this call: the call creates nothing, and its answer
+		// says so, as the question does — a call sent with confirmed at
+		// once never sees the question («Риск», conclusion 139).
+		unchanged := job.Done()
 		s.advance(ctx, job)
 		if e := job.Save(); e != nil {
 			return errResult(fmt.Errorf(i18n.T("persist job: %w", "сохранение задания: %w"), e)), true
 		}
 		out := job.Compact()
+		if unchanged {
+			out["unchanged"] = true
+		}
 		out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
 		return toJSON(out), job.Failed()
 	}}, nil

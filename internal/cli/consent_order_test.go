@@ -233,6 +233,8 @@ type consentWorld struct {
 	alreadyFor []string
 	// job is the stack job of the world, in place of the job of the
 	// tool's own setup: a job is read from the local store, not the cloud.
+	// A world with a job alone leaves the cloud as it is: it needs no
+	// answer and no cloud of its own.
 	job func(t *testing.T) *stack.Job
 }
 
