@@ -15,6 +15,12 @@
       "no_refusal": "no refusal seen live (register, 28.10)"
     }
   },
+  "backup_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "backup_id"
+    }
+  },
   "ca_delete": {
     "destructive": true,
     "deletes": {

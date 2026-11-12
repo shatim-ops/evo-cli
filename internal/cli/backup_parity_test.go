@@ -30,3 +30,10 @@ func parityBackup() map[string]any {
 		"resource": map[string]any{"resource_id": parityVM, "resource_type": "virtual_machine", "resource_exists": true,
 			"resource_state": map[string]any{"name": "web", "flavor": map[string]any{"name": "gen-2-4"}}}}
 }
+
+func (p parityCloud) DeleteBackup(ctx context.Context, id string) error {
+	if b, ok := p.CloudAPI.(provision.BackupAPI); ok {
+		return b.DeleteBackup(ctx, id)
+	}
+	return nil
+}

@@ -72,6 +72,7 @@ var parityArgs = map[string]map[string]any{
 	"disk_list":       {},
 	"backup_list":     {},
 	"backup_get":      {"backup_id": parityVM},
+	"backup_delete":   {"backup_id": parityVM},
 	"list_disk_types": {},
 	// vpc
 	// The zone's group, in the worlds of the previews and of the answers

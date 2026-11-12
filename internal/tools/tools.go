@@ -560,6 +560,15 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{"backup_id": uuidProp("Backup UUID (from backup_list).")}, "backup_id"),
 		},
 		{
+			Name:        "backup_delete",
+			Description: "Permanently delete a backup: what it holds cannot be restored after; resources restored from it stay. The preview warns when its source no longer exists (the last copy of that data) and names the backups that depend on it. While a restore from it runs, the platform refuses the delete: an error with details.cause restore_in_progress and the same call as the next step.",
+			InputSchema: objSchema(map[string]any{
+				"backup_id": uuidProp("Backup UUID (from backup_list)."),
+				"confirmed": confirmedProp(),
+				"wait":      boolProp(deleteWaitDesc),
+			}, "backup_id"),
+		},
+		{
 			Name:        "disk_list",
 			Description: "List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). Read-only.",
 			InputSchema: objSchema(map[string]any{}),
@@ -1528,6 +1537,7 @@ func (s *Registry) registerTools() {
 		"k8s_helm":             s.gated("k8s_helm", s.planK8sHelm),
 		"backup_list":          s.handleBackupList,
 		"backup_get":           s.handleBackupGet,
+		"backup_delete":        s.gated("backup_delete", s.planBackupDelete),
 		"disk_list":            s.handleDiskList,
 		"disk_create":          s.gated("disk_create", s.planDiskCreate),
 		"disk_attach":          s.gated("disk_attach", s.planDiskAttach),
@@ -3698,6 +3708,7 @@ var consentWords = map[string]string{
 	"kafka_delete":        consentDeletes,
 	"redis_delete":        consentDeletes,
 	"k8s_nodepool_delete": consentDeletes,
+	"backup_delete":       consentDeletes,
 	"k8s_delete":          consentDeletes,
 	"vm_stop":             consentInterrupts,
 	"vm_reboot":           consentInterrupts,
