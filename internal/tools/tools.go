@@ -391,7 +391,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_operation",
-			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
+			Description: "Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_nodepool_delete/k8s_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
 				"wait_seconds": opWaitProp(),
@@ -415,6 +415,15 @@ func (s *Registry) registerTools() {
 				"count":       inRange(0, maxPoolCount, intProp("The number of nodes the pool is to have.")),
 				"confirmed":   confirmedProp(),
 			}, "nodepool_id", "count"),
+		},
+		{
+			Name:        "k8s_nodepool_delete",
+			Description: "Permanently delete a node pool of a Managed Kubernetes cluster: its nodes are deleted with the data on their disks, and their pods are evicted. REQUIRES confirmed=true after the user approves; the preview names the cluster, the nodes and whether the cluster is left with no pool. The cluster itself stays. Async — returns operation_id: wait with k8s_operation.",
+			InputSchema: objSchema(map[string]any{
+				"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."),
+				"confirmed":   confirmedProp(),
+				"wait":        boolProp(deleteWaitDesc),
+			}, "nodepool_id"),
 		},
 		{
 			Name:        "k8s_add_nodepool",
@@ -1462,6 +1471,7 @@ func (s *Registry) registerTools() {
 		"k8s_nodepools":        s.handleK8sNodePools,
 		"k8s_nodepool_get":     s.handleK8sNodePoolGet,
 		"k8s_nodepool_scale":   s.gated("k8s_nodepool_scale", s.planK8sNodePoolScale),
+		"k8s_nodepool_delete":  s.gated("k8s_nodepool_delete", s.planK8sNodePoolDelete),
 		"k8s_addons":           s.handleK8sAddons,
 		"k8s_addon_versions":   s.handleK8sAddonVersions,
 		"k8s_add_addon":        s.gated("k8s_add_addon", s.planK8sAddAddon),

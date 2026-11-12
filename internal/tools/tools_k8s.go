@@ -546,15 +546,7 @@ func (s *Registry) handleK8sNodePoolGet(ctx context.Context, args map[string]any
 		return errResult(err), true
 	}
 	card := nodePoolCard(np)
-	// The cluster by its name next to its id, as a person knows it. A
-	// cluster that is not read leaves the card as it is: the id is there.
-	if cid, _ := card["cluster_id"].(string); cid != "" {
-		if c, err := cli.GetCluster(ctx, cid); err == nil {
-			if name, _ := c["name"].(string); name != "" {
-				card["cluster_name"] = name
-			}
-		}
-	}
+	poolClusterName(ctx, cli, card, card)
 	// The subnet and the security group of the nodes stay ids: their names
 	// are two more reads, of two other services, at every call — and an
 	// operation of a pool reads this card at every poll (operationReads).
@@ -598,6 +590,21 @@ const poolSettleTimeout = 30 * time.Second
 // scaleWait is how long, in seconds, a scale waits for its operation, as a
 // delete does (D74). A variable only so that tests can shorten it.
 var scaleWait = opWaitMaxSeconds
+
+// poolClusterName writes into out the cluster of the pool card by its
+// name, cluster_name, next to its id — as a person knows it. A cluster
+// that is not read leaves out as it is: the id is there.
+func poolClusterName(ctx context.Context, cli *mk8s.Client, card, out map[string]any) {
+	cid, _ := card["cluster_id"].(string)
+	if cid == "" {
+		return
+	}
+	if c, err := cli.GetCluster(ctx, cid); err == nil {
+		if name, _ := c["name"].(string); name != "" {
+			out["cluster_name"] = name
+		}
+	}
+}
 
 // poolScale is the scale of a pool as its card reads: the count of a fixed
 // policy, or that the platform scales the pool itself.
@@ -747,15 +754,7 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 			will[k] = v
 		}
 	}
-	// The cluster by its name next to its id, as in the card of the pool:
-	// a cluster that is not read leaves the id.
-	if cid, _ := card["cluster_id"].(string); cid != "" {
-		if c, err := cli.GetCluster(ctx, cid); err == nil {
-			if cname, _ := c["name"].(string); cname != "" {
-				will["cluster_name"] = cname
-			}
-		}
-	}
+	poolClusterName(ctx, cli, card, will)
 	preview := map[string]any{"preview": will}
 	switch {
 	case count > desired:
@@ -867,6 +866,105 @@ func (s *Registry) poolScaleFailed(ctx context.Context, cli *mk8s.Client, id str
 		return toJSON(ans), false
 	}
 	return errAnswer(cause, map[string]any{"nodepool_id": id, "state": status}), true
+}
+
+// planK8sNodePoolDelete is the planner of k8s_nodepool_delete (gate.go;
+// D99, docs/internal/briefs/k8s-nodepools.md): the delete of every *_delete
+// (deletePlan, deleteOutcome), with what goes with a pool in its preview —
+// the cluster, the nodes, their flavor and disk — and whether the cluster
+// is left with no pool.
+func (s *Registry) planK8sNodePoolDelete(ctx context.Context, args map[string]any) (*Plan, error) {
+	const tool = "k8s_nodepool_delete"
+	id := stringArg(args, "nodepool_id")
+	if id == "" {
+		return nil, usageErr("nodepool_id is required", "нужен nodepool_id")
+	}
+	cli, _, _, err := s.k8sClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var card map[string]any
+	readPool := func(ctx context.Context) (map[string]any, error) {
+		np, err := cli.GetNodePool(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		return nodePoolCard(np), nil
+	}
+	p := s.deletePlan(tool,
+		"k8s_nodepool_delete permanently deletes node pool %s: its nodes are deleted with the data on their disks, and their pods are evicted.",
+		"k8s_nodepool_delete безвозвратно удаляет группу узлов %s: её узлы удаляются вместе с данными на их дисках, поды на них вытесняются.",
+		id, func() (m map[string]any, err error) {
+			card, err = readPool(ctx)
+			return card, err
+		},
+		func(ctx context.Context) (string, bool) {
+			op, err := cli.DeleteNodePool(ctx, id)
+			if err != nil {
+				return s.deleteFailed(tool, id, err)
+			}
+			ident := map[string]any{"nodepool_id": id}
+			if op.ID == "" {
+				// No operation to read: the pool itself, until it is gone.
+				return deleteOutcome(ctx, args, goneWatch(tool, id, ident, "", "k8s_nodepool_get", readPool))
+			}
+			return deleteOutcome(ctx, args, opWatch(tool, id, ident, op.ID, "k8s_operation", cli.GetOperation))
+		})
+	if p.Execute == nil {
+		return p, nil
+	}
+
+	// What goes with the pool, as it was read before the question.
+	will := map[string]any{}
+	for _, k := range []string{"cluster_id", "zone", "flavor", "cpu", "ram_gb", "disk_gb", "disk_type", "min_count", "max_count"} {
+		if v, ok := card[k]; ok {
+			will[k] = v
+		}
+	}
+	if n, fixed := poolScale(card); fixed {
+		will["nodes"] = n
+	}
+	poolClusterName(ctx, cli, card, will)
+	// The other pools of the cluster: a pool that is going is not one the
+	// cluster keeps. A list that is not read refuses the call — the
+	// preview would not know what the cluster is left with.
+	cid, _ := card["cluster_id"].(string)
+	pools, err := cli.ListNodePools(ctx, cid)
+	if err != nil {
+		return nil, clierrors.Wrap(clierrors.CodeAPIError,
+			i18n.Tf("node pool %s: the node pools of its cluster could not be read, so evo cannot tell whether it is the last one; nothing was sent", "группа узлов %s: список групп её кластера не прочитан — последняя ли она, evo сказать не может; ничего не отправлено", id),
+			i18n.T("Repeat the call; k8s_nodepools shows the pools of the cluster.", "Повторите вызов; группы кластера показывает evo k8s nodepools."), err)
+	}
+	last := true
+	for _, o := range pools {
+		oid, _ := o["id"].(string)
+		st, _ := o["status"].(string)
+		if oid != id && !poolGoing[st] {
+			last = false
+		}
+	}
+	will["last_pool"] = last
+	var warnings []string
+	if w, _ := p.Preview["warning"].(string); w != "" {
+		warnings = append(warnings, w)
+	} else if status, _ := card["status"].(string); status != poolRunning {
+		// Not refused: whether the platform takes the delete in this
+		// status is not known (П4).
+		warnings = append(warnings, i18n.Tf("the pool is in status %s, not running: whether the platform accepts the delete is unknown",
+			"группа в состоянии %s, а не работает: примет ли платформа удаление — неизвестно", quoteCloud(status)))
+	}
+	if last {
+		warnings = append(warnings, i18n.T("the cluster is left with no node pool: its pods have nowhere to run; the cluster itself stays, and so does what it is billed for",
+			"в кластере не останется групп узлов: его подам негде работать; сам кластер остаётся, как и плата за него"))
+	}
+	if len(warnings) > 0 {
+		p.Preview["warning"] = strings.Join(warnings, "; ")
+	}
+	p.Preview["preview"] = will
+	// What the workloads of the pool made in the project is not read.
+	p.Preview["note"] = i18n.T("evo deletes the node pool only: what its workloads created in the project (disks of volumes, load balancers) is not checked",
+		"evo удаляет только группу узлов: то, что её нагрузки создали в проекте (диски томов, балансировщики), не проверяется")
+	return p, nil
 }
 
 // poolAnswer is the answer of a scale: its status and the pool — id, name,

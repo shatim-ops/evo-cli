@@ -60,7 +60,7 @@ var createdIDs = map[string]created{
 	"dns_zone_create":   {id: "zone_id", list: "dns_zones", field: "zones", delete: "dns_zone_delete"},
 	"image_create":      {id: "image.id", lost: "image_id", list: "image_list", field: "images", delete: "image_delete"},
 	"k8s_add_addon":     {none: "an addon of a cluster, known by its name; it goes with the cluster"},
-	"k8s_add_nodepool":  {id: "nodepool_id", list: "k8s_nodepools", field: "node_pools", listArgs: []string{"cluster_id"}},
+	"k8s_add_nodepool":  {id: "nodepool_id", list: "k8s_nodepools", field: "node_pools", listArgs: []string{"cluster_id"}, delete: "k8s_nodepool_delete"},
 	"k8s_create":        {id: "cluster_id", list: "k8s_list", field: "clusters", delete: "k8s_delete"},
 	"kafka_create":      {id: "cluster_id", list: "kafka_list", field: "clusters", delete: "kafka_delete"},
 	"lb_create":         {id: "lb_id", list: "lb_list", field: "load_balancers", delete: "lb_delete"},

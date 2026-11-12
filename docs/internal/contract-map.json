@@ -183,7 +183,8 @@
     "taken": "checked",
     "creates": {
       "id": "nodepool_id",
-      "list": "k8s_nodepools"
+      "list": "k8s_nodepools",
+      "delete": "k8s_nodepool_delete"
     }
   },
   "k8s_apply": {
@@ -210,6 +211,13 @@
   },
   "k8s_kubectl": {
     "destructive": true
+  },
+  "k8s_nodepool_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "nodepool_id",
+      "no_refusal": "no delete of a pool seen live before probe Г-12"
+    }
   },
   "k8s_nodepool_scale": {
     "destructive": true

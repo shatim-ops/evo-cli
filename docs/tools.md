@@ -4,7 +4,7 @@
      go test ./internal/cli -run TestToolsDoc -update-docs
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (161) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo (162) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `evo tools call`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -142,10 +142,11 @@
 | `k8s_create` | `evo k8s create` | да | — | STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan. | Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут) |
 | `k8s_kubeconfig` | `evo k8s kubeconfig` | нет | `cluster_id` | Get the kubeconfig for a Managed Kubernetes cluster. | kubeconfig кластера (по умолчанию со встроенным токеном примерно на час) |
 | `k8s_delete` | `evo k8s delete` | удаляет | `cluster_id` | Permanently delete a Managed Kubernetes cluster. | Удалить кластер Managed Kubernetes (асинхронно) |
-| `k8s_operation` | `evo k8s operation` | нет | `operation_id` | Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_delete). | Состояние асинхронной операции Managed Kubernetes |
+| `k8s_operation` | `evo k8s operation` | нет | `operation_id` | Poll a Managed Kubernetes async operation by id (returned by k8s_create/k8s_add_nodepool/k8s_nodepool_scale/k8s_nodepool_delete/k8s_delete). | Состояние асинхронной операции Managed Kubernetes |
 | `k8s_nodepools` | `evo k8s nodepools` | нет | `cluster_id` | List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). | Группы узлов кластера |
 | `k8s_nodepool_get` | `evo k8s nodepool-get` | нет | `nodepool_id` | Read one node pool of Managed Kubernetes by its id: cluster (id and name), status, version, zone, scale (fixed: desired; auto: min_count, max_count), flavor … | Группа узлов кластера Managed Kubernetes по id |
 | `k8s_nodepool_scale` | `evo k8s nodepool-scale` | удаляет | `nodepool_id`, `count` | Set the number of nodes of a Managed Kubernetes node pool with a fixed count. | Изменить число узлов группы узлов Managed Kubernetes |
+| `k8s_nodepool_delete` | `evo k8s nodepool-delete` | удаляет | `nodepool_id` | Permanently delete a node pool of a Managed Kubernetes cluster: its nodes are deleted with the data on their disks, and their pods are evicted. | Удалить группу узлов кластера Managed Kubernetes (асинхронно) |
 | `k8s_add_nodepool` | `evo k8s add-nodepool` | да | `cluster_id` | Add a worker node pool to a Managed Kubernetes cluster (pods need workers; a fresh cluster has none). | Добавить группу рабочих узлов (платно, асинхронно) |
 | `k8s_addons` | `evo k8s addons` | нет | — | Search the Managed Kubernetes addon catalogue (Cloud.ru-packaged plugins: ingress, cert-manager, monitoring, CSI drivers, …). | Каталог плагинов Kubernetes: поиск по имени и описанию, категория, платность |
 | `k8s_addon_versions` | `evo k8s addon-versions` | нет | `name` | List the releases of one Managed Kubernetes addon, newest first: version (appVersion, what k8s_add_addon takes), addon_version, mode (ACTIVE, EXPERIMENTAL … | Версии плагина: режим поддержки, требования к кластеру, схема настроек |

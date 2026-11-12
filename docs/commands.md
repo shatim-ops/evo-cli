@@ -109,6 +109,7 @@
     - [evo k8s kubeconfig](#evo-k8s-kubeconfig)
     - [evo k8s kubectl](#evo-k8s-kubectl)
     - [evo k8s list](#evo-k8s-list)
+    - [evo k8s nodepool-delete](#evo-k8s-nodepool-delete)
     - [evo k8s nodepool-get](#evo-k8s-nodepool-get)
     - [evo k8s nodepool-scale](#evo-k8s-nodepool-scale)
     - [evo k8s nodepools](#evo-k8s-nodepools)
@@ -4258,6 +4259,7 @@ evo k8s [flags]
 * [evo k8s kubeconfig](#evo-k8s-kubeconfig)	 - kubeconfig кластера (по умолчанию со встроенным токеном примерно на час)
 * [evo k8s kubectl](#evo-k8s-kubectl)	 - Команда kubectl в кластере (изменяющие — с подтверждением)
 * [evo k8s list](#evo-k8s-list)	 - Кластеры Managed Kubernetes проекта
+* [evo k8s nodepool-delete](#evo-k8s-nodepool-delete)	 - Удалить группу узлов кластера Managed Kubernetes (асинхронно)
 * [evo k8s nodepool-get](#evo-k8s-nodepool-get)	 - Группа узлов кластера Managed Kubernetes по id
 * [evo k8s nodepool-scale](#evo-k8s-nodepool-scale)	 - Изменить число узлов группы узлов Managed Kubernetes
 * [evo k8s nodepools](#evo-k8s-nodepools)	 - Группы узлов кластера
@@ -4854,6 +4856,50 @@ evo k8s list [flags]
 
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
+## evo k8s nodepool-delete
+
+Удалить группу узлов кластера Managed Kubernetes (асинхронно)
+
+### Synopsis
+
+```text
+Удалить группу узлов кластера Managed Kubernetes (асинхронно).
+
+Удалить группу узлов безвозвратно: её узлы удаляются вместе с данными на их дисках, поды на них вытесняются. Превью называет кластер, узлы группы и то, останутся ли в кластере другие группы. Сам кластер остаётся. Операция асинхронная: её ход показывает evo k8s operation <ID операции>.
+
+Вызывает инструмент k8s_nodepool_delete (подробнее: 'evo tools describe k8s_nodepool_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo k8s nodepool-delete <nodepool-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по nodepool-delete
+      --wait   Ждать ли итог удаления: по умолчанию до ~45 с — deleted, отказ платформы или deleting со следующим шагом; --wait=false — ответ deleting с operation_id сразу, без чтения итога
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
 ## evo k8s nodepool-get
 
 Группа узлов кластера Managed Kubernetes по id
@@ -4999,7 +5045,7 @@ evo k8s nodepools <cluster-id> [flags]
 ```text
 Состояние асинхронной операции Managed Kubernetes.
 
-Состояние асинхронной операции Managed Kubernetes по id — его возвращают создание и удаление кластера, создание группы узлов и изменение числа её узлов: done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
+Состояние асинхронной операции Managed Kubernetes по id — его возвращают создание и удаление кластера, создание и удаление группы узлов и изменение числа её узлов: done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.
 
 Вызывает инструмент k8s_operation (подробнее: 'evo tools describe k8s_operation').
 ```
