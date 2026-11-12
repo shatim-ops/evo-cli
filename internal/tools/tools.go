@@ -475,7 +475,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_kubectl",
-			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
+			Description: "Run ANY kubectl command against a cluster (auto-embedded token — no cloudlogin needed). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely for inspection & verification. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. Every call runs the command again: a repeated mutating verb is a new change. General escape hatch for whatever a product needs beyond helm/apply. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"args":       strProp("kubectl arguments as a single string, e.g. \"get pods -A -o wide\"."),
@@ -484,7 +484,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_apply",
-			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
+			Description: "Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster — like `kubectl apply -f -`. For deploying/updating raw workloads (Deployments, StatefulSets, Services, ServiceMonitors, etc.). Every call applies the manifest again; what changes is the cluster's to decide. Mutation: requires confirmed=true after the user approves. NB: a fresh cluster needs egress (snat_create) to pull public images, and CRDs (e.g. ServiceMonitor) must exist before objects that use them.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"manifest":   strProp("The manifest YAML/JSON to apply (multi-doc allowed)."),
@@ -494,7 +494,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_helm",
-			Description: "Run Helm on a cluster. install/upgrade are idempotent (helm upgrade --install); over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
+			Description: "Run Helm on a cluster. Every call runs helm again: a repeated install/upgrade upgrades the same release (helm upgrade --install), not a second one; over MCP they do not wait for the pods: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),
@@ -1159,7 +1159,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_add_version",
-			Description: "Add a new value version to an existing secret (rotation). Mutation: requires confirmed=true after the user approves.",
+			Description: "Add a new value version to an existing secret (rotation). Every call adds a version: a repeat adds one more. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
 				"value":     strProp("New secret value (plaintext). Required."),
@@ -1299,7 +1299,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "cert_renew",
-			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Mutation: requires confirmed=true after the user approves.",
+			Description: "Certificate Manager — trigger Let's Encrypt renewal for a certificate (async). Returns an operation id. Every call sends a renewal request: a repeat sends another. Mutation: requires confirmed=true after the user approves.",
 			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
 		},
 		{
@@ -1359,7 +1359,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "s3_put",
-			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves.",
+			Description: "Upload an S3 object from inline content (content) or base64 (content_base64). Mutation (overwrites if key exists): requires confirmed=true after the user approves. Every call writes the object again.",
 			InputSchema: objSchema(map[string]any{
 				"bucket":         strProp("Bucket name. Required."),
 				"key":            strProp("Object key. Required."),

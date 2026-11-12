@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -157,6 +158,24 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 			intent.Close(in)
 		}
 	}
+}
+
+// heldSince is the start of the operation of tool on target («argument=id»)
+// that a call with this key began and evo still goes on with — its held
+// record; ok false when there is none: the operation is somebody else's, or
+// another key's, or evo stopped waiting for it. The limit of the repeats
+// of the operation counts from there, not from each repeat.
+func (r *Registry) heldSince(eng *engine.Engine, tool, target string) (since time.Time, ok bool) {
+	if eng == nil || eng.StateDir == "" {
+		return time.Time{}, false
+	}
+	cur := eng.Maker()
+	for _, in := range intent.Pending(intent.Dir(eng.StateDir)) {
+		if in.Held && in.Tool == tool && in.Target == target && !in.Key.Other(cur) {
+			return in.StartedAt, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // refusedTheCall are the reasons of a refusal that speaks of the call, not
