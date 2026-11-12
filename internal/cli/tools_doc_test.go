@@ -40,7 +40,7 @@ func genToolsDoc() []byte {
      %s
      CI сверяет файл с реестром (TestToolsDoc). -->
 
-Инструменты evo (%d) — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
+Инструменты evo — те же, что у MCP-сервера ([mcp.md](mcp.md)) и у
 `+"`evo tools call`"+`. «Команда CLI» — команда инструмента в evo
 ([commands.md](commands.md)). «Описание» — первая фраза английского описания,
 которое читает агент в MCP; «Описание (RU)» — краткое русское, из справки
@@ -52,7 +52,7 @@ func genToolsDoc() []byte {
 тоже требует `+"`confirmed=true`"+` (`+"`--yes`"+`).
 Группы — для `+"`evo mcp --toolsets`"+` и `+"`evo tools list --group`"+`.
 
-`, toolsRegenerateHint, len(reg.Tools()))
+`, toolsRegenerateHint)
 	for _, g := range tools.Groups() {
 		list := byGroup[g]
 		if len(list) == 0 {
