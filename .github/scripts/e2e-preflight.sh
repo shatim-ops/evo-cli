@@ -82,13 +82,15 @@ read -ra probe_words <<<"${PROBES:-}"
 for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	case "$w" in
 	p36 | p41 | p44 | dnslink) ;;
+	# Пробы графика 1.9 — область ops (live-plan включает её по этим словам).
+	g11) ;;
 	shared | cmp7 | r3f1)
 		[ "${DISK_SMOKE:-}" = true ] || fail "probes: «$w» — проба области disk, а disk_smoke не включён"
 		;;
 	access | nodes | p45)
 		[ -n "${cluster_kinds[pg]:-}" ] || fail "probes: «$w» — проба джоба dbaas-pg, а он не идёт (dbaas_smoke и pg в dbaas_services)"
 		;;
-	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1" ;;
+	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g11" ;;
 	esac
 done
 
