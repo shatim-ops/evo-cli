@@ -527,33 +527,37 @@ func (s *Registry) handlePgDatabases(ctx context.Context, args map[string]any) (
 	return toJSON(map[string]any{"databases": items}), false
 }
 
-func (s *Registry) handlePgDbCreate(ctx context.Context, args map[string]any) (string, bool) {
+// planPgDbCreate plans pg_db_create. The client is built in the execution,
+// as in planPgUserCreate: a call without a key still asks first, as it did
+// (moving that refusal before the question is a breaking change, the
+// owner's to decide).
+func (s *Registry) planPgDbCreate(_ context.Context, args map[string]any) (*Plan, error) {
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	owner := stringArg(args, "owner")
 	if cid == "" || name == "" || owner == "" {
-		return usageT("'cluster_id', 'name' and 'owner' are required", "нужны 'cluster_id', 'name' и 'owner'"), true
+		return answered(usageT("'cluster_id', 'name' and 'owner' are required", "нужны 'cluster_id', 'name' и 'owner'"), true), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_db_create creates database %q (owner %q) in cluster %s.",
-			"pg_db_create создаёт базу данных %q (владелец %q) в кластере %s.", name, owner, cid)}), true
-	}
-	cli, err := s.pgClient(ctx)
-	if err != nil {
-		return errResult(err), true
-	}
-	body := map[string]any{"cluster_id": cid, "name": name, "owner": owner}
-	if v := stringArg(args, "lc_collate"); v != "" {
-		body["lc_collate"] = v
-	}
-	if v := stringArg(args, "lc_ctype"); v != "" {
-		body["lc_ctype"] = v
-	}
-	db, err := cli.CreateDatabase(ctx, cid, body)
-	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("create database: %w", "создание базы: %w"), err)), true
-	}
-	return toJSON(map[string]any{"status": "created", "database": db}), false
+	preview := map[string]any{"message": i18n.Tf("pg_db_create creates database %q (owner %q) in cluster %s.",
+		"pg_db_create создаёт базу данных %q (владелец %q) в кластере %s.", name, owner, cid)}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		cli, err := s.pgClient(ctx)
+		if err != nil {
+			return errResult(err), true
+		}
+		body := map[string]any{"cluster_id": cid, "name": name, "owner": owner}
+		if v := stringArg(args, "lc_collate"); v != "" {
+			body["lc_collate"] = v
+		}
+		if v := stringArg(args, "lc_ctype"); v != "" {
+			body["lc_ctype"] = v
+		}
+		db, err := cli.CreateDatabase(ctx, cid, body)
+		if err != nil {
+			return errResult(fmt.Errorf(i18n.T("create database: %w", "создание базы: %w"), err)), true
+		}
+		return toJSON(map[string]any{"status": "created", "database": db}), false
+	}}, nil
 }
 
 func (s *Registry) planPgDbDelete(ctx context.Context, args map[string]any) (*Plan, error) {
@@ -750,43 +754,43 @@ func (s *Registry) handlePgBackups(ctx context.Context, args map[string]any) (st
 	return toJSON(map[string]any{"backups": items}), false
 }
 
-func (s *Registry) handlePgBackupCreate(ctx context.Context, args map[string]any) (string, bool) {
+func (s *Registry) planPgBackupCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	if cid == "" || name == "" {
-		return usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true
+		return answered(usageT("'cluster_id' and 'name' are required", "нужны 'cluster_id' и 'name'"), true), nil
 	}
 	cli, err := s.pgClient(ctx)
 	if err != nil {
-		return errResult(err), true
+		return nil, err
 	}
 	// A backup of the name in the cluster: a repeat after a lost answer
 	// made a second one (fault matrix, process audit 1.2.1).
 	list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListBackups(ctx, cid) }
 	existing, err := list(ctx)
 	if err != nil {
-		return errResult(fmt.Errorf(i18n.T("check the name is free: list backups: %w", "проверка, что имя свободно: список резервных копий: %w"), err)), true
+		return nil, fmt.Errorf(i18n.T("check the name is free: list backups: %w", "проверка, что имя свободно: список резервных копий: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return nameTakenResult(i18n.T("backup", "резервная копия"), name, id, st, "pg_backups cluster_id="+cid)
+		return answered(nameTakenResult(i18n.T("backup", "резервная копия"), name, id, st, "pg_backups cluster_id="+cid)), nil
 	}
-	if confirmed, _ := args["confirmed"].(bool); !confirmed {
-		return toJSON(map[string]any{"status": "confirmation_required", "message": i18n.Tf("pg_backup_create starts a manual backup %q of cluster %s.",
-			"pg_backup_create запускает ручное резервное копирование %q кластера %s.", name, cid),
-			"preview": willPreview(engine.ResourcePGBackup, name, "", map[string]any{"cluster_id": cid}, []string{"cluster_id"})}), true
-	}
-	op, err := cli.CreateBackup(ctx, cid, name)
-	if err != nil || op.ID == "" {
-		if err == nil {
-			err = noID("operation")
+	preview := map[string]any{"message": i18n.Tf("pg_backup_create starts a manual backup %q of cluster %s.",
+		"pg_backup_create запускает ручное резервное копирование %q кластера %s.", name, cid),
+		"preview": willPreview(engine.ResourcePGBackup, name, "", map[string]any{"cluster_id": cid}, []string{"cluster_id"})}
+	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+		op, err := cli.CreateBackup(ctx, cid, name)
+		if err != nil || op.ID == "" {
+			if err == nil {
+				err = noID("operation")
+			}
+			return lostCreate(ctx, "pg_backup_create", list, i18n.T("backup", "резервная копия"), name, nil, "pg_backups cluster_id="+cid, fmt.Errorf(i18n.T("create backup: %w", "создание резервной копии: %w"), err))
 		}
-		return lostCreate(ctx, "pg_backup_create", list, i18n.T("backup", "резервная копия"), name, nil, "pg_backups cluster_id="+cid, fmt.Errorf(i18n.T("create backup: %w", "создание резервной копии: %w"), err))
-	}
-	out := map[string]any{"status": "backing_up", "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id)."}
-	if op.ResourceID != "" {
-		out["backup_id"] = op.ResourceID
-	}
-	return toJSON(out), false
+		out := map[string]any{"status": "backing_up", "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id)."}
+		if op.ResourceID != "" {
+			out["backup_id"] = op.ResourceID
+		}
+		return toJSON(out), false
+	}}, nil
 }
 
 // pgCreatePreview is the preview of pg_create: the cluster as resolved,
