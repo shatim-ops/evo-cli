@@ -40,30 +40,50 @@ const wrappedButtons = `[...document.querySelectorAll('button')].filter(b=>{` +
 	`const tops=new Set([...r.getClientRects()].map(x=>Math.round(x.top)));` +
 	`return tops.size>1||b.scrollWidth>b.clientWidth}).map(b=>b.textContent.trim()).join('; ')`
 
-// tallestConsent is the consent with the most at once (state 08 of the
-// designers' package): the agent chosen, a previous key replaced in both
-// profiles, the project picked beforehand by the profile of the other
-// audience (finding 90), two organizations, long names. State 09 is the
-// same with «the right is not confirmed» (unchecked); it fits since
-// 672ea7a of #1341 («релиз (4)», 12.11; #1343 closed).
-func tallestConsent() *session {
-	return &session{cfg: Config{Now: time.Now}, who: person{Sub: "u-1", Login: "ivan.ivanov@example.com"},
-		store:  &twoProfiles{},
-		choice: Choice{For: ForAgent, Preselect: "a", PreselectFrom: TFromProfile("evo-agent")},
+// tallestConsent is the consent with the most at once, as «разработка (4)»
+// renders it for the designers' package (12.11): state 08 — five projects
+// of two organizations, a previous key in both profiles, the project picked
+// beforehand by the profile of the other audience (the line of finding 90),
+// the sign-in's term, and «Агенту» chosen on the page; state 09 — the same
+// with «the right is not confirmed» (unchecked). At 672ea7a of #1341 the
+// block ends at 661 px (08) and 697 px (09) of 720.
+func tallestConsent(unchecked bool) page {
+	now := time.Date(2026, 11, 10, 8, 40, 0, 0, time.Local)
+	s := &session{cfg: Config{Now: func() time.Time { return now }}, store: &twoProfiles{},
+		who: person{Sub: "u", Login: "demo@example.com"}, until: now.Add(30 * time.Minute),
+		choice: Choice{Preselect: "prj-3", PreselectFrom: TFromProfile("default")},
 		projects: []project{
-			{ID: "a", Name: "Проект с длинным названием для проверки", Customer: "c1", CustomerName: "ООО «Организация с длинным именем»", Allowed: true},
-			{ID: "b", Name: "beta", Customer: "c1", CustomerName: "ООО «Организация с длинным именем»", Allowed: true},
-			{ID: "c", Name: "gamma", Customer: "c2", CustomerName: "Вторая организация", Allowed: false},
+			{ID: "prj-1", Name: "analytics-dev", Customer: "c1", CustomerName: "ООО «Пример»", Allowed: true},
+			{ID: "prj-2", Name: "analytics-prod", Customer: "c1", CustomerName: "ООО «Пример»"},
+			{ID: "prj-3", Name: "ml-sandbox", Customer: "c1", CustomerName: "ООО «Пример»", Allowed: true},
+			{ID: "prj-4", Name: "web-staging", Customer: "c2", CustomerName: "Demo Org", Allowed: true},
+			{ID: "prj-5", Name: "web-prod", Customer: "c2", CustomerName: "Demo Org"},
 		}}
+	if unchecked {
+		s.unchecked = "x"
+	}
+	p := consentPage(s)
+	// «Агенту», chosen by the person on the page: the lines of that
+	// audience show.
+	d := p.data.(consentData)
+	d.For = string(ForAgent)
+	p.data = d
+	return p
 }
 
-// twoProfiles keeps each audience in its own profile, each with a previous
-// key of evo login.
+// twoProfiles keeps the person in «default» and the agent in «agent», each
+// with a previous key of evo login.
 type twoProfiles struct{ memStore }
 
-func (*twoProfiles) Profile(a Audience) string { return "evo-" + string(a) }
+func (*twoProfiles) Profile(a Audience) string {
+	if a == ForAgent {
+		return "agent"
+	}
+	return "default"
+}
+
 func (*twoProfiles) Previous(Audience) *Previous {
-	return &Previous{ServiceAccountID: "sa", AccessKeyID: "ak", KeyID: "abcdef0123456789"}
+	return &Previous{ServiceAccountID: "sa", AccessKeyID: "ak", KeyID: "ffff00000000000000001111"}
 }
 
 func TestPages_FitTheScreenAndButtonsStayOnOneLine(t *testing.T) {
@@ -76,22 +96,20 @@ func TestPages_FitTheScreenAndButtonsStayOnOneLine(t *testing.T) {
 	}
 	prev := i18n.Lang()
 	t.Cleanup(func() { i18n.SetLang(prev) })
-	s := tallestConsent()
-	done := Result{Account: "evo-agent", ProjectName: s.projects[0].Name, CustomerName: s.projects[0].CustomerName,
+	const user = "demo@example.com"
+	done := Result{Account: "evo-agent", ProjectName: "ml-sandbox", CustomerName: "ООО «Пример»",
 		Profile: "evo-agent", KeyID: "abcdef0123456789", RevokedKeyID: "0123456789abcdef", AccountReused: true,
 		KeyExpiresAt: time.Now().Add(30 * 24 * time.Hour)}
 	br := startChrome(t, chrome)
 	for _, lang := range []string{i18n.RU, i18n.EN} {
 		i18n.SetLang(lang)
-		unchecked := tallestConsent()
-		unchecked.unchecked = "the right of the project was not read"
 		pages := map[string]page{
-			"consent":   consentPage(s),
-			"consent09": consentPage(unchecked),
-			"done":      donePage(done).signed(s.user()),
-			"cancelled": cancelledPage().signed(s.user()),
-			"error":     errorPage(errors.New("the cloud did not answer")).signed(s.user()),
-			"refused":   refusedPage(tForeignTitle(), tForeignLink()).signed(s.user()),
+			"consent08": tallestConsent(false),
+			"consent09": tallestConsent(true),
+			"done":      donePage(done).signed(user),
+			"cancelled": cancelledPage().signed(user),
+			"error":     errorPage(errors.New("the cloud did not answer")).signed(user),
+			"refused":   refusedPage(tForeignTitle(), tForeignLink()).signed(user),
 		}
 		for name, p := range pages {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
