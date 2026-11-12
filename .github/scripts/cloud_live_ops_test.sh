@@ -708,6 +708,21 @@ want "Г-15: код" "$rc" 0
 want "Г-15: тела PATCH" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"specification_id":"s2"};{"specification_id":"s1"};{"storage_gib":9};{"storage_gib":8};'
 grep -q 'Г-15: диск меньше (ожидаемый отказ).*отказ HTTP 400' "$tmp/out" || { echo "FAIL: Г-15: отказ уменьшения диска не записан"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 
+# Kafka: диск больше, класс вверх, возврат — поле диска storage_gib.
+K='https://kafka.api.cloud.ru/v1/clusters/c1'
+db_world
+fake_evo_answer kafka_specs 0 0 '{"specifications":[{"id":"k1","cpu":2,"memory_gb":4,"deployment_mode":"standard"},{"id":"k2","cpu":4,"memory_gb":8,"deployment_mode":"standard"}]}'
+cat >"$FAKE_DIR/http" <<H
+PATCH $K 200 {"id":"op"}
+GET $K 200 {"cluster":{"id":"c1","specification_id":"k1","storage_gib":100,"status":"RUNNING"}}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+DB_KIND=kafka DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-14: код" "$rc" 0
+want "Г-14: тела PATCH" "$(jq -c 'select(has("keyId") | not) | del(.cluster_id)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"storage_gib":110};{"specification_id":"k2"};{"specification_id":"k1"};'
+grep -q 'Г-14: возврат класса.*HTTP 200' "$tmp/out" || { echo "FAIL: Г-14: возврат класса не записан"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
 # Нет кластера или вида — область отказывает, запросов нет.
 db_world
 : >"$FAKE_DIR/http"

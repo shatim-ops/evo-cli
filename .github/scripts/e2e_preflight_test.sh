@@ -107,6 +107,11 @@ has g16long "probes: «g16» идёт до 105 мин при пределе job 
 # Пробы изменения кластера — в job своего сервиса.
 fresh dbchange
 run dbchange 0 DBAAS_SMOKE=true DBAAS_SERVICES='pg kafka redis' PROBES='g13 g14 g15'
+# g13 и access в одном запуске — худший ход job dbaas-pg вплотную к его
+# пределу: удаление кластера оборвалось бы по времени.
+fresh g13access
+run g13access 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES='access g13'
+has g13access "probes: «g13» и «access» в одном запуске не идут — худший ход job dbaas-pg вплотную к пределу 300 мин"
 fresh g14nokafka
 run g14nokafka 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES=g14
 has g14nokafka "probes: «g14» — проба джоба dbaas-kafka, а он не идёт (dbaas_smoke и kafka в dbaas_services)"
