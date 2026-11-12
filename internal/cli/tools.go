@@ -28,14 +28,35 @@ import (
 
 // newRegistry builds the tool registry with the same engine factory as the
 // MCP server: credentials, profile, project and region resolve exactly as
-// for every other command.
-func newRegistry() *tools.Registry {
+// for every other command. A run builds it once (newRootCmd, registryOf);
+// tests count the builds.
+var newRegistry = func() *tools.Registry {
 	return tools.New(func(overrides map[string]any) (*engine.Engine, error) {
 		if overrides == nil {
 			overrides = map[string]any{}
 		}
 		return toolEngine(overrides)
 	})
+}
+
+// registryKey is the context key of the registry of a run (withRegistry).
+type registryKey struct{}
+
+// withRegistry is ctx carrying reg: the root command builds the registry
+// once for a run and hands it to the command that runs.
+func withRegistry(ctx context.Context, reg *tools.Registry) context.Context {
+	return context.WithValue(ctx, registryKey{}, reg)
+}
+
+// registryOf is the registry of the run cmd belongs to; a command run
+// outside a root builds its own.
+func registryOf(cmd *cobra.Command) *tools.Registry {
+	if ctx := cmd.Context(); ctx != nil {
+		if reg, ok := ctx.Value(registryKey{}).(*tools.Registry); ok {
+			return reg
+		}
+	}
+	return newRegistry()
 }
 
 // toolEngine builds the engines of the tools and of their previews
@@ -116,7 +137,7 @@ func newToolsListCmd() *cobra.Command {
 					i18n.T("Groups: ", "Группы: ")+strings.Join(tools.Groups(), ", "))
 			}
 			var list []toolInfo
-			for _, t := range newRegistry().Tools() {
+			for _, t := range registryOf(cmd).Tools() {
 				if group != "" && t.Group != group {
 					continue
 				}
@@ -221,7 +242,7 @@ func newToolsDescribeCmd() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeToolNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t, err := lookupTool(newRegistry(), args[0])
+			t, err := lookupTool(registryOf(cmd), args[0])
 			if err != nil {
 				return err
 			}
@@ -328,12 +349,12 @@ func lookupTool(reg *tools.Registry, name string) (tools.Tool, error) {
 	return t, nil
 }
 
-func completeToolNames(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+func completeToolNames(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	var names []string
-	for _, t := range newRegistry().Tools() {
+	for _, t := range registryOf(cmd).Tools() {
 		names = append(names, t.Name)
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp
@@ -405,7 +426,7 @@ any other command (see docs/exit-codes.md); without a code, 4 when the tool
 reported that something was not found, 5 otherwise.`
 
 func runToolsCall(cmd *cobra.Command, name, argsFile, argsJSON string, argPairs []string, wait bool) error {
-	t, err := lookupTool(newRegistry(), name)
+	t, err := lookupTool(registryOf(cmd), name)
 	if err != nil {
 		return err
 	}
