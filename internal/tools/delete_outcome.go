@@ -51,7 +51,12 @@ var deleteOutcomeWait = opWaitMaxSeconds
 // nothing (a script deleting many keeps its speed; the owner's decision
 // 03.11).
 func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (string, bool) {
-	fields := map[string]any{"operation_id": w.opID}
+	// A delete with no operation (goneWatch: the resource is read until it
+	// is gone) names none: an empty operation_id read as one to wait for.
+	fields := map[string]any{}
+	if w.opID != "" {
+		fields["operation_id"] = w.opID
+	}
 	maps.Copy(fields, w.ident)
 	if waitOff(args) {
 		return deleting(fields, w)

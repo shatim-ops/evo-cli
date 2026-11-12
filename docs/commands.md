@@ -28,6 +28,7 @@
   - [evo audit](#evo-audit)
     - [evo audit events](#evo-audit-events)
   - [evo backup](#evo-backup)
+    - [evo backup delete](#evo-backup-delete)
     - [evo backup get](#evo-backup-get)
     - [evo backup list](#evo-backup-list)
   - [evo billing](#evo-billing)
@@ -907,8 +908,53 @@ evo backup [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo backup delete](#evo-backup-delete)	 - Удалить резервную копию
 * [evo backup get](#evo-backup-get)	 - Резервная копия по id: исходный ресурс, существует ли он, план копирования
 * [evo backup list](#evo-backup-list)	 - Резервные копии ВМ и дисков: id, имя, состояние, тип, размер, исходный ресурс
+
+## evo backup delete
+
+Удалить резервную копию
+
+### Synopsis
+
+```text
+Удалить резервную копию.
+
+Безвозвратно удаляет резервную копию: восстановить из неё после этого нельзя; восстановленные из неё ресурсы остаются. Превью предупреждает, если исходного ресурса больше нет (это последняя копия его данных), и называет копии, которые от неё зависят. Пока из копии идёт восстановление, платформа удаление отвергает: ошибка с details.cause restore_in_progress и тем же вызовом следующим шагом.
+
+Вызывает инструмент backup_delete (подробнее: 'evo tools describe backup_delete').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo backup delete <backup-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по delete
+      --wait   false — ответить deleting сразу. По умолчанию — ждать до ~45 с
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo backup](#evo-backup)	 - Резервные копии ВМ и дисков
 
 ## evo backup get
 
