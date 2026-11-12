@@ -54,7 +54,7 @@ var inlineGates = map[string]string{
 
 // inlineGatesLeft is len(inlineGates): a line added back fails the test
 // even with the read it names.
-const inlineGatesLeft = 23
+const inlineGatesLeft = 21
 
 // notGates read the key "confirmed" without deciding on consent.
 var notGates = map[string]string{
