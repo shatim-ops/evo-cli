@@ -41,7 +41,8 @@ func rulesAdded(c *faultCloud) int {
 func TestOpenPorts_TheWholeInternetOnASharedGroupIsRefusedWithoutTheWord(t *testing.T) {
 	// The default source is the whole internet; the others pass a refusal
 	// that knows two literals only (У1).
-	for _, cidr := range []string{"", "0.0.0.0/0", "0.0.0.0/1", "128.0.0.0/1", "::/0", "::/1"} {
+	// And IPv4 in the notation of IPv6 is the same internet.
+	for _, cidr := range []string{"", "0.0.0.0/0", "0.0.0.0/1", "128.0.0.0/1", "::/0", "::/1", "::ffff:0.0.0.0/96", "::ffff:0:0/97"} {
 		for _, confirmed := range []bool{false, true} {
 			cloud := &faultCloud{}
 			r, _ := faultToolsRegistry(t, cloud)

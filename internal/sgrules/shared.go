@@ -42,18 +42,34 @@ var privateRanges = func() []netip.Prefix {
 	return out
 }()
 
+// v4InV6 is the range of IPv4 addresses written as IPv6 (::ffff:a.b.c.d).
+var v4InV6 = netip.MustParsePrefix("::ffff:0:0/96")
+
 // Internet reports whether a source is the internet: its prefix is shorter
 // than /8 (IPv4) or /32 (IPv6) and does not lie wholly in a private range.
 // A bare address is the prefix of that one address; a source that does not
 // parse is not one evo can call the internet — the schema refuses it.
+//
+// The rule does not depend on how an address is written: an IPv4 prefix in
+// the notation of IPv6 (::ffff:0.0.0.0/96) is judged as the IPv4 prefix it
+// is, and an IPv6 prefix that holds the whole of that range holds every
+// IPv4 address («Риск», the check of #1497, У1).
 func Internet(cidr string) bool {
 	p, err := netip.ParsePrefix(cidr)
 	if err != nil {
 		return false
 	}
+	if p.Addr().Is6() {
+		switch {
+		case p.Bits() >= v4InV6.Bits() && v4InV6.Contains(p.Addr()):
+			p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-v4InV6.Bits())
+		case p.Bits() < v4InV6.Bits() && p.Contains(v4InV6.Addr()):
+			return true
+		}
+	}
 	p = p.Masked()
 	limit := internetShorterThanV4
-	if p.Addr().Is6() && !p.Addr().Is4In6() {
+	if p.Addr().Is6() {
 		limit = internetShorterThanV6
 	}
 	if p.Bits() >= limit {

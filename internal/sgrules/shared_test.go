@@ -23,6 +23,11 @@ func TestInternet_IsAThresholdNotTwoLiterals(t *testing.T) {
 		"172.16.0.0/12": false, "192.168.0.0/16": false,
 		"fc00::/7": false, "fd00::/8": false, "fe80::/10": false, "2001:db8::/32": false,
 		"203.0.113.7": false, "": false, "not a cidr": false,
+		// IPv4 written as IPv6 is the IPv4 prefix it is; an IPv6 prefix that
+		// holds that whole range holds every IPv4 address.
+		"::ffff:0.0.0.0/96": true, "::ffff:0:0/96": true, "::ffff:0:0/97": true, "::ffff:128.0.0.0/97": true,
+		"::ffff:0:0/90": true, "::ffff:8.0.0.0/103": true,
+		"::ffff:10.0.0.0/104": false, "::ffff:203.0.113.0/120": false, "::ffff:8.0.0.0/104": false,
 	} {
 		if got := Internet(cidr); got != want {
 			t.Errorf("Internet(%q) = %v, want %v", cidr, got, want)
