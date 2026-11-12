@@ -62,6 +62,20 @@ func (s *Registry) handleCaGet(ctx context.Context, args map[string]any) (string
 	return toJSON(m), false
 }
 
+// caState is the status of the container app name as the API gives it.
+func (s *Registry) caState(ctx context.Context, name string) (string, error) {
+	cli, err := s.caClient(ctx)
+	if err != nil {
+		return "", err
+	}
+	m, err := cli.Get(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	state, _ := m["status"].(string)
+	return state, nil
+}
+
 // caNameRe is an RFC 1123 label: what the description of ca_deploy asks.
 var caNameRe = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
 
@@ -303,7 +317,24 @@ func (s *Registry) planCaStartStop(action string) Planner {
 			msg = i18n.Tf("ca_stop will stop container app %q (it stops serving requests).",
 				"ca_stop остановит приложение %q (оно перестанет обслуживать запросы).", name)
 		}
-		return &Plan{Preview: map[string]any{"message": msg}, Execute: func(ctx context.Context) (string, bool) {
+		// The state of the app is read for the question only, and named
+		// in it: a repeat — a start of an app that runs — asks as before
+		// (its exit code does not change before the major) and shows what
+		// the app is now. A state that cannot be read is said, not
+		// refused: the call's own refusal is the platform's, as it was
+		// (release plan 1.9, «Повтор у выпущенных инструментов», п. 4).
+		preview := func(ctx context.Context) (map[string]any, error) {
+			out := map[string]any{"message": msg}
+			state, err := s.caState(ctx, name)
+			if err != nil {
+				reason, _, _ := errReason(err, nil)
+				out["app_status_note"] = i18n.Tf("the state of the app could not be read (%s): ca_get shows it", "состояние приложения прочитать не удалось (%s): его показывает ca_get", reason)
+				return out, nil
+			}
+			out["app_status"] = state
+			return out, nil
+		}
+		return &Plan{PreviewOf: preview, Execute: func(ctx context.Context) (string, bool) {
 			cli, err := s.caClient(ctx)
 			if err != nil {
 				return errResult(err), true
