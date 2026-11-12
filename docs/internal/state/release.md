@@ -24,7 +24,6 @@
 - Платформа — только в `evo-internal`.
 
 ## Известное красное
-- `main` красный на Windows с 12.11 11:10 UTC: `TestIntent_HeldWhileTheOperationGoesOn` — правка у «разработки C»; до неё перед автослиянием сверять последний завершённый прогон `main`.
-- `test (macos-latest)`: `internal/cli` у предела 10 мин; меры М1–М5 — строка плана «CI».
+- `main` красный на Windows с 12.11: `TestIntent_HeldWhileTheOperationGoesOn`, правка у «разработки C»; перед автослиянием сверять прогон `main`.
+- macOS: `internal/cli` у предела 10 мин — строка плана «CI».
 - `os-smoke nginx`: SSH не поднимается при первой загрузке, 1 из 2 (платформа).
-- Флейк границы D69 на ubuntu-latest — бэклог процесса.
