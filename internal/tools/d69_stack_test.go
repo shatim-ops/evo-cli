@@ -37,7 +37,7 @@ func TestD69_StackVMStepCreatingIsInProgress(t *testing.T) {
 		return toJSON(map[string]any{"status": "ok", "vm_id": "vm-1", "vm_ip": "203.0.113.4"}), false
 	}
 
-	text, isErr := r.handleStackApply(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	text, isErr := r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	m := decode(t, text)
 	if isErr || m["status"] != "running" {
 		t.Fatalf("a VM creating is not an error of the stack: %s", text)
