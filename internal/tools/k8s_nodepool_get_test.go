@@ -56,6 +56,12 @@ func TestK8sNodePoolGet_AnswersThePool(t *testing.T) {
 		"upgrade_versions": []any{"v1.32.1"},
 		"_untrusted":       []any{"name", "cluster_name", "labels", "taints"},
 	}
+	// The subnet and the group of the nodes are ids; the note says what
+	// names them.
+	if note, _ := m["note"].(string); !strings.Contains(note, "list_subnets") || !strings.Contains(note, "list_security_groups") {
+		t.Errorf("the card does not say what names nodes_subnet_id and security_group_id: note %q", note)
+	}
+	delete(m, "note")
 	if !reflect.DeepEqual(m, want) {
 		got, _ := json.MarshalIndent(m, "", " ")
 		exp, _ := json.MarshalIndent(want, "", " ")

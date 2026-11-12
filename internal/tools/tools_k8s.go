@@ -549,6 +549,11 @@ func (s *Registry) handleK8sNodePoolGet(ctx context.Context, args map[string]any
 			}
 		}
 	}
+	// The subnet and the security group of the nodes stay ids: their names
+	// are two more reads, of two other services, at every call — and an
+	// operation of a pool reads this card at every poll (operationReads).
+	card["note"] = i18n.T("nodes_subnet_id and security_group_id are ids; list_subnets and list_security_groups name them.",
+		"nodes_subnet_id и security_group_id — id; имена — в выводе evo vpc subnets и evo vpc security-groups.")
 	return toJSON(card), false
 }
 
