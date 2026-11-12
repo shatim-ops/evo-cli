@@ -190,9 +190,31 @@ func (r *Registry) pendingNote(in intent.Intent) string {
 		name = quoteCloud(name)
 	}
 	tool := quoteCloud(in.Tool)
-	return i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown — check %s for %s; the same %s on it settles it",
-		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен — проверьте %s по %s; тот же %s на нём закроет запись",
-		tool, name, where, started, quoteCloud(in.Surface), in.PID, quoteCloud(r.listToolOf(in.Tool)), name, tool)
+	head := i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown",
+		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен",
+		tool, name, where, started, quoteCloud(in.Surface), in.PID)
+	// A delete addressed by id is not looked up in the list of the call's
+	// project, which does not tell a deleted resource from one of another
+	// project (R-82): doctor reads it by id and says what to do.
+	if _, _, _, byID := deleteByID(in); byID {
+		return head + i18n.T(" — evo doctor checks it by id", " — evo doctor проверит по id")
+	}
+	return head + i18n.Tf(" — check %s for %s; the same %s on it settles it",
+		" — проверьте %s по %s; тот же %s на нём закроет запись", quoteCloud(r.listToolOf(in.Tool)), name, tool)
+}
+
+// deleteByID tells an intent of a delete of the resource it addresses by
+// id: its kind and the id. The target of a delete inside a parent is the
+// parent, and reading it tells nothing of the child: not one.
+func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
+	a, id, ok = intentTarget(in)
+	if !ok {
+		return idArg{}, nil, "", false
+	}
+	if d, isDelete := deleteTargets[in.Tool]; !isDelete || d.parent == a.name {
+		return idArg{}, nil, "", false
+	}
+	return a, a.kind, id, true
 }
 
 // checkPending is what doctor finds out about the intent in and whether
@@ -200,12 +222,8 @@ func (r *Registry) pendingNote(in intent.Intent) string {
 // addressed by id is checked by a read of that id (checkByID), any other
 // by the list of what it names (checkByList).
 func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool) {
-	if a, id, ok := intentTarget(in); ok {
-		// The target of a delete inside a parent is the parent: reading
-		// it tells nothing of the child.
-		if d, isDelete := deleteTargets[in.Tool]; isDelete && d.parent != a.name {
-			return r.checkByID(ctx, in, a.kind, id, eng.Maker())
-		}
+	if _, k, id, ok := deleteByID(in); ok {
+		return r.checkByID(ctx, in, k, id, eng.Maker())
 	}
 	return r.checkByList(ctx, in, eng.Config.ProjectID)
 }
@@ -228,8 +246,11 @@ func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind
 		if in.Key != nil {
 			by = i18n.Tf("the key %s", "ключом %s", quoteCloud(in.Key.KeyID))
 		}
-		return i18n.Tf("not checked with this key: the delete was sent with %s, and another key may not see %s — run doctor with that key, or the same %s",
-			"не проверено этим ключом: удаление отправлено %s, а другой ключ может не видеть %s — запустите doctor с тем ключом или тот же %s", by, what, tool), false
+		// No «the same delete»: with a key that does not see the resource
+		// it answers already_deleted and closes the record unchecked
+		// («Риск», conclusion 128).
+		return i18n.Tf("not checked with this key: the delete was sent with %s, and another key may not see %s — run doctor with that key",
+			"не проверено этим ключом: удаление отправлено %s, а другой ключ может не видеть %s — запустите doctor с тем ключом", by, what), false
 	}
 	m, err := k.card(ctx, &ownerCall{r: r, args: map[string]any{}}, id)
 	switch {

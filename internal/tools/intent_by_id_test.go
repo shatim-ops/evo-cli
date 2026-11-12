@@ -92,6 +92,15 @@ func TestDoctor_CutDeleteByIDIsCheckedByID(t *testing.T) {
 			if !strings.Contains(text, c.says) {
 				t.Errorf("doctor does not say %q:\n%s", c.says, text)
 			}
+			// A delete by id is not sent to the list of the call's project,
+			// and a record of another key not to «the same delete», which
+			// would close it unchecked («Риск», conclusion 128).
+			if strings.Contains(text, "_list") {
+				t.Errorf("doctor sends a delete by id to a list of the call's project:\n%s", text)
+			}
+			if c.key != nil && strings.Contains(text, "the same") {
+				t.Errorf("doctor sends a record of another key to the same delete:\n%s", text)
+			}
 			if !c.closed && strings.Contains(text, "took effect") {
 				t.Errorf("doctor calls a delete it did not check done:\n%s", text)
 			}
