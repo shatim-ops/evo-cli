@@ -168,10 +168,17 @@ jobs:
       # рантайма без падения теста — retry с упавшими пакетами и один шаг
       # повтора ниже, второй сбой — красный. Шаги повтора за неделю считает
       # weekly-race (go_runtime_crash_week.sh).
+      # -timeout 20m: предел пакета задан явно. Умолчание go test — 10
+      # минут — никто не выбирал, и 12.11 internal/cli на macOS под -race
+      # дошёл до него: 323 с 11.11 → 588 с на зелёном main и 600,5 с
+      # (panic: test timed out) на PR, менявшем только тексты (#1524).
+      # Число — умолчание × 2: запас на рост до правки самих тестов (план
+      # 1.9, «CI: main красный на Windows… и предел macOS», М1 и М2). Это
+      # не лечение: время пакета растёт как «инструменты × миры».
       - id: gotest
         name: go test
         shell: bash
-        run: .github/scripts/go_test_ci.sh go test -race -count=1 -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }}
+        run: .github/scripts/go_test_ci.sh go test -race -count=1 -timeout 20m -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }}
         env:
           GORACE: atexit_sleep_ms=0
       - name: "go test: повтор после сбоя рантайма Go"
@@ -179,7 +186,7 @@ jobs:
         shell: bash
         run: |
           # shellcheck disable=SC2086 # the package list is split on purpose
-          go test -race -count=1 -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} $RETRY
+          go test -race -count=1 -timeout 20m -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} $RETRY
         env:
           GORACE: atexit_sleep_ms=0
           RETRY: ${{ steps.gotest.outputs.retry }}
