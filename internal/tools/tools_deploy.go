@@ -323,6 +323,9 @@ func (s *Registry) planDeployApply(ctx context.Context, args map[string]any) (*P
 	}
 	plan, err := deployplan.Load(eng.StateDir, planID)
 	if err != nil {
+		if applied := appliedPlan(eng.StateDir, planID); applied != nil {
+			return nil, applied
+		}
 		return nil, err
 	}
 	// The keys deploy_apply appends are the ones the plan showed (R-68):
@@ -1169,4 +1172,38 @@ func planNetworkView(plan *deployplan.Plan) map[string]any {
 		view["security_group_shared"] = true
 	}
 	return view
+}
+
+// appliedPlan is the refusal of a deploy_apply whose plan is gone because
+// it was applied: the plan is deleted once its VM runs, and the record of
+// the deployment names the plan that made it (D82). «Not found, it may
+// have expired; run deploy_plan again» named the state wrongly and led the
+// agent to plan a second VM (release plan 1.9, «Повтор у выпущенных
+// инструментов», п. 3). The error is of the kind of a plan that is not
+// there — the same reason and exit code — with the words of what happened.
+// nil when no record of the folder names the plan.
+func appliedPlan(stateDir, planID string) error {
+	sf, err := state.Read(state.DefaultPath(stateDir))
+	if err != nil {
+		return nil
+	}
+	for i := range sf.Deployments {
+		d := &sf.Deployments[i]
+		if d.Source != state.SourceDeployApply || d.PlanID != planID {
+			continue
+		}
+		// The code of a plan that is not there, which the words of the
+		// old refusal gave it (NOT_FOUND): only the words change.
+		if d.Status == "destroyed" {
+			return clierrors.New(clierrors.CodeNotFound,
+				i18n.Tf("plan %q has been applied already: it made VM %s (%s), which has been destroyed since; there is nothing to apply",
+					"план %q уже применён: он создал ВМ %s (%s), с тех пор она удалена; применять нечего", planID, d.VMID, d.VMName),
+				i18n.T("The plan is done with. Whether to make another VM is the person's decision.", "План исчерпан. Создавать ли другую ВМ — решает человек."))
+		}
+		return clierrors.New(clierrors.CodeNotFound,
+			i18n.Tf("plan %q has been applied already: it made VM %s (%s); there is nothing to apply",
+				"план %q уже применён: он создал ВМ %s (%s); применять нечего", planID, d.VMID, d.VMName),
+			i18n.T("status and vm_get show the VM.", "ВМ показывают status и vm_get."))
+	}
+	return nil
 }
