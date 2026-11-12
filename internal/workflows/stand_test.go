@@ -102,3 +102,50 @@ func TestWorkflows_CleanupLeavesTheStand(t *testing.T) {
 		t.Errorf("cloud-e2e cleanup: %d deleting steps found, want at least 5 — the pattern no longer sees them", seen)
 	}
 }
+
+// standKinds is the declaration of the kinds of the stand in e2e_stand.sh.
+var standKinds = regexp.MustCompile(`(?m)^STAND_KINDS="([a-z0-9 ]+)"$`)
+
+// sweepKinds is the declaration of the kinds the cleanup of the runs finds.
+var sweepKinds = regexp.MustCompile(`(?m)^KINDS="([a-z0-9 ]+)"$`)
+
+// The sweep of the stand keeps a list of kinds of its own: the cleanup of
+// the runs must not be able to take the prefix of the stand, so the two do
+// not share the code that selects. What keeps them from drifting apart:
+// every kind of the stand is a kind the cleanup of the runs knows how to
+// find — a kind of cloud.live.sh, or a cluster the job cleanup deletes
+// (Kubernetes, PostgreSQL). A kind added to the stand alone has no cleanup
+// that was ever run live.
+func TestWorkflows_StandKindsAreKindsOfTheCleanup(t *testing.T) {
+	root := filepath.Join("..", "..", ".github", "scripts")
+	stand, err := os.ReadFile(filepath.Join(root, "e2e_stand.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := os.ReadFile(filepath.Join(root, "cloud-live.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk, lk := standKinds.FindSubmatch(stand), sweepKinds.FindSubmatch(live)
+	if sk == nil || lk == nil {
+		t.Fatalf("declarations not found: STAND_KINDS in e2e_stand.sh: %v, KINDS in cloud-live.sh: %v", sk != nil, lk != nil)
+	}
+	known := map[string]bool{"k8s": true, "pg": true}
+	for _, k := range strings.Fields(string(lk[1])) {
+		known[k] = true
+	}
+	kinds := strings.Fields(string(sk[1]))
+	if len(kinds) == 0 {
+		t.Fatal("e2e_stand.sh: STAND_KINDS is empty")
+	}
+	for _, k := range kinds {
+		if !known[k] {
+			t.Errorf("e2e_stand.sh: the kind %s of the stand is not a kind of the cleanup of the runs (%s, k8s, pg)", k, lk[1])
+		}
+	}
+	// What itself spends and spawns goes first (conclusion 158 of the risk
+	// role): protection plans and backups before the clusters and the VM.
+	if len(kinds) < 2 || kinds[0] != "pplan" || kinds[1] != "backup" {
+		t.Errorf("e2e_stand.sh: STAND_KINDS starts with %v, want pplan and backup first — a plan left for last goes on making paid backups", kinds)
+	}
+}
