@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -405,14 +406,35 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 // person consented to once. The answer is the question again, saying what
 // is known; the record is closed (closeAsked), so the next consented call
 // is sent as any other.
-func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any) (string, bool) {
+//
+// The question is the one the call would get without its consent, with
+// the cut call named in it: plan — the handler of the tool, called without
+// confirmed — gives the preview, so the person asked about «one more»
+// sees what it costs, as the CLI shows it (CLAUDE.md §6, axis 4; «Риск»,
+// the conclusion on D107, У9). A plan that does not answer a question —
+// a read of it failed, it refuses — leaves the question as it is, with no
+// preview: nothing is sent either way.
+func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any, plan Handler) (string, bool) {
 	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return "", false
 	}
-	r.closeAsked(ctx, mine)
 	message, interrupted := cutCallWarning(name, mine)
-	return toJSON(map[string]any{"status": "confirmation_required", "interrupted": interrupted, "message": message}), true
+	out := map[string]any{"status": "confirmation_required"}
+	unconsented := maps.Clone(args)
+	delete(unconsented, "confirmed")
+	if text, _ := plan(ctx, unconsented); answerStatus(text) == "confirmation_required" {
+		var m map[string]any
+		if json.Unmarshal([]byte(text), &m) == nil {
+			out = m
+			if was, _ := m["message"].(string); was != "" {
+				message += " " + was
+			}
+		}
+	}
+	out["message"], out["interrupted"] = message, interrupted
+	r.closeAsked(ctx, mine)
+	return toJSON(out), true
 }
 
 // closeAsked closes the records mine of the cut calls a question has just

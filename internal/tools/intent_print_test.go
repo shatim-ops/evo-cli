@@ -167,7 +167,10 @@ func TestIntent_TheQuestionAfterACutCallDoesNotLookAtThePrint(t *testing.T) {
 		consentedCall(r, tool, map[string]any{target: resMine}, `{"status":"error","reason":"API_UNREACHABLE"}`)
 		sent := 0
 		tl, _ := r.Lookup(tool)
-		text, _ := r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+		text, _ := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+			if confirmed, _ := args["confirmed"].(bool); !confirmed {
+				return `{"status":"error","reason":"USAGE"}`, true // the plan: nothing is sent
+			}
 			sent++
 			return `{"status":"ok"}`, false
 		})(context.Background(), map[string]any{target: resMine, "wait": false, "description": "another", "confirmed": true})

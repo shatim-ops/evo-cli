@@ -254,7 +254,12 @@ func TestIntent_ACutCallIsOfTheProjectOfTheCall(t *testing.T) {
 	sent := 0
 	tl, _ := r.Lookup(tool)
 	call := func(project, answer string) string {
-		text, _ := r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+		text, _ := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+			// The layer asks the handler for the preview of its question
+			// without the consent: only a consented call sends.
+			if confirmed, _ := args["confirmed"].(bool); !confirmed {
+				return `{"status":"error","reason":"USAGE"}`, true
+			}
 			sent++
 			return answer, strings.Contains(answer, `"error"`)
 		})(context.Background(), map[string]any{"name": "db", "size_gb": 10.0, "project_id": project, "confirmed": true})
@@ -272,5 +277,87 @@ func TestIntent_ACutCallIsOfTheProjectOfTheCall(t *testing.T) {
 	}
 	if text := call(a, `{"status":"created"}`); sent != 2 || !strings.Contains(text, `"interrupted"`) {
 		t.Errorf("the repeat in project A: sent %d, want 2 and the question\n%s", sent, text)
+	}
+}
+
+// The question a consented repeat gets after a lost answer carries the
+// preview of the create — its price, or that the resource is billable —
+// as the question of a call without consent does: the person asked about
+// «one more» sees what it costs («Риск», the conclusion on D107, У9). The
+// plan is read for it no more than for a call without consent.
+func TestPaidCreate_TheQuestionOfAConsentedRepeatCarriesThePreview(t *testing.T) {
+	gets := func(w faultWorld) int { return len(w.callLog()) - creates(w) }
+	for _, c := range faultMatrixCases {
+		if !everySendIsAChange[c.tool].made {
+			continue
+		}
+		t.Run(c.tool, func(t *testing.T) {
+			// The repeat of each kind in a world of its own, after the
+			// same lost answer.
+			repeat := func(consented bool) (map[string]any, int) {
+				api, r, _, k, ctx := paidCreateWorld(t, c, 1000)
+				api.failAt(k, faultLost)
+				r.handlers[c.tool](ctx, maps.Clone(c.args))
+				api.disarm()
+				args := maps.Clone(c.args)
+				if !consented {
+					delete(args, "confirmed")
+				}
+				before := gets(api)
+				text, _ := r.handlers[c.tool](context.Background(), args)
+				var m map[string]any
+				_ = json.Unmarshal([]byte(text), &m)
+				if m["status"] != "confirmation_required" || m["interrupted"] == nil || creates(api) != 1 {
+					t.Fatalf("the repeat (consented %v) after a lost answer: create requests %d\n%s", consented, creates(api), text)
+				}
+				return m, gets(api) - before
+			}
+			with, readsWith := repeat(true)
+			without, readsWithout := repeat(false)
+			for field, want := range without {
+				if field == "interrupted" || field == "message" || field == "pending_operations" || field == "_untrusted" {
+					continue
+				}
+				got, _ := json.Marshal(with[field])
+				exp, _ := json.Marshal(want)
+				if string(got) != string(exp) {
+					t.Errorf("the question of the consented repeat: %s is %s, the question without consent has %s", field, got, exp)
+				}
+			}
+			if len(without) < 4 {
+				t.Errorf("the question without consent has no preview to compare: %v", without)
+			}
+			if readsWith > readsWithout {
+				t.Errorf("the consented repeat read the cloud %d times for its question, a call without consent %d", readsWith, readsWithout)
+			}
+		})
+	}
+}
+
+// A plan that does not answer a question — a read of it failed — leaves
+// the question after a cut call as it is, with no preview: the failure of
+// the preview is neither a refusal nor a send.
+func TestIntent_TheQuestionStaysWhenThePreviewCannotBeMade(t *testing.T) {
+	const tool = "cert_renew"
+	everySendIsAChange[tool] = changeRule{read: "cert_get"}
+	t.Cleanup(func() { delete(everySendIsAChange, tool) })
+	r := ownerRegistry(t, &ownerFake{}, false, ownProject)
+	eng, _ := r.newEngine(nil)
+	if _, err := intent.Open(intent.Dir(eng.StateDir), intent.Intent{Tool: tool, Target: "certificate_id=" + resMine, Key: eng.Maker()}); err != nil {
+		t.Fatal(err)
+	}
+	sent := 0
+	tl, _ := r.Lookup(tool)
+	text, isErr := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+		if confirmed, _ := args["confirmed"].(bool); confirmed {
+			sent++
+			return `{"status":"ok"}`, false
+		}
+		return `{"status":"error","reason":"API_UNREACHABLE","error":"read the certificate: no route"}`, true
+	})(context.Background(), map[string]any{"certificate_id": resMine, "confirmed": true})
+	var m map[string]any
+	_ = json.Unmarshal([]byte(text), &m)
+	if !isErr || sent != 0 || m["status"] != "confirmation_required" || m["interrupted"] == nil || m["reason"] != nil {
+		t.Errorf("the preview could not be made: sent %d, want the question about the cut call alone\n%s", sent, text)
 	}
 }

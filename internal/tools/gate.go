@@ -158,7 +158,7 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if _, _, err := r.resourceOf(ctx, t.Name, args); err != nil {
 			return errResult(err), true
 		}
-		if text, asked := r.askAgainAfterACut(ctx, t.Name, args); asked {
+		if text, asked := r.askAgainAfterACut(ctx, t.Name, args, next); asked {
 			return text, true
 		}
 		// The operation of this call goes on under its held record: a

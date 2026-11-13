@@ -54,7 +54,12 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 			}
 			sent := 0
 			tl, _ := r.Lookup(tool)
-			call := r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+			call := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+				// Without the consent the handler plans and sends nothing
+				// (the layer asks it for the preview of its question).
+				if confirmed, _ := args["confirmed"].(bool); !confirmed {
+					return `{"status":"error","reason":"USAGE"}`, true
+				}
 				sent++
 				return `{"status":"ok"}`, false
 			})
