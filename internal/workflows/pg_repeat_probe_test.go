@@ -77,6 +77,11 @@ func TestWorkflows_PgRepeatProbeIsBounded(t *testing.T) {
 		if strings.Contains(l, "curl ") && !strings.HasSuffix(strings.TrimSpace(l), "\\") && !strings.Contains(l, "2>/dev/null") {
 			t.Errorf("pg-repeat-probe.sh lets curl's errors into the log: %s", strings.TrimSpace(l))
 		}
+		// A request that hangs would keep the paid cluster to the limit of
+		// the job (risk note 185).
+		if strings.Contains(l, "curl ") && (!strings.Contains(l, "--connect-timeout ") || !strings.Contains(l, "--max-time ")) {
+			t.Errorf("pg-repeat-probe.sh: curl without --connect-timeout and --max-time: %s", strings.TrimSpace(l))
+		}
 		if regexp.MustCompile(`curl [^|]*(\s-[A-Za-z]*L[A-Za-z]*\s|--location)`).MatchString(l) {
 			t.Errorf("pg-repeat-probe.sh follows redirects: %s", strings.TrimSpace(l))
 		}

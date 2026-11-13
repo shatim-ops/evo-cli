@@ -37,7 +37,7 @@ if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ]; then
 fi
 # Тело запроса токена — через stdin, не в argv.
 token=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-	curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
+	curl -sS --connect-timeout 10 --max-time 60 -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
 	jq -r '.access_token // .accessToken // empty') || token=
 if [ -z "$token" ]; then
 	echo "повтор создания: не проведена — токен IAM не получен"
@@ -45,14 +45,16 @@ if [ -z "$token" ]; then
 fi
 echo "::add-mask::$token"
 
-# req МЕТОД ПУТЬ [ТЕЛО] — код HTTP в $code, тело ответа — в $out.
+# req МЕТОД ПУТЬ [ТЕЛО] — код HTTP в $code, тело ответа — в $out. У каждого
+# запроса предел времени: зависший запрос держал бы платный кластер до
+# предела job (заключение «Риска» 185, У2).
 req() {
 	: >"$out"
 	if [ -n "${3:-}" ]; then
-		code=$(printf '%s' "$3" | curl -sS -o "$out" -w '%{http_code}' -X "$1" "$api/v1/clusters/$CLUSTER_ID/$2" \
+		code=$(printf '%s' "$3" | curl -sS --connect-timeout 10 --max-time 60 -o "$out" -w '%{http_code}' -X "$1" "$api/v1/clusters/$CLUSTER_ID/$2" \
 			-H "Authorization: Bearer $token" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || code=000
 	else
-		code=$(curl -sS -o "$out" -w '%{http_code}' -X "$1" "$api/v1/clusters/$CLUSTER_ID/$2" -H "Authorization: Bearer $token" 2>/dev/null) || code=000
+		code=$(curl -sS --connect-timeout 10 --max-time 60 -o "$out" -w '%{http_code}' -X "$1" "$api/v1/clusters/$CLUSTER_ID/$2" -H "Authorization: Bearer $token" 2>/dev/null) || code=000
 	fi
 }
 # count ПУТЬ КЛЮЧ ИМЯ — сколько записей списка носят ИМЯ («?» — не прочитан).
@@ -97,7 +99,11 @@ u1=$(count users users "$user")
 d1=$(count databases databases "$db")
 echo "повтор создания пользователя: $ua; пользователей с этим именем: было $u0, через ${PG_REPEAT_PAUSE:-30} с — $u1"
 echo "повтор создания базы: $da; баз с этим именем: было $d0, через ${PG_REPEAT_PAUSE:-30} с — $d1"
-case "$ucode$dcode" in *2[0-9][0-9]*)
-	echo "::warning::повтор создания PostgreSQL принят платформой (пользователь: HTTP $ucode, база: HTTP $dcode) — объявление evo «второго с тем же именем PostgreSQL отвергает» этим прогоном не подтверждено; пароль пользователя пробы мог смениться"
-	;;
-esac
+# Принятый повтор или не одна запись после него: следующий шаг job удаляет
+# базу и пользователя и может упасть — это названо здесь, до него (У3).
+taken=0
+case "$ucode" in 2??) taken=1 ;; esac
+case "$dcode" in 2??) taken=1 ;; esac
+if [ "$taken" = 1 ] || [ "$u1" != 1 ] || [ "$d1" != 1 ]; then
+	echo "::warning::повтор создания PostgreSQL: платформа не отвергла повтор или в списке не одна запись (пользователь: HTTP $ucode, записей $u1; база: HTTP $dcode, записей $d1) — объявление evo «второго с тем же именем PostgreSQL отвергает» этим прогоном не подтверждено; пароль пользователя пробы мог смениться; шаг удаления базы и пользователя ниже может упасть — это следствие пробы, не дефект evo; кластер удаляется концом job, строка «ресурсов пробы: 0» — как обычно"
+fi

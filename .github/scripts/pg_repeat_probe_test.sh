@@ -18,7 +18,7 @@ cat >"$work/bin/curl" <<'FAKE'
 out=/dev/stdout url='' method=GET body=0
 while [ $# -gt 0 ]; do
 	case $1 in
-	-o) out=$2; shift ;; -X) method=$2; shift ;; -w | -H) shift ;;
+	-o) out=$2; shift ;; -X) method=$2; shift ;; -w | -H | --connect-timeout | --max-time) shift ;;
 	--data-binary) body=1; shift ;;
 	https://*) url=$1 ;;
 	esac
@@ -97,7 +97,22 @@ H
 run
 want "принят: код" "$rc" 0
 has принят 'повтор создания пользователя: принят: HTTP 200, поля ответа: \["granted_roles","name"\]; пользователей с этим именем: было 1, через 0 с — 2'
-has принят '::warning::повтор создания PostgreSQL принят платформой (пользователь: HTTP 200, база: HTTP 409)'
+has принят '::warning::повтор создания PostgreSQL: платформа не отвергла повтор или в списке не одна запись (пользователь: HTTP 200, записей 2; база: HTTP 409, записей 1)'
+has принят 'шаг удаления базы и пользователя ниже может упасть — это следствие пробы, не дефект evo'
+
+# Повтор отвергнут, а записей с именем после него всё равно две: тоже
+# предупреждение — следующий шаг удаляет по имени.
+world
+cat >"$FAKE_DIR/http" <<H
+GET! cl-1/users 200 $U
+GET! cl-1/databases 200 $D
+POST cl-1/users 409 {"code":6,"message":"exists"}
+POST cl-1/databases 409 {"code":6,"message":"exists"}
+GET cl-1/users 200 $U
+GET cl-1/databases 200 {"databases":[{"name":"evo_e2e_db"},{"name":"evo_e2e_db"}]}
+H
+run
+has "две записи" '::warning::повтор создания PostgreSQL: .*база: HTTP 409, записей 2'
 
 # Пользователя или базы до запроса нет (предыдущий шаг не дошёл): повтор
 # не шлётся — иначе проба сама создала бы первого.
