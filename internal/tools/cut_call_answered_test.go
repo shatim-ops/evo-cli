@@ -25,7 +25,7 @@ import (
 // «Риск», conclusion 176, У1 and У2).
 func TestIntent_ACommandsQuestionKeepsTheCutCallUntilAPersonAnswers(t *testing.T) {
 	const tool = "cert_renew" // stands for a tool of the list
-	everySendIsAChange[tool] = "cert_get"
+	everySendIsAChange[tool] = changeRule{read: "cert_get"}
 	t.Cleanup(func() { delete(everySendIsAChange, tool) })
 	r := ownerRegistry(t, &ownerFake{}, false, ownProject)
 	eng, _ := r.newEngine(nil)
