@@ -32,13 +32,8 @@ const listLagsUnknown = "a second of the name after a lost answer: whether the s
 // list that lags, leaves more billable resources than one clean call —
 // each with what is known. Only shrinks. Closes by 1.10.
 var listLagsPending = map[string]string{
-	"ar_create":         listLagsUnknown,
-	"cert_import":       listLagsUnknown,
 	"dns_record_create": listLagsUnknown,
-	"pg_backup_create":  listLagsUnknown,
 	"snat_create":       listLagsUnknown,
-	"tg_create":         listLagsUnknown,
-	"vpc_create":        listLagsUnknown,
 	"vpc_route_create":  listLagsUnknown,
 }
 
