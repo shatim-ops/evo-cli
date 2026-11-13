@@ -430,6 +430,25 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/main_red_test.sh
 
+      # Автозакрытие issue «main красный» (вариант Б, план 1.9, строка «CI»):
+      # main-red сравнивает красный и зелёный коммит в неглубоком checkout
+      # без учётных данных и добирает коммиты по sha. Здесь то же самое на
+      # раннере, на двух настоящих эпизодах ночи 12–13.11: #1576 — тест
+      # прошёл сам (файл не менялся), #1579 — закрыт правкой файла теста.
+      - name: main_red.sh — сравнение коммитов на раннере
+        if: runner.os == 'Linux'
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          dir=$(mktemp -d)
+          git clone --quiet --depth 1 "$REPO_URL" "$dir"
+          t=TestDeploy_InProgressLeavesTheRecordUnfinished
+          f=internal/tools/deploy_unfinished_invariant_test.go
+          got=$(REPO_DIR="$dir" .github/scripts/main_red.sh changed 09475cd1fb9fb4b455cb6f140322b61a1e6c806e f63d297a5cbb036e785f447a4c112ada92c856ef "$t")
+          [ "$got" = "same $f" ] || { echo "::error::эпизод #1576: «$got», ждём «same $f»"; exit 1; }
+          got=$(REPO_DIR="$dir" .github/scripts/main_red.sh changed 3b4f18b749fe90a9d1a32d059e28955dbf9d3304 0f426bfa2c29af20489566f4b8f885332b49fadc "$t")
+          [ "$got" = "changed $f" ] || { echo "::error::эпизод #1579: «$got», ждём «changed $f»"; exit 1; }
+
       # Обход открытых PR (pr-stuck.yml): PR с конфликтом и job без раннера
       # получают строку один раз на голову — на поддельном gh.
       - name: pr_stuck.sh на поддельном gh
