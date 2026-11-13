@@ -711,7 +711,8 @@ func (s *Registry) registerTools() {
 			Name:        "agent_skill",
 			Description: "Read the card of a tool group: its tools, where their ids come from, what deletes what a create made, what to wait with, and the group's notes. Without group: the groups. Read-only and local: asks the cloud nothing. For when a tool's description leaves a question; a card is not a preview.",
 			InputSchema: objSchema(map[string]any{
-				"group": enumProp("Tool group; none: the list of groups.", Groups()...),
+				// An empty group is not «no group» (D100; FB19I-26 (б)).
+				"group": withMinLength(enumProp("Tool group; none: the list of groups.", Groups()...)),
 			}),
 		},
 		{

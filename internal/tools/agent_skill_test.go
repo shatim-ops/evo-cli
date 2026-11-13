@@ -190,3 +190,18 @@ func TestAgentSkill_EveryNameInTheCardIsServedOrCovered(t *testing.T) {
 		}
 	}
 }
+
+// An empty group is not «no group»: USAGE before the call, on MCP as in
+// the CLI (D100; FB19I-26 (б)); no group at all lists the groups.
+func TestAgentSkill_EmptyGroupIsUsage(t *testing.T) {
+	r := New(nil)
+	for _, g := range []string{"", " "} {
+		m, text, isErr := callNamed(t, r, "agent_skill", map[string]any{"group": g})
+		if !isErr || m["reason"] != "USAGE" {
+			t.Errorf("group %q: want USAGE: %s", g, text)
+		}
+	}
+	if _, text, isErr := callNamed(t, r, "agent_skill", map[string]any{}); isErr || !strings.Contains(text, `"groups"`) {
+		t.Errorf("no group: want the groups: %s", text)
+	}
+}
