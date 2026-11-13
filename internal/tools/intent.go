@@ -87,6 +87,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	}
 	if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
 		own.ids = append(own.ids, rec.ID)
+		own.open, own.hasOpen = rec, true
 	}
 	forgetPending(ctx)
 	return func(answer string) {
@@ -96,12 +97,21 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			// No write went out (changeRule.viaHTTP): the call changed
 			// nothing, whatever cut it.
-			if n, counted := httpretry.Writes(ctx); counted && n == 0 && everySendIsAChange[name].viaHTTP {
+			rule := everySendIsAChange[name]
+			if n, counted := httpretry.Writes(ctx); counted && n == 0 && rule.viaHTTP {
+				intent.Close(rec)
+				return
+			}
+			// Nor did a call whose handler says its write goes out
+			// (markSent) and did not say it.
+			if rule.marksSend && !callSent(ctx) {
 				intent.Close(rec)
 				return
 			}
 			// The call returned, the record stays: a later call of the
-			// same may settle it (intent.Settle).
+			// same may settle it (intent.Settle) — with what the call
+			// said of its write (markSent).
+			rec.Sent = rec.Sent || callSent(ctx)
 			intent.End(rec)
 			return
 		}
@@ -208,6 +218,18 @@ type changeRule struct {
 	// that is taken — the question is asked only while the list does not
 	// show it («Риск», conclusion 179, У1).
 	made bool
+	// marksSend: the handler says right before its write that it goes out
+	// (markSent) — a tool whose writes evo's transport does not count. A
+	// call that ended with no outcome and did not say it sent nothing: its
+	// record closes («Риск», conclusion 177, У13; the conclusion on D107,
+	// У2).
+	marksSend bool
+	// settledBy reads the resource and says what the record of a cut call
+	// of the tool means now: the change is made (the record closes, no
+	// question), it goes on (no question, the plan waits for it), or the
+	// resource is where the change started or elsewhere (the question). nil:
+	// the question, always. An error is a question too.
+	settledBy func(ctx context.Context, r *Registry, args map[string]any) (outcome, error)
 	// viaHTTP: every write of the tool goes out through evo's HTTP
 	// transport (httpretry), which counts them for the call. A call that
 	// ended with no outcome and sent no write changed nothing: its record
@@ -215,6 +237,19 @@ type changeRule struct {
 	// («Риск», conclusion 179, У2).
 	viaHTTP bool
 }
+
+// outcome is what the resource of a cut call says of it (settledBy).
+type outcome int
+
+const (
+	// outcomeAsk: the resource is where the change started, or anywhere
+	// but where it leads: a person decides whether to send one more.
+	outcomeAsk outcome = iota
+	// outcomeMade: the change is made; the record closes.
+	outcomeMade
+	// outcomeGoesOn: the change goes on; the record stays, nobody is asked.
+	outcomeGoesOn
+)
 
 // paidCreate is the rule of a create of a resource billed from its first
 // minute at the price of a cluster: the repeat of a call whose answer was
@@ -250,7 +285,13 @@ func nameArg(args map[string]any) string { return stringArg(args, "name") }
 var everySendIsAChange = map[string]changeRule{
 	// A reboot has no «already»: the VM runs before it and after it
 	// (docs/internal/briefs/ops-wave-1.md §5).
-	"vm_reboot": {read: "vm_get", target: vmTarget("vm_reboot")},
+	"vm_reboot": {read: "vm_get", target: vmTarget("vm_reboot"), marksSend: true},
+	// A start or a stop is made once the VM is where it leads: the state
+	// of the VM tells the outcome of a cut call, and only a VM back where
+	// the change started is asked about (the interim delta audit of 1.9,
+	// FB19I-2; «Риск», conclusion 177, У13).
+	"vm_start": {read: "vm_get", target: vmTarget("vm_start"), marksSend: true, settledBy: vmSettled("vm_start")},
+	"vm_stop":  {read: "vm_get", target: vmTarget("vm_stop"), marksSend: true, settledBy: vmSettled("vm_stop")},
 	// A backup by the same name is found before the question, but a lost
 	// answer may leave it not yet listed: a repeat would make a second,
 	// billed with no term («Риск», conclusion 164, У5; the audit of #1544,
@@ -335,7 +376,9 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
 	var cut []intent.Intent
 	for _, in := range pendingIn(ctx, root) {
-		if in.Held || in.Tool != name || in.Key == nil || in.ProjectID != project {
+		// A held record is an operation evo goes on with, not a cut call
+		// — unless a send of it was cut (CutSend).
+		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil || in.ProjectID != project {
 			continue
 		}
 		if in.Name != resource || in.Target != target {
@@ -369,6 +412,18 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 			if _, listed := r.checkByList(ctx, in, in.ProjectID); listed {
 				intent.Close(in)
 				forgetPending(ctx)
+				continue
+			}
+		}
+		// The resource tells the outcome (settledBy): made — the record
+		// closes; going on — nobody is asked, the plan waits for it.
+		if settled := everySendIsAChange[name].settledBy; settled != nil {
+			switch o, err := settled(ctx, r, args); {
+			case err == nil && o == outcomeMade:
+				intent.Close(in)
+				forgetPending(ctx)
+				continue
+			case err == nil && o == outcomeGoesOn:
 				continue
 			}
 		}
@@ -562,18 +617,34 @@ func (r *Registry) settleHeld(ctx context.Context, name string, args map[string]
 // goesOn tells a call of tool name on the resource args name whose
 // operation this caller began and evo still goes on with: its held record,
 // named as the call names the resource.
-func (r *Registry) goesOn(ctx context.Context, name string, args map[string]any) bool {
+func (r *Registry) goesOn(ctx context.Context, name string, args map[string]any) (held intent.Intent, ok bool) {
 	resource, target, err := r.resourceOf(ctx, name, args)
-	root, ok := r.stateDir()
-	if err != nil || !ok || (resource == "" && target == "") {
-		return false
+	root, rooted := r.stateDir()
+	if err != nil || !rooted || (resource == "" && target == "") {
+		return intent.Intent{}, false
 	}
 	for _, in := range pendingIn(ctx, root) {
 		if in.Held && in.Tool == name && in.Name == resource && in.Target == target && !in.Key.Other(r.maker()) {
-			return true
+			return in, true
 		}
 	}
-	return false
+	return intent.Intent{}, false
+}
+
+// cutSendOf marks the held record of the operation a call went on with
+// when the call sent its write again (callSent) and ended with no outcome:
+// the next call asks rather than sends a third time («Риск», conclusion
+// 177, У13). A call that sent nothing — it only read the operation — or
+// that has its outcome leaves the record as it was.
+func cutSendOf(ctx context.Context, held intent.Intent, answer string) {
+	if ctx.Err() == nil && !intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
+		return
+	}
+	if !callSent(ctx) {
+		return
+	}
+	intent.MarkCutSend(held, clock.Now())
+	forgetPending(ctx)
 }
 
 // heldSince is the start of the operation of tool on target («argument=id»)

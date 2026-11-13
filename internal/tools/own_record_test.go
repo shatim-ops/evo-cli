@@ -35,12 +35,13 @@ func TestIntent_ACallsOwnRecordIsNotInItsOwnAnswer(t *testing.T) {
 	reboot, _ := r.Lookup("vm_reboot")
 	args := func() map[string]any { return map[string]any{"vm_id": resMine, "confirmed": true} }
 	sent := 0
-	call := r.budgeted(r.intended(reboot, func(_ context.Context, args map[string]any) (string, bool) {
+	call := r.budgeted(r.intended(reboot, func(ctx context.Context, args map[string]any) (string, bool) {
 		// The layer asks the handler for the preview of its question
 		// without the consent: only a consented call sends.
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return `{"status":"error","reason":"USAGE"}`, true
 		}
+		markSent(ctx)
 		sent++
 		return `{"status":"error","error":"reboot: API_ERROR: 502","reason":"API_ERROR"}`, true
 	}))

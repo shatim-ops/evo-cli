@@ -116,6 +116,17 @@ type Intent struct {
 	// is not known, and it is no longer in flight. A record without it
 	// whose process lives is a call that has not returned (inFlight).
 	Ended bool `json:"ended,omitempty"`
+	// Sent tells a call that said, before its write, that the write goes
+	// out (a tool whose writes evo's transport does not count: the power
+	// commands of Compute). A call of such a tool that ended with no
+	// outcome and no Sent sent nothing.
+	Sent bool `json:"sent,omitempty"`
+	// CutSend is when a call that went on with this held operation sent
+	// its write again and was cut before the answer: the operation's
+	// resource may have been changed once more, and the next call asks
+	// rather than sends a third time («Риск», conclusion 177, У13). Zero
+	// when no such send was cut.
+	CutSend time.Time `json:"cut_send,omitempty"`
 	// Canon is the canonical form of the arguments Print is made of; not
 	// saved. The caller sets it before Open and keeps it for Settle.
 	Canon []byte `json:"-"`
@@ -145,6 +156,19 @@ func (in Intent) SameCall(canon []byte) bool {
 // its record is not another call's to remove.
 func (in Intent) inFlight() bool {
 	return !in.Ended && !in.Held && (in.PID == os.Getpid() || processAlive(in.PID))
+}
+
+// MarkSent marks the record in as a call whose write goes out (Sent).
+func MarkSent(in Intent) {
+	in.Sent = true
+	_ = write(in)
+}
+
+// MarkCutSend marks the held record in with a send of its operation that
+// was cut at at (CutSend).
+func MarkCutSend(in Intent, at time.Time) {
+	in.CutSend = at
+	_ = write(in)
 }
 
 // End marks the record in as a call that returned with its outcome not

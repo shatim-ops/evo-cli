@@ -137,6 +137,12 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if depth > 1 {
 			return next(ctx, args)
 		}
+		// The holder of what the call reads and says of its records: the
+		// call of a tool has it (budgeted); a layer called on its own gets
+		// its own, so a handler's markSent is heard.
+		if _, ok := ctx.Value(callRecordsKey{}).(*callRecords); !ok {
+			ctx = context.WithValue(ctx, callRecordsKey{}, &callRecords{})
+		}
 		// No directory for the record of the call: no question is asked
 		// about a call that would be refused, and none is sent.
 		if r.stateDirUndeclared() {
@@ -169,7 +175,9 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		// the limit of the repeats counts from («Риск», conclusion 177,
 		// У7).
 		end := func(string) {}
-		if !r.goesOn(ctx, t.Name, args) {
+		if held, goesOn := r.goesOn(ctx, t.Name, args); goesOn {
+			end = func(answer string) { cutSendOf(ctx, held, answer) }
+		} else {
 			var err error
 			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
 				return errResult(err), true

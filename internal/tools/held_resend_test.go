@@ -60,3 +60,63 @@ func TestHeld_ACutSendOnAHeldOperationIsAskedAbout(t *testing.T) {
 		t.Errorf("power calls = %d, want 2: the repeat sent the command a third time with nobody asked", n)
 	}
 }
+
+// A cut start or stop is told by the state of its VM (changeRule.settledBy):
+// where the action leads — the record closes and the repeat answers as on
+// any VM already there; in the transition — nobody is asked, the repeat
+// waits for it; back where it started, or anywhere else — the question. A
+// call cut before its command went out (markSent) left nothing: no record,
+// no question («Риск», conclusion 177, У13; the conclusion on D107, У2).
+func TestVMPower_ACutCallIsToldByTheStateOfItsVM(t *testing.T) {
+	for _, c := range []struct {
+		state, status string
+		asked         bool
+		records       int
+	}{
+		{"running", "already_running", false, 0},
+		{"starting", "", false, -1},
+		{"stopped", "confirmation_required", true, 0},
+		{"error", "confirmation_required", true, 0},
+	} {
+		t.Run(c.state, func(t *testing.T) {
+			r, w, dir := heldPowerWorld(t, "stopped")
+			tl, _ := r.Lookup("vm_start")
+			ctx, cancel := context.WithCancel(context.Background())
+			w.onPower = func() error {
+				_ = w.faultCloud.SetVMPower(context.Background(), w.id, "start")
+				cancel()
+				return ctx.Err()
+			}
+			tl.Handler(ctx, map[string]any{"vm_id": w.id, "confirmed": true})
+			w.onPower = nil
+			if left := intent.Pending(dir); len(left) != 1 || !left[0].Sent {
+				t.Fatalf("the record of the cut start: %+v, want one, marked sent", left)
+			}
+			w.setVMState(w.id, c.state)
+			text, _ := tl.Handler(context.Background(), map[string]any{"vm_id": w.id, "confirmed": true})
+			m := parseAnswer(t, text)
+			if _, asked := m["interrupted"]; asked != c.asked || (c.status != "" && m["status"] != c.status) {
+				t.Errorf("the repeat with the VM %s: %s, want asked %v", c.state, text, c.asked)
+			}
+			if n := w.powerCalls(); n != 1 {
+				t.Errorf("power calls = %d, want 1", n)
+			}
+			if c.records >= 0 && len(intent.Pending(dir)) != c.records && !c.asked {
+				t.Errorf("records after the repeat: %+v, want %d", intent.Pending(dir), c.records)
+			}
+		})
+	}
+	t.Run("cut before the command", func(t *testing.T) {
+		r, _, dir := heldPowerWorld(t, "stopped")
+		tl, _ := r.Lookup("vm_start")
+		ctx, cancel := context.WithCancel(context.Background())
+		// The plan is cut at its read, before the command (no markSent).
+		r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+			cancel()
+			return `{"status":"error","reason":"INTERRUPTED"}`, true
+		})(ctx, map[string]any{"vm_id": resMine, "confirmed": true})
+		if left := intent.Pending(dir); len(left) != 0 {
+			t.Errorf("a call that sent no command left a record: %+v", left)
+		}
+	})
+}

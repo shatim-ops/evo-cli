@@ -254,12 +254,13 @@ func TestIntent_ACutCallIsOfTheProjectOfTheCall(t *testing.T) {
 	sent := 0
 	tl, _ := r.Lookup(tool)
 	call := func(project, answer string) string {
-		text, _ := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+		text, _ := r.intended(tl, func(ctx context.Context, args map[string]any) (string, bool) {
 			// The layer asks the handler for the preview of its question
 			// without the consent: only a consented call sends.
 			if confirmed, _ := args["confirmed"].(bool); !confirmed {
 				return `{"status":"error","reason":"USAGE"}`, true
 			}
+			markSent(ctx)
 			sent++
 			return answer, strings.Contains(answer, `"error"`)
 		})(context.Background(), map[string]any{"name": "db", "size_gb": 10.0, "project_id": project, "confirmed": true})
@@ -348,8 +349,9 @@ func TestIntent_TheQuestionStaysWhenThePreviewCannotBeMade(t *testing.T) {
 	}
 	sent := 0
 	tl, _ := r.Lookup(tool)
-	text, isErr := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+	text, isErr := r.intended(tl, func(ctx context.Context, args map[string]any) (string, bool) {
 		if confirmed, _ := args["confirmed"].(bool); confirmed {
+			markSent(ctx)
 			sent++
 			return `{"status":"ok"}`, false
 		}
