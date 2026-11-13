@@ -2139,12 +2139,12 @@ probe_g11() {
 		api DELETE "$2"
 		r="$r, повтор сразу — $(brief)"
 		t0=$SECONDS
-		if ops_settle "$2" 120 gone; then
+		if ops_settle "$2" "${PROBE_WAIT:-120}" gone; then
 			r="$r; состояния: $chain, $((SECONDS - t0)) с"
 			api DELETE "$2"
 			r="$r; повтор после исчезновения — $(brief)"
 		else
-			r="$r; не исчезло за 2 мин (состояния: $chain) — повтор после исчезновения не шлю"
+			r="$r; не исчезло за ${PROBE_WAIT:-120} с (состояния: $chain) — повтор после исчезновения не шлю"
 		fi
 		ok "Г-11: удаление $1" "$r"
 	}
