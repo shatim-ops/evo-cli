@@ -22,19 +22,14 @@ const renameRetries = 128
 // wait of the machine. On every other OS, and for any other error, the
 // first rename is the answer.
 func renameAtomic(oldpath, newpath string) error {
-	return yieldingToReaders(func() error { return os.Rename(oldpath, newpath) })
+	return YieldingToReaders(func() error { return os.Rename(oldpath, newpath) })
 }
 
-// RemoveYielding removes path as os.Remove does, yielding to a concurrent
-// reader that blocks the removal on Windows (renameAtomic): a record an
-// answered call closes must not stay because another call read it then.
-func RemoveYielding(path string) error {
-	return yieldingToReaders(func() error { return os.Remove(path) })
-}
-
-// yieldingToReaders runs op and, while Windows refuses it for a reader that
-// holds the file, yields and runs it again, bounded.
-func yieldingToReaders(op func() error) error {
+// YieldingToReaders runs op — a rename or a removal of a file — and, while
+// Windows refuses it for a reader that holds the file, yields and runs it
+// again, bounded (renameAtomic): a record an answered call closes must not
+// stay because another call read it then.
+func YieldingToReaders(op func() error) error {
 	err := op()
 	for i := 0; err != nil && i < renameRetries && renameBlockedByReader(err); i++ {
 		runtime.Gosched()

@@ -438,7 +438,7 @@ func Close(in Intent) { remove(in.Dir, in.ID) }
 func remove(dir, id string) {
 	if path := recordPath(dir, id); path != "" {
 		// A concurrent read of the record by another call blocks the
-		// removal on Windows: it is retried (config.RemoveYielding).
-		_ = config.RemoveYielding(path)
+		// removal on Windows: it is retried (config.YieldingToReaders).
+		_ = config.YieldingToReaders(func() error { return os.Remove(path) })
 	}
 }
