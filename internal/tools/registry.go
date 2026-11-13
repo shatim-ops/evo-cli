@@ -392,8 +392,8 @@ func New(factory EngineFactory) *Registry {
 			if keys := echoedArgs[t.Name]; keys != nil {
 				h = namedArgs(keys, h)
 			}
-			if f := untrustedFields[t.Name].fields; f != nil {
-				h = markUntrusted(f, h)
+			if u := untrustedFields[t.Name]; u.marked() {
+				h = markUntrusted(u, h)
 			}
 			if r.unchecked == nil {
 				r.unchecked = map[string]Handler{}

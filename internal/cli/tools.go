@@ -836,7 +836,8 @@ func toolPreview(name string, resp map[string]any) confirm.Preview {
 	}
 	rest := map[string]any{}
 	for k, v := range resp {
-		if k != "status" && k != "message" {
+		// _untrusted: for a client of the JSON, as in renderAnswer.
+		if k != "status" && k != "message" && k != "_untrusted" {
 			rest[k] = v
 		}
 	}
