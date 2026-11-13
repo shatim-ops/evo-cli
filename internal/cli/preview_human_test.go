@@ -52,7 +52,6 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"deploy_apply plan_id":                            {unnamedNoise, "id плана: у плана нет имени"},
 	"deploy_apply preview.cost.hourly_rub":            {unnamedPrice, "почасовая цена; человеку — месячная"},
 	"image_create will_create.has_user_data_template": {unnamedWork, "есть ли шаблон cloud-init"},
-	"k8s_add_addon version_from":                      {unnamedWork, "версия плагина — последняя"},
 	"kafka_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM)"},
 	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами"},
 	"provision preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена; человеку — месячная"},

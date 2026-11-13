@@ -434,12 +434,24 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 
 // preview is the CreatePreview of the plan, in the lines of the other
 // k8s previews.
+// versionFrom is where the version of the plan comes from: "requested",
+// the call's, or "latest", the one evo picks.
+func (p *addonPlan) versionFrom() string {
+	if p.requested {
+		return "requested"
+	}
+	return "latest"
+}
+
 func (p *addonPlan) preview(clusterID, resolveMode string, configKeys []string) engine.CreatePreview {
 	cp := engine.CreatePreview{Resource: engine.ResourceK8sAddon, Name: p.addon.Name}
 	r := p.release
 	cp.Add("cluster_id", clusterID)
 	cp.Add("cluster_name", p.clusterName)
 	cp.Add("version", r.AppVersion)
+	// evo picks the latest version when the call names none: the person
+	// sees it beside the version (CLAUDE.md §6, axis 4).
+	cp.Add("version_from", p.versionFrom())
 	cp.Add("addon_version", r.AddonVersion)
 	if m := mk8s.NormalizeMode(r.Mode); m != mk8s.ModeActive {
 		cp.Add("support", m)
@@ -521,10 +533,6 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 		}
 	}
 	requirements := map[string]any{"kube_versions": r.Requirements.KubeVersions, "ready_workers": int(r.Requirements.ReadyWorkers)}
-	versionFrom := "latest"
-	if plan.requested {
-		versionFrom = "requested"
-	}
 
 	// The preview is built for the question only (Plan.PreviewOf).
 	preview := func(ctx context.Context) (map[string]any, error) {
@@ -536,8 +544,10 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 			"message": i18n.Tf("k8s_add_addon installs %s %s into cluster %s (%s).",
 				"k8s_add_addon устанавливает %s %s в кластер %s (%s).",
 				plan.addon.Name, r.AppVersion, clusterID, addonNamespaceText(r.AddonNamespace)),
-			"preview":      preview,
-			"version_from": versionFrom,
+			"preview": preview,
+			// The same as the preview's, kept beside it: --json keeps a
+			// field within a major (RELEASING).
+			"version_from": plan.versionFrom(),
 			"requirements": requirements,
 		}
 		if len(plan.notChecked) > 0 {
