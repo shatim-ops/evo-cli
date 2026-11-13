@@ -63,14 +63,11 @@ func (e *Engine) vmStopped(ctx context.Context, rec *state.DeploymentRecord, cod
 	}
 	e.Cloud.SetToken(tok.Value)
 	vm, err := e.Cloud.GetVM(cctx, rec.VMID)
-	if err != nil || vm == nil {
+	if err != nil || vm == nil || !VMStateCovered(vm.Status) {
 		return "", nil
 	}
 	if vmTransitStates[vm.Status] {
 		return vm.Status, nil
-	}
-	if !vmStoppedStates[vm.Status] {
-		return "", nil
 	}
 	return "", &VMStoppedError{State: vm.Status, err: &clerrors.CLIError{
 		Code: code,
