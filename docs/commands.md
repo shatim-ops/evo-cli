@@ -218,6 +218,7 @@
     - [evo vm get](#evo-vm-get)
     - [evo vm list](#evo-vm-list)
     - [evo vm reboot](#evo-vm-reboot)
+    - [evo vm resize](#evo-vm-resize)
     - [evo vm start](#evo-vm-start)
     - [evo vm stop](#evo-vm-stop)
     - [evo vm zones](#evo-vm-zones)
@@ -9759,6 +9760,7 @@ evo vm [flags]
 * [evo vm get](#evo-vm-get)	 - ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы
 * [evo vm list](#evo-vm-list)	 - Список ВМ проекта: id, имя, состояние, зона, время создания
 * [evo vm reboot](#evo-vm-reboot)	 - Перезагрузить работающую ВМ и дождаться состояния running
+* [evo vm resize](#evo-vm-resize)	 - Сменить конфигурацию (flavor) ВМ и дождаться её
 * [evo vm start](#evo-vm-start)	 - Запустить остановленную ВМ и дождаться состояния running
 * [evo vm stop](#evo-vm-stop)	 - Остановить работающую ВМ и дождаться состояния stopped
 * [evo vm zones](#evo-vm-zones)	 - Зоны доступности (UUID и имя)
@@ -10075,6 +10077,50 @@ evo vm reboot <vm-id|name> [flags]
 
 ```
   -h, --help   Справка по reboot
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vm](#evo-vm)	 - Виртуальные машины
+
+## evo vm resize
+
+Сменить конфигурацию (flavor) ВМ и дождаться её
+
+### Synopsis
+
+```text
+Сменить конфигурацию (flavor) ВМ и дождаться её.
+
+Сменить конфигурацию (flavor) ВМ и дождаться, пока ВМ её получит: запущенная ВМ остаётся запущенной, остановленная — остановленной; evo ВМ не останавливает и не запускает. До вопроса evo читает ВМ и конфигурации проекта: неизвестная конфигурация или недоступная в зоне ВМ — отказ. Превью называет обе конфигурации (vCPU, RAM, доля CPU, GPU, прерываемость) и класс цены со ссылкой на тарифы. ВМ уже на этой конфигурации — ответ already_resized без вопроса; смена на неё уже идёт — evo ждёт и второго запроса не шлёт. Перезапускает ли смена гостевую ОС работающей ВМ — неизвестно: заложите короткий простой.
+
+Вызывает инструмент vm_resize (подробнее: 'evo tools describe vm_resize').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo vm resize <vm-id|name> [flags]
+```
+
+### Options
+
+```
+      --flavor string   Имя или UUID конфигурации, на которую переходит ВМ (список: evo vm flavors)
+  -h, --help            Справка по resize
 ```
 
 ### Options inherited from parent commands

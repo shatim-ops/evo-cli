@@ -135,6 +135,16 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_resize",
+			Description: "Change the flavor (configuration) of a VM and wait until it has it: a running VM stays running, a stopped one stopped; evo does not stop or start it. Before the question evo reads the VM and the project's flavors: an unknown flavor or one not given in the VM's zone is refused. The preview names both flavors (vCPU, RAM, CPU share, GPU, spot) and the price class with tariff_url. On the flavor already: already_resized, no question. Updating to it: waited for, no second change. At the time limit of an MCP call the answer is status resizing with next_tool.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":     uuidProp("VM UUID (from vm_list). vm_id or name is required."),
+				"name":      strProp("VM name (alternative to vm_id)."),
+				"flavor":    strProp("Flavor name or UUID to change to (from list_flavors)."),
+				"confirmed": confirmedProp(),
+			}, "flavor"),
+		},
+		{
 			Name:        "vm_list",
 			Description: "List the project's VMs from the LIVE API: id, name, state, availability zone and creation time. Read-only. For IPs and interfaces of one VM use vm_get. Unlike 'list' (local deployment records of this directory), this shows every VM in the project.",
 			InputSchema: objSchema(nil),
@@ -1513,6 +1523,7 @@ func (s *Registry) registerTools() {
 		"vm_start":             s.gated("vm_start", s.planVMPower("vm_start")),
 		"vm_stop":              s.gated("vm_stop", s.planVMPower("vm_stop")),
 		"vm_reboot":            s.gated("vm_reboot", s.planVMPower("vm_reboot")),
+		"vm_resize":            s.gated("vm_resize", s.planVMResize()),
 		"vm_list":              s.handleVMList,
 		"logs":                 s.handleLogs,
 		"destroy":              s.handleDestroy,
@@ -3722,6 +3733,7 @@ var consentWords = map[string]string{
 	"deploy_apply":        consentBillable,
 	"stack_apply":         consentBillable,
 	"vm_start":            consentBillable,
+	"vm_resize":           consentBillable,
 	"k8s_create":          consentBillable,
 	"disk_create":         consentBillable,
 	"snat_create":         consentBillable,

@@ -53,14 +53,16 @@ type jsonFake struct {
 	// vmRebooting: the reads of parityRunningVM that still show the reboot
 	// it took.
 	vmRebooting int
-	fipBound    bool     // the floating IP was attached to the VM
-	writes      []string // every request that is not a read, with its body
+	// vmResized: parityResizeVM took the change to lowcost10-4-8.
+	vmResized bool
+	fipBound  bool     // the floating IP was attached to the VM
+	writes    []string // every request that is not a read, with its body
 }
 
 func (f *jsonFake) reset() {
 	f.mu.Lock()
 	f.vmGone, f.vmStarted, f.vmStopped, f.fipBound, f.writes = false, false, false, false, nil
-	f.vmRebooting = 0
+	f.vmRebooting, f.vmResized = 0, false
 	f.mu.Unlock()
 }
 
@@ -160,6 +162,21 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			f.mu.Unlock()
 			w.WriteHeader(http.StatusNoContent)
 			return w.Result()
+		case p == "/api/v1/vms/"+parityResizeVM && get:
+			// On its flavor until a change takes it to the other one; the
+			// world ends the change at once.
+			f.mu.Lock()
+			flavor := "lowcost10-2-4"
+			if f.vmResized {
+				flavor = "lowcost10-4-8"
+			}
+			f.mu.Unlock()
+			return write(resizeVMJSON("running", flavor))
+		case p == "/api/v1/vms/"+parityResizeVM && r.Method == http.MethodPut:
+			f.mu.Lock()
+			f.vmResized = true
+			f.mu.Unlock()
+			return write(resizeVMJSON("updating", "lowcost10-4-8"))
 		case p == "/api/v1/vms/"+parityVM && r.Method == http.MethodDelete:
 			f.mu.Lock()
 			f.vmGone = true

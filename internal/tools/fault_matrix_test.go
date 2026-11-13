@@ -326,7 +326,10 @@ var faultMatrixOut = map[string]string{
 	// Its faults — a lost answer taken and not, a refusal, a failed
 	// operation — are the worlds of k8s_nodepool_scale_test.go.
 	"k8s_nodepool_scale": faultOutChanges,
-	"disk_resize":        faultOutChanges, "fip_attach": faultOutChanges, "open_ports": faultOutChanges,
+	// Its faults — a lost answer taken, a refusal with its cause, a change
+	// that did not take place — are the worlds of vm_resize_test.go.
+	"vm_resize":   faultOutChanges,
+	"disk_resize": faultOutChanges, "fip_attach": faultOutChanges, "open_ports": faultOutChanges,
 
 	"k8s_apply": faultOutCluster, "k8s_helm": faultOutCluster, "k8s_kubectl": faultOutCluster,
 

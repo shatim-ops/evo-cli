@@ -27,6 +27,10 @@ type CloudAPI interface {
 	// PowerOn, PowerOff or PowerReboot. The platform answers with no body
 	// and no operation: the progress is the state of the VM.
 	SetVMPower(ctx context.Context, id, command string) error
+	// SetVMFlavor changes the configuration of a VM (PUT /vms/{id} with
+	// flavor_id). The platform answers with the card of the VM and no
+	// operation: the progress is the state of the VM (updating).
+	SetVMFlavor(ctx context.Context, id, flavorID string) error
 	CreateFloatingIP(ctx context.Context, req CreateFloatingIPRequest) (*FloatingIP, error)
 	GetFloatingIP(ctx context.Context, id string) (*FloatingIP, error)
 

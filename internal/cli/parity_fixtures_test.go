@@ -7,6 +7,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -53,6 +54,7 @@ var parityArgs = map[string]map[string]any{
 	"vm_start":     {"vm_id": parityStoppedVM},
 	"vm_stop":      {"vm_id": parityRunningVM},
 	"vm_reboot":    {"vm_id": parityRunningVM},
+	"vm_resize":    {"vm_id": parityResizeVM, "flavor": "lowcost10-4-8"},
 	"vm_list":      {},
 	"list_zones":   {},
 	"list_flavors": {},
@@ -717,6 +719,22 @@ func runningVMJSON(state string) string {
 		`","name":"eth0","type":"regular","ip_address":"192.0.2.7","primary":true,"state":"created"}]}`
 }
 
+// parityResizeVM is a fourth VM of the project, running on lowcost10-2-4:
+// vm_resize takes it to lowcost10-4-8 (the flavors of previewCloud).
+const parityResizeVM = "00000000-0000-4000-8000-0000000000f5"
+
+// resizeVMJSON is the VM parityResizeVM as the compute API reads it, in
+// state, on the flavor of the catalogue of previewCloud named.
+func resizeVMJSON(state, flavor string) string {
+	id, cpu, ram := pvFlavor, 2, 4
+	if flavor == "lowcost10-4-8" {
+		id, cpu, ram = "00000000-0000-0000-0000-0000000000e5", 4, 8
+	}
+	return fmt.Sprintf(`{"id":"%s","name":"queue","state":"%s","flavor":{"id":"%s","name":"%s","cpu":%d,"ram":%d,"gpu":0,"oversubscription":"1:10","free_tier":false},`+
+		`"availability_zone":{"id":"%s","name":"ru.AZ-1"},"interfaces":[{"id":"%s","name":"eth0","type":"regular","ip_address":"192.0.2.8","primary":true,"state":"created"}]}`,
+		parityResizeVM, state, id, flavor, cpu, ram, pvZone, parityNIC)
+}
+
 // computeParity: the compute API beyond previewCloud — the VM with its
 // interface (tg_create picks it), the project's disks and SNAT gateway
 // (disk_delete and snat_delete look them up; image_create takes the zone
@@ -736,6 +754,11 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 			return nil
 		}
 		_, _ = io.WriteString(w, runningVMJSON("running"))
+	case "/api/v1/vms/" + parityResizeVM:
+		if r.Method != http.MethodGet {
+			return nil
+		}
+		_, _ = io.WriteString(w, resizeVMJSON("running", "lowcost10-2-4"))
 	case "/api/v1/backups/" + parityDiskBackup + "/action":
 		// The restore makes a disk: the next read of the disks lists it,
 		// once (parityRestored), as the platform's would.

@@ -5,11 +5,14 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
@@ -679,4 +682,515 @@ func folderDeploymentOn(stateDir, id string) bool {
 		}
 	}
 	return false
+}
+
+// vmResizeTimeout bounds the wait for the end of a change of flavor the
+// call sent. The platform took 86–162 s for a running VM (probe Г-10,
+// 4 of 4) and 10–46 s for a stopped one (1 of 1): the bound of a power
+// change holds them with a margin.
+const vmResizeTimeout = 5 * time.Minute
+
+// vmResizeNamesShown is how many flavors a refusal of an unknown target
+// names; list_flavors shows them all.
+const vmResizeNamesShown = 15
+
+// planVMResize is the planner of vm_resize (gate.go; D99;
+// docs/internal/briefs/ops-wave-1.md §6): it reads the VM and the flavors
+// of the project before the question and answers by what it read — the VM
+// is on the target already (a repeat: success with no question and no
+// write), the change is on its way (waited for with no question and no
+// second request), there is nothing to change or the target cannot be had
+// (refused before the question), or the preview of the change. The
+// platform takes the change of a running VM and of a stopped one alike
+// (Г-10): evo neither stops nor starts the VM.
+func (s *Registry) planVMResize() Planner {
+	const tool = "vm_resize"
+	return func(ctx context.Context, args map[string]any) (*Plan, error) {
+		ref, _, err := oneOfArgs(args, vmRefNotBoth(), "vm_id", "name")
+		if err != nil {
+			return nil, err
+		}
+		if ref == "" {
+			return nil, usageErr("vm_id or name is required", "нужен vm_id или name")
+		}
+		want := strings.TrimSpace(stringArg(args, "flavor"))
+		if want == "" {
+			return nil, usageErr("flavor is required: the name or id of the flavor the VM goes to (list_flavors)",
+				"нужен flavor: имя или id конфигурации, на которую переходит ВМ (list_flavors)")
+		}
+		eng, err := s.authedEngine(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		id := ref
+		if !looksUUID(ref) {
+			found, err := s.resolveVMFor(ctx, tool, ref, eng.Config.ProjectID)
+			if err != nil {
+				return nil, err
+			}
+			id = found.ID
+		}
+		vm, err := eng.Cloud.GetVMDetail(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		flavors, err := eng.Cloud.ListFlavors(ctx)
+		if err != nil {
+			return nil, err
+		}
+		target := flavorNamed(flavors, want)
+		if target == nil {
+			return nil, unknownFlavor(want, flavors, vm)
+		}
+		// The transient state of another change settles first; a change
+		// to this very target is not another's: it is waited for below.
+		if vmSettling[vm.State] && !resizingTo(vm, target) {
+			last, timedOut, atLimit, err := s.waitVMDetail(ctx, eng, vm, vmSettleTimeout,
+				func(d *provision.VMDetail) (bool, error) { return !vmSettling[d.State] || resizingTo(d, target), nil })
+			switch {
+			case err != nil:
+				return nil, err
+			case atLimit:
+				ans := vmResizeAnswer(last, "waiting")
+				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; its flavor cannot be changed until its state settles. Call %s again when it settles: it shows the preview and asks before it sends the change.", vm.ID, last.State, tool)
+				nextSameCall(ans, tool, vmRef(args, vm))
+				return answered(toJSON(ans), false), nil
+			case timedOut > 0:
+				return nil, clierrors.New(clierrors.CodeUsage,
+					i18n.Tf("VM %s is in state %s: its flavor can be changed when the state settles", "ВМ %s в состоянии %s: менять её конфигурацию можно, когда состояние устоится", vm.ID, last.State),
+					i18n.T("Repeat the call when vm_get shows the VM running or stopped.", "Повторите вызов, когда vm_get покажет ВМ в running или stopped."))
+			}
+			vm = last
+		}
+		switch {
+		case resizingTo(vm, target):
+			// A change to the target in flight: this call's own, cut before
+			// its end, or another caller's. Nothing is sent, so no question.
+			since, _ := s.heldSince(eng, tool, "vm_id="+vm.ID)
+			text, isErr := s.finishVMResize(ctx, eng, vm, target, args, false, since)
+			return answered(text, isErr), nil
+		case onFlavor(vm, target):
+			s.followFlavor(eng, vm.ID, target)
+			return answered(toJSON(vmResizeAnswer(vm, "already_resized")), false), nil
+		case vmNothingToChange[vm.State]:
+			return nil, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("VM %s is in state %s: there is nothing to resize", "ВМ %s в состоянии %s: менять конфигурацию нечего", vm.ID, vm.State),
+				i18n.T("vm_get shows the VM; what to do with it is the person's decision.", "ВМ показывает vm_get; что с ней делать — решает человек."))
+		}
+		// A known limit of the pair: the flavor is not given in the zone of
+		// the VM. Refused before the question, so that no step is taken
+		// for a change that will not pass («Риск», conclusion 150, У1).
+		if vm.Zone != nil {
+			if err := provision.FlavorOutOfZone(target, vm.Zone.ID, vm.Zone.Name); err != nil {
+				return nil, err
+			}
+		}
+		preview := map[string]any{
+			"message": i18n.T("vm_resize changes the flavor of the VM (flavor_id); the VM stays running or stopped as it is.",
+				"vm_resize меняет конфигурацию ВМ (flavor_id); ВМ остаётся запущенной или остановленной, как есть."),
+			"preview": s.resizeWill(eng, vm, target),
+		}
+		if !vmStable[vm.State] {
+			// Not refused: whether the platform takes the change in this
+			// state is not known (conclusion 111, the question of error).
+			preview["warning"] = i18n.Tf("the VM is in state %s, not running or stopped: whether the platform accepts the change is unknown",
+				"ВМ в состоянии %s, а не running или stopped: примет ли платформа смену конфигурации — неизвестно", vm.State)
+		}
+		planned := vm.State
+		return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+			if err := eng.Cloud.SetVMFlavor(ctx, vm.ID, target.ID); err != nil {
+				return s.vmResizeRefused(ctx, eng, vm, target, args, planned, err)
+			}
+			return s.finishVMResize(ctx, eng, vm, target, args, true, time.Time{})
+		}}, nil
+	}
+}
+
+// flavorNamed is the flavor of the list whose id or name is ref; nil when
+// none is.
+func flavorNamed(flavors []*provision.Flavor, ref string) *provision.Flavor {
+	for _, f := range flavors {
+		if f.ID == ref || f.Name == ref {
+			return f
+		}
+	}
+	return nil
+}
+
+// unknownFlavor is the refusal of a target the project does not have: it
+// names the flavors of the VM's zone, as many as vmResizeNamesShown.
+func unknownFlavor(want string, flavors []*provision.Flavor, vm *provision.VMDetail) error {
+	pool := flavors
+	if vm.Zone != nil {
+		pool = provision.FlavorsInZone(flavors, vm.Zone.ID, vm.Zone.Name)
+	}
+	pool = append([]*provision.Flavor(nil), pool...)
+	provision.SortFlavors(pool)
+	var names []string
+	for _, f := range pool {
+		if len(names) == vmResizeNamesShown {
+			names = append(names, "…")
+			break
+		}
+		names = append(names, f.Name)
+	}
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("flavor %q not found in the project", "flavor %q в проекте не найден", want),
+		i18n.Tf("Flavors of the VM's zone: %s. list_flavors shows them all.", "Конфигурации зоны ВМ: %s. Все показывает list_flavors.", strings.Join(names, ", ")))
+}
+
+// onFlavor reports whether the card of the VM names target as its flavor.
+func onFlavor(vm *provision.VMDetail, target *provision.Flavor) bool {
+	return vm.Flavor != nil && vm.Flavor.ID == target.ID
+}
+
+// resizingTo reports whether the VM is in a change of flavor to target:
+// updating, its card naming the target already (Г-10: the first read
+// after the request does).
+func resizingTo(vm *provision.VMDetail, target *provision.Flavor) bool {
+	return vm.State == "updating" && onFlavor(vm, target)
+}
+
+// flavorFacts is what tells one flavor from another in the price or the
+// work of the VM («Риск», conclusion 150, У3): the size, the guaranteed
+// share of a vCPU, the GPUs, whether the platform may stop the VM (spot).
+func flavorFacts(f *provision.Flavor) map[string]any {
+	if f == nil {
+		return nil
+	}
+	gpu := 0
+	if f.GPU != nil {
+		gpu = *f.GPU
+	}
+	return map[string]any{"id": f.ID, "name": f.Name, "cpu": f.VCPUs, "ram_gb": f.RAMGB,
+		"cpu_share": f.Share, "gpu": gpu, "spot": f.Spot()}
+}
+
+// flavorCostsMore reports whether flavor to is more than from on any axis
+// the price is made of — vCPU, RAM, the guaranteed share of a vCPU, GPUs —
+// or leaves spot for a flavor the platform does not stop. The name takes
+// no part: two flavors of one size are not told apart by the alphabet
+// («Риск», conclusion 200, У1).
+func flavorCostsMore(from, to *provision.Flavor) bool {
+	return to.VCPUs > from.VCPUs || to.RAMGB > from.RAMGB || shareCompare(to, from) > 0 ||
+		flavorGPUs(to) > flavorGPUs(from) || (from.Spot() && !to.Spot())
+}
+
+// flavorHoldsLess reports whether flavor to is less than from on any axis
+// of what a workload runs on — vCPU, RAM, the guaranteed share of a vCPU,
+// GPUs — or goes to spot, which the platform may stop (conclusion 200, У1).
+func flavorHoldsLess(from, to *provision.Flavor) bool {
+	return to.VCPUs < from.VCPUs || to.RAMGB < from.RAMGB || shareCompare(to, from) < 0 ||
+		flavorGPUs(to) < flavorGPUs(from) || (!from.Spot() && to.Spot())
+}
+
+// shareCompare compares the guaranteed shares of a vCPU of a and b, as
+// the API writes them («1:10» — 10 % of a core): 0 when either is not
+// named or not of that form — an unknown share is no evidence either way.
+func shareCompare(a, b *provision.Flavor) int {
+	x, okA := cpuShare(a)
+	y, okB := cpuShare(b)
+	if !okA || !okB {
+		return 0
+	}
+	return cmp.Compare(x, y)
+}
+
+// cpuShare is the guaranteed share of a vCPU of f, «1:10» — 0.1.
+func cpuShare(f *provision.Flavor) (float64, bool) {
+	one, part, ok := strings.Cut(f.Share, ":")
+	a, errA := strconv.Atoi(one)
+	b, errB := strconv.Atoi(part)
+	if !ok || errA != nil || errB != nil || a <= 0 || b <= 0 {
+		return 0, false
+	}
+	return float64(a) / float64(b), true
+}
+
+// flavorGPUs is the number of GPUs the flavor names, 0 when none.
+func flavorGPUs(f *provision.Flavor) int {
+	if f.GPU == nil {
+		return 0
+	}
+	return *f.GPU
+}
+
+// resizeWill is the preview of a change of flavor: the VM as it was read,
+// both flavors, what goes to the request, the price, and what the change
+// may cost the VM's work.
+func (s *Registry) resizeWill(eng *engine.Engine, vm *provision.VMDetail, target *provision.Flavor) map[string]any {
+	will := map[string]any{"vm_id": vm.ID, "name": vm.Name, "vm_state": vm.State, "flavor_id": target.ID,
+		"flavor_from": flavorFacts(vm.Flavor), "flavor_to": flavorFacts(target)}
+	if _, public := vmIPs(vm); public != "" {
+		will["public_ip"] = public
+	}
+	// No price without a probe of the price of a VM after the change (Г-22
+	// has one run): the class and where the rates are (CLAUDE.md §6, axis
+	// 4). A target more on any axis of the price is said to cost more in
+	// words; a smaller one is not called a saving (conclusion 150, В2;
+	// conclusion 200, У1).
+	note := i18n.T("price unknown, the resource is billable: the VM is billed for its flavor by the rates at tariff_url; the price after the change is not calculated",
+		"цена неизвестна, ресурс платный: ВМ тарифицируется по своей конфигурации, тарифы — по tariff_url; цена после смены не рассчитывается")
+	if vm.Flavor == nil || flavorCostsMore(vm.Flavor, target) {
+		note += i18n.T("; the new flavor may cost more", "; новая конфигурация может стоить дороже")
+	}
+	will["price_classes"] = []engine.ResourcePrice{{Resource: engine.ResourceVM, Class: engine.PricePaidUnpriced, Note: note}}
+	will["tariff_url"] = engine.TariffURL(engine.ResourceVM)
+	if target.Spot() {
+		will["interruptible"] = i18n.T("the new flavor is interruptible (spot): the platform may stop the VM at any time",
+			"новая конфигурация прерываемая (spot): платформа может остановить ВМ в любой момент")
+	}
+	if vm.State == "running" {
+		// Whether the guest OS restarts in the change the probe does not
+		// see (Г-10: no stopped state in the chain): said as unknown, not
+		// as «no downtime».
+		will["interrupts"] = i18n.T("whether the change restarts the guest OS of the running VM is not known: plan for a short downtime",
+			"перезапускает ли смена гостевую ОС работающей ВМ — неизвестно: заложите короткий простой")
+	}
+	if vm.Flavor != nil && flavorHoldsLess(vm.Flavor, target) && folderDeploymentOn(eng.StateDir, vm.ID) {
+		// A warning, not a refusal: a smaller flavor is undone the same
+		// way and touches no data (conclusion 150, В4).
+		will["folder_deployment"] = i18n.T("this folder's deployment is on this VM: a smaller flavor may not hold what it runs; verify shows whether it answers",
+			"на этой ВМ — развёртывание этой папки: меньшая конфигурация может не вместить то, что на ней работает; отвечает ли оно — покажет verify")
+	}
+	return will
+}
+
+// vmResizeRefused answers a change of flavor that failed. A lost answer
+// may be a change taken: the VM is read again — updating, or on the
+// target, the call goes on as if it were taken; gone, it is not found;
+// else the error with the state and flavor the VM has. The cause is one
+// machine field (details.cause: quota, state, refused) beside the
+// platform's code. A VM that is stopped is said to stay stopped on the
+// old flavor, with vm_start as the step («Риск», conclusion 150, У1).
+func (s *Registry) vmResizeRefused(ctx context.Context, eng *engine.Engine, vm *provision.VMDetail, target *provision.Flavor,
+	args map[string]any, planned string, cause error) (string, bool) {
+	if ctx.Err() != nil {
+		return errResult(cause), true
+	}
+	now, err := eng.Cloud.GetVMDetail(ctx, vm.ID)
+	if err != nil {
+		var ce *clierrors.CLIError
+		if errors.As(err, &ce) && ce.Code == clierrors.CodeVMNotFound {
+			return errResult(err), true
+		}
+		return errResult(cause), true
+	}
+	if now.State == "updating" || onFlavor(now, target) {
+		return s.finishVMResize(ctx, eng, now, target, args, true, time.Time{})
+	}
+	fields := vmResizeFields(now)
+	if now.State == "stopped" {
+		// The chain stop → resize → start does not break in the middle
+		// unsaid: the VM is down, and the way back is named.
+		fields["note"] = i18n.T("the VM is stopped and its flavor is the one it had; vm_start brings it back to work",
+			"ВМ остановлена, конфигурация прежняя; вернуть её в работу — vm_start")
+		nextStep(fields, "vm_start", map[string]any{"vm_id": now.ID})
+	}
+	if provision.HTTPStatus(cause) != http.StatusUnprocessableEntity {
+		return errAnswer(cause, fields), true
+	}
+	details := map[string]any{}
+	var hint string
+	switch {
+	case quotaRefusal(cause) != "":
+		details["cause"] = "quota"
+		hint = quotaHint(false)
+	case now.State != planned:
+		details["cause"] = "state"
+		hint = i18n.T("The state of the VM changed while the call was made; repeat the call: it reads the VM again.", "Состояние ВМ изменилось, пока шёл вызов; повторите вызов: он прочитает ВМ заново.")
+	default:
+		details["cause"] = "refused"
+		hint = i18n.T("A repeat will not help: the platform does not give this flavor to this VM now. list_flavors shows the flavors; the Cloud.ru console or support is the way.",
+			"Повтор не поможет: платформа сейчас не даёт эту конфигурацию этой ВМ. Конфигурации показывает list_flavors; путь — консоль Cloud.ru или поддержка.")
+	}
+	if code := platformCode(cause); code != "" {
+		details["platform_code"] = code
+	}
+	fields["details"] = details
+	return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
+		i18n.Tf("the platform refused to change the flavor of VM %s to %s in state %s", "платформа отказала в смене конфигурации ВМ %s на %s в состоянии %s", vm.ID, target.Name, now.State),
+		hint, cause), fields), true
+}
+
+// finishVMResize waits for the end of a change of flavor to target and
+// answers it (axis 2): the VM on the target, out of updating, is the
+// success; the limit of an MCP call is resizing with — for the call that
+// sent the change (sent), or a step of evo's own change younger than its
+// limit (since) — the same call without consent as the next step, which
+// finds the VM updating and waits again with no second request; a change
+// somebody else started names the read of the VM. A VM that left updating
+// on the flavor it had, or for another state, is an error with that state
+// and flavor, and no step with consent.
+func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *provision.VMDetail, target *provision.Flavor,
+	args map[string]any, sent bool, since time.Time) (string, bool) {
+	const tool = "vm_resize"
+	started := clock.Now()
+	limit, own := vmResizeTimeout, sent
+	if !since.IsZero() {
+		// wall-clock: the age of the operation decides whether evo goes on
+		// with it; the value is also said in the answer (since_start_sec).
+		if limit = vmResizeTimeout - clock.Since(since); limit <= 0 {
+			s.followFlavor(eng, vm.ID, target)
+			ans := vmResizeAnswer(vm, "resizing")
+			ans["since_start_sec"] = int(clock.Since(since).Seconds())
+			ans["next"] = fmt.Sprintf("VM %s is still %s %d s after %s began the change; evo waits for it no more. vm_get shows its state.", vm.ID, vm.State, int(clock.Since(since).Seconds()), tool)
+			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
+			return toJSON(ans), false
+		}
+		own = true
+	}
+	// moved: the VM was seen in the change. A call that sent nothing found
+	// it there.
+	moved := !sent || vm.State == "updating"
+	// onTarget: a read after the call's own request found the VM settled
+	// on the target without updating seen. It is taken as the end only on
+	// a second such read («Риск», conclusion 200, remark 1): one read is
+	// not proof the change ran and not that it has not begun.
+	onTarget := false
+	last, timedOut, atLimit, err := s.waitVMDetail(ctx, eng, vm, limit, func(d *provision.VMDetail) (bool, error) {
+		switch {
+		case d.State == "updating":
+			moved = true
+			return false, nil
+		case vmStable[d.State] && onFlavor(d, target):
+			if moved || onTarget {
+				return true, nil
+			}
+			onTarget = true
+			return false, nil
+		case vmStable[d.State] && !moved:
+			// The change is taken and the VM has not entered it yet.
+			return false, nil
+		case vmStable[d.State]:
+			return true, clierrors.New(clierrors.CodeAPIError,
+				i18n.Tf("the change of flavor of VM %s did not take place: the VM left updating on flavor %s", "смена конфигурации ВМ %s не состоялась: ВМ вышла из updating с конфигурацией %s", vm.ID, flavorName(d)),
+				i18n.T("What to do with the VM is the person's decision; vm_get shows it.", "Что делать с ВМ — решает человек; её показывает vm_get."))
+		}
+		return true, clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("VM %s is in state %s after the change of flavor", "ВМ %s: состояние %s после смены конфигурации", vm.ID, d.State),
+			i18n.T("vm_get shows the VM.", "ВМ показывает vm_get."))
+	})
+	elapsed := int(clock.Since(started).Seconds())
+	if onFlavor(last, target) {
+		// Whichever call saw the target, the folder's record follows it
+		// (conclusion 150, У2).
+		s.followFlavor(eng, vm.ID, target)
+	}
+	settled := onTarget && vmStable[last.State] && onFlavor(last, target)
+	switch {
+	case err != nil:
+		return errAnswer(err, vmResizeFields(last)), true
+	case (atLimit || timedOut > 0) && settled:
+		// Seen once on the target at the limit: the end, as the platform
+		// shows it, not a change that never began.
+	case (atLimit || timedOut > 0) && !moved:
+		return errAnswer(clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("the platform accepted the change of flavor of VM %s, and its state has not changed in %d s: still %s", "платформа приняла смену конфигурации ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", vm.ID, elapsed, last.State),
+			i18n.T("vm_get shows the VM; whether to send the change again is the person's decision.", "ВМ показывает vm_get; слать ли смену снова — решает человек.")),
+			vmResizeFieldsElapsed(last, elapsed)), true
+	case atLimit || timedOut > 0:
+		ans := vmResizeAnswer(last, "resizing")
+		ans["elapsed_sec"] = elapsed
+		if !since.IsZero() {
+			ans["since_start_sec"] = int(clock.Since(since).Seconds())
+		}
+		if atLimit && own {
+			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second change.", vm.ID, last.State, tool)
+			nextSameCall(ans, tool, vmRef(args, vm))
+		} else {
+			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state.", vm.ID, last.State)
+			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
+		}
+		return toJSON(ans), false
+	}
+	ans := vmResizeAnswer(last, "resized")
+	if !sent {
+		ans["note"] = i18n.T("the change that ended was not sent by this call", "смену, которая завершилась, отправил не этот вызов")
+	}
+	ans["elapsed_sec"] = elapsed
+	return toJSON(ans), false
+}
+
+// waitVMDetail is waitVM that gives done the card of the VM, not only its
+// state: a change of flavor ends by the flavor the card names.
+func (s *Registry) waitVMDetail(ctx context.Context, eng *engine.Engine, vm *provision.VMDetail, limit time.Duration,
+	done func(d *provision.VMDetail) (bool, error)) (last *provision.VMDetail, timedOut time.Duration, atLimit bool, err error) {
+	last = vm
+	cur := vm
+	_, timedOut, atLimit, err = waitState(ctx, eng, limit,
+		func(ctx context.Context) (string, bool, error) {
+			d, err := eng.Cloud.GetVMDetail(ctx, vm.ID)
+			var ce *clierrors.CLIError
+			switch {
+			case errors.As(err, &ce) && ce.Code == clierrors.CodeVMNotFound:
+				return "", false, err
+			case err != nil:
+				return "", false, nil
+			}
+			cur = d
+			return d.State, true, nil
+		},
+		func(st string) string {
+			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), vm.ID, st)
+		},
+		func(string) (bool, error) {
+			last = cur
+			return done(cur)
+		})
+	return last, timedOut, atLimit, err
+}
+
+// flavorName is the name of the flavor the card of the VM names, "" when
+// it names none.
+func flavorName(vm *provision.VMDetail) string {
+	if vm.Flavor == nil {
+		return ""
+	}
+	return vm.Flavor.Name
+}
+
+// vmResizeAnswer is the answer of vm_resize: the answer of a power tool
+// and the flavor the VM has, by name and id.
+func vmResizeAnswer(vm *provision.VMDetail, status string) map[string]any {
+	ans := vmAnswer(vm, status, vm.State)
+	if vm.Flavor != nil {
+		ans["flavor_name"], ans["flavor_id"] = vm.Flavor.Name, vm.Flavor.ID
+	}
+	return ans
+}
+
+// vmResizeFields are the fields of an error answer of vm_resize: the VM,
+// its state and the flavor it has.
+func vmResizeFields(vm *provision.VMDetail) map[string]any {
+	fields := map[string]any{"vm_id": vm.ID, "state": vm.State}
+	if vm.Flavor != nil {
+		fields["flavor_name"], fields["flavor_id"] = vm.Flavor.Name, vm.Flavor.ID
+	}
+	return fields
+}
+
+func vmResizeFieldsElapsed(vm *provision.VMDetail, elapsed int) map[string]any {
+	fields := vmResizeFields(vm)
+	fields["elapsed_sec"] = elapsed
+	return fields
+}
+
+// followFlavor makes the folder's records of the VM id name the flavor
+// target («Риск», conclusion 150, У2): status and the next deploy show the
+// flavor the VM has. Best effort, as recording a deployment: the answer
+// names the flavor either way, and a folder with no record of the VM is
+// not written.
+func (s *Registry) followFlavor(eng *engine.Engine, id string, target *provision.Flavor) {
+	if !folderDeploymentOn(eng.StateDir, id) {
+		return
+	}
+	_ = state.Update(state.DefaultPath(eng.StateDir), stateLockWait, func(sf *state.File) error {
+		for _, d := range sf.ActiveDeployments() {
+			if d.VMID == id && (d.VMFlavor != target.ID || d.FlavorName != target.Name) {
+				d.VMFlavor, d.FlavorName, d.UpdatedAt = target.ID, target.Name, time.Now()
+			}
+		}
+		return nil
+	})
 }

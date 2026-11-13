@@ -7,6 +7,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -134,6 +135,10 @@ type faultCloud struct {
 	// powerIgnored makes the platform take a power command (204) and
 	// leave the VM as it was: a command accepted and never acted on.
 	powerIgnored bool
+	// resizeRefused, when set, is the code the platform refuses every
+	// change of flavor with, whatever the state of the VM: a quota, a
+	// flavor not given to the project.
+	resizeRefused string
 	// lag keeps what a create made out of the lists for its first lag
 	// reads of them (lagBy): the request is taken, the list is behind. A
 	// read by id and the refusal of a taken name do not lag.
@@ -182,6 +187,9 @@ type faultVM struct {
 	gone      bool
 	// powerTo is the state a power transition in flight ends in.
 	powerTo string
+	// flavor is the configuration of the VM by id; "" is the world's one
+	// flavor (faultFlavor).
+	flavor string
 }
 
 type faultFIP struct {
@@ -567,6 +575,84 @@ func (c *faultCloud) SetVMPower(ctx context.Context, id, command string) error {
 	return faultPowerRefused("bad_vm_id")
 }
 
+// faultResizable are the states the platform takes a change of flavor in:
+// a running and a stopped VM alike (Г-10, runs 201–209: 4 of 4 running,
+// 1 of 1 stopped). It leaves the VM in the state it was in.
+var faultResizable = map[string]bool{"running": true, "stopped": true}
+
+// SetVMFlavor takes a change of the flavor of a VM. The VM enters
+// updating with the new flavor in its card at once (Г-10: the first read
+// shows the target) and stays there until the test moves it (stepVMPower
+// ends it in the state it left). A lost answer is a change that was taken.
+// The calls are counted (resizeCalls).
+func (c *faultCloud) SetVMFlavor(ctx context.Context, id, flavorID string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
+	err := c.gate("SetVMFlavor")
+	if err != nil && !errors.Is(err, errFaultLost) {
+		return err
+	}
+	if c.flavorByIDOrName(flavorID) == nil {
+		return faultPowerRefused("flavor_not_found")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.vms {
+		vm := &c.vms[i]
+		if vm.ID != id || vm.gone {
+			continue
+		}
+		switch {
+		case c.resizeRefused != "":
+			return faultPowerRefused(c.resizeRefused)
+		case faultResizable[vm.Status]:
+			vm.powerTo, vm.Status, vm.flavor = vm.Status, "updating", flavorID
+		default:
+			return faultPowerRefused("wrong_vm_state")
+		}
+		return err
+	}
+	return faultPowerRefused("bad_vm_id")
+}
+
+// setVMFlavor gives a VM a flavor as the cloud would have it before the
+// call under test.
+func (c *faultCloud) setVMFlavor(id, flavorID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.vms {
+		if c.vms[i].ID == id {
+			c.vms[i].flavor = flavorID
+		}
+	}
+}
+
+// resizeCalls is the number of changes of flavor the world has taken or
+// refused: the writes of vm_resize.
+func (c *faultCloud) resizeCalls() int {
+	n := 0
+	for _, op := range c.callLog() {
+		if op == "SetVMFlavor" {
+			n++
+		}
+	}
+	return n
+}
+
+// flavorByIDOrName is the flavor of the catalogue of the world by its id
+// or name, nil when there is none.
+func (c *faultCloud) flavorByIDOrName(ref string) *provision.Flavor {
+	for _, f := range c.catalogue() {
+		if f.ID == ref || f.Name == ref {
+			return f
+		}
+	}
+	return nil
+}
+
 // stepVMPower ends the power transition of a VM: the VM leaves its
 // transient state for the state the command led to — or for failed, when
 // the test gives one (a start that ends in error). It reports whether the
@@ -867,11 +953,16 @@ func (c *faultCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	if err := c.gate("ListFlavors"); err != nil {
 		return nil, err
 	}
+	return c.catalogue(), nil
+}
+
+// catalogue is the flavors of the world: the variant's, else the one.
+func (c *faultCloud) catalogue() []*provision.Flavor {
 	if c.flavors != nil {
-		return c.flavors, nil
+		return c.flavors
 	}
 	return []*provision.Flavor{{ID: faultFlavor, Name: "low-1-1", VCPUs: 1, RAMGB: 1, Share: "1:1", GPU: new(int), Type: &provision.FlavorType{},
-		Zones: []provision.FlavorZone{{ID: faultZone, Name: "ru.AZ-1", Enabled: true}}}}, nil
+		Zones: []provision.FlavorZone{{ID: faultZone, Name: "ru.AZ-1", Enabled: true}}}}
 }
 
 func (c *faultCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
@@ -969,7 +1060,14 @@ func (c *faultCloud) GetVMDetail(_ context.Context, id string) (*provision.VMDet
 			if vm.FIPID != "" {
 				in.FloatingIP = &provision.IfaceFloatingIP{ID: vm.FIPID, IPAddress: c.ipOfLocked(vm.FIPID), State: "in_use"}
 			}
-			detail = &provision.VMDetail{ID: vm.ID, Name: vm.Name, State: vm.Status, Interfaces: []provision.VMInterface{in}}
+			detail = &provision.VMDetail{ID: vm.ID, Name: vm.Name, State: vm.Status, Interfaces: []provision.VMInterface{in},
+				Zone: &provision.ZoneRef{ID: faultZone, Name: "ru.AZ-1"}}
+			flavor := cmp.Or(vm.flavor, faultFlavor)
+			for _, f := range c.catalogue() {
+				if f.ID == flavor {
+					detail.Flavor = f
+				}
+			}
 			break
 		}
 	}

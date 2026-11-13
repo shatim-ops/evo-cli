@@ -188,6 +188,13 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 		_, text, _ := callNamed(t, r, "vm_reboot", map[string]any{"name": "web"})
 		return text
 	},
+	// vm_resize reads the VM and the flavors before the question: a
+	// running VM and a flavor it is not on.
+	"vm_resize": func(t *testing.T) string {
+		r, _, _ := vmResizeWorld(t, "running")
+		_, text, _ := callNamed(t, r, "vm_resize", map[string]any{"name": "web", "flavor": "low-2-4"})
+		return text
+	},
 	// destroy with no deployment answers status none with no question, as
 	// the CLI (W5): its preview needs a deployment in the state.
 	"destroy": func(t *testing.T) string {

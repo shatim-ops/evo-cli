@@ -20,8 +20,14 @@ func TestVMPower_EveryToolTakesANameStrictly(t *testing.T) {
 		}
 	}
 	for tool := range strictVMRef {
-		if _, ok := vmPowerActions[tool]; !ok {
+		if _, ok := vmPowerActions[tool]; !ok && strictNotPower[tool] == "" {
 			t.Errorf("strictVMRef names %s, which is not a power tool: say in this test why it takes a name strictly, or remove the line", tool)
 		}
 	}
+}
+
+// strictNotPower are the tools of strictVMRef that are not power tools,
+// each with why it takes a name strictly.
+var strictNotPower = map[string]string{
+	"vm_resize": "a change of flavor of the first VM of a name two VMs have would bill a VM the caller did not mean (D99, П2)",
 }

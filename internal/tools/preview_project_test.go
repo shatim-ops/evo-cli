@@ -83,6 +83,7 @@ var previewCalls = map[string]map[string]any{
 	"dns_record_create": {"name": "www", "record_type": "A", "value": "192.0.2.10"},
 	"vpc_route_create":  {"subnet": "192.0.2.0/24", "next_hop_vip_id": resMine},
 	"disk_resize":       {"size_gb": 100},
+	"vm_resize":         {"flavor": "gen-2-4"},
 	"backup_restore":    {"name": "restored"},
 	"disk_attach":       {"vm": resMine},
 	"disk_detach":       {"vm": resMine},
@@ -131,7 +132,8 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 		}
 		targeted[c.tool] = true
 		for _, id := range []string{resMine, resForeign} {
-			f := &ownerFake{}
+			// vm_resize needs its target in the catalogue.
+			f := &ownerFake{flavors: c.tool == "vm_resize"}
 			if c.tool == "disk_detach" {
 				// A detach has a preview only of a disk that is attached.
 				f.diskOn = resMine

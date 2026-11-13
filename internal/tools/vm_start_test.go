@@ -41,6 +41,9 @@ type powerWorld struct {
 	settleTo string
 	// onPower, when set, runs in place of the fake's power command.
 	onPower func() error
+	// flavorBack, when set, is the flavor the VM is left with at that read:
+	// a change of flavor the platform did not make (vm_resize).
+	flavorBack string
 
 	mu    sync.Mutex
 	reads int
@@ -55,6 +58,9 @@ func (w *powerWorld) read() {
 	w.reads++
 	if w.reads < w.stepAfter {
 		return
+	}
+	if w.flavorBack != "" {
+		w.setVMFlavor(w.id, w.flavorBack)
 	}
 	switch w.settleTo {
 	case "":
