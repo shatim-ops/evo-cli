@@ -196,8 +196,14 @@ H
 fake_evo_answer list_security_groups 0 0 '{"security_groups":[{"id":"sgleft","name":"evo-e2e-ops-r7a1-sg"},{"id":"other","name":"SSH-access_ru.AZ-2"}]}'
 fake_evo_answer list_security_groups 1 0 '{"security_groups":[{"id":"other","name":"SSH-access_ru.AZ-2"}]}'
 rc=0
-PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+# Группа в этом мире не исчезает: без PROBE_WAIT проба ждала её полные
+# две минуты — 122 с из 180 с всего теста (замер 13.11).
+# wall-clock: граница 30 с — доля продового ожидания (120 с).
+t0=$SECONDS
+PROBE_WAIT=1 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11, остаток: код" "$rc" 0
+[ $((SECONDS - t0)) -lt 30 ] || { echo "FAIL: Г-11, остаток: проба ждала неисчезающую группу $((SECONDS - t0)) с — предел ожидания не взят из PROBE_WAIT"; fail=1; }
+grep -q 'Г-11: удаление группы.*не исчезло' "$tmp/out" || { echo "FAIL: Г-11, остаток: неисчезнувшая группа не названа"; grep 'удаление группы' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q '^DELETE /security-groups/sgleft$' "$FAKE_DIR/calls" || { echo "FAIL: уборка области не удалила группу пробы"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 if grep -q 'DELETE /security-groups/other' "$FAKE_DIR/calls"; then echo "FAIL: уборка удалила чужую группу"; fail=1; fi
 

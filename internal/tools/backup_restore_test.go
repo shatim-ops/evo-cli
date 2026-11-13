@@ -399,3 +399,29 @@ func TestBackupRestore_ADiskWithNoTimeIsSaidUnchecked(t *testing.T) {
 		t.Errorf("the time read: want created with nothing said of it: %s", text)
 	}
 }
+
+// The records of the calls are in the directory declared to the registry
+// (#1578); the directory of the engine may be another, or none. A held
+// restore read from the engine's was not found there: each repeat with the
+// consent sent a restore of its own — a billable disk each («Риск», the
+// probe on c0ccb37; release plan 1.9).
+func TestBackupRestore_HeldIsReadWhereTheRecordsAre(t *testing.T) {
+	for name, engDir := range map[string]func() string{
+		"no directory of the engine": func() string { return "" },
+		"another one":                func() string { return t.TempDir() },
+	} {
+		w := &restoreWorld{never: true}
+		w.dir = engDir()
+		r := restoreRegistry(t, w)
+		r.SetStateDir(t.TempDir())
+		for i := 0; i < 3; i++ {
+			m, text, _ := callNamed(t, r, "backup_restore", map[string]any{"backup_id": brBackup, "name": "restored", "confirmed": true})
+			if m["status"] != "restoring" {
+				t.Errorf("%s, call %d: want restoring: %s", name, i+1, text)
+			}
+		}
+		if w.restores != 1 {
+			t.Errorf("%s: want one restore sent, sent %d", name, w.restores)
+		}
+	}
+}

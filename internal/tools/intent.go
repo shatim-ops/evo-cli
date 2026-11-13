@@ -54,8 +54,8 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if p := stringArg(args, "project_id"); p != "" {
 		over = map[string]any{"ProjectID": p}
 	}
-	eng, err := r.newEngine(over)
-	if err != nil {
+	eng, noEngine := r.newEngine(over)
+	if noEngine != nil {
 		eng = nil
 	}
 	if eng != nil {
@@ -71,7 +71,11 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			in.Args = append(in.Args, k)
 		}
 	}
-	in.Name, in.Target = intentResource(name, args)
+	// Named as the tool resolves the resource; the read that failed
+	// refuses the call before it goes out (intended), so here it has not.
+	if in.Name, in.Target, err = r.resourceOf(ctx, name, args); err != nil {
+		return nil, err
+	}
 	// The write of a call addressed by id lands in the project of the
 	// resource, which the call's project does not tell (namedProject): the
 	// record names no project rather than the profile's (R-82).
@@ -87,6 +91,12 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	dir := intent.Dir(root)
 	rec, err := intent.Open(dir, in)
 	if err != nil {
+		// The call would be refused for its own reason — no key, a
+		// project the server does not allow: that is what the caller
+		// is told, not the directory of a record it would not need.
+		if noEngine != nil {
+			return nil, noEngine
+		}
 		return nil, err
 	}
 	if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
@@ -151,10 +161,25 @@ func (r *Registry) canonArgs(name string, args map[string]any) []byte {
 	return canon
 }
 
+// changeRule is what a tool every send of which is a change declares to
+// the layer of intents.
+type changeRule struct {
+	// read is the tool that shows the resource after a call whose outcome
+	// is not known.
+	read string
+	// target resolves the resource a call names to the one way the layer
+	// tells it by — the record's name and target («argument=id») — when
+	// the tool takes it spelled more than one way (a VM by its id or its
+	// name): a cut call is found however the repeat spells the resource
+	// («Риск», conclusion 177, У11). nil: the call names it one way
+	// (intentResource). It reads the cloud as the plan of the tool does,
+	// through the same resolver, so the call reads once.
+	target func(ctx context.Context, r *Registry, args map[string]any) (name, target string, err error)
+}
+
 // everySendIsAChange are the tools with no repeat that is a success: every
-// call that reaches the cloud is one more change (a reboot). "tool" → the
-// read that shows the resource after a call whose outcome is not known. A
-// tool declares itself here; the layer names no tool. For such a tool the
+// call that reaches the cloud is one more change (a reboot). A tool
+// declares itself here; the layer names no tool. For such a tool the
 // record of a cut call is not settled by «the same call again» — that
 // call would be a second change — so a consented call that finds one asks
 // again (askAgainAfterACut), and the record's words send to the read, not
@@ -162,19 +187,57 @@ func (r *Registry) canonArgs(name string, args map[string]any) []byte {
 // вызов — новое изменение»; «Риск», conclusion 138). The list is of new
 // tools: a shipped tool does not join it without a decision — its
 // consented call would start to answer a question.
-var everySendIsAChange = map[string]string{
+var everySendIsAChange = map[string]changeRule{
 	// A reboot has no «already»: the VM runs before it and after it
 	// (docs/internal/briefs/ops-wave-1.md §5).
-	"vm_reboot": "vm_get",
+	"vm_reboot": {read: "vm_get", target: vmTarget("vm_reboot")},
 	// A backup by the same name is found before the question, but a lost
 	// answer may leave it not yet listed: a repeat would make a second,
 	// billed with no term («Риск», conclusion 164, У5; the audit of #1544,
 	// Б2).
-	"backup_create": "backup_list",
+	"backup_create": {read: "backup_list"},
 	// A restore makes a new disk each time it is sent: the disk of a cut
 	// one may come and be billed though the list does not show it yet
 	// («Риск», conclusion 164, У5; the probe of #1580).
-	"backup_restore": "disk_list",
+	"backup_restore": {read: "disk_list"},
+}
+
+// spelledArgs are the arguments that name the resource of the record in
+// as its call did: its target («argument=id») and its name, by the
+// argument the tool names a resource by (intentResource).
+func spelledArgs(in intent.Intent) map[string]any {
+	args := map[string]any{}
+	if arg, id, ok := strings.Cut(in.Target, "="); ok && id != "" {
+		args[arg] = id
+	}
+	if in.Name != "" {
+		arg := "name"
+		if c, ok := createdIDs[in.Tool]; ok && c.arg != "" {
+			arg = c.arg
+		}
+		args[arg] = in.Name
+	}
+	return args
+}
+
+// named is resourceOf for a layer that reads the answer of a call already
+// made: a resolver that fails leaves the resource as the call spelled it.
+func (r *Registry) named(ctx context.Context, name string, args map[string]any) (resource, target string) {
+	if resource, target, err := r.resourceOf(ctx, name, args); err == nil {
+		return resource, target
+	}
+	return intentResource(name, args)
+}
+
+// resourceOf is what the layer tells the resource of a call of tool name
+// by: as the tool resolves it (changeRule.target), else as the call names
+// it (intentResource). An error is the read of the resolver that failed.
+func (r *Registry) resourceOf(ctx context.Context, name string, args map[string]any) (resource, target string, err error) {
+	if rule := everySendIsAChange[name]; rule.target != nil {
+		return rule.target(ctx, r, args)
+	}
+	resource, target = intentResource(name, args)
+	return resource, target, nil
 }
 
 // cutCalls are the records of this caller's own cut calls of the tool name
@@ -183,19 +246,33 @@ var everySendIsAChange = map[string]string{
 // another key is not this caller's cut call, and a held one is an
 // operation going on.
 func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]any) []intent.Intent {
-	if everySendIsAChange[name] == "" {
+	if everySendIsAChange[name].read == "" {
 		return nil
 	}
-	resource, target := intentResource(name, args)
+	// A resource that cannot be resolved names no cut call here: the call
+	// with consent was refused for that before (intended), and a call
+	// without consent gets the same refusal from the plan of the tool,
+	// which reads through the same resolver.
+	resource, target, err := r.resourceOf(ctx, name, args)
 	root, ok := r.stateDir()
-	if !ok || (resource == "" && target == "") {
+	if err != nil || !ok || (resource == "" && target == "") {
 		return nil
 	}
 	var cut []intent.Intent
 	for _, in := range pendingIn(ctx, root) {
-		if !in.Held && in.Tool == name && in.Name == resource && in.Target == target && in.Key != nil {
-			cut = append(cut, in)
+		if in.Held || in.Tool != name || in.Key == nil {
+			continue
 		}
+		if in.Name != resource || in.Target != target {
+			// A record written before the target was resolved names the
+			// resource as its call spelled it: it is resolved the same
+			// way. One that cannot be resolved now is not this call's.
+			was, wasTarget, err := r.resourceOf(ctx, name, spelledArgs(in))
+			if err != nil || was != resource || wasTarget != target {
+				continue
+			}
+		}
+		cut = append(cut, in)
 	}
 	if len(cut) == 0 {
 		return nil
@@ -221,8 +298,8 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 	what := firstNonEmptyStr(last.Name, last.Target)
 	return i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
 			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
-			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), everySendIsAChange[name], name),
-		map[string]any{"tool": name, "read_tool": everySendIsAChange[name], "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
+			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), everySendIsAChange[name].read, name),
+		map[string]any{"tool": name, "read_tool": everySendIsAChange[name].read, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
 }
 
 // askAgainAfterACut answers a consented call of a tool of
@@ -327,7 +404,7 @@ func sameToolNext(tool, answer string) (args map[string]any, ok bool) {
 // named by id (its step's), and a call that names the VM by its name
 // answers with that id («Риск», conclusion 137, У1).
 func (r *Registry) settleHeld(ctx context.Context, name string, args map[string]any, answer string) {
-	resource, target := intentResource(name, args)
+	resource, target := r.named(ctx, name, args)
 	root, ok := r.stateDir()
 	if !ok {
 		return
@@ -367,9 +444,9 @@ func (r *Registry) settleHeld(ctx context.Context, name string, args map[string]
 // operation this caller began and evo still goes on with: its held record,
 // named as the call names the resource.
 func (r *Registry) goesOn(ctx context.Context, name string, args map[string]any) bool {
-	resource, target := intentResource(name, args)
+	resource, target, err := r.resourceOf(ctx, name, args)
 	root, ok := r.stateDir()
-	if !ok || (resource == "" && target == "") {
+	if err != nil || !ok || (resource == "" && target == "") {
 		return false
 	}
 	for _, in := range pendingIn(ctx, root) {
@@ -440,7 +517,7 @@ func answerStatus(answer string) string {
 // every answer of it names them, not only the first answer of the process
 // («Риск», conclusions 128 and 135).
 func (r *Registry) namedKept(ctx context.Context, name string, args map[string]any, answer string) string {
-	resource, target := intentResource(name, args)
+	resource, target := r.named(ctx, name, args)
 	root, ok := r.stateDir()
 	if !ok || (resource == "" && target == "") {
 		return answer
@@ -642,7 +719,7 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	}
 	// Every call of the tool is one more change: the same call again does
 	// not settle the record, it changes the resource a second time.
-	if read := everySendIsAChange[in.Tool]; read != "" {
+	if read := everySendIsAChange[in.Tool].read; read != "" {
 		return head + i18n.Tf(" — %s shows it; the same %s again is one more change, not a repeat: whether to send it is the person's decision",
 			" — его показывает %s; тот же %s ещё раз — это ещё одно изменение, а не повтор: слать ли его — решает человек", quoteCloud(read), tool)
 	}
@@ -652,13 +729,15 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	if _, k, id, byID := deleteByID(in); byID {
 		if k.card == nil {
 			// No read by id closes it: doctor says the same and no more.
-			return head + i18n.Tf(" — evo has no read by id that tells a deleted %s from one of another project: check %s where it was — the same %s on it settles the record",
-				" — у evo нет чтения по id, которое отличит удалённый ресурс «%s» от ресурса другого проекта: проверьте %s там, где он был, — тот же %s на нём закроет запись", k.what, quoteCloud(id), tool)
+			return head + i18n.Tf(" — evo has no read by id that tells a deleted %s from one of another project: check %s where it was — the same %s with the same arguments settles the record",
+				" — у evo нет чтения по id, которое отличит удалённый ресурс «%s» от ресурса другого проекта: проверьте %s там, где он был, — тот же %s с теми же аргументами закроет запись", k.what, quoteCloud(id), tool)
 		}
 		return head + i18n.T(" — evo doctor checks it by id", " — evo doctor проверит по id")
 	}
-	return head + i18n.Tf(" — check %s for %s; the same %s on it settles it",
-		" — проверьте %s по %s; тот же %s на нём закроет запись", quoteCloud(r.listToolOf(in.Tool)), name, tool)
+	// The same call is the same arguments (intent.Settle): another call
+	// of the tool on the resource leaves the record.
+	return head + i18n.Tf(" — check %s for %s; the same %s with the same arguments settles it",
+		" — проверьте %s по %s; тот же %s с теми же аргументами закроет запись", quoteCloud(r.listToolOf(in.Tool)), name, tool)
 }
 
 // maker is the key the registry now runs with; nil when there is none.
