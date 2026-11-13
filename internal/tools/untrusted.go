@@ -95,12 +95,18 @@ var untrustedFields = map[string]untrustedAnswer{
 	"backup_restore": {fields: []string{"preview", "will_create", "disk", "name"}},
 	// The names of the backup, its source and the backups that depend on
 	// it, in the preview.
-	"backup_delete": {fields: []string{"will_delete", "target"}},
+	"backup_delete": {fields: []string{"will_delete", "target", "resource_status"}},
 	// The name of the pool, in the preview and in the answer; the words
 	// and the code of the platform in a failed operation (details).
 	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},
 	// The cluster of the pool by its name, in the preview of the delete.
-	"k8s_nodepool_delete": {fields: []string{"preview"}},
+	"k8s_nodepool_delete": {fields: []string{"preview", "resource_status"}},
+	// The status of the resource as its service writes it, in the refusal
+	// of a delete in a state no run has shown («Риск», 181, У2): a word
+	// of the cloud, not of a closed set.
+	"k8s_delete": {fields: []string{"resource_status"}},
+	"lb_delete":  {fields: []string{"resource_status"}},
+	"tg_delete":  {fields: []string{"resource_status"}},
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.

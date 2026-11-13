@@ -122,7 +122,7 @@ func TestK8sNodePoolDelete_StatusWithAnUnknownOutcome(t *testing.T) {
 		// Whether the platform deletes a pool it is still creating is not
 		// known for Managed Kubernetes: no refusal before the question, the
 		// warning of every delete in a state no run has shown.
-		"OBJECT_STATUS_PROVISIONING":  "it is OBJECT_STATUS_PROVISIONING: whether Cloud.ru deletes a node pool in this state no run has shown",
+		"OBJECT_STATUS_PROVISIONING":  `it is "OBJECT_STATUS_PROVISIONING": whether Cloud.ru deletes a node pool in this state no run has shown`,
 		"OBJECT_STATUS_SOMETHING_NEW": `"OBJECT_STATUS_SOMETHING_NEW", not running: whether the platform accepts the delete is unknown`,
 	} {
 		w := &poolWorld{status: st, others: []string{poolRunning}}
@@ -192,6 +192,23 @@ func TestK8sNodePoolDelete_RequestRefused(t *testing.T) {
 		}
 		if got := w.writes(); len(got) != 1 {
 			t.Errorf("%d: want one DELETE, got %v", code, got)
+		}
+		// A 4xx is the platform's refusal of this request: the pool stays,
+		// the same call gets the same refusal, the way is support. A 5xx
+		// may follow a delete taken: a read tells («Риск», 181, У1).
+		refused := code < 500
+		if refused && (!strings.Contains(hint, "Cloud.ru refused the delete") || !strings.Contains(hint, "support") || !strings.Contains(hint, poolFixed) || !strings.Contains(hint, "the same call")) {
+			t.Errorf("%d: want the refusal said, the same call refused again and support as the way: %s", code, text)
+		}
+		if !refused && (!strings.Contains(hint, "outcome of the delete is unknown") || !strings.Contains(hint, "k8s_nodepool_get")) {
+			t.Errorf("%d: want the outcome unknown and the read that tells: %s", code, text)
+		}
+		marked := false
+		for _, f := range anySlice(m["_untrusted"]) {
+			marked = marked || f == "resource_status"
+		}
+		if !marked {
+			t.Errorf("%d: resource_status is the cloud's word and is not marked untrusted: %s", code, text)
 		}
 	}
 }

@@ -308,7 +308,7 @@ func TestBackupDelete_StatesWithNoRuleYet(t *testing.T) {
 		}
 		// The brief promises the state and that the outcome is unknown in
 		// the preview, not the status in the target only (FB19I-23).
-		if !strings.Contains(warn, st) || !strings.Contains(warn, "the outcome of the delete is unknown") {
+		if !strings.Contains(warn, `"`+st+`"`) || !strings.Contains(warn, "the outcome of the delete is unknown") {
 			t.Errorf("%s: want the preview to say the outcome is unknown: %s", st, text)
 		}
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
 // deletePlan is the plan of a *_delete tool (gate.go): one GET of the
@@ -76,10 +77,10 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	} else if unseen {
 		out["warning"] = i18n.Tf("it is %s: whether Cloud.ru deletes a %s in this state no run has shown — the outcome of the delete is unknown; a refusal names the platform's answer",
 			"он в состоянии %s: удаляет ли Cloud.ru %s в этом состоянии, ни один прогон не показал — исход удаления неизвестен; отказ назовёт ответ платформы",
-			status, i18n.T(decl.what, decl.whRU))
+			quoteCloud(status), i18n.T(decl.what, decl.whRU))
 	}
 	if unseen {
-		return &Plan{Preview: out, Execute: withStatus(execute, status)}
+		return &Plan{Preview: out, Execute: withStatus(execute, tool, status, id)}
 	}
 	return &Plan{Preview: out, Execute: withWayOut(execute, state, status, id)}
 }
@@ -91,10 +92,25 @@ func inError(state string) bool {
 	return engine.FinalDeleteState(state) || strings.HasPrefix(strings.ToUpper(state), "ERROR")
 }
 
-// withStatus is execute whose refusal names the status read before the
-// question (resource_status) and keeps the platform's own error and hint:
-// in a state no run has shown, evo has no way out to name (FB19I-7).
-func withStatus(execute func(context.Context) (string, bool), status string) func(context.Context) (string, bool) {
+// withStatus is execute whose refusal, of a resource in a state no run
+// has shown (FB19I-7), names the status read before the question
+// (resource_status) and what is known of this request («Риск», 181, У1):
+// a refusal of the platform (intent.DefiniteRefusal) — the resource
+// stays, the same call is refused the same way while its state holds, the
+// way is Cloud.ru support; no answer or a 5xx — the outcome is unknown, a
+// read of the resource tells. Not a claim of what Cloud.ru does with a
+// resource in the state: no run has shown it. An error the state does not
+// explain (notTheState) keeps its own hint.
+func withStatus(execute func(context.Context) (string, bool), tool, status, id string) func(context.Context) (string, bool) {
+	decl := deleteTargets[tool]
+	what := i18n.T(decl.what, decl.whRU)
+	read := strings.TrimSuffix(tool, "_delete") + "_get"
+	readEN, readRU := read, read
+	if spec, ok := cliSpecs[read]; ok {
+		readRU = "evo " + spec.Group + " " + spec.Verb
+	} else {
+		readEN, readRU = "a read of it", "чтение"
+	}
 	return func(ctx context.Context) (string, bool) {
 		text, isErr := execute(ctx)
 		if !isErr {
@@ -105,6 +121,17 @@ func withStatus(execute func(context.Context) (string, bool), status string) fun
 			return text, isErr
 		}
 		m["resource_status"] = status
+		reason, _ := m["reason"].(string)
+		switch code := answerHTTPStatus(text); {
+		case intent.DefiniteRefusal(code) && !notTheState[reason]:
+			m["hint"] = i18n.Tf("Cloud.ru refused the delete of the %s in %s: it stays, and a billable one is still billed; the same call gets the same refusal while its state holds. What to do with it is the person's decision; the way is Cloud.ru support, with its id %s.",
+				"Cloud.ru отклонил удаление: %s в состоянии %s остаётся, платный — тарифицируется; тот же вызов получит тот же отказ, пока состояние не сменится. Что с ним делать, решает человек; путь — поддержка Cloud.ru с его id %s.",
+				what, quoteCloud(status), id)
+		case !notTheState[reason] || reason == clierrors.CodeAPIUnreachable:
+			m["hint"] = i18n.T(
+				fmt.Sprintf("The outcome of the delete is unknown: the request may have been taken. %s %s shows whether the %s is gone.", readEN, id, decl.what),
+				fmt.Sprintf("Исход удаления неизвестен: запрос мог быть принят. Удалён ли ресурс (%s), покажет %s %s.", decl.whRU, readRU, id))
+		}
 		return toJSON(m), true
 	}
 }
