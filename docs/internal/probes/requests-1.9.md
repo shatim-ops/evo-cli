@@ -137,6 +137,10 @@
   - `autoRepair` — object
   - `autoRepair.enabled` — boolean
   - ответы: 200
+- `DELETE /v3/nodePools/{nodePoolId}` (mk8s/openapi-v3.yaml) — Удаление группы узлов — тот же запрос в v3
+  - ответы: 200
+- `GET /v3/nodePools/{nodePoolId}` (mk8s/openapi-v3.yaml) — Получение ресурса группы узлов по идентификатору — карточка группы: состояние и желаемое число узлов после принятого запроса
+  - ответы: 200
 - `POST /v3/clusters/{clusterId}:upgrade` (mk8s/openapi-v3.yaml) — Обновление плоскости управления кластера — тот же запрос в v3
   - `clusterId`* — string
   - `version` — string
@@ -144,6 +148,10 @@
 - `POST /v3/nodePools/{nodePoolId}:upgrade` (mk8s/openapi-v3.yaml) — Обновление группы узлов кластера — тот же запрос в v3
   - `nodePoolId`* — string
   - `version` — string
+  - ответы: 200
+- `GET /v3/clusters/{clusterId}` (mk8s/openapi-v3.yaml) — Получение информации о кластере — карточка кластера: состояние и версия после обновления
+  - ответы: 200
+- `GET /v3/operations/{operationId}` (mk8s/openapi-v3.yaml) — Получение операции — операция запроса: done и форма поля error (Г6)
   - ответы: 200
 
 ### Г-13. PostgreSQL: класс узла, диск, число узлов

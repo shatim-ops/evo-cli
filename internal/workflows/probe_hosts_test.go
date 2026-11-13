@@ -23,6 +23,7 @@ var probeHosts = map[string]string{
 	"dns.api.cloud.ru":              "DNS: the links of a zone",
 	"secretmanager.api.cloud.ru":    "Secret Manager: a secret in a folder",
 	"resource-manager.api.cloud.ru": "Resource Manager: the tags (Г-17, risk note 183)",
+	"mk8s.api.cloud.ru":             "Managed Kubernetes: node pools and versions (Г-12, area_k8schange)",
 	"$host.api.cloud.ru":            "DBaaS: postgresql, kafka or redis, chosen by a case of constants (area_dbchange)",
 }
 

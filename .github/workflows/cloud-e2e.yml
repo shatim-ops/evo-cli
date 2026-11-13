@@ -102,7 +102,7 @@ on:
         description: "Which DBaaS jobs dbaas_smoke runs: pg, kafka, redis, separated by spaces"
         default: "pg kafka redis"
       probes:
-        description: "Billable probes of the platform, separated by spaces (plan cloud-e2e rc.1 1.6): access — dbaas-pg VMs in the cluster's subnet and in another subnet of the VPC probe TCP 5432 (DB-5, ~30 min more); nodes — the dbaas-pg cluster with 2 nodes and 100 GB, its storage per node read later from billing_consumption (cleanup_only prints it); p36 — disk: raw VM create with a flavor below the image's min_cpu; p41 — net: tg_create with a direct_ip VM target; p44 — secrets: a secret in a folder that does not exist; pgrepeat — dbaas-pg: after the user and the database are created, a raw repeat of both creations with the same names, the answer of the platform written (nothing new is created); p45 — dbaas-pg: pg_create with backup_schedule @daily and */5 (a cluster the platform accepts is deleted); dnslink — dns: before the zone delete, DELETE with links and its operation, PATCH linkedVpcIds [] and links read before and after (owner decision #597 p. 27); shared — disk (needs disk_smoke): a second VM without a public IP, a shared and a plain 10 GB disk (raw POST /disks), each attached by evo to both VMs, the VMs of the disk read back (D81, CMP-27; owner decision 05.11); cmp7 — disk (needs disk_smoke): a raw VM create, then DELETE while it is creating, the HTTP code (409 or 422) written (CMP-7; owner decision 10.11); r3f1 — disk (needs disk_smoke): evo disk_create HDD 1 GB killed (SIGKILL) 3 s after its confirmation, the trace in the evo journal and the disk in the cloud written, the disk deleted (R-59; owner decision 10.11); probes of the plan 1.9 run in an area of their own, ops, and need no other input: g10 — a VM with a public IP (evo), then raw set-power and PUT: stop, start, reboot, each repeated, and the flavor one step up and back; g20 (with g10) — that VM is left stopped for a day for its consumption: no sweep deletes it until cleanup_only runs with g20 here, which prints the Compute consumption and deletes it; g11 — a security group of its own without interfaces, its rules (TCP, UDP, ICMP, ingress and egress, a CIDR and 0.0.0.0/0) by raw requests, the repeat of a rule and of the deletes, the group deleted; g16 — a 10 GB disk and a VM without a public IP (evo), a backup of each, the list, a restore of each into a new disk and a new VM, the backup delete and its repeat, a protection plan of the disk with a disabled schedule created and deleted (up to ~1.5 h); g17 — a tag created in Resource Manager (resource-manager.api.cloud.ru) by raw requests, read and changed; a 10 GB disk and a VM without a public IP created by raw requests with that tag, the tag read back in their cards and lists, one more disk created with the name of the tag, the tag unassigned from and assigned to the disk, the VM deleted, then the assigned tag deleted and the disks deleted; g17nonames (with g17) — the same without the disk created with the name of the tag: for a second run when the first left a tag Resource Manager does not list; g18 — a VM with a public IP and a subnet 10.255.252.0/24 in the default VPC (evo), a second interface of the VM in that subnet created, repeated and deleted, then the VM rebuilt from another image of the same family: the image, the public IP and the boot disk read after it; g13, g14, g15 — in the jobs dbaas-pg, dbaas-kafka, dbaas-redis (need dbaas_smoke and the service): the ready cluster changed by raw PATCH — the class one step up and back, a bigger disk, for PostgreSQL one more node, for Redis one try of a smaller disk; the cluster state read after each step (up to 25 min a step)"
+        description: "Billable probes of the platform, separated by spaces (plan cloud-e2e rc.1 1.6): access — dbaas-pg VMs in the cluster's subnet and in another subnet of the VPC probe TCP 5432 (DB-5, ~30 min more); nodes — the dbaas-pg cluster with 2 nodes and 100 GB, its storage per node read later from billing_consumption (cleanup_only prints it); p36 — disk: raw VM create with a flavor below the image's min_cpu; p41 — net: tg_create with a direct_ip VM target; p44 — secrets: a secret in a folder that does not exist; pgrepeat — dbaas-pg: after the user and the database are created, a raw repeat of both creations with the same names, the answer of the platform written (nothing new is created); p45 — dbaas-pg: pg_create with backup_schedule @daily and */5 (a cluster the platform accepts is deleted); dnslink — dns: before the zone delete, DELETE with links and its operation, PATCH linkedVpcIds [] and links read before and after (owner decision #597 p. 27); shared — disk (needs disk_smoke): a second VM without a public IP, a shared and a plain 10 GB disk (raw POST /disks), each attached by evo to both VMs, the VMs of the disk read back (D81, CMP-27; owner decision 05.11); cmp7 — disk (needs disk_smoke): a raw VM create, then DELETE while it is creating, the HTTP code (409 or 422) written (CMP-7; owner decision 10.11); r3f1 — disk (needs disk_smoke): evo disk_create HDD 1 GB killed (SIGKILL) 3 s after its confirmation, the trace in the evo journal and the disk in the cloud written, the disk deleted (R-59; owner decision 10.11); probes of the plan 1.9 run in an area of their own, ops, and need no other input: g10 — a VM with a public IP (evo), then raw set-power and PUT: stop, start, reboot, each repeated, and the flavor one step up and back; g20 (with g10) — that VM is left stopped for a day for its consumption: no sweep deletes it until cleanup_only runs with g20 here, which prints the Compute consumption and deletes it; g11 — a security group of its own without interfaces, its rules (TCP, UDP, ICMP, ingress and egress, a CIDR and 0.0.0.0/0) by raw requests, the repeat of a rule and of the deletes, the group deleted; g16 — a 10 GB disk and a VM without a public IP (evo), a backup of each, the list, a restore of each into a new disk and a new VM, the backup delete and its repeat, a protection plan of the disk with a disabled schedule created and deleted (up to ~1.5 h); g17 — a tag created in Resource Manager (resource-manager.api.cloud.ru) by raw requests, read and changed; a 10 GB disk and a VM without a public IP created by raw requests with that tag, the tag read back in their cards and lists, one more disk created with the name of the tag, the tag unassigned from and assigned to the disk, the VM deleted, then the assigned tag deleted and the disks deleted; g17nonames (with g17) — the same without the disk created with the name of the tag: for a second run when the first left a tag Resource Manager does not list; g18 — a VM with a public IP and a subnet 10.255.252.0/24 in the default VPC (evo), a second interface of the VM in that subnet created, repeated and deleted, then the VM rebuilt from another image of the same family: the image, the public IP and the boot disk read after it; g12 — in the job k8s-smoke (needs k8s_smoke, not with k8s_pod_chart): the cluster at the newest version of the previous minor, then raw requests of mk8s: the node pool scaled 1→2 with the same request repeated at once, 2→1, the cluster and then the pool upgraded to the newest version, a second pool deleted while it is creating and again after it is gone, the pool scaled to 0 and deleted; the first read of the card after each accepted request and the error field of its operation written (up to 90 min more); g13, g14, g15 — in the jobs dbaas-pg, dbaas-kafka, dbaas-redis (need dbaas_smoke and the service): the ready cluster changed by raw PATCH — the class one step up and back, a bigger disk, for PostgreSQL one more node, for Redis one try of a smaller disk; the cluster state read after each step (up to 25 min a step)"
         default: ""
       redis_standalone_probe:
         description: "Probe G140-6 (billable, up to ~2.5 h): raw POST of a Redis STANDALONE cluster evo-e2e-redis-sa-<run> with replicas 0, without the field, 1 — the first accepted is created, read and deleted"
@@ -213,6 +213,7 @@ jobs:
           REDIS_ZONE: ${{ inputs.redis_zone }}
           OS_SMOKE: ${{ inputs.os_smoke }}
           K8S_SMOKE: ${{ inputs.k8s_smoke }}
+          K8S_POD_CHART: ${{ inputs.k8s_pod_chart }}
           DBAAS_SMOKE: ${{ inputs.dbaas_smoke }}
           DBAAS_SERVICES: ${{ inputs.dbaas_services }}
           REDIS_SA: ${{ inputs.redis_standalone_probe }}
@@ -1170,9 +1171,9 @@ jobs:
     environment: cloud-e2e
     if: ${{ inputs.k8s_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-24.04
-    # Шаги ждут до 40 + 30 + 25 мин, удаление — до 30: запас, чтобы job не
-    # оборвался по таймауту до удаления кластера.
-    timeout-minutes: 180
+    # Шаги ждут до 40 + 30 + 25 мин, проба Г-12 — до 90, удаление — до 30:
+    # запас, чтобы job не оборвался по таймауту до удаления кластера.
+    timeout-minutes: 300
     env:
       ZONE: ${{ inputs.k8s_zone || inputs.zone || 'ru.AZ-2' }}
       CLUSTER: evo-e2e-k8s-r${{ github.run_number }}a${{ github.run_attempt }}
@@ -1224,13 +1225,35 @@ jobs:
           jq -e '[.releases[]? | select(.latest)] | length == 1' "$RUNNER_TEMP/versions.json" >/dev/null ||
             { echo "::error::у $ADDON нет версии по умолчанию"; exit 1; }
 
+      # Г-12: кластер — на новейшей версии предыдущего минора каталога, чтобы
+      # было куда обновлять (K8S_UPGRADE_TO — новейшая версия). Нет такой —
+      # кластер по умолчанию, проба пишет «не покрыто» про обновление.
+      - name: Версии кластера для Г-12 (только чтение)
+        if: contains(format(' {0} ', inputs.probes), ' g12 ')
+        run: |
+          evo k8s options --json > "$RUNNER_TEMP/options.json"
+          # Пара «база → цель» — в канале STABLE (обычный путь обновления);
+          # в нём нет двух миноров — по всем каналам.
+          pick=$(jq -c 'def pair: unique | map({v: ., n: (ltrimstr("v") | split(".") | map(tonumber? // 0))}) | sort_by(.n)
+              | if length == 0 then {} else (.[-1]) as $new
+                | {to: $new.v, base: ([.[] | select(.n[0] == $new.n[0] and .n[1] == $new.n[1] - 1)] | last | .v)} end;
+            ([.versions_by_channel // {} | to_entries[]? | select(.key | test("STABLE")) | .value[]?] | pair) as $s
+            | if $s.base then $s else [.versions_by_channel[]?[]?] | pair end' "$RUNNER_TEMP/options.json")
+          echo "Г-12: версии каталога $(jq -c '[.versions_by_channel[]?[]?] | unique' "$RUNNER_TEMP/options.json"); выбрано $pick"
+          base=$(jq -r '.base // empty' <<<"$pick")
+          if [ -n "$base" ]; then
+            { echo "K8S_VERSION=$base"; echo "K8S_UPGRADE_TO=$(jq -r .to <<<"$pick")"; } >> "$GITHUB_ENV"
+          else
+            echo "::warning::Г-12: в каталоге нет версии предыдущего минора — кластер по умолчанию, обновление версии не проверяется"
+          fi
+
       - name: k8s plan, затем create (1 мастер)
         run: |
           # warnings плана называют каталог (flavor, зона): через redact.sed.
-          evo --json k8s plan --name "$CLUSTER" --zone "$ZONE" --master-count 1 |
+          evo --json k8s plan --name "$CLUSTER" --zone "$ZONE" --master-count 1 ${K8S_VERSION:+--version "$K8S_VERSION"} |
             jq '{version, master_count, kube_api_internet, warnings}' |
             sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
-          evo --json --yes k8s create --name "$CLUSTER" --zone "$ZONE" --master-count 1 > "$RUNNER_TEMP/create.json"
+          evo --json --yes k8s create --name "$CLUSTER" --zone "$ZONE" --master-count 1 ${K8S_VERSION:+--version "$K8S_VERSION"} > "$RUNNER_TEMP/create.json"
           id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json")
           [ -n "$id" ] || { jq -c '{status, error}' "$RUNNER_TEMP/create.json" | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; echo "::error::k8s create без cluster_id"; exit 1; }
           echo "::add-mask::$id"
@@ -1449,6 +1472,21 @@ jobs:
             exit 1
           fi
 
+      # Проба Г-12 (с Г6 дельта-аудита 1.9): группа узлов и версия кластера
+      # прямыми запросами mk8s (cloud-live.sh, область k8schange) — масштаб
+      # 1→2 с повтором сразу, 2→1, версия кластера и группы, вторая группа
+      # и её удаление, пока она создаётся, масштаб до 0, удаление последней
+      # группы. Последним шагом перед удалением: остальные проверки job идут
+      # на неизменённом кластере. Новый шаг не шлётся после 90 мин и поверх
+      # незавершённого; всё, что проба оставила в кластере, удаляет шаг ниже.
+      - name: Масштаб, версия и удаление групп (Г-12, проба)
+        if: contains(format(' {0} ', inputs.probes), ' g12 ')
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
+          K8S_BUDGET: 5400
+        run: K8S_CLUSTER_ID="$CLUSTER_ID" .github/scripts/cloud-live.sh k8schange
+
       - name: Удаление кластера (всегда)
         if: always()
         env:
@@ -1568,7 +1606,7 @@ jobs:
           read -ra words <<<"${PROBES:-}"
           for w in ${words[@]+"${words[@]}"}; do
             case "$w" in
-              access | pgrepeat | p36 | p41 | p44 | p45 | dnslink | shared | cmp7 | r3f1 | g10 | g11 | g13 | g14 | g15 | g16 | g17 | g17nonames | g18 | g20) ;;
+              access | pgrepeat | p36 | p41 | p44 | p45 | dnslink | shared | cmp7 | r3f1 | g10 | g11 | g12 | g13 | g14 | g15 | g16 | g17 | g17nonames | g18 | g20) ;;
               nodes) extra=(--arg instances=2 --arg storage_gb="$(jq -r '[(.min_storage_gb // 0), 100] | max' <<<"$spec")") ;;
               *) echo "::error::probes: «$w» — неизвестное слово (preflight их проверяет)"; exit 1 ;;
             esac
