@@ -186,3 +186,58 @@ func TestLogsVerify_ARunningVMOrAFailedReadIsAsBefore(t *testing.T) {
 		t.Errorf("verify connected over SSH %d time(s)", dep.connectCalls)
 	}
 }
+
+// A VM that vm_start or vm_reboot is taking up (starting, rebooting) is
+// waited for as before — the command goes to SSH and to the probe — but a
+// failure then names the state as its cause and vm_get as the step, with
+// the reason and the exit code the command had: logs and verify used to
+// say «SSH timeout» or «health check failed» with no cause, and the next
+// thing an agent tries is a delete (the interim delta audit of 1.9,
+// FB19I-5; D104 left these states out when vm_reboot came after it).
+func TestLogsVerify_AFailureOnAVMOnItsWayUpNamesTheState(t *testing.T) {
+	for _, status := range []string{"starting", "rebooting"} {
+		eng, dep, _ := stoppedEngine(t, vmIn(status))
+		err := eng.Logs(context.Background(), LogsOptions{Tail: 10})
+		transitCause(t, "logs", status, clerrors.CodeSSHAuthFailed, err)
+		if dep.connectCalls != 1 {
+			t.Errorf("logs of a %s VM: SSH connects %d, want 1 — the command's own way, as before", status, dep.connectCalls)
+		}
+
+		eng, _, _ = stoppedEngine(t, vmIn(status))
+		eng.Probe = probeReturning(nil)
+		err = eng.Verify(context.Background())
+		transitCause(t, "verify", status, clerrors.CodeUnhealthy, err)
+	}
+	// running: a failure is the command's own, with no cause added.
+	eng, _, _ := stoppedEngine(t, vmIn("running"))
+	err := eng.Logs(context.Background(), LogsOptions{Tail: 10})
+	var ce *clerrors.CLIError
+	if stderrors.As(err, &ce) && ce.Details["cause"] != nil {
+		t.Errorf("logs of a running VM: cause %v added to %v", ce.Details["cause"], err)
+	}
+}
+
+func transitCause(t *testing.T, cmd, status, reason string, err error) {
+	t.Helper()
+	var ce *clerrors.CLIError
+	if !stderrors.As(err, &ce) {
+		t.Fatalf("%s of a deployment whose VM is %s: %v, want a CLIError", cmd, status, err)
+	}
+	if clerrors.Reason(err) != reason {
+		t.Errorf("%s: reason %s, want %s (the one the command had)", cmd, clerrors.Reason(err), reason)
+	}
+	args, _ := ce.Details["next_args"].(map[string]any)
+	if ce.Details["cause"] != "vm_in_transition" || ce.Details["vm_state"] != status ||
+		ce.Details["next_tool"] != "vm_get" || args["vm_id"] != "vm-1" {
+		t.Errorf("%s: details %v, want cause vm_in_transition, vm_state %s and vm_get of vm-1", cmd, ce.Details, status)
+	}
+	text := ce.Message + " " + ce.Hint
+	if !strings.Contains(text, status) || !strings.Contains(text, "evo vm get") {
+		t.Errorf("%s: %q does not name the state %s and the read of the VM", cmd, text, status)
+	}
+	for _, bad := range []string{"destroy", "evo vm delete", "deploy again"} {
+		if strings.Contains(ce.Hint, bad) {
+			t.Errorf("%s: the hint advises %q: %s", cmd, bad, ce.Hint)
+		}
+	}
+}

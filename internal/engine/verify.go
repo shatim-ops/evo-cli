@@ -39,7 +39,8 @@ func (e *Engine) Verify(ctx context.Context) error {
 		return err
 	}
 	// A stopped VM answers no probe: the cause, not «unhealthy».
-	if err := e.vmStopped(ctx, active, clerrors.CodeUnhealthy); err != nil {
+	transit, err := e.vmStopped(ctx, active, clerrors.CodeUnhealthy)
+	if err != nil {
 		return err
 	}
 	if len(active.ExposedPorts) == 0 {
@@ -93,9 +94,9 @@ func (e *Engine) Verify(ctx context.Context) error {
 	}
 
 	if unhealthy > 0 {
-		return clerrors.New(clerrors.CodeUnhealthy,
+		return inTransit(clerrors.New(clerrors.CodeUnhealthy,
 			i18n.Tf("%d of %d health check(s) failed on %s", "не прошли проверки: %d из %d на %s", unhealthy, len(results), active.VMIP),
-			i18n.T("Check the service logs with 'evo logs'.", "Посмотрите журналы сервисов: 'evo logs'."))
+			i18n.T("Check the service logs with 'evo logs'.", "Посмотрите журналы сервисов: 'evo logs'.")), active, transit)
 	}
 	return nil
 }
