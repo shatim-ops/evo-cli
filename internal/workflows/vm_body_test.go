@@ -33,6 +33,13 @@ func jsonTags(v any) (all, required map[string]bool) {
 	return all, required
 }
 
+// vmBodyProbed — the fields of the direct POST of a VM that evo does not
+// send: the probe that sends each exists to learn what the platform does
+// with it.
+var vmBodyProbed = map[string]string{
+	"tag_ids": "Г-17: the tag of a VM in the request that creates it (plan 1.9, wave В6)",
+}
+
 // vmBodyKey is a key of a jq or JSON object: `key:` or `"key":`.
 var vmBodyKey = regexp.MustCompile(`"?([a-z_]+)"?\s*:`)
 
@@ -65,6 +72,12 @@ func TestScripts_DirectVMBodyIsEvos(t *testing.T) {
 	// mandatory fields: without it the API answers 422
 	// image_metadata_fields_missing (run 183, cmp7).
 	required["image_metadata"] = true
+	// A field a probe is about is not evo's yet: it is taken from the
+	// published spec of Compute (PublicVmCreateRequest) and named here with
+	// its probe. Closed list.
+	for k := range vmBodyProbed {
+		allowed[k] = true
+	}
 	if n := strings.Count(s, "POST https://compute.api.cloud.ru/api/v1.1/vms"); n != 1 {
 		t.Errorf("cloud-live.sh: %d direct POSTs of a VM, want one, in vm_post", n)
 	}
