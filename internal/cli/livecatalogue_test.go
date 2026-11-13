@@ -16,14 +16,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
-)
 
-// catalogueUUID is a UUID in a value of an answer.
-var catalogueUUID = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+)
 
 // platformAnswer is a line of testdata/platform-answers.json: the form of a
 // live answer of Cloud.ru — the leaf paths of its body, without values —
@@ -45,57 +43,11 @@ type platformAnswer struct {
 	Skip string `json:"skip"`
 }
 
-// answerShape is the form of a JSON body: each leaf path ("a.[].b") with
-// the kind of its values — "uuid", "name" (any other string), "number",
-// "bool", "null", "object" or "array" for an empty one — and the strings
-// seen at each path (for the enums). No value leaves this function but
-// through strs, which the caller compares and never prints.
+// answerShape is the form of a JSON body (httpretry.AnswerShape): the
+// one walk of a body, for the file of EVO_RECORD_ANSWERS cloud-e2e makes
+// the catalogue from and for the worlds held against it.
 func answerShape(body []byte) (map[string]string, map[string][]string, error) {
-	var v any
-	if err := json.Unmarshal(body, &v); err != nil {
-		return nil, nil, err
-	}
-	kinds, strs := map[string]string{}, map[string][]string{}
-	var walk func(v any, path string)
-	walk = func(v any, path string) {
-		join := func(k string) string {
-			if path == "" {
-				return k
-			}
-			return path + "." + k
-		}
-		switch x := v.(type) {
-		case map[string]any:
-			if len(x) == 0 {
-				kinds[path] = "object"
-			}
-			for k, e := range x {
-				walk(e, join(k))
-			}
-		case []any:
-			if len(x) == 0 {
-				kinds[path] = "array"
-			}
-			for _, e := range x {
-				walk(e, join("[]"))
-			}
-		case string:
-			kind := "name"
-			if catalogueUUID.MatchString(x) && len(x) == 36 {
-				kind = "uuid"
-			}
-			kinds[path] = kind
-			strs[path] = append(strs[path], x)
-		case float64:
-			kinds[path] = "number"
-		case bool:
-			kinds[path] = "bool"
-		case nil:
-			kinds[path] = "null"
-		}
-	}
-	walk(v, "")
-	return kinds, strs, nil
+	return httpretry.AnswerShape(body)
 }
 
 func TestAnswerShape_PathsKindsNoValues(t *testing.T) {
