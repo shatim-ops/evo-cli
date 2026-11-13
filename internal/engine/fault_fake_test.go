@@ -585,7 +585,12 @@ var faultResizable = map[string]bool{"running": true, "stopped": true}
 // shows the target) and stays there until the test moves it (stepVMPower
 // ends it in the state it left). A lost answer is a change that was taken.
 // The calls are counted (resizeCalls).
-func (c *faultCloud) SetVMFlavor(_ context.Context, id, flavorID string) error {
+func (c *faultCloud) SetVMFlavor(ctx context.Context, id, flavorID string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	err := c.gate("SetVMFlavor")
 	if err != nil && !errors.Is(err, errFaultLost) {
 		return err

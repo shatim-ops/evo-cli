@@ -796,7 +796,6 @@ func (s *Registry) planVMResize() Planner {
 		}
 		planned := vm.State
 		return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-			markSent(ctx)
 			if err := eng.Cloud.SetVMFlavor(ctx, vm.ID, target.ID); err != nil {
 				return s.vmResizeRefused(ctx, eng, vm, target, args, planned, err)
 			}

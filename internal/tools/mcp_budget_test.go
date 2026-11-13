@@ -352,6 +352,24 @@ var mcpWaits = map[string]budgetWait{
 		return ""
 	}},
 	"vm_reboot": vmPowerBudget("vm_reboot", "running"),
+	// vm_resize waits for the VM to leave updating: one that never does.
+	"vm_resize": {run: func(t *testing.T) (func(context.Context) (string, bool), func()) {
+		faultToolsIsolate(t)
+		cloud := &faultCloud{flavors: resizeCatalogue()}
+		vm, err := cloud.CreateVM(context.Background(), provision.CreateVMRequest{Name: "web"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cloud.setVMState(vm.ID, "running")
+		r := budgeted(budgetComputeRegistry(t, cloud, t.TempDir(), engine.Timings{}))
+		args := map[string]any{"name": "web", "flavor": "low-2-4", "confirmed": true}
+		return func(ctx context.Context) (string, bool) { return r.handlers["vm_resize"](ctx, args) }, nil
+	}, done: func(m map[string]any) string {
+		if m["status"] != "resizing" || m["next_tool"] != "vm_resize" {
+			return "a change of flavor that runs on is resizing, with the same call as the next step"
+		}
+		return ""
+	}},
 }
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,
