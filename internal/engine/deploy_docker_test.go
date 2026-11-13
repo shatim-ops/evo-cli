@@ -252,7 +252,11 @@ func assertInterruptedWithVMHint(t *testing.T, err error, out string) {
 func TestDeploy_InterruptDuringFIP_HintsVM(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cloud := &mockCloudAPI{createFloatingIPFn: func(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	cloud := &mockCloudAPI{createFloatingIPFn: func(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+		if req.InterfaceID == "" {
+			// The boot FIP is refused: the address is attached after boot.
+			return nil, clerrors.Wrap(clerrors.CodeAPIError, "bad request", "", &provision.StatusError{Status: 400})
+		}
 		cancel()
 		return nil, context.Canceled
 	}}
@@ -316,7 +320,7 @@ func TestAssignFloatingIP_ReportsProgress(t *testing.T) {
 	}}
 	var msgs []string
 	ip, fipID, err := assignFloatingIP(context.Background(), cloud, fastTimings,
-		func(m string) { msgs = append(msgs, m) }, "vm-1", "proj", "az")
+		func(m string) { msgs = append(msgs, m) }, "vm-1", fipName("vm-1"), "proj", "az")
 	if err != nil || ip != "127.0.0.1" || fipID != "fip-1" {
 		t.Fatalf("ip=%q fip=%q err=%v", ip, fipID, err)
 	}
@@ -339,7 +343,7 @@ func TestAssignFloatingIP_CancelKeepsFIPID(t *testing.T) {
 	slow := fastTimings
 	slow.FIPPollInterval = time.Hour
 
-	ip, fipID, err := assignFloatingIP(ctx, cloud, slow, nil, "vm-1", "proj", "az")
+	ip, fipID, err := assignFloatingIP(ctx, cloud, slow, nil, "vm-1", fipName("vm-1"), "proj", "az")
 	if !stderrors.Is(err, context.Canceled) || fipID != "fip-7" || ip != "198.51.100.7" {
 		t.Errorf("ip=%q fip=%q err=%v, want fip-7 and context.Canceled", ip, fipID, err)
 	}

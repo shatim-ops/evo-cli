@@ -28,9 +28,7 @@ import (
 // listLagsComputePending are the tools of these worlds whose repeat
 // leaves a second billable resource — each with what is known. Only
 // shrinks. Closes by 1.10.
-var listLagsComputePending = map[string]string{
-	"provision": "the answer of the create of the address lost: the call itself reserves a second address, the first stays billed and bound to nothing; whether the list of addresses lags is not known (no run)",
-}
+var listLagsComputePending = map[string]string{}
 
 func TestFault_Matrix_ListBehindALostCreate_Compute(t *testing.T) {
 	const lag = 3

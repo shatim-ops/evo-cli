@@ -196,8 +196,17 @@ func engineGate(cmd *cobra.Command, tool string, yes, noPrompt bool) func(contex
 		}
 		// The answer as the tool wrote it, its key order included.
 		p.Details = json.RawMessage(answer)
-		return confirm.Ask(ctx, p, confirm.Options{Yes: yes, DryRun: flagDryRun, NoPrompt: noPrompt, JSON: flagJSON,
-			Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr()})
+		opts := confirm.Options{Yes: yes, DryRun: flagDryRun, NoPrompt: noPrompt, JSON: flagJSON,
+			Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr()}
+		if interrupted, cut := parseObject(answer)["interrupted"]; cut {
+			// The question names an address an earlier run asked for with
+			// no answer: only a person says whether to reserve another, as
+			// for a cut call of a tool (invokeTool).
+			opts.PersonOnly = true
+			opts.Hint = cutCallHint(cmd, interrupted)
+			opts.Answered = func() { registryOf(cmd).CutCallAnswered(ctx, tool, nil, interrupted) }
+		}
+		return confirm.Ask(ctx, p, opts)
 	}
 }
 

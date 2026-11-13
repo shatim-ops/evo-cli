@@ -129,7 +129,9 @@ type agentClient struct {
 	tokenEnvKey string
 
 	// fullPath: the client starts evo by the full path of this evo, not
-	// from a PATH — a desktop app does not read the shell's PATH.
+	// from a PATH — a desktop app does not read the shell's PATH. evo
+	// doctor checks such an entry (agentEntryChecks), and reads it as JSON:
+	// a client of fullPath has a JSON file (TestDoctor_ClientsOfFullPathAreRead).
 	fullPath bool
 	// stdioOnly: the file holds only servers the client starts itself;
 	// a remote server is connected in the client's settings (--http is
