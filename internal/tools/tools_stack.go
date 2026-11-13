@@ -11,6 +11,7 @@ import (
 	"maps"
 	"math"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -593,10 +594,35 @@ func firstStr(m map[string]any, keys ...string) string {
 
 // --- handlers ---
 
+// unknownManifestFields is the refusal of a manifest with fields its type
+// does not have: each path with the fields of its level and the nearest
+// name, in the error and in unknown_fields (D108; «Риск», 186, У1).
+func unknownManifestFields(unknown []unknownField) string {
+	parts := make([]string, 0, len(unknown))
+	for _, u := range unknown {
+		level := u.Path[:strings.LastIndexAny(u.Path, ".[")]
+		near := ""
+		if u.Nearest != "" {
+			near = i18n.Tf("nearest: %s; ", "ближайшее: %s; ", u.Nearest)
+		}
+		parts = append(parts, i18n.Tf("%s (%sfields of %s: %s)", "%s (%sполя %s: %s)", u.Path, near, level, strings.Join(u.Known, ", ")))
+	}
+	return errAnswer(clierrors.New(clierrors.CodeUsage,
+		i18n.Tf("the manifest has fields evo does not know: %s; nothing was planned", "в манифесте поля, которых evo не знает: %s; план не создан", strings.Join(parts, "; ")),
+		i18n.T("Fix each name or drop the field: evo does not skip a field it does not know, since a typo would plan another stack. Note fields (_comment, x-…) are not taken either.",
+			"Исправьте каждое имя или уберите поле: незнакомое поле evo не пропускает — опечатка спланировала бы другой стек. Поля-заметки (_comment, x-…) тоже не принимаются.")),
+		map[string]any{"unknown_fields": unknown})
+}
+
 func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (string, bool) {
 	raw, ok := args["manifest"]
 	if !ok {
 		return usageT("'manifest' is required (object describing the stack)", "нужен 'manifest' — объект с описанием стека"), true
+	}
+	// A field the manifest's type does not have would be dropped by the
+	// decoding: refused here, every one at once, before any request (D108).
+	if unknown := unknownFields(raw, reflect.TypeOf(stack.Manifest{}), "manifest"); len(unknown) > 0 {
+		return unknownManifestFields(unknown), true
 	}
 	// A scope field of the manifest given empty is refused here, at the
 	// plan: decoded, it reads as «not set» and the step would work in the

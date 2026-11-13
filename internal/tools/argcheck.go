@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"net/netip"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -423,4 +424,125 @@ func describeValue(v any) string {
 		kind = i18n.T("an object", "объект")
 	}
 	return kind + " " + s
+}
+
+// manifestFree are the parts of the manifest of stack_plan free by their
+// meaning — a map whose keys the caller names, as labels or variables —
+// each with why; unknownFields does not look into them. Every other part
+// is closed: a field its type does not have is refused (D108; «Риск»,
+// conclusion 186, У4). The manifest has none today: each of its parts is a
+// struct of known fields (TestStackPlan_FreePartsOfTheManifestAreDeclared
+// holds every map of the type to a line here).
+var manifestFree = map[string]string{}
+
+// manifestField is a field of a struct of the manifest as JSON names it.
+type manifestField struct {
+	name string
+	typ  reflect.Type
+}
+
+// manifestFields are the fields of the struct rt that encoding/json reads:
+// by the name of their tag, or of the field.
+func manifestFields(rt reflect.Type) []manifestField {
+	var out []manifestField
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		out = append(out, manifestField{name, f.Type})
+	}
+	return out
+}
+
+// unknownField is a field of a manifest its type does not have: its path,
+// the fields of its level, and the nearest of them, when one is near.
+type unknownField struct {
+	Path    string   `json:"path"`
+	Known   []string `json:"known"`
+	Nearest string   `json:"nearest,omitempty"`
+}
+
+// unknownFields are the fields of v, a manifest as the caller gave it,
+// that the type rt does not have, in the order of their paths: the
+// decoding drops them, and a typo in a section or a limiting field would
+// plan a stack other than the one meant (D108). A name is matched as
+// encoding/json matches it — in any case (У5). path names v itself.
+func unknownFields(v any, rt reflect.Type, path string) []unknownField {
+	for rt.Kind() == reflect.Pointer {
+		rt = rt.Elem()
+	}
+	var out []unknownField
+	switch x := v.(type) {
+	case map[string]any:
+		if rt.Kind() != reflect.Struct || manifestFree[path] != "" {
+			return nil
+		}
+		fields := manifestFields(rt)
+		known := make([]string, 0, len(fields))
+		for _, f := range fields {
+			known = append(known, f.name)
+		}
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
+			i := slices.IndexFunc(fields, func(f manifestField) bool { return strings.EqualFold(f.name, k) })
+			if i < 0 {
+				out = append(out, unknownField{Path: path + "." + k, Known: known, Nearest: nearestName(k, known)})
+				continue
+			}
+			out = append(out, unknownFields(x[k], fields[i].typ, path+"."+k)...)
+		}
+	case []any:
+		if rt.Kind() != reflect.Slice && rt.Kind() != reflect.Array {
+			return nil
+		}
+		for i, e := range x {
+			out = append(out, unknownFields(e, rt.Elem(), path+"["+strconv.Itoa(i)+"]")...)
+		}
+	}
+	return out
+}
+
+// nearestName is the name of known nearest to name by its letters, when
+// it is within a third of its length: a typo, not another word.
+func nearestName(name string, known []string) string {
+	best, bestD := "", len(name)/3+1
+	for _, k := range known {
+		if d := editDistance(strings.ToLower(name), strings.ToLower(k)); d < bestD {
+			best, bestD = k, d
+		}
+	}
+	return best
+}
+
+// editDistance is the Levenshtein distance of a and b.
+func editDistance(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := make([]int, len(b)+1)
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(b)]
 }
