@@ -860,8 +860,8 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 			ids = append(ids, d["id"])
 		}
 		ans["other_disks"] = ids
-		ans["warning"] = i18n.Tf("disks named %s made before the restore was asked for are not the restore's: %v",
-			"диски с именем %s, созданные до запроса восстановления, — не его: %v", quoteCloud(name), ids)
+		ans["warning"] = i18n.Tf("disks named %s made before the restore was asked for, by the clock of this machine, are not the restore's: %v",
+			"диски с именем %s, созданные до запроса восстановления по часам этой машины, — не его: %v", quoteCloud(name), ids)
 	}
 	if werr != nil {
 		// The call was cut while it looked for its disk: the restore was
@@ -904,6 +904,14 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 	}
 	d := found[0]
 	ans["disk_id"], ans["disk"] = d["id"], d
+	// A disk with no time of its making read is told by its name only:
+	// the answer says so, not a «created» that reads as checked («Риск»,
+	// the conclusion on FB19I-18, У1).
+	if _, err := time.Parse(time.RFC3339, fmt.Sprint(d["created_time"])); err != nil {
+		ans["made_after_request"] = "unchecked"
+		ans["identity_note"] = i18n.T("the time the disk was made was not read: whether it is the restore's disk and not another of the same name, evo did not check",
+			"время создания диска не прочитано: тот ли это диск восстановления, а не другой с тем же именем, evo не сверил")
+	}
 	ans["created"] = map[string]any{"disk_id": d["id"]}
 	ans["note"] = i18n.T("The backup is kept; for a few minutes after a restore the platform refuses its delete.",
 		"Копия остаётся; несколько минут после восстановления платформа отвергает её удаление.")
