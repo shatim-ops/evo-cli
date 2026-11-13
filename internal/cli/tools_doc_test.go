@@ -89,15 +89,6 @@ func genToolsDoc() []byte {
 	return append(bytes.TrimRight(buf.Bytes(), "\n"), '\n')
 }
 
-// toolCommandPath is the command CLISpec gives the tool ("evo vm create";
-// Group "": a command at the root), "" for a tool without one.
-func toolCommandPath(t tools.Tool) string {
-	if t.CLI.Verb == "" {
-		return ""
-	}
-	return strings.Join(strings.Fields("evo "+t.CLI.Group+" "+t.CLI.Verb), " ")
-}
-
 // toolCommandCell is the tool's command for a table cell; a tool without
 // one is called with 'evo tools call'.
 func toolCommandCell(t tools.Tool) string {

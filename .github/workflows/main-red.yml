@@ -16,8 +16,9 @@ name: main-red
 
 on:
   workflow_run:
-    # pr-stuck — обход открытых PR по расписанию: упавший обход молчит о
-    # стоящих PR, и его красный тоже должен дойти до issue.
+    # pr-stuck — обход открытых PR: упавший обход молчит о стоящих PR, и
+    # его красный тоже должен дойти до issue. Обход запускается концом
+    # прогона ci (событие workflow_run) и расписанием — оба в условии job.
     workflows: [ci, cloud-e2e, stand, pr-stuck]
     types: [completed]
     branches: [main]
@@ -31,7 +32,8 @@ concurrency:
 jobs:
   issue:
     if: >-
-      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'schedule') &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'schedule' ||
+      (github.event.workflow_run.event == 'workflow_run' && github.event.workflow_run.name == 'pr-stuck')) &&
       (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5

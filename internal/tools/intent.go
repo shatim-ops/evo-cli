@@ -36,20 +36,31 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if r.newEngine == nil {
 		return func(string) {}, nil
 	}
-	// No engine: the call cannot reach the cloud, its handler answers that
-	// itself.
-	eng, err := r.newEngine(nil)
-	if err != nil || eng == nil {
-		return func(string) {}, nil
-	}
 	// The directory is the registry's, declared at its build: a record
 	// that cannot be placed refuses the call before it goes out.
 	root, ok := r.stateDir()
 	if !ok {
 		return nil, errNoStateDir()
 	}
-	in := intent.Intent{Tool: name, Surface: "mcp", PID: os.Getpid(), StartedAt: clock.Now(),
-		ProjectID: eng.Config.ProjectID, Zone: eng.Config.Region}
+	in := intent.Intent{Tool: name, Surface: "mcp", PID: os.Getpid(), StartedAt: clock.Now(), Canon: r.canonArgs(name, args)}
+	// The project and the key are those the call goes with: the engine of
+	// its own arguments — a server bound to projects (--allow-project) has
+	// none without them, and the call with project_id goes out all the
+	// same. A call no engine is built for is recorded without them: its
+	// handler may yet reach the cloud, and no repeat settles a record
+	// whose key is not known (the interim delta audit of 1.9, FB19I-32;
+	// «Риск», conclusion 177, У9).
+	var over map[string]any
+	if p := stringArg(args, "project_id"); p != "" {
+		over = map[string]any{"ProjectID": p}
+	}
+	eng, err := r.newEngine(over)
+	if err != nil {
+		eng = nil
+	}
+	if eng != nil {
+		in.ProjectID, in.Zone, in.Key = eng.Config.ProjectID, eng.Config.Region, eng.Maker()
+	}
 	// The surface as the journal (D46) has it: a call of the CLI carries
 	// its Caller, a call over MCP none.
 	if callerOf(ctx) != nil {
@@ -61,7 +72,6 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		}
 	}
 	in.Name, in.Target = intentResource(name, args)
-	in.Key = eng.Maker()
 	// The write of a call addressed by id lands in the project of the
 	// resource, which the call's project does not tell (namedProject): the
 	// record names no project rather than the profile's (R-82).
@@ -88,6 +98,9 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// directory anew after it.
 		defer forgetPending(ctx)
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
+			// The call returned, the record stays: a later call of the
+			// same may settle it (intent.Settle).
+			intent.End(rec)
 			return
 		}
 		// The call ended and the operation goes on: its answer names the
@@ -110,6 +123,32 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		intent.Close(rec)
 		intent.Settle(dir, rec)
 	}, nil
+}
+
+// waitArgs are the arguments that say how long the call waits, not what
+// it does: two calls that differ in them are the same call.
+var waitArgs = map[string]bool{"wait": true, "wait_seconds": true}
+
+// canonArgs is the canonical form of the arguments that make a call of
+// tool name what it is, for the print of its record (intent.Intent.Print):
+// its arguments as JSON with sorted keys, without the consent and the wait
+// (waitArgs) and without the arguments that hold a secret
+// (CLISpec.SecretFiles) — a secret does not enter the print at all, so two
+// calls that differ only in it are one call, as they were before the
+// print («Риск», conclusion 177, У4).
+func (r *Registry) canonArgs(name string, args map[string]any) []byte {
+	t, _ := r.Lookup(name)
+	sig := make(map[string]any, len(args))
+	for k, v := range args {
+		if k != "confirmed" && !waitArgs[k] && !t.CLI.SecretFiles[k] {
+			sig[k] = v
+		}
+	}
+	canon, err := json.Marshal(sig)
+	if err != nil {
+		return []byte{}
+	}
+	return canon
 }
 
 // everySendIsAChange are the tools with no repeat that is a success: every
@@ -172,8 +211,9 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 }
 
 // cutCallWarning is what the question says of the cut calls mine of tool
-// name, and the field that names them: the last one, and how many there
-// were — each may have taken effect. It sends to the person, not to
+// name, and the field that names them: the last one, how many there were —
+// each may have taken effect — and the read that shows the resource
+// (read_tool: a command of the CLI names its own command by it). It sends to the person, not to
 // «confirmed again»: the consent given was to one change («Риск»,
 // conclusion 145, У1).
 func cutCallWarning(name string, mine []intent.Intent) (message string, interrupted map[string]any) {
@@ -182,7 +222,7 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 	return i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
 			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
 			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), everySendIsAChange[name], name),
-		map[string]any{"tool": name, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
+		map[string]any{"tool": name, "read_tool": everySendIsAChange[name], "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
 }
 
 // askAgainAfterACut answers a consented call of a tool of
@@ -190,26 +230,54 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 // is not sent. A client that timed out and sends the same call again,
 // with the consent of the first one, would make a second change the
 // person consented to once. The answer is the question again, saying what
-// is known; the record is closed, so the next consented call is sent as
-// any other.
+// is known; the record is closed (closeAsked), so the next consented call
+// is sent as any other.
 func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any) (string, bool) {
 	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return "", false
 	}
-	for _, in := range mine {
-		intent.Close(in)
-		forgetPending(ctx)
-	}
+	r.closeAsked(ctx, mine)
 	message, interrupted := cutCallWarning(name, mine)
 	return toJSON(map[string]any{"status": "confirmation_required", "interrupted": interrupted, "message": message}), true
 }
 
+// closeAsked closes the records mine of the cut calls a question has just
+// named — when the question is the answer of the call: over MCP it goes to
+// the model, which is told to ask the person. A command of the CLI makes
+// the call without consent itself and then answers the question — with
+// --yes, by a script, by nobody under --dry-run — so its question closes
+// nothing: the command says when a person answered it (CutCallAnswered).
+// Until then every run finds the record and asks again (the interim delta
+// audit of 1.9, high; «Риск», conclusion 176, У1 and У2).
+func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
+	if callerOf(ctx) != nil {
+		return
+	}
+	for _, in := range mine {
+		intent.Close(in)
+	}
+	forgetPending(ctx)
+}
+
+// CutCallAnswered closes the records of the caller's own cut calls of the
+// tool name on the resource args name: a person read the question that
+// named them (the answer's "interrupted") and answered it at the terminal,
+// yes or no. The call with consent that follows a yes is sent as any
+// other; after a no nothing is sent, and the cut call is asked about no
+// more.
+func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any) {
+	for _, in := range r.cutCalls(ctx, name, args) {
+		intent.Close(in)
+	}
+	forgetPending(ctx)
+}
+
 // questionNamesTheCut is the question of a call without consent, with the
 // caller's own cut call named in it: one question that says everything —
-// the preview and the cut call — and the record closed, so the consented
-// call that follows is sent as any other, not asked a second time
-// («Риск», conclusion 145, У2). An answer that is not a question (a
+// the preview and the cut call — and the record closed (closeAsked), so
+// the consented call that follows is sent as any other, not asked a second
+// time («Риск», conclusion 145, У2). An answer that is not a question (a
 // refusal, an answer with nothing to consent to) stays as it is, and so
 // does the record.
 func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args map[string]any, answer string) string {
@@ -229,10 +297,7 @@ func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args ma
 		message += " " + was
 	}
 	m["message"], m["interrupted"] = message, interrupted
-	for _, in := range mine {
-		intent.Close(in)
-		forgetPending(ctx)
-	}
+	r.closeAsked(ctx, mine)
 	return toJSON(m)
 }
 
@@ -272,7 +337,13 @@ func (r *Registry) settleHeld(ctx context.Context, name string, args map[string]
 		if !in.Held || in.Tool != name {
 			continue
 		}
-		if (in.Name == resource && in.Target == target && (resource != "" || target != "")) || answerNames(answer, in.Target) {
+		// The answer names the record's target for a call that named
+		// the resource another way; a record that names what the
+		// operation makes (a restore: the copy and the new disk) is of
+		// the call that names the same — another disk of the same copy
+		// is another operation («Риск», conclusion 176, У4).
+		if (in.Name == resource && in.Target == target && (resource != "" || target != "")) ||
+			(in.Name == "" && answerNames(answer, in.Target)) {
 			held = append(held, in)
 		}
 	}
@@ -290,6 +361,23 @@ func (r *Registry) settleHeld(ctx context.Context, name string, args map[string]
 			forgetPending(ctx)
 		}
 	}
+}
+
+// goesOn tells a call of tool name on the resource args name whose
+// operation this caller began and evo still goes on with: its held record,
+// named as the call names the resource.
+func (r *Registry) goesOn(ctx context.Context, name string, args map[string]any) bool {
+	resource, target := intentResource(name, args)
+	root, ok := r.stateDir()
+	if !ok || (resource == "" && target == "") {
+		return false
+	}
+	for _, in := range pendingIn(ctx, root) {
+		if in.Held && in.Tool == name && in.Name == resource && in.Target == target && !in.Key.Other(r.maker()) {
+			return true
+		}
+	}
+	return false
 }
 
 // heldSince is the start of the operation of tool on target («argument=id»)
