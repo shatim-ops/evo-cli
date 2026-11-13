@@ -420,7 +420,9 @@ func (e *Engine) openPorts(ctx context.Context, projectID, sgID string, tcp, udp
 // PortsOnlyFromGroups are the ports the deploy of this engine found let
 // in only from other security groups: not open to its source, and no rule
 // made (sgrules.GroupsOnly). The answer of deploy names them on both
-// surfaces.
+// surfaces. Nil until the deploy has read the rules of the group (the
+// ports stage): a deploy cut before it names none, and its repeat reads
+// them again.
 func (e *Engine) PortsOnlyFromGroups() []sgrules.GroupOnlyPort { return e.portsOnlyFromGroups }
 
 // ShowOpenedPorts tells on p what sgrules.Open did with the ports of rec in
