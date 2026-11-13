@@ -430,6 +430,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/main_red_test.sh
 
+      # Обход открытых PR (pr-stuck.yml): PR с конфликтом и job без раннера
+      # получают строку один раз на голову — на поддельном gh.
+      - name: pr_stuck.sh на поддельном gh
+        if: runner.os == 'Linux'
+        run: .github/scripts/pr_stuck_test.sh
+
       # Помощник пробы P49 (api-probe): ./... не обходит каталоги на точку.
       - name: pricecard (api-probe P49)
         if: runner.os == 'Linux'
