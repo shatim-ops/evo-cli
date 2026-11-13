@@ -60,22 +60,26 @@ func argValues(args map[string]any) []string {
 	return out
 }
 
-// intentRandom are the fields of a record whose text evo makes itself of
-// chance and of the clock — the id, the hash of the call (Print: the
-// values are not written into it), the start, the process. A value of
-// four characters («8080», «icmp») is found in such hex and digits by
-// chance: 1 of 158 calls of a CI run, «evo vpc sg-rule-create», 13.11,
-// after the print came (#1620). Every other field — and one added later
-// — is read for the values.
+// intentRandom are the fields of a record that evo makes itself and that
+// carry no argument by construction: the id (8 random bytes, hex), the
+// print (a SHA-256 of the id and the canonical arguments, hex — the values
+// are not written into it, intent.Intent.Print), the start (the clock) and
+// the process (the system's number). A value of four characters of digits
+// or hex — «8443», the port of the world's sg_rule_create — is found in
+// them by chance: 13 places of the id and 61 of the print out of 16⁴, 6 of
+// the nanoseconds out of 10⁴, about 1 record in 580, twice as often since
+// the print came (#1620). It fell so in CI (1 of 158 calls, PR #1635,
+// 13.11) and in a loop of the test on main (see the PR). Every other
+// field — and one added later — is read for the values.
 var intentRandom = []string{"id", "print", "started_at", "pid"}
 
-// intentSays is the record without intentRandom: the text an argument's
-// value is looked for in.
-func intentSays(t *testing.T, body string) string {
+// intentSays is the record without intentRandom, field by field: where a
+// value of an argument is looked for.
+func intentSays(t *testing.T, body string) map[string]string {
 	t.Helper()
-	var rec map[string]any
+	var rec map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(body), &rec); err != nil {
-		return body
+		return map[string]string{"(the whole record)": body}
 	}
 	for _, k := range intentRandom {
 		if _, ok := rec[k]; !ok {
@@ -83,22 +87,34 @@ func intentSays(t *testing.T, body string) string {
 		}
 		delete(rec, k)
 	}
-	out, err := json.Marshal(rec)
-	if err != nil {
-		t.Fatal(err)
+	out := map[string]string{}
+	for k, v := range rec {
+		out[k] = string(v)
 	}
-	return string(out)
+	return out
+}
+
+// fieldsHolding are the fields of said whose text holds v, sorted.
+func fieldsHolding(said map[string]string, v string) []string {
+	var in []string
+	for k, text := range said {
+		if strings.Contains(text, v) {
+			in = append(in, k)
+		}
+	}
+	sort.Strings(in)
+	return in
 }
 
 // intentSays leaves out chance and nothing else: a value in any other
 // field of the record is still found.
 func TestGate_IntentSaysLeavesOutOnlyChance(t *testing.T) {
 	body := `{"id":"a8443b","tool":"sg_rule_create","args":["ports"],"name":"web","note":"x 8443 y","surface":"mcp","pid":18443,"started_at":"2026-11-13T07:08:08.084430Z","print":"ff8443aa"}`
-	if !strings.Contains(intentSays(t, body), "8443") {
-		t.Error("a value in a field evo does not make of chance is not seen")
+	if in := fieldsHolding(intentSays(t, body), "8443"); len(in) != 1 || in[0] != "note" {
+		t.Errorf("a value in a field evo does not make of chance: want it found in note alone, found in %v", in)
 	}
-	if strings.Contains(intentSays(t, strings.Replace(body, `"note":"x 8443 y",`, "", 1)), "8443") {
-		t.Error("the id, the print, the start or the process is still read for the values")
+	if in := fieldsHolding(intentSays(t, strings.Replace(body, `"note":"x 8443 y",`, "", 1)), "8443"); len(in) != 0 {
+		t.Errorf("the id, the print, the start or the process is still read for the values: %v", in)
 	}
 }
 
@@ -213,8 +229,14 @@ func TestGate_IntentBeforeTheCloudGoneAfter(t *testing.T) {
 				}
 				said := intentSays(t, body)
 				for _, v := range argValues(args) {
-					if strings.Contains(said, v) && !named[v] {
-						note(key, "%s: the intent holds the value of an argument (%d characters)", surface, len(v))
+					if named[v] {
+						continue
+					}
+					// The fields and the whole record are named: the
+					// world's values are no secrets, and a case that
+					// comes once must not stay a guess.
+					if in := fieldsHolding(said, v); len(in) > 0 {
+						note(key, "%s: the intent holds the value of an argument (%d characters) in %v; the record: %s", surface, len(v), in, body)
 					}
 				}
 			}
