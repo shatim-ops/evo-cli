@@ -2016,7 +2016,7 @@ keys_of() { jq -c 'if type == "object" then keys else type end' "$tmp/api.json" 
 # ICMP идёт с пустым port_range: поле обязательно, формат для ICMP
 # спецификация не называет — отказ и его текст и есть ответ.
 probe_g11() {
-	local zid=$1 sg rule by_group first='' made='' n0 n1 r t0 dir proto ports cidr
+	local zid=$1 sg rule by_group by_none any_made first='' made='' n0 n1 r t0 dir proto ports cidr
 	iam_token || { gap "Г-11" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap "Г-11" "нет PROJECT"; return 0; }
 	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
@@ -2094,6 +2094,14 @@ probe_g11() {
 		;;
 	*) ok "Г-11: правило без источника" "$(brief)" ;;
 	esac
+	# Правило «все порты» (гипотеза Г5 дельта-аудита 1.9): что платформа
+	# хранит в port_range — от этого зависит, посчитает ли evo правило
+	# открывающим порт. «any» — значение, которое платформа приняла у icmp;
+	# для tcp оно не описано. Источник — тестовый адрес, не интернет; группа
+	# ни к чему не привязана. Ответ создания здесь, список — ниже.
+	api POST "$C1/security-groups/$sg/rules" "$(rule_body ingress tcp any 198.18.255.1/32)"
+	mask "$(jq -r '(if type == "array" then .[0] else . end) | .id? // empty' "$tmp/api.json" 2>/dev/null || true)"
+	any_made=$(case "$code" in 2??) echo "HTTP $code, port_range в ответе создания: «$(jq -r '(if type == "array" then .[0] else . end) | if has("port_range") then (.port_range | tostring) else "нет поля" end' "$tmp/api.json" 2>/dev/null || echo '?')»" ;; *) brief ;; esac)
 	# Правила — отдельным списком группы: в карточке группы их нет, только
 	# счётчики (прогон 205 читал карточку и видел «правил: 0»).
 	rules_get() { api GET "$C1/security-groups/$sg/rules?limit=100"; }
@@ -2101,9 +2109,13 @@ probe_g11() {
 	# Правило с группой-источником в ответе списка: по списку, а не по
 	# чтению по id, evo узнаёт такое правило (sgrules, данные «разработки A»).
 	by_group='first(.items[]? | select(.port_range? == "18092:18092"))'
+	by_none='first(.items[]? | select(.port_range? == "18093:18093"))'
 	rules_get
 	n0=$(count_rules)
-	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?'), правило с группой-источником в списке: $(if jq -e "$by_group" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_group"), remote_ip_prefix: $(prefix_kind "$by_group")"; else echo "не найдено"; fi)"
+	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?'), правило с группой-источником в списке: $(if jq -e "$by_group" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_group"), remote_ip_prefix: $(prefix_kind "$by_group")"; else echo "не найдено"; fi), правило без источника в списке: $(if jq -e "$by_none" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_none"), remote_ip_prefix: $(prefix_kind "$by_none")"; else echo "не найдено"; fi)"
+	# В списке правило «все порты» — единственное tcp с тестовым адресом и не
+	# с портом пробы.
+	ok "Г-11: правило «все порты»" "$any_made; в списке: «$(jq -r '[.items[]? | select(.ip_protocol? == "tcp" and .remote_ip_prefix? == "198.18.255.1/32" and .port_range? != "18090:18090") | .port_range | tostring] | first // "не найдено"' "$tmp/api.json" 2>/dev/null || echo '?')»"
 	# Повтор правила, которое создано (не первого в списке: в прогоне 207
 	# оно не создалось, и «повтор» создал его впервые): 2xx и новое
 	# правило, 2xx без нового или отказ.
@@ -2330,7 +2342,9 @@ probe_g16() {
 				case "$code" in 2??)
 					ops_settle "$C1/backups/$bd" 600 || true
 					rd_two() { [ "$(lst disk "$n-rd" | wc -l)" -ge 2 ]; }
-					poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_two || true
+					# Свой предел, не PROBE_WAIT: второго диска может не
+					# быть вовсе, и ждать его общий предел незачем.
+					poll "${PROBE_WAIT_TWICE:-120}" "$PROBE_PAUSE" rd_two || true
 					r="$r; состояния копии: $chain"
 					;;
 				esac

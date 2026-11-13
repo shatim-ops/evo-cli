@@ -64,7 +64,7 @@ cat >"$tmp/bin/ssh-keygen" <<'FAKE'
 while [ $# -gt 0 ]; do case $1 in -f) : >"$2"; echo "ssh-ed25519 AAAA evo-probe" >"$2.pub"; shift ;; esac; shift; done
 FAKE
 chmod +x "$tmp/bin/ssh-keygen"
-export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0 SWEEP_PAUSE=1 API_RETRY_PAUSE=0
+export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0 PROBE_WAIT_TWICE=1 SWEEP_PAUSE=1 API_RETRY_PAUSE=0
 fail=0
 n=0
 world() {
@@ -97,7 +97,7 @@ POST /security-groups/sg1/rules 201 {"id":"rule1"}
 GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
 GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":"0.0.0.0/0","remote_security_group":null}
 GET /security-groups/sg1/rules/rule1 404
-GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0","state":"created"},{"id":"rule1","port_range":"18092:18092","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}],"total":2}
+GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0","state":"created"},{"id":"rule1","port_range":"18092:18092","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}},{"id":"rule1","port_range":"18093:18093","remote_ip_prefix":"0.0.0.0/0","remote_security_group":null},{"id":"rule1","ip_protocol":"tcp","port_range":"1:65535","remote_ip_prefix":"198.18.255.1/32"}],"total":4}
 DELETE! /security-groups/sg1/rules/rule1 204
 DELETE! /security-groups/sg1/rules/rule1 422 [{"code":"security_group_rule_can_not_be_deleted_from_current_state","message":"no"}]
 DELETE /security-groups/sg1/rules/rule1 404 [{"code":"security_group_rule_not_found","message":"no"}]
@@ -111,14 +111,22 @@ rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11: код" "$rc" 0
 R=/security-groups/sg1/rules
-want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;GET /security-groups/sg1;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;POST $R;GET $R/rule1;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;GET /security-groups/sg1;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;POST $R;GET $R/rule1;POST $R;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
 grep -q 'Г-11: готовность группы.*состояния: created' "$tmp/out" || { echo "FAIL: Г-11: готовность группы до правил не записана"; fail=1; }
-grep -q 'Г-11: чтение правил.*HTTP 200, правил: 2, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-11: чтение правил.*HTTP 200, правил: 4, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление правила.*HTTP 204, повтор сразу — HTTP 422, машинный код security_group_rule_can_not_be_deleted_from_current_state.*состояния: нет (404).*повтор после исчезновения — HTTP 404, машинный код security_group_rule_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления правила после исчезновения не записан"; grep 'удаление правила' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление группы.*повтор после исчезновения — HTTP 404, машинный код security_group_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления группы после исчезновения не записан"; grep 'удаление группы' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # Правило с группой-источником в ответе списка (по списку его узнаёт evo):
 # форма источника и префикс — те же слова, что у чтения по id.
 grep -q 'Г-11: чтение правил.*правило с группой-источником в списке: объект remote_security_group с полями \["id","name"\], remote_ip_prefix: null' "$tmp/out" || { echo "FAIL: Г-11: форма группы-источника в списке не записана"; grep 'чтение правил' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+# Гипотеза Г5 дельта-аудита 1.9: правило без источника в ответе списка (по
+# списку evo решает, что останется открытым) и правило «все порты» — что
+# платформа хранит в port_range; при пустом значении evo не посчитает
+# правило ни открывающим порт, ни последним правилом SSH. Тело правила «все
+# порты»: tcp, port_range «any», источник — тестовый адрес, не интернет.
+grep -q 'Г-11: чтение правил.*правило без источника в списке: группы в ответе нет.*remote_ip_prefix: весь IPv4' "$tmp/out" || { echo "FAIL: Г-11: правило без источника в списке не записано"; grep 'чтение правил' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+jq -e 'select(.port_range == "any" and .ip_protocol == "tcp") | .remote_ip_prefix == "198.18.255.1/32"' "$FAKE_DIR/bodies" >/dev/null || { echo "FAIL: Г-11: тело правила «все порты» не то"; grep '"any"' "$FAKE_DIR/bodies"; fail=1; }
+grep -q 'Г-11: правило «все порты».*HTTP 201, port_range в ответе создания: «нет поля».*в списке: «1:65535»' "$tmp/out" || { echo "FAIL: Г-11: что хранится у правила «все порты», не записано"; grep 'все порты' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # Правило «откуда угодно» без источника вовсе: в теле нет ни адреса, ни
 # группы; в строке — что платформа хранит в remote_ip_prefix (от этого
 # зависит ветка «без префикса — любой» в sgrules.Coverage, план 1.9).
