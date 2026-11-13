@@ -594,24 +594,47 @@ func firstStr(m map[string]any, keys ...string) string {
 
 // --- handlers ---
 
+// unknownPathsNamed is how many unknown paths a refusal of a manifest
+// names: all at once, so a caller fixes them in one round, but not an
+// answer without bound (D108; «Риск», 186, У9).
+const unknownPathsNamed = 20
+
 // unknownManifestFields is the refusal of a manifest with fields its type
-// does not have: each path with the fields of its level and the nearest
-// name, in the error and in unknown_fields (D108; «Риск», 186, У1).
+// does not have: each path with the nearest name, then the fields of each
+// level once, in the error and in unknown_fields and known_fields (D108;
+// «Риск», 186, У1, У9). The names are the caller's text: quoted
+// (fieldSegment) and marked untrusted (untrustedFields).
 func unknownManifestFields(unknown []unknownField) string {
-	parts := make([]string, 0, len(unknown))
+	more := 0
+	if len(unknown) > unknownPathsNamed {
+		more, unknown = len(unknown)-unknownPathsNamed, unknown[:unknownPathsNamed]
+	}
+	var paths, levels []string
+	known := map[string][]string{}
 	for _, u := range unknown {
-		level := u.Path[:strings.LastIndexAny(u.Path, ".[")]
-		near := ""
+		p := u.Path
 		if u.Nearest != "" {
-			near = i18n.Tf("nearest: %s; ", "ближайшее: %s; ", u.Nearest)
+			p += i18n.Tf(" (nearest: %s)", " (ближайшее: %s)", u.Nearest)
 		}
-		parts = append(parts, i18n.Tf("%s (%sfields of %s: %s)", "%s (%sполя %s: %s)", u.Path, near, level, strings.Join(u.Known, ", ")))
+		paths = append(paths, p)
+		if _, seen := known[u.level]; !seen {
+			known[u.level] = u.known
+			levels = append(levels, i18n.Tf("fields of %s: %s", "поля %s: %s", u.level, strings.Join(u.known, ", ")))
+		}
+	}
+	if more > 0 {
+		paths = append(paths, i18n.Tf("and %d more", "и ещё %d", more))
+	}
+	fields := map[string]any{"unknown_fields": unknown, "known_fields": known}
+	if more > 0 {
+		fields["unknown_fields_more"] = more
 	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("the manifest has fields evo does not know: %s; nothing was planned", "в манифесте поля, которых evo не знает: %s; план не создан", strings.Join(parts, "; ")),
+		i18n.Tf("the manifest has fields evo does not know: %s; %s; nothing was planned", "в манифесте поля, которых evo не знает: %s; %s; план не создан",
+			strings.Join(paths, ", "), strings.Join(levels, "; ")),
 		i18n.T("Fix each name or drop the field: evo does not skip a field it does not know, since a typo would plan another stack. Note fields (_comment, x-…) are not taken either.",
 			"Исправьте каждое имя или уберите поле: незнакомое поле evo не пропускает — опечатка спланировала бы другой стек. Поля-заметки (_comment, x-…) тоже не принимаются.")),
-		map[string]any{"unknown_fields": unknown})
+		fields)
 }
 
 func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (string, bool) {

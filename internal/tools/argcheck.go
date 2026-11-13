@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/netip"
 	"reflect"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -463,11 +464,30 @@ func manifestFields(rt reflect.Type) []manifestField {
 }
 
 // unknownField is a field of a manifest its type does not have: its path,
-// the fields of its level, and the nearest of them, when one is near.
+// the nearest field of its level, when one is near, and the level with its
+// fields (named once per level in the answer, «Риск», 186, У9).
 type unknownField struct {
-	Path    string   `json:"path"`
-	Known   []string `json:"known"`
-	Nearest string   `json:"nearest,omitempty"`
+	Path    string `json:"path"`
+	Nearest string `json:"nearest,omitempty"`
+	level   string
+	known   []string
+}
+
+// plainField is a name of a field a path gives as it is: one word of the
+// manifest's own form. Any other name is the caller's text, which a
+// manifest a cloned repository brings may make an instruction: quoted on
+// one line and cut (D108; «Риск», 186, У8).
+var plainField = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// fieldSegment is name k as a path names it.
+func fieldSegment(k string) string {
+	if plainField.MatchString(k) {
+		return k
+	}
+	if r := []rune(k); len(r) > 64 {
+		k = string(r[:64]) + "…"
+	}
+	return quoteCloud(k)
 }
 
 // unknownFields are the fields of v, a manifest as the caller gave it,
@@ -498,7 +518,7 @@ func unknownFields(v any, rt reflect.Type, path string) []unknownField {
 		for _, k := range keys {
 			i := slices.IndexFunc(fields, func(f manifestField) bool { return strings.EqualFold(f.name, k) })
 			if i < 0 {
-				out = append(out, unknownField{Path: path + "." + k, Known: known, Nearest: nearestName(k, known)})
+				out = append(out, unknownField{Path: path + "." + fieldSegment(k), Nearest: nearestName(k, known), level: path, known: known})
 				continue
 			}
 			out = append(out, unknownFields(x[k], fields[i].typ, path+"."+k)...)
