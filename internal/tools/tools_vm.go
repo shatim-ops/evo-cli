@@ -406,9 +406,6 @@ func (s *Registry) planVMPower(tool string) Planner {
 				"ВМ в состоянии %s, а не %s: примет ли платформа %s — неизвестно", state, act.from, i18n.T(act.noun[0], act.noun[1]))
 		}
 		return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-			// The command goes out: the layer of intents is told (a write
-			// of Compute evo's transport does not count).
-			markSent(ctx)
 			if err := eng.Cloud.SetVMPower(ctx, vm.ID, act.command); err != nil {
 				return s.vmPowerRefused(ctx, eng, tool, act, vm, args, state, err)
 			}

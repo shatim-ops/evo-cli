@@ -13,6 +13,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -60,7 +61,7 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 				if confirmed, _ := args["confirmed"].(bool); !confirmed {
 					return `{"status":"error","reason":"USAGE"}`, true
 				}
-				markSent(ctx)
+				_ = httpretry.NoteWrite(ctx)
 				sent++
 				return `{"status":"ok"}`, false
 			})
@@ -104,7 +105,7 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 		sent := 0
 		tl, _ := r.Lookup("pg_delete")
 		r.intended(tl, func(ctx context.Context, _ map[string]any) (string, bool) {
-			markSent(ctx)
+			_ = httpretry.NoteWrite(ctx)
 			sent++
 			return `{"status":"deleted"}`, false
 		})(context.Background(), map[string]any{"id": resMine, "confirmed": true})
@@ -157,7 +158,7 @@ func TestIntent_QuestionWithoutConsentNamesTheCutCall(t *testing.T) {
 				if confirmed, _ := args["confirmed"].(bool); !confirmed {
 					return c.preview, true
 				}
-				markSent(ctx)
+				_ = httpretry.NoteWrite(ctx)
 				sent++
 				return `{"status":"ok"}`, false
 			})

@@ -624,7 +624,7 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf(i18n.T("write %s: %w", "запись %s: %w"), path, err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := renameAtomic(tmpName, path); err != nil {
 		return fmt.Errorf(i18n.T("write %s: %w", "запись %s: %w"), path, err)
 	}
 	return nil

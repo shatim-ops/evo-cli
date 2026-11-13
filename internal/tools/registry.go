@@ -241,11 +241,9 @@ type callRecords struct {
 	pending []intent.Intent
 	read    bool
 
-	// open is the record the call opened (beginIntent), with hasOpen;
-	// sent tells that the call said its write goes out (markSent).
+	// open is the record the call opened (beginIntent), with hasOpen.
 	open    intent.Intent
 	hasOpen bool
-	sent    bool
 
 	// resolved is what the call has resolved of the cloud by a read that
 	// more than one of its layers needs (onceACall).
@@ -305,43 +303,44 @@ func forgetPending(ctx context.Context) {
 	}
 }
 
-// markSent is said by a handler whose writes evo's transport does not
-// count (changeRule.marksSend) right before its write goes out: the record
-// of the call is marked so at once — a process killed after it leaves the
-// mark — and the layer knows the call sent something when it ends with no
-// outcome.
-func markSent(ctx context.Context) {
+// markSent is told by the counter of the call's writes
+// (httpretry.CountWrites) right before a write goes out, until it says the
+// call is marked: the record the call opened is marked at once — a process
+// killed after the write leaves the mark. A write before the record is
+// opened marks nothing and does not spend the mark (false). An error: the
+// mark is not written, and the write does not go out.
+func markSent(ctx context.Context) (marked bool, err error) {
 	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
-	if !ok {
-		return
+	if !ok || !c.hasOpen {
+		// Nothing to mark yet: the next write asks again.
+		return false, nil
 	}
-	c.sent = true
-	if c.hasOpen && !c.open.Sent {
-		c.open.Sent = true
-		intent.MarkSent(c.open)
+	if c.open.Sent {
+		return true, nil
 	}
+	if err := intent.MarkSent(c.open); err != nil {
+		return false, err
+	}
+	c.open.Sent = true
+	return true, nil
 }
 
-// callSent tells whether the call of ctx sent a write: evo's transport
-// counted one, or the handler said so (markSent).
+// callSent tells whether the call of ctx sent a write (httpretry.Writes).
 func callSent(ctx context.Context) bool {
-	if n, _ := httpretry.Writes(ctx); n > 0 {
-		return true
-	}
-	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
-	return ok && c.sent
+	n, _ := httpretry.Writes(ctx)
+	return n > 0
 }
 
 type callRecordsKey struct{}
 
 // budgeted stamps a call with its start (withCallStart) and notes in its
 // answer what earlier calls left.
-func (r *Registry) budgeted(next Handler) Handler {
+func (r *Registry) budgeted(name string, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		own := &callRecords{}
 		text, isErr := next(context.WithValue(r.withCallStart(ctx), callRecordsKey{}, own), args)
 		if callerOf(ctx) == nil {
-			text = r.notePending(text, own.ids)
+			text = r.notePending(text, own.ids, callOn(name, args))
 		}
 		return text, isErr
 	}
@@ -400,7 +399,7 @@ func New(factory EngineFactory) *Registry {
 				r.unchecked = map[string]Handler{}
 			}
 			r.unchecked[t.Name] = checkedCreateName(t.Name, r.intended(*t, h))
-			r.handlers[t.Name] = r.budgeted(outer(t.Name, t.InputSchema, r.unchecked[t.Name]))
+			r.handlers[t.Name] = r.budgeted(t.Name, outer(t.Name, t.InputSchema, r.unchecked[t.Name]))
 		}
 		t.Handler = r.handlers[t.Name]
 	}
@@ -438,7 +437,7 @@ func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
 	}
 	t, _ := r.Lookup(name)
 	r.unchecked[name] = wrap(next)
-	h := r.budgeted(outer(name, t.InputSchema, r.unchecked[name]))
+	h := r.budgeted(name, outer(name, t.InputSchema, r.unchecked[name]))
 	r.handlers[name] = h
 	for i := range r.tools {
 		if r.tools[i].Name == name {

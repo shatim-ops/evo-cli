@@ -44,6 +44,10 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		return nil, errNoStateDir()
 	}
 	in := intent.Intent{Tool: name, Surface: "mcp", PID: os.Getpid(), StartedAt: clock.Now(), Canon: r.canonArgs(name, args)}
+	// Its writes are counted (intended): the first marks the record
+	// before it goes out, and a record of a killed call without the mark
+	// sent nothing (intent.Intent.Counts).
+	_, in.Counts = httpretry.Writes(ctx)
 	// The project and the key are those the call goes with: the engine of
 	// its own arguments — a server bound to projects (--allow-project) has
 	// none without them, and the call with project_id goes out all the
@@ -95,22 +99,16 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// directory anew after it.
 		defer forgetPending(ctx)
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
-			// No write went out (changeRule.viaHTTP): the call changed
-			// nothing, whatever cut it.
-			rule := everySendIsAChange[name]
-			if n, counted := httpretry.Writes(ctx); counted && n == 0 && rule.viaHTTP {
-				intent.Close(rec)
-				return
-			}
-			// Nor did a call whose handler says its write goes out
-			// (markSent) and did not say it.
-			if rule.marksSend && !callSent(ctx) {
+			// No write went out — every client of evo counts its writes,
+			// and so do kubectl, helm and ssh (httpretry.NoteWrite): the
+			// call changed nothing, whatever cut it («Риск», conclusion
+			// 187, У2).
+			if n, counted := httpretry.Writes(ctx); counted && n == 0 {
 				intent.Close(rec)
 				return
 			}
 			// The call returned, the record stays: a later call of the
-			// same may settle it (intent.Settle) — with what the call
-			// said of its write (markSent).
+			// same may settle it (intent.Settle).
 			rec.Sent = rec.Sent || callSent(ctx)
 			intent.End(rec)
 			return
@@ -221,24 +219,12 @@ type changeRule struct {
 	// that is taken — the question is asked only while the list does not
 	// show it («Риск», conclusion 179, У1).
 	made bool
-	// marksSend: the handler says right before its write that it goes out
-	// (markSent) — a tool whose writes evo's transport does not count. A
-	// call that ended with no outcome and did not say it sent nothing: its
-	// record closes («Риск», conclusion 177, У13; the conclusion on D107,
-	// У2).
-	marksSend bool
 	// settledBy reads the resource and says what the record of a cut call
 	// of the tool means now: the change is made (the record closes, no
 	// question), it goes on (no question, the plan waits for it), or the
 	// resource is where the change started or elsewhere (the question). nil:
 	// the question, always. An error is a question too.
 	settledBy func(ctx context.Context, r *Registry, args map[string]any) (outcome, error)
-	// viaHTTP: every write of the tool goes out through evo's HTTP
-	// transport (httpretry), which counts them for the call. A call that
-	// ended with no outcome and sent no write changed nothing: its record
-	// closes, and no repeat is asked about a request that never went
-	// («Риск», conclusion 179, У2).
-	viaHTTP bool
 }
 
 // outcome is what the resource of a cut call says of it (settledBy).
@@ -262,7 +248,7 @@ const (
 // the parent it is made in, parent, when it has one — whatever the other
 // arguments of the repeat are.
 func paidCreate(tool, parent string, name func(args map[string]any) string) changeRule {
-	return changeRule{read: createdIDs[tool].list, made: true, viaHTTP: true,
+	return changeRule{read: createdIDs[tool].list, made: true,
 		target: func(_ context.Context, _ *Registry, args map[string]any) (string, string, error) {
 			target := ""
 			if id := stringArg(args, parent); parent != "" && id != "" {
@@ -288,13 +274,13 @@ func nameArg(args map[string]any) string { return stringArg(args, "name") }
 var everySendIsAChange = map[string]changeRule{
 	// A reboot has no «already»: the VM runs before it and after it
 	// (docs/internal/briefs/ops-wave-1.md §5).
-	"vm_reboot": {read: "vm_get", target: vmTarget("vm_reboot"), marksSend: true},
+	"vm_reboot": {read: "vm_get", target: vmTarget("vm_reboot")},
 	// A start or a stop is made once the VM is where it leads: the state
 	// of the VM tells the outcome of a cut call, and only a VM back where
 	// the change started is asked about (the interim delta audit of 1.9,
 	// FB19I-2; «Риск», conclusion 177, У13).
-	"vm_start": {read: "vm_get", target: vmTarget("vm_start"), marksSend: true, settledBy: vmSettled("vm_start")},
-	"vm_stop":  {read: "vm_get", target: vmTarget("vm_stop"), marksSend: true, settledBy: vmSettled("vm_stop")},
+	"vm_start": {read: "vm_get", target: vmTarget("vm_start"), settledBy: vmSettled("vm_start")},
+	"vm_stop":  {read: "vm_get", target: vmTarget("vm_stop"), settledBy: vmSettled("vm_stop")},
 	// A backup by the same name is found before the question, but a lost
 	// answer may leave it not yet listed: a repeat would make a second,
 	// billed with no term («Риск», conclusion 164, У5; the audit of #1544,
@@ -847,22 +833,75 @@ func answerReason(answer string) string {
 // resource may be the person's now (R-56). The lines are the same in
 // doctor, in the first answer of a tool and in the CLI's stderr.
 func (r *Registry) PendingNotes(root string) []string {
-	notes, _ := r.pendingNotes(root, nil)
+	notes, _ := r.pendingNotes(root, nil, callResource{})
 	return notes
 }
 
 // pendingNotes are PendingNotes without the records of the ids own, and
 // whether any was left out.
-func (r *Registry) pendingNotes(root string, own []string) (notes []string, leftOut bool) {
+func (r *Registry) pendingNotes(root string, own []string, call callResource) (notes []string, leftOut bool) {
+	var named []intent.Intent
 	for _, in := range pendingIntents(root) {
 		if slices.Contains(own, in.ID) {
 			leftOut = true
 			continue
 		}
-		notes = append(notes, r.pendingNote(in, r.maker()))
+		named = append(named, in)
+	}
+	// The newest are named in full, oldest of them first; the rest in one
+	// line that sends to doctor, which names every one. Nothing is closed
+	// by the fold («Риск», conclusion 187, У3). A record of the resource
+	// the call names is never folded, however old, and takes none of the
+	// places of the newest: for a tool that asks no question after a cut
+	// call the note is the only word of it (У3-1).
+	slices.SortStableFunc(named, func(a, b intent.Intent) int { return a.StartedAt.Compare(b.StartedAt) })
+	others := 0
+	for _, in := range named {
+		if !call.names(in) {
+			others++
+		}
+	}
+	if len(named) == 0 {
+		return nil, leftOut // nothing to name: no engine is built for the key
+	}
+	fold := max(others-foldPendingAfter, 0)
+	folded := 0
+	cur := r.maker()
+	for _, in := range named {
+		if folded < fold && !call.names(in) {
+			folded++
+			continue
+		}
+		notes = append(notes, r.pendingNote(in, cur))
+	}
+	if folded > 0 {
+		// One text on both surfaces; over HTTP the server has no doctor
+		// (H10), and the default says so («Риск», conclusion 187).
+		notes = append(notes, i18n.Tf("and %d more, started before these: evo doctor (over MCP on stdio — the doctor tool) shows every one",
+			"и ещё %d, начатых раньше этих: evo doctor (по MCP по stdio — инструмент doctor) показывает все", folded))
 	}
 	return notes, leftOut
 }
+
+// callResource is the resource a call names (intentResource), whose
+// records the fold of the first answer never hides.
+type callResource struct{ name, target string }
+
+// callOn is the resource of a call of tool with args.
+func callOn(tool string, args map[string]any) callResource {
+	name, target := intentResource(tool, args)
+	return callResource{name, target}
+}
+
+// names tells a record of the resource: by its name or by its target,
+// whichever tool left it — a delete after a cut create of it.
+func (c callResource) names(in intent.Intent) bool {
+	return c.name != "" && in.Name == c.name || c.target != "" && in.Target == c.target
+}
+
+// foldPendingAfter is how many records of cut calls the first answer and
+// the CLI's stderr name in full (pendingNotes).
+const foldPendingAfter = 5
 
 // pendingIntents are the intents a run in root reads: the folder's and the
 // configuration directory's (evo login's key, № 37), oldest first in each.
@@ -1115,7 +1154,7 @@ func (r *Registry) listToolOf(tool string) string {
 // named in it: the answer itself says how the call ended. They are not
 // noted yet either (false), so the next answer names them; every other
 // reader of the records sees them as before.
-func (r *Registry) withPending(answer string, own []string) (string, bool) {
+func (r *Registry) withPending(answer string, own []string, call callResource) (string, bool) {
 	root, ok := r.stateDir()
 	if !ok {
 		if r.stateDirUndeclared() {
@@ -1126,7 +1165,7 @@ func (r *Registry) withPending(answer string, own []string) (string, bool) {
 		}
 		return answer, true
 	}
-	notes, leftOut := r.pendingNotes(root, own)
+	notes, leftOut := r.pendingNotes(root, own, call)
 	answer, noted := withNotes(answer, notes)
 	return answer, noted && !leftOut
 }
@@ -1155,11 +1194,11 @@ func withNotes(answer string, notes []string) (string, bool) {
 
 // notePending is answer with the intents of earlier runs, on the first JSON
 // answer of the process; the lock is released however withPending ends.
-func (r *Registry) notePending(answer string, own []string) string {
+func (r *Registry) notePending(answer string, own []string, call callResource) string {
 	r.pendingMu.Lock()
 	defer r.pendingMu.Unlock()
 	if !r.pendingNoted {
-		answer, r.pendingNoted = r.withPending(answer, own)
+		answer, r.pendingNoted = r.withPending(answer, own, call)
 	}
 	return answer
 }

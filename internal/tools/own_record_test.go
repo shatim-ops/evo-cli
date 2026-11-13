@@ -15,6 +15,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -35,13 +36,13 @@ func TestIntent_ACallsOwnRecordIsNotInItsOwnAnswer(t *testing.T) {
 	reboot, _ := r.Lookup("vm_reboot")
 	args := func() map[string]any { return map[string]any{"vm_id": resMine, "confirmed": true} }
 	sent := 0
-	call := r.budgeted(r.intended(reboot, func(ctx context.Context, args map[string]any) (string, bool) {
+	call := r.budgeted(reboot.Name, r.intended(reboot, func(ctx context.Context, args map[string]any) (string, bool) {
 		// The layer asks the handler for the preview of its question
 		// without the consent: only a consented call sends.
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return `{"status":"error","reason":"USAGE"}`, true
 		}
-		markSent(ctx)
+		_ = httpretry.NoteWrite(ctx)
 		sent++
 		return `{"status":"error","error":"reboot: API_ERROR: 502","reason":"API_ERROR"}`, true
 	}))
@@ -126,7 +127,7 @@ func TestIntent_ReadsOfTheRecordsByACall(t *testing.T) {
 		{"vm_reboot", map[string]any{"vm_id": resMine, "confirmed": true}, 2},
 	} {
 		tl, _ := r.Lookup(c.tool)
-		call := r.budgeted(r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+		call := r.budgeted(tl.Name, r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
 			if confirmed, _ := args["confirmed"].(bool); !confirmed {
 				return `{"status":"confirmation_required"}`, true
 			}

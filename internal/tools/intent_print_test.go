@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -19,7 +20,7 @@ func consentedCall(r *Registry, tool string, args map[string]any, answer string)
 	tl, _ := r.Lookup(tool)
 	args["confirmed"] = true
 	r.intended(tl, func(ctx context.Context, _ map[string]any) (string, bool) {
-		markSent(ctx) // the write goes out
+		_ = httpretry.NoteWrite(ctx) // the write goes out
 		return answer, strings.Contains(answer, `"error"`)
 	})(context.Background(), args)
 }
@@ -125,7 +126,8 @@ func TestIntent_ACallOfAServerWithoutItsOwnProjectIsRecorded(t *testing.T) {
 		return a
 	}
 	call := func(project, answer string) {
-		r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+		r.intended(tl, func(ctx context.Context, _ map[string]any) (string, bool) {
+			_ = httpretry.NoteWrite(ctx) // the request went out
 			during = len(intent.Pending(dir))
 			return answer, strings.Contains(answer, `"error"`)
 		})(context.Background(), args(project))
@@ -179,7 +181,7 @@ func TestIntent_TheQuestionAfterACutCallDoesNotLookAtThePrint(t *testing.T) {
 			if confirmed, _ := args["confirmed"].(bool); !confirmed {
 				return `{"status":"error","reason":"USAGE"}`, true // the plan: nothing is sent
 			}
-			markSent(ctx)
+			_ = httpretry.NoteWrite(ctx)
 			sent++
 			return `{"status":"ok"}`, false
 		})(context.Background(), map[string]any{target: resMine, "wait": false, "description": "another", "confirmed": true})

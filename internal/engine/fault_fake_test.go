@@ -24,6 +24,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
@@ -380,7 +381,12 @@ func (c *faultCloud) bump() int {
 
 func (c *faultCloud) SetToken(string) {}
 
-func (c *faultCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
+func (c *faultCloud) CreateVM(ctx context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	err := c.gate("CreateVM")
 	if err != nil && !errors.Is(err, errFaultLost) && !errors.Is(err, errFaultEmpty) {
 		return nil, err
@@ -468,7 +474,12 @@ func (c *faultCloud) GetVM(_ context.Context, id string) (*provision.VM, error) 
 	return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")
 }
 
-func (c *faultCloud) DeleteVM(_ context.Context, id string) error {
+func (c *faultCloud) DeleteVM(ctx context.Context, id string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	if err := c.gate("DeleteVM"); err != nil {
 		return err
 	}
@@ -527,7 +538,12 @@ func faultPowerRefused(code string) error {
 // clock decides. A lost answer is a command that was taken. The calls are
 // counted as every other's (powerCalls): a repeat that must not write is
 // checked by their number.
-func (c *faultCloud) SetVMPower(_ context.Context, id, command string) error {
+func (c *faultCloud) SetVMPower(ctx context.Context, id, command string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	err := c.gate("SetVMPower")
 	if err != nil && !errors.Is(err, errFaultLost) {
 		return err
@@ -678,6 +694,11 @@ func (c *faultCloud) powerCalls() int {
 }
 
 func (c *faultCloud) DeleteVMInProject(ctx context.Context, id, _ string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	return c.DeleteVM(ctx, id)
 }
 
@@ -697,7 +718,12 @@ func (c *faultCloud) ListVMsInProject(context.Context, string) ([]*provision.VM,
 	return out, nil
 }
 
-func (c *faultCloud) CreateFloatingIP(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+func (c *faultCloud) CreateFloatingIP(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	err := c.gate("CreateFloatingIP")
 	if err != nil && !errors.Is(err, errFaultLost) && !errors.Is(err, errFaultEmpty) && !errors.Is(err, errFaultNameless) {
 		return nil, err
@@ -786,7 +812,12 @@ func (c *faultCloud) ListFloatingIPs(context.Context, string) ([]*provision.Floa
 	return out, nil
 }
 
-func (c *faultCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
+func (c *faultCloud) DeleteFloatingIP(ctx context.Context, id, _ string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	if err := c.gate("DeleteFloatingIP"); err != nil {
 		return err
 	}
@@ -812,7 +843,12 @@ func (c *faultCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	return clerrors.New(clerrors.CodeVMNotFound, "gone", "")
 }
 
-func (c *faultCloud) AttachFloatingIP(_ context.Context, fipID, _, _, _ string) (*provision.FloatingIP, error) {
+func (c *faultCloud) AttachFloatingIP(ctx context.Context, fipID, _, _, _ string) (*provision.FloatingIP, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	if err := c.gate("AttachFloatingIP"); err != nil {
 		return nil, err
 	}
@@ -833,7 +869,12 @@ func (c *faultCloud) AttachFloatingIP(_ context.Context, fipID, _, _, _ string) 
 	return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")
 }
 
-func (c *faultCloud) AddSecurityGroupRule(_ context.Context, _, _ string, rule provision.SGRule) (*provision.SGRule, error) {
+func (c *faultCloud) AddSecurityGroupRule(ctx context.Context, _, _ string, rule provision.SGRule) (*provision.SGRule, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	err := c.gate("AddSecurityGroupRule")
 	if err != nil && !errors.Is(err, errFaultLost) && !errors.Is(err, errFaultEmpty) {
 		return nil, err
@@ -873,7 +914,12 @@ func (c *faultCloud) ListSecurityGroupRules(context.Context, string) ([]*provisi
 	return out, nil
 }
 
-func (c *faultCloud) DeleteSecurityGroupRule(_ context.Context, _, ruleID string) error {
+func (c *faultCloud) DeleteSecurityGroupRule(ctx context.Context, _, ruleID string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	if err := c.gate("DeleteSecurityGroupRule"); err != nil {
 		return err
 	}
@@ -1037,10 +1083,20 @@ func (c *faultCloud) PriceCalculation(context.Context, string, provision.PriceCa
 	return nil, clerrors.New(clerrors.CodeAPIError, "no price", "")
 }
 
-func (c *faultCloud) CreateImage(context.Context, provision.CreateImageReq) (map[string]any, error) {
+func (c *faultCloud) CreateImage(ctx context.Context, _ provision.CreateImageReq) (map[string]any, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	return map[string]any{"id": faultImage}, c.gate("CreateImage")
 }
-func (c *faultCloud) DeleteImage(context.Context, string, string) error {
+func (c *faultCloud) DeleteImage(ctx context.Context, _ string, _ string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	return c.gate("DeleteImage")
 }
 func (c *faultCloud) ListNATGateways(context.Context, string) ([]map[string]any, error) {
@@ -1049,10 +1105,20 @@ func (c *faultCloud) ListNATGateways(context.Context, string) ([]map[string]any,
 	}
 	return nil, nil
 }
-func (c *faultCloud) CreateNATGateway(context.Context, provision.CreateNATGatewayRequest) (map[string]any, error) {
+func (c *faultCloud) CreateNATGateway(ctx context.Context, _ provision.CreateNATGatewayRequest) (map[string]any, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	return nil, c.gate("CreateNATGateway")
 }
-func (c *faultCloud) DeleteNATGateway(context.Context, string, string) error {
+func (c *faultCloud) DeleteNATGateway(ctx context.Context, _ string, _ string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	return c.gate("DeleteNATGateway")
 }
 func (c *faultCloud) ListDisks(context.Context, string) ([]map[string]any, error) {
@@ -1067,26 +1133,63 @@ func (c *faultCloud) GetDisk(context.Context, string) (map[string]any, error) {
 	}
 	return map[string]any{}, nil
 }
-func (c *faultCloud) CreateDisk(context.Context, provision.CreateDiskReq) (map[string]any, error) {
+func (c *faultCloud) CreateDisk(ctx context.Context, _ provision.CreateDiskReq) (map[string]any, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	return nil, c.gate("CreateDisk")
 }
-func (c *faultCloud) AttachDisk(context.Context, string, string, string) (map[string]any, error) {
+func (c *faultCloud) AttachDisk(ctx context.Context, _ string, _ string, _ string) (map[string]any, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	return nil, c.gate("AttachDisk")
 }
-func (c *faultCloud) DetachDisk(context.Context, string, string, string) (map[string]any, error) {
+func (c *faultCloud) DetachDisk(ctx context.Context, _ string, _ string, _ string) (map[string]any, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	return nil, c.gate("DetachDisk")
 }
-func (c *faultCloud) ResizeDisk(context.Context, string, int, string) (map[string]any, error) {
+func (c *faultCloud) ResizeDisk(ctx context.Context, _ string, _ int, _ string) (map[string]any, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	return nil, c.gate("ResizeDisk")
 }
-func (c *faultCloud) DeleteDisk(context.Context, string, string) error { return c.gate("DeleteDisk") }
-func (c *faultCloud) CreateSubnet(context.Context, provision.CreateSubnetRequest) (map[string]any, error) {
+func (c *faultCloud) DeleteDisk(ctx context.Context, _ string, _ string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
+	return c.gate("DeleteDisk")
+}
+func (c *faultCloud) CreateSubnet(ctx context.Context, _ provision.CreateSubnetRequest) (map[string]any, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	return nil, c.gate("CreateSubnet")
 }
 func (c *faultCloud) GetSubnet(context.Context, string) (map[string]any, error) {
 	return nil, c.gate("GetSubnet")
 }
-func (c *faultCloud) DeleteSubnet(context.Context, string, string) error {
+func (c *faultCloud) DeleteSubnet(ctx context.Context, _ string, _ string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	return c.gate("DeleteSubnet")
 }
 
