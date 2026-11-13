@@ -303,6 +303,14 @@ var everySendIsAChange = map[string]changeRule{
 	"k8s_create":       paidCreate("k8s_create", "", k8sClusterNameArg),
 	"k8s_add_nodepool": paidCreate("k8s_add_nodepool", "cluster_id", nodePoolName),
 	"lb_create":        paidCreate("lb_create", "", nameArg),
+	// The five more of D107 (the owner's decision of 13.11): a resource
+	// billed or limited by the platform, its repeat after a lost answer a
+	// second one while the list does not show the first.
+	"vpc_create":       paidCreate("vpc_create", "", nameArg),
+	"tg_create":        paidCreate("tg_create", "", nameArg),
+	"ar_create":        paidCreate("ar_create", "", nameArg),
+	"cert_import":      paidCreate("cert_import", "", nameArg),
+	"pg_backup_create": paidCreate("pg_backup_create", "cluster_id", nameArg),
 }
 
 // spelledArgs are the arguments that name the resource of the record in

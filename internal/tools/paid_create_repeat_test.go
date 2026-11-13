@@ -101,8 +101,31 @@ func TestPaidCreate_TheRepeatAfterALostAnswerAsks(t *testing.T) {
 			}
 		})
 	}
-	if ran < 6 {
-		t.Errorf("%d creates billed at the price of a cluster are in the matrix, want the six of D107", ran)
+	if ran < 11 {
+		t.Errorf("%d creates billed at the price of a cluster are in the matrix, want the eleven of D107 (the six of #1640 and the five of the owner's decision of 13.11)", ran)
+	}
+}
+
+// One call of a create that asks after a cut sends one create request
+// (Ут3 of «Риск», conclusion 179): the question names one resource that
+// may be there; a call that sent two would leave a second unnamed. Every
+// declared create, in a clean run of the matrix.
+func TestPaidCreate_OneCallOneCreateRequest(t *testing.T) {
+	ran := 0
+	for _, c := range faultMatrixCases {
+		if !everySendIsAChange[c.tool].made {
+			continue
+		}
+		ran++
+		t.Run(c.tool, func(t *testing.T) {
+			happy, _, _, _ := faultRun(t, c, 0, "")
+			if n := creates(happy); n != 1 {
+				t.Errorf("a clean call sent %d create requests, want 1:\n%s", n, strings.Join(happy.callLog(), "\n"))
+			}
+		})
+	}
+	if ran < 11 {
+		t.Errorf("%d declared creates checked, want 11", ran)
 	}
 }
 
@@ -183,7 +206,7 @@ func TestPaidCreate_NoRequestSentLeavesNoRecord(t *testing.T) {
 
 // Why the repeat of a create is not asked about after a lost answer.
 const (
-	repeatMeasured = "one of the eight of the release plan 1.9, «Повтор платного создания…», (3): the measure of its volume decides — in 1.9, or a line of the backlog (listLagsPending names it)"
+	repeatMeasured = "one of the three of the eight the owner left to 1.10 (release plan 1.9, «Правило повтора платного создания (D107) — ещё на пять созданий»): a known limit of 1.9, a line of the backlog (listLagsPending names it)"
 	repeatOutside  = "not a create billed at the price of a cluster (D107): its repeat is held by the check of the name and by the fault matrix"
 )
 
@@ -193,8 +216,7 @@ const (
 // declaration of how its outcome is read fails the build («Риск»,
 // conclusion 179, У8).
 var repeatNotAsked = map[string]string{
-	"ar_create": repeatMeasured, "cert_import": repeatMeasured, "dns_record_create": repeatMeasured, "pg_backup_create": repeatMeasured,
-	"snat_create": repeatMeasured, "tg_create": repeatMeasured, "vpc_create": repeatMeasured, "vpc_route_create": repeatMeasured,
+	"dns_record_create": repeatMeasured, "snat_create": repeatMeasured, "vpc_route_create": repeatMeasured,
 	"ca_deploy": repeatOutside, "cert_issue_le": repeatOutside, "deploy": repeatOutside, "deploy_apply": repeatOutside,
 	"disk_create": repeatOutside, "dns_zone_create": repeatOutside, "image_create": repeatOutside, "k8s_add_addon": repeatOutside,
 	"pg_db_create": repeatOutside, "pg_user_create": repeatOutside, "provision": repeatOutside, "s3_bucket_create": repeatOutside,
