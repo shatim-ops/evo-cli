@@ -8,10 +8,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -132,5 +135,86 @@ func TestIntent_TheNoteSaysTheSameArgumentsSettleTheRecord(t *testing.T) {
 			t.Errorf("the note of %s promises that any call of the tool settles the record: %s", in.Tool, note)
 		}
 		intent.Close(rec)
+	}
+}
+
+// What «Риск» probes of the resolved target (conclusion on the second
+// part of 177): a record of the spelling of evo before the target was
+// resolved is found by a repeat that spells the VM another way; a name
+// that is two VMs, or a VM that is gone, refuses the call with consent
+// before anything is sent and writes no record; a call without consent
+// reads the target once and writes nothing.
+func TestIntent_TheResolvedTargetAtItsEdges(t *testing.T) {
+	t.Run("a record of the earlier spelling", func(t *testing.T) {
+		r, w, dir := rebootWorldInADir(t)
+		eng, _ := r.newEngine(nil)
+		if _, err := intent.Open(dir, intent.Intent{Tool: "vm_reboot", Name: "web", Key: eng.Maker()}); err != nil {
+			t.Fatal(err)
+		}
+		tl, _ := r.Lookup("vm_reboot")
+		text, isErr := tl.Handler(context.Background(), map[string]any{"vm_id": w.id, "confirmed": true})
+		if !isErr || !strings.Contains(text, `"interrupted"`) || w.powerCalls() != 0 {
+			t.Errorf("a repeat by id after a cut call recorded by name: power calls %d\n%s", w.powerCalls(), text)
+		}
+	})
+	t.Run("a name of two VMs", func(t *testing.T) {
+		r, w, dir := rebootWorldInADir(t)
+		if _, err := w.CreateVM(context.Background(), provision.CreateVMRequest{Name: "web-2"}); err != nil {
+			t.Fatal(err)
+		}
+		// The fake refuses a second VM of a name at its create, as the
+		// platform does: two of a name are what the resolver guards against.
+		w.faultCloud.mu.Lock()
+		for i := range w.vms {
+			w.vms[i].Name = "web"
+		}
+		w.faultCloud.mu.Unlock()
+		tl, _ := r.Lookup("vm_reboot")
+		text, isErr := tl.Handler(context.Background(), map[string]any{"name": "web", "confirmed": true})
+		if !isErr || w.powerCalls() != 0 || len(intent.Pending(dir)) != 0 || !strings.Contains(text, "USAGE") {
+			t.Errorf("a name of two VMs: power calls %d, records %d\n%s", w.powerCalls(), len(intent.Pending(dir)), text)
+		}
+	})
+	t.Run("the VM is gone after the cut call", func(t *testing.T) {
+		r, w, dir, tl := cutReboot(t)
+		_ = r
+		w.removeVM()
+		text, isErr := tl.Handler(context.Background(), map[string]any{"name": "web", "confirmed": true})
+		if !isErr || w.powerCalls() != 1 || !strings.Contains(text, "VM_NOT_FOUND") {
+			t.Errorf("a repeat by the name of a VM that is gone: power calls %d\n%s", w.powerCalls(), text)
+		}
+		// The record of the cut call stays: nothing read tells its outcome.
+		if left := intent.Pending(dir); len(left) != 1 {
+			t.Errorf("records after the refusal: %+v, want the one of the cut call", left)
+		}
+	})
+	t.Run("a call without consent", func(t *testing.T) {
+		r, w, dir := rebootWorldInADir(t)
+		counted := &listCounting{powerWorld: w}
+		eng, _ := r.newEngine(nil)
+		r.newEngine = func(map[string]any) (*engine.Engine, error) { e := *eng; e.Cloud = counted; return &e, nil }
+		tl, _ := r.Lookup("vm_reboot")
+		text, _ := tl.Handler(context.Background(), map[string]any{"name": "web"})
+		if counted.lists != 1 || len(intent.Pending(dir)) != 0 || !strings.Contains(text, "confirmation_required") {
+			t.Errorf("a call without consent: %d lists of the VMs, %d records\n%s", counted.lists, len(intent.Pending(dir)), text)
+		}
+	})
+}
+
+// A call that would be refused for its own reason — no engine is built
+// for it — is told that reason, not that its record could not be written
+// («Риск», the conclusion on #1620).
+func TestIntent_ACallWithNoEngineIsToldItsOwnReasonFirst(t *testing.T) {
+	dir := t.TempDir()
+	// A file where the directory of the records would be: no record can
+	// be written.
+	if err := os.WriteFile(filepath.Join(dir, ".evo"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	noKey := clierrors.New(clierrors.CodeAuthRequired, "no key", "evo login")
+	r := New(func(map[string]any) (*engine.Engine, error) { return nil, noKey })
+	r.SetStateDir(dir)
+	if _, err := r.beginIntent(context.Background(), "disk_create", map[string]any{"name": "data", "confirmed": true}); !errors.Is(err, noKey) {
+		t.Errorf("the refusal: %v, want the reason no engine was built for", err)
 	}
 }

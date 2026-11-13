@@ -54,8 +54,8 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if p := stringArg(args, "project_id"); p != "" {
 		over = map[string]any{"ProjectID": p}
 	}
-	eng, err := r.newEngine(over)
-	if err != nil {
+	eng, noEngine := r.newEngine(over)
+	if noEngine != nil {
 		eng = nil
 	}
 	if eng != nil {
@@ -91,6 +91,12 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	dir := intent.Dir(root)
 	rec, err := intent.Open(dir, in)
 	if err != nil {
+		// The call would be refused for its own reason — no key, a
+		// project the server does not allow: that is what the caller
+		// is told, not the directory of a record it would not need.
+		if noEngine != nil {
+			return nil, noEngine
+		}
 		return nil, err
 	}
 	if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
@@ -196,6 +202,24 @@ var everySendIsAChange = map[string]changeRule{
 	"backup_restore": {read: "disk_list"},
 }
 
+// spelledArgs are the arguments that name the resource of the record in
+// as its call did: its target («argument=id») and its name, by the
+// argument the tool names a resource by (intentResource).
+func spelledArgs(in intent.Intent) map[string]any {
+	args := map[string]any{}
+	if arg, id, ok := strings.Cut(in.Target, "="); ok && id != "" {
+		args[arg] = id
+	}
+	if in.Name != "" {
+		arg := "name"
+		if c, ok := createdIDs[in.Tool]; ok && c.arg != "" {
+			arg = c.arg
+		}
+		args[arg] = in.Name
+	}
+	return args
+}
+
 // named is resourceOf for a layer that reads the answer of a call already
 // made: a resolver that fails leaves the resource as the call spelled it.
 func (r *Registry) named(ctx context.Context, name string, args map[string]any) (resource, target string) {
@@ -230,15 +254,21 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	if err != nil || !ok || (resource == "" && target == "") {
 		return nil
 	}
-	// A record written before the target was resolved names the resource
-	// as its call spelled it.
-	spelled, spelledTarget := intentResource(name, args)
 	var cut []intent.Intent
 	for _, in := range pendingIn(ctx, root) {
-		same := (in.Name == resource && in.Target == target) || (in.Name == spelled && in.Target == spelledTarget)
-		if !in.Held && in.Tool == name && same && in.Key != nil {
-			cut = append(cut, in)
+		if in.Held || in.Tool != name || in.Key == nil {
+			continue
 		}
+		if in.Name != resource || in.Target != target {
+			// A record written before the target was resolved names the
+			// resource as its call spelled it: it is resolved the same
+			// way. One that cannot be resolved now is not this call's.
+			was, wasTarget, err := r.resourceOf(ctx, name, spelledArgs(in))
+			if err != nil || was != resource || wasTarget != target {
+				continue
+			}
+		}
+		cut = append(cut, in)
 	}
 	if len(cut) == 0 {
 		return nil
