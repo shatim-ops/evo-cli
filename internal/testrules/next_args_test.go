@@ -55,10 +55,11 @@ var argsCopies = map[string]string{
 	"internal/tools/tools_kube.go: helmAtLimit":            "the step of k8s_helm install or upgrade stopped at repo add or repo update, before the release was touched: a declared continuation (owner's decision 12.11)",
 }
 
-// argsCopiesToStrip are the copies that go into a step as they are, with
-// the consent of the call, where no decision keeps it: a read that was cut
-// and k8s_helm stopped before it touched the release. They become
-// nextSameCall. Only shrinks. Closes by 1.9.
+// argsCopiesToStrip are the copies that go into a step as they are, with the
+// consent of the call, where no decision keeps it: a read that was cut and
+// k8s_helm stopped before it touched the release. They become nextSameCall.
+// Only shrinks. Empty: its deadline 1.9 is met, and a new line comes with a
+// deadline of its own and its plan line.
 var argsCopiesToStrip = map[string]string{}
 
 // consentWritesAndCopies are, per function of a file, the writes of

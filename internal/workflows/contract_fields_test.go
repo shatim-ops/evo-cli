@@ -244,8 +244,9 @@ func TestWorkflows_WritesDeclareCreates(t *testing.T) {
 	}
 }
 
-// createsUndeclared is the number of writes of the inventory that create
-// a resource of a tool without declaring it (floating IP, a rule of a
-// security group, a cluster addon, a secret version): it only shrinks.
-// Closes by 1.9 (process backlog, #990).
+// createsUndeclared is the number of writes of the inventory that create a
+// resource of a tool without declaring it (floating IP, a rule of a security
+// group, a cluster addon, a secret version): it only shrinks. Closes by 1.10
+// (release plan 1.9, «Сроки храповиков «к 1.7–1.9»», #1590 question 19 (c));
+// process backlog, #990.
 const createsUndeclared = 3

@@ -14,10 +14,10 @@ import (
 
 // retroRuleKnown are items of the retros with the outcome «правило» whose
 // rule did not reach CLAUDE.md or docs/RELEASING.md: "<version> «<role>»:
-// <the item's first words>" → what is to be done. The list only shrinks;
-// a line the journals no longer give fails the test.
-// Closes by 1.9: the owner writes the rule into the rules or the retro
-// drops the outcome.
+// <the item's first words>" → what is to be done. The list only shrinks; a
+// line the journals no longer give fails the test. Empty: its deadline 1.9
+// is met, and a new line comes with a deadline of its own and its plan line:
+// the owner writes the rule into the rules or the retro drops the outcome.
 var retroRuleKnown = map[string]string{}
 
 var (

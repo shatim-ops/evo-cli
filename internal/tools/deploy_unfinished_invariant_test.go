@@ -25,10 +25,11 @@ import (
 var unfinishedRecord = map[string]bool{"creating": true, "provisioned": true, "deploying": true}
 
 // inProgressLeavesFinished are the phases in which a deploy cut by the
-// budget of an MCP call answers deploying but leaves its record in a
-// status logs and verify read as finished, with the work item that fixes
-// it. A line the walk no longer finds fails: the list only shrinks.
-// Closes by 1.8.
+// budget of an MCP call answers deploying but leaves its record in a status
+// logs and verify read as finished, with the work item that fixes it. A line
+// the walk no longer finds fails: the list only shrinks. Empty: its deadline
+// 1.8 is met, and a new line comes with a deadline of its own and its plan
+// line.
 var inProgressLeavesFinished = map[string]string{}
 
 // inProgressPhasesElsewhere are the phases of deploy the walk of this test

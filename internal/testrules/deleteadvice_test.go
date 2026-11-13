@@ -108,7 +108,8 @@ var deleteAdviceOwn = map[string]string{
 // deleteAdviceMisses are the texts that advise deleting what evo did not
 // make; they go before rc.1 (release plan 1.8, «ложный лимит», R-56); the
 // last, TLogoutKept of evo logout, went in #1078. The list only shrinks.
-// Closes by 1.8.
+// Empty: its deadline 1.8 is met, and a new line comes with a deadline of
+// its own and its plan line.
 var deleteAdviceMisses = map[string]string{}
 
 // Release plan 1.8, «ложный лимит» (acceptance B-5, 06.11; «Риск», R-56,
@@ -163,7 +164,7 @@ func TestLocalCommands_AdviseNoDeleteOfWhatEvoDidNotMake(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("deleteAdviceMisses: %d lines (Closes by 1.8)", len(deleteAdviceMisses))
+	t.Logf("deleteAdviceMisses: %d lines", len(deleteAdviceMisses))
 }
 
 // localCommandPaths reads the paths of localCommands.

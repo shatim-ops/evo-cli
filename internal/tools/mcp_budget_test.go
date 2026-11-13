@@ -356,9 +356,10 @@ var mcpWaits = map[string]budgetWait{
 
 // mcpOverBudget are the MCP tools a call of which can outlive D69's budget,
 // by the slow world, the code (mcpWaits' static) or a schema that lets the
-// agent ask for a longer wait. It only shrinks. Closes by 1.7 (release plan
-// 1.7, block A; process plan 1.7 §1: red before PR 1 of D69, each PR of
-// D69 takes its lines out).
+// agent ask for a longer wait. It only shrinks. Empty: its deadline 1.7 is
+// met, and a new line comes with a deadline of its own and its plan line
+// (release plan 1.7, block A; process plan 1.7 §1: red before PR 1 of D69,
+// each PR of D69 takes its lines out).
 var mcpOverBudget = map[string]string{}
 
 // waitProps are the schema properties by which an agent asks a tool to
@@ -537,7 +538,7 @@ func TestMCP_NoCallOutlivesTheBudget(t *testing.T) {
 	if len(bad) > 0 {
 		t.Error(strings.Join(bad, "\n"))
 	}
-	t.Logf("mcpOverBudget: %d lines (Closes by 1.7)", len(mcpOverBudget))
+	t.Logf("mcpOverBudget: %d lines", len(mcpOverBudget))
 }
 
 // nextStepKeepsConsent are the declared continuations: a next step that
@@ -564,12 +565,13 @@ var nextStepKeepsConsent = map[string]string{
 }
 
 // nextStepConsentUnbound are the tools shipped before the invariant whose
-// next step carries confirmed and is bound to nothing: the step names the
-// VM by its name or by the plan, and a VM gone between the two calls is
-// made a second time («Риск», conclusion 125: CreateVM 1 → 2). The step
-// gets bound to the id of the VM (D102, «разработка A»); then the line
-// moves to nextStepKeepsConsent. "tool" → what the next step is. It only
-// shrinks, and a new tool does not join it. Closes by 1.9.
+// next step carries confirmed and is bound to nothing: the step names the VM
+// by its name or by the plan, and a VM gone between the two calls is made a
+// second time («Риск», conclusion 125: CreateVM 1 → 2). The step gets bound
+// to the id of the VM (D102, «разработка A»); then the line moves to
+// nextStepKeepsConsent. "tool" → what the next step is. It only shrinks, and
+// a new tool does not join it. Empty: its deadline 1.9 is met, and a new
+// line comes with a deadline of its own and its plan line.
 var nextStepConsentUnbound = map[string]string{}
 
 // consentInNextStep reports whether the answer names a next step whose

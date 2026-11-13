@@ -377,7 +377,7 @@ func TestDeployStage_OnceAndNotCutShort(t *testing.T) {
 			t.Error(b)
 		}
 	default:
-		t.Logf("deploy, pending (Closes by 1.7): %s", strings.Join(broken, "; "))
+		t.Logf("deploy, pending: %s", strings.Join(broken, "; "))
 	}
 }
 

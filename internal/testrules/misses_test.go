@@ -20,7 +20,7 @@ import (
 
 var (
 	// missDeadline is the version by which a line of a list of misses is
-	// gone: «Closes by 1.8» in the list's doc comment (every line), or in
+	// gone: «Closes by 1.10» in the list's doc comment (every line), or in
 	// the text of a line (that line).
 	missDeadline = regexp.MustCompile(`Closes by (\d+)\.(\d+)`)
 	// releasedVersion is a released section of CHANGELOG.md.
@@ -219,7 +219,7 @@ func versionText(v [2]int) string {
 // The parts of the deadline check: a deadline in a doc or a line, a
 // version the release has reached, and the newest released section.
 func TestMisses_DeadlineParts(t *testing.T) {
-	if got := parseDeadline("only shrinks.\nCloses by 1.8 (release plan 1.6)."); got != [2]int{1, 8} {
+	if got := parseDeadline("only shrinks.\nCloses by 1.10 (release plan 1.9)."); got != [2]int{1, 10} {
 		t.Errorf("parseDeadline: %v", got)
 	}
 	if !isMissList("The list only\nshrinks: a bare UUID not here fails") {
