@@ -352,3 +352,50 @@ func TestBackupRestore_LostAnswerAsksAgain(t *testing.T) {
 		t.Errorf("after the question: want the restore sent: %s", text)
 	}
 }
+
+// A disk of the name made before the restore was asked for is not the
+// restore's (FB19I-18; «Риск», conclusion 164, У5: the name and made after
+// the request). While evo waits for a restore the platform took, someone
+// makes a disk of the same name: it is not answered as created — the
+// answer names it as another's — and the restore's own disk, listed later
+// with a time after the request, is.
+func TestBackupRestore_ADiskOfTheNameMadeBeforeIsNotTheRestores(t *testing.T) {
+	w := (&restoreWorld{never: true}).stateIn(t)
+	if m, text, _ := backupRestore(t, w, map[string]any{"confirmed": true}); m["status"] != "restoring" {
+		t.Fatalf("want restoring: %s", text)
+	}
+	w.mu.Lock()
+	w.disks = append(w.disks, map[string]any{"id": "theirs", "name": "restored", "state": "available", "size": float64(100),
+		"created_time": "2020-01-01T00:00:00Z"})
+	w.mu.Unlock()
+	m, text, _ := backupRestore(t, w, nil)
+	if m["status"] == "created" || m["disk_id"] == "theirs" || !strings.Contains(text, "theirs") || w.restores != 1 {
+		t.Errorf("a disk of the name made long before: want it not taken for the restore's, and named (sent %d): %s", w.restores, text)
+	}
+	w.mu.Lock()
+	w.disks = append(w.disks, map[string]any{"id": "ours", "name": "restored", "state": "available", "size": float64(10),
+		"created_time": time.Now().UTC().Format(time.RFC3339)})
+	w.mu.Unlock()
+	if m, text, _ := backupRestore(t, w, nil); m["status"] != "created" || m["disk_id"] != "ours" {
+		t.Errorf("the restore's disk listed after the request: want it created: %s", text)
+	}
+}
+
+// A disk named created whose time of making was not read says so: whether
+// it is the restore's, evo did not check («Риск», the conclusion on
+// FB19I-18, У1); one with the time read says nothing of it.
+func TestBackupRestore_ADiskWithNoTimeIsSaidUnchecked(t *testing.T) {
+	m, text, _ := backupRestore(t, &restoreWorld{}, map[string]any{"confirmed": true})
+	if m["status"] != "created" || m["made_after_request"] != "unchecked" || !strings.Contains(text, "did not check") {
+		t.Errorf("no created_time: want created, said unchecked: %s", text)
+	}
+	w := (&restoreWorld{never: true}).stateIn(t)
+	backupRestore(t, w, map[string]any{"confirmed": true})
+	w.mu.Lock()
+	w.disks = append(w.disks, map[string]any{"id": "ours", "name": "restored", "state": "available", "size": float64(10),
+		"created_time": time.Now().UTC().Format(time.RFC3339)})
+	w.mu.Unlock()
+	if m, text, _ := backupRestore(t, w, nil); m["status"] != "created" || m["made_after_request"] != nil {
+		t.Errorf("the time read: want created with nothing said of it: %s", text)
+	}
+}
