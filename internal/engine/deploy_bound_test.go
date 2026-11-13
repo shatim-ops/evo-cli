@@ -173,22 +173,27 @@ func TestDeploy_BoundEndsAHangingStepInProgress(t *testing.T) {
 }
 
 // Docker installed (the stage done) but not ready: the wait between
-// attempts ends with the bound too, as InProgress docker.
+// attempts ends with the bound too, as InProgress docker. The bound is
+// doubled while it comes before the first check of Docker (boundedUntilHeld):
+// on Windows the steps before it outlasted 1 s once — «deploy is still in
+// progress: vm», run 43391080735 of 13.11, #1645.
 func TestDeploy_BoundEndsTheWaitForDockerReadyInProgress(t *testing.T) {
-	dep := newMockDeployer()
-	dep.hold = func(_ context.Context, op string) error {
-		if op == "exec "+dockerReadyCmd {
-			return stderrors.New("docker: permission denied")
+	err := boundedUntilHeld(t, func(bound time.Duration, held *atomic.Bool) error {
+		dep := newMockDeployer()
+		dep.hold = func(_ context.Context, op string) error {
+			if op == "exec "+dockerReadyCmd {
+				held.Store(true)
+				return stderrors.New("docker: permission denied")
+			}
+			return nil
 		}
-		return nil
-	}
-	eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
-	eng.Timings.DockerPollInterval = time.Hour
-	eng.Timings.DockerWaitTimeout = time.Hour
-	opts := newDeployOpts(t, dir)
-	opts.Until = time.Now().Add(testBound)
-
-	err := deployBounded(t, eng, opts)
+		eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+		eng.Timings.DockerPollInterval = time.Hour
+		eng.Timings.DockerWaitTimeout = time.Hour
+		opts := newDeployOpts(t, dir)
+		opts.Until = time.Now().Add(bound)
+		return deployBounded(t, eng, opts)
+	})
 	var going *InProgress
 	if !stderrors.As(err, &going) || going.Phase != "docker" {
 		t.Fatalf("err = %v, want InProgress docker", err)
