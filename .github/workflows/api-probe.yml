@@ -602,10 +602,59 @@ jobs:
           fi
           # Значения — из спецификации mk8s (CalculatePriceRequest): первый
           # прогон слал тип диска "SSD" и получил 400 на собственный запрос.
-          for x19 in "" -ext; do
-            r=$(jq -n --arg p "$PROJECT" '{projectId: $p, master: {count: 1, type: "MASTER_TYPE_SMALL"}, nodePools: [{count: 1, cpu: 2, ram: 4, type: "FLAVOR_TYPE_GENERAL", oversubscription: "OVERSUBSCRIPTION_10", disk: {size: "50", type: "DISK_TYPE_SSD_NVME"}}]}' |
-              curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}' "https://mk8s.api.cloud.ru/v2/billing/calculate-price$x19" 2>/dev/null || true)
-            printf '%-28s http=%s %s\n' "price19_k8s$x19" "${r##*$'\n'}" "$(printf '%s' "${r%$'\n'*}" | jq -c 'if type == "object" then {top: keys, message: ((.message // .error // "") | tostring | .[0:160])} else {type: type} end' 2>/dev/null || echo 'не JSON')" | redact
+          # Прогон 52 получил 400 «one or more fields have invalid values» и
+          # на тело по спецификации: какое поле неверно, ответ не назвал —
+          # проба печатает details. Тел два: по спецификации (с deprecated
+          # master.type) и с flavorId каталога (productConfiguration):
+          # мастер — CONTROLPLANE, узел — DATAPLANE. Суммы в публичный лог
+          # не идут: при 200 печатается отношение цены кластера к цене той
+          # же конфигурации узла у Compute (price-calculation) — абсолютная
+          # цена выводится из него и публичной ставки в закрытом отчёте
+          # (Г-51: у Managed Kubernetes своей ставки нет ни в одном тарифе).
+          pc19=$(curl -sS -H "Authorization: Bearer $TOKEN" "https://mk8s.api.cloud.ru/v3/productConfiguration?projectId=$PROJECT" 2>/dev/null || true)
+          mflavor=$(printf '%s' "$pc19" | jq -r '[.flavors[]? | select((.purpose // "") | test("CONTROL"; "i"))] | sort_by(.cpu, .ram) | .[0].flavorId // empty' 2>/dev/null || true)
+          nflavor=$(printf '%s' "$pc19" | jq -r '[.flavors[]? | select(((.purpose // "") | test("CONTROL"; "i")) | not) | select((.gpu // 0) == 0)] | sort_by(.cpu, .ram) | .[0].flavorId // empty' 2>/dev/null || true)
+          [ -z "$mflavor" ] || echo "::add-mask::$mflavor"
+          [ -z "$nflavor" ] || echo "::add-mask::$nflavor"
+          echo "price19_k8s_flavors         мастер: $([ -n "$mflavor" ] && echo есть || echo нет), узел: $([ -n "$nflavor" ] && echo есть || echo нет)"
+          # k8sbody ВИД — тело расчёта: spec (по спецификации) или catalogue
+          # (flavorId каталога; поля cpu/ram/oversubscription не шлются —
+          # их несёт сам flavor).
+          k8sbody() {
+            if [ "$1" = catalogue ]; then
+              jq -n --arg p "$PROJECT" --arg m "$mflavor" --arg n "$nflavor" '{projectId: $p, master: {count: 1, flavorId: $m}, nodePools: [{count: 1, flavorId: $n, disk: {size: "50", type: "DISK_TYPE_SSD_NVME"}}]}'
+            else
+              jq -n --arg p "$PROJECT" '{projectId: $p, master: {count: 1, type: "MASTER_TYPE_SMALL"}, nodePools: [{count: 1, cpu: 2, ram: 4, type: "FLAVOR_TYPE_GENERAL", oversubscription: "OVERSUBSCRIPTION_10", disk: {size: "50", type: "DISK_TYPE_SSD_NVME"}}]}'
+            fi
+          }
+          # Цена той же конфигурации узла у Compute — делитель отношения; в
+          # лог не печатается.
+          vmmonth=''
+          if [ -n "${flavor:-}" ] && [ -n "${disk:-}" ]; then
+            vmmonth=$(jq -n --arg f "$flavor" --arg d "$disk" '{flavor_id: $f, disks: [{size: 50, disk_type_id: $d}], count: 1}' |
+              curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- "$C/projects/$PROJECT/price-calculation" 2>/dev/null |
+              jq -r '.total_price_month // empty' 2>/dev/null || true)
+          fi
+          for k19 in spec catalogue; do
+            if [ "$k19" = catalogue ] && { [ -z "$mflavor" ] || [ -z "$nflavor" ]; }; then
+              echo "price19_k8s_catalogue       в каталоге нет flavor мастера или узла — не покрыто"
+              continue
+            fi
+            for x19 in "" -ext; do
+              r=$(k8sbody "$k19" |
+                curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary @- -w '\n%{http_code}' "https://mk8s.api.cloud.ru/v2/billing/calculate-price$x19" 2>/dev/null || true)
+              c19=${r##*$'\n'}
+              b19=${r%$'\n'*}
+              printf '%-28s http=%s %s\n' "price19_k8s$x19 ($k19)" "$c19" "$(printf '%s' "$b19" | jq -c 'if type == "object" then {top: keys, message: ((.message // .error // "") | tostring | .[0:160])} else {type: type} end' 2>/dev/null || echo 'не JSON')" | redact
+              # Детали отказа: какие поля сервис назвал неверными (имена и
+              # причины, без значений).
+              printf '%-28s %s\n' "price19_k8s_detail ($k19$x19)" "$(printf '%s' "$b19" | jq -c '[(.details? // .detail? // []) | if type == "array" then .[] else . end | objects | {field: (.field // .fieldViolations? // .name // null), reason: ((.reason // .description // .msg // "") | tostring | .[0:120])}] | if length == 0 then "деталей нет" else . end' 2>/dev/null || echo 'не JSON')" | redact
+              # Отношение к цене узла той же конфигурации у Compute; сумм в
+              # логе нет.
+              printf '%-28s %s\n' "price19_k8s_ratio ($k19$x19)" "$(printf '%s' "$b19" | jq -c --arg vm "$vmmonth" 'def num: (. // null) | if type == "string" then (tonumber? // null) else . end;
+                ([.. | objects | (.total_price_month? // .totalPriceMonth? // .total_month? // empty)] | first | num) as $t
+                | if $t == null then "цены в ответе нет" elif ($vm | tonumber? // 0) <= 0 then "цена есть, делителя Compute нет" else {cluster_over_vm: (($t / ($vm | tonumber)) * 100 | round / 100)} end' 2>/dev/null || echo 'не JSON')" | redact
+            done
           done
 
 
