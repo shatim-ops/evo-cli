@@ -361,10 +361,10 @@ poll:
 		if !until.IsZero() {
 			sshWait = min(sshWait, time.Until(until))
 		}
-		if waitForSSHPort(ctx, ip, sshWait, show) {
+		if open, seen := waitForSSHPort(ctx, ip, sshWait, show); open {
 			sshNote = "SSH port 22 is open — connect now with the ssh command above."
 		} else {
-			sshNote = "VM is up but SSH port 22 was not reachable yet — wait ~1 min and retry the same ssh command. The VM is still booting; do NOT blame security groups, do NOT recreate the VM."
+			sshNote = sshUnreachedNote(ip, sshWait, seen)
 		}
 	}
 
@@ -394,43 +394,84 @@ poll:
 // in the packages that drive deploy_apply) shorten it.
 var SSHPortWait = 120 * time.Second
 
+// DialSSH is the one check of port 22 the wait makes: a TCP connect from
+// this machine to addr within timeout, closed at once. A test replaces it,
+// so that no test connects to a network outside its own process: a
+// documentation address that a proxy or a VPN answers made a test of the
+// branch «no answer» fail (#1707).
+var DialSSH = func(_ context.Context, addr string, timeout time.Duration) error {
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
+}
+
+// portState is what the check of port 22 saw last.
+type portState int
+
+const (
+	portUnchecked portState = iota
+	// portRefused: something at the address answered and refused the
+	// connection — no sshd listens yet.
+	portRefused
+	// portSilent: no answer within the check: the VM may still boot, or
+	// a rule on the way (a security group) drops the packets — one check
+	// from here does not tell which.
+	portSilent
+)
+
 // waitForSSHPort polls TCP port 22 on ip until it accepts a connection or the
-// timeout elapses. Returns true if the port became reachable. It says the
-// port's state on show when it changes — refused while sshd is not up yet,
-// no answer while the VM boots (CLAUDE.md §6, axis 2).
-func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration, show *Progress) bool {
+// timeout elapses. Returns true if the port became reachable, else what the
+// last check saw. It says the port's state on show when it changes, as seen
+// from this machine (CLAUDE.md §6, axis 2).
+func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration, show *Progress) (bool, portState) {
 	deadline := time.Now().Add(timeout)
-	last := ""
+	last := portUnchecked
 	report := func(err error) {
-		state := i18n.T("refused", "отказ в соединении")
+		state, word := portRefused, i18n.T("connection refused", "отказ в соединении")
 		if ne := net.Error(nil); errors.As(err, &ne) && ne.Timeout() {
-			state = i18n.T("no answer", "нет ответа")
+			state, word = portSilent, i18n.T("no answer", "нет ответа")
 		}
 		if state != last {
 			last = state
-			show.step(i18n.Tf("SSH on %s: %s, the VM is still booting; waiting…", "SSH на %s: %s, ВМ ещё загружается; жду…", ip, state))
+			show.step(i18n.Tf("SSH on %s, checked from this machine: %s; waiting…", "SSH на %s, проверка с этой машины: %s; жду…", ip, word))
 		}
 	}
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
-			return false
+			return false, last
 		default:
 		}
 		step := min(5*time.Second, time.Until(deadline))
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "22"), step)
+		err := DialSSH(ctx, net.JoinHostPort(ip, "22"), step)
 		if err == nil {
-			_ = conn.Close()
-			return true
+			return true, last
 		}
 		report(err)
 		select {
 		case <-ctx.Done():
-			return false
+			return false, last
 		case <-time.After(min(5*time.Second, max(time.Until(deadline), 0))):
 		}
 	}
-	return false
+	return false, last
+}
+
+// sshUnreachedNote is the note of an apply whose wait ended with port 22
+// not open: the fact the check saw and where from, not a cause it did not
+// see — no answer comes from a VM still booting and from a rule that drops
+// the packets alike (#1707).
+func sshUnreachedNote(ip string, waited time.Duration, state portState) string {
+	switch state {
+	case portUnchecked:
+		return "SSH port 22 of " + ip + " was not checked: the call had no time left for it. Retry the same ssh command in about a minute; do NOT recreate the VM."
+	case portRefused:
+		return "SSH port 22 of " + ip + " refused the connection when evo checked it from this machine: the address answers, but sshd does not listen yet — the VM is still starting. Retry the same ssh command in about a minute; do NOT recreate the VM."
+	}
+	return "SSH port 22 of " + ip + " did not answer evo's TCP check from this machine within " + waited.Round(time.Second).String() +
+		": the VM may still be booting, or a security group or a network on the way may drop the packets — this check does not tell which. Retry the same ssh command in about a minute; if it still gets no answer, check the rules for port 22 of the VM's security group (list_security_groups) against the address you connect from. Do NOT recreate the VM."
 }
 
 // ensureFloatingIP returns the VM's public IP, its floating IP id and a
