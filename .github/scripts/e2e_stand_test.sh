@@ -203,6 +203,18 @@ sed -i 's|^GET /backups.*|GET /backups[?]* 403 {}|' "$FAKE_DIR/http"
 STAND_FORBIDDEN_OK=pplan run_ list
 want "forbidden, другой вид: код" "$rc" 1
 
+# Теги ключом чтения (Вп-3; заключение «Риска» 190, а): 403 на список тегов —
+# «не проверен», если tag назван в STAND_FORBIDDEN_OK; без этого — код 1
+# (ревью Qwen на #1658).
+full tag-forbidden
+sed -i 's|^GET https://resource-manager.*|GET https://resource-manager.api.cloud.ru/v1/tags[?]* 403 {"code":"forbidden"}|' "$FAKE_DIR/http"
+STAND_FORBIDDEN_OK="pplan tag" run_ list
+want "tag-forbidden: код" "$rc" 0
+has tag-forbidden '::warning::tag: HTTP 403 этому ключу — вид не проверен'
+STAND_FORBIDDEN_OK=pplan run_ list
+want "tag-forbidden без разрешения: код" "$rc" 1
+has tag-forbidden 'tag: список не прочитан'
+
 # list: тег версии выпущен (STAND_TAG_OUT=1), а стенд не пуст — код 1: срок
 # стенда — тег или дата, что раньше. Пустой проект после тега — не ошибка.
 full tagged
