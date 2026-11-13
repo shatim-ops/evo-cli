@@ -111,6 +111,17 @@ has g16long "probes: «g16» идёт до 115 мин при пределе job 
 # Пробы изменения кластера — в job своего сервиса.
 fresh dbchange
 run dbchange 0 DBAAS_SMOKE=true DBAAS_SERVICES='pg kafka redis' PROBES='g13 g14 g15'
+fresh pgrepeat
+run pgrepeat 0 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES='pgrepeat'
+# pgrepeat и g13 — разными запусками: вывод по Г-13 не должен зависеть от
+# исхода пробы повтора.
+fresh pgrepeatg13
+run pgrepeatg13 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES='g13 pgrepeat'
+has pgrepeatg13 "probes: «pgrepeat» и «g13» в одном запуске не идут"
+# pgrepeat — проба job dbaas-pg: без него слово ничего не запускает.
+fresh pgrepeatnopg
+run pgrepeatnopg 1 DBAAS_SMOKE=true DBAAS_SERVICES=kafka PROBES='pgrepeat'
+has pgrepeatnopg "probes: «pgrepeat» — проба джоба dbaas-pg"
 # g13 и access в одном запуске — худший ход job dbaas-pg вплотную к его
 # пределу: удаление кластера оборвалось бы по времени.
 fresh g13access
