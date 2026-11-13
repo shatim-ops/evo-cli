@@ -2278,10 +2278,10 @@ probe_g16() {
 		[ -n "$bid" ] || { gap "Г-16: копия $1" "id не прочитан — остаток уберёт уборка области"; return 0; }
 		t0=$SECONDS
 		ops_settle "$C1/backups/$bid" 900 || true
-		ok "Г-16: копия $1, ожидание готовности" "состояния: $chain; $((SECONDS - t0)) с; type $(jq -r '.type? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), size больше нуля: $(jq -r 'if (.size? // 0) > 0 then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?'); поля карточки: $(keys_of)"
+		ok "Г-16: копия $1, ожидание готовности" "состояния: $chain; $((SECONDS - t0)) с; type $(jq -r '.type? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), size больше нуля: $(jq -r 'if (.size? // 0) > 0 then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?'); created_at: $(time_form created_at); поля карточки: $(keys_of)"
 		[ "$st" = created ] || bid_bad=1
 	}
-	local bid bid_bad=0 bd_ok=0 bv_ok=0
+	local bid bid_bad=0 bd_ok=0 bv_ok=0 rd_seen=0
 	if [ -n "$disk" ]; then
 		g16_backup диска "$n-bd" disk "$disk"
 		bd=$bid
@@ -2311,13 +2311,31 @@ probe_g16() {
 		esac
 		t0=$SECONDS
 		ops_settle "$C1/backups/$2" 600 || true
-		r="$r; состояния копии: $chain; last_restore_time задан: $(jq -r 'if (.last_restore_time? // null) != null then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+		r="$r; состояния копии: $chain; last_restore_time: $(time_form last_restore_time)"
 	}
 	if [ "$bd_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
 		if g16_restore диска "$bd" "$(jq -nc --arg n "$n-rd" '{name: $n, description: "evo e2e probe"}')"; then
 			rd_there() { [ -n "$(lst disk "$n-rd")" ]; }
-			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
+			rd_seen=0
+			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then rd_seen=1 r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
 			ok "Г-16: восстановление диска" "$r"
+			# Второе восстановление той же копии под тем же именем (гипотеза
+			# Г3 дельта-аудита 1.9, FB19I-18): отказ платформы или второй
+			# диск с тем же именем — на этом стоит, может ли evo отличить
+			# «восстановлено» от «восстановлено дважды». Второй диск, если
+			# появится, носит имя пробы — его уберёт уборка области.
+			if [ "$rd_seen" = 1 ]; then
+				api POST "$C1/backups/$bd/action" "$(jq -nc --arg n "$n-rd" '{action: "restore", resource: {target_config: {name: $n, description: "evo e2e probe"}}}')"
+				r=$(brief)
+				case "$code" in 2??)
+					ops_settle "$C1/backups/$bd" 600 || true
+					rd_two() { [ "$(lst disk "$n-rd" | wc -l)" -ge 2 ]; }
+					poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_two || true
+					r="$r; состояния копии: $chain"
+					;;
+				esac
+				ok "Г-16: второе восстановление той же копии под тем же именем" "$r; дисков с этим именем: $(if o=$(lst disk "$n-rd"); then grep -c . <<<"$o" || true; else echo '?'; fi)"
+			fi
 		fi
 	fi
 	if [ "$bv_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
@@ -2477,6 +2495,17 @@ probe_g16() {
 # power СЛОВО — set-power ВМ пробы (её адрес — в $url вызывающей пробы);
 # код — в $code.
 power() { api POST "$url/set-power" "$(jq -nc --arg s "$1" '{state: $s}')"; }
+# time_form ПОЛЕ — в каком виде ответ отдаёт время: «RFC3339 с зоной», «без
+# зоны», «нет» или «иной вид». evo считает возраст копии и предупреждает о
+# недавнем восстановлении по этим полям; вид без зоны разбор отбросит молча
+# (гипотеза Г7 дельта-аудита 1.9). Значение в лог не идёт — только вид.
+time_form() {
+	jq -er --arg f "$1" '.[$f] | if . == null then "нет"
+		elif type != "string" then "иной вид (\(type))"
+		elif test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$") then "RFC3339 с зоной"
+		elif test("^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$") then "без зоны"
+		else "иной вид" end' "$tmp/api.json" 2>/dev/null || echo '?'
+}
 # prefix_kind [ОТБОР] — что правило хранит в remote_ip_prefix, словами,
 # которые маска адресов не стирает: null, пусто, весь IPv4, весь IPv6 или
 # другой CIDR. source_kind [ОТБОР] — в какой форме ответ отдаёт

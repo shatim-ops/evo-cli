@@ -576,16 +576,17 @@ g16_world() {
 }
 g16_world
 fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"disk_type":"SSD-NVMe","attached_to":["evo-e2e-ops-r7a1-g16"]},{"id":"rd1","name":"evo-e2e-ops-r7a1-g16-rd","attached_to":[]},{"id":"rb1","name":"evo-e2e-ops-r7a1-g16-rv-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16-rv"]}]}'
-# disk_list читают: появление восстановленного диска, загрузочный диск ВМ,
+# disk_list читают: появление восстановленного диска, счёт дисков после
+# второго восстановления, загрузочный диск ВМ,
 # диски восстановленной ВМ, диск после удаления копии; дальше — уборка.
-for i in 1 2 3; do cp "$FAKE_DIR/disk_list.0.json" "$FAKE_DIR/disk_list.$i.json"; done
-fake_evo_answer disk_list 4 0 '{"disks":[]}'
+for i in 1 2 3 4; do cp "$FAKE_DIR/disk_list.0.json" "$FAKE_DIR/disk_list.$i.json"; done
+fake_evo_answer disk_list 5 0 '{"disks":[]}'
 cat >"$FAKE_DIR/http" <<'H'
 POST! /backups 201 {"id":"bd","state":"creating"}
 POST! /backups 201 {"id":"bv","state":"creating"}
 GET! /backups/bd 200 {"id":"bd","state":"creating","size":0}
-GET! /backups/bd 200 {"id":"bd","state":"created","size":5,"type":"full"}
-GET! /backups/bd 200 {"id":"bd","state":"created","size":5,"last_restore_time":"t"}
+GET! /backups/bd 200 {"id":"bd","state":"created","size":5,"type":"full","created_at":"2026-11-12T10:00:00Z"}
+GET! /backups/bd 200 {"id":"bd","state":"created","size":5,"last_restore_time":"2026-11-12T10:05:00"}
 GET! /backups/bd 200 {"id":"bd","state":"deleting"}
 GET /backups/bd 404 {"code":"not_found"}
 GET! /backups/bv 200 {"id":"bv","state":"created","size":9}
@@ -593,7 +594,8 @@ GET! /backups/bv 200 {"id":"bv","state":"created","size":9}
 GET /backups/bv 404
 GET! /backups?project_id=p&limit=1000 200 {"items":[{"id":"bd","name":"evo-e2e-ops-r7a1-g16-bd"},{"id":"bv","name":"evo-e2e-ops-r7a1-g16-bv"},{"id":"x","name":"someone"}],"total":3}
 GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd 200 {"items":[{"id":"bd","name":"evo-e2e-ops-r7a1-g16-bd"}],"total":1}
-POST /backups/bd/action 201 {"id":"bd","state":"updating"}
+POST! /backups/bd/action 201 {"id":"bd","state":"updating"}
+POST! /backups/bd/action 409 {"code":"disk_name_exists","message":"no"}
 POST /backups/bv/action 201 {"id":"bv","state":"updating"}
 DELETE! /backups/bd 204
 DELETE! /backups/bd 409 {"code":"conflict","message":"deleting"}
@@ -610,10 +612,16 @@ rc=0
 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-16: код" "$rc" 0
 L='?project_id=p&limit=1000'
-want "Г-16: запросы по порядку" "$(calls)" "POST /backups;GET /backups/bd;GET /backups/bd;POST /backups;GET /backups/bv;GET /backups$L;GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd;POST /backups/bd/action;GET /backups/bd;POST /backups/bv/action;GET /backups/bv;DELETE /backups/bd;DELETE /backups/bd;GET /backups/bd;GET /backups/bd;DELETE /backups/bd;DELETE /backups/bv;DELETE /backups/bv;GET /backups/bv;DELETE /backups/bv;POST /protection-plans;GET /protection-plans/pp;GET /protection-plans$L;DELETE /protection-plans/pp;DELETE /protection-plans/pp;GET /protection-plans/pp;GET /backups$L;$SW"
+want "Г-16: запросы по порядку" "$(calls)" "POST /backups;GET /backups/bd;GET /backups/bd;POST /backups;GET /backups/bv;GET /backups$L;GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd;POST /backups/bd/action;GET /backups/bd;POST /backups/bd/action;POST /backups/bv/action;GET /backups/bv;DELETE /backups/bd;DELETE /backups/bd;GET /backups/bd;GET /backups/bd;DELETE /backups/bd;DELETE /backups/bv;DELETE /backups/bv;GET /backups/bv;DELETE /backups/bv;POST /protection-plans;GET /protection-plans/pp;GET /protection-plans$L;DELETE /protection-plans/pp;DELETE /protection-plans/pp;GET /protection-plans/pp;GET /backups$L;$SW"
 for s in 'Г-16: копия диска, ожидание готовности' 'creating → created' 'Г-16: восстановление диска' 'Г-16: восстановление ВМ' 'повтор сразу — HTTP 409' 'после исчезновения — HTTP 404' 'Г-16: план защиты' 'Г-16: копии ресурсов пробы под чужим именем'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-16: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
+# Гипотезы дельта-аудита 1.9 (Г3, Г7): вид времени у копии — от него зависят
+# возраст копии и предупреждение о недавнем восстановлении; второе
+# восстановление той же копии под тем же именем — отказ или второй диск.
+grep -q 'Г-16: копия диска, ожидание готовности.*created_at: RFC3339 с зоной' "$tmp/out" || { echo "FAIL: Г-16: вид created_at не записан"; grep 'ожидание готовности' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-16: восстановление диска.*last_restore_time: без зоны' "$tmp/out" || { echo "FAIL: Г-16: вид last_restore_time не записан"; grep 'восстановление диска' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-16: второе восстановление той же копии под тем же именем.*HTTP 409, машинный код disk_name_exists.*дисков с этим именем: 1' "$tmp/out" || { echo "FAIL: Г-16: второе восстановление не записано"; grep 'второе восстановление' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # Восстановление: копия восстанавливается в новый ресурс с именем пробы
 # (уборка области найдёт его по префиксу); диск восстановленной ВМ назван
 # и привязан к загрузочному диску исходной.
