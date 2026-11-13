@@ -230,6 +230,11 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	case "/api/v1/availability-zones":
 		_, _ = w.Write([]byte(`{"items":[{"id":"` + zoneAZ + `","name":"ru.AZ-1"}]}`))
 		return
+	case "/api/v1/disk-types":
+		// The type of the backups of the fake: a restore checks it before
+		// its question.
+		_, _ = w.Write([]byte(`{"items":[{"id":"` + zoneAZ + `","name":"SSD"}]}`))
+		return
 	case "/v3/productConfiguration":
 		_, _ = w.Write([]byte(`{"defaultZone":"ru.AZ-1","zones":[{"zoneId":"mk-az1","name":"ru.AZ-1"}],` +
 			`"flavors":[{"flavorId":"fl-1","name":"gen-2-4","cpu":2,"ram":4}],"channels":[{"channel":"STABLE","availableVersions":["v1.34.6"]}]}`))

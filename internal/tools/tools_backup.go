@@ -718,16 +718,25 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 	typeName, _ := srcType["name"].(string)
 	if dt := stringArg(args, "disk_type"); dt != "" {
 		typeFrom, typeName = "argument", dt
+	}
+	// The type — the argument's or the backup's — is one the project has:
+	// a type gone from the catalogue since the backup was made is refused
+	// after the consent, so it is refused here, before the question (axis
+	// 1; Qwen review of #1580).
+	if typeName != "" {
 		dts, err := eng.Cloud.ListDiskTypes(ctx, pid)
 		if err != nil {
 			return nil, err
 		}
-		if !slices.ContainsFunc(dts, func(t *provision.DiskType) bool { return t.ID == dt || strings.EqualFold(t.Name, dt) }) {
+		if !slices.ContainsFunc(dts, func(t *provision.DiskType) bool { return t.ID == typeName || strings.EqualFold(t.Name, typeName) }) {
 			names := make([]string, 0, len(dts))
 			for _, t := range dts {
 				names = append(names, t.Name)
 			}
-			return answered(usageT("disk type %q is not one of the project's: %s", "типа диска %q нет среди типов проекта: %s", dt, strings.Join(names, ", ")), true), nil
+			if typeFrom == "backup" {
+				return answered(usageT("the backup's disk type %q is not one of the project's (%s): pass disk_type", "типа диска копии %q нет среди типов проекта (%s): передайте disk_type", typeName, strings.Join(names, ", ")), true), nil
+			}
+			return answered(usageT("disk type %q is not one of the project's: %s", "типа диска %q нет среди типов проекта: %s", typeName, strings.Join(names, ", ")), true), nil
 		}
 	}
 	if looksUUID(typeName) {

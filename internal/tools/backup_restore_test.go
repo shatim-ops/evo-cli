@@ -37,6 +37,7 @@ const (
 type restoreWorld struct {
 	mu                sync.Mutex
 	kind, state, proj string
+	backupType        string
 	made              string
 	refuse            string
 	lost, never, dup  bool
@@ -107,9 +108,13 @@ func (w *restoreWorld) backup() string {
 	if proj == "" {
 		proj = raProject
 	}
+	typ := w.backupType
+	if typ == "" {
+		typ = "SSD"
+	}
 	return `{"id":"` + brBackup + `","project_id":"` + proj + `","name":"before-change","state":"` + st + `","type":"full","size":10240,"created_at":"2026-11-12T10:00:00Z",` +
 		`"resource":{"resource_id":"` + brSource + `","resource_type":"` + kind + `","resource_exists":true,"resource_state":{"name":"data","size":10,` +
-		`"disk_type":{"id":"t-ssd","name":"SSD"},"availability_zone":{"id":"` + brZone + `","name":"ru.AZ-1"}}}}`
+		`"disk_type":{"name":"` + typ + `"},"availability_zone":{"id":"` + brZone + `","name":"ru.AZ-1"}}}}`
 }
 
 func restoreRegistry(t *testing.T, w *restoreWorld) *Registry {
@@ -164,6 +169,12 @@ func TestBackupRestore_Preview(t *testing.T) {
 	}
 	if m, text, _ = backupRestore(t, &restoreWorld{}, map[string]any{"disk_type": "nvme"}); m["reason"] != "USAGE" {
 		t.Errorf("a type the project has not: want USAGE: %s", text)
+	}
+	// The backup's own type, gone from the project's catalogue: refused
+	// before the question too, naming disk_type as the way.
+	w = &restoreWorld{backupType: "legacy"}
+	if m, text, _ = backupRestore(t, w, map[string]any{"confirmed": true}); m["reason"] != "USAGE" || !strings.Contains(text, "disk_type") || w.restores != 0 {
+		t.Errorf("the backup's type gone: want USAGE naming disk_type, nothing sent (sent %d): %s", w.restores, text)
 	}
 }
 
@@ -220,7 +231,7 @@ func TestBackupRestore_TheAnswerByWhatTheDisksAre(t *testing.T) {
 	}
 	w = &restoreWorld{dup: true}
 	m, text, isErr := backupRestore(t, w, map[string]any{"confirmed": true})
-	if ids, _ := m["disk_ids"].([]any); isErr || m["status"] != "restoring" || len(ids) != 2 || !strings.Contains(text, "Ask the person") {
+	if ids, _ := m["disk_ids"].([]any); isErr || m["status"] != "restoring" || len(ids) != 2 || !strings.Contains(text, "Ask the person") || m["next_tool"] != nil {
 		t.Errorf("two disks of the name: want both ids and the person's choice: %s", text)
 	}
 	w = &restoreWorld{made: "error"}
