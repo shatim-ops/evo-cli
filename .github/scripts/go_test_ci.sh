@@ -24,9 +24,9 @@ tools=$(go list ./internal/tools)
 # windowsPRPackages — пакеты с кодом Windows (*_windows.go, runtime.GOOS):
 # на pull request Windows гоняет только их, всё — main, ночной прогон и
 # выпуск (решение владельца 29.10, аудит #578, п. 10: сбой рантайма Go на
-# Windows — 14 из 828 попыток, а свой код Windows — три пакета). Список
+# Windows — 14 из 828 попыток, а свой код Windows — считаные пакеты). Список
 # держит TestWorkflows_WindowsPRCoversWindowsCode.
-windowsPRPackages=(./internal/cli ./internal/config ./internal/journal)
+windowsPRPackages=(./internal/cli ./internal/config ./internal/intent ./internal/journal)
 
 # WINDOWS_PR_TOOLS=yes (classify.sh, строка wintools=): PR трогает код путей
 # internal/tools — пакет идёт на Windows и в PR, вторым проходом, один,
