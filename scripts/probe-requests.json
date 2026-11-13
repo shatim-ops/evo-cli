@@ -55,12 +55,20 @@
       {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/protection-plans/{protection_plan_id}", "note": "состояние плана после создания и удаления"},
       {"spec": "compute/openapi-v3.yaml", "method": "DELETE", "path": "/api/v1/protection-plans/{protection_plan_id}"}
     ]},
-    {"id": "Г-17", "title": "Теги", "requests": [
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1.1/vms", "note": "тег в запросе создания ВМ — `tag_names`, `tag_ids`"},
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/disks", "note": "тег в запросе создания диска"},
-      {"spec": "compute/openapi-v3.yaml", "method": "PUT", "path": "/api/v1/vms/{vm_id}", "note": "назначение и снятие тега у ВМ"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/vms", "note": "отбор по тегу"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/tags/v1/tags", "note": "сервис тегов: создание и удаление самого тега. Путь назван аудитом `audits/ops-gap-1.4.md` (G10), страницы API сервиса тегов в реестре API Cloud.ru нет (12.11)"}
+    {"id": "Г-17", "title": "Теги: «Менеджер ресурсов» и Compute", "requests": [
+      {"spec": "resource-manager/openapi-v3.yaml", "method": "GET", "path": "/v1/tags", "note": "первое чтение до любой записи; список по ключу; уборка тегов пробы"},
+      {"spec": "resource-manager/openapi-v3.yaml", "method": "POST", "path": "/v1/tags"},
+      {"spec": "resource-manager/openapi-v3.yaml", "method": "GET", "path": "/v1/tags/{tagId}"},
+      {"spec": "resource-manager/openapi-v3.yaml", "method": "PATCH", "path": "/v1/tags/{tagId}"},
+      {"spec": "resource-manager/openapi-v3.yaml", "method": "DELETE", "path": "/v1/tags/{tagId}", "note": "в том числе тега, назначенного диску"},
+      {"spec": "resource-manager/openapi-v3.yaml", "method": "POST", "path": "/v1/tags/{tagId}/assignResource"},
+      {"spec": "resource-manager/openapi-v3.yaml", "method": "POST", "path": "/v1/tags/{tagId}/unassignResource"},
+      {"spec": "resource-manager/openapi-v3.yaml", "method": "GET", "path": "/v1/resources", "note": "ресурсы проекта с тегом — `tagIds`"},
+      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1.1/vms", "note": "тег в запросе создания ВМ — `tag_ids`"},
+      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/disks", "note": "тег в запросе создания диска — `tag_ids`; отдельной попыткой — `tag_names` с именем того же тега"},
+      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/vms/{vm_id}", "note": "`tags` в карточке ВМ"},
+      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/disks/{disk_id}", "note": "`tags` в карточке диска"},
+      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/vms", "note": "отбор по тегу — `tag_ids`"}
     ]},
     {"id": "Г-18", "title": "ВМ: интерфейс и пересоздание", "requests": [
       {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/interfaces"},
