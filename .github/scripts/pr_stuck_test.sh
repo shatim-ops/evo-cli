@@ -108,12 +108,15 @@ J
 cat >"$FAKE_DIR/jobs.901.json" <<'J'
 {"jobs": [
  {"name": "test (macos-latest)", "conclusion": "cancelled", "runner_id": 0},
+ {"name": "test (macos-13)", "conclusion": "cancelled", "runner_id": null, "steps": []},
+ {"name": "wrapper", "conclusion": "cancelled"},
  {"name": "test (windows-latest)", "conclusion": "cancelled", "runner_id": 7, "steps": [{"name": "Set up job"}]},
  {"name": "test (ubuntu-latest)", "conclusion": "failure", "runner_id": 8, "steps": [{"name": "Set up job"}]},
  {"name": "docker", "conclusion": "success", "runner_id": 9, "steps": [{"name": "Set up job"}]}]}
 J
 run norunner
-has norunner said.31 'test (macos-latest)'
+# runner_id 0, null и отсутствующий, steps пустой и отсутствующий — одно и то же.
+has norunner said.31 'test (macos-latest), test (macos-13), wrapper'
 has norunner said.31 'отменён без раннера'
 has norunner said.31 'https://github.com/o/r/actions/runs/901'
 has norunner said.31 '<!-- pr-stuck:norunner:ffff2222 -->'
