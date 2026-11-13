@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # go test job ci (решения владельца #370, вариант 1, и #493):
-#   - на Windows в pull request — только пакеты с кодом Windows
-#     (windowsPRPackages); иначе — два прохода: все пакеты, кроме internal/tools, затем
+#   - на Windows в pull request — пакеты с кодом Windows (windowsPRPackages)
+#     и windowsPRAlways, затем internal/tools один; иначе — два прохода: все
+#     пакеты, кроме internal/tools, затем
 #     internal/tools один. Сбой рантайма Go приходил только под нагрузкой
 #     параллельных пакетов: 14 из 828 попыток 22–28.10, все в internal/tools;
 #     так — 0 из 300 (проба ci-probe, run 40740766759, #494). Это обход, а
@@ -28,12 +29,17 @@ tools=$(go list ./internal/tools)
 # держит TestWorkflows_WindowsPRCoversWindowsCode.
 windowsPRPackages=(./internal/cli ./internal/config ./internal/intent ./internal/journal)
 
-# WINDOWS_PR_TOOLS=yes (classify.sh, строка wintools=): PR трогает код путей
-# internal/tools — пакет идёт на Windows и в PR, вторым проходом, один,
-# как на main (сбой рантайма Go приходил под нагрузкой соседних пакетов).
+# windowsPRAlways — пакеты без своего кода Windows, которые PR всё равно
+# гоняет на Windows, и internal/tools — вторым проходом, один, как на main
+# (сбой рантайма Go приходил под нагрузкой соседних пакетов). Решение
+# владельца 13.11 (план 1.9, строка «internal/engine — на Windows в каждом
+# PR»): тесты границ deploy в internal/engine трижды за сутки красили main
+# на Windows (#1576, #1579, #1645), а internal/tools — путь как строка со
+# слэшем (#1473 → #1535); в PR оба пакета на Windows не шли, и падение было
+# видно только после слияния.
+windowsPRAlways=(./internal/engine)
 if [ "${RUNNER_OS:-}" = Windows ] && [ "${GITHUB_EVENT_NAME:-}" = pull_request ]; then
-	passes=("${windowsPRPackages[*]}")
-	[ "${WINDOWS_PR_TOOLS:-}" != yes ] || passes+=("$tools")
+	passes=("${windowsPRPackages[*]} ${windowsPRAlways[*]}" "$tools")
 elif [ "${RUNNER_OS:-}" = Windows ]; then
 	# shellcheck disable=SC2207 # import paths have no spaces
 	rest=($(go list ./... | grep -vxF "$tools"))
