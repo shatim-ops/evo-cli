@@ -511,14 +511,20 @@ var (
 		}
 		return ids, err
 	})))
-	kindBackup = inProjectList("backup", "backup_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	// A backup's card names its project (project_id): the preview of its
+	// change names the project of a backup of another one, and evo doctor
+	// reads a cut delete by id (FB19I-20).
+	kindBackup = byProjectField("backup", "backup_list", func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+		eng, err := c.engine(ctx)
+		if err != nil {
+			return nil, err
+		}
 		api, err := backupAPI(eng)
 		if err != nil {
 			return nil, err
 		}
-		backups, err := api.ListBackups(ctx, eng.Config.ProjectID)
-		return mapIDs(backups), err
-	}))
+		return api.GetBackup(ctx, id)
+	})
 	kindDisk = inProjectList("disk", "disk_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		disks, err := eng.Cloud.ListDisks(ctx, eng.Config.ProjectID)
 		return mapIDs(disks), err
@@ -649,6 +655,15 @@ var (
 	// of the cluster. A pool that names no cluster, or whose cluster is
 	// not read, is refused — never passed unchecked.
 	kindK8sNodePool = &ownerKind{what: "node pool", listTool: "k8s_nodepools", project: nodePoolProject,
+		// The pool by id: evo doctor checks a cut k8s_nodepool_delete with
+		// it (FB19I-20).
+		card: func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+			cli, _, _, err := c.r.k8sClient(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return cli.GetNodePool(ctx, id)
+		},
 		check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
 			p, err := nodePoolProject(ctx, c, id)
 			if err != nil {
