@@ -44,7 +44,10 @@ type restoreWorld struct {
 	lost, never, dup  bool
 	disks             []map[string]any
 	restores          int
-	sent              map[string]any
+	// apart, when set, is the StateDir of the engine, apart from the
+	// directory declared for the registry (dir).
+	apart string
+	sent  map[string]any
 	// dir is the directory of the state of every call on the world: the
 	// records of the calls (D92) live there, as evo\'s beside its state.
 	dir string
@@ -139,7 +142,7 @@ func restoreRegistry(t *testing.T, w *restoreWorld) *Registry {
 			Cloud:    cloud,
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
 			Timings:  engine.Timings{VMPollInterval: time.Millisecond},
-			StateDir: w.dir,
+			StateDir: w.engineDir(),
 		}, nil
 	})
 	dir := w.dir
@@ -157,6 +160,37 @@ func (w *restoreWorld) stateIn(t *testing.T) *restoreWorld {
 	w.dir = t.TempDir()
 	t.Chdir(w.dir)
 	return w
+}
+
+// engineDir is the StateDir of the engine: the declared directory of the
+// registry, unless the world sets them apart (apart).
+func (w *restoreWorld) engineDir() string {
+	if w.apart != "" {
+		return w.apart
+	}
+	return w.dir
+}
+
+// The records of intents are read where the layer writes them — the
+// directory declared for the registry — and not in the engine's StateDir
+// (release plan 1.9, «backup_restore читает записи слоя намерений мимо
+// объявленного каталога», a finding of «Риск» 13.11). The two set apart,
+// the restore taken and its disk not listed yet: the calls after it send
+// no second restore, as when the two are one path
+// (TestBackupRestore_TakenAndNotListedSendsNoSecond) — each second restore
+// is a billed disk.
+func TestBackupRestore_HeldRecordIsReadInTheDeclaredDirectory(t *testing.T) {
+	w := (&restoreWorld{never: true}).stateIn(t)
+	w.apart = t.TempDir()
+	if m, text, _ := backupRestore(t, w, map[string]any{"confirmed": true}); m["status"] != "restoring" || w.restores != 1 {
+		t.Fatalf("want restoring after one restore: %s", text)
+	}
+	for i := 0; i < 2; i++ {
+		m, text, _ := backupRestore(t, w, map[string]any{"confirmed": true})
+		if m["status"] != "restoring" || w.restores != 1 {
+			t.Errorf("call %d with the consent, the engine's directory apart from the declared one: want restoring and no second restore (sent %d): %s", i+2, w.restores, text)
+		}
+	}
 }
 
 func backupRestore(t *testing.T, w *restoreWorld, args map[string]any) (map[string]any, string, bool) {
