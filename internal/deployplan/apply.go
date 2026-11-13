@@ -17,6 +17,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -40,8 +41,12 @@ type ApplyResult struct {
 	// FloatingIPID is the VM's floating IP, kept in the state so destroy
 	// releases exactly it (QA r3 R2).
 	FloatingIPID string `json:"floating_ip_id,omitempty"`
-	SSH          string `json:"ssh,omitempty"`
-	Password     string `json:"password,omitempty"` // shown ONCE; not persisted
+	// LostFloatingIP is the name of the VM's floating IP whose create got
+	// no answer: it may exist and be billed (floatingip.LostError). The
+	// tool keeps its mark in the state.
+	LostFloatingIP string `json:"lost_floating_ip,omitempty"`
+	SSH            string `json:"ssh,omitempty"`
+	Password       string `json:"password,omitempty"` // shown ONCE; not persisted
 	// VMStatus is the VM's state when the apply stopped waiting for it
 	// (Status "creating", D69).
 	VMStatus   string `json:"vm_status,omitempty"`
@@ -330,14 +335,19 @@ poll:
 	show.done(i18n.Tf("VM %s is running", "ВМ %s запущена", plan.VM.Name))
 
 	// --- Floating IP ---
-	ip, fipID, fipNote := ensureFloatingIP(ctx, cloud, plan, vm.ID)
+	var lostFIP string
+	ip, fipID, fipNote := ensureFloatingIP(ctx, cloud, plan, vm.ID, &lostFIP)
 	if ip != "" {
 		show.done(i18n.Tf("Public IP %s", "Публичный IP %s", ip))
 	}
 	if ctx.Err() != nil {
 		// The steps below would only fail on the cancelled context and
 		// report a half-done VM as "running".
-		return interrupted(ip, fipID)
+		r, err := interrupted(ip, fipID)
+		if r != nil {
+			r.LostFloatingIP = lostFIP
+		}
+		return r, err
 	}
 
 	// --- Wait until SSH (port 22) is actually reachable, so the agent's very
@@ -367,15 +377,16 @@ poll:
 	}
 
 	return &ApplyResult{
-		VMID:         vm.ID,
-		Status:       status,
-		PublicIP:     ip,
-		FloatingIPID: fipID,
-		SSH:          sshString(plan.SSH.Login, ip),
-		Password:     password,
-		ElapsedSec:   int(clock.Since(start).Seconds()),
-		Note:         joinNotes(note, fipNote, sshNote, opened.Note()),
-		Ports:        ports,
+		VMID:           vm.ID,
+		Status:         status,
+		PublicIP:       ip,
+		FloatingIPID:   fipID,
+		LostFloatingIP: lostFIP,
+		SSH:            sshString(plan.SSH.Login, ip),
+		Password:       password,
+		ElapsedSec:     int(clock.Since(start).Seconds()),
+		Note:           joinNotes(note, fipNote, sshNote, opened.Note()),
+		Ports:          ports,
 	}, nil
 }
 
@@ -438,7 +449,8 @@ func attachedFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID stri
 	return detail.AttachedFloatingIP()
 }
 
-func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vmID string) (ip, fipID, note string) {
+// lostName is set to the name of an address whose create got no answer.
+func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vmID string, lostName *string) (ip, fipID, note string) {
 	if !plan.Network.FloatingIP {
 		return "", "", ""
 	}
@@ -465,41 +477,55 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		}
 	}
 
-	name := provision.FitName(plan.VM.Name, "-fip")
-	f, e := cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
+	name := FloatingIPName(plan)
+	// This VM's address only: bound to it or to its interface (the list may
+	// name only one), or still being created or attached — the create named
+	// the interface. A free one of the name is an orphan of an earlier VM,
+	// not this VM's public IP (Cursor 1.2.3, A3).
+	own := func(x provision.FloatingIP) bool { return x.BoundTo(vmID) || x.BoundTo(ifaceID) || x.Pending() }
+	// One an earlier apply asked for with no answer, listed now, is taken:
+	// not a second create (D107; «Риск», conclusion 180, У2).
+	if x := floatingip.Find(ctx, cloud, plan.ProjectID, provision.FitName(plan.VM.Name, "-fip"), own); x != nil {
+		return x.IPAddress, x.ID, "public IP attached (found the floating IP an earlier apply asked for by its name)"
+	}
+	// One create: with no answer it is looked for by its name, and not
+	// sent again (floatingip.Reserve; conclusion 180, У1).
+	f, e := floatingip.Reserve(ctx, cloud, provision.CreateFloatingIPRequest{
 		Name:               name,
 		ProjectID:          plan.ProjectID,
 		InterfaceID:        ifaceID,
 		AvailabilityZoneID: plan.VM.Zone.ID,
-	})
+	}, own, time.Second, nil)
 	if e == nil && f != nil && f.ID != "" {
 		return f.IPAddress, f.ID, "public IP attached (created a new floating IP)"
 	}
 	if provision.IsQuotaError(e) {
 		return "", "", "⚠️ Floating-IP quota exhausted — the VM was created WITHOUT a public IP. Increase the floating-IP quota in the Cloud.ru console, then attach an IP to this VM manually."
 	}
-	if e == nil {
-		e = errors.New("the create answered no floating IP id")
+	if lost, ok := floatingip.AsLost(e); ok {
+		*lostName = lost.Name
+		return "", "", lostFIPNote(lost.Name, lost.Err)
 	}
-	// The create may have reached the cloud with its answer lost, or
-	// answered without an id (deploy adopts that one by name too): the FIP
-	// then exists under its name and must be recorded, not left billed.
-	// Only this VM's address: bound to it or to its interface (the list may
-	// name only one), or still being created or attached — the create named
-	// the interface. A free one of the name is an orphan of an earlier VM,
-	// not this VM's public IP (Cursor 1.2.3, A3); this VM's left unrecorded
-	// would be billed beside the one the next deploy_apply makes.
-	if fips, le := cloud.ListFloatingIPs(ctx, plan.ProjectID); le == nil {
-		for _, x := range fips {
-			if x.Name == name && (x.BoundTo(vmID) || x.BoundTo(ifaceID) || x.Pending()) {
-				return x.IPAddress, x.ID, "public IP attached (the create answer was lost; found the floating IP by name)"
-			}
-		}
-	}
-	// The FIP may still exist on the VM, unseen: a second one attached by
-	// hand would be billed too. deploy_apply again adopts the VM with the
-	// address it has.
+	// A refusal: no address came of it. deploy_apply again adopts the VM
+	// with the address it has, or attaches a new one.
 	return "", "", "could not attach a floating IP (" + e.Error() + ") — the VM has no public IP evo could confirm; run deploy_apply again with the same plan: it adopts the VM and the floating IP already on it, or attaches a new one"
+}
+
+// lostFIPNote is the note of an apply whose create of the VM's floating IP
+// got no answer: the address may exist and be billed, and no second one
+// was requested (ApplyResult.LostFloatingIP names it).
+func lostFIPNote(name string, err error) string {
+	return "the create of floating IP " + name + " got no answer from the cloud (" + err.Error() + "): the request may have been accepted, and the address billed. No second address was requested. Check list_floating_ips for the name " + name +
+		"; deploy_apply again with the same plan takes that address if the list shows it on this VM; if the list does not show it, it asks first — whether to reserve another address is the person's to answer"
+}
+
+// FloatingIPName is the name the plan's VM's floating IP is created by:
+// plan.FloatingIPName when the tool set one, else the plan's own.
+func FloatingIPName(plan *Plan) string {
+	if plan.FloatingIPName != "" {
+		return plan.FloatingIPName
+	}
+	return provision.FitName(plan.VM.Name, "-fip")
 }
 
 // joinNotes concatenates non-empty notes with "; ".

@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
@@ -247,6 +248,12 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		return fipErr
 	}
 
+	// The addresses asked for this VM with no answer (floatingip): released
+	// when listed by their name, else named in the answer — their marks
+	// close either way, so nothing billed stays unnamed (D107; «Риск»,
+	// conclusion 180, Т3 and Т4).
+	lostReleased, lostMissing := e.releaseLostAddresses(ctx, stateFile, active)
+
 	// Clean up state. Retire moves records: active points into the slice.
 	vmID, vmIP := active.VMID, active.VMIP
 	for _, id := range append([]string{active.ID}, pending...) {
@@ -276,10 +283,38 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		if len(left) > 0 {
 			out["ports_left_open"] = left
 		}
+		if len(lostReleased) > 0 {
+			out["lost_floating_ips_released"] = lostReleased
+		}
+		if len(lostMissing) > 0 {
+			out["lost_floating_ips_not_found"] = lostMissing
+		}
 		return e.Printer.JSON(out)
 	}
 	e.Printer.Success(i18n.T("Deployment destroyed successfully.", "Развёртывание удалено."))
 	return nil
+}
+
+// releaseLostAddresses releases the floating IPs asked for the VM of rec
+// with no answer (floatingip.Release) and says what it did: released by
+// destroy itself; not listed — named, with where to release it if it comes.
+// A list that cannot be read keeps the marks, with a warning.
+func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) (released, missing []string) {
+	rel, miss, err := floatingip.Release(ctx, e.Cloud, sf, e.projectOf(rec), rec.VMName, rec.VMID, rec.FloatingIPID)
+	for _, m := range rel {
+		released = append(released, m.Name)
+		e.Printer.StepDone(i18n.Tf("Floating IP %s, requested with no answer, released", "Floating IP %s, запрошенный без ответа облака, освобождён", m.Name))
+	}
+	for _, m := range miss {
+		missing = append(missing, m.Name)
+		e.Printer.Warning(i18n.Tf("floating IP %s, requested %s with no answer, is not listed: if list_floating_ips shows it later, it is billed — whether to release it (release_floating_ip), ask the person",
+			"floating IP %s, запрошенный %s без ответа облака, в списке не найден: если 'evo vpc fips' покажет его позже, он тарифицируется — освобождать ли его ('evo vpc fip-release'), спросите человека", m.Name, m.RequestedAt.Local().Format("02.01.2006 15:04")))
+	}
+	if err != nil {
+		e.Printer.Warning(i18n.Tf("the floating IPs requested with no answer were not checked (%v); the next destroy checks them again",
+			"floating IP, запрошенные без ответа облака, не проверены (%v); следующий destroy проверит их снова", err))
+	}
+	return released, missing
 }
 
 // ErrDeletionUnconfirmed is the cause of the error destroy returns when

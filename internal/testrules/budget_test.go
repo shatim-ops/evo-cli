@@ -31,7 +31,7 @@ var budgetReach = map[string][]string{
 	"internal/tools/opwait.go\twaitState":                       {"disk_create", "disk_attach", "disk_detach", "disk_resize", "vm_start", "vm_stop", "vm_reboot", "k8s_nodepool_scale"},
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {"stack_status"},
 	"internal/engine/deploy.go\tassignFloatingIP":               {"deploy", "provision", "stack_apply"},
-	"internal/engine/deploy.go\tEngine.findBootFIP":             {"deploy", "provision", "stack_apply"},
+	"internal/floatingip/floatingip.go\tLookup":                 {"deploy", "provision", "stack_apply", "deploy_apply"},
 	"internal/engine/deploy.go\tEngine.releaseBootFIP":          {"deploy", "provision", "stack_apply"},
 	"internal/engine/deploy.go\tEngine.waitVMGone":              {"deploy", "destroy", "stack_destroy"},
 	"internal/deployplan/apply.go\tfinishApply":                 {"deploy_apply"},

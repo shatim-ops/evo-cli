@@ -65,7 +65,7 @@ var sleepWaits = map[string]struct{ test, why, item string }{
 
 	// The paths of a failure or an interruption.
 	"internal/engine/deploy.go\tassignFloatingIP":      {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
-	"internal/engine/deploy.go\tEngine.findBootFIP":    {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
+	"internal/floatingip/floatingip.go\tLookup":        {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
 	"internal/engine/deploy.go\tEngine.releaseBootFIP": {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
 	"internal/engine/deploy.go\tEngine.waitVMGone":     {test: "TestSleep_OneRefusedTokenOnThePathsOfFailure"},
 	"internal/deployplan/apply.go\tfinishApply":        {test: "TestApply_VMWaitGoesOnAfterOneRefusedToken"},

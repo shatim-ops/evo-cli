@@ -13,8 +13,11 @@ import (
 	"testing"
 	"time"
 
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // fipCalls records CreateFloatingIP requests.
@@ -74,14 +77,15 @@ func TestDeploy_CreateVMFails_ReleasesBootFIP(t *testing.T) {
 	}
 }
 
-// When the IP cannot be reserved up front for a reason other than quota,
-// deploy goes on, attaches one after boot and says the first boot may be
-// slow.
+// When the API refuses to reserve the IP up front for a reason other than
+// quota, deploy goes on, attaches one after boot and says the first boot
+// may be slow. A refusal made no address (floatingip.Refused); a create
+// whose outcome is unknown stops the deploy (TestDeploy_BootFIPLost_StopsBeforeVM).
 func TestDeploy_BootFIPFails_AttachesAfterBoot(t *testing.T) {
 	var calls fipCalls
 	cloud := &mockCloudAPI{createFloatingIPFn: func(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
 		if calls.record(req) == 1 {
-			return nil, stderrors.New("503 service unavailable")
+			return nil, clerrors.Wrap(clerrors.CodeAPIError, "bad request", "", &provision.StatusError{Status: 400, Body: "bad"})
 		}
 		return &provision.FloatingIP{ID: "fip-late", IPAddress: "203.0.113.8", State: "in_use"}, nil
 	}}
@@ -147,5 +151,64 @@ func TestDeploy_FIPQuotaExhausted_CreatesNothing(t *testing.T) {
 	}
 	if cloud.createCalled {
 		t.Error("VM created although no public IP could be reserved")
+	}
+}
+
+// A create of the boot FIP whose outcome is unknown (a 503: the address
+// may have been made) is not followed by a VM, nor by a second create: the
+// deploy stops with the name of the address, and the state keeps its mark
+// (D107; «Риск», conclusion 180, У1, (а)).
+func TestDeploy_BootFIPLost_StopsBeforeVM(t *testing.T) {
+	var calls fipCalls
+	vms := 0
+	cloud := &mockCloudAPI{
+		createFloatingIPFn: func(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+			calls.record(req)
+			return nil, clerrors.Wrap(clerrors.CodeAPIError, "unavailable", "", &provision.StatusError{Status: 503, Body: "busy"})
+		},
+		createVMFn: func(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+			vms++
+			return nil, stderrors.New("must not be called")
+		},
+	}
+	eng, dir := newTestEngine(t, cloud, newMockDeployer())
+
+	err := eng.Deploy(context.Background(), newDeployOpts(t, dir))
+	lost, ok := floatingip.AsLost(err)
+	if !ok {
+		t.Fatalf("err = %v, want a lost floating IP", err)
+	}
+	if len(calls.reqs) != 1 || vms != 0 {
+		t.Fatalf("FIP creates %d, VM creates %d; want 1 and 0", len(calls.reqs), vms)
+	}
+	if clerrors.Reason(err) != clerrors.CodeAPIError || !strings.Contains(err.Error(), lost.Name) {
+		t.Errorf("err = %v (reason %s), want API_ERROR naming %s", err, clerrors.Reason(err), lost.Name)
+	}
+	sf, rerr := state.Read(state.DefaultPath(dir))
+	if rerr != nil || len(sf.LostFloatingIPs) != 1 || sf.LostFloatingIPs[0].Name != lost.Name || sf.LostFloatingIPs[0].VMName == "" {
+		t.Fatalf("state marks %+v (%v), want the mark of %s", sf.LostFloatingIPs, rerr, lost.Name)
+	}
+}
+
+// Conclusion 205: after a person's yes to one more address for a VM, the
+// create gives it another name than the address of the mark — the first
+// may still come, and each mark must find only its own.
+func TestAssignFloatingIP_AfterAYesAnotherName(t *testing.T) {
+	var calls fipCalls
+	cloud := &mockCloudAPI{createFloatingIPFn: func(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+		calls.record(req)
+		return &provision.FloatingIP{ID: "fip-2", Name: req.Name, IPAddress: "203.0.113.9", State: "in_use"}, nil
+	}}
+	eng, _ := newTestEngine(t, cloud, newMockDeployer())
+	sf := &state.File{}
+	floatingip.Note(sf, state.LostFloatingIP{Name: fipName("vm-123"), ProjectID: "p", VMName: "web", VMID: "vm-123", Answered: true})
+	if _, _, err := eng.AssignFloatingIP(context.Background(), "vm-123", "web", "p", "az", sf); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls.reqs) != 1 || calls.reqs[0].Name == fipName("vm-123") {
+		t.Fatalf("creates %+v; want one, named other than %s", calls.reqs, fipName("vm-123"))
+	}
+	if len(sf.LostFloatingIPs) != 1 {
+		t.Fatalf("marks %+v; want the first address's kept", sf.LostFloatingIPs)
 	}
 }

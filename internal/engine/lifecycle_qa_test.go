@@ -160,7 +160,7 @@ func TestAssignFloatingIP_LostResponseRecoversFIPByName(t *testing.T) {
 			}, nil
 		},
 	}
-	ip, id, err := assignFloatingIP(context.Background(), cloud, fastTimings.withDefaults(), nil, "vm-1", "p", "az")
+	ip, id, err := assignFloatingIP(context.Background(), cloud, fastTimings.withDefaults(), nil, "vm-1", fipName("vm-1"), "p", "az")
 	if id != "fip-made" || ip != "198.51.100.2" {
 		t.Fatalf("assign = %q %q %v, want the FIP named for the VM", ip, id, err)
 	}
