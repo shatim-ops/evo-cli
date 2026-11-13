@@ -74,15 +74,15 @@ case_ windows Windows 0 "" "$rest" "$alone"
 
 # Pull request на Windows — только пакеты с кодом Windows; Linux — всё.
 fresh windows-pr
-EVENT=pull_request case_ windows-pr Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/journal"
+EVENT=pull_request case_ windows-pr Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/intent ./internal/journal"
 fresh linux-pr
 EVENT=pull_request case_ linux-pr Linux 0 "" "$flags ./..."
 # PR трогает код путей internal/tools (classify.sh, wintools=yes): пакет —
 # вторым проходом, один; на Linux и в push это ничего не меняет.
 fresh windows-pr-tools
-EVENT=pull_request WINDOWS_PR_TOOLS=yes case_ windows-pr-tools Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/journal" "$alone"
+EVENT=pull_request WINDOWS_PR_TOOLS=yes case_ windows-pr-tools Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/intent ./internal/journal" "$alone"
 fresh windows-pr-no-tools
-EVENT=pull_request WINDOWS_PR_TOOLS=no case_ windows-pr-no-tools Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/journal"
+EVENT=pull_request WINDOWS_PR_TOOLS=no case_ windows-pr-no-tools Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/intent ./internal/journal"
 fresh linux-pr-tools
 EVENT=pull_request WINDOWS_PR_TOOLS=yes case_ linux-pr-tools Linux 0 "" "$flags ./..."
 fresh windows-push-tools
