@@ -185,3 +185,21 @@ func TestStackApply_TheQuestionNamesEveryStep(t *testing.T) {
 		t.Errorf("the question's cost, want the class of secret:0 and not of vpc, done: %v", cost)
 	}
 }
+
+// The body of an S3 object a stack puts is not in the question of
+// stack_apply either («Риск», conclusion 213, У1): evo keeps it off the job
+// file once the step is done, as a secret's value, and an object may be a
+// .env with a key. The question names its size. The human preview is
+// made from the same answer, so a value not in it is not shown there.
+func TestStackApply_TheQuestionHidesAnObjectsBody(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"g","s3":[{"bucket":"b-g","key":".env","content":"API_KEY=s3cr3t-body"}]}`)
+	text, _ := r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID})
+	if strings.Contains(text, "s3cr3t-body") {
+		t.Errorf("the body of the object is in the question: %s", text)
+	}
+	if !strings.Contains(text, ".env") || !strings.Contains(text, "not shown: 19 bytes") {
+		t.Errorf("the question does not name the object and the size of its body: %s", text)
+	}
+}

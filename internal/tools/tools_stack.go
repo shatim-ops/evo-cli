@@ -1145,9 +1145,17 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 // the job will create it (CLAUDE.md §6, axis 4): a reference to the
 // resource of another step is "$" and its key. An argument that holds a
 // secret (CLISpec.SecretFiles of the step's tool) is named, its value is
-// not (CLAUDE.md §4).
+// not (CLAUDE.md §4); nor is the value of stack.HiddenArgs, which the job
+// file does not keep either: the question gives its size.
 // secretNotShown stands for the value of a secret in the question.
 const secretNotShown = "(secret: not shown)"
+
+// notShown stands for a value of stack.HiddenArgs that is not a secret
+// (an object's body) in the question: its size.
+func notShown(v any) string {
+	s, _ := v.(string)
+	return fmt.Sprintf("(not shown: %d bytes)", len(s))
+}
 
 func (s *Registry) stackSteps(job *stack.Job) []map[string]any {
 	out := []map[string]any{}
@@ -1162,6 +1170,8 @@ func (s *Registry) stackSteps(job *stack.Job) []map[string]any {
 			case k == "confirmed":
 			case t.CLI.SecretFiles[k]:
 				row[k] = secretNotShown
+			case stack.HiddenArgs[st.Tool] == k:
+				row[k] = notShown(v)
 			default:
 				row[k] = v
 			}
