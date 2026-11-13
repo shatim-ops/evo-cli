@@ -60,6 +60,48 @@ func argValues(args map[string]any) []string {
 	return out
 }
 
+// intentRandom are the fields of a record whose text evo makes itself of
+// chance and of the clock — the id, the hash of the call (Print: the
+// values are not written into it), the start, the process. A value of
+// four characters («8080», «icmp») is found in such hex and digits by
+// chance: 1 of 158 calls of a CI run, «evo vpc sg-rule-create», 13.11,
+// after the print came (#1620). Every other field — and one added later
+// — is read for the values.
+var intentRandom = []string{"id", "print", "started_at", "pid"}
+
+// intentSays is the record without intentRandom: the text an argument's
+// value is looked for in.
+func intentSays(t *testing.T, body string) string {
+	t.Helper()
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(body), &rec); err != nil {
+		return body
+	}
+	for _, k := range intentRandom {
+		if _, ok := rec[k]; !ok {
+			t.Errorf("the record has no field %q: intentRandom names a field the layer no longer writes", k)
+		}
+		delete(rec, k)
+	}
+	out, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+// intentSays leaves out chance and nothing else: a value in any other
+// field of the record is still found.
+func TestGate_IntentSaysLeavesOutOnlyChance(t *testing.T) {
+	body := `{"id":"a8443b","tool":"sg_rule_create","args":["ports"],"name":"web","note":"x 8443 y","surface":"mcp","pid":18443,"started_at":"2026-11-13T07:08:08.084430Z","print":"ff8443aa"}`
+	if !strings.Contains(intentSays(t, body), "8443") {
+		t.Error("a value in a field evo does not make of chance is not seen")
+	}
+	if strings.Contains(intentSays(t, strings.Replace(body, `"note":"x 8443 y",`, "", 1)), "8443") {
+		t.Error("the id, the print, the start or the process is still read for the values")
+	}
+}
+
 // R-59 (round 3 of Grok, F1; cloud-e2e 181, R3F1 1 of 2): a SIGKILL of evo
 // after «Confirmed» and before the cloud answers left a paid disk in the
 // cloud and nothing in evo — the journal writes a call when it returns.
@@ -169,8 +211,9 @@ func TestGate_IntentBeforeTheCloudGoneAfter(t *testing.T) {
 				if _, id, ok := strings.Cut(rec.Target, "="); ok {
 					named[id] = true
 				}
+				said := intentSays(t, body)
 				for _, v := range argValues(args) {
-					if strings.Contains(body, v) && !named[v] {
+					if strings.Contains(said, v) && !named[v] {
 						note(key, "%s: the intent holds the value of an argument (%d characters)", surface, len(v))
 					}
 				}
