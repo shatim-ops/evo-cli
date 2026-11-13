@@ -200,9 +200,10 @@ jobs:
       # (решение владельца 13.11, #1590, вопрос 19; план 1.9, «Просроченные
       # убывающие списки»): строки TestMisses_HaveADeadline — в сводку
       # прогона и предупреждением. Красным просрочку делает недельный
-      # прогон (weekly-misses.yml), этот шаг job не роняет.
+      # прогон (weekly-misses.yml), этот шаг job не роняет. always(): красный
+      # PR — тоже PR, сводка нужна и после упавших тестов.
       - name: Просроченные убывающие списки — в сводку
-        if: runner.os == 'Linux'
+        if: always() && runner.os == 'Linux'
         shell: bash
         run: |
           out=$(go test ./internal/testrules -run '^TestMisses_HaveADeadline$' -count=1 -v |
