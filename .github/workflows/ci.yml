@@ -254,6 +254,15 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 300 .github/scripts/dbaas_delete_test.sh
 
+      # Удаление кластера Kubernetes cloud-e2e (k8s-delete.sh): отказ —
+      # повтор при смене состояния, остаток — поимённо; след кластера в
+      # проекте (k8s-footprint.sh) — заключение «Риска» 189, У2, У3.
+      - name: k8s-delete.sh и k8s-footprint.sh на поддельном evo
+        if: runner.os == 'Linux'
+        run: |
+          timeout 120 .github/scripts/k8s_delete_test.sh
+          timeout 120 .github/scripts/k8s_footprint_test.sh
+
       # Уборка cleanup_only рядом с живыми запусками (e2e_live_runs.sh) на
       # заглушке gh и поддельном evo: ресурсы незавершённого запуска не
       # удаляются; список запусков не прочитан — не удаляется ничего.

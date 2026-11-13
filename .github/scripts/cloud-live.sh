@@ -33,7 +33,7 @@
 # shellcheck disable=SC2015,SC2016,SC2329
 set -euo pipefail
 
-area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet, ops, dbchange или sweep ПРЕФИКС}
+area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet, ops, dbchange, k8schange или sweep ПРЕФИКС}
 here=$(cd "$(dirname "$0")" && pwd)
 ZONE=${ZONE:-ru.AZ-2}
 IMAGE=${IMAGE:-ubuntu-22.04}
@@ -358,7 +358,7 @@ area_kinds() {
 	mcp) echo "vm fip" ;;
 	pgnet) echo "vm fip subnet" ;;
 	ops) echo "pplan backup vm fip disk subnet sg tag" ;;
-	dbchange) echo "" ;; # ресурсов не создаёт: кластер — у job
+	dbchange | k8schange) echo "" ;; # ресурсов вне кластера не создают: кластер — у job
 	*) echo "${KINDS/route /}" ;;
 	esac
 }
@@ -529,7 +529,7 @@ finish() {
 	if [ "$area" != sweep ]; then
 		echo "== уборка $prefix*"
 		[ "$area" != net ] || delete_test_rules
-		# Область без своих видов ресурсов (dbchange) убирать нечего.
+		# Области без своих видов ресурсов (dbchange, k8schange) убирать нечего.
 		[ -z "$(area_kinds "$area")" ] || sweep "$prefix" "$(area_kinds "$area")" || failed=1
 		if [ "$area" = net ]; then
 			if poll 120 10 no_rules; then ok "правило $RULE_PORT удалено"; else bad "правило $RULE_PORT удалено" "осталось после уборки"; fi
@@ -3312,8 +3312,176 @@ area_dbchange() {
 	esac
 }
 
+# Проба Г-12 (с Г6 дельта-аудита 1.9): Managed Kubernetes. Кластер на
+# предпоследней версии и его группа узлов из одного узла — у job k8s-smoke;
+# дальше прямые запросы mk8s v3 (опись docs/internal/probes/requests-1.9.md):
+# масштаб 1→2 и сразу повтор того же запроса, 2→1; вторая группа (evo) и
+# её удаление, пока она создаётся; обновление версии кластера до
+# K8S_UPGRADE_TO, затем группы; масштаб до 0; удаление последней группы.
+# Обновление — после второй группы: оно самое долгое и необратимое, и
+# зависшее не должно съесть шаг второй группы; масштаб до 0 и удаление
+# последней группы — после него, потому что обновлять группу нужно с
+# узлом. Зависнет обновление — эти два шага не идут, группу убирает
+# удаление кластера (заключение «Риска» 189, У1).
+# Что записывается: код и поля ответа; первое чтение карточки сразу после
+# принятого запроса — состояние и желаемое число (меняет ли платформа их
+# сразу — на этом стоит защита k8s_nodepool_scale от дубля, строка плана
+# Г-12); цепочка состояний и время; форма поля error операции, пока она
+# идёт и в конце (Г6). Отказ платформы — ответ, не провал. Ресурсов вне
+# кластера проба не создаёт: вторую группу и всё остальное удаляет
+# удаление кластера в job. Шаг не шлётся, если прошлый не завершился
+# (запрос поверх незавершённого) и после срока пробы K8S_BUDGET.
+K8S_SETTLE=${K8S_SETTLE:-120}
+area_k8schange() {
+	local id=${K8S_CLUSTER_ID:-} to=${K8S_UPGRADE_TO:-} g=Г-12 mk=https://mk8s.api.cloud.ru/v3
+	local np np2 purl stuck=0 deadline=$(($(date +%s) + ${K8S_BUDGET:-5400})) kop='' kop2='' hookr='' kfirst='' K_HOOK=''
+	[ -n "$id" ] || { bad k8schange "нет K8S_CLUSTER_ID"; return 1; }
+	mask "$id"
+	iam_fresh || { gap "$g" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	np=$(evo tools call k8s_nodepools --arg cluster_id="$id" --json 2>/dev/null | jq -r '[.node_pools[]? | .id // empty] | if length == 1 then .[0] else empty end') || np=
+	[ -n "$np" ] || { gap "$g" "в кластере не одна группа узлов (или список не прочитан) — проба ждёт одну"; return 0; }
+	mask "$np"
+	purl=$mk/nodePools/$np
+	# k_state pool|cluster — состояние из последнего ответа api: у группы —
+	# «состояние/желаемое число», у кластера — «состояние/версия».
+	k_state() {
+		case "$code" in
+		2??) ;;
+		404) echo "нет (404)"; return 0 ;;
+		*) echo "HTTP $code"; return 0 ;;
+		esac
+		if [ "$1" = pool ]; then
+			jq -r '(.nodePool? // .) | "\(.status // "без status")/\(.scalePolicy.fixedScale.count // .scalePolicy.autoScale.minCount // "?") узл., \(.version // "?")"' "$tmp/api.json" 2>/dev/null || echo "не JSON"
+		else
+			jq -r '(.cluster? // .) | "\(.status // "без status")/\((.controlPlane.version // .controlPlaneConfiguration.version // .version) // "?")"' "$tmp/api.json" 2>/dev/null || echo "не JSON"
+		fi
+	}
+	# op_shape — операция по последнему ответу api: done и форма поля error
+	# (Г6: нет поля, null, {} или объект с какими ключами).
+	op_shape() {
+		case "$code" in 2??) ;; *) echo "HTTP $code"; return 0 ;; esac
+		jq -r '"done=\(if has("done") then .done else "нет поля" end), error: " + (if has("error") | not then "нет поля" elif .error == null then "null" elif .error == {} then "{}" elif (.error | type) == "object" then "объект, ключи \(.error | keys | join(","))" else (.error | type) end)' "$tmp/api.json" 2>/dev/null || echo "не JSON"
+	}
+	# k_watch URL pool|cluster ДО [gone] — читать карточку до конечного
+	# состояния: RUNNING после другого состояния или без смены K8S_SETTLE
+	# секунд (смена одного желаемого числа при RUNNING — ещё не конец: узлы
+	# могут не начать меняться); с gone
+	# — до 404 или DELETED. Первое чтение — в $kfirst, цепочка — в $chain;
+	# после первого чтения — K_HOOK (повтор запроса), если задан. Код 1 —
+	# не дождались или ERROR.
+	k_watch() {
+		local s st='' moved=0 since
+		chain='' kfirst=''
+		since=$(date +%s)
+		while :; do
+			iam_fresh || true
+			api GET "$1"
+			s=$(k_state "$2")
+			[ "$s" = "$st" ] || { chain="${chain:+$chain → }$s"; since=$(date +%s); }
+			case "$s" in *RUNNING* | HTTP* | "не JSON") ;; *) moved=1 ;; esac
+			st=$s
+			if [ -z "$kfirst" ]; then
+				kfirst=$s
+				[ -z "$K_HOOK" ] || "$K_HOOK"
+				[ -z "$kop" ] || { api GET "$mk/operations/$kop"; opmid=$(op_shape); }
+			fi
+			if [ "${4:-}" = gone ]; then
+				case "$s" in "нет (404)" | *DELETED*) return 0 ;; esac
+			else
+				case "$s" in
+				*RUNNING*) { [ "$moved" = 1 ] || [ $(($(date +%s) - since)) -ge "$K8S_SETTLE" ]; } && return 0 ;;
+				*ERROR* | *FAIL*) return 1 ;;
+				esac
+			fi
+			[ "$(date +%s)" -lt "$3" ] || { chain="$chain (не дождались)"; return 1; }
+			sleep "$PROBE_PAUSE"
+		done
+	}
+	# k_step ПРОВЕРКА МЕТОД URL ТЕЛО КАРТОЧКА pool|cluster [gone] — запрос и
+	# ожидание; строка: ответ, первое чтение, операция сразу и в конце.
+	k_step() {
+		local name=$1 m=$2 u=$3 b=$4 card=$5 kind=$6 how=${7:-} now until t0=$SECONDS r opmid='' wrc=0
+		now=$(date +%s)
+		[ "$stuck" = 0 ] || { gap "$name" "прошлый шаг не завершился — дальше не меняю"; return 1; }
+		[ "$now" -lt "$deadline" ] || { gap "$name" "срок пробы ($((${K8S_BUDGET:-5400} / 60)) мин) вышел — шаг не шлю"; return 1; }
+		until=$((now + ${K8S_WAIT:-1500}))
+		case "$name" in *версии*) until=$((now + ${K8S_UPGRADE_WAIT:-2400})) ;; esac
+		[ "$until" -le "$deadline" ] || until=$deadline
+		iam_fresh || true
+		api "$m" "$u" ${b:+"$b"}
+		case "$code" in 2??) ;; *) refusal "$name" синхронно; K_HOOK=''; return 1 ;; esac
+		kop=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)
+		mask "$kop"
+		r="HTTP $code, поля ответа: $(keys_of)"
+		hookr='' kop2=''
+		k_watch "$card" "$kind" "$until" "$how" || wrc=1
+		K_HOOK=''
+		r="$r; первое чтение после ответа: $kfirst${hookr:+; $hookr}; операция сразу: ${opmid:-id нет}; состояния: $chain, $((SECONDS - t0)) с"
+		if [ -n "$kop" ]; then api GET "$mk/operations/$kop"; r="$r; операция в конце: $(op_shape)"; fi
+		if [ -n "$kop2" ]; then api GET "$mk/operations/$kop2"; r="$r; вторая операция в конце: $(op_shape)"; fi
+		ok "$name" "$r"
+		[ "$wrc" = 0 ] || { stuck=1; return 1; }
+	}
+	# k_repeat — тот же масштаб сразу после принятого (K_HOOK шага 1→2):
+	# вторая ли это операция (строка плана Г-12: защита от дубля).
+	k_repeat() {
+		local op2
+		api PATCH "$purl" "$(scale 2)"
+		case "$code" in
+		2??)
+			op2=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)
+			mask "$op2"
+			if [ -z "$op2" ]; then hookr="повтор сразу: HTTP $code, id операции нет"
+			elif [ "$op2" = "$kop" ]; then hookr="повтор сразу: HTTP $code, та же операция"
+			else hookr="повтор сразу: HTTP $code, вторая операция" kop2=$op2; fi
+			;;
+		000) hookr="повтор сразу: ответа нет (curl: код ${API_RC:-?})" ;;
+		*) hookr="повтор сразу: отказ HTTP $code, машинный код: $(mcode); текст: $(api_why | cut -c1-160)" ;;
+		esac
+	}
+	scale() { jq -nc --argjson n "$1" '{scalePolicy: {fixedScale: {count: $n}}}'; }
+	EVO_NOW="k8s_nodepool_scale"
+	K_HOOK=k_repeat
+	k_step "$g: масштаб 1→2" PATCH "$purl" "$(scale 2)" "$purl" pool || true
+	k_step "$g: масштаб 2→1" PATCH "$purl" "$(scale 1)" "$purl" pool || true
+	# Вторая группа: удаление, пока она создаётся (D61 у k8s_nodepool_delete:
+	# примет ли платформа такое удаление — гипотеза строки плана), затем
+	# повтор удаления после исчезновения (D26).
+	EVO_NOW="k8s_nodepool_delete"
+	if [ "$stuck" = 0 ] && [ "$(date +%s)" -lt "$deadline" ]; then
+		if tc k8s_add_nodepool --arg cluster_id="$id" --arg name=np-g12 --arg count=1 && np2=$(j -r '.nodepool_id // empty') && [ -n "$np2" ]; then
+			mask "$np2"
+			if ! k_step "$g: удаление создающейся группы" DELETE "$mk/nodePools/$np2" "" "$mk/nodePools/$np2" pool gone && [ "$stuck" = 0 ]; then
+				# Отказ: дождаться группы и удалить её готовой.
+				until=$(($(date +%s) + ${K8S_WAIT:-1500}))
+				[ "$until" -le "$deadline" ] || until=$deadline
+				k_watch "$mk/nodePools/$np2" pool "$until" || stuck=1
+				ok "$g: вторая группа готова" "состояния: $chain"
+				k_step "$g: удаление готовой группы" DELETE "$mk/nodePools/$np2" "" "$mk/nodePools/$np2" pool gone || true
+			fi
+			if [ "$stuck" = 0 ]; then
+				api DELETE "$mk/nodePools/$np2"
+				case "$code" in 2??) ok "$g: повтор удаления после исчезновения" "HTTP $code, поля ответа: $(keys_of)" ;; *) refusal "$g: повтор удаления после исчезновения" синхронно ;; esac
+			fi
+		else
+			gap "$g: вторая группа" "k8s_add_nodepool: код $rc, $reason: $why"
+		fi
+	fi
+	EVO_NOW="операции в evo нет"
+	if [ -n "$to" ]; then
+		k_step "$g: обновление версии кластера" POST "$mk/clusters/$id:upgrade" "$(jq -nc --arg v "$to" '{version: $v}')" "$mk/clusters/$id" cluster || true
+		k_step "$g: обновление версии группы" POST "$purl:upgrade" "$(jq -nc --arg v "$to" '{version: $v}')" "$purl" pool || true
+	else
+		gap "$g: обновление версии" "нет K8S_UPGRADE_TO: в каталоге нет версии на минор выше версии кластера"
+	fi
+	EVO_NOW="k8s_nodepool_scale"
+	k_step "$g: масштаб 1→0" PATCH "$purl" "$(scale 0)" "$purl" pool || true
+	EVO_NOW="k8s_nodepool_delete"
+	k_step "$g: удаление последней группы" DELETE "$purl" "" "$purl" pool gone || true
+}
+
 case "$area" in
-disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops | dbchange)
+disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops | dbchange | k8schange)
 	echo "== $area: префикс $prefix"
 	{
 		echo

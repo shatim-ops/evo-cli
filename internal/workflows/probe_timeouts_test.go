@@ -17,7 +17,19 @@ import (
 // limit of the job cuts it, with no sweep after (risk note 185, the debt
 // named with it; R-89).
 func TestScripts_CloudRequestsHaveTimeLimits(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "cloud-live.sh"))
+	// The sweep of the stand (e2e_stand.sh) sends the same token for up to
+	// half an hour: its requests had no limit (review of #1658).
+	for _, f := range []struct {
+		name string
+		min  int
+	}{{"cloud-live.sh", 6}, {"e2e_stand.sh", 3}} {
+		cloudRequestsHaveTimeLimits(t, f.name, f.min)
+	}
+}
+
+func cloudRequestsHaveTimeLimits(t *testing.T, name string, min int) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,10 +51,10 @@ func TestScripts_CloudRequestsHaveTimeLimits(t *testing.T) {
 		}
 		checked++
 		if !strings.Contains(l, "--connect-timeout ") || !strings.Contains(l, "--max-time ") {
-			t.Errorf("cloud-live.sh:%d: a request to the cloud without --connect-timeout and --max-time: %s", i+1, strings.TrimSpace(l))
+			t.Errorf("%s:%d: a request to the cloud without --connect-timeout and --max-time: %s", name, i+1, strings.TrimSpace(l))
 		}
 	}
-	if checked < 6 {
-		t.Fatalf("%d requests to the cloud read: the scan sees too few (the token, the pages of the registry, the DNS operation and its delete, api_once with and without a body)", checked)
+	if checked < min {
+		t.Fatalf("%s: %d requests to the cloud read, want at least %d: the scan sees too few", name, checked, min)
 	}
 }
