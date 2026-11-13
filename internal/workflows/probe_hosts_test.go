@@ -122,4 +122,9 @@ func TestWorkflows_StandHostsAreDeclared(t *testing.T) {
 	if n < 3 {
 		t.Fatalf("e2e_stand.sh: %d hosts of Cloud.ru found — the check sees nothing", n)
 	}
+	// The host of the tags is a constant of the script, not a value of the
+	// environment (review of #1658).
+	if !strings.Contains(string(b), "\nSTAND_RM=https://resource-manager.api.cloud.ru/v1\n") {
+		t.Error("e2e_stand.sh: STAND_RM is not the constant of the published spec")
+	}
 }

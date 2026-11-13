@@ -53,7 +53,7 @@ stand_err() { jq -r '[.error.reason? // empty, .error.message? // empty] | join(
 # stand_api МЕТОД ПУТЬ — запрос Compute; код HTTP в $code, тело в $stand_tmp/api.json.
 stand_api() {
 	: >"$stand_tmp/api.json"
-	code=$(curl -sS -o "$stand_tmp/api.json" -w '%{http_code}' -X "$1" "https://compute.api.cloud.ru/api/v1$2" -H "Authorization: Bearer $STAND_TOKEN" 2>/dev/null) || code=000
+	code=$(curl -sS --connect-timeout 10 --max-time 120 -o "$stand_tmp/api.json" -w '%{http_code}' -X "$1" "https://compute.api.cloud.ru/api/v1$2" -H "Authorization: Bearer $STAND_TOKEN" 2>/dev/null) || code=000
 }
 # stand_rm МЕТОД ПУТЬ — запрос «Менеджера ресурсов» (теги; хост тот же, что
 # у пробы Г-17, заключение «Риска» 183); код HTTP в $code.
@@ -68,7 +68,7 @@ stand_token() {
 	STAND_TOKEN=
 	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] && [ -n "${PROJECT:-}" ] || return 1
 	STAND_TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-		curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
+		curl -sS --connect-timeout 10 --max-time 60 -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
 		jq -r '.access_token // .accessToken // empty') || STAND_TOKEN=
 	[ -n "$STAND_TOKEN" ] || return 1
 	STAND_TOKEN_AT=$SECONDS
