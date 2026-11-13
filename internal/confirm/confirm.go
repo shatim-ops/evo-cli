@@ -63,6 +63,14 @@ type Options struct {
 
 	In    io.Reader   // nil means Stdin
 	IsTTY func() bool // nil means StdinIsTTY
+
+	// PersonOnly is a question consent given in advance does not answer:
+	// Yes is not read, and without a terminal the refusal carries Hint,
+	// not the advice to re-run with --yes.
+	PersonOnly bool
+	Hint       string
+	// Answered runs once a person answered the prompt, yes or no.
+	Answered func()
 }
 
 // envelope is the JSON shape shared with the MCP tools.
@@ -123,7 +131,7 @@ func Ask(ctx context.Context, p Preview, opts Options) (bool, error) {
 		return false, nil
 	}
 
-	if opts.Yes {
+	if opts.Yes && !opts.PersonOnly {
 		if opts.JSON {
 			writeJSON(errOut, envelope{Status: "confirmed", Preview: p}, false)
 		} else {
@@ -141,15 +149,22 @@ func Ask(ctx context.Context, p Preview, opts Options) (bool, error) {
 		if opts.NoPrompt {
 			why = i18n.T("--non-interactive is set", "задан --non-interactive")
 		}
+		hint := hintYes()
+		if opts.PersonOnly {
+			hint = opts.Hint
+			if opts.Yes {
+				why = i18n.T("--yes does not answer this question", "--yes на этот вопрос не отвечает")
+			}
+		}
 		if opts.JSON {
-			writeJSON(out, envelope{Status: "confirmation_required", Preview: p, Hint: hintYes()}, true)
+			writeJSON(out, envelope{Status: "confirmation_required", Preview: p, Hint: hint}, true)
 		} else {
 			fmt.Fprint(errOut, render(p, aboutTo()))
 		}
 		return false, clerrors.New(clerrors.CodeConfirmationRequired,
 			i18n.Tf("refusing to %s: confirmation required and %s",
 				"%s не выполняется: нужно подтверждение, а %s", p.Action, why),
-			hintYes())
+			hint)
 	}
 
 	fmt.Fprint(errOut, render(p, aboutTo()))
@@ -161,6 +176,9 @@ func Ask(ctx context.Context, p Preview, opts Options) (bool, error) {
 	answer, err := readAnswer(ctx, in)
 	if err != nil {
 		return false, err
+	}
+	if opts.Answered != nil {
+		opts.Answered()
 	}
 	if IsYes(answer) {
 		return true, nil
