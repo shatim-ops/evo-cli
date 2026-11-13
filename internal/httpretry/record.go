@@ -40,6 +40,10 @@ var recordMu sync.Mutex
 // recorded is resp after its form went to the file of EnvRecordAnswers;
 // resp itself when the variable is unset. The body the caller reads is the
 // API's, whole. A file that cannot be written changes nothing of the call.
+// Its first maxRecordedBody bytes are read before the caller gets them: a
+// download (an object of S3) starts after that read («Риск», conclusion
+// 206, remark 2). The host and the segments of the path that are not ids
+// stay in the file (requestForm): it is not to be published (condition У2).
 func recorded(req *http.Request, resp *http.Response) *http.Response {
 	path := os.Getenv(EnvRecordAnswers)
 	if path == "" || resp == nil {
