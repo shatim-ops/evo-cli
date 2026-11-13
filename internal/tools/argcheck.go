@@ -295,13 +295,16 @@ func noEmptyValue(t *Tool, names ...string) {
 	props, _ := t.InputSchema["properties"].(map[string]any)
 	for _, n := range names {
 		if p, ok := props[n].(map[string]any); ok && p["type"] == "string" {
-			p["minLength"] = 1
+			withMinLength(p)
 		}
 	}
 }
 
 // withMinLength is p with no empty value (minLength, D36): an empty
 // string is refused USAGE before the call, not read as «not given» (D100).
+// The one place the rule is set: noEmptyValue sets it through here, and a
+// schema whose argument is neither a scope nor a filter (agent_skill's
+// group) declares it with it.
 func withMinLength(p map[string]any) map[string]any {
 	p["minLength"] = 1
 	return p
