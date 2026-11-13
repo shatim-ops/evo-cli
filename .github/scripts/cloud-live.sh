@@ -594,6 +594,13 @@ api_hdr() {
 	[ -f "$tmp/api.h" ] || return 0
 	tr -d '\r' <"$tmp/api.h" | awk -v n="$1" 'index(tolower($0), n ":") == 1 { v = substr($0, length(n) + 2); sub(/^ +/, "", v) } END { if (v != "") print v }'
 }
+# grpc_name N — имя кода gRPC по его номеру; один перевод для заголовка
+# grpc-status и числового code тела.
+grpc_name() {
+	local c=$1
+	set -- OK CANCELLED UNKNOWN INVALID_ARGUMENT DEADLINE_EXCEEDED NOT_FOUND ALREADY_EXISTS PERMISSION_DENIED RESOURCE_EXHAUSTED FAILED_PRECONDITION ABORTED OUT_OF_RANGE UNIMPLEMENTED INTERNAL UNAVAILABLE DATA_LOSS UNAUTHENTICATED
+	if [ "$c" -lt $# ]; then shift "$c"; echo "$1"; else echo "код $c"; fi
+}
 # grpc_code — имя кода gRPC из заголовка grpc-status последнего ответа api
 # (DBaaS отвечает ошибкой с пустым телом и причиной в заголовках, DB-4;
 # прогон 212: 501 и 400 без тела). Пусто — заголовка нет.
@@ -601,8 +608,16 @@ grpc_code() {
 	local c
 	c=$(api_hdr grpc-status)
 	case "$c" in '' | *[!0-9]*) return 0 ;; esac
-	set -- OK CANCELLED UNKNOWN INVALID_ARGUMENT DEADLINE_EXCEEDED NOT_FOUND ALREADY_EXISTS PERMISSION_DENIED RESOURCE_EXHAUSTED FAILED_PRECONDITION ABORTED OUT_OF_RANGE UNIMPLEMENTED INTERNAL UNAVAILABLE DATA_LOSS UNAUTHENTICATED
-	if [ "$c" -lt $# ]; then shift "$c"; echo "$1"; else echo "код $c"; fi
+	grpc_name "$c"
+}
+# body_grpc — числовой code тела последнего ответа api (google.rpc.Status:
+# mk8s, прогон 215 — 400 с code 9, 404 с code 5) как «N (ИМЯ)». Пусто —
+# числового code в теле нет.
+body_grpc() {
+	local c
+	c=$(jq -r 'objects | .code | numbers' "$tmp/api.json" 2>/dev/null) || c=
+	case "$c" in '' | *[!0-9]*) return 0 ;; esac
+	echo "$c ($(grpc_name "$c"))"
 }
 # api_grpc — «grpc-status N (ИМЯ); grpc-message: текст» последнего ответа
 # api; текст — из процентной кодировки gRPC. Без заголовков — пусто.
@@ -2307,6 +2322,16 @@ lag() {
 # объект или массив объектов, как у Compute, прогон 201), без разбора
 # текста.
 mcode() { jq -r '[(if type == "array" then .[] else . end) | objects | (.code?, .error_code?, .type?, (.details? | if type == "array" then .[] else . end | objects | .reason?))] | map(select(type == "string")) | unique | join(",")' "$tmp/api.json" 2>/dev/null || true; }
+# why_code — машинный код отказа для строки отчёта: строковый (mcode), иначе
+# числовой code тела, иначе заголовок grpc-status; пусто — кода нет нигде.
+# Сравнения по коду идут по mcode: число и заголовок — только для чтения.
+why_code() {
+	local mc
+	mc=$(mcode)
+	[ -n "$mc" ] || mc=$(body_grpc)
+	[ -n "$mc" ] || mc=$(grpc_code)
+	printf '%s' "$mc"
+}
 # refusal ПРОВЕРКА ШАГ — отказ платформы на создающий или меняющий запрос
 # (последний ответ api) одной строкой, поля по условиям «Риска» (R-77):
 # код HTTP и шаг (синхронно или в операции); имена полей тела и машинный
@@ -2325,8 +2350,7 @@ refusal() {
 		gap "$1" "ответа нет (curl: код ${API_RC:-?}) — исход запроса неизвестен; evo сегодня: ${EVO_NOW:-операции в evo нет}"
 		return 0
 	fi
-	mc=$(mcode)
-	[ -n "$mc" ] || mc=$(grpc_code)
+	mc=$(why_code)
 	d="отказ HTTP $code ($2); поля тела: $(keys_of); машинный код: ${mc:-нет}; текст: $(api_why | cut -c1-160); evo сегодня: ${EVO_NOW:-операции в evo нет}"
 	case "$mc" in *[Qq][Uu][Oo][Tt][Aa]*)
 		QUOTA_HIT=1
@@ -2645,7 +2669,7 @@ time_form() {
 prefix_kind() { jq -er "${1:-.}"' | (if type == "array" then .[0] else . end) | .remote_ip_prefix? | if . == null then "null" elif . == "" then "пусто" elif . == "0.0.0.0/0" then "весь IPv4" elif . == "::/0" then "весь IPv6" else "CIDR" end' "$tmp/api.json" 2>/dev/null || echo '?'; }
 source_kind() { jq -er "${1:-.}"' | if (.remote_security_group? | type) == "object" then "объект remote_security_group с полями \(.remote_security_group | keys | tojson)" elif has("remote_security_group_id") then "плоское поле remote_security_group_id" else "группы в ответе нет, поля: \(keys | tojson)" end' "$tmp/api.json" 2>/dev/null || echo "не разобран"; }
 # brief — последний ответ api коротко: код, а у отказа — машинный код и текст.
-brief() { echo "HTTP $code$(case "$code" in 2??) ;; *) echo ", машинный код $(mcode): $(api_why | cut -c1-160)" ;; esac)"; }
+brief() { echo "HTTP $code$(case "$code" in 2??) ;; *) echo ", машинный код $(why_code): $(api_why | cut -c1-160)" ;; esac)"; }
 
 # Проба Г-10 (и Г-20): действия над ВМ. ВМ с диском и публичным адресом
 # создаёт evo; дальше — прямые запросы set-power и PUT (ответ 204 без id
@@ -3355,8 +3379,10 @@ area_dbchange() {
 # предпоследней версии и его группа узлов из одного узла — у job k8s-smoke;
 # дальше прямые запросы mk8s v3 (опись docs/internal/probes/requests-1.9.md):
 # масштаб 1→2 и сразу повтор того же запроса, 2→1; вторая группа (evo) и
-# её удаление, пока она создаётся; обновление версии кластера до
-# K8S_UPGRADE_TO, затем группы; масштаб до 0; удаление последней группы.
+# её удаление, пока она создаётся; обновление версии кластера, затем
+# группы — до новейшей из версий, которые карточка называет допустимыми
+# (versionUpgrade.availableVersions; версия каталога K8S_UPGRADE_TO — только
+# для сравнения: прогон 215, K8S-18); масштаб до 0; удаление последней группы.
 # Обновление — после второй группы: оно самое долгое и необратимое, и
 # зависшее не должно съесть шаг второй группы; масштаб до 0 и удаление
 # последней группы — после него, потому что обновлять группу нужно с
@@ -3372,8 +3398,8 @@ area_dbchange() {
 # (запрос поверх незавершённого) и после срока пробы K8S_BUDGET.
 K8S_SETTLE=${K8S_SETTLE:-120}
 area_k8schange() {
-	local id=${K8S_CLUSTER_ID:-} to=${K8S_UPGRADE_TO:-} g=Г-12 mk=https://mk8s.api.cloud.ru/v3
-	local np np2 purl stuck=0 deadline=$(($(date +%s) + ${K8S_BUDGET:-5400})) kop='' kop2='' hookr='' kfirst='' K_HOOK=''
+	local id=${K8S_CLUSTER_ID:-} g=Г-12 mk=https://mk8s.api.cloud.ru/v3
+	local np np2 purl kto='' stuck=0 deadline=$(($(date +%s) + ${K8S_BUDGET:-5400})) kop='' kop2='' hookr='' kfirst='' K_HOOK=''
 	[ -n "$id" ] || { bad k8schange "нет K8S_CLUSTER_ID"; return 1; }
 	mask "$id"
 	iam_fresh || { gap "$g" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
@@ -3438,11 +3464,15 @@ area_k8schange() {
 	}
 	# k_step ПРОВЕРКА МЕТОД URL ТЕЛО КАРТОЧКА pool|cluster [gone] — запрос и
 	# ожидание; строка: ответ, первое чтение, операция сразу и в конце.
+	# k_can ПРОВЕРКА — можно ли слать шаг: прошлый завершился, срок не вышел.
+	k_can() {
+		[ "$stuck" = 0 ] || { gap "$1" "прошлый шаг не завершился — дальше не меняю"; return 1; }
+		[ "$(date +%s)" -lt "$deadline" ] || { gap "$1" "срок пробы ($((${K8S_BUDGET:-5400} / 60)) мин) вышел — шаг не шлю"; return 1; }
+	}
 	k_step() {
 		local name=$1 m=$2 u=$3 b=$4 card=$5 kind=$6 how=${7:-} now until t0=$SECONDS r opmid='' wrc=0
+		k_can "$name" || return 1
 		now=$(date +%s)
-		[ "$stuck" = 0 ] || { gap "$name" "прошлый шаг не завершился — дальше не меняю"; return 1; }
-		[ "$now" -lt "$deadline" ] || { gap "$name" "срок пробы ($((${K8S_BUDGET:-5400} / 60)) мин) вышел — шаг не шлю"; return 1; }
 		until=$((now + ${K8S_WAIT:-1500}))
 		case "$name" in *версии*) until=$((now + ${K8S_UPGRADE_WAIT:-2400})) ;; esac
 		[ "$until" -le "$deadline" ] || until=$deadline
@@ -3475,7 +3505,7 @@ area_k8schange() {
 			else hookr="повтор сразу: HTTP $code, вторая операция" kop2=$op2; fi
 			;;
 		000) hookr="повтор сразу: ответа нет (curl: код ${API_RC:-?})" ;;
-		*) hookr="повтор сразу: отказ HTTP $code, машинный код: $(mcode); текст: $(api_why | cut -c1-160)" ;;
+		*) hookr="повтор сразу: отказ HTTP $code, машинный код: $(why_code); текст: $(api_why | cut -c1-160)" ;;
 		esac
 	}
 	scale() { jq -nc --argjson n "$1" '{scalePolicy: {fixedScale: {count: $n}}}'; }
@@ -3506,12 +3536,28 @@ area_k8schange() {
 			gap "$g: вторая группа" "k8s_add_nodepool: код $rc, $reason: $why"
 		fi
 	fi
+	# k_upgrade ПРОВЕРКА КАРТОЧКА pool|cluster — обновление версии до
+	# новейшей из допустимых по карточке (versionUpgrade.availableVersions);
+	# выбор — строкой «цель» рядом с версией каталога. Карточка версий не
+	# называет — «не покрыто», запроса нет. Выбранная версия — в $kto.
+	k_upgrade() {
+		local name=$1 card=$2 vu
+		kto=''
+		k_can "$name" || return 1
+		iam_fresh || true
+		api GET "$card"
+		case "$code" in 2??) ;; *) gap "$name" "карточка не прочитана (HTTP $code) — допустимых версий обновления не знаю, запрос не шлю"; return 1 ;; esac
+		vu=$(jq -r '(.cluster? // .nodePool? // .) | .versionUpgrade // {} | "\(.availableVersions // [] | tojson), upgradeAvailable=\(if has("upgradeAvailable") then .upgradeAvailable else "нет поля" end)"' "$tmp/api.json" 2>/dev/null) || vu="не JSON"
+		kto=$(jq -r '(.cluster? // .nodePool? // .) | [.versionUpgrade.availableVersions[]? | strings] | map({v: ., n: (ltrimstr("v") | split(".") | map(tonumber? // 0))}) | sort_by(.n) | last | .v // empty' "$tmp/api.json" 2>/dev/null) || kto=
+		[ -n "$kto" ] || { gap "$name" "карточка не называет версий обновления: $vu${K8S_UPGRADE_TO:+; каталог: $K8S_UPGRADE_TO}"; return 1; }
+		ok "$name: цель" "карточка: $vu; выбрана $kto${K8S_UPGRADE_TO:+; каталог: $K8S_UPGRADE_TO}"
+		k_step "$name" POST "$card:upgrade" "$(jq -nc --arg v "$kto" '{version: $v}')" "$card" "$3"
+	}
 	EVO_NOW="операции в evo нет"
-	if [ -n "$to" ]; then
-		k_step "$g: обновление версии кластера" POST "$mk/clusters/$id:upgrade" "$(jq -nc --arg v "$to" '{version: $v}')" "$mk/clusters/$id" cluster || true
-		k_step "$g: обновление версии группы" POST "$purl:upgrade" "$(jq -nc --arg v "$to" '{version: $v}')" "$purl" pool || true
-	else
-		gap "$g: обновление версии" "нет K8S_UPGRADE_TO: в каталоге нет версии на минор выше версии кластера"
+	if k_upgrade "$g: обновление версии кластера" "$mk/clusters/$id" cluster; then
+		k_upgrade "$g: обновление версии группы" "$purl" pool || true
+	elif [ "$stuck" = 0 ] && [ "$(date +%s)" -lt "$deadline" ]; then
+		gap "$g: обновление версии группы" "версия кластера не обновлена — группе обновляться не к чему"
 	fi
 	EVO_NOW="k8s_nodepool_scale"
 	k_step "$g: масштаб 1→0" PATCH "$purl" "$(scale 0)" "$purl" pool || true

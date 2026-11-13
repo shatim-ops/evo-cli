@@ -116,7 +116,7 @@
           "spec": "mk8s/openapi-v3.yaml",
           "method": "GET",
           "path": "/v3/nodePools/{nodePoolId}",
-          "note": "карточка группы: состояние и желаемое число узлов после принятого запроса"
+          "note": "карточка группы: состояние и желаемое число узлов после принятого запроса; до обновления — допустимые версии (`versionUpgrade.availableVersions`)"
         },
         {
           "spec": "mk8s/openapi-v3.yaml",
@@ -134,7 +134,7 @@
           "spec": "mk8s/openapi-v3.yaml",
           "method": "GET",
           "path": "/v3/clusters/{clusterId}",
-          "note": "карточка кластера: состояние и версия после обновления"
+          "note": "карточка кластера: состояние и версия после обновления; до него — допустимые версии (`versionUpgrade.availableVersions`), из них цель обновления"
         },
         {
           "spec": "mk8s/openapi-v3.yaml",
