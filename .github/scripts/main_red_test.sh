@@ -33,6 +33,10 @@ case "$1 $2" in
     [ -z "${FAKE_PR_FAIL:-}" ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
     while [ $# -gt 0 ]; do [ "$1" = --body ] && printf '%s\n' "$2" >>"$FAKE_BODY"; shift; done ;;
   api*)
+    # --allow-escape-sequences comes before the path: noted and dropped, so
+    # $2 is the path for every call.
+    allow=0
+    if [ "$2" = --allow-escape-sequences ]; then allow=1; set -- "$1" "${@:3}"; fi
     q=.
     a=("$@")
     for ((i = 0; i < ${#a[@]}; i++)); do [ "${a[i]}" != --jq ] || q=${a[i + 1]}; done
@@ -55,6 +59,13 @@ case "$1 $2" in
       */jobs\?*) printf '%b' "$FAKE_JOBS" ;;
       */logs)
         [ -z "${FAKE_NO_LOG:-}" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
+        # gh since 2.9x refuses an answer with terminal escapes (a job log
+        # colours its lines) unless told --allow-escape-sequences; an older
+        # gh does not know the flag (run 43391080735, 13.11).
+        if [ "$allow" = 1 ] && [ -n "${FAKE_GH_OLD:-}" ]; then echo "unknown flag: --allow-escape-sequences" >&2; exit 1; fi
+        if [ "$allow" = 0 ] && [ -z "${FAKE_GH_OLD:-}" ] && printf '%b' "$FAKE_LOG" | grep -q $'\033'; then
+          echo "the response contains terminal escape sequences; pass --allow-escape-sequences to output it anyway" >&2; exit 1
+        fi
         # FAKE_LOG_LATE=N: the first N reads are refused, as for a log not
         # served yet.
         n=$(( $(cat "$FAKE_READS" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$FAKE_READS"
@@ -70,7 +81,7 @@ run() { # ИМЯ исход открытое ждём… (WORKFLOW — ci, ес�
   : >"$work/body"
   rm -f "$work/reads"
   PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" FAKE_BODY="$work/body" FAKE_OPEN="$3" \
-    FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" \
+    FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" FAKE_GH_OLD="${FAKE_GH_OLD:-}" \
     FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" FAKE_PRS="${FAKE_PRS:-}" FAKE_PR_FAIL="${FAKE_PR_FAIL:-}" FAKE_MARKS="${FAKE_MARKS:-}" FAKE_MARKS_FAIL="${FAKE_MARKS_FAIL:-}" FAKE_ISSUE="${FAKE_ISSUE:-}" FAKE_FOREIGN="${FAKE_FOREIGN:-}" REPO_DIR="$work/repo" \
     HEAD_SHA="${HEAD_SHA:-0123456789abcdef}" FAKE_PR_LIST_FAIL="${FAKE_PR_LIST_FAIL:-}" LOG_RETRY_SLEEP=0 LOG_WAIT="${LOG_WAIT:-120}" \
     WORKFLOW="${WORKFLOW:-ci}" GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" \
@@ -137,6 +148,16 @@ FAKE_JOBS='103\ttest (macos-latest)\n' FAKE_NO_LOG=1 \
 FAKE_JOBS='105\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestLate\n' FAKE_LOG_LATE=2 \
   run "лог выложен не сразу — третья попытка его читает" failure "" \
   "calls:issue create" "body:--- FAIL: TestLate" "nocalls:issue close"
+# Лог job с цветом (ESC-последовательности, как у шага go test на Windows):
+# новый gh отдаёт его только с --allow-escape-sequences, в issue
+# последовательности не попадают, имя теста — в метке (run 43391080735).
+FAKE_JOBS='108\ttest (windows-latest)\n' FAKE_LOG='2026-11-13T08:33:00.1Z \033[36;1m.github/scripts/go_test_ci.sh\033[0m\n2026-11-13T08:33:01.1Z --- FAIL: \033[31mTestColour\033[0m (1.24s)\n2026-11-13T08:33:02.1Z --- FAIL: TestPlain (0.1s)\n' \
+  run "лог с ESC-последовательностями — прочитан, в issue без них" failure "" \
+  "calls:issue create" "body:--- FAIL: TestColour (1.24s)" "body:main-red:red:0123456789abcdef:TestColour,TestPlain -->" "nobody:лог job не получен"
+if grep -q $'\033' "$work/body"; then echo "FAIL ESC-последовательность попала в issue"; fail=1; fi
+FAKE_GH_OLD=1 FAKE_JOBS='109\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestOld\n' \
+  run "gh без флага --allow-escape-sequences — читает лог без него" failure "" \
+  "calls:issue create" "body:--- FAIL: TestOld" "nobody:лог job не получен"
 FAKE_JOBS='106\ta\n107\tb\n' FAKE_NO_LOG=1 LOG_WAIT=0 \
   run "логов нет, бюджет ожидания кончился — issue всё равно заводится" failure "" \
   "calls:issue create" "body:**a**" "body:**b**" "stderr:за 1 из 6 попыток" "stderr:из бюджета 0 с"

@@ -39,6 +39,9 @@ func TestWorkflows_PgRepeatProbeIsBounded(t *testing.T) {
 	if !strings.Contains(p.If, "' pgrepeat '") || !strings.Contains(p.If, "inputs.probes") {
 		t.Errorf("dbaas-pg: the probe runs without its word of the input probes: if %q", p.If)
 	}
+	if p.TimeoutMinutes == 0 || p.TimeoutMinutes > 15 {
+		t.Errorf("dbaas-pg: the probe needs timeout-minutes of its own, at most 15, has %d — a hung step would keep the paid cluster", p.TimeoutMinutes)
+	}
 	if !p.ContinueOnError {
 		t.Error("dbaas-pg: the probe needs continue-on-error: true — its answer is the platform's, not a failure of the job")
 	}
