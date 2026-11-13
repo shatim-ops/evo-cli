@@ -445,7 +445,7 @@ func TestProjectBound_AllowedResourceAsBefore(t *testing.T) {
 
 // isFieldKind reports a kind whose answer names its project (not a list).
 func isFieldKind(k *ownerKind) bool {
-	for _, f := range []*ownerKind{kindPG, kindNLB, kindTG, kindVPC, kindK8s, kindK8sNodePool, kindCert, kindImage} {
+	for _, f := range []*ownerKind{kindPG, kindNLB, kindTG, kindVPC, kindK8s, kindK8sNodePool, kindCert, kindImage, kindBackup} {
 		if k == f {
 			return true
 		}
