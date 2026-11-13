@@ -334,7 +334,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "close_ports",
-			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open). A zone's group is shared: closing a port affects every VM in it. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh.",
+			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open; NOT_FOUND on a server with --allow-project). A zone's group is shared: closing a port affects every VM in it. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to close, e.g. [8080]."},
@@ -361,7 +361,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "sg_rule_delete",
-			Description: "Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). The preview names the rule whole, the group and what stops getting through, and the other rules that still let that port in, with their source. A rule that is not there answers already_deleted with no question; a rule of another group is refused with the group it is in. The last rule that lets TCP 22 in to a group with a deployment of this folder is refused without allow_cut_ssh: evo and the person would lose SSH. evo does not know which rule this server itself is reached through: do not delete that one.",
+			Description: "Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). The preview names the rule whole, the group and what stops getting through, and the other rules that still let that port in, with their source. A rule that is not there answers already_deleted with no question (NOT_FOUND on a server with --allow-project); a rule of another group is refused with the group it is in. The last rule that lets TCP 22 in to a group with a deployment of this folder is refused without allow_cut_ssh: evo and the person would lose SSH. evo does not know which rule this server itself is reached through: do not delete that one.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name or UUID (see list_security_groups)."),
 				"rule_id":        uuidProp("Rule UUID (list_security_groups with rules=true)."),
