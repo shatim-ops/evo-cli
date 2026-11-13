@@ -110,7 +110,7 @@ stand_lst() {
 		# Постранично; ответ без массива tags — не прочитан, а не «тегов нет»:
 		# тег стенда остался бы невидим уборке (урок Г-17, У7).
 		[ -n "${STAND_TOKEN:-}" ] || return 1
-		local tok='' pages=0
+		local tok='' prev='' pages=0
 		while :; do
 			stand_rm GET "/tags?projectId=$PROJECT&pageSize=100${tok:+&pageToken=$tok}"
 			case "$code" in 2??) ;; *)
@@ -120,8 +120,11 @@ stand_lst() {
 			esac
 			jq -e '.tags | type == "array"' "$stand_tmp/api.json" >/dev/null 2>&1 || return 1
 			jq -r --arg p "$STAND_PREFIX" '.tags[] | ((.key? // .tagKeyValue? // "") | tostring) as $k | select($k | startswith($p)) | "\(.id)\t\($k)\t"' "$stand_tmp/api.json"
+			prev=$tok
 			tok=$(jq -r '.nextPageToken // empty' "$stand_tmp/api.json" 2>/dev/null) || tok=
 			[ -n "$tok" ] || break
+			# Тот же токен — список ходит по кругу: не прочитан сразу.
+			[ "$tok" != "$prev" ] || return 1
 			pages=$((pages + 1))
 			[ "$pages" -lt 50 ] || return 1
 		done ;;

@@ -174,6 +174,16 @@ run_ list
 want "tag-unread: код" "$rc" 1
 has tag-unread 'tag: список не прочитан'
 
+# list: «Менеджер ресурсов» отдаёт тот же nextPageToken — список не
+# прочитан сразу, без пятидесяти запросов по кругу, и не «тегов нет»
+# (ревью Qwen на #1658).
+full tag-loop
+sed -i 's|^GET https://resource-manager.*|GET https://resource-manager.api.cloud.ru/v1/tags[?]* 200 {"tags":[{"id":"x11","key":"prod-env"}],"nextPageToken":"same"}|' "$FAKE_DIR/http"
+run_ list
+want "tag-loop: код" "$rc" 1
+has tag-loop 'tag: список не прочитан'
+want "tag-loop: чтений тегов" "$(grep -c 'resource-manager' "$FAKE_DIR/calls")" 2
+
 # list ключом чтения (ежедневный job): вид, названный в STAND_FORBIDDEN_OK,
 # на 403 — предупреждение «не проверен», а не красный job; на любой другой
 # отказ и для любого другого вида — по-прежнему «не прочитан», код 1.
