@@ -663,7 +663,6 @@ func backupFoundNext(text string) string {
 // argument gives it — its price as disk_create's, and that the backup and
 // its disk are not changed.
 func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (*Plan, error) {
-	const tool = "backup_restore"
 	id, name := stringArg(args, "backup_id"), stringArg(args, "name")
 	if id == "" {
 		return answered(usageT("'backup_id' is required (from backup_list)", "нужен 'backup_id' (из backup_list)"), true), nil
