@@ -260,7 +260,10 @@ lst_api() {
 RM=https://resource-manager.api.cloud.ru/v1
 # lst_tags ПРЕФИКС — lst для тегов: все страницы GET /v1/tags проекта, свои —
 # по ключу (key или начало tagKeyValue: ответ отдаёт пару одной строкой).
-# Не 2xx, ответ без tags или страниц больше 50 — список не прочитан (код 1).
+# Ответ-объект без поля tags — тегов нет: пустой список API может не
+# отдавать вовсе (гипотеза до прогона), и уборка проекта без тегов не должна
+# от этого краснеть. Не 2xx, ответ не объект, tags не массив или страниц
+# больше 50 — список не прочитан (код 1).
 lst_tags() {
 	local why='' tok='' pages=0
 	: >"$tmp/tags.l"
@@ -270,8 +273,8 @@ lst_tags() {
 		while :; do
 			api GET "$RM/tags?projectId=$PROJECT&pageSize=100${tok:+&pageToken=$tok}"
 			case "$code" in 2??) ;; *) why="HTTP $code: $(api_why)"; break ;; esac
-			jq -e '.tags | type == "array"' "$tmp/api.json" >/dev/null 2>&1 || { why="ответ без tags"; break; }
-			jq -r --arg p "$1" '.tags[] | ((.key? // .tagKeyValue? // "") | tostring) as $k | select($k | startswith($p)) | "\(.id)\t\($k)"' "$tmp/api.json" >>"$tmp/tags.l"
+			jq -e 'type == "object" and ((has("tags") | not) or (.tags | type == "array"))' "$tmp/api.json" >/dev/null 2>&1 || { why="ответ не объект или tags не массив"; break; }
+			jq -r --arg p "$1" '.tags[]? | ((.key? // .tagKeyValue? // "") | tostring) as $k | select($k | startswith($p)) | "\(.id)\t\($k)"' "$tmp/api.json" >>"$tmp/tags.l"
 			tok=$(jq -r '.nextPageToken // empty' "$tmp/api.json" 2>/dev/null) || tok=
 			[ -n "$tok" ] || break
 			pages=$((pages + 1))
@@ -2756,8 +2759,8 @@ probe_g10() {
 # ответа своего создания и только на ВМ и диск этого запуска (У3); удаление
 # назначенного тега — на диске, после удаления ВМ, последним (У4); попытка
 # tag_names вводит только имя уже созданного тега и отключается словом
-# G17_TAG_NAMES=no — вторым прогоном, если первый оставил тег, которого
-# «Менеджер» не видит (У5).
+# g17nonames во входе probes — вторым прогоном, если первый оставил тег,
+# которого «Менеджер» не видит (У5).
 probe_g17() {
 	local zid=$1 n=$prefix-g17 tag='' disk='' disk2='' vm='' sn r wider n1 same id did left=0
 	iam_token || { gap "Г-17" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
@@ -2871,8 +2874,8 @@ probe_g17() {
 	# Диск с tag_names = имени уже созданного тега: нового имени проба не
 	# вводит. Принят, а тег с этим ключом в «Менеджере» по-прежнему один —
 	# возможен второй тег в сервисе, которого проба не видит и не уберёт.
-	if [ "${G17_TAG_NAMES:-yes}" != yes ]; then
-		ok "Г-17: диск с tag_names" "не повторяется: остаток неубираем (G17_TAG_NAMES=${G17_TAG_NAMES})"
+	if probe_on g17nonames; then
+		ok "Г-17: диск с tag_names" "не повторяется: остаток неубираем (слово g17nonames во входе probes)"
 	elif [ "$QUOTA_HIT" = 0 ]; then
 		g17_disk "$n-d2" tag_names "$(jq -nc --arg t "$n" '[$t]')"
 		case "$code" in
@@ -2898,7 +2901,7 @@ probe_g17() {
 			r="$r; тегов с ключом пробы в «Менеджере»: $n1"
 			ok "Г-17: диск с tag_names" "$r"
 			if [ "$n1" = 1 ] && [ "$same" = нет ]; then
-				echo "::warning::Г-17: диск с tag_names принят, а тег на нём — не тег «Менеджера»: второго тега в «Менеджере» нет; есть ли он в сервисе тегов Compute, проба не видит и убрать не может — остаток неизвестной сущности с именем пробы, цена тега неизвестна. Второй прогон — с G17_TAG_NAMES=no; остаток — пункт реестра расхождений"
+				echo "::warning::Г-17: диск с tag_names принят, а тег на нём — не тег «Менеджера»: второго тега в «Менеджере» нет; есть ли он в сервисе тегов Compute, проба не видит и убрать не может — остаток неизвестной сущности с именем пробы, цена тега неизвестна. Второй прогон — со словом g17nonames во входе probes; остаток — пункт реестра расхождений"
 			fi
 			;;
 		*) refusal "Г-17: диск с tag_names" синхронно ;;

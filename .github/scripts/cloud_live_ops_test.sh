@@ -1091,7 +1091,7 @@ want "Г-17, тег шире проекта: записи нет" "$(calls)" "$T
 grep -q 'Г-17.*тег шире проекта — не покрыто' "$tmp/out" || { echo "FAIL: Г-17: «тег шире проекта» не назван"; fail=1; }
 
 # У5: tag_names принят, а тег на диске — не тег «Менеджера»: предупреждение
-# об остатке неизвестной сущности; со словом G17_TAG_NAMES=no шаг не идёт.
+# об остатке неизвестной сущности; со словом g17nonames во входе probes шаг не идёт.
 g17_world
 cat >"$FAKE_DIR/http" <<H
 GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[]}
@@ -1122,7 +1122,7 @@ POST .1/vms 422 {"code":"x","message":"no"}
 DELETE $RM/tags/t1[?]* 200 {}
 H
 rc=0
-G17_TAG_NAMES=no PROBE_WAIT=1 PROBES=g17 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+PROBE_WAIT=1 PROBES="g17 g17nonames" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-17, без tag_names: один запрос диска" "$(grep -c '^POST /disks$' "$FAKE_DIR/calls")" 1
 grep -q 'Г-17: диск с tag_names.*не повторяется: остаток неубираем' "$tmp/out" || { echo "FAIL: Г-17: пропуск tag_names не назван"; fail=1; }
 
@@ -1139,6 +1139,20 @@ rc=0
 PROBES="" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "уборка тега: код" "$rc" 0
 want "уборка тега: удалён только тег пробы" "$(grep '^DELETE' "$FAKE_DIR/calls" | tr '\n' ';')" "DELETE $RM/tags/tleft?projectId=p;"
+# Проект без тегов отвечает объектом без поля tags — это пустой список, а
+# не «не прочитан»: уборка зелёная. Ответ не объект — не прочитан.
+world
+echo "GET $RM/tags[?]* 200 {}" >"$FAKE_DIR/http"
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+rc=0
+PROBES="" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "уборка тега, ответ без tags: код" "$rc" 0
+world
+echo "GET $RM/tags[?]* 200 []" >"$FAKE_DIR/http"
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+rc=0
+SWEEP_WAIT=1 PROBES="" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+[ "$rc" != 0 ] || { echo "FAIL: уборка тега: ответ-массив вместо объекта — зелёная уборка"; fail=1; }
 # Список тегов не прочитан — вид не считается чистым: уборка красная.
 world
 echo "GET $RM/tags[?]* 500 {\"message\":\"boom\"}" >"$FAKE_DIR/http"

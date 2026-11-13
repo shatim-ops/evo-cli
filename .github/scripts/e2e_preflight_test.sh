@@ -98,7 +98,11 @@ has r3f1disk "probes: «r3f1» — проба области disk, а disk_smoke
 # Пробы графика 1.9 (область ops): слова известны; g20 — только с g10 (ВМ
 # пробы цены оставляет проба g10).
 fresh opsprobes
-run opsprobes 0 PROBES='g10 g11 g17 g18 g20'
+run opsprobes 0 PROBES='g10 g11 g17 g17nonames g18 g20'
+# g17nonames — только с g17: слово меняет ход её пробы.
+fresh nonames
+run nonames 1 PROBES='g11 g17nonames'
+has nonames "probes: «g17nonames» — слово пробы g17"
 # Г-16 с ожиданиями занимает почти весь предел job области: вместе с
 # другой долгой пробой (g10, g18) в одном запуске не идёт.
 fresh g16long

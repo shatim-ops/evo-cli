@@ -89,6 +89,11 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	g16)
 		[[ ! " ${PROBES:-} " =~ " g10 "|" g18 " ]] || fail "probes: «g16» идёт до 115 мин при пределе job 150 — запускайте её отдельно от g10 и g18"
 		;;
+	# Второй прогон Г-17 без шага tag_names (заключение «Риска» 183, У5):
+	# слово меняет ход пробы g17 и без неё ничего не значит.
+	g17nonames)
+		[[ " ${PROBES:-} " == *" g17 "* ]] || fail "probes: «g17nonames» — слово пробы g17 (без шага tag_names), а её слова нет"
+		;;
 	# Проба цены: ВМ пробы g10 остаётся остановленной на сутки.
 	g20)
 		[[ " ${PROBES:-} " == *" g10 "* ]] || fail "probes: «g20» — ВМ пробы цены оставляет проба g10, а её слова нет"
@@ -108,7 +113,7 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	g15)
 		[[ " ${DBAAS_SERVICES:-} " == *" redis "* && "${DBAAS_SMOKE:-}" == true ]] || fail "probes: «$w» — проба джоба dbaas-redis, а он не идёт (dbaas_smoke и redis в dbaas_services)"
 		;;
-	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g13, g14, g15, g16, g17, g18, g20" ;;
+	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g13, g14, g15, g16, g17, g17nonames, g18, g20" ;;
 	esac
 done
 
