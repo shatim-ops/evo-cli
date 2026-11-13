@@ -19,7 +19,9 @@ give() { # ФАЙЛ УМОЛЧАНИЕ: JSON мира через фильтр в
   if [ -f "$FAKE_DIR/$1" ]; then jq -r "$q" "$FAKE_DIR/$1"; else jq -rn "$2 | $q"; fi
 }
 case "$1 $2" in
-  "pr list") give prs.json '[]' ;;
+  "pr list")
+    [ ! -f "$FAKE_DIR/list.fail" ] || { cat "$FAKE_DIR/list.fail" >&2; exit 1; }
+    give prs.json '[]' ;;
   "pr comment")
     [ ! -f "$FAKE_DIR/comment.fail" ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
     n=$3
@@ -153,6 +155,28 @@ run refused
 has refused err 'строка в PR 51 не оставлена'
 has refused err 'строка в PR 52 не оставлена'
 has refused err 'HTTP 403'
+
+# Лимит запросов токена исчерпан (он общий на репозиторий, его же тратят
+# main-red и ревью): обход молчит до следующего круга — warning и код 0, не
+# красный: красный обход завёл бы issue тем же исчерпанным токеном
+# (заключение «Риска» 178). Любой другой отказ списка — красный, как был.
+world rate-limit
+echo 'HTTP 403: API rate limit exceeded for installation ID 1.' >"$FAKE_DIR/list.fail"
+rc=0
+PATH="$work/bin:$PATH" GH_REPO=o/r "$here/pr_stuck.sh" >"$FAKE_DIR/out" 2>"$FAKE_DIR/err" || rc=$?
+[ "$rc" = 0 ] || { echo "FAIL rate-limit: код $rc, ждём 0"; fail=1; }
+has rate-limit err 'лимит запросов исчерпан'
+world secondary-limit
+echo 'HTTP 403: You have exceeded a secondary rate limit.' >"$FAKE_DIR/list.fail"
+rc=0
+PATH="$work/bin:$PATH" GH_REPO=o/r "$here/pr_stuck.sh" >"$FAKE_DIR/out" 2>"$FAKE_DIR/err" || rc=$?
+[ "$rc" = 0 ] || { echo "FAIL secondary-limit: код $rc, ждём 0"; fail=1; }
+world list-broken
+echo 'HTTP 502: Bad Gateway' >"$FAKE_DIR/list.fail"
+rc=0
+PATH="$work/bin:$PATH" GH_REPO=o/r "$here/pr_stuck.sh" >"$FAKE_DIR/out" 2>"$FAKE_DIR/err" || rc=$?
+[ "$rc" != 0 ] || { echo "FAIL list-broken: отказ списка PR не по лимиту — не красный"; fail=1; }
+has list-broken err 'HTTP 502'
 
 [ "$fail" = 0 ] && echo "pr_stuck: ok"
 exit "$fail"
