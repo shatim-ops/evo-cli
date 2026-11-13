@@ -355,10 +355,20 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 func cutCallWarning(name string, mine []intent.Intent) (message string, interrupted map[string]any) {
 	last := mine[len(mine)-1]
 	what := firstNonEmptyStr(last.Name, last.Target)
+	rule := everySendIsAChange[name]
+	interrupted = map[string]any{"tool": name, "read_tool": rule.read, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
+	if rule.made {
+		// A create: what is at stake is a second billed resource, and
+		// the list is where the first one shows — when it shows, which
+		// evo does not say of the platform (a hypothesis, no run).
+		return i18n.Tf("An earlier %s of %s, started %s, got no answer from the cloud: the request may have been accepted, and what it made may not be listed yet — %s does not show it now. Nothing was sent. A yes now makes a second billed resource of the name if the first request was taken: check %s again first, ask the person whether to send one more, and with their yes call %s with confirmed=true.",
+			"Предыдущий вызов %s для %s, начатый %s, не получил ответа облака: запрос мог быть принят, а созданное может ещё не быть в списке — %s сейчас его не показывает. Ничего не отправлено. «Да» сейчас создаст второй платный ресурс с этим именем, если первый запрос был принят: сначала проверьте %s ещё раз, спросите человека, отправлять ли ещё один, и с его «да» вызовите %s с confirmed=true.",
+			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read, rule.read, name), interrupted
+	}
 	return i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
 			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
-			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), everySendIsAChange[name].read, name),
-		map[string]any{"tool": name, "read_tool": everySendIsAChange[name].read, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
+			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read, name),
+		interrupted
 }
 
 // askAgainAfterACut answers a consented call of a tool of
