@@ -249,6 +249,10 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	if everySendIsAChange[name].read == "" {
 		return nil
 	}
+	// A resource that cannot be resolved names no cut call here: the call
+	// with consent was refused for that before (intended), and a call
+	// without consent gets the same refusal from the plan of the tool,
+	// which reads through the same resolver.
 	resource, target, err := r.resourceOf(ctx, name, args)
 	root, ok := r.stateDir()
 	if err != nil || !ok || (resource == "" && target == "") {

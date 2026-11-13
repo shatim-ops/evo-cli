@@ -110,8 +110,8 @@ func TestIntent_TheTargetIsReadOnceAndAFailedReadRefusesTheCall(t *testing.T) {
 	counted.lists, counted.fail = 0, errors.New("list VMs: status 503")
 	sent := w.powerCalls()
 	text, isErr = tl.Handler(context.Background(), map[string]any{"name": "web", "confirmed": true})
-	if !isErr || w.powerCalls() != sent || len(intent.Pending(dir)) != 0 {
-		t.Errorf("the VM could not be read: power calls %d (were %d), records %d, want a refusal with nothing sent and no record\n%s",
+	if !isErr || w.powerCalls() != sent || len(intent.Pending(dir)) != 0 || !strings.Contains(text, "status 503") {
+		t.Errorf("the VM could not be read: power calls %d (were %d), records %d, want a refusal that names the read that failed, with nothing sent and no record\n%s",
 			w.powerCalls(), sent, len(intent.Pending(dir)), text)
 	}
 }
