@@ -1961,6 +1961,9 @@ jobs:
             echo "::error::kafka_create: код $rc"
             exit 1
           fi
+          # FAILED через секунды после создания называет причину только в
+          # операции создания (прогон 214): её читает «Кластер READY».
+          echo "OP_ID=$op" >> "$GITHUB_ENV"
           az=$(jq -r '.created.availability_zone // empty' "$RUNNER_TEMP/create.json")
           [ "$az" = "$ZONE" ] || echo "::warning::kafka_create: зона кластера $az, а не $ZONE"
           for _ in $(seq 1 10); do
@@ -2128,6 +2131,9 @@ jobs:
             echo "::error::redis_create: код $rc"
             exit 1
           fi
+          # FAILED через секунды после создания называет причину только в
+          # операции создания (прогон 214): её читает «Кластер READY».
+          echo "OP_ID=$op" >> "$GITHUB_ENV"
           az=$(jq -r '.created.availability_zone // empty' "$RUNNER_TEMP/create.json")
           [ "$az" = "$ZONE" ] || echo "::warning::redis_create: зона кластера $az, а не $ZONE"
           for _ in $(seq 1 10); do
