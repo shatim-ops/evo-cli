@@ -935,12 +935,21 @@ func (s *Registry) planK8sNodePoolDelete(ctx context.Context, args map[string]an
 			i18n.Tf("node pool %s: the node pools of its cluster could not be read, so evo cannot tell whether it is the last one; nothing was sent", "группа узлов %s: список групп её кластера не прочитан — последняя ли она, evo сказать не может; ничего не отправлено", id),
 			i18n.T("Repeat the call; k8s_nodepools shows the pools of the cluster.", "Повторите вызов; группы кластера показывает evo k8s nodepools."), err)
 	}
-	last := true
+	// A pool that stays is not one that runs: in error, stopped or on its
+	// way, it is not a working node the cluster keeps (FB19I-10).
+	last, running := true, false
+	var idle []string
 	for _, o := range pools {
 		oid, _ := o["id"].(string)
 		st, _ := o["status"].(string)
-		if oid != id && !poolGoing[st] {
-			last = false
+		if oid == id || poolGoing[st] {
+			continue
+		}
+		last = false
+		if st == poolRunning {
+			running = true
+		} else {
+			idle = append(idle, quoteCloud(st))
 		}
 	}
 	will["last_pool"] = last
@@ -952,6 +961,10 @@ func (s *Registry) planK8sNodePoolDelete(ctx context.Context, args map[string]an
 		// status is not known (П4).
 		warnings = append(warnings, i18n.Tf("the pool is in status %s, not running: whether the platform accepts the delete is unknown",
 			"группа в состоянии %s, а не работает: примет ли платформа удаление — неизвестно", quoteCloud(status)))
+	}
+	if !last && !running {
+		warnings = append(warnings, i18n.Tf("no other node pool of the cluster is running (%s): whether the cluster keeps working nodes is unknown; the cluster itself stays, and so does what it is billed for",
+			"ни одна другая группа узлов кластера не работает (%s): останутся ли в кластере рабочие узлы — неизвестно; сам кластер остаётся, как и плата за него", strings.Join(idle, ", ")))
 	}
 	if last {
 		warnings = append(warnings, i18n.T("the cluster is left with no node pool: its pods have nowhere to run; the cluster itself stays, and so does what it is billed for",
