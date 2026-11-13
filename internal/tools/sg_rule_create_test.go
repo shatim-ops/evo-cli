@@ -28,6 +28,10 @@ type sgMakeWorld struct {
 	slow   bool
 	broken bool
 	lose   bool
+	// lag: a rule the write made is not listed for this many reads of the
+	// group's rules — the list is behind the write.
+	lag    int
+	hidden map[string]int
 	// conflict: the write finds the rule made by another call and answers 409.
 	conflict bool
 	refuse   error
@@ -51,6 +55,12 @@ func (w *sgMakeWorld) AddSecurityGroupRule(_ context.Context, sgID, _ string, r 
 		r.RemoteSecurityGroup, r.RemoteSecurityGroupID = &provision.SGRuleGroup{ID: r.RemoteSecurityGroupID}, ""
 	}
 	w.rules[sgID] = append(w.rules[sgID], r)
+	if w.lag > 0 {
+		if w.hidden == nil {
+			w.hidden = map[string]int{}
+		}
+		w.hidden[r.ID] = w.lag
+	}
 	if w.lose {
 		return nil, clerrors.New(clerrors.CodeAPIUnreachable, "connection reset", "")
 	}
@@ -74,8 +84,21 @@ func (w *sgMakeWorld) ListSecurityGroupRules(ctx context.Context, sgID string) (
 			}
 		}
 	}
+	behind := map[string]bool{}
+	for id, left := range w.hidden {
+		if left > 0 {
+			w.hidden[id], behind[id] = left-1, true
+		}
+	}
 	w.mu.Unlock()
-	return w.sgWorld.ListSecurityGroupRules(ctx, sgID)
+	rules, err := w.sgWorld.ListSecurityGroupRules(ctx, sgID)
+	shown := rules[:0:0]
+	for _, r := range rules {
+		if !behind[r.ID] {
+			shown = append(shown, r)
+		}
+	}
+	return shown, err
 }
 
 func (w *sgMakeWorld) added() int {
@@ -302,5 +325,41 @@ func TestSGRuleCreate_SlowBrokenLostRefused(t *testing.T) {
 	details, _ := m["details"].(map[string]any)
 	if !isErr || m["reason"] != clerrors.CodeAPIError || details["platform_code"] != "zone_changes_prohibited" || m["next_tool"] != nil || w.added() != 1 {
 		t.Errorf("a create the platform refuses: %s", text)
+	}
+}
+
+// The write is taken, its answer is lost, and the list of rules is behind:
+// the rule is there and not yet listed. One read after the lost answer
+// used to end the call with «try again», and the same call with the same
+// consent made a second rule (the interim delta audit of 1.9, FB19I-12).
+// The call waits for the rule to be listed; when the wait ends without it
+// the error says the rule may have been created and names no repeat, and
+// a consented repeat is asked again instead of sent.
+func TestSGRuleCreate_ALostAnswerAndAListBehindMakeOneRule(t *testing.T) {
+	args := map[string]any{"security_group": sgOtherGroup, "direction": "ingress", "protocol": "tcp", "ports": "8080", "cidr": "10.0.0.0/8", "confirmed": true}
+	// The list catches up within the wait: created, one write.
+	w := newSGMakeWorld()
+	w.lose, w.lag = true, 4
+	m, text, isErr := callNamed(t, sgMakeRegistry(t, w), "sg_rule_create", args)
+	if isErr || m["status"] != "created" || m["rule_id"] == "" || w.added() != 1 {
+		t.Fatalf("a lost answer with the list 4 reads behind: %s (writes %d), want created by one write", text, w.added())
+	}
+	// The list does not catch up within the wait: an error that says the
+	// rule may be there and sends to the read, not to a repeat.
+	w = newSGMakeWorld()
+	w.lose, w.lag = true, 1<<20
+	r := sgMakeRegistry(t, w)
+	m, text, isErr = callNamed(t, r, "sg_rule_create", args)
+	if !isErr || w.added() != 1 {
+		t.Fatalf("a lost answer with the list far behind: %s (writes %d)", text, w.added())
+	}
+	hint, _ := m["hint"].(string)
+	if !strings.Contains(hint, "may have been created") || !strings.Contains(hint, "list_security_groups") || strings.Contains(hint, "try again") || m["next_tool"] == "sg_rule_create" {
+		t.Errorf("the error does not say the rule may be there, or sends to a repeat: %s", text)
+	}
+	// The same call with the same consent: asked again, not sent.
+	m, text, _ = callNamed(t, r, "sg_rule_create", args)
+	if m["status"] != "confirmation_required" || m["interrupted"] == nil || w.added() != 1 {
+		t.Errorf("the consented repeat after a cut call: %s (writes %d), want the question again and no second write", text, w.added())
 	}
 }
