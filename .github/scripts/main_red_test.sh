@@ -13,7 +13,6 @@ cat >"$work/bin/gh" <<'SH'
 #!/usr/bin/env bash
 echo "$*" >>"$FAKE_CALLS"
 case "$1 $2" in
-  "issue list") for n in $FAKE_OPEN; do printf '%s\n' "$n"; done ;;
   "issue create" | "issue comment")
     [ "$2" != create ] || echo https://example.invalid/o/r/issues/55
     # gh prints the address of the comment it made — a caller that reads
@@ -38,6 +37,15 @@ case "$1 $2" in
     a=("$@")
     for ((i = 0; i < ${#a[@]}; i++)); do [ "${a[i]}" != --jq ] || q=${a[i + 1]}; done
     case "$2" in
+      */issues\?*)
+        # The open issues as the API lists them: FAKE_OPEN — made by the
+        # bot, FAKE_FOREIGN — the same title by somebody else, and a pull
+        # request, which the same list returns too.
+        {
+          for n in ${FAKE_OPEN:-}; do printf '{"number": %s, "title": "main красный: %s", "user": {"login": "github-actions[bot]"}}\n' "$n" "${WORKFLOW:-ci}"; done
+          for n in ${FAKE_FOREIGN:-}; do printf '{"number": %s, "title": "main красный: %s", "user": {"login": "someone"}}\n' "$n" "${WORKFLOW:-ci}"; done
+          printf '{"number": 99, "title": "main красный: %s", "user": {"login": "github-actions[bot]"}, "pull_request": {}}\n' "${WORKFLOW:-ci}"
+        } | jq -s . | jq -r "$q" ;;
       */issues/*/comments*)
         [ -z "${FAKE_MARKS_FAIL:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
         jq -r "$q" <<<"${FAKE_MARKS:-[]}" ;;
@@ -63,7 +71,7 @@ run() { # ИМЯ исход открытое ждём… (WORKFLOW — ci, ес�
   rm -f "$work/reads"
   PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" FAKE_BODY="$work/body" FAKE_OPEN="$3" \
     FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" \
-    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" FAKE_PRS="${FAKE_PRS:-}" FAKE_PR_FAIL="${FAKE_PR_FAIL:-}" FAKE_MARKS="${FAKE_MARKS:-}" FAKE_MARKS_FAIL="${FAKE_MARKS_FAIL:-}" FAKE_ISSUE="${FAKE_ISSUE:-}" REPO_DIR="$work/repo" \
+    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" FAKE_PRS="${FAKE_PRS:-}" FAKE_PR_FAIL="${FAKE_PR_FAIL:-}" FAKE_MARKS="${FAKE_MARKS:-}" FAKE_MARKS_FAIL="${FAKE_MARKS_FAIL:-}" FAKE_ISSUE="${FAKE_ISSUE:-}" FAKE_FOREIGN="${FAKE_FOREIGN:-}" REPO_DIR="$work/repo" \
     HEAD_SHA="${HEAD_SHA:-0123456789abcdef}" FAKE_PR_LIST_FAIL="${FAKE_PR_LIST_FAIL:-}" LOG_RETRY_SLEEP=0 LOG_WAIT="${LOG_WAIT:-120}" \
     WORKFLOW="${WORKFLOW:-ci}" GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" \
     "$here/main_red.sh" >/dev/null 2>"$work/stderr" || { echo "FAIL $1: скрипт упал"; cat "$work/stderr"; fail=1; return; }
@@ -91,6 +99,9 @@ commit() { git -C "$work/repo" add -A && git -C "$work/repo" commit -q -m "$1" &
 mkdir "$work/repo/pkg"
 printf 'package pkg\n\nfunc TestA(t *testing.T) {}\n' >"$work/repo/pkg/a_test.go"
 printf 'package pkg\n\nfunc TestB(t *testing.T) {}\n' >"$work/repo/pkg/b_test.go"
+mkdir "$work/repo/pkg2"
+printf 'package pkg\n\nfunc TestDup(t *testing.T) {}\n' >"$work/repo/pkg/dup_test.go"
+printf 'package pkg2\n\nfunc TestDup(t *testing.T) {}\n' >"$work/repo/pkg2/dup_test.go"
 RED=$(commit red)
 echo doc >"$work/repo/README"
 NOFIX=$(commit nofix)
@@ -98,6 +109,8 @@ echo '// fixed' >>"$work/repo/pkg/a_test.go"
 FIXA=$(commit fixa)
 echo '// fixed' >>"$work/repo/pkg/b_test.go"
 FIXAB=$(commit fixab)
+echo '// touched' >>"$work/repo/pkg2/dup_test.go"
+FIXDUP=$(commit fixdup)
 bot() { printf '[{"user": {"login": "github-actions[bot]"}, "body": "%s"}]' "$1"; }
 
 FAKE_JOBS='101\ttest (windows-latest)\n' \
@@ -210,10 +223,31 @@ FAKE_MARKS_FAIL=1 HEAD_SHA=$FIXA \
 WORKFLOW=stand \
   run "зелёный stand — закрывает как раньше: тестов у него нет" success 7 \
   "calls:issue close 7"
+# Issue с тем же заголовком, который завёл не бот (репозиторий публичный,
+# заголовок может набрать кто угодно; заключение «Риска» 175): скрипт его
+# не считает и не трогает — иначе посторонний одной кнопкой держал бы
+# автослияние. Красный заводит свой issue, зелёный чужой не закрывает и
+# пометок в нём не оставляет. PR с таким заголовком — тоже не issue.
+FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_FOREIGN=9 \
+  run "чужой issue с заголовком — красный заводит свой" failure "" \
+  "calls:issue create" "nocalls:issue comment 9" "nocalls:issue comment 99"
+FAKE_FOREIGN=9 HEAD_SHA=$FIXA \
+  run "чужой issue с заголовком — зелёный его не трогает" success "" \
+  "nocalls:issue comment" "nocalls:issue close" "nocalls:pr comment"
+FAKE_FOREIGN=9 WORKFLOW=stand \
+  run "чужой issue с заголовком stand — зелёный не закрывает" success "" \
+  "nocalls:issue comment" "nocalls:issue close"
+# Тест с таким именем объявлен в двух файлах (на main таких имён несколько):
+# который из них упал, по имени не узнать — правка одного issue не закрывает.
+FAKE_MARKS=$(bot "<!-- main-red:red:$RED:TestDup -->") HEAD_SHA=$FIXDUP \
+  run "одноимённые тесты в двух файлах — сравнить нельзя, issue открыт" success 7 \
+  "nocalls:issue close" "body:сравнить не удалось" "body:TestDup"
+
 # Сравнение коммитов отдельной командой — её же шаг ci гоняет на раннере на
 # двух настоящих эпизодах.
 verdict() { (cd "$work/repo" && "$here/main_red.sh" changed "$1" "$2" "$3"); }
 [ "$(verdict "$RED" "$NOFIX" TestA)" = "same pkg/a_test.go" ] || { echo "FAIL changed: не «same»"; fail=1; }
 [ "$(verdict "$RED" "$FIXA" TestA)" = "changed pkg/a_test.go" ] || { echo "FAIL changed: не «changed»"; fail=1; }
+[ "$(verdict "$RED" "$FIXDUP" TestDup)" = "unknown" ] || { echo "FAIL changed: одноимённые тесты — не «unknown»"; fail=1; }
 [ "$(verdict "$RED" "$FIXA" TestGone 2>/dev/null)" = "unknown" ] || { echo "FAIL changed: не «unknown»"; fail=1; }
 exit "$fail"

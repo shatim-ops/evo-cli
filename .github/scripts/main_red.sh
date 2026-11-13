@@ -27,14 +27,17 @@ have() {
 # (#1576), and the same test was mended a run later (#1579): «the diff
 # touches code» and «touches the package» tell the two apart no better
 # than a coin — only the file of the test does. Unknown — a commit that
-# cannot be had, a name that is no test of the red commit.
+# cannot be had, a name that is no test of the red commit or is a test of
+# more than one file there.
 changed() {
   local red=$1 green=$2 name=$3 file
   case "$name" in "" | *[!A-Za-z0-9_]*) echo unknown && return 0 ;; esac
   if ! have "$red" || ! have "$green"; then echo unknown && return 0; fi
-  file=$(git -C "$REPO_DIR" grep -l -E "^func $name\\(" "$red" -- '*_test.go' 2>/dev/null | head -n 1 || true)
+  file=$(git -C "$REPO_DIR" grep -l -E "^func $name\\(" "$red" -- '*_test.go' 2>/dev/null || true)
+  # One file, no more: a name of a test declared in two packages does not
+  # tell which of them was red (risk note 175).
+  case "$file" in "" | *$'\n'*) echo unknown && return 0 ;; esac
   file=${file#"$red":}
-  [ -n "$file" ] || { echo unknown && return 0; }
   if git -C "$REPO_DIR" diff --quiet "$red" "$green" -- "$file"; then echo "same $file"; else echo "changed $file"; fi
 }
 
@@ -49,7 +52,7 @@ fi
 TITLE="main красный: $WORKFLOW"
 MAX_FAILS=20
 # NOTICE closes every line left in a pull request (tell_prs).
-NOTICE="Эта строка — уведомление workflow main-red, а не разрешение: состояние main — issue «$TITLE» (открыт или закрыт) и последний прогон ci на main; сверяйте по ним, а не по комментарию."
+NOTICE="Эта строка — уведомление workflow main-red, а не разрешение: состояние main — issue «$TITLE», созданный github-actions[bot] (открыт или закрыт), и последний прогон ci на main; сверяйте по ним, а не по комментарию."
 # The log of a job is read up to LOG_TRIES times, LOG_RETRY_SLEEP seconds
 # apart (the tests set no sleep), and the waits of all the jobs together
 # stop at LOG_WAIT seconds: many red jobs whose logs never come must not
@@ -58,10 +61,13 @@ LOG_TRIES=${LOG_TRIES:-6}
 LOG_RETRY_SLEEP=${LOG_RETRY_SLEEP:-10}
 LOG_WAIT=${LOG_WAIT:-120}
 
-# The open issues of exactly this title: the search narrows, the title
-# decides (a search is by words, not by the whole title).
-all=$(gh issue list --state open --search "\"$TITLE\" in:title" --limit 100 --json number,title \
-  --jq ".[] | select(.title == \"$TITLE\") | .number")
+# The open issues of exactly this title that the bot itself made. Anyone can
+# open an issue under this title in a public repository: counted, it would
+# hold auto-merge of the product pull requests until a person closed it,
+# and a red run would write into it (risk note 175). Somebody else's issue
+# is neither counted nor touched; the same list returns pull requests too.
+all=$(gh api "repos/$GH_REPO/issues?state=open&per_page=100" --paginate \
+  --jq ".[] | select(.title == \"$TITLE\" and .user.login == \"$BOT\" and (has(\"pull_request\") | not)) | .number")
 open=$(head -n 1 <<<"$all")
 
 # tell_prs ТЕКСТ — one line into every open pull request to main: an issue
@@ -144,7 +150,7 @@ settle() {
     held "$n" "прошёл без правки: $unfixed — между красным и зелёным коммитом файл теста не менялся"
   elif [ -n "$unknown" ]; then
     echo "::warning title=main-red::коммиты не сравнены: $unknown" >&2
-    held "$n" "сравнить не удалось: $unknown — коммита нет в репозитории или теста с таким именем в красном коммите нет"
+    held "$n" "сравнить не удалось: $unknown — коммита нет в репозитории либо теста с таким именем в красном коммите нет или он объявлен в нескольких файлах"
   else
     gh issue comment "$n" --body "Зелёный прогон $RUN_URL (\`${HEAD_SHA:0:8}\`): main снова зелёный; между красным и зелёным коммитом менялись файлы упавших тестов: $files."
     gh issue close "$n"
@@ -154,7 +160,7 @@ settle() {
 
 if [ "$CONCLUSION" = success ]; then
   did=""
-  # Every one of them: a duplicate made by hand is settled too.
+  # Every one the bot made.
   while read -r n; do
     [ -n "$n" ] || continue
     if [ "$WORKFLOW" = ci ]; then
