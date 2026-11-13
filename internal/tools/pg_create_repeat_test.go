@@ -95,10 +95,16 @@ func TestPgCreate_RepeatAfterALostAnswerMakesNoSecond(t *testing.T) {
 			if strings.Contains(first+text, password) {
 				t.Errorf("%s, a second create answered %d: the password is in an answer", tool.name, second)
 			}
+			hint, _ := m["hint"].(string)
 			if w.posts == 1 {
+				// No second request: the answer is the one a refusal of
+				// the platform gets — the reason and the hint of a repeat
+				// stay (no breaking change).
+				if !isErr || m["reason"] != "API_ERROR" || !strings.Contains(hint, "already exists") || !strings.Contains(hint, "nothing was created") {
+					t.Errorf("%s, no second create: want API_ERROR with «already exists, nothing was created»: %s", tool.name, text)
+				}
 				continue
 			}
-			hint, _ := m["hint"].(string)
 			if !isErr || !strings.Contains(hint, "already exists") || !strings.Contains(hint, "nothing was created") {
 				t.Errorf("%s, a second create answered %d: the repeat of a taken request sent a second one (requests %d) and did not read a refusal as «already exists, nothing was created»: %s",
 					tool.name, second, w.posts, text)

@@ -552,10 +552,13 @@ func (s *Registry) planPgDbCreate(_ context.Context, args map[string]any) (*Plan
 		if v := stringArg(args, "lc_ctype"); v != "" {
 			body["lc_ctype"] = v
 		}
+		databases := func(ctx context.Context) ([]map[string]any, error) { return cli.ListDatabases(ctx, cid) }
+		if err := pgNameTaken(ctx, pgDatabase, name, cid, databases); err != nil {
+			return errResult(err), true
+		}
 		db, err := cli.CreateDatabase(ctx, cid, body)
 		if err != nil {
 			err = fmt.Errorf(i18n.T("create database: %w", "создание базы: %w"), err)
-			databases := func(ctx context.Context) ([]map[string]any, error) { return cli.ListDatabases(ctx, cid) }
 			return errResult(pgCreateOfExisting(ctx, pgDatabase, name, databases, err)), true
 		}
 		return toJSON(map[string]any{"status": "created", "database": db}), false
@@ -630,11 +633,14 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 		if err != nil {
 			return errResult(err), true
 		}
+		users := func(ctx context.Context) ([]map[string]any, error) { return cli.ListUsers(ctx, cid) }
+		if err := pgNameTaken(ctx, pgUser, name, cid, users); err != nil {
+			return errResult(err), true
+		}
 		body := map[string]any{"cluster_id": cid, "name": name, "password": password}
 		u, err := cli.CreateUser(ctx, cid, body)
 		if err != nil {
 			err = fmt.Errorf(i18n.T("create user: %w", "создание пользователя: %w"), err)
-			users := func(ctx context.Context) ([]map[string]any, error) { return cli.ListUsers(ctx, cid) }
 			return errResult(pgCreateOfExisting(ctx, pgUser, name, users, err)), true
 		}
 		// Never echo the password back.
@@ -706,13 +712,40 @@ func pgCreateOfExisting(ctx context.Context, k pgNamed, name string, list func(c
 			fmt.Sprintf("%s %s is in the cluster, and this call may have created it: evo got no answer to the create. %s — ask the person what to do.", k.what, q, k.keep),
 			fmt.Sprintf("%s %s есть в кластере, и %s мог создать этот вызов: ответа на создание evo не получил. %s, — спросите человека, что делать.", k.whatRU, q, k.itRU, k.keepRU))
 		if definiteRefusal(err) {
-			hint = i18n.T(
-				fmt.Sprintf("%s %s already exists in the cluster; nothing was created or changed. %s — ask the person what to do.", k.what, q, k.keep),
-				fmt.Sprintf("%s %s уже существует в кластере; ничего не создано и не изменено. %s, — спросите человека, что делать.", k.whatRU, q, k.keepRU))
+			hint = k.existsHint(q)
 		}
 		return clierrors.Wrap(reason, msg, hint, err)
 	}
 	return err
+}
+
+// existsHint is the hint of a create of a thing that was in the cluster
+// before the call: the call made nothing, and the way on is the person's.
+func (k pgNamed) existsHint(q string) string {
+	return i18n.T(
+		fmt.Sprintf("%s %s already exists in the cluster; nothing was created or changed. %s — ask the person what to do.", k.what, q, k.keep),
+		fmt.Sprintf("%s %s уже существует в кластере; ничего не создано и не изменено. %s, — спросите человека, что делать.", k.whatRU, q, k.keepRU))
+}
+
+// pgNameTaken refuses a create of the thing named name when the cluster
+// has it before the request is sent. The answer of these creates names
+// nothing (no id), so a call repeated after a lost answer cannot be told
+// from another by what it gets back: a platform that took a second create
+// of the name would make a second one — for a user, with the password sent
+// again — on one consent (release plan 1.9, «Повтор pg_db_create и
+// pg_user_create после потерянного ответа»). The answer is the one a
+// refusal of the platform gets from pgCreateOfExisting — API_ERROR, the
+// same hint — so a repeat answers as it did. A list that is not read
+// leaves the create to the platform, as before.
+func pgNameTaken(ctx context.Context, k pgNamed, name, cluster string, list func(context.Context) ([]map[string]any, error)) error {
+	items, err := list(ctx)
+	if err != nil || !slices.ContainsFunc(items, func(m map[string]any) bool { return m["name"] == name }) {
+		return nil
+	}
+	q := quoteCloud(name)
+	return clierrors.New(clierrors.CodeAPIError,
+		i18n.Tf("%s %s already exists in cluster %s; evo sent no create", "%s %s уже есть в кластере %s; запрос создания evo не отправил", k.what, q, cluster),
+		k.existsHint(q))
 }
 
 // pgPasswordSpecials is the one rule of the password of a PostgreSQL user
