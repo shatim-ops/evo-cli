@@ -220,8 +220,9 @@ func noteWrite(req *http.Request) (counted *http.Request, err error) {
 }
 
 // UserAgent wraps base (nil: DefaultBase) so that a request
-// without a User-Agent carries evo's (product.UserAgent), and counts its
-// writes as Transport does (CountWrites). For the clients that keep their
+// without a User-Agent carries evo's (product.UserAgent), a request without
+// an X-Request-Id a new one, and counts its writes and keeps its failures
+// as Transport does (CountWrites, TraceRequests). For the clients that keep their
 // own retry loop: the compute adapter, S3 and IAM.
 func UserAgent(base http.RoundTripper) http.RoundTripper { return uaTransport{base} }
 
@@ -232,15 +233,18 @@ func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if base == nil {
 		base = DefaultBase
 	}
-	req, err := noteWrite(req)
+	req, err := noteWrite(withHeaders(req))
 	if err != nil {
 		return nil, err
 	}
-	resp, err := base.RoundTrip(withUserAgent(req))
+	resp, err := base.RoundTrip(req)
 	if err != nil {
+		traced(req, nil, err)
 		return nil, err
 	}
-	return answer(req, resp), nil
+	resp = answer(req, resp)
+	traced(req, resp, nil)
+	return resp, nil
 }
 
 // tokenRejected is told the bearer token of a request a Cloud.ru API
@@ -417,20 +421,28 @@ func badGateway(resp *http.Response, body string) *http.Response {
 	}
 }
 
-// withUserAgent returns req with evo's User-Agent, or req itself when it
-// already has one. A RoundTripper must not change the caller's request.
-func withUserAgent(req *http.Request) *http.Request {
-	if req.Header.Get("User-Agent") != "" {
+// withHeaders returns req with evo's User-Agent and a new X-Request-Id
+// (RequestIDHeader), or req itself when it already has both: those of the
+// caller stay. A RoundTripper must not change the caller's request.
+func withHeaders(req *http.Request) *http.Request {
+	ua, id := req.Header.Get("User-Agent") == "", req.Header.Get(RequestIDHeader) == ""
+	if !ua && !id {
 		return req
 	}
 	r := req.Clone(req.Context())
-	r.Header.Set("User-Agent", product.UserAgent())
+	if ua {
+		r.Header.Set("User-Agent", product.UserAgent())
+	}
+	if id {
+		r.Header.Set(RequestIDHeader, newRequestID())
+	}
 	return r
 }
 
 // RoundTrip implements http.RoundTripper.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = withUserAgent(req)
+	// One id for every attempt of the request: support sees them as one.
+	req = withHeaders(req)
 	resp, err := t.renewing(req)
 	// The answer RoundTrip gives, whichever way it came — the first one or
 	// the one to the renewed token (FB160-1) — is read for a 404 the
@@ -438,6 +450,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err == nil && !t.Policy.Keep404 {
 		resp = RouteNotFoundAsBadGateway(req, resp)
 	}
+	traced(req, resp, err)
 	return resp, err
 }
 

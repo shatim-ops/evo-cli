@@ -11,6 +11,7 @@ import (
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/journal"
 )
 
@@ -19,7 +20,11 @@ import (
 // the check refuses is recorded too (D46).
 func outer(name string, schema map[string]any, h Handler) Handler {
 	return journaled(name, schema, checkedArgs(name, schema, func(ctx context.Context, args map[string]any) (string, bool) {
+		ctx = httpretry.TraceRequests(ctx)
 		text, isErr := h(ctx, args)
+		if isErr {
+			text = withRequestID(ctx, text)
+		}
 		return withoutAPIStatus(text), isErr
 	}))
 }
