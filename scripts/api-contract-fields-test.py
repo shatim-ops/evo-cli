@@ -290,5 +290,89 @@ class StateRatchet(unittest.TestCase):
         self.assertEqual(rc, 0, out)
 
 
+CREATE_SPEC = """
+openapi: 3.0.0
+paths:
+  /v1/things:
+    post:
+      requestBody: {content: {application/json: {schema: {type: object, properties: {name: {type: string}}}}}}
+      responses:
+        "200": {content: {application/json: {schema: {type: object, properties: {id: {type: string}, name: {type: string}}}}}}
+  /v1/wrapped:
+    post:
+      requestBody: {content: {application/json: {schema: {type: object, properties: {name: {type: string}}}}}}
+      responses:
+        "200": {content: {application/json: {schema: {type: object, properties: {thing: {type: object, properties: {id: {type: string}}}}}}}}
+  /v1/named:
+    post:
+      requestBody: {content: {application/json: {schema: {type: object, properties: {name: {type: string}}}}}}
+      responses:
+        "200": {content: {application/json: {schema: {type: object, properties: {name: {type: string}}}}}}
+  /v1/things/{id}/action:
+    post:
+      requestBody: {content: {application/json: {schema: {type: object, properties: {name: {type: string}}}}}}
+      responses:
+        "200": {content: {application/json: {schema: {type: object, properties: {id: {type: string}}}}}}
+"""
+
+
+class CreateAnswer(unittest.TestCase):
+    """create-answer-no-id: a create whose answer does not name what it made
+    says what holds its repeat (release plan 1.9, «запрос принят, ресурса
+    ещё нет — повтор не шлёт второй»; backup_restore, #1580)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.dir, "specs", "svc"))
+        with open(os.path.join(self.dir, "specs", "svc", "api.yaml"), "w") as f:
+            f.write(CREATE_SPEC)
+        self.requests = [{"method": "POST", "path": p, "creates": ["thing_create"], "body": ["name"]}
+                         for p in ("/v1/things", "/v1/wrapped", "/v1/named", "/v1/things/{id}/action")]
+
+    def tearDown(self):
+        shutil.rmtree(self.dir)
+
+    def run_check(self):
+        cp = os.path.join(self.dir, "contract.json")
+        with open(cp, "w") as f:
+            json.dump({"services": [{"name": "svc", "spec": "svc/api.yaml", "requests": self.requests}]}, f)
+        argv = ["api-contract-check.py", "--specs", os.path.join(self.dir, "specs"), "--contract", cp, "--root", self.dir,
+                "--fields", os.path.join(self.dir, "no-fields.json"), "--states", os.path.join(self.dir, "no-states.json")]
+        out, err = io.StringIO(), io.StringIO()
+        old = sys.argv
+        sys.argv = argv
+        try:
+            with redirect_stdout(out), redirect_stderr(err):
+                rc = check.main()
+        finally:
+            sys.argv = old
+        return rc, [l for l in out.getvalue().splitlines() if "create-answer-no-id" in l]
+
+    def test_answer_without_the_id_of_what_is_made(self):
+        rc, lines = self.run_check()
+        self.assertEqual(rc, 1, lines)
+        text = "\n".join(lines)
+        # An id of its own, or of the one object the answer wraps: named.
+        self.assertNotIn("POST /v1/things ", text)
+        self.assertNotIn("/v1/wrapped", text)
+        # No id; an action on another resource, whose id the answer has.
+        self.assertIn("/v1/named", text)
+        self.assertIn("/v1/things/{id}/action", text)
+        self.assertEqual(len(lines), 2, text)
+
+    def test_accepted_with_what_holds_the_repeat(self):
+        for r in self.requests[2:]:
+            r["accepted"] = {"create-answer-no-id": "TestThing_TakenAndNotListedSendsNoSecond"}
+        rc, lines = self.run_check()
+        self.assertEqual(rc, 0, lines)
+        self.assertTrue(all("[accepted]" in l for l in lines), lines)
+
+    def test_a_request_that_creates_nothing_is_not_asked(self):
+        for r in self.requests:
+            del r["creates"]
+        _, lines = self.run_check()
+        self.assertEqual(lines, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -100,7 +100,13 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 		}
 	}
 	if rule == nil {
-		if other := sgRuleElsewhere(ctx, eng, group.ID, ruleID); other != nil {
+		other, err := sgRuleElsewhere(ctx, eng, group.ID, ruleID)
+		if err != nil {
+			// «Not there» is not known while a group could not be read:
+			// the failure of the read, not already_deleted.
+			return nil, fmt.Errorf(i18n.T("look for rule %s in the other groups of the project: %w", "поиск правила %s в других группах проекта: %w"), ruleID, err)
+		}
+		if other != nil {
 			return nil, clierrors.New(clierrors.CodeUsage,
 				i18n.Tf("rule %s is a rule of security group %s (%s), not of %s", "правило %s принадлежит группе безопасности %s (%s), а не %s",
 					ruleID, quoteCloud(other.Name), other.ID, quoteCloud(group.Name)),
@@ -129,6 +135,13 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 		})
 	if p.Preview == nil {
 		return p, nil
+	}
+	if _, warned := p.Preview["warning"]; !warned && sgRuleFailed(rule.State) {
+		// A rule left in an error of its creation: whether Cloud.ru
+		// deletes a rule in this state is not verified — said, as for the
+		// other error states (the brief, §4: «the outcome is unknown»).
+		p.Preview["warning"] = i18n.Tf("it is in %s: whether Cloud.ru deletes a rule in this state is not verified; list_security_groups with rules=true shows whether it is gone",
+			"оно в состоянии %s: удалит ли Cloud.ru правило в этом состоянии — не проверено; есть ли оно ещё, показывает list_security_groups с rules=true", rule.State)
 	}
 	p.Preview["rule"] = sgRuleFields(rule)
 	p.Preview["security_group"] = map[string]any{"id": group.ID, "name": group.Name, "default": group.Default}
@@ -223,12 +236,13 @@ func sgStillAllowed(rules []*provision.SGRule, rule *provision.SGRule) (byPrefix
 }
 
 // sgRuleElsewhere is the other group of the project that has the rule,
-// nil when none does (or the groups cannot be read: the rule is then
-// answered as not there, as before the lookup).
-func sgRuleElsewhere(ctx context.Context, eng *engine.Engine, notIn, ruleID string) *provision.SecurityGroup {
+// nil when none does. A list that cannot be read — of the groups, or of
+// the rules of one of them — is its error: the rule may be in the group
+// that was not read, and «in no group» would be answered already_deleted.
+func sgRuleElsewhere(ctx context.Context, eng *engine.Engine, notIn, ruleID string) (*provision.SecurityGroup, error) {
 	groups, err := eng.Cloud.ListSecurityGroups(ctx, eng.Config.ProjectID)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	for _, g := range groups {
 		if g == nil || g.ID == notIn {
@@ -236,15 +250,15 @@ func sgRuleElsewhere(ctx context.Context, eng *engine.Engine, notIn, ruleID stri
 		}
 		rules, err := eng.Cloud.ListSecurityGroupRules(ctx, g.ID)
 		if err != nil {
-			continue
+			return nil, err
 		}
 		for _, r := range rules {
 			if r != nil && r.ID == ruleID {
-				return g
+				return g, nil
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // folderDeploymentInGroup reports whether a deployment recorded in the

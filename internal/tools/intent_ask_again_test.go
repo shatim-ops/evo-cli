@@ -7,10 +7,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -23,7 +25,7 @@ import (
 // and closes the record; the next consented call is sent as any other.
 func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 	const tool = "cert_renew" // stands for a tool of the list: any tool that takes consent
-	everySendIsAChange[tool] = "cert_get"
+	everySendIsAChange[tool] = changeRule{read: "cert_get"}
 	t.Cleanup(func() { delete(everySendIsAChange, tool) })
 	args := func() map[string]any { return map[string]any{"certificate_id": resMine, "confirmed": true} }
 	this := &state.Maker{KeyID: config.MaskKeyID("k")}
@@ -52,7 +54,12 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 			}
 			sent := 0
 			tl, _ := r.Lookup(tool)
-			call := r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+			call := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+				// Without the consent the handler plans and sends nothing
+				// (the layer asks it for the preview of its question).
+				if confirmed, _ := args["confirmed"].(bool); !confirmed {
+					return `{"status":"error","reason":"USAGE"}`, true
+				}
 				sent++
 				return `{"status":"ok"}`, false
 			})
@@ -124,7 +131,7 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 // An answer that is no question leaves the record.
 func TestIntent_QuestionWithoutConsentNamesTheCutCall(t *testing.T) {
 	const tool = "cert_renew"
-	everySendIsAChange[tool] = "cert_get"
+	everySendIsAChange[tool] = changeRule{read: "cert_get"}
 	t.Cleanup(func() { delete(everySendIsAChange, tool) })
 	this := &state.Maker{KeyID: config.MaskKeyID("k")}
 	for _, c := range []struct {
@@ -192,7 +199,10 @@ func unnamedBy(tl Tool) []string {
 		for _, arg := range way {
 			args[arg] = "x"
 		}
-		if name, target := intentResource(tl.Name, args); name == "" && target == "" {
+		// As the layer names it (resourceOf); a resolver that went to
+		// read the resource names it.
+		noCloud := New(func(map[string]any) (*engine.Engine, error) { return nil, stderrors.New("no cloud in this test") })
+		if name, target, err := noCloud.resourceOf(context.Background(), tl.Name, args); err == nil && name == "" && target == "" {
 			bad = append(bad, strings.Join(way, "+"))
 		}
 	}
@@ -204,7 +214,8 @@ func unnamedBy(tl Tool) []string {
 // a declaration that does nothing.
 func TestEverySendIsAChange_ToolNamesItsResource(t *testing.T) {
 	r := New(nil)
-	for tool, read := range everySendIsAChange {
+	for tool, rule := range everySendIsAChange {
+		read := rule.read
 		tl, ok := r.Lookup(tool)
 		if !ok {
 			t.Errorf("everySendIsAChange names %s, which is no tool", tool)

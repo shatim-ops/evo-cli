@@ -98,7 +98,11 @@ has r3f1disk "probes: «r3f1» — проба области disk, а disk_smoke
 # Пробы графика 1.9 (область ops): слова известны; g20 — только с g10 (ВМ
 # пробы цены оставляет проба g10).
 fresh opsprobes
-run opsprobes 0 PROBES='g10 g11 g18 g20'
+run opsprobes 0 PROBES='g10 g11 g17 g17nonames g18 g20'
+# g17nonames — только с g17: слово меняет ход её пробы.
+fresh nonames
+run nonames 1 PROBES='g11 g17nonames'
+has nonames "probes: «g17nonames» — слово пробы g17"
 # Г-16 с ожиданиями занимает почти весь предел job области: вместе с
 # другой долгой пробой (g10, g18) в одном запуске не идёт.
 fresh g16long
@@ -107,11 +111,32 @@ has g16long "probes: «g16» идёт до 115 мин при пределе job 
 # Пробы изменения кластера — в job своего сервиса.
 fresh dbchange
 run dbchange 0 DBAAS_SMOKE=true DBAAS_SERVICES='pg kafka redis' PROBES='g13 g14 g15'
+fresh pgrepeat
+run pgrepeat 0 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES='pgrepeat'
+# pgrepeat и g13 — разными запусками: вывод по Г-13 не должен зависеть от
+# исхода пробы повтора.
+fresh pgrepeatg13
+run pgrepeatg13 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES='g13 pgrepeat'
+has pgrepeatg13 "probes: «pgrepeat» и «g13» в одном запуске не идут"
+# pgrepeat — проба job dbaas-pg: без него слово ничего не запускает.
+fresh pgrepeatnopg
+run pgrepeatnopg 1 DBAAS_SMOKE=true DBAAS_SERVICES=kafka PROBES='pgrepeat'
+has pgrepeatnopg "probes: «pgrepeat» — проба джоба dbaas-pg"
 # g13 и access в одном запуске — худший ход job dbaas-pg вплотную к его
 # пределу: удаление кластера оборвалось бы по времени.
 fresh g13access
 run g13access 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES='access g13'
 has g13access "probes: «g13» и «access» в одном запуске не идут — худший ход job dbaas-pg вплотную к пределу 300 мин"
+# g12 — проба job k8s-smoke: без него слово ничего не запускает; с
+# подом из образа (SNAT зоны) худший ход job — вплотную к его пределу.
+fresh g12
+run g12 0 K8S_SMOKE=true PROBES=g12
+fresh g12nok8s
+run g12nok8s 1 PROBES=g12
+has g12nok8s "probes: «g12» — проба джоба k8s-smoke, а он не идёт (k8s_smoke)"
+fresh g12pod
+run g12pod 1 K8S_SMOKE=true K8S_POD_CHART=true PROBES=g12
+has g12pod "probes: «g12» и k8s_pod_chart в одном запуске не идут — худший ход job k8s-smoke вплотную к пределу 300 мин"
 fresh g14nokafka
 run g14nokafka 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES=g14
 has g14nokafka "probes: «g14» — проба джоба dbaas-kafka, а он не идёт (dbaas_smoke и kafka в dbaas_services)"

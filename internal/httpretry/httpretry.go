@@ -119,6 +119,37 @@ func (t *Transport) base() http.RoundTripper {
 
 func readMethod(m string) bool { return m == http.MethodGet || m == http.MethodHead }
 
+type writesKey struct{}
+
+// CountWrites is ctx for a call whose writes are counted: every request
+// that is not a read, sent with this context through a Transport, is one
+// (Writes). A caller that must know whether anything was sent to change
+// the cloud — a call cut before an answer changed nothing if it sent no
+// write — counts by it.
+func CountWrites(ctx context.Context) context.Context {
+	return context.WithValue(ctx, writesKey{}, new(atomic.Int64))
+}
+
+// Writes is how many writes were sent with ctx since CountWrites; counted
+// is false for a context that does not count.
+func Writes(ctx context.Context) (n int, counted bool) {
+	c, ok := ctx.Value(writesKey{}).(*atomic.Int64)
+	if !ok {
+		return 0, false
+	}
+	return int(c.Load()), true
+}
+
+// noteWrite counts req when it is a write of a counting context.
+func noteWrite(req *http.Request) {
+	if readMethod(req.Method) {
+		return
+	}
+	if c, ok := req.Context().Value(writesKey{}).(*atomic.Int64); ok {
+		c.Add(1)
+	}
+}
+
 // UserAgent wraps base (nil: DefaultBase) so that a request
 // without a User-Agent carries evo's (product.UserAgent). For the clients
 // that keep their own retry loop: the compute adapter and IAM.
@@ -378,6 +409,7 @@ func (t *Transport) roundTrip(req *http.Request) (*http.Response, error) {
 			r.Body = body
 		}
 		wait := backoff
+		noteWrite(r)
 		resp, err := t.base().RoundTrip(r)
 		last := attempt == MaxRetries || req.Context().Err() != nil
 		if err != nil {

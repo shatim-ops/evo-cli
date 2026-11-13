@@ -201,17 +201,21 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 			// The answer was lost, or named no rule: the rule may be
 			// there. The rules are read again — the same rule, there now
 			// and not before the request, is the one this call made.
-			again, listErr := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
-			var there *provision.SGRule
-			for _, r := range again {
-				// The first such rule: of several the same, one is named.
-				if r != nil && sgrules.Same(r, want) && !engine.DeletingState(r.State) && !sgRuleFailed(r.State) {
-					there = r
-					break
-				}
-			}
 			var refused *provision.StatusError
-			if there != nil && errors.As(err, &refused) && refused.Status == http.StatusConflict {
+			errors.As(err, &refused)
+			// A refusal of the platform (4xx) made nothing; anything else
+			// — a lost answer, a 5xx, an answer with no id — leaves the
+			// outcome unknown.
+			refusedByPlatform := refused != nil && refused.Status >= 400 && refused.Status < 500
+			again, listErr := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
+			there := sgRuleSame(again, want)
+			if there == nil && !refusedByPlatform {
+				// The list may be behind the write: one read that does not
+				// show the rule is not «not made». The call waits for it to
+				// be listed before it says the outcome is unknown.
+				there = s.sgRuleListed(ctx, eng, group, want)
+			}
+			if there != nil && refused != nil && refused.Status == http.StatusConflict {
 				// The platform refused the write as a conflict and the
 				// rule is there: another call made it between the read of
 				// the plan and the write — not this one.
@@ -229,13 +233,16 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 				if code := platformCode(err); code != "" {
 					fields["details"] = map[string]any{"platform_code": code}
 				}
-				if listErr != nil {
-					err = clierrors.Wrap(clierrors.Reason(err), i18n.Tf("create rule: %v", "создание правила: %v", err),
-						i18n.T("The rule may have been created: list_security_groups with rules=true shows the rules of the group.",
-							"Правило могло быть создано: правила группы показывает list_security_groups с rules=true."), err)
-					return errAnswer(err, fields), true
+				if refusedByPlatform && listErr == nil {
+					return errAnswer(fmt.Errorf(i18n.T("create rule: %w", "создание правила: %w"), err), fields), true
 				}
-				return errAnswer(fmt.Errorf(i18n.T("create rule: %w", "создание правила: %w"), err), fields), true
+				// The outcome is unknown: the error sends to the read, not
+				// to the same call again — that would be a second rule
+				// (everySendIsAChange asks a consented repeat again).
+				err = clierrors.Wrap(clierrors.Reason(err), i18n.Tf("create rule: %v", "создание правила: %v", err),
+					i18n.T("The rule may have been created: list_security_groups with rules=true shows the rules of the group. Do not send the call again before reading them.",
+						"Правило могло быть создано: правила группы показывает list_security_groups с rules=true. Не повторяйте вызов, пока не прочитаете их."), err)
+				return errAnswer(err, fields), true
 			}
 		}
 		if made != nil && made.ID == id && made.State == "created" {
@@ -245,6 +252,42 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 		}
 		return s.sgRuleCreated(ctx, eng, group, id, wanted)
 	}}, nil
+}
+
+// sgRuleSame is the first rule of rules that is the rule want and is not
+// going away or failed: of several the same, one is named.
+func sgRuleSame(rules []*provision.SGRule, want provision.SGRule) *provision.SGRule {
+	for _, r := range rules {
+		if r != nil && sgrules.Same(r, want) && !engine.DeletingState(r.State) && !sgRuleFailed(r.State) {
+			return r
+		}
+	}
+	return nil
+}
+
+// sgRuleListed waits, after a write whose outcome is unknown, for the
+// rule want to be listed in group: the list of rules may be behind the
+// write. nil when the wait — its own limit, or that of an MCP call — ends
+// without the rule.
+func (s *Registry) sgRuleListed(ctx context.Context, eng *engine.Engine, group *provision.SecurityGroup, want provision.SGRule) *provision.SGRule {
+	const listed, absent = "listed", "not listed"
+	var found *provision.SGRule
+	_, _, _, _ = waitState(ctx, eng, sgRuleMadeTimeout,
+		func(ctx context.Context) (string, bool, error) {
+			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
+			if err != nil {
+				return "", false, nil
+			}
+			if found = sgRuleSame(rules, want); found != nil {
+				return listed, true, nil
+			}
+			return absent, true, nil
+		},
+		func(string) string {
+			return i18n.T("the answer of the create was lost: waiting for the rule to be listed…", "ответ на создание потерян: жду, появится ли правило в списке…")
+		},
+		func(st string) (bool, error) { return st == listed, nil })
+	return found
 }
 
 // sgRuleCreated waits for rule id of group to become "created" and

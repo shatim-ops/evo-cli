@@ -9,68 +9,362 @@
     "## Пробы"
   ],
   "probes": [
-    {"id": "Г-10", "title": "ВМ: stop, start, reboot, смена flavor", "requests": [
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/vms/{vm_id}/set-power"},
-      {"spec": "compute/openapi-v3.yaml", "method": "PUT", "path": "/api/v1/vms/{vm_id}", "note": "смена flavor — `flavor_name` или `flavor_id`"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/vms/{vm_id}", "note": "ход действия читается состоянием ВМ: `set-power` отвечает 204 без id операции"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/params/flavor", "note": "допустимые flavor для смены"}
-    ]},
-    {"id": "Г-11", "title": "Группа безопасности: правила", "requests": [
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/security-groups"},
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/security-groups/{security_group_id}/rules"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/security-groups/{security_group_id}"},
-      {"spec": "compute/openapi-v3.yaml", "method": "DELETE", "path": "/api/v1/security-groups/{security_group_id}/rules/{security_group_rule_id}"},
-      {"spec": "compute/openapi-v3.yaml", "method": "DELETE", "path": "/api/v1/security-groups/{security_group_id}"}
-    ]},
-    {"id": "Г-12", "title": "Managed Kubernetes: масштаб и удаление группы узлов, обновление версии", "requests": [
-      {"spec": "mk8s/openapi.yaml", "method": "PATCH", "path": "/v2/node-pools/{nodePoolId}", "note": "масштаб группы узлов; evo ходит в v3 (`internal/mk8s`) — запросы v3 ниже"},
-      {"spec": "mk8s/openapi.yaml", "method": "DELETE", "path": "/v2/node-pools/{nodePoolId}"},
-      {"spec": "mk8s/openapi.yaml", "method": "POST", "path": "/v2/clusters/{clusterId}/upgrade"},
-      {"spec": "mk8s/openapi.yaml", "method": "POST", "path": "/v2/node-pools/{nodePoolId}/upgrade"},
-      {"spec": "mk8s/openapi.yaml", "method": "GET", "path": "/v2/k8sversions", "note": "версии, доступные для обновления (Г-05)"},
-      {"spec": "mk8s/openapi-v3.yaml", "method": "PATCH", "path": "/v3/nodePools/{nodePoolId}", "note": "тот же запрос в v3"},
-      {"spec": "mk8s/openapi-v3.yaml", "method": "POST", "path": "/v3/clusters/{clusterId}:upgrade", "note": "тот же запрос в v3"},
-      {"spec": "mk8s/openapi-v3.yaml", "method": "POST", "path": "/v3/nodePools/{nodePoolId}:upgrade", "note": "тот же запрос в v3"}
-    ]},
-    {"id": "Г-13", "title": "PostgreSQL: класс узла, диск, число узлов", "requests": [
-      {"spec": "postgresql/openapi-postgresql.yaml", "method": "PATCH", "path": "/v1/clusters/{cluster_id}"},
-      {"spec": "postgresql/openapi-postgresql.yaml", "method": "GET", "path": "/v1/clusters/{cluster_id}"}
-    ]},
-    {"id": "Г-14", "title": "Kafka: число брокеров, диск, класс", "requests": [
-      {"spec": "kafka/openapi-kafka.yaml", "method": "PATCH", "path": "/v1/clusters/{cluster_id}"},
-      {"spec": "kafka/openapi-kafka.yaml", "method": "GET", "path": "/v1/clusters/{cluster_id}"}
-    ]},
-    {"id": "Г-15", "title": "Redis: класс, число шардов или реплик", "requests": [
-      {"spec": "redis/openapi-redis.yaml", "method": "PATCH", "path": "/v1/clusters/{cluster_id}"},
-      {"spec": "redis/openapi-redis.yaml", "method": "GET", "path": "/v1/clusters/{cluster_id}"}
-    ]},
-    {"id": "Г-16", "title": "Резервные копии и планы защиты", "requests": [
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/backups"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/backups"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/backups/{backup_id}"},
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/backups/{backup_id}/action", "note": "восстановление"},
-      {"spec": "compute/openapi-v3.yaml", "method": "DELETE", "path": "/api/v1/backups/{backup_id}"},
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/protection-plans"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/protection-plans"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/protection-plans/{protection_plan_id}", "note": "состояние плана после создания и удаления"},
-      {"spec": "compute/openapi-v3.yaml", "method": "DELETE", "path": "/api/v1/protection-plans/{protection_plan_id}"}
-    ]},
-    {"id": "Г-17", "title": "Теги", "requests": [
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1.1/vms", "note": "тег в запросе создания ВМ — `tag_names`, `tag_ids`"},
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/disks", "note": "тег в запросе создания диска"},
-      {"spec": "compute/openapi-v3.yaml", "method": "PUT", "path": "/api/v1/vms/{vm_id}", "note": "назначение и снятие тега у ВМ"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/v1/vms", "note": "отбор по тегу"},
-      {"spec": "compute/openapi-v3.yaml", "method": "GET", "path": "/api/tags/v1/tags", "note": "сервис тегов: создание и удаление самого тега. Путь назван аудитом `audits/ops-gap-1.4.md` (G10), страницы API сервиса тегов в реестре API Cloud.ru нет (12.11)"}
-    ]},
-    {"id": "Г-18", "title": "ВМ: интерфейс и пересоздание", "requests": [
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/interfaces"},
-      {"spec": "compute/openapi-v3.yaml", "method": "DELETE", "path": "/api/v1/interfaces/{interface_id}"},
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/vms/{vm_id}/rebuild"}
-    ]},
-    {"id": "Г-22", "title": "Цена «до и после» расчётом", "requests": [
-      {"spec": "compute/openapi-v3.yaml", "method": "POST", "path": "/api/v1/projects/{project_id}/price-calculation"},
-      {"spec": "mk8s/openapi.yaml", "method": "POST", "path": "/v2/billing/calculate-price"},
-      {"spec": "mk8s/openapi.yaml", "method": "POST", "path": "/v2/billing/calculate-price-ext"}
-    ]}
+    {
+      "id": "Г-10",
+      "title": "ВМ: stop, start, reboot, смена flavor",
+      "requests": [
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/vms/{vm_id}/set-power"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "PUT",
+          "path": "/api/v1/vms/{vm_id}",
+          "note": "смена flavor — `flavor_name` или `flavor_id`"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/vms/{vm_id}",
+          "note": "ход действия читается состоянием ВМ: `set-power` отвечает 204 без id операции"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/params/flavor",
+          "note": "допустимые flavor для смены"
+        }
+      ]
+    },
+    {
+      "id": "Г-11",
+      "title": "Группа безопасности: правила",
+      "requests": [
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/security-groups"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/security-groups/{security_group_id}/rules"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/security-groups/{security_group_id}"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "DELETE",
+          "path": "/api/v1/security-groups/{security_group_id}/rules/{security_group_rule_id}"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "DELETE",
+          "path": "/api/v1/security-groups/{security_group_id}"
+        }
+      ]
+    },
+    {
+      "id": "Г-12",
+      "title": "Managed Kubernetes: масштаб и удаление группы узлов, обновление версии",
+      "requests": [
+        {
+          "spec": "mk8s/openapi.yaml",
+          "method": "PATCH",
+          "path": "/v2/node-pools/{nodePoolId}",
+          "note": "масштаб группы узлов; evo ходит в v3 (`internal/mk8s`) — запросы v3 ниже"
+        },
+        {
+          "spec": "mk8s/openapi.yaml",
+          "method": "DELETE",
+          "path": "/v2/node-pools/{nodePoolId}"
+        },
+        {
+          "spec": "mk8s/openapi.yaml",
+          "method": "POST",
+          "path": "/v2/clusters/{clusterId}/upgrade"
+        },
+        {
+          "spec": "mk8s/openapi.yaml",
+          "method": "POST",
+          "path": "/v2/node-pools/{nodePoolId}/upgrade"
+        },
+        {
+          "spec": "mk8s/openapi.yaml",
+          "method": "GET",
+          "path": "/v2/k8sversions",
+          "note": "версии, доступные для обновления (Г-05)"
+        },
+        {
+          "spec": "mk8s/openapi-v3.yaml",
+          "method": "PATCH",
+          "path": "/v3/nodePools/{nodePoolId}",
+          "note": "тот же запрос в v3"
+        },
+        {
+          "spec": "mk8s/openapi-v3.yaml",
+          "method": "DELETE",
+          "path": "/v3/nodePools/{nodePoolId}",
+          "note": "тот же запрос в v3"
+        },
+        {
+          "spec": "mk8s/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/v3/nodePools/{nodePoolId}",
+          "note": "карточка группы: состояние и желаемое число узлов после принятого запроса"
+        },
+        {
+          "spec": "mk8s/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/v3/clusters/{clusterId}:upgrade",
+          "note": "тот же запрос в v3"
+        },
+        {
+          "spec": "mk8s/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/v3/nodePools/{nodePoolId}:upgrade",
+          "note": "тот же запрос в v3"
+        },
+        {
+          "spec": "mk8s/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/v3/clusters/{clusterId}",
+          "note": "карточка кластера: состояние и версия после обновления"
+        },
+        {
+          "spec": "mk8s/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/v3/operations/{operationId}",
+          "note": "операция запроса: done и форма поля error (Г6)"
+        }
+      ]
+    },
+    {
+      "id": "Г-13",
+      "title": "PostgreSQL: класс узла, диск, число узлов",
+      "requests": [
+        {
+          "spec": "postgresql/openapi-postgresql.yaml",
+          "method": "PATCH",
+          "path": "/v1/clusters/{cluster_id}"
+        },
+        {
+          "spec": "postgresql/openapi-postgresql.yaml",
+          "method": "GET",
+          "path": "/v1/clusters/{cluster_id}"
+        }
+      ]
+    },
+    {
+      "id": "Г-14",
+      "title": "Kafka: число брокеров, диск, класс",
+      "requests": [
+        {
+          "spec": "kafka/openapi-kafka.yaml",
+          "method": "PATCH",
+          "path": "/v1/clusters/{cluster_id}"
+        },
+        {
+          "spec": "kafka/openapi-kafka.yaml",
+          "method": "GET",
+          "path": "/v1/clusters/{cluster_id}"
+        }
+      ]
+    },
+    {
+      "id": "Г-15",
+      "title": "Redis: класс, число шардов или реплик",
+      "requests": [
+        {
+          "spec": "redis/openapi-redis.yaml",
+          "method": "PATCH",
+          "path": "/v1/clusters/{cluster_id}"
+        },
+        {
+          "spec": "redis/openapi-redis.yaml",
+          "method": "GET",
+          "path": "/v1/clusters/{cluster_id}"
+        }
+      ]
+    },
+    {
+      "id": "Г-16",
+      "title": "Резервные копии и планы защиты",
+      "requests": [
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/backups"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/backups"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/backups/{backup_id}"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/backups/{backup_id}/action",
+          "note": "восстановление"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "DELETE",
+          "path": "/api/v1/backups/{backup_id}"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/protection-plans"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/protection-plans"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/protection-plans/{protection_plan_id}",
+          "note": "состояние плана после создания и удаления"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "DELETE",
+          "path": "/api/v1/protection-plans/{protection_plan_id}"
+        }
+      ]
+    },
+    {
+      "id": "Г-17",
+      "title": "Теги: «Менеджер ресурсов» и Compute",
+      "requests": [
+        {
+          "spec": "resource-manager/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/v1/tags",
+          "note": "первое чтение до любой записи; список по ключу; уборка тегов пробы"
+        },
+        {
+          "spec": "resource-manager/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/v1/tags"
+        },
+        {
+          "spec": "resource-manager/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/v1/tags/{tagId}"
+        },
+        {
+          "spec": "resource-manager/openapi-v3.yaml",
+          "method": "PATCH",
+          "path": "/v1/tags/{tagId}"
+        },
+        {
+          "spec": "resource-manager/openapi-v3.yaml",
+          "method": "DELETE",
+          "path": "/v1/tags/{tagId}",
+          "note": "в том числе тега, назначенного диску"
+        },
+        {
+          "spec": "resource-manager/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/v1/tags/{tagId}/assignResource"
+        },
+        {
+          "spec": "resource-manager/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/v1/tags/{tagId}/unassignResource"
+        },
+        {
+          "spec": "resource-manager/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/v1/resources",
+          "note": "ресурсы проекта с тегом — `tagIds`"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1.1/vms",
+          "note": "тег в запросе создания ВМ — `tag_ids`"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/disks",
+          "note": "тег в запросе создания диска — `tag_ids`; отдельной попыткой — `tag_names` с именем того же тега"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/vms/{vm_id}",
+          "note": "`tags` в карточке ВМ"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/disks/{disk_id}",
+          "note": "`tags` в карточке диска"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/vms",
+          "note": "отбор по тегу — `tag_ids`"
+        }
+      ]
+    },
+    {
+      "id": "Г-18",
+      "title": "ВМ: интерфейс и пересоздание",
+      "requests": [
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/interfaces"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "DELETE",
+          "path": "/api/v1/interfaces/{interface_id}"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/vms/{vm_id}/rebuild"
+        }
+      ]
+    },
+    {
+      "id": "Г-22",
+      "title": "Цена «до и после» расчётом",
+      "requests": [
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/projects/{project_id}/price-calculation"
+        },
+        {
+          "spec": "mk8s/openapi.yaml",
+          "method": "POST",
+          "path": "/v2/billing/calculate-price"
+        },
+        {
+          "spec": "mk8s/openapi.yaml",
+          "method": "POST",
+          "path": "/v2/billing/calculate-price-ext"
+        }
+      ]
+    }
   ]
 }

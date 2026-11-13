@@ -145,7 +145,7 @@ func TestWorkflows_APIProbeReadsTheSecondDay(t *testing.T) {
 	for _, name := range []string{
 		"bk19_list", "bk19_card_keys", "pp19_list", "tags19_service", "k8s19_product_config",
 		"k8s19_versions_v2", "flavor19_params", "proj19_", "rid19", "tls19", "price19_flavor_next",
-		"price19_k8s",
+		"price19_k8s", "price19_k8s_detail", "price19_k8s_ratio",
 	} {
 		if !strings.Contains(run.String(), name) {
 			t.Errorf("api-probe: no read %s of the schedule of probes 1.9 (Г-05, Г-06, Г-22)", name)
@@ -177,6 +177,21 @@ func TestWorkflows_APIProbeAsksThePriceOfKubernetesBySpec(t *testing.T) {
 	for _, want := range []string{`type: "MASTER_TYPE_SMALL"`, `type: "DISK_TYPE_SSD_NVME"`, `type: "FLAVOR_TYPE_GENERAL"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("api-probe: the price of Kubernetes is asked without %s: %s", want, strings.TrimSpace(body))
+		}
+	}
+	// Run 52 got 400 «one or more fields have invalid values» on every
+	// body: the deprecated master.type may be the field the service
+	// refuses. So the probe also asks with the flavours of the catalogue
+	// (productConfiguration) and prints the details of a refusal — a
+	// request that only says 400 teaches nothing about the price (Г-51:
+	// the stand's Kubernetes has no rate of its own in any tariff).
+	var run strings.Builder
+	for _, s := range j.Steps {
+		run.WriteString(s.Run)
+	}
+	for _, want := range []string{"$mflavor", "$nflavor"} {
+		if !strings.Contains(run.String(), want) {
+			t.Errorf("api-probe: the price of Kubernetes is never asked with %s of the catalogue", want)
 		}
 	}
 }

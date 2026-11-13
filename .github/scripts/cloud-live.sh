@@ -33,7 +33,7 @@
 # shellcheck disable=SC2015,SC2016,SC2329
 set -euo pipefail
 
-area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet, ops, dbchange или sweep ПРЕФИКС}
+area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet, ops, dbchange, k8schange или sweep ПРЕФИКС}
 here=$(cd "$(dirname "$0")" && pwd)
 ZONE=${ZONE:-ru.AZ-2}
 IMAGE=${IMAGE:-ubuntu-22.04}
@@ -227,6 +227,8 @@ lst() {
 	# Копии и планы защиты проб (область ops): у evo их нет — список прямо.
 	backup) lst_api backups "$p" ;;
 	pplan) lst_api protection-plans "$p" ;;
+	# Теги проб (область ops): у evo их нет — список «Менеджера ресурсов».
+	tag) lst_tags "$p" ;;
 	*) return 1 ;;
 	esac
 }
@@ -250,6 +252,37 @@ lst_api() {
 	fi
 	[ -z "$why" ] || { jq -nc --arg m "$1: $why" '{error: {reason: "API_ERROR", message: $m}}' >"$tmp/lst.err"; return 1; }
 	jq -r --arg p "$2" '.items[] | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' "$tmp/api.json"
+}
+# RM — «Менеджер ресурсов»: адрес — как в опубликованной спецификации
+# (scripts/cloudru-specs.py, resource-manager), константой: токен IAM не
+# уходит на адрес из окружения, входа запуска или ответа платформы
+# (заключение «Риска» 183, У1; держит TestWorkflows_ProbeHostsAreDeclared).
+RM=https://resource-manager.api.cloud.ru/v1
+# lst_tags ПРЕФИКС — lst для тегов: все страницы GET /v1/tags проекта, свои —
+# по ключу (key или начало tagKeyValue: ответ отдаёт пару одной строкой).
+# Ответ-объект без поля tags — тегов нет: пустой список API может не
+# отдавать вовсе (гипотеза до прогона), и уборка проекта без тегов не должна
+# от этого краснеть. Не 2xx, ответ не объект, tags не массив или страниц
+# больше 50 — список не прочитан (код 1).
+lst_tags() {
+	local why='' tok='' pages=0
+	: >"$tmp/tags.l"
+	if [ -z "${PROJECT:-}" ]; then why="нет PROJECT"
+	elif ! iam_fresh >&2; then why="нет токена IAM (KEY_ID, SECRET)"
+	else
+		while :; do
+			api GET "$RM/tags?projectId=$PROJECT&pageSize=100${tok:+&pageToken=$tok}"
+			case "$code" in 2??) ;; *) why="HTTP $code: $(api_why)"; break ;; esac
+			jq -e 'type == "object" and ((has("tags") | not) or (.tags | type == "array"))' "$tmp/api.json" >/dev/null 2>&1 || { why="ответ не объект или tags не массив"; break; }
+			jq -r --arg p "$1" '.tags[]? | ((.key? // .tagKeyValue? // "") | tostring) as $k | select($k | startswith($p)) | "\(.id)\t\($k)"' "$tmp/api.json" >>"$tmp/tags.l"
+			tok=$(jq -r '.nextPageToken // empty' "$tmp/api.json" 2>/dev/null) || tok=
+			[ -n "$tok" ] || break
+			pages=$((pages + 1))
+			[ "$pages" -lt 50 ] || { why="страниц больше 50"; break; }
+		done
+	fi
+	[ -z "$why" ] || { jq -nc --arg m "tags: $why" '{error: {reason: "API_ERROR", message: $m}}' >"$tmp/lst.err"; return 1; }
+	cat "$tmp/tags.l"
 }
 # del ВИД ID — удалить один ресурс (ответ не печатается: в нём ID).
 del() {
@@ -298,10 +331,18 @@ del() {
 			reason="HTTP $code"
 			case "$code" in 2?? | 404) rc=0 ;; esac
 		fi ;;
+	tag)
+		rc=1 reason="нет токена IAM"
+		if iam_fresh && [ -n "${PROJECT:-}" ]; then
+			api DELETE "$RM/tags/$id?projectId=$PROJECT"
+			reason="HTTP $code"
+			case "$code" in 2?? | 404) rc=0 ;; esac
+		fi ;;
 	esac
 }
-# План защиты и копия — раньше ВМ и диска, которые они держат.
-KINDS="pplan backup ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert sg"
+# План защиты и копия — раньше ВМ и диска, которые они держат; тег — после
+# ресурсов, которым назначен.
+KINDS="pplan backup ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert sg tag"
 # area_kinds ОБЛАСТЬ — виды ресурсов, которые область создаёт: её уборка
 # читает только их (список одного вида бывает медленным: ar_list 18.10 —
 # ~9,5 мин). Маршрут тестовой сети — только у net.
@@ -316,8 +357,8 @@ area_kinds() {
 	stack) echo "lb tg vm fip secret" ;;
 	mcp) echo "vm fip" ;;
 	pgnet) echo "vm fip subnet" ;;
-	ops) echo "pplan backup vm fip disk subnet sg" ;;
-	dbchange) echo "" ;; # ресурсов не создаёт: кластер — у job
+	ops) echo "pplan backup vm fip disk subnet sg tag" ;;
+	dbchange | k8schange) echo "" ;; # ресурсов вне кластера не создают: кластер — у job
 	*) echo "${KINDS/route /}" ;;
 	esac
 }
@@ -345,7 +386,7 @@ sweep() {
 	esac
 	while :; do
 		left=0
-		case " $kinds " in *" backup "* | *" pplan "*) iam_fresh || true ;; esac
+		case " $kinds " in *" backup "* | *" pplan "* | *" tag "*) iam_fresh || true ;; esac
 		for kind in $kinds; do
 			t0=$(date +%s)
 			lst_done "$kind" "$p" >"$tmp/l" || {
@@ -403,7 +444,7 @@ iam_token() {
 	TOKEN=
 	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] || return 1
 	TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-		curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
+		curl -sS --connect-timeout 10 --max-time 60 -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
 		jq -r '.access_token // .accessToken // empty')
 	mask "$TOKEN"
 	TOKEN_AT=$SECONDS
@@ -426,7 +467,7 @@ probe_ar_pages() {
 		tok=""
 		prev=""
 		for i in 1 2 3 4 5; do
-			code=$(curl -sS -o "$tmp/arp" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
+			code=$(curl -sS --connect-timeout 10 --max-time 120 -o "$tmp/arp" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
 				"https://ar.api.cloud.ru/v1/registries?projectId=${PROJECT:-}$q${tok:+&pageToken=$tok}" || echo 000)
 			n=$(jq '(.registries // []) | length' "$tmp/arp" 2>/dev/null || echo "?")
 			first=$(jq -r '(.registries // [])[0].id // ""' "$tmp/arp" 2>/dev/null | sha256sum | cut -c1-8)
@@ -443,7 +484,7 @@ probe_ar_pages() {
 probe_dns_op() {
 	local code
 	iam_token || { echo "probe dns: нет токена"; return 0; }
-	code=$(curl -sS -o "$tmp/dop" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://dns.api.cloud.ru/v1/operations/$1" || echo 000)
+	code=$(curl -sS --connect-timeout 10 --max-time 120 -o "$tmp/dop" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://dns.api.cloud.ru/v1/operations/$1" || echo 000)
 	echo "probe dns operation: http $code, ключи $(jq -c 'keys' "$tmp/dop" 2>/dev/null), done $(jq -c '.done' "$tmp/dop" 2>/dev/null), состояние $(jq -c '{status, state, metadata: (.metadata | if type == "object" then keys else . end), error: (.error | if . == null then null else (tostring | .[0:120]) end)}' "$tmp/dop" 2>/dev/null | redact)"
 }
 
@@ -459,7 +500,7 @@ delete_test_rules() {
 	iam_token || { echo "::warning::нет токена — правило $RULE_PORT не удалено"; return 1; }
 	while read -r sg r; do
 		mask "$sg" "$r"
-		code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
+		code=$(curl -sS --connect-timeout 10 --max-time 120 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
 			"https://compute.api.cloud.ru/api/v1/security-groups/$sg/rules/$r")
 		echo "правило $RULE_PORT: DELETE http=$code"
 		n=$((n + 1))
@@ -488,7 +529,7 @@ finish() {
 	if [ "$area" != sweep ]; then
 		echo "== уборка $prefix*"
 		[ "$area" != net ] || delete_test_rules
-		# Область без своих видов ресурсов (dbchange) убирать нечего.
+		# Области без своих видов ресурсов (dbchange, k8schange) убирать нечего.
 		[ -z "$(area_kinds "$area")" ] || sweep "$prefix" "$(area_kinds "$area")" || failed=1
 		if [ "$area" = net ]; then
 			if poll 120 10 no_rules; then ok "правило $RULE_PORT удалено"; else bad "правило $RULE_PORT удалено" "осталось после уборки"; fi
@@ -520,10 +561,10 @@ api_once() {
 	: >"$tmp/api.json" # пустой, а не удалённый: jq читает его без ошибки
 	API_RC=0
 	if [ -n "${3:-}" ]; then
-		code=$(printf '%s' "$3" | curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
+		code=$(printf '%s' "$3" | curl -sS --connect-timeout 10 --max-time 120 -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
 			-H "Authorization: Bearer $TOKEN" "${rid[@]}" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || { API_RC=$? code=000; }
 	else
-		code=$(curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || { API_RC=$? code=000; }
+		code=$(curl -sS --connect-timeout 10 --max-time 120 -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || { API_RC=$? code=000; }
 	fi
 }
 # api — запрос к API; чтение (GET) без ответа (код 000) повторяется до двух
@@ -574,6 +615,8 @@ dns_unlink() {
 	[ -z "$op" ] || { mask "$op"; opwait dns "$op" 300; }
 }
 
+# VM_TAG_IDS — JSON-массив id тегов для tag_ids тела (проба Г-17); пусто —
+# поля нет.
 # vm_post NAME FLAVOR IMAGE ZID SIZE DISK_TYPE INTERFACES — прямой POST
 # /api/v1.1/vms телом, как его шлёт evo (provision.CreateVMRequest): зона и
 # подсеть — по id (availability_zone_id, subnet_id), flavor, образ и тип
@@ -592,9 +635,10 @@ vm_post() {
 		return 0
 	fi
 	api POST https://compute.api.cloud.ru/api/v1.1/vms "$(jq -nc --arg p "$PROJECT" --arg n "$1" --arg f "$2" --arg i "$3" \
-		--arg z "$4" --argjson sz "$5" --arg d "$6" --argjson ifs "$7" --argjson m "$meta" \
+		--arg z "$4" --argjson sz "$5" --arg d "$6" --argjson ifs "$7" --argjson m "$meta" --argjson tags "${VM_TAG_IDS:-null}" \
 		'[{project_id: $p, name: $n, availability_zone_id: $z, flavor_name: $f, image_name: $i, image_metadata: $m,
-		   disks: [{name: ($n + "-boot"), size: $sz, disk_type_name: $d}], interfaces: $ifs}]')"
+		   disks: [{name: ($n + "-boot"), size: $sz, disk_type_name: $d}], interfaces: $ifs}
+		  + (if $tags == null then {} else {tag_ids: $tags} end)]')"
 }
 # vm_meta IMAGE HOSTNAME — image_metadata для прямого POST ВМ по полям
 # образа из image_get (images.Fields — то же правило, что у provision):
@@ -2016,7 +2060,7 @@ keys_of() { jq -c 'if type == "object" then keys else type end' "$tmp/api.json" 
 # ICMP идёт с пустым port_range: поле обязательно, формат для ICMP
 # спецификация не называет — отказ и его текст и есть ответ.
 probe_g11() {
-	local zid=$1 sg rule by_group first='' made='' n0 n1 r t0 dir proto ports cidr
+	local zid=$1 sg rule by_group by_none any_made first='' made='' n0 n1 r t0 dir proto ports cidr
 	iam_token || { gap "Г-11" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap "Г-11" "нет PROJECT"; return 0; }
 	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
@@ -2094,6 +2138,14 @@ probe_g11() {
 		;;
 	*) ok "Г-11: правило без источника" "$(brief)" ;;
 	esac
+	# Правило «все порты» (гипотеза Г5 дельта-аудита 1.9): что платформа
+	# хранит в port_range — от этого зависит, посчитает ли evo правило
+	# открывающим порт. «any» — значение, которое платформа приняла у icmp;
+	# для tcp оно не описано. Источник — тестовый адрес, не интернет; группа
+	# ни к чему не привязана. Ответ создания здесь, список — ниже.
+	api POST "$C1/security-groups/$sg/rules" "$(rule_body ingress tcp any 198.18.255.1/32)"
+	mask "$(jq -r '(if type == "array" then .[0] else . end) | .id? // empty' "$tmp/api.json" 2>/dev/null || true)"
+	any_made=$(case "$code" in 2??) echo "HTTP $code, port_range в ответе создания: «$(jq -r '(if type == "array" then .[0] else . end) | if has("port_range") then (.port_range | tostring) else "нет поля" end' "$tmp/api.json" 2>/dev/null || echo '?')»" ;; *) brief ;; esac)
 	# Правила — отдельным списком группы: в карточке группы их нет, только
 	# счётчики (прогон 205 читал карточку и видел «правил: 0»).
 	rules_get() { api GET "$C1/security-groups/$sg/rules?limit=100"; }
@@ -2101,9 +2153,13 @@ probe_g11() {
 	# Правило с группой-источником в ответе списка: по списку, а не по
 	# чтению по id, evo узнаёт такое правило (sgrules, данные «разработки A»).
 	by_group='first(.items[]? | select(.port_range? == "18092:18092"))'
+	by_none='first(.items[]? | select(.port_range? == "18093:18093"))'
 	rules_get
 	n0=$(count_rules)
-	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?'), правило с группой-источником в списке: $(if jq -e "$by_group" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_group"), remote_ip_prefix: $(prefix_kind "$by_group")"; else echo "не найдено"; fi)"
+	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?'), правило с группой-источником в списке: $(if jq -e "$by_group" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_group"), remote_ip_prefix: $(prefix_kind "$by_group")"; else echo "не найдено"; fi), правило без источника в списке: $(if jq -e "$by_none" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_none"), remote_ip_prefix: $(prefix_kind "$by_none")"; else echo "не найдено"; fi)"
+	# В списке правило «все порты» — единственное tcp с тестовым адресом и не
+	# с портом пробы.
+	ok "Г-11: правило «все порты»" "$any_made; в списке: «$(jq -r '[.items[]? | select(.ip_protocol? == "tcp" and .remote_ip_prefix? == "198.18.255.1/32" and .port_range? != "18090:18090") | .port_range | tostring] | first // "не найдено"' "$tmp/api.json" 2>/dev/null || echo '?')»"
 	# Повтор правила, которое создано (не первого в списке: в прогоне 207
 	# оно не создалось, и «повтор» создал его впервые): 2xx и новое
 	# правило, 2xx без нового или отказ.
@@ -2127,12 +2183,12 @@ probe_g11() {
 		api DELETE "$2"
 		r="$r, повтор сразу — $(brief)"
 		t0=$SECONDS
-		if ops_settle "$2" 120 gone; then
+		if ops_settle "$2" "${PROBE_WAIT:-120}" gone; then
 			r="$r; состояния: $chain, $((SECONDS - t0)) с"
 			api DELETE "$2"
 			r="$r; повтор после исчезновения — $(brief)"
 		else
-			r="$r; не исчезло за 2 мин (состояния: $chain) — повтор после исчезновения не шлю"
+			r="$r; не исчезло за ${PROBE_WAIT:-120} с (состояния: $chain) — повтор после исчезновения не шлю"
 		fi
 		ok "Г-11: удаление $1" "$r"
 	}
@@ -2175,10 +2231,12 @@ why_tail() { case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac; }
 # ops_reach URL СЕКУНД СОСТОЯНИЕ [changed] — читать карточку, пока state не
 # станет СОСТОЯНИЕМ; с changed — не раньше, чем state хоть раз сменился
 # (перезагрузка: running → … → running). Итог — $st и $chain, как у
-# ops_settle. Код 1 — не дождались или state error*.
+# ops_settle, $reach0 — состояние в первом чтении и $reach_moved — через сколько
+# секунд чтение впервые показало другое (пусто — не показало). Код 1 — не
+# дождались или state error*.
 ops_reach() {
-	local url=$1 until=$(($(date +%s) + $2)) s n=0
-	st='' chain=''
+	local url=$1 until=$(($(date +%s) + $2)) s n=0 from=$SECONDS
+	st='' chain='' reach0='' reach_moved=''
 	while :; do
 		iam_fresh || true
 		api GET "$url"
@@ -2188,11 +2246,23 @@ ops_reach() {
 		esac
 		[ "$s" = "$st" ] || { chain="${chain:+$chain → }$s"; n=$((n + 1)); }
 		st=$s
+		[ -n "$reach0" ] || reach0=$s
+		[ -n "$reach_moved" ] || [ "$s" = "$reach0" ] || reach_moved=$((SECONDS - from))
 		if [ "$s" = "$3" ] && { [ -z "${4:-}" ] || [ "$n" -gt 1 ]; }; then return 0; fi
 		case "$s" in error*) return 1 ;; esac
 		[ "$(date +%s)" -lt "$until" ] || return 1
 		sleep "$PROBE_PAUSE"
 	done
+}
+# lag ПРЕЖНЕЕ — после ops_reach: что показало первое чтение карточки после
+# принятой команды питания (ответ 204 без операции) — ещё прежнее состояние
+# или уже новое, и когда чтение показало смену. Шаг evo, который читает
+# состояние сразу после ответа, по прежнему состоянию решит, что команда не
+# принята (гипотеза Г1 дельта-аудита 1.9, FB19I-3). Точность — шаг чтений.
+lag() {
+	if [ "$reach0" != "$1" ]; then echo "первое чтение после ответа: уже $reach0"
+	elif [ -n "$reach_moved" ]; then echo "первое чтение после ответа: ещё $1, смена состояния — в чтении через $reach_moved с (шаг чтений $PROBE_PAUSE с)"
+	else echo "первое чтение после ответа: ещё $1, смены состояния чтения не показали"; fi
 }
 # mcode — машинный код причины последнего ответа api (поля code,
 # error_code, type и reason в details — так отвечают API DBaaS; тело —
@@ -2278,10 +2348,10 @@ probe_g16() {
 		[ -n "$bid" ] || { gap "Г-16: копия $1" "id не прочитан — остаток уберёт уборка области"; return 0; }
 		t0=$SECONDS
 		ops_settle "$C1/backups/$bid" 900 || true
-		ok "Г-16: копия $1, ожидание готовности" "состояния: $chain; $((SECONDS - t0)) с; type $(jq -r '.type? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), size больше нуля: $(jq -r 'if (.size? // 0) > 0 then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?'); поля карточки: $(keys_of)"
+		ok "Г-16: копия $1, ожидание готовности" "состояния: $chain; $((SECONDS - t0)) с; type $(jq -r '.type? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), size больше нуля: $(jq -r 'if (.size? // 0) > 0 then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?'); created_at: $(time_form created_at); поля карточки: $(keys_of)"
 		[ "$st" = created ] || bid_bad=1
 	}
-	local bid bid_bad=0 bd_ok=0 bv_ok=0
+	local bid bid_bad=0 bd_ok=0 bv_ok=0 rd_seen=0
 	if [ -n "$disk" ]; then
 		g16_backup диска "$n-bd" disk "$disk"
 		bd=$bid
@@ -2311,13 +2381,53 @@ probe_g16() {
 		esac
 		t0=$SECONDS
 		ops_settle "$C1/backups/$2" 600 || true
-		r="$r; состояния копии: $chain; last_restore_time задан: $(jq -r 'if (.last_restore_time? // null) != null then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+		r="$r; состояния копии: $chain; last_restore_time: $(time_form last_restore_time)"
 	}
 	if [ "$bd_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
 		if g16_restore диска "$bd" "$(jq -nc --arg n "$n-rd" '{name: $n, description: "evo e2e probe"}')"; then
-			rd_there() { [ -n "$(lst disk "$n-rd")" ]; }
-			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
+			local rd_out=''
+			rd_there() { rd_out=$(lst disk "$n-rd") && [ -n "$rd_out" ]; }
+			rd_seen=0
+			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then rd_seen=1 r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии — список читает только проект пробы: диск в другом проекте он не покажет"; fi
+			# Запрос восстановления проекта не несёт (гипотеза Г4 дельта-аудита
+			# 1.9): в чьём проекте диск, говорит его карточка.
+			if [ "$rd_seen" = 1 ]; then
+				local rd_id
+				rd_id=$(cut -f1 <<<"$rd_out" | head -1)
+				mask "$rd_id"
+				api GET "$C1/disks/$rd_id"
+				r="$r; проект диска по карточке: $(case "$code" in
+				2??) jq -r --arg p "$PROJECT" 'if (.project? | type) != "object" or (.project.id? // "") == "" then "поля project.id в карточке нет"
+					elif .project.id == $p then "проект пробы" else "другой проект" end' "$tmp/api.json" 2>/dev/null || echo "карточка не разобрана" ;;
+				*) echo "не прочитан (HTTP $code)" ;;
+				esac)"
+			fi
 			ok "Г-16: восстановление диска" "$r"
+			# Второе восстановление той же копии под тем же именем (гипотеза
+			# Г3 дельта-аудита 1.9, FB19I-18): отказ платформы или второй
+			# диск с тем же именем — на этом стоит, может ли evo отличить
+			# «восстановлено» от «восстановлено дважды». Второй диск, если
+			# появится, носит имя пробы — его уберёт уборка области.
+			if [ "$rd_seen" = 1 ]; then
+				api POST "$C1/backups/$bd/action" "$(jq -nc --arg n "$n-rd" '{action: "restore", resource: {target_config: {name: $n, description: "evo e2e probe"}}}')"
+				r=$(brief)
+				case "$code" in 2??)
+					ops_settle "$C1/backups/$bd" 600 || true
+					rd_two() { [ "$(lst disk "$n-rd" | wc -l)" -ge 2 ]; }
+					# Свой предел, не PROBE_WAIT: второго диска может не
+					# быть вовсе, и ждать его общий предел незачем.
+					r="$r; состояния копии: $chain"
+					# Принято, а диска нет: он может появиться после уборки
+					# области — платный остаток, которого никто не видел.
+					# Проба не делает вид, что убрала: говорит, что сделать.
+					if ! poll "${PROBE_WAIT_TWICE:-120}" "$PROBE_PAUSE" rd_two; then
+						r="$r; второго диска за ${PROBE_WAIT_TWICE:-120} с нет — через 30 минут — уборка области по префиксу (диск может появиться позже)"
+						echo "::warning::Г-16: второе восстановление принято, а второго диска за ${PROBE_WAIT_TWICE:-120} с нет — диск с именем пробы может появиться после уборки: через 30 минут запустите уборку области (sweep) и запишите в отчёте прогона «дисков с именем пробы: 0»"
+					fi
+					;;
+				esac
+				ok "Г-16: второе восстановление той же копии под тем же именем" "$r; дисков с этим именем: $(if o=$(lst disk "$n-rd"); then grep -c . <<<"$o" || true; else echo '?'; fi)"
+			fi
 		fi
 	fi
 	if [ "$bv_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
@@ -2477,6 +2587,17 @@ probe_g16() {
 # power СЛОВО — set-power ВМ пробы (её адрес — в $url вызывающей пробы);
 # код — в $code.
 power() { api POST "$url/set-power" "$(jq -nc --arg s "$1" '{state: $s}')"; }
+# time_form ПОЛЕ — в каком виде ответ отдаёт время: «RFC3339 с зоной», «без
+# зоны», «нет» или «иной вид». evo считает возраст копии и предупреждает о
+# недавнем восстановлении по этим полям; вид без зоны разбор отбросит молча
+# (гипотеза Г7 дельта-аудита 1.9). Значение в лог не идёт — только вид.
+time_form() {
+	jq -er --arg f "$1" '.[$f] | if . == null then "нет"
+		elif type != "string" then "иной вид (\(type))"
+		elif test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$") then "RFC3339 с зоной"
+		elif test("^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$") then "без зоны"
+		else "иной вид" end' "$tmp/api.json" 2>/dev/null || echo '?'
+}
 # prefix_kind [ОТБОР] — что правило хранит в remote_ip_prefix, словами,
 # которые маска адресов не стирает: null, пусто, весь IPv4, весь IPv6 или
 # другой CIDR. source_kind [ОТБОР] — в какой форме ответ отдаёт
@@ -2525,7 +2646,7 @@ probe_g10() {
 		r="HTTP $code"
 		t0=$SECONDS
 		ops_reach "$url" "${PROBE_WAIT:-600}" stopped || true
-		ok "$1" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес в карточке остановленной: $(has_ip)"
+		ok "$1" "$r; состояния: $chain, $((SECONDS - t0)) с; $(lag running); публичный адрес в карточке остановленной: $(has_ip)"
 	}
 	if g10_stop "Г-10: остановка"; then
 		power power_off
@@ -2536,7 +2657,7 @@ probe_g10() {
 			r="HTTP $code"
 			t0=$SECONDS
 			ops_reach "$url" 600 running || true
-			ok "Г-10: запуск" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес тот же: $(has_ip)"
+			ok "Г-10: запуск" "$r; состояния: $chain, $((SECONDS - t0)) с; $(lag stopped); публичный адрес тот же: $(has_ip)"
 			power power_on
 			ok "Г-10: повтор запуска запущенной" "$(brief)"
 			;;
@@ -2553,7 +2674,7 @@ probe_g10() {
 			r="$r; повтор сразу — $(brief)"
 			t0=$SECONDS
 			ops_reach "$url" 600 running changed || true
-			ok "Г-10: перезагрузка" "$r; состояния: $chain, $((SECONDS - t0)) с"
+			ok "Г-10: перезагрузка" "$r; состояния: $chain, $((SECONDS - t0)) с; $(lag running)"
 			;;
 		*) refusal "Г-10: перезагрузка" синхронно ;;
 		esac
@@ -2649,6 +2770,223 @@ probe_g10() {
 	done
 	if [ "$left" = 0 ]; then ok "Г-20: проба цены не состоялась" "flavor ВМ не подтверждён исходным — ВМ, адрес и диск удалены сразу; нужен новый запуск"
 	else bad "Г-20: проба цены не состоялась" "flavor ВМ не подтверждён исходным, а удаление не прошло — ВМ, адрес или диск остались: запустите cleanup_only со словом g20 во входе probes"; fi
+}
+
+# Проба Г-17: теги. Тег создаётся в «Менеджере ресурсов» (пара «ключ —
+# значение», спецификация resource-manager); Compute принимает у ВМ и диска
+# tag_ids и tag_names (одно имя) и называет источником другой адрес —
+# одна ли это сущность, спецификации не говорят, и это главный вопрос пробы
+# (волна В6). Что записывается: первое чтение тегов проекта (до любой
+# записи); создание тега, чтение по id и по ключу, изменение; диск и ВМ с
+# tag_ids в запросе создания — принят ли, что в tags карточки; отбор ВМ по
+# тегу в Compute и ресурсов по тегу в «Менеджере»; диск с tag_names = имени
+# того же тега; снятие и назначение тега диску через «Менеджер»; удаление
+# тега, назначенного диску, его повтор и tags диска после.
+# Условия заключения «Риска» 183: до записи — чтение, и тег шире проекта —
+# конец пробы (У2); изменение, удаление и назначение — только по id тега из
+# ответа своего создания и только на ВМ и диск этого запуска (У3); удаление
+# назначенного тега — на диске, после удаления ВМ, последним (У4); попытка
+# tag_names вводит только имя уже созданного тега и отключается словом
+# g17nonames во входе probes — вторым прогоном, если первый оставил тег,
+# которого «Менеджер» не видит (У5).
+probe_g17() {
+	local zid=$1 n=$prefix-g17 tag='' disk='' disk2='' vm='' sn r wider n1 same id did left=0 blind=0
+	iam_token || { gap "Г-17" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap "Г-17" "нет PROJECT"; return 0; }
+	# tag_of — тег в ответе: сам объект или в поле tag.
+	tag_of() { jq -r "(.tag? // .) | $1" "$tmp/api.json" 2>/dev/null || true; }
+	# tags_n — сколько тегов в карточке ресурса Compute (последний ответ).
+	tags_n() { jq -r 'if has("tags") then (.tags | if type == "array" then "\(length), поля тега: \((.[0]? // {}) | keys | tojson)" else type end) else "поля tags нет" end' "$tmp/api.json" 2>/dev/null || echo '?'; }
+	# mine_n — сколько тегов с ключом пробы видит «Менеджер» («?» — список не
+	# прочитан). Список, который не показал только что созданный тег
+	# (blind=1), счётом остатков не служит: «не установлено» (У7).
+	mine_n() {
+		local o
+		if [ "$blind" = 1 ]; then echo "не установлено"
+		elif o=$(lst_tags "$n"); then grep -c . <<<"$o" || true
+		else echo '?'; fi
+	}
+	api GET "$RM/tags?projectId=$PROJECT&pageSize=100"
+	case "$code" in 2??) ;; *)
+		gap "Г-17" "первое чтение тегов не прошло: $(brief) — запись не начинаю"
+		return 0
+		;;
+	esac
+	# По первой странице (до 100 тегов): её хватает, чтобы увидеть, что
+	# список проекта отдаёт чужое; проект созданного тега сверяется ниже.
+	wider=$(jq -r --arg p "$PROJECT" '[.tags[]? | select(has("projectId") and .projectId != $p)] | length' "$tmp/api.json" 2>/dev/null) || wider='?'
+	ok "Г-17: чтение тегов до записи" "HTTP $code, тегов: $(jq -r '.tags? | if type == "array" then length else "нет поля tags" end' "$tmp/api.json" 2>/dev/null || echo '?'), поля ответа: $(keys_of), поля тега: $(jq -c '(.tags[0]? // {}) | keys' "$tmp/api.json" 2>/dev/null || echo '?'), тегов другого проекта в ответе: $wider"
+	if [ "$wider" != 0 ]; then
+		gap "Г-17" "тег шире проекта — не покрыто: список проекта отдаёт теги другого проекта ($wider); запись не начинаю"
+		return 0
+	fi
+	api POST "$RM/tags" "$(jq -nc --arg p "$PROJECT" --arg k "$n" '{key: $k, value: "probe", description: "evo e2e probe", projectId: $p}')"
+	case "$code" in 2??) ;; *)
+		refusal "Г-17: создание тега" синхронно
+		return 0
+		;;
+	esac
+	tag=$(tag_of '.id? // empty')
+	mask "$tag"
+	ok "Г-17: создание тега" "HTTP $code, поля ответа: $(keys_of), пара в ответе: «$(tag_of '.tagKeyValue? // "нет поля"' | cut -c1-120)», проект тега: $(jq -r --arg p "$PROJECT" '(.tag? // .) | if has("projectId") | not then "поля нет" elif .projectId == $p then "проект пробы" else "другой" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+	[ -n "$tag" ] || { gap "Г-17: тег" "id не прочитан — остаток уберёт уборка области по ключу"; return 0; }
+	if [ "$(jq -r --arg p "$PROJECT" '(.tag? // .) | has("projectId") and .projectId != $p' "$tmp/api.json" 2>/dev/null)" = true ]; then
+		api DELETE "$RM/tags/$tag?projectId=$PROJECT"
+		gap "Г-17" "тег шире проекта — не покрыто: созданный тег не в проекте пробы; удаление своего тега — $(brief)"
+		return 0
+	fi
+	# Список, которым читает уборка, обязан показать созданный тег: иначе
+	# «тегов пробы: 0» после прогона ничего не значит — список отдаётся под
+	# другим полем, с другим ключом или не весь (заключение «Риска» 183, У7).
+	# Свой тег проба всё равно удаляет по id из ответа создания.
+	if ! lst_tags "$n" 2>/dev/null | cut -f1 | grep -qxF "$tag"; then
+		blind=1
+		echo "::warning::Г-17: список тегов не показывает созданный тег: уборка по списку слепа — остаток тега пробы она не увидит; счёт «тегов пробы в Менеджере» в этом прогоне не установлен"
+	fi
+	api GET "$RM/tags/$tag?projectId=$PROJECT"
+	r="список уборки показывает созданный тег: $([ "$blind" = 0 ] && echo да || echo нет); чтение по id — HTTP $code$(why_tail), поля: $(jq -c '(.tag? // .) | if type == "object" then keys else type end' "$tmp/api.json" 2>/dev/null || echo '?')"
+	api GET "$RM/tags?projectId=$PROJECT&key=$n"
+	ok "Г-17: чтение тега" "$r; отбор по ключу — HTTP $code$(why_tail), найдено: $(jq -r '.tags? | if type == "array" then length else "?" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+	api PATCH "$RM/tags/$tag" "$(jq -nc --arg p "$PROJECT" '{projectId: $p, description: "evo e2e probe, changed"}')"
+	ok "Г-17: изменение тега" "$(brief)"
+	# Диск с тегом в запросе создания. Отказ не по квоте — диск без тега:
+	# шаги назначения идут на нём.
+	g17_disk() { # ИМЯ [ПОЛЕ ЗНАЧЕНИЕ-JSON]
+		api POST "$C1/disks" "$(jq -nc --arg p "$PROJECT" --arg n "$1" --arg z "$ZONE" --arg f "${2:-}" --argjson v "${3:-null}" \
+			'{project_id: $p, name: $n, size: 10, availability_zone_name: $z, disk_type_name: "SSD", description: "evo e2e probe"} + (if $f == "" then {} else {($f): $v} end)')"
+	}
+	# disk_id ИМЯ — id диска из ответа создания (или по имени) в $did. Не
+	# через $(…): команда маски попала бы в значение.
+	disk_id() { did=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || did=; [ -n "$did" ] || did=$(lst disk "$1" | cut -f1 | head -1) || did=; mask "$did"; }
+	g17_disk "$n-d" tag_ids "$(jq -nc --arg t "$tag" '[$t]')"
+	case "$code" in
+	2??)
+		disk_id "$n-d"
+		disk=$did
+		r="HTTP $code"
+		if [ -n "$disk" ]; then
+			api GET "$C1/disks/$disk"
+			r="$r; tags в карточке диска: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+		fi
+		ok "Г-17: диск с tag_ids в запросе создания" "$r"
+		;;
+	*)
+		refusal "Г-17: диск с tag_ids в запросе создания" синхронно
+		if [ "$QUOTA_HIT" = 0 ]; then
+			g17_disk "$n-d"
+			case "$code" in
+			2??)
+				disk_id "$n-d"
+				disk=$did
+				;;
+			*) gap "Г-17: диск без тега" "$(brief)" ;;
+			esac
+		fi
+		;;
+	esac
+	# ВМ с тегом в запросе создания: без публичного адреса, в подсети зоны.
+	if [ "$QUOTA_HIT" = 0 ]; then
+		sn=$(zone_subnet "$zid")
+		mask "$sn"
+		if [ -z "$sn" ]; then
+			gap "Г-17: ВМ с tag_ids" "нет подсети в $ZONE"
+		else
+			VM_TAG_IDS=$(jq -nc --arg t "$tag" '[$t]') vm_post "$n" "$FLAVOR" "$IMAGE" "$zid" 20 SSD "$(regular_if "$sn")"
+			case "$code" in
+			2??)
+				r="HTTP $code"
+				vm=$(jq -r '(if type == "array" then .[0] else (.vms[0]? // .) end) | .id? // empty' "$tmp/api.json" 2>/dev/null) || vm=
+				g17_vm() { vm=$(evo tools call vm_get --arg name="$n" --json 2>/dev/null | jq -r '.id // empty'); [ -n "$vm" ]; }
+				[ -n "$vm" ] || poll 60 3 g17_vm || true
+				mask "$vm"
+				if [ -n "$vm" ]; then
+					api GET "$C1/vms/$vm"
+					r="$r; tags в карточке ВМ: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+					api GET "$C1/vms?project_id=$PROJECT&tag_ids=$tag&limit=100"
+					r="$r; отбор ВМ по tag_ids — HTTP $code$(why_tail), найдено: $(jq -r '.items? | if type == "array" then length else "?" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+				else
+					r="$r; id ВМ не прочитан за 60 с — остаток уберёт уборка области"
+				fi
+				ok "Г-17: ВМ с tag_ids в запросе создания" "$r"
+				;;
+			*) refusal "Г-17: ВМ с tag_ids в запросе создания" синхронно ;;
+			esac
+		fi
+	fi
+	iam_fresh || true
+	api GET "$RM/resources?projectIds=$PROJECT&tagIds=$tag&pageSize=100"
+	ok "Г-17: ресурсы по тегу в «Менеджере»" "HTTP $code$(why_tail), найдено: $(jq -r '.resources? | if type == "array" then length else "нет поля resources" end' "$tmp/api.json" 2>/dev/null || echo '?'), виды: $(jq -c '[.resources[]?.resourceTypeName] | unique' "$tmp/api.json" 2>/dev/null || echo '?')"
+	# Диск с tag_names = имени уже созданного тега: нового имени проба не
+	# вводит. Принят, а тег с этим ключом в «Менеджере» по-прежнему один —
+	# возможен второй тег в сервисе, которого проба не видит и не уберёт.
+	if probe_on g17nonames; then
+		ok "Г-17: диск с tag_names" "не повторяется: остаток неубираем (слово g17nonames во входе probes)"
+	elif [ "$QUOTA_HIT" = 0 ]; then
+		g17_disk "$n-d2" tag_names "$(jq -nc --arg t "$n" '[$t]')"
+		case "$code" in
+		2??)
+			disk_id "$n-d2"
+			disk2=$did
+			r="HTTP $code"
+			# same — тег на диске тот же, что тег «Менеджера»: да, нет или
+			# «?» (карточка не прочитана). Читается до счёта тегов: тот
+			# перезаписывает последний ответ.
+			same='?'
+			if [ -n "$disk2" ]; then
+				api GET "$C1/disks/$disk2"
+				case "$code" in
+				2??)
+					same=$(jq -r --arg t "$tag" 'if ([.tags[]?.id] | index($t)) != null then "да" else "нет" end' "$tmp/api.json" 2>/dev/null) || same='?'
+					r="$r; tags в карточке диска: $(tags_n), id тега тот же, что у тега «Менеджера»: $same"
+					;;
+				*) r="$r; карточка диска: $(brief)" ;;
+				esac
+			fi
+			n1=$(mine_n)
+			r="$r; тегов с ключом пробы в «Менеджере»: $n1"
+			ok "Г-17: диск с tag_names" "$r"
+			if [ "$n1" = 1 ] && [ "$same" = нет ]; then
+				echo "::warning::Г-17: диск с tag_names принят, а тег на нём — не тег «Менеджера»: второго тега в «Менеджере» нет; есть ли он в сервисе тегов Compute, проба не видит и убрать не может — остаток неизвестной сущности с именем пробы, цена тега неизвестна. Второй прогон — со словом g17nonames во входе probes; остаток — пункт реестра расхождений"
+			fi
+			;;
+		*) refusal "Г-17: диск с tag_names" синхронно ;;
+		esac
+	fi
+	# Снятие и назначение через «Менеджер» — на диске этого запуска.
+	if [ -n "$disk" ]; then
+		g17_assign() { api POST "$RM/tags/$tag/$1" "$(jq -nc --arg p "$PROJECT" --arg r "$disk" '{resourceId: $r, projectId: $p}')"; }
+		g17_assign unassignResource
+		r="снятие — $(brief)"
+		api GET "$C1/disks/$disk"
+		r="$r, tags диска: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+		g17_assign assignResource
+		r="$r; назначение — $(brief)"
+		api GET "$C1/disks/$disk"
+		ok "Г-17: снятие и назначение тега диску" "$r, tags диска: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+	fi
+	# ВМ и второй диск удаляются до удаления тега: если после него ресурс
+	# не удалится, останется диск 10 ГБ, а не ВМ.
+	if [ -n "$vm" ]; then
+		del vm "$vm"
+		[ "$rc" = 0 ] || left=1
+		poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" gone vm "$n" || left=1
+	fi
+	iam_fresh || true
+	api DELETE "$RM/tags/$tag?projectId=$PROJECT"
+	r="HTTP $code$(why_tail)"
+	api DELETE "$RM/tags/$tag?projectId=$PROJECT"
+	r="$r, повтор — $(brief)"
+	if [ -n "$disk" ]; then
+		api GET "$C1/disks/$disk"
+		r="$r; tags диска после удаления тега: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+	fi
+	ok "Г-17: удаление тега, назначенного диску" "$r; тегов с ключом пробы в «Менеджере»: $(mine_n)"
+	for id in "$disk" "$disk2"; do
+		[ -n "$id" ] || continue
+		del disk "$id"
+		[ "$rc" = 0 ] || { left=1; echo "::warning::Г-17: диск пробы не удалён после удаления тега ($reason) — остаток: disk $id; уберёт уборка области, в отчёт — «ресурсов пробы» не 0"; }
+	done
+	[ "$left" = 0 ] || gap "Г-17: уборка пробы" "ВМ или диск не удалены сразу — остаток уберёт уборка области"
 }
 
 # Проба Г-18: второй интерфейс и пересоздание ВМ. ВМ с публичным адресом и
@@ -2835,6 +3173,8 @@ area_ops() {
 	! probe_on g16 || probe_g16 "$zid"
 	QUOTA_HIT=0
 	! probe_on g18 || probe_g18 "$zid"
+	QUOTA_HIT=0
+	! probe_on g17 || probe_g17 "$zid"
 }
 
 # --- Область dbchange: изменение готового кластера DBaaS (Г-13…Г-15) ---------
@@ -2972,8 +3312,176 @@ area_dbchange() {
 	esac
 }
 
+# Проба Г-12 (с Г6 дельта-аудита 1.9): Managed Kubernetes. Кластер на
+# предпоследней версии и его группа узлов из одного узла — у job k8s-smoke;
+# дальше прямые запросы mk8s v3 (опись docs/internal/probes/requests-1.9.md):
+# масштаб 1→2 и сразу повтор того же запроса, 2→1; вторая группа (evo) и
+# её удаление, пока она создаётся; обновление версии кластера до
+# K8S_UPGRADE_TO, затем группы; масштаб до 0; удаление последней группы.
+# Обновление — после второй группы: оно самое долгое и необратимое, и
+# зависшее не должно съесть шаг второй группы; масштаб до 0 и удаление
+# последней группы — после него, потому что обновлять группу нужно с
+# узлом. Зависнет обновление — эти два шага не идут, группу убирает
+# удаление кластера (заключение «Риска» 189, У1).
+# Что записывается: код и поля ответа; первое чтение карточки сразу после
+# принятого запроса — состояние и желаемое число (меняет ли платформа их
+# сразу — на этом стоит защита k8s_nodepool_scale от дубля, строка плана
+# Г-12); цепочка состояний и время; форма поля error операции, пока она
+# идёт и в конце (Г6). Отказ платформы — ответ, не провал. Ресурсов вне
+# кластера проба не создаёт: вторую группу и всё остальное удаляет
+# удаление кластера в job. Шаг не шлётся, если прошлый не завершился
+# (запрос поверх незавершённого) и после срока пробы K8S_BUDGET.
+K8S_SETTLE=${K8S_SETTLE:-120}
+area_k8schange() {
+	local id=${K8S_CLUSTER_ID:-} to=${K8S_UPGRADE_TO:-} g=Г-12 mk=https://mk8s.api.cloud.ru/v3
+	local np np2 purl stuck=0 deadline=$(($(date +%s) + ${K8S_BUDGET:-5400})) kop='' kop2='' hookr='' kfirst='' K_HOOK=''
+	[ -n "$id" ] || { bad k8schange "нет K8S_CLUSTER_ID"; return 1; }
+	mask "$id"
+	iam_fresh || { gap "$g" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	np=$(evo tools call k8s_nodepools --arg cluster_id="$id" --json 2>/dev/null | jq -r '[.node_pools[]? | .id // empty] | if length == 1 then .[0] else empty end') || np=
+	[ -n "$np" ] || { gap "$g" "в кластере не одна группа узлов (или список не прочитан) — проба ждёт одну"; return 0; }
+	mask "$np"
+	purl=$mk/nodePools/$np
+	# k_state pool|cluster — состояние из последнего ответа api: у группы —
+	# «состояние/желаемое число», у кластера — «состояние/версия».
+	k_state() {
+		case "$code" in
+		2??) ;;
+		404) echo "нет (404)"; return 0 ;;
+		*) echo "HTTP $code"; return 0 ;;
+		esac
+		if [ "$1" = pool ]; then
+			jq -r '(.nodePool? // .) | "\(.status // "без status")/\(.scalePolicy.fixedScale.count // .scalePolicy.autoScale.minCount // "?") узл., \(.version // "?")"' "$tmp/api.json" 2>/dev/null || echo "не JSON"
+		else
+			jq -r '(.cluster? // .) | "\(.status // "без status")/\((.controlPlane.version // .controlPlaneConfiguration.version // .version) // "?")"' "$tmp/api.json" 2>/dev/null || echo "не JSON"
+		fi
+	}
+	# op_shape — операция по последнему ответу api: done и форма поля error
+	# (Г6: нет поля, null, {} или объект с какими ключами).
+	op_shape() {
+		case "$code" in 2??) ;; *) echo "HTTP $code"; return 0 ;; esac
+		jq -r '"done=\(if has("done") then .done else "нет поля" end), error: " + (if has("error") | not then "нет поля" elif .error == null then "null" elif .error == {} then "{}" elif (.error | type) == "object" then "объект, ключи \(.error | keys | join(","))" else (.error | type) end)' "$tmp/api.json" 2>/dev/null || echo "не JSON"
+	}
+	# k_watch URL pool|cluster ДО [gone] — читать карточку до конечного
+	# состояния: RUNNING после другого состояния или без смены K8S_SETTLE
+	# секунд (смена одного желаемого числа при RUNNING — ещё не конец: узлы
+	# могут не начать меняться); с gone
+	# — до 404 или DELETED. Первое чтение — в $kfirst, цепочка — в $chain;
+	# после первого чтения — K_HOOK (повтор запроса), если задан. Код 1 —
+	# не дождались или ERROR.
+	k_watch() {
+		local s st='' moved=0 since
+		chain='' kfirst=''
+		since=$(date +%s)
+		while :; do
+			iam_fresh || true
+			api GET "$1"
+			s=$(k_state "$2")
+			[ "$s" = "$st" ] || { chain="${chain:+$chain → }$s"; since=$(date +%s); }
+			case "$s" in *RUNNING* | HTTP* | "не JSON") ;; *) moved=1 ;; esac
+			st=$s
+			if [ -z "$kfirst" ]; then
+				kfirst=$s
+				[ -z "$K_HOOK" ] || "$K_HOOK"
+				[ -z "$kop" ] || { api GET "$mk/operations/$kop"; opmid=$(op_shape); }
+			fi
+			if [ "${4:-}" = gone ]; then
+				case "$s" in "нет (404)" | *DELETED*) return 0 ;; esac
+			else
+				case "$s" in
+				*RUNNING*) { [ "$moved" = 1 ] || [ $(($(date +%s) - since)) -ge "$K8S_SETTLE" ]; } && return 0 ;;
+				*ERROR* | *FAIL*) return 1 ;;
+				esac
+			fi
+			[ "$(date +%s)" -lt "$3" ] || { chain="$chain (не дождались)"; return 1; }
+			sleep "$PROBE_PAUSE"
+		done
+	}
+	# k_step ПРОВЕРКА МЕТОД URL ТЕЛО КАРТОЧКА pool|cluster [gone] — запрос и
+	# ожидание; строка: ответ, первое чтение, операция сразу и в конце.
+	k_step() {
+		local name=$1 m=$2 u=$3 b=$4 card=$5 kind=$6 how=${7:-} now until t0=$SECONDS r opmid='' wrc=0
+		now=$(date +%s)
+		[ "$stuck" = 0 ] || { gap "$name" "прошлый шаг не завершился — дальше не меняю"; return 1; }
+		[ "$now" -lt "$deadline" ] || { gap "$name" "срок пробы ($((${K8S_BUDGET:-5400} / 60)) мин) вышел — шаг не шлю"; return 1; }
+		until=$((now + ${K8S_WAIT:-1500}))
+		case "$name" in *версии*) until=$((now + ${K8S_UPGRADE_WAIT:-2400})) ;; esac
+		[ "$until" -le "$deadline" ] || until=$deadline
+		iam_fresh || true
+		api "$m" "$u" ${b:+"$b"}
+		case "$code" in 2??) ;; *) refusal "$name" синхронно; K_HOOK=''; return 1 ;; esac
+		kop=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)
+		mask "$kop"
+		r="HTTP $code, поля ответа: $(keys_of)"
+		hookr='' kop2=''
+		k_watch "$card" "$kind" "$until" "$how" || wrc=1
+		K_HOOK=''
+		r="$r; первое чтение после ответа: $kfirst${hookr:+; $hookr}; операция сразу: ${opmid:-id нет}; состояния: $chain, $((SECONDS - t0)) с"
+		if [ -n "$kop" ]; then api GET "$mk/operations/$kop"; r="$r; операция в конце: $(op_shape)"; fi
+		if [ -n "$kop2" ]; then api GET "$mk/operations/$kop2"; r="$r; вторая операция в конце: $(op_shape)"; fi
+		ok "$name" "$r"
+		[ "$wrc" = 0 ] || { stuck=1; return 1; }
+	}
+	# k_repeat — тот же масштаб сразу после принятого (K_HOOK шага 1→2):
+	# вторая ли это операция (строка плана Г-12: защита от дубля).
+	k_repeat() {
+		local op2
+		api PATCH "$purl" "$(scale 2)"
+		case "$code" in
+		2??)
+			op2=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null || true)
+			mask "$op2"
+			if [ -z "$op2" ]; then hookr="повтор сразу: HTTP $code, id операции нет"
+			elif [ "$op2" = "$kop" ]; then hookr="повтор сразу: HTTP $code, та же операция"
+			else hookr="повтор сразу: HTTP $code, вторая операция" kop2=$op2; fi
+			;;
+		000) hookr="повтор сразу: ответа нет (curl: код ${API_RC:-?})" ;;
+		*) hookr="повтор сразу: отказ HTTP $code, машинный код: $(mcode); текст: $(api_why | cut -c1-160)" ;;
+		esac
+	}
+	scale() { jq -nc --argjson n "$1" '{scalePolicy: {fixedScale: {count: $n}}}'; }
+	EVO_NOW="k8s_nodepool_scale"
+	K_HOOK=k_repeat
+	k_step "$g: масштаб 1→2" PATCH "$purl" "$(scale 2)" "$purl" pool || true
+	k_step "$g: масштаб 2→1" PATCH "$purl" "$(scale 1)" "$purl" pool || true
+	# Вторая группа: удаление, пока она создаётся (D61 у k8s_nodepool_delete:
+	# примет ли платформа такое удаление — гипотеза строки плана), затем
+	# повтор удаления после исчезновения (D26).
+	EVO_NOW="k8s_nodepool_delete"
+	if [ "$stuck" = 0 ] && [ "$(date +%s)" -lt "$deadline" ]; then
+		if tc k8s_add_nodepool --arg cluster_id="$id" --arg name=np-g12 --arg count=1 && np2=$(j -r '.nodepool_id // empty') && [ -n "$np2" ]; then
+			mask "$np2"
+			if ! k_step "$g: удаление создающейся группы" DELETE "$mk/nodePools/$np2" "" "$mk/nodePools/$np2" pool gone && [ "$stuck" = 0 ]; then
+				# Отказ: дождаться группы и удалить её готовой.
+				until=$(($(date +%s) + ${K8S_WAIT:-1500}))
+				[ "$until" -le "$deadline" ] || until=$deadline
+				k_watch "$mk/nodePools/$np2" pool "$until" || stuck=1
+				ok "$g: вторая группа готова" "состояния: $chain"
+				k_step "$g: удаление готовой группы" DELETE "$mk/nodePools/$np2" "" "$mk/nodePools/$np2" pool gone || true
+			fi
+			if [ "$stuck" = 0 ]; then
+				api DELETE "$mk/nodePools/$np2"
+				case "$code" in 2??) ok "$g: повтор удаления после исчезновения" "HTTP $code, поля ответа: $(keys_of)" ;; *) refusal "$g: повтор удаления после исчезновения" синхронно ;; esac
+			fi
+		else
+			gap "$g: вторая группа" "k8s_add_nodepool: код $rc, $reason: $why"
+		fi
+	fi
+	EVO_NOW="операции в evo нет"
+	if [ -n "$to" ]; then
+		k_step "$g: обновление версии кластера" POST "$mk/clusters/$id:upgrade" "$(jq -nc --arg v "$to" '{version: $v}')" "$mk/clusters/$id" cluster || true
+		k_step "$g: обновление версии группы" POST "$purl:upgrade" "$(jq -nc --arg v "$to" '{version: $v}')" "$purl" pool || true
+	else
+		gap "$g: обновление версии" "нет K8S_UPGRADE_TO: в каталоге нет версии на минор выше версии кластера"
+	fi
+	EVO_NOW="k8s_nodepool_scale"
+	k_step "$g: масштаб 1→0" PATCH "$purl" "$(scale 0)" "$purl" pool || true
+	EVO_NOW="k8s_nodepool_delete"
+	k_step "$g: удаление последней группы" DELETE "$purl" "" "$purl" pool gone || true
+}
+
 case "$area" in
-disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops | dbchange)
+disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops | dbchange | k8schange)
 	echo "== $area: префикс $prefix"
 	{
 		echo

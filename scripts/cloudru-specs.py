@@ -49,6 +49,11 @@ START_PAGES = {
     "audit": "/docs/audit-logging/ug/topics/api",
     "billing": "/docs/billing/ug/topics/api-ref",
     "organization+iam": "/docs/administration/ug/topics/guides__directory-api",
+    # Resource Manager (1.9): tags, resource groups and the list of the
+    # resources of a project. evo has no code for it yet: the probe of tags
+    # (Г-17) is written from this spec. Found by the registry of the APIs,
+    # not by the list of the pages of the services evo already calls.
+    "resource-manager": "/docs/resource-manager/ug/topics/api-ref__resource-manager",
     # Data Platform (1.3): one host, dataplatform.api.cloud.ru, a spec per
     # product. BI has no API page (404 on 22.10.2026).
     "dataplatform": "/docs/dataplatform/ug/topics/api",
