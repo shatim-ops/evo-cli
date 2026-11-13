@@ -980,6 +980,18 @@ H
 rc=0
 DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
 grep -q 'Г-13: класс на шаг вверх.*отказ HTTP 400.*машинный код: нет.*текст: тело пустое, заголовков grpc-status и grpc-message нет' "$tmp/out" || { echo "FAIL: Г-13: отказ без тела и без заголовков не назван"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+# Код вне 0–16 (ревью Qwen на #1664): назван числом, не пустыми скобками;
+# «+» в grpc-message — буква, а не пробел (процентная кодировка gRPC — не
+# форма x-www-form-urlencoded).
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 400 -
+H
+printf '%s\n' "PATCH $S grpc-status: 17" "PATCH $S grpc-message: a+b%20c" >"$FAKE_DIR/http.h"
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+grep -q 'Г-13: класс на шаг вверх.*машинный код: код 17.*grpc-status 17 (код 17); grpc-message: a+b c' "$tmp/out" || { echo "FAIL: Г-13: код gRPC вне 0–16 или «+» в тексте названы не так"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 
 # Кластер не вернулся в исходное состояние после смены класса: в него
 # уходит только возврат класса; PATCH диска и узлов не шлётся — каждый

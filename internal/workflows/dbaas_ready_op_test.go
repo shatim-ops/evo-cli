@@ -21,7 +21,8 @@ func TestWorkflows_DBaaSReadyKnowsTheCreateOperation(t *testing.T) {
 	for name, j := range jobs {
 		exported := false
 		for _, s := range j.Steps {
-			if strings.Contains(s.Run, `"OP_ID=$op" >> "$GITHUB_ENV"`) {
+			// The id is the create's own answer, read in the same step.
+			if strings.Contains(s.Run, `"OP_ID=$op" >> "$GITHUB_ENV"`) && strings.Contains(s.Run, `op=$(jq -r '.operation_id // empty' "$RUNNER_TEMP/create.json"`) {
 				exported = true
 			}
 			if !strings.Contains(s.Run, "dbaas-ready.sh") {
