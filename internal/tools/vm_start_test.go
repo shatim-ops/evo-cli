@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -77,6 +78,11 @@ func (w *powerWorld) removeVM() {
 }
 
 func (w *powerWorld) SetVMPower(ctx context.Context, id, command string) error {
+	// The command goes out, as the Compute client counts it
+	// (httpretry.UserAgent): a write of the call.
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	if w.onPower != nil {
 		return w.onPower()
 	}

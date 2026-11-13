@@ -18,6 +18,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -35,7 +36,8 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	sent := false
 	tool, _ := r.Lookup("disk_create")
-	h := r.intended(tool, func(context.Context, map[string]any) (string, bool) {
+	h := r.intended(tool, func(ctx context.Context, _ map[string]any) (string, bool) {
+		_ = httpretry.NoteWrite(ctx)
 		sent = true
 		if got := intent.Pending(intent.Dir(dir)); len(got) != 1 {
 			t.Errorf("the call went out with %d intents written", len(got))
@@ -133,7 +135,10 @@ func TestIntent_OutcomeAndTarget(t *testing.T) {
 		{`{"status":"error","reason":"API_RATE_LIMITED"}`, false},
 	} {
 		answer := c.answer
-		r.intended(tool, func(context.Context, map[string]any) (string, bool) { return answer, true })(context.Background(), args)
+		r.intended(tool, func(ctx context.Context, _ map[string]any) (string, bool) {
+			_ = httpretry.NoteWrite(ctx) // the request went out
+			return answer, true
+		})(context.Background(), args)
 		got := intent.Pending(intent.Dir(dir))
 		if (len(got) > 0) != c.keeps {
 			t.Errorf("%s: kept %d, want kept %v", c.answer, len(got), c.keeps)

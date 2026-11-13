@@ -322,7 +322,8 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 	if err != nil {
 		return Token{}, false, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, IAMEndpoint, bytes.NewReader(payload))
+	// A token changes nothing in the cloud: not a write of the call.
+	req, err := http.NewRequestWithContext(httpretry.NotAChange(ctx), http.MethodPost, IAMEndpoint, bytes.NewReader(payload))
 	if err != nil {
 		return Token{}, false, clerrors.Wrap(
 			clerrors.CodeAPIUnreachable,

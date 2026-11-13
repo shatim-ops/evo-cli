@@ -116,11 +116,24 @@ type Intent struct {
 	// is not known, and it is no longer in flight. A record without it
 	// whose process lives is a call that has not returned (inFlight).
 	Ended bool `json:"ended,omitempty"`
-	// Sent tells a call that said, before its write, that the write goes
-	// out (a tool whose writes evo's transport does not count: the power
-	// commands of Compute). A call of such a tool that ended with no
-	// outcome and no Sent sent nothing.
+	// Sent tells a call whose first write went out: it is marked right
+	// before that write is sent (MarkSent), so a process killed after it
+	// leaves the mark.
 	Sent bool `json:"sent,omitempty"`
+	// Counts tells a record of a call whose every write marks it (Sent)
+	// before it goes out: such a record of a call that is no longer in
+	// flight, not ended and without Sent is of a call killed before it
+	// sent anything, and no reader keeps it (Pending; «Риск», conclusion
+	// 187, У2). A record without it — of evo before the mark — is kept as
+	// it was (У6).
+	Counts bool `json:"counts,omitempty"`
+	// Machine is the machine the call ran on (thisMachine): a pid tells
+	// a process only there. A directory of state may be shared — a volume
+	// of containers, a network disk — and a call that runs on another
+	// machine looks dead here: only a record of this machine is dropped as
+	// one that sent nothing («Риск», conclusion 187, У2-3). A hash, not
+	// the name of the host: the file names nothing of the machine.
+	Machine string `json:"machine,omitempty"`
 	// CutSend is when a call that went on with this held operation sent
 	// its write again and was cut before the answer: the operation's
 	// resource may have been changed once more, and the next call asks
@@ -132,6 +145,18 @@ type Intent struct {
 	Canon []byte `json:"-"`
 	// Dir is the directory the intent was read from (Pending); not saved.
 	Dir string `json:"-"`
+}
+
+// thisMachine is the mark of the machine evo runs on: a hash of its host
+// name; "" when the system does not tell it — then no record is taken
+// for one of this machine.
+func thisMachine() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("evo-machine\x00" + host))
+	return hex.EncodeToString(sum[:8])
 }
 
 // printOf is the print of the arguments canon in the record id.
@@ -158,10 +183,15 @@ func (in Intent) inFlight() bool {
 	return !in.Ended && !in.Held && (in.PID == os.Getpid() || processAlive(in.PID))
 }
 
-// MarkSent marks the record in as a call whose write goes out (Sent).
-func MarkSent(in Intent) {
+// MarkSent marks the record in as a call whose write goes out (Sent). An
+// error: the mark is not written, and the write must not go out — the
+// record would say, after a kill, that nothing was sent.
+func MarkSent(in Intent) error {
 	in.Sent = true
-	_ = write(in)
+	if err := write(in); err != nil {
+		return notWritten(in.Dir, err)
+	}
+	return nil
 }
 
 // HoldCut keeps the record in of a cut call whose change goes on as the
@@ -236,6 +266,9 @@ func Open(dir string, in Intent) (Intent, error) {
 		return Intent{}, notWritten(dir, err)
 	}
 	in.ID, in.Dir = hex.EncodeToString(b[:]), dir
+	if in.Machine == "" {
+		in.Machine = thisMachine()
+	}
 	if in.Canon != nil {
 		in.Print = printOf(in.ID, in.Canon)
 	}
@@ -300,8 +333,20 @@ func recordPath(dir, id string) string {
 // evo's form: a regular file named by an id of evo's, whose content names
 // the same id; anything else is skipped, not read — a link, another name,
 // another id (FB180-1).
+//
+// A record of a call that sent nothing and will not (Counts, not Sent,
+// not in flight, not ended) is removed, not returned: the request did
+// not go out, so there is nothing to look for. Its age does not matter.
 func Pending(dir string) []Intent {
-	out, _ := scan(dir)
+	all, _ := scan(dir)
+	var out []Intent
+	for _, in := range all {
+		if in.Counts && !in.Sent && !in.Ended && !in.Held && in.Machine != "" && in.Machine == thisMachine() && !in.inFlight() {
+			remove(dir, in.ID)
+			continue
+		}
+		out = append(out, in)
+	}
 	return out
 }
 
@@ -392,6 +437,8 @@ func Close(in Intent) { remove(in.Dir, in.ID) }
 // nothing.
 func remove(dir, id string) {
 	if path := recordPath(dir, id); path != "" {
-		_ = os.Remove(path)
+		// A concurrent read of the record by another call blocks the
+		// removal on Windows: it is retried (config.YieldingToReaders).
+		_ = config.YieldingToReaders(func() error { return os.Remove(path) })
 	}
 }

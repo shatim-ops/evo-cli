@@ -44,6 +44,10 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		return nil, errNoStateDir()
 	}
 	in := intent.Intent{Tool: name, Surface: "mcp", PID: os.Getpid(), StartedAt: clock.Now(), Canon: r.canonArgs(name, args)}
+	// Its writes are counted (intended): the first marks the record
+	// before it goes out, and a record of a killed call without the mark
+	// sent nothing (intent.Intent.Counts).
+	_, in.Counts = httpretry.Writes(ctx)
 	// The project and the key are those the call goes with: the engine of
 	// its own arguments — a server bound to projects (--allow-project) has
 	// none without them, and the call with project_id goes out all the
@@ -95,22 +99,16 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// directory anew after it.
 		defer forgetPending(ctx)
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
-			// No write went out (changeRule.viaHTTP): the call changed
-			// nothing, whatever cut it.
-			rule := everySendIsAChange[name]
-			if n, counted := httpretry.Writes(ctx); counted && n == 0 && rule.viaHTTP {
-				intent.Close(rec)
-				return
-			}
-			// Nor did a call whose handler says its write goes out
-			// (markSent) and did not say it.
-			if rule.marksSend && !callSent(ctx) {
+			// No write went out — every client of evo counts its writes,
+			// and so do kubectl, helm and ssh (httpretry.NoteWrite): the
+			// call changed nothing, whatever cut it («Риск», conclusion
+			// 187, У2).
+			if n, counted := httpretry.Writes(ctx); counted && n == 0 {
 				intent.Close(rec)
 				return
 			}
 			// The call returned, the record stays: a later call of the
-			// same may settle it (intent.Settle) — with what the call
-			// said of its write (markSent).
+			// same may settle it (intent.Settle).
 			rec.Sent = rec.Sent || callSent(ctx)
 			intent.End(rec)
 			return
@@ -221,24 +219,12 @@ type changeRule struct {
 	// that is taken — the question is asked only while the list does not
 	// show it («Риск», conclusion 179, У1).
 	made bool
-	// marksSend: the handler says right before its write that it goes out
-	// (markSent) — a tool whose writes evo's transport does not count. A
-	// call that ended with no outcome and did not say it sent nothing: its
-	// record closes («Риск», conclusion 177, У13; the conclusion on D107,
-	// У2).
-	marksSend bool
 	// settledBy reads the resource and says what the record of a cut call
 	// of the tool means now: the change is made (the record closes, no
 	// question), it goes on (no question, the plan waits for it), or the
 	// resource is where the change started or elsewhere (the question). nil:
 	// the question, always. An error is a question too.
 	settledBy func(ctx context.Context, r *Registry, args map[string]any) (outcome, error)
-	// viaHTTP: every write of the tool goes out through evo's HTTP
-	// transport (httpretry), which counts them for the call. A call that
-	// ended with no outcome and sent no write changed nothing: its record
-	// closes, and no repeat is asked about a request that never went
-	// («Риск», conclusion 179, У2).
-	viaHTTP bool
 }
 
 // outcome is what the resource of a cut call says of it (settledBy).
@@ -262,7 +248,7 @@ const (
 // the parent it is made in, parent, when it has one — whatever the other
 // arguments of the repeat are.
 func paidCreate(tool, parent string, name func(args map[string]any) string) changeRule {
-	return changeRule{read: createdIDs[tool].list, made: true, viaHTTP: true,
+	return changeRule{read: createdIDs[tool].list, made: true,
 		target: func(_ context.Context, _ *Registry, args map[string]any) (string, string, error) {
 			target := ""
 			if id := stringArg(args, parent); parent != "" && id != "" {
@@ -288,13 +274,13 @@ func nameArg(args map[string]any) string { return stringArg(args, "name") }
 var everySendIsAChange = map[string]changeRule{
 	// A reboot has no «already»: the VM runs before it and after it
 	// (docs/internal/briefs/ops-wave-1.md §5).
-	"vm_reboot": {read: "vm_get", target: vmTarget("vm_reboot"), marksSend: true},
+	"vm_reboot": {read: "vm_get", target: vmTarget("vm_reboot")},
 	// A start or a stop is made once the VM is where it leads: the state
 	// of the VM tells the outcome of a cut call, and only a VM back where
 	// the change started is asked about (the interim delta audit of 1.9,
 	// FB19I-2; «Риск», conclusion 177, У13).
-	"vm_start": {read: "vm_get", target: vmTarget("vm_start"), marksSend: true, settledBy: vmSettled("vm_start")},
-	"vm_stop":  {read: "vm_get", target: vmTarget("vm_stop"), marksSend: true, settledBy: vmSettled("vm_stop")},
+	"vm_start": {read: "vm_get", target: vmTarget("vm_start"), settledBy: vmSettled("vm_start")},
+	"vm_stop":  {read: "vm_get", target: vmTarget("vm_stop"), settledBy: vmSettled("vm_stop")},
 	// A backup by the same name is found before the question, but a lost
 	// answer may leave it not yet listed: a repeat would make a second,
 	// billed with no term («Риск», conclusion 164, У5; the audit of #1544,
