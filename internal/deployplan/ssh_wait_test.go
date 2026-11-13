@@ -33,7 +33,7 @@ func withDial(t *testing.T, dial func(context.Context, string, time.Duration) er
 }
 
 // CLAUDE.md §6, axis 2 (#457): the wait for SSH says the state of port 22
-// as seen from this machine — refused, no answer — once per change, not
+// as seen from the machine evo runs on — refused, no answer — once per change, not
 // only that time passes; and the check is the one DialSSH, so the branches
 // are decided by the test, not by the network it runs in (#1707).
 func TestWaitForSSHPort_SaysThePortState(t *testing.T) {
@@ -76,7 +76,7 @@ func TestWaitForSSHPort_SaysThePortState(t *testing.T) {
 // names the security group as the next check; a refusal names sshd (#1707).
 func TestSSHUnreachedNote_SaysTheFactNotACause(t *testing.T) {
 	silent := sshUnreachedNote("203.0.113.7", 2*time.Minute, portSilent)
-	for _, want := range []string{"did not answer", "from this machine", "within 2m0s", "security group", "does not tell which"} {
+	for _, want := range []string{"did not answer", "from the machine evo runs on", "within 2m0s", "security group", "does not tell which"} {
 		if !strings.Contains(silent, want) {
 			t.Errorf("no answer: %q lacks %q", silent, want)
 		}
@@ -84,7 +84,7 @@ func TestSSHUnreachedNote_SaysTheFactNotACause(t *testing.T) {
 	if strings.Contains(silent, "blame") {
 		t.Errorf("no answer still rules out security groups: %s", silent)
 	}
-	if refused := sshUnreachedNote("203.0.113.7", time.Minute, portRefused); !strings.Contains(refused, "refused") || !strings.Contains(refused, "sshd") {
+	if refused := sshUnreachedNote("203.0.113.7", time.Minute, portRefused); !strings.Contains(refused, "refused") || !strings.Contains(refused, "may still be starting") || strings.Contains(refused, "is still starting") {
 		t.Errorf("refused: %s", refused)
 	}
 	if none := sshUnreachedNote("203.0.113.7", 0, portUnchecked); !strings.Contains(none, "not checked") {

@@ -395,7 +395,7 @@ poll:
 var SSHPortWait = 120 * time.Second
 
 // DialSSH is the one check of port 22 the wait makes: a TCP connect from
-// this machine to addr within timeout, closed at once. A test replaces it,
+// the machine evo runs on to addr within timeout, closed at once. A test replaces it,
 // so that no test connects to a network outside its own process: a
 // documentation address that a proxy or a VPN answers made a test of the
 // branch «no answer» fail (#1707).
@@ -424,7 +424,7 @@ const (
 // waitForSSHPort polls TCP port 22 on ip until it accepts a connection or the
 // timeout elapses. Returns true if the port became reachable, else what the
 // last check saw. It says the port's state on show when it changes, as seen
-// from this machine (CLAUDE.md §6, axis 2).
+// from the machine evo runs on (CLAUDE.md §6, axis 2).
 func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration, show *Progress) (bool, portState) {
 	deadline := time.Now().Add(timeout)
 	last := portUnchecked
@@ -435,7 +435,7 @@ func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration, show 
 		}
 		if state != last {
 			last = state
-			show.step(i18n.Tf("SSH on %s, checked from this machine: %s; waiting…", "SSH на %s, проверка с этой машины: %s; жду…", ip, word))
+			show.step(i18n.Tf("SSH on %s, checked from the machine evo runs on: %s; waiting…", "SSH на %s, проверка с машины, где работает evo: %s; жду…", ip, word))
 		}
 	}
 	for time.Now().Before(deadline) {
@@ -468,9 +468,9 @@ func sshUnreachedNote(ip string, waited time.Duration, state portState) string {
 	case portUnchecked:
 		return "SSH port 22 of " + ip + " was not checked: the call had no time left for it. Retry the same ssh command in about a minute; do NOT recreate the VM."
 	case portRefused:
-		return "SSH port 22 of " + ip + " refused the connection when evo checked it from this machine: the address answers, but sshd does not listen yet — the VM is still starting. Retry the same ssh command in about a minute; do NOT recreate the VM."
+		return "SSH port 22 of " + ip + " refused the connection when evo checked it from the machine evo runs on: the address answers, and nothing listens on port 22 yet — sshd may still be starting. Retry the same ssh command in about a minute; if it is still refused, the image may run no sshd on port 22. Do NOT recreate the VM."
 	}
-	return "SSH port 22 of " + ip + " did not answer evo's TCP check from this machine within " + waited.Round(time.Second).String() +
+	return "SSH port 22 of " + ip + " did not answer evo's TCP check from the machine evo runs on within " + waited.Round(time.Second).String() +
 		": the VM may still be booting, or a security group or a network on the way may drop the packets — this check does not tell which. Retry the same ssh command in about a minute; if it still gets no answer, check the rules for port 22 of the VM's security group (list_security_groups) against the address you connect from. Do NOT recreate the VM."
 }
 

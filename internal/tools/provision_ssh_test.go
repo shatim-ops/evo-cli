@@ -209,7 +209,7 @@ func TestDeployApply_DeployKeySSHUnchanged(t *testing.T) {
 	if want := deployKeyCommand(dir, "user1", "203.0.113.12"); res["ssh"] != want {
 		t.Errorf("ssh:\n got %v\nwant %s", res["ssh"], want)
 	}
-	want := "public IP attached (created a new floating IP); SSH port 22 of 203.0.113.12 did not answer evo's TCP check from this machine within 0s: " +
+	want := "public IP attached (created a new floating IP); SSH port 22 of 203.0.113.12 did not answer evo's TCP check from the machine evo runs on within 0s: " +
 		"the VM may still be booting, or a security group or a network on the way may drop the packets — this check does not tell which. " +
 		"Retry the same ssh command in about a minute; if it still gets no answer, check the rules for port 22 of the VM's security group (list_security_groups) against the address you connect from. " +
 		"Do NOT recreate the VM.; Connect with the ssh command above (agent deploy key). " +
