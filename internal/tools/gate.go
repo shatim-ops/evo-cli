@@ -174,7 +174,7 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		// record would take the place of the first and move the start
 		// the limit of the repeats counts from («Риск», conclusion 177,
 		// У7).
-		end := func(string) {}
+		var end func(string)
 		if held, goesOn := r.goesOn(ctx, t.Name, args); goesOn {
 			end = func(answer string) { cutSendOf(ctx, held, answer) }
 		} else {
