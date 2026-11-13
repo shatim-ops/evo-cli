@@ -116,6 +116,10 @@ var untrustedFields = map[string]untrustedAnswer{
 	// named by the caller, unlike the group of the call.
 	"open_ports":     {fields: []string{"open_only_to_groups", "vms"}},
 	"sg_rule_create": {fields: []string{"security_group", "rule", "preview"}},
+	// The names of the fields a manifest of stack_plan has and its type
+	// does not: the caller's text, which a manifest a cloned repository
+	// brings may write (D108; «Риск», 186, У8).
+	"stack_plan":     {fields: []string{"unknown_fields", "error"}},
 	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}},
 }
 
