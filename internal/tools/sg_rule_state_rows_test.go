@@ -48,7 +48,7 @@ var sgRuleStateRows = map[string]map[string]sgRuleRow{
 	"sg_rule_delete": {
 		"created":        sgRowAsks,
 		"updating":       sgRowAsks,
-		"error_creating": sgRowAsks,
+		"error_creating": sgRowAsksNamed,
 		"error":          sgRowAsksNamed,
 		"error_deleting": sgRowAsksNamed,
 		"creating":       sgRowRefused,

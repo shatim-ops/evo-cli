@@ -39,7 +39,18 @@ func (c *backupCloud) ListDisks(context.Context, string) ([]map[string]any, erro
 	}
 	c.bmu.Lock()
 	defer c.bmu.Unlock()
-	return append([]map[string]any(nil), c.disks...), nil
+	return c.listedOf(c.disks), nil
+}
+
+// listedOf is what a list shows of items at this read (faultCloud.lag).
+func (c *backupCloud) listedOf(items []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		if c.listed(fmt.Sprint(it["id"])) {
+			out = append(out, it)
+		}
+	}
+	return out
 }
 
 // RestoreBackup makes a new disk of the backup, through the gate as the
@@ -50,7 +61,9 @@ func (c *backupCloud) RestoreBackup(_ context.Context, id string, cfg provision.
 		return nil, err
 	}
 	c.bmu.Lock()
-	c.disks = append(c.disks, map[string]any{"id": faultID(0x70 + len(c.disks)), "name": cfg.Name, "state": "available", "size": float64(10)})
+	disk := faultID(0x70 + len(c.disks))
+	c.disks = append(c.disks, map[string]any{"id": disk, "name": cfg.Name, "state": "available", "size": float64(10)})
+	c.made(disk)
 	c.bmu.Unlock()
 	if errors.Is(err, errFaultLost) {
 		return nil, lostAnswer(err, clerrors.New(clerrors.CodeAPIUnreachable, "lost response", "network"))
@@ -64,7 +77,7 @@ func (c *backupCloud) ListBackups(context.Context, string) ([]map[string]any, er
 	}
 	c.bmu.Lock()
 	defer c.bmu.Unlock()
-	return append([]map[string]any(nil), c.backups...), nil
+	return c.listedOf(c.backups), nil
 }
 
 func (c *backupCloud) GetBackup(_ context.Context, id string) (map[string]any, error) {
@@ -104,6 +117,7 @@ func (c *backupCloud) CreateBackup(_ context.Context, req provision.CreateBackup
 		"resource":   map[string]any{"resource_id": req.Resource.ResourceID, "resource_type": req.Resource.ResourceType},
 	}
 	c.backups = append(c.backups, b)
+	c.made(fmt.Sprint(b["id"]))
 	c.bmu.Unlock()
 	if errors.Is(err, errFaultLost) {
 		return nil, lostAnswer(err, clerrors.New(clerrors.CodeAPIUnreachable, "lost response", "network"))

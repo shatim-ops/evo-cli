@@ -115,11 +115,14 @@ func TestK8sNodePoolDelete_LastPoolOfTheCluster(t *testing.T) {
 // delete (engine.DeleteWayOut), by the state without the service's prefix.
 func TestK8sNodePoolDelete_StatusWithAnUnknownOutcome(t *testing.T) {
 	for st, says := range map[string]string{
-		poolError:     "may refuse",
+		// No run has deleted a pool in error (probe Г-12): the preview says
+		// the outcome is unknown, not that Cloud.ru may refuse (FB19I-7).
+		poolError:     "the outcome of the delete is unknown",
 		poolScalingUp: `"` + poolScalingUp + `", not running: whether the platform accepts the delete is unknown`,
 		// Whether the platform deletes a pool it is still creating is not
-		// known for Managed Kubernetes: no refusal before the question.
-		"OBJECT_STATUS_PROVISIONING":  `"OBJECT_STATUS_PROVISIONING", not running: whether the platform accepts the delete is unknown`,
+		// known for Managed Kubernetes: no refusal before the question, the
+		// warning of every delete in a state no run has shown.
+		"OBJECT_STATUS_PROVISIONING":  `it is "OBJECT_STATUS_PROVISIONING": whether Cloud.ru deletes a node pool in this state no run has shown`,
 		"OBJECT_STATUS_SOMETHING_NEW": `"OBJECT_STATUS_SOMETHING_NEW", not running: whether the platform accepts the delete is unknown`,
 	} {
 		w := &poolWorld{status: st, others: []string{poolRunning}}
@@ -168,17 +171,83 @@ func TestK8sNodePoolDelete_AnswersTheOperation(t *testing.T) {
 
 // The platform refuses the DELETE after the consent: the error with the
 // status the pool was read in, and no step of a retry (П6). A pool in
-// error names the way out — the console or support.
+// error: whether Cloud.ru deletes one no run has shown (probe Г-12) — the
+// answer does not say «it does not delete it through its API, use the
+// console», a word of the platform with no run, on a 500, a 503 or a 409
+// alike (FB19I-7).
 func TestK8sNodePoolDelete_RequestRefused(t *testing.T) {
-	w := &poolWorld{status: poolError, others: []string{poolRunning}, del: 409}
-	w.setCount(2)
-	m, text, isErr := poolDelete(t, w, true)
-	hint, _ := m["hint"].(string)
-	if !isErr || m["reason"] == nil || m["resource_status"] != poolError || !strings.Contains(hint, "console") || m["next_tool"] != nil {
-		t.Errorf("want the refusal with the status of the pool and the way out, no next step: %s", text)
+	for _, code := range []int{401, 403, 408, 409, 500, 503} {
+		w := &poolWorld{status: poolError, others: []string{poolRunning}, del: code}
+		w.setCount(2)
+		m, text, isErr := poolDelete(t, w, true)
+		hint, _ := m["hint"].(string)
+		if !isErr || m["reason"] == nil || m["resource_status"] != poolError || m["next_tool"] != nil {
+			t.Errorf("%d: want the refusal with the status of the pool, no next step: %s", code, text)
+		}
+		if strings.Contains(hint, "does not delete") || strings.Contains(hint, "console") {
+			t.Errorf("%d: the hint says what the platform does with a pool in error, which no run has shown: %s", code, text)
+		}
+		if m["status"] == "deleted" || m["status"] == "deleting" {
+			t.Errorf("%d: a refusal reads as a success: %s", code, text)
+		}
+		if got := w.writes(); len(got) != 1 {
+			t.Errorf("%d: want one DELETE, got %v", code, got)
+		}
+		// A 4xx is the platform's refusal of this request: the pool stays,
+		// the same call gets the same refusal, the way is support. A 5xx
+		// may follow a delete taken: a read tells («Риск», 181, У1).
+		// 401 and 403 are of the key's right, not of the state: no «while
+		// its state holds», no support («Риск», 181, У3).
+		denied := code == 401 || code == 403
+		if denied && (strings.Contains(hint, "while its state holds") || strings.Contains(hint, "support") || !strings.Contains(hint, "no right to delete")) {
+			t.Errorf("%d: want the right of the key named, not the state and support: %s", code, text)
+		}
+		// 408: the request may have been taken on the way — not a refusal.
+		refused := code < 500 && code != 408 && !denied
+		if refused && (!strings.Contains(hint, "Cloud.ru refused the delete") || !strings.Contains(hint, "support") || !strings.Contains(hint, poolFixed) || !strings.Contains(hint, "the same call")) {
+			t.Errorf("%d: want the refusal said, the same call refused again and support as the way: %s", code, text)
+		}
+		if !refused && !denied && (!strings.Contains(hint, "outcome of the delete is unknown") || !strings.Contains(hint, "k8s_nodepool_get")) {
+			t.Errorf("%d: want the outcome unknown and the read that tells: %s", code, text)
+		}
+		marked := false
+		for _, f := range anySlice(m["_untrusted"]) {
+			marked = marked || f == "resource_status"
+		}
+		if !marked {
+			t.Errorf("%d: resource_status is the cloud's word and is not marked untrusted: %s", code, text)
+		}
 	}
-	if m["status"] == "deleted" || m["status"] == "deleting" {
-		t.Errorf("a refusal reads as a success: %s", text)
+}
+
+// The answer to the DELETE is lost (FB19I-11). The call does not say the
+// pool is deleted: the outcome is unknown, and the pool is named. Taken by
+// the platform, the pool is in its delete: the same call answers deleting
+// with no second DELETE (D61). Not taken, the pool is as it was: the same
+// call asks again — a second DELETE goes only with the consent.
+func TestK8sNodePoolDelete_TheAnswerToTheDeleteIsLost(t *testing.T) {
+	for _, taken := range []bool{true, false} {
+		w := &poolWorld{status: poolRunning, others: []string{poolRunning}, delErr: true, applied: taken, delAfter: "OBJECT_STATUS_DELETING"}
+		w.setCount(2)
+		r := poolRegistry(t, w)
+		args := map[string]any{"nodepool_id": poolFixed, "confirmed": true}
+		m, text, isErr := callNamed(t, r, "k8s_nodepool_delete", args)
+		if !isErr || m["status"] == "deleted" || m["status"] == "deleting" || !strings.Contains(text, poolFixed) {
+			t.Errorf("taken=%v: a lost answer is not a delete: want an error naming the pool: %s", taken, text)
+		}
+		if n := len(w.writes()); n != 1 {
+			t.Errorf("taken=%v: want one DELETE, sent %d", taken, n)
+		}
+		w.mu.Lock()
+		w.delErr = false
+		w.mu.Unlock()
+		m, text, _ = callNamed(t, r, "k8s_nodepool_delete", map[string]any{"nodepool_id": poolFixed, "confirmed": false})
+		switch {
+		case taken && (m["status"] != "deleting" || len(w.writes()) != 1):
+			t.Errorf("taken: want the same call to answer deleting with no second DELETE: %s", text)
+		case !taken && (m["status"] != "confirmation_required" || len(w.writes()) != 1):
+			t.Errorf("not taken: want the question again and no DELETE without the consent: %s", text)
+		}
 	}
 }
 

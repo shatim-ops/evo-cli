@@ -59,9 +59,14 @@ type poolWorld struct {
 	// The delete of the pool (k8s_nodepool_delete): others are the other
 	// pools of the cluster, by their statuses; listFails fails the list of
 	// the cluster's pools; del is the HTTP status of the DELETE, 0 accepts.
+	// delErr loses the answer to the DELETE, which is taken when applied;
+	// a DELETE taken leaves the pool in delAfter, "" leaves its status
+	// (FB19I-11).
 	others    []string
 	listFails bool
 	del       int
+	delErr    bool
+	delAfter  string
 }
 
 func (w *poolWorld) setCount(n int) {
@@ -136,11 +141,23 @@ func (w *poolWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 			_, _ = io.WriteString(rec, `{"id":"op-scale","resourceId":"`+poolFixed+`","done":false}`)
 		}
 	case r.URL.Path == "/v3/nodePools/"+poolFixed && r.Method == http.MethodDelete:
-		if w.del != 0 {
-			http.Error(rec, `{"code":9,"message":"the platform refused"}`, w.del)
-			break
+		taken := func() {
+			if w.delAfter != "" {
+				w.status = w.delAfter
+			}
 		}
-		_, _ = io.WriteString(rec, `{"id":"op-scale","resourceId":"`+poolFixed+`","done":false}`)
+		switch {
+		case w.delErr:
+			if w.applied {
+				taken()
+			}
+			return nil, errors.New("read tcp: connection reset by peer")
+		case w.del != 0:
+			http.Error(rec, `{"code":9,"message":"the platform refused"}`, w.del)
+		default:
+			taken()
+			_, _ = io.WriteString(rec, `{"id":"op-scale","resourceId":"`+poolFixed+`","done":false}`)
+		}
 	case r.URL.Path == "/v3/nodePools" && r.Method == http.MethodGet:
 		if w.listFails {
 			http.Error(rec, `{"code":13,"message":"internal"}`, 500)
@@ -167,7 +184,7 @@ func (w *poolWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		_ = json.NewEncoder(rec).Encode(op)
 	case r.URL.Path == "/v3/clusters/"+addonCluster:
-		_, _ = io.WriteString(rec, `{"id":"`+addonCluster+`","name":"k8s-test","status":"RUNNING","projectId":"`+addonProject+`"}`)
+		_, _ = io.WriteString(rec, `{"id":"`+addonCluster+`","name":"k8s-test","status":"OBJECT_STATUS_RUNNING","projectId":"`+addonProject+`"}`)
 	default:
 		http.Error(rec, `{"message":"not found"}`, 404)
 	}

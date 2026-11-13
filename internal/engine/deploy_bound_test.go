@@ -7,6 +7,7 @@ package engine
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -44,18 +45,28 @@ func TestDeploy_BoundEndsTheWaitForTheVMInProgress(t *testing.T) {
 	}
 }
 
-// SSH that does not answer yet ends with the bound too.
+// SSH that does not answer yet ends with the bound too. The bound is
+// doubled while it comes before the first connect (boundedUntilHeld), as for
+// the wait for Docker (#1645).
 func TestDeploy_BoundEndsTheWaitForSSHInProgress(t *testing.T) {
-	dep := newMockDeployer()
-	dep.connectErr = stderrors.New("ssh: connection refused")
-	eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
-	// Between attempts an hour: the bound, not the attempts running out
-	// (60 at 1 ms ended in 60 ms, before a bound of testBound), ends the wait.
-	eng.Timings.SSHRetryInterval = time.Hour
-	opts := newDeployOpts(t, dir)
-	opts.Until = time.Now().Add(testBound)
-
-	err := deployBounded(t, eng, opts)
+	err := boundedUntilHeld(t, func(bound time.Duration, held *atomic.Bool) error {
+		dep := newMockDeployer()
+		dep.connectErr = stderrors.New("ssh: connection refused")
+		dep.hold = func(_ context.Context, op string) error {
+			if op == "connect" {
+				held.Store(true)
+			}
+			return nil
+		}
+		eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+		// Between attempts an hour: the bound, not the attempts running
+		// out (60 at 1 ms ended in 60 ms, before a bound of testBound),
+		// ends the wait.
+		eng.Timings.SSHRetryInterval = time.Hour
+		opts := newDeployOpts(t, dir)
+		opts.Until = time.Now().Add(bound)
+		return deployBounded(t, eng, opts)
+	})
 	var going *InProgress
 	if !stderrors.As(err, &going) || going.Phase != "ssh" {
 		t.Fatalf("err = %v, want InProgress ssh", err)
@@ -173,22 +184,27 @@ func TestDeploy_BoundEndsAHangingStepInProgress(t *testing.T) {
 }
 
 // Docker installed (the stage done) but not ready: the wait between
-// attempts ends with the bound too, as InProgress docker.
+// attempts ends with the bound too, as InProgress docker. The bound is
+// doubled while it comes before the first check of Docker (boundedUntilHeld):
+// on Windows the steps before it outlasted 1 s once — «deploy is still in
+// progress: vm», run 43391080735 of 13.11, #1645.
 func TestDeploy_BoundEndsTheWaitForDockerReadyInProgress(t *testing.T) {
-	dep := newMockDeployer()
-	dep.hold = func(_ context.Context, op string) error {
-		if op == "exec "+dockerReadyCmd {
-			return stderrors.New("docker: permission denied")
+	err := boundedUntilHeld(t, func(bound time.Duration, held *atomic.Bool) error {
+		dep := newMockDeployer()
+		dep.hold = func(_ context.Context, op string) error {
+			if op == "exec "+dockerReadyCmd {
+				held.Store(true)
+				return stderrors.New("docker: permission denied")
+			}
+			return nil
 		}
-		return nil
-	}
-	eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
-	eng.Timings.DockerPollInterval = time.Hour
-	eng.Timings.DockerWaitTimeout = time.Hour
-	opts := newDeployOpts(t, dir)
-	opts.Until = time.Now().Add(testBound)
-
-	err := deployBounded(t, eng, opts)
+		eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+		eng.Timings.DockerPollInterval = time.Hour
+		eng.Timings.DockerWaitTimeout = time.Hour
+		opts := newDeployOpts(t, dir)
+		opts.Until = time.Now().Add(bound)
+		return deployBounded(t, eng, opts)
+	})
 	var going *InProgress
 	if !stderrors.As(err, &going) || going.Phase != "docker" {
 		t.Fatalf("err = %v, want InProgress docker", err)
@@ -274,6 +290,12 @@ func (h *heldStages) Read(_ context.Context, name string) (vmstage.Stage, error)
 	return vmstage.Stage{State: "none"}, nil
 }
 
+func (h *heldStages) started() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.starts
+}
+
 func (h *heldStages) finish() {
 	h.mu.Lock()
 	h.running = false
@@ -285,30 +307,47 @@ func (h *heldStages) finish() {
 // not start another («1.7 — релиз» on #769: a nonce of the time in the
 // input made each repeat a new input, and deploy never ended).
 func TestDeploy_ForceRunsComposeUpOnceAcrossRepeats(t *testing.T) {
-	stages := &heldStages{}
-	eng, dir := newTestEngine(t, &mockCloudAPI{}, newMockDeployer())
-	eng.Stages = stages
-	call := func(force bool, bound time.Duration) error {
-		opts := newDeployOpts(t, dir)
-		opts.Force = force
-		opts.Until = time.Now().Add(bound)
-		return deployBounded(t, eng, opts)
-	}
-	var going *InProgress
-	if err := call(false, testBound); !stderrors.As(err, &going) || going.Phase != "compose-up" {
-		t.Fatalf("first: %v, want InProgress compose-up", err)
-	}
-	stages.finish()
-	if err := call(true, testBound); !stderrors.As(err, &going) || going.Phase != "compose-up" {
-		t.Fatalf("--force: %v, want compose up started again", err)
+	var (
+		stages *heldStages
+		call   func(force bool, bound time.Duration) error
+	)
+	// The first call and the forced one each end at the bound in
+	// compose-up. The bound is doubled while either of them came to it
+	// before compose up started (boundedUntilHeld; the class of #1645), each
+	// time on a VM of its own: the stages of an attempt are not the next's.
+	err := boundedUntilHeld(t, func(bound time.Duration, held *atomic.Bool) error {
+		stages = &heldStages{}
+		eng, dir := newTestEngine(t, &mockCloudAPI{}, newMockDeployer())
+		eng.Stages = stages
+		call = func(force bool, b time.Duration) error {
+			opts := newDeployOpts(t, dir)
+			opts.Force = force
+			opts.Until = time.Now().Add(b)
+			return deployBounded(t, eng, opts)
+		}
+		var going *InProgress
+		if err := call(false, bound); !stderrors.As(err, &going) || going.Phase != "compose-up" {
+			held.Store(stages.started() == 1)
+			return fmt.Errorf("first: %v, want InProgress compose-up", err)
+		}
+		stages.finish()
+		err := call(true, bound)
+		held.Store(stages.started() == 2)
+		if !stderrors.As(err, &going) || going.Phase != "compose-up" {
+			return fmt.Errorf("--force: %v, want compose up started again", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	stages.finish()
 	// The repeat ends the deploy: its bound is not the point of the test.
 	if err := call(false, finishBound); err != nil {
 		t.Fatalf("the repeat after --force: %v", err)
 	}
-	if stages.starts != 2 {
-		t.Errorf("compose up started %d times, want 2: the repeat of a forced deploy started it again", stages.starts)
+	if n := stages.started(); n != 2 {
+		t.Errorf("compose up started %d times, want 2: the repeat of a forced deploy started it again", n)
 	}
 }
 
