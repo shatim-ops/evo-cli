@@ -765,7 +765,7 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 			// conclusion 176, У1 and У2).
 			ask.PersonOnly = true
 			ask.Hint = cutCallHint(cmd, interrupted)
-			ask.Answered = func() { registryOf(cmd).CutCallAnswered(ctx, t.Name, args) }
+			ask.Answered = func() { registryOf(cmd).CutCallAnswered(ctx, t.Name, args, interrupted) }
 		}
 		ok, err := confirm.Ask(ctx, preview, ask)
 		if !ok {

@@ -252,7 +252,11 @@ func assertInterruptedWithVMHint(t *testing.T, err error, out string) {
 func TestDeploy_InterruptDuringFIP_HintsVM(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cloud := &mockCloudAPI{createFloatingIPFn: func(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	cloud := &mockCloudAPI{createFloatingIPFn: func(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+		if req.InterfaceID == "" {
+			// The boot FIP is refused: the address is attached after boot.
+			return nil, clerrors.Wrap(clerrors.CodeAPIError, "bad request", "", &provision.StatusError{Status: 400})
+		}
 		cancel()
 		return nil, context.Canceled
 	}}

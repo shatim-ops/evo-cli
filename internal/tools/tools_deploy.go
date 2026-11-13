@@ -9,7 +9,9 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -297,6 +299,18 @@ func recordDeployment(stateDir string, maker *state.Maker, plan *deployplan.Plan
 			rec.OpenedRules = mergeRules(old.OpenedRules, rec.OpenedRules)
 		}
 		sf.UpsertDeployment(rec)
+		// The VM's floating IP whose create got no answer keeps its mark,
+		// for destroy, doctor and the repeat's question; an address the
+		// apply has now ends the marks of its VM name (D107; «Риск»,
+		// conclusion 180, У3).
+		name := provision.FitName(plan.VM.Name, "-fip")
+		switch {
+		case res.LostFloatingIP != "":
+			floatingip.Note(sf, state.LostFloatingIP{Name: res.LostFloatingIP, ProjectID: plan.ProjectID, VMName: plan.VM.Name,
+				VMID: res.VMID, RequestedAt: clock.Now(), CreatedBy: maker})
+		case res.FloatingIPID != "":
+			floatingip.Forget(sf, plan.ProjectID, name)
+		}
 		return nil
 	})
 }
@@ -359,14 +373,23 @@ func (s *Registry) planDeployApply(ctx context.Context, args map[string]any) (*P
 	if len(approvedKeys) > 0 {
 		preview.Add("user_ssh_public_keys", userKeyNames(approvedKeys))
 	}
+	answer := map[string]any{
+		"message": i18n.Tf("deploy_apply executes plan %s: it creates VM %s (billable). preview has the VM, its SSH keys and the monthly cost deploy_plan quoted for it.",
+			"deploy_apply выполнит план %s: создаст ВМ %s (платно). В preview — ВМ, её ключи SSH и цена в месяц, которую назвал deploy_plan.", plan.PlanID, plan.VM.Name),
+		"plan_id":    plan.PlanID,
+		"expires_at": plan.ExpiresAt,
+		"preview":    preview,
+	}
+	// The address an earlier apply asked for with no answer, not listed
+	// now: the question, with or without consent (D107; «Риск»,
+	// conclusion 180, У2).
+	if plan.Network.FloatingIP {
+		if ask := addressAsked(ctx, eng, plan.ProjectID, plan.VM.Name); ask != nil {
+			return answered(s.addressQuestion(ctx, "deploy_apply", eng, ask, answer), false), nil
+		}
+	}
 	return &Plan{
-		Preview: map[string]any{
-			"message": i18n.Tf("deploy_apply executes plan %s: it creates VM %s (billable). preview has the VM, its SSH keys and the monthly cost deploy_plan quoted for it.",
-				"deploy_apply выполнит план %s: создаст ВМ %s (платно). В preview — ВМ, её ключи SSH и цена в месяц, которую назвал deploy_plan.", plan.PlanID, plan.VM.Name),
-			"plan_id":    plan.PlanID,
-			"expires_at": plan.ExpiresAt,
-			"preview":    preview,
-		},
+		Preview: answer,
 		Execute: func(ctx context.Context) (string, bool) {
 			return s.applyDeployPlan(ctx, args, eng, plan, approvedKeys, approvedFile)
 		},

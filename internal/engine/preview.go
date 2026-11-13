@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -407,6 +408,14 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		// releases it after the VM (by floating_ip_id, else by address).
 		res = append(res, destroyResource{Type: "floating_ip", ID: rec.FloatingIPID, Address: rec.VMIP, Action: "release"})
 		lines = append(lines, i18n.Tf("release floating IP %s", "освободить floating IP %s", fipLabel(rec.VMIP, rec.FloatingIPID)))
+	}
+	// The addresses asked for this VM with no answer (floatingip): each
+	// is released if the list shows it by its name, else named.
+	for _, m := range floatingip.Of(sf, project, rec.VMName, rec.VMID) {
+		res = append(res, destroyResource{Type: "floating_ip", Name: m.Name, Action: "release_if_listed",
+			Note: i18n.T("requested with no answer from the cloud", "запрошен без ответа облака")})
+		lines = append(lines, i18n.Tf("release floating IP %s if the list shows it (requested %s with no answer from the cloud)",
+			"освободить floating IP %s, если он есть в списке (запрошен %s без ответа облака)", m.Name, m.RequestedAt.Local().Format("02.01.2006 15:04")))
 	}
 	ruleRes, ruleLines := rulePreview(sf, append([]string{rec.ID}, pending...), labeled)
 	res = append(res, ruleRes...)

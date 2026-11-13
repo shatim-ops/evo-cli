@@ -20,6 +20,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // whoami and doctor say who the tools work as and whether the setup works
@@ -367,6 +368,18 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 				detail += "; " + found
 			}
 			checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckWarn, Detail: detail})
+		}
+		// A floating IP whose create got no answer may be billed: named
+		// until it is taken for its VM or destroy closes its mark (D107;
+		// «Риск», conclusion 180, У3). The name is evo's own, not the
+		// cloud's text.
+		if sf, err := state.Read(state.DefaultPath(eng.StateDir)); err == nil {
+			for _, m := range sf.LostFloatingIPs {
+				checks = append(checks, DoctorCheck{Name: "lost floating IP", Status: CheckWarn,
+					Detail: i18n.Tf("floating IP %s for VM %s, requested %s, got no answer from the cloud and may be billed: check list_floating_ips for the name; the next deploy of the VM takes it if it is listed, destroy of the VM releases it",
+						"floating IP %s для ВМ %s, запрошенный %s, не получил ответа облака и может тарифицироваться: проверьте 'evo vpc fips' по имени; следующий deploy этой ВМ возьмёт его, если он в списке, destroy ВМ освободит его",
+						m.Name, firstNonEmptyStr(m.VMID, m.VMName), m.RequestedAt.Local().Format("02.01.2006 15:04"))})
+			}
 		}
 		// A file there that is not evo's record is neither read nor
 		// removed, and named: a planted one is seen («Риск», conclusion

@@ -536,8 +536,11 @@ func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
 // named them (the answer's "interrupted") and answered it at the terminal,
 // yes or no. The call with consent that follows a yes is sent as any
 // other; after a no nothing is sent, and the cut call is asked about no
-// more.
-func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any) {
+// more. A question that named a floating IP whose create got no answer
+// (interrupted.floating_ip, addressQuestion) records the person's answer
+// on its mark.
+func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any, interrupted any) {
+	r.addressAnswered(args, interrupted)
 	for _, in := range r.cutCalls(ctx, name, args) {
 		intent.Close(in)
 	}

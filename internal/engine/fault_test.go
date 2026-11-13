@@ -341,18 +341,23 @@ func TestFault_Deploy_EmptyBootFIPIDIsAdoptedByName(t *testing.T) {
 	}
 }
 
-func TestFault_Deploy_FIPTransportAttachesAfterBoot(t *testing.T) {
+// A transport failure of the pre-boot FIP may have reached the cloud: the
+// deploy stops before the VM, with the address's mark in the state, and
+// sends no second create (D107; «Риск», conclusion 180, (а)).
+func TestFault_Deploy_FIPTransportStopsBeforeVM(t *testing.T) {
 	faultIsolate(t)
 	cloud := &faultCloud{}
 	eng, buf, dir := faultEngine(t, cloud, &faultDeployer{})
 	cloud.failNth("CreateFloatingIP", 1, faultTransport)
-	if err := faultDeploy(t, eng, dir); err != nil {
-		t.Fatalf("deploy: %v\nout=%s", err, buf.String())
+	err := faultDeploy(t, eng, dir)
+	faultWantExit(t, err, clerrors.ExitGeneral, clerrors.CodeAPIUnreachable)
+	if vms, fips := cloud.creates(); vms != 0 || fips != 0 {
+		t.Fatalf("creates vm=%d fip=%d, want none after a FIP create with no answer", vms, fips)
 	}
-	if vms, fips := cloud.creates(); vms != 1 || fips != 1 {
-		t.Fatalf("creates vm=%d fip=%d (a lost pre-boot FIP must not be joined by a second)", vms, fips)
+	if sf := faultState(t, dir); len(sf.LostFloatingIPs) != 1 {
+		t.Fatalf("marks %+v, want the lost FIP's", sf.LostFloatingIPs)
 	}
-	faultAccounted(t, cloud, dir, nil, buf)
+	faultAccounted(t, cloud, dir, err, buf)
 }
 
 func TestFault_Deploy_AuthOnCreateExitsAuth(t *testing.T) {

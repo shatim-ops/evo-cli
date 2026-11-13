@@ -13,6 +13,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -133,14 +134,17 @@ func TestDeploy_BootFIPLateAfterCancel(t *testing.T) {
 		var out bytes.Buffer
 		e := &Engine{Config: config.Config{ProjectID: "p", ImageID: "img"}, Cloud: cloud,
 			Printer: output.NewWithWriter(&out, output.ModePlain, false), StateDir: dir, Timings: fastTimings}
-		_, _ = e.provisionVM(ctx, DeployOptions{Flavor: "flavor", NonInteractive: true, Yes: true}, &state.File{Version: 1},
+		sf := &state.File{Version: 1}
+		_, err := e.provisionVM(ctx, DeployOptions{Flavor: "flavor", NonInteractive: true, Yes: true}, sf,
 			state.DefaultPath(dir), &compose.Project{Hash: "h"}, testZoneID)
 		cancel()
 		switch {
 		case !never && (len(cloud.released) != 1 || cloud.released[0] != "fip-late"):
 			t.Errorf("FIP, появившийся со второго поиска, не освобождён: %v (поисков %d)", cloud.released, cloud.lists)
-		case never && (cloud.lists != 3 || !strings.Contains(out.String(), "evo vpc fips")):
-			t.Errorf("не найден: поисков %d, вывод:\n%s", cloud.lists, out.String())
+		case never && (cloud.lists != 3 || !hintNames(err, "list_floating_ips") || len(sf.LostFloatingIPs) != 1):
+			// Не найден: ответ называет адрес и где его искать, state
+			// хранит отметку (D107, заключение 180, У3).
+			t.Errorf("не найден: поисков %d, ошибка %v, отметки %+v", cloud.lists, err, sf.LostFloatingIPs)
 		}
 	}
 }
@@ -174,4 +178,10 @@ func TestWaitBootFIP_AttachKeepsName(t *testing.T) {
 			t.Errorf("FIP %q: attach names %q, want %q", tc.fip, cloud.names, tc.want)
 		}
 	}
+}
+
+// hintNames reports whether the hint of err names s.
+func hintNames(err error, s string) bool {
+	var ce *clerrors.CLIError
+	return errors.As(err, &ce) && strings.Contains(ce.Hint, s)
 }
