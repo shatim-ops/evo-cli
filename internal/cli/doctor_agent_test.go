@@ -90,10 +90,13 @@ func TestDoctor_ChecksTheEntryOfAClientOfFullPath(t *testing.T) {
 		t.Errorf("an entry of another evo: %+v, want a warning naming it", ch)
 	}
 
-	writeDesktopEntry(t, this, "--profile", "ghost", "mcp")
-	if ch, ok := one(t); !ok || ch.Status != tools.CheckWarn || !strings.Contains(ch.Detail, "ghost") {
-		t.Errorf("an entry of a profile that is not there: %+v, want a warning naming the profile", ch)
+	for _, args := range [][]string{{"--profile", "ghost", "mcp"}, {"--profile=ghost", "mcp"}} {
+		writeDesktopEntry(t, this, args...)
+		if ch, ok := one(t); !ok || ch.Status != tools.CheckWarn || !strings.Contains(ch.Detail, "ghost") {
+			t.Errorf("an entry of a profile that is not there (%q): %+v, want a warning naming the profile", args, ch)
+		}
 	}
+	writeDesktopEntry(t, this, "--profile", "ghost", "mcp")
 	// A profile of CLOUDRU_CONFIG_DIR is not the app's: it starts evo
 	// without the shell's variables (docs/mcp.md).
 	if err := config.SaveProfile("ghost", config.Profile{}, config.Credentials{KeyID: "k", Secret: "s"}); err != nil {

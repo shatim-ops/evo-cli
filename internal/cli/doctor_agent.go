@@ -7,6 +7,7 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -78,7 +79,10 @@ func (c agentClient) entryCheck(path string, data []byte) (tools.DoctorCheck, bo
 	}
 	profile := ""
 	for i, a := range e.Args {
-		if a == "--profile" && i+1 < len(e.Args) {
+		// Both forms of the flag: the entry may be edited by hand.
+		if v, ok := strings.CutPrefix(a, "--profile="); ok {
+			profile = v
+		} else if a == "--profile" && i+1 < len(e.Args) {
 			profile = e.Args[i+1]
 		}
 	}
