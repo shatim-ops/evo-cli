@@ -44,18 +44,28 @@ func TestDeploy_BoundEndsTheWaitForTheVMInProgress(t *testing.T) {
 	}
 }
 
-// SSH that does not answer yet ends with the bound too.
+// SSH that does not answer yet ends with the bound too. The bound is
+// doubled while it comes before the first connect (boundedUntilHeld), as for
+// the wait for Docker (#1645).
 func TestDeploy_BoundEndsTheWaitForSSHInProgress(t *testing.T) {
-	dep := newMockDeployer()
-	dep.connectErr = stderrors.New("ssh: connection refused")
-	eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
-	// Between attempts an hour: the bound, not the attempts running out
-	// (60 at 1 ms ended in 60 ms, before a bound of testBound), ends the wait.
-	eng.Timings.SSHRetryInterval = time.Hour
-	opts := newDeployOpts(t, dir)
-	opts.Until = time.Now().Add(testBound)
-
-	err := deployBounded(t, eng, opts)
+	err := boundedUntilHeld(t, func(bound time.Duration, held *atomic.Bool) error {
+		dep := newMockDeployer()
+		dep.connectErr = stderrors.New("ssh: connection refused")
+		dep.hold = func(_ context.Context, op string) error {
+			if op == "connect" {
+				held.Store(true)
+			}
+			return nil
+		}
+		eng, dir := newTestEngine(t, &mockCloudAPI{}, dep)
+		// Between attempts an hour: the bound, not the attempts running
+		// out (60 at 1 ms ended in 60 ms, before a bound of testBound),
+		// ends the wait.
+		eng.Timings.SSHRetryInterval = time.Hour
+		opts := newDeployOpts(t, dir)
+		opts.Until = time.Now().Add(bound)
+		return deployBounded(t, eng, opts)
+	})
 	var going *InProgress
 	if !stderrors.As(err, &going) || going.Phase != "ssh" {
 		t.Fatalf("err = %v, want InProgress ssh", err)
