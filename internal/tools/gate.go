@@ -7,6 +7,8 @@ package tools
 import (
 	"context"
 	"maps"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // The gate of consent is one function of the registry (owner's decision
@@ -146,6 +148,9 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 			text = r.questionNamesTheCut(ctx, t.Name, args, text)
 			return r.namedKept(ctx, t.Name, args, text), isErr
 		}
+		// The writes of the call are counted: a call cut before it sent
+		// one changed nothing (changeRule.viaHTTP).
+		ctx = httpretry.CountWrites(ctx)
 		// The resource the call names cannot be read: nothing is sent,
 		// and no record is written by the spelling — a cut call of the
 		// same resource spelled another way would not be found («Риск»,
@@ -153,7 +158,9 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if _, _, err := r.resourceOf(ctx, t.Name, args); err != nil {
 			return errResult(err), true
 		}
-		if text, asked := r.askAgainAfterACut(ctx, t.Name, args); asked {
+		if text, asked := r.askAgainAfterACut(ctx, t.Name, args, func(ctx context.Context) (string, bool) {
+			return next(ctx, withoutConsent(args))
+		}); asked {
 			return text, true
 		}
 		// The operation of this call goes on under its held record: a
@@ -175,6 +182,14 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		r.settleHeld(ctx, t.Name, args, text)
 		return r.namedKept(ctx, t.Name, args, text), isErr
 	}
+}
+
+// withoutConsent is the same call without the consent it was given: the
+// question it answers is the preview of what the call would do.
+func withoutConsent(args map[string]any) map[string]any {
+	out := maps.Clone(args)
+	delete(out, "confirmed")
+	return out
 }
 
 // nextSameCall puts into answer the same call as its next step (nextStep)
