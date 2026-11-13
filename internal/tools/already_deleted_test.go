@@ -378,3 +378,21 @@ func TestAlreadyDeleted_BoundServerKeepsNotFound(t *testing.T) {
 		}
 	}
 }
+
+// A description that promises already_deleted says the server bound to
+// its projects answers NOT_FOUND instead (H9; TestAlreadyDeleted_
+// BoundServerKeepsNotFound): the model reads the description over MCP,
+// where --allow-project may be set («Риск», 194; close_ports and
+// sg_rule_delete). In both languages.
+func TestAlreadyDeleted_DescriptionNamesTheBoundAnswer(t *testing.T) {
+	for _, tl := range New(nil).Tools() {
+		if _, ok := deleteTargets[tl.Name]; !ok {
+			continue
+		}
+		for lang, d := range map[string]string{"en": tl.Description, "ru": tl.DescriptionRU} {
+			if strings.Contains(d, "already_deleted") && (!strings.Contains(d, "NOT_FOUND") || !strings.Contains(d, "--allow-project")) {
+				t.Errorf("%s (%s): promises already_deleted, not what a server with --allow-project answers (NOT_FOUND)", tl.Name, lang)
+			}
+		}
+	}
+}
