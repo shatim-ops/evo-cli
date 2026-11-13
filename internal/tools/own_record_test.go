@@ -60,3 +60,30 @@ func TestIntent_ACallsOwnRecordIsNotInItsOwnAnswer(t *testing.T) {
 		t.Fatalf("the same call after its cut one: sent %d\n%s", sent, again)
 	}
 }
+
+// The layers of one call read the directory of the records once, and again
+// only after the call itself wrote there: a record another process adds in
+// between is the next call's to see (release plan 1.9, «Каталог записей
+// намерений»: several reads of the directory on every consented call were
+// the cost of the layer on Windows).
+func TestIntent_ACallReadsTheRecordsOnceUntilItWritesThere(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.WithValue(context.Background(), callRecordsKey{}, &callRecords{})
+	if n := len(pendingIn(ctx, dir)); n != 0 {
+		t.Fatalf("%d records in an empty directory", n)
+	}
+	if _, err := intent.Open(intent.Dir(dir), intent.Intent{Tool: "vm_reboot", Target: "vm_id=" + resMine}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(pendingIn(ctx, dir)); n != 0 {
+		t.Errorf("the call read the directory again: %d records, want the first reading", n)
+	}
+	forgetPending(ctx)
+	if n := len(pendingIn(ctx, dir)); n != 1 {
+		t.Errorf("%d records after the call wrote there, want 1", n)
+	}
+	// A layer called on its own, with no call around it, reads the directory.
+	if n := len(pendingIn(context.Background(), dir)); n != 1 {
+		t.Errorf("%d records read with no call, want 1", n)
+	}
+}

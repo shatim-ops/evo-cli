@@ -82,7 +82,11 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
 		own.ids = append(own.ids, rec.ID)
 	}
+	forgetPending(ctx)
 	return func(answer string) {
+		// Whatever the end does to the record, the call reads the
+		// directory anew after it.
+		defer forgetPending(ctx)
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			return
 		}
@@ -135,7 +139,7 @@ var everySendIsAChange = map[string]string{
 // same tool, the same resource, the same key, not held. A record of
 // another key is not this caller's cut call, and a held one is an
 // operation going on.
-func (r *Registry) cutCalls(name string, args map[string]any) []intent.Intent {
+func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]any) []intent.Intent {
 	if everySendIsAChange[name] == "" {
 		return nil
 	}
@@ -145,7 +149,7 @@ func (r *Registry) cutCalls(name string, args map[string]any) []intent.Intent {
 		return nil
 	}
 	var cut []intent.Intent
-	for _, in := range intent.Pending(intent.Dir(root)) {
+	for _, in := range pendingIn(ctx, root) {
 		if !in.Held && in.Tool == name && in.Name == resource && in.Target == target && in.Key != nil {
 			cut = append(cut, in)
 		}
@@ -184,13 +188,14 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 // person consented to once. The answer is the question again, saying what
 // is known; the record is closed, so the next consented call is sent as
 // any other.
-func (r *Registry) askAgainAfterACut(name string, args map[string]any) (string, bool) {
-	mine := r.cutCalls(name, args)
+func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any) (string, bool) {
+	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return "", false
 	}
 	for _, in := range mine {
 		intent.Close(in)
+		forgetPending(ctx)
 	}
 	message, interrupted := cutCallWarning(name, mine)
 	return toJSON(map[string]any{"status": "confirmation_required", "interrupted": interrupted, "message": message}), true
@@ -203,11 +208,11 @@ func (r *Registry) askAgainAfterACut(name string, args map[string]any) (string, 
 // («Риск», conclusion 145, У2). An answer that is not a question (a
 // refusal, an answer with nothing to consent to) stays as it is, and so
 // does the record.
-func (r *Registry) questionNamesTheCut(name string, args map[string]any, answer string) string {
+func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args map[string]any, answer string) string {
 	if answerStatus(answer) != "confirmation_required" {
 		return answer
 	}
-	mine := r.cutCalls(name, args)
+	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return answer
 	}
@@ -222,6 +227,7 @@ func (r *Registry) questionNamesTheCut(name string, args map[string]any, answer 
 	m["message"], m["interrupted"] = message, interrupted
 	for _, in := range mine {
 		intent.Close(in)
+		forgetPending(ctx)
 	}
 	return toJSON(m)
 }
@@ -251,14 +257,14 @@ func sameToolNext(tool, answer string) (args map[string]any, ok bool) {
 // resource as the record does — or when its answer does: a held record is
 // named by id (its step's), and a call that names the VM by its name
 // answers with that id («Риск», conclusion 137, У1).
-func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
+func (r *Registry) settleHeld(ctx context.Context, name string, args map[string]any, answer string) {
 	resource, target := intentResource(name, args)
 	root, ok := r.stateDir()
 	if !ok {
 		return
 	}
 	var held []intent.Intent
-	for _, in := range intent.Pending(intent.Dir(root)) {
+	for _, in := range pendingIn(ctx, root) {
 		if !in.Held || in.Tool != name {
 			continue
 		}
@@ -277,6 +283,7 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 	for _, in := range held {
 		if !in.Key.Other(cur) {
 			intent.Close(in)
+			forgetPending(ctx)
 		}
 	}
 }
@@ -340,7 +347,7 @@ func answerStatus(answer string) string {
 // without — an already_deleted of this key says what this key sees — so
 // every answer of it names them, not only the first answer of the process
 // («Риск», conclusions 128 and 135).
-func (r *Registry) namedKept(name string, args map[string]any, answer string) string {
+func (r *Registry) namedKept(ctx context.Context, name string, args map[string]any, answer string) string {
 	resource, target := intentResource(name, args)
 	root, ok := r.stateDir()
 	if !ok || (resource == "" && target == "") {
@@ -350,7 +357,7 @@ func (r *Registry) namedKept(name string, args map[string]any, answer string) st
 	// of the call is asked for only when one of them is of this call — a
 	// call with nothing left builds no engine.
 	var same []intent.Intent
-	for _, in := range intent.Pending(intent.Dir(root)) {
+	for _, in := range pendingIn(ctx, root) {
 		if in.Tool == name && in.Name == resource && in.Target == target && in.Key != nil {
 			same = append(same, in)
 		}

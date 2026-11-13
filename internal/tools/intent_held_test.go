@@ -64,7 +64,7 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r, dir, _ := start(t)
-			r.settleHeld("vm_start", step, c.answer)
+			r.settleHeld(context.Background(), "vm_start", step, c.answer)
 			if got := len(intent.Pending(dir)) == 0; got != c.closed {
 				t.Errorf("closed %v, want %v: %+v", got, c.closed, intent.Pending(dir))
 			}
@@ -74,21 +74,21 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 	// names the id («Риск», conclusion 137, У1).
 	t.Run("a call by the name, whose answer names the id", func(t *testing.T) {
 		r, dir, _ := start(t)
-		r.settleHeld("vm_start", map[string]any{"name": "web"}, `{"status":"already_running","vm_id":"`+resMine+`"}`)
+		r.settleHeld(context.Background(), "vm_start", map[string]any{"name": "web"}, `{"status":"already_running","vm_id":"`+resMine+`"}`)
 		if left := intent.Pending(dir); len(left) != 0 {
 			t.Errorf("left %+v", left)
 		}
 	})
 	t.Run("a call by the name of another VM", func(t *testing.T) {
 		r, dir, _ := start(t)
-		r.settleHeld("vm_start", map[string]any{"name": "db"}, `{"status":"already_running","vm_id":"`+resForeign+`"}`)
+		r.settleHeld(context.Background(), "vm_start", map[string]any{"name": "db"}, `{"status":"already_running","vm_id":"`+resForeign+`"}`)
 		if len(intent.Pending(dir)) != 1 {
 			t.Error("a call on another VM closed the record")
 		}
 	})
 	t.Run("a step on another resource", func(t *testing.T) {
 		r, dir, _ := start(t)
-		r.settleHeld("vm_start", map[string]any{"vm_id": resForeign}, `{"status":"started"}`)
+		r.settleHeld(context.Background(), "vm_start", map[string]any{"vm_id": resForeign}, `{"status":"started"}`)
 		if len(intent.Pending(dir)) != 1 {
 			t.Error("a call on another VM closed the record")
 		}
@@ -100,7 +100,7 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 		if _, err := intent.Open(dir, in); err != nil {
 			t.Fatal(err)
 		}
-		r.settleHeld("vm_start", step, `{"status":"started"}`)
+		r.settleHeld(context.Background(), "vm_start", step, `{"status":"started"}`)
 		if len(intent.Pending(dir)) != 1 {
 			t.Error("a call with this key closed the held record of another key")
 		}

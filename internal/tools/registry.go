@@ -30,6 +30,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
 // EngineFactory builds an *engine.Engine from a set of config overrides.
@@ -225,7 +226,40 @@ func callEndCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 // callRecords are the records the call itself opened (beginIntent), by
 // id: its own answer says how it ended and does not name them as what an
 // earlier run left (notePending).
-type callRecords struct{ ids []string }
+//
+// It also holds what the call has read of the directory of the records:
+// the layers of one call (the question after a cut call, the held record,
+// the records of another key) read it once and again only after the call
+// itself wrote there — not once each.
+type callRecords struct {
+	ids []string
+
+	root    string
+	pending []intent.Intent
+	read    bool
+}
+
+// pendingIn are the records of root as the call of ctx sees them: read
+// once for the call, and again after forgetPending. A call with no holder
+// (a layer called on its own) reads the directory.
+func pendingIn(ctx context.Context, root string) []intent.Intent {
+	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
+	if !ok {
+		return intent.Pending(intent.Dir(root))
+	}
+	if !c.read || c.root != root {
+		c.root, c.pending, c.read = root, intent.Pending(intent.Dir(root)), true
+	}
+	return c.pending
+}
+
+// forgetPending makes the next pendingIn of the call read the directory:
+// the call wrote or closed a record there.
+func forgetPending(ctx context.Context) {
+	if c, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
+		c.read = false
+	}
+}
 
 type callRecordsKey struct{}
 
