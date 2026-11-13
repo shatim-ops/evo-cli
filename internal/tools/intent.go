@@ -377,7 +377,8 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	var cut []intent.Intent
 	for _, in := range pendingIn(ctx, root) {
 		// A held record is an operation evo goes on with, not a cut call
-		// — unless a send of it was cut (CutSend).
+		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
+		// call whose change was seen going on, HoldCut).
 		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil || in.ProjectID != project {
 			continue
 		}
@@ -424,6 +425,16 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 				forgetPending(ctx)
 				continue
 			case err == nil && o == outcomeGoesOn:
+				// A transition is no outcome of the cut call: it may fall
+				// back. The record becomes the operation the call waits
+				// for, marked as a cut send — the call opens none of its
+				// own to settle it with, and the next call finds it
+				// wherever the VM ends up («Риск», the conclusion on #1652,
+				// У14).
+				if in.CutSend.IsZero() {
+					intent.HoldCut(in, in.StartedAt)
+					forgetPending(ctx)
+				}
 				continue
 			}
 		}

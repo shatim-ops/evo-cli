@@ -120,3 +120,49 @@ func TestVMPower_ACutCallIsToldByTheStateOfItsVM(t *testing.T) {
 		}
 	})
 }
+
+// A repeat that finds the VM of a cut call in a transition waits for it —
+// and the transition is no outcome: it may fall back. The trace of the cut
+// send outlives the wait, and a VM back where the change started is asked
+// about: one command before the question («Риск», the conclusion on
+// #1652, У14).
+func TestVMPower_ATransitionAfterACutCallKeepsItsTrace(t *testing.T) {
+	for _, c := range []struct {
+		tool, from, via, back string
+	}{
+		{"vm_start", "stopped", "stopping", "stopped"},
+		{"vm_stop", "running", "stopping", "running"},
+	} {
+		t.Run(c.tool, func(t *testing.T) {
+			r, w, dir := heldPowerWorld(t, c.from)
+			tl, _ := r.Lookup(c.tool)
+			ctx, cancel := context.WithCancel(context.Background())
+			w.onPower = func() error {
+				cmd := "start"
+				if c.tool == "vm_stop" {
+					cmd = "stop"
+				}
+				_ = w.faultCloud.SetVMPower(context.Background(), w.id, cmd)
+				cancel()
+				return ctx.Err()
+			}
+			tl.Handler(ctx, map[string]any{"vm_id": w.id, "confirmed": true})
+			w.onPower = nil
+			// The repeat finds a transition and waits for it.
+			w.setVMState(w.id, c.via)
+			tl.Handler(context.Background(), map[string]any{"vm_id": w.id, "confirmed": true})
+			if n := w.powerCalls(); n != 1 {
+				t.Fatalf("power calls after the repeat in the transition = %d, want 1", n)
+			}
+			if left := intent.Pending(dir); len(left) != 1 || left[0].CutSend.IsZero() {
+				t.Fatalf("the trace of the cut send after the wait: %+v", left)
+			}
+			// The VM is back where the change started: the question.
+			w.setVMState(w.id, c.back)
+			text, _ := tl.Handler(context.Background(), map[string]any{"vm_id": w.id, "confirmed": true})
+			if m := parseAnswer(t, text); m["interrupted"] == nil || w.powerCalls() != 1 {
+				t.Errorf("the repeat with the VM back in %s: power calls %d, want 1 and the question\n%s", c.back, w.powerCalls(), text)
+			}
+		})
+	}
+}

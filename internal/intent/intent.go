@@ -164,6 +164,15 @@ func MarkSent(in Intent) {
 	_ = write(in)
 }
 
+// HoldCut keeps the record in of a cut call whose change goes on as the
+// operation evo goes on with (Held), marked as the cut send it is
+// (CutSend at at): the call that waits for it opens no record of its own,
+// and the trace of the cut send outlives the wait.
+func HoldCut(in Intent, at time.Time) {
+	in.Held, in.CutSend = true, at
+	_ = write(in)
+}
+
 // MarkCutSend marks the held record in with a send of its operation that
 // was cut at at (CutSend).
 func MarkCutSend(in Intent, at time.Time) {
