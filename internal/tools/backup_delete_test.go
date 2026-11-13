@@ -6,6 +6,7 @@ package tools
 
 import (
 	"bytes"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -219,7 +220,8 @@ func TestBackupDelete_NoWait(t *testing.T) {
 // the delete with no way on («Риск», 164, answer 2).
 func TestBackupDelete_RestoreUnderWay(t *testing.T) {
 	w := &deleteWorld{state: "created", exists: true, refuse: "backup_restore_in_progress"}
-	m, text, isErr := backupDelete(t, w, true)
+	r := deleteRegistry(t, w)
+	m, text, isErr := callNamed(t, r, "backup_delete", map[string]any{"backup_id": bdID, "confirmed": true})
 	details, _ := m["details"].(map[string]any)
 	next, _ := m["next_args"].(map[string]any)
 	if !isErr || m["reason"] != "API_ERROR" || details["cause"] != "restore_in_progress" || m["next_tool"] != "backup_delete" || next["backup_id"] != bdID {
@@ -228,7 +230,15 @@ func TestBackupDelete_RestoreUnderWay(t *testing.T) {
 	if _, carried := next["confirmed"]; carried {
 		t.Errorf("the consent carried over to the next step (R-85): %s", text)
 	}
-
+	// The delete is refused: nothing goes on that evo waits for. A record
+	// held as an operation under way made pending_operations and doctor
+	// say evo goes on with it by itself (FB19I-22).
+	root, _ := r.stateDir()
+	for _, in := range intent.Pending(intent.Dir(root)) {
+		if in.Tool == "backup_delete" {
+			t.Errorf("a refused delete left its record (held %v): %+v", in.Held, in)
+		}
+	}
 }
 
 // Not ready (backup_not_ready): the runs saw it on a repeat of a delete
