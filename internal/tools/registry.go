@@ -231,6 +231,8 @@ func callEndCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 // the layers of one call (the question after a cut call, the held record,
 // the records of another key) read it once and again only after the call
 // itself wrote there — not once each.
+// The holder is of one call and is not guarded: the layers of a call run
+// one after another, in its goroutine.
 type callRecords struct {
 	ids []string
 
