@@ -240,7 +240,7 @@ func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	return answer(req, resp), nil
+	return answer(req, recordedBy(req, resp)), nil
 }
 
 // tokenRejected is told the bearer token of a request a Cloud.ru API
@@ -487,7 +487,13 @@ func (t *Transport) roundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
+		r, below := recordBelow(r)
 		resp, err := t.base().RoundTrip(r)
+		if err == nil && !*below {
+			// The API's answer, before the transport reads it: each
+			// attempt is one (EnvRecordAnswers).
+			resp = recorded(r, resp)
+		}
 		last := attempt == MaxRetries || req.Context().Err() != nil
 		if err != nil {
 			// A certificate the system does not trust stays untrusted.
