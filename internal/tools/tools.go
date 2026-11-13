@@ -1915,12 +1915,13 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		// the VM probed from here before the question (M2). A warning,
 		// not a refusal: the VM may be booting, the person decides.
 		answer["upload"] = engine.SSHUpload(rec.VMIP)
+		// A stopped VM takes no upload and runs nothing: refused before
+		// the question, as Deploy refuses it — and before «the same file
+		// is already running», which is not true of a VM that is stopped.
+		if err := eng.DeployVMStopped(ctx, &rec); err != nil {
+			return "", err
+		}
 		if !u.Unchanged {
-			// A stopped VM takes no upload: refused before the question,
-			// as Deploy refuses it.
-			if err := eng.DeployVMStopped(ctx, &rec); err != nil {
-				return "", err
-			}
 			if probed, reach := eng.ReachSSH(ctx, rec.VMIP); probed {
 				answer["ssh_reachable"] = reach == nil
 				if reach != nil {

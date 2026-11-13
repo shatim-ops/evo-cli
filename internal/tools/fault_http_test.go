@@ -518,7 +518,8 @@ func faultAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 
 // A create whose answer was lost while the list fails too (two faults, out
 // of the matrix's one): the answer says the cluster may exist, is billed,
-// and where to find it — not a bare error (Qwen review of #212).
+// and where to find it — not a bare error (Qwen review of #212). And so
+// when the list is read and the cluster is absent from it.
 func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 	failed := func(context.Context) ([]map[string]any, error) { return nil, errors.New("list: timeout") }
 	text, isErr := lostCreate(context.Background(), "kafka_create", failed, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: lost"))
@@ -529,9 +530,34 @@ func TestLostCreate_ListFailedSaysWhereToLook(t *testing.T) {
 	if w, _ := m["warning"].(string); !strings.Contains(w, "kafka_list") || !strings.Contains(w, "evo-k") || !strings.Contains(w, "billed") {
 		t.Errorf("warning %q: want the name, billed and kafka_list", w)
 	}
+	// A refusal of the platform is not a lost answer: it is answered as
+	// it is, with no warning — and before the list is read.
+	notRead := func(context.Context) ([]map[string]any, error) {
+		t.Error("the list was read for a create the platform refused")
+		return nil, nil
+	}
+	refused := fmt.Errorf("create cluster: %w", &provision.StatusError{Status: http.StatusConflict})
+	if text, isErr := lostCreate(context.Background(), "kafka_create", notRead, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", refused); !isErr || strings.Contains(text, "warning") {
+		t.Errorf("a create the platform refused (409): %s; want the create's error only", text)
+	}
+	// The answer was lost, the list is read and does not show the
+	// resource: the request may have been taken all the same. The answer
+	// names the resource and the read, and says to check before any
+	// repeat — it does not say nothing was made, and does not send to a
+	// repeat (release plan 1.9, «Повтор платного создания после
+	// потерянного ответа спрашивает заново», (2); «Риск», conclusion 179,
+	// У6).
 	absent := func(context.Context) ([]map[string]any, error) { return nil, nil }
-	if text, isErr := lostCreate(context.Background(), "kafka_create", absent, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: 409")); !isErr || strings.Contains(text, "warning") {
-		t.Errorf("listed and absent: %s; want the create's error only", text)
+	text, isErr = lostCreate(context.Background(), "kafka_create", absent, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: lost"))
+	m = nil
+	if err := json.Unmarshal([]byte(text), &m); err != nil || !isErr {
+		t.Fatalf("lost and absent: %s err=%v isErr=%v", text, err, isErr)
+	}
+	if w, _ := m["warning"].(string); !strings.Contains(w, "kafka_list") || !strings.Contains(w, "evo-k") || !strings.Contains(w, "before any repeat") {
+		t.Errorf("lost and absent, warning %q: want the name, kafka_list and the check before any repeat", w)
+	}
+	if low := strings.ToLower(text); strings.Contains(low, "nothing was created") || strings.Contains(low, "try again") {
+		t.Errorf("lost and absent: the answer says nothing was made, or sends to a repeat: %s", text)
 	}
 }
 

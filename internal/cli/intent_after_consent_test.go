@@ -60,6 +60,71 @@ func argValues(args map[string]any) []string {
 	return out
 }
 
+// intentRandom are the fields of a record that evo makes itself and that
+// carry no argument by construction: the id (8 random bytes, hex), the
+// print (a SHA-256 of the id and the canonical arguments, hex — the values
+// are not written into it, intent.Intent.Print), the start (the clock) and
+// the process (the system's number). A value of four characters of digits
+// or hex — «8443», the port of the world's sg_rule_create, the only such
+// value of the world — is found in them by chance. Measured on 60000
+// records of that call written by intent.Open (13.11): 70 hold «8443», 11
+// in the id and 59 in the print, none elsewhere — 13 and 61 places out of
+// 16⁴ give 12 and 56. About 1 record in 860, 1 run of this test in 430;
+// before the print (#1620), 1 run in 2700. The fall in CI (1 of 158 calls,
+// PR #1635, 13.11) named no field, and some 500 runs of the test in a loop
+// did not repeat it — which those odds allow 1 time in 3: that it was
+// this, and not a value in another field, is the likely reading, not a
+// proven one. Hence the fields are named when it falls. The start and the
+// process hold digits too (6 places of the nanoseconds out of 10⁴) and
+// depend on no argument. Every other field — and one added later — is
+// read for the values.
+var intentRandom = []string{"id", "print", "started_at", "pid"}
+
+// intentSays is the record without intentRandom, field by field: where a
+// value of an argument is looked for.
+func intentSays(t *testing.T, body string) map[string]string {
+	t.Helper()
+	var rec map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(body), &rec); err != nil {
+		return map[string]string{"(the whole record)": body}
+	}
+	for _, k := range intentRandom {
+		if _, ok := rec[k]; !ok {
+			t.Errorf("the record has no field %q: intentRandom names a field the layer no longer writes", k)
+		}
+		delete(rec, k)
+	}
+	out := map[string]string{}
+	for k, v := range rec {
+		out[k] = string(v)
+	}
+	return out
+}
+
+// fieldsHolding are the fields of said whose text holds v, sorted.
+func fieldsHolding(said map[string]string, v string) []string {
+	var in []string
+	for k, text := range said {
+		if strings.Contains(text, v) {
+			in = append(in, k)
+		}
+	}
+	sort.Strings(in)
+	return in
+}
+
+// intentSays leaves out chance and nothing else: a value in any other
+// field of the record is still found.
+func TestGate_IntentSaysLeavesOutOnlyChance(t *testing.T) {
+	body := `{"id":"a8443b","tool":"sg_rule_create","args":["ports"],"name":"web","note":"x 8443 y","surface":"mcp","pid":18443,"started_at":"2026-11-13T07:08:08.084430Z","print":"ff8443aa"}`
+	if in := fieldsHolding(intentSays(t, body), "8443"); len(in) != 1 || in[0] != "note" {
+		t.Errorf("a value in a field evo does not make of chance: want it found in note alone, found in %v", in)
+	}
+	if in := fieldsHolding(intentSays(t, strings.Replace(body, `"note":"x 8443 y",`, "", 1)), "8443"); len(in) != 0 {
+		t.Errorf("the id, the print, the start or the process is still read for the values: %v", in)
+	}
+}
+
 // R-59 (round 3 of Grok, F1; cloud-e2e 181, R3F1 1 of 2): a SIGKILL of evo
 // after «Confirmed» and before the cloud answers left a paid disk in the
 // cloud and nothing in evo — the journal writes a call when it returns.
@@ -169,9 +234,16 @@ func TestGate_IntentBeforeTheCloudGoneAfter(t *testing.T) {
 				if _, id, ok := strings.Cut(rec.Target, "="); ok {
 					named[id] = true
 				}
+				said := intentSays(t, body)
 				for _, v := range argValues(args) {
-					if strings.Contains(body, v) && !named[v] {
-						note(key, "%s: the intent holds the value of an argument (%d characters)", surface, len(v))
+					if named[v] {
+						continue
+					}
+					// The fields and the whole record are named: the
+					// world's values are no secrets, and a case that
+					// comes once must not stay a guess.
+					if in := fieldsHolding(said, v); len(in) > 0 {
+						note(key, "%s: the intent holds the value of an argument (%d characters) in %v; the record: %s", surface, len(v), in, body)
 					}
 				}
 			}

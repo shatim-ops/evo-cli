@@ -25,23 +25,17 @@ import (
 // request is known for one (the disk of a restore, two runs of Г-16); for
 // the others it is a hypothesis, and so is each line found here.
 
+// listLagsUnknown is what is known of every line of listLagsPending today.
+const listLagsUnknown = "a second of the name after a lost answer: whether the service lists later than it takes the request is not known (no run)"
+
 // listLagsPending are the creates whose repeat, after a lost answer and a
 // list that lags, leaves more billable resources than one clean call —
 // each with what is known. Only shrinks. Closes by 1.10.
-// listLagsUnknown is what is known of every line today.
-const listLagsUnknown = "a second of the name after a lost answer: whether the service lists later than it takes the request is not known (no run)"
-
 var listLagsPending = map[string]string{
 	"ar_create":         listLagsUnknown,
 	"cert_import":       listLagsUnknown,
 	"dns_record_create": listLagsUnknown,
-	"k8s_add_nodepool":  listLagsUnknown,
-	"k8s_create":        listLagsUnknown,
-	"kafka_create":      listLagsUnknown,
-	"lb_create":         listLagsUnknown,
 	"pg_backup_create":  listLagsUnknown,
-	"pg_create":         listLagsUnknown,
-	"redis_create":      listLagsUnknown,
 	"snat_create":       listLagsUnknown,
 	"tg_create":         listLagsUnknown,
 	"vpc_create":        listLagsUnknown,

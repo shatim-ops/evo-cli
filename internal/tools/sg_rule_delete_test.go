@@ -43,6 +43,8 @@ type sgWorld struct {
 	deletes []string
 	stuck   bool
 	refuse  error
+	// unread: the groups whose rules cannot be read, and the error.
+	unread map[string]error
 }
 
 func newSGWorld() *sgWorld {
@@ -67,6 +69,9 @@ func (w *sgWorld) ListSecurityGroups(context.Context, string) ([]*provision.Secu
 func (w *sgWorld) ListSecurityGroupRules(_ context.Context, sgID string) ([]*provision.SGRule, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if err := w.unread[sgID]; err != nil {
+		return nil, err
+	}
 	var out []*provision.SGRule
 	kept := w.rules[sgID][:0:0]
 	for _, r := range w.rules[sgID] {
@@ -359,5 +364,29 @@ func TestSGRuleDelete_TheLastSSHRuleBeingDeletedIsAlreadyDeleting(t *testing.T) 
 	m, text, isErr := callNamed(t, r, "sg_rule_delete", map[string]any{"security_group": sgZoneGroup, "rule_id": sgRuleSSH, "confirmed": true})
 	if isErr || m["status"] != "deleting" || m["already_deleting"] != true || w.deleted() != 0 {
 		t.Errorf("the last SSH rule in deleting: %s", text)
+	}
+}
+
+// The rule is not in the group named, and the look for the group it is in
+// could not read the rules of another group: «not there» is not known.
+// The call used to answer already_deleted — a failed read turned the
+// refusal «the rule is of another group» into a success (the interim
+// delta audit of 1.9, FB19I-15). It answers the failure of the read.
+func TestSGRuleDelete_AFailedLookForTheRuleElsewhereIsNotAlreadyDeleted(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		w := newSGWorld()
+		w.unread = map[string]error{sgOtherGroup: clerrors.Wrap(clerrors.CodeAPIError, "unavailable", "", &provision.StatusError{Status: 503, Body: "unavailable"})}
+		r, _ := sgRuleRegistry(t, w)
+		// sgRuleOther is a rule of sgOtherGroup, whose rules cannot be read.
+		m, text, isErr := callNamed(t, r, "sg_rule_delete", map[string]any{"security_group": sgZoneGroup, "rule_id": sgRuleOther, "confirmed": confirmed})
+		if !isErr || m["status"] == "already_deleted" || m["reason"] != clerrors.CodeAPIError || w.deleted() != 0 {
+			t.Errorf("confirmed=%v: %s (deletes %d), want the failure of the read, not already_deleted", confirmed, text, w.deleted())
+		}
+	}
+	// Every other group read, the rule in none: already deleted, as it was.
+	w := newSGWorld()
+	r, _ := sgRuleRegistry(t, w)
+	if m, text, isErr := callNamed(t, r, "sg_rule_delete", map[string]any{"security_group": sgZoneGroup, "rule_id": sgRuleNone, "confirmed": true}); isErr || m["status"] != "already_deleted" {
+		t.Errorf("a rule no group has: %s", text)
 	}
 }

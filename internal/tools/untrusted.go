@@ -95,20 +95,28 @@ var untrustedFields = map[string]untrustedAnswer{
 	"backup_restore": {fields: []string{"preview", "will_create", "disk", "name"}},
 	// The names of the backup, its source and the backups that depend on
 	// it, in the preview.
-	"backup_delete": {fields: []string{"will_delete", "target"}},
+	"backup_delete": {fields: []string{"will_delete", "target", "resource_status"}},
 	// The name of the pool, in the preview and in the answer; the words
 	// and the code of the platform in a failed operation (details).
 	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},
-	// The cluster of the pool by its name, in the preview of the delete.
-	"k8s_nodepool_delete": {fields: []string{"preview"}},
+	// The cluster of the pool by its name, in the preview of the delete;
+	// the name of the pool, in the target (FB19I-9); its status in a
+	// refusal.
+	"k8s_nodepool_delete": {fields: []string{"preview", "target", "resource_status"}},
+	// The status of the resource as its service writes it, in the refusal
+	// of a delete in a state no run has shown («Риск», 181, У2): a word
+	// of the cloud, not of a closed set.
+	"k8s_delete": {fields: []string{"resource_status"}},
+	"lb_delete":  {fields: []string{"resource_status"}},
+	"tg_delete":  {fields: []string{"resource_status"}},
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.
 	// The names of the source groups of a port only groups let in: not
 	// named by the caller, unlike the group of the call.
-	"open_ports":     {fields: []string{"open_only_to_groups"}},
+	"open_ports":     {fields: []string{"open_only_to_groups", "vms"}},
 	"sg_rule_create": {fields: []string{"security_group", "rule", "preview"}},
-	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups"}},
+	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of
