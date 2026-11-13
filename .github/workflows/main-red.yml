@@ -14,7 +14,9 @@ name: main-red
 
 on:
   workflow_run:
-    workflows: [ci, cloud-e2e, stand]
+    # pr-stuck — обход открытых PR по расписанию: упавший обход молчит о
+    # стоящих PR, и его красный тоже должен дойти до issue.
+    workflows: [ci, cloud-e2e, stand, pr-stuck]
     types: [completed]
     branches: [main]
 

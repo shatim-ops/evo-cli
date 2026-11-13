@@ -30,8 +30,11 @@ func TestWorkflows_RedMainOpensAnIssue(t *testing.T) {
 	// stand — the daily reading of the stand (plan 1.9, Г-50): a stand past
 	// its date is red in a run by schedule, and a red nobody is told about
 	// is no signal.
-	if fmt.Sprint(trig["workflows"]) != "[ci cloud-e2e stand]" || !slices.Contains(trig["types"].([]any), any("completed")) || fmt.Sprint(trig["branches"]) != "[main]" {
-		t.Errorf("main-red: on workflow_run %v, want ci, cloud-e2e and stand completed on main", trig)
+	// pr-stuck — the round over the open pull requests (journal 1.9, «Тихое
+	// красное»): a round that fails by schedule tells nobody about a stuck
+	// pull request, so its own red must reach an issue too.
+	if fmt.Sprint(trig["workflows"]) != "[ci cloud-e2e stand pr-stuck]" || !slices.Contains(trig["types"].([]any), any("completed")) || fmt.Sprint(trig["branches"]) != "[main]" {
+		t.Errorf("main-red: on workflow_run %v, want ci, cloud-e2e, stand and pr-stuck completed on main", trig)
 	}
 	if len(w.On) != 1 {
 		t.Errorf("main-red: triggers %v, want workflow_run alone", w.On)

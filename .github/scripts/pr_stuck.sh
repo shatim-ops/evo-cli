@@ -30,14 +30,14 @@ tell() {
   local n=$1 mark="<!-- pr-stuck:$2 -->" seen
   seen=$(gh api "repos/$GH_REPO/issues/$n/comments?per_page=100" --paginate \
     --jq '.[] | select(.user.login == "github-actions[bot]") | .body' 2>"$err") || {
-    echo "::warning title=pr-stuck::комментарии PR $n не прочитаны — строка не оставлена: $(head -c 300 "$err" | tr '\n' ' ')" >&2
+    echo "::warning title=pr-stuck::комментарии PR $n не прочитаны — строка не оставлена: $(head -c 300 "$err" | tr '\n\r' '  ')" >&2
     return 0
   }
   case "$seen" in *"$mark"*) return 0 ;; esac
   gh pr comment "$n" --body "$3 $NOTICE
 
 $mark" 2>"$err" ||
-    echo "::warning title=pr-stuck::строка в PR $n не оставлена: $(head -c 300 "$err" | tr '\n' ' ')" >&2
+    echo "::warning title=pr-stuck::строка в PR $n не оставлена: $(head -c 300 "$err" | tr '\n\r' '  ')" >&2
 }
 
 prs=$(gh pr list --state open --base main --limit 100 --json number,isDraft,headRefOid,mergeable \
@@ -53,13 +53,13 @@ while IFS=$'\t' read -r n sha mergeable; do
   # push that replaced it, which is no «no runner».
   run=$(gh api "repos/$GH_REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
     --jq '[.workflow_runs[] | select(.name == "ci")] | max_by(.run_number) | .id // empty' 2>"$err") || {
-    echo "::warning title=pr-stuck::прогоны PR $n не прочитаны: $(head -c 300 "$err" | tr '\n' ' ')" >&2
+    echo "::warning title=pr-stuck::прогоны PR $n не прочитаны: $(head -c 300 "$err" | tr '\n\r' '  ')" >&2
     continue
   }
   [ -n "$run" ] || continue
   jobs=$(gh api "repos/$GH_REPO/actions/runs/$run/jobs?per_page=100" \
     --jq '[.jobs[] | select(.conclusion == "cancelled" and ((.runner_id // 0) == 0) and (((.steps // []) | length) == 0))] | length' 2>"$err") || {
-    echo "::warning title=pr-stuck::job прогона $run (PR $n) не прочитаны: $(head -c 300 "$err" | tr '\n' ' ')" >&2
+    echo "::warning title=pr-stuck::job прогона $run (PR $n) не прочитаны: $(head -c 300 "$err" | tr '\n\r' '  ')" >&2
     continue
   }
   case "$jobs" in "" | 0 | *[!0-9]*) continue ;; esac
