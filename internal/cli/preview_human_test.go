@@ -28,6 +28,9 @@ var previewForm = map[string]string{
 	"source":    "where the cost comes from: «estimate» on the cost line",
 	"class":     "the class of a resource's price: the cost line says it in words (the price, «0 at creation», «price unknown, billable»)",
 	"reason":    "why the quota was not checked (D60): «quota: not checked (project key)» says it in words",
+	// The marker is for a client of the JSON; the lines quote a name of
+	// the cloud on one line (renderAnswer, toolPreview).
+	"_untrusted": "the fields with text of the cloud, for a client of the JSON",
 }
 
 // humanUnnamed are the values of a preview's details that its human form
@@ -45,8 +48,6 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"deploy project_from":                             {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"deploy update":                                   {unnamedWork, "обновит ли deploy существующую ВМ"},
 	"deploy_apply expires_at":                         {unnamedNoise, "срок плана"},
-	"backup_create _untrusted":                        {unnamedNoise, "служебная пометка полей с текстом облака, не значение превью"},
-	"backup_restore _untrusted":                       {unnamedNoise, "служебная пометка полей с текстом облака, не значение превью"},
 	"deploy_apply plan_id":                            {unnamedNoise, "id плана: у плана нет имени"},
 	"deploy_apply preview.cost.hourly_rub":            {unnamedPrice, "почасовая цена; человеку — месячная"},
 	"disk_create preview.project_from":                {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
