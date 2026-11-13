@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -44,6 +45,9 @@ type restoreWorld struct {
 	disks             []map[string]any
 	restores          int
 	sent              map[string]any
+	// dir is the directory of the state of every call on the world: the
+	// records of the calls (D92) live there, as evo\'s beside its state.
+	dir string
 }
 
 func (w *restoreWorld) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -130,13 +134,23 @@ func restoreRegistry(t *testing.T, w *restoreWorld) *Registry {
 	return New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
-			Config:  config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"},
-			Auth:    staticToken{},
-			Cloud:   cloud,
-			Printer: output.NewWithWriter(&buf, output.ModeText, false),
-			Timings: engine.Timings{VMPollInterval: time.Millisecond},
+			Config:   config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"},
+			Auth:     staticToken{},
+			Cloud:    cloud,
+			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
+			Timings:  engine.Timings{VMPollInterval: time.Millisecond},
+			StateDir: w.dir,
 		}, nil
 	})
+}
+
+// stateIn gives the calls on w one directory of the state, the current one:
+// evo runs in the directory of its state.
+func (w *restoreWorld) stateIn(t *testing.T) *restoreWorld {
+	t.Helper()
+	w.dir = t.TempDir()
+	t.Chdir(w.dir)
+	return w
 }
 
 func backupRestore(t *testing.T, w *restoreWorld, args map[string]any) (map[string]any, string, bool) {
@@ -264,5 +278,71 @@ func TestBackupRestore_EveryStateOfTheSpec(t *testing.T) {
 		if got != want || w.restores != 0 {
 			t.Errorf("%s: want %s and nothing sent (sent %d): %s", st, want, w.restores, text)
 		}
+	}
+}
+
+// The platform took the restore and the disk is not listed yet (the probe
+// of #1580, A): the calls after it send no second restore — with the
+// consent or without, they answer where the restore stands, with no new
+// question; the disk listed, its id; and the record then closes, so the
+// name is taken as any disk's («Риск», conclusion 164, У5; У1, У2).
+func TestBackupRestore_TakenAndNotListedSendsNoSecond(t *testing.T) {
+	w := (&restoreWorld{never: true}).stateIn(t)
+	if m, text, _ := backupRestore(t, w, map[string]any{"confirmed": true}); m["status"] != "restoring" || w.restores != 1 {
+		t.Fatalf("want restoring after one restore: %s", text)
+	}
+	for _, confirmed := range []bool{false, true} {
+		m, text, _ := backupRestore(t, w, map[string]any{"confirmed": confirmed})
+		if m["status"] != "restoring" || w.restores != 1 {
+			t.Errorf("confirmed=%v: want restoring and no second restore (sent %d): %s", confirmed, w.restores, text)
+		}
+	}
+	w.mu.Lock()
+	w.disks = append(w.disks, map[string]any{"id": "late", "name": "restored", "state": "available", "size": float64(10)})
+	w.mu.Unlock()
+	if m, text, _ := backupRestore(t, w, nil); m["status"] != "created" || m["disk_id"] != "late" || w.restores != 1 {
+		t.Errorf("the disk listed: want it named, nothing sent (sent %d): %s", w.restores, text)
+	}
+	if m, text, _ := backupRestore(t, w, map[string]any{"confirmed": true}); m["reason"] != "USAGE" || m["existing_id"] != "late" || w.restores != 1 {
+		t.Errorf("after: want the name taken by that disk: %s", text)
+	}
+}
+
+// A restore taken whose disk is not listed within restoreHeldLimit: the
+// call says so and leaves a second restore to the person; the record
+// closes.
+func TestBackupRestore_NotListedInTimeIsSaid(t *testing.T) {
+	w := (&restoreWorld{never: true}).stateIn(t)
+	backupRestore(t, w, map[string]any{"confirmed": true})
+	old := clock.Now
+	clock.Now = func() time.Time { return time.Now().Add(restoreHeldLimit + time.Minute) }
+	t.Cleanup(func() { clock.Now = old })
+	m, text, isErr := backupRestore(t, w, nil)
+	if !isErr || m["reason"] != "NOT_FOUND" || !strings.Contains(text, "ask the person") || w.restores != 1 {
+		t.Errorf("want the error that no disk came and the person's decision: %s", text)
+	}
+	if m, text, _ := backupRestore(t, w, nil); m["status"] != "confirmation_required" {
+		t.Errorf("the record closed: want the question as for a new restore: %s", text)
+	}
+}
+
+// The answer of the restore lost (the probe of #1580, B and C): the same
+// call with the consent of the first sends no second restore — it asks
+// the person again, in this process and in a new one (a new registry on
+// the same state).
+func TestBackupRestore_LostAnswerAsksAgain(t *testing.T) {
+	w := (&restoreWorld{lost: true, never: true}).stateIn(t)
+	if _, text, isErr := backupRestore(t, w, map[string]any{"confirmed": true}); !isErr || w.restores != 1 {
+		t.Fatalf("want the lost answer's error after one restore: %s", text)
+	}
+	m, text, _ := backupRestore(t, w, map[string]any{"confirmed": true})
+	if m["status"] != "confirmation_required" || m["interrupted"] == nil || w.restores != 1 {
+		t.Errorf("the same call with its consent: want the question again, nothing sent (sent %d): %s", w.restores, text)
+	}
+	// The question was asked: the next consent is the person's, and is sent.
+	w.never = false
+	w.lost = false
+	if m, text, _ := backupRestore(t, w, map[string]any{"confirmed": true}); m["status"] != "created" || w.restores != 2 {
+		t.Errorf("after the question: want the restore sent: %s", text)
 	}
 }

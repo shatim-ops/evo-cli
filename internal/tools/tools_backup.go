@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -682,10 +683,18 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 		return nil, err
 	}
 	pid := eng.Config.ProjectID
+	list := func(ctx context.Context) ([]map[string]any, error) { return eng.Cloud.ListDisks(ctx, pid) }
+	// A restore of this backup into this name that the platform took and
+	// whose disk evo still waits for (the held record of the call): the
+	// call answers where it stands — the disk, or that it is not listed
+	// yet — and sends nothing; no new question invites a second disk
+	// («Риск», conclusion 164, У5; the probe of #1580, У1 and У2).
+	if since, ok := s.restoreHeld(eng, id, name); ok {
+		return answered(s.restoreGoesOn(ctx, eng, args, list, id, name, since)), nil
+	}
 	// A name taken before the call: refused before the question, so the
 	// disk found by the name after the request is the call's own (D49,
 	// conclusion 164, У5).
-	list := func(ctx context.Context) ([]map[string]any, error) { return eng.Cloud.ListDisks(ctx, pid) }
 	if ans, refused := nameFree(ctx, list, i18n.T("disk", "диск"), name, "disk_list"); refused {
 		return answered(ans, true), nil
 	}
@@ -782,7 +791,7 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 		if err != nil && apiStatus(err) >= 400 && apiStatus(err) < 500 {
 			return errResult(fmt.Errorf(i18n.T("restore backup: %w", "восстановление копии: %w"), err)), true
 		}
-		return s.backupRestored(ctx, eng, args, list, id, name, err)
+		return s.backupRestored(ctx, eng, args, list, id, name, err, boolArg(args, "wait", true))
 	}}, nil
 }
 
@@ -800,7 +809,7 @@ var backupRestoreWait = diskReadyTimeout
 // between (conclusion 164, У5). sent is the error of the request, nil when
 // the platform took it: a lost answer is reconciled by the name too, and a
 // disk not found then may still come and be billed.
-func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), backupID, name string, sent error) (string, bool) {
+func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), backupID, name string, sent error, wait bool) (string, bool) {
 	var found []map[string]any
 	read := func(ctx context.Context) (string, bool, error) {
 		items, err := list(ctx)
@@ -830,7 +839,7 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 		return len(found) > 1 || st == "available" || strings.HasPrefix(st, "error"), nil
 	}
 	limit := backupRestoreWait
-	if !boolArg(args, "wait", true) {
+	if !wait {
 		limit = 0
 	}
 	last, _, _, werr := waitState(ctx, eng, limit, read, waiting, done)
@@ -849,8 +858,8 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 		if len(found) == 1 {
 			ans["disk_id"] = found[0]["id"]
 		}
-		ans["warning"] = i18n.Tf("the restore was sent: a disk %q may be made and be billed; disk_list shows it by name, and the same call again names its id instead of making a second",
-			"восстановление отправлено: диск %q может появиться и оплачиваться; disk_list покажет его по имени, а тот же вызов ещё раз назовёт его id, а не сделает второй", name)
+		ans["warning"] = i18n.Tf("the restore was sent: a disk %q may be made and be billed; disk_list shows it by name. The same call again sends no second restore: it asks the person first",
+			"восстановление отправлено: диск %q может появиться и оплачиваться; disk_list покажет его по имени. Тот же вызов ещё раз второе восстановление не отправит: сначала спросит человека", name)
 		return errAnswer(werr, ans), true
 	}
 	switch {
@@ -865,12 +874,12 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 		return toJSON(ans), false
 	case len(found) == 0 && sent != nil:
 		return errAnswer(sent, map[string]any{"warning": i18n.Tf(
-			"the answer of the restore did not come back: a disk %q may still be made and be billed; disk_list shows it by name, and the same call again names its id instead of making a second",
-			"ответ на восстановление не пришёл: диск %q может ещё появиться и оплачиваться; disk_list покажет его по имени, а тот же вызов ещё раз назовёт его id, а не сделает второй", name)}), true
+			"the answer of the restore did not come back: a disk %q may still be made and be billed; disk_list shows it by name. The same call again sends no second restore: it asks the person first",
+			"ответ на восстановление не пришёл: диск %q может ещё появиться и оплачиваться; disk_list покажет его по имени. Тот же вызов ещё раз второе восстановление не отправит: сначала спросит человека", name)}), true
 	case len(found) == 0:
 		ans["status"] = "restoring"
-		ans["note"] = i18n.Tf("The platform took the restore; the disk %s is not listed yet. The same call again names its id once it is, instead of making a second.",
-			"Платформа приняла восстановление; диска %s в списке ещё нет. Тот же вызов ещё раз назовёт его id, когда он появится, а не сделает второй.", quoteCloud(name))
+		ans["note"] = i18n.Tf("The platform took the restore; the disk %s is not listed yet. The same call again sends nothing: it answers the disk's id once it is listed, or that it is not yet.",
+			"Платформа приняла восстановление; диска %s в списке ещё нет. Тот же вызов ещё раз ничего не отправит: ответит id диска, когда он появится в списке, или что его ещё нет.", quoteCloud(name))
 		nextSameCall(ans, "backup_restore", args)
 		return toJSON(ans), false
 	}
@@ -893,4 +902,48 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 		nextSameCall(ans, "backup_restore", args)
 	}
 	return toJSON(ans), false
+}
+
+// restoreHeldLimit is how long a restore the platform took is waited for
+// by the repeats of its call: two runs of Г-16 listed a restored disk in
+// seconds; a disk not listed by then is not waited for any more.
+const restoreHeldLimit = 30 * time.Minute
+
+// restoreHeld is the start of this key's restore of backup id into name
+// that evo still waits for — its held record (heldSince, by the name too:
+// two restores of one backup are two disks).
+func (s *Registry) restoreHeld(eng *engine.Engine, id, name string) (since time.Time, ok bool) {
+	if eng == nil || eng.StateDir == "" {
+		return time.Time{}, false
+	}
+	cur := eng.Maker()
+	for _, in := range intent.Pending(intent.Dir(eng.StateDir)) {
+		if in.Held && in.Tool == "backup_restore" && in.Name == name && in.Target == "backup_id="+id && !in.Key.Other(cur) {
+			return in.StartedAt, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// restoreGoesOn answers a call on a restore evo waits for: one read of the
+// disks. The disk listed — its id and state; not yet — restoring and the
+// same call next, until restoreHeldLimit: then the answer says it was not
+// listed and leaves a second restore to the person. Nothing is sent.
+func (s *Registry) restoreGoesOn(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), id, name string, since time.Time) (string, bool) {
+	text, isErr := s.backupRestored(ctx, eng, args, list, id, name, nil, false)
+	if answerStatus(text) != "restoring" || clock.Now().Sub(since) < restoreHeldLimit {
+		return text, isErr
+	}
+	var m map[string]any
+	_ = json.Unmarshal([]byte(text), &m)
+	if m["disk_id"] != nil || m["disk_ids"] != nil {
+		return text, isErr
+	}
+	// NOT_FOUND: a known outcome — evo waits no more, and the record of
+	// the call closes (an API_ERROR would keep it as unknown).
+	return errAnswer(clierrors.New(clierrors.CodeNotFound,
+		i18n.Tf("the restore of backup %s into disk %s, taken at %s, made no disk listed by that name", "восстановление копии %s в диск %s, принятое %s, не дало диска с этим именем в списке", id, quoteCloud(name), since.Local().Format("02.01.2006 15:04")),
+		i18n.T("disk_list shows the project's disks. Whether to restore again is the person's decision: ask the person.",
+			"Диски проекта показывает evo disk list. Восстанавливать ли снова — решает человек: спросите человека.")),
+		map[string]any{"backup_id": id, "name": name}), true
 }
