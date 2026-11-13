@@ -1171,8 +1171,9 @@ jobs:
     environment: cloud-e2e
     if: ${{ inputs.k8s_smoke && !inputs.cleanup_only }}
     runs-on: ubuntu-24.04
-    # Шаги ждут до 40 + 30 + 25 мин, проба Г-12 — до 90, удаление — до 30:
-    # запас, чтобы job не оборвался по таймауту до удаления кластера.
+    # Шаги ждут до 40 + 30 + 25 мин, проба Г-12 — до 90, удаление — до 30
+    # (с Г-12 — до 70: отказ удаления в обновлении повторяется): запас,
+    # чтобы job не оборвался по таймауту до удаления кластера.
     timeout-minutes: 300
     env:
       ZONE: ${{ inputs.k8s_zone || inputs.zone || 'ru.AZ-2' }}
@@ -1246,6 +1247,13 @@ jobs:
           else
             echo "::warning::Г-12: в каталоге нет версии предыдущего минора — кластер по умолчанию, обновление версии не проверяется"
           fi
+
+      # След кластера в проекте (заключение «Риска» 189, У3): ресурсы,
+      # которые заводит сам сервис, сторож по имени кластера не видит —
+      # снимок проекта до кластера, сверка после его удаления.
+      - name: Ресурсы проекта до кластера (Г-12, только чтение)
+        if: contains(format(' {0} ', inputs.probes), ' g12 ')
+        run: .github/scripts/k8s-footprint.sh save "$RUNNER_TEMP/footprint"
 
       - name: k8s plan, затем create (1 мастер)
         run: |
@@ -1485,29 +1493,26 @@ jobs:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
           K8S_BUDGET: 5400
-        run: K8S_CLUSTER_ID="$CLUSTER_ID" .github/scripts/cloud-live.sh k8schange
+        run: |
+          echo "::notice::запуск с g12 — не прогон-свидетельство k8s_smoke для rc: кластер обновлён и перекроен прямыми запросами мимо evo (заключение «Риска» 189, У4)"
+          K8S_CLUSTER_ID="$CLUSTER_ID" .github/scripts/cloud-live.sh k8schange
 
+      # Отказ удаления (кластер в обновлении, группа в переходе) — повтор,
+      # когда состояние сменилось; остаток — ::error:: поимённо
+      # (k8s-delete.sh). С пробой Г-12 ожидание длиннее — на обновление
+      # версии (заключение «Риска» 189, У2).
       - name: Удаление кластера (всегда)
         if: always()
         env:
-          # Отмена прогона — одна попытка удаления, без ожидания 30 мин.
-          ONCE: ${{ job.status == 'cancelled' }}
-        run: |
-          ids=$(evo tools call k8s_list --json | jq -r --arg n "$CLUSTER" '.clusters[]? | select(.name == $n) | .id')
-          [ -n "$ids" ] || { echo "кластера $CLUSTER нет"; exit 0; }
-          for id in $ids; do
-            echo "::add-mask::$id"
-            evo --json --yes k8s delete "$id" | jq -c '{status}' || true
-          done
-          [ "$ONCE" != true ] || { echo "::warning::прогон отменён: одна попытка удаления $CLUSTER — остаток уберёт cleanup_only"; exit 0; }
-          start=$(date +%s)
-          while :; do
-            left=$(evo tools call k8s_list --json | jq -c --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n) | .status]')
-            echo "$(( ($(date +%s) - start) / 60 )) мин: $left"
-            [ "$left" = "[]" ] && { echo "кластер удалён"; exit 0; }
-            [ $(( $(date +%s) - start )) -lt 1800 ] || { echo "::error::кластер $CLUSTER не удалился за 30 мин — удалите его в консоли Cloud.ru"; exit 1; }
-            sleep 60
-          done
+          # Отмена прогона — одна попытка удаления, без ожидания.
+          K8S_DEL_ONCE: ${{ job.status == 'cancelled' }}
+          K8S_DEL_WAIT: ${{ contains(format(' {0} ', inputs.probes), ' g12 ') && '4200' || '1800' }}
+        run: .github/scripts/k8s-delete.sh "$CLUSTER"
+
+      - name: След кластера в проекте после удаления (Г-12)
+        if: always() && contains(format(' {0} ', inputs.probes), ' g12 ')
+        continue-on-error: true
+        run: .github/scripts/k8s-footprint.sh check "$RUNNER_TEMP/footprint"
 
   # DBaaS вживую (вход dbaas_smoke): три job'а идут параллельно — PostgreSQL,
   # Kafka, Redis. Каждый: зона открыта и кластера с нашим именем нет →

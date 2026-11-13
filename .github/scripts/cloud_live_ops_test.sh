@@ -1064,6 +1064,10 @@ rc=0
 K8S_CLUSTER_ID=c1 K8S_UPGRADE_TO=v1.32.1 K8S_SETTLE=1000 "$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
 want "Г-12: код" "$rc" 0
 want "Г-12: тела запросов — масштаб 2, повтор 2, 1, версия кластера и группы, 0" "$(jq -c 'select(has("keyId") | not)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"scalePolicy":{"fixedScale":{"count":2}}};{"scalePolicy":{"fixedScale":{"count":2}}};{"scalePolicy":{"fixedScale":{"count":1}}};{"version":"v1.32.1"};{"version":"v1.32.1"};{"scalePolicy":{"fixedScale":{"count":0}}};'
+# Обновление версии — долгий и необратимый шаг — идёт после второй группы:
+# зависшее обновление не съедает её (заключение «Риска» 189, У1).
+first() { grep -n "$1" "$FAKE_DIR/calls" | head -1 | cut -d: -f1; }
+[ "$(first "^DELETE $P2")" -lt "$(first ':upgrade$')" ] || { echo "FAIL: Г-12: обновление версии раньше второй группы"; sed 's/^/  | /' "$FAKE_DIR/calls"; fail=1; }
 want "Г-12: удаления — вторая группа (отказ, готовая, повтор) и последняя" "$(grep '^DELETE' "$FAKE_DIR/calls" | sed "s#$MK##" | tr '\n' ';')" "DELETE /nodePools/np2;DELETE /nodePools/np2;DELETE /nodePools/np2;DELETE /nodePools/np1;"
 for s in 'Г-12: масштаб 1→2.*первое чтение после ответа: OBJECT_STATUS_RUNNING/2 узл.*повтор сразу: HTTP 200, вторая операция; операция сразу: done=false, error: {}; состояния: .*SCALING_UP.*операция в конце: done=true, error: нет поля; вторая операция в конце: done=true, error: null' \
 	'Г-12: масштаб 2→1.*SCALING_DOWN/1 узл.* → OBJECT_STATUS_RUNNING/1 узл' \
@@ -1103,7 +1107,7 @@ k8s_world
 rc=0
 K8S_CLUSTER_ID=c1 K8S_BUDGET=0 "$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
 want "Г-12, срок вышел: код" "$rc" 0
-want "Г-12, срок вышел: запросов к mk8s нет" "$(cat "$FAKE_DIR/calls" 2>/dev/null | grep -c mk8s || true)" 0
+want "Г-12, срок вышел: запросов к mk8s нет" "$(if [ -f "$FAKE_DIR/calls" ]; then grep -c mk8s "$FAKE_DIR/calls" || true; else echo 0; fi)" 0
 grep -q 'нет K8S_UPGRADE_TO' "$tmp/out" || { echo "FAIL: Г-12: версия без цели не названа"; fail=1; }
 grep -q 'срок пробы' "$tmp/out" || { echo "FAIL: Г-12: истёкший срок не назван"; fail=1; }
 
