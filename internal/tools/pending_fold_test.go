@@ -80,4 +80,39 @@ func TestPendingNotes_ManyRecordsFoldAndDoctorShowsEvery(t *testing.T) {
 	if notes := r.PendingNotes(root); len(notes) != foldPendingAfter || strings.Contains(strings.Join(notes, "\n"), "evo doctor shows") {
 		t.Errorf("%d records: %d lines\n%s", foldPendingAfter, len(notes), strings.Join(notes, "\n"))
 	}
+
+}
+
+// The record of the resource the call names is never folded, however
+// old: six newer records of other resources and one old record of the VM
+// the first call reads — the old one is in its answer («Риск», conclusion
+// 187, У3-1).
+func TestPendingNotes_TheRecordOfTheCallsResourceIsNotFolded(t *testing.T) {
+	r := ownerRegistry(t, &ownerFake{}, false, ownProject)
+	eng, _ := r.newEngine(nil)
+	dir := intent.Dir(eng.StateDir)
+	start := time.Now().Add(-400 * 24 * time.Hour)
+	open := func(target string, at time.Time) {
+		in := intent.Intent{Tool: "vm_reboot", Target: target, Surface: "mcp", PID: os.Getpid(), StartedAt: at, Ended: true, Key: eng.Maker()}
+		if _, err := intent.Open(dir, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open("vm_id="+resMine, start)
+	for i := 0; i < foldPendingAfter+1; i++ {
+		open(fmt.Sprintf("vm_id=vm-%02d", i), start.Add(time.Duration(i+1)*time.Hour))
+	}
+	tl, _ := r.Lookup("vm_get")
+	text, _ := tl.Handler(context.Background(), map[string]any{"vm_id": resMine})
+	var a struct {
+		Pending []string `json:"pending_operations"`
+	}
+	_ = json.Unmarshal([]byte(text), &a)
+	all := strings.Join(a.Pending, "\n")
+	if !strings.Contains(all, resMine) || !strings.Contains(all, "and 1 more") && !strings.Contains(all, "и ещё 1") {
+		t.Errorf("the old record of the call's VM is folded, or the count is wrong:\n%s", all)
+	}
+	if len(a.Pending) != foldPendingAfter+2 {
+		t.Errorf("%d lines, want the call's record, %d newest and the fold line", len(a.Pending), foldPendingAfter)
+	}
 }

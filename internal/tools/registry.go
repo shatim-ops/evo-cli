@@ -330,12 +330,12 @@ type callRecordsKey struct{}
 
 // budgeted stamps a call with its start (withCallStart) and notes in its
 // answer what earlier calls left.
-func (r *Registry) budgeted(next Handler) Handler {
+func (r *Registry) budgeted(name string, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		own := &callRecords{}
 		text, isErr := next(context.WithValue(r.withCallStart(ctx), callRecordsKey{}, own), args)
 		if callerOf(ctx) == nil {
-			text = r.notePending(text, own.ids)
+			text = r.notePending(text, own.ids, callOn(name, args))
 		}
 		return text, isErr
 	}
@@ -394,7 +394,7 @@ func New(factory EngineFactory) *Registry {
 				r.unchecked = map[string]Handler{}
 			}
 			r.unchecked[t.Name] = checkedCreateName(t.Name, r.intended(*t, h))
-			r.handlers[t.Name] = r.budgeted(outer(t.Name, t.InputSchema, r.unchecked[t.Name]))
+			r.handlers[t.Name] = r.budgeted(t.Name, outer(t.Name, t.InputSchema, r.unchecked[t.Name]))
 		}
 		t.Handler = r.handlers[t.Name]
 	}
@@ -432,7 +432,7 @@ func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
 	}
 	t, _ := r.Lookup(name)
 	r.unchecked[name] = wrap(next)
-	h := r.budgeted(outer(name, t.InputSchema, r.unchecked[name]))
+	h := r.budgeted(name, outer(name, t.InputSchema, r.unchecked[name]))
 	r.handlers[name] = h
 	for i := range r.tools {
 		if r.tools[i].Name == name {
