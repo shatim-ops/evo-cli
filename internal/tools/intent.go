@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -108,6 +109,12 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// directory anew after it.
 		defer forgetPending(ctx)
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
+			// No write went out (changeRule.viaHTTP): the call changed
+			// nothing, whatever cut it.
+			if n, counted := httpretry.Writes(ctx); counted && n == 0 && everySendIsAChange[name].viaHTTP {
+				intent.Close(rec)
+				return
+			}
 			// The call returned, the record stays: a later call of the
 			// same may settle it (intent.Settle).
 			intent.End(rec)
@@ -175,7 +182,40 @@ type changeRule struct {
 	// (intentResource). It reads the cloud as the plan of the tool does,
 	// through the same resolver, so the call reads once.
 	target func(ctx context.Context, r *Registry, args map[string]any) (name, target string, err error)
+	// made: the tool makes a resource its list shows by name (createdIDs).
+	// A cut call whose resource is listed has an outcome that can be read:
+	// its record closes and the repeat is answered as any call on a name
+	// that is taken — the question is asked only while the list does not
+	// show it («Риск», conclusion 179, У1).
+	made bool
+	// viaHTTP: every write of the tool goes out through evo's HTTP
+	// transport (httpretry), which counts them for the call. A call that
+	// ended with no outcome and sent no write changed nothing: its record
+	// closes, and no repeat is asked about a request that never went
+	// («Риск», conclusion 179, У2).
+	viaHTTP bool
 }
+
+// paidCreate is the rule of a create of a resource billed from its first
+// minute at the price of a cluster: the repeat of a call whose answer was
+// lost would make a second one while the list does not show the first yet
+// (release plan 1.9, «Повтор платного создания после потерянного ответа
+// спрашивает заново»; D107). The resource is told by its name — and by
+// the parent it is made in, parent, when it has one — whatever the other
+// arguments of the repeat are.
+func paidCreate(tool, parent string, name func(args map[string]any) string) changeRule {
+	return changeRule{read: createdIDs[tool].list, made: true, viaHTTP: true,
+		target: func(_ context.Context, _ *Registry, args map[string]any) (string, string, error) {
+			target := ""
+			if id := stringArg(args, parent); parent != "" && id != "" {
+				target = parent + "=" + id
+			}
+			return name(args), target, nil
+		}}
+}
+
+// nameArg is the name of what a create makes when the call must give it.
+func nameArg(args map[string]any) string { return stringArg(args, "name") }
 
 // everySendIsAChange are the tools with no repeat that is a success: every
 // call that reaches the cloud is one more change (a reboot). A tool
@@ -200,6 +240,15 @@ var everySendIsAChange = map[string]changeRule{
 	// one may come and be billed though the list does not show it yet
 	// («Риск», conclusion 164, У5; the probe of #1580).
 	"backup_restore": {read: "disk_list"},
+	// The creates billed at the price of a cluster (D107).
+	// The name is the one the plan of the tool makes the resource by:
+	// the same function, where the tool has a default of its own.
+	"pg_create":        paidCreate("pg_create", "", nameArg),
+	"kafka_create":     paidCreate("kafka_create", "", nameArg),
+	"redis_create":     paidCreate("redis_create", "", nameArg),
+	"k8s_create":       paidCreate("k8s_create", "", k8sClusterNameArg),
+	"k8s_add_nodepool": paidCreate("k8s_add_nodepool", "cluster_id", nodePoolName),
+	"lb_create":        paidCreate("lb_create", "", nameArg),
 }
 
 // spelledArgs are the arguments that name the resource of the record in
@@ -280,9 +329,19 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	cur := r.maker()
 	var mine []intent.Intent
 	for _, in := range cut {
-		if cur != nil && !in.Key.Other(cur) {
-			mine = append(mine, in)
+		if cur == nil || in.Key.Other(cur) {
+			continue
 		}
+		// What the cut call made is listed: its outcome is read, the
+		// record closes, and nobody is asked about it.
+		if everySendIsAChange[name].made {
+			if _, listed := r.checkByList(ctx, in, in.ProjectID); listed {
+				intent.Close(in)
+				forgetPending(ctx)
+				continue
+			}
+		}
+		mine = append(mine, in)
 	}
 	return mine
 }
@@ -840,10 +899,17 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	}
 	t, ok := r.Lookup(c.list)
 	h := t.Handler
-	if c.list == "" || c.field == "" || len(c.listArgs) > 0 || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
+	// The list of a part of a parent needs the parent (listArgs): a
+	// create inside it names the parent as its target.
+	parentArg, parentID, _ := strings.Cut(in.Target, "=")
+	inParent := isCreate && len(c.listArgs) == 1 && c.listArgs[0] == parentArg && parentID != ""
+	if c.list == "" || c.field == "" || (len(c.listArgs) > 0 && !inParent) || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
 		return "", false
 	}
 	listArgs := map[string]any{}
+	if inParent {
+		listArgs[parentArg] = parentID
+	}
 	if props, _ := t.InputSchema["properties"].(map[string]any); props["project_id"] != nil && in.ProjectID != "" {
 		listArgs["project_id"] = in.ProjectID
 	}

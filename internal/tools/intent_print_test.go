@@ -158,8 +158,8 @@ func TestIntent_TheQuestionAfterACutCallDoesNotLookAtThePrint(t *testing.T) {
 	eng, _ := r.newEngine(nil)
 	dir := intent.Dir(eng.StateDir)
 	asked := 0
-	for tool := range everySendIsAChange {
-		if len(idArgs[tool]) == 0 {
+	for tool, rule := range everySendIsAChange {
+		if len(idArgs[tool]) == 0 || rule.made {
 			continue // named by what it makes, not by a resource
 		}
 		asked++

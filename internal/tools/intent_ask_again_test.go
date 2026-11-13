@@ -7,10 +7,12 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -192,7 +194,10 @@ func unnamedBy(tl Tool) []string {
 		for _, arg := range way {
 			args[arg] = "x"
 		}
-		if name, target := intentResource(tl.Name, args); name == "" && target == "" {
+		// As the layer names it (resourceOf); a resolver that went to
+		// read the resource names it.
+		noCloud := New(func(map[string]any) (*engine.Engine, error) { return nil, stderrors.New("no cloud in this test") })
+		if name, target, err := noCloud.resourceOf(context.Background(), tl.Name, args); err == nil && name == "" && target == "" {
 			bad = append(bad, strings.Join(way, "+"))
 		}
 	}
