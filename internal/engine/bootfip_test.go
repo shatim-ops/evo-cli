@@ -189,3 +189,26 @@ func TestDeploy_BootFIPLost_StopsBeforeVM(t *testing.T) {
 		t.Fatalf("state marks %+v (%v), want the mark of %s", sf.LostFloatingIPs, rerr, lost.Name)
 	}
 }
+
+// Conclusion 205: after a person's yes to one more address for a VM, the
+// create gives it another name than the address of the mark — the first
+// may still come, and each mark must find only its own.
+func TestAssignFloatingIP_AfterAYesAnotherName(t *testing.T) {
+	var calls fipCalls
+	cloud := &mockCloudAPI{createFloatingIPFn: func(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+		calls.record(req)
+		return &provision.FloatingIP{ID: "fip-2", Name: req.Name, IPAddress: "203.0.113.9", State: "in_use"}, nil
+	}}
+	eng, _ := newTestEngine(t, cloud, newMockDeployer())
+	sf := &state.File{}
+	floatingip.Note(sf, state.LostFloatingIP{Name: fipName("vm-123"), ProjectID: "p", VMName: "web", VMID: "vm-123", Answered: true})
+	if _, _, err := eng.AssignFloatingIP(context.Background(), "vm-123", "web", "p", "az", sf); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls.reqs) != 1 || calls.reqs[0].Name == fipName("vm-123") {
+		t.Fatalf("creates %+v; want one, named other than %s", calls.reqs, fipName("vm-123"))
+	}
+	if len(sf.LostFloatingIPs) != 1 {
+		t.Fatalf("marks %+v; want the first address's kept", sf.LostFloatingIPs)
+	}
+}

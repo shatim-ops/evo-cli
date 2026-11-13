@@ -117,6 +117,11 @@ type Plan struct {
 	// with the plan's name only if it is one of them or was made after the
 	// plan (a lost answer of its create). Filled by the caller, not saved.
 	Owned []string `json:"-"`
+	// FloatingIPName, when set, is the name Apply gives the VM's floating
+	// IP instead of the plan's own: a mark of the folder already holds that
+	// one — a person said yes to one more while the first may still come
+	// (floatingip.NameFor). Not saved: the folder's state tells it.
+	FloatingIPName string `json:"-"`
 
 	// Internal fields needed by Apply (persisted, no secrets).
 	ComposeFile string            `json:"compose_file,omitempty"`

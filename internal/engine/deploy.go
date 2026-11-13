@@ -1155,7 +1155,10 @@ func (e *Engine) giveFloatingIP(ctx context.Context, progress func(string), vmID
 		}
 		return e.attachToPrimary(ctx, f, vmID, projectID)
 	}
-	ip, id, err := assignFloatingIP(ctx, e.Cloud, e.timings(), progress, vmID, projectID, azID)
+	// After a person's yes the address of the lost create may still come:
+	// the new one bears another name (floatingip.NameFor).
+	name := floatingip.NameFor(sf, projectID, fipName(vmID), clock.Now())
+	ip, id, err := assignFloatingIP(ctx, e.Cloud, e.timings(), progress, vmID, name, projectID, azID)
 	if lost, ok := floatingip.AsLost(err); ok {
 		floatingip.Note(sf, state.LostFloatingIP{Name: lost.Name, ProjectID: projectID, VMName: vmName, VMID: vmID,
 			RequestedAt: clock.Now(), CreatedBy: e.Maker()})
@@ -1171,7 +1174,7 @@ const fipProgressEvery = 6
 // interface. It returns the address and the FIP ID; the ID is set as soon as
 // the FIP exists, even when the wait for it fails, so the caller can record
 // it for destroy. progress (may be nil) receives human-readable status.
-func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, progress func(string), vmID, projectID, azID string) (string, string, error) {
+func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, progress func(string), vmID, name, projectID, azID string) (string, string, error) {
 	start := clock.Now()
 	report := func(format string, args ...any) {
 		if progress != nil {
@@ -1242,7 +1245,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 	var err error
 	for attempt := 0; attempt < 5; attempt++ {
 		fip, err = floatingip.Reserve(ctx, cloud, provision.CreateFloatingIPRequest{
-			Name:               fipName(vmID),
+			Name:               name,
 			ProjectID:          projectID,
 			InterfaceID:        ifaceID,
 			AvailabilityZoneID: azID,

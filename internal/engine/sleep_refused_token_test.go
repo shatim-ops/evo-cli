@@ -157,7 +157,7 @@ var sleepPaths = []sleepPath{
 		name:  "assignFloatingIP",
 		setup: func(t *testing.T, c *faultCloud) any { return sleepVM(t, c) },
 		run: func(e *Engine, c *faultCloud, made any) bool {
-			ip, _, err := assignFloatingIP(context.Background(), c, e.timings(), nil, made.(*provision.VM).ID, faultProject, faultZone)
+			ip, _, err := assignFloatingIP(context.Background(), c, e.timings(), nil, made.(*provision.VM).ID, fipName(made.(*provision.VM).ID), faultProject, faultZone)
 			return err == nil && ip != ""
 		},
 	},

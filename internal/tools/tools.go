@@ -3336,7 +3336,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		if releaseIP {
 			var rel, miss []state.LostFloatingIP
 			lerr, _ := withAddressMarks(statePath, func(sf *state.File) (err error) {
-				rel, miss, err = floatingip.Release(ctx, eng.Cloud, sf, projectID, target.Name, target.ID)
+				rel, miss, err = floatingip.Release(ctx, eng.Cloud, sf, projectID, target.Name, target.ID, fipRec.FloatingIPID)
 				return err
 			})
 			for _, m := range rel {

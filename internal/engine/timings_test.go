@@ -151,7 +151,7 @@ func TestAssignFloatingIP_InterfaceStateFallback(t *testing.T) {
 		return &provision.FloatingIP{ID: "fip-1", IPAddress: "127.0.0.1", State: "in_use"}, nil
 	}
 
-	ip, _, err := assignFloatingIP(context.Background(), cloud, fastTimings, nil, "vm-1", "proj", "az")
+	ip, _, err := assignFloatingIP(context.Background(), cloud, fastTimings, nil, "vm-1", fipName("vm-1"), "proj", "az")
 	if err != nil {
 		t.Fatalf("assignFloatingIP: %v", err)
 	}

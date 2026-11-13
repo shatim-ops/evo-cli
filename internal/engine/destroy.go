@@ -300,7 +300,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 // destroy itself; not listed — named, with where to release it if it comes.
 // A list that cannot be read keeps the marks, with a warning.
 func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) (released, missing []string) {
-	rel, miss, err := floatingip.Release(ctx, e.Cloud, sf, e.projectOf(rec), rec.VMName, rec.VMID)
+	rel, miss, err := floatingip.Release(ctx, e.Cloud, sf, e.projectOf(rec), rec.VMName, rec.VMID, rec.FloatingIPID)
 	for _, m := range rel {
 		released = append(released, m.Name)
 		e.Printer.StepDone(i18n.Tf("Floating IP %s, requested with no answer, released", "Floating IP %s, запрошенный без ответа облака, освобождён", m.Name))

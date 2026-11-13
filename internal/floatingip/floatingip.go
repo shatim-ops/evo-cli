@@ -17,6 +17,7 @@ package floatingip
 import (
 	"context"
 	stderrors "errors"
+	"strconv"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -244,11 +245,24 @@ func Settle(ctx context.Context, cloud provision.CloudAPI, sf *state.File, proje
 	}
 	var ask *state.LostFloatingIP
 	for _, m := range marks {
+		var taken *provision.FloatingIP
+		n := 0
 		for _, f := range fips {
 			if f != nil && f.ID != "" && f.Name == m.Name && (own == nil || own(*f)) {
-				Forget(sf, projectID, m.Name)
-				return f, nil
+				n++
+				if taken == nil || (f.Bound() && !taken.Bound()) {
+					taken = f
+				}
 			}
+		}
+		if taken != nil {
+			// Two of one name: the one on the VM is taken, and the mark
+			// stays for the other — destroy releases it («Риск»,
+			// conclusion 205).
+			if n == 1 {
+				Forget(sf, projectID, m.Name)
+			}
+			return taken, nil
 		}
 		if !m.Answered && ask == nil {
 			ask = &m
@@ -291,14 +305,17 @@ func sameMark(a, b state.LostFloatingIP) bool {
 		a.RequestedAt.Equal(b.RequestedAt) && a.Answered == b.Answered
 }
 
-// Release is the cleanup of the marks of a VM being destroyed: the
-// address of each, listed by its exact name free or on the VM, is released
-// — evo made it, and nothing else holds it. A mark whose address the list
-// does not show is closed and returned in missing: the answer names it,
-// for the person to release it if it comes (Т3 and Т4 of conclusion 180).
-// A mark whose release failed stays. A list that cannot be read keeps
-// every mark and is the error. sf is changed in memory.
-func Release(ctx context.Context, cloud provision.CloudAPI, sf *state.File, projectID, vmName, vmID string) (released, missing []state.LostFloatingIP, err error) {
+// Release is the cleanup of the marks of a VM being destroyed: every
+// address listed by the exact name of a mark, free or on the VM, is
+// released — evo made it, and nothing else holds it — but keep, the
+// address the deployment records as its VM's (destroy releases that one
+// itself). After a person's yes two addresses may bear one name: each is
+// released, whatever the order of the list («Риск», conclusion 205). A mark
+// with no such address listed is closed and returned in missing: the answer
+// names it (Т3 and Т4 of conclusion 180). A mark whose release failed
+// stays. A list that cannot be read keeps every mark and is the error. sf
+// is changed in memory.
+func Release(ctx context.Context, cloud provision.CloudAPI, sf *state.File, projectID, vmName, vmID, keep string) (released, missing []state.LostFloatingIP, err error) {
 	marks := Of(sf, projectID, vmName, vmID)
 	if len(marks) == 0 {
 		return nil, nil, nil
@@ -310,24 +327,44 @@ func Release(ctx context.Context, cloud provision.CloudAPI, sf *state.File, proj
 	own := FreeOrOf(vmID)
 	var failed error
 	for _, m := range marks {
-		var found *provision.FloatingIP
+		found, ok := 0, true
 		for _, f := range fips {
-			if f != nil && f.ID != "" && f.Name == m.Name && own(*f) {
-				found = f
-				break
+			if f == nil || f.ID == "" || f.Name != m.Name || !own(*f) {
+				continue
+			}
+			found++
+			if f.ID == keep {
+				continue // the VM's own: destroy releases it
+			}
+			if derr := cloud.DeleteFloatingIP(ctx, f.ID, projectID); derr != nil && provision.HTTPStatus(derr) != 404 {
+				failed = stderrors.Join(failed, derr)
+				ok = false
 			}
 		}
-		if found == nil {
+		switch {
+		case found == 0:
 			missing = append(missing, m)
 			Forget(sf, projectID, m.Name)
-			continue
+		case ok:
+			released = append(released, m)
+			Forget(sf, projectID, m.Name)
 		}
-		if derr := cloud.DeleteFloatingIP(ctx, found.ID, projectID); derr != nil && provision.HTTPStatus(derr) != 404 {
-			failed = stderrors.Join(failed, derr)
-			continue
-		}
-		released = append(released, m)
-		Forget(sf, projectID, m.Name)
 	}
 	return released, missing, failed
+}
+
+// NameFor is the name a create of an address for a VM gives it: base, or —
+// when a mark of the project already holds base (a person said yes to one
+// more while the first may still come) — base with the time after it, so
+// two addresses never bear one name and each mark finds only its own
+// («Риск», conclusion 205).
+func NameFor(sf *state.File, projectID, base string, now time.Time) string {
+	if sf != nil {
+		for _, m := range sf.LostFloatingIPs {
+			if m.ProjectID == projectID && m.Name == base {
+				return provision.FitName(base, "-"+strconv.FormatInt(now.Unix(), 36))
+			}
+		}
+	}
+	return base
 }

@@ -477,7 +477,7 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		}
 	}
 
-	name := provision.FitName(plan.VM.Name, "-fip")
+	name := FloatingIPName(plan)
 	// This VM's address only: bound to it or to its interface (the list may
 	// name only one), or still being created or attached — the create named
 	// the interface. A free one of the name is an orphan of an earlier VM,
@@ -485,7 +485,7 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	own := func(x provision.FloatingIP) bool { return x.BoundTo(vmID) || x.BoundTo(ifaceID) || x.Pending() }
 	// One an earlier apply asked for with no answer, listed now, is taken:
 	// not a second create (D107; «Риск», conclusion 180, У2).
-	if x := floatingip.Find(ctx, cloud, plan.ProjectID, name, own); x != nil {
+	if x := floatingip.Find(ctx, cloud, plan.ProjectID, provision.FitName(plan.VM.Name, "-fip"), own); x != nil {
 		return x.IPAddress, x.ID, "public IP attached (found the floating IP an earlier apply asked for by its name)"
 	}
 	// One create: with no answer it is looked for by its name, and not
@@ -517,6 +517,15 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 func lostFIPNote(name string, err error) string {
 	return "the create of floating IP " + name + " got no answer from the cloud (" + err.Error() + "): the request may have been accepted, and the address billed. No second address was requested. Check list_floating_ips for the name " + name +
 		"; deploy_apply again with the same plan takes that address if the list shows it on this VM; if the list does not show it, it asks first — whether to reserve another address is the person's to answer"
+}
+
+// FloatingIPName is the name the plan's VM's floating IP is created by:
+// plan.FloatingIPName when the tool set one, else the plan's own.
+func FloatingIPName(plan *Plan) string {
+	if plan.FloatingIPName != "" {
+		return plan.FloatingIPName
+	}
+	return provision.FitName(plan.VM.Name, "-fip")
 }
 
 // joinNotes concatenates non-empty notes with "; ".

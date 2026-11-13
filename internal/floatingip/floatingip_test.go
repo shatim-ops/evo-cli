@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,7 +156,7 @@ func TestRelease_ReleasesOrNames(t *testing.T) {
 	Note(sf, state.LostFloatingIP{Name: "fip-b", ProjectID: "p", VMName: "web"})
 	Note(sf, state.LostFloatingIP{Name: "fip-c", ProjectID: "p", VMName: "other"})
 	c := &fakeCloud{fips: []*provision.FloatingIP{{ID: "id-a", Name: "fip-a", State: "available"}}}
-	rel, miss, err := Release(context.Background(), c, sf, "p", "web", "vm-1")
+	rel, miss, err := Release(context.Background(), c, sf, "p", "web", "vm-1", "")
 	if err != nil || len(rel) != 1 || rel[0].Name != "fip-a" || len(miss) != 1 || miss[0].Name != "fip-b" {
 		t.Fatalf("released %v missing %v err %v", rel, miss, err)
 	}
@@ -183,5 +184,43 @@ func TestApply_KeepsOthers(t *testing.T) {
 	}
 	if _, ok := got["o"]; !ok {
 		t.Fatalf("the mark another process wrote is lost: %+v", disk.LostFloatingIPs)
+	}
+}
+
+// Conclusion 205: after a person's yes two addresses may bear the name of
+// a mark — one on the VM, one free. Whatever the order of the list,
+// destroy releases the free one and keeps the VM's own (keep), and the
+// repeat takes the VM's without closing the mark of the free one.
+func TestTwoOfOneName_BothOrders(t *testing.T) {
+	bound := &provision.FloatingIP{ID: "on-vm", Name: "fip-vm-1", State: "in_use", VM: json.RawMessage(`{"id":"vm-1"}`)}
+	free := &provision.FloatingIP{ID: "free", Name: "fip-vm-1", State: "available"}
+	mark := state.LostFloatingIP{Name: "fip-vm-1", ProjectID: "p", VMName: "web", VMID: "vm-1", Answered: true}
+	for _, order := range [][]*provision.FloatingIP{{bound, free}, {free, bound}} {
+		sf := &state.File{}
+		Note(sf, mark)
+		c := &fakeCloud{fips: order}
+		rel, miss, err := Release(context.Background(), c, sf, "p", "web", "vm-1", "on-vm")
+		if err != nil || len(rel) != 1 || len(miss) != 0 || len(c.deleted) != 1 || c.deleted[0] != "free" {
+			t.Fatalf("order %s first: released %v, missing %v, deleted %v, err %v; want the free one deleted", order[0].ID, rel, miss, c.deleted, err)
+		}
+		sf = &state.File{}
+		Note(sf, mark)
+		f, err := Settle(context.Background(), c, sf, "p", "web", "vm-1", FreeOrOf("vm-1"))
+		if err != nil || f == nil || f.ID != "on-vm" || len(sf.LostFloatingIPs) != 1 {
+			t.Fatalf("order %s first: took %v (%v), marks %v; want the VM's taken and the mark kept", order[0].ID, f, err, sf.LostFloatingIPs)
+		}
+	}
+}
+
+// The create after a person's yes bears another name than the address of
+// the mark, so each mark finds only its own.
+func TestNameFor_AnotherNameAfterAYes(t *testing.T) {
+	sf := &state.File{}
+	if got := NameFor(sf, "p", "fip-vm-1", time.Unix(100, 0)); got != "fip-vm-1" {
+		t.Fatalf("no mark: %s", got)
+	}
+	Note(sf, state.LostFloatingIP{Name: "fip-vm-1", ProjectID: "p", Answered: true})
+	if got := NameFor(sf, "p", "fip-vm-1", time.Unix(100, 0)); got == "fip-vm-1" || !strings.HasPrefix(got, "fip-vm-1-") {
+		t.Fatalf("with the mark: %s, want another name", got)
 	}
 }

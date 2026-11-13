@@ -303,13 +303,18 @@ func recordDeployment(stateDir string, maker *state.Maker, plan *deployplan.Plan
 		// for destroy, doctor and the repeat's question; an address the
 		// apply has now ends the marks of its VM name (D107; «Риск»,
 		// conclusion 180, У3).
-		name := provision.FitName(plan.VM.Name, "-fip")
+		// A mark a person answered stays: the address the apply has now may
+		// be the second one (Т4 of conclusion 180; conclusion 205).
 		switch {
 		case res.LostFloatingIP != "":
 			floatingip.Note(sf, state.LostFloatingIP{Name: res.LostFloatingIP, ProjectID: plan.ProjectID, VMName: plan.VM.Name,
 				VMID: res.VMID, RequestedAt: clock.Now(), CreatedBy: maker})
 		case res.FloatingIPID != "":
-			floatingip.Forget(sf, plan.ProjectID, name)
+			for _, m := range floatingip.Of(sf, plan.ProjectID, plan.VM.Name, res.VMID) {
+				if !m.Answered {
+					floatingip.Forget(sf, plan.ProjectID, m.Name)
+				}
+			}
 		}
 		return nil
 	})
@@ -424,6 +429,13 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 	}
 	// Only the folder's own VM is adopted (D73).
 	plan.Owned = folderVMs(eng)
+	// After a person's yes the address of a lost create may still come:
+	// the new one bears another name («Риск», conclusion 205).
+	if sf, err := state.Read(state.DefaultPath(eng.StateDir)); err == nil {
+		if name := provision.FitName(plan.VM.Name, "-fip"); floatingip.NameFor(sf, plan.ProjectID, name, clock.Now()) != name {
+			plan.FloatingIPName = floatingip.NameFor(sf, plan.ProjectID, name, clock.Now())
+		}
+	}
 	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.VMPollTimeout(), until, show)
 	var foreign *deployplan.ForeignVMError
 	if stderrors.As(err, &foreign) {

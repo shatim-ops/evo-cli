@@ -51,7 +51,7 @@ func TestAssignFloatingIP_CutAfterTheCreateNamesTheFIP(t *testing.T) {
 	cloud := &lostFIPCloud{}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	ip, id, err := assignFloatingIP(ctx, cloud, Timings{IfacePollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond, FIPPollInterval: time.Millisecond}, nil, "vm-1", "p", "z")
+	ip, id, err := assignFloatingIP(ctx, cloud, Timings{IfacePollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond, FIPPollInterval: time.Millisecond}, nil, "vm-1", fipName("vm-1"), "p", "z")
 	if err == nil {
 		t.Fatalf("a call cut short is not a success: %s %s", ip, id)
 	}
