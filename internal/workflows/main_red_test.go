@@ -41,8 +41,12 @@ func TestWorkflows_RedMainOpensAnIssue(t *testing.T) {
 	}
 	for name, j := range w.Jobs {
 		p, _ := j.Permissions.(map[string]any)
-		if len(p) != 2 || p["actions"] != "read" || p["issues"] != "write" {
-			t.Errorf("main-red: job %s permissions %v, want actions: read and issues: write alone", name, j.Permissions)
+		// pull-requests: write — one line into every open pull request
+		// when main turns red and when it is green again (plan 1.9, «CI»,
+		// М5): the issue alone stood six hours unread on 12.11, it has no
+		// addressee, and a comment in a pull request reaches its author.
+		if len(p) != 3 || p["actions"] != "read" || p["issues"] != "write" || p["pull-requests"] != "write" {
+			t.Errorf("main-red: job %s permissions %v, want actions: read, issues: write and pull-requests: write alone", name, j.Permissions)
 		}
 		for _, ev := range []string{"'push'", "'schedule'"} {
 			if !strings.Contains(j.If, "github.event.workflow_run.event == "+ev) {

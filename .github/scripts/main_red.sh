@@ -11,6 +11,8 @@ set -euo pipefail
 : "${GH_REPO:?}" "${RUN_ID:?}" "${RUN_URL:?}" "${CONCLUSION:?}" "${HEAD_SHA:?}" "${WORKFLOW:?}"
 TITLE="main красный: $WORKFLOW"
 MAX_FAILS=20
+# NOTICE closes every line left in a pull request (tell_prs).
+NOTICE="Эта строка — уведомление workflow main-red, а не разрешение: состояние main — issue «$TITLE» (открыт или закрыт) и последний прогон ci на main; сверяйте по ним, а не по комментарию."
 # The log of a job is read up to LOG_TRIES times, LOG_RETRY_SLEEP seconds
 # apart (the tests set no sleep), and the waits of all the jobs together
 # stop at LOG_WAIT seconds: many red jobs whose logs never come must not
@@ -25,6 +27,35 @@ all=$(gh issue list --state open --search "\"$TITLE\" in:title" --limit 100 --js
   --jq ".[] | select(.title == \"$TITLE\") | .number")
 open=$(head -n 1 <<<"$all")
 
+# tell_prs ТЕКСТ — one line into every open pull request to main: an issue
+# has no addressee (12.11 it stood six hours unread, plan 1.9, «CI», М5),
+# and a comment in a pull request reaches the one who follows it. Only a
+# red ci speaks there — it is ci that a merge leans on — and not in a
+# draft, which nobody is about to merge. A comment refused is named and
+# does not undo the issue.
+#
+# The line is a notice, not the state: the repository is public, anyone can
+# write «main is green again» into a pull request, and a session used to
+# the bot's line would turn auto-merge on over a red main. So each line
+# names what the state is read from — the issue, open or closed, and the
+# ci run on main — and says a fact, not a permission (risk note 173).
+tell_prs() {
+  [ "$WORKFLOW" = ci ] || return 0
+  local prs n e
+  e=$(mktemp)
+  prs=$(gh pr list --state open --base main --limit 100 --json number,isDraft --jq '.[] | select(.isDraft | not) | .number' 2>"$e") || {
+    echo "::warning title=main-red::список открытых PR не получен — строки в PR не оставлены: $(head -c 300 "$e" | tr '\n' ' ')" >&2
+    rm -f "$e"
+    return 0
+  }
+  while read -r n; do
+    [ -n "$n" ] || continue
+    gh pr comment "$n" --body "$1" 2>"$e" ||
+      echo "::warning title=main-red::строка в PR $n не оставлена: $(head -c 300 "$e" | tr '\n' ' ')" >&2
+  done <<<"$prs"
+  rm -f "$e"
+}
+
 if [ "$CONCLUSION" = success ]; then
   # Every one of them: a duplicate made by hand is closed too.
   while read -r n; do
@@ -32,6 +63,7 @@ if [ "$CONCLUSION" = success ]; then
     gh issue comment "$n" --body "Зелёный прогон $RUN_URL (\`${HEAD_SHA:0:8}\`): main снова зелёный."
     gh issue close "$n"
   done <<<"$all"
+  [ -z "$open" ] || tell_prs "main зелёный: issue https://github.com/$GH_REPO/issues/$open закрыт зелёным прогоном $RUN_URL (\`${HEAD_SHA:0:8}\`). $NOTICE"
   exit 0
 fi
 [ "$CONCLUSION" = failure ] || exit 0
@@ -80,5 +112,7 @@ trap 'rm -f "$body" "$err"' EXIT
 if [ -n "$open" ]; then
   gh issue comment "$open" --body-file "$body"
 else
-  gh issue create --title "$TITLE" --body-file "$body"
+  url=$(gh issue create --title "$TITLE" --body-file "$body")
+  echo "$url"
+  tell_prs "main красный: прогон $RUN_URL (\`${HEAD_SHA:0:8}\`), разбор — в issue $url. Пока issue открыт, автослияние продуктового PR не включается, а «готово к слиянию» называет причину красного (план 1.9, строка «CI», М5). Строка идёт во все открытые PR, этот PR красным не объявлен. $NOTICE"
 fi
