@@ -6,7 +6,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 fail=0
 check() { # имя, ожидаемый вывод, пути через пробел [, MIGRATION [, REGISTRY]]
 	local got
-	got=$(tr ' ' '\n' <<<"$3" | MIGRATION=${4:-} REGISTRY=${5:-} "$here/classify.sh" | grep -v '^macos=\|^wintools=')
+	got=$(tr ' ' '\n' <<<"$3" | MIGRATION=${4:-} REGISTRY=${5:-} "$here/classify.sh" | grep -v '^macos=')
 	if [ "$got" = "$2" ]; then echo "ok   $1"; else
 		echo "FAIL $1"; echo "  ждали: $2" | tr '\n' '|'; echo; echo "  вышло: $got" | tr '\n' '|'; echo
 		fail=1
@@ -45,25 +45,6 @@ mac "macOS: код после docs/internal" yes "docs/internal/release-plan.md 
 mac "macOS: не .md в docs/internal" yes "docs/internal/audits/plan.png"
 mac "macOS: тест в docs/internal" yes "docs/internal/x_test.go"
 mac "macOS: пусто" yes ""
-# internal/tools на Windows в PR (план 1.9, «CI: main красный на Windows…»,
-# М4): слой намерений и файлы internal/tools с path/filepath — и тесты
-# тоже; остальное — как решено 29.10. Файлы образцов — настоящие: правило
-# читает строку импорта.
-win() { # имя, ожидаемое yes|no, пути через пробел
-	local got
-	got=$(cd "$here/../.." && tr ' ' '\n' <<<"$3" | "$here/classify.sh" | sed -n 's/^wintools=//p')
-	if [ "$got" = "$2" ]; then echo "ok   $1"; else echo "FAIL $1: ждали wintools=$2, вышло «$got»"; fail=1; fi
-}
-win "Windows: слой намерений" yes "internal/tools/intent.go"
-win "Windows: тест слоя намерений" yes "internal/tools/intent_held_test.go"
-win "Windows: пакет intent" yes "internal/intent/intent.go"
-win "Windows: файл с path/filepath" yes "internal/tools/userkeys.go"
-win "Windows: тест с path/filepath" yes "internal/tools/kube_budget_test.go"
-win "Windows: инструмент без путей" no "internal/tools/tools_s3.go"
-win "Windows: файла нет (удалён в PR)" no "internal/tools/gone_file.go"
-win "Windows: другой пакет" no "internal/engine/deploy.go internal/cli/main.go"
-win "Windows: документы" no "docs/mcp.md"
-win "Windows: пусто" no ""
 # Чек-лист: области превращаются во флажки cloud-e2e, тесты — без пунктов.
 has() { # имя, пути через пробел, ожидаемые строки чек-листа
 	local name=$1 paths=$2 summary want
