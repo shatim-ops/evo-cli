@@ -94,9 +94,9 @@ func TestIntent_ACallReadsTheRecordsOnceUntilItWritesThere(t *testing.T) {
 // How many times a call of a tool that takes consent reads the directory
 // of the records — the whole cost of the layer for a call, since a reading
 // reads every record there: once for a call without consent (the question,
-// a refusal), once for a consented call (after its own record is settled),
-// and once more before a consented call of a tool every send of which is a
-// change (the question after a cut call). No layer reads it for itself.
+// a refusal), twice for a consented call (before its record is opened —
+// the question after a cut call, the operation that goes on already — and
+// after its own record is settled). No layer reads it for itself.
 func TestIntent_ReadsOfTheRecordsByACall(t *testing.T) {
 	dir := t.TempDir()
 	r := New(func(map[string]any) (*engine.Engine, error) {
@@ -113,7 +113,9 @@ func TestIntent_ReadsOfTheRecordsByACall(t *testing.T) {
 		reads int
 	}{
 		{"disk_delete", map[string]any{"disk_id": resMine}, 1},
-		{"disk_delete", map[string]any{"disk_id": resMine, "confirmed": true}, 1},
+		// Before the record is opened (is the operation of the call
+		// going on already: goesOn) and after the call ended.
+		{"disk_delete", map[string]any{"disk_id": resMine, "confirmed": true}, 2},
 		{"vm_reboot", map[string]any{"vm_id": resMine}, 1},
 		{"vm_reboot", map[string]any{"vm_id": resMine, "confirmed": true}, 2},
 	} {

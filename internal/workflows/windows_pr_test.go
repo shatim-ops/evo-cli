@@ -20,12 +20,18 @@ var windowsPRList = regexp.MustCompile(`(?m)^windowsPRPackages=\(([^)]*)\)`)
 // only on it, or everywhere but it).
 var windowsBuildTag = regexp.MustCompile(`(?m)^//go:build .*\bwindows\b`)
 
+// processLookup is a call that asks the system about another process: what
+// os.FindProcess and a signal to its result answer differs on Windows
+// without a line of the code naming it.
+var processLookup = regexp.MustCompile(`\bos\.FindProcess\(`)
+
 // On a pull request Windows runs only the packages with code of Windows
 // (go_test_ci.sh, windowsPRPackages); main, the night and the release run
 // everything (owner's decision 29.10, audit #578, item 10). Every package
-// whose code has a *_windows.go file, a build constraint naming windows or
-// reads runtime.GOOS is in the list, and every package of the list is one:
-// a new package of Windows code is not left to the night.
+// whose code has a *_windows.go file, a build constraint naming windows,
+// reads runtime.GOOS or looks another process up is in the list, and every
+// package of the list is one: a new package of Windows code is not left to
+// the night.
 func TestWorkflows_WindowsPRCoversWindowsCode(t *testing.T) {
 	root := filepath.Join("..", "..")
 	b, err := os.ReadFile(filepath.Join(root, ".github", "scripts", "go_test_ci.sh"))
@@ -55,7 +61,7 @@ func TestWorkflows_WindowsPRCoversWindowsCode(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if strings.HasSuffix(path, "_windows.go") || windowsBuildTag.Match(src) || strings.Contains(string(src), "runtime.GOOS") {
+		if strings.HasSuffix(path, "_windows.go") || windowsBuildTag.Match(src) || strings.Contains(string(src), "runtime.GOOS") || processLookup.Match(src) {
 			dir, _ := filepath.Rel(root, filepath.Dir(path))
 			windows[filepath.ToSlash(dir)] = true
 		}
