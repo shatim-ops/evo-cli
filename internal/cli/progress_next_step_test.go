@@ -34,6 +34,8 @@ var statusGoingOn = map[string]bool{
 	"scaling": true,
 	// vm_reboot (D99, §5).
 	"rebooting": true,
+	// vm_resize (§6.4): the VM is updating to the flavor.
+	"resizing": true,
 }
 
 // statusOver are the statuses of a change that is over, as far as the

@@ -82,6 +82,7 @@ var cliSpecs = map[string]CLISpec{
 	"vm_start":     {Group: "vm", Verb: "start", Args: []string{"vm_id|name"}},
 	"vm_stop":      {Group: "vm", Verb: "stop", Args: []string{"vm_id|name"}},
 	"vm_reboot":    {Group: "vm", Verb: "reboot", Args: []string{"vm_id|name"}},
+	"vm_resize":    {Group: "vm", Verb: "resize", Args: []string{"vm_id|name"}},
 	"provision":    {Group: "vm", Verb: "create", Args: []string{"name"}, Rename: map[string]string{"image_metadata": "meta", "ports": "port"}, Pairs: map[string]bool{"image_metadata": true}, Render: "vm-created"},
 	"destroy":      {Group: "vm", Verb: "delete", Args: []string{"vm_id|name"}},
 	"list_zones":   {Group: "vm", Verb: "zones"},

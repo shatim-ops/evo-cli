@@ -191,7 +191,10 @@ func TestToolsList_Annotations(t *testing.T) {
 		// A scale down deletes nodes with the data on their disks (D99).
 		"k8s_nodepool_scale": true,
 		// vm_reboot takes the service down for the time of the reboot (§5.2).
-		"vm_reboot": true}
+		"vm_reboot": true,
+		// vm_resize of a running VM may restart its guest OS: the probe does
+		// not see it (§6.5, В3).
+		"vm_resize": true}
 	seen := map[string]bool{}
 	for _, raw := range listed {
 		tl := raw.(map[string]any)

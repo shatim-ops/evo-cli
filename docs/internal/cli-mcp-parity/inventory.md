@@ -180,6 +180,7 @@
 | vm | `vm_get` | нет | дерево | `evo vm get` | да/да |
 | vm | `vm_list` | нет | дерево | `evo vm list` | да/да |
 | vm | `vm_reboot` | да | дерево | `evo vm reboot` | да/да |
+| vm | `vm_resize` | да | дерево | `evo vm resize` | да/да |
 | vm | `vm_start` | да | дерево | `evo vm start` | да/да |
 | vm | `vm_stop` | да | дерево | `evo vm stop` | да/да |
 | vpc | `fip_attach` | да | дерево | `evo vpc fip-attach` | да/да |
@@ -356,6 +357,7 @@
 | `evo vm get` | `vm_get` | vm_id\|name | — | — | — | — |
 | `evo vm list` | `vm_list` | — | — | — | — | — |
 | `evo vm reboot` | `vm_reboot` | vm_id\|name | — | — | confirmed | — |
+| `evo vm resize` | `vm_resize` | vm_id\|name | — | — | confirmed | — |
 | `evo vm start` | `vm_start` | vm_id\|name | — | — | confirmed | — |
 | `evo vm stop` | `vm_stop` | vm_id\|name | — | — | confirmed | — |
 | `evo vm zones` | `list_zones` | — | — | — | — | — |

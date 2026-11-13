@@ -526,6 +526,24 @@ func (a *CloudRuAdapter) SetVMPower(ctx context.Context, id, command string) err
 	return nil
 }
 
+// SetVMFlavor changes the flavor of a VM via PUT /api/v1/vms/{id}
+// {flavor_id}. The answer is 200 with the card of the VM and no operation
+// to follow: the state of the VM (updating) is the progress. A VM it does
+// not find, a flavor it does not find or does not give the VM, and a state
+// it does not take the change in are all 422 (the specification).
+func (a *CloudRuAdapter) SetVMFlavor(ctx context.Context, id, flavorID string) error {
+	body, err := json.Marshal(map[string]string{"flavor_id": flavorID})
+	if err != nil {
+		return err
+	}
+	resp, err := a.doWithRetry(ctx, http.MethodPut, fmt.Sprintf("/api/v1/vms/%s", seg(id)), body)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 // ListInterfaces lists the project's network interfaces via
 // GET /api/v1/interfaces?project_id=….
 func (a *CloudRuAdapter) ListInterfaces(ctx context.Context, projectID string) ([]*Interface, error) {

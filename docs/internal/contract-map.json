@@ -499,6 +499,9 @@
   "vm_reboot": {
     "destructive": true
   },
+  "vm_resize": {
+    "destructive": true
+  },
   "vm_start": {
     "destructive": false
   },

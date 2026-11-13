@@ -112,6 +112,9 @@ type ownerFake struct {
 	// refuseWrites answers every write with this body and 422; "" — the
 	// write is taken.
 	refuseWrites string
+	// flavors serves a flavor of the catalogue (gen-2-4); false — the
+	// catalogue is empty.
+	flavors bool
 }
 
 // ownerChild is the name of the database and of the user every cluster of
@@ -224,6 +227,12 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(o)
 			return
 		}
+	}
+	if f.flavors && r.URL.Path == "/api/v1/flavors" {
+		// The target vm_resize reads before its question (the card of
+		// the fake's VM names no flavor).
+		_, _ = w.Write([]byte(`{"items":[{"id":"00000000-0000-4000-8000-0000000000c2","name":"gen-2-4","cpu":2,"ram":4}]}`))
+		return
 	}
 	// The catalogue every project shares: a zone and a node flavor, so the
 	// calls of TestProjectBound_ListedForeignResourceRefused reach the lists.

@@ -503,6 +503,7 @@ var requiredOneOf = map[string][][]string{
 	"vm_start":            {{"vm_id", "name"}},
 	"vm_stop":             {{"vm_id", "name"}},
 	"vm_reboot":           {{"vm_id", "name"}},
+	"vm_resize":           {{"vm_id", "name"}},
 	"image_get":           {{"image", "image_id"}},
 	"release_floating_ip": {{"id", "ip_address"}},
 	"tg_create":           {{"vm_id", "targets"}},
@@ -572,6 +573,7 @@ var groupByName = map[string]string{
 	"vm_start":     "vm",
 	"vm_stop":      "vm",
 	"vm_reboot":    "vm",
+	"vm_resize":    "vm",
 	"list_zones":   "vm",
 	"list_flavors": "vm",
 
@@ -796,7 +798,11 @@ var destructiveTools = map[string]bool{
 	// time (D99, §4.3).
 	"vm_stop": true,
 	// vm_reboot takes the service down for the time of the reboot (§5.2).
-	"vm_reboot":           true,
+	"vm_reboot": true,
+	// vm_resize of a running VM: whether the guest OS restarts in it the
+	// probe does not see (Г-10), so the client asks the person every time
+	// (§6.5, В3: unknown is taken as a restart).
+	"vm_resize":           true,
 	"stack_destroy":       true,
 	"release_floating_ip": true,
 	"s3_rm":               true,

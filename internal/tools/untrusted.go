@@ -64,6 +64,7 @@ var untrustedFields = map[string]untrustedAnswer{
 	"vm_start":  {fields: []string{"preview", "name", "details"}},
 	"vm_stop":   {fields: []string{"preview", "name", "details"}},
 	"vm_reboot": {fields: []string{"preview", "name", "details"}},
+	"vm_resize": {fields: []string{"preview", "name", "details"}},
 	// The roles of the key, as IAM names them: anyone who may create a
 	// custom role in the organization names it (A0-2).
 	"whoami": {fields: []string{"roles"}},

@@ -36,7 +36,7 @@ var specStatesOf = map[string]string{
 	"sg_rule_create": "compute:SecurityGroupRuleState", "sg_rule_delete": "compute:SecurityGroupRuleState",
 
 	"deploy": "compute:VmState", "deploy_apply": "compute:VmState", "destroy": "compute:VmState", "provision": "compute:VmState",
-	"vm_start": "compute:VmState", "vm_stop": "compute:VmState", "vm_reboot": "compute:VmState",
+	"vm_start": "compute:VmState", "vm_stop": "compute:VmState", "vm_reboot": "compute:VmState", "vm_resize": "compute:VmState",
 
 	"disk_attach": "compute:DiskState", "disk_create": "compute:DiskState", "disk_delete": "compute:DiskState",
 	"disk_detach": "compute:DiskState", "disk_resize": "compute:DiskState",

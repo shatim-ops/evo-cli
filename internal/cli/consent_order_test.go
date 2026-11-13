@@ -392,6 +392,21 @@ var consentWorlds = map[string]consentWorld{
 		}
 		return consentJSON(http.StatusOK, runningVMJSON("stopped"))
 	}, alreadyFor: []string{"vm_stop"}},
+	// The VM of vm_resize is on the flavor asked for already (§6.2).
+	"vm on the flavor already": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityResizeVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, resizeVMJSON("running", "lowcost10-4-8"))
+	}, alreadyFor: []string{"vm_resize"}},
+	// The VM of vm_resize is being deleted: the platform refuses a change
+	// in this state (422), and a read tells it before the question (§6.2).
+	"vm of vm_resize being deleted": {answer: func(r *http.Request) *http.Response {
+		if r.Method != http.MethodGet || r.URL.Host != "compute.api.cloud.ru" || r.URL.Path != "/api/v1/vms/"+parityResizeVM {
+			return nil
+		}
+		return consentJSON(http.StatusOK, resizeVMJSON("deleting", "lowcost10-2-4"))
+	}, refusedBy: []string{"vm_resize"}, names: "deleting"},
 	// The pool of k8s_nodepool_scale has the count asked for (parityArgs:
 	// three nodes) and runs (D99, П3).
 	"node pool of the count asked": {answer: func(r *http.Request) *http.Response {

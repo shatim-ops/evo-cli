@@ -676,6 +676,13 @@ type VMDetail struct {
 	// Image is the image the VM was made of (image{id,name} of the card;
 	// the item of the list of VMs carries none).
 	Image *ZoneRef `json:"image,omitempty"`
+	// Flavor is the configuration the VM runs with (FlavorMiniResponse of
+	// the card: id, name, cpu, ram, gpu, oversubscription, free_tier,
+	// flavor_type); nil when the answer carries none.
+	Flavor *Flavor `json:"flavor,omitempty"`
+	// Zone is the availability zone of the VM (availability_zone{id,name}
+	// of the card); nil when the answer carries none.
+	Zone *ZoneRef `json:"availability_zone,omitempty"`
 }
 
 // AttachedFloatingIP is the address and ID of the first floating IP bound to
