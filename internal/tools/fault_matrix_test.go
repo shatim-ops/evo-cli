@@ -303,7 +303,7 @@ const (
 	faultOutCluster = "acts inside a Kubernetes cluster through kubectl or helm, not through the cloud's API"
 	faultOutEngine  = "the engine's own fault tests (internal/engine fault_test.go, TestFault_Deploy_*, TestFault_Destroy_*)"
 	faultOutStack   = "runs the create tools of its steps, each in the matrix; its own fault tests (TestFault_Stack_*)"
-	faultOutPGNamed = "a database or a user inside a cluster, known by the name the call gives (the delete takes it); PostgreSQL refuses a second of the name; nothing billed of its own"
+	faultOutPGNamed = "a database or a user inside a cluster, known by the name the call gives (the delete takes it); that PostgreSQL refuses a second of the name is a hypothesis — no run, and the specification declares no refusal (release plan 1.9, «Повтор pg_db_create и pg_user_create после потерянного ответа»); nothing billed of its own"
 	faultOutAddon   = "an addon of a cluster, known by its name: a repeat finds it installed (a warning) and resolve_mode decides; nothing billed of its own"
 	faultOutVersion = "a version of a secret that exists: a repeat adds a version of the same value, the secret reads the same; nothing named anew"
 )

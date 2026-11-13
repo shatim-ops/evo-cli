@@ -22,7 +22,8 @@ const toolBudget = 1500
 // toolsOverBudget are the tools whose entry is over toolBudget, each with
 // its ceiling: the bytes it takes now. A ceiling only goes down — an entry
 // above it fails, and so does one below it (lower the ceiling, the bytes
-// are not to be spent again). It only shrinks. Closes by 1.8 (release plan
+// are not to be spent again). It only shrinks. Closes by 1.10 — moved from 1.8 by the
+// owner's decision of 13.11, #1590, question 19 (release plan
 // 1.7: P13, the shortening of the long descriptions inside D68, with a
 // budget of bytes per description; what P13 does not reach in 1.7 goes on
 // in 1.8).

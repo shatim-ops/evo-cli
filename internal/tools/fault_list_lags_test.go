@@ -25,23 +25,25 @@ import (
 // request is known for one (the disk of a restore, two runs of Г-16); for
 // the others it is a hypothesis, and so is each line found here.
 
-// listLagsPending are the creates whose repeat, after a lost answer and a
-// list that lags, leaves more billable resources than one clean call —
-// each with what is known. Only shrinks. Closes by 1.10.
-// listLagsUnknown is what is known of every line today.
+// listLagsUnknown is what is known of every line of listLagsPending today.
 const listLagsUnknown = "a second of the name after a lost answer: whether the service lists later than it takes the request is not known (no run)"
 
+// listLagsPending are the creates whose repeat, after a lost answer and a
+// list that lags, leaves more billable resources than one clean call —
+// each with what is known. Only shrinks. Closes by 1.10; the six that cost
+// a cluster close by 1.9, each in its line (release plan 1.9, «Повтор
+// платного создания после потерянного ответа спрашивает заново»).
 var listLagsPending = map[string]string{
 	"ar_create":         listLagsUnknown,
 	"cert_import":       listLagsUnknown,
 	"dns_record_create": listLagsUnknown,
-	"k8s_add_nodepool":  listLagsUnknown,
-	"k8s_create":        listLagsUnknown,
-	"kafka_create":      listLagsUnknown,
-	"lb_create":         listLagsUnknown,
+	"k8s_add_nodepool":  "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
+	"k8s_create":        "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
+	"kafka_create":      "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
+	"lb_create":         "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
 	"pg_backup_create":  listLagsUnknown,
-	"pg_create":         listLagsUnknown,
-	"redis_create":      listLagsUnknown,
+	"pg_create":         "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
+	"redis_create":      "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
 	"snat_create":       listLagsUnknown,
 	"tg_create":         listLagsUnknown,
 	"vpc_create":        listLagsUnknown,

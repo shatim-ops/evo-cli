@@ -947,11 +947,14 @@ const restoreHeldLimit = 30 * time.Minute
 // that evo still waits for — its held record (heldSince, by the name too:
 // two restores of one backup are two disks).
 func (s *Registry) restoreHeld(eng *engine.Engine, id, name string) (since time.Time, ok bool) {
-	if eng == nil || eng.StateDir == "" {
+	// The records are in the directory declared to the registry, where the
+	// layer of intents writes them (#1578), not in the engine's.
+	root, declared := s.stateDir()
+	if eng == nil || !declared {
 		return time.Time{}, false
 	}
 	cur := eng.Maker()
-	for _, in := range intent.Pending(intent.Dir(eng.StateDir)) {
+	for _, in := range intent.Pending(intent.Dir(root)) {
 		if in.Held && in.Tool == "backup_restore" && in.Name == name && in.Target == "backup_id="+id && !in.Key.Other(cur) {
 			return in.StartedAt, true
 		}
