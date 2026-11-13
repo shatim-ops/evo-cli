@@ -136,7 +136,7 @@ func createRegistryIn(t *testing.T, w *createWorld, dir string) *Registry {
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = w
 	t.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:   config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"},
@@ -147,6 +147,11 @@ func createRegistryIn(t *testing.T, w *createWorld, dir string) *Registry {
 			StateDir: dir,
 		}, nil
 	})
+	if dir == "" {
+		dir = t.TempDir()
+	}
+	r.SetStateDir(dir)
+	return r
 }
 
 // The preview names the source, what is kept already and what the backup
