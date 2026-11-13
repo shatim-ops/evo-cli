@@ -49,7 +49,9 @@ var listFilters = map[string][]string{
 // ownStateValues are the state or status filters a list had before 1.8.2
 // whose value goes to the API as is: an enum would turn the API's answer to
 // a wrong value into USAGE, exit 1 — a breaking change the brief keeps out
-// ("у cert_list прежнее остаётся"). Only shrinks.
+// ("у cert_list прежнее остаётся"). A closed list, not a list of misses: no
+// line is added, and a line leaves with the breaking change that gives its
+// filter an enum.
 var ownStateValues = map[string]string{
 	"cert_list": "state: the API constants CERTIFICATE_STATE_*, passed as is since 1.6; an enum is a breaking change",
 }

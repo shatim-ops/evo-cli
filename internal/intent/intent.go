@@ -18,8 +18,10 @@ package intent
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,20 +35,34 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
+// DefiniteRefusal tells an HTTP status of the API's answer that says the
+// request was not carried out: a 4xx other than 408 — a request that timed
+// out on the way may have been taken. The one rule of it, for the record
+// of a call (OutcomeUnknown) and for a call that re-reads the resource
+// after an error (the interim delta audit of 1.9; «Риск», conclusion 176,
+// У5).
+func DefiniteRefusal(status int) bool {
+	return status >= 400 && status < 500 && status != http.StatusRequestTimeout
+}
+
 // OutcomeUnknown tells a failed write whose outcome the cloud did not
 // say, so its intent stays: the call was cut (INTERRUPTED), did not reach
 // the cloud's answer (API_UNREACHABLE: a transport break after the request
 // may have gone), failed in the API (API_ERROR: a 5xx may follow a done
 // write) or without a code. A refusal with a code (USAGE, NOT_FOUND,
-// AUTH_*, API_RATE_LIMITED…) says it, and so does an answer with a 4xx
-// status, when the caller knows it: the API refused the request. status is
+// AUTH_*, API_RATE_LIMITED…) says it, and so does an answer with a status
+// that is a definite refusal (DefiniteRefusal), when the caller knows it;
+// a 408 leaves it unknown whatever the reason. status is
 // the HTTP status of the answer, 0 when unknown — a tool's answer gives its
 // reason only, and 4xx and 5xx do not part in it. One rule for the tools
 // and for evo login («Риск», conclusion 46, condition 1; audit Fable 1.8,
 // FB180-3).
 func OutcomeUnknown(reason string, status int) bool {
-	if status >= 400 && status < 500 {
+	if DefiniteRefusal(status) {
 		return false
+	}
+	if status == http.StatusRequestTimeout {
+		return true
 	}
 	switch reason {
 	case clierrors.ReasonInterrupted, clierrors.CodeAPIUnreachable, clierrors.CodeAPIError, clierrors.ReasonGeneral:
@@ -87,8 +103,55 @@ type Intent struct {
 	// counts from there, not from each repeat (release plan 1.9, «Намерение
 	// D92 держит запись, пока операция идёт»).
 	Held bool `json:"held,omitempty"`
+	// Print tells the same call again from another call of the tool on
+	// the same resource (a rule of a security group, a kubectl): the hash
+	// of the record's id and of the arguments that make the call what it
+	// is (Canon). The values are not written — an argument may hold what
+	// the file must not; the id in the hash only keeps two records of the
+	// same call from showing it by an equal print, it is no defence of a
+	// value. "" in a record of evo before the print: such a record is
+	// told by its name and target.
+	Print string `json:"print,omitempty"`
+	// Ended tells a call that returned with the record kept: its outcome
+	// is not known, and it is no longer in flight. A record without it
+	// whose process lives is a call that has not returned (inFlight).
+	Ended bool `json:"ended,omitempty"`
+	// Canon is the canonical form of the arguments Print is made of; not
+	// saved. The caller sets it before Open and keeps it for Settle.
+	Canon []byte `json:"-"`
 	// Dir is the directory the intent was read from (Pending); not saved.
 	Dir string `json:"-"`
+}
+
+// printOf is the print of the arguments canon in the record id.
+func printOf(id string, canon []byte) string {
+	h := sha256.New()
+	h.Write([]byte(id))
+	h.Write([]byte{0})
+	h.Write(canon)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// SameCall tells that in is a record of a call with the arguments canon:
+// by its print. A record without a print (evo before the print) is told by
+// the caller, by its name and target.
+func (in Intent) SameCall(canon []byte) bool {
+	return in.Print != "" && canon != nil && in.Print == printOf(in.ID, canon)
+}
+
+// inFlight tells a record of a call that may not have returned yet: it
+// has not said it ended, and its process lives — this one, or another
+// (two agents of one server, two terminals). In doubt it is in flight:
+// its record is not another call's to remove.
+func (in Intent) inFlight() bool {
+	return !in.Ended && !in.Held && (in.PID == os.Getpid() || processAlive(in.PID))
+}
+
+// End marks the record in as a call that returned with its outcome not
+// known: the record stays, and a later call of the same may settle it.
+func End(in Intent) {
+	in.Ended = true
+	_ = write(in)
 }
 
 // Dir is the directory of the intents of root's data directory: the calls
@@ -140,6 +203,9 @@ func Open(dir string, in Intent) (Intent, error) {
 		return Intent{}, notWritten(dir, err)
 	}
 	in.ID, in.Dir = hex.EncodeToString(b[:]), dir
+	if in.Canon != nil {
+		in.Print = printOf(in.ID, in.Canon)
+	}
 	sort.Strings(in.Args)
 	if err := write(in); err != nil {
 		return Intent{}, notWritten(dir, err)
@@ -242,28 +308,46 @@ func scan(dir string) (out []Intent, foreign []string) {
 	return out, foreign
 }
 
-// Settle removes the earlier intents of the same tool on the same resource
-// in the same project as done (its name or its target): a later call of it
-// answered, so what the cut one did is now known to that call — an
-// existing resource by the name (D49), a new one, or «already deleted»
-// (D26). Another project's record of the same name is not this one. A
-// record another key left is kept and returned: the key of done may not
-// see what that key changed — its «already deleted» is a 404 of its own
-// view, not the outcome of the cut call (R-82, «Риск», conclusion 128). A
-// record that names no key (evo before 1.9) closes as it did.
+// Settle removes the earlier intents of the same call as done: a later
+// call of it answered, so what the cut one did is now known to that call —
+// an existing resource by the name (D49), a new one, or «already deleted»
+// (D26). The same call is the same tool in the same project with the same
+// arguments (SameCall): another rule of the same security group is another
+// call, and its answer says nothing of this one. A record without a print
+// (evo before the print) is the same call by its name or its target, as it
+// was. Only a record that began no later than done and is not in flight is
+// removed: the answer of one of two calls in flight says nothing of the
+// other, whose record must outlive it (the interim delta audit of 1.9,
+// FB19I-13 and FB19I-34; «Риск», conclusion 177, У4, У6 and У8). An
+// operation going on (Held) is not a cut call: the call that ends it
+// closes it. A record another key left is kept and returned: the key of
+// done may not see what that key changed — its «already deleted» is a 404
+// of its own view, not the outcome of the cut call (R-82, «Риск»,
+// conclusion 128). A record with a print and no key is of a call whose
+// key was not known: no repeat settles it.
 func Settle(dir string, done Intent) (kept []Intent) {
 	if done.Name == "" && done.Target == "" {
 		return nil
 	}
 	for _, in := range Pending(dir) {
-		// done itself, when it is held, is not an earlier one.
-		if in.ID != done.ID && in.Tool == done.Tool && in.Name == done.Name && in.Target == done.Target && in.ProjectID == done.ProjectID {
-			if in.Key.Other(done.Key) {
-				kept = append(kept, in)
+		if in.ID == done.ID || in.Tool != done.Tool || in.ProjectID != done.ProjectID {
+			continue
+		}
+		if in.Print != "" {
+			if !in.SameCall(done.Canon) {
 				continue
 			}
-			remove(dir, in.ID)
+		} else if in.Name != done.Name || in.Target != done.Target {
+			continue
 		}
+		if in.Key.Other(done.Key) {
+			kept = append(kept, in)
+			continue
+		}
+		if in.StartedAt.After(done.StartedAt) || in.Held || in.inFlight() || (in.Print != "" && in.Key == nil) {
+			continue
+		}
+		remove(dir, in.ID)
 	}
 	return kept
 }

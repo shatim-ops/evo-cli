@@ -181,3 +181,87 @@ func TestK8sNodePoolDelete_RequestRefused(t *testing.T) {
 		t.Errorf("a refusal reads as a success: %s", text)
 	}
 }
+
+// The answer to the DELETE is lost (FB19I-11). The call does not say the
+// pool is deleted: the outcome is unknown, and the pool is named. Taken by
+// the platform, the pool is in its delete: the same call answers deleting
+// with no second DELETE (D61). Not taken, the pool is as it was: the same
+// call asks again — a second DELETE goes only with the consent.
+func TestK8sNodePoolDelete_TheAnswerToTheDeleteIsLost(t *testing.T) {
+	for _, taken := range []bool{true, false} {
+		w := &poolWorld{status: poolRunning, others: []string{poolRunning}, delErr: true, applied: taken, delAfter: "OBJECT_STATUS_DELETING"}
+		w.setCount(2)
+		r := poolRegistry(t, w)
+		args := map[string]any{"nodepool_id": poolFixed, "confirmed": true}
+		m, text, isErr := callNamed(t, r, "k8s_nodepool_delete", args)
+		if !isErr || m["status"] == "deleted" || m["status"] == "deleting" || !strings.Contains(text, poolFixed) {
+			t.Errorf("taken=%v: a lost answer is not a delete: want an error naming the pool: %s", taken, text)
+		}
+		if n := len(w.writes()); n != 1 {
+			t.Errorf("taken=%v: want one DELETE, sent %d", taken, n)
+		}
+		w.mu.Lock()
+		w.delErr = false
+		w.mu.Unlock()
+		m, text, _ = callNamed(t, r, "k8s_nodepool_delete", map[string]any{"nodepool_id": poolFixed, "confirmed": false})
+		switch {
+		case taken && (m["status"] != "deleting" || len(w.writes()) != 1):
+			t.Errorf("taken: want the same call to answer deleting with no second DELETE: %s", text)
+		case !taken && (m["status"] != "confirmation_required" || len(w.writes()) != 1):
+			t.Errorf("not taken: want the question again and no DELETE without the consent: %s", text)
+		}
+	}
+}
+
+// The name of the pool is the cloud's: anyone with access to the project
+// writes it. Every field of the answer that carries it, but the sentences
+// of evo that quote it, is marked untrusted — target in the preview, as at
+// backup_delete (FB19I-9).
+func TestK8sNodePoolDelete_CloudNamesAreMarked(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		w := &poolWorld{status: poolRunning, others: []string{poolRunning}}
+		w.setCount(2)
+		m, text, _ := poolDelete(t, w, confirmed)
+		marked := map[any]bool{}
+		for _, f := range anySlice(m["_untrusted"]) {
+			marked[f] = true
+		}
+		for k, v := range m {
+			if k == "message" || k == "error" || k == "_untrusted" {
+				continue
+			}
+			if strings.Contains(toJSON(map[string]any{k: v}), "pool-1") && !marked[k] {
+				t.Errorf("confirmed=%v: %s carries the pool's name and is not marked untrusted: %s", confirmed, k, text)
+			}
+		}
+	}
+}
+
+// The only running pool of a cluster whose other pools are in error,
+// stopped or on their way: the preview said nothing, as if the cluster
+// kept working nodes (FB19I-10). A row per status of the specification
+// for the one other pool: running — no warning; going — the last pool;
+// any other — that no other pool is running, with its status.
+func TestK8sNodePoolDelete_WhatTheOtherPoolsAreIn(t *testing.T) {
+	for st := range poolStateRows["k8s_nodepool_scale"] {
+		w := &poolWorld{status: poolRunning, others: []string{st}}
+		w.setCount(2)
+		m, text, _ := poolDelete(t, w, false)
+		warn, _ := m["warning"].(string)
+		will, _ := m["preview"].(map[string]any)
+		switch {
+		case st == poolRunning:
+			if warn != "" {
+				t.Errorf("another pool running: want no warning: %s", text)
+			}
+		case poolGoing[st]:
+			if will["last_pool"] != true || !strings.Contains(warn, "no node pool") {
+				t.Errorf("the other pool %s: want the last pool: %s", st, text)
+			}
+		default:
+			if will["last_pool"] != false || !strings.Contains(warn, "no other node pool of the cluster is running") || !strings.Contains(warn, st) {
+				t.Errorf("the other pool %s: want the warning that no other pool is running, naming %s: %s", st, st, text)
+			}
+		}
+	}
+}

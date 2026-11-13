@@ -6,7 +6,7 @@
 
 1. C: гейт, R-82, D101, слой намерений, повторы Н1 слиты; открыты #1488 (`cause: quota`), #1494 (фильтры `ids`, `states`). Дальше: `images`; R-83; `X-Request-Id`.
 2. A: В1 слита; открыт #1512 (превью `destroy`). После второго Г-11 — `icmp`/`any`, повтор `sg_rule_delete`.
-3. B: `k8s_nodepool_scale`, `k8s_nodepool_delete`; чтение хода операции кластера.
+3. B: `stack_plan` (D108) первым; очередь — PR передачи.
 4. A: `vm_resize`. C: фильтры — список id, образ; остатки #1340.
 5. B: версия Kubernetes; PostgreSQL, Kafka, Redis — после двух прогонов проб.
 6. A: `vm_rebuild`, интерфейсы, `evo vm ssh`; резервные копии.

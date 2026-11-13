@@ -274,9 +274,45 @@
 - `DELETE /api/v1/protection-plans/{protection_plan_id}` (compute/openapi-v3.yaml) — Удаление плана резервного копирования
   - ответы: 204, 422
 
-### Г-17. Теги
+### Г-17. Теги: «Менеджер ресурсов» и Compute
 
-- `POST /api/v1.1/vms` (compute/openapi-v3.yaml) — Создание виртуальной машины V1.1 — тег в запросе создания ВМ — `tag_names`, `tag_ids`
+- `GET /v1/tags` (resource-manager/openapi-v3.yaml) — Получение списка тегов — первое чтение до любой записи; список по ключу; уборка тегов пробы
+  - query: `key`, `value`, `projectId*`, `searchByText`, `pageToken`, `pageSize`, `status`, `color`
+  - ответы: 200
+- `POST /v1/tags` (resource-manager/openapi-v3.yaml) — Создание тега
+  - `key`* — string
+  - `value` — string
+  - `description` — string
+  - `color` — string: `TAG_COLOR_UNSPECIFIED`, `PRIMARY`, `RED`, `ORANGE`, `YELLOW`, `GREEN`, `BLUE`, `VIOLET`, `PINK`, `NEUTRAL`
+  - `status` — string: `TAG_STATUS_UNSPECIFIED`, `ENABLED`, `DISABLED`
+  - `projectId`* — string
+  - ответы: 200
+- `GET /v1/tags/{tagId}` (resource-manager/openapi-v3.yaml) — Получение информации о теге
+  - query: `projectId*`
+  - ответы: 200
+- `PATCH /v1/tags/{tagId}` (resource-manager/openapi-v3.yaml) — Обновление данных тега
+  - `projectId`* — string
+  - `key` — string
+  - `value` — string
+  - `description` — string
+  - `color` — string: `TAG_COLOR_UNSPECIFIED`, `PRIMARY`, `RED`, `ORANGE`, `YELLOW`, `GREEN`, `BLUE`, `VIOLET`, `PINK`, `NEUTRAL`
+  - `status` — string: `TAG_STATUS_UNSPECIFIED`, `ENABLED`, `DISABLED`
+  - ответы: 200
+- `DELETE /v1/tags/{tagId}` (resource-manager/openapi-v3.yaml) — Удаление тега — в том числе тега, назначенного диску
+  - query: `projectId*`
+  - ответы: 200
+- `POST /v1/tags/{tagId}/assignResource` (resource-manager/openapi-v3.yaml) — Назначение тега ресурсу
+  - `resourceId`* — string
+  - `projectId`* — string
+  - ответы: 200
+- `POST /v1/tags/{tagId}/unassignResource` (resource-manager/openapi-v3.yaml) — Снятие тега с ресурса
+  - `resourceId`* — string
+  - `projectId`* — string
+  - ответы: 200
+- `GET /v1/resources` (resource-manager/openapi-v3.yaml) — Получение списка ресурсов — ресурсы проекта с тегом — `tagIds`
+  - query: `projectIds*`, `resourceIds`, `resourceTypeIds`, `platformIds`, `tagIds`, `resourceGroupIds`, `productInstanceIds`, `textSearch`, `status`, `pageToken`, `pageSize`, `color`
+  - ответы: 200
+- `POST /api/v1.1/vms` (compute/openapi-v3.yaml) — Создание виртуальной машины V1.1 — тег в запросе создания ВМ — `tag_ids`
   - `[].project_id`* — string
   - `[].availability_zone_id` — string
   - `[].availability_zone_name` — string
@@ -310,7 +346,7 @@
   - `[].tag_names` — array
   - `[].cloud_init` — string
   - ответы: 201, 401, 403, 404, 422, 500
-- `POST /api/v1/disks` (compute/openapi-v3.yaml) — Создание диска — тег в запросе создания диска
+- `POST /api/v1/disks` (compute/openapi-v3.yaml) — Создание диска — тег в запросе создания диска — `tag_ids`; отдельной попыткой — `tag_names` с именем того же тега
   - `project_id`* — string
   - `availability_zone_id` — string
   - `availability_zone_name` — string
@@ -325,18 +361,13 @@
   - `tag_ids` — array
   - `tag_names` — array
   - ответы: 201, 401, 403, 409, 422, 500
-- `PUT /api/v1/vms/{vm_id}` (compute/openapi-v3.yaml) — Обновление виртуальной машины — назначение и снятие тега у ВМ
-  - `name` — string | integer
-  - `flavor_id` — string | integer
-  - `flavor_name` — string | integer
-  - `description` — string | integer
-  - `tag_ids` — array | integer
-  - `tag_names` — array | integer
-  - ответы: 200, 401, 403, 422, 500
-- `GET /api/v1/vms` (compute/openapi-v3.yaml) — Получение списка виртуальных машин — отбор по тегу
+- `GET /api/v1/vms/{vm_id}` (compute/openapi-v3.yaml) — Получение информации о виртуальной машине — `tags` в карточке ВМ
+  - ответы: 200, 401, 403, 404, 422, 500
+- `GET /api/v1/disks/{disk_id}` (compute/openapi-v3.yaml) — Получение информации о диске — `tags` в карточке диска
+  - ответы: 200, 401, 403, 404, 422, 500
+- `GET /api/v1/vms` (compute/openapi-v3.yaml) — Получение списка виртуальных машин — отбор по тегу — `tag_ids`
   - query: `project_id*`, `vm_ids`, `tag_ids`, `availability_zone_ids`, `image_ids`, `flavor_ids`, `placement_group_ids`, `statuses`, `name`, `empty_fip`, `free_tier`, `support_gpu`, `offset`, `limit`, `order_by`, `order_desc`
   - ответы: 200, 401, 403, 404, 422, 500
-- `GET /api/tags/v1/tags` (compute/openapi-v3.yaml) — **нет в спецификации** — сервис тегов: создание и удаление самого тега. Путь назван аудитом `audits/ops-gap-1.4.md` (G10), страницы API сервиса тегов в реестре API Cloud.ru нет (12.11)
 
 ### Г-18. ВМ: интерфейс и пересоздание
 
@@ -444,6 +475,3 @@
   - `clusterAttributes[].count` — integer
   - ответы: 200
 
-## Запросы, которых нет в спецификациях
-
-- Г-17: GET /api/tags/v1/tags (compute/openapi-v3.yaml)
