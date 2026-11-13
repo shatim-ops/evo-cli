@@ -19,7 +19,9 @@ give() { # ФАЙЛ УМОЛЧАНИЕ: JSON мира через фильтр в
   if [ -f "$FAKE_DIR/$1" ]; then jq -r "$q" "$FAKE_DIR/$1"; else jq -rn "$2 | $q"; fi
 }
 case "$1 $2" in
-  "pr list") give prs.json '[]' ;;
+  "pr list")
+    [ ! -f "$FAKE_DIR/list.fail" ] || { cat "$FAKE_DIR/list.fail" >&2; exit 1; }
+    give prs.json '[]' ;;
   "pr comment")
     [ ! -f "$FAKE_DIR/comment.fail" ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
     n=$3
@@ -69,6 +71,10 @@ has conflict said.21 'уведомление workflow pr-stuck'
 none conflict said.22
 none conflict said.23
 none conflict said.24
+# Зелёный круг не молчит: одна строка со счётом — без неё по журналу не
+# отличить «обошёл и ничего не нашёл» от «ничего не обошёл» (первый круг на
+# живом GitHub, 13.11). Только числа: текста PR в строке нет.
+has conflict out 'обход: PR 3, с конфликтом 1, с job без раннера 0, новых строк 1, отказов чтения и записи 0'
 
 # Та же голова, строка уже оставлена: второй раз не пишет.
 world conflict-again
@@ -76,6 +82,7 @@ cp "$work/conflict/prs.json" "$FAKE_DIR/prs.json"
 echo '[{"user": {"login": "github-actions[bot]"}, "body": "текст <!-- pr-stuck:conflict:aaaa1111bbbb2222 -->"}]' >"$FAKE_DIR/comments.21.json"
 run conflict-again
 none conflict-again said.21
+has conflict-again out 'с конфликтом 1, с job без раннера 0, новых строк 0, отказов чтения и записи 0'
 
 # Метку написал не бот (репозиторий публичный, комментарий может оставить
 # кто угодно): строку это не отменяет — «уже сказано» читается только в
@@ -102,6 +109,7 @@ run comments-unread
 none comments-unread said.21
 has comments-unread err 'комментарии PR 21 не прочитаны'
 has comments-unread err 'HTTP 502'
+has comments-unread out 'новых строк 0, отказов чтения и записи 1'
 
 # Job последнего прогона ci головы отменён без раннера (runner_id 0, шагов
 # нет — форма job PR #1543, 12.11): строка называет job и прогон. Job,
@@ -133,6 +141,7 @@ if grep -q 'macos\|wrapper\|@\|автослияние' "$FAKE_DIR/said.31" 2>/de
 [ "$(grep -c 'pr-stuck:' "$FAKE_DIR/said.31")" = 1 ] || { echo "FAIL norunner: в строке не одна метка"; fail=1; }
 has norunner said.31 'https://github.com/o/r/actions/runs/901'
 has norunner said.31 '<!-- pr-stuck:norunner:ffff2222 -->'
+has norunner out 'обход: PR 1, с конфликтом 0, с job без раннера 1, новых строк 1, отказов чтения и записи 0'
 has norunner calls 'actions/runs/901/jobs'
 if grep -q 'actions/runs/900/jobs' "$FAKE_DIR/calls"; then echo "FAIL norunner: читается не последний прогон ci"; fail=1; fi
 
@@ -144,6 +153,7 @@ echo '{"jobs": [{"name": "docker", "conclusion": "success", "runner_id": 9, "ste
 run quiet
 none quiet said.41
 none quiet said.42
+has quiet out 'обход: PR 2, с конфликтом 0, с job без раннера 0, новых строк 0, отказов чтения и записи 0'
 
 # Строка не принята: отказ назван, обход идёт дальше ко второму PR.
 world refused
@@ -153,6 +163,29 @@ run refused
 has refused err 'строка в PR 51 не оставлена'
 has refused err 'строка в PR 52 не оставлена'
 has refused err 'HTTP 403'
+has refused out 'с конфликтом 2, с job без раннера 0, новых строк 0, отказов чтения и записи 2'
+
+# Лимит запросов токена исчерпан (он общий на репозиторий, его же тратят
+# main-red и ревью): обход молчит до следующего круга — warning и код 0, не
+# красный: красный обход завёл бы issue тем же исчерпанным токеном
+# (заключение «Риска» 178). Любой другой отказ списка — красный, как был.
+world rate-limit
+echo 'HTTP 403: API rate limit exceeded for installation ID 1.' >"$FAKE_DIR/list.fail"
+rc=0
+PATH="$work/bin:$PATH" GH_REPO=o/r "$here/pr_stuck.sh" >"$FAKE_DIR/out" 2>"$FAKE_DIR/err" || rc=$?
+[ "$rc" = 0 ] || { echo "FAIL rate-limit: код $rc, ждём 0"; fail=1; }
+has rate-limit err 'лимит запросов исчерпан'
+world secondary-limit
+echo 'HTTP 403: You have exceeded a secondary rate limit.' >"$FAKE_DIR/list.fail"
+rc=0
+PATH="$work/bin:$PATH" GH_REPO=o/r "$here/pr_stuck.sh" >"$FAKE_DIR/out" 2>"$FAKE_DIR/err" || rc=$?
+[ "$rc" = 0 ] || { echo "FAIL secondary-limit: код $rc, ждём 0"; fail=1; }
+world list-broken
+echo 'HTTP 502: Bad Gateway' >"$FAKE_DIR/list.fail"
+rc=0
+PATH="$work/bin:$PATH" GH_REPO=o/r "$here/pr_stuck.sh" >"$FAKE_DIR/out" 2>"$FAKE_DIR/err" || rc=$?
+[ "$rc" != 0 ] || { echo "FAIL list-broken: отказ списка PR не по лимиту — не красный"; fail=1; }
+has list-broken err 'HTTP 502'
 
 [ "$fail" = 0 ] && echo "pr_stuck: ok"
 exit "$fail"
