@@ -77,7 +77,7 @@ func TestPendingNotes_ManyRecordsFoldAndDoctorShowsEvery(t *testing.T) {
 	for _, in := range intent.Pending(dir)[:3] {
 		intent.Close(in)
 	}
-	if notes := r.PendingNotes(root); len(notes) != foldPendingAfter || strings.Contains(strings.Join(notes, "\n"), "evo doctor shows") {
+	if notes := r.PendingNotes(root); len(notes) != foldPendingAfter || strings.Contains(strings.Join(notes, "\n"), "started before these") {
 		t.Errorf("%d records: %d lines\n%s", foldPendingAfter, len(notes), strings.Join(notes, "\n"))
 	}
 

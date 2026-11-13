@@ -869,8 +869,10 @@ func (r *Registry) pendingNotes(root string, own []string, call callResource) (n
 		notes = append(notes, r.pendingNote(in, cur))
 	}
 	if folded > 0 {
-		notes = append(notes, i18n.Tf("and %d more, started before these: evo doctor shows every one",
-			"и ещё %d, начатых раньше этих: evo doctor показывает все", folded))
+		// One text on both surfaces; over HTTP the server has no doctor
+		// (H10), and the default says so («Риск», conclusion 187).
+		notes = append(notes, i18n.Tf("and %d more, started before these: evo doctor (over MCP on stdio — the doctor tool) shows every one",
+			"и ещё %d, начатых раньше этих: evo doctor (по MCP по stdio — инструмент doctor) показывает все", folded))
 	}
 	return notes, leftOut
 }
