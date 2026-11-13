@@ -99,8 +99,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The name of the pool, in the preview and in the answer; the words
 	// and the code of the platform in a failed operation (details).
 	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},
-	// The cluster of the pool by its name, in the preview of the delete.
-	"k8s_nodepool_delete": {fields: []string{"preview"}},
+	// The cluster of the pool by its name, in the preview of the delete;
+	// the name of the pool, in the target (FB19I-9).
+	"k8s_nodepool_delete": {fields: []string{"preview", "target"}},
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.
