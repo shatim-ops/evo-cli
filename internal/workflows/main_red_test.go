@@ -68,4 +68,13 @@ func TestWorkflows_RedMainOpensAnIssue(t *testing.T) {
 	if !runsStep(ws["ci.yml"], ".github/scripts/main_red_test.sh") {
 		t.Error("ci: main_red.sh is not tested (main_red_test.sh)")
 	}
+	// A green run closes the issue of a red ci only when the file of the red
+	// test changed between the two commits (plan 1.9, «CI», the owner's
+	// decision of 13.11): the comparison reads commits the shallow checkout
+	// of the job does not hold, so ci runs it on a runner, in a shallow
+	// clone with no credentials, against the two real episodes of the night
+	// of 12–13.11.
+	if !runsStep(ws["ci.yml"], "main_red.sh changed ") {
+		t.Error("ci: the comparison of commits of main_red.sh is not run on a runner (main_red.sh changed …)")
+	}
 }
