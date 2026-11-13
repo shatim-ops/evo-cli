@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +25,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -189,7 +192,32 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 		}, nil
 	})
 	r.SetStateDir(dir)
+	contractRecords = intent.Dir(dir)
 	return r
+}
+
+// contractRecords is the directory of the call records of the registry
+// contractRegCfg built last. A sweep sends every tool every answer of the
+// cloud through one registry, and most of those calls end with an outcome
+// unknown: their records stay, and every later call reads them all. Each
+// call of a sweep is a call of its own world — contractCall starts it with
+// no record of the calls before it.
+var contractRecords string
+
+// forgetContractRecords removes the records of contractRecords and leaves
+// the directory and the files being written: a sweep that calls its tools
+// from several goroutines (walkLang) has a call writing its record there
+// at the same moment.
+func forgetContractRecords() {
+	entries, err := os.ReadDir(contractRecords)
+	if contractRecords == "" || err != nil {
+		return
+	}
+	for _, e := range entries {
+		if name := e.Name(); strings.HasSuffix(name, ".json") && !strings.HasPrefix(name, ".") {
+			_ = os.Remove(filepath.Join(contractRecords, name))
+		}
+	}
 }
 
 func contractCall(tl Tool, args map[string]any, limit time.Duration) (text string, isErr bool, pan string) {
@@ -200,6 +228,7 @@ func contractCall(tl Tool, args map[string]any, limit time.Duration) (text strin
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
+	forgetContractRecords()
 	text, isErr = tl.Handler(ctx, args)
 	return text, isErr, ""
 }
