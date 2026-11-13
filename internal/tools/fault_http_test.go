@@ -49,6 +49,11 @@ type faultAPI struct {
 	// slow keeps every operation running and every resource "CREATING":
 	// the slow cloud of D69's world (mcp_budget_test.go).
 	slow bool
+	// lag is how many reads of its collection a resource made is not
+	// listed in: the request was taken, the list does not show it yet
+	// (unlisted, by the id).
+	lag      int
+	unlisted map[string]int
 }
 
 // faultResource is a billable resource of a collection: host and path of
@@ -327,6 +332,10 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 		items := []map[string]any{}
 		for _, c := range a.made {
 			if c.host == host && c.path == path {
+				if a.unlisted[c.ID] > 0 {
+					a.unlisted[c.ID]--
+					continue
+				}
 				item := map[string]any{"id": c.ID, "name": c.Name, "path": c.Name, "subnet": c.Name, "type": strings.ToUpper(c.Type), "status": a.statusLocked()}
 				if a.slow {
 					item["state"] = "creating" // a disk's field (waitDisk)
@@ -366,6 +375,12 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 			c.Type = provision.ImageTypePrivate // an image the project made is its own
 		}
 		a.made = append(a.made, c)
+		if a.lag > 0 {
+			if a.unlisted == nil {
+				a.unlisted = map[string]int{}
+			}
+			a.unlisted[c.ID] = a.lag
+		}
 		op := fmt.Sprintf("op-%d", a.next)
 		a.mu.Unlock()
 		if faultCollections[path].async {
