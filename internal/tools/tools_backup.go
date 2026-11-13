@@ -906,7 +906,9 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 
 // restoreHeldLimit is how long a restore the platform took is waited for
 // by the repeats of its call: two runs of Г-16 listed a restored disk in
-// seconds; a disk not listed by then is not waited for any more.
+// seconds; a disk not listed by then is not waited for any more. The
+// number is a hypothesis no run has measured: the third run of Г-16 checks
+// it («Риск», the conclusion on #1580).
 const restoreHeldLimit = 30 * time.Minute
 
 // restoreHeld is the start of this key's restore of backup id into name
