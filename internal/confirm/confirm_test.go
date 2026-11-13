@@ -150,3 +150,48 @@ func TestAsk_InterruptAtPrompt(t *testing.T) {
 		t.Fatalf("ok=%v err=%v, want interrupted", ok, err)
 	}
 }
+
+// A question only a person answers (PersonOnly): --yes does not answer
+// it — without a terminal the refusal carries the caller's hint, not the
+// advice to re-run with --yes — and at a terminal the person is asked
+// whether --yes is given or not; Answered runs on the person's answer, yes
+// or no, and on no other path.
+func TestAsk_PersonOnly(t *testing.T) {
+	const hint = "look at the resource and answer at a terminal"
+	for _, c := range []struct {
+		name     string
+		opts     Options
+		in       string
+		tty      bool
+		ok       bool
+		answered int
+	}{
+		{"--yes without a terminal", Options{Yes: true}, "", false, false, 0},
+		{"--yes --json without a terminal", Options{Yes: true, JSON: true}, "", false, false, 0},
+		{"no terminal", Options{}, "", false, false, 0},
+		{"--dry-run", Options{DryRun: true}, "", true, false, 0},
+		{"a yes at the terminal", Options{}, "y\n", true, true, 1},
+		{"a yes at the terminal under --yes", Options{Yes: true}, "y\n", true, true, 1},
+		{"a no at the terminal", Options{Yes: true}, "n\n", true, false, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			answered := 0
+			c.opts.PersonOnly, c.opts.Hint, c.opts.Answered = true, hint, func() { answered++ }
+			res := ask(t, context.Background(), c.opts, c.in, c.tty)
+			if res.ok != c.ok || answered != c.answered {
+				t.Fatalf("ok %v, answered %d; want %v, %d (%v)", res.ok, answered, c.ok, c.answered, res.err)
+			}
+			if c.tty || c.opts.DryRun {
+				return
+			}
+			var ce *clerrors.CLIError
+			if !stderrors.Is(res.err, ErrConfirmationRequired) || !stderrors.As(res.err, &ce) || ce.Hint != hint ||
+				strings.Contains(res.stdout, "--yes to confirm") {
+				t.Errorf("the refusal: %v\n%s", res.err, res.stdout)
+			}
+			if c.opts.Yes && !strings.Contains(res.err.Error(), "--yes does not answer this question") {
+				t.Errorf("the refusal does not say --yes was not read: %v", res.err)
+			}
+		})
+	}
+}
