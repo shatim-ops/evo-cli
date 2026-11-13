@@ -755,7 +755,19 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 				preview = p
 			}
 		}
-		ok, err := confirm.Ask(ctx, preview, opts)
+		ask := opts
+		if interrupted, cut := resp["interrupted"]; cut {
+			// The question names a call of this tool that was cut with
+			// its outcome unknown: a call now is one more change, and
+			// only a person says whether to send it. --yes was given
+			// before the cut was known, so it does not answer; the
+			// record of the cut call stays until a person does («Риск»,
+			// conclusion 176, У1 and У2).
+			ask.PersonOnly = true
+			ask.Hint = cutCallHint(cmd, interrupted)
+			ask.Answered = func() { registryOf(cmd).CutCallAnswered(ctx, t.Name, args) }
+		}
+		ok, err := confirm.Ask(ctx, preview, ask)
 		if !ok {
 			return "", err
 		}
@@ -770,6 +782,35 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 		return text, toolError(text, hints)
 	}
 	return text, nil
+}
+
+// toolCommandPath is the command CLISpec gives the tool ("evo vm create";
+// Group "": a command at the root), "" for a tool without one.
+func toolCommandPath(t tools.Tool) string {
+	if t.CLI.Verb == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields("evo "+t.CLI.Group+" "+t.CLI.Verb), " ")
+}
+
+// cutCallHint is the hint of the refusal to answer a question about a cut
+// call with --yes: the command that shows the resource — the read the
+// question names by its tool (interrupted.read_tool) — and where the
+// answer is given.
+func cutCallHint(cmd *cobra.Command, interrupted any) string {
+	read := ""
+	if m, _ := interrupted.(map[string]any); m != nil {
+		name, _ := m["read_tool"].(string)
+		if t, ok := registryOf(cmd).Lookup(name); ok {
+			read = toolCommandPath(t)
+		}
+	}
+	if read == "" {
+		return i18n.T("--yes does not answer a question about a call that was cut. Look at the resource, then run the command at a terminal and answer the question.",
+			"--yes не отвечает на вопрос об оборванном вызове. Посмотрите ресурс, затем запустите команду в терминале и ответьте на вопрос.")
+	}
+	return i18n.Tf("--yes does not answer a question about a call that was cut. Look at the resource with '%s', then run the command at a terminal and answer the question.",
+		"--yes не отвечает на вопрос об оборванном вызове. Посмотрите ресурс командой «%s», затем запустите команду в терминале и ответьте на вопрос.", read)
 }
 
 func takesConfirmed(t tools.Tool) bool {
