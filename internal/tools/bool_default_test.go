@@ -27,6 +27,7 @@ var boolDefaultsTrue = map[string][]string{
 	"external":          {"lb_create"},
 	"routed_network":    {"subnet_create"},
 	"refresh":           {"status"},
+	"wait":              {"backup_create", "backup_restore"},
 }
 
 // handlerTrueRE finds a boolean argument read with a default of true:
@@ -66,7 +67,7 @@ func TestBoolDefaultsTrue(t *testing.T) {
 	}
 
 	declared := map[string]bool{}
-	for _, tl := range newTestServer().Tools() {
+	for _, tl := range newTestServer(t).Tools() {
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for name, v := range props {
 			if m, _ := v.(map[string]any); m["default"] == true {

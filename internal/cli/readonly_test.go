@@ -84,9 +84,14 @@ func newROServers(t *testing.T) roServers {
 		}
 		return toolEngine(o)
 	}
-	ro := mcp.New(factory, "test")
+	newServer := func() *mcp.Server {
+		s := mcp.New(factory, "test")
+		declareStateDir(s)
+		return s
+	}
+	ro := newServer()
 	ro.SetReadOnly()
-	behindHTTP := mcp.New(factory, "test")
+	behindHTTP := newServer()
 	behindHTTP.SetReadOnly()
 	h := mcp.NewHTTPHandler(behindHTTP, mcp.HTTPOptions{BearerToken: "parity-token"})
 	ts := httptest.NewServer(h)
@@ -94,7 +99,7 @@ func newROServers(t *testing.T) roServers {
 		h.Close()
 		ts.Close()
 	})
-	return roServers{plain: mcp.New(factory, "test"), ro: ro, roHTTP: ts}
+	return roServers{plain: newServer(), ro: ro, roHTTP: ts}
 }
 
 func (r roServers) stdio(t *testing.T, s *mcp.Server, method string, params any) (roAnswer, []string) {

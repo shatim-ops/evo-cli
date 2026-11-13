@@ -61,7 +61,7 @@ func rawLines(t *testing.T, s *Server, lines ...string) []any {
 // ping и tools/call без id получали ответ без id — строгий клиент принимает
 // его за ответ на неизвестный запрос.
 func TestQA_NotificationsAreNotAnswered(t *testing.T) {
-	got := runLines(t, newTestServer(),
+	got := runLines(t, newTestServer(t),
 		`{"jsonrpc":"2.0","method":"ping"}`,
 		`{"jsonrpc":"2.0","method":"tools/list"}`,
 		`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"status"}}`,
@@ -84,7 +84,7 @@ func TestQA_NotificationsAreNotAnswered(t *testing.T) {
 // Ответ на сообщение, id которого не прочитать, обязан нести "id": null.
 func TestQA_ErrorWithoutRequestIDHasNullID(t *testing.T) {
 	for _, line := range []string{`{not json`, `[]`, `"str"`, `{"jsonrpc":"2.0"}`} {
-		got := runLines(t, newTestServer(), line)
+		got := runLines(t, newTestServer(t), line)
 		if len(got) != 1 {
 			t.Fatalf("%s: %d responses", line, len(got))
 		}
@@ -110,7 +110,7 @@ func rpcCode(v any) float64 {
 // батчи. По stdio батч получал parse error; пустой батч и не-объект в
 // батче — Invalid Request, а не parse error на весь батч.
 func TestQA_Batches(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	got := runLines(t, s, `[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","method":"notifications/initialized"},1]`)
 	if len(got) != 1 {
 		t.Fatalf("want one batch response, got %v", got)
@@ -146,7 +146,7 @@ func TestQA_Batches(t *testing.T) {
 // Запрос без method — Invalid Request (-32600), не «method not found: ».
 // Ответ клиента (result/error без method) не получает ответа.
 func TestQA_MessageWithoutMethod(t *testing.T) {
-	got := runLines(t, newTestServer(),
+	got := runLines(t, newTestServer(t),
 		`{"jsonrpc":"2.0","id":3}`,
 		`{"jsonrpc":"2.0","id":4,"result":{}}`,
 		`{"jsonrpc":"2.0","id":5,"error":{"code":1,"message":"x"}}`,
@@ -161,7 +161,7 @@ func TestQA_MessageWithoutMethod(t *testing.T) {
 func TestQA_OversizedLineDoesNotKillStdio(t *testing.T) {
 	big := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status","arguments":{"pad":"` +
 		strings.Repeat("x", maxMessageSize) + `"}}}`
-	got := runLines(t, newTestServer(), big, `{"jsonrpc":"2.0","id":2,"method":"ping"}`)
+	got := runLines(t, newTestServer(t), big, `{"jsonrpc":"2.0","id":2,"method":"ping"}`)
 	if len(got) != 2 {
 		t.Fatalf("want 2 responses (error, pong), got %d", len(got))
 	}
@@ -178,7 +178,7 @@ func TestQA_OversizedLineDoesNotKillStdio(t *testing.T) {
 func TestQA_ToolPanicDoesNotKillServer(t *testing.T) {
 	panicLog = io.Discard
 	t.Cleanup(func() { panicLog = os.Stderr })
-	s := newTestServer()
+	s := newTestServer(t)
 	s.handlers["status"] = func(context.Context, map[string]any) (string, bool) { panic("boom") }
 	got := runLines(t, s,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status"}}`,
@@ -193,7 +193,7 @@ func TestQA_ToolPanicDoesNotKillServer(t *testing.T) {
 	}
 
 	// Through the registry: the HTTP policy re-reads every handler from it.
-	hs := newTestServer()
+	hs := newTestServer(t)
 	hs.wrapHandler("status", func(tools.Handler) tools.Handler {
 		return func(context.Context, map[string]any) (string, bool) { panic("boom") }
 	})

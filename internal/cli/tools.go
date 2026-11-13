@@ -31,12 +31,23 @@ import (
 // for every other command. A run builds it once (newRootCmd, registryOf);
 // tests count the builds.
 var newRegistry = func() *tools.Registry {
-	return tools.New(func(overrides map[string]any) (*engine.Engine, error) {
+	reg := tools.New(func(overrides map[string]any) (*engine.Engine, error) {
 		if overrides == nil {
 			overrides = map[string]any{}
 		}
 		return toolEngine(overrides)
 	})
+	declareStateDir(reg)
+	return reg
+}
+
+// declareStateDir tells a registry the directory its engines are built
+// with (stateDir). Without a working directory none is declared: no engine
+// is built either, and a call that would write is refused.
+func declareStateDir(reg interface{ SetStateDir(string) }) {
+	if dir, err := stateDir(); err == nil {
+		reg.SetStateDir(dir)
+	}
 }
 
 // registryKey is the context key of the registry of a run (withRegistry).

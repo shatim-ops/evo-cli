@@ -70,6 +70,7 @@ func TestListDiskTypesAndFloatingIPs_SayLimitsAndZones(t *testing.T) {
 		return &engine.Engine{Config: config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
 			Auth: staticToken{}, Cloud: cloud, Printer: output.NewWithWriter(&buf, output.ModeText, false)}, nil
 	})
+	r.SetStateDir(t.TempDir())
 
 	m, text, isErr := callNamed(t, r, "list_disk_types", map[string]any{})
 	if isErr {

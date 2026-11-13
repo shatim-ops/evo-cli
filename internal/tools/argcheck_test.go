@@ -47,6 +47,7 @@ func TestCheckedArgs(t *testing.T) {
 // именем параметра из disk_attach не уходит в «удалить текущее развёртывание».
 func TestRegistry_DestroyUnknownArgRefused(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) { t.Fatal("engine built"); return nil, nil })
+	r.SetStateDir(t.TempDir())
 	tl, _ := r.Lookup("destroy")
 	text, isErr := tl.Handler(context.Background(), map[string]any{"vm": "orphan-1"})
 	if !isErr || !strings.Contains(text, "unknown argument(s) vm") || !strings.Contains(text, "vm_id") {
@@ -58,6 +59,7 @@ func TestRegistry_DestroyUnknownArgRefused(t *testing.T) {
 // нестроковым enum прошла бы без проверки — такой быть не должно.
 func TestSchemas_EnumsAreStrings(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	r.SetStateDir(t.TempDir())
 	for _, tl := range r.Tools() {
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for k, p := range props {
@@ -124,6 +126,7 @@ func TestCheckedArgs_ScalarTypes(t *testing.T) {
 // превью; теперь — USAGE, до обработчика и без движка.
 func TestRegistry_ConfirmedAsStringRefused(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) { t.Fatal("engine built"); return nil, nil })
+	r.SetStateDir(t.TempDir())
 	tl, _ := r.Lookup("destroy")
 	text, isErr := tl.Handler(context.Background(), map[string]any{"name": "x", "confirmed": "true"})
 	if !isErr || !strings.Contains(text, `"reason": "USAGE"`) || !strings.Contains(text, "confirmed must be a boolean") {

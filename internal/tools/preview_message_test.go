@@ -27,6 +27,7 @@ var gatedPreviewArgs = map[string]func(a map[string]any){
 	"destroy":             func(a map[string]any) { delete(a, "vm_id"); delete(a, "name") }, // the current deployment
 	"image_create":        func(a map[string]any) { delete(a, "image_metadata") },
 	"disk_create":         func(a map[string]any) { delete(a, "attach_to") },
+	"backup_create":       func(a map[string]any) { delete(a, "vm_id") },  // one source: the disk
 	"dns_zone_create":     func(a map[string]any) { delete(a, "vpc_id") }, // a public zone takes no VPC
 	"release_floating_ip": func(a map[string]any) { delete(a, "ip_address") },
 	"tg_create":           func(a map[string]any) { delete(a, "targets") },
@@ -54,6 +55,12 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	// A delete asks consent for what the cloud has; what it does not have
 	// is already deleted (D26): these look their resource up in its list.
 	"disk_delete": func(t *testing.T) string { return liveDelete(t, "disk_delete", map[string]any{"disk_id": liveID}) },
+	// backup_restore reads the backup — a disk's, created — and the disks
+	// of the project before its question.
+	"backup_restore": func(t *testing.T) string {
+		_, text, _ := backupRestore(t, &restoreWorld{}, nil)
+		return text
+	},
 	// subnet_create needs the project's VPC and zone (subnet_test.go).
 	"subnet_create": func(t *testing.T) string {
 		_, text, _ := callNamed(t, subnetRegistry(t, newSubnetAPI()), "subnet_create", map[string]any{"name": "web", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1"})
@@ -138,12 +145,12 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	// disk_attach and disk_detach find the VM and read the disk's state
 	// before the question (D53): a VM and a settled disk.
 	"disk_attach": func(t *testing.T) string {
-		r := transientDiskRegistry(&transientDiskCloud{faultCloud: &faultCloud{}, from: "available"})
+		r := transientDiskRegistry(t, &transientDiskCloud{faultCloud: &faultCloud{}, from: "available"})
 		_, text, _ := callNamed(t, r, "disk_attach", diskChanges["disk_attach"])
 		return text
 	},
 	"disk_detach": func(t *testing.T) string {
-		r := transientDiskRegistry(&transientDiskCloud{faultCloud: &faultCloud{}, from: "in_use"})
+		r := transientDiskRegistry(t, &transientDiskCloud{faultCloud: &faultCloud{}, from: "in_use"})
 		_, text, _ := callNamed(t, r, "disk_detach", diskChanges["disk_detach"])
 		return text
 	},

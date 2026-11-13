@@ -88,7 +88,7 @@ func TestHTTPPolicy_ClosedList(t *testing.T) {
 		if r.AllTools && len(r.Tools) > 0 {
 			t.Errorf("%s: AllTools and Tools", r.ID)
 		}
-		reg := newTestServer().reg
+		reg := newTestServer(t).reg
 		for _, n := range r.Tools {
 			if _, ok := reg.Lookup(n); !ok {
 				t.Errorf("%s: no tool %s", r.ID, n)
@@ -116,7 +116,7 @@ func TestHTTPPolicy_ClosedList(t *testing.T) {
 		{true, false, false}, {true, true, false}, {false, false, true}, {true, false, true},
 	} {
 		name := fmt.Sprintf("http=%v allow-secret-export=%v read-only=%v", setup.http, setup.allow, setup.readOnly)
-		s := newTestServer()
+		s := newTestServer(t)
 		before := handlerPointers(s)
 		if setup.readOnly {
 			s.SetReadOnly()
@@ -300,7 +300,7 @@ func TestSec_RedactedListsMaskedFields(t *testing.T) {
 		"logs":         `password=plain text, not JSON`,
 	}
 	newServer := func() *Server {
-		s := newTestServer()
+		s := newTestServer(t)
 		for name, text := range results {
 			fakeResult(s, name, text)
 		}
@@ -409,7 +409,7 @@ func TestSec_KnownSecretFieldsMasked(t *testing.T) {
 		"vm_get":       `{"id":"v","metadata":{"admin_password":"S3cret-MD","linux_password":"S3cret-LX"}}`,
 		"ar_get":       `{"id":"a","token":"S3cret-TK","api_key":"S3cret-AK"}`,
 	}
-	s := newTestServer()
+	s := newTestServer(t)
 	for name, text := range known {
 		fakeResult(s, name, text)
 	}
@@ -483,7 +483,7 @@ func TestSec_NonSecretFieldsKept(t *testing.T) {
 		t.Errorf("the Secret Manager exception holds outside its tools: %s", got)
 	}
 	const kubeconfig = `{"auth":"cloudlogin exec-plugin (must be installed)","kubeconfig":"apiVersion: v1\nusers:\n- name: u\n  user:\n    exec:\n      command: cloudlogin\n"}`
-	s := newTestServer()
+	s := newTestServer(t)
 	fakeResult(s, "k8s_kubeconfig", kubeconfig)
 	s.restrictForHTTP(false)
 	if text, _ := call(s, "k8s_kubeconfig", map[string]any{"cluster_id": "c", "embed_token": false}); text != kubeconfig {

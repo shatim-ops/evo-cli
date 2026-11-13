@@ -18,7 +18,7 @@ func TestHTTPPolicy_RefusalReasons(t *testing.T) {
 	orig := binaryAvailable
 	binaryAvailable = func(string) bool { return false }
 	t.Cleanup(func() { binaryAvailable = orig })
-	s := newTestServer()
+	s := newTestServer(t)
 	s.restrictForHTTP(false)
 	for _, tt := range []struct {
 		tool   string

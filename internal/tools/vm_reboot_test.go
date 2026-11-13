@@ -262,6 +262,7 @@ func rebootWorldInADir(t *testing.T) (*Registry, *powerWorld, string) {
 			Timings:  engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 50 * time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	return r, w, intent.Dir(dir)
 }
 

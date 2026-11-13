@@ -42,7 +42,7 @@ func (b *syncBuffer) String() string {
 
 func newHTTPTest(t *testing.T, opts HTTPOptions) (*httptest.Server, *HTTPHandler) {
 	t.Helper()
-	h := NewHTTPHandler(newTestServer(), opts)
+	h := NewHTTPHandler(newTestServer(t), opts)
 	ts := httptest.NewServer(h)
 	t.Cleanup(func() {
 		h.Close()
@@ -386,7 +386,7 @@ func TestHTTPPolicy_SecretExport(t *testing.T) {
 		return text
 	}
 
-	s := newTestServer()
+	s := newTestServer(t)
 	s.restrictForHTTP(false)
 	if got := call(s, "cert_private_key", map[string]any{"certificate_id": "c", "confirmed": true}); !strings.Contains(got, "--allow-secret-export") {
 		t.Errorf("cert_private_key over HTTP: %s", got)
@@ -400,7 +400,7 @@ func TestHTTPPolicy_SecretExport(t *testing.T) {
 		t.Errorf("k8s_kubeconfig embed_token=false refused: %s", got)
 	}
 
-	allowed := newTestServer()
+	allowed := newTestServer(t)
 	allowed.restrictForHTTP(true)
 	if got := call(allowed, "cert_private_key", map[string]any{"certificate_id": "c"}); strings.Contains(got, "allow-secret-export") {
 		t.Errorf("cert_private_key with --allow-secret-export refused: %s", got)
@@ -414,7 +414,7 @@ func TestHTTPPolicy_KubeBinariesMissing(t *testing.T) {
 	orig := binaryAvailable
 	binaryAvailable = func(string) bool { return false }
 	t.Cleanup(func() { binaryAvailable = orig })
-	s := newTestServer()
+	s := newTestServer(t)
 	s.restrictForHTTP(false)
 	// Each with its own arguments: an argument a tool does not take is the
 	// check of the arguments' USAGE first (G13-1).
@@ -439,7 +439,7 @@ func TestListenAndServe_ShutsDownOnCancel(t *testing.T) {
 	addrc := make(chan net.Addr, 1)
 	errc := make(chan error, 1)
 	go func() {
-		errc <- newTestServer().ListenAndServe(ctx, "127.0.0.1:0", HTTPOptions{BearerToken: testToken}, func(a net.Addr) { addrc <- a })
+		errc <- newTestServer(t).ListenAndServe(ctx, "127.0.0.1:0", HTTPOptions{BearerToken: testToken}, func(a net.Addr) { addrc <- a })
 	}()
 	var addr net.Addr
 	select {

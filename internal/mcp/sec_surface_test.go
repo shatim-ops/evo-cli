@@ -36,19 +36,19 @@ func call(s *Server, name string, args map[string]any) (string, bool) {
 func TestSec_SecretValueNeedsExportFlagOverHTTP(t *testing.T) {
 	args := map[string]any{"path": "app/db"}
 
-	s := newTestServer()
+	s := newTestServer(t)
 	s.restrictForHTTP(false)
 	if text, isErr := call(s, "secret_value", args); !isErr || !strings.Contains(text, "--allow-secret-export") {
 		t.Errorf("HTTP without the flag: %s", text)
 	}
 	for _, export := range []bool{true} {
-		s := newTestServer()
+		s := newTestServer(t)
 		s.restrictForHTTP(export)
 		if text, _ := call(s, "secret_value", args); strings.Contains(text, "allow-secret-export") {
 			t.Errorf("HTTP with --allow-secret-export: %s", text)
 		}
 	}
-	stdio := newTestServer()
+	stdio := newTestServer(t)
 	if text, _ := call(stdio, "secret_value", args); strings.Contains(text, "allow-secret-export") {
 		t.Errorf("stdio: %s", text)
 	}
@@ -64,7 +64,7 @@ func TestSec_CredentialFieldsMaskedOverHTTP(t *testing.T) {
 		"audit_events": `{"events":[],"next_page_token":"keep-me"}`,
 	}
 	newServer := func() *Server {
-		s := newTestServer()
+		s := newTestServer(t)
 		for name, text := range results {
 			fakeResult(s, name, text)
 		}
@@ -126,7 +126,7 @@ func TestSec_DeployComposeFileConfinedOverHTTP(t *testing.T) {
 		t.Skip("no symlinks here:", err)
 	}
 
-	s := newTestServer()
+	s := newTestServer(t)
 	s.restrictForHTTP(true) // not a secret-export matter
 	for _, p := range []string{outside, "../x.yml", "link.yml", "sub/../../x.yml"} {
 		text, isErr := call(s, "deploy", map[string]any{"compose_file": p})
@@ -139,7 +139,7 @@ func TestSec_DeployComposeFileConfinedOverHTTP(t *testing.T) {
 			t.Errorf("compose_file %q refused: %s", p, text)
 		}
 	}
-	stdio := newTestServer()
+	stdio := newTestServer(t)
 	if text, _ := call(stdio, "deploy", map[string]any{"compose_file": outside}); strings.Contains(text, "outside") {
 		t.Errorf("stdio restricted: %s", text)
 	}
@@ -231,12 +231,12 @@ func TestSec_KubectlPolicyWiring(t *testing.T) {
 	t.Cleanup(func() { binaryAvailable = orig })
 
 	args := map[string]any{"cluster_id": "c", "args": "cp ns/p:/x /tmp/x", "confirmed": true}
-	s := newTestServer()
+	s := newTestServer(t)
 	s.restrictForHTTP(true)
 	if text, isErr := call(s, "k8s_kubectl", args); !isErr || !strings.Contains(text, "not a built-in kubectl command") {
 		t.Errorf("HTTP: %s", text)
 	}
-	if text, _ := call(newTestServer(), "k8s_kubectl", args); strings.Contains(text, "built-in") {
+	if text, _ := call(newTestServer(t), "k8s_kubectl", args); strings.Contains(text, "built-in") {
 		t.Errorf("stdio: %s", text)
 	}
 }
@@ -317,7 +317,7 @@ func TestSec_HTTPBatchSizeLimited(t *testing.T) {
 // Tool calls over HTTP are bounded: the ones over the limit are refused at
 // once instead of piling up goroutines and cloud requests (H8).
 func TestSec_HTTPConcurrentToolCallsLimited(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	release := make(chan struct{})
 	var started sync.WaitGroup
 	started.Add(httpMaxToolCalls)

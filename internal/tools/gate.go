@@ -135,13 +135,18 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if depth > 1 {
 			return next(ctx, args)
 		}
+		// No directory for the record of the call: no question is asked
+		// about a call that would be refused, and none is sent.
+		if r.stateDirUndeclared() {
+			return errResult(errNoStateDir()), true
+		}
 		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) {
 			text, isErr := next(ctx, args)
-			r.settleHeld(t.Name, args, text)
-			text = r.questionNamesTheCut(t.Name, args, text)
-			return r.namedKept(t.Name, args, text), isErr
+			r.settleHeld(ctx, t.Name, args, text)
+			text = r.questionNamesTheCut(ctx, t.Name, args, text)
+			return r.namedKept(ctx, t.Name, args, text), isErr
 		}
-		if text, asked := r.askAgainAfterACut(t.Name, args); asked {
+		if text, asked := r.askAgainAfterACut(ctx, t.Name, args); asked {
 			return text, true
 		}
 		end, err := r.beginIntent(ctx, t.Name, args)
@@ -152,8 +157,8 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		end(text)
 		// A held record the call names by another argument than its step
 		// (a name, where the record has the id).
-		r.settleHeld(t.Name, args, text)
-		return r.namedKept(t.Name, args, text), isErr
+		r.settleHeld(ctx, t.Name, args, text)
+		return r.namedKept(ctx, t.Name, args, text), isErr
 	}
 }
 

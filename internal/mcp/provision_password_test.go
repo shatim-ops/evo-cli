@@ -98,7 +98,7 @@ func (c *provisionCloud) password() string {
 func provisionServer(t *testing.T, cloud *provisionCloud) *Server {
 	t.Helper()
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	s := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:    config.Config{ProjectID: "00000000-0000-4000-8000-000000000001", Region: "00000000-0000-4000-8000-000000000002", ImageID: "00000000-0000-4000-8000-0000000000a1", KeyID: "k", Secret: "s"},
@@ -111,6 +111,8 @@ func provisionServer(t *testing.T, cloud *provisionCloud) *Server {
 			Timings:   engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: time.Minute, VMProgressInterval: time.Hour, FIPPollInterval: time.Millisecond},
 		}, nil
 	}, "test")
+	s.SetStateDir(dir)
+	return s
 }
 
 func TestSec_ProvisionPasswordMaskedOverHTTP(t *testing.T) {

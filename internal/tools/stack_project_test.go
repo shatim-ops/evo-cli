@@ -15,17 +15,19 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/stack"
 )
 
-func projectServer(project string) *Registry {
-	return New(func(map[string]any) (*engine.Engine, error) {
+func projectServer(t testing.TB, project string) *Registry {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: config.Config{ProjectID: project}}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // stack_plan records the server's project in the job. A VPC plans without
 // a read; a secret path is checked in the Secret Manager (D41).
 func TestStackPlan_RecordsProject(t *testing.T) {
 	stackHome(t)
-	r := projectServer("p-A")
+	r := projectServer(t, "p-A")
 	got := callTool(t, r.handleStackPlan, map[string]any{"manifest": map[string]any{
 		"name": "g", "vpc": map[string]any{"name": "v"},
 	}})
@@ -51,7 +53,7 @@ func TestStackTools_RefuseJobOfAnotherProject(t *testing.T) {
 	if err := j.Save(); err != nil {
 		t.Fatal(err)
 	}
-	r := projectServer("p-B")
+	r := projectServer(t, "p-B")
 	var calls atomic.Int32
 	for _, name := range []string{"secret_create", "secret_delete", "secret_get", "secret_list"} {
 		r.handlers[name] = func(context.Context, map[string]any) (string, bool) {

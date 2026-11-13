@@ -41,6 +41,7 @@ func TestErrorContract_EveryTool(t *testing.T) {
 		{"CLIError", func(map[string]any) (*engine.Engine, error) { return nil, authErr }},
 	} {
 		r := New(f.factory)
+		r.SetStateDir(t.TempDir())
 		withCode := 0
 		for _, tl := range r.Tools() {
 			for _, args := range []map[string]any{{}, {"confirmed": true}} {

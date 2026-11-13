@@ -202,7 +202,7 @@ func poolRegistryWaiting(t *testing.T, w *poolWorld, limit time.Duration) *Regis
 	oldDelay := opWaitFirstDelay
 	opWaitFirstDelay = time.Millisecond
 	t.Cleanup(func() { opWaitFirstDelay = oldDelay })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: addonProject, KeyID: "k", Secret: "s"},
@@ -211,6 +211,8 @@ func poolRegistryWaiting(t *testing.T, w *poolWorld, limit time.Duration) *Regis
 			Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: limit},
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 func scale(t *testing.T, w *poolWorld, count int, confirmed bool) (map[string]any, string, bool) {

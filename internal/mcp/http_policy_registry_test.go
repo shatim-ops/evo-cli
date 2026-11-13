@@ -13,7 +13,7 @@ import (
 // The HTTP policy is applied in the registry, so stack_apply, which calls
 // other tools in-process, cannot reach a restricted tool around it.
 func TestHTTPPolicy_AppliesToInProcessCalls(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	s.restrictForHTTP(false)
 	tl, ok := s.reg.Lookup("cert_private_key")
 	if !ok {

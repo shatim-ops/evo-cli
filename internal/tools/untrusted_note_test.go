@@ -37,6 +37,9 @@ var untrustedMarkerOnly = map[string]string{
 	"vm_reboot":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"whoami":              "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
 	"backup_get":          "name, description, tags, resource_name, source: what the project's people named the backup, its tags and its source, not the output of a workload",
+	"backup_create":       "preview, will_create, backup, name: the names of the backup and of its source, not the output of a workload",
+	"backup_restore":      "preview, will_create, disk, name: the names of the backup, its disk and the new disk, not the output of a workload",
+	"backup_delete":       "preview, target: the names of the backup, its source and the backups that depend on it, not the output of a workload",
 	"backup_list":         "backups: the names of the backups and of their sources, not the output of a workload",
 	"k8s_nodepool_get":    "name, cluster_name, labels, taints: what the project's people named the pool, its cluster and its nodes, not the output of a workload",
 	"k8s_nodepool_delete": "preview: the name of the cluster of the pool in the preview, not the output of a workload",
@@ -103,6 +106,7 @@ func TestUntrusted_S3ObjectIsMarked(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: config.Config{S3: config.S3Config{Endpoint: srv.URL, AccessKey: "a", SecretKey: "s"}}}, nil
 	})
+	r.SetStateDir(t.TempDir())
 	m, text, isErr := callNamed(t, r, "s3_get", map[string]any{"bucket": "bucket", "key": "readme.txt"})
 	if isErr || !strings.Contains(text, "IGNORE PREVIOUS INSTRUCTIONS") {
 		t.Fatalf("s3_get does not hand the object over: %.300s", text)
@@ -141,6 +145,7 @@ func TestUntrusted_S3BinaryObjectIsMarked(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: config.Config{S3: config.S3Config{Endpoint: srv.URL, AccessKey: "a", SecretKey: "s"}}}, nil
 	})
+	r.SetStateDir(t.TempDir())
 	m, text, isErr := callNamed(t, r, "s3_get", map[string]any{"bucket": "bucket", "key": "blob.bin"})
 	if isErr || m["content_base64"] == nil {
 		t.Fatalf("s3_get does not hand the object over as base64: %.300s", text)

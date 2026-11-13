@@ -188,6 +188,7 @@ func TestProvision_ExplicitSubnetZoneNameAndGroupListRefused(t *testing.T) {
 					StateDir: t.TempDir(), SSHKeyPEM: []byte("key"), SSHPubKey: "ssh-ed25519 AAAA test",
 				}, nil
 			})
+			r.SetStateDir(t.TempDir())
 			text, isErr := r.handlers["provision"](context.Background(), args)
 			if !isErr || !strings.Contains(text, tc.want) {
 				t.Errorf("ответ: %s", text)
@@ -214,7 +215,7 @@ func TestProvision_BadNameRefusedBeforeAnyMutation(t *testing.T) {
 func zoneRegistry(t *testing.T, cloud provision.CloudAPI, cfg config.Config) *Registry {
 	t.Helper()
 	dir := t.TempDir()
-	return New(func(o map[string]any) (*engine.Engine, error) {
+	r := New(func(o map[string]any) (*engine.Engine, error) {
 		c := cfg
 		if v, ok := o["Region"].(string); ok {
 			c.Region = v
@@ -234,6 +235,8 @@ func zoneRegistry(t *testing.T, cloud provision.CloudAPI, cfg config.Config) *Re
 			StateDir: dir, SSHKeyPEM: []byte("key"), SSHPubKey: "ssh-ed25519 AAAA test",
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 // Догфуд 1.2.0: --region и region MCP принимают имя зоны, как vm.zone

@@ -85,7 +85,7 @@ func goneRegistry(t *testing.T) *Registry {
 	httpretry.DefaultBase = f
 	t.Cleanup(func() { httpretry.DefaultBase = old })
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config: config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s",
@@ -96,6 +96,8 @@ func goneRegistry(t *testing.T) *Registry {
 			StateDir: dir,
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 // deleteLike: a tool that changes the cloud and whose name says it
@@ -336,7 +338,7 @@ func apiFakeS3Registry(t *testing.T, f *apiFake) *Registry {
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = f
 	t.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config: config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s",
@@ -346,6 +348,8 @@ func apiFakeS3Registry(t *testing.T, f *apiFake) *Registry {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // Bound to its projects (evo mcp --allow-project), a delete of what is not

@@ -58,6 +58,7 @@ func TestDeploy_PreviewNamesTheSSHUploadAndProbesPort22(t *testing.T) {
 				},
 			}, nil
 		})
+		r.SetStateDir(dir)
 		return r, &dialed
 	}
 	answer := func(t *testing.T, r *Registry, args map[string]any) map[string]any {

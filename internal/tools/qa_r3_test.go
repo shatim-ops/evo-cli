@@ -59,7 +59,7 @@ func TestQAr3_DestroyTargeted_FIPReleasedDropsRecord(t *testing.T) {
 // a cluster with that name belongs to someone else.
 func TestQAr3_StackDestroy_PlannedJobLeavesForeignAlone(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"s","postgres":{"name":"shared-db"}}`)
 	deleted := ""
 	r.handlers["pg_list"] = fakeOK(map[string]any{"clusters": []any{map[string]any{"name": "shared-db", "id": "pg-foreign"}}})

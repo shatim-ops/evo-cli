@@ -141,7 +141,7 @@ func (c *failRulesCloud) AddSecurityGroupRule(_ context.Context, _, _ string, r 
 func failRulesRegistry(t *testing.T, cloud provision.CloudAPI) *Registry {
 	t.Helper()
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{
 			Config: config.Config{ProjectID: qaID1},
 			Auth:   staticToken{}, Cloud: cloud,
@@ -149,6 +149,8 @@ func failRulesRegistry(t *testing.T, cloud provision.CloudAPI) *Registry {
 			StateDir: dir,
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 // QA-3 (1): ни одно правило не создалось — ошибка с причиной первого
@@ -182,6 +184,7 @@ func TestQA3_OpenPortsFailures(t *testing.T) {
 // теперь в схеме).
 func TestQA4_RequiredInSchema(t *testing.T) {
 	reg := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	reg.SetStateDir(t.TempDir())
 	for name, want := range map[string]string{"snat_create": "name", "snat_delete": "id", "open_ports": "ports"} {
 		tl, _ := reg.Lookup(name)
 		found := false

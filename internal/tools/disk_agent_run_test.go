@@ -61,7 +61,7 @@ func (c *agentDiskCloud) ResizeDisk(_ context.Context, _ string, size int, _ str
 func agentDiskWorld(t *testing.T, disk map[string]any) (*Registry, *agentDiskCloud) {
 	t.Helper()
 	c := &agentDiskCloud{faultCloud: &faultCloud{vms: []faultVM{{ID: agentDiskVM, Name: "web", Status: "running"}}}, disk: disk}
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
@@ -69,7 +69,9 @@ func agentDiskWorld(t *testing.T, disk map[string]any) (*Registry, *agentDiskClo
 			Cloud:   c,
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
-	}), c
+	})
+	r.SetStateDir(t.TempDir())
+	return r, c
 }
 
 // Agent run of 1.7.0 (5 of 9): the previews of disk_attach and disk_detach

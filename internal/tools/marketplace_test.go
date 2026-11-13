@@ -69,7 +69,7 @@ func marketRegistry(t *testing.T, cloud marketCloud, rt http.RoundTripper) *Regi
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = rt
 	t.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: addonProject, KeyID: "k", Secret: "s"},
@@ -78,6 +78,8 @@ func marketRegistry(t *testing.T, cloud marketCloud, rt http.RoundTripper) *Regi
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 func marketItems(t *testing.T, m map[string]any) map[string]map[string]any {

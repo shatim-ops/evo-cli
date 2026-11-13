@@ -31,6 +31,7 @@ func TestS3Get_OverLimitIsUsage(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: config.Config{S3: config.S3Config{Endpoint: srv.URL, AccessKey: "a", SecretKey: "s"}}}, nil
 	})
+	r.SetStateDir(t.TempDir())
 	m, text, isErr := callNamed(t, r, "s3_get", map[string]any{"bucket": "bucket", "key": "big.bin"})
 	if !isErr || m["reason"] != "USAGE" || !strings.Contains(text, "S3 client") {
 		t.Errorf("answer: %.300s", text)

@@ -25,7 +25,7 @@ const (
 // (items, properties of an object) too.
 func TestToolsList_DescriptionLimits(t *testing.T) {
 	longest, longestProp := 0, 0
-	for _, tl := range New(nilFactory, "test").ListTools() {
+	for _, tl := range newTestServer(t).ListTools() {
 		if n := len(tl.Description); n > maxToolDescription {
 			t.Errorf("%s: description of %d bytes, limit %d", tl.Name, n, maxToolDescription)
 		} else {
@@ -51,7 +51,7 @@ func TestToolsList_DescriptionLimits(t *testing.T) {
 const maxToolsListBytes = 160 << 10
 
 func TestToolsList_SizeBudget(t *testing.T) {
-	tools := New(nilFactory, "test").ListTools()
+	tools := newTestServer(t).ListTools()
 	b, err := json.Marshal(tools)
 	if err != nil {
 		t.Fatal(err)

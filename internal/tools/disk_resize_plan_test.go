@@ -33,7 +33,7 @@ func (c *sizedDiskCloud) ResizeDisk(_ context.Context, _ string, size int, _ str
 
 func sizedDiskRegistry(t *testing.T, c *sizedDiskCloud) *Registry {
 	t.Helper()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
@@ -42,6 +42,8 @@ func sizedDiskRegistry(t *testing.T, c *sizedDiskCloud) *Registry {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // disk_resize to a smaller or the same size failed after consent — the API

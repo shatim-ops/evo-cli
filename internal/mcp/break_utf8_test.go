@@ -44,6 +44,7 @@ func TestUTF8_InvalidLineNotSent(t *testing.T) {
 			Cloud:  cloud,
 		}, nil
 	}, "test")
+	s.SetStateDir(t.TempDir())
 	raw := []byte(initLine + "\n" + `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"image_list","arguments":{"query":"web`)
 	raw = append(raw, 0xff, '"', '}', '}', '}', '\n')
 	out := &bytes.Buffer{}

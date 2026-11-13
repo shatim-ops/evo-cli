@@ -59,14 +59,16 @@ func billingRegistry(t *testing.T, project string, status int, body string) (*Re
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = fakeBilling{status: status, body: body, mu: &sync.Mutex{}, calls: calls}
 	t.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: project, KeyID: "k", Secret: "s"},
 			Auth:    staticToken{},
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
-	}), calls
+	})
+	r.SetStateDir(t.TempDir())
+	return r, calls
 }
 
 // Строки по спецификации «Контроль затрат» v2: amount — без НДС, amount_nds

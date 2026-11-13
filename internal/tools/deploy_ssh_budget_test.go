@@ -190,6 +190,7 @@ func progressBudgetRegistryIn(t *testing.T, vm *slowSSHVM, cloud *faultCloud, tu
 			},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	r.SetCallBudget(progressBudget)
 	return r
 }

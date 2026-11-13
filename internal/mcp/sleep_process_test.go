@@ -71,6 +71,7 @@ func TestSleepChild(t *testing.T) {
 			Printer: output.NewWithWriter(io.Discard, output.ModeText, false),
 		}, nil
 	}, "test")
+	s.SetStateDir(t.TempDir())
 	if err := s.RunContext(context.Background(), os.Stdin, os.Stdout); err != nil {
 		t.Fatal(err)
 	}

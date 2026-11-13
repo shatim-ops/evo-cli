@@ -24,7 +24,7 @@ import (
 // once, in the answer of the crank that got it, and nowhere is it kept.
 func TestD69_StackVMStepCreatingIsInProgress(t *testing.T) {
 	home := stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
 	var calls atomic.Int32
 	var waitArgs []any

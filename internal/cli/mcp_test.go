@@ -105,6 +105,7 @@ func TestMCPFactory_AllowProjectCoversToolArguments(t *testing.T) {
 	setupCLI(t)
 	saveProfile(t, "default", "p-a")
 	reg := tools.New(mcpEngineFactory([]string{"p-a"}, nil))
+	declareStateDir(reg)
 	for _, name := range []string{"provision", "deploy", "billing_consumption", "billing_finops"} {
 		tl, ok := reg.Lookup(name)
 		if !ok {

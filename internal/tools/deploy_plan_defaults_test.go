@@ -73,7 +73,7 @@ func planRegistry(t *testing.T, cfg config.Config) (*Registry, string) {
 	t.Helper()
 	dir := t.TempDir()
 	cfg.ProjectID, cfg.KeyID, cfg.Secret = "proj-1", "k", "s"
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:    cfg,
@@ -84,7 +84,9 @@ func planRegistry(t *testing.T, cfg config.Config) (*Registry, string) {
 			SSHKeyPEM: []byte("key"),
 			SSHPubKey: "ssh-ed25519 AAAA test",
 		}, nil
-	}), dir
+	})
+	r.SetStateDir(dir)
+	return r, dir
 }
 
 func TestDeployPlan_DefaultsFromConfig(t *testing.T) {

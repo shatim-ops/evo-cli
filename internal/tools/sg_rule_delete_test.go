@@ -122,7 +122,7 @@ func sgRuleRegistry(t *testing.T, w *sgWorld) (*Registry, string) {
 func sgRegistryOver(t *testing.T, w provision.CloudAPI) (*Registry, string) {
 	t.Helper()
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:   config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
@@ -132,7 +132,9 @@ func sgRegistryOver(t *testing.T, w provision.CloudAPI) (*Registry, string) {
 			StateDir: dir,
 			Timings:  engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 50 * time.Millisecond},
 		}, nil
-	}), dir
+	})
+	r.SetStateDir(dir)
+	return r, dir
 }
 
 // A rule that is there: the preview names the rule whole, the group and

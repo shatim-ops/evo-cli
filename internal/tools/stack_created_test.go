@@ -107,7 +107,7 @@ func TestStack_DestroyOldOKOutput(t *testing.T) {
 // id: aliasArg took both, by luck.
 func TestStack_DestroyCallsDeleteByItsTarget(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"s","vpc":{"name":"v"},"postgres":{"name":"p"},"kafka":{"name":"k"},"redis":{"name":"r"},"k8s":{"name":"k8"},"registry":{"name":"reg"},"snat":{"name":"sn"},"vm":{"name":"vm"},"nlb":{"name":"lb","port":80},"dns":{"zone_id":"z","name":"www"},"secrets":[{"path":"a","value":"b"}],"s3":[{"bucket":"b","key":"k","content":"c"}]}`)
 	const id = "00000000-0000-4000-8000-0000000000aa"
 	for _, st := range j.Steps {

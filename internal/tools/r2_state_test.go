@@ -82,6 +82,7 @@ func TestProvisionThenDestroy_SeveralActiveRefused(t *testing.T) {
 			SSHPubKey: "ssh-ed25519 AAAA test",
 		}, nil
 	})
+	r.SetStateDir(dir)
 
 	sf := &state.File{Version: 1}
 	sf.UpsertDeployment(state.DeploymentRecord{

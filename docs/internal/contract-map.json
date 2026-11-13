@@ -15,6 +15,31 @@
       "no_refusal": "no refusal seen live (register, 28.10)"
     }
   },
+  "backup_create": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "backup_id",
+      "list": "backup_list",
+      "delete": "backup_delete"
+    }
+  },
+  "backup_delete": {
+    "destructive": true,
+    "deletes": {
+      "arg": "backup_id",
+      "no_refusal": "the refusal of a restore under way comes with a backup in created (one run of Г-16): no state to refuse in; the third run of Г-16 for the rest"
+    }
+  },
+  "backup_restore": {
+    "destructive": false,
+    "taken": "checked",
+    "creates": {
+      "id": "disk_id",
+      "list": "disk_list",
+      "delete": "disk_delete"
+    }
+  },
   "ca_delete": {
     "destructive": true,
     "deletes": {

@@ -29,6 +29,7 @@ var toolsCallRU = regexp.MustCompile(`evo tools (?:call|describe) ([a-z0-9_]+)`)
 // argument that does not exist.
 func TestRegistry_DescriptionsBothLanguages(t *testing.T) {
 	reg := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	reg.SetStateDir(t.TempDir())
 	names := map[string]Tool{}
 	for _, tl := range reg.Tools() {
 		names[tl.Name] = tl
@@ -111,6 +112,7 @@ func TestRegistry_DescriptionsBothLanguages(t *testing.T) {
 // tools/list for every session (spec.md, REQ-5).
 func TestRegistry_RussianNotInSchema(t *testing.T) {
 	reg := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	reg.SetStateDir(t.TempDir())
 	for _, tl := range reg.Tools() {
 		for k, raw := range schemaProps(tl) {
 			p, _ := raw.(map[string]any)

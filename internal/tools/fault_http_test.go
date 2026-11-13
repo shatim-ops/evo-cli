@@ -485,7 +485,7 @@ func faultAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 	t.Cleanup(func() { httpretry.DefaultBase = old })
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: a}, "")
 	cloud.Backoff = time.Millisecond
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config: config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s",
@@ -497,6 +497,8 @@ func faultAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 			Timings:  faultToolsTimings(),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // A create whose answer was lost while the list fails too (two faults, out

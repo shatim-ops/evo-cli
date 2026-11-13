@@ -67,6 +67,7 @@ func TestBreak12_B12_9_ReadOnlyDeployPlanWrites(t *testing.T) {
 			},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	r.SetReadOnly()
 	args := map[string]any{"name": "web"}
 	tl, ok := r.Lookup("deploy_plan")

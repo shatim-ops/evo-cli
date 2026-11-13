@@ -40,7 +40,7 @@ func vmPreviewRegistry(t *testing.T, cloud provision.CloudAPI) *Registry {
 	t.Helper()
 	faultToolsIsolate(t)
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config: config.Config{ProjectID: faultProject, Region: faultZone, ImageID: faultImage,
@@ -50,6 +50,8 @@ func vmPreviewRegistry(t *testing.T, cloud provision.CloudAPI) *Registry {
 			Timings: faultToolsTimings(),
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 func previewParams(t *testing.T, m map[string]any) map[string]any {

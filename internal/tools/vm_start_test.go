@@ -117,16 +117,22 @@ func vmStartWorldWaiting(t *testing.T, state string, ownLimit time.Duration) (*R
 	}
 	c.setVMState(vm.ID, state)
 	w := &powerWorld{faultCloud: c, id: vm.ID}
-	return New(func(map[string]any) (*engine.Engine, error) {
+	// One directory for the world, not one for each engine: the next step
+	// reads the record the first one left.
+	dir := t.TempDir()
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
-			Config:  config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
-			Auth:    staticToken{},
-			Cloud:   w,
-			Printer: output.NewWithWriter(&buf, output.ModeText, false),
-			Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: ownLimit},
+			StateDir: dir,
+			Config:   config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
+			Auth:     staticToken{},
+			Cloud:    w,
+			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
+			Timings:  engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: ownLimit},
 		}, nil
-	}), w
+	})
+	r.SetStateDir(dir)
+	return r, w
 }
 
 // A stopped VM: the preview names what will be done and to what, and
@@ -289,7 +295,9 @@ func TestVMStart_OneReferenceToTheVM(t *testing.T) {
 // The limit of an MCP call (D69) while the VM is still starting is not an
 // error: the answer is the transient state with the same call as the next
 // step, and that step finds the VM on its way and sends no second command
-// (П5).
+// (П5). Its own start goes on with the same call until the limit of the
+// operation; a read is the step of a start that is not its own (the test
+// below).
 func TestVMStart_AtTheLimitOfAnMCPCallAnswersStartingAndTheNextStepDoesNotWrite(t *testing.T) {
 	r, w := vmStartWorldWaiting(t, "stopped", 0)
 	budgeted(r)
@@ -309,8 +317,8 @@ func TestVMStart_AtTheLimitOfAnMCPCallAnswersStartingAndTheNextStepDoesNotWrite(
 		t.Fatalf("next_args carry the consent of the call into a step that only waits (R-85): %s", text)
 	}
 	m, text, isErr = callNamed(t, r, "vm_start", next)
-	if isErr || m["status"] != "starting" || m["next_tool"] != "vm_get" {
-		t.Fatalf("the next step on a VM still starting: %s", text)
+	if isErr || m["status"] != "starting" || m["next_tool"] != "vm_start" {
+		t.Fatalf("the next step on a VM still starting: its own start goes on with the same call: %s", text)
 	}
 	if n := w.powerCalls(); n != 1 {
 		t.Errorf("power calls = %d after the next step, want 1: the repeat sent a command", n)

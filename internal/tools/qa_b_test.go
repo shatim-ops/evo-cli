@@ -24,7 +24,7 @@ import (
 
 func qaBRegistry(t *testing.T, cloud provision.CloudAPI, dir string) *Registry {
 	t.Helper()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{
 			Config: config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s"},
 			Auth:   staticToken{}, Cloud: cloud,
@@ -33,6 +33,8 @@ func qaBRegistry(t *testing.T, cloud provision.CloudAPI, dir string) *Registry {
 			Timings: engine.Timings{FIPRetryInterval: time.Millisecond, DestroyPollInterval: time.Millisecond, DestroyPollTimeout: time.Second},
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 // №2: повтор deploy_apply, не прочитавший интерфейс ВМ, не затирает
@@ -155,6 +157,7 @@ func TestQAB_DeployApply_TimeoutGivesPassword(t *testing.T) {
 			StateDir: dir, Timings: engine.Timings{VMPollTimeout: 20 * time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	plan := &deployplan.Plan{PlanID: "plan-0123456789ab", ExpiresAt: time.Now().Add(time.Hour), ProjectID: "p",
 		VM: deployplan.VMSpec{Name: "win-1"}, MetaFields: []string{"plain_password"}}
 	if err := deployplan.Save(dir, plan); err != nil {

@@ -52,7 +52,7 @@ func TestStackVMStep_FailedProvisionIsNotRepeated(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stackHome(t)
-			r := newTestServer()
+			r := newTestServer(t)
 			j := planJob(t, tc.manifest)
 			var creates atomic.Int32
 			r.handlers["provision"] = func(context.Context, map[string]any) (string, bool) {
@@ -86,7 +86,7 @@ func TestStackVMStep_FailedProvisionIsNotRepeated(t *testing.T) {
 // удалить (ревью Grok на #64; класс QA R3/R8).
 func TestStackVMStep_ForeignVMWithSameNameIsNotAdopted(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
 	r.handlers["provision"] = func(context.Context, map[string]any) (string, bool) {
 		return toJSON(map[string]any{"status": "error", "error": "QUOTA_EXCEEDED: no vCPU quota"}), true

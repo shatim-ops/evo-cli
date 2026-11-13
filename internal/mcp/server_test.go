@@ -23,8 +23,10 @@ func nilFactory(map[string]any) (*engine.Engine, error) {
 	return nil, errors.New("no engine in tests")
 }
 
-func newTestServer() *Server {
-	return New(nilFactory, "test")
+func newTestServer(t testing.TB) *Server {
+	s := New(nilFactory, "test")
+	s.SetStateDir(t.TempDir())
+	return s
 }
 
 // roundTrip feeds a single JSON-RPC request line and returns the decoded response.
@@ -47,7 +49,7 @@ func roundTrip(t *testing.T, s *Server, req string) map[string]any {
 }
 
 func TestListTools(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	tools := s.ListTools()
 
 	// A core set that must always be present (tools are added over time, so we
@@ -86,7 +88,7 @@ func TestListTools(t *testing.T) {
 }
 
 func TestInitialize(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}`)
 
 	result, ok := resp["result"].(map[string]any)
@@ -112,7 +114,7 @@ func TestInitialize(t *testing.T) {
 }
 
 func TestInitializeDefaultVersion(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)
 	result := resp["result"].(map[string]any)
 	if result["protocolVersion"] != defaultProtocolVersion {
@@ -121,7 +123,7 @@ func TestInitializeDefaultVersion(t *testing.T) {
 }
 
 func TestNotificationNoResponse(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
 	if resp != nil {
 		t.Errorf("notification should produce no response, got %v", resp)
@@ -129,7 +131,7 @@ func TestNotificationNoResponse(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":"abc","method":"ping"}`)
 	// id must be preserved verbatim, including string ids.
 	if resp["id"] != "abc" {
@@ -141,7 +143,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestToolsList(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	result := resp["result"].(map[string]any)
 	tools, ok := result["tools"].([]any)
@@ -160,7 +162,7 @@ func TestToolsList(t *testing.T) {
 // (secret_value, cert_private_key) is not read-only, so the client asks the
 // person, and says it destroys nothing (SEC-4).
 func TestToolsList_Annotations(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	listed := resp["result"].(map[string]any)["tools"].([]any)
 	mutating := map[string]bool{}
@@ -251,7 +253,7 @@ func TestToolsList_Annotations(t *testing.T) {
 }
 
 func TestMethodNotFound(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":3,"method":"bogus/method"}`)
 	rpcErr, ok := resp["error"].(map[string]any)
 	if !ok {
@@ -265,7 +267,7 @@ func TestMethodNotFound(t *testing.T) {
 // Релизный аудит, R-07: неизвестный инструмент — ошибка протокола -32602
 // (MCP 2025-06-18, Tools → Error Handling), а не результат с isError.
 func TestUnknownToolIsProtocolError(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	resp := roundTrip(t, s, `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"nope","arguments":{}}}`)
 	rpcErr, ok := resp["error"].(map[string]any)
 	if !ok || resp["result"] != nil {
@@ -277,7 +279,7 @@ func TestUnknownToolIsProtocolError(t *testing.T) {
 }
 
 func TestParseError(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	resp := roundTrip(t, s, `{not json`)
 	rpcErr, ok := resp["error"].(map[string]any)
 	if !ok {
@@ -291,7 +293,7 @@ func TestParseError(t *testing.T) {
 // TestSingleLineFraming ensures each response is a single newline-terminated
 // line with no embedded raw newlines (MCP stdio transport requirement).
 func TestSingleLineFraming(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	out := &bytes.Buffer{}
 	in := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}` + "\n")
 	if err := s.Run(in, out); err != nil {

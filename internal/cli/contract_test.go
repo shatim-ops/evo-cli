@@ -23,6 +23,7 @@ import (
 
 func TestContract_ArgForms(t *testing.T) {
 	reg := tools.New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	reg.SetStateDir(t.TempDir())
 	open, ok := reg.Lookup("open_ports")
 	if !ok {
 		t.Fatal("open_ports")

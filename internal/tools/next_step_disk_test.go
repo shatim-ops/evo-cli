@@ -72,8 +72,8 @@ func (c *movingDiskCloud) ResizeDisk(_ context.Context, _ string, size int, _ st
 	return c.wrote(fmt.Sprintf("ResizeDisk %d", size))
 }
 
-func movingDiskRegistry(c *movingDiskCloud, timings engine.Timings) *Registry {
-	return New(func(map[string]any) (*engine.Engine, error) {
+func movingDiskRegistry(t testing.TB, c *movingDiskCloud, timings engine.Timings) *Registry {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
@@ -83,6 +83,8 @@ func movingDiskRegistry(c *movingDiskCloud, timings engine.Timings) *Registry {
 			Timings: timings,
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // otherVM is a VM of the project that is not the one the call named.
@@ -122,7 +124,7 @@ func TestNextStep_DiskStepSendsTheApprovedWriteOrNone(t *testing.T) {
 			c.set("extending", 20, settleVM)
 			// The call the person said yes to: the disk does not settle by
 			// the limit of the call.
-			r := budgeted(movingDiskRegistry(c, engine.Timings{}))
+			r := budgeted(movingDiskRegistry(t, c, engine.Timings{}))
 			m, text, isErr := callNamed(t, r, tc.tool, withConfirmed(tc.args, true))
 			next, _ := m["next_args"].(map[string]any)
 			if isErr || m["next_tool"] != tc.tool || next["confirmed"] != true {
@@ -133,7 +135,7 @@ func TestNextStep_DiskStepSendsTheApprovedWriteOrNone(t *testing.T) {
 			}
 			tc.then(c)
 			// The step, as the agent sends it: the arguments of the answer.
-			r = movingDiskRegistry(c, engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 50 * time.Millisecond})
+			r = movingDiskRegistry(t, c, engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 50 * time.Millisecond})
 			_, text, _ = callNamed(t, r, tc.tool, next)
 			if fmt.Sprint(c.writes) != fmt.Sprint(tc.wants) {
 				t.Errorf("the step sent %v, want %v: a step that keeps the consent sends the write the person approved, or none when the disk is another by then\n%s", c.writes, tc.wants, text)

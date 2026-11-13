@@ -90,6 +90,7 @@ func targetRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) 
 			Timings:  engine.Timings{FIPRetryInterval: time.Millisecond, DestroyPollInterval: time.Millisecond, DestroyPollTimeout: time.Second},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	return r, dir
 }
 

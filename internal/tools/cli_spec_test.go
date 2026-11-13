@@ -14,7 +14,7 @@ import (
 // A command is unique, and every name it uses is an argument of the tool's
 // schema (docs/internal/cli-mcp-parity/spec.md, REQ-1).
 func TestRegistry_EveryToolHasCLISpec(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	commands := map[string]string{} // "group verb" → tool
 	described := 0
 	for _, tl := range r.Tools() {

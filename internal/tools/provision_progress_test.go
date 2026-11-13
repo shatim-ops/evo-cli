@@ -100,6 +100,7 @@ func provisionRunIn(t *testing.T, ctx context.Context, dir string, cloud *progre
 				VMProgressInterval: time.Hour, FIPPollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	var seen bytes.Buffer
 	if watched {
 		ctx = WithCaller(ctx, &Caller{Progress: output.NewWithWriter(&seen, mode, false)})

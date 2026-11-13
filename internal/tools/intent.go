@@ -42,7 +42,12 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if err != nil || eng == nil {
 		return func(string) {}, nil
 	}
-	root := eng.StateDir
+	// The directory is the registry's, declared at its build: a record
+	// that cannot be placed refuses the call before it goes out.
+	root, ok := r.stateDir()
+	if !ok {
+		return nil, errNoStateDir()
+	}
 	in := intent.Intent{Tool: name, Surface: "mcp", PID: os.Getpid(), StartedAt: clock.Now(),
 		ProjectID: eng.Config.ProjectID, Zone: eng.Config.Region}
 	// The surface as the journal (D46) has it: a call of the CLI carries
@@ -69,17 +74,19 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if z, _ := args["zone"].(string); z != "" {
 		in.Zone = z
 	}
-	// The engine of evo always has its directory (buildEngine fails
-	// without the working directory); one without is a test's fake.
-	if root == "" {
-		return func(string) {}, nil
-	}
 	dir := intent.Dir(root)
 	rec, err := intent.Open(dir, in)
 	if err != nil {
 		return nil, err
 	}
+	if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
+		own.ids = append(own.ids, rec.ID)
+	}
+	forgetPending(ctx)
 	return func(answer string) {
+		// Whatever the end does to the record, the call reads the
+		// directory anew after it.
+		defer forgetPending(ctx)
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			return
 		}
@@ -120,6 +127,15 @@ var everySendIsAChange = map[string]string{
 	// A reboot has no «already»: the VM runs before it and after it
 	// (docs/internal/briefs/ops-wave-1.md §5).
 	"vm_reboot": "vm_get",
+	// A backup by the same name is found before the question, but a lost
+	// answer may leave it not yet listed: a repeat would make a second,
+	// billed with no term («Риск», conclusion 164, У5; the audit of #1544,
+	// Б2).
+	"backup_create": "backup_list",
+	// A restore makes a new disk each time it is sent: the disk of a cut
+	// one may come and be billed though the list does not show it yet
+	// («Риск», conclusion 164, У5; the probe of #1580).
+	"backup_restore": "disk_list",
 }
 
 // cutCalls are the records of this caller's own cut calls of the tool name
@@ -127,17 +143,17 @@ var everySendIsAChange = map[string]string{
 // same tool, the same resource, the same key, not held. A record of
 // another key is not this caller's cut call, and a held one is an
 // operation going on.
-func (r *Registry) cutCalls(name string, args map[string]any) []intent.Intent {
+func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]any) []intent.Intent {
 	if everySendIsAChange[name] == "" {
 		return nil
 	}
 	resource, target := intentResource(name, args)
-	root, err := os.Getwd()
-	if err != nil || (resource == "" && target == "") {
+	root, ok := r.stateDir()
+	if !ok || (resource == "" && target == "") {
 		return nil
 	}
 	var cut []intent.Intent
-	for _, in := range intent.Pending(intent.Dir(root)) {
+	for _, in := range pendingIn(ctx, root) {
 		if !in.Held && in.Tool == name && in.Name == resource && in.Target == target && in.Key != nil {
 			cut = append(cut, in)
 		}
@@ -176,13 +192,14 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 // person consented to once. The answer is the question again, saying what
 // is known; the record is closed, so the next consented call is sent as
 // any other.
-func (r *Registry) askAgainAfterACut(name string, args map[string]any) (string, bool) {
-	mine := r.cutCalls(name, args)
+func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any) (string, bool) {
+	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return "", false
 	}
 	for _, in := range mine {
 		intent.Close(in)
+		forgetPending(ctx)
 	}
 	message, interrupted := cutCallWarning(name, mine)
 	return toJSON(map[string]any{"status": "confirmation_required", "interrupted": interrupted, "message": message}), true
@@ -195,11 +212,11 @@ func (r *Registry) askAgainAfterACut(name string, args map[string]any) (string, 
 // («Риск», conclusion 145, У2). An answer that is not a question (a
 // refusal, an answer with nothing to consent to) stays as it is, and so
 // does the record.
-func (r *Registry) questionNamesTheCut(name string, args map[string]any, answer string) string {
+func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args map[string]any, answer string) string {
 	if answerStatus(answer) != "confirmation_required" {
 		return answer
 	}
-	mine := r.cutCalls(name, args)
+	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return answer
 	}
@@ -214,6 +231,7 @@ func (r *Registry) questionNamesTheCut(name string, args map[string]any, answer 
 	m["message"], m["interrupted"] = message, interrupted
 	for _, in := range mine {
 		intent.Close(in)
+		forgetPending(ctx)
 	}
 	return toJSON(m)
 }
@@ -243,14 +261,14 @@ func sameToolNext(tool, answer string) (args map[string]any, ok bool) {
 // resource as the record does — or when its answer does: a held record is
 // named by id (its step's), and a call that names the VM by its name
 // answers with that id («Риск», conclusion 137, У1).
-func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
+func (r *Registry) settleHeld(ctx context.Context, name string, args map[string]any, answer string) {
 	resource, target := intentResource(name, args)
-	root, err := os.Getwd()
-	if err != nil {
+	root, ok := r.stateDir()
+	if !ok {
 		return
 	}
 	var held []intent.Intent
-	for _, in := range intent.Pending(intent.Dir(root)) {
+	for _, in := range pendingIn(ctx, root) {
 		if !in.Held || in.Tool != name {
 			continue
 		}
@@ -269,6 +287,7 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 	for _, in := range held {
 		if !in.Key.Other(cur) {
 			intent.Close(in)
+			forgetPending(ctx)
 		}
 	}
 }
@@ -279,11 +298,12 @@ func (r *Registry) settleHeld(name string, args map[string]any, answer string) {
 // another key's, or evo stopped waiting for it. The limit of the repeats
 // of the operation counts from there, not from each repeat.
 func (r *Registry) heldSince(eng *engine.Engine, tool, target string) (since time.Time, ok bool) {
-	if eng == nil || eng.StateDir == "" {
+	root, ok := r.stateDir()
+	if eng == nil || !ok {
 		return time.Time{}, false
 	}
 	cur := eng.Maker()
-	for _, in := range intent.Pending(intent.Dir(eng.StateDir)) {
+	for _, in := range intent.Pending(intent.Dir(root)) {
 		if in.Held && in.Tool == tool && in.Target == target && !in.Key.Other(cur) {
 			return in.StartedAt, true
 		}
@@ -331,17 +351,17 @@ func answerStatus(answer string) string {
 // without — an already_deleted of this key says what this key sees — so
 // every answer of it names them, not only the first answer of the process
 // («Риск», conclusions 128 and 135).
-func (r *Registry) namedKept(name string, args map[string]any, answer string) string {
+func (r *Registry) namedKept(ctx context.Context, name string, args map[string]any, answer string) string {
 	resource, target := intentResource(name, args)
-	root, err := os.Getwd()
-	if err != nil || (resource == "" && target == "") {
+	root, ok := r.stateDir()
+	if !ok || (resource == "" && target == "") {
 		return answer
 	}
 	// The records of this directory, as withPending reads them; the key
 	// of the call is asked for only when one of them is of this call — a
 	// call with nothing left builds no engine.
 	var same []intent.Intent
-	for _, in := range intent.Pending(intent.Dir(root)) {
+	for _, in := range pendingIn(ctx, root) {
 		if in.Tool == name && in.Name == resource && in.Target == target && in.Key != nil {
 			same = append(same, in)
 		}
@@ -458,11 +478,21 @@ func answerReason(answer string) string {
 // resource may be the person's now (R-56). The lines are the same in
 // doctor, in the first answer of a tool and in the CLI's stderr.
 func (r *Registry) PendingNotes(root string) []string {
-	var out []string
+	notes, _ := r.pendingNotes(root, nil)
+	return notes
+}
+
+// pendingNotes are PendingNotes without the records of the ids own, and
+// whether any was left out.
+func (r *Registry) pendingNotes(root string, own []string) (notes []string, leftOut bool) {
 	for _, in := range pendingIntents(root) {
-		out = append(out, r.pendingNote(in, r.maker()))
+		if slices.Contains(own, in.ID) {
+			leftOut = true
+			continue
+		}
+		notes = append(notes, r.pendingNote(in, r.maker()))
 	}
-	return out
+	return notes, leftOut
 }
 
 // pendingIntents are the intents a run in root reads: the folder's and the
@@ -703,12 +733,24 @@ func (r *Registry) listToolOf(tool string) string {
 // withPending adds pending_operations — the intents earlier runs in this
 // directory left — to the first answer over MCP: the agent reads them
 // before it creates the same thing again (release plan 1.8, (и)).
-func (r *Registry) withPending(answer string) (string, bool) {
-	root, err := os.Getwd()
-	if err != nil {
+// The records of own — those the call of this answer opened — are not
+// named in it: the answer itself says how the call ended. They are not
+// noted yet either (false), so the next answer names them; every other
+// reader of the records sees them as before.
+func (r *Registry) withPending(answer string, own []string) (string, bool) {
+	root, ok := r.stateDir()
+	if !ok {
+		if r.stateDirUndeclared() {
+			// Not «nothing was left»: the records were not read.
+			return withNotes(answer, []string{i18n.T(
+				"the records of earlier calls were not read: evo was built without their directory (a defect of evo; report it)",
+				"записи прежних вызовов не прочитаны: evo собран без их каталога (дефект evo; сообщите о нём)")})
+		}
 		return answer, true
 	}
-	return withNotes(answer, r.PendingNotes(root))
+	notes, leftOut := r.pendingNotes(root, own)
+	answer, noted := withNotes(answer, notes)
+	return answer, noted && !leftOut
 }
 
 // withNotes is answer with notes in pending_operations; false when the
@@ -735,11 +777,11 @@ func withNotes(answer string, notes []string) (string, bool) {
 
 // notePending is answer with the intents of earlier runs, on the first JSON
 // answer of the process; the lock is released however withPending ends.
-func (r *Registry) notePending(answer string) string {
+func (r *Registry) notePending(answer string, own []string) string {
 	r.pendingMu.Lock()
 	defer r.pendingMu.Unlock()
 	if !r.pendingNoted {
-		answer, r.pendingNoted = r.withPending(answer)
+		answer, r.pendingNoted = r.withPending(answer, own)
 	}
 	return answer
 }

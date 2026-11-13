@@ -15,8 +15,21 @@ echo "$*" >>"$FAKE_CALLS"
 case "$1 $2" in
   "issue list") for n in $FAKE_OPEN; do printf '%s\n' "$n"; done ;;
   "issue create" | "issue comment")
+    [ "$2" != create ] || echo https://example.invalid/o/r/issues/55
     while [ $# -gt 0 ]; do [ "$1" = --body-file ] && cat "$2" >>"$FAKE_BODY"; [ "$1" = --body ] && printf '%s\n' "$2" >>"$FAKE_BODY"; shift; done ;;
   "issue close") ;;
+  "pr list")
+    [ -z "${FAKE_PR_LIST_FAIL:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
+    # The list as gh gives it — JSON through the caller's own --jq, so the
+    # filter of main_red.sh is what picks the numbers; «23d» is a draft.
+    q=.
+    while [ $# -gt 0 ]; do [ "$1" != --jq ] || q=$2; shift; done
+    for n in ${FAKE_PRS:-}; do
+      case "$n" in *d) printf '{"number":%s,"isDraft":true}\n' "${n%d}" ;; *) printf '{"number":%s,"isDraft":false}\n' "$n" ;; esac
+    done | jq -s . | jq -r "$q" ;;
+  "pr comment")
+    [ -z "${FAKE_PR_FAIL:-}" ] || { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
+    while [ $# -gt 0 ]; do [ "$1" = --body ] && printf '%s\n' "$2" >>"$FAKE_BODY"; shift; done ;;
   api*)
     case "$2" in
       */jobs\?*) printf '%b' "$FAKE_JOBS" ;;
@@ -38,7 +51,7 @@ run() { # ИМЯ исход открытое ждём… (WORKFLOW — ci, ес�
   rm -f "$work/reads"
   PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" FAKE_BODY="$work/body" FAKE_OPEN="$3" \
     FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" \
-    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" LOG_RETRY_SLEEP=0 LOG_WAIT="${LOG_WAIT:-120}" \
+    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" FAKE_PRS="${FAKE_PRS:-}" FAKE_PR_FAIL="${FAKE_PR_FAIL:-}" FAKE_PR_LIST_FAIL="${FAKE_PR_LIST_FAIL:-}" LOG_RETRY_SLEEP=0 LOG_WAIT="${LOG_WAIT:-120}" \
     WORKFLOW="${WORKFLOW:-ci}" GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" HEAD_SHA=0123456789abcdef \
     "$here/main_red.sh" >/dev/null 2>"$work/stderr" || { echo "FAIL $1: скрипт упал"; cat "$work/stderr"; fail=1; return; }
   local name=$1
@@ -49,6 +62,7 @@ run() { # ИМЯ исход открытое ждём… (WORKFLOW — ci, ес�
       calls:*) grep -q -- "${want#calls:}" "$work/calls" || ok=0 ;;
       nocalls:*) ! grep -q -- "${want#nocalls:}" "$work/calls" || ok=0 ;;
       body:*) grep -qF -- "${want#body:}" "$work/body" || ok=0 ;;
+      nobody:*) ! grep -qF -- "${want#nobody:}" "$work/body" || ok=0 ;;
       stderr:*) grep -qF -- "${want#stderr:}" "$work/stderr" || ok=0 ;;
     esac
   done
@@ -86,4 +100,35 @@ run "зелёный, два открытых — закрывает оба" succ
 FAKE_JOBS='104\treadonly\n' FAKE_LOG='FAIL\n' WORKFLOW=cloud-e2e \
   run "ночной cloud-e2e красный — своё issue" failure "" \
   "calls:issue create --title main красный: cloud-e2e" "body:**readonly**"
+# У красного main есть адресат (план 1.9, строка «CI», М5): issue шесть
+# часов никто не читал, а событие в открытом PR доходит до его автора.
+# Новый красный ci — строка в каждый открытый PR в main со ссылкой на
+# issue; зелёный, закрывший issue, — строка «снова зелёный». Дописывание
+# открытого issue, cloud-e2e и stand в PR не пишут: слияние держит ci.
+FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21 22 23d" \
+  run "красный, issue нет — строка в каждый открытый PR, кроме черновика" failure "" \
+  "calls:issue create" "calls:pr list --state open --base main" "calls:pr comment 21" "calls:pr comment 22" \
+  "body:main красный" "body:https://example.invalid/o/r/issues/55" "body:автослияние" \
+  "body:Эта строка — уведомление workflow main-red" "body:состояние main — issue «main красный: ci»" \
+  "nocalls:pr comment 23"
+FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21 22" \
+  run "красный, issue открыто — в PR второй раз не пишет" failure 7 \
+  "calls:issue comment 7" "nocalls:pr comment"
+FAKE_PRS="21 22" \
+  run "зелёный закрыл issue — строка в каждый открытый PR" success 7 \
+  "calls:issue close 7" "calls:pr comment 21" "calls:pr comment 22" \
+  "body:https://github.com/o/r/issues/7 закрыт зелёным прогоном https://example.invalid/run/41" \
+  "body:Эта строка — уведомление workflow main-red" "nobody:запрет" "nobody:Запрет" "nobody:снят"
+FAKE_PRS="21 22" \
+  run "зелёный, issue не было — в PR тишина" success "" \
+  "nocalls:pr comment" "nocalls:pr list"
+FAKE_JOBS='104\treadonly\n' FAKE_LOG='FAIL\n' WORKFLOW=cloud-e2e FAKE_PRS="21" \
+  run "красный cloud-e2e — в PR не пишет" failure "" \
+  "calls:issue create --title main красный: cloud-e2e" "nocalls:pr comment" "nocalls:pr list"
+FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21 22" FAKE_PR_FAIL=1 \
+  run "строка в PR не принята — issue заведено, отказ назван" failure "" \
+  "calls:issue create" "calls:pr comment 21" "calls:pr comment 22" "stderr:строка в PR 21 не оставлена" "stderr:HTTP 403"
+FAKE_JOBS='101\ttest (windows-latest)\n' FAKE_LOG='--- FAIL: TestA\n' FAKE_PRS="21" FAKE_PR_LIST_FAIL=1 \
+  run "список PR не получен — issue заведено, отказ назван, а не принят за «PR нет»" failure "" \
+  "calls:issue create" "nocalls:pr comment" "stderr:список открытых PR не получен" "stderr:HTTP 502"
 exit "$fail"

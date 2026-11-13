@@ -71,6 +71,7 @@ func TestProjectBound_FactoryErrorIsItsOwn(t *testing.T) {
 			StateDir: dir,
 		}, nil
 	})
+	r.SetStateDir(dir)
 	r.SetProjectBound()
 	m, text, _ := callNamed(t, r, "pg_get", map[string]any{"cluster_id": resOther})
 	if m["reason"] != "CONFIG_INVALID" || !strings.Contains(text, "broken-profile") {

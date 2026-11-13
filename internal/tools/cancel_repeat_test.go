@@ -143,6 +143,7 @@ func deployCancelRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, st
 			SSHPubKey: "ssh-ed25519 AAAA test",
 		}, nil
 	})
+	r.SetStateDir(dir)
 	return r, dir
 }
 

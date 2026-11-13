@@ -41,6 +41,7 @@ const (
 	ResourceSNAT        = "snat_gateway"
 	ResourceDNSZone     = "dns_zone"
 	ResourceImage       = "image"
+	ResourceBackup      = "backup"
 	ResourcePGBackup    = "pg_backup"
 	ResourceS3Object    = "s3_object"
 	ResourceSecret      = "secret"
@@ -63,7 +64,7 @@ type CreatePreview struct {
 	// Resource is what is created: vm, disk, disk_resize, pg_cluster,
 	// k8s_cluster, k8s_nodepool, k8s_addon, s3_bucket, ar_registry, ca_app,
 	// kafka_cluster, load_balancer, redis_cluster, snat_gateway, dns_zone,
-	// image, pg_backup, s3_object, secret, stack, subnet, target_group, vpc
+	// image, backup, pg_backup, s3_object, secret, stack, subnet, target_group, vpc
 	// or vpc_route.
 	Resource string `json:"resource"`
 	Name     string `json:"name,omitempty"`
@@ -194,7 +195,10 @@ var tariffs = map[string]string{
 	// Evolution publishes no tariff of an image, a secret, a VPC or a
 	// subnet (10.2026): the index of its tariffs, with noTariffLine; a
 	// stack's resources each go by their own.
-	ResourceImage:    tariffsBase + "index",
+	ResourceImage: tariffsBase + "index",
+	// The tariff line of a backup's storage is the probe Г-21's to find
+	// (release plan 1.9, wave В5): the index until it does.
+	ResourceBackup:   tariffsBase + "index",
 	ResourceSecret:   tariffsBase + "index",
 	ResourceSubnet:   tariffsBase + "index",
 	ResourceVPC:      tariffsBase + "index",
@@ -212,6 +216,7 @@ var tariffNotes = map[string]string{
 	ResourceK8sAddon:    addonNotPriced,
 	ResourceStack:       stackNotPriced,
 	ResourceImage:       noTariffLine,
+	ResourceBackup:      noTariffLine,
 	ResourceSecret:      noTariffLine,
 	ResourceSubnet:      noTariffLine,
 	ResourceVPC:         noTariffLine,
@@ -830,6 +835,8 @@ func createSummary(p CreatePreview, zone string) string {
 		return i18n.Tf("create DNS zone %s", "создать зону DNS %s", p.Name)
 	case ResourceImage:
 		return i18n.Tf("create image %s", "создать образ %s", p.Name) + inZone
+	case ResourceBackup:
+		return i18n.Tf("back up as %s", "создать резервную копию %s", p.Name) + inZone
 	case ResourcePGBackup:
 		return i18n.Tf("back up a PostgreSQL cluster as %s", "создать резервную копию %s кластера PostgreSQL", p.Name)
 	case ResourceS3Object:
@@ -902,6 +909,8 @@ func createdLine(p CreatePreview) string {
 		what = append(what, i18n.Tf("Evolution DNS zone %s", "зона Evolution DNS %s", p.Name))
 	case ResourceImage:
 		what = append(what, i18n.Tf("image %s", "образ %s", p.Name))
+	case ResourceBackup:
+		what = append(what, i18n.Tf("backup %s, kept until it is deleted", "резервная копия %s, хранится, пока её не удалят", p.Name))
 	case ResourcePGBackup:
 		what = append(what, i18n.Tf("manual backup %s of the cluster", "ручная резервная копия %s кластера", p.Name))
 	case ResourceS3Object:

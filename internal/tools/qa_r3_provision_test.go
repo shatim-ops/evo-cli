@@ -69,6 +69,7 @@ func TestProvision_NoUndeclaredDryRun(t *testing.T) {
 			Timings:   engine.Timings{VMPollInterval: time.Millisecond, FIPPollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	tl, _ := r.Lookup("provision")
 	if _, ok := tl.InputSchema["properties"].(map[string]any)["dry_run"]; ok {
 		t.Fatal("dry_run is declared now: drop this test, test the declared behaviour")
@@ -100,6 +101,7 @@ func TestQAr3_Provision_VMRecordedBeforeWait(t *testing.T) {
 			Timings:   engine.Timings{VMPollInterval: time.Millisecond, FIPPollInterval: time.Millisecond, FIPRetryInterval: time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	_, _ = r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
 	if cloud.polls == 0 {
 		t.Fatal("provision never waited for the VM")

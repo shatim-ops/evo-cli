@@ -109,6 +109,7 @@ func TestQA4_EmptyOneOfIsUsage(t *testing.T) {
 // them in required.
 func TestQA4_SchemaHasNoTopLevelComposition(t *testing.T) {
 	reg := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	reg.SetStateDir(t.TempDir())
 	for _, tl := range reg.Tools() {
 		for _, k := range []string{"anyOf", "oneOf", "allOf", "not"} {
 			if _, ok := tl.InputSchema[k]; ok {

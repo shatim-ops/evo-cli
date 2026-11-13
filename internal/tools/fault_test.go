@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -78,6 +79,13 @@ func faultToolsTimings() engine.Timings {
 
 func faultToolsRegistry(t *testing.T, cloud *faultCloud) (*Registry, string) {
 	t.Helper()
+	return faultToolsRegistryOver(t, cloud)
+}
+
+// faultToolsRegistryOver is faultToolsRegistry over a cloud that wraps the
+// fake: one that carries an API the fake does not (backupCloud).
+func faultToolsRegistryOver(t *testing.T, cloud provision.CloudAPI) (*Registry, string) {
+	t.Helper()
 	faultToolsIsolate(t)
 	dir := t.TempDir()
 	r := New(func(map[string]any) (*engine.Engine, error) {
@@ -101,6 +109,7 @@ func faultToolsRegistry(t *testing.T, cloud *faultCloud) (*Registry, string) {
 			Timings:   faultToolsTimings(),
 		}, nil
 	})
+	r.SetStateDir(dir)
 	return r, dir
 }
 
@@ -265,6 +274,7 @@ func TestFault_Stack_PartialDoesNotCreateSecondVM(t *testing.T) {
 func TestFault_Stack_TakenByNameErrorAndDeleting(t *testing.T) {
 	faultToolsIsolate(t)
 	r := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	r.SetStateDir(t.TempDir())
 	for _, status := range []string{"ERROR", "DELETING", "error_creating"} {
 		r.handlers["vm_list"] = func(context.Context, map[string]any) (string, bool) {
 			return toJSON(map[string]any{"vms": []any{

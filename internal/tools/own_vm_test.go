@@ -72,7 +72,7 @@ func (c vmPlanCloud) ListVMsInProject(context.Context, string) ([]*provision.VM,
 func ownPlanRegistry(t *testing.T, cloud provision.CloudAPI, dir string) *Registry {
 	t.Helper()
 	cfg := config.Config{Region: planZoneAZ2, ProjectID: faultProject, KeyID: "k", Secret: "s"}
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{Config: cfg, Auth: staticToken{}, Cloud: cloud, StateDir: dir,
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
@@ -80,6 +80,8 @@ func ownPlanRegistry(t *testing.T, cloud provision.CloudAPI, dir string) *Regist
 				return []byte("key"), "ssh-ed25519 AAAA test", nil
 			}}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 // deploy_plan with the name of a VM the folder did not make refuses it

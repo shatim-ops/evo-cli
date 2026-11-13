@@ -86,7 +86,7 @@ func rolesRegistry(t *testing.T, w *rolesWorld, project string, tp auth.TokenPro
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = w
 	t.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: project, KeyID: "KEYID1", Secret: "s", Profile: "default"},
@@ -94,6 +94,8 @@ func rolesRegistry(t *testing.T, w *rolesWorld, project string, tp auth.TokenPro
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 const twoPerms = `[

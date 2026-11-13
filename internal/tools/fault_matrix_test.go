@@ -123,6 +123,10 @@ func apiCase(tool string, args map[string]any, made ...faultResource) faultMatri
 }
 
 var faultMatrixCases = []faultMatrixCase{
+	// The backup of a disk in the world that carries the backups
+	// (backupCloud, fault_backup_world_test.go).
+	backupCase("backup_create", map[string]any{"disk_id": faultDisk, "name": "before-change", "confirmed": true}),
+	backupRestoreCase(map[string]any{"backup_id": faultBackupID, "name": "restored", "confirmed": true}),
 	computeCase("provision", map[string]any{"name": "web", "confirmed": true}, false, nil),
 	computeCase("deploy_apply", map[string]any{"plan_id": "plan-0123456789ab", "confirmed": true}, true,
 		func(t *testing.T, dir string) {
@@ -310,7 +314,7 @@ var faultMatrixOut = map[string]string{
 	"ar_delete": faultOutRemoves, "ca_delete": faultOutRemoves, "close_ports": faultOutRemoves, "sg_rule_delete": faultOutRemoves, "ca_stop": faultOutRemoves,
 	"cert_delete": faultOutRemoves, "disk_delete": faultOutRemoves, "disk_detach": faultOutRemoves,
 	"dns_record_delete": faultOutRemoves, "dns_zone_delete": faultOutRemoves, "image_delete": faultOutRemoves,
-	"k8s_delete": faultOutRemoves, "k8s_nodepool_delete": faultOutRemoves, "kafka_delete": faultOutRemoves, "lb_delete": faultOutRemoves,
+	"k8s_delete": faultOutRemoves, "k8s_nodepool_delete": faultOutRemoves, "backup_delete": faultOutRemoves, "kafka_delete": faultOutRemoves, "lb_delete": faultOutRemoves,
 	"pg_db_delete": faultOutRemoves, "pg_delete": faultOutRemoves, "pg_user_delete": faultOutRemoves,
 	"redis_delete": faultOutRemoves, "release_floating_ip": faultOutRemoves, "s3_bucket_delete": faultOutRemoves,
 	"s3_rm": faultOutRemoves, "secret_delete": faultOutRemoves, "snat_delete": faultOutRemoves,

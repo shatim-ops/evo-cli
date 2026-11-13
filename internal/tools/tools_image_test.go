@@ -30,7 +30,7 @@ func callTool(t *testing.T, fn func(context.Context, map[string]any) (string, bo
 }
 
 func TestImageCreateRequiresArgs(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	for _, args := range []map[string]any{
 		{},
 		{"name": "img"},    // без диска
@@ -71,6 +71,7 @@ func TestImageCreatePreviewDoesNotPromiseConfiguredRegion(t *testing.T) {
 		return &engine.Engine{Config: config.Config{ProjectID: "p", KeyID: "k", Secret: "s"}, Auth: staticToken{},
 			Cloud: diskZoneCloud{&cancelCloud{cancel: func() {}}}}, nil
 	})
+	s.SetStateDir(t.TempDir())
 
 	got := callTool(t, s.gated("image_create", s.planImageCreate), map[string]any{
 		"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000",
@@ -142,7 +143,7 @@ func TestImageDeleteAsksConfirmation(t *testing.T) {
 }
 
 func TestImageGetAndFipAttachValidateArgs(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	if got := callTool(t, s.handleImageGet, map[string]any{}); got["error"] == nil {
 		t.Fatal("image_get без image_id должен отказать")
 	}
@@ -213,6 +214,7 @@ func TestImageCreate_NameTakenByOwnImageOnly(t *testing.T) {
 	s := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: config.Config{ProjectID: "p", KeyID: "k", Secret: "s"}, Auth: staticToken{}, Cloud: cloud}, nil
 	})
+	s.SetStateDir(t.TempDir())
 	args := map[string]any{"name": "img", "disk_id": "00000000-0000-0000-0000-000000000000"}
 	if got := callTool(t, s.gated("image_create", s.planImageCreate), args); got["status"] != "confirmation_required" {
 		t.Fatalf("a catalogue image of the name refused the create: %v", got)
