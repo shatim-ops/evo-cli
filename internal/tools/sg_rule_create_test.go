@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 )
@@ -43,7 +44,12 @@ func newSGMakeWorld() *sgMakeWorld {
 	return &sgMakeWorld{sgWorld: newSGWorld(), reads: map[string]int{}}
 }
 
-func (w *sgMakeWorld) AddSecurityGroupRule(_ context.Context, sgID, _ string, r provision.SGRule) (*provision.SGRule, error) {
+func (w *sgMakeWorld) AddSecurityGroupRule(ctx context.Context, sgID, _ string, r provision.SGRule) (*provision.SGRule, error) {
+	// The write goes out, as the Compute client counts it
+	// (httpretry.UserAgent).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.adds = append(w.adds, r)

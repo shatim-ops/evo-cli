@@ -13,6 +13,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -54,12 +55,13 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 			}
 			sent := 0
 			tl, _ := r.Lookup(tool)
-			call := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+			call := r.intended(tl, func(ctx context.Context, args map[string]any) (string, bool) {
 				// Without the consent the handler plans and sends nothing
 				// (the layer asks it for the preview of its question).
 				if confirmed, _ := args["confirmed"].(bool); !confirmed {
 					return `{"status":"error","reason":"USAGE"}`, true
 				}
+				_ = httpretry.NoteWrite(ctx)
 				sent++
 				return `{"status":"ok"}`, false
 			})
@@ -102,7 +104,8 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 		}
 		sent := 0
 		tl, _ := r.Lookup("pg_delete")
-		r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+		r.intended(tl, func(ctx context.Context, _ map[string]any) (string, bool) {
+			_ = httpretry.NoteWrite(ctx)
 			sent++
 			return `{"status":"deleted"}`, false
 		})(context.Background(), map[string]any{"id": resMine, "confirmed": true})
@@ -151,10 +154,11 @@ func TestIntent_QuestionWithoutConsentNamesTheCutCall(t *testing.T) {
 			}
 			sent := 0
 			tl, _ := r.Lookup(tool)
-			call := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+			call := r.intended(tl, func(ctx context.Context, args map[string]any) (string, bool) {
 				if confirmed, _ := args["confirmed"].(bool); !confirmed {
 					return c.preview, true
 				}
+				_ = httpretry.NoteWrite(ctx)
 				sent++
 				return `{"status":"ok"}`, false
 			})

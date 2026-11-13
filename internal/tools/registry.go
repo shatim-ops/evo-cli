@@ -29,6 +29,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
@@ -240,6 +241,10 @@ type callRecords struct {
 	pending []intent.Intent
 	read    bool
 
+	// open is the record the call opened (beginIntent), with hasOpen.
+	open    intent.Intent
+	hasOpen bool
+
 	// resolved is what the call has resolved of the cloud by a read that
 	// more than one of its layers needs (onceACall).
 	resolved map[string]resolvedOnce
@@ -296,6 +301,29 @@ func forgetPending(ctx context.Context) {
 	if c, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
 		c.read = false
 	}
+}
+
+// markSent is told by the counter of the call's writes
+// (httpretry.CountWrites) right before its first write goes out: the
+// record the call opened is marked so at once — a process killed after
+// it leaves the mark. An error: the mark is not written, and the write
+// does not go out.
+func markSent(ctx context.Context) error {
+	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
+	if !ok || !c.hasOpen || c.open.Sent {
+		return nil
+	}
+	if err := intent.MarkSent(c.open); err != nil {
+		return err
+	}
+	c.open.Sent = true
+	return nil
+}
+
+// callSent tells whether the call of ctx sent a write (httpretry.Writes).
+func callSent(ctx context.Context) bool {
+	n, _ := httpretry.Writes(ctx)
+	return n > 0
 }
 
 type callRecordsKey struct{}

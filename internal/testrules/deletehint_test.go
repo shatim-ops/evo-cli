@@ -164,7 +164,7 @@ func TestHints_DeleteIsThePersonsDecision(t *testing.T) {
 	for _, b := range bad {
 		t.Error(b)
 	}
-	t.Logf("deleteHintMisses: %d lines (Closes by 1.8)", len(deleteHintMisses))
+	t.Logf("deleteHintMisses: %d lines", len(deleteHintMisses))
 }
 
 // inspectNode reads the texts under a node for text: a literal, or a

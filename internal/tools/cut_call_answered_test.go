@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -35,10 +36,11 @@ func TestIntent_ACommandsQuestionKeepsTheCutCallUntilAPersonAnswers(t *testing.T
 	}
 	sent := 0
 	tl, _ := r.Lookup(tool)
-	call := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+	call := r.intended(tl, func(ctx context.Context, args map[string]any) (string, bool) {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return `{"status":"confirmation_required","message":"cert_renew renews the certificate."}`, true
 		}
+		_ = httpretry.NoteWrite(ctx)
 		sent++
 		return `{"status":"ok"}`, false
 	})
@@ -95,8 +97,10 @@ func TestIntent_A408KeepsTheRecordOfTheCall(t *testing.T) {
 		eng, _ := r.newEngine(nil)
 		tl, _ := r.Lookup("cert_renew")
 		answer := fmt.Sprintf(`{"status":"error","reason":"API_ERROR","%s":%d}`, apiStatusField, status)
-		r.intended(tl, func(context.Context, map[string]any) (string, bool) { return answer, true })(
-			context.Background(), map[string]any{"certificate_id": resMine, "confirmed": true})
+		r.intended(tl, func(ctx context.Context, _ map[string]any) (string, bool) {
+			_ = httpretry.NoteWrite(ctx) // the write went out
+			return answer, true
+		})(context.Background(), map[string]any{"certificate_id": resMine, "confirmed": true})
 		if got := len(intent.Pending(intent.Dir(eng.StateDir))); got != kept {
 			t.Errorf("a write answered %d: %d records left, want %d", status, got, kept)
 		}

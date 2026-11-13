@@ -15,9 +15,10 @@ import (
 	"testing"
 )
 
-// tabShellPending are the parts of Tab in the shell that are not there
-// yet: the part → what is missing. It only shrinks. Closes by 1.7 (release
-// plan 1.7, block B, Tab, #718: T4, T7).
+// tabShellPending are the parts of Tab in the shell that are not there yet:
+// the part → what is missing. It only shrinks. Empty: its deadline 1.7 is
+// met, and a new line comes with a deadline of its own and its plan line
+// (release plan 1.7, block B, Tab, #718: T4, T7).
 var tabShellPending = map[string]string{}
 
 // zshMenu is the style T4 sets, and zshMenuGuard the read of the person's

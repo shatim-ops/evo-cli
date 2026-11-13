@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -223,13 +224,13 @@ func TestPaidCreate_EveryCreateIsDeclaredOrNamedWithAReason(t *testing.T) {
 		}
 	}
 	// A create that asks tells its resource by the name its plan makes it
-	// by, reads its own list, and counts its writes.
+	// by and reads its own list.
 	for tool, rule := range everySendIsAChange {
 		if !rule.made {
 			continue
 		}
-		if rule.read != createdIDs[tool].list || rule.read == "" || !rule.viaHTTP || rule.target == nil {
-			t.Errorf("%s: a create that asks reads %q (its list is %q), viaHTTP %v, target set %v", tool, rule.read, createdIDs[tool].list, rule.viaHTTP, rule.target != nil)
+		if rule.read != createdIDs[tool].list || rule.read == "" || rule.target == nil {
+			t.Errorf("%s: a create that asks reads %q (its list is %q), target set %v", tool, rule.read, createdIDs[tool].list, rule.target != nil)
 		}
 	}
 }
@@ -254,12 +255,13 @@ func TestIntent_ACutCallIsOfTheProjectOfTheCall(t *testing.T) {
 	sent := 0
 	tl, _ := r.Lookup(tool)
 	call := func(project, answer string) string {
-		text, _ := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+		text, _ := r.intended(tl, func(ctx context.Context, args map[string]any) (string, bool) {
 			// The layer asks the handler for the preview of its question
 			// without the consent: only a consented call sends.
 			if confirmed, _ := args["confirmed"].(bool); !confirmed {
 				return `{"status":"error","reason":"USAGE"}`, true
 			}
+			_ = httpretry.NoteWrite(ctx)
 			sent++
 			return answer, strings.Contains(answer, `"error"`)
 		})(context.Background(), map[string]any{"name": "db", "size_gb": 10.0, "project_id": project, "confirmed": true})
@@ -348,8 +350,9 @@ func TestIntent_TheQuestionStaysWhenThePreviewCannotBeMade(t *testing.T) {
 	}
 	sent := 0
 	tl, _ := r.Lookup(tool)
-	text, isErr := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+	text, isErr := r.intended(tl, func(ctx context.Context, args map[string]any) (string, bool) {
 		if confirmed, _ := args["confirmed"].(bool); confirmed {
+			_ = httpretry.NoteWrite(ctx)
 			sent++
 			return `{"status":"ok"}`, false
 		}

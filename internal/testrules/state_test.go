@@ -19,9 +19,10 @@ import (
 // «Риск-менеджмент» — the pilot of 1.8 (owner's decision 03.11, CLAUDE.md §0).
 var stateRoles = []string{"release", "development", "process", "product", "risk"}
 
-// stateMissing are the roles whose file is not written yet, each with the
-// PR that writes it. The list only shrinks: a line whose file is there
-// fails the test. Closes by 1.8.
+// stateMissing are the roles whose file is not written yet, each with the PR
+// that writes it. The list only shrinks: a line whose file is there fails
+// the test. Empty: its deadline 1.8 is met, and a new line comes with a
+// deadline of its own and its plan line.
 var stateMissing = map[string]string{}
 
 // stateSections are the headings of a state file, in this order, after the

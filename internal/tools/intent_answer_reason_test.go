@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -52,7 +53,10 @@ func TestIntent_UnknownOutcomeKeptThenClosedByAKnownOne(t *testing.T) {
 		// The answer of a tool whose request got no answer, as errAnswer
 		// makes it: "error" a string, the reason beside it.
 		answer := errResult(clierrors.New(clierrors.CodeAPIError, "renew: 502", ""))
-		call := r.intended(tl, func(context.Context, map[string]any) (string, bool) { return answer, true })
+		call := r.intended(tl, func(ctx context.Context, _ map[string]any) (string, bool) {
+			_ = httpretry.NoteWrite(ctx) // the request went out
+			return answer, true
+		})
 		call(context.Background(), args())
 		if left := intent.Pending(dir); len(left) != 1 {
 			t.Fatalf("a lost answer: want its record kept, got %d", len(left))

@@ -15,9 +15,10 @@ import (
 // worldDrift are the ways the worlds are known to answer otherwise than the
 // platform: "answer id: what" → the work item that makes the world follow
 // the platform. The list only shrinks: a drift not here fails the test, and
-// so does a line the worlds no longer drift by.
-// Closes by 1.8: a line lives at most two versions (release plan 1.6,
-// «храповики со сроком»; TestMisses_HaveADeadline).
+// so does a line the worlds no longer drift by. Empty: its deadline 1.8 is
+// met, and a new line comes with a deadline of its own and its plan line: a
+// line lives at most two versions (release plan 1.6, «храповики со сроком»;
+// TestMisses_HaveADeadline).
 var worldDrift = map[string]string{}
 
 // Release plan 1.6, «Миры из живых ответов»: ≈50 % of the defects that

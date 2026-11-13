@@ -53,9 +53,10 @@ var statusOver = map[string]bool{
 }
 
 // noNextStep are the tools shipped before the invariant whose answer says
-// the change is going on and names no next step for the machine: the
-// agent polls a list blindly (R-17). "tool" → what the answer has. It only
-// shrinks, and a new tool does not join it. Closes by 1.9 (release plan
+// the change is going on and names no next step for the machine: the agent
+// polls a list blindly (R-17). "tool" → what the answer has. It only
+// shrinks, and a new tool does not join it. Closes by 1.10 (release plan
+// 1.9, «Сроки храповиков «к 1.7–1.9»», #1590 question 19 (c)); release plan
 // 1.9, «Инварианты до новых изменяющих операций», Н3; R-17: next_tool and
 // next_args are additive, not breaking).
 var noNextStep = map[string]string{

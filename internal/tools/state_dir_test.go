@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -90,7 +91,8 @@ func TestStateDir_RecordsAreOfTheDeclaredDirectoryNotOfTheProcess(t *testing.T) 
 	args := map[string]any{"vm_id": resMine, "confirmed": true}
 
 	// A call whose answer was lost keeps its record — in dir.
-	lost := r.intended(reboot, func(context.Context, map[string]any) (string, bool) {
+	lost := r.intended(reboot, func(ctx context.Context, _ map[string]any) (string, bool) {
+		_ = httpretry.NoteWrite(ctx) // the command went out
 		return `{"status":"error","error":"reboot: API_ERROR: 502","reason":"API_ERROR"}`, true
 	})
 	lost(context.Background(), args)
@@ -105,12 +107,13 @@ func TestStateDir_RecordsAreOfTheDeclaredDirectoryNotOfTheProcess(t *testing.T) 
 	// finds the record and asks, and sends nothing.
 	next, _ := stateDirRegistry(dir, dir)
 	sent := 0
-	again := next.intended(reboot, func(_ context.Context, args map[string]any) (string, bool) {
+	again := next.intended(reboot, func(ctx context.Context, args map[string]any) (string, bool) {
 		// The layer asks the handler for the preview of its question
 		// without the consent: only a consented call sends.
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return `{"status":"error","reason":"USAGE"}`, true
 		}
+		_ = httpretry.NoteWrite(ctx)
 		sent++
 		return `{"status":"reboot_accepted"}`, false
 	})
@@ -133,12 +136,13 @@ func TestStateDir_ARecordOfTheBuildBeforeIsRead(t *testing.T) {
 	r, _ := stateDirRegistry(dir, dir)
 	reboot, _ := r.Lookup("vm_reboot")
 	sent := 0
-	call := r.intended(reboot, func(_ context.Context, args map[string]any) (string, bool) {
+	call := r.intended(reboot, func(ctx context.Context, args map[string]any) (string, bool) {
 		// The layer asks the handler for the preview of its question
 		// without the consent: only a consented call sends.
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return `{"status":"error","reason":"USAGE"}`, true
 		}
+		_ = httpretry.NoteWrite(ctx)
 		sent++
 		return `{"status":"reboot_accepted"}`, false
 	})
@@ -185,12 +189,13 @@ func TestStateDir_ADirectoryThatCannotTakeTheRecordRefusesTheCall(t *testing.T) 
 	r, _ := stateDirRegistry(dir, dir)
 	reboot, _ := r.Lookup("vm_reboot")
 	sent := 0
-	call := r.intended(reboot, func(_ context.Context, args map[string]any) (string, bool) {
+	call := r.intended(reboot, func(ctx context.Context, args map[string]any) (string, bool) {
 		// The layer asks the handler for the preview of its question
 		// without the consent: only a consented call sends.
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return `{"status":"error","reason":"USAGE"}`, true
 		}
+		_ = httpretry.NoteWrite(ctx)
 		sent++
 		return `{"status":"reboot_accepted"}`, false
 	})
@@ -215,7 +220,8 @@ func TestStateDir_NoArgumentOfACallMovesIt(t *testing.T) {
 	})
 	r.SetStateDir(dir)
 	reboot, _ := r.Lookup("vm_reboot")
-	call := r.intended(reboot, func(context.Context, map[string]any) (string, bool) {
+	call := r.intended(reboot, func(ctx context.Context, _ map[string]any) (string, bool) {
+		_ = httpretry.NoteWrite(ctx)                                                            // the command went out
 		return `{"status":"error","error":"reboot: API_ERROR: 502","reason":"API_ERROR"}`, true // a lost answer: the record stays
 	})
 	call(context.Background(), map[string]any{"vm_id": resMine, "project_id": "p2", "confirmed": true})

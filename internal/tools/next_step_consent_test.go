@@ -121,12 +121,13 @@ func consentShownElsewhere(tool string) bool {
 }
 
 // readStepCarriesConsent are the reads cut by the budget whose next step
-// passes on the confirmed the call was sent with: the step is a read, and
-// a read carries no consent — an agent that learns to send confirmed with
-// a read sends it with the change after it (owner's decision 12.11, the
-// condition of «Риск», conclusion 126). "world" → where the step is made.
-// It only shrinks. Closes by 1.9 («разработка C»: the steps of a read are
-// made without confirmed).
+// passes on the confirmed the call was sent with: the step is a read, and a
+// read carries no consent — an agent that learns to send confirmed with a
+// read sends it with the change after it (owner's decision 12.11, the
+// condition of «Риск», conclusion 126). "world" → where the step is made. It
+// only shrinks. Empty: its deadline 1.9 is met, and a new line comes with a
+// deadline of its own and its plan line («разработка C»: the steps of a read
+// are made without confirmed).
 var readStepCarriesConsent = map[string]string{}
 
 // The rule of TestMCP_NoCallOutlivesTheBudget — a next step carries

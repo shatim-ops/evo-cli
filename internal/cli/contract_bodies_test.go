@@ -17,12 +17,13 @@ import (
 // the name of the service in scripts/api-contract.json.
 var inventoryHosts = map[string]string{}
 
-// bodiesNotInInventory are the fields of request bodies known to be sent
-// and not listed in scripts/api-contract.json: "METHOD service path: field"
-// → why, and what closes it. It only shrinks: a field not here fails the
-// test, and so does a line whose field the inventory now has or the code
-// no longer sends. Closes by 1.9 (release plan 1.9, «Инварианты до новых
-// изменяющих операций», Н2).
+// bodiesNotInInventory are the fields of request bodies known to be sent and
+// not listed in scripts/api-contract.json: "METHOD service path: field" →
+// why, and what closes it. It only shrinks: a field not here fails the test,
+// and so does a line whose field the inventory now has or the code no longer
+// sends. Empty: its deadline 1.9 is met, and a new line comes with a
+// deadline of its own and its plan line (release plan 1.9, «Инварианты до
+// новых изменяющих операций», Н2).
 var bodiesNotInInventory = map[string]string{}
 
 // bodiesNotSent are the requests whose body the inventory lists and no

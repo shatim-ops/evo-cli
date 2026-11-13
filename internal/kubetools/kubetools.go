@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -75,6 +76,13 @@ func run(ctx context.Context, kubeconfig, stdin string, timeout time.Duration, n
 	cmd.Env = append(childEnv(os.Environ()), "KUBECONFIG="+f.Name())
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
+	}
+	// kubectl and helm talk to the cluster themselves, past evo's HTTP
+	// clients: their start is a write of the call (httpretry.CountWrites)
+	// — a command that only reads is told too, which keeps a record, never
+	// drops one.
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return "", err
 	}
 	out, err := cmd.CombinedOutput()
 	if cctx.Err() == context.DeadlineExceeded {

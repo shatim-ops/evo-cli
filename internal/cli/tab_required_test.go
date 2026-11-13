@@ -14,8 +14,9 @@ import (
 )
 
 // tabRequiredMisses are the commands whose Tab on "-" does not put the
-// required flags first: the tool → true. It only shrinks. Closes by 1.7
-// (release plan 1.7, block B, Tab, T2, #718).
+// required flags first: the tool → true. It only shrinks. Empty: its
+// deadline 1.7 is met, and a new line comes with a deadline of its own and
+// its plan line (release plan 1.7, block B, Tab, T2, #718).
 var tabRequiredMisses = map[string]bool{}
 
 // requiredFlags are the flags of the arguments a call of tl must have —
@@ -121,5 +122,5 @@ func TestTab_RequiredFlagsFirst(t *testing.T) {
 	if len(bad) > 0 {
 		t.Fatal(strings.Join(bad, "\n"))
 	}
-	t.Logf("commands with required flags: %d, not first: %d (Closes by 1.7)", checked, len(tabRequiredMisses))
+	t.Logf("commands with required flags: %d, not first: %d", checked, len(tabRequiredMisses))
 }

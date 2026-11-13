@@ -137,6 +137,12 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if depth > 1 {
 			return next(ctx, args)
 		}
+		// The holder of what the call reads and says of its records: the
+		// call of a tool has it (budgeted); a layer called on its own gets
+		// its own, so the mark of its first write is heard (markSent).
+		if _, ok := ctx.Value(callRecordsKey{}).(*callRecords); !ok {
+			ctx = context.WithValue(ctx, callRecordsKey{}, &callRecords{})
+		}
 		// No directory for the record of the call: no question is asked
 		// about a call that would be refused, and none is sent.
 		if r.stateDirUndeclared() {
@@ -148,9 +154,11 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 			text = r.questionNamesTheCut(ctx, t.Name, args, text)
 			return r.namedKept(ctx, t.Name, args, text), isErr
 		}
-		// The writes of the call are counted: a call cut before it sent
-		// one changed nothing (changeRule.viaHTTP).
-		ctx = httpretry.CountWrites(ctx)
+		// The writes of the call are counted, the first marked in its
+		// record before it goes out: a call cut before it sent one changed
+		// nothing («Риск», conclusion 187, У2).
+		holder := ctx
+		ctx = httpretry.CountWrites(ctx, func() error { return markSent(holder) })
 		// The resource the call names cannot be read: nothing is sent,
 		// and no record is written by the spelling — a cut call of the
 		// same resource spelled another way would not be found («Риск»,
@@ -168,14 +176,22 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		// record would take the place of the first and move the start
 		// the limit of the repeats counts from («Риск», conclusion 177,
 		// У7).
-		end := func(string) {}
-		if !r.goesOn(ctx, t.Name, args) {
+		var end func(string)
+		if held, goesOn := r.goesOn(ctx, t.Name, args); goesOn {
+			end = func(answer string) { cutSendOf(ctx, held, answer) }
+		} else {
 			var err error
 			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
 				return errResult(err), true
 			}
 		}
 		text, isErr := next(ctx, args)
+		// The mark of the first write could not be written: nothing went
+		// out, and the call says that, not the handler's error of a request
+		// that never left.
+		if err := httpretry.WriteRefused(ctx); err != nil {
+			text, isErr = errResult(err), true
+		}
 		end(text)
 		// A held record the call names by another argument than its step
 		// (a name, where the record has the id).
