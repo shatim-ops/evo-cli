@@ -172,8 +172,9 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 }
 
 // cutCallWarning is what the question says of the cut calls mine of tool
-// name, and the field that names them: the last one, and how many there
-// were — each may have taken effect. It sends to the person, not to
+// name, and the field that names them: the last one, how many there were —
+// each may have taken effect — and the read that shows the resource
+// (read_tool: a command of the CLI names its own command by it). It sends to the person, not to
 // «confirmed again»: the consent given was to one change («Риск»,
 // conclusion 145, У1).
 func cutCallWarning(name string, mine []intent.Intent) (message string, interrupted map[string]any) {
@@ -182,7 +183,7 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 	return i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
 			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
 			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), everySendIsAChange[name], name),
-		map[string]any{"tool": name, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
+		map[string]any{"tool": name, "read_tool": everySendIsAChange[name], "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
 }
 
 // askAgainAfterACut answers a consented call of a tool of

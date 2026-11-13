@@ -7,6 +7,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -73,7 +74,8 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 		if !cut() {
 			continue
 		}
-		if _, named := parseObject(byTool())["interrupted"]; !named {
+		interrupted, named := parseObject(byTool())["interrupted"].(map[string]any)
+		if !named {
 			continue
 		}
 		asked++
@@ -104,12 +106,18 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 				t.Errorf("--dry-run: exit %d, writes %v, records %d; want the record kept", code, writes, records())
 			}
 			// The refusal says why --yes did not answer, and sends to
-			// the read, not to --yes.
+			// the command that reads the resource, not to --yes.
 			fake.reset()
 			newProcess()
 			_, _, stderr := runCLI(t, c.stdin, append([]string{"--yes"}, line...)...)
-			if !strings.Contains(stderr, "--yes does not answer") || !strings.Contains(stderr, "outcome is unknown") || strings.Contains(stderr, "Re-run with --yes") {
+			read, _ := newRegistry().Lookup(fmt.Sprint(interrupted["read_tool"]))
+			if !strings.Contains(stderr, "Look at the resource with '"+toolCommandPath(read)+"'") || toolCommandPath(read) == "" ||
+				!strings.Contains(stderr, "--yes does not answer") || !strings.Contains(stderr, "outcome is unknown") || strings.Contains(stderr, "Re-run with --yes") {
 				t.Errorf("the refusal of --yes: %s", stderr)
+			}
+
+			if records() != 1 {
+				t.Fatalf("%d records before the person answers, want the one of the cut call", records())
 			}
 
 			// A person says no: nothing is sent, and the cut call is
