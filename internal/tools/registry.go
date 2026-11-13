@@ -247,13 +247,17 @@ type callRecords struct {
 func pendingIn(ctx context.Context, root string) []intent.Intent {
 	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
 	if !ok {
-		return intent.Pending(intent.Dir(root))
+		return readPending(intent.Dir(root))
 	}
 	if !c.read || c.root != root {
-		c.root, c.pending, c.read = root, intent.Pending(intent.Dir(root)), true
+		c.root, c.pending, c.read = root, readPending(intent.Dir(root)), true
 	}
 	return c.pending
 }
+
+// readPending reads the records of a directory (tests count the reads of
+// a call).
+var readPending = intent.Pending
 
 // forgetPending makes the next pendingIn of the call read the directory:
 // the call wrote or closed a record there.

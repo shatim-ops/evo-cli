@@ -87,3 +87,44 @@ func TestIntent_ACallReadsTheRecordsOnceUntilItWritesThere(t *testing.T) {
 		t.Errorf("%d records read with no call, want 1", n)
 	}
 }
+
+// How many times a call of a tool that takes consent reads the directory
+// of the records — the whole cost of the layer for a call, since a reading
+// reads every record there: once for a call without consent (the question,
+// a refusal), once for a consented call (after its own record is settled),
+// and once more before a consented call of a tool every send of which is a
+// change (the question after a cut call). No layer reads it for itself.
+func TestIntent_ReadsOfTheRecordsByACall(t *testing.T) {
+	dir := t.TempDir()
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		return &engine.Engine{Config: config.Config{ProjectID: "p", KeyID: "k", Secret: "s"}, StateDir: dir}, nil
+	})
+	r.SetStateDir(dir)
+	reads := 0
+	old := readPending
+	readPending = func(d string) []intent.Intent { reads++; return old(d) }
+	t.Cleanup(func() { readPending = old })
+	for _, c := range []struct {
+		tool  string
+		args  map[string]any
+		reads int
+	}{
+		{"disk_delete", map[string]any{"disk_id": resMine}, 1},
+		{"disk_delete", map[string]any{"disk_id": resMine, "confirmed": true}, 1},
+		{"vm_reboot", map[string]any{"vm_id": resMine}, 1},
+		{"vm_reboot", map[string]any{"vm_id": resMine, "confirmed": true}, 2},
+	} {
+		tl, _ := r.Lookup(c.tool)
+		call := r.budgeted(r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+			if confirmed, _ := args["confirmed"].(bool); !confirmed {
+				return `{"status":"confirmation_required"}`, true
+			}
+			return `{"status":"ok"}`, false
+		}))
+		reads = 0
+		call(context.Background(), c.args)
+		if reads != c.reads {
+			t.Errorf("%s %v read the records %d times, want %d", c.tool, c.args, reads, c.reads)
+		}
+	}
+}
