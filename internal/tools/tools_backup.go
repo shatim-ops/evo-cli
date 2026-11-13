@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -254,7 +255,22 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 		will["dependent_backups_checked"] = false
 		warnings = append(warnings, i18n.T("the backup does not name its project, so evo did not check which backups name it as their full one",
 			"копия не называет свой проект — какие копии называют её своей полной, evo не проверил"))
-	} else if all, err := api.ListBackups(ctx, project); err == nil {
+	} else if all, err := api.ListBackups(ctx, project); err != nil && apiStatus(err) == http.StatusForbidden {
+		// A key with the right to delete and none to list: a refusal of
+		// the right, not a fault a repeat clears — the question says what
+		// was not checked and what follows (FB19I-24 (в); «Риск», 188,
+		// У1, У2).
+		will["dependent_backups_checked"] = false
+		warnings = append(warnings, i18n.T("the key may not list the backups of the project, so evo did not check which backups name this one as their full one; whether such backups stay and can still be restored from once this one is deleted, is not known",
+			"ключу не разрешено читать список копий проекта — какие копии называют эту своей полной, evo не проверил; останутся ли такие копии и можно ли будет восстановить из них после удаления этой — неизвестно"))
+	} else if err != nil && apiStatus(err) == http.StatusUnauthorized {
+		// The key was not accepted: the delete would fail as well — a
+		// refusal before the question, with what to check, not a repeat
+		// («Риск», 188, У1).
+		return nil, clierrors.Wrap(clierrors.CodeAPIError,
+			i18n.Tf("backup %s: Cloud.ru did not accept the key when evo read the backups of the project (HTTP 401); nothing was sent", "копия %s: Cloud.ru не принял ключ при чтении списка копий проекта (HTTP 401); ничего не отправлено", id),
+			clierrors.TokenRejectedHint(), err)
+	} else if err == nil {
 		var deps []map[string]any
 		for _, b := range all {
 			if b["parent_full_backup_id"] == id {
@@ -293,8 +309,8 @@ func backupDeleteRefused(ctx context.Context, tool, id string, args map[string]a
 	switch platformCode(err) {
 	case "backup_restore_in_progress":
 		ans := map[string]any{"backup_id": id, "details": map[string]any{"cause": "restore_in_progress", "platform_code": "backup_restore_in_progress"},
-			"next": i18n.T("A restore from the backup is under way: the platform deletes it once the restore ends. Call backup_delete again in a few minutes.",
-				"Из копии идёт восстановление: платформа удалит её, когда оно закончится. Повторите backup_delete через несколько минут.")}
+			"next": i18n.T("A restore from the backup is under way: the platform refuses the delete while it runs. Call backup_delete again once it ends.",
+				"Из копии идёт восстановление: пока оно идёт, платформа отвергает удаление. Повторите backup_delete, когда оно закончится.")}
 		nextSameCall(ans, tool, args)
 		return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
 			i18n.Tf("backup %s is not deleted: a restore from it is under way", "копия %s не удалена: из неё идёт восстановление", id), "", err), ans), true
@@ -721,10 +737,26 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 			map[string]any{"backup_id": id, "resource_type": kind}), true), nil
 	}
 	src, _ := r["resource_state"].(map[string]any)
-	srcType, _ := src["disk_type"].(map[string]any)
+	zone, _ := src["availability_zone"].(map[string]any)
+	zoneID, _ := zone["id"].(string)
+	sizeGB := int(numberOf(src["size"]))
+	// The disk the question names is read from the card: without its size
+	// or zone, the question would name a disk of 0 GB in no zone
+	// (FB19I-24 (а)) — refused before it (axis 1).
+	if sizeGB <= 0 || zoneID == "" {
+		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("backup %s does not name the size and the zone of its disk (resource_state), so evo cannot say what disk it would make; nothing was sent", "копия %s не называет размер и зону своего диска (resource_state) — какой диск получится, evo сказать не может; ничего не отправлено", id),
+			i18n.T("backup_get shows the backup as the platform gives it; try the Cloud.ru console or ask Cloud.ru support, with its id.", "Копию, как её отдаёт платформа, показывает evo backup get; попробуйте консоль Cloud.ru или обратитесь в поддержку Cloud.ru с id копии.")),
+			map[string]any{"backup_id": id}), true), nil
+	}
 	cfg := provision.RestoreDiskConfig{Name: name, Description: stringArg(args, "description")}
 	typeFrom := "backup"
-	typeName, _ := srcType["name"].(string)
+	// The type as the specification gives it (an object with its name),
+	// or as a name.
+	typeName, _ := src["disk_type"].(string)
+	if srcType, ok := src["disk_type"].(map[string]any); ok {
+		typeName, _ = srcType["name"].(string)
+	}
 	if dt := stringArg(args, "disk_type"); dt != "" {
 		typeFrom, typeName = "argument", dt
 	}
@@ -753,9 +785,6 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 	} else {
 		cfg.DiskTypeName = typeName
 	}
-	zone, _ := src["availability_zone"].(map[string]any)
-	zoneID, _ := zone["id"].(string)
-	sizeGB := int(numberOf(src["size"]))
 	srcName, _ := src["name"].(string)
 	preview := func(ctx context.Context) (map[string]any, error) {
 		req := provision.CreateDiskReq{Name: name, Size: sizeGB, AvailabilityZoneID: zoneID, ProjectID: pid,

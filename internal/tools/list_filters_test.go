@@ -174,3 +174,19 @@ func TestVMList_EvoChecksTheSelectionItself(t *testing.T) {
 		}
 	}
 }
+
+// An enum filter says «state» only of an argument of a state: «Only in this
+// state» was the text of resource_type of backup_list (FB19I-24 (г)).
+func TestListFilters_EnumSaysStateOnlyOfAState(t *testing.T) {
+	for tool, spec := range listSpecs {
+		for _, f := range spec.filters {
+			if f.kind != filterEnum {
+				continue
+			}
+			state := strings.HasPrefix(f.arg, "state") || strings.HasPrefix(f.arg, "status")
+			if !state && (strings.Contains(f.en, "state") || strings.Contains(f.ru, "состоян")) {
+				t.Errorf("%s: filter %s is not of a state and says so: %q / %q", tool, f.arg, f.en, f.ru)
+			}
+		}
+	}
+}

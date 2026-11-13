@@ -15,7 +15,14 @@ import (
 // world's VM, so that the command and the tool answer the same card.
 var _ provision.BackupAPI = parityCloud{}
 
+// parityBackupsRefused, when set, is the error the list of backups answers
+// (a key that may not list them, TestPreview_HumanShowsEveryValue_BackupDeleteUnchecked).
+var parityBackupsRefused error
+
 func (parityCloud) ListBackups(context.Context, string) ([]map[string]any, error) {
+	if parityBackupsRefused != nil {
+		return nil, parityBackupsRefused
+	}
 	var disk map[string]any
 	if err := json.Unmarshal([]byte(parityDiskBackupJSON), &disk); err != nil {
 		return nil, err
