@@ -84,6 +84,14 @@ func TestDBaaSOperation_QuotaCauseOnlyWhereItIs(t *testing.T) {
 		{"the word in a name", quotaOp(true, "13", `"cluster quota-db: internal error"`, "FAILED"), false, false, nil},
 		{"the form inside a name", quotaOp(true, "13", `"cluster my-acquire_quota-1: internal error"`, "FAILED"), false, false, nil},
 		{"the word alone", quotaOp(true, "13", `"quota service unavailable"`, "FAILED"), false, false, nil},
+		// A name in quotes that is a form itself, and the quota of a file
+		// system, are not a refusal for a quota of the platform
+		// (FB19I-28).
+		{"a name in double quotes that is a form", quotaOp(true, "13", `"cluster \"acquire_quota\": internal error"`, "FAILED"), false, false, nil},
+		{"a name in single quotes that is a form", quotaOp(true, "13", `"user 'quota_exceeded' not found"`, "FAILED"), false, false, nil},
+		{"a name in guillemets that is a form", quotaOp(true, "13", `"база «quota exceeded» не создана"`, "FAILED"), false, false, nil},
+		{"the quota of a file system", quotaOp(true, "13", `"write /var/lib/data: Disk quota exceeded"`, "FAILED"), false, false, nil},
+		{"the form with a name in quotes after it", quotaOp(true, "8", `"quota exceeded for cluster \"db-1\""`, "FAILED"), true, true, float64(8)},
 	} {
 		rt := &contractRT{kind: "200", body: c.body}
 		tl, _ := contractReg(t, rt).Lookup("pg_operation")
