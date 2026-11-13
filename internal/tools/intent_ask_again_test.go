@@ -23,7 +23,7 @@ import (
 // and closes the record; the next consented call is sent as any other.
 func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 	const tool = "cert_renew" // stands for a tool of the list: any tool that takes consent
-	everySendIsAChange[tool] = "cert_get"
+	everySendIsAChange[tool] = changeRule{read: "cert_get"}
 	t.Cleanup(func() { delete(everySendIsAChange, tool) })
 	args := func() map[string]any { return map[string]any{"certificate_id": resMine, "confirmed": true} }
 	this := &state.Maker{KeyID: config.MaskKeyID("k")}
@@ -124,7 +124,7 @@ func TestIntent_ConsentedCallAsksAgainAfterItsCutCall(t *testing.T) {
 // An answer that is no question leaves the record.
 func TestIntent_QuestionWithoutConsentNamesTheCutCall(t *testing.T) {
 	const tool = "cert_renew"
-	everySendIsAChange[tool] = "cert_get"
+	everySendIsAChange[tool] = changeRule{read: "cert_get"}
 	t.Cleanup(func() { delete(everySendIsAChange, tool) })
 	this := &state.Maker{KeyID: config.MaskKeyID("k")}
 	for _, c := range []struct {
@@ -204,7 +204,8 @@ func unnamedBy(tl Tool) []string {
 // a declaration that does nothing.
 func TestEverySendIsAChange_ToolNamesItsResource(t *testing.T) {
 	r := New(nil)
-	for tool, read := range everySendIsAChange {
+	for tool, rule := range everySendIsAChange {
+		read := rule.read
 		tl, ok := r.Lookup(tool)
 		if !ok {
 			t.Errorf("everySendIsAChange names %s, which is no tool", tool)

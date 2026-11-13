@@ -46,7 +46,7 @@ func TestIntent_AnotherCallOnTheSameResourceDoesNotSettleTheRecord(t *testing.T)
 	// whatever its arguments (the test below), and its question closes the
 	// record; sg_rule_create became one with FB19I-12.
 	const tool = "open_ports"
-	if everySendIsAChange[tool] != "" {
+	if everySendIsAChange[tool].read != "" {
 		t.Fatalf("%s is a tool every send of which is a change: its question closes the record, take another", tool)
 	}
 	for _, c := range []struct {
