@@ -149,9 +149,17 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if text, asked := r.askAgainAfterACut(ctx, t.Name, args); asked {
 			return text, true
 		}
-		end, err := r.beginIntent(ctx, t.Name, args)
-		if err != nil {
-			return errResult(err), true
+		// The operation of this call goes on under its held record: a
+		// repeat with consent is a step of it, not a new call — a new
+		// record would take the place of the first and move the start
+		// the limit of the repeats counts from («Риск», conclusion 177,
+		// У7).
+		end := func(string) {}
+		if !r.goesOn(ctx, t.Name, args) {
+			var err error
+			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
+				return errResult(err), true
+			}
 		}
 		text, isErr := next(ctx, args)
 		end(text)
