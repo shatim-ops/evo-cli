@@ -85,7 +85,7 @@ func TestCountWrites_TheFirstWriteIsToldBeforeItGoesOut(t *testing.T) {
 		}
 		return okTransport{}.RoundTrip(req)
 	})
-	ctx = CountWrites(context.Background(), func() error { told++; return nil })
+	ctx = CountWrites(context.Background(), func() (bool, error) { told++; return true, nil })
 	c := &http.Client{Transport: UserAgent(base)}
 	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPost} {
 		req, _ := http.NewRequestWithContext(ctx, method, "https://api.example/v1/things", nil)
@@ -118,7 +118,7 @@ func TestCountWrites_AMarkNotWrittenKeepsTheWriteBack(t *testing.T) {
 		sent++
 		return okTransport{}.RoundTrip(req)
 	})
-	ctx := CountWrites(context.Background(), func() error { return errors.New("the disk is full") })
+	ctx := CountWrites(context.Background(), func() (bool, error) { return false, errors.New("the disk is full") })
 	for _, c := range []*http.Client{{Transport: UserAgent(base)}, {Transport: &Transport{Base: base}}} {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.example/v1/things", nil)
 		if resp, err := c.Do(req); err == nil {
@@ -147,5 +147,29 @@ func TestCountWrites_OnceThroughTheLayersOfAClient(t *testing.T) {
 	resp.Body.Close()
 	if n, _ := Writes(ctx); n != 1 {
 		t.Errorf("one write through two layers counted %d times", n)
+	}
+}
+
+// A mark that has nothing to mark yet — the call opened no record before
+// its first write — is asked again at the next write, not spent: the
+// first write after the record marks it («Риск», the remainder (1) to
+// #1675).
+func TestCountWrites_AMarkWithNothingToMarkIsAskedAgain(t *testing.T) {
+	asked, ready := 0, false
+	ctx := CountWrites(context.Background(), func() (bool, error) { asked++; return ready, nil })
+	if err := NoteWrite(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ready = true
+	for i := 0; i < 3; i++ {
+		if err := NoteWrite(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if asked != 2 {
+		t.Errorf("the mark was asked %d times, want twice: before the record and at the first write after it", asked)
+	}
+	if n, _ := Writes(ctx); n != 4 {
+		t.Errorf("%d writes counted, want 4", n)
 	}
 }

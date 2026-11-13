@@ -304,20 +304,25 @@ func forgetPending(ctx context.Context) {
 }
 
 // markSent is told by the counter of the call's writes
-// (httpretry.CountWrites) right before its first write goes out: the
-// record the call opened is marked so at once — a process killed after
-// it leaves the mark. An error: the mark is not written, and the write
-// does not go out.
-func markSent(ctx context.Context) error {
+// (httpretry.CountWrites) right before a write goes out, until it says the
+// call is marked: the record the call opened is marked at once — a process
+// killed after the write leaves the mark. A write before the record is
+// opened marks nothing and does not spend the mark (false). An error: the
+// mark is not written, and the write does not go out.
+func markSent(ctx context.Context) (marked bool, err error) {
 	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
-	if !ok || !c.hasOpen || c.open.Sent {
-		return nil
+	if !ok || !c.hasOpen {
+		// Nothing to mark yet: the next write asks again.
+		return false, nil
+	}
+	if c.open.Sent {
+		return true, nil
 	}
 	if err := intent.MarkSent(c.open); err != nil {
-		return err
+		return false, err
 	}
 	c.open.Sent = true
-	return nil
+	return true, nil
 }
 
 // callSent tells whether the call of ctx sent a write (httpretry.Writes).
