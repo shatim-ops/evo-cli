@@ -115,11 +115,14 @@ func TestK8sNodePoolDelete_LastPoolOfTheCluster(t *testing.T) {
 // delete (engine.DeleteWayOut), by the state without the service's prefix.
 func TestK8sNodePoolDelete_StatusWithAnUnknownOutcome(t *testing.T) {
 	for st, says := range map[string]string{
-		poolError:     "may refuse",
+		// No run has deleted a pool in error (probe Г-12): the preview says
+		// the outcome is unknown, not that Cloud.ru may refuse (FB19I-7).
+		poolError:     "the outcome of the delete is unknown",
 		poolScalingUp: `"` + poolScalingUp + `", not running: whether the platform accepts the delete is unknown`,
 		// Whether the platform deletes a pool it is still creating is not
-		// known for Managed Kubernetes: no refusal before the question.
-		"OBJECT_STATUS_PROVISIONING":  `"OBJECT_STATUS_PROVISIONING", not running: whether the platform accepts the delete is unknown`,
+		// known for Managed Kubernetes: no refusal before the question, the
+		// warning of every delete in a state no run has shown.
+		"OBJECT_STATUS_PROVISIONING":  "it is OBJECT_STATUS_PROVISIONING: whether Cloud.ru deletes a node pool in this state no run has shown",
 		"OBJECT_STATUS_SOMETHING_NEW": `"OBJECT_STATUS_SOMETHING_NEW", not running: whether the platform accepts the delete is unknown`,
 	} {
 		w := &poolWorld{status: st, others: []string{poolRunning}}
@@ -168,16 +171,27 @@ func TestK8sNodePoolDelete_AnswersTheOperation(t *testing.T) {
 
 // The platform refuses the DELETE after the consent: the error with the
 // status the pool was read in, and no step of a retry (П6). A pool in
-// error names the way out — the console or support.
+// error: whether Cloud.ru deletes one no run has shown (probe Г-12) — the
+// answer does not say «it does not delete it through its API, use the
+// console», a word of the platform with no run, on a 500, a 503 or a 409
+// alike (FB19I-7).
 func TestK8sNodePoolDelete_RequestRefused(t *testing.T) {
-	w := &poolWorld{status: poolError, others: []string{poolRunning}, del: 409}
-	w.setCount(2)
-	m, text, isErr := poolDelete(t, w, true)
-	hint, _ := m["hint"].(string)
-	if !isErr || m["reason"] == nil || m["resource_status"] != poolError || !strings.Contains(hint, "console") || m["next_tool"] != nil {
-		t.Errorf("want the refusal with the status of the pool and the way out, no next step: %s", text)
-	}
-	if m["status"] == "deleted" || m["status"] == "deleting" {
-		t.Errorf("a refusal reads as a success: %s", text)
+	for _, code := range []int{409, 500, 503} {
+		w := &poolWorld{status: poolError, others: []string{poolRunning}, del: code}
+		w.setCount(2)
+		m, text, isErr := poolDelete(t, w, true)
+		hint, _ := m["hint"].(string)
+		if !isErr || m["reason"] == nil || m["resource_status"] != poolError || m["next_tool"] != nil {
+			t.Errorf("%d: want the refusal with the status of the pool, no next step: %s", code, text)
+		}
+		if strings.Contains(hint, "does not delete") || strings.Contains(hint, "console") {
+			t.Errorf("%d: the hint says what the platform does with a pool in error, which no run has shown: %s", code, text)
+		}
+		if m["status"] == "deleted" || m["status"] == "deleting" {
+			t.Errorf("%d: a refusal reads as a success: %s", code, text)
+		}
+		if got := w.writes(); len(got) != 1 {
+			t.Errorf("%d: want one DELETE, got %v", code, got)
+		}
 	}
 }

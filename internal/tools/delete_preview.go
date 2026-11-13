@@ -46,9 +46,11 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	// word in the answer's fields.
 	decl := deleteTargets[tool]
 	state := strings.TrimPrefix(status, decl.statePrefix)
-	if decl.creatingUnseen != "" && engine.PassingDeleteState(state) ||
-		decl.failedUnseen != "" && engine.FinalDeleteState(state) {
-		// No rule of this service for the state: the preview of any other.
+	unseen := decl.creatingUnseen != "" && engine.PassingDeleteState(state) ||
+		decl.failedUnseen != "" && inError(state)
+	if unseen {
+		// No rule of this service for the state: no refusal and no way out
+		// of one — the preview says the outcome is unknown (FB19I-7, -23).
 		state = ""
 	}
 	if statusGone(state) {
@@ -71,8 +73,40 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	}
 	if warning, _ := engine.DeleteWayOut(state, id); warning != "" {
 		out["warning"] = warning
+	} else if unseen {
+		out["warning"] = i18n.Tf("it is %s: whether Cloud.ru deletes a %s in this state no run has shown — the outcome of the delete is unknown; a refusal names the platform's answer",
+			"он в состоянии %s: удаляет ли Cloud.ru %s в этом состоянии, ни один прогон не показал — исход удаления неизвестен; отказ назовёт ответ платформы",
+			status, i18n.T(decl.what, decl.whRU))
+	}
+	if unseen {
+		return &Plan{Preview: out, Execute: withStatus(execute, status)}
 	}
 	return &Plan{Preview: out, Execute: withWayOut(execute, state, status, id)}
+}
+
+// inError reports whether state is an error of the resource: one Cloud.ru
+// does not delete in (engine.FinalDeleteState), or another error state of
+// the service, such as error_creating of a backup.
+func inError(state string) bool {
+	return engine.FinalDeleteState(state) || strings.HasPrefix(strings.ToUpper(state), "ERROR")
+}
+
+// withStatus is execute whose refusal names the status read before the
+// question (resource_status) and keeps the platform's own error and hint:
+// in a state no run has shown, evo has no way out to name (FB19I-7).
+func withStatus(execute func(context.Context) (string, bool), status string) func(context.Context) (string, bool) {
+	return func(ctx context.Context) (string, bool) {
+		text, isErr := execute(ctx)
+		if !isErr {
+			return text, isErr
+		}
+		var m map[string]any
+		if json.Unmarshal([]byte(text), &m) != nil {
+			return text, isErr
+		}
+		m["resource_status"] = status
+		return toJSON(m), true
+	}
 }
 
 // passingRefusal is the answer of a delete of a resource still being

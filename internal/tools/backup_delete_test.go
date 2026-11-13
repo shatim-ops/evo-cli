@@ -302,8 +302,14 @@ func TestBackupDelete_StatesWithNoRuleYet(t *testing.T) {
 		w := &deleteWorld{state: st, exists: true}
 		m, text, _ := backupDelete(t, w, false)
 		target, _ := m["target"].(map[string]any)
+		warn, _ := m["warning"].(string)
 		if m["status"] != "confirmation_required" || target["status"] != st || w.deletes != 0 {
 			t.Errorf("%s: want the question naming the state: %s", st, text)
+		}
+		// The brief promises the state and that the outcome is unknown in
+		// the preview, not the status in the target only (FB19I-23).
+		if !strings.Contains(warn, st) || !strings.Contains(warn, "the outcome of the delete is unknown") {
+			t.Errorf("%s: want the preview to say the outcome is unknown: %s", st, text)
 		}
 	}
 }
