@@ -48,8 +48,12 @@ type NodePoolNetworkConfigurationRequest struct {
 }
 
 type NodePoolUpdateConfiguration struct {
-	Strategy string `json:"strategy"` // NODE_POOL_UPDATE_STRATEGY_ROLLING_UPDATE
+	Strategy string `json:"strategy"` // StrategyRollingUpdate
 }
+
+// StrategyRollingUpdate updates the nodes of a pool one by one: the
+// strategy evo creates a pool with.
+const StrategyRollingUpdate = "NODE_POOL_UPDATE_STRATEGY_ROLLING_UPDATE"
 
 // CreateNodePoolReq mirrors the confirmed v3 CreateNodePoolRequest.
 type CreateNodePoolReq struct {

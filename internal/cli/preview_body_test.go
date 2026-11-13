@@ -63,7 +63,6 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"k8s_add_addon resolveMode": {unnamedWork, "конфликты ресурсов не разрешаются"},
 
-	"k8s_add_nodepool updateConfiguration.strategy":  {unnamedWork, "обновление узлов по одному (ROLLING_UPDATE)"},
 	"k8s_add_nodepool machineConfiguration.flavorId": {unnamedNoise, "id flavor, который превью называет по имени"},
 
 	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": {unnamedNoise, "id flavor мастеров, который превью называет по имени"},
@@ -111,6 +110,7 @@ var bodyNamedAs = map[string]string{
 	"backup_restore resource.target_config.disk_type_name": "disk_type",
 	"k8s_add_addon appVersion":                             "version",
 	"k8s_add_nodepool machineConfiguration.disk.size":      "disk_gb",
+	"k8s_add_nodepool updateConfiguration.strategy":        "update_strategy",
 	"k8s_create networkConfiguration.privateVipSubnetId":   "subnet_id",
 	"lb_create availability_zone_specs.subnet_ids":         "subnet_id",
 	"subnet_create subnet_address":                         "cidr",
