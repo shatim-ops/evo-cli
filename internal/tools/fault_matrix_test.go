@@ -126,6 +126,7 @@ var faultMatrixCases = []faultMatrixCase{
 	// The backup of a disk in the world that carries the backups
 	// (backupCloud, fault_backup_world_test.go).
 	backupCase("backup_create", map[string]any{"disk_id": faultDisk, "name": "before-change", "confirmed": true}),
+	backupRestoreCase(map[string]any{"backup_id": faultBackupID, "name": "restored", "confirmed": true}),
 	computeCase("provision", map[string]any{"name": "web", "confirmed": true}, false, nil),
 	computeCase("deploy_apply", map[string]any{"plan_id": "plan-0123456789ab", "confirmed": true}, true,
 		func(t *testing.T, dir string) {

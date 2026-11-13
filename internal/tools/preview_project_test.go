@@ -81,6 +81,7 @@ var previewCalls = map[string]map[string]any{
 	"dns_record_create": {"name": "www", "record_type": "A", "value": "192.0.2.10"},
 	"vpc_route_create":  {"subnet": "192.0.2.0/24", "next_hop_vip_id": resMine},
 	"disk_resize":       {"size_gb": 100},
+	"backup_restore":    {"name": "restored"},
 	"disk_attach":       {"vm": resMine},
 	"disk_detach":       {"vm": resMine},
 	"k8s_add_addon":     {"name": ownerAddon},

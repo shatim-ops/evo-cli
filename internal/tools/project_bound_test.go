@@ -209,6 +209,13 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	for id := range projectOf {
 		if strings.Contains(r.URL.Path, id) {
 			o := ownerObject(id)
+			if strings.HasPrefix(r.URL.Path, "/api/v1/backups/") {
+				// A backup is a disk's, created: what a restore reads
+				// before its question.
+				o["state"] = "created"
+				o["resource"] = map[string]any{"resource_id": id, "resource_type": "disk", "resource_exists": true,
+					"resource_state": map[string]any{"name": "data", "size": 10, "disk_type": map[string]any{"name": "SSD"}}}
+			}
 			if f.diskOn != "" && strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 				o["state"] = "in_use"
 				o["vms"] = []any{map[string]any{"id": f.diskOn, "name": "vm"}}

@@ -65,6 +65,7 @@ var createdIDs = map[string]created{
 	"kafka_create":      {id: "cluster_id", list: "kafka_list", field: "clusters", delete: "kafka_delete"},
 	"lb_create":         {id: "lb_id", list: "lb_list", field: "load_balancers", delete: "lb_delete"},
 	"backup_create":     {id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete"},
+	"backup_restore":    {id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"},
 	"pg_backup_create":  {id: "backup_id", list: "pg_backups", field: "backups", listArgs: []string{"cluster_id"}},
 	"pg_create":         {id: "cluster_id", list: "pg_list", field: "clusters", delete: "pg_delete"},
 	"pg_db_create":      {arg: "name", delete: "pg_db_delete"},

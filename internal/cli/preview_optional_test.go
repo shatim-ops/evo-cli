@@ -34,6 +34,7 @@ var optionalArgs = map[string]map[string]any{
 	"redis_create":     {"type": "MASTER_REPLICA", "replicas": float64(2), "version_id": "v1", "specification_id": "s-1", "subnet_id": optionalSubnet},
 	"pg_create":        {"storage_gb": float64(30), "version": "17", "subnet_id": optionalSubnet, "backup_schedule": "0 3 * * *"},
 	"lb_create":        {"subnet_id": optionalSubnet},
+	"backup_restore":   {"disk_type": "SSD"},
 }
 
 // optionalSubnet is the subnet of the world's project.

@@ -74,6 +74,7 @@ var parityArgs = map[string]map[string]any{
 	"backup_get":      {"backup_id": parityVM},
 	"backup_create":   {"vm_id": parityVM, "name": "web-backup"},
 	"backup_delete":   {"backup_id": parityVM},
+	"backup_restore":  {"backup_id": parityDiskBackup, "name": "restored"},
 	"list_disk_types": {},
 	// vpc
 	// The zone's group, in the worlds of the previews and of the answers
@@ -630,6 +631,7 @@ var parityAnswers = map[string]string{
 	"POST compute.api.cloud.ru/api/v1/disks/{id}/attach":             `{}`,
 	// backup_create: the backup the platform took, already made.
 	"POST compute.api.cloud.ru/api/v1/backups":             `{"id":"` + parityVM + `","name":"web-backup","state":"created","type":"full","size":20480}`,
+	"POST compute.api.cloud.ru/api/v1/backups/{id}/action": `{"id":"` + parityDiskBackup + `","state":"created"}`,
 	"DELETE compute.api.cloud.ru/api/v1/backups/{id}":      `{}`,
 	"POST compute.api.cloud.ru/api/v1/disks/{id}/detach":   `{}`,
 	"DELETE compute.api.cloud.ru/api/v1/floating-ips/{id}": `{}`,
@@ -676,6 +678,22 @@ const parityNIC = "00000000-0000-4000-8000-0000000000f1"
 // disk_detach is a repeat, already_detached (D81).
 const parityAttachedDisk = "00000000-0000-4000-8000-0000000000f2"
 
+// parityDiskBackup is a backup of a disk, created: what backup_restore
+// restores (the backup of the world, parityVM's, is a VM's).
+const parityDiskBackup = "00000000-0000-4000-8000-0000000000c9"
+
+// parityRestored is the name of the disk the last restore of the world
+// made, listed by the next read of the disks only.
+var parityRestored struct {
+	sync.Mutex
+	name string
+}
+
+// parityDiskBackupJSON is the card of parityDiskBackup.
+const parityDiskBackupJSON = `{"id":"` + parityDiskBackup + `","project_id":"` + pvProject + `","name":"data-copy","state":"created","type":"full","size":10240,"created_at":"2026-11-12T10:00:00Z",` +
+	`"resource":{"resource_id":"` + parityAttachedDisk + `","resource_type":"disk","resource_exists":true,"resource_state":{"name":"data","size":20,` +
+	`"disk_type":{"id":"` + parityVM + `","name":"SSD"},"availability_zone":{"id":"` + pvZone + `","name":"ru.AZ-1"}}}}`
+
 // parityStoppedVM is a second VM of the project, stopped: vm_start starts
 // it (the VM parityVM runs — for it vm_start is a repeat).
 const parityStoppedVM = "00000000-0000-4000-8000-0000000000f3"
@@ -718,6 +736,34 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 			return nil
 		}
 		_, _ = io.WriteString(w, runningVMJSON("running"))
+	case "/api/v1/backups/" + parityDiskBackup + "/action":
+		// The restore makes a disk: the next read of the disks lists it,
+		// once (parityRestored), as the platform's would.
+		var body struct {
+			Resource struct {
+				TargetConfig struct {
+					Name string `json:"name"`
+				} `json:"target_config"`
+			} `json:"resource"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		parityRestored.Lock()
+		parityRestored.name = body.Resource.TargetConfig.Name
+		parityRestored.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, parityDiskBackupJSON)
+	case "/api/v1/backups":
+		if r.Method != http.MethodGet {
+			return nil
+		}
+		// The backups of the project: the disk's, which backup_restore
+		// addresses by id (the call's project holds it).
+		_, _ = io.WriteString(w, `{"items":[`+parityDiskBackupJSON+`],"total":1}`)
+	case "/api/v1/backups/" + parityDiskBackup:
+		if r.Method != http.MethodGet {
+			return nil
+		}
+		_, _ = io.WriteString(w, parityDiskBackupJSON)
 	case "/api/v1/disks/" + parityAttachedDisk:
 		if r.Method != http.MethodGet {
 			return nil
@@ -725,7 +771,14 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 		_, _ = io.WriteString(w, `{"id":"`+parityAttachedDisk+`","name":"data","size":20,"state":"in_use","vms":[{"id":"`+parityVM+`","name":"web","primary":false}]}`)
 	case "/api/v1/disks":
 		if r.Method != http.MethodPost {
-			_, _ = io.WriteString(w, `{"items":[{"id":"`+parityVM+`","name":"old","size":20,"availability_zone":{"id":"`+pvZone+`"}}],"total":1}`)
+			items := `{"id":"` + parityVM + `","name":"old","size":20,"availability_zone":{"id":"` + pvZone + `"}}`
+			parityRestored.Lock()
+			if parityRestored.name != "" {
+				items += `,{"id":"` + parityDiskBackup + `","name":"` + parityRestored.name + `","size":20,"state":"available"}`
+				parityRestored.name = ""
+			}
+			parityRestored.Unlock()
+			_, _ = io.WriteString(w, `{"items":[`+items+`],"total":1}`)
 			break
 		}
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"data","size":20,"status":"creating"}`)

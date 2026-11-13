@@ -38,6 +38,7 @@ var untrustedMarkerOnly = map[string]string{
 	"whoami":              "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
 	"backup_get":          "name, description, tags, resource_name, source: what the project's people named the backup, its tags and its source, not the output of a workload",
 	"backup_create":       "preview, will_create, backup, name: the names of the backup and of its source, not the output of a workload",
+	"backup_restore":      "preview, will_create, disk, name: the names of the backup, its disk and the new disk, not the output of a workload",
 	"backup_delete":       "preview, target: the names of the backup, its source and the backups that depend on it, not the output of a workload",
 	"backup_list":         "backups: the names of the backups and of their sources, not the output of a workload",
 	"k8s_nodepool_get":    "name, cluster_name, labels, taints: what the project's people named the pool, its cluster and its nodes, not the output of a workload",

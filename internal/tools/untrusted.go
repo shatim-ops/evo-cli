@@ -90,6 +90,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The names of the backup and of its source, in the preview and the
 	// answer (the audit of #1544, С1).
 	"backup_create": {fields: []string{"preview", "will_create", "backup", "name"}},
+	// The names of the backup, its disk and the new disk, in the preview
+	// and the answer.
+	"backup_restore": {fields: []string{"preview", "will_create", "disk", "name"}},
 	// The names of the backup, its source and the backups that depend on
 	// it, in the preview.
 	"backup_delete": {fields: []string{"will_delete", "target"}},

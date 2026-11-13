@@ -84,7 +84,8 @@ var writeRules = map[string]struct{ world, why, item string }{
 	// A restore from the backup under way (one run of Г-16): the backup
 	// reads created, so no read before the question shows it; the answer
 	// after the consent says the cause and the same call (D106).
-	"DELETE /api/v1/backups/{backup_id} 422": {why: "a restore under way, which no read shows: the refusal after the consent names it and the same call (D106)"},
+	"POST /api/v1/backups/{backup_id}/action 422": {why: "a refusal of the platform (a restore under way, a quota): its error after the consent, nothing made — a 4xx is no lost answer (lostCreate)"},
+	"DELETE /api/v1/backups/{backup_id} 422":      {why: "a restore under way, which no read shows: the refusal after the consent names it and the same call (D106)"},
 
 	"POST /api/v1/subnets 409": {world: "subnet overlaps the VPC's"},
 	// A closed zone, a quota: no read tells them all yet.

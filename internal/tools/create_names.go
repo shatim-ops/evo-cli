@@ -44,6 +44,7 @@ var createNames = map[string]createName{
 	"kafka_create":      {args: []string{"name"}, what: "Kafka cluster", whRU: "кластер Kafka"},
 	"lb_create":         {args: []string{"name"}, what: "load balancer", whRU: "балансировщик"},
 	"backup_create":     {args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"},
+	"backup_restore":    {args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"},
 	"pg_backup_create":  {args: []string{"name"}, what: "backup", whRU: "резервная копия"},
 	"pg_create":         {args: []string{"name"}, what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"},
 	"pg_db_create":      {args: []string{"name"}, what: "database", whRU: "база данных"},
