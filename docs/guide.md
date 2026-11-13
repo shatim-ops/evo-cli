@@ -556,7 +556,7 @@ ROSA/РОСА, Windows), иначе `vm-app`: `AstraLinuxSmolensk1.8.3KES` — �
 | `--dry-run` | только превью, код выхода `0` |
 | `--yes` (`-y`) | согласие заранее — для скриптов и CI |
 | Без терминала и без `--yes` | ничего не делается, код выхода `3` |
-| `--yes` после оборванного вызова `evo vm reboot`, `evo backup create`, `evo backup restore` и платных созданий `evo pg create`, `evo kafka create`, `evo redis create`, `evo k8s create`, `evo k8s add-nodepool`, `evo lb create` | ничего не отправляется, код выхода `3`: исход оборванного вызова неизвестен, повтор — ещё одно изменение. Посмотрите ресурс и ответьте на вопрос в терминале |
+| `--yes` после оборванного вызова `evo vm reboot`, `evo backup create`, `evo backup restore` и платных созданий `evo pg create`, `evo kafka create`, `evo redis create`, `evo k8s create`, `evo k8s add-nodepool`, `evo lb create`, `evo vpc create`, `evo tg create`, `evo ar create`, `evo cert import`, `evo pg backup-create` | ничего не отправляется, код выхода `3`: исход оборванного вызова неизвестен, повтор — ещё одно изменение. Посмотрите ресурс и ответьте на вопрос в терминале |
 
 Коды выхода стабильны и пригодны для скриптов: `0` — успех, `1` — ошибка
 использования, `2` — ключ или настройки, `3` — нужно подтверждение, `4` — не

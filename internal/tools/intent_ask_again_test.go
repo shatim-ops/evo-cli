@@ -187,14 +187,16 @@ func TestIntent_QuestionWithoutConsentNamesTheCutCall(t *testing.T) {
 // everySendIsAChange does nothing, with no one to notice («Риск»,
 // conclusion 145, У3).
 func unnamedBy(tl Tool) []string {
+	// Each way carries the required arguments too: a call without them
+	// is refused before the layer (tools.CheckArgs).
+	required, _ := tl.InputSchema["required"].([]string)
 	ways := [][]string{}
 	for _, group := range requiredOneOf[tl.Name] {
 		for _, arg := range group {
-			ways = append(ways, []string{arg})
+			ways = append(ways, append([]string{arg}, required...))
 		}
 	}
 	if len(ways) == 0 {
-		required, _ := tl.InputSchema["required"].([]string)
 		ways = append(ways, required)
 	}
 	var bad []string

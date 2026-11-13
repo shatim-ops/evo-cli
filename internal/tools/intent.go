@@ -303,6 +303,14 @@ var everySendIsAChange = map[string]changeRule{
 	"k8s_create":       paidCreate("k8s_create", "", k8sClusterNameArg),
 	"k8s_add_nodepool": paidCreate("k8s_add_nodepool", "cluster_id", nodePoolName),
 	"lb_create":        paidCreate("lb_create", "", nameArg),
+	// The five more of D107 (the owner's decision of 13.11): a resource
+	// billed or limited by the platform, its repeat after a lost answer a
+	// second one while the list does not show the first.
+	"vpc_create":       paidCreate("vpc_create", "", nameArg),
+	"tg_create":        paidCreate("tg_create", "", nameArg),
+	"ar_create":        paidCreate("ar_create", "", nameArg),
+	"cert_import":      paidCreate("cert_import", "", nameArg),
+	"pg_backup_create": paidCreate("pg_backup_create", "cluster_id", nameArg),
 }
 
 // spelledArgs are the arguments that name the resource of the record in
@@ -361,14 +369,26 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	if err != nil || !ok || (resource == "" && target == "") {
 		return nil
 	}
-	eng, _ := r.engineOfCall(args)
-	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
-	var cut []intent.Intent
+	// Records of the tool first: with none, no engine is built for the
+	// key and the project of the call — a preview stays one engine.
+	var ofTool []intent.Intent
 	for _, in := range pendingIn(ctx, root) {
 		// A held record is an operation evo goes on with, not a cut call
 		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
 		// call whose change was seen going on, HoldCut).
-		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil || in.ProjectID != project {
+		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil {
+			continue
+		}
+		ofTool = append(ofTool, in)
+	}
+	if len(ofTool) == 0 {
+		return nil
+	}
+	eng, _ := r.engineOfCall(args)
+	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
+	var cut []intent.Intent
+	for _, in := range ofTool {
+		if in.ProjectID != project {
 			continue
 		}
 		if in.Name != resource || in.Target != target {
