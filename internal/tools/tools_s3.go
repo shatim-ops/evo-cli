@@ -219,9 +219,16 @@ func (s *Registry) planS3BucketCreate(ctx context.Context, args map[string]any) 
 			if err != nil {
 				return errResult(err), true
 			}
-			// Made by another call since the plan.
+			// The plan did not see the bucket, and MakeBucket finds it
+			// now: the PUT of this call may have made it and its answer
+			// was lost (a reset, or the S3 client's own retry of the PUT),
+			// or another call made it since the plan. evo does not know
+			// which, so the answer does not claim the bucket is not this
+			// call's — an agent clearing «what I created» must not leave
+			// one this call made (FB19I-36, axis 3; the class pg_user_create
+			// closes with «this call may have created it»).
 			if existed {
-				return s3BucketExists(bucket), false
+				return s3BucketMaybeMine(bucket), false
 			}
 			return toJSON(map[string]any{"status": "created", "bucket": bucket}), false
 		},
@@ -235,6 +242,17 @@ func s3BucketExists(bucket string) string {
 	return toJSON(map[string]any{"status": "already_exists", "bucket": bucket,
 		"message": i18n.Tf("bucket %q exists already and is yours; this call created nothing — do not count it as created by this call.",
 			"бакет %q уже существует и принадлежит вам; этот вызов ничего не создал — не считайте бакет созданным этим вызовом.", bucket)})
+}
+
+// s3BucketMaybeMine is the answer of s3_bucket_create when the plan did not
+// see the bucket but MakeBucket finds it after the write: the PUT this call
+// sent may have made it and lost its answer, or another call made it since.
+// evo cannot tell which («Риск», 195), so — unlike s3BucketExists — it does not say the
+// bucket is not this call's (FB19I-36).
+func s3BucketMaybeMine(bucket string) string {
+	return toJSON(map[string]any{"status": "already_exists", "bucket": bucket,
+		"message": i18n.Tf("bucket %q exists and is yours. The plan did not see it and the create found it: this call may have made it (its answer was lost) or another call made it since — evo cannot tell which. If you clear up what this call created, count this bucket as possibly its own, and check what it holds first.",
+			"бакет %q существует и принадлежит вам. План его не видел, а создание нашло: его мог создать этот вызов (ответ потерян) или другой вызов после плана — evo не может различить. Если убираете созданное этим вызовом, считайте бакет возможно его, и сначала посмотрите, что в нём.", bucket)})
 }
 
 // planS3BucketDelete plans s3_bucket_delete (D35): a bucket that is not
