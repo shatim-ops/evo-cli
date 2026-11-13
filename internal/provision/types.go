@@ -223,12 +223,25 @@ type Interface struct {
 	ID             string           `json:"id"`
 	VM             *InterfaceVM     `json:"vm,omitempty"`
 	SecurityGroups []InterfaceGroup `json:"security_groups,omitempty"`
+	// Subnet is the subnet of the interface (vm_get): the card of a VM
+	// does not name it.
+	Subnet *InterfaceSubnet `json:"subnet,omitempty"`
 }
 
 // InterfaceGroup is a security group of an interface, as the list names it.
 type InterfaceGroup struct {
-	ID   string `json:"id"`
-	Name string `json:"name,omitempty"`
+	ID    string `json:"id"`
+	Name  string `json:"name,omitempty"`
+	State string `json:"state,omitempty"`
+}
+
+// InterfaceSubnet is the subnet of an interface, as the list names it
+// (SubnetWithAddressMiniResponse).
+type InterfaceSubnet struct {
+	ID      string `json:"id"`
+	Name    string `json:"name,omitempty"`
+	State   string `json:"state,omitempty"`
+	Address string `json:"subnet_address,omitempty"`
 }
 
 // InterfaceVM is the VM of an interface, as the list names it.

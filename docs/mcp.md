@@ -555,7 +555,7 @@ evo mcp --http 127.0.0.1:8080 --auth bearer --read-only --toolsets vm,vpc,disk,i
 сессии. У клиентов есть и предел числа: VS Code с GitHub Copilot принимает не
 больше 128 инструментов в одном запросе чата и сверх этого отвечает ошибкой
 ([документация VS Code](https://code.visualstudio.com/docs/copilot/agents/agent-tools)).
-Оставьте группы задачи: `vm,vpc,disk,image` — 17 инструментов на чтение, ~13 КБ.
+Оставьте группы задачи: `vm,vpc,disk,image` — 17 инструментов на чтение, ~14 КБ.
 
 **Тайм-аут вызова.** Часть инструментов ждёт внутри вызова: `*_operation` с
 `wait_seconds` (до 45 с), `stack_status` (до 20 с за вызов), `k8s_kubectl`

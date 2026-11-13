@@ -37,6 +37,7 @@ var untrustedMarkerOnly = map[string]string{
 	"vm_stop":             "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"vm_reboot":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"vm_resize":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
+	"vm_get":              "name, interfaces, security_groups, checks, exposure, image: the names of the VM, its interfaces, groups, subnets and the rules of the groups (descriptions too), not the output of a workload («Риск», conclusion 209, У5)",
 	"whoami":              "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
 	"backup_get":          "name, description, tags, resource_name, source, protection_plan: what the project's people named the backup, its tags, its source and its plan, not the output of a workload",
 	"backup_create":       "preview, will_create, backup, name: the names of the backup and of its source, not the output of a workload",

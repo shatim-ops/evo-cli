@@ -166,17 +166,10 @@ func Coverage(rules []*provision.SGRule, proto string, port int, cidr string) (c
 	}
 	exact := fmt.Sprintf("%d:%d", port, port)
 	for _, r := range rules {
-		if r == nil || r.Direction != "ingress" || inactive[r.State] {
+		if !Admits(r, proto, port) {
 			continue
 		}
 		rp := strings.ToLower(r.IPProtocol)
-		if rp != proto && rp != "" && rp != "any" {
-			continue
-		}
-		lo, hi, ok := portRange(r.PortRange)
-		if !ok || port < lo || port > hi {
-			continue
-		}
 		sameSource := r.RemoteIPPrefix == ""
 		if !sameSource {
 			src, err := netip.ParsePrefix(r.RemoteIPPrefix)
@@ -191,6 +184,22 @@ func Coverage(rules []*provision.SGRule, proto string, port int, cidr string) (c
 		covered, wider = true, true
 	}
 	return covered, wider
+}
+
+// Admits reports whether r is an active ingress rule that lets port of
+// proto in from its source: of the protocol or of any, its range holding
+// the port. Whose source it lets in is the caller's (Coverage,
+// OpenToInternet).
+func Admits(r *provision.SGRule, proto string, port int) bool {
+	if r == nil || r.Direction != "ingress" || inactive[r.State] {
+		return false
+	}
+	rp := strings.ToLower(r.IPProtocol)
+	if rp != proto && rp != "" && rp != "any" {
+		return false
+	}
+	lo, hi, ok := portRange(r.PortRange)
+	return ok && port >= lo && port <= hi
 }
 
 // portRange reads a rule's "from:to" (or one port).

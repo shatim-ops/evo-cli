@@ -102,10 +102,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_get",
-			Description: "Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface. Use it whenever you need a VM's IP: 'list' and 'status' read the local state and omit the private IP. Do not shell out to curl or ssh for it.",
+			Description: "Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface with its security groups and subnet. Use it whenever you need a VM's IP: 'list' and 'status' read the local state and omit the private IP. Do not shell out to curl or ssh for it. diagnose: true also reads the rules of each group and answers checks (ok, problem or unknown, each with its fact), exposure (ports open to the internet and the sources of port 22, as facts) and one result: ok, problem or incomplete. What evo could not read is in not_checked with why, never counted as ok. The answer names facts; changing a rule is a separate call with consent.",
 			InputSchema: objSchema(map[string]any{
-				"vm_id": strProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required."),
-				"name":  strProp("VM name (alternative to vm_id)."),
+				"vm_id":    strProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required."),
+				"name":     strProp("VM name (alternative to vm_id)."),
+				"diagnose": boolProp("Also read the rules of each security group of the VM and answer checks, exposure, result and not_checked."),
 			}),
 		},
 		{
