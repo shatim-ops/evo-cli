@@ -33,7 +33,8 @@ var sendsPastHTTP = map[string]string{
 var sendCalls = map[string]bool{"CombinedOutput": true, "Output": true, "Run": true, "Start": true, "Shell": true}
 
 // uncountedClients are the HTTP clients of production code whose requests
-// are not counted as writes of a call: "file<TAB>function" → why. Every
+// are not counted as writes of a call: "file<TAB>function" → why; such a
+// function sends GET or HEAD alone. Every
 // other client goes over httpretry.Transport or httpretry.UserAgent, which
 // count (httpretry.CountWrites).
 var uncountedClients = map[string]string{
@@ -98,8 +99,12 @@ func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 						if !ok {
 							return true
 						}
-						if id, ok := sel.X.(*ast.Ident); ok && local[id.Name] == "net/http" && sel.Sel.Name == "NewRequestWithContext" && len(x.Args) > 0 {
+						if id, ok := sel.X.(*ast.Ident); ok && local[id.Name] == "net/http" && sel.Sel.Name == "NewRequestWithContext" && len(x.Args) > 1 {
 							ofRequest[x.Args[0]] = true
+							// A client declared uncounted sends reads alone.
+							if _, declared := uncountedClients[key]; declared && !readMethodArg(x.Args[1], local) {
+								bad = append(bad, fset.Position(x.Pos()).String()+": a request of a client in uncountedClients that is not a GET or HEAD — its writes would not be counted")
+							}
 						}
 						if id, ok := sel.X.(*ast.Ident); ok && local[id.Name] == "github.com/shatim-ops/evo-cli/internal/httpretry" && sel.Sel.Name == "NotAChange" {
 							marks[key] = true
@@ -161,6 +166,17 @@ func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 	for _, b := range bad {
 		t.Error(b)
 	}
+}
+
+// readMethodArg tells a method argument that is http.MethodGet or
+// http.MethodHead.
+func readMethodArg(e ast.Expr, local map[string]string) bool {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && local[id.Name] == "net/http" && (sel.Sel.Name == "MethodGet" || sel.Sel.Name == "MethodHead")
 }
 
 // counts tells an http.Client literal whose Transport counts the writes of

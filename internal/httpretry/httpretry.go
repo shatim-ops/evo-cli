@@ -154,6 +154,17 @@ func Writes(ctx context.Context) (n int, counted bool) {
 	return int(c.n.Load()), true
 }
 
+// WriteRefused is the error first answered for the call of ctx: its
+// writes were kept back (CountWrites), and the answer of the call is this
+// error, not what its handler made of a request that never went out.
+// nil when nothing was kept back.
+func WriteRefused(ctx context.Context) error {
+	if c, ok := ctx.Value(writesKey{}).(*writes); ok {
+		return c.err
+	}
+	return nil
+}
+
 // NoteWrite counts one write of ctx right before it goes out. A write
 // that goes out other than over HTTP — kubectl, helm, a command over ssh
 // — is told by its sender; evo's HTTP clients tell their own. An error:
