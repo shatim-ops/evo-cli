@@ -137,6 +137,29 @@ func TestAgentSkill_MarksEveryToolTheServerDoesNotServe(t *testing.T) {
 	}
 }
 
+// A server bound to its projects (--allow-project) answers a repeat of a
+// delete NOT_FOUND, not already_deleted (H9, alreadyDeleted): the card it
+// gives says what its own deletes answer (FB19I-26 (а)). A server not
+// bound says already_deleted, as before.
+func TestAgentSkill_TheCardSaysWhatARepeatOfADeleteAnswersOnThisServer(t *testing.T) {
+	for _, bound := range []bool{false, true} {
+		r := New(nil)
+		if bound {
+			r.SetProjectBound()
+		}
+		tl, _ := r.Lookup("agent_skill")
+		text, _ := tl.Handler(context.Background(), map[string]any{"group": "pg"})
+		var m map[string]any
+		_ = json.Unmarshal([]byte(text), &m)
+		card, _ := m["skill"].(string)
+		says := strings.Contains(card, "a repeat answers `already_deleted`")
+		saysNotFound := strings.Contains(card, "a repeat answers `NOT_FOUND`")
+		if says == bound || saysNotFound != bound {
+			t.Errorf("bound=%v: the card says already_deleted %v, NOT_FOUND %v: %s", bound, says, saysNotFound, card)
+		}
+	}
+}
+
 // A server of one group (--toolsets k8s) serves every tool of it, and the
 // card still names tools of other groups in its other columns and notes
 // (snat_create, destroy, vm_list): each name of a registry tool in the

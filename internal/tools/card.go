@@ -24,7 +24,7 @@ import (
 // of the evo skill it goes with; the form of consent is said there, once.
 // false for a group that is not.
 func GroupCard(group string) (string, bool) {
-	return groupCard(group, true, nil)
+	return groupCard(group, true, nil, false)
 }
 
 // cardLimit is the bytes a card may take: it is read into the context of
@@ -37,7 +37,9 @@ const cardLimit = 6000
 // of a server does not name the way around that server's limits («Риск»,
 // conclusion 160). served, when the server serves a part of the tools
 // (--toolsets, --read-only), marks each tool it does not serve.
-func groupCard(group string, terminal bool, served func(string) bool) (string, bool) {
+// bound, a server bound to its projects (--allow-project), answers a
+// repeat of a delete NOT_FOUND (H9): the card says so.
+func groupCard(group string, terminal bool, served func(string) bool, bound bool) (string, bool) {
 	if !slices.Contains(Groups(), group) {
 		return "", false
 	}
@@ -53,14 +55,14 @@ func groupCard(group string, terminal bool, served func(string) bool) (string, b
 			command = "`evo " + t.CLI.Group + " " + t.CLI.Verb + "`"
 		}
 		if terminal {
-			rows = append(rows, fmt.Sprintf("| `%s` | %s | %s | %s |", t.Name, command, cardDoes(t), cardIDs(t.Name)))
+			rows = append(rows, fmt.Sprintf("| `%s` | %s | %s | %s |", t.Name, command, cardDoes(t, bound), cardIDs(t.Name)))
 		} else {
 			name := "`" + t.Name + "`"
 			if served != nil && !served(t.Name) {
 				name += " (not on this server)"
 				missing = true
 			}
-			rows = append(rows, fmt.Sprintf("| %s | %s | %s |", name, cardDoes(t), cardIDs(t.Name)))
+			rows = append(rows, fmt.Sprintf("| %s | %s | %s |", name, cardDoes(t, bound), cardIDs(t.Name)))
 		}
 		if f := ListFilters(t); f != nil {
 			filters = append(filters, "`"+t.Name+"` — "+strings.Join(f, ", "))
@@ -164,7 +166,7 @@ var cardNotes = map[string][]string{
 }
 
 // cardDoes is what a tool does, as the declarations say it.
-func cardDoes(t Tool) string {
+func cardDoes(t Tool, bound bool) string {
 	if c, ok := createdIDs[t.Name]; ok {
 		var parts []string
 		switch {
@@ -184,6 +186,10 @@ func cardDoes(t Tool) string {
 		return "creates: " + strings.Join(parts, "; ")
 	}
 	if _, ok := deleteTargets[t.Name]; ok {
+		if bound {
+			// alreadyDeleted on a server bound to its projects (H9).
+			return "deletes; a repeat answers `NOT_FOUND`"
+		}
 		return "deletes; a repeat answers `already_deleted`"
 	}
 	switch {
@@ -240,7 +246,7 @@ func (r *Registry) handleAgentSkill(ctx context.Context, args map[string]any) (s
 	}
 	// The command prints the card of a terminal; the server answers the
 	// one without it.
-	card, ok := groupCard(group, callerOf(ctx) != nil, r.served)
+	card, ok := groupCard(group, callerOf(ctx) != nil, r.served, r.projectBound)
 	if !ok {
 		return errResult(clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("unknown group %q", "неизвестная группа %q", group),
