@@ -183,8 +183,8 @@ const (
 // new id argument with no format fails the test, and so does a line whose
 // argument declares one now or is gone (CLAUDE.md §6, axis 1: what can be
 // known without a write is checked before the question).
-// Closes by 1.8: a line lives at most two versions (release plan 1.6,
-// «храповики со сроком»; TestMisses_HaveADeadline).
+// Closes by 1.10: moved from 1.8 by the owner's decision of 13.11 (#1590,
+// question 19; release plan 1.9, «Просроченные убывающие списки»).
 var idWithoutFormat = map[string]string{
 	"cert_get.id":                               idUnknown,
 	"cert_operation.operation_id":               idUnknown,
