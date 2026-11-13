@@ -1038,6 +1038,7 @@ g17_world
 cat >"$FAKE_DIR/http" <<H
 GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[{"id":"other","tagKeyValue":"env=prod","projectId":"p"}]}
 GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[{"id":"other","tagKeyValue":"env=prod","projectId":"p"},{"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}]}
+GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[{"id":"other","tagKeyValue":"env=prod","projectId":"p"},{"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}]}
 POST $RM/tags 200 {"id":"t1","tagKeyValue":"$G=probe","projectId":"p","customerId":"c-secret"}
 GET $RM/tags/t1[?]* 200 {"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}
 GET $RM/tags[?]projectId=p&key=* 200 {"tags":[{"id":"t1"}]}
@@ -1058,10 +1059,10 @@ H
 rc=0
 PROBE_WAIT=1 PROBES=g17 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-17: код" "$rc" 0
-want "Г-17: запросы по порядку" "$(calls)" "${TAGS}POST $RM/tags;GET $RM/tags/t1?projectId=p;GET $RM/tags?projectId=p&key=$G;PATCH $RM/tags/t1;POST /disks;GET /disks/d1;POST .1/vms;GET /vms/vm1;GET /vms?project_id=p&tag_ids=t1&limit=100;GET $RM/resources?projectIds=p&tagIds=t1&pageSize=100;POST /disks;GET /disks/d2;${TAGS}POST $RM/tags/t1/unassignResource;GET /disks/d1;POST $RM/tags/t1/assignResource;GET /disks/d1;DELETE $RM/tags/t1?projectId=p;DELETE $RM/tags/t1?projectId=p;GET /disks/d1;${TAGS}$SW"
+want "Г-17: запросы по порядку" "$(calls)" "${TAGS}POST $RM/tags;${TAGS}GET $RM/tags/t1?projectId=p;GET $RM/tags?projectId=p&key=$G;PATCH $RM/tags/t1;POST /disks;GET /disks/d1;POST .1/vms;GET /vms/vm1;GET /vms?project_id=p&tag_ids=t1&limit=100;GET $RM/resources?projectIds=p&tagIds=t1&pageSize=100;POST /disks;GET /disks/d2;${TAGS}POST $RM/tags/t1/unassignResource;GET /disks/d1;POST $RM/tags/t1/assignResource;GET /disks/d1;DELETE $RM/tags/t1?projectId=p;DELETE $RM/tags/t1?projectId=p;GET /disks/d1;${TAGS}$SW"
 want "Г-17: тело создания тега" "$(jq -c . "$FAKE_DIR/body.POST.https:..resource-manager.api.cloud.ru.v1.tags" 2>/dev/null)" "{\"key\":\"$G\",\"value\":\"probe\",\"description\":\"evo e2e probe\",\"projectId\":\"p\"}"
 want "Г-17: ВМ и оба диска удалены" "$(grep -c '^destroy yes=1' "$FAKE_DIR/evo-calls") $(grep -c '^disk_delete yes=1' "$FAKE_DIR/evo-calls")" "1 2"
-for s in 'Г-17: чтение тегов до записи.*тегов: 1.*тегов другого проекта в ответе: 0' "Г-17: создание тега.*пара в ответе: «$G=probe», проект тега: проект пробы" 'Г-17: чтение тега.*отбор по ключу — HTTP 200, найдено: 1' 'Г-17: изменение тега.*HTTP 200' 'Г-17: диск с tag_ids в запросе создания.*HTTP 201; tags в карточке диска: 1, поля тега: \["id","name"\]' 'Г-17: ВМ с tag_ids в запросе создания.*tags в карточке ВМ: 1.*отбор ВМ по tag_ids — HTTP 200, найдено: 1' 'Г-17: ресурсы по тегу в «Менеджере».*найдено: 2, виды: \["disk","vm"\]' 'Г-17: диск с tag_names.*id тега тот же, что у тега «Менеджера»: да; тегов с ключом пробы в «Менеджере»: 1' 'Г-17: снятие и назначение тега диску.*снятие — HTTP 200.*назначение — HTTP 200' 'Г-17: удаление тега, назначенного диску.*HTTP 200, повтор — HTTP 404.*tags диска после удаления тега: 1.*в «Менеджере»: 0'; do
+for s in 'Г-17: чтение тегов до записи.*тегов: 1.*тегов другого проекта в ответе: 0' "Г-17: создание тега.*пара в ответе: «$G=probe», проект тега: проект пробы" 'Г-17: чтение тега.*список уборки показывает созданный тег: да.*отбор по ключу — HTTP 200, найдено: 1' 'Г-17: изменение тега.*HTTP 200' 'Г-17: диск с tag_ids в запросе создания.*HTTP 201; tags в карточке диска: 1, поля тега: \["id","name"\]' 'Г-17: ВМ с tag_ids в запросе создания.*tags в карточке ВМ: 1.*отбор ВМ по tag_ids — HTTP 200, найдено: 1' 'Г-17: ресурсы по тегу в «Менеджере».*найдено: 2, виды: \["disk","vm"\]' 'Г-17: диск с tag_names.*id тега тот же, что у тега «Менеджера»: да; тегов с ключом пробы в «Менеджере»: 1' 'Г-17: снятие и назначение тега диску.*снятие — HTTP 200.*назначение — HTTP 200' 'Г-17: удаление тега, назначенного диску.*HTTP 200, повтор — HTTP 404.*tags диска после удаления тега: 1.*в «Менеджере»: 0'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-17: нет строки «$s»"; grep 'Г-17' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 done
 # Тело ВМ несёт tag_ids; в журнале нет id и значений полей тега (в объекте
@@ -1096,6 +1097,7 @@ g17_world
 cat >"$FAKE_DIR/http" <<H
 GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[]}
 GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[{"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}]}
+GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[{"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}]}
 POST $RM/tags 200 {"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}
 POST! /disks 422 {"code":"tag_not_found","message":"no such tag"}
 POST! /disks 201 {"id":"d1"}
@@ -1125,6 +1127,26 @@ rc=0
 PROBE_WAIT=1 PROBES="g17 g17nonames" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-17, без tag_names: один запрос диска" "$(grep -c '^POST /disks$' "$FAKE_DIR/calls")" 1
 grep -q 'Г-17: диск с tag_names.*не повторяется: остаток неубираем' "$tmp/out" || { echo "FAIL: Г-17: пропуск tag_names не назван"; fail=1; }
+# У7: тег создан, а список, которым читает уборка, его не показывает (в этом
+# мире список отвечает объектом без tags): предупреждение, и счёт «тегов
+# пробы в Менеджере» — «не установлено», а не зелёный ноль. Свой тег проба
+# удаляет по id.
+g17_world
+cat >"$FAKE_DIR/http" <<H
+GET $RM/tags[?]* 200 {}
+POST $RM/tags 200 {"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}
+POST /disks 201 {"id":"d1"}
+GET /disks/d1 200 {"id":"d1","tags":[]}
+POST .1/vms 422 {"code":"x","message":"no"}
+DELETE $RM/tags/t1[?]* 200 {}
+H
+rc=0
+PROBE_WAIT=1 PROBES="g17 g17nonames" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-17, список слеп: код" "$rc" 0
+for s in '::warning::Г-17: список тегов не показывает созданный тег: уборка по списку слепа' 'Г-17: чтение тега.*список уборки показывает созданный тег: нет' 'Г-17: удаление тега, назначенного диску.*тегов с ключом пробы в «Менеджере»: не установлено'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-17, список слеп: нет строки «$s»"; grep 'Г-17' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+done
+want "Г-17, список слеп: свой тег удалён по id" "$(grep -c "^DELETE $RM/tags/t1?projectId=p$" "$FAKE_DIR/calls")" 2
 
 # Уборка области: тег пробы, оставшийся после обрыва, удаляется по ключу;
 # чужой тег проекта — нет. Тег читается постранично.

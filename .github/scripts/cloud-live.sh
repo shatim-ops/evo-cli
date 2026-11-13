@@ -2762,15 +2762,22 @@ probe_g10() {
 # g17nonames во входе probes — вторым прогоном, если первый оставил тег,
 # которого «Менеджер» не видит (У5).
 probe_g17() {
-	local zid=$1 n=$prefix-g17 tag='' disk='' disk2='' vm='' sn r wider n1 same id did left=0
+	local zid=$1 n=$prefix-g17 tag='' disk='' disk2='' vm='' sn r wider n1 same id did left=0 blind=0
 	iam_token || { gap "Г-17" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap "Г-17" "нет PROJECT"; return 0; }
 	# tag_of — тег в ответе: сам объект или в поле tag.
 	tag_of() { jq -r "(.tag? // .) | $1" "$tmp/api.json" 2>/dev/null || true; }
 	# tags_n — сколько тегов в карточке ресурса Compute (последний ответ).
 	tags_n() { jq -r 'if has("tags") then (.tags | if type == "array" then "\(length), поля тега: \((.[0]? // {}) | keys | tojson)" else type end) else "поля tags нет" end' "$tmp/api.json" 2>/dev/null || echo '?'; }
-	# mine_n — сколько тегов с ключом пробы видит «Менеджер» («?» — список не прочитан).
-	mine_n() { local o; if o=$(lst_tags "$n"); then grep -c . <<<"$o" || true; else echo '?'; fi; }
+	# mine_n — сколько тегов с ключом пробы видит «Менеджер» («?» — список не
+	# прочитан). Список, который не показал только что созданный тег
+	# (blind=1), счётом остатков не служит: «не установлено» (У7).
+	mine_n() {
+		local o
+		if [ "$blind" = 1 ]; then echo "не установлено"
+		elif o=$(lst_tags "$n"); then grep -c . <<<"$o" || true
+		else echo '?'; fi
+	}
 	api GET "$RM/tags?projectId=$PROJECT&pageSize=100"
 	case "$code" in 2??) ;; *)
 		gap "Г-17" "первое чтение тегов не прошло: $(brief) — запись не начинаю"
@@ -2798,8 +2805,16 @@ probe_g17() {
 		gap "Г-17" "тег шире проекта — не покрыто: созданный тег не в проекте пробы; удаление своего тега — $(brief)"
 		return 0
 	fi
+	# Список, которым читает уборка, обязан показать созданный тег: иначе
+	# «тегов пробы: 0» после прогона ничего не значит — список отдаётся под
+	# другим полем, с другим ключом или не весь (заключение «Риска» 183, У7).
+	# Свой тег проба всё равно удаляет по id из ответа создания.
+	if ! lst_tags "$n" 2>/dev/null | cut -f1 | grep -qxF "$tag"; then
+		blind=1
+		echo "::warning::Г-17: список тегов не показывает созданный тег: уборка по списку слепа — остаток тега пробы она не увидит; счёт «тегов пробы в Менеджере» в этом прогоне не установлен"
+	fi
 	api GET "$RM/tags/$tag?projectId=$PROJECT"
-	r="чтение по id — HTTP $code$(why_tail), поля: $(jq -c '(.tag? // .) | if type == "object" then keys else type end' "$tmp/api.json" 2>/dev/null || echo '?')"
+	r="список уборки показывает созданный тег: $([ "$blind" = 0 ] && echo да || echo нет); чтение по id — HTTP $code$(why_tail), поля: $(jq -c '(.tag? // .) | if type == "object" then keys else type end' "$tmp/api.json" 2>/dev/null || echo '?')"
 	api GET "$RM/tags?projectId=$PROJECT&key=$n"
 	ok "Г-17: чтение тега" "$r; отбор по ключу — HTTP $code$(why_tail), найдено: $(jq -r '.tags? | if type == "array" then length else "?" end' "$tmp/api.json" 2>/dev/null || echo '?')"
 	api PATCH "$RM/tags/$tag" "$(jq -nc --arg p "$PROJECT" '{projectId: $p, description: "evo e2e probe, changed"}')"
