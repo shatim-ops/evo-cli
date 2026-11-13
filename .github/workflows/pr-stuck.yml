@@ -1,0 +1,41 @@
+name: pr-stuck
+
+# Открытый PR, который стоит молча, получает строку (журнал 1.9, «Тихое
+# красное»). Два случая без красной отметки и без события для того, кто
+# следит за PR: конфликт с main — GitHub не запускает ci вовсе (#1574,
+# 12.11); job прогона ci отменён без раннера — не красный и не пройденный
+# (#1536 простоял так два часа, #1543 — полтора). Обход — по расписанию,
+# дважды в час, и вручную; строка — одна на случай и голову PR
+# (.github/scripts/pr_stuck.sh). Событий PR среди триггеров нет: workflow
+# идёт только из main, код PR с его токеном не выполняется, текст PR в
+# строку не попадает (internal/workflows, TestWorkflows_StuckPullRequestsAreTold).
+
+on:
+  schedule:
+    - cron: "13,43 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pr-stuck
+  cancel-in-progress: false
+
+jobs:
+  round:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Прогоны и их job — чтобы найти job без раннера.
+      actions: read
+      # Строка в PR и чтение его комментариев (метка «уже сказано»).
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: обход открытых PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: .github/scripts/pr_stuck.sh
