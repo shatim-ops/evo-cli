@@ -7,6 +7,9 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -126,5 +129,41 @@ func TestIntent_ReadsOfTheRecordsByACall(t *testing.T) {
 		if reads != c.reads {
 			t.Errorf("%s %v read the records %d times, want %d", c.tool, c.args, reads, c.reads)
 		}
+	}
+}
+
+// readPending is the seam the test above counts by. Nothing of the product
+// assigns it: a build that put another function there would switch the
+// reading of the records off («Риск», a word on 428d400). The files of the
+// package that are not tests name it twice — its declaration and its two
+// calls in pendingIn — and assign it nowhere.
+func TestIntent_OnlyTestsReplaceTheReadingOfTheRecords(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assigned := regexp.MustCompile(`(^|[^.\w])readPending\s*(=[^=]|:=)`)
+	declared := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			if !assigned.MatchString(line) {
+				continue
+			}
+			if strings.HasPrefix(line, "var readPending = intent.Pending") {
+				declared++
+				continue
+			}
+			t.Errorf("%s:%d assigns readPending: only a test replaces the reading of the records\n%s", f, i+1, line)
+		}
+	}
+	if declared != 1 {
+		t.Errorf("readPending is declared %d times as intent.Pending, want once", declared)
 	}
 }
