@@ -19,6 +19,7 @@ import (
 	stderrors "errors"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -84,10 +85,11 @@ const (
 // address; a refusal (Refused) is its error — the caller may send another.
 // Any other outcome — no answer, a 5xx, an answer without an id, a cut —
 // sends nothing more: the address is looked for by its exact name among
-// those own takes, and one not found is a LostError. interval is the pause
-// between the reads of a cut call.
+// those own takes (Lookup), and one not found is a LostError. interval is
+// the pause between the reads of a cut call; say, when not nil, shows what
+// the call does while it reads.
 func Reserve(ctx context.Context, cloud provision.CloudAPI, req provision.CreateFloatingIPRequest,
-	own func(provision.FloatingIP) bool, interval time.Duration) (*provision.FloatingIP, error) {
+	own func(provision.FloatingIP) bool, interval time.Duration, say func(string)) (*provision.FloatingIP, error) {
 	fip, err := cloud.CreateFloatingIP(ctx, req)
 	if err == nil && fip != nil && fip.ID != "" {
 		return fip, nil
@@ -98,9 +100,26 @@ func Reserve(ctx context.Context, cloud provision.CloudAPI, req provision.Create
 	if err == nil {
 		err = stderrors.New("the create answered no floating IP id")
 	}
+	if f := Lookup(ctx, cloud, req.ProjectID, req.Name, own, interval, say); f != nil {
+		return f, nil
+	}
+	return nil, &LostError{Name: req.Name, Err: err}
+}
+
+// Lookup reads the address a create with no answer may have made, by its
+// exact name (Find). The read outlives a cut of the call (its context
+// done), and then is made three times, interval apart: the server may make
+// the address a moment after the client hung up (review Grok on #85). It
+// says so before it reads again.
+func Lookup(ctx context.Context, cloud provision.CloudAPI, projectID, name string,
+	own func(provision.FloatingIP) bool, interval time.Duration, say func(string)) *provision.FloatingIP {
 	attempts := 1
 	if ctx.Err() != nil {
 		attempts = lookupAttempts
+		if say != nil {
+			say(i18n.Tf("Looking for floating IP %s made before the interruption...",
+				"Ищу floating IP %s, созданный до прерывания...", name))
+		}
 	}
 	lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lookupWait)
 	defer cancel()
@@ -108,15 +127,15 @@ func Reserve(ctx context.Context, cloud provision.CloudAPI, req provision.Create
 		if i > 0 {
 			select {
 			case <-lctx.Done():
-				return nil, &LostError{Name: req.Name, Err: err}
+				return nil
 			case <-time.After(interval):
 			}
 		}
-		if f := Find(lctx, cloud, req.ProjectID, req.Name, own); f != nil {
-			return f, nil
+		if f := Find(lctx, cloud, projectID, name, own); f != nil {
+			return f
 		}
 	}
-	return nil, &LostError{Name: req.Name, Err: err}
+	return nil
 }
 
 // Find is the address of the project with exactly that name that own

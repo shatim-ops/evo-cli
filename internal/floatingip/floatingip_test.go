@@ -87,7 +87,7 @@ func TestReserve_SendsOnce(t *testing.T) {
 			if tc.lag {
 				c.lag = 10
 			}
-			f, err := Reserve(context.Background(), c, req, Free, time.Millisecond)
+			f, err := Reserve(context.Background(), c, req, Free, time.Millisecond, nil)
 			got := "ok"
 			switch _, lost := AsLost(err); {
 			case lost:

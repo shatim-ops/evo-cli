@@ -50,7 +50,7 @@ var silentWaits = map[string]struct{ why, item string }{
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {why: silentLoop},
 	// After a Ctrl-C during the create, up to 3 lookups 2 s apart, said
 	// before («Looking for floating IP … made before the interruption»).
-	"internal/engine/deploy.go\tEngine.findBootFIP": {why: silentShort},
+	"internal/floatingip/floatingip.go\tLookup": {why: silentShort},
 }
 
 // waitCalls are the calls that make a loop a wait. A loop that only

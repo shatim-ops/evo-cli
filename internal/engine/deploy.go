@@ -1246,7 +1246,7 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 			ProjectID:          projectID,
 			InterfaceID:        ifaceID,
 			AvailabilityZoneID: azID,
-		}, floatingip.FreeOrOf(vmID, ifaceID), t.FIPRetryInterval)
+		}, floatingip.FreeOrOf(vmID, ifaceID), t.FIPLookupInterval, func(line string) { report("%s", line) })
 		if err == nil || !floatingip.Refused(err) {
 			break
 		}
@@ -1327,7 +1327,7 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 		Name:               name,
 		ProjectID:          projectID,
 		AvailabilityZoneID: azID,
-	}, floatingip.Free, e.timings().FIPLookupInterval)
+	}, floatingip.Free, e.timings().FIPLookupInterval, e.Printer.StepDone)
 	if lost, ok := floatingip.AsLost(err); ok {
 		floatingip.Note(sf, state.LostFloatingIP{Name: lost.Name, ProjectID: projectID, VMName: vmName,
 			RequestedAt: clock.Now(), CreatedBy: e.Maker()})
@@ -1469,40 +1469,6 @@ func (e *Engine) leftBootFIP(ctx context.Context, projectID, vmName string) *pro
 		}
 	}
 	return left
-}
-
-// findBootFIP looks the boot FIP up by its unique name after a failed
-// create. The lookup outlives a Ctrl-C during the POST (ctx cancelled), and
-// then tries three times: the server may create the address a moment after
-// the client hung up (review Grok on #85).
-func (e *Engine) findBootFIP(ctx context.Context, projectID, name string) *provision.FloatingIP {
-	lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-	defer cancel()
-	attempts := 1
-	if ctx.Err() != nil {
-		attempts = 3
-		e.Printer.StepDone(i18n.Tf("Looking for floating IP %s made before the interruption...",
-			"Ищу floating IP %s, созданный до прерывания...", name))
-	}
-	for i := 0; i < attempts; i++ {
-		if i > 0 {
-			select {
-			case <-lctx.Done():
-				return nil
-			case <-time.After(e.timings().FIPLookupInterval):
-			}
-		}
-		fips, err := e.Cloud.ListFloatingIPs(lctx, projectID)
-		if err != nil {
-			continue
-		}
-		for _, f := range fips {
-			if f.Name == name && f.ID != "" {
-				return f
-			}
-		}
-	}
-	return nil
 }
 
 // releaseBootFIP deletes a boot FIP whose VM was not created or was deleted.

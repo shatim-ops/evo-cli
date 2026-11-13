@@ -495,7 +495,7 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		ProjectID:          plan.ProjectID,
 		InterfaceID:        ifaceID,
 		AvailabilityZoneID: plan.VM.Zone.ID,
-	}, own, time.Second)
+	}, own, time.Second, nil)
 	if e == nil && f != nil && f.ID != "" {
 		return f.IPAddress, f.ID, "public IP attached (created a new floating IP)"
 	}

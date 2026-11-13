@@ -376,8 +376,8 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		if sf, err := state.Read(state.DefaultPath(eng.StateDir)); err == nil {
 			for _, m := range sf.LostFloatingIPs {
 				checks = append(checks, DoctorCheck{Name: "lost floating IP", Status: CheckWarn,
-					Detail: i18n.Tf("floating IP %s for VM %s, requested %s, got no answer from the cloud and may be billed: check list_floating_ips for the name; the next deploy of the VM takes it if it is listed, destroy of the VM releases it",
-						"floating IP %s для ВМ %s, запрошенный %s, не получил ответа облака и может тарифицироваться: проверьте 'evo vpc fips' по имени; следующий deploy этой ВМ возьмёт его, если он в списке, destroy ВМ освободит его",
+					Detail: i18n.Tf("floating IP %s for VM %s, requested %s, got no answer from the cloud and may be billed: check list_floating_ips for the name; the next deploy of the VM takes it if it is listed; whether to release it (release_floating_ip) — ask the person",
+						"floating IP %s для ВМ %s, запрошенный %s, не получил ответа облака и может тарифицироваться: проверьте 'evo vpc fips' по имени; следующий deploy этой ВМ возьмёт его, если он в списке; освобождать ли его ('evo vpc fip-release') — спросите человека",
 						m.Name, firstNonEmptyStr(m.VMID, m.VMName), m.RequestedAt.Local().Format("02.01.2006 15:04"))})
 			}
 		}

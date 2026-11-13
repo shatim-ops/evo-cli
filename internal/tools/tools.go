@@ -3346,7 +3346,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			for _, m := range miss {
 				lostMissing = append(lostMissing, m.Name)
 				msg += "; floating IP " + m.Name + ", requested " + m.RequestedAt.UTC().Format(time.RFC3339) +
-					" with no answer, is not listed: if list_floating_ips shows it later, release it (release_floating_ip)"
+					" with no answer, is not listed: if list_floating_ips shows it later, it is billed — whether to release it (release_floating_ip), ask the person"
 			}
 			if lerr != nil {
 				msg += fmt.Sprintf("; the floating IPs requested with no answer were not checked (%v): destroy checks them again", lerr)

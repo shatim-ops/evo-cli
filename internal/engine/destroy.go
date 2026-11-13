@@ -307,8 +307,8 @@ func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *
 	}
 	for _, m := range miss {
 		missing = append(missing, m.Name)
-		e.Printer.Warning(i18n.Tf("floating IP %s, requested %s with no answer, is not listed: if list_floating_ips shows it later, release it (release_floating_ip)",
-			"floating IP %s, запрошенный %s без ответа облака, в списке не найден: если 'evo vpc fips' покажет его позже, освободите его ('evo vpc fip-release')", m.Name, m.RequestedAt.Local().Format("02.01.2006 15:04")))
+		e.Printer.Warning(i18n.Tf("floating IP %s, requested %s with no answer, is not listed: if list_floating_ips shows it later, it is billed — whether to release it (release_floating_ip), ask the person",
+			"floating IP %s, запрошенный %s без ответа облака, в списке не найден: если 'evo vpc fips' покажет его позже, он тарифицируется — освобождать ли его ('evo vpc fip-release'), спросите человека", m.Name, m.RequestedAt.Local().Format("02.01.2006 15:04")))
 	}
 	if err != nil {
 		e.Printer.Warning(i18n.Tf("the floating IPs requested with no answer were not checked (%v); the next destroy checks them again",
