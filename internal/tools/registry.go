@@ -241,11 +241,9 @@ type callRecords struct {
 	pending []intent.Intent
 	read    bool
 
-	// open is the record the call opened (beginIntent), with hasOpen;
-	// sent tells that the call said its write goes out (markSent).
+	// open is the record the call opened (beginIntent), with hasOpen.
 	open    intent.Intent
 	hasOpen bool
-	sent    bool
 
 	// resolved is what the call has resolved of the cloud by a read that
 	// more than one of its layers needs (onceACall).
@@ -305,31 +303,27 @@ func forgetPending(ctx context.Context) {
 	}
 }
 
-// markSent is said by a handler whose writes evo's transport does not
-// count (changeRule.marksSend) right before its write goes out: the record
-// of the call is marked so at once — a process killed after it leaves the
-// mark — and the layer knows the call sent something when it ends with no
-// outcome.
-func markSent(ctx context.Context) {
+// markSent is told by the counter of the call's writes
+// (httpretry.CountWrites) right before its first write goes out: the
+// record the call opened is marked so at once — a process killed after
+// it leaves the mark. An error: the mark is not written, and the write
+// does not go out.
+func markSent(ctx context.Context) error {
 	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
-	if !ok {
-		return
+	if !ok || !c.hasOpen || c.open.Sent {
+		return nil
 	}
-	c.sent = true
-	if c.hasOpen && !c.open.Sent {
-		c.open.Sent = true
-		intent.MarkSent(c.open)
+	if err := intent.MarkSent(c.open); err != nil {
+		return err
 	}
+	c.open.Sent = true
+	return nil
 }
 
-// callSent tells whether the call of ctx sent a write: evo's transport
-// counted one, or the handler said so (markSent).
+// callSent tells whether the call of ctx sent a write (httpretry.Writes).
 func callSent(ctx context.Context) bool {
-	if n, _ := httpretry.Writes(ctx); n > 0 {
-		return true
-	}
-	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
-	return ok && c.sent
+	n, _ := httpretry.Writes(ctx)
+	return n > 0
 }
 
 type callRecordsKey struct{}

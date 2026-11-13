@@ -80,7 +80,8 @@ func fetchOIDCTokenOnce(ctx context.Context, tokenURL, keyID, secret string) (to
 		"client_id":     {keyID},
 		"client_secret": {secret},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	// A token changes nothing in the cloud: not a write of the call.
+	req, err := http.NewRequestWithContext(httpretry.NotAChange(ctx), http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", false, err
 	}

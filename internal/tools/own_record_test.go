@@ -15,6 +15,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -41,7 +42,7 @@ func TestIntent_ACallsOwnRecordIsNotInItsOwnAnswer(t *testing.T) {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return `{"status":"error","reason":"USAGE"}`, true
 		}
-		markSent(ctx)
+		_ = httpretry.NoteWrite(ctx)
 		sent++
 		return `{"status":"error","error":"reboot: API_ERROR: 502","reason":"API_ERROR"}`, true
 	}))

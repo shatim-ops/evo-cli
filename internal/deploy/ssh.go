@@ -16,6 +16,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -191,6 +192,11 @@ func (d *SSHDeployer) exec(ctx context.Context, cmd string, stdin []byte) (strin
 		err    error
 	}
 	ch := make(chan execResult, 1)
+	// The command may change the host: a write of the call
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return "", err
+	}
 	go func() {
 		out, execErr := session.CombinedOutput(cmd)
 		ch <- execResult{output: out, err: execErr}
@@ -235,6 +241,11 @@ func (d *SSHDeployer) ExecStream(ctx context.Context, cmd string, stdout, stderr
 	}
 	defer session.Close()
 
+	// The command may change the host: a write of the call
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	if err := session.Start(cmd); err != nil {
 		return clerrors.Wrap(clerrors.CodeSSHTimeout, i18n.T("failed to start remote command", "не удалось запустить команду на удалённом хосте"), i18n.T("Check the remote host state.", "Проверьте состояние удалённого хоста."), err)
 	}

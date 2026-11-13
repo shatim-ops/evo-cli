@@ -367,8 +367,8 @@ func TestVMReboot_PreviewAfterACutCallSaysSoAndTheYesIsSent(t *testing.T) {
 }
 
 // The declaration of the layer and the table of power actions say one
-// thing: every power tool is declared to the layer, says when its command
-// goes out (marksSend), and tells the outcome of a cut call by the state
+// thing: every power tool is declared to the layer and tells the outcome
+// of a cut call by the state
 // of the VM (settledBy) — except an action whose start and target are one
 // state, every send of which is a change: it is asked about always («Риск»,
 // conclusion 177, У13; the consent of «разработка A» of 13.11 to the lines
@@ -376,8 +376,8 @@ func TestVMReboot_PreviewAfterACutCallSaysSoAndTheYesIsSent(t *testing.T) {
 func TestVMPower_EverySendIsAChangeIsDeclaredToTheIntentLayer(t *testing.T) {
 	for tool, act := range vmPowerActions {
 		rule, declared := everySendIsAChange[tool]
-		if !declared || !rule.marksSend || (rule.settledBy == nil) != act.everySendIsAChange() {
-			t.Errorf("%s: from %s, to %s: declared %v, marksSend %v, settledBy %v", tool, act.from, act.to, declared, rule.marksSend, rule.settledBy != nil)
+		if !declared || (rule.settledBy == nil) != act.everySendIsAChange() {
+			t.Errorf("%s: from %s, to %s: declared %v, settledBy %v", tool, act.from, act.to, declared, rule.settledBy != nil)
 		}
 	}
 }
