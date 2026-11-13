@@ -55,6 +55,12 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	// A delete asks consent for what the cloud has; what it does not have
 	// is already deleted (D26): these look their resource up in its list.
 	"disk_delete": func(t *testing.T) string { return liveDelete(t, "disk_delete", map[string]any{"disk_id": liveID}) },
+	// backup_restore reads the backup — a disk's, created — and the disks
+	// of the project before its question.
+	"backup_restore": func(t *testing.T) string {
+		_, text, _ := backupRestore(t, &restoreWorld{}, nil)
+		return text
+	},
 	// subnet_create needs the project's VPC and zone (subnet_test.go).
 	"subnet_create": func(t *testing.T) string {
 		_, text, _ := callNamed(t, subnetRegistry(t, newSubnetAPI()), "subnet_create", map[string]any{"name": "web", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1"})

@@ -132,6 +132,10 @@ var everySendIsAChange = map[string]string{
 	// billed with no term («Риск», conclusion 164, У5; the audit of #1544,
 	// Б2).
 	"backup_create": "backup_list",
+	// A restore makes a new disk each time it is sent: the disk of a cut
+	// one may come and be billed though the list does not show it yet
+	// («Риск», conclusion 164, У5; the probe of #1580).
+	"backup_restore": "disk_list",
 }
 
 // cutCalls are the records of this caller's own cut calls of the tool name

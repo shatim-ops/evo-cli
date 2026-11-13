@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -15,7 +16,11 @@ import (
 var _ provision.BackupAPI = parityCloud{}
 
 func (parityCloud) ListBackups(context.Context, string) ([]map[string]any, error) {
-	return []map[string]any{parityBackup()}, nil
+	var disk map[string]any
+	if err := json.Unmarshal([]byte(parityDiskBackupJSON), &disk); err != nil {
+		return nil, err
+	}
+	return []map[string]any{parityBackup(), disk}, nil
 }
 
 // GetBackup reads the HTTP world when the parity cloud is the real adapter
@@ -24,6 +29,11 @@ func (parityCloud) ListBackups(context.Context, string) ([]map[string]any, error
 func (p parityCloud) GetBackup(ctx context.Context, id string) (map[string]any, error) {
 	if b, ok := p.CloudAPI.(provision.BackupAPI); ok {
 		return b.GetBackup(ctx, id)
+	}
+	if id == parityDiskBackup {
+		var b map[string]any
+		err := json.Unmarshal([]byte(parityDiskBackupJSON), &b)
+		return b, err
 	}
 	b := parityBackup()
 	b["id"] = id
@@ -67,6 +77,10 @@ func (c backupKeptCloud) DeleteBackup(ctx context.Context, id string) error {
 	return parityCloud{}.DeleteBackup(ctx, id)
 }
 
+func (c backupKeptCloud) RestoreBackup(ctx context.Context, id string, cfg provision.RestoreDiskConfig) (map[string]any, error) {
+	return parityCloud{}.RestoreBackup(ctx, id, cfg)
+}
+
 func (c backupKeptCloud) CreateBackup(ctx context.Context, req provision.CreateBackupReq) (map[string]any, error) {
 	if b, ok := c.CloudAPI.(provision.BackupAPI); ok {
 		return b.CreateBackup(ctx, req)
@@ -86,4 +100,13 @@ func (p parityCloud) DeleteBackup(ctx context.Context, id string) error {
 		return b.DeleteBackup(ctx, id)
 	}
 	return nil
+}
+
+// RestoreBackup goes to the HTTP world when the parity cloud is the real
+// adapter over it, as every other write.
+func (p parityCloud) RestoreBackup(ctx context.Context, id string, cfg provision.RestoreDiskConfig) (map[string]any, error) {
+	if b, ok := p.CloudAPI.(provision.BackupAPI); ok {
+		return b.RestoreBackup(ctx, id, cfg)
+	}
+	return parityBackup(), nil
 }

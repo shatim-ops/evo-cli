@@ -28,6 +28,7 @@ var takenArgs = map[string]map[string]any{
 	"cert_issue_le":     {"name": "web", "dns_names": []any{"web.example.com"}},
 	"disk_create":       {"name": "web", "size_gb": float64(20)},
 	"backup_create":     {"name": "web", "disk_id": contractID},
+	"backup_restore":    {"name": "web", "backup_id": contractID},
 	"dns_record_create": {"zone_id": takenBefore, "name": "web", "record_type": "A", "value": "192.0.2.10"},
 	"dns_zone_create":   {"name": "web", "domain": "web.example.com."},
 	"image_create":      {"name": "web", "disk_id": contractID},

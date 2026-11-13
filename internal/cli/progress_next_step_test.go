@@ -25,6 +25,9 @@ var statusGoingOn = map[string]bool{
 	// vm_start (D99): the VM is on its way; and the state of another
 	// change has not settled by the limit of the call.
 	"starting": true, "waiting": true,
+	// backup_restore: the platform took the restore, the disk is on its
+	// way or not listed yet.
+	"restoring": true,
 	// vm_stop (D99, §4).
 	"stopping": true,
 	// k8s_nodepool_scale (D99): the pool is on its way to the count.

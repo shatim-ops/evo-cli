@@ -27,6 +27,35 @@ type backupCloud struct {
 	*faultCloud
 	bmu     sync.Mutex
 	backups []map[string]any
+	// disks are the disks restores made: billed, and listed by the disk
+	// list of the world.
+	disks []map[string]any
+}
+
+// ListDisks lists the disks the restores made.
+func (c *backupCloud) ListDisks(context.Context, string) ([]map[string]any, error) {
+	if err := c.gate("ListDisks"); err != nil {
+		return nil, err
+	}
+	c.bmu.Lock()
+	defer c.bmu.Unlock()
+	return append([]map[string]any(nil), c.disks...), nil
+}
+
+// RestoreBackup makes a new disk of the backup, through the gate as the
+// rest: a restore whose answer is lost made its disk all the same.
+func (c *backupCloud) RestoreBackup(_ context.Context, id string, cfg provision.RestoreDiskConfig) (map[string]any, error) {
+	err := c.gate("RestoreBackup")
+	if err != nil && !errors.Is(err, errFaultLost) && !errors.Is(err, errFaultEmpty) {
+		return nil, err
+	}
+	c.bmu.Lock()
+	c.disks = append(c.disks, map[string]any{"id": faultID(0x70 + len(c.disks)), "name": cfg.Name, "state": "available", "size": float64(10)})
+	c.bmu.Unlock()
+	if errors.Is(err, errFaultLost) {
+		return nil, lostAnswer(err, clerrors.New(clerrors.CodeAPIUnreachable, "lost response", "network"))
+	}
+	return map[string]any{"id": id, "state": "created"}, nil
 }
 
 func (c *backupCloud) ListBackups(context.Context, string) ([]map[string]any, error) {
@@ -94,8 +123,15 @@ func (w backupFaultWorld) billed() []faultBilled {
 	defer w.bmu.Unlock()
 	var out []faultBilled
 	for _, b := range w.backups {
+		if b["seed"] == true {
+			continue // there before the call: not its own
+		}
 		id := fmt.Sprint(b["id"])
 		out = append(out, faultBilled{what: "backup " + id, names: []string{id}})
+	}
+	for _, d := range w.disks {
+		id := fmt.Sprint(d["id"])
+		out = append(out, faultBilled{what: "disk " + id, names: []string{id}})
 	}
 	return out
 }
@@ -105,6 +141,23 @@ func (w backupFaultWorld) billed() []faultBilled {
 func backupCase(tool string, args map[string]any) faultMatrixCase {
 	return faultMatrixCase{tool: tool, args: args, world: func(t *testing.T, cancel context.CancelFunc) (faultWorld, *Registry, string) {
 		cloud := &backupCloud{faultCloud: &faultCloud{cancel: cancel}}
+		r, dir := faultToolsRegistryOver(t, cloud)
+		return backupFaultWorld{cloud}, r, dir
+	}}
+}
+
+// faultBackupID is the backup of a disk the restore world holds before the
+// call: created, of the compute fake's disk.
+var faultBackupID = faultID(0x5f)
+
+// backupRestoreCase is a case of the backup world with a created backup of
+// a disk to restore from.
+func backupRestoreCase(args map[string]any) faultMatrixCase {
+	return faultMatrixCase{tool: "backup_restore", args: args, world: func(t *testing.T, cancel context.CancelFunc) (faultWorld, *Registry, string) {
+		cloud := &backupCloud{faultCloud: &faultCloud{cancel: cancel}}
+		cloud.backups = []map[string]any{{"id": faultBackupID, "name": "before-change", "state": "created", "seed": true,
+			"resource": map[string]any{"resource_id": faultDisk, "resource_type": "disk", "resource_exists": true,
+				"resource_state": map[string]any{"name": "data", "size": float64(10), "disk_type": map[string]any{"name": "SSD"}}}}}
 		r, dir := faultToolsRegistryOver(t, cloud)
 		return backupFaultWorld{cloud}, r, dir
 	}}
