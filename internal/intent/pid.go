@@ -14,6 +14,9 @@ import (
 // process that cannot be found, or one that is known to be done, is not.
 // Any other answer — no right to ask, a system that does not tell — is a
 // process that lives: in doubt a record is not another call's to remove.
+// On Windows a process that is found cannot be asked (no signal 0), so it
+// lives: there the record of another process that runs is closed only by
+// the mark its call leaves when it returns (Intent.Ended).
 func processAlive(pid int) bool {
 	if pid <= 0 {
 		return false
