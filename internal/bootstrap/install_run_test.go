@@ -5,6 +5,8 @@
 package bootstrap
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
@@ -12,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The install script runs here with stub apt-get, docker, dpkg, cloud-init
@@ -92,6 +95,37 @@ type run struct {
 	root, out string
 	ok        bool
 	calls     []string
+	// Why a run did not finish: the error of the process, the state of its
+	// context and how long it ran.
+	err, ctxErr error
+	took        time.Duration
+}
+
+// runScript runs cmd, made with ctx, and reads the calls the stubs wrote
+// under root.
+func runScript(ctx context.Context, cmd *exec.Cmd, root string) run {
+	start := time.Now()
+	out, err := cmd.CombinedOutput()
+	r := run{root: root, out: string(out), err: err, ctxErr: ctx.Err(), took: time.Since(start)}
+	r.ok = r.err == nil && r.ctxErr == nil
+	if b, rerr := os.ReadFile(filepath.Join(root, "calls")); rerr == nil {
+		r.calls = strings.Split(strings.TrimSpace(string(b)), "\n")
+	}
+	return r
+}
+
+// why names what ended a run: the process, its context, the last step the
+// stubs saw and the last line it printed, and how long it took — printed
+// before the checks of files, so a kill by the limit reads as one.
+func (r run) why() string {
+	step, last := "no call", "no output"
+	if n := len(r.calls); n > 0 {
+		step = r.calls[n-1]
+	}
+	if lines := strings.Split(strings.TrimSpace(r.out), "\n"); lines[len(lines)-1] != "" {
+		last = lines[len(lines)-1]
+	}
+	return fmt.Sprintf("process: %v; context: %v; last step: %s; last output: %s; took %s", r.err, r.ctxErr, step, last, r.took.Round(10*time.Millisecond))
 }
 
 func (r run) file(t *testing.T, path string) string {
@@ -165,12 +199,7 @@ func runInstall(t *testing.T, v vm) run {
 	for k, val := range v.env {
 		cmd.Env = append(cmd.Env, k+"="+val)
 	}
-	out, err := cmd.CombinedOutput()
-	r := run{root: root, out: string(out), ok: err == nil}
-	if b, rerr := os.ReadFile(filepath.Join(root, "calls")); rerr == nil {
-		r.calls = strings.Split(strings.TrimSpace(string(b)), "\n")
-	}
-	return r
+	return runScript(context.Background(), cmd, root)
 }
 
 // A working image mirror: Docker from Docker's repository with the
