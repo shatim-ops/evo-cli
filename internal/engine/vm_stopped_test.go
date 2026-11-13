@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -112,6 +113,38 @@ func TestLogsVerifyDeploy_AStoppedVMSaysSoAndNamesVMStart(t *testing.T) {
 		stoppedRefusal(t, "deploy", status, clerrors.CodeSSHTimeout, err)
 		if asked || dialed || dep.connectCalls != 0 {
 			t.Errorf("deploy to a %s VM: asked %v, dialed %v, SSH connects %d — want a refusal before all three", status, asked, dialed, dep.connectCalls)
+		}
+	}
+}
+
+// The deployment finished with this very compose file and its VM is
+// stopped — the usual world after vm_stop. deploy used to say «nothing to
+// deploy»: the check «unchanged» stood before the read of the VM, and the
+// person was told the service runs (the interim delta audit of 1.9,
+// FB19I-1). Refused as the changed file is.
+func TestDeploy_AStoppedVMIsRefusedBeforeNothingToDeploy(t *testing.T) {
+	for _, status := range []string{"stopped", "stopping"} {
+		eng, dep, dir := stoppedEngine(t, vmIn(status))
+		composeFile := writeComposeFile(t, dir)
+		project, err := compose.Parse(composeFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sf, err := state.Read(state.DefaultPath(dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sf.Deployments[0].ComposeHash, sf.Deployments[0].DeployedHash = project.Hash, project.Hash
+		if !sf.Deployments[0].UpToDate(project.Hash) {
+			t.Fatal("the record of the world is not up to date with the file: the test would not reach the unchanged path")
+		}
+		if err := state.Write(state.DefaultPath(dir), sf); err != nil {
+			t.Fatal(err)
+		}
+		err = eng.Deploy(context.Background(), DeployOptions{ComposeFile: composeFile, Flavor: "small", NonInteractive: true, Yes: true})
+		stoppedRefusal(t, "deploy of the same file", status, clerrors.CodeSSHTimeout, err)
+		if dep.connectCalls != 0 {
+			t.Errorf("deploy went to SSH of a %s VM", status)
 		}
 	}
 }
