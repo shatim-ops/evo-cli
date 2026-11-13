@@ -100,12 +100,13 @@ var previewCalls = map[string]map[string]any{
 }
 
 // previewNotReached are the tools with a target whose call reaches no
-// preview in the world of the owners, so the project their preview names
-// is checked by nothing: the call is refused, or answered with nothing to
-// consent to, before the question. "tool" → what the world lacks. It only shrinks, and a new
-// tool does not join it: a new change addressed by id comes with a call
-// that reaches its preview (previewCalls). Closes by 1.9 (release plan
-// 1.9, «Превью называет проект записи»; the world is «Процесс»'s).
+// preview in the world of the owners, so the project their preview names is
+// checked by nothing: the call is refused, or answered with nothing to
+// consent to, before the question. "tool" → what the world lacks. It only
+// shrinks, and a new tool does not join it: a new change addressed by id
+// comes with a call that reaches its preview (previewCalls). Closes by 1.9,
+// before rc.1 (release plan 1.9, «Сроки храповиков «к 1.7–1.9»»; «Превью
+// называет проект записи»; the world is «Процесс»'s).
 var previewNotReached = map[string]string{
 	"dns_record_create": "the zone is looked up in the call's project: a zone of another is NOT_FOUND before any preview; the call's own zone is checked",
 }

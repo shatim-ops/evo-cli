@@ -16,10 +16,10 @@ import (
 // UUID: "tool field" (the key of the JSON answer the UUID is, or "?"; the
 // project of the world is always project_id) → the work item of the release
 // plan that names them; "* field" is the field in any tool. The list only
-// shrinks: a bare UUID not here fails the test, and so does a line no
-// output carries.
-// Closes by 1.8: a line lives at most two versions (release plan 1.6,
-// «храповики со сроком»; TestMisses_HaveADeadline).
+// shrinks: a bare UUID not here fails the test, and so does a line no output
+// carries. Empty: its deadline 1.8 is met, and a new line comes with a
+// deadline of its own and its plan line: a line lives at most two versions
+// (release plan 1.6, «храповики со сроком»; TestMisses_HaveADeadline).
 var bareRefs = map[string]string{}
 
 // unnamedRefs are the references whose name evo does not read, each with

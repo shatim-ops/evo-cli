@@ -18,8 +18,9 @@ import (
 
 // untrustedNoteOnly are the tools whose description says their answer is
 // untrusted data (untrustedFields.workload) while the answer carries no
-// "_untrusted" (untrustedFields): tool → the field. It only shrinks.
-// Closes by 1.7 (release plan 1.7, «Недоверенный вывод без маркера»: the
+// "_untrusted" (untrustedFields): tool → the field. It only shrinks. Empty:
+// its deadline 1.7 is met, and a new line comes with a deadline of its own
+// and its plan line (release plan 1.7, «Недоверенный вывод без маркера»: the
 // marker at these tools, one map both are made from).
 var untrustedNoteOnly = map[string]string{}
 

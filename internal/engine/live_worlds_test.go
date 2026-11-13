@@ -14,10 +14,10 @@ import (
 // liveWorldDrift are the ways the worlds of internal/engine are known to
 // answer otherwise than the platform: «<answer id> (go <world>): …» → the
 // work item that makes the world follow it. The list only shrinks: a
-// departure not here fails the test, and so does a line no world departs
-// by.
-// Closes by 1.8: a line lives at most two versions (release plan 1.6,
-// «храповики со сроком»; TestMisses_HaveADeadline).
+// departure not here fails the test, and so does a line no world departs by.
+// Empty: its deadline 1.8 is met, and a new line comes with a deadline of
+// its own and its plan line: a line lives at most two versions (release plan
+// 1.6, «храповики со сроком»; TestMisses_HaveADeadline).
 var liveWorldDrift = map[string]string{}
 
 // Release plan 1.6, «Миры из живых ответов», step 2: the worlds of the

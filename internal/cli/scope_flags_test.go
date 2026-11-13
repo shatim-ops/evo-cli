@@ -14,9 +14,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// scopeFlagUnmarked are the flags of the command tree that name where a
-// call works and take an empty value: "command --flag" → why. It only
-// shrinks, and a new command does not join it. Closes by 1.9 (release plan
+// scopeFlagUnmarked are the flags of the command tree that name where a call
+// works and take an empty value: "command --flag" → why. It only shrinks,
+// and a new command does not join it. Empty: its deadline 1.9 is met, and a
+// new line comes with a deadline of its own and its plan line (release plan
 // 1.9, «Пустая строка у zone и аргументов того же класса»; D89, D100).
 var scopeFlagUnmarked = map[string]string{}
 
