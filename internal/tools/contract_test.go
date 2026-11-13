@@ -193,6 +193,7 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 	})
 	r.SetStateDir(dir)
 	contractRecords = intent.Dir(dir)
+	t.Cleanup(func() { contractRecords = "" })
 	return r
 }
 
@@ -207,7 +208,10 @@ var contractRecords string
 // forgetContractRecords removes the records of contractRecords and leaves
 // the directory and the files being written: a sweep that calls its tools
 // from several goroutines (walkLang) has a call writing its record there
-// at the same moment.
+// at the same moment. There the record of a call still going may be removed
+// by the call of another goroutine: the answers do not change, and such a
+// sweep does not tell what became of a record — the tests of the records
+// (TestIntent_*, TestStateDir_*) do.
 func forgetContractRecords() {
 	entries, err := os.ReadDir(contractRecords)
 	if contractRecords == "" || err != nil {
