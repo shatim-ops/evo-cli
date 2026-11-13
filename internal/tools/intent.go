@@ -7,7 +7,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -261,6 +260,10 @@ var everySendIsAChange = map[string]changeRule{
 	// one may come and be billed though the list does not show it yet
 	// («Риск», conclusion 164, У5; the probe of #1580).
 	"backup_restore": {read: "disk_list"},
+	// The same rule is found before the question, but after a lost answer
+	// the list of rules may not show it yet: a repeat would make a second
+	// rule (the interim delta audit of 1.9, FB19I-12).
+	"sg_rule_create": {read: "list_security_groups"},
 	// The creates billed at the price of a cluster (D107).
 	// The name is the one the plan of the tool makes the resource by:
 	// the same function, where the tool has a default of its own.
@@ -408,22 +411,20 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 // is sent as any other.
 //
 // The question is the one the call would get without its consent, with
-// the cut call named in it: plan — the handler of the tool, called without
-// confirmed — gives the preview, so the person asked about «one more»
+// the cut call named in it: plan — the call without its consent (the
+// gate makes it, withoutConsent) — gives the preview, so the person asked about «one more»
 // sees what it costs, as the CLI shows it (CLAUDE.md §6, axis 4; «Риск»,
 // the conclusion on D107, У9). A plan that does not answer a question —
 // a read of it failed, it refuses — leaves the question as it is, with no
 // preview: nothing is sent either way.
-func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any, plan Handler) (string, bool) {
+func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any, plan func(context.Context) (string, bool)) (string, bool) {
 	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return "", false
 	}
 	message, interrupted := cutCallWarning(name, mine)
 	out := map[string]any{"status": "confirmation_required"}
-	unconsented := maps.Clone(args)
-	delete(unconsented, "confirmed")
-	if text, _ := plan(ctx, unconsented); answerStatus(text) == "confirmation_required" {
+	if text, _ := plan(ctx); answerStatus(text) == "confirmation_required" {
 		var m map[string]any
 		if json.Unmarshal([]byte(text), &m) == nil {
 			out = m

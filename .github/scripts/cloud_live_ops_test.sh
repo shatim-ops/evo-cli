@@ -269,7 +269,7 @@ want "Г-10: код" "$rc" 0
 P='POST /vms/vm1/set-power;' G='GET /vms/vm1;'
 want "Г-10: запросы по порядку" "$(calls)" "$G$P$G$G$P$P$G$G$P$G$P$P$G$G$G""POST /vms/00000000-0000-4000-8000-000000000000/set-power;PUT /vms/vm1;$G$P$G""PUT /vms/vm1;$G$G$G$G""PUT /vms/vm1;$G$G$G$SW"
 want "Г-10: шаг вверх — соседний flavor семейства, возврат — исходный" "$(jq -r .flavor_name "$FAKE_DIR/body.PUT.vms.vm1")" lowcost10-2-4
-for s in 'Г-10: остановка.*stopping → stopped' 'повтор остановки остановленной.*HTTP 422, машинный код vm_wrong_state' 'Г-10: запуск.*публичный адрес тот же: да' 'Г-10: перезагрузка.*running → rebooting → running' 'id, которого нет.*HTTP 404, машинный код vm_not_found' 'смена flavor на запущенной ВМ.*машинный код: vm_must_be_stopped' 'смена flavor на шаг вверх, ВМ остановленной.*в первом чтении после запроса: state updating, flavor целевой.*вышла в stopped.*тем, что просили' 'возврат исходного flavor, ВМ остановленной.*тем, что просили'; do
+for s in 'Г-10: остановка.*stopping → stopped' 'Г-10: остановка.*первое чтение после ответа: уже stopping' 'Г-10: запуск.*первое чтение после ответа: уже starting' 'Г-10: перезагрузка.*первое чтение после ответа: ещё running, смена состояния — в чтении через [0-9]* с' 'повтор остановки остановленной.*HTTP 422, машинный код vm_wrong_state' 'Г-10: запуск.*публичный адрес тот же: да' 'Г-10: перезагрузка.*running → rebooting → running' 'id, которого нет.*HTTP 404, машинный код vm_not_found' 'смена flavor на запущенной ВМ.*машинный код: vm_must_be_stopped' 'смена flavor на шаг вверх, ВМ остановленной.*в первом чтении после запроса: state updating, flavor целевой.*вышла в stopped.*тем, что просили' 'возврат исходного flavor, ВМ остановленной.*тем, что просили'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-10: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'vm1\|203\.0\.113\.7'; then echo "FAIL: Г-10: id или адрес в строке лога"; fail=1; fi
@@ -608,6 +608,7 @@ GET! /backups/bv 200 {"id":"bv","state":"created","size":9}
 GET /backups/bv 404
 GET! /backups?project_id=p&limit=1000 200 {"items":[{"id":"bd","name":"evo-e2e-ops-r7a1-g16-bd"},{"id":"bv","name":"evo-e2e-ops-r7a1-g16-bv"},{"id":"x","name":"someone"}],"total":3}
 GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd 200 {"items":[{"id":"bd","name":"evo-e2e-ops-r7a1-g16-bd"}],"total":1}
+GET /disks/rd1 200 {"id":"rd1","project":{"id":"p"}}
 POST! /backups/bd/action 201 {"id":"bd","state":"updating"}
 POST! /backups/bd/action 409 {"code":"disk_name_exists","message":"no"}
 POST /backups/bv/action 201 {"id":"bv","state":"updating"}
@@ -625,8 +626,9 @@ H
 rc=0
 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-16: код" "$rc" 0
+grep -q 'Г-16: восстановление диска.*проект диска по карточке: проект пробы' "$tmp/out" || { echo "FAIL: Г-16: проект восстановленного диска не записан"; grep 'восстановление диска' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 L='?project_id=p&limit=1000'
-want "Г-16: запросы по порядку" "$(calls)" "POST /backups;GET /backups/bd;GET /backups/bd;POST /backups;GET /backups/bv;GET /backups$L;GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd;POST /backups/bd/action;GET /backups/bd;POST /backups/bd/action;POST /backups/bv/action;GET /backups/bv;DELETE /backups/bd;DELETE /backups/bd;GET /backups/bd;GET /backups/bd;DELETE /backups/bd;DELETE /backups/bv;DELETE /backups/bv;GET /backups/bv;DELETE /backups/bv;POST /protection-plans;GET /protection-plans/pp;GET /protection-plans$L;DELETE /protection-plans/pp;DELETE /protection-plans/pp;GET /protection-plans/pp;GET /backups$L;$SW"
+want "Г-16: запросы по порядку" "$(calls)" "POST /backups;GET /backups/bd;GET /backups/bd;POST /backups;GET /backups/bv;GET /backups$L;GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd;POST /backups/bd/action;GET /backups/bd;GET /disks/rd1;POST /backups/bd/action;POST /backups/bv/action;GET /backups/bv;DELETE /backups/bd;DELETE /backups/bd;GET /backups/bd;GET /backups/bd;DELETE /backups/bd;DELETE /backups/bv;DELETE /backups/bv;GET /backups/bv;DELETE /backups/bv;POST /protection-plans;GET /protection-plans/pp;GET /protection-plans$L;DELETE /protection-plans/pp;DELETE /protection-plans/pp;GET /protection-plans/pp;GET /backups$L;$SW"
 for s in 'Г-16: копия диска, ожидание готовности' 'creating → created' 'Г-16: восстановление диска' 'Г-16: восстановление ВМ' 'повтор сразу — HTTP 409' 'после исчезновения — HTTP 404' 'Г-16: план защиты' 'Г-16: копии ресурсов пробы под чужим именем'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-16: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
@@ -691,6 +693,7 @@ rc=0
 # закрывалось до первого повтора, и случай краснел в чужих PR (#1535).
 PROBE_WAIT=120 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-16, запрет после восстановления: код" "$rc" 0
+grep -q 'Г-16: восстановление диска.*проект диска по карточке: не прочитан (HTTP 404)' "$tmp/out" || { echo "FAIL: Г-16: непрочитанная карточка диска не названа кодом"; grep 'восстановление диска' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # В этом мире второе восстановление принято (2xx), а второго диска за
 # предел ожидания нет: диск может появиться после уборки области — платный
 # остаток, которого никто не видел (заключение «Риска» по #1616). Проба
