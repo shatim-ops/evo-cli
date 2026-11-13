@@ -265,6 +265,13 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 120 .github/scripts/e2e_live_runs_test.sh
 
+      # Автоповтор job без раннера (no_runner.sh, workflow no-runner) на
+      # заглушке gh: повтор только первой попытки, только когда прочие исходы
+      # — успех или пропуск, и только на актуальной голове PR.
+      - name: no_runner.sh на заглушке gh
+        if: runner.os == 'Linux'
+        run: timeout 60 .github/scripts/no_runner_test.sh
+
       # Пробы графика 1.9 (область ops cloud-live.sh) на поддельном evo и
       # заглушке curl: порядок запросов, отказ платформы, уборка своего вида.
       - name: область ops cloud-live.sh на заглушках
