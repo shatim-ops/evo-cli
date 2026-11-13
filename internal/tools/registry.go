@@ -239,6 +239,37 @@ type callRecords struct {
 	root    string
 	pending []intent.Intent
 	read    bool
+
+	// resolved is what the call has resolved of the cloud by a read that
+	// more than one of its layers needs (onceACall).
+	resolved map[string]resolvedOnce
+}
+
+// resolvedOnce is one result of onceACall.
+type resolvedOnce struct {
+	value any
+	err   error
+}
+
+// onceACall is read() for the call of ctx, made once for key: the layer
+// of intents resolves the resource a call names before the plan of the
+// tool does, by the same resolver, and the call reads the cloud once for
+// both. A call with no holder (a layer called on its own) reads each time.
+func onceACall[T any](ctx context.Context, key string, read func() (T, error)) (T, error) {
+	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
+	if !ok {
+		return read()
+	}
+	if was, ok := c.resolved[key]; ok {
+		v, _ := was.value.(T)
+		return v, was.err
+	}
+	v, err := read()
+	if c.resolved == nil {
+		c.resolved = map[string]resolvedOnce{}
+	}
+	c.resolved[key] = resolvedOnce{value: v, err: err}
+	return v, err
 }
 
 // pendingIn are the records of root as the call of ctx sees them: read

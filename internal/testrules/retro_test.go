@@ -39,8 +39,8 @@ var retroOutcomes = []string{"правило", "проверка", "бэклог
 // done about it: "<version> «<role>»: <check>" → the work item. The list
 // only shrinks: an item not here fails the test, and so does a line the
 // journals no longer give.
-// Closes by 1.8: a line lives at most two versions (release plan 1.6,
-// «храповики со сроком»; TestMisses_HaveADeadline).
+// Closes by 1.10: moved from 1.8 by the owner's decision of 13.11 (#1590,
+// question 19; release plan 1.9, «Просроченные убывающие списки»).
 var retroKnown = map[string]string{
 	"1.3.1 «релиз»: R2 an item without a reference":                  "the first retro, written before R2; stays as it is",
 	"1.3.1 «Процесс»: R2 an outcome not in the list":                 "the first retro, written before R2; stays as it is",

@@ -2016,7 +2016,7 @@ keys_of() { jq -c 'if type == "object" then keys else type end' "$tmp/api.json" 
 # ICMP идёт с пустым port_range: поле обязательно, формат для ICMP
 # спецификация не называет — отказ и его текст и есть ответ.
 probe_g11() {
-	local zid=$1 sg rule by_group first='' made='' n0 n1 r t0 dir proto ports cidr
+	local zid=$1 sg rule by_group by_none any_made first='' made='' n0 n1 r t0 dir proto ports cidr
 	iam_token || { gap "Г-11" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
 	[ -n "${PROJECT:-}" ] || { gap "Г-11" "нет PROJECT"; return 0; }
 	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
@@ -2094,6 +2094,14 @@ probe_g11() {
 		;;
 	*) ok "Г-11: правило без источника" "$(brief)" ;;
 	esac
+	# Правило «все порты» (гипотеза Г5 дельта-аудита 1.9): что платформа
+	# хранит в port_range — от этого зависит, посчитает ли evo правило
+	# открывающим порт. «any» — значение, которое платформа приняла у icmp;
+	# для tcp оно не описано. Источник — тестовый адрес, не интернет; группа
+	# ни к чему не привязана. Ответ создания здесь, список — ниже.
+	api POST "$C1/security-groups/$sg/rules" "$(rule_body ingress tcp any 198.18.255.1/32)"
+	mask "$(jq -r '(if type == "array" then .[0] else . end) | .id? // empty' "$tmp/api.json" 2>/dev/null || true)"
+	any_made=$(case "$code" in 2??) echo "HTTP $code, port_range в ответе создания: «$(jq -r '(if type == "array" then .[0] else . end) | if has("port_range") then (.port_range | tostring) else "нет поля" end' "$tmp/api.json" 2>/dev/null || echo '?')»" ;; *) brief ;; esac)
 	# Правила — отдельным списком группы: в карточке группы их нет, только
 	# счётчики (прогон 205 читал карточку и видел «правил: 0»).
 	rules_get() { api GET "$C1/security-groups/$sg/rules?limit=100"; }
@@ -2101,9 +2109,13 @@ probe_g11() {
 	# Правило с группой-источником в ответе списка: по списку, а не по
 	# чтению по id, evo узнаёт такое правило (sgrules, данные «разработки A»).
 	by_group='first(.items[]? | select(.port_range? == "18092:18092"))'
+	by_none='first(.items[]? | select(.port_range? == "18093:18093"))'
 	rules_get
 	n0=$(count_rules)
-	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?'), правило с группой-источником в списке: $(if jq -e "$by_group" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_group"), remote_ip_prefix: $(prefix_kind "$by_group")"; else echo "не найдено"; fi)"
+	ok "Г-11: чтение правил" "HTTP $code$(why_tail), правил: $n0, поля правила: $(jq -c '[.items[]? | keys] | first // null' "$tmp/api.json" 2>/dev/null || echo '?'), источник «весь интернет» хранится как: $(jq -r '[.items[]? | select(.port_range? == "18091:18091" or .remote_ip_prefix? == "0.0.0.0/0") | .remote_ip_prefix // "null"] | first // "правило не найдено"' "$tmp/api.json" 2>/dev/null || echo '?'), правило с группой-источником в списке: $(if jq -e "$by_group" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_group"), remote_ip_prefix: $(prefix_kind "$by_group")"; else echo "не найдено"; fi), правило без источника в списке: $(if jq -e "$by_none" "$tmp/api.json" >/dev/null 2>&1; then echo "$(source_kind "$by_none"), remote_ip_prefix: $(prefix_kind "$by_none")"; else echo "не найдено"; fi)"
+	# В списке правило «все порты» — единственное tcp с тестовым адресом и не
+	# с портом пробы.
+	ok "Г-11: правило «все порты»" "$any_made; в списке: «$(jq -r '[.items[]? | select(.ip_protocol? == "tcp" and .remote_ip_prefix? == "198.18.255.1/32" and .port_range? != "18090:18090") | .port_range | tostring] | first // "не найдено"' "$tmp/api.json" 2>/dev/null || echo '?')»"
 	# Повтор правила, которое создано (не первого в списке: в прогоне 207
 	# оно не создалось, и «повтор» создал его впервые): 2xx и новое
 	# правило, 2xx без нового или отказ.
@@ -2127,12 +2139,12 @@ probe_g11() {
 		api DELETE "$2"
 		r="$r, повтор сразу — $(brief)"
 		t0=$SECONDS
-		if ops_settle "$2" 120 gone; then
+		if ops_settle "$2" "${PROBE_WAIT:-120}" gone; then
 			r="$r; состояния: $chain, $((SECONDS - t0)) с"
 			api DELETE "$2"
 			r="$r; повтор после исчезновения — $(brief)"
 		else
-			r="$r; не исчезло за 2 мин (состояния: $chain) — повтор после исчезновения не шлю"
+			r="$r; не исчезло за ${PROBE_WAIT:-120} с (состояния: $chain) — повтор после исчезновения не шлю"
 		fi
 		ok "Г-11: удаление $1" "$r"
 	}
@@ -2175,10 +2187,12 @@ why_tail() { case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac; }
 # ops_reach URL СЕКУНД СОСТОЯНИЕ [changed] — читать карточку, пока state не
 # станет СОСТОЯНИЕМ; с changed — не раньше, чем state хоть раз сменился
 # (перезагрузка: running → … → running). Итог — $st и $chain, как у
-# ops_settle. Код 1 — не дождались или state error*.
+# ops_settle, $reach0 — состояние в первом чтении и $reach_moved — через сколько
+# секунд чтение впервые показало другое (пусто — не показало). Код 1 — не
+# дождались или state error*.
 ops_reach() {
-	local url=$1 until=$(($(date +%s) + $2)) s n=0
-	st='' chain=''
+	local url=$1 until=$(($(date +%s) + $2)) s n=0 from=$SECONDS
+	st='' chain='' reach0='' reach_moved=''
 	while :; do
 		iam_fresh || true
 		api GET "$url"
@@ -2188,11 +2202,23 @@ ops_reach() {
 		esac
 		[ "$s" = "$st" ] || { chain="${chain:+$chain → }$s"; n=$((n + 1)); }
 		st=$s
+		[ -n "$reach0" ] || reach0=$s
+		[ -n "$reach_moved" ] || [ "$s" = "$reach0" ] || reach_moved=$((SECONDS - from))
 		if [ "$s" = "$3" ] && { [ -z "${4:-}" ] || [ "$n" -gt 1 ]; }; then return 0; fi
 		case "$s" in error*) return 1 ;; esac
 		[ "$(date +%s)" -lt "$until" ] || return 1
 		sleep "$PROBE_PAUSE"
 	done
+}
+# lag ПРЕЖНЕЕ — после ops_reach: что показало первое чтение карточки после
+# принятой команды питания (ответ 204 без операции) — ещё прежнее состояние
+# или уже новое, и когда чтение показало смену. Шаг evo, который читает
+# состояние сразу после ответа, по прежнему состоянию решит, что команда не
+# принята (гипотеза Г1 дельта-аудита 1.9, FB19I-3). Точность — шаг чтений.
+lag() {
+	if [ "$reach0" != "$1" ]; then echo "первое чтение после ответа: уже $reach0"
+	elif [ -n "$reach_moved" ]; then echo "первое чтение после ответа: ещё $1, смена состояния — в чтении через $reach_moved с (шаг чтений $PROBE_PAUSE с)"
+	else echo "первое чтение после ответа: ещё $1, смены состояния чтения не показали"; fi
 }
 # mcode — машинный код причины последнего ответа api (поля code,
 # error_code, type и reason в details — так отвечают API DBaaS; тело —
@@ -2278,10 +2304,10 @@ probe_g16() {
 		[ -n "$bid" ] || { gap "Г-16: копия $1" "id не прочитан — остаток уберёт уборка области"; return 0; }
 		t0=$SECONDS
 		ops_settle "$C1/backups/$bid" 900 || true
-		ok "Г-16: копия $1, ожидание готовности" "состояния: $chain; $((SECONDS - t0)) с; type $(jq -r '.type? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), size больше нуля: $(jq -r 'if (.size? // 0) > 0 then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?'); поля карточки: $(keys_of)"
+		ok "Г-16: копия $1, ожидание готовности" "состояния: $chain; $((SECONDS - t0)) с; type $(jq -r '.type? // "нет"' "$tmp/api.json" 2>/dev/null || echo '?'), size больше нуля: $(jq -r 'if (.size? // 0) > 0 then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?'); created_at: $(time_form created_at); поля карточки: $(keys_of)"
 		[ "$st" = created ] || bid_bad=1
 	}
-	local bid bid_bad=0 bd_ok=0 bv_ok=0
+	local bid bid_bad=0 bd_ok=0 bv_ok=0 rd_seen=0
 	if [ -n "$disk" ]; then
 		g16_backup диска "$n-bd" disk "$disk"
 		bd=$bid
@@ -2311,13 +2337,53 @@ probe_g16() {
 		esac
 		t0=$SECONDS
 		ops_settle "$C1/backups/$2" 600 || true
-		r="$r; состояния копии: $chain; last_restore_time задан: $(jq -r 'if (.last_restore_time? // null) != null then "да" else "нет" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+		r="$r; состояния копии: $chain; last_restore_time: $(time_form last_restore_time)"
 	}
 	if [ "$bd_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
 		if g16_restore диска "$bd" "$(jq -nc --arg n "$n-rd" '{name: $n, description: "evo e2e probe"}')"; then
-			rd_there() { [ -n "$(lst disk "$n-rd")" ]; }
-			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
+			local rd_out=''
+			rd_there() { rd_out=$(lst disk "$n-rd") && [ -n "$rd_out" ]; }
+			rd_seen=0
+			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then rd_seen=1 r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии — список читает только проект пробы: диск в другом проекте он не покажет"; fi
+			# Запрос восстановления проекта не несёт (гипотеза Г4 дельта-аудита
+			# 1.9): в чьём проекте диск, говорит его карточка.
+			if [ "$rd_seen" = 1 ]; then
+				local rd_id
+				rd_id=$(cut -f1 <<<"$rd_out" | head -1)
+				mask "$rd_id"
+				api GET "$C1/disks/$rd_id"
+				r="$r; проект диска по карточке: $(case "$code" in
+				2??) jq -r --arg p "$PROJECT" 'if (.project? | type) != "object" or (.project.id? // "") == "" then "поля project.id в карточке нет"
+					elif .project.id == $p then "проект пробы" else "другой проект" end' "$tmp/api.json" 2>/dev/null || echo "карточка не разобрана" ;;
+				*) echo "не прочитан (HTTP $code)" ;;
+				esac)"
+			fi
 			ok "Г-16: восстановление диска" "$r"
+			# Второе восстановление той же копии под тем же именем (гипотеза
+			# Г3 дельта-аудита 1.9, FB19I-18): отказ платформы или второй
+			# диск с тем же именем — на этом стоит, может ли evo отличить
+			# «восстановлено» от «восстановлено дважды». Второй диск, если
+			# появится, носит имя пробы — его уберёт уборка области.
+			if [ "$rd_seen" = 1 ]; then
+				api POST "$C1/backups/$bd/action" "$(jq -nc --arg n "$n-rd" '{action: "restore", resource: {target_config: {name: $n, description: "evo e2e probe"}}}')"
+				r=$(brief)
+				case "$code" in 2??)
+					ops_settle "$C1/backups/$bd" 600 || true
+					rd_two() { [ "$(lst disk "$n-rd" | wc -l)" -ge 2 ]; }
+					# Свой предел, не PROBE_WAIT: второго диска может не
+					# быть вовсе, и ждать его общий предел незачем.
+					r="$r; состояния копии: $chain"
+					# Принято, а диска нет: он может появиться после уборки
+					# области — платный остаток, которого никто не видел.
+					# Проба не делает вид, что убрала: говорит, что сделать.
+					if ! poll "${PROBE_WAIT_TWICE:-120}" "$PROBE_PAUSE" rd_two; then
+						r="$r; второго диска за ${PROBE_WAIT_TWICE:-120} с нет — через 30 минут — уборка области по префиксу (диск может появиться позже)"
+						echo "::warning::Г-16: второе восстановление принято, а второго диска за ${PROBE_WAIT_TWICE:-120} с нет — диск с именем пробы может появиться после уборки: через 30 минут запустите уборку области (sweep) и запишите в отчёте прогона «дисков с именем пробы: 0»"
+					fi
+					;;
+				esac
+				ok "Г-16: второе восстановление той же копии под тем же именем" "$r; дисков с этим именем: $(if o=$(lst disk "$n-rd"); then grep -c . <<<"$o" || true; else echo '?'; fi)"
+			fi
 		fi
 	fi
 	if [ "$bv_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
@@ -2477,6 +2543,17 @@ probe_g16() {
 # power СЛОВО — set-power ВМ пробы (её адрес — в $url вызывающей пробы);
 # код — в $code.
 power() { api POST "$url/set-power" "$(jq -nc --arg s "$1" '{state: $s}')"; }
+# time_form ПОЛЕ — в каком виде ответ отдаёт время: «RFC3339 с зоной», «без
+# зоны», «нет» или «иной вид». evo считает возраст копии и предупреждает о
+# недавнем восстановлении по этим полям; вид без зоны разбор отбросит молча
+# (гипотеза Г7 дельта-аудита 1.9). Значение в лог не идёт — только вид.
+time_form() {
+	jq -er --arg f "$1" '.[$f] | if . == null then "нет"
+		elif type != "string" then "иной вид (\(type))"
+		elif test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$") then "RFC3339 с зоной"
+		elif test("^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$") then "без зоны"
+		else "иной вид" end' "$tmp/api.json" 2>/dev/null || echo '?'
+}
 # prefix_kind [ОТБОР] — что правило хранит в remote_ip_prefix, словами,
 # которые маска адресов не стирает: null, пусто, весь IPv4, весь IPv6 или
 # другой CIDR. source_kind [ОТБОР] — в какой форме ответ отдаёт
@@ -2525,7 +2602,7 @@ probe_g10() {
 		r="HTTP $code"
 		t0=$SECONDS
 		ops_reach "$url" "${PROBE_WAIT:-600}" stopped || true
-		ok "$1" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес в карточке остановленной: $(has_ip)"
+		ok "$1" "$r; состояния: $chain, $((SECONDS - t0)) с; $(lag running); публичный адрес в карточке остановленной: $(has_ip)"
 	}
 	if g10_stop "Г-10: остановка"; then
 		power power_off
@@ -2536,7 +2613,7 @@ probe_g10() {
 			r="HTTP $code"
 			t0=$SECONDS
 			ops_reach "$url" 600 running || true
-			ok "Г-10: запуск" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес тот же: $(has_ip)"
+			ok "Г-10: запуск" "$r; состояния: $chain, $((SECONDS - t0)) с; $(lag stopped); публичный адрес тот же: $(has_ip)"
 			power power_on
 			ok "Г-10: повтор запуска запущенной" "$(brief)"
 			;;
@@ -2553,7 +2630,7 @@ probe_g10() {
 			r="$r; повтор сразу — $(brief)"
 			t0=$SECONDS
 			ops_reach "$url" 600 running changed || true
-			ok "Г-10: перезагрузка" "$r; состояния: $chain, $((SECONDS - t0)) с"
+			ok "Г-10: перезагрузка" "$r; состояния: $chain, $((SECONDS - t0)) с; $(lag running)"
 			;;
 		*) refusal "Г-10: перезагрузка" синхронно ;;
 		esac

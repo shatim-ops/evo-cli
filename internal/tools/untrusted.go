@@ -106,9 +106,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	// them.
 	// The names of the source groups of a port only groups let in: not
 	// named by the caller, unlike the group of the call.
-	"open_ports":     {fields: []string{"open_only_to_groups"}},
+	"open_ports":     {fields: []string{"open_only_to_groups", "vms"}},
 	"sg_rule_create": {fields: []string{"security_group", "rule", "preview"}},
-	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups"}},
+	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of
