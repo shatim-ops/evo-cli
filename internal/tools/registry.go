@@ -29,6 +29,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
@@ -240,6 +241,12 @@ type callRecords struct {
 	pending []intent.Intent
 	read    bool
 
+	// open is the record the call opened (beginIntent), with hasOpen;
+	// sent tells that the call said its write goes out (markSent).
+	open    intent.Intent
+	hasOpen bool
+	sent    bool
+
 	// resolved is what the call has resolved of the cloud by a read that
 	// more than one of its layers needs (onceACall).
 	resolved map[string]resolvedOnce
@@ -296,6 +303,33 @@ func forgetPending(ctx context.Context) {
 	if c, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
 		c.read = false
 	}
+}
+
+// markSent is said by a handler whose writes evo's transport does not
+// count (changeRule.marksSend) right before its write goes out: the record
+// of the call is marked so at once — a process killed after it leaves the
+// mark — and the layer knows the call sent something when it ends with no
+// outcome.
+func markSent(ctx context.Context) {
+	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
+	if !ok {
+		return
+	}
+	c.sent = true
+	if c.hasOpen && !c.open.Sent {
+		c.open.Sent = true
+		intent.MarkSent(c.open)
+	}
+}
+
+// callSent tells whether the call of ctx sent a write: evo's transport
+// counted one, or the handler said so (markSent).
+func callSent(ctx context.Context) bool {
+	if n, _ := httpretry.Writes(ctx); n > 0 {
+		return true
+	}
+	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
+	return ok && c.sent
 }
 
 type callRecordsKey struct{}

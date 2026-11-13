@@ -3751,11 +3751,40 @@ var consentWords = map[string]string{
 	"k8s_nodepool_delete": consentDeletes,
 	"backup_delete":       consentDeletes,
 	"k8s_delete":          consentDeletes,
-	"vm_stop":             consentInterrupts,
-	"vm_reboot":           consentInterrupts,
-	"secret_value":        consentReveals,
-	"cert_private_key":    consentReveals,
-	"s3_put":              consentOverwrites,
+	// What is lost with these is data, not a setting the caller names
+	// again (FB19I-29).
+	"disk_delete":      consentDeletes,
+	"image_delete":     consentDeletes,
+	"ar_delete":        consentDeletes,
+	"pg_db_delete":     consentDeletes,
+	"secret_delete":    consentDeletes,
+	"cert_delete":      consentDeletes,
+	"dns_zone_delete":  consentDeletes,
+	"vm_stop":          consentInterrupts,
+	"vm_reboot":        consentInterrupts,
+	"secret_value":     consentReveals,
+	"cert_private_key": consentReveals,
+	"s3_put":           consentOverwrites,
+}
+
+// consentWordless are the deletes (deleteTargets) whose consent note has
+// no word of its class, each with why: what goes is a setting or an
+// access the caller makes again, not data — «Deletes data» would be false
+// of it (FB19I-29). A delete is in consentWords or here
+// (TestConsentWord_EveryDeleteNamesItsClassOrWhyNot).
+var consentWordless = map[string]string{
+	"close_ports":         "a rule of a security group: a setting",
+	"sg_rule_delete":      "a rule of a security group: a setting",
+	"snat_delete":         "a gateway of a network: a setting",
+	"subnet_delete":       "a subnet: a setting; the platform refuses it while resources use it",
+	"vpc_delete":          "a network: a setting; the platform refuses it while resources use it",
+	"vpc_route_delete":    "a route: a setting",
+	"lb_delete":           "a load balancer: a setting; its targets stay",
+	"tg_delete":           "a target group: a setting; its targets stay",
+	"release_floating_ip": "an address returned to the platform: not data, though the same address may not come back",
+	"dns_record_delete":   "one record the caller names: a setting",
+	"pg_user_delete":      "a user of a cluster: an access; its databases and their data stay",
+	"ca_delete":           "a container app: a setting; its image stays in the registry",
 }
 
 // consentText is the consent note of tool name, with the word of its class.

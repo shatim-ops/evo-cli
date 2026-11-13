@@ -159,3 +159,34 @@ func TestAgentSkill_TheCardSaysWhatARepeatOfADeleteAnswersOnThisServer(t *testin
 		}
 	}
 }
+
+// A server of one group (--toolsets k8s) serves every tool of it, and the
+// card still names tools of other groups in its other columns and notes
+// (snat_create, destroy, vm_list): each name of a registry tool in the
+// card is served, marked, or under the line that says the other columns
+// may name tools the server lacks (FB19I-25; «Риск», conclusion 160, У2).
+func TestAgentSkill_EveryNameInTheCardIsServedOrCovered(t *testing.T) {
+	name := regexp.MustCompile("`([a-z0-9_]+)`")
+	for _, g := range Groups() {
+		r := New(nil)
+		served := func(n string) bool {
+			tl, ok := r.Lookup(n)
+			return n == "agent_skill" || ok && tl.Group == g
+		}
+		r.SetServed(served)
+		tl, _ := r.Lookup("agent_skill")
+		text, _ := tl.Handler(context.Background(), map[string]any{"group": g})
+		var m map[string]any
+		_ = json.Unmarshal([]byte(text), &m)
+		card, _ := m["skill"].(string)
+		covered := strings.Contains(card, "Tools named in the other columns may be absent too")
+		for _, line := range strings.Split(card, "\n") {
+			for _, n := range name.FindAllStringSubmatch(line, -1) {
+				if _, ok := r.Lookup(n[1]); !ok || served(n[1]) || covered || strings.Contains(line, "`"+n[1]+"` (not on this server)") {
+					continue
+				}
+				t.Errorf("group %s served alone: the card names %s, which the server does not serve, unmarked and with no line that says so: %s", g, n[1], line)
+			}
+		}
+	}
+}

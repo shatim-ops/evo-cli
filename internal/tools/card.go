@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -67,6 +68,12 @@ func groupCard(group string, terminal bool, served func(string) bool, bound bool
 			filters = append(filters, "`"+t.Name+"` — "+strings.Join(f, ", "))
 		}
 	}
+	if served != nil && !missing {
+		// The other columns, the filters and the notes name tools of other
+		// groups (deleted with destroy, ids from image_list): a server of
+		// this group alone may lack them (FB19I-25).
+		missing = namesUnserved(r, served, append(append(rows, filters...), cardNotes[group]...))
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# evo: the `%s` group\n\n", group)
 	if terminal {
@@ -100,6 +107,22 @@ func groupCard(group string, terminal bool, served func(string) bool, bound bool
 		b.WriteString("\n## Notes\n\n- " + strings.Join(notes, "\n- ") + "\n")
 	}
 	return b.String(), true
+}
+
+// toolName is a name in backquotes, as a card writes a tool's.
+var toolName = regexp.MustCompile("`([a-z0-9_]+)`")
+
+// namesUnserved reports a tool of the registry named in lines that the
+// server does not serve.
+func namesUnserved(r *Registry, served func(string) bool, lines []string) bool {
+	for _, line := range lines {
+		for _, m := range toolName.FindAllStringSubmatch(line, -1) {
+			if _, ok := r.Lookup(m[1]); ok && !served(m[1]) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // cardNotes are what the declarations of a group cannot say: the limits of
