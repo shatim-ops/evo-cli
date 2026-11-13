@@ -136,6 +136,10 @@ var everySendIsAChange = map[string]string{
 	// one may come and be billed though the list does not show it yet
 	// («Риск», conclusion 164, У5; the probe of #1580).
 	"backup_restore": "disk_list",
+	// The same rule is found before the question, but after a lost answer
+	// the list of rules may not show it yet: a repeat would make a second
+	// rule (the interim delta audit of 1.9, FB19I-12).
+	"sg_rule_create": "list_security_groups",
 }
 
 // cutCalls are the records of this caller's own cut calls of the tool name
