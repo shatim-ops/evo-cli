@@ -30,7 +30,9 @@ type pgDatabasesWorld struct {
 	databases string
 	listFails bool
 	drop      bool
-	posts     int
+	// made: as pgUsersWorld.made.
+	made  string
+	posts int
 }
 
 func (w *pgDatabasesWorld) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -47,7 +49,7 @@ func (w *pgDatabasesWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/databases") && w.listFails:
 		http.Error(rec, `{"message":"internal"}`, 500)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/databases"):
-		_, _ = io.WriteString(rec, `{"databases":[`+w.databases+`]}`)
+		_, _ = io.WriteString(rec, `{"databases":[`+joinItems(w.databases, w.made, w.posts > 0)+`]}`)
 	default:
 		_, _ = io.WriteString(rec, `{"id":"00000000-0000-4000-8000-0000000000e1","name":"pg-main","status":"READY","project_id":"p"}`)
 	}
@@ -91,7 +93,17 @@ func TestPgDbCreate_RefusedForADatabaseThatExistsSaysSo(t *testing.T) {
 		if hint, _ := plain["hint"].(string); strings.Contains(hint, "already exists") {
 			t.Errorf("%d: a refusal for another cause says the database exists: %s", refusal.status, plainText)
 		}
-		m, text := call(&pgDatabasesWorld{status: refusal.status, body: refusal.body, databases: `{"name":"other"},{"name":"app"}`})
+		// The database is in the cluster before the call: no create is
+		// sent (pgNameTaken), the answer is the refusal's.
+		before := &pgDatabasesWorld{status: refusal.status, body: refusal.body, databases: `{"name":"other"},{"name":"app"}`}
+		m, text := call(before)
+		if before.posts != 0 {
+			t.Errorf("%d: the database was in the cluster before the call, and evo sent %d creates", refusal.status, before.posts)
+		}
+		raced, racedText := call(&pgDatabasesWorld{status: refusal.status, body: refusal.body, databases: `{"name":"other"}`, made: `{"name":"app"}`})
+		if h, _ := raced["hint"].(string); raced["reason"] != plain["reason"] || !strings.Contains(h, "already exists") {
+			t.Errorf("%d, the database made after the read: want the refusal read as «already exists»: %s", refusal.status, racedText)
+		}
 		hint, _ := m["hint"].(string)
 		if !strings.Contains(hint, "already exists") || !strings.Contains(hint, "nothing was created") ||
 			!strings.Contains(hint, "ask the person") || !strings.Contains(hint, "data") {
@@ -115,11 +127,23 @@ func TestPgDbCreate_RefusedForADatabaseThatExistsSaysSo(t *testing.T) {
 		"500":         func() *pgDatabasesWorld { return &pgDatabasesWorld{status: 500, body: `{"message":"internal"}`} },
 	} {
 		there := w()
-		there.databases = `{"name":"app"}`
+		there.made = `{"name":"app"}`
 		m, text := call(there)
 		hint, _ := m["hint"].(string)
 		if !strings.Contains(hint, "may have created it") || !strings.Contains(hint, "ask the person") || strings.Contains(hint, "nothing was created") {
 			t.Errorf("%s, the database is in the cluster: the hint does not say this call may have created it: %s", name, text)
 		}
 	}
+}
+
+// joinItems is the items of a list in a world: those there before the
+// call, and those a create made once one was sent.
+func joinItems(before, made string, sent bool) string {
+	if !sent || made == "" {
+		return before
+	}
+	if before == "" {
+		return made
+	}
+	return before + "," + made
 }

@@ -14,10 +14,10 @@
 | `pg_delete` | `evo pg delete` | deletes; a repeat answers `already_deleted` | `id` ← `pg_list`, `cluster_id` ← `pg_list` |
 | `pg_operation` | `evo pg operation` | reads |  |
 | `pg_databases` | `evo pg databases` | reads | `cluster_id` ← `pg_list` |
-| `pg_db_create` | `evo pg db-create` | creates: known by its `name`; deleted with `pg_db_delete` | `cluster_id` ← `pg_list` |
+| `pg_db_create` | `evo pg db-create` | creates: known by its `name`; found with `pg_databases`; deleted with `pg_db_delete` | `cluster_id` ← `pg_list` |
 | `pg_db_delete` | `evo pg db-delete` | deletes; a repeat answers `already_deleted` | `cluster_id` ← `pg_list` |
 | `pg_users` | `evo pg users` | reads | `cluster_id` ← `pg_list` |
-| `pg_user_create` | `evo pg user-create` | creates: known by its `name`; deleted with `pg_user_delete` | `cluster_id` ← `pg_list` |
+| `pg_user_create` | `evo pg user-create` | creates: known by its `name`; found with `pg_users`; deleted with `pg_user_delete` | `cluster_id` ← `pg_list` |
 | `pg_user_delete` | `evo pg user-delete` | deletes; a repeat answers `already_deleted` | `cluster_id` ← `pg_list` |
 | `pg_backups` | `evo pg backups` | reads | `cluster_id` ← `pg_list` |
 | `pg_backup_create` | `evo pg backup-create` | creates: id in `backup_id`; found with `pg_backups` | `cluster_id` ← `pg_list` |

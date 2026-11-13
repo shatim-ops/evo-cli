@@ -29,7 +29,11 @@ type pgUsersWorld struct {
 	users     string
 	listFails bool
 	// drop: the create is sent and its answer is lost.
-	drop  bool
+	drop bool
+	// made are users the list has once a create was sent: the create
+	// reached the cluster (a lost answer), or another made the name
+	// between the read before the create and the create.
+	made  string
 	posts int
 }
 
@@ -47,7 +51,7 @@ func (w *pgUsersWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/users") && w.listFails:
 		http.Error(rec, `{"message":"internal"}`, 500)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/users"):
-		_, _ = io.WriteString(rec, `{"users":[`+w.users+`]}`)
+		_, _ = io.WriteString(rec, `{"users":[`+joinItems(w.users, w.made, w.posts > 0)+`]}`)
 	default:
 		_, _ = io.WriteString(rec, `{"id":"00000000-0000-4000-8000-0000000000e1","name":"pg-main","status":"READY","project_id":"p"}`)
 	}
@@ -80,9 +84,6 @@ func TestPgUserCreate_RefusedForAUserThatExistsSaysSo(t *testing.T) {
 		if strings.Contains(text, password) {
 			t.Errorf("the answer holds the password: %s", text)
 		}
-		if w.posts != 1 && !w.drop && w.status < 500 {
-			t.Errorf("sent %d creates, want 1", w.posts)
-		}
 		return m, text
 	}
 	for _, refusal := range []struct {
@@ -97,8 +98,14 @@ func TestPgUserCreate_RefusedForAUserThatExistsSaysSo(t *testing.T) {
 		if hint, _ := plain["hint"].(string); strings.Contains(hint, "already exists") {
 			t.Errorf("%d: a refusal for another cause says the user exists: %s", refusal.status, plainText)
 		}
-		// The user is in the cluster.
-		m, text := call(&pgUsersWorld{status: refusal.status, body: refusal.body, users: `{"name":"other"},{"name":"app"}`})
+		// The user is in the cluster before the call: evo reads it before
+		// the create and sends none (pgNameTaken) — the answer a refusal of
+		// the platform gets.
+		before := &pgUsersWorld{status: refusal.status, body: refusal.body, users: `{"name":"other"},{"name":"app"}`}
+		m, text := call(before)
+		if before.posts != 0 {
+			t.Errorf("%d: the user was in the cluster before the call, and evo sent %d creates", refusal.status, before.posts)
+		}
 		hint, _ := m["hint"].(string)
 		if !strings.Contains(hint, "already exists") || !strings.Contains(hint, "ask the person") || !strings.Contains(hint, "password") {
 			t.Errorf("%d: the hint does not say the user exists, what a delete and a new create break, and to ask the person: %s", refusal.status, text)
@@ -106,8 +113,14 @@ func TestPgUserCreate_RefusedForAUserThatExistsSaysSo(t *testing.T) {
 		if m["reason"] != plain["reason"] || m["status"] != plain["status"] {
 			t.Errorf("%d: reason %v, status %v — changed from the refusal alone (%v, %v): %s", refusal.status, m["reason"], m["status"], plain["reason"], plain["status"], text)
 		}
-		if msg, _ := m["error"].(string); !strings.Contains(msg, strings.TrimSuffix(strings.SplitAfter(refusal.body, `"message":"`)[1], `"}`)) {
-			t.Errorf("%d: the answer lost the platform's text: %s", refusal.status, text)
+		// The name made between the read and the create: the platform's
+		// refusal, read as «already exists», with its text.
+		raced, racedText := call(&pgUsersWorld{status: refusal.status, body: refusal.body, users: `{"name":"other"}`, made: `{"name":"app"}`})
+		if h, _ := raced["hint"].(string); raced["reason"] != plain["reason"] || !strings.Contains(h, "already exists") {
+			t.Errorf("%d, the user made after the read: want the refusal read as «already exists»: %s", refusal.status, racedText)
+		}
+		if msg, _ := raced["error"].(string); !strings.Contains(msg, strings.TrimSuffix(strings.SplitAfter(refusal.body, `"message":"`)[1], `"}`)) {
+			t.Errorf("%d: the answer lost the platform's text: %s", refusal.status, racedText)
 		}
 		for _, next := range []string{"next_tool", "next"} {
 			if m[next] != nil {
@@ -133,8 +146,11 @@ func TestPgUserCreate_RefusedForAUserThatExistsSaysSo(t *testing.T) {
 		"408": func() *pgUsersWorld { return &pgUsersWorld{status: 408, body: `{"message":"request timeout"}`} },
 	} {
 		there := w()
-		there.users = `{"name":"app"}`
+		there.made = `{"name":"app"}`
 		m, text := call(there)
+		if there.posts == 0 {
+			t.Errorf("%s: no create sent: %s", name, text)
+		}
 		hint, _ := m["hint"].(string)
 		if !strings.Contains(hint, "may have created it") || !strings.Contains(hint, "ask the person") || !strings.Contains(hint, "password") {
 			t.Errorf("%s, the user is in the cluster: the hint does not say this call may have created it: %s", name, text)

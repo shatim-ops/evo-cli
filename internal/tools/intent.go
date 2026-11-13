@@ -1103,22 +1103,32 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 		return "", false
 	}
 	items, _ := m[c.field].([]any)
+	// found tells a match; listed is its id, which the lists of databases
+	// and users of a PostgreSQL cluster do not give — a create there is
+	// found by its name, with no id (found by name, with no id (databases and users of a PostgreSQL cluster); «разработка C» У2).
+	matched := false
 	listed := ""
 	for _, it := range items {
 		o, _ := it.(map[string]any)
 		id, _ := o["id"].(string)
 		name, _ := o["name"].(string)
 		if (isCreate && name == in.Name) || (!isCreate && id == targetID) {
-			listed = id
+			matched, listed = true, id
 			break
 		}
 	}
+	idPart := func(id string) string {
+		if id == "" {
+			return ""
+		}
+		return i18n.Tf(" (id %s)", " (id %s)", id)
+	}
 	switch {
-	case isCreate && listed != "":
-		return i18n.Tf("%s lists %s (id %s): the create took effect; the record is closed", "%s показывает %s (id %s): создание прошло; запись закрыта", c.list, quoteCloud(in.Name), listed), true
+	case isCreate && matched:
+		return i18n.Tf("%s lists %s%s: the create took effect; the record is closed", "%s показывает %s%s: создание прошло; запись закрыта", c.list, quoteCloud(in.Name), idPart(listed)), true
 	case isCreate:
 		return i18n.Tf("%s has no %s yet: the cloud did not make it, or still makes it — run doctor again, or the same %s", "в %s пока нет %s: облако его не создало или ещё создаёт — повторите doctor или тот же %s", c.list, quoteCloud(in.Name), quoteCloud(in.Tool)), false
-	case listed == "":
+	case !matched:
 		return i18n.Tf("%s no longer lists %s: the delete took effect; the record is closed", "%s больше не показывает %s: удаление прошло; запись закрыта", c.list, quoteCloud(targetID)), true
 	}
 	return i18n.Tf("%s still lists %s: the delete did not take effect (yet) — run doctor again, or the same %s", "%s ещё показывает %s: удаление не прошло (или идёт) — повторите doctor или тот же %s", c.list, quoteCloud(targetID), quoteCloud(in.Tool)), false
