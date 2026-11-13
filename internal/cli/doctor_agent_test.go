@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,12 +23,16 @@ func writeDesktopEntry(t *testing.T, command string, args ...string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	q := make([]string, len(args))
-	for i, a := range args {
-		q[i] = `"` + a + `"`
+	// As agent setup writes it: the path of this system, JSON-escaped
+	// (C:\\Users\\… on Windows).
+	doc, err := json.Marshal(map[string]any{"mcpServers": map[string]any{
+		"other": map[string]any{"command": "x"},
+		"evo":   map[string]any{"command": command, "args": args},
+	}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	doc := `{"mcpServers":{"other":{"command":"x"},"evo":{"command":"` + filepath.ToSlash(command) + `","args":[` + strings.Join(q, ",") + `]}}}`
-	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+	if err := os.WriteFile(path, doc, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
