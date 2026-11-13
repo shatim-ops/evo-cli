@@ -84,8 +84,6 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"secret_add_version payload": {unnamedSecret, "значение секрета"},
 	"secret_create payload":      {unnamedSecret, "значение секрета"},
 
-	"stack_apply name": {unnamedNoise, "имя версии задания"},
-
 	"vpc_route_create nextHop.virtualMachine.interface.id":      {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
 	"vpc_route_create nextHop.virtualMachine.virtualMachine.id": {unnamedNoise, "id ВМ, которую превью называет по имени"},
 }

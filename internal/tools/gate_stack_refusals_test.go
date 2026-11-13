@@ -128,3 +128,31 @@ func TestStackApply_JobDoneAsksAndSaysItCreatesNothing(t *testing.T) {
 		t.Errorf("the question of a job planned: %s", text)
 	}
 }
+
+// The question of stack_apply names what the consent creates: every step
+// not done yet, its tool and its arguments — the names of the resources
+// among them (CLAUDE.md §6, axis 4); a step done is not asked about again,
+// and the value of a secret is not in the question (CLAUDE.md §4).
+func TestStackApply_TheQuestionNamesEveryStep(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"g","vpc":{"name":"net-g"},"secrets":[{"path":"app/db","value":"s3cr3t-value"}]}`)
+	for _, st := range j.Steps {
+		if st.Tool == "vpc_create" {
+			st.Status = "done"
+		}
+	}
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID})
+	if !strings.Contains(text, "app/db") || !strings.Contains(text, "secret_create") || !strings.Contains(text, secretNotShown) {
+		t.Errorf("the question does not name the step to run: %s", text)
+	}
+	if strings.Contains(text, "s3cr3t-value") {
+		t.Errorf("the value of a secret is in the question: %s", text)
+	}
+	if strings.Contains(text, "net-g") {
+		t.Errorf("the question names a step done: %s", text)
+	}
+}

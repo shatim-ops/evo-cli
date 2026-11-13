@@ -1086,8 +1086,9 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 	if err != nil {
 		return nil, err
 	}
+	will := map[string]any{"will_create": s.stackSteps(job)}
 	preview := map[string]any{"message": i18n.T("stack_apply provisions BILLABLE resources.",
-		"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", nil, nil)}
+		"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", will, []string{"will_create"})}
 	// A job done: the question is asked as before — answering without it
 	// would change an exit code, which waits for the major — and says that
 	// the consent creates nothing, as deploy's does of an unchanged
@@ -1122,6 +1123,38 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 		out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
 		return toJSON(out), job.Failed()
 	}}, nil
+}
+
+// stackSteps is what the steps of job not done yet will call: the step,
+// its tool and the arguments it is called with, but confirmed. The
+// question of stack_apply names every resource the consent pays for, as
+// the job will create it (CLAUDE.md §6, axis 4): a reference to the
+// resource of another step is "$" and its key. An argument that holds a
+// secret (CLISpec.SecretFiles of the step's tool) is named, its value is
+// not (CLAUDE.md §4).
+// secretNotShown stands for the value of a secret in the question.
+const secretNotShown = "(secret: not shown)"
+
+func (s *Registry) stackSteps(job *stack.Job) []map[string]any {
+	out := []map[string]any{}
+	for _, st := range job.Steps {
+		if st.Status == "done" {
+			continue
+		}
+		t, _ := s.Lookup(st.Tool)
+		row := map[string]any{"step": st.Key, "tool": st.Tool}
+		for k, v := range st.Args {
+			switch {
+			case k == "confirmed":
+			case t.CLI.SecretFiles[k]:
+				row[k] = secretNotShown
+			default:
+				row[k] = v
+			}
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // appliableJob is the job stack_apply may advance: there, of this server's
