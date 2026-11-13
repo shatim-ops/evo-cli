@@ -1755,6 +1755,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 					result["deployment"] = active
 				}
 			}
+			deployPortsOnlyFromGroups(result, eng.PortsOnlyFromGroups())
 			var going *engine.InProgress
 			if stderrors.As(deployErr, &going) {
 				return toJSON(deployInProgress(result, going, args)), false
@@ -1765,6 +1766,17 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			result["status"] = "ok"
 			return toJSON(result), false
 		})
+}
+
+// deployPortsOnlyFromGroups puts into the answer of deploy the ports the
+// deploy found let in only from other security groups — not open to its
+// source — as evo deploy --json names them, apart from the line of the
+// log (the interim delta audit of 1.9, FB19I-16). The names of the groups
+// are text of the cloud: the field is declared in untrustedFields.
+func deployPortsOnlyFromGroups(result map[string]any, only []sgrules.GroupOnlyPort) {
+	if len(only) > 0 {
+		result["ports_open_only_to_groups"] = only
+	}
 }
 
 // composeChanged reports whether the compose_hash of a deploy call — the
