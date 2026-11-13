@@ -157,10 +157,12 @@ func TestIntent_TheQuestionAfterACutCallDoesNotLookAtThePrint(t *testing.T) {
 	r := ownerRegistry(t, &ownerFake{}, false, ownProject)
 	eng, _ := r.newEngine(nil)
 	dir := intent.Dir(eng.StateDir)
-	for _, tool := range []string{"vm_reboot", "sg_rule_create"} {
-		if everySendIsAChange[tool] == "" {
-			t.Fatalf("%s is not a tool every send of which is a change", tool)
+	asked := 0
+	for tool := range everySendIsAChange {
+		if len(idArgs[tool]) == 0 {
+			continue // named by what it makes, not by a resource
 		}
+		asked++
 		target := idArgs[tool][0].name
 		consentedCall(r, tool, map[string]any{target: resMine}, `{"status":"error","reason":"API_UNREACHABLE"}`)
 		sent := 0
@@ -175,5 +177,8 @@ func TestIntent_TheQuestionAfterACutCallDoesNotLookAtThePrint(t *testing.T) {
 		for _, in := range intent.Pending(dir) {
 			intent.Close(in)
 		}
+	}
+	if asked == 0 {
+		t.Error("no tool every send of which is a change names a resource")
 	}
 }

@@ -127,7 +127,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 
 // waitArgs are the arguments that say how long the call waits, not what
 // it does: two calls that differ in them are the same call.
-var waitArgs = map[string]bool{"confirmed": true, "wait": true, "wait_seconds": true}
+var waitArgs = map[string]bool{"wait": true, "wait_seconds": true}
 
 // canonArgs is the canonical form of the arguments that make a call of
 // tool name what it is, for the print of its record (intent.Intent.Print):
@@ -140,7 +140,7 @@ func (r *Registry) canonArgs(name string, args map[string]any) []byte {
 	t, _ := r.Lookup(name)
 	sig := make(map[string]any, len(args))
 	for k, v := range args {
-		if !waitArgs[k] && !t.CLI.SecretFiles[k] {
+		if k != "confirmed" && !waitArgs[k] && !t.CLI.SecretFiles[k] {
 			sig[k] = v
 		}
 	}
