@@ -87,3 +87,39 @@ func TestWorkflows_ProbeHostsAreDeclared(t *testing.T) {
 		}
 	}
 }
+
+// The sweep of the stand (e2e_stand.sh) sends the token of the workflow
+// too: only to hosts of probeHosts, and no request of it follows a
+// redirect. The tag of the stand (Вп-3) brought it the host of Resource
+// Manager, the same as the probe Г-17's (risk note 183).
+func TestWorkflows_StandHostsAreDeclared(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "e2e_stand.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for i, l := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "#") {
+			continue
+		}
+		for _, m := range probeHostRe.FindAllStringSubmatch(l, -1) {
+			h := m[1]
+			if !strings.HasSuffix(h, "api.cloud.ru") {
+				if strings.Contains(l, "TOKEN") || strings.Contains(l, "Authorization") {
+					t.Errorf("e2e_stand.sh:%d sends the token to %q: not an API host of Cloud.ru", i+1, h)
+				}
+				continue
+			}
+			n++
+			if _, ok := probeHosts[h]; !ok {
+				t.Errorf("e2e_stand.sh:%d has a request to %q, which is not in probeHosts", i+1, h)
+			}
+		}
+		if strings.Contains(l, "curl ") && regexp.MustCompile(`curl [^|]*(\s-[A-Za-z]*L[A-Za-z]*\s|--location)`).MatchString(l) {
+			t.Errorf("e2e_stand.sh:%d: curl follows redirects: the token would go where the answer points", i+1)
+		}
+	}
+	if n < 3 {
+		t.Fatalf("e2e_stand.sh: %d hosts of Cloud.ru found — the check sees nothing", n)
+	}
+}

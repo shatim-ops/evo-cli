@@ -76,6 +76,7 @@ world() {
 	cat >"$FAKE_DIR/http" <<'H'
 GET /backups[?]* 200 {"items":[{"id":"x9","name":"evo-e2e-ops-r5a1-g16-bd","resource":{"resource_id":"x4"}}],"total":1}
 GET /protection-plans[?]* 200 {"items":[],"total":0}
+GET https://resource-manager.api.cloud.ru/v1/tags[?]* 200 {"tags":[{"id":"x11","key":"prod-env"}]}
 H
 }
 # full ИМЯ — тот же проект со стендом: каждый вид; копия с чужим именем
@@ -95,6 +96,8 @@ GET /protection-plans[?]* 200 {"items":[{"id":"spp","name":"$S-pp"},{"id":"spp2"
 DELETE /backups/* 204
 DELETE /protection-plans/* 204
 DELETE /security-groups/* 204
+GET https://resource-manager.api.cloud.ru/v1/tags[?]* 200 {"tags":[{"id":"x11","key":"prod-env"},{"id":"stag","key":"$S-tag"}]}
+DELETE https://resource-manager.api.cloud.ru/v1/tags/* 204
 H
 }
 # gone — после удалений стенда в списках нет (ответ со второго чтения).
@@ -114,6 +117,9 @@ gone() {
 		echo 'DELETE /backups/* 204'
 		echo 'DELETE /protection-plans/* 204'
 		echo 'DELETE /security-groups/* 204'
+		echo 'GET! https://resource-manager.api.cloud.ru/v1/tags[?]* 200 {"tags":[{"id":"stag","key":"'"$S"'-tag"}]}'
+		echo 'GET https://resource-manager.api.cloud.ru/v1/tags[?]* 200 {"tags":[]}'
+		echo 'DELETE https://resource-manager.api.cloud.ru/v1/tags/* 204'
 	} >"$FAKE_DIR/http"
 	for t in k8s_delete pg_delete destroy release_floating_ip disk_delete subnet_delete; do
 		fake_evo_answer "$t.yes" 0 0 '{"status":"deleting"}'
@@ -133,13 +139,13 @@ hasnt empty 'evo-e2e-\|prod-'
 full all
 run_ list
 want "all: код" "$rc" 0
-for l in "pplan	$S-pp" "pplan	daily" "backup	$S-bk" "backup	auto-2026-11-18" "k8s	$S-k8s" "pg	$S-pg" "vm	$S-vm" "fip	fip-$S-vm-abc123" "disk	$S-vm-boot" "subnet	$S-sn" "sg	$S-sg"; do
+for l in "pplan	$S-pp" "pplan	daily" "backup	$S-bk" "backup	auto-2026-11-18" "k8s	$S-k8s" "pg	$S-pg" "vm	$S-vm" "fip	fip-$S-vm-abc123" "disk	$S-vm-boot" "subnet	$S-sn" "sg	$S-sg" "tag	$S-tag"; do
 	has all "^$l"
 done
 has all 'возраст стенда: 2 сут'
 has all "срок: до $STAND_UNTIL"
 hasnt all 'evo-e2e-\|prod-\|Default_\|default_'
-if grep -v '::add-mask::' "$FAKE_DIR/out" | grep -qw 'svm\|sfip\|sboot\|sk8s\|spg\|sbk\|spp\|spp2\|ssn\|ssg'; then echo "FAIL all: id в строке лога"; fail=1; fi
+if grep -v '::add-mask::' "$FAKE_DIR/out" | grep -qw 'svm\|sfip\|sboot\|sk8s\|spg\|sbk\|spp\|spp2\|ssn\|ssg\|stag'; then echo "FAIL all: id в строке лога"; fail=1; fi
 if grep -q 'yes=1' "$FAKE_DIR/evo-calls" || grep -q '^DELETE' "$FAKE_DIR/calls"; then echo "FAIL all: list что-то удалял"; fail=1; fi
 
 # list: стенд за сроком — код 1 (как overdue у запусков); пустой проект за
@@ -159,6 +165,14 @@ run_ list
 want "unread: код" "$rc" 1
 has unread 'k8s: список не прочитан'
 hasnt unread 'стенда нет'
+
+# list: ответ «Менеджера ресурсов» без массива tags — список не прочитан, а
+# не «тегов нет»: тег стенда остался бы невидим уборке (Вп-3; урок Г-17, У7).
+full tag-unread
+sed -i 's|^GET https://resource-manager.*|GET https://resource-manager.api.cloud.ru/v1/tags[?]* 200 {"items":[]}|' "$FAKE_DIR/http"
+run_ list
+want "tag-unread: код" "$rc" 1
+has tag-unread 'tag: список не прочитан'
 
 # list ключом чтения (ежедневный job): вид, названный в STAND_FORBIDDEN_OK,
 # на 403 — предупреждение «не проверен», а не красный job; на любой другой
@@ -214,11 +228,11 @@ gone
 STAND_SWEEP=$S run_ sweep
 want "sweep: код" "$rc" 0
 has sweep 'остатков стенда нет'
-want "sweep: порядок удалений" "$({ grep -n '' "$FAKE_DIR/out" | grep -o 'удаление [a-z0-9]*' | awk '!seen[$0]++' | tr '\n' ';'; })" "удаление pplan;удаление backup;удаление k8s;удаление pg;удаление vm;удаление fip;удаление disk;удаление subnet;удаление sg;"
+want "sweep: порядок удалений" "$({ grep -n '' "$FAKE_DIR/out" | grep -o 'удаление [a-z0-9]*' | awk '!seen[$0]++' | tr '\n' ';'; })" "удаление pplan;удаление backup;удаление k8s;удаление pg;удаление vm;удаление fip;удаление disk;удаление subnet;удаление sg;удаление tag;"
 want "sweep: удаления evo" "$(grep 'yes=1' "$FAKE_DIR/evo-calls" | tr '\n' ';')" "k8s_delete yes=1;pg_delete yes=1;destroy yes=1;release_floating_ip yes=1;disk_delete yes=1;subnet_delete yes=1;"
-want "sweep: удаления API" "$(grep '^DELETE' "$FAKE_DIR/calls" | tr '\n' ';')" "DELETE /protection-plans/spp;DELETE /protection-plans/spp2;DELETE /backups/sbk;DELETE /backups/sbk2;DELETE /security-groups/ssg;"
+want "sweep: удаления API" "$(grep '^DELETE' "$FAKE_DIR/calls" | tr '\n' ';')" "DELETE /protection-plans/spp;DELETE /protection-plans/spp2;DELETE /backups/sbk;DELETE /backups/sbk2;DELETE /security-groups/ssg;DELETE https://resource-manager.api.cloud.ru/v1/tags/stag?projectId=p;"
 first_del=$(grep -n 'удаление ' "$FAKE_DIR/out" | head -1 | cut -d: -f1)
-last_listed=$(grep -n "^sg	$S-sg" "$FAKE_DIR/out" | head -1 | cut -d: -f1)
+last_listed=$(grep -n "^tag	$S-tag" "$FAKE_DIR/out" | head -1 | cut -d: -f1)
 if [ -z "$first_del" ] || [ -z "$last_listed" ] || [ "$last_listed" -ge "$first_del" ]; then
 	echo "FAIL sweep: перечень не напечатан до первого удаления"
 	fail=1
