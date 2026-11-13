@@ -213,6 +213,30 @@ func TestK8sNodePoolDelete_TheAnswerToTheDeleteIsLost(t *testing.T) {
 	}
 }
 
+// The name of the pool is the cloud's: anyone with access to the project
+// writes it. Every field of the answer that carries it, but the sentences
+// of evo that quote it, is marked untrusted — target in the preview, as at
+// backup_delete (FB19I-9).
+func TestK8sNodePoolDelete_CloudNamesAreMarked(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		w := &poolWorld{status: poolRunning, others: []string{poolRunning}}
+		w.setCount(2)
+		m, text, _ := poolDelete(t, w, confirmed)
+		marked := map[any]bool{}
+		for _, f := range anySlice(m["_untrusted"]) {
+			marked[f] = true
+		}
+		for k, v := range m {
+			if k == "message" || k == "error" || k == "_untrusted" {
+				continue
+			}
+			if strings.Contains(toJSON(map[string]any{k: v}), "pool-1") && !marked[k] {
+				t.Errorf("confirmed=%v: %s carries the pool's name and is not marked untrusted: %s", confirmed, k, text)
+			}
+		}
+	}
+}
+
 // The only running pool of a cluster whose other pools are in error,
 // stopped or on their way: the preview said nothing, as if the cluster
 // kept working nodes (FB19I-10). A row per status of the specification
