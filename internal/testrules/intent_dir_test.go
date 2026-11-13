@@ -21,9 +21,9 @@ import (
 // directory declared for the registry (Registry.SetStateDir, #1578), and
 // restoreHeld read them from the engine's StateDir. While the two are one
 // path the guard against a second restore works; with two paths three
-// calls with consent sent three restores — three billed disks. The
-// equality of the two has its invariant (#1578); the path a tool reads by
-// had none.
+// calls with consent sent three restores — three billed disks (fixed in
+// #1633). The equality of the two has its invariant (#1578); the path a
+// tool reads by had none.
 //
 // In internal/tools the directory given to intent.Dir and intent.Dirs is
 // a name of the function — its parameter, or what Registry.stateDir
@@ -35,8 +35,7 @@ import (
 // intent.Dir or intent.Dirs something else today, "file: function" → what
 // and whose it is. The list only shrinks. Closes by 1.10.
 var intentDirUndeclared = map[string]string{
-	"internal/tools/tools_backup.go: restoreHeld": "Closes by 1.9 (release plan 1.9, the owner is «разработка B», until rc.1): eng.StateDir — the guard against a second billed disk stands on the equality of two directories",
-	"internal/tools/tools_auth.go: doctorChecks":  "eng.StateDir — the foreign files doctor names; no money, a warning read in another directory",
+	"internal/tools/tools_auth.go: doctorChecks": "eng.StateDir — the foreign files doctor names; no money, a warning read in another directory",
 }
 
 func TestTools_ReadIntentRecordsInTheDeclaredDirectory(t *testing.T) {
