@@ -7,6 +7,7 @@ package engine
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -289,6 +290,12 @@ func (h *heldStages) Read(_ context.Context, name string) (vmstage.Stage, error)
 	return vmstage.Stage{State: "none"}, nil
 }
 
+func (h *heldStages) started() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.starts
+}
+
 func (h *heldStages) finish() {
 	h.mu.Lock()
 	h.running = false
@@ -300,30 +307,47 @@ func (h *heldStages) finish() {
 // not start another («1.7 — релиз» on #769: a nonce of the time in the
 // input made each repeat a new input, and deploy never ended).
 func TestDeploy_ForceRunsComposeUpOnceAcrossRepeats(t *testing.T) {
-	stages := &heldStages{}
-	eng, dir := newTestEngine(t, &mockCloudAPI{}, newMockDeployer())
-	eng.Stages = stages
-	call := func(force bool, bound time.Duration) error {
-		opts := newDeployOpts(t, dir)
-		opts.Force = force
-		opts.Until = time.Now().Add(bound)
-		return deployBounded(t, eng, opts)
-	}
-	var going *InProgress
-	if err := call(false, testBound); !stderrors.As(err, &going) || going.Phase != "compose-up" {
-		t.Fatalf("first: %v, want InProgress compose-up", err)
-	}
-	stages.finish()
-	if err := call(true, testBound); !stderrors.As(err, &going) || going.Phase != "compose-up" {
-		t.Fatalf("--force: %v, want compose up started again", err)
+	var (
+		stages *heldStages
+		call   func(force bool, bound time.Duration) error
+	)
+	// The first call and the forced one each end at the bound in
+	// compose-up. The bound is doubled while either of them came to it
+	// before compose up started (boundedUntilHeld; the class of #1645), each
+	// time on a VM of its own: the stages of an attempt are not the next's.
+	err := boundedUntilHeld(t, func(bound time.Duration, held *atomic.Bool) error {
+		stages = &heldStages{}
+		eng, dir := newTestEngine(t, &mockCloudAPI{}, newMockDeployer())
+		eng.Stages = stages
+		call = func(force bool, b time.Duration) error {
+			opts := newDeployOpts(t, dir)
+			opts.Force = force
+			opts.Until = time.Now().Add(b)
+			return deployBounded(t, eng, opts)
+		}
+		var going *InProgress
+		if err := call(false, bound); !stderrors.As(err, &going) || going.Phase != "compose-up" {
+			held.Store(stages.started() == 1)
+			return fmt.Errorf("first: %v, want InProgress compose-up", err)
+		}
+		stages.finish()
+		err := call(true, bound)
+		held.Store(stages.started() == 2)
+		if !stderrors.As(err, &going) || going.Phase != "compose-up" {
+			return fmt.Errorf("--force: %v, want compose up started again", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	stages.finish()
 	// The repeat ends the deploy: its bound is not the point of the test.
 	if err := call(false, finishBound); err != nil {
 		t.Fatalf("the repeat after --force: %v", err)
 	}
-	if stages.starts != 2 {
-		t.Errorf("compose up started %d times, want 2: the repeat of a forced deploy started it again", stages.starts)
+	if n := stages.started(); n != 2 {
+		t.Errorf("compose up started %d times, want 2: the repeat of a forced deploy started it again", n)
 	}
 }
 

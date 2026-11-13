@@ -103,11 +103,22 @@ func TestDeployMCP_NewVMCutInCreationWaitsTheLimitOfANewVM(t *testing.T) {
 	if err := deployBounded(t, eng, opts); !stderrors.As(err, &going) || going.Phase != "vm" {
 		t.Fatalf("first call: %v, want InProgress vm", err)
 	}
-	// The next one: the VM is up, SSH does not answer yet.
+	// The next one: the VM is up, SSH does not answer yet. Its bound is
+	// doubled while it comes before the first connect (boundedUntilHeld; the
+	// class of #1645): the call before SSH changes nothing the test reads.
 	active.Store(true)
-	opts = newDeployOpts(t, dir)
-	opts.Until = time.Now().Add(testBound)
-	if err := deployBounded(t, eng, opts); !stderrors.As(err, &going) || going.Phase != "ssh" {
+	err := boundedUntilHeld(t, func(bound time.Duration, held *atomic.Bool) error {
+		dep.hold = func(_ context.Context, op string) error {
+			if op == "connect" {
+				held.Store(true)
+			}
+			return nil
+		}
+		opts := newDeployOpts(t, dir)
+		opts.Until = time.Now().Add(bound)
+		return deployBounded(t, eng, opts)
+	})
+	if !stderrors.As(err, &going) || going.Phase != "ssh" {
 		t.Fatalf("next call: %v, want InProgress ssh", err)
 	}
 	rec := readActive(t, dir)
