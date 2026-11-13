@@ -189,3 +189,43 @@ func TestDoctor_ClosesInterruptedPgDbCreateByName(t *testing.T) {
 		t.Errorf("doctor does not close «made» by name without an id:\n%s", text)
 	}
 }
+
+// «Риск», 191, У2: a lost answer leaves one record of the call; the same
+// call repeated three times, each refused before its create (the name is
+// in the cluster, nothing sent), adds none — a refusal that sent no write
+// closes its own record (#1675), and pending_operations does not grow
+// with calls that sent nothing.
+func TestPgCreate_RepeatsAfterALostAnswerAddNoRecords(t *testing.T) {
+	const cluster = "00000000-0000-4000-8000-0000000000e1"
+	for _, tool := range []struct {
+		name, kind string
+		args       map[string]any
+	}{
+		{"pg_db_create", "databases", map[string]any{"cluster_id": cluster, "name": "app", "owner": "app", "confirmed": true}},
+		{"pg_user_create", "users", map[string]any{"cluster_id": cluster, "name": "app", "password": "Qwerty123456!", "confirmed": true}},
+	} {
+		w := &pgRepeatWorld{kind: tool.kind, second: http.StatusOK}
+		r := dbaasRegistry(t, &fakeDbaas{}, "")
+		root, ok := r.stateDir()
+		if !ok {
+			t.Fatal("no state directory")
+		}
+		bare := httpretry.DefaultBase
+		httpretry.DefaultBase = w
+		if _, text, isErr := callNamed(t, r, tool.name, tool.args); !isErr || w.posts != 1 {
+			httpretry.DefaultBase = bare
+			t.Fatalf("%s: the world did not lose the first answer: %s", tool.name, text)
+		}
+		after := len(pendingIntents(root))
+		if after == 0 {
+			t.Fatalf("%s: the cut call left no record: the test would hold nothing", tool.name)
+		}
+		for range 3 {
+			callNamed(t, r, tool.name, tool.args)
+		}
+		httpretry.DefaultBase = bare
+		if got := len(pendingIntents(root)); got > after || w.posts != 1 {
+			t.Errorf("%s: records %d after the cut call, %d after three repeats (creates sent %d): the repeats that sent nothing left records", tool.name, after, got, w.posts)
+		}
+	}
+}
