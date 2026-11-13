@@ -41,7 +41,7 @@ job() {
 		  created_at: "2026-11-13T16:23:34Z",
 		  completed_at: ("2026-11-13T16:23:34Z" | fromdateiso8601 + $m * 60 | todateiso8601)}'
 }
-jobs() { jq -sc '{jobs: .}'; }
+jobs_json() { jq -sc '{jobs: .}'; }
 starved=$(job "test (macos-latest)" cancelled null 0 15)
 ubuntu=$(job "test (ubuntu-latest)" success 101 62 14)
 skipped=$(job dev-build skipped null 0 0)
@@ -61,37 +61,37 @@ check() {
 
 # 1. push в main: macOS без раннера, прочее зелёное — повтор, строка-notice
 # называет job (по ней считается «после»).
-FAKE_JOBS=$(printf '%s\n' "$starved" "$ubuntu" "$skipped" | jobs) run push 1 abc
+FAKE_JOBS=$(printf '%s\n' "$starved" "$ubuntu" "$skipped" | jobs_json) run push 1 abc
 check "push, без раннера" 1
 grep -q '::notice::.*test (macos-latest)' <<<"$out" || { echo "FAIL push: notice не называет job"; fail=1; }
 grep -q '^api -X POST repos/o/r/actions/runs/7/rerun-failed-jobs' "$FAKE_CALLS" || { echo "FAIL push: повтор не того прогона"; cat "$FAKE_CALLS"; fail=1; }
 
 # 2. PR на актуальной голове — повтор; «без раннера» и в форме runner_id 0
 # и steps null (так тот же job отдаёт другой клиент API).
-FAKE_HEAD=abc FAKE_JOBS=$(printf '%s\n' "$(jq -c '.runner_id = 0 | .steps = null' <<<"$starved")" "$ubuntu" | jobs) run pull_request 1 abc
+FAKE_HEAD=abc FAKE_JOBS=$(printf '%s\n' "$(jq -c '.runner_id = 0 | .steps = null' <<<"$starved")" "$ubuntu" | jobs_json) run pull_request 1 abc
 check "PR на голове" 1
 
 # 3. PR, голова сдвинулась (отмену мог сделать новый пуш; новый прогон и так
 # идёт) — без повтора.
-FAKE_HEAD=def FAKE_JOBS=$(printf '%s\n' "$starved" "$ubuntu" | jobs) run pull_request 1 abc
+FAKE_HEAD=def FAKE_JOBS=$(printf '%s\n' "$starved" "$ubuntu" | jobs_json) run pull_request 1 abc
 check "PR, голова сдвинулась" 0
 
 # 4. Рядом настоящий провал — без повтора: повтор провала — решение «релиза»
 # (CLAUDE.md §0, правило 2), а не автомата.
-FAKE_JOBS=$(printf '%s\n' "$starved" "$(job "test (ubuntu-latest)" failure 101 62 9)" | jobs) run push 1 abc
+FAKE_JOBS=$(printf '%s\n' "$starved" "$(job "test (ubuntu-latest)" failure 101 62 9)" | jobs_json) run push 1 abc
 check "рядом провал" 0
 grep -q 'test (ubuntu-latest)' <<<"$out" || { echo "FAIL рядом провал: вывод не называет провал"; fail=1; }
 
 # 5. Отмена с раннером (шаги шли) — не «без раннера».
-FAKE_JOBS=$(printf '%s\n' "$(job "test (macos-latest)" cancelled 202 12 15)" "$ubuntu" | jobs) run push 1 abc
+FAKE_JOBS=$(printf '%s\n' "$(job "test (macos-latest)" cancelled 202 12 15)" "$ubuntu" | jobs_json) run push 1 abc
 check "отмена с раннером" 0
 
 # 6. Отмена без раннера раньше 14 мин (отмена пушем, отменой вручную) — нет.
-FAKE_JOBS=$(printf '%s\n' "$(job "test (macos-latest)" cancelled null 0 3)" "$ubuntu" | jobs) run push 1 abc
+FAKE_JOBS=$(printf '%s\n' "$(job "test (macos-latest)" cancelled null 0 3)" "$ubuntu" | jobs_json) run push 1 abc
 check "отмена до срока ожидания" 0
 
 # 7. Вторая попытка — никогда: второй отказ выдачи — «релизу» вручную.
-FAKE_JOBS=$(printf '%s\n' "$starved" "$ubuntu" | jobs) run push 2 abc
+FAKE_JOBS=$(printf '%s\n' "$starved" "$ubuntu" | jobs_json) run push 2 abc
 check "вторая попытка" 0
 if grep -q 'jobs' "$FAKE_CALLS"; then echo "FAIL вторая попытка: читал job"; fail=1; fi
 
@@ -101,7 +101,7 @@ check "список не прочитан" 0
 grep -q 'не прочитан' <<<"$out" || { echo "FAIL список не прочитан: причины нет"; printf '%s\n' "$out"; fail=1; }
 
 # 9. Без раннера — нет ни одного (весь прогон отменён другим путём) — нет.
-FAKE_JOBS=$(printf '%s\n' "$ubuntu" "$skipped" | jobs) run push 1 abc
+FAKE_JOBS=$(printf '%s\n' "$ubuntu" "$skipped" | jobs_json) run push 1 abc
 check "без раннера нет" 0
 
 [ "$fail" = 0 ] || exit 1
