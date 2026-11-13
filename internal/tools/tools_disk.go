@@ -45,6 +45,15 @@ func (s *Registry) resolveVM(ctx context.Context, ref, projectID string) (*provi
 // resolveVMFor finds the VM tool names by id or name in the project's
 // list: the one point a reference to a VM is resolved at (strictVMRef).
 func (s *Registry) resolveVMFor(ctx context.Context, tool, ref, projectID string) (*provision.VM, error) {
+	// Once a call: the layer of intents resolves the VM a call names
+	// before the plan of the tool does (changeRule.target).
+	return onceACall(ctx, "vm\x00"+tool+"\x00"+ref+"\x00"+projectID, func() (*provision.VM, error) {
+		return s.listedVM(ctx, tool, ref, projectID)
+	})
+}
+
+// listedVM is resolveVMFor's read of the project's list.
+func (s *Registry) listedVM(ctx context.Context, tool, ref, projectID string) (*provision.VM, error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return nil, err
