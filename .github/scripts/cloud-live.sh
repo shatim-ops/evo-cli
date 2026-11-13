@@ -227,6 +227,8 @@ lst() {
 	# Копии и планы защиты проб (область ops): у evo их нет — список прямо.
 	backup) lst_api backups "$p" ;;
 	pplan) lst_api protection-plans "$p" ;;
+	# Теги проб (область ops): у evo их нет — список «Менеджера ресурсов».
+	tag) lst_tags "$p" ;;
 	*) return 1 ;;
 	esac
 }
@@ -250,6 +252,37 @@ lst_api() {
 	fi
 	[ -z "$why" ] || { jq -nc --arg m "$1: $why" '{error: {reason: "API_ERROR", message: $m}}' >"$tmp/lst.err"; return 1; }
 	jq -r --arg p "$2" '.items[] | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' "$tmp/api.json"
+}
+# RM — «Менеджер ресурсов»: адрес — как в опубликованной спецификации
+# (scripts/cloudru-specs.py, resource-manager), константой: токен IAM не
+# уходит на адрес из окружения, входа запуска или ответа платформы
+# (заключение «Риска» 183, У1; держит TestWorkflows_ProbeHostsAreDeclared).
+RM=https://resource-manager.api.cloud.ru/v1
+# lst_tags ПРЕФИКС — lst для тегов: все страницы GET /v1/tags проекта, свои —
+# по ключу (key или начало tagKeyValue: ответ отдаёт пару одной строкой).
+# Ответ-объект без поля tags — тегов нет: пустой список API может не
+# отдавать вовсе (гипотеза до прогона), и уборка проекта без тегов не должна
+# от этого краснеть. Не 2xx, ответ не объект, tags не массив или страниц
+# больше 50 — список не прочитан (код 1).
+lst_tags() {
+	local why='' tok='' pages=0
+	: >"$tmp/tags.l"
+	if [ -z "${PROJECT:-}" ]; then why="нет PROJECT"
+	elif ! iam_fresh >&2; then why="нет токена IAM (KEY_ID, SECRET)"
+	else
+		while :; do
+			api GET "$RM/tags?projectId=$PROJECT&pageSize=100${tok:+&pageToken=$tok}"
+			case "$code" in 2??) ;; *) why="HTTP $code: $(api_why)"; break ;; esac
+			jq -e 'type == "object" and ((has("tags") | not) or (.tags | type == "array"))' "$tmp/api.json" >/dev/null 2>&1 || { why="ответ не объект или tags не массив"; break; }
+			jq -r --arg p "$1" '.tags[]? | ((.key? // .tagKeyValue? // "") | tostring) as $k | select($k | startswith($p)) | "\(.id)\t\($k)"' "$tmp/api.json" >>"$tmp/tags.l"
+			tok=$(jq -r '.nextPageToken // empty' "$tmp/api.json" 2>/dev/null) || tok=
+			[ -n "$tok" ] || break
+			pages=$((pages + 1))
+			[ "$pages" -lt 50 ] || { why="страниц больше 50"; break; }
+		done
+	fi
+	[ -z "$why" ] || { jq -nc --arg m "tags: $why" '{error: {reason: "API_ERROR", message: $m}}' >"$tmp/lst.err"; return 1; }
+	cat "$tmp/tags.l"
 }
 # del ВИД ID — удалить один ресурс (ответ не печатается: в нём ID).
 del() {
@@ -298,10 +331,18 @@ del() {
 			reason="HTTP $code"
 			case "$code" in 2?? | 404) rc=0 ;; esac
 		fi ;;
+	tag)
+		rc=1 reason="нет токена IAM"
+		if iam_fresh && [ -n "${PROJECT:-}" ]; then
+			api DELETE "$RM/tags/$id?projectId=$PROJECT"
+			reason="HTTP $code"
+			case "$code" in 2?? | 404) rc=0 ;; esac
+		fi ;;
 	esac
 }
-# План защиты и копия — раньше ВМ и диска, которые они держат.
-KINDS="pplan backup ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert sg"
+# План защиты и копия — раньше ВМ и диска, которые они держат; тег — после
+# ресурсов, которым назначен.
+KINDS="pplan backup ca ar lb tg vm snat fip disk image route subnet vpc dns s3 secret cert sg tag"
 # area_kinds ОБЛАСТЬ — виды ресурсов, которые область создаёт: её уборка
 # читает только их (список одного вида бывает медленным: ar_list 18.10 —
 # ~9,5 мин). Маршрут тестовой сети — только у net.
@@ -316,7 +357,7 @@ area_kinds() {
 	stack) echo "lb tg vm fip secret" ;;
 	mcp) echo "vm fip" ;;
 	pgnet) echo "vm fip subnet" ;;
-	ops) echo "pplan backup vm fip disk subnet sg" ;;
+	ops) echo "pplan backup vm fip disk subnet sg tag" ;;
 	dbchange) echo "" ;; # ресурсов не создаёт: кластер — у job
 	*) echo "${KINDS/route /}" ;;
 	esac
@@ -345,7 +386,7 @@ sweep() {
 	esac
 	while :; do
 		left=0
-		case " $kinds " in *" backup "* | *" pplan "*) iam_fresh || true ;; esac
+		case " $kinds " in *" backup "* | *" pplan "* | *" tag "*) iam_fresh || true ;; esac
 		for kind in $kinds; do
 			t0=$(date +%s)
 			lst_done "$kind" "$p" >"$tmp/l" || {
@@ -574,6 +615,8 @@ dns_unlink() {
 	[ -z "$op" ] || { mask "$op"; opwait dns "$op" 300; }
 }
 
+# VM_TAG_IDS — JSON-массив id тегов для tag_ids тела (проба Г-17); пусто —
+# поля нет.
 # vm_post NAME FLAVOR IMAGE ZID SIZE DISK_TYPE INTERFACES — прямой POST
 # /api/v1.1/vms телом, как его шлёт evo (provision.CreateVMRequest): зона и
 # подсеть — по id (availability_zone_id, subnet_id), flavor, образ и тип
@@ -592,9 +635,10 @@ vm_post() {
 		return 0
 	fi
 	api POST https://compute.api.cloud.ru/api/v1.1/vms "$(jq -nc --arg p "$PROJECT" --arg n "$1" --arg f "$2" --arg i "$3" \
-		--arg z "$4" --argjson sz "$5" --arg d "$6" --argjson ifs "$7" --argjson m "$meta" \
+		--arg z "$4" --argjson sz "$5" --arg d "$6" --argjson ifs "$7" --argjson m "$meta" --argjson tags "${VM_TAG_IDS:-null}" \
 		'[{project_id: $p, name: $n, availability_zone_id: $z, flavor_name: $f, image_name: $i, image_metadata: $m,
-		   disks: [{name: ($n + "-boot"), size: $sz, disk_type_name: $d}], interfaces: $ifs}]')"
+		   disks: [{name: ($n + "-boot"), size: $sz, disk_type_name: $d}], interfaces: $ifs}
+		  + (if $tags == null then {} else {tag_ids: $tags} end)]')"
 }
 # vm_meta IMAGE HOSTNAME — image_metadata для прямого POST ВМ по полям
 # образа из image_get (images.Fields — то же правило, что у provision):
@@ -2728,6 +2772,223 @@ probe_g10() {
 	else bad "Г-20: проба цены не состоялась" "flavor ВМ не подтверждён исходным, а удаление не прошло — ВМ, адрес или диск остались: запустите cleanup_only со словом g20 во входе probes"; fi
 }
 
+# Проба Г-17: теги. Тег создаётся в «Менеджере ресурсов» (пара «ключ —
+# значение», спецификация resource-manager); Compute принимает у ВМ и диска
+# tag_ids и tag_names (одно имя) и называет источником другой адрес —
+# одна ли это сущность, спецификации не говорят, и это главный вопрос пробы
+# (волна В6). Что записывается: первое чтение тегов проекта (до любой
+# записи); создание тега, чтение по id и по ключу, изменение; диск и ВМ с
+# tag_ids в запросе создания — принят ли, что в tags карточки; отбор ВМ по
+# тегу в Compute и ресурсов по тегу в «Менеджере»; диск с tag_names = имени
+# того же тега; снятие и назначение тега диску через «Менеджер»; удаление
+# тега, назначенного диску, его повтор и tags диска после.
+# Условия заключения «Риска» 183: до записи — чтение, и тег шире проекта —
+# конец пробы (У2); изменение, удаление и назначение — только по id тега из
+# ответа своего создания и только на ВМ и диск этого запуска (У3); удаление
+# назначенного тега — на диске, после удаления ВМ, последним (У4); попытка
+# tag_names вводит только имя уже созданного тега и отключается словом
+# g17nonames во входе probes — вторым прогоном, если первый оставил тег,
+# которого «Менеджер» не видит (У5).
+probe_g17() {
+	local zid=$1 n=$prefix-g17 tag='' disk='' disk2='' vm='' sn r wider n1 same id did left=0 blind=0
+	iam_token || { gap "Г-17" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap "Г-17" "нет PROJECT"; return 0; }
+	# tag_of — тег в ответе: сам объект или в поле tag.
+	tag_of() { jq -r "(.tag? // .) | $1" "$tmp/api.json" 2>/dev/null || true; }
+	# tags_n — сколько тегов в карточке ресурса Compute (последний ответ).
+	tags_n() { jq -r 'if has("tags") then (.tags | if type == "array" then "\(length), поля тега: \((.[0]? // {}) | keys | tojson)" else type end) else "поля tags нет" end' "$tmp/api.json" 2>/dev/null || echo '?'; }
+	# mine_n — сколько тегов с ключом пробы видит «Менеджер» («?» — список не
+	# прочитан). Список, который не показал только что созданный тег
+	# (blind=1), счётом остатков не служит: «не установлено» (У7).
+	mine_n() {
+		local o
+		if [ "$blind" = 1 ]; then echo "не установлено"
+		elif o=$(lst_tags "$n"); then grep -c . <<<"$o" || true
+		else echo '?'; fi
+	}
+	api GET "$RM/tags?projectId=$PROJECT&pageSize=100"
+	case "$code" in 2??) ;; *)
+		gap "Г-17" "первое чтение тегов не прошло: $(brief) — запись не начинаю"
+		return 0
+		;;
+	esac
+	# По первой странице (до 100 тегов): её хватает, чтобы увидеть, что
+	# список проекта отдаёт чужое; проект созданного тега сверяется ниже.
+	wider=$(jq -r --arg p "$PROJECT" '[.tags[]? | select(has("projectId") and .projectId != $p)] | length' "$tmp/api.json" 2>/dev/null) || wider='?'
+	ok "Г-17: чтение тегов до записи" "HTTP $code, тегов: $(jq -r '.tags? | if type == "array" then length else "нет поля tags" end' "$tmp/api.json" 2>/dev/null || echo '?'), поля ответа: $(keys_of), поля тега: $(jq -c '(.tags[0]? // {}) | keys' "$tmp/api.json" 2>/dev/null || echo '?'), тегов другого проекта в ответе: $wider"
+	if [ "$wider" != 0 ]; then
+		gap "Г-17" "тег шире проекта — не покрыто: список проекта отдаёт теги другого проекта ($wider); запись не начинаю"
+		return 0
+	fi
+	api POST "$RM/tags" "$(jq -nc --arg p "$PROJECT" --arg k "$n" '{key: $k, value: "probe", description: "evo e2e probe", projectId: $p}')"
+	case "$code" in 2??) ;; *)
+		refusal "Г-17: создание тега" синхронно
+		return 0
+		;;
+	esac
+	tag=$(tag_of '.id? // empty')
+	mask "$tag"
+	ok "Г-17: создание тега" "HTTP $code, поля ответа: $(keys_of), пара в ответе: «$(tag_of '.tagKeyValue? // "нет поля"' | cut -c1-120)», проект тега: $(jq -r --arg p "$PROJECT" '(.tag? // .) | if has("projectId") | not then "поля нет" elif .projectId == $p then "проект пробы" else "другой" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+	[ -n "$tag" ] || { gap "Г-17: тег" "id не прочитан — остаток уберёт уборка области по ключу"; return 0; }
+	if [ "$(jq -r --arg p "$PROJECT" '(.tag? // .) | has("projectId") and .projectId != $p' "$tmp/api.json" 2>/dev/null)" = true ]; then
+		api DELETE "$RM/tags/$tag?projectId=$PROJECT"
+		gap "Г-17" "тег шире проекта — не покрыто: созданный тег не в проекте пробы; удаление своего тега — $(brief)"
+		return 0
+	fi
+	# Список, которым читает уборка, обязан показать созданный тег: иначе
+	# «тегов пробы: 0» после прогона ничего не значит — список отдаётся под
+	# другим полем, с другим ключом или не весь (заключение «Риска» 183, У7).
+	# Свой тег проба всё равно удаляет по id из ответа создания.
+	if ! lst_tags "$n" 2>/dev/null | cut -f1 | grep -qxF "$tag"; then
+		blind=1
+		echo "::warning::Г-17: список тегов не показывает созданный тег: уборка по списку слепа — остаток тега пробы она не увидит; счёт «тегов пробы в Менеджере» в этом прогоне не установлен"
+	fi
+	api GET "$RM/tags/$tag?projectId=$PROJECT"
+	r="список уборки показывает созданный тег: $([ "$blind" = 0 ] && echo да || echo нет); чтение по id — HTTP $code$(why_tail), поля: $(jq -c '(.tag? // .) | if type == "object" then keys else type end' "$tmp/api.json" 2>/dev/null || echo '?')"
+	api GET "$RM/tags?projectId=$PROJECT&key=$n"
+	ok "Г-17: чтение тега" "$r; отбор по ключу — HTTP $code$(why_tail), найдено: $(jq -r '.tags? | if type == "array" then length else "?" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+	api PATCH "$RM/tags/$tag" "$(jq -nc --arg p "$PROJECT" '{projectId: $p, description: "evo e2e probe, changed"}')"
+	ok "Г-17: изменение тега" "$(brief)"
+	# Диск с тегом в запросе создания. Отказ не по квоте — диск без тега:
+	# шаги назначения идут на нём.
+	g17_disk() { # ИМЯ [ПОЛЕ ЗНАЧЕНИЕ-JSON]
+		api POST "$C1/disks" "$(jq -nc --arg p "$PROJECT" --arg n "$1" --arg z "$ZONE" --arg f "${2:-}" --argjson v "${3:-null}" \
+			'{project_id: $p, name: $n, size: 10, availability_zone_name: $z, disk_type_name: "SSD", description: "evo e2e probe"} + (if $f == "" then {} else {($f): $v} end)')"
+	}
+	# disk_id ИМЯ — id диска из ответа создания (или по имени) в $did. Не
+	# через $(…): команда маски попала бы в значение.
+	disk_id() { did=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || did=; [ -n "$did" ] || did=$(lst disk "$1" | cut -f1 | head -1) || did=; mask "$did"; }
+	g17_disk "$n-d" tag_ids "$(jq -nc --arg t "$tag" '[$t]')"
+	case "$code" in
+	2??)
+		disk_id "$n-d"
+		disk=$did
+		r="HTTP $code"
+		if [ -n "$disk" ]; then
+			api GET "$C1/disks/$disk"
+			r="$r; tags в карточке диска: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+		fi
+		ok "Г-17: диск с tag_ids в запросе создания" "$r"
+		;;
+	*)
+		refusal "Г-17: диск с tag_ids в запросе создания" синхронно
+		if [ "$QUOTA_HIT" = 0 ]; then
+			g17_disk "$n-d"
+			case "$code" in
+			2??)
+				disk_id "$n-d"
+				disk=$did
+				;;
+			*) gap "Г-17: диск без тега" "$(brief)" ;;
+			esac
+		fi
+		;;
+	esac
+	# ВМ с тегом в запросе создания: без публичного адреса, в подсети зоны.
+	if [ "$QUOTA_HIT" = 0 ]; then
+		sn=$(zone_subnet "$zid")
+		mask "$sn"
+		if [ -z "$sn" ]; then
+			gap "Г-17: ВМ с tag_ids" "нет подсети в $ZONE"
+		else
+			VM_TAG_IDS=$(jq -nc --arg t "$tag" '[$t]') vm_post "$n" "$FLAVOR" "$IMAGE" "$zid" 20 SSD "$(regular_if "$sn")"
+			case "$code" in
+			2??)
+				r="HTTP $code"
+				vm=$(jq -r '(if type == "array" then .[0] else (.vms[0]? // .) end) | .id? // empty' "$tmp/api.json" 2>/dev/null) || vm=
+				g17_vm() { vm=$(evo tools call vm_get --arg name="$n" --json 2>/dev/null | jq -r '.id // empty'); [ -n "$vm" ]; }
+				[ -n "$vm" ] || poll 60 3 g17_vm || true
+				mask "$vm"
+				if [ -n "$vm" ]; then
+					api GET "$C1/vms/$vm"
+					r="$r; tags в карточке ВМ: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+					api GET "$C1/vms?project_id=$PROJECT&tag_ids=$tag&limit=100"
+					r="$r; отбор ВМ по tag_ids — HTTP $code$(why_tail), найдено: $(jq -r '.items? | if type == "array" then length else "?" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+				else
+					r="$r; id ВМ не прочитан за 60 с — остаток уберёт уборка области"
+				fi
+				ok "Г-17: ВМ с tag_ids в запросе создания" "$r"
+				;;
+			*) refusal "Г-17: ВМ с tag_ids в запросе создания" синхронно ;;
+			esac
+		fi
+	fi
+	iam_fresh || true
+	api GET "$RM/resources?projectIds=$PROJECT&tagIds=$tag&pageSize=100"
+	ok "Г-17: ресурсы по тегу в «Менеджере»" "HTTP $code$(why_tail), найдено: $(jq -r '.resources? | if type == "array" then length else "нет поля resources" end' "$tmp/api.json" 2>/dev/null || echo '?'), виды: $(jq -c '[.resources[]?.resourceTypeName] | unique' "$tmp/api.json" 2>/dev/null || echo '?')"
+	# Диск с tag_names = имени уже созданного тега: нового имени проба не
+	# вводит. Принят, а тег с этим ключом в «Менеджере» по-прежнему один —
+	# возможен второй тег в сервисе, которого проба не видит и не уберёт.
+	if probe_on g17nonames; then
+		ok "Г-17: диск с tag_names" "не повторяется: остаток неубираем (слово g17nonames во входе probes)"
+	elif [ "$QUOTA_HIT" = 0 ]; then
+		g17_disk "$n-d2" tag_names "$(jq -nc --arg t "$n" '[$t]')"
+		case "$code" in
+		2??)
+			disk_id "$n-d2"
+			disk2=$did
+			r="HTTP $code"
+			# same — тег на диске тот же, что тег «Менеджера»: да, нет или
+			# «?» (карточка не прочитана). Читается до счёта тегов: тот
+			# перезаписывает последний ответ.
+			same='?'
+			if [ -n "$disk2" ]; then
+				api GET "$C1/disks/$disk2"
+				case "$code" in
+				2??)
+					same=$(jq -r --arg t "$tag" 'if ([.tags[]?.id] | index($t)) != null then "да" else "нет" end' "$tmp/api.json" 2>/dev/null) || same='?'
+					r="$r; tags в карточке диска: $(tags_n), id тега тот же, что у тега «Менеджера»: $same"
+					;;
+				*) r="$r; карточка диска: $(brief)" ;;
+				esac
+			fi
+			n1=$(mine_n)
+			r="$r; тегов с ключом пробы в «Менеджере»: $n1"
+			ok "Г-17: диск с tag_names" "$r"
+			if [ "$n1" = 1 ] && [ "$same" = нет ]; then
+				echo "::warning::Г-17: диск с tag_names принят, а тег на нём — не тег «Менеджера»: второго тега в «Менеджере» нет; есть ли он в сервисе тегов Compute, проба не видит и убрать не может — остаток неизвестной сущности с именем пробы, цена тега неизвестна. Второй прогон — со словом g17nonames во входе probes; остаток — пункт реестра расхождений"
+			fi
+			;;
+		*) refusal "Г-17: диск с tag_names" синхронно ;;
+		esac
+	fi
+	# Снятие и назначение через «Менеджер» — на диске этого запуска.
+	if [ -n "$disk" ]; then
+		g17_assign() { api POST "$RM/tags/$tag/$1" "$(jq -nc --arg p "$PROJECT" --arg r "$disk" '{resourceId: $r, projectId: $p}')"; }
+		g17_assign unassignResource
+		r="снятие — $(brief)"
+		api GET "$C1/disks/$disk"
+		r="$r, tags диска: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+		g17_assign assignResource
+		r="$r; назначение — $(brief)"
+		api GET "$C1/disks/$disk"
+		ok "Г-17: снятие и назначение тега диску" "$r, tags диска: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+	fi
+	# ВМ и второй диск удаляются до удаления тега: если после него ресурс
+	# не удалится, останется диск 10 ГБ, а не ВМ.
+	if [ -n "$vm" ]; then
+		del vm "$vm"
+		[ "$rc" = 0 ] || left=1
+		poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" gone vm "$n" || left=1
+	fi
+	iam_fresh || true
+	api DELETE "$RM/tags/$tag?projectId=$PROJECT"
+	r="HTTP $code$(why_tail)"
+	api DELETE "$RM/tags/$tag?projectId=$PROJECT"
+	r="$r, повтор — $(brief)"
+	if [ -n "$disk" ]; then
+		api GET "$C1/disks/$disk"
+		r="$r; tags диска после удаления тега: $(case "$code" in 2??) tags_n ;; *) brief ;; esac)"
+	fi
+	ok "Г-17: удаление тега, назначенного диску" "$r; тегов с ключом пробы в «Менеджере»: $(mine_n)"
+	for id in "$disk" "$disk2"; do
+		[ -n "$id" ] || continue
+		del disk "$id"
+		[ "$rc" = 0 ] || { left=1; echo "::warning::Г-17: диск пробы не удалён после удаления тега ($reason) — остаток: disk $id; уберёт уборка области, в отчёт — «ресурсов пробы» не 0"; }
+	done
+	[ "$left" = 0 ] || gap "Г-17: уборка пробы" "ВМ или диск не удалены сразу — остаток уберёт уборка области"
+}
+
 # Проба Г-18: второй интерфейс и пересоздание ВМ. ВМ с публичным адресом и
 # подсеть 10.255.252.0/24 в VPC по умолчанию создаёт evo; дальше — прямые
 # запросы. Что записывается: создание интерфейса ВМ в новой подсети (код,
@@ -2912,6 +3173,8 @@ area_ops() {
 	! probe_on g16 || probe_g16 "$zid"
 	QUOTA_HIT=0
 	! probe_on g18 || probe_g18 "$zid"
+	QUOTA_HIT=0
+	! probe_on g17 || probe_g17 "$zid"
 }
 
 # --- Область dbchange: изменение готового кластера DBaaS (Г-13…Г-15) ---------
