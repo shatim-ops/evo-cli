@@ -736,16 +736,6 @@ func (k pgNamed) existsHint(q string) string {
 		fmt.Sprintf("%s %s уже существует в кластере; ничего не создано и не изменено. %s, — спросите человека, что делать.", k.whatRU, q, k.keepRU))
 }
 
-// pgNameTaken refuses a create of the thing named name when the cluster
-// has it before the request is sent. The answer of these creates names
-// nothing (no id), so a call repeated after a lost answer cannot be told
-// from another by what it gets back: a platform that took a second create
-// of the name would make a second one — for a user, with the password sent
-// again — on one consent (release plan 1.9, «Повтор pg_db_create и
-// pg_user_create после потерянного ответа»). The answer is the one a
-// refusal of the platform gets from pgCreateOfExisting — API_ERROR, the
-// same hint — so a repeat answers as it did. A list that is not read
-// leaves the create to the platform, as before.
 // pgLister reads the databases and the users of a cluster.
 type pgLister interface {
 	ListDatabases(ctx context.Context, clusterID string) ([]map[string]any, error)
@@ -768,6 +758,16 @@ func (s *Registry) pgTakenBeforeQuestion(ctx context.Context, k pgNamed, name, c
 	return nil
 }
 
+// pgNameTaken refuses a create of the thing named name when the cluster
+// has it before the request is sent. The answer of these creates names
+// nothing (no id), so a call repeated after a lost answer cannot be told
+// from another by what it gets back: a platform that took a second create
+// of the name would make a second one — for a user, with the password sent
+// again — on one consent (release plan 1.9, «Повтор pg_db_create и
+// pg_user_create после потерянного ответа»). The answer is the one a
+// refusal of the platform gets from pgCreateOfExisting — API_ERROR, the
+// same hint — so a repeat answers as it did. A list that is not read
+// leaves the create to the platform, as before.
 func pgNameTaken(ctx context.Context, k pgNamed, name, cluster string, list func(context.Context) ([]map[string]any, error)) error {
 	items, err := list(ctx)
 	if err != nil || !slices.ContainsFunc(items, func(m map[string]any) bool { return m["name"] == name }) {
