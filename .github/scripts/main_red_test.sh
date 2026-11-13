@@ -41,7 +41,9 @@ case "$1 $2" in
       */issues/*/comments*)
         [ -z "${FAKE_MARKS_FAIL:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
         jq -r "$q" <<<"${FAKE_MARKS:-[]}" ;;
-      */issues/[0-9]*) jq -r "$q" <<<'{"user": {"login": "github-actions[bot]"}, "body": ""}' ;;
+      */issues/[0-9]*)
+        d='{"user": {"login": "github-actions[bot]"}, "body": ""}'
+        jq -r "$q" <<<"${FAKE_ISSUE:-$d}" ;;
       */jobs\?*) printf '%b' "$FAKE_JOBS" ;;
       */logs)
         [ -z "${FAKE_NO_LOG:-}" ] || { echo "HTTP 404: Not Found" >&2; exit 1; }
@@ -61,7 +63,7 @@ run() { # ИМЯ исход открытое ждём… (WORKFLOW — ci, ес�
   rm -f "$work/reads"
   PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" FAKE_BODY="$work/body" FAKE_OPEN="$3" \
     FAKE_JOBS="${FAKE_JOBS:-}" FAKE_LOG="${FAKE_LOG:-}" FAKE_NO_LOG="${FAKE_NO_LOG:-}" \
-    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" FAKE_PRS="${FAKE_PRS:-}" FAKE_PR_FAIL="${FAKE_PR_FAIL:-}" FAKE_MARKS="${FAKE_MARKS:-}" FAKE_MARKS_FAIL="${FAKE_MARKS_FAIL:-}" REPO_DIR="$work/repo" \
+    FAKE_READS="$work/reads" FAKE_LOG_LATE="${FAKE_LOG_LATE:-0}" FAKE_PRS="${FAKE_PRS:-}" FAKE_PR_FAIL="${FAKE_PR_FAIL:-}" FAKE_MARKS="${FAKE_MARKS:-}" FAKE_MARKS_FAIL="${FAKE_MARKS_FAIL:-}" FAKE_ISSUE="${FAKE_ISSUE:-}" REPO_DIR="$work/repo" \
     HEAD_SHA="${HEAD_SHA:-0123456789abcdef}" FAKE_PR_LIST_FAIL="${FAKE_PR_LIST_FAIL:-}" LOG_RETRY_SLEEP=0 LOG_WAIT="${LOG_WAIT:-120}" \
     WORKFLOW="${WORKFLOW:-ci}" GH_REPO=o/r RUN_ID=41 RUN_URL=https://example.invalid/run/41 CONCLUSION="$2" \
     "$here/main_red.sh" >/dev/null 2>"$work/stderr" || { echo "FAIL $1: скрипт упал"; cat "$work/stderr"; fail=1; return; }
@@ -174,6 +176,13 @@ FAKE_PRS="21" FAKE_MARKS=$(bot "<!-- main-red:red:$RED:TestA -->") HEAD_SHA=$NOF
   run "зелёный, файл упавшего теста не менялся — issue открыт, пометка" success 7 \
   "nocalls:issue close" "calls:issue comment 7" "body:прошёл без правки: TestA, ${RED:0:8}…${NOFIX:0:8}" \
   "body:в тот же день" "body:<!-- main-red:held -->" "nocalls:pr comment"
+# Метка в теле issue — так её оставляет красный прогон, который issue завёл.
+FAKE_ISSUE=$(printf '{"user": {"login": "github-actions[bot]"}, "body": "красный <!-- main-red:red:%s:TestA -->"}' "$RED") HEAD_SHA=$NOFIX \
+  run "метка в теле issue от бота — читается" success 7 \
+  "nocalls:issue close" "body:прошёл без правки: TestA"
+FAKE_ISSUE=$(printf '{"user": {"login": "someone"}, "body": "<!-- main-red:red:%s:TestA -->"}' "$RED") HEAD_SHA=$FIXA \
+  run "issue завёл не бот — метка в его теле не в счёт" success 7 \
+  "nocalls:issue close" "body:упавший тест не назван"
 FAKE_MARKS=$(bot "<!-- main-red:red:$RED:TestA,TestB -->") HEAD_SHA=$FIXA \
   run "зелёный, из двух упавших тестов менялся файл одного — открыт, назван второй" success 7 \
   "nocalls:issue close" "body:прошёл без правки: TestB, ${RED:0:8}…${FIXA:0:8}"
