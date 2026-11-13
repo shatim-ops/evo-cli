@@ -45,6 +45,9 @@ type restoreWorld struct {
 	disks             []map[string]any
 	restores          int
 	sent              map[string]any
+	// card replaces the backup's card the world answers, when set: a card
+	// the platform may give unlike its specification.
+	card string
 	// dir is the directory of the state of every call on the world: the
 	// records of the calls (D92) live there, as evo\'s beside its state.
 	dir string
@@ -102,6 +105,9 @@ func boolInt(b bool) int {
 }
 
 func (w *restoreWorld) backup() string {
+	if w.card != "" {
+		return w.card
+	}
 	kind, st, proj := w.kind, w.state, w.proj
 	if kind == "" {
 		kind = "disk"
@@ -423,5 +429,37 @@ func TestBackupRestore_HeldIsReadWhereTheRecordsAre(t *testing.T) {
 		if w.restores != 1 {
 			t.Errorf("%s: want one restore sent, sent %d", name, w.restores)
 		}
+	}
+}
+
+// A card of the backup without its disk's size or zone (no resource_state,
+// or fields the specification does not have): the question named a disk
+// of 0 GB in zone "" (FB19I-24 (а)). What evo cannot read it does not ask
+// about: refused before the question, nothing sent. A disk type given as a
+// string, not an object, is the type all the same.
+func TestBackupRestore_ACardWithoutTheDisk(t *testing.T) {
+	head := `{"id":"` + brBackup + `","project_id":"` + raProject + `","name":"b","state":"created","type":"full",` +
+		`"resource":{"resource_id":"` + brSource + `","resource_type":"disk","resource_exists":true`
+	zone := `"availability_zone":{"id":"` + brZone + `","name":"ru.AZ-1"}`
+	for name, card := range map[string]string{
+		"no resource_state": head + `}}`,
+		"no size":           head + `,"resource_state":{"name":"data","disk_type":{"name":"SSD"},` + zone + `}}}`,
+		"no zone":           head + `,"resource_state":{"name":"data","size":10,"disk_type":{"name":"SSD"}}}}`,
+	} {
+		w := &restoreWorld{card: card}
+		m, text, isErr := backupRestore(t, w, nil)
+		if !isErr || m["reason"] != "USAGE" || w.restores != 0 || strings.Contains(text, "confirmation_required") {
+			t.Errorf("%s: want USAGE before the question, nothing sent: %s", name, text)
+		}
+		// No promise the console restores it («Риск», 188, У3).
+		if hint, _ := m["hint"].(string); !strings.Contains(hint, "try the Cloud.ru console or ask Cloud.ru support") {
+			t.Errorf("%s: want the hint to name the console and support as a try: %s", name, text)
+		}
+	}
+	w := &restoreWorld{card: head + `,"resource_state":{"name":"data","size":10,"disk_type":"HDD",` + zone + `}}}`}
+	m, text, _ := backupRestore(t, w, nil)
+	will, _ := m["will_create"].(map[string]any)
+	if m["status"] != "confirmation_required" || will["disk_type"] != "HDD" || will["disk_type_from"] != "backup" {
+		t.Errorf("a disk type as a string: want it taken as the backup's type: %s", text)
 	}
 }

@@ -31,7 +31,7 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 		eng, _ := r.newEngine(nil)
 		t.Chdir(eng.StateDir) // evo runs in the directory of its state
 		dir := intent.Dir(eng.StateDir)
-		end, err := r.beginIntent(context.Background(), "vm_start", map[string]any{"name": "web", "confirmed": true})
+		end, err := r.beginIntent(context.Background(), "vm_start", map[string]any{"vm_id": resMine, "confirmed": true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,7 +74,7 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 	// names the id («Риск», conclusion 137, У1).
 	t.Run("a call by the name, whose answer names the id", func(t *testing.T) {
 		r, dir, _ := start(t)
-		r.settleHeld(context.Background(), "vm_start", map[string]any{"name": "web"}, `{"status":"already_running","vm_id":"`+resMine+`"}`)
+		r.settleHeld(context.Background(), "vm_start", map[string]any{"vm_id": resMine}, `{"status":"already_running","vm_id":"`+resMine+`"}`)
 		if left := intent.Pending(dir); len(left) != 0 {
 			t.Errorf("left %+v", left)
 		}
@@ -165,7 +165,7 @@ func TestIntent_HeldThroughTheCallsOfATool(t *testing.T) {
 		}
 		return n
 	}
-	call(context.Background(), map[string]any{"name": "web", "confirmed": true})
+	call(context.Background(), map[string]any{"vm_id": resMine, "confirmed": true})
 	if held() != 1 {
 		t.Fatalf("after the consented call: %+v", intent.Pending(dir))
 	}

@@ -86,7 +86,7 @@ func quotaFailure(tool string, m map[string]any) {
 	}
 	msg, code, failed := opFailure(m["error"])
 	text, _ := msg.(string)
-	if !failed || !quotaForm.MatchString(text) {
+	if !failed || !isQuotaForm(text) {
 		return
 	}
 	details := map[string]any{"cause": "quota"}
@@ -115,6 +115,24 @@ func quotaFailure(tool string, m map[string]any) {
 // quota_exceeded, as quotaCode reads one of a call (organization_quota_exceeded,
 // «Риск», #1522, Р1). A form not here is not told apart until a run shows it.
 var quotaForm = regexp.MustCompile(`(?i)(^|[^a-z0-9_-])(acquire_quota|[a-z0-9_]{0,50}quota_exceeded|quota exceeded|quotaexceeded)([^a-z0-9_-]|$)`)
+
+// quotedPart is a part of a text in quotes — "…", '…', `…`, «…»: a name
+// anyone with access to the project gives, which may be a form of
+// quotaForm itself (FB19I-28).
+var quotedPart = regexp.MustCompile("\"[^\"]*\"|'[^']*'|`[^`]*`|«[^»]*»")
+
+// fileSystemQuota is the quota of a file system (EDQUOT, «Disk quota
+// exceeded»), which a service may pass on from a disk: not a quota of the
+// platform that support raises (FB19I-28).
+var fileSystemQuota = regexp.MustCompile(`(?i)\bdisk quota exceeded\b`)
+
+// isQuotaForm reports a form of quotaForm in text outside its parts in
+// quotes and the quota of a file system.
+func isQuotaForm(text string) bool {
+	text = quotedPart.ReplaceAllString(text, " ")
+	text = fileSystemQuota.ReplaceAllString(text, " ")
+	return quotaForm.MatchString(text)
+}
 
 // failedDeletes are the deletes of the resource of an operation that is
 // left FAILED, named in the hint: the database clusters, whose create a

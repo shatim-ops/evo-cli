@@ -171,7 +171,8 @@ func backupRestoreCase(args map[string]any) faultMatrixCase {
 		cloud := &backupCloud{faultCloud: &faultCloud{cancel: cancel}}
 		cloud.backups = []map[string]any{{"id": faultBackupID, "name": "before-change", "state": "created", "seed": true,
 			"resource": map[string]any{"resource_id": faultDisk, "resource_type": "disk", "resource_exists": true,
-				"resource_state": map[string]any{"name": "data", "size": float64(10), "disk_type": map[string]any{"name": "SSD"}}}}}
+				"resource_state": map[string]any{"name": "data", "size": float64(10), "disk_type": map[string]any{"name": "SSD"},
+					"availability_zone": map[string]any{"id": faultZone, "name": "ru.AZ-1"}}}}}
 		r, dir := faultToolsRegistryOver(t, cloud)
 		return backupFaultWorld{cloud}, r, dir
 	}}

@@ -72,21 +72,13 @@ case_ linux Linux 0 "" "$flags ./..."
 fresh windows
 case_ windows Windows 0 "" "$rest" "$alone"
 
-# Pull request на Windows — только пакеты с кодом Windows; Linux — всё.
+# Pull request на Windows — пакеты с кодом Windows и internal/engine одним
+# проходом, internal/tools — вторым, один (решение владельца 13.11); Linux —
+# всё.
 fresh windows-pr
-EVENT=pull_request case_ windows-pr Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/intent ./internal/journal"
+EVENT=pull_request case_ windows-pr Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/intent ./internal/journal ./internal/engine" "$alone"
 fresh linux-pr
 EVENT=pull_request case_ linux-pr Linux 0 "" "$flags ./..."
-# PR трогает код путей internal/tools (classify.sh, wintools=yes): пакет —
-# вторым проходом, один; на Linux и в push это ничего не меняет.
-fresh windows-pr-tools
-EVENT=pull_request WINDOWS_PR_TOOLS=yes case_ windows-pr-tools Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/intent ./internal/journal" "$alone"
-fresh windows-pr-no-tools
-EVENT=pull_request WINDOWS_PR_TOOLS=no case_ windows-pr-no-tools Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/intent ./internal/journal"
-fresh linux-pr-tools
-EVENT=pull_request WINDOWS_PR_TOOLS=yes case_ linux-pr-tools Linux 0 "" "$flags ./..."
-fresh windows-push-tools
-WINDOWS_PR_TOOLS=yes case_ windows-push-tools Windows 0 "" "$rest" "$alone"
 
 # Сбой рантайма в internal/tools: код 0, tools — к повтору.
 fresh crash

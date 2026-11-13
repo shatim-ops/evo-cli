@@ -214,7 +214,8 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 				// before its question.
 				o["state"] = "created"
 				o["resource"] = map[string]any{"resource_id": id, "resource_type": "disk", "resource_exists": true,
-					"resource_state": map[string]any{"name": "data", "size": 10, "disk_type": map[string]any{"name": "SSD"}}}
+					"resource_state": map[string]any{"name": "data", "size": 10, "disk_type": map[string]any{"name": "SSD"},
+						"availability_zone": map[string]any{"id": "00000000-0000-4000-8000-0000000000a1", "name": "ru.AZ-1"}}}
 			}
 			if f.diskOn != "" && strings.HasPrefix(r.URL.Path, "/api/v1/disks/") {
 				o["state"] = "in_use"

@@ -356,9 +356,11 @@ Floating IP не назначился (квота на публичные IP, в
 ### Не хватает квоты
 
 Ошибка API с текстом про квоту/лимит (код 5). Когда платформа отказывает по
-квоте своим кодом (`organization_quota_exceeded` у Compute), ответ инструмента и
-`--json` несут `details.cause: "quota"` и `details.platform_code` — причину
-можно разобрать, не читая текст; `reason` остаётся `API_ERROR`. Текущие лимиты и использование:
+квоте своим кодом (`organization_quota_exceeded` у Compute), ответ инструмента
+несёт `details.cause: "quota"` и `details.platform_code`, а `--json` команды —
+те же поля по пути `error.details.details.cause` и
+`error.details.details.platform_code` (`docs/exit-codes.md`). Причину можно
+разобрать, не читая текст; `reason` остаётся `API_ERROR`. Текущие лимиты и использование:
 
 ```sh
 evo org quotas
