@@ -32,6 +32,8 @@ type directWrite struct {
 var directWrites = map[string]directWrite{
 	"internal/config/nofollow.go\tOpenNoFollow": {1, "the helper itself: O_NOFOLLOW and a regular file only (ledger 1.8, № 29)"},
 	"internal/cli/main.go\tignoreInGit":         {1, "O_CREATE|O_EXCL: an existing file or symlink fails the open, nothing is written through it"},
+	// httpretry cannot import config (config → provision → httpretry).
+	"internal/httpretry/record.go\trecorded": {1, "the file EVO_RECORD_ANSWERS names (cloud-e2e), not one of a project or a clone; a link in its place is refused by Lstat before the open"},
 }
 
 // writeFlags are the flags of os.OpenFile that make it a write.

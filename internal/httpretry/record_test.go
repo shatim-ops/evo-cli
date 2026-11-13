@@ -158,3 +158,32 @@ func TestRecordAnswers_OffAndUnwritable(t *testing.T) {
 		t.Errorf("files written: %v", entries)
 	}
 }
+
+// Ссылка на месте файла — не путь записи в её цель (R-67).
+func TestRecordAnswers_NotThroughALink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need a privilege on Windows")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "answers.jsonl")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvRecordAnswers, link)
+	base := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"a":1}`)), Request: r}, nil
+	})
+	req, _ := http.NewRequest(http.MethodGet, "https://vpc.api.cloud.ru/v1/vpcs", nil)
+	resp, err := UserAgent(base).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if b, _ := os.ReadFile(target); len(b) != 0 {
+		t.Errorf("written through the link: %q", b)
+	}
+}

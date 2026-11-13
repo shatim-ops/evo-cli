@@ -77,6 +77,12 @@ func recorded(req *http.Request, resp *http.Response) *http.Response {
 	}
 	recordMu.Lock()
 	defer recordMu.Unlock()
+	// The path is the one the variable names, not a file a clone brings;
+	// a link or another file that is not regular in its place is still
+	// not written through (R-67).
+	if st, err := os.Lstat(path); err == nil && !st.Mode().IsRegular() {
+		return resp
+	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return resp
