@@ -132,7 +132,8 @@ func TestStackApply_JobDoneAsksAndSaysItCreatesNothing(t *testing.T) {
 // The question of stack_apply names what the consent creates: every step
 // not done yet, its tool and its arguments — the names of the resources
 // among them (CLAUDE.md §6, axis 4); a step done is not asked about again,
-// and the value of a secret is not in the question (CLAUDE.md §4).
+// and the value of a secret is not in the question (CLAUDE.md §4). The
+// question prices the steps to run.
 func TestStackApply_TheQuestionNamesEveryStep(t *testing.T) {
 	stackHome(t)
 	r := newTestServer(t)
@@ -154,5 +155,21 @@ func TestStackApply_TheQuestionNamesEveryStep(t *testing.T) {
 	}
 	if strings.Contains(text, "net-g") {
 		t.Errorf("the question names a step done: %s", text)
+	}
+	// The price of what the consent pays for: the class of each step to
+	// run, as stack_plan prices the job; a step done is paid already.
+	var m map[string]any
+	_ = json.Unmarshal([]byte(text), &m)
+	cost, _ := m["cost"].(map[string]any)
+	byComponent, _ := cost["by_component"].([]any)
+	components := map[string]bool{}
+	for _, l := range byComponent {
+		if line, _ := l.(map[string]any); line != nil && line["class"] != nil {
+			c, _ := line["component"].(string)
+			components[c] = true
+		}
+	}
+	if !components["secret:0"] || components["vpc"] {
+		t.Errorf("the question's cost, want the class of secret:0 and not of vpc, done: %v", cost)
 	}
 }
