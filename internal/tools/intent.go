@@ -293,7 +293,8 @@ var everySendIsAChange = map[string]changeRule{
 	// The same rule is found before the question, but after a lost answer
 	// the list of rules may not show it yet: a repeat would make a second
 	// rule (the interim delta audit of 1.9, FB19I-12).
-	"sg_rule_create": {read: "list_security_groups"},
+	// The group is told by its id however the call names it (#1608).
+	"sg_rule_create": {read: "list_security_groups", target: groupTarget("security_group", sgRuleArgsValid)},
 	// The creates billed at the price of a cluster (D107).
 	// The name is the one the plan of the tool makes the resource by:
 	// the same function, where the tool has a default of its own.

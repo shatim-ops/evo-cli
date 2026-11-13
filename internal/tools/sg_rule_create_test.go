@@ -408,3 +408,33 @@ func TestSGRuleCreate_ALostAnswerAndAListBehindMakeOneRule(t *testing.T) {
 		t.Errorf("the consented repeat after a cut call: %s (writes %d), want the question again and no second write", text, w.added())
 	}
 }
+
+// The cut call is found by the group it names, not by how the call spells
+// the group: a write cut when the group was named by its id, and the
+// repeat that names it by its name — or the other way — is the same
+// repeat. It went out with no question and made a second rule (the probe
+// of «Риск» on #1602; release plan 1.9, #1608). The layer resolves the
+// group as the plan does, by one read of the list of groups.
+func TestSGRuleCreate_ACutCallIsFoundHoweverTheGroupIsSpelled(t *testing.T) {
+	for _, c := range []struct{ name, cut, again string }{
+		{"cut by id, repeated by name", sgOtherGroup, "db"},
+		{"cut by name, repeated by id", "db", sgOtherGroup},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newSGMakeWorld()
+			w.lose, w.lag = true, 1<<20
+			r := sgMakeRegistry(t, w)
+			args := func(group string) map[string]any {
+				return map[string]any{"security_group": group, "direction": "ingress", "protocol": "tcp",
+					"ports": "8080", "cidr": "10.0.0.0/8", "confirmed": true}
+			}
+			if _, text, isErr := callNamed(t, r, "sg_rule_create", args(c.cut)); !isErr || w.added() != 1 {
+				t.Fatalf("the cut call: %s (writes %d)", text, w.added())
+			}
+			m, text, _ := callNamed(t, r, "sg_rule_create", args(c.again))
+			if m["status"] != "confirmation_required" || m["interrupted"] == nil || w.added() != 1 {
+				t.Errorf("the repeat that spells the group another way: %s (writes %d), want the question about the cut call and no second write", text, w.added())
+			}
+		})
+	}
+}
