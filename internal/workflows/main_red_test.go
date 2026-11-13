@@ -51,7 +51,9 @@ func TestWorkflows_RedMainOpensAnIssue(t *testing.T) {
 		if len(p) != 3 || p["actions"] != "read" || p["issues"] != "write" || p["pull-requests"] != "write" {
 			t.Errorf("main-red: job %s permissions %v, want actions: read, issues: write and pull-requests: write alone", name, j.Permissions)
 		}
-		for _, ev := range []string{"'push'", "'schedule'"} {
+		// 'workflow_run' — pr-stuck is started by the end of a ci run, and
+		// its red round must reach the issue as its scheduled one does.
+		for _, ev := range []string{"'push'", "'schedule'", "'workflow_run'"} {
 			if !strings.Contains(j.If, "github.event.workflow_run.event == "+ev) {
 				t.Errorf("main-red: job %s does not follow a run of %s", name, ev)
 			}

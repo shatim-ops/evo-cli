@@ -5,6 +5,8 @@
 package workflows
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -23,13 +25,38 @@ func TestWorkflows_StuckPullRequestsAreTold(t *testing.T) {
 	if !ok {
 		t.Fatal("no pr-stuck.yml: a pull request in conflict or with a job no runner took stands unseen")
 	}
+	// The triggers: a schedule, by hand, and the end of a run of ci. No
+	// event of a pull request itself — a workflow_run runs the workflow of
+	// the default branch, so no code of a pull request runs with this token.
+	// The schedule alone does not do: GitHub ran the schedules of this
+	// repository about seven hours late (the nightly ci and cloud-e2e of
+	// 11 and 12.11, four runs of four), and a round that comes hours later
+	// tells nobody in time. The end of a ci run is when both cases appear:
+	// a job no runner took — at the end of the run of the pull request; a
+	// conflict — when a merge moved main, and ci of main ends.
 	for trig := range w.On {
-		if trig != "schedule" && trig != "workflow_dispatch" {
-			t.Errorf("pr-stuck: trigger %s, want schedule and workflow_dispatch alone (no event of a pull request)", trig)
+		if trig != "schedule" && trig != "workflow_dispatch" && trig != "workflow_run" {
+			t.Errorf("pr-stuck: trigger %s, want schedule, workflow_dispatch and workflow_run alone (no event of a pull request)", trig)
 		}
 	}
 	if _, ok := w.On["schedule"]; !ok {
 		t.Error("pr-stuck: no schedule — the round is what finds a pull request nobody is told about")
+	}
+	run, _ := w.On["workflow_run"].(map[string]any)
+	if fmt.Sprint(run["workflows"]) != "[ci]" || fmt.Sprint(run["types"]) != "[completed]" {
+		t.Errorf("pr-stuck: on workflow_run %v, want ci completed — the schedule of GitHub comes hours late", run)
+	}
+	if _, filtered := run["branches"]; filtered {
+		t.Error("pr-stuck: workflow_run is narrowed to branches — the run of a pull request must start the round too")
+	}
+	// The checkout is the default branch, never the head of the run that
+	// started the round.
+	for name, j := range w.Jobs {
+		for _, st := range j.Steps {
+			if strings.Contains(fmt.Sprint(st.With), "workflow_run") || strings.Contains(st.Run, "github.event.workflow_run") {
+				t.Errorf("pr-stuck: job %s reads the run that started it (%v %q): the round must not check out or run anything of a pull request", name, st.With, st.Run)
+			}
+		}
 	}
 	if p, _ := w.Permissions.(map[string]any); len(p) != 0 {
 		t.Errorf("pr-stuck: workflow permissions %v, want {} (rights per job)", w.Permissions)
