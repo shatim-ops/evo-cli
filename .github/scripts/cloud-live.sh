@@ -2784,6 +2784,8 @@ probe_g17() {
 		return 0
 		;;
 	esac
+	# По первой странице (до 100 тегов): её хватает, чтобы увидеть, что
+	# список проекта отдаёт чужое; проект созданного тега сверяется ниже.
 	wider=$(jq -r --arg p "$PROJECT" '[.tags[]? | select(has("projectId") and .projectId != $p)] | length' "$tmp/api.json" 2>/dev/null) || wider='?'
 	ok "Г-17: чтение тегов до записи" "HTTP $code, тегов: $(jq -r '.tags? | if type == "array" then length else "нет поля tags" end' "$tmp/api.json" 2>/dev/null || echo '?'), поля ответа: $(keys_of), поля тега: $(jq -c '(.tags[0]? // {}) | keys' "$tmp/api.json" 2>/dev/null || echo '?'), тегов другого проекта в ответе: $wider"
 	if [ "$wider" != 0 ]; then
