@@ -45,6 +45,8 @@ prs=$(gh pr list --state open --base main --limit 100 --json number,isDraft,head
 
 while IFS=$'\t' read -r n sha mergeable; do
   [ -n "$n" ] || continue
+  # UNKNOWN is not a conflict: GitHub computes mergeable lazily, the next
+  # round reads the computed value.
   if [ "$mergeable" = CONFLICTING ]; then
     tell "$n" "conflict:$sha" "У PR конфликт с main (голова \`${sha:0:8}\`): пока он есть, GitHub не запускает ci, и проверки на этой голове не появятся. Автор вливает main merge-коммитом (CLAUDE.md, §0, правило 2)."
     continue
