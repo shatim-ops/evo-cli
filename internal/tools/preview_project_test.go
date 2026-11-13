@@ -81,6 +81,7 @@ var previewCalls = map[string]map[string]any{
 	"dns_record_create": {"name": "www", "record_type": "A", "value": "192.0.2.10"},
 	"vpc_route_create":  {"subnet": "192.0.2.0/24", "next_hop_vip_id": resMine},
 	"disk_resize":       {"size_gb": 100},
+	"backup_restore":    {"name": "restored"},
 	"disk_attach":       {"vm": resMine},
 	"disk_detach":       {"vm": resMine},
 	"k8s_add_addon":     {"name": ownerAddon},
@@ -171,7 +172,9 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 				t.Errorf("%s %s=foreign: the preview names the call's project %s\n%s", c.tool, c.arg.name, ownProject, text)
 			}
 			for _, q := range f.log() {
-				if !strings.HasPrefix(q, "GET ") {
+				// The estimate of a price is a POST that reads (ruleRead
+				// of writeRules, internal/cli): a preview of a create sends it.
+				if !strings.HasPrefix(q, "GET ") && !strings.HasSuffix(q, "/price-calculation") {
 					t.Errorf("%s %s: the preview sent %s", c.tool, c.arg.name, q)
 				}
 			}

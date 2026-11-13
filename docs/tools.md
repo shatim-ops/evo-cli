@@ -48,6 +48,7 @@
 | `backup_get` | `evo backup get` | нет | `backup_id` | A backup by id (from backup_list): the fields of its row, its description and plan, whether its source still exists, and the source as the backup holds it (a … | Резервная копия по id: исходный ресурс, существует ли он, план копирования |
 | `backup_create` | `evo backup create` | да | `name`, `vm_id` или `disk_id` | Back up a VM or a disk (vm_id or disk_id). | Резервная копия ВМ или диска (платно) |
 | `backup_delete` | `evo backup delete` | удаляет | `backup_id` | Permanently delete a backup: what it holds cannot be restored after; resources restored from it stay. | Удалить резервную копию |
+| `backup_restore` | `evo backup restore` | да | `backup_id`, `name` | Restore a disk's backup into a new disk (billable); the backup and the disk it was made of are not changed. | Восстановить копию диска в новый диск (платно) |
 
 ## billing
 

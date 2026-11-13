@@ -19,7 +19,7 @@ import (
 func createLike(t Tool) bool {
 	return t.Mutating && (strings.HasSuffix(t.Name, "_create") || slices.Contains([]string{
 		"provision", "deploy", "deploy_apply", "ca_deploy", "k8s_add_nodepool", "k8s_add_addon",
-		"cert_import", "cert_issue_le", "s3_put",
+		"cert_import", "cert_issue_le", "s3_put", "backup_restore",
 	}, t.Name))
 }
 

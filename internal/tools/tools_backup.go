@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -650,4 +651,301 @@ func backupFoundNext(text string) string {
 	}
 	nextStep(m, "backup_get", map[string]any{"backup_id": id})
 	return toJSON(m)
+}
+
+// planBackupRestore plans the restore of a disk backup into a new disk
+// (D106). Two runs of Г-16 saw it make a new disk and leave the disk of the
+// backup as it was: a billable create, not a change of what is there
+// (conclusion 164, question 1). Before the question: the backup is read
+// (gone: NOT_FOUND; not created: nothing to restore from), it is a disk's —
+// a VM's is a PR of its own — of the call's project, the name is free among
+// the project's disks, and a disk type asked for exists. The preview names
+// the new disk — its size, type and zone, each from the backup unless an
+// argument gives it — its price as disk_create's, and that the backup and
+// its disk are not changed.
+func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (*Plan, error) {
+	id, name := stringArg(args, "backup_id"), stringArg(args, "name")
+	if id == "" {
+		return answered(usageT("'backup_id' is required (from backup_list)", "нужен 'backup_id' (из backup_list)"), true), nil
+	}
+	if name == "" {
+		return answered(usageT("'name' is required: the name of the new disk", "нужен 'name': имя нового диска"), true), nil
+	}
+	if err := provision.ValidName(i18n.T("disk", "диска"), name); err != nil {
+		return nil, err
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	api, err := backupAPI(eng)
+	if err != nil {
+		return nil, err
+	}
+	pid := eng.Config.ProjectID
+	list := func(ctx context.Context) ([]map[string]any, error) { return eng.Cloud.ListDisks(ctx, pid) }
+	// A restore of this backup into this name that the platform took and
+	// whose disk evo still waits for (the held record of the call): the
+	// call answers where it stands — the disk, or that it is not listed
+	// yet — and sends nothing; no new question invites a second disk
+	// («Риск», conclusion 164, У5; the probe of #1580, У1 and У2).
+	if since, ok := s.restoreHeld(eng, id, name); ok {
+		return answered(s.restoreGoesOn(ctx, eng, args, list, id, name, since)), nil
+	}
+	// A name taken before the call: refused before the question, so the
+	// disk found by the name after the request is the call's own (D49,
+	// conclusion 164, У5).
+	if ans, refused := nameFree(ctx, list, i18n.T("disk", "диск"), name, "disk_list"); refused {
+		return answered(ans, true), nil
+	}
+	b, err := api.GetBackup(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if st, _ := b["state"].(string); st != "created" {
+		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("backup %s is %s: only a created backup can be restored from; nothing was sent", "копия %s в состоянии %s: восстановить можно только из созданной копии; ничего не отправлено", id, quoteCloud(st)),
+			i18n.T("backup_get shows its state.", "Состояние показывает evo backup get.")),
+			map[string]any{"backup_id": id, "state": st}), true), nil
+	}
+	if p, _ := b["project_id"].(string); p != "" && p != pid {
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("backup %s is of another project than the call's (%s): the new disk would not be where the call looks; nothing was sent", "копия %s — из другого проекта, чем проект вызова (%s): новый диск оказался бы не там, где его ищет вызов; ничего не отправлено", id, pid),
+			i18n.T("Call it with the backup's project (project_id, --allow-project).", "Вызовите с проектом копии (project_id, --allow-project)."))
+	}
+	r, _ := b["resource"].(map[string]any)
+	if kind, _ := r["resource_type"].(string); kind != "disk" {
+		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("backup %s is of a %s: evo restores a disk's backup; a VM's comes in a version of its own (docs/internal/briefs/backups.md); nothing was sent", "копия %s — копия ресурса %s: evo восстанавливает копию диска; копия ВМ — в своей версии (docs/internal/briefs/backups.md); ничего не отправлено", id, quoteCloud(kind)),
+			i18n.T("The Cloud.ru console restores a VM's backup.", "Копию ВМ восстанавливает консоль Cloud.ru.")),
+			map[string]any{"backup_id": id, "resource_type": kind}), true), nil
+	}
+	src, _ := r["resource_state"].(map[string]any)
+	srcType, _ := src["disk_type"].(map[string]any)
+	cfg := provision.RestoreDiskConfig{Name: name, Description: stringArg(args, "description")}
+	typeFrom := "backup"
+	typeName, _ := srcType["name"].(string)
+	if dt := stringArg(args, "disk_type"); dt != "" {
+		typeFrom, typeName = "argument", dt
+	}
+	// The type — the argument's or the backup's — is one the project has:
+	// a type gone from the catalogue since the backup was made is refused
+	// after the consent, so it is refused here, before the question (axis
+	// 1; Qwen review of #1580).
+	if typeName != "" {
+		dts, err := eng.Cloud.ListDiskTypes(ctx, pid)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(dts, func(t *provision.DiskType) bool { return t.ID == typeName || strings.EqualFold(t.Name, typeName) }) {
+			names := make([]string, 0, len(dts))
+			for _, t := range dts {
+				names = append(names, t.Name)
+			}
+			if typeFrom == "backup" {
+				return answered(usageT("the backup's disk type %q is not one of the project's (%s): pass disk_type", "типа диска копии %q нет среди типов проекта (%s): передайте disk_type", typeName, strings.Join(names, ", ")), true), nil
+			}
+			return answered(usageT("disk type %q is not one of the project's: %s", "типа диска %q нет среди типов проекта: %s", typeName, strings.Join(names, ", ")), true), nil
+		}
+	}
+	if looksUUID(typeName) {
+		cfg.DiskTypeID = typeName
+	} else {
+		cfg.DiskTypeName = typeName
+	}
+	zone, _ := src["availability_zone"].(map[string]any)
+	zoneID, _ := zone["id"].(string)
+	sizeGB := int(numberOf(src["size"]))
+	srcName, _ := src["name"].(string)
+	preview := func(ctx context.Context) (map[string]any, error) {
+		req := provision.CreateDiskReq{Name: name, Size: sizeGB, AvailabilityZoneID: zoneID, ProjectID: pid,
+			DiskTypeID: cfg.DiskTypeID, DiskTypeName: cfg.DiskTypeName}
+		zoneName, _ := zone["name"].(string)
+		dp := diskCreatePreview(eng, req, "", zoneName)
+		// What the disk is made of, and what stays as it is: in the lines
+		// the person reads, not in the details only.
+		dp.Add("backup_id", id)
+		dp.Add("backup_name", b["name"])
+		dp.Add("source_disk", fmt.Sprintf("%s (%v)", srcName, r["resource_id"]))
+		dp.Add("source_exists", r["resource_exists"])
+		dp.Add("disk_type_from", typeFrom)
+		dp.Add("unchanged", i18n.T("the backup and the disk it was made of", "копия и диск, из которого она сделана"))
+		p, err := s.completePreview(ctx, eng, dp)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"message": i18n.T("backup_restore makes a new billable disk from the backup; the backup and the disk it was made of are not changed.",
+				"backup_restore создаёт из копии новый платный диск; копия и диск, из которого она сделана, не меняются."),
+			"will_create": map[string]any{
+				"name": name, "size_gb": sizeGB, "disk_type": typeName, "disk_type_from": typeFrom, "zone_id": zoneID,
+				"backup_id": id, "backup_name": b["name"], "description": cfg.Description,
+				"source_disk_id": r["resource_id"], "source_disk_name": srcName, "source_exists": r["resource_exists"],
+				"unchanged": i18n.T("the backup and the disk it was made of", "копия и диск, из которого она сделана"),
+			},
+			"preview": p,
+		}, nil
+	}
+	return &Plan{PreviewOf: preview, Execute: func(ctx context.Context) (string, bool) {
+		_, err := api.RestoreBackup(ctx, id, cfg)
+		if err != nil && apiStatus(err) >= 400 && apiStatus(err) < 500 {
+			return errResult(fmt.Errorf(i18n.T("restore backup: %w", "восстановление копии: %w"), err)), true
+		}
+		return s.backupRestored(ctx, eng, args, list, id, name, err, boolArg(args, "wait", true))
+	}}, nil
+}
+
+// restoreLookupAfterCut bounds the one read of the disks after a cut call
+// (backupRestored): the call ends soon after Ctrl-C all the same.
+const restoreLookupAfterCut = 10 * time.Second
+
+// backupRestoreWait is how long backup_restore waits for its disk: two runs
+// of Г-16 saw a disk restored in seconds; the disk's own wait bounds it.
+var backupRestoreWait = diskReadyTimeout
+
+// backupRestored finds the disk the restore made — by its name, free before
+// the call; the platform's answer does not name it — and waits until it is
+// available (wait=false: one read). Two disks of the name are not chosen
+// between (conclusion 164, У5). sent is the error of the request, nil when
+// the platform took it: a lost answer is reconciled by the name too, and a
+// disk not found then may still come and be billed.
+func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), backupID, name string, sent error, wait bool) (string, bool) {
+	var found []map[string]any
+	read := func(ctx context.Context) (string, bool, error) {
+		items, err := list(ctx)
+		if err != nil {
+			return "", false, nil
+		}
+		found = found[:0]
+		for _, d := range items {
+			if n, _ := d["name"].(string); n == name {
+				found = append(found, d)
+			}
+		}
+		if len(found) != 1 {
+			return "", len(found) > 1, nil
+		}
+		st, _ := found[0]["state"].(string)
+		return st, true, nil
+	}
+	waiting := func(st string) string { return i18n.Tf("disk %s: %s", "диск %s: %s", name, quoteCloud(st)) }
+	announced := false
+	done := func(st string) (bool, error) {
+		if len(found) == 1 && !announced {
+			announced = true
+			did, _ := found[0]["id"].(string)
+			announce(ctx, i18n.Tf("disk %s (%s) is being restored", "диск %s (%s) восстанавливается", name, did))
+		}
+		return len(found) > 1 || st == "available" || strings.HasPrefix(st, "error"), nil
+	}
+	limit := backupRestoreWait
+	if !wait {
+		limit = 0
+	}
+	last, _, _, werr := waitState(ctx, eng, limit, read, waiting, done)
+	ans := map[string]any{"backup_id": backupID, "name": name}
+	if werr != nil {
+		// The call was cut while it looked for its disk: the restore was
+		// sent, and the disk may be made and billed all the same. It is
+		// looked for once more by its name under a context of its own, so
+		// the answer names it (as deploy's floating IP after a cut; §6,
+		// axis 3).
+		if len(found) != 1 {
+			lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), restoreLookupAfterCut)
+			_, _, _ = read(lctx)
+			cancel()
+		}
+		if len(found) == 1 {
+			ans["disk_id"] = found[0]["id"]
+		}
+		ans["warning"] = i18n.Tf("the restore was sent: a disk %q may be made and be billed; disk_list shows it by name. The same call again sends no second restore: it asks the person first",
+			"восстановление отправлено: диск %q может появиться и оплачиваться; disk_list покажет его по имени. Тот же вызов ещё раз второе восстановление не отправит: сначала спросит человека", name)
+		return errAnswer(werr, ans), true
+	}
+	switch {
+	case len(found) > 1:
+		ids := make([]any, 0, len(found))
+		for _, d := range found {
+			ids = append(ids, d["id"])
+		}
+		ans["status"], ans["disk_ids"] = "restoring", ids
+		ans["note"] = i18n.Tf("Two or more disks are named %s: evo does not choose which the restore made. Ask the person which one is theirs.",
+			"Дисков с именем %s два или больше: какой из них сделало восстановление, evo не выбирает. Спросите человека, какой из них его.", quoteCloud(name))
+		return toJSON(ans), false
+	case len(found) == 0 && sent != nil:
+		return errAnswer(sent, map[string]any{"warning": i18n.Tf(
+			"the answer of the restore did not come back: a disk %q may still be made and be billed; disk_list shows it by name. The same call again sends no second restore: it asks the person first",
+			"ответ на восстановление не пришёл: диск %q может ещё появиться и оплачиваться; disk_list покажет его по имени. Тот же вызов ещё раз второе восстановление не отправит: сначала спросит человека", name)}), true
+	case len(found) == 0:
+		ans["status"] = "restoring"
+		ans["note"] = i18n.Tf("The platform took the restore; the disk %s is not listed yet. The same call again sends nothing: it answers the disk's id once it is listed, or that it is not yet.",
+			"Платформа приняла восстановление; диска %s в списке ещё нет. Тот же вызов ещё раз ничего не отправит: ответит id диска, когда он появится в списке, или что его ещё нет.", quoteCloud(name))
+		nextSameCall(ans, "backup_restore", args)
+		return toJSON(ans), false
+	}
+	d := found[0]
+	ans["disk_id"], ans["disk"] = d["id"], d
+	ans["created"] = map[string]any{"disk_id": d["id"]}
+	ans["note"] = i18n.T("The backup is kept; for a few minutes after a restore the platform refuses its delete.",
+		"Копия остаётся; несколько минут после восстановления платформа отвергает её удаление.")
+	switch {
+	case last == "available":
+		ans["status"] = "created"
+	case strings.HasPrefix(last, "error"):
+		ans["state"] = last
+		return errAnswer(clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("Cloud.ru did not restore disk %s: it is %s", "Cloud.ru не восстановил диск %s: он в состоянии %s", name, quoteCloud(last)),
+			i18n.T("The disk in error is kept and billed. Whether to delete it is the person's decision: ask the person; with their yes, disk_delete deletes it.",
+				"Диск в ошибке хранится и тарифицируется. Удалять ли его — решает человек: спросите человека; с его «да» его удалит evo disk delete.")), ans), true
+	default:
+		ans["status"], ans["state"] = "restoring", last
+		nextSameCall(ans, "backup_restore", args)
+	}
+	return toJSON(ans), false
+}
+
+// restoreHeldLimit is how long a restore the platform took is waited for
+// by the repeats of its call: two runs of Г-16 listed a restored disk in
+// seconds; a disk not listed by then is not waited for any more. The
+// number is a hypothesis no run has measured: the third run of Г-16 checks
+// it («Риск», the conclusion on #1580).
+const restoreHeldLimit = 30 * time.Minute
+
+// restoreHeld is the start of this key's restore of backup id into name
+// that evo still waits for — its held record (heldSince, by the name too:
+// two restores of one backup are two disks).
+func (s *Registry) restoreHeld(eng *engine.Engine, id, name string) (since time.Time, ok bool) {
+	if eng == nil || eng.StateDir == "" {
+		return time.Time{}, false
+	}
+	cur := eng.Maker()
+	for _, in := range intent.Pending(intent.Dir(eng.StateDir)) {
+		if in.Held && in.Tool == "backup_restore" && in.Name == name && in.Target == "backup_id="+id && !in.Key.Other(cur) {
+			return in.StartedAt, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// restoreGoesOn answers a call on a restore evo waits for: one read of the
+// disks. The disk listed — its id and state; not yet — restoring and the
+// same call next, until restoreHeldLimit: then the answer says it was not
+// listed and leaves a second restore to the person. Nothing is sent.
+func (s *Registry) restoreGoesOn(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), id, name string, since time.Time) (string, bool) {
+	text, isErr := s.backupRestored(ctx, eng, args, list, id, name, nil, false)
+	if answerStatus(text) != "restoring" || clock.Now().Sub(since) < restoreHeldLimit {
+		return text, isErr
+	}
+	var m map[string]any
+	_ = json.Unmarshal([]byte(text), &m)
+	if m["disk_id"] != nil || m["disk_ids"] != nil {
+		return text, isErr
+	}
+	// NOT_FOUND: a known outcome — evo waits no more, and the record of
+	// the call closes (an API_ERROR would keep it as unknown).
+	return errAnswer(clierrors.New(clierrors.CodeNotFound,
+		i18n.Tf("the restore of backup %s into disk %s, taken at %s, made no disk listed by that name", "восстановление копии %s в диск %s, принятое %s, не дало диска с этим именем в списке", id, quoteCloud(name), since.Local().Format("02.01.2006 15:04")),
+		i18n.T("disk_list shows the project's disks. Whether to restore again is the person's decision: ask the person.",
+			"Диски проекта показывает evo disk list. Восстанавливать ли снова — решает человек: спросите человека.")),
+		map[string]any{"backup_id": id, "name": name}), true
 }

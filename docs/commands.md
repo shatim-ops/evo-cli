@@ -32,6 +32,7 @@
     - [evo backup delete](#evo-backup-delete)
     - [evo backup get](#evo-backup-get)
     - [evo backup list](#evo-backup-list)
+    - [evo backup restore](#evo-backup-restore)
   - [evo billing](#evo-billing)
     - [evo billing balance](#evo-billing-balance)
     - [evo billing consumption](#evo-billing-consumption)
@@ -913,6 +914,7 @@ evo backup [flags]
 * [evo backup delete](#evo-backup-delete)	 - Удалить резервную копию
 * [evo backup get](#evo-backup-get)	 - Резервная копия по id: исходный ресурс, существует ли он, план копирования
 * [evo backup list](#evo-backup-list)	 - Резервные копии ВМ и дисков: id, имя, состояние, тип, размер, исходный ресурс
+* [evo backup restore](#evo-backup-restore)	 - Восстановить копию диска в новый диск (платно)
 
 ## evo backup create
 
@@ -1082,6 +1084,53 @@ evo backup list [flags]
       --resource-type string   Только в этом состоянии: virtual_machine, disk
       --state string           Только в этом состоянии: creating, created, error_creating, updating, error, deleting, error_deleting
       --states stringArray     Только в одном из этих состояний: значения — как у state (флаг повторяется или значения через запятую)
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo backup](#evo-backup)	 - Резервные копии ВМ и дисков
+
+## evo backup restore
+
+Восстановить копию диска в новый диск (платно)
+
+### Synopsis
+
+```text
+Восстановить копию диска в новый диск (платно).
+
+Восстанавливает копию диска в новый диск; копия и диск, из которого она сделана, не меняются. Превью называет размер, тип и зону нового диска (из копии, если --disk-type не задан) и цену. Имя должно быть свободно среди дисков проекта. Копию ВМ evo пока не восстанавливает.
+
+Вызывает инструмент backup_restore (подробнее: 'evo tools describe backup_restore').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo backup restore <backup-id> [flags]
+```
+
+### Options
+
+```
+      --description string   Описание нового диска
+      --disk-type string     Тип нового диска (имя или id, из evo disk types). По умолчанию — тип из копии
+  -h, --help                 Справка по restore
+      --name string          Имя нового диска
+      --wait                 false — ответить, как только платформа приняла восстановление. По умолчанию — ждать, пока диск станет доступен (MCP — до ~45 с) Выключить: --wait=false (по умолчанию true)
 ```
 
 ### Options inherited from parent commands
