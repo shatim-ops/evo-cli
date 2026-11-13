@@ -5,11 +5,14 @@
 package cli
 
 import (
+	"bytes"
 	stderrors "errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
 // #558: an engine command's --json error is the engine's error with what
@@ -31,5 +34,28 @@ func TestEngineError_CarriesTheAnswersUntrustedFields(t *testing.T) {
 	}
 	if got.Message != "docker compose up failed" {
 		t.Errorf("message = %q: the engine's own error stays", got.Message)
+	}
+}
+
+// The marker "_untrusted" is for a client of the JSON: the table a person
+// reads has no line of it — a list stays one table, a resource has no
+// FIELD _untrusted — and the delete's question has no line of it either.
+func TestRenderAnswer_NoMarkerForAPerson(t *testing.T) {
+	for _, text := range []string{
+		`{"clusters":[{"id":"a","name":"web","status":"RUNNING"}],"_untrusted":["clusters"]}`,
+		`{"id":"a","name":"web","status":"RUNNING","access":"x","_untrusted":["id","name","status"]}`,
+	} {
+		var b bytes.Buffer
+		if err := renderAnswer(output.NewWithWriter(&b, output.ModeText, false), &b, text, tableView{}); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(b.String(), "_untrusted") || !strings.Contains(b.String(), "web") {
+			t.Errorf("%s:\n%s", text, b.String())
+		}
+	}
+	p := toolPreview("k8s_delete", map[string]any{"status": "confirmation_required", "message": "deletes",
+		"target": map[string]any{"id": "a", "name": "web"}, "_untrusted": []any{"target"}})
+	if lines := strings.Join(p.Lines, "\n"); strings.Contains(lines, "_untrusted") || !strings.Contains(lines, "web") {
+		t.Errorf("the question of a delete:\n%s", lines)
 	}
 }

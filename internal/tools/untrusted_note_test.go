@@ -38,14 +38,27 @@ var untrustedMarkerOnly = map[string]string{
 	"vm_reboot":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"vm_resize":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"whoami":              "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
-	"backup_get":          "name, description, tags, resource_name, source: what the project's people named the backup, its tags and its source, not the output of a workload",
+	"backup_get":          "name, description, tags, resource_name, source, protection_plan: what the project's people named the backup, its tags, its source and its plan, not the output of a workload",
 	"backup_create":       "preview, will_create, backup, name: the names of the backup and of its source, not the output of a workload",
 	"backup_restore":      "preview, will_create, disk, name: the names of the backup, its disk and the new disk, not the output of a workload",
 	"backup_delete":       "preview, target, resource_status: the names of the backup, its source and the backups that depend on it, and its state in a refusal, not the output of a workload",
 	"backup_list":         "backups: the names of the backups and of their sources, not the output of a workload",
 	"k8s_nodepool_get":    "name, cluster_name, labels, taints: what the project's people named the pool, its cluster and its nodes, not the output of a workload",
 	"k8s_nodepool_delete": "preview, target, resource_status: the name of the cluster of the pool in the preview, the name of the pool in the target and its status in a refusal, not the output of a workload",
-	"k8s_delete":          "resource_status: the status of the cluster in a refusal, as its service writes it, not the output of a workload",
+	"k8s_delete":          "resource_status, target: the status of the cluster in a refusal, as its service writes it, and its name in the target of the preview, not the output of a workload",
+	"kafka_delete":        "target: the name of the cluster in the target of the preview, not the output of a workload",
+	"redis_delete":        "target: the name of the cluster in the target of the preview, not the output of a workload",
+	"k8s_list":            "clusters: the names of the clusters, not the output of a workload",
+	"pg_list":             "clusters: the names of the clusters, not the output of a workload",
+	"kafka_list":          "clusters: the names of the clusters, not the output of a workload",
+	"redis_list":          "clusters: the names of the clusters, not the output of a workload",
+	"k8s_get":             "the whole answer: the cluster as its service has it, with the names of what it holds, not the output of a workload",
+	"pg_get":              "the whole answer but access: the cluster as its service has it, not the output of a workload",
+	"kafka_get":           "the whole answer: the cluster as its service has it, not the output of a workload",
+	"redis_get":           "the whole answer: the cluster as its service has it, not the output of a workload",
+	"k8s_options":         "flavors, zones, defaults: the names of the catalogue's flavors and zones, not the output of a workload",
+	"kafka_specs":         "availability_zone, specifications: the names of the catalogue's zone and specifications, not the output of a workload",
+	"redis_specs":         "availability_zone, specifications: the names of the catalogue's zone and specifications, not the output of a workload",
 	"lb_delete":           "resource_status: the status of the balancer in a refusal, as its service writes it, not the output of a workload",
 	"tg_delete":           "resource_status: the status of the target group in a refusal, as its service writes it, not the output of a workload",
 	"k8s_nodepool_scale":  "preview, name, details: the name of the pool in the preview and the answer and the platform's words of a failed operation, not the output of a workload",
@@ -73,7 +86,7 @@ var untrustedMarkerOnly = map[string]string{
 func TestUntrusted_NoteIffMarker(t *testing.T) {
 	var bad []string
 	for _, tl := range New(nil).Tools() {
-		note, marker := tl.UntrustedOutput, untrustedFields[tl.Name].fields != nil
+		note, marker := tl.UntrustedOutput, untrustedFields[tl.Name].marked()
 		_, noteOnly := untrustedNoteOnly[tl.Name]
 		_, markerOnly := untrustedMarkerOnly[tl.Name]
 		switch {
