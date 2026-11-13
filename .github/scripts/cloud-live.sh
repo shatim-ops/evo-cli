@@ -2231,10 +2231,12 @@ why_tail() { case "$code" in 2??) ;; *) echo ": $(api_why)" ;; esac; }
 # ops_reach URL СЕКУНД СОСТОЯНИЕ [changed] — читать карточку, пока state не
 # станет СОСТОЯНИЕМ; с changed — не раньше, чем state хоть раз сменился
 # (перезагрузка: running → … → running). Итог — $st и $chain, как у
-# ops_settle. Код 1 — не дождались или state error*.
+# ops_settle, $reach0 — состояние в первом чтении и $reach_moved — через сколько
+# секунд чтение впервые показало другое (пусто — не показало). Код 1 — не
+# дождались или state error*.
 ops_reach() {
-	local url=$1 until=$(($(date +%s) + $2)) s n=0
-	st='' chain=''
+	local url=$1 until=$(($(date +%s) + $2)) s n=0 from=$SECONDS
+	st='' chain='' reach0='' reach_moved=''
 	while :; do
 		iam_fresh || true
 		api GET "$url"
@@ -2244,11 +2246,23 @@ ops_reach() {
 		esac
 		[ "$s" = "$st" ] || { chain="${chain:+$chain → }$s"; n=$((n + 1)); }
 		st=$s
+		[ -n "$reach0" ] || reach0=$s
+		[ -n "$reach_moved" ] || [ "$s" = "$reach0" ] || reach_moved=$((SECONDS - from))
 		if [ "$s" = "$3" ] && { [ -z "${4:-}" ] || [ "$n" -gt 1 ]; }; then return 0; fi
 		case "$s" in error*) return 1 ;; esac
 		[ "$(date +%s)" -lt "$until" ] || return 1
 		sleep "$PROBE_PAUSE"
 	done
+}
+# lag ПРЕЖНЕЕ — после ops_reach: что показало первое чтение карточки после
+# принятой команды питания (ответ 204 без операции) — ещё прежнее состояние
+# или уже новое, и когда чтение показало смену. Шаг evo, который читает
+# состояние сразу после ответа, по прежнему состоянию решит, что команда не
+# принята (гипотеза Г1 дельта-аудита 1.9, FB19I-3). Точность — шаг чтений.
+lag() {
+	if [ "$reach0" != "$1" ]; then echo "первое чтение после ответа: уже $reach0"
+	elif [ -n "$reach_moved" ]; then echo "первое чтение после ответа: ещё $1, смена состояния — в чтении через $reach_moved с (шаг чтений $PROBE_PAUSE с)"
+	else echo "первое чтение после ответа: ещё $1, смены состояния чтения не показали"; fi
 }
 # mcode — машинный код причины последнего ответа api (поля code,
 # error_code, type и reason в details — так отвечают API DBaaS; тело —
@@ -2371,9 +2385,23 @@ probe_g16() {
 	}
 	if [ "$bd_ok" = 1 ] && [ "$QUOTA_HIT" = 0 ]; then
 		if g16_restore диска "$bd" "$(jq -nc --arg n "$n-rd" '{name: $n, description: "evo e2e probe"}')"; then
-			rd_there() { [ -n "$(lst disk "$n-rd")" ]; }
+			local rd_out=''
+			rd_there() { rd_out=$(lst disk "$n-rd") && [ -n "$rd_out" ]; }
 			rd_seen=0
-			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then rd_seen=1 r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии"; fi
+			if poll "${PROBE_WAIT:-300}" "$PROBE_PAUSE" rd_there; then rd_seen=1 r="$r; новый диск появился за $((SECONDS - t0)) с"; else r="$r; нового диска нет за 5 мин после копии — список читает только проект пробы: диск в другом проекте он не покажет"; fi
+			# Запрос восстановления проекта не несёт (гипотеза Г4 дельта-аудита
+			# 1.9): в чьём проекте диск, говорит его карточка.
+			if [ "$rd_seen" = 1 ]; then
+				local rd_id
+				rd_id=$(cut -f1 <<<"$rd_out" | head -1)
+				mask "$rd_id"
+				api GET "$C1/disks/$rd_id"
+				r="$r; проект диска по карточке: $(case "$code" in
+				2??) jq -r --arg p "$PROJECT" 'if (.project? | type) != "object" or (.project.id? // "") == "" then "поля project.id в карточке нет"
+					elif .project.id == $p then "проект пробы" else "другой проект" end' "$tmp/api.json" 2>/dev/null || echo "карточка не разобрана" ;;
+				*) echo "не прочитан (HTTP $code)" ;;
+				esac)"
+			fi
 			ok "Г-16: восстановление диска" "$r"
 			# Второе восстановление той же копии под тем же именем (гипотеза
 			# Г3 дельта-аудита 1.9, FB19I-18): отказ платформы или второй
@@ -2618,7 +2646,7 @@ probe_g10() {
 		r="HTTP $code"
 		t0=$SECONDS
 		ops_reach "$url" "${PROBE_WAIT:-600}" stopped || true
-		ok "$1" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес в карточке остановленной: $(has_ip)"
+		ok "$1" "$r; состояния: $chain, $((SECONDS - t0)) с; $(lag running); публичный адрес в карточке остановленной: $(has_ip)"
 	}
 	if g10_stop "Г-10: остановка"; then
 		power power_off
@@ -2629,7 +2657,7 @@ probe_g10() {
 			r="HTTP $code"
 			t0=$SECONDS
 			ops_reach "$url" 600 running || true
-			ok "Г-10: запуск" "$r; состояния: $chain, $((SECONDS - t0)) с; публичный адрес тот же: $(has_ip)"
+			ok "Г-10: запуск" "$r; состояния: $chain, $((SECONDS - t0)) с; $(lag stopped); публичный адрес тот же: $(has_ip)"
 			power power_on
 			ok "Г-10: повтор запуска запущенной" "$(brief)"
 			;;
@@ -2646,7 +2674,7 @@ probe_g10() {
 			r="$r; повтор сразу — $(brief)"
 			t0=$SECONDS
 			ops_reach "$url" 600 running changed || true
-			ok "Г-10: перезагрузка" "$r; состояния: $chain, $((SECONDS - t0)) с"
+			ok "Г-10: перезагрузка" "$r; состояния: $chain, $((SECONDS - t0)) с; $(lag running)"
 			;;
 		*) refusal "Г-10: перезагрузка" синхронно ;;
 		esac
