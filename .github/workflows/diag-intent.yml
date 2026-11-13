@@ -1,0 +1,83 @@
+name: diag-intent
+
+# ВРЕМЕННЫЙ workflow чернового PR, который не сливается (как #1567): цена
+# слоя записей вызовов на раннере Windows (план 1.9, «Каталог записей
+# намерений…»; порог слияния #1578 — internal/tools на Windows не выше
+# 600 с). Только замер: секретов нет, ничего не пишет.
+on:
+  pull_request:
+
+concurrency:
+  group: diag-intent-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cost:
+    if: github.head_ref == 'process/diag-intent-windows'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: git без перевода строк
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+          path: base-main
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.11"
+          cache-dependency-path: go.sum
+
+      - name: Антивирус раннера
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-MpComputerStatus | Select-Object AntivirusEnabled, RealTimeProtectionEnabled, OnAccessProtectionEnabled | Format-List
+          (Get-MpPreference).ExclusionPath
+
+      - name: "1. Цена операции слоя записей, мс"
+        run: go test ./internal/intent -run '^TestZZDiag_CostOfARecord$' -count=1 -v | grep -E 'DIAG|^(ok|FAIL|---)'
+
+      - name: "2. Один тест: ветка, с профилем"
+        run: |
+          go test ./internal/tools -run '^TestReason_SameInEveryLanguage$' -count=1 -v -cpuprofile cpu.prof -o tools.test.exe | grep -E '^(ok|FAIL|---|PASS)'
+          go tool pprof -top -nodecount=45 tools.test.exe cpu.prof | head -60
+          echo "--- по накопленному ---"
+          go tool pprof -top -cum -nodecount=60 tools.test.exe cpu.prof | grep -E 'Duration|intent\.|config\.|syscall|windows\.|os\.\(|tools\.\(\*Registry\)\.(settle|begin|intended|gated)' | head -40
+
+      - name: "3. Тот же тест: main"
+        working-directory: base-main
+        run: go test ./internal/tools -run '^TestReason_SameInEveryLanguage$' -count=1 -v | grep -E '^(ok|FAIL|---|PASS)'
+
+      - name: "4. Весь пакет без -race: ветка и main"
+        run: |
+          go test ./internal/tools -count=1 | tail -n 3
+          (cd base-main && go test ./internal/tools -count=1 | tail -n 3)
+
+      - name: "5. Сколько раз пакет зовёт слой записей (счётчики покрытия)"
+        if: runner.os == 'Linux'
+        run: |
+          go test ./internal/tools -count=1 -covermode=count -coverpkg=./internal/intent,./internal/config -coverprofile=cover.out | tail -n 2
+          echo "строка начала функции: число исполнений"
+          for f in 'internal/intent/intent.go' 'internal/config/profile.go' 'internal/config/nofollow.go'; do
+            for fn in 'func Open' 'func Pending' 'func Settle' 'func scan' 'func Close' 'func Hold' 'func WriteFileAtomic' 'func ReadFileNoFollow'; do
+              line=$(grep -n "^$fn(" "$f" | cut -d: -f1) || true
+              [ -n "$line" ] || continue
+              awk -v f="$f" -v fn="$fn" -v l="$line" -F'[:, ]' '$0 ~ f && $2+0 >= l { split($2,a,"."); if (a[1]+0 >= l && !done) { print f, fn, "→", $NF; done=1 } }' cover.out
+            done
+          done
