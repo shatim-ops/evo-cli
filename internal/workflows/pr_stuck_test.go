@@ -70,8 +70,8 @@ func TestWorkflows_StuckPullRequestsAreTold(t *testing.T) {
 	// started the round.
 	for name, j := range w.Jobs {
 		for _, st := range j.Steps {
-			if strings.Contains(fmt.Sprint(st.With), "workflow_run") || strings.Contains(st.Run, "github.event.workflow_run") {
-				t.Errorf("pr-stuck: job %s reads the run that started it (%v %q): the round must not check out or run anything of a pull request", name, st.With, st.Run)
+			if strings.Contains(fmt.Sprint(st.With), "workflow_run") || strings.Contains(st.Run, "github.event.workflow_run") || strings.Contains(fmt.Sprint(st.Env), "github.event.workflow_run") {
+				t.Errorf("pr-stuck: job %s reads the run that started it (with %v, env %v, run %q): the round must not check out, run or be handed anything of a pull request", name, st.With, st.Env, st.Run)
 			}
 		}
 	}
