@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -50,16 +51,9 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	// handler may yet reach the cloud, and no repeat settles a record
 	// whose key is not known (the interim delta audit of 1.9, FB19I-32;
 	// «Риск», conclusion 177, У9).
-	var over map[string]any
-	if p := stringArg(args, "project_id"); p != "" {
-		over = map[string]any{"ProjectID": p}
-	}
-	eng, noEngine := r.newEngine(over)
-	if noEngine != nil {
-		eng = nil
-	}
+	eng, noEngine := r.engineOfCall(args)
 	if eng != nil {
-		in.ProjectID, in.Zone, in.Key = eng.Config.ProjectID, eng.Config.Region, eng.Maker()
+		in.Zone, in.Key = eng.Config.Region, eng.Maker()
 	}
 	// The surface as the journal (D46) has it: a call of the CLI carries
 	// its Caller, a call over MCP none.
@@ -76,15 +70,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if in.Name, in.Target, err = r.resourceOf(ctx, name, args); err != nil {
 		return nil, err
 	}
-	// The write of a call addressed by id lands in the project of the
-	// resource, which the call's project does not tell (namedProject): the
-	// record names no project rather than the profile's (R-82).
-	if _, _, byID := intentTarget(in); byID {
-		in.ProjectID = ""
-	}
-	if p, _ := args["project_id"].(string); p != "" {
-		in.ProjectID = p
-	}
+	in.ProjectID = projectOfCall(eng, in, args)
 	if z, _ := args["zone"].(string); z != "" {
 		in.Zone = z
 	}
@@ -108,6 +94,12 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// directory anew after it.
 		defer forgetPending(ctx)
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
+			// No write went out (changeRule.viaHTTP): the call changed
+			// nothing, whatever cut it.
+			if n, counted := httpretry.Writes(ctx); counted && n == 0 && everySendIsAChange[name].viaHTTP {
+				intent.Close(rec)
+				return
+			}
 			// The call returned, the record stays: a later call of the
 			// same may settle it (intent.Settle).
 			intent.End(rec)
@@ -133,6 +125,41 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		intent.Close(rec)
 		intent.Settle(dir, rec)
 	}, nil
+}
+
+// engineOfCall is the engine a call with args goes with: that of its own
+// project_id, when it names one. nil with the error when none is built.
+func (r *Registry) engineOfCall(args map[string]any) (*engine.Engine, error) {
+	var over map[string]any
+	if p := stringArg(args, "project_id"); p != "" {
+		over = map[string]any{"ProjectID": p}
+	}
+	eng, err := r.newEngine(over)
+	if err != nil {
+		return nil, err
+	}
+	return eng, nil
+}
+
+// projectOfCall is the project the record of a call names: the one its
+// engine goes with, or the project_id it gives. The write of a call
+// addressed by id lands in the project of the resource, which the call's
+// project does not tell (namedProject): its record names no project rather
+// than the profile's (R-82). The one rule for the record of a call and for
+// the search of the cut calls of a repeat: a resource of the same name in
+// another project is another resource.
+func projectOfCall(eng *engine.Engine, in intent.Intent, args map[string]any) string {
+	project := ""
+	if eng != nil {
+		project = eng.Config.ProjectID
+	}
+	if _, _, byID := intentTarget(in); byID {
+		project = ""
+	}
+	if p := stringArg(args, "project_id"); p != "" {
+		project = p
+	}
+	return project
 }
 
 // waitArgs are the arguments that say how long the call waits, not what
@@ -175,7 +202,40 @@ type changeRule struct {
 	// (intentResource). It reads the cloud as the plan of the tool does,
 	// through the same resolver, so the call reads once.
 	target func(ctx context.Context, r *Registry, args map[string]any) (name, target string, err error)
+	// made: the tool makes a resource its list shows by name (createdIDs).
+	// A cut call whose resource is listed has an outcome that can be read:
+	// its record closes and the repeat is answered as any call on a name
+	// that is taken — the question is asked only while the list does not
+	// show it («Риск», conclusion 179, У1).
+	made bool
+	// viaHTTP: every write of the tool goes out through evo's HTTP
+	// transport (httpretry), which counts them for the call. A call that
+	// ended with no outcome and sent no write changed nothing: its record
+	// closes, and no repeat is asked about a request that never went
+	// («Риск», conclusion 179, У2).
+	viaHTTP bool
 }
+
+// paidCreate is the rule of a create of a resource billed from its first
+// minute at the price of a cluster: the repeat of a call whose answer was
+// lost would make a second one while the list does not show the first yet
+// (release plan 1.9, «Повтор платного создания после потерянного ответа
+// спрашивает заново»; D107). The resource is told by its name — and by
+// the parent it is made in, parent, when it has one — whatever the other
+// arguments of the repeat are.
+func paidCreate(tool, parent string, name func(args map[string]any) string) changeRule {
+	return changeRule{read: createdIDs[tool].list, made: true, viaHTTP: true,
+		target: func(_ context.Context, _ *Registry, args map[string]any) (string, string, error) {
+			target := ""
+			if id := stringArg(args, parent); parent != "" && id != "" {
+				target = parent + "=" + id
+			}
+			return name(args), target, nil
+		}}
+}
+
+// nameArg is the name of what a create makes when the call must give it.
+func nameArg(args map[string]any) string { return stringArg(args, "name") }
 
 // everySendIsAChange are the tools with no repeat that is a success: every
 // call that reaches the cloud is one more change (a reboot). A tool
@@ -204,6 +264,15 @@ var everySendIsAChange = map[string]changeRule{
 	// the list of rules may not show it yet: a repeat would make a second
 	// rule (the interim delta audit of 1.9, FB19I-12).
 	"sg_rule_create": {read: "list_security_groups"},
+	// The creates billed at the price of a cluster (D107).
+	// The name is the one the plan of the tool makes the resource by:
+	// the same function, where the tool has a default of its own.
+	"pg_create":        paidCreate("pg_create", "", nameArg),
+	"kafka_create":     paidCreate("kafka_create", "", nameArg),
+	"redis_create":     paidCreate("redis_create", "", nameArg),
+	"k8s_create":       paidCreate("k8s_create", "", k8sClusterNameArg),
+	"k8s_add_nodepool": paidCreate("k8s_add_nodepool", "cluster_id", nodePoolName),
+	"lb_create":        paidCreate("lb_create", "", nameArg),
 }
 
 // spelledArgs are the arguments that name the resource of the record in
@@ -262,9 +331,11 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	if err != nil || !ok || (resource == "" && target == "") {
 		return nil
 	}
+	eng, _ := r.engineOfCall(args)
+	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
 	var cut []intent.Intent
 	for _, in := range pendingIn(ctx, root) {
-		if in.Held || in.Tool != name || in.Key == nil {
+		if in.Held || in.Tool != name || in.Key == nil || in.ProjectID != project {
 			continue
 		}
 		if in.Name != resource || in.Target != target {
@@ -281,12 +352,27 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	if len(cut) == 0 {
 		return nil
 	}
-	cur := r.maker()
+	// The key the call goes with — that of its own project_id on a server
+	// bound to projects, which has no engine without one.
+	var cur *state.Maker
+	if eng != nil {
+		cur = eng.Maker()
+	}
 	var mine []intent.Intent
 	for _, in := range cut {
-		if cur != nil && !in.Key.Other(cur) {
-			mine = append(mine, in)
+		if cur == nil || in.Key.Other(cur) {
+			continue
 		}
+		// What the cut call made is listed: its outcome is read, the
+		// record closes, and nobody is asked about it.
+		if everySendIsAChange[name].made {
+			if _, listed := r.checkByList(ctx, in, in.ProjectID); listed {
+				intent.Close(in)
+				forgetPending(ctx)
+				continue
+			}
+		}
+		mine = append(mine, in)
 	}
 	return mine
 }
@@ -300,10 +386,20 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 func cutCallWarning(name string, mine []intent.Intent) (message string, interrupted map[string]any) {
 	last := mine[len(mine)-1]
 	what := firstNonEmptyStr(last.Name, last.Target)
+	rule := everySendIsAChange[name]
+	interrupted = map[string]any{"tool": name, "read_tool": rule.read, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
+	if rule.made {
+		// A create: what is at stake is a second billed resource, and
+		// the list is where the first one shows — when it shows, which
+		// evo does not say of the platform (a hypothesis, no run).
+		return i18n.Tf("An earlier %s of %s, started %s, got no answer from the cloud: the request may have been accepted, and what it made may not be listed yet — %s does not show it now. Nothing was sent. A yes now makes a second billed resource of the name if the first request was taken: check %s again first, ask the person whether to send one more, and with their yes call %s with confirmed=true.",
+			"Предыдущий вызов %s для %s, начатый %s, не получил ответа облака: запрос мог быть принят, а созданное может ещё не быть в списке — %s сейчас его не показывает. Ничего не отправлено. «Да» сейчас создаст второй платный ресурс с этим именем, если первый запрос был принят: сначала проверьте %s ещё раз, спросите человека, отправлять ли ещё один, и с его «да» вызовите %s с confirmed=true.",
+			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read, rule.read, name), interrupted
+	}
 	return i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
 			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
-			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), everySendIsAChange[name].read, name),
-		map[string]any{"tool": name, "read_tool": everySendIsAChange[name].read, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
+			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read, name),
+		interrupted
 }
 
 // askAgainAfterACut answers a consented call of a tool of
@@ -313,14 +409,33 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 // person consented to once. The answer is the question again, saying what
 // is known; the record is closed (closeAsked), so the next consented call
 // is sent as any other.
-func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any) (string, bool) {
+//
+// The question is the one the call would get without its consent, with
+// the cut call named in it: plan — the call without its consent (the
+// gate makes it, withoutConsent) — gives the preview, so the person asked about «one more»
+// sees what it costs, as the CLI shows it (CLAUDE.md §6, axis 4; «Риск»,
+// the conclusion on D107, У9). A plan that does not answer a question —
+// a read of it failed, it refuses — leaves the question as it is, with no
+// preview: nothing is sent either way.
+func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any, plan func(context.Context) (string, bool)) (string, bool) {
 	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return "", false
 	}
-	r.closeAsked(ctx, mine)
 	message, interrupted := cutCallWarning(name, mine)
-	return toJSON(map[string]any{"status": "confirmation_required", "interrupted": interrupted, "message": message}), true
+	out := map[string]any{"status": "confirmation_required"}
+	if text, _ := plan(ctx); answerStatus(text) == "confirmation_required" {
+		var m map[string]any
+		if json.Unmarshal([]byte(text), &m) == nil {
+			out = m
+			if was, _ := m["message"].(string); was != "" {
+				message += " " + was
+			}
+		}
+	}
+	out["message"], out["interrupted"] = message, interrupted
+	r.closeAsked(ctx, mine)
+	return toJSON(out), true
 }
 
 // closeAsked closes the records mine of the cut calls a question has just
@@ -844,10 +959,17 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	}
 	t, ok := r.Lookup(c.list)
 	h := t.Handler
-	if c.list == "" || c.field == "" || len(c.listArgs) > 0 || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
+	// The list of a part of a parent needs the parent (listArgs): a
+	// create inside it names the parent as its target.
+	parentArg, parentID, _ := strings.Cut(in.Target, "=")
+	inParent := isCreate && len(c.listArgs) == 1 && c.listArgs[0] == parentArg && parentID != ""
+	if c.list == "" || c.field == "" || (len(c.listArgs) > 0 && !inParent) || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
 		return "", false
 	}
 	listArgs := map[string]any{}
+	if inParent {
+		listArgs[parentArg] = parentID
+	}
 	if props, _ := t.InputSchema["properties"].(map[string]any); props["project_id"] != nil && in.ProjectID != "" {
 		listArgs["project_id"] = in.ProjectID
 	}

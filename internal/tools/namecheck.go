@@ -95,7 +95,9 @@ func noID(what string) error {
 // by its id under the field createdIDs declares for tool (fault matrix,
 // process audit 1.2.1). When the list cannot be read either, the error
 // says the resource may exist and where to look, the list tool createdIDs
-// declares: the same create again refuses the taken name and names its id.
+// declares; and so does it when the list does not show it (yet): the
+// answer names the read, it does not invite a repeat («Риск», conclusion
+// 179, У6).
 //
 // A refusal the API gave on purpose is not a lost answer: a 4xx (the path
 // is taken, 409; the body is wrong, 400; no right, 403; too fast, 429)
@@ -119,13 +121,18 @@ func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]
 	items, err := list(ctx)
 	if err != nil {
 		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
-			"the %s %q may have been made and be billed: %s shows it by name; the same create again names its id instead of making a second",
-			"%s %q мог быть создан и оплачиваться: %s покажет его по имени; тот же вызов создания ещё раз назовёт его id, а не создаст второй",
+			"the %s %q may have been made and be billed: check %s by its name before any repeat — a repeat while it is not listed there may make a second",
+			"%s %q мог быть создан и оплачиваться: до любого повтора проверьте %s по имени — повтор, пока его там нет, может создать второй",
 			kind, name, listTool)}), true
 	}
 	id, status, ok := takenName(items, name)
 	if !ok {
-		return errResult(createErr), true
+		// The request went out and the list does not show what it may
+		// have made: the answer sends to the read, not to a repeat.
+		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
+			"the create request was sent and got no answer: the %s %q may have been made though %s does not show it now — check %s again before any repeat",
+			"запрос на создание отправлен, ответ не получен: %s %q мог быть создан, хотя %s сейчас его не показывает — до любого повтора проверьте %s ещё раз",
+			kind, name, listTool, listTool)}), true
 	}
 	answer := "creating"
 	if resourceFailed(status) {
