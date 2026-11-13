@@ -1755,6 +1755,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 					result["deployment"] = active
 				}
 			}
+			deployPortsOnlyFromGroups(result, eng.PortsOnlyFromGroups())
 			var going *engine.InProgress
 			if stderrors.As(deployErr, &going) {
 				return toJSON(deployInProgress(result, going, args)), false
@@ -1765,6 +1766,17 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			result["status"] = "ok"
 			return toJSON(result), false
 		})
+}
+
+// deployPortsOnlyFromGroups puts into the answer of deploy the ports the
+// deploy found let in only from other security groups — not open to its
+// source — as evo deploy --json names them, apart from the line of the
+// log (the interim delta audit of 1.9, FB19I-16). The names of the groups
+// are text of the cloud: the field is declared in untrustedFields.
+func deployPortsOnlyFromGroups(result map[string]any, only []sgrules.GroupOnlyPort) {
+	if len(only) > 0 {
+		result["ports_open_only_to_groups"] = only
+	}
 }
 
 // composeChanged reports whether the compose_hash of a deploy call — the
@@ -1903,12 +1915,13 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		// the VM probed from here before the question (M2). A warning,
 		// not a refusal: the VM may be booting, the person decides.
 		answer["upload"] = engine.SSHUpload(rec.VMIP)
+		// A stopped VM takes no upload and runs nothing: refused before
+		// the question, as Deploy refuses it — and before «the same file
+		// is already running», which is not true of a VM that is stopped.
+		if err := eng.DeployVMStopped(ctx, &rec); err != nil {
+			return "", err
+		}
 		if !u.Unchanged {
-			// A stopped VM takes no upload: refused before the question,
-			// as Deploy refuses it.
-			if err := eng.DeployVMStopped(ctx, &rec); err != nil {
-				return "", err
-			}
 			if probed, reach := eng.ReachSSH(ctx, rec.VMIP); probed {
 				answer["ssh_reachable"] = reach == nil
 				if reach != nil {
@@ -3738,11 +3751,40 @@ var consentWords = map[string]string{
 	"k8s_nodepool_delete": consentDeletes,
 	"backup_delete":       consentDeletes,
 	"k8s_delete":          consentDeletes,
-	"vm_stop":             consentInterrupts,
-	"vm_reboot":           consentInterrupts,
-	"secret_value":        consentReveals,
-	"cert_private_key":    consentReveals,
-	"s3_put":              consentOverwrites,
+	// What is lost with these is data, not a setting the caller names
+	// again (FB19I-29).
+	"disk_delete":      consentDeletes,
+	"image_delete":     consentDeletes,
+	"ar_delete":        consentDeletes,
+	"pg_db_delete":     consentDeletes,
+	"secret_delete":    consentDeletes,
+	"cert_delete":      consentDeletes,
+	"dns_zone_delete":  consentDeletes,
+	"vm_stop":          consentInterrupts,
+	"vm_reboot":        consentInterrupts,
+	"secret_value":     consentReveals,
+	"cert_private_key": consentReveals,
+	"s3_put":           consentOverwrites,
+}
+
+// consentWordless are the deletes (deleteTargets) whose consent note has
+// no word of its class, each with why: what goes is a setting or an
+// access the caller makes again, not data — «Deletes data» would be false
+// of it (FB19I-29). A delete is in consentWords or here
+// (TestConsentWord_EveryDeleteNamesItsClassOrWhyNot).
+var consentWordless = map[string]string{
+	"close_ports":         "a rule of a security group: a setting",
+	"sg_rule_delete":      "a rule of a security group: a setting",
+	"snat_delete":         "a gateway of a network: a setting",
+	"subnet_delete":       "a subnet: a setting; the platform refuses it while resources use it",
+	"vpc_delete":          "a network: a setting; the platform refuses it while resources use it",
+	"vpc_route_delete":    "a route: a setting",
+	"lb_delete":           "a load balancer: a setting; its targets stay",
+	"tg_delete":           "a target group: a setting; its targets stay",
+	"release_floating_ip": "an address returned to the platform: not data, though the same address may not come back",
+	"dns_record_delete":   "one record the caller names: a setting",
+	"pg_user_delete":      "a user of a cluster: an access; its databases and their data stay",
+	"ca_delete":           "a container app: a setting; its image stays in the registry",
 }
 
 // consentText is the consent note of tool name, with the word of its class.

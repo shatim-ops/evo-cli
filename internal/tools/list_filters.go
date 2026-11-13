@@ -122,7 +122,8 @@ func nameFilter() listFilter {
 
 func enumFilter(arg string, values ...string) listFilter {
 	en, ru := "Only in this state.", "Только в этом состоянии"
-	if arg == "type" {
+	if arg == "type" || strings.HasSuffix(arg, "_type") {
+		// Not a state: resource_type of backup_list (FB19I-24 (г)).
 		en, ru = "Only of this type.", "Только этого типа"
 	}
 	return listFilter{arg: arg, kind: filterEnum, values: values, en: en, ru: ru}

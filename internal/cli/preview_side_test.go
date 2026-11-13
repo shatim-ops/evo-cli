@@ -56,9 +56,10 @@ var sideRecordArgs = map[string][]map[string]any{
 }
 
 // sideRecordMisses are the side records a preview does not name:
-// "tool<TAB>what" → why. It only shrinks. Closes by 1.7 (release plan 1.7,
-// P5: the previews of provision, deploy_plan and deploy name the group,
-// whether it is the zone's shared one and the source — one helper).
+// "tool<TAB>what" → why. It only shrinks. Empty: its deadline 1.7 is met,
+// and a new line comes with a deadline of its own and its plan line (release
+// plan 1.7, P5: the previews of provision, deploy_plan and deploy name the
+// group, whether it is the zone's shared one and the source — one helper).
 var sideRecordMisses = map[string]string{}
 
 // P5 (agent runs of Grok on 1.6.0, G2-2; release plan 1.7): every record a

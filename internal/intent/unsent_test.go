@@ -14,8 +14,9 @@ import (
 // writes were counted (Counts) and the first was not marked (Sent). No
 // reader keeps it — the request did not go out. Every other record stays,
 // whatever its age: one whose first write was marked, one of a call in
-// flight, one that ended or is held, one of evo before the mark («Риск»,
-// conclusion 187, У1, У2 and У6).
+// flight, one that ended or is held, one of evo before the mark, one of
+// another machine that shares the directory («Риск», conclusion 187, У1,
+// У2, У2-3 and У6).
 func TestPending_ARecordOfAKilledCallThatSentNothingIsNotKept(t *testing.T) {
 	dir := t.TempDir()
 	gone := deadPID(t)
@@ -30,11 +31,12 @@ func TestPending_ARecordOfAKilledCallThatSentNothingIsNotKept(t *testing.T) {
 	}
 	unsent := open(Intent{PID: gone, Counts: true})
 	kept := map[string]string{
-		open(Intent{PID: gone, Counts: true, Sent: true}).ID:   "its first write was marked",
-		open(Intent{PID: os.Getpid(), Counts: true}).ID:        "its call is in flight",
-		open(Intent{PID: gone, Counts: true, Held: true}).ID:   "its operation goes on",
-		open(Intent{PID: gone}).ID:                             "of evo before the mark",
-		open(Intent{PID: gone, Note: "evo login: the key"}).ID: "evo login's own",
+		open(Intent{PID: gone, Counts: true, Sent: true}).ID:                  "its first write was marked",
+		open(Intent{PID: os.Getpid(), Counts: true}).ID:                       "its call is in flight",
+		open(Intent{PID: gone, Counts: true, Held: true}).ID:                  "its operation goes on",
+		open(Intent{PID: gone}).ID:                                            "of evo before the mark",
+		open(Intent{PID: gone, Note: "evo login: the key"}).ID:                "evo login's own",
+		open(Intent{PID: gone, Counts: true, Machine: "0123456789abcdef"}).ID: "it was made on another machine, whose pid this one does not tell",
 	}
 	got := map[string]bool{}
 	for _, in := range Pending(dir) {

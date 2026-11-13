@@ -22,7 +22,7 @@
 # ресурсов (образы, CMP-16).
 #
 # Окружение — входы workflow: ZONE, K8S_ZONE, PG_ZONE, KAFKA_ZONE,
-# REDIS_ZONE (пусто — ZONE), OS_SMOKE, K8S_SMOKE, DBAAS_SMOKE, DBAAS_SERVICES,
+# REDIS_ZONE (пусто — ZONE), OS_SMOKE, K8S_SMOKE, K8S_POD_CHART, DBAAS_SMOKE, DBAAS_SERVICES,
 # REDIS_SA (true/false), PROBES (платные пробы плана cloud-e2e rc.1 1.6);
 # RUN — суффикс прогона; PROJECT — для org_quotas.
 # Лог публичный: печатаются имена зон и ресурсов evo-e2e-*, коды квот и
@@ -110,13 +110,20 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 		[[ "$w" != pgrepeat || " ${PROBES:-} " != *" g13 "* ]] || fail "probes: «pgrepeat» и «g13» в одном запуске не идут — принятый повтор создания может испортить прогон изменения кластера"
 		[[ "$w" != g13 || " ${PROBES:-} " != *" access "* ]] || fail "probes: «g13» и «access» в одном запуске не идут — худший ход job dbaas-pg вплотную к пределу 300 мин"
 		;;
+	# Г-12 — в job k8s-smoke: создание до 40 мин + группа до 30 + проверки
+	# job ~35 + проба до 90 + удаление до 30 — при пределе job 300 мин; под
+	# из образа (k8s_pod_chart, SNAT до 10 мин и под до 25) снял бы запас.
+	g12)
+		[ "${K8S_SMOKE:-}" = true ] || fail "probes: «g12» — проба джоба k8s-smoke, а он не идёт (k8s_smoke)"
+		[ "${K8S_POD_CHART:-}" != true ] || fail "probes: «g12» и k8s_pod_chart в одном запуске не идут — худший ход job k8s-smoke вплотную к пределу 300 мин"
+		;;
 	g14)
 		[ -n "${cluster_kinds[kafka]:-}" ] || fail "probes: «$w» — проба джоба dbaas-kafka, а он не идёт (dbaas_smoke и kafka в dbaas_services)"
 		;;
 	g15)
 		[[ " ${DBAAS_SERVICES:-} " == *" redis "* && "${DBAAS_SMOKE:-}" == true ]] || fail "probes: «$w» — проба джоба dbaas-redis, а он не идёт (dbaas_smoke и redis в dbaas_services)"
 		;;
-	*) fail "probes: «$w» — не access, nodes, pgrepeat, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g13, g14, g15, g16, g17, g17nonames, g18, g20" ;;
+	*) fail "probes: «$w» — не access, nodes, pgrepeat, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g12, g13, g14, g15, g16, g17, g17nonames, g18, g20" ;;
 	esac
 done
 

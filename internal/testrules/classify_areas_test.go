@@ -37,9 +37,10 @@ var toolFilesWithoutArea = map[string]string{
 	"internal/tools/tools_monitoring.go":  "reads of the monitoring",
 }
 
-// toolFilesAreaPending are the files of tools whose live area does not
-// exist yet: cloud-e2e has no area that calls their tools. Only shrinks.
-// Closes by 1.9.
+// toolFilesAreaPending are the files of tools whose live area does not exist
+// yet: cloud-e2e has no area that calls their tools. Only shrinks. Closes by
+// 1.9, before rc.1 (release plan 1.9, «Сроки храповиков «к 1.7–1.9»»; the
+// area is «Процесс»'s).
 var toolFilesAreaPending = map[string]string{
 	"internal/tools/tools_backup.go": "backups (wave В5): the area ops makes backups through the API, not through evo's tools; an area of its own comes with backup_delete",
 }

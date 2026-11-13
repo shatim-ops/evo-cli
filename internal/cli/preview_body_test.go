@@ -31,8 +31,9 @@ const (
 // value and the line goes; a line whose value the preview names now, or
 // that is not sent any more, fails the test. Secret lines stay: the value
 // must not reach the preview.
-// Closes by 1.8: a line lives at most two versions (release plan 1.6,
-// «храповики со сроком»; TestMisses_HaveADeadline).
+// Closes by 1.9, before rc.1 (owner's decision 13.11, #1590, question 19,
+// (c); release plan 1.9, «Просроченные убывающие списки»): what stays is an
+// exception declared with a reason «Риск · 1.9» accepted.
 var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"deploy availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},

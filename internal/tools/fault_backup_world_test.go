@@ -14,6 +14,7 @@ import (
 	"time"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -55,7 +56,12 @@ func (c *backupCloud) listedOf(items []map[string]any) []map[string]any {
 
 // RestoreBackup makes a new disk of the backup, through the gate as the
 // rest: a restore whose answer is lost made its disk all the same.
-func (c *backupCloud) RestoreBackup(_ context.Context, id string, cfg provision.RestoreDiskConfig) (map[string]any, error) {
+func (c *backupCloud) RestoreBackup(ctx context.Context, id string, cfg provision.RestoreDiskConfig) (map[string]any, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	err := c.gate("RestoreBackup")
 	if err != nil && !errors.Is(err, errFaultLost) && !errors.Is(err, errFaultEmpty) {
 		return nil, err
@@ -95,7 +101,12 @@ func (c *backupCloud) GetBackup(_ context.Context, id string) (map[string]any, e
 }
 
 // DeleteBackup takes the backup away, through the gate as the rest.
-func (c *backupCloud) DeleteBackup(_ context.Context, id string) error {
+func (c *backupCloud) DeleteBackup(ctx context.Context, id string) error {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return err
+	}
 	if err := c.gate("DeleteBackup"); err != nil {
 		return err
 	}
@@ -105,7 +116,12 @@ func (c *backupCloud) DeleteBackup(_ context.Context, id string) error {
 	return nil
 }
 
-func (c *backupCloud) CreateBackup(_ context.Context, req provision.CreateBackupReq) (map[string]any, error) {
+func (c *backupCloud) CreateBackup(ctx context.Context, req provision.CreateBackupReq) (map[string]any, error) {
+	// The write goes out, as the client of evo counts it
+	// (httpretry.CountWrites).
+	if err := httpretry.NoteWrite(ctx); err != nil {
+		return nil, err
+	}
 	err := c.gate("CreateBackup")
 	if err != nil && !errors.Is(err, errFaultLost) && !errors.Is(err, errFaultEmpty) {
 		return nil, err
@@ -171,7 +187,8 @@ func backupRestoreCase(args map[string]any) faultMatrixCase {
 		cloud := &backupCloud{faultCloud: &faultCloud{cancel: cancel}}
 		cloud.backups = []map[string]any{{"id": faultBackupID, "name": "before-change", "state": "created", "seed": true,
 			"resource": map[string]any{"resource_id": faultDisk, "resource_type": "disk", "resource_exists": true,
-				"resource_state": map[string]any{"name": "data", "size": float64(10), "disk_type": map[string]any{"name": "SSD"}}}}}
+				"resource_state": map[string]any{"name": "data", "size": float64(10), "disk_type": map[string]any{"name": "SSD"},
+					"availability_zone": map[string]any{"id": faultZone, "name": "ru.AZ-1"}}}}}
 		r, dir := faultToolsRegistryOver(t, cloud)
 		return backupFaultWorld{cloud}, r, dir
 	}}

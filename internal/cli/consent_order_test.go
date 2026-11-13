@@ -69,14 +69,15 @@ var repeatRefused = map[string]string{
 	"disk_resize": "disk of the size asked",
 }
 
-// repeatUndeclared are the changes shipped before the invariant whose
-// repeat nothing declares: no world has the change already, and no
-// declaration says a repeat is a new change. "tool" → what a repeat does
-// as far as the code shows, for the session that declares it. It only
-// shrinks, and a new tool does not join it: a new change comes with its
-// world (consentWorld.alreadyFor) or its line of repeatIsANewChange.
-// Closes by 1.9: each line is a world or a declaration of «разработка»
-// (release plan 1.9, «Инварианты до новых изменяющих операций», Н1).
+// repeatUndeclared are the changes shipped before the invariant whose repeat
+// nothing declares: no world has the change already, and no declaration says
+// a repeat is a new change. "tool" → what a repeat does as far as the code
+// shows, for the session that declares it. It only shrinks, and a new tool
+// does not join it: a new change comes with its world
+// (consentWorld.alreadyFor) or its line of repeatIsANewChange. Closes by
+// 1.9, before rc.1 (release plan 1.9, «Сроки храповиков «к 1.7–1.9»»): each
+// line is a world or a declaration of «разработка» (release plan 1.9,
+// «Инварианты до новых изменяющих операций», Н1).
 var repeatUndeclared = map[string]string{
 	"deploy_apply": "an apply of a plan applied: no world",
 }

@@ -100,7 +100,10 @@ func opFailure(v any) (msg, code any, failed bool) {
 }
 
 // deleteRefusal is the error of a delete Cloud.ru's operation ended with.
+// The platform's words and code are data, quoted on one line in the
+// sentence of evo (quoteCloud), as at k8s_nodepool_scale (FB19I-8).
 func deleteRefusal(w deleteWatch, msg, code any) error {
+	quoted := quoteCloud(fmt.Sprint(msg))
 	t := deleteTargets[w.tool]
 	what := i18n.T(t.what, t.whRU)
 	hint := i18n.T(w.hintEN, w.hintRU)
@@ -110,12 +113,12 @@ func deleteRefusal(w deleteWatch, msg, code any) error {
 	}
 	if code == nil {
 		return clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("Cloud.ru did not delete %s %s: %v (operation %s)", "Cloud.ru не удалил %s %s: %v (операция %s)",
-				what, w.ref, msg, w.opID), hint)
+			i18n.Tf("Cloud.ru did not delete %s %s: %s (operation %s)", "Cloud.ru не удалил %s %s: %s (операция %s)",
+				what, w.ref, quoted, w.opID), hint)
 	}
 	return clierrors.New(clierrors.CodeAPIError,
-		i18n.Tf("Cloud.ru did not delete %s %s: %v (code %v, operation %s)", "Cloud.ru не удалил %s %s: %v (код %v, операция %s)",
-			what, w.ref, msg, code, w.opID), hint)
+		i18n.Tf("Cloud.ru did not delete %s %s: %s (code %s, operation %s)", "Cloud.ru не удалил %s %s: %s (код %s, операция %s)",
+			what, w.ref, quoted, quoteCloud(fmt.Sprint(code)), w.opID), hint)
 }
 
 // argsLine is args as a call's text: key=value, in the order of the keys.

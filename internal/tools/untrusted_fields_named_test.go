@@ -33,7 +33,8 @@ import (
 
 // untrustedFieldPending are the fields known to carry a name of the cloud
 // outside the "_untrusted" of their answer, "tool: field" → the finding.
-// Only shrinks. Closes by 1.9.
+// Only shrinks. Closes by 1.9, before rc.1 (release plan 1.9, «Сроки
+// храповиков «к 1.7–1.9»»).
 var untrustedFieldPending = map[string]string{
 	"backup_get: protection_plan": "FB19I-21 of the interim delta audit of 1.9: the name of the plan is the cloud's; «разработка B»",
 }

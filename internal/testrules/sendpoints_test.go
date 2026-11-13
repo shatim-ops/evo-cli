@@ -33,12 +33,25 @@ var sendsPastHTTP = map[string]string{
 var sendCalls = map[string]bool{"CombinedOutput": true, "Output": true, "Run": true, "Start": true, "Shell": true}
 
 // uncountedClients are the HTTP clients of production code whose requests
-// are not counted as writes of a call: "file<TAB>function" → why. Every
+// are not counted as writes of a call: "file<TAB>function" → why; such a
+// function sends GET or HEAD alone. Every
 // other client goes over httpretry.Transport or httpretry.UserAgent, which
 // count (httpretry.CountWrites).
 var uncountedClients = map[string]string{
 	"internal/verify/verify.go\tget":            "a liveness probe of a port: a GET, which is no write",
 	"internal/cli/mcp.go\tnewMCPHealthcheckCmd": "the healthcheck of evo's own server: a GET of 127.0.0.1",
+}
+
+// notAChange are the places that tell a request is no write of its call
+// (httpretry.NotAChange): "file<TAB>function" → what the request is. Such
+// a request leaves no record when its call is cut, so the mark is an
+// exception from the guard: only the request of an exchange for a token
+// carries it, set as the context of that request alone — the context of
+// the call would hand it to everything the call sends after («Риск»,
+// conclusion 187, У2-1).
+var notAChange = map[string]string{
+	"internal/auth/iam.go\tIAMProvider.exchangeOnce":  "the exchange of the key for an IAM token",
+	"internal/mk8s/kubeconfig.go\tfetchOIDCTokenOnce": "the exchange of the key for the OIDC token of a cluster",
 }
 
 // Every write of a call is heard by its counter: a send past HTTP is a
@@ -47,7 +60,7 @@ var uncountedClients = map[string]string{
 func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 	root := filepath.Join("..", "..")
 	var bad []string
-	sends, clients := map[string]bool{}, map[string]bool{}
+	sends, clients, marks := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, dir := range []string{"cmd", "internal"} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -78,12 +91,28 @@ func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 				}
 				key := rel + "\t" + funcName(fd)
 				sendsHere, notes := false, false
+				ofRequest := map[ast.Expr]bool{}
 				ast.Inspect(fd.Body, func(n ast.Node) bool {
 					switch x := n.(type) {
 					case *ast.CallExpr:
 						sel, ok := x.Fun.(*ast.SelectorExpr)
 						if !ok {
 							return true
+						}
+						if id, ok := sel.X.(*ast.Ident); ok && local[id.Name] == "net/http" && sel.Sel.Name == "NewRequestWithContext" && len(x.Args) > 1 {
+							ofRequest[x.Args[0]] = true
+							// A client declared uncounted sends reads alone.
+							if _, declared := uncountedClients[key]; declared && !readMethodArg(x.Args[1], local) {
+								bad = append(bad, fset.Position(x.Pos()).String()+": a request of a client in uncountedClients that is not a GET or HEAD — its writes would not be counted")
+							}
+						}
+						if id, ok := sel.X.(*ast.Ident); ok && local[id.Name] == "github.com/shatim-ops/evo-cli/internal/httpretry" && sel.Sel.Name == "NotAChange" {
+							marks[key] = true
+							if _, declared := notAChange[key]; !declared {
+								bad = append(bad, fset.Position(x.Pos()).String()+": httpretry.NotAChange outside notAChange — a request so marked leaves no record when its call is cut; declare the place with what the request is")
+							} else if !ofRequest[x] {
+								bad = append(bad, fset.Position(x.Pos()).String()+": httpretry.NotAChange is not the context of the request itself (the first argument of http.NewRequestWithContext): the call would hand it to all it sends after")
+							}
 						}
 						if id, ok := sel.X.(*ast.Ident); ok && local[id.Name] == "github.com/shatim-ops/evo-cli/internal/httpretry" && sel.Sel.Name == "NoteWrite" {
 							notes = true
@@ -123,6 +152,11 @@ func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 			bad = append(bad, strings.Replace(k, "\t", ": ", 1)+": in sendsPastHTTP, but sends nothing there; take the line out")
 		}
 	}
+	for k := range notAChange {
+		if !marks[k] {
+			bad = append(bad, strings.Replace(k, "\t", ": ", 1)+": in notAChange, but marks no request there; take the line out")
+		}
+	}
 	for k := range uncountedClients {
 		if !clients[k] {
 			bad = append(bad, strings.Replace(k, "\t", ": ", 1)+": in uncountedClients, but makes no such client there; take the line out")
@@ -132,6 +166,17 @@ func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 	for _, b := range bad {
 		t.Error(b)
 	}
+}
+
+// readMethodArg tells a method argument that is http.MethodGet or
+// http.MethodHead.
+func readMethodArg(e ast.Expr, local map[string]string) bool {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && local[id.Name] == "net/http" && (sel.Sel.Name == "MethodGet" || sel.Sel.Name == "MethodHead")
 }
 
 // counts tells an http.Client literal whose Transport counts the writes of

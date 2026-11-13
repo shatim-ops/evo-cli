@@ -135,10 +135,11 @@ const (
 )
 
 // skillKnowledgePending are the items with no place yet, in the same form.
-// It only shrinks. Closes by 1.7 (release plan 1.7, block D, D68: the facts
-// of the platform from the scenario skills go into the descriptions of the
-// registry and the built-in skill; the PR of D68 moves each line to
-// skillKnowledge with its place, or with why it is dropped).
+// It only shrinks. Empty: its deadline 1.7 is met, and a new line comes with
+// a deadline of its own and its plan line (release plan 1.7, block D, D68:
+// the facts of the platform from the scenario skills go into the
+// descriptions of the registry and the built-in skill; the PR of D68 moves
+// each line to skillKnowledge with its place, or with why it is dropped).
 var skillKnowledgePending = map[string]string{}
 
 // skillItem is an item of a list of a SKILL.md: "- " or "1. ".
@@ -251,7 +252,7 @@ func TestSkills_KnowledgeHasItsPlace(t *testing.T) {
 	if len(bad) > 0 {
 		t.Fatal(strings.Join(bad, "\n"))
 	}
-	t.Logf("skill items: %d placed, %d pending (Closes by 1.7)", len(skillKnowledge), len(skillKnowledgePending))
+	t.Logf("skill items: %d placed, %d pending", len(skillKnowledge), len(skillKnowledgePending))
 }
 
 // schemaText is every description of the arguments of a schema.

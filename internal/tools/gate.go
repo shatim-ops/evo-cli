@@ -176,7 +176,7 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		// record would take the place of the first and move the start
 		// the limit of the repeats counts from («Риск», conclusion 177,
 		// У7).
-		end := func(string) {}
+		var end func(string)
 		if held, goesOn := r.goesOn(ctx, t.Name, args); goesOn {
 			end = func(answer string) { cutSendOf(ctx, held, answer) }
 		} else {
@@ -186,6 +186,12 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 			}
 		}
 		text, isErr := next(ctx, args)
+		// The mark of the first write could not be written: nothing went
+		// out, and the call says that, not the handler's error of a request
+		// that never left.
+		if err := httpretry.WriteRefused(ctx); err != nil {
+			text, isErr = errResult(err), true
+		}
 		end(text)
 		// A held record the call names by another argument than its step
 		// (a name, where the record has the id).

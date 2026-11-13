@@ -136,3 +136,57 @@ func TestAgentSkill_MarksEveryToolTheServerDoesNotServe(t *testing.T) {
 		t.Errorf("the groups do not say how many tools the server serves: %s", text)
 	}
 }
+
+// A server bound to its projects (--allow-project) answers a repeat of a
+// delete NOT_FOUND, not already_deleted (H9, alreadyDeleted): the card it
+// gives says what its own deletes answer (FB19I-26 (а)). A server not
+// bound says already_deleted, as before.
+func TestAgentSkill_TheCardSaysWhatARepeatOfADeleteAnswersOnThisServer(t *testing.T) {
+	for _, bound := range []bool{false, true} {
+		r := New(nil)
+		if bound {
+			r.SetProjectBound()
+		}
+		tl, _ := r.Lookup("agent_skill")
+		text, _ := tl.Handler(context.Background(), map[string]any{"group": "pg"})
+		var m map[string]any
+		_ = json.Unmarshal([]byte(text), &m)
+		card, _ := m["skill"].(string)
+		says := strings.Contains(card, "a repeat answers `already_deleted`")
+		saysNotFound := strings.Contains(card, "a repeat answers `NOT_FOUND`")
+		if says == bound || saysNotFound != bound {
+			t.Errorf("bound=%v: the card says already_deleted %v, NOT_FOUND %v: %s", bound, says, saysNotFound, card)
+		}
+	}
+}
+
+// A server of one group (--toolsets k8s) serves every tool of it, and the
+// card still names tools of other groups in its other columns and notes
+// (snat_create, destroy, vm_list): each name of a registry tool in the
+// card is served, marked, or under the line that says the other columns
+// may name tools the server lacks (FB19I-25; «Риск», conclusion 160, У2).
+func TestAgentSkill_EveryNameInTheCardIsServedOrCovered(t *testing.T) {
+	name := regexp.MustCompile("`([a-z0-9_]+)`")
+	for _, g := range Groups() {
+		r := New(nil)
+		served := func(n string) bool {
+			tl, ok := r.Lookup(n)
+			return n == "agent_skill" || ok && tl.Group == g
+		}
+		r.SetServed(served)
+		tl, _ := r.Lookup("agent_skill")
+		text, _ := tl.Handler(context.Background(), map[string]any{"group": g})
+		var m map[string]any
+		_ = json.Unmarshal([]byte(text), &m)
+		card, _ := m["skill"].(string)
+		covered := strings.Contains(card, "Tools named in the other columns may be absent too")
+		for _, line := range strings.Split(card, "\n") {
+			for _, n := range name.FindAllStringSubmatch(line, -1) {
+				if _, ok := r.Lookup(n[1]); !ok || served(n[1]) || covered || strings.Contains(line, "`"+n[1]+"` (not on this server)") {
+					continue
+				}
+				t.Errorf("group %s served alone: the card names %s, which the server does not serve, unmarked and with no line that says so: %s", g, n[1], line)
+			}
+		}
+	}
+}

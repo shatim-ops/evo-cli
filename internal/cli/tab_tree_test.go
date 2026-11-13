@@ -18,9 +18,11 @@ import (
 
 // tabFileDefault are the commands whose Tab on an empty word falls back to
 // the shell's files (cobra's ShellCompDirectiveDefault, or a filter of
-// extensions or directories) though the registry declares no path there: the command's path → true. It only shrinks. Closes
-// by 1.7 (release plan 1.7, block B, Tab, T1, #718: one point — no file
-// completion unless the registry declares the argument a path).
+// extensions or directories) though the registry declares no path there: the
+// command's path → true. It only shrinks. Empty: its deadline 1.7 is met,
+// and a new line comes with a deadline of its own and its plan line (release
+// plan 1.7, block B, Tab, T1, #718: one point — no file completion unless
+// the registry declares the argument a path).
 var tabFileDefault = map[string]bool{}
 
 // tabPathDeclared reports whether the argument at the cursor of an empty
@@ -118,7 +120,7 @@ func TestTab_EveryCommandCompletesOrSaysNone(t *testing.T) {
 	if len(bad) > 0 {
 		t.Fatal(strings.Join(bad, "\n"))
 	}
-	t.Logf("commands: %d, falling back to files: %d (Closes by 1.7)", len(paths), len(tabFileDefault))
+	t.Logf("commands: %d, falling back to files: %d", len(paths), len(tabFileDefault))
 }
 
 // The directives that offer files: the default and the filters; NoFileComp

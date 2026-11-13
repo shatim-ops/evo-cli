@@ -23,8 +23,9 @@ var bufferPrinterScope = []string{"internal/tools", "internal/engine", "internal
 // textPrinterMisses are the places of bufferPrinterScope that make a printer
 // in output.ModeText — one that redraws a line with "\r" as on a terminal —
 // onto a buffer an answer carries: "file<TAB>function" → the answer. It only
-// shrinks. Closes by 1.7 (release plan 1.7, F9: the printer into a buffer is
-// ModePlain, one point).
+// shrinks. Empty: its deadline 1.7 is met, and a new line comes with a
+// deadline of its own and its plan line (release plan 1.7, F9: the printer
+// into a buffer is ModePlain, one point).
 var textPrinterMisses = map[string]string{}
 
 // F9 (agent runs of Grok on 1.6.0, release plan 1.7): a printer evo makes

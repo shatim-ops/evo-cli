@@ -25,9 +25,10 @@ var toolsCallFlagBridges = map[string]string{
 }
 
 // toolsCallFlagMisses are the names a flag of tools call shares with an
-// argument the flag does not reach: "tool.arg" → what the flag does
-// instead. It only shrinks. Closes by 1.9 (release plan 1.8, «инвариант
-// флагов tools call», Process · 1.8 (2); the fix is the development's).
+// argument the flag does not reach: "tool.arg" → what the flag does instead.
+// It only shrinks. Closes by 1.10 (release plan 1.9, «Сроки храповиков «к
+// 1.7–1.9»», #1590 question 19 (c)); release plan 1.8, «инвариант флагов
+// tools call», Process · 1.8 (2); the fix is the development's).
 var toolsCallFlagMisses = map[string]string{
 	"s3_bucket_create.region": "the argument is the S3 region (ru-central-1); --region sets the profile's zone, and the bucket is made in the default S3 region",
 }

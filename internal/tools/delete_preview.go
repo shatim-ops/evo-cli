@@ -8,12 +8,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
 // deletePlan is the plan of a *_delete tool (gate.go): one GET of the
@@ -46,9 +48,11 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	// word in the answer's fields.
 	decl := deleteTargets[tool]
 	state := strings.TrimPrefix(status, decl.statePrefix)
-	if decl.creatingUnseen != "" && engine.PassingDeleteState(state) ||
-		decl.failedUnseen != "" && engine.FinalDeleteState(state) {
-		// No rule of this service for the state: the preview of any other.
+	unseen := decl.creatingUnseen != "" && engine.PassingDeleteState(state) ||
+		decl.failedUnseen != "" && inError(state)
+	if unseen {
+		// No rule of this service for the state: no refusal and no way out
+		// of one — the preview says the outcome is unknown (FB19I-7, -23).
 		state = ""
 	}
 	if statusGone(state) {
@@ -71,8 +75,71 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	}
 	if warning, _ := engine.DeleteWayOut(state, id); warning != "" {
 		out["warning"] = warning
+	} else if unseen {
+		out["warning"] = i18n.Tf("it is %s: whether Cloud.ru deletes a %s in this state no run has shown — the outcome of the delete is unknown; a refusal names the platform's answer",
+			"он в состоянии %s: удаляет ли Cloud.ru ресурс (%s) в этом состоянии, ни один прогон не показал — исход удаления неизвестен; отказ назовёт ответ платформы",
+			quoteCloud(status), i18n.T(decl.what, decl.whRU))
+	}
+	if unseen {
+		return &Plan{Preview: out, Execute: withStatus(execute, tool, status, id)}
 	}
 	return &Plan{Preview: out, Execute: withWayOut(execute, state, status, id)}
+}
+
+// inError reports whether state is an error of the resource: one Cloud.ru
+// does not delete in (engine.FinalDeleteState), or another error state of
+// the service, such as error_creating of a backup.
+func inError(state string) bool {
+	return engine.FinalDeleteState(state) || strings.HasPrefix(strings.ToUpper(state), "ERROR")
+}
+
+// withStatus is execute whose refusal, of a resource in a state no run
+// has shown (FB19I-7), names the status read before the question
+// (resource_status) and what is known of this request («Риск», 181, У1):
+// a refusal of the platform (intent.DefiniteRefusal) — the resource
+// stays, the same call is refused the same way while its state holds, the
+// way is Cloud.ru support; no answer or a 5xx — the outcome is unknown, a
+// read of the resource tells. Not a claim of what Cloud.ru does with a
+// resource in the state: no run has shown it. An error the state does not
+// explain (notTheState) keeps its own hint.
+func withStatus(execute func(context.Context) (string, bool), tool, status, id string) func(context.Context) (string, bool) {
+	decl := deleteTargets[tool]
+	read := strings.TrimSuffix(tool, "_delete") + "_get"
+	readEN, readRU := read, read
+	if spec, ok := cliSpecs[read]; ok {
+		readRU = "evo " + spec.Group + " " + spec.Verb
+	} else {
+		readEN, readRU = "a read of it", "чтение"
+	}
+	return func(ctx context.Context) (string, bool) {
+		text, isErr := execute(ctx)
+		if !isErr {
+			return text, isErr
+		}
+		var m map[string]any
+		if json.Unmarshal([]byte(text), &m) != nil {
+			return text, isErr
+		}
+		m["resource_status"] = status
+		reason, _ := m["reason"].(string)
+		switch code := answerHTTPStatus(text); {
+		case (code == http.StatusUnauthorized || code == http.StatusForbidden) && !notTheState[reason]:
+			// The right of the key, not the state of the resource
+			// («Риск», 181, У3).
+			m["hint"] = i18n.T(
+				fmt.Sprintf("Cloud.ru denied the delete to this key (HTTP %d): the key was not accepted, or it or the role of its service account has no right to delete the %s; it stays, and a billable one is still billed. Try the delete with a key that has that right.", code, decl.what),
+				fmt.Sprintf("Cloud.ru отказал этому ключу в удалении (HTTP %d): ключ не принят либо у него или у роли его сервисного аккаунта нет права удалять ресурс (%s); ресурс остаётся, платный — тарифицируется. Попробуйте удалить ключом с этим правом.", code, decl.whRU))
+		case intent.DefiniteRefusal(code) && !notTheState[reason]:
+			m["hint"] = i18n.T(
+				fmt.Sprintf("Cloud.ru refused the delete of the %s in %s: it stays, and a billable one is still billed; the same call gets the same refusal while its state holds. What to do with it is the person's decision; the way is Cloud.ru support, with its id %s.", decl.what, quoteCloud(status), id),
+				fmt.Sprintf("Cloud.ru отклонил удаление: ресурс (%s) в состоянии %s остаётся, платный ресурс тарифицируется; тот же вызов получит тот же отказ, пока состояние не сменится. Что с ним делать, решает человек; путь — поддержка Cloud.ru с id ресурса %s.", decl.whRU, quoteCloud(status), id))
+		case !notTheState[reason] || reason == clierrors.CodeAPIUnreachable:
+			m["hint"] = i18n.T(
+				fmt.Sprintf("The outcome of the delete is unknown: the request may have been taken. %s %s shows whether the %s is gone.", readEN, id, decl.what),
+				fmt.Sprintf("Исход удаления неизвестен: запрос мог быть принят. Удалён ли ресурс (%s), покажет %s %s.", decl.whRU, readRU, id))
+		}
+		return toJSON(m), true
+	}
 }
 
 // passingRefusal is the answer of a delete of a resource still being

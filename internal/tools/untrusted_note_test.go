@@ -18,8 +18,9 @@ import (
 
 // untrustedNoteOnly are the tools whose description says their answer is
 // untrusted data (untrustedFields.workload) while the answer carries no
-// "_untrusted" (untrustedFields): tool → the field. It only shrinks.
-// Closes by 1.7 (release plan 1.7, «Недоверенный вывод без маркера»: the
+// "_untrusted" (untrustedFields): tool → the field. It only shrinks. Empty:
+// its deadline 1.7 is met, and a new line comes with a deadline of its own
+// and its plan line (release plan 1.7, «Недоверенный вывод без маркера»: the
 // marker at these tools, one map both are made from).
 var untrustedNoteOnly = map[string]string{}
 
@@ -39,10 +40,13 @@ var untrustedMarkerOnly = map[string]string{
 	"backup_get":          "name, description, tags, resource_name, source: what the project's people named the backup, its tags and its source, not the output of a workload",
 	"backup_create":       "preview, will_create, backup, name: the names of the backup and of its source, not the output of a workload",
 	"backup_restore":      "preview, will_create, disk, name: the names of the backup, its disk and the new disk, not the output of a workload",
-	"backup_delete":       "preview, target: the names of the backup, its source and the backups that depend on it, not the output of a workload",
+	"backup_delete":       "preview, target, resource_status: the names of the backup, its source and the backups that depend on it, and its state in a refusal, not the output of a workload",
 	"backup_list":         "backups: the names of the backups and of their sources, not the output of a workload",
 	"k8s_nodepool_get":    "name, cluster_name, labels, taints: what the project's people named the pool, its cluster and its nodes, not the output of a workload",
-	"k8s_nodepool_delete": "preview: the name of the cluster of the pool in the preview, not the output of a workload",
+	"k8s_nodepool_delete": "preview, target, resource_status: the name of the cluster of the pool in the preview, the name of the pool in the target and its status in a refusal, not the output of a workload",
+	"k8s_delete":          "resource_status: the status of the cluster in a refusal, as its service writes it, not the output of a workload",
+	"lb_delete":           "resource_status: the status of the balancer in a refusal, as its service writes it, not the output of a workload",
+	"tg_delete":           "resource_status: the status of the target group in a refusal, as its service writes it, not the output of a workload",
 	"k8s_nodepool_scale":  "preview, name, details: the name of the pool in the preview and the answer and the platform's words of a failed operation, not the output of a workload",
 	"k8s_operation":       "error: the failure of an operation as Managed Kubernetes words it, not the output of a workload",
 	"ar_operation":        "error: the failure of an operation as Artifact Registry words it, not the output of a workload",

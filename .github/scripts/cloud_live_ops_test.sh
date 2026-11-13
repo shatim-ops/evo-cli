@@ -16,8 +16,10 @@ fake_evo_install "$tmp/bin"
 # $FAKE_DIR/http, чей образец (МЕТОД и окончание пути, glob) подходит:
 # «МЕТОД ОБРАЗЕЦ КОД [ТЕЛО]»; «МЕТОД!» — строка на один запрос (следующий
 # такой же запрос получит следующую подходящую строку: состояния по
-# очереди; код 000 — обрыв без ответа). Нет подходящей — так же по $FAKE_DIR/http.default (пустые
+# очереди; код 000 — обрыв без ответа; ТЕЛО «-» — пустое тело). Нет подходящей — так же по $FAKE_DIR/http.default (пустые
 # списки копий и планов для уборки области); нет и там — 404 с телом {}.
+# Заголовки ответа — строки $FAKE_DIR/http.h «МЕТОД ОБРАЗЕЦ ЗАГОЛОВОК», чей
+# образец подходит (все такие, по порядку).
 cat >"$tmp/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
 out=/dev/stdout url= method=GET hdr=
@@ -36,7 +38,13 @@ p=${url#https://compute.api.cloud.ru/api/v1/}
 : >"$FAKE_DIR/body"
 case "$url" in */auth/token) printf '{"access_token":"tok"}'; exit 0 ;; esac
 echo "$method ${url#https://compute.api.cloud.ru/api/v1}" >>"$FAKE_DIR/calls"
-[ -z "$hdr" ] || : >"$hdr"
+if [ -n "$hdr" ]; then
+	: >"$hdr"
+	while read -r m pat h; do
+		# shellcheck disable=SC2254 # образец — glob
+		case "$method ${url#https://compute.api.cloud.ru/api/v1}" in "$m "$pat) printf '%s\r\n' "$h" >>"$hdr" ;; esac
+	done < <(cat "$FAKE_DIR/http.h" 2>/dev/null)
+fi
 code=404 body='{}' i=0
 while read -r m pat c b; do
 	i=$((i + 1))
@@ -52,6 +60,7 @@ while read -r m pat c b; do
 		;;
 	esac
 done < <(cat "$FAKE_DIR/http" "$FAKE_DIR/http.default" 2>/dev/null)
+[ "$body" != - ] || body=
 # Код 000 — curl не получил ответа: тела нет, код выхода 56 (обрыв).
 [ "$code" != 000 ] || { printf '000'; exit 56; }
 printf '%s' "$body" >"$out"
@@ -947,6 +956,43 @@ rc=0
 DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
 want "Г-13, квота, details — объект: один PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 1
 
+# Отказ с пустым телом (прогон 212, DB-4, DB-28): причина — в заголовках
+# grpc-status и grpc-message (значение в процентной кодировке gRPC), строка
+# называет их; отказ без тела и без этих заголовков так и назван — «не
+# реализовано» отличается от «значение не принято».
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH! $S 501 -
+PATCH $S 400 -
+H
+printf '%s\n' "PATCH $S grpc-status: 12" "PATCH $S grpc-message: method%20is%20not%20implemented%3A%203f2b8c1e-1111-4222-8333-444455556666" >"$FAKE_DIR/http.h"
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, пустое тело: код" "$rc" 0
+grep -q 'Г-13: класс на шаг вверх.*отказ HTTP 501.*машинный код: UNIMPLEMENTED.*тело пустое; grpc-status 12 (UNIMPLEMENTED); grpc-message: method is not implemented: <id>' "$tmp/out" || { echo "FAIL: Г-13: отказ с пустым телом не назван по заголовкам grpc"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: id из grpc-message в логе"; fail=1; fi
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 400 -
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+grep -q 'Г-13: класс на шаг вверх.*отказ HTTP 400.*машинный код: нет.*текст: тело пустое, заголовков grpc-status и grpc-message нет' "$tmp/out" || { echo "FAIL: Г-13: отказ без тела и без заголовков не назван"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+# Код вне 0–16 (ревью Qwen на #1664): назван числом, не пустыми скобками;
+# «+» в grpc-message — буква, а не пробел (процентная кодировка gRPC — не
+# форма x-www-form-urlencoded).
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 400 -
+H
+printf '%s\n' "PATCH $S grpc-status: 17" "PATCH $S grpc-message: a+b%20c" >"$FAKE_DIR/http.h"
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+grep -q 'Г-13: класс на шаг вверх.*машинный код: код 17.*grpc-status 17 (код 17); grpc-message: a+b c' "$tmp/out" || { echo "FAIL: Г-13: код gRPC вне 0–16 или «+» в тексте названы не так"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
 # Кластер не вернулся в исходное состояние после смены класса: в него
 # уходит только возврат класса; PATCH диска и узлов не шлётся — каждый
 # PATCH поверх незавершённого повышает шанс кластера, который API не
@@ -1014,6 +1060,116 @@ rc=0
 DB_KIND=mysql DB_CLUSTER_ID=c1 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
 want "dbchange, чужой вид: код" "$rc" 1
 [ ! -s "$FAKE_DIR/calls" ] || { echo "FAIL: dbchange с чужим видом слала запросы"; fail=1; }
+
+# Область k8schange (проба Г-12 с Г6): группа узлов кластера job k8s-smoke
+# прямыми запросами mk8s v3 — масштаб 1→2 и повтор сразу, 2→1, версия
+# кластера, затем группы, вторая группа (evo) и её удаление, пока она
+# создаётся, масштаб до 0, удаление последней группы. Каждая строка —
+# первое чтение после ответа и форма error операции; отказ — ответ, не
+# провал; шаг поверх незавершённого и после срока пробы не шлётся.
+MK=https://mk8s.api.cloud.ru/v3
+P=$MK/nodePools/np1 P2=$MK/nodePools/np2 KC=$MK/clusters/c1 O=$MK/operations
+pool() { printf '{"id":"%s","status":"OBJECT_STATUS_%s","scalePolicy":{"fixedScale":{"count":%s}},"version":"v1.31.1"}' "${3:-np1}" "$1" "$2"; }
+k8s_world() {
+	world
+	fake_evo_answer k8s_nodepools 0 0 '{"node_pools":[{"id":"np1","name":"np-e2e","status":"OBJECT_STATUS_RUNNING","desired":1}]}'
+	fake_evo_answer k8s_add_nodepool 0 0 '{"status":"creating","nodepool_id":"np2","operation_id":"op9"}'
+}
+k8s_world
+cat >"$FAKE_DIR/http" <<H
+PATCH! $P 200 {"id":"op1","done":false}
+GET! $P 200 $(pool RUNNING 2)
+PATCH! $P 200 {"id":"op2","done":false}
+GET! $O/op1 200 {"id":"op1","done":false,"error":{}}
+GET! $P 200 $(pool SCALING_UP 2)
+GET! $P 200 $(pool RUNNING 2)
+GET! $O/op1 200 {"id":"op1","done":true}
+GET! $O/op2 200 {"id":"op2","done":true,"error":null}
+PATCH! $P 200 {"id":"op3"}
+GET! $P 200 $(pool SCALING_DOWN 1)
+GET! $P 200 $(pool RUNNING 1)
+POST $KC:upgrade 200 {"id":"op4"}
+GET! $KC 200 {"id":"c1","status":"OBJECT_STATUS_UPGRADING","controlPlane":{"version":"v1.31.1"}}
+GET! $KC 200 {"id":"c1","status":"OBJECT_STATUS_RUNNING","controlPlane":{"version":"v1.32.1"}}
+POST $P:upgrade 400 {"code":"FAILED_PRECONDITION","message":"pool is busy"}
+DELETE! $P2 409 {"code":"FAILED_PRECONDITION","message":"node pool is being created"}
+GET! $P2 200 $(pool PROVISIONING 1 np2)
+GET! $P2 200 $(pool RUNNING 1 np2)
+DELETE! $P2 200 {"id":"op5"}
+GET! $P2 200 $(pool DELETING 1 np2)
+GET! $P2 404 {"code":"NOT_FOUND"}
+DELETE! $P2 404 {"code":"NOT_FOUND","message":"node pool not found"}
+PATCH! $P 400 {"code":"INVALID_ARGUMENT","message":"count must be at least 1"}
+DELETE! $P 200 {"id":"op6"}
+GET! $P 200 $(pool DELETING 1)
+GET $P 404 {"code":"NOT_FOUND"}
+GET $O/* 200 {"done":true,"error":{"code":0}}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+K8S_CLUSTER_ID=c1 K8S_UPGRADE_TO=v1.32.1 K8S_SETTLE=1000 "$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
+want "Г-12: код" "$rc" 0
+want "Г-12: тела запросов — масштаб 2, повтор 2, 1, версия кластера и группы, 0" "$(jq -c 'select(has("keyId") | not)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"scalePolicy":{"fixedScale":{"count":2}}};{"scalePolicy":{"fixedScale":{"count":2}}};{"scalePolicy":{"fixedScale":{"count":1}}};{"version":"v1.32.1"};{"version":"v1.32.1"};{"scalePolicy":{"fixedScale":{"count":0}}};'
+# Обновление версии — долгий и необратимый шаг — идёт после второй группы:
+# зависшее обновление не съедает её (заключение «Риска» 189, У1).
+first() { grep -n "$1" "$FAKE_DIR/calls" | head -1 | cut -d: -f1; }
+[ "$(first "^DELETE $P2")" -lt "$(first ':upgrade$')" ] || { echo "FAIL: Г-12: обновление версии раньше второй группы"; sed 's/^/  | /' "$FAKE_DIR/calls"; fail=1; }
+want "Г-12: удаления — вторая группа (отказ, готовая, повтор) и последняя" "$(grep '^DELETE' "$FAKE_DIR/calls" | sed "s#$MK##" | tr '\n' ';')" "DELETE /nodePools/np2;DELETE /nodePools/np2;DELETE /nodePools/np2;DELETE /nodePools/np1;"
+for s in 'Г-12: масштаб 1→2.*первое чтение после ответа: OBJECT_STATUS_RUNNING/2 узл.*повтор сразу: HTTP 200, вторая операция; операция сразу: done=false, error: {}; состояния: .*SCALING_UP.*операция в конце: done=true, error: нет поля; вторая операция в конце: done=true, error: null' \
+	'Г-12: масштаб 2→1.*SCALING_DOWN/1 узл.* → OBJECT_STATUS_RUNNING/1 узл' \
+	'Г-12: обновление версии кластера.*UPGRADING/v1.31.1 → OBJECT_STATUS_RUNNING/v1.32.1.*операция в конце: done=true, error: объект, ключи code' \
+	'Г-12: обновление версии группы.*отказ HTTP 400.*машинный код: FAILED_PRECONDITION' \
+	'Г-12: удаление создающейся группы.*отказ HTTP 409' 'Г-12: вторая группа готова.*PROVISIONING.* → OBJECT_STATUS_RUNNING' \
+	'Г-12: удаление готовой группы.*DELETING/1 узл.* → нет (404)' 'Г-12: повтор удаления после исчезновения.*отказ HTTP 404.*NOT_FOUND' \
+	'Г-12: масштаб 1→0.*отказ HTTP 400.*evo сегодня: k8s_nodepool_scale' 'Г-12: удаление последней группы.*DELETING/1 узл.* → нет (404)'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-12: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
+if grep -v '::add-mask::' "$tmp/out" | grep -qw 'c1\|np1\|np2\|op1\|op2'; then echo "FAIL: Г-12: id в строке лога"; fail=1; fi
+want "Г-12: через evo создана только вторая группа" "$(grep -c 'yes=1' "$FAKE_DIR/evo-calls")" 1
+grep -q '^k8s_add_nodepool yes=1' "$FAKE_DIR/evo-calls" || { echo "FAIL: Г-12: вторая группа не через evo"; fail=1; }
+
+# Масштаб 1→2 не дошёл до конца (группа так и в SCALING_UP): дальше ни
+# одного запроса записи — масштаб, версия и удаления поверх незавершённого
+# не шлются; вторая группа не создаётся.
+k8s_world
+cat >"$FAKE_DIR/http" <<H
+PATCH $P 200 {"id":"op1"}
+GET $P 200 $(pool SCALING_UP 2)
+GET $O/* 200 {"done":false}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+K8S_CLUSTER_ID=c1 K8S_UPGRADE_TO=v1.32.1 K8S_WAIT=1 "$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
+want "Г-12, группа не устоялась: код" "$rc" 0
+want "Г-12, группа не устоялась: только масштаб и его повтор" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 2
+want "Г-12, группа не устоялась: ни версии, ни удалений" "$(grep -c '^POST\|^DELETE' "$FAKE_DIR/calls" || true)" 0
+if grep -q 'k8s_add_nodepool' "$FAKE_DIR/evo-calls"; then echo "FAIL: Г-12: вторая группа поверх незавершённого масштаба"; fail=1; fi
+grep -q 'прошлый шаг не завершился' "$tmp/out" || { echo "FAIL: Г-12: остановка не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
+# Срок пробы вышел — ни одного запроса записи; версии некуда обновлять —
+# строка «не покрыто», запросов обновления нет.
+k8s_world
+: >"$FAKE_DIR/http"
+rc=0
+K8S_CLUSTER_ID=c1 K8S_BUDGET=0 "$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
+want "Г-12, срок вышел: код" "$rc" 0
+want "Г-12, срок вышел: запросов к mk8s нет" "$(if [ -f "$FAKE_DIR/calls" ]; then grep -c mk8s "$FAKE_DIR/calls" || true; else echo 0; fi)" 0
+grep -q 'нет K8S_UPGRADE_TO' "$tmp/out" || { echo "FAIL: Г-12: версия без цели не названа"; fail=1; }
+grep -q 'срок пробы' "$tmp/out" || { echo "FAIL: Г-12: истёкший срок не назван"; fail=1; }
+
+# Не одна группа в кластере или нет кластера — запросов нет.
+k8s_world
+fake_evo_answer k8s_nodepools 0 0 '{"node_pools":[{"id":"np1"},{"id":"np3"}]}'
+: >"$FAKE_DIR/http"
+rc=0
+K8S_CLUSTER_ID=c1 "$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
+want "Г-12, две группы: код" "$rc" 0
+[ ! -s "$FAKE_DIR/calls" ] || { echo "FAIL: Г-12 с двумя группами слала запросы"; fail=1; }
+k8s_world
+rc=0
+"$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
+want "Г-12 без кластера: код" "$rc" 1
+[ ! -s "$FAKE_DIR/calls" ] || { echo "FAIL: Г-12 без кластера слала запросы"; fail=1; }
 
 # Слова проб нет — область ничего не шлёт.
 world
