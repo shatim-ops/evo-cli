@@ -131,7 +131,7 @@ func restoreRegistry(t *testing.T, w *restoreWorld) *Registry {
 	wait := backupRestoreWait
 	backupRestoreWait = 50 * time.Millisecond // wall-clock: a fraction of the production wait, the world answers at once
 	t.Cleanup(func() { backupRestoreWait = wait })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:   config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"},
@@ -142,6 +142,12 @@ func restoreRegistry(t *testing.T, w *restoreWorld) *Registry {
 			StateDir: w.dir,
 		}, nil
 	})
+	dir := w.dir
+	if dir == "" {
+		dir = t.TempDir()
+	}
+	r.SetStateDir(dir)
+	return r
 }
 
 // stateIn gives the calls on w one directory of the state, the current one:
