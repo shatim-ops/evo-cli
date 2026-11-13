@@ -68,3 +68,29 @@ func TestConsentNote_OneWordingAtEveryToolThatAsks(t *testing.T) {
 		t.Fatalf("%d tools ask for consent: the rule reads few", seen)
 	}
 }
+
+// Every delete names the class of what the person approves, or declares
+// why its word is not «Deletes data» (FB19I-29: the map was by hand, and
+// pg_delete said it while disk_delete, pg_db_delete, secret_delete did
+// not). A declared reason is not the word too.
+func TestConsentWord_EveryDeleteNamesItsClassOrWhyNot(t *testing.T) {
+	var bad []string
+	for name := range deleteTargets {
+		word, why := consentWords[name], consentWordless[name]
+		switch {
+		case word == "" && why == "":
+			bad = append(bad, name+": a delete without the word of its class and without a reason in consentWordless")
+		case word != "" && why != "":
+			bad = append(bad, name+": the word of its class and a reason not to have one")
+		}
+	}
+	for name := range consentWordless {
+		if _, ok := deleteTargets[name]; !ok {
+			bad = append(bad, name+": in consentWordless, but not a delete of deleteTargets")
+		}
+	}
+	sort.Strings(bad)
+	if len(bad) > 0 {
+		t.Fatal(strings.Join(bad, "\n"))
+	}
+}
