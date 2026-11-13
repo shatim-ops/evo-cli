@@ -107,7 +107,10 @@ func (s *Registry) planCertImport(ctx context.Context, args map[string]any) (*Pl
 	if name == "" || server == "" || key == "" {
 		return answered(usageT("'name', 'server_certificate' and 'private_key' (PEM, or Base64 of it) are required", "нужны 'name', 'server_certificate' и 'private_key' (PEM или он же в Base64)"), true), nil
 	}
+	// The name is a field of its own, as in every create's preview: the
+	// question after a cut call names the certificate by it (D107).
 	preview := map[string]any{
+		"name": name,
 		"message": i18n.Tf("cert_import will upload certificate %q and its private key to Certificate Manager.",
 			"cert_import загрузит сертификат %q и его закрытый ключ в Certificate Manager.", name),
 	}

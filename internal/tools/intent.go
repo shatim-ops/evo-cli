@@ -369,14 +369,26 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	if err != nil || !ok || (resource == "" && target == "") {
 		return nil
 	}
-	eng, _ := r.engineOfCall(args)
-	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
-	var cut []intent.Intent
+	// Records of the tool first: with none, no engine is built for the
+	// key and the project of the call — a preview stays one engine.
+	var ofTool []intent.Intent
 	for _, in := range pendingIn(ctx, root) {
 		// A held record is an operation evo goes on with, not a cut call
 		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
 		// call whose change was seen going on, HoldCut).
-		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil || in.ProjectID != project {
+		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil {
+			continue
+		}
+		ofTool = append(ofTool, in)
+	}
+	if len(ofTool) == 0 {
+		return nil
+	}
+	eng, _ := r.engineOfCall(args)
+	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
+	var cut []intent.Intent
+	for _, in := range ofTool {
+		if in.ProjectID != project {
 			continue
 		}
 		if in.Name != resource || in.Target != target {
