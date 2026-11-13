@@ -184,7 +184,8 @@ func ruledList(k string, p map[string]any, v any) ([]any, error) {
 }
 
 // ruleArg checks v against the static rules of its schema p (D36): the
-// minimum and maximum of a number, the format of a string — uuid (an id
+// minimum and maximum of a number, the 32-bit range of an integer that has
+// no narrower one, the format of a string — uuid (an id
 // the API takes only as a UUID; another form was a 400 that read as
 // API_ERROR, release audit L-15, or "already deleted" of a repeated delete,
 // D26) and cidr. The handlers checked these themselves, each in its own
@@ -198,6 +199,25 @@ func ruleArg(k string, p map[string]any, v any) error {
 		}
 		if max, ok := p["maximum"].(int); ok && n > float64(max) {
 			return ruleErr(k, p, i18n.Tf("%s %s is above the maximum %d", "%s %s больше максимума %d", k, shown, max))
+		}
+		// An integer of no narrower rule still has the range of the
+		// cloud's own: one outside it reached a handler as a number of
+		// no meaning (1e30 as a negative int) and went on to the cloud.
+		if p["type"] == "integer" && (n < math.MinInt32 || n > math.MaxInt32) {
+			return ruleErr(k, p, i18n.Tf("%s %s is out of range: an integer is between %d and %d",
+				"%s %s вне диапазона: целое число — от %d до %d", k, shown, math.MinInt32, math.MaxInt32))
+		}
+	}
+	// The integers of a list, by the rule of its items.
+	if list, isList := v.([]any); isList {
+		if items, _ := p["items"].(map[string]any); items["type"] == "integer" {
+			for i, it := range list {
+				if _, isNumber := numberValue(it); isNumber {
+					if err := ruleArg(fmt.Sprintf("%s[%d]", k, i), items, it); err != nil {
+						return err
+					}
+				}
+			}
 		}
 	}
 	s, ok := v.(string)
