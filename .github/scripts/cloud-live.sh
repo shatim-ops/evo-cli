@@ -444,7 +444,7 @@ iam_token() {
 	TOKEN=
 	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] || return 1
 	TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-		curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
+		curl -sS --connect-timeout 10 --max-time 60 -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
 		jq -r '.access_token // .accessToken // empty')
 	mask "$TOKEN"
 	TOKEN_AT=$SECONDS
@@ -467,7 +467,7 @@ probe_ar_pages() {
 		tok=""
 		prev=""
 		for i in 1 2 3 4 5; do
-			code=$(curl -sS -o "$tmp/arp" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
+			code=$(curl -sS --connect-timeout 10 --max-time 120 -o "$tmp/arp" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
 				"https://ar.api.cloud.ru/v1/registries?projectId=${PROJECT:-}$q${tok:+&pageToken=$tok}" || echo 000)
 			n=$(jq '(.registries // []) | length' "$tmp/arp" 2>/dev/null || echo "?")
 			first=$(jq -r '(.registries // [])[0].id // ""' "$tmp/arp" 2>/dev/null | sha256sum | cut -c1-8)
@@ -484,7 +484,7 @@ probe_ar_pages() {
 probe_dns_op() {
 	local code
 	iam_token || { echo "probe dns: нет токена"; return 0; }
-	code=$(curl -sS -o "$tmp/dop" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://dns.api.cloud.ru/v1/operations/$1" || echo 000)
+	code=$(curl -sS --connect-timeout 10 --max-time 120 -o "$tmp/dop" -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "https://dns.api.cloud.ru/v1/operations/$1" || echo 000)
 	echo "probe dns operation: http $code, ключи $(jq -c 'keys' "$tmp/dop" 2>/dev/null), done $(jq -c '.done' "$tmp/dop" 2>/dev/null), состояние $(jq -c '{status, state, metadata: (.metadata | if type == "object" then keys else . end), error: (.error | if . == null then null else (tostring | .[0:120]) end)}' "$tmp/dop" 2>/dev/null | redact)"
 }
 
@@ -500,7 +500,7 @@ delete_test_rules() {
 	iam_token || { echo "::warning::нет токена — правило $RULE_PORT не удалено"; return 1; }
 	while read -r sg r; do
 		mask "$sg" "$r"
-		code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
+		code=$(curl -sS --connect-timeout 10 --max-time 120 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
 			"https://compute.api.cloud.ru/api/v1/security-groups/$sg/rules/$r")
 		echo "правило $RULE_PORT: DELETE http=$code"
 		n=$((n + 1))
@@ -561,10 +561,10 @@ api_once() {
 	: >"$tmp/api.json" # пустой, а не удалённый: jq читает его без ошибки
 	API_RC=0
 	if [ -n "${3:-}" ]; then
-		code=$(printf '%s' "$3" | curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
+		code=$(printf '%s' "$3" | curl -sS --connect-timeout 10 --max-time 120 -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" \
 			-H "Authorization: Bearer $TOKEN" "${rid[@]}" -H 'Content-Type: application/json' --data-binary @- 2>/dev/null) || { API_RC=$? code=000; }
 	else
-		code=$(curl -sS -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || { API_RC=$? code=000; }
+		code=$(curl -sS --connect-timeout 10 --max-time 120 -D "$tmp/api.h" -o "$tmp/api.json" -w '%{http_code}' -X "$1" "$2" -H "Authorization: Bearer $TOKEN" "${rid[@]}" 2>/dev/null) || { API_RC=$? code=000; }
 	fi
 }
 # api — запрос к API; чтение (GET) без ответа (код 000) повторяется до двух
