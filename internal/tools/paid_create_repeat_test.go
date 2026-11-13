@@ -233,3 +233,44 @@ func TestPaidCreate_EveryCreateIsDeclaredOrNamedWithAReason(t *testing.T) {
 		}
 	}
 }
+
+// The cut call of a repeat is looked for in the project the repeat goes
+// to: a resource of the same name in another project is another resource
+// — no question there, and the record of the first stays for its own
+// project. On a server bound to projects without its own (--allow-project),
+// a call with project_id is recorded and asked about as any other
+// («Риск», the conclusion on D107, Ут4; FB19I-32).
+func TestIntent_ACutCallIsOfTheProjectOfTheCall(t *testing.T) {
+	const a, b = "00000000-0000-0000-0000-0000000000a2", "00000000-0000-0000-0000-0000000000b2"
+	const tool = "disk_create" // stands for a create of the list, with project_id
+	everySendIsAChange[tool] = changeRule{read: "disk_list"}
+	t.Cleanup(func() { delete(everySendIsAChange, tool) })
+	r := ownerRegistry(t, &ownerFake{}, true, a, b) // the profile's own project is not allowed
+	if eng, err := r.newEngine(nil); err == nil || eng != nil {
+		t.Fatal("the world builds an engine without a project: it is not a server without its own project")
+	}
+	root, _ := r.stateDir()
+	dir := intent.Dir(root)
+	sent := 0
+	tl, _ := r.Lookup(tool)
+	call := func(project, answer string) string {
+		text, _ := r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+			sent++
+			return answer, strings.Contains(answer, `"error"`)
+		})(context.Background(), map[string]any{"name": "db", "size_gb": 10.0, "project_id": project, "confirmed": true})
+		return text
+	}
+	call(a, `{"status":"error","reason":"API_UNREACHABLE"}`)
+	if left := intent.Pending(dir); len(left) != 1 || left[0].ProjectID != a {
+		t.Fatalf("the record of the cut call in project A: %+v", left)
+	}
+	if text := call(b, `{"status":"created"}`); sent != 2 || strings.Contains(text, `"interrupted"`) {
+		t.Errorf("the same name in project B after a cut call in A: sent %d, want 2 and no question\n%s", sent, text)
+	}
+	if left := intent.Pending(dir); len(left) != 1 || left[0].ProjectID != a {
+		t.Errorf("the call in project B touched the record of project A: %+v", left)
+	}
+	if text := call(a, `{"status":"created"}`); sent != 2 || !strings.Contains(text, `"interrupted"`) {
+		t.Errorf("the repeat in project A: sent %d, want 2 and the question\n%s", sent, text)
+	}
+}

@@ -51,16 +51,9 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	// handler may yet reach the cloud, and no repeat settles a record
 	// whose key is not known (the interim delta audit of 1.9, FB19I-32;
 	// «Риск», conclusion 177, У9).
-	var over map[string]any
-	if p := stringArg(args, "project_id"); p != "" {
-		over = map[string]any{"ProjectID": p}
-	}
-	eng, noEngine := r.newEngine(over)
-	if noEngine != nil {
-		eng = nil
-	}
+	eng, noEngine := r.engineOfCall(args)
 	if eng != nil {
-		in.ProjectID, in.Zone, in.Key = eng.Config.ProjectID, eng.Config.Region, eng.Maker()
+		in.Zone, in.Key = eng.Config.Region, eng.Maker()
 	}
 	// The surface as the journal (D46) has it: a call of the CLI carries
 	// its Caller, a call over MCP none.
@@ -77,15 +70,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if in.Name, in.Target, err = r.resourceOf(ctx, name, args); err != nil {
 		return nil, err
 	}
-	// The write of a call addressed by id lands in the project of the
-	// resource, which the call's project does not tell (namedProject): the
-	// record names no project rather than the profile's (R-82).
-	if _, _, byID := intentTarget(in); byID {
-		in.ProjectID = ""
-	}
-	if p, _ := args["project_id"].(string); p != "" {
-		in.ProjectID = p
-	}
+	in.ProjectID = projectOfCall(eng, in, args)
 	if z, _ := args["zone"].(string); z != "" {
 		in.Zone = z
 	}
@@ -140,6 +125,41 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		intent.Close(rec)
 		intent.Settle(dir, rec)
 	}, nil
+}
+
+// engineOfCall is the engine a call with args goes with: that of its own
+// project_id, when it names one. nil with the error when none is built.
+func (r *Registry) engineOfCall(args map[string]any) (*engine.Engine, error) {
+	var over map[string]any
+	if p := stringArg(args, "project_id"); p != "" {
+		over = map[string]any{"ProjectID": p}
+	}
+	eng, err := r.newEngine(over)
+	if err != nil {
+		return nil, err
+	}
+	return eng, nil
+}
+
+// projectOfCall is the project the record of a call names: the one its
+// engine goes with, or the project_id it gives. The write of a call
+// addressed by id lands in the project of the resource, which the call's
+// project does not tell (namedProject): its record names no project rather
+// than the profile's (R-82). The one rule for the record of a call and for
+// the search of the cut calls of a repeat: a resource of the same name in
+// another project is another resource.
+func projectOfCall(eng *engine.Engine, in intent.Intent, args map[string]any) string {
+	project := ""
+	if eng != nil {
+		project = eng.Config.ProjectID
+	}
+	if _, _, byID := intentTarget(in); byID {
+		project = ""
+	}
+	if p := stringArg(args, "project_id"); p != "" {
+		project = p
+	}
+	return project
 }
 
 // waitArgs are the arguments that say how long the call waits, not what
@@ -307,9 +327,11 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	if err != nil || !ok || (resource == "" && target == "") {
 		return nil
 	}
+	eng, _ := r.engineOfCall(args)
+	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
 	var cut []intent.Intent
 	for _, in := range pendingIn(ctx, root) {
-		if in.Held || in.Tool != name || in.Key == nil {
+		if in.Held || in.Tool != name || in.Key == nil || in.ProjectID != project {
 			continue
 		}
 		if in.Name != resource || in.Target != target {
@@ -326,7 +348,12 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	if len(cut) == 0 {
 		return nil
 	}
-	cur := r.maker()
+	// The key the call goes with — that of its own project_id on a server
+	// bound to projects, which has no engine without one.
+	var cur *state.Maker
+	if eng != nil {
+		cur = eng.Maker()
+	}
 	var mine []intent.Intent
 	for _, in := range cut {
 		if cur == nil || in.Key.Other(cur) {

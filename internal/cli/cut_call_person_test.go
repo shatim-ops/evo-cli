@@ -44,12 +44,26 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 	t.Cleanup(func() { confirm.StdinIsTTY, confirm.Stdin = oldTTY, oldIn })
 	asked := 0
 	for _, c := range cases {
-		if !c.tool.Mutating || c.setup != nil {
+		if !c.tool.Mutating {
 			continue
+		}
+		// prepare gives the arguments of the case for a run, and what
+		// ends the run (a case that sets its world up: setup).
+		prepare := func() (map[string]any, func()) {
+			args := copyArgs(c.args)
+			if c.setup == nil {
+				return args, func() {}
+			}
+			extra, done := c.setup(t, w)
+			for k, v := range extra {
+				args[k] = v
+			}
+			return args, done
 		}
 		// byTool is a call over MCP with the consent; it returns the answer.
 		byTool := func() string {
-			args := copyArgs(c.args)
+			args, done := prepare()
+			defer done()
 			args["confirmed"] = true
 			fake.reset()
 			newProcess()
@@ -79,13 +93,15 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 			continue
 		}
 		asked++
-		cmd := commandsByTool()[c.tool.Name]
-		line := c.line
-		if line == nil {
-			line = parityCommandOf(t, cmd.group, cmd.cmd, c.tool, copyArgs(c.args)).tree
-		}
 		// run runs the command and returns its exit code and its writes.
 		run := func(flags ...string) (int, []string) {
+			args, done := prepare()
+			defer done()
+			line := c.line
+			if line == nil {
+				cmd := commandsByTool()[c.tool.Name]
+				line = parityCommandOf(t, cmd.group, cmd.cmd, c.tool, args).tree
+			}
 			fake.reset()
 			newProcess()
 			code, _, _ := runCLI(t, c.stdin, append(flags, line...)...)
@@ -107,9 +123,16 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 			}
 			// The refusal says why --yes did not answer, and sends to
 			// the command that reads the resource, not to --yes.
+			args, done := prepare()
+			line := c.line
+			if line == nil {
+				cmd := commandsByTool()[c.tool.Name]
+				line = parityCommandOf(t, cmd.group, cmd.cmd, c.tool, args).tree
+			}
 			fake.reset()
 			newProcess()
 			_, _, stderr := runCLI(t, c.stdin, append([]string{"--yes"}, line...)...)
+			done()
 			read, _ := newRegistry().Lookup(fmt.Sprint(interrupted["read_tool"]))
 			if !strings.Contains(stderr, "Look at the resource with '"+toolCommandPath(read)+"'") || toolCommandPath(read) == "" ||
 				!strings.Contains(stderr, "--yes does not answer") || !strings.Contains(stderr, "outcome is unknown") || strings.Contains(stderr, "Re-run with --yes") {
@@ -142,7 +165,11 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 		})
 	}
 	forgetRun(w)
-	if asked < 3 {
-		t.Errorf("%d tools ask again after a cut call, want every tool whose send is one more change", asked)
+	// Every tool whose send is one more change, as the registry declares
+	// them (tools: everySendIsAChange): a tool that joins the list and is
+	// in no subtest here — its world leaves no record, its case is not in
+	// the world — is not held by this test. The number only grows.
+	if asked < 9 {
+		t.Errorf("%d tools ask again after a cut call, want the 9 of the registry or more", asked)
 	}
 }
