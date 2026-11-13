@@ -588,14 +588,52 @@ api_rid() {
 	tr -d '\r' <"$tmp/api.h" |
 		awk -F': *' 'tolower($1) ~ /^(x-)?(request|trace|correlation)-?id$|^traceparent$|^x-amzn-request-?id$/ && $2 ~ /^[A-Za-z0-9._:-]+$/ { gsub(/-/, ".", $2); printf "%s%s=%s", sep, tolower($1), $2; sep=" " }'
 }
+# api_hdr ИМЯ — значение заголовка последнего ответа api (последний блок
+# заголовков, если их несколько), без CR.
+api_hdr() {
+	[ -f "$tmp/api.h" ] || return 0
+	tr -d '\r' <"$tmp/api.h" | awk -v n="$1" 'index(tolower($0), n ":") == 1 { v = substr($0, length(n) + 2); sub(/^ +/, "", v) } END { if (v != "") print v }'
+}
+# grpc_code — имя кода gRPC из заголовка grpc-status последнего ответа api
+# (DBaaS отвечает ошибкой с пустым телом и причиной в заголовках, DB-4;
+# прогон 212: 501 и 400 без тела). Пусто — заголовка нет.
+grpc_code() {
+	local c
+	c=$(api_hdr grpc-status)
+	case "$c" in '' | *[!0-9]*) return 0 ;; esac
+	set -- OK CANCELLED UNKNOWN INVALID_ARGUMENT DEADLINE_EXCEEDED NOT_FOUND ALREADY_EXISTS PERMISSION_DENIED RESOURCE_EXHAUSTED FAILED_PRECONDITION ABORTED OUT_OF_RANGE UNIMPLEMENTED INTERNAL UNAVAILABLE DATA_LOSS UNAUTHENTICATED
+	if [ "$c" -lt $# ]; then shift "$c"; echo "$1"; else echo "код $c"; fi
+}
+# api_grpc — «grpc-status N (ИМЯ); grpc-message: текст» последнего ответа
+# api; текст — из процентной кодировки gRPC. Без заголовков — пусто.
+api_grpc() {
+	local c m out=''
+	c=$(api_hdr grpc-status)
+	m=$(api_hdr grpc-message)
+	case "$c" in '' | *[!0-9]*) ;; *) out="grpc-status $c ($(grpc_code))" ;; esac
+	if [ -n "$m" ]; then
+		m=$(printf '%s' "$m" | sed -e 's/\\/\\\\/g' -e 's/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g')
+		out="${out:+$out; }grpc-message: $(printf '%b' "$m" | tr '\n\r' '  ')"
+	fi
+	printf '%s' "$out"
+}
 # api_why — текст ошибки ответа api, через redact.sed и обрезанный.
 # Ответ без этих полей (не JSON, пустой) — его начало или «тело пустое»:
 # «HTTP 422: » без текста не отличает отказ платформы от ошибки пробы.
+# Заголовки grpc-status и grpc-message — после текста тела; пустое тело без
+# них так и названо: «не реализовано» и «не принято» иначе не различить.
 api_why() {
-	local w
+	local w g
 	w=$(jq -r '[(if type == "array" then .[] else . end) | objects | [.code?, .message?, .detail?, .error?] | map(select(. != null) | tostring) | join(": ")] | join("; ")' "$tmp/api.json" 2>/dev/null) || w=
 	[ -n "$w" ] || w=$(head -c 200 "$tmp/api.json" 2>/dev/null | tr '\n' ' ')
-	printf '%s\n' "${w:-тело пустое}" | redact | cut -c1-200
+	g=$(api_grpc)
+	if [ -z "$w" ]; then
+		w="тело пустое${g:+; $g}"
+		[ -n "$g" ] || w="$w, заголовков grpc-status и grpc-message нет"
+	else
+		w="$w${g:+; $g}"
+	fi
+	printf '%s\n' "$w" | redact | cut -c1-200
 }
 
 # dns_linked — последний ответ tc — отказ D66 «зона связана с VPC»: USAGE
@@ -2288,6 +2326,7 @@ refusal() {
 		return 0
 	fi
 	mc=$(mcode)
+	[ -n "$mc" ] || mc=$(grpc_code)
 	d="отказ HTTP $code ($2); поля тела: $(keys_of); машинный код: ${mc:-нет}; текст: $(api_why | cut -c1-160); evo сегодня: ${EVO_NOW:-операции в evo нет}"
 	case "$mc" in *[Qq][Uu][Oo][Tt][Aa]*)
 		QUOTA_HIT=1

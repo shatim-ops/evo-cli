@@ -16,8 +16,10 @@ fake_evo_install "$tmp/bin"
 # $FAKE_DIR/http, чей образец (МЕТОД и окончание пути, glob) подходит:
 # «МЕТОД ОБРАЗЕЦ КОД [ТЕЛО]»; «МЕТОД!» — строка на один запрос (следующий
 # такой же запрос получит следующую подходящую строку: состояния по
-# очереди; код 000 — обрыв без ответа). Нет подходящей — так же по $FAKE_DIR/http.default (пустые
+# очереди; код 000 — обрыв без ответа; ТЕЛО «-» — пустое тело). Нет подходящей — так же по $FAKE_DIR/http.default (пустые
 # списки копий и планов для уборки области); нет и там — 404 с телом {}.
+# Заголовки ответа — строки $FAKE_DIR/http.h «МЕТОД ОБРАЗЕЦ ЗАГОЛОВОК», чей
+# образец подходит (все такие, по порядку).
 cat >"$tmp/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
 out=/dev/stdout url= method=GET hdr=
@@ -36,7 +38,13 @@ p=${url#https://compute.api.cloud.ru/api/v1/}
 : >"$FAKE_DIR/body"
 case "$url" in */auth/token) printf '{"access_token":"tok"}'; exit 0 ;; esac
 echo "$method ${url#https://compute.api.cloud.ru/api/v1}" >>"$FAKE_DIR/calls"
-[ -z "$hdr" ] || : >"$hdr"
+if [ -n "$hdr" ]; then
+	: >"$hdr"
+	while read -r m pat h; do
+		# shellcheck disable=SC2254 # образец — glob
+		case "$method ${url#https://compute.api.cloud.ru/api/v1}" in "$m "$pat) printf '%s\r\n' "$h" >>"$hdr" ;; esac
+	done < <(cat "$FAKE_DIR/http.h" 2>/dev/null)
+fi
 code=404 body='{}' i=0
 while read -r m pat c b; do
 	i=$((i + 1))
@@ -52,6 +60,7 @@ while read -r m pat c b; do
 		;;
 	esac
 done < <(cat "$FAKE_DIR/http" "$FAKE_DIR/http.default" 2>/dev/null)
+[ "$body" != - ] || body=
 # Код 000 — curl не получил ответа: тела нет, код выхода 56 (обрыв).
 [ "$code" != 000 ] || { printf '000'; exit 56; }
 printf '%s' "$body" >"$out"
@@ -946,6 +955,31 @@ H
 rc=0
 DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
 want "Г-13, квота, details — объект: один PATCH" "$(grep -c '^PATCH' "$FAKE_DIR/calls")" 1
+
+# Отказ с пустым телом (прогон 212, DB-4, DB-28): причина — в заголовках
+# grpc-status и grpc-message (значение в процентной кодировке gRPC), строка
+# называет их; отказ без тела и без этих заголовков так и назван — «не
+# реализовано» отличается от «значение не принято».
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH! $S 501 -
+PATCH $S 400 -
+H
+printf '%s\n' "PATCH $S grpc-status: 12" "PATCH $S grpc-message: method%20is%20not%20implemented%3A%203f2b8c1e-1111-4222-8333-444455556666" >"$FAKE_DIR/http.h"
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+want "Г-13, пустое тело: код" "$rc" 0
+grep -q 'Г-13: класс на шаг вверх.*отказ HTTP 501.*машинный код: UNIMPLEMENTED.*тело пустое; grpc-status 12 (UNIMPLEMENTED); grpc-message: method is not implemented: <id>' "$tmp/out" || { echo "FAIL: Г-13: отказ с пустым телом не назван по заголовкам grpc"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if grep -q '3f2b8c1e-1111-4222-8333-444455556666' "$tmp/out"; then echo "FAIL: id из grpc-message в логе"; fail=1; fi
+db_world
+cat >"$FAKE_DIR/http" <<H
+GET $S 200 {$C,"status":"RUNNING"}
+PATCH $S 400 -
+H
+rc=0
+DB_KIND=pg DB_CLUSTER_ID=c1 DB_SETTLE=0 "$here/cloud-live.sh" dbchange >"$tmp/out" 2>&1 || rc=$?
+grep -q 'Г-13: класс на шаг вверх.*отказ HTTP 400.*машинный код: нет.*текст: тело пустое, заголовков grpc-status и grpc-message нет' "$tmp/out" || { echo "FAIL: Г-13: отказ без тела и без заголовков не назван"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 
 # Кластер не вернулся в исходное состояние после смены класса: в него
 # уходит только возврат класса; PATCH диска и узлов не шлётся — каждый
