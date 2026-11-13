@@ -185,13 +185,20 @@ func NotAChange(ctx context.Context) context.Context {
 	return context.WithValue(ctx, notAChangeKey{}, true)
 }
 
-// noteWrite counts req when it is a write of a counting context; an
-// error: req must not go out.
-func noteWrite(req *http.Request) error {
-	if readMethod(req.Method) {
-		return nil
+type countedKey struct{}
+
+// noteWrite counts req when it is a write of a counting context, once: a
+// Transport over UserAgent (the Compute client) counts it at the Transport,
+// and the request it hands down says so (counted). An error: req must not
+// go out.
+func noteWrite(req *http.Request) (counted *http.Request, err error) {
+	if readMethod(req.Method) || req.Context().Value(countedKey{}) != nil {
+		return req, nil
 	}
-	return NoteWrite(req.Context())
+	if err := NoteWrite(req.Context()); err != nil {
+		return nil, err
+	}
+	return req.WithContext(context.WithValue(req.Context(), countedKey{}, true)), nil
 }
 
 // UserAgent wraps base (nil: DefaultBase) so that a request
@@ -207,7 +214,8 @@ func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if base == nil {
 		base = DefaultBase
 	}
-	if err := noteWrite(req); err != nil {
+	req, err := noteWrite(req)
+	if err != nil {
 		return nil, err
 	}
 	resp, err := base.RoundTrip(withUserAgent(req))
@@ -457,7 +465,8 @@ func (t *Transport) roundTrip(req *http.Request) (*http.Response, error) {
 			r.Body = body
 		}
 		wait := backoff
-		if err := noteWrite(r); err != nil {
+		r, err := noteWrite(r)
+		if err != nil {
 			return nil, err
 		}
 		resp, err := t.base().RoundTrip(r)

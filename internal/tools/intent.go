@@ -837,33 +837,15 @@ func (r *Registry) PendingNotes(root string) []string {
 // pendingNotes are PendingNotes without the records of the ids own, and
 // whether any was left out.
 func (r *Registry) pendingNotes(root string, own []string) (notes []string, leftOut bool) {
-	var named []intent.Intent
 	for _, in := range pendingIntents(root) {
 		if slices.Contains(own, in.ID) {
 			leftOut = true
 			continue
 		}
-		named = append(named, in)
-	}
-	// The newest are named in full, oldest of them first; the rest in one
-	// line that sends to doctor, which names every one. Nothing is closed
-	// by the fold («Риск», conclusion 187, У3).
-	slices.SortStableFunc(named, func(a, b intent.Intent) int { return a.StartedAt.Compare(b.StartedAt) })
-	folded := max(len(named)-foldPendingAfter, 0)
-	cur := r.maker()
-	for _, in := range named[folded:] {
-		notes = append(notes, r.pendingNote(in, cur))
-	}
-	if folded > 0 {
-		notes = append(notes, i18n.Tf("and %d more, started before these: evo doctor shows every one",
-			"и ещё %d, начатых раньше этих: evo doctor показывает все", folded))
+		notes = append(notes, r.pendingNote(in, r.maker()))
 	}
 	return notes, leftOut
 }
-
-// foldPendingAfter is how many records of cut calls the first answer and
-// the CLI's stderr name in full (pendingNotes).
-const foldPendingAfter = 5
 
 // pendingIntents are the intents a run in root reads: the folder's and the
 // configuration directory's (evo login's key, № 37), oldest first in each.

@@ -127,6 +127,13 @@ type Intent struct {
 	// 187, У2). A record without it — of evo before the mark — is kept as
 	// it was (У6).
 	Counts bool `json:"counts,omitempty"`
+	// Machine is the machine the call ran on (thisMachine): a pid tells
+	// a process only there. A directory of state may be shared — a volume
+	// of containers, a network disk — and a call that runs on another
+	// machine looks dead here: only a record of this machine is dropped as
+	// one that sent nothing («Риск», conclusion 187, У2-3). A hash, not
+	// the name of the host: the file names nothing of the machine.
+	Machine string `json:"machine,omitempty"`
 	// CutSend is when a call that went on with this held operation sent
 	// its write again and was cut before the answer: the operation's
 	// resource may have been changed once more, and the next call asks
@@ -138,6 +145,18 @@ type Intent struct {
 	Canon []byte `json:"-"`
 	// Dir is the directory the intent was read from (Pending); not saved.
 	Dir string `json:"-"`
+}
+
+// thisMachine is the mark of the machine evo runs on: a hash of its host
+// name; "" when the system does not tell it — then no record is taken
+// for one of this machine.
+func thisMachine() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("evo-machine\x00" + host))
+	return hex.EncodeToString(sum[:8])
 }
 
 // printOf is the print of the arguments canon in the record id.
@@ -247,6 +266,9 @@ func Open(dir string, in Intent) (Intent, error) {
 		return Intent{}, notWritten(dir, err)
 	}
 	in.ID, in.Dir = hex.EncodeToString(b[:]), dir
+	if in.Machine == "" {
+		in.Machine = thisMachine()
+	}
 	if in.Canon != nil {
 		in.Print = printOf(in.ID, in.Canon)
 	}
@@ -319,7 +341,7 @@ func Pending(dir string) []Intent {
 	all, _ := scan(dir)
 	var out []Intent
 	for _, in := range all {
-		if in.Counts && !in.Sent && !in.Ended && !in.Held && !in.inFlight() {
+		if in.Counts && !in.Sent && !in.Ended && !in.Held && in.Machine != "" && in.Machine == thisMachine() && !in.inFlight() {
 			remove(dir, in.ID)
 			continue
 		}

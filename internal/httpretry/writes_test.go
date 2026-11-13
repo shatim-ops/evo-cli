@@ -133,3 +133,19 @@ func TestCountWrites_AMarkNotWrittenKeepsTheWriteBack(t *testing.T) {
 		t.Errorf("%d writes counted of none sent", n)
 	}
 }
+
+// A Transport over UserAgent — the Compute client keeps its own Transport
+// over evo's client — counts a write once, not at each layer.
+func TestCountWrites_OnceThroughTheLayersOfAClient(t *testing.T) {
+	ctx := CountWrites(context.Background(), nil)
+	c := &http.Client{Transport: &Transport{Base: UserAgent(okTransport{})}}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.example/v1/things", strings.NewReader("{}"))
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if n, _ := Writes(ctx); n != 1 {
+		t.Errorf("one write through two layers counted %d times", n)
+	}
+}

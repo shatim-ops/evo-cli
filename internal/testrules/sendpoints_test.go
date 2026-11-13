@@ -41,13 +41,25 @@ var uncountedClients = map[string]string{
 	"internal/cli/mcp.go\tnewMCPHealthcheckCmd": "the healthcheck of evo's own server: a GET of 127.0.0.1",
 }
 
+// notAChange are the places that tell a request is no write of its call
+// (httpretry.NotAChange): "file<TAB>function" → what the request is. Such
+// a request leaves no record when its call is cut, so the mark is an
+// exception from the guard: only the request of an exchange for a token
+// carries it, set as the context of that request alone — the context of
+// the call would hand it to everything the call sends after («Риск»,
+// conclusion 187, У2-1).
+var notAChange = map[string]string{
+	"internal/auth/iam.go\tIAMProvider.exchangeOnce":  "the exchange of the key for an IAM token",
+	"internal/mk8s/kubeconfig.go\tfetchOIDCTokenOnce": "the exchange of the key for the OIDC token of a cluster",
+}
+
 // Every write of a call is heard by its counter: a send past HTTP is a
 // declared point that tells it, and every HTTP client counts — or is
 // declared with why its requests are no writes.
 func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 	root := filepath.Join("..", "..")
 	var bad []string
-	sends, clients := map[string]bool{}, map[string]bool{}
+	sends, clients, marks := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, dir := range []string{"cmd", "internal"} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -78,12 +90,24 @@ func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 				}
 				key := rel + "\t" + funcName(fd)
 				sendsHere, notes := false, false
+				ofRequest := map[ast.Expr]bool{}
 				ast.Inspect(fd.Body, func(n ast.Node) bool {
 					switch x := n.(type) {
 					case *ast.CallExpr:
 						sel, ok := x.Fun.(*ast.SelectorExpr)
 						if !ok {
 							return true
+						}
+						if id, ok := sel.X.(*ast.Ident); ok && local[id.Name] == "net/http" && sel.Sel.Name == "NewRequestWithContext" && len(x.Args) > 0 {
+							ofRequest[x.Args[0]] = true
+						}
+						if id, ok := sel.X.(*ast.Ident); ok && local[id.Name] == "github.com/shatim-ops/evo-cli/internal/httpretry" && sel.Sel.Name == "NotAChange" {
+							marks[key] = true
+							if _, declared := notAChange[key]; !declared {
+								bad = append(bad, fset.Position(x.Pos()).String()+": httpretry.NotAChange outside notAChange — a request so marked leaves no record when its call is cut; declare the place with what the request is")
+							} else if !ofRequest[x] {
+								bad = append(bad, fset.Position(x.Pos()).String()+": httpretry.NotAChange is not the context of the request itself (the first argument of http.NewRequestWithContext): the call would hand it to all it sends after")
+							}
 						}
 						if id, ok := sel.X.(*ast.Ident); ok && local[id.Name] == "github.com/shatim-ops/evo-cli/internal/httpretry" && sel.Sel.Name == "NoteWrite" {
 							notes = true
@@ -121,6 +145,11 @@ func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 	for k := range sendsPastHTTP {
 		if !sends[k] {
 			bad = append(bad, strings.Replace(k, "\t", ": ", 1)+": in sendsPastHTTP, but sends nothing there; take the line out")
+		}
+	}
+	for k := range notAChange {
+		if !marks[k] {
+			bad = append(bad, strings.Replace(k, "\t", ": ", 1)+": in notAChange, but marks no request there; take the line out")
 		}
 	}
 	for k := range uncountedClients {
