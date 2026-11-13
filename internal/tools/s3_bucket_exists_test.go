@@ -77,3 +77,61 @@ func TestS3BucketCreate_ListRefusedGoesOnAndForeignIsNotYours(t *testing.T) {
 		})
 	}
 }
+
+// The plan did not see the bucket (the list was empty), then the PUT was
+// accepted and its answer lost — the S3 client retries the PUT and gets
+// BucketAlreadyOwnedByYou, so MakeBucket returns existed=true. The answer
+// is already_exists, but it does NOT say the bucket is not this call's:
+// this call may have made it (FB19I-36). A bucket the plan saw in the
+// profile's list before the call keeps the old message (s3BucketExists).
+func TestS3BucketCreate_LostAnswerDoesNotDisownTheBucket(t *testing.T) {
+	var mu sync.Mutex
+	var puts int
+	owned := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case r.Method == http.MethodGet && strings.Trim(r.URL.Path, "/") == "":
+			// The profile's buckets: empty until the first PUT lands.
+			if owned {
+				_, _ = io.WriteString(w, `<ListAllMyBucketsResult><Buckets><Bucket><Name>new-bucket</Name></Bucket></Buckets></ListAllMyBucketsResult>`)
+				return
+			}
+			_, _ = io.WriteString(w, `<ListAllMyBucketsResult><Buckets></Buckets></ListAllMyBucketsResult>`)
+		case r.Method == http.MethodPut:
+			puts++
+			// The first PUT lands (the bucket is the account's now) but its
+			// answer is lost; the retry gets BucketAlreadyOwnedByYou.
+			owned = true
+			if puts == 1 {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = io.WriteString(w, `<Error><Code>OperationAborted</Code><Message>reset</Message></Error>`)
+				return
+			}
+			w.WriteHeader(http.StatusConflict)
+			_, _ = io.WriteString(w, `<Error><Code>BucketAlreadyOwnedByYou</Code><Message>yours</Message></Error>`)
+		}
+	}))
+	defer srv.Close()
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		var buf bytes.Buffer
+		return &engine.Engine{
+			Config: config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s",
+				S3: config.S3Config{Endpoint: srv.URL, AccessKey: "a", SecretKey: "s", Region: "ru-central-1"}},
+			Auth:    staticToken{},
+			Printer: output.NewWithWriter(&buf, output.ModeText, false),
+		}, nil
+	})
+	r.SetStateDir(t.TempDir())
+	m, text, isErr := callNamed(t, r, "s3_bucket_create", map[string]any{"bucket": "new-bucket", "confirmed": true})
+	if isErr || m["status"] != "already_exists" {
+		t.Fatalf("want already_exists, got: %s", text)
+	}
+	msg, _ := m["message"].(string)
+	if strings.Contains(msg, "created nothing") || strings.Contains(msg, "not created by this call") ||
+		!strings.Contains(msg, "may have made it") {
+		t.Errorf("the answer disowns a bucket this call may have made: %s", msg)
+	}
+}
