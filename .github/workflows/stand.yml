@@ -73,13 +73,14 @@ jobs:
       # говорит этот шаг (репозиторий открыт, чтение тегов — без токена).
       # Планы защиты ключу только на чтение платформа не отдаёт (403): вид
       # назван непроверенным, а не роняет ежедневный job; стенд по умолчанию
-      # без плана, а sweep читает планы ключом записи.
+      # без плана, а sweep читает планы ключом записи. Теги «Менеджера
+      # ресурсов» (Вп-3) — так же: отдаст ли их этот ключ, не проверено.
       - name: Стенд — состав, возраст, срок
         env:
           KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
           SECRET: ${{ secrets.CLOUDRU_SECRET }}
           PROJECT: ${{ secrets.CLOUDRU_PROJECT_ID }}
-          STAND_FORBIDDEN_OK: pplan
+          STAND_FORBIDDEN_OK: pplan tag
         run: |
           # shellcheck source=.github/scripts/e2e_stand.sh
           . .github/scripts/e2e_stand.sh

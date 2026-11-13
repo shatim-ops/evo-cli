@@ -46,7 +46,7 @@ var untrustedFields = map[string]untrustedAnswer{
 	"s3_get": {fields: []string{"content", "content_base64"}, workload: true},
 	// deploy: the output of docker compose up — its log over MCP, the last
 	// lines of a failure (#558).
-	"deploy": {fields: []string{"log", "output"}, workload: true},
+	"deploy": {fields: []string{"log", "output", "ports_open_only_to_groups"}, workload: true},
 	// The status of the app the question of ca_start and ca_stop names, as
 	// the API gives it («Риск», conclusion 142).
 	"ca_start": {fields: []string{"app_status"}},
