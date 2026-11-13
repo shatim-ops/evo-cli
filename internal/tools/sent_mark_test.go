@@ -107,3 +107,29 @@ func TestIntent_AMarkNotWrittenIsTheAnswerOfTheCall(t *testing.T) {
 		t.Errorf("sent %d, answer:\n%s", sent, text)
 	}
 }
+
+// A write counted before the call opened its record — no path does it
+// today — does not spend the mark: the first write after the record is
+// opened marks it (sent), so a kill after that write leaves the mark
+// («Риск», the remainder (1) to #1675).
+func TestIntent_AWriteBeforeTheRecordDoesNotSpendItsMark(t *testing.T) {
+	r := ownerRegistry(t, &ownerFake{}, false, ownProject)
+	eng, _ := r.newEngine(nil)
+	dir := intent.Dir(eng.StateDir)
+	holder := context.WithValue(context.Background(), callRecordsKey{}, &callRecords{})
+	ctx := httpretry.CountWrites(holder, func() (bool, error) { return markSent(holder) })
+	if err := httpretry.NoteWrite(ctx); err != nil { // before the record
+		t.Fatal(err)
+	}
+	end, err := r.beginIntent(ctx, "cert_renew", map[string]any{"certificate_id": resMine, "confirmed": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer end(`{"status":"ok"}`)
+	if err := httpretry.NoteWrite(ctx); err != nil { // after it
+		t.Fatal(err)
+	}
+	if p := intent.Pending(dir); len(p) != 1 || !p[0].Sent {
+		t.Errorf("the write after the record did not mark it: %+v", p)
+	}
+}

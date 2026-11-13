@@ -29,7 +29,7 @@ func TestSetVMPower_IsAWriteOfItsCall(t *testing.T) {
 	a := NewCloudRuAdapter(nil, srv.URL) // the client evo builds: UserAgent
 	a.SetToken("t")
 	told := 0
-	ctx := httpretry.CountWrites(context.Background(), func() error { told++; return nil })
+	ctx := httpretry.CountWrites(context.Background(), func() (bool, error) { told++; return true, nil })
 	if _, err := a.GetVM(ctx, "vm-1"); err != nil {
 		t.Fatal(err)
 	}

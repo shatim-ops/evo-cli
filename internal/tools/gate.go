@@ -158,7 +158,7 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		// record before it goes out: a call cut before it sent one changed
 		// nothing («Риск», conclusion 187, У2).
 		holder := ctx
-		ctx = httpretry.CountWrites(ctx, func() error { return markSent(holder) })
+		ctx = httpretry.CountWrites(ctx, func() (bool, error) { return markSent(holder) })
 		// The resource the call names cannot be read: nothing is sent,
 		// and no record is written by the spelling — a cut call of the
 		// same resource spelled another way would not be found («Риск»,

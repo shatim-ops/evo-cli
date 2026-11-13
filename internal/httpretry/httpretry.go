@@ -122,26 +122,28 @@ func readMethod(m string) bool { return m == http.MethodGet || m == http.MethodH
 
 type writesKey struct{}
 
-// writes counts the writes of a call; first is told once, before the
-// first of them goes out, and what it answers is the answer of every
+// writes counts the writes of a call; mark is told before each write
+// until it says the call is marked, and its error is the answer of every
 // write of the call.
 type writes struct {
-	n     atomic.Int64
-	first func() error
-	once  sync.Once
-	err   error
+	n      atomic.Int64
+	mark   func() (marked bool, err error)
+	mu     sync.Mutex
+	marked bool
+	err    error
 }
 
 // CountWrites is ctx for a call whose writes are counted: every request
 // that is not a read, sent with this context through any client of evo
 // (Transport or UserAgent), is one (Writes), and so is a write that goes
-// out other than over HTTP, told by NoteWrite. first, when not nil, is
-// told once, before the first write goes out; an error of it keeps that
-// write and every later one of the call from going out. A caller that
+// out other than over HTTP, told by NoteWrite. mark, when not nil, is told
+// before a write goes out, until it says the call is marked — a write
+// before there is anything to mark does not spend it; an error of it keeps
+// that write and every later one of the call from going out. A caller that
 // must know whether anything was sent to change the cloud — a call cut
 // before an answer changed nothing if it sent no write — counts by it.
-func CountWrites(ctx context.Context, first func() error) context.Context {
-	return context.WithValue(ctx, writesKey{}, &writes{first: first})
+func CountWrites(ctx context.Context, mark func() (marked bool, err error)) context.Context {
+	return context.WithValue(ctx, writesKey{}, &writes{mark: mark})
 }
 
 // Writes is how many writes were sent with ctx since CountWrites; counted
@@ -154,12 +156,14 @@ func Writes(ctx context.Context) (n int, counted bool) {
 	return int(c.n.Load()), true
 }
 
-// WriteRefused is the error first answered for the call of ctx: its
-// writes were kept back (CountWrites), and the answer of the call is this
-// error, not what its handler made of a request that never went out.
-// nil when nothing was kept back.
+// WriteRefused is the error mark answered for the call of ctx: its writes
+// were kept back (CountWrites), and the answer of the call is this error,
+// not what its handler made of a request that never went out. nil when
+// nothing was kept back.
 func WriteRefused(ctx context.Context) error {
 	if c, ok := ctx.Value(writesKey{}).(*writes); ok {
+		c.mu.Lock()
+		defer c.mu.Unlock()
 		return c.err
 	}
 	return nil
@@ -177,11 +181,14 @@ func NoteWrite(ctx context.Context) error {
 	if !ok {
 		return nil
 	}
-	if c.first != nil {
-		c.once.Do(func() { c.err = c.first() })
+	c.mu.Lock()
+	if c.err == nil && c.mark != nil && !c.marked {
+		c.marked, c.err = c.mark()
 	}
-	if c.err != nil {
-		return c.err
+	err := c.err
+	c.mu.Unlock()
+	if err != nil {
+		return err
 	}
 	c.n.Add(1)
 	return nil
