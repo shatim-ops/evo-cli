@@ -58,7 +58,7 @@ var sgRuleStateRows = map[string]map[string]sgRuleRow{
 		"created":        sgRowAlready,
 		"updating":       sgRowAlready,
 		"creating":       sgRowUnderWay,
-		"deleting":       sgRowAsks,
+		"deleting":       sgRowAsksNamed,
 		"error":          sgRowAsksNamed,
 		"error_creating": sgRowAsksNamed,
 		"error_deleting": sgRowAsksNamed,
@@ -91,8 +91,16 @@ func TestSGRules_EveryStateOfTheTableHasAWorld(t *testing.T) {
 				// failed rule by its id.
 				warning, _ := preview["warning"].(string)
 				failed, _ := json.Marshal(preview["failed_rules"])
-				says := strings.Contains(warning, "in "+state+":") || strings.Contains(string(failed), sgRuleWeb)
-				named := warning + " " + string(failed)
+				// A rule going away is named apart from a failed one: the
+				// row of deleting is not kept green by failed_rules.
+				going, _ := json.Marshal(preview["deleting_rules"])
+				says := strings.Contains(warning, "in "+state+":")
+				if state == "deleting" {
+					says = says || strings.Contains(string(going), sgRuleWeb)
+				} else {
+					says = says || strings.Contains(string(failed), sgRuleWeb)
+				}
+				named := warning + " " + string(failed) + " " + string(going)
 				asked := m["status"] == "confirmation_required"
 				wantWrites := 0
 				var problem string

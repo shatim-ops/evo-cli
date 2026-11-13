@@ -88,6 +88,14 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 		return nil, usageErr(fmt.Sprintf("'description' is longer than %d characters", sgRuleDescriptionMax),
 			fmt.Sprintf("'description' длиннее %d знаков", sgRuleDescriptionMax))
 	}
+	if sgrules.IsRuleLabel(description) {
+		// The label deploy gives the rules of its ports: a delete of the
+		// VM it names would close this rule as the deployment's.
+		return nil, clierrors.New(clierrors.CodeUsage,
+			i18n.T("'description' has the form of the label evo gives the port rules of a deployment («evo: port … (vm …)»): a delete of that VM would delete this rule too",
+				"'description' имеет форму метки, которую evo ставит правилам портов развёртывания («evo: port … (vm …)»): удаление той ВМ удалило бы и это правило"),
+			i18n.T("Give the rule a description of its own.", "Дайте правилу своё описание."))
+	}
 	want := provision.SGRule{Direction: direction, IPProtocol: proto, PortRange: ports, EtherType: "IPv4", Description: description}
 	if sourceArg == "cidr" {
 		if want.RemoteIPPrefix, want.EtherType, ok = sgrules.Prefix(source); !ok {
@@ -116,7 +124,7 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 		return nil, err
 	}
 	// The repeat (§3.3): the same rule, by its state.
-	var failed []string
+	var failed, going []string
 	var coveredBy []map[string]any
 	for _, r := range rules {
 		switch {
@@ -128,7 +136,9 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 				// second request.
 				return answered(s.sgRuleCreated(ctx, eng, group, r.ID, sgRuleFields(r))), nil
 			case engine.DeletingState(r.State):
-				// Going away: not there for the caller; a new one is asked.
+				// Going away: not there for the caller; a new one is
+				// asked, and the preview names the one that goes.
+				going = append(going, r.ID)
 			case sgRuleFailed(r.State):
 				failed = append(failed, r.ID)
 			default:
@@ -175,6 +185,9 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 	}
 	if len(failed) > 0 {
 		will["failed_rules"] = failed
+	}
+	if len(going) > 0 {
+		will["deleting_rules"] = going
 	}
 	message := i18n.Tf("sg_rule_create adds the rule %s %s %s %s to security group %s.", "sg_rule_create добавляет правило %s %s %s %s в группу безопасности %s.",
 		direction, proto, ports, wanted["source"], quoteCloud(group.Name))

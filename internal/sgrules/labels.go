@@ -35,6 +35,11 @@ func labelVM(desc string) string {
 	return strings.TrimSuffix(vm, ")")
 }
 
+// IsRuleLabel reports whether desc reads as a RuleLabel: a description a
+// caller gives a rule of its own must not be one — a delete of the VM it
+// names would take the rule for the deployment's and close it.
+func IsRuleLabel(desc string) bool { return labelVM(strings.TrimSpace(desc)) != "" }
+
 // FindLabeled reads the rules of the project's security groups and returns
 // the ingress rules labelled for vmID that no record of sf holds (P6), as
 // Planned deletes with no RecordID. A rule a record holds goes by that

@@ -12,6 +12,7 @@ import (
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
 )
 
 // sg_rule_create adds one rule to a security group, named whole by the
@@ -302,5 +303,43 @@ func TestSGRuleCreate_SlowBrokenLostRefused(t *testing.T) {
 	details, _ := m["details"].(map[string]any)
 	if !isErr || m["reason"] != clerrors.CodeAPIError || details["platform_code"] != "zone_changes_prohibited" || m["next_tool"] != nil || w.added() != 1 {
 		t.Errorf("a create the platform refuses: %s", text)
+	}
+}
+
+// A description in the form of the label deploy gives its rules
+// («evo: port … (vm …)») would make the rule the deployment's for a
+// delete of that VM, though sg_rule_create's rule is no deployment's (the
+// brief, §3.5; the interim delta audit of 1.9, FB19I-17б): refused before
+// the cloud.
+func TestSGRuleCreate_ADescriptionInTheFormOfDeploysLabelIsRefused(t *testing.T) {
+	for _, desc := range []string{sgrules.RuleLabel("80", "0000a1a1-0000-4000-8000-000000000001"), " evo: port 22/udp (vm x) "} {
+		w := newSGMakeWorld()
+		m, text, isErr := callNamed(t, sgMakeRegistry(t, w), "sg_rule_create", map[string]any{"security_group": sgOtherGroup,
+			"direction": "ingress", "protocol": "tcp", "ports": "8080", "cidr": "10.0.0.0/8", "description": desc, "confirmed": true})
+		if !isErr || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, "description") || w.added() != 0 {
+			t.Errorf("description %q: %s (writes %d), want USAGE before the cloud", desc, text, w.added())
+		}
+	}
+	// A description that only starts alike is the caller's own.
+	w := newSGMakeWorld()
+	if m, text, _ := callNamed(t, sgMakeRegistry(t, w), "sg_rule_create", map[string]any{"security_group": sgOtherGroup,
+		"direction": "ingress", "protocol": "tcp", "ports": "8080", "cidr": "10.0.0.0/8", "description": "evo: port of the metrics exporter"}); m["status"] != "confirmation_required" {
+		t.Errorf("a description of the caller's own: %s", text)
+	}
+}
+
+// The same rule the platform is deleting: a new one is asked for and
+// written, and the preview names the one going away — as it names a
+// failed one (the table of states, the row of deleting).
+func TestSGRuleCreate_TheSameRuleBeingDeletedIsNamed(t *testing.T) {
+	w := newSGMakeWorld()
+	w.stuck = true
+	w.setRule(sgZoneGroup, sgRuleWeb, func(r *provision.SGRule) { r.State = "deleting" })
+	m, text, _ := callNamed(t, sgMakeRegistry(t, w), "sg_rule_create", map[string]any{"security_group": sgZoneGroup, "direction": "ingress",
+		"protocol": "tcp", "ports": "443:443", "cidr": "0.0.0.0/0", allowInternetArg: true})
+	p, _ := m["preview"].(map[string]any)
+	going, _ := p["deleting_rules"].([]any)
+	if m["status"] != "confirmation_required" || len(going) != 1 || going[0] != sgRuleWeb || p["failed_rules"] != nil {
+		t.Errorf("the same rule in deleting: %s, want the question that names it in deleting_rules", text)
 	}
 }
