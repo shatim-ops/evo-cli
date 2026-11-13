@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
 // pgRepeatWorld is a PostgreSQL cluster that takes the first create of a
@@ -109,6 +111,40 @@ func TestPgCreate_RepeatAfterALostAnswerMakesNoSecond(t *testing.T) {
 				t.Errorf("%s, a second create answered %d: the repeat of a taken request sent a second one (requests %d) and did not read a refusal as «already exists, nothing was created»: %s",
 					tool.name, second, w.posts, text)
 			}
+		}
+	}
+}
+
+// A record of an interrupted pg_db_create or pg_user_create closes when
+// doctor (checkByList) reads the cluster's list and finds the name: these
+// lists give no id, so the record is closed by the name alone, with no
+// «(id …)» in the words (FB19I-24 none; «Риск», 191, У2; declared with
+// «разработка C»). A name the list does not have keeps the record.
+func TestPgCreate_InterruptedRecordClosesByNameWithoutAnID(t *testing.T) {
+	const cluster = "00000000-0000-4000-8000-0000000000e1"
+	for _, c := range []struct {
+		tool, list, field string
+	}{
+		{"pg_db_create", "pg_databases", "databases"},
+		{"pg_user_create", "pg_users", "users"},
+	} {
+		r := New(nil)
+		// The list of the cluster, with no id (as Managed PostgreSQL gives
+		// it): "app" is there, "gone" is not.
+		list := `{"` + c.field + `":[{"name":"app"}]}`
+		if !r.Wrap(c.list, func(Handler) Handler {
+			return func(context.Context, map[string]any) (string, bool) { return list, false }
+		}) {
+			t.Fatalf("no tool %s", c.list)
+		}
+		here := intent.Intent{Tool: c.tool, Name: "app", Target: "cluster_id=" + cluster}
+		gone := intent.Intent{Tool: c.tool, Name: "gone", Target: "cluster_id=" + cluster}
+		found, settled := r.checkByList(context.Background(), here, "")
+		if !settled || strings.Contains(found, "(id ") {
+			t.Errorf("%s: a name in the list closes the record without an id: settled=%v %q", c.tool, settled, found)
+		}
+		if _, settled := r.checkByList(context.Background(), gone, ""); settled {
+			t.Errorf("%s: a name not in the list closed the record", c.tool)
 		}
 	}
 }

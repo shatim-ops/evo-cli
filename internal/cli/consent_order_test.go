@@ -93,8 +93,6 @@ var repeatAsksUntilTheMajor = map[string]string{
 	"ca_stop":        "a stop of a stopped container app asks for consent; in 1.9 the state is read and named in the preview",
 	"deploy":         "over MCP an unchanged compose file answers confirmation_required with unchanged: true and then changes nothing; the CLI asks nothing",
 	"k8s_add_addon":  "an addon the cluster has is asked about and sent; in 1.9 the preview says what OVERWRITE does to the installed one",
-	"pg_db_create":   "a database the cluster has: the platform refuses after the question; in 1.9 the refusal says it exists",
-	"pg_user_create": "a user the cluster has: the platform refuses after the question, and the refusal says it exists (internal/tools/pg_user_create_exists_test.go)",
 	"stack_apply":    "an apply of a job done asks for consent and creates nothing; in 1.9 the question says so and carries unchanged: true",
 }
 

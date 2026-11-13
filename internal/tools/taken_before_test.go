@@ -38,6 +38,8 @@ var takenArgs = map[string]map[string]any{
 	"lb_create":         {"name": "web", "target_group_id": contractID, "port": float64(80), "vpc_id": contractID, "zone": takenBefore},
 	"pg_backup_create":  {"cluster_id": contractID, "name": "web"},
 	"pg_create":         {"name": "web"},
+	"pg_db_create":      {"cluster_id": contractID, "name": "web", "owner": "web"},
+	"pg_user_create":    {"cluster_id": contractID, "name": "web", "password": "Qwerty123456!"},
 	"provision":         {"name": "web"},
 	"redis_create":      {"name": "web"},
 	"secret_create":     {"path": "web", "value": "v"},

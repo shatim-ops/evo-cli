@@ -304,8 +304,10 @@
   },
   "pg_db_create": {
     "destructive": false,
+    "taken": "checked",
     "creates": {
       "id": "name",
+      "list": "pg_databases",
       "delete": "pg_db_delete"
     }
   },
@@ -328,8 +330,10 @@
   },
   "pg_user_create": {
     "destructive": false,
+    "taken": "checked",
     "creates": {
       "id": "name",
+      "list": "pg_users",
       "delete": "pg_user_delete"
     }
   },
