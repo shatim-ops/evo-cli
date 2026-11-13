@@ -7,10 +7,10 @@
 1. Прогоны из двух: Г-13 — 1 (run 212; второй 17.11); Г-14 — 0 (run 214; после исчезновения r214 и правки READY); Г-15 — по слову владельца; Г-12 — 16, 17.11; Г-17 — 15.11. Таблица — `evo-internal/briefs/launch-table-1.9.md`.
 2. Остатки у владельца: Kafka r214 `ERASING` («удалится»); ВМ и адрес 186.
 3. Стенд 18.11: бриф `evo-internal` #286; тег — #1658 (условие — Г-17); цена — `api-probe`.
-4. Правка пробы DBaaS — во все три job.
-5. Храповики «к 1.9» — гейт rc.1, п. 2: `noNextStep` 19, `createsUndeclared` 3, по 1 — `repeatUndeclared`, `toolsCallFlagMisses`, `toolFilesAreaPending`, `previewNotReached`, `untrustedFieldPending`; просрочено «к 1.8» у «разработки» — `namesUnmarked` 49, `bodyUnnamed` 39, `humanUnnamed` 21. К 1.10 — миры 44 состояний и 9 «список отстаёт».
-6. Красные ветки у «разработки B»: `backup-matrix-world`, `intent-reads-every-answer`, `pg-repeat-red` (взята, к rc.1).
-7. `internal/engine`, `internal/tools` — кандидаты в `windowsPRPackages` (три ночных красных, #1645). И2, И3 — по PR `vm_stop`.
+4. Правка пробы DBaaS — во все три job; опись `requests-1.9.md` — при новой пробе.
+5. Инварианты: храповики «к 1.9» — гейт rc.1, п. 2 (`noNextStep` 19, ещё шесть списков по 1–3); «к 1.8» у «разработки» — 49/39/21. К 1.10 — миры и бэклог приоритета 2.
+6. Красные ветки у «разработки B»: `backup-matrix-world`, `intent-reads-every-answer`, `pg-repeat-red` (к rc.1).
+7. И2, И3 — по PR `vm_stop`; `internal/engine` на Windows в PR — кандидат (#1645).
 8. «CI»: М3 (#1571), М5 (#1572), отменённый job без раннера — до 14.11.
 
 ## Ждёт решения
