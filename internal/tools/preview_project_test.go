@@ -99,16 +99,13 @@ var previewCalls = map[string]map[string]any{
 	"k8s_helm":    {"action": "uninstall", "release": "web"},
 }
 
-// previewNotReached are the tools with a target whose call reaches no
-// preview in the world of the owners, so the project their preview names is
-// checked by nothing: the call is refused, or answered with nothing to
-// consent to, before the question. "tool" → what the world lacks. It only
-// shrinks, and a new tool does not join it: a new change addressed by id
-// comes with a call that reaches its preview (previewCalls). Closes by 1.9,
-// before rc.1 (release plan 1.9, «Сроки храповиков «к 1.7–1.9»»; «Превью
-// называет проект записи»; the world is «Процесс»'s).
-var previewNotReached = map[string]string{
-	"dns_record_create": "the zone is looked up in the call's project: a zone of another is NOT_FOUND before any preview; the call's own zone is checked",
+// foreignRefused are the tools with a target whose call cannot reach a
+// resource of another project at all: it is refused before the question,
+// with no write, so no preview can name the wrong project. "tool" → why.
+// The call with the call's own resource reaches its preview and is checked
+// like any other.
+var foreignRefused = map[string]string{
+	"dns_record_create": "the zone is looked up in the call's project: a zone of another is NOT_FOUND before any preview",
 }
 
 // With a key of the organization and no --allow-project, the preview of a
@@ -124,6 +121,7 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 	stackHome(t)
 	seen := 0
 	reached := map[string]bool{}
+	refused := map[string]bool{}
 	targeted := map[string]bool{}
 	for _, c := range ownerCases(t) {
 		if !c.arg.target {
@@ -141,11 +139,25 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 			for k, v := range previewCalls[c.tool] {
 				args[k] = v
 			}
-			m, text, _ := callOwned(t, r, c.tool, args, false)
+			m, text, isErr := callOwned(t, r, c.tool, args, false)
 			if m["status"] != "confirmation_required" {
 				// Not a preview: a refusal or an answer with nothing to
 				// consent to, which names no target to confirm.
+				if id == resForeign && foreignRefused[c.tool] != "" {
+					if !isErr {
+						t.Errorf("%s %s=foreign: not a refusal and not a preview\n%s", c.tool, c.arg.name, text)
+					}
+					for _, q := range f.log() {
+						if !strings.HasPrefix(q, "GET ") {
+							t.Errorf("%s %s=foreign: the refusal sent %s", c.tool, c.arg.name, q)
+						}
+					}
+					refused[c.tool] = true
+				}
 				continue
+			}
+			if id == resForeign && foreignRefused[c.tool] != "" {
+				t.Errorf("%s %s=foreign: reaches a preview, but foreignRefused says it is refused: check the project the preview names and remove the line\n%s", c.tool, c.arg.name, text)
 			}
 			seen++
 			reached[c.tool] = true
@@ -189,17 +201,15 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 	// consent to — leaves the project of its preview checked by nothing,
 	// and a green test says nothing of it.
 	for tool := range targeted {
-		_, pending := previewNotReached[tool]
-		switch {
-		case !reached[tool] && !pending:
+		if !reached[tool] {
 			t.Errorf("%s: its call reached no preview, so the project its preview names was not checked: give the call what it needs before the question (previewCalls, the world of the owners)", tool)
-		case reached[tool] && pending && tool != "dns_record_create":
-			t.Errorf("previewNotReached names %s, whose call reaches its preview now: remove the line (the list only shrinks)", tool)
 		}
 	}
-	for tool := range previewNotReached {
+	for tool := range foreignRefused {
 		if !targeted[tool] {
-			t.Errorf("previewNotReached names %s, which has no target: remove the line", tool)
+			t.Errorf("foreignRefused names %s, which has no target: remove the line", tool)
+		} else if !refused[tool] {
+			t.Errorf("foreignRefused names %s, but its call with a resource of another project was not refused before the question", tool)
 		}
 	}
 }
