@@ -75,8 +75,10 @@ func TestPreviewProject_TargetDeclared(t *testing.T) {
 // previewCalls are the calls that reach a preview with their target alone:
 // tool → the arguments beside the target.
 var previewCalls = map[string]map[string]any{
-	"pg_db_create":      {"name": "app", "owner": "app"},
-	"pg_user_create":    {"name": "app", "password": "Preview-Pass-0"},
+	// A name the world's cluster does not have (it has ownerChild): a
+	// taken one is refused before the question (D109).
+	"pg_db_create":      {"name": "app-new", "owner": "app"},
+	"pg_user_create":    {"name": "app-new", "password": "Preview-Pass-0"},
 	"pg_backup_create":  {"name": "nightly"},
 	"dns_record_create": {"name": "www", "record_type": "A", "value": "192.0.2.10"},
 	"vpc_route_create":  {"subnet": "192.0.2.0/24", "next_hop_vip_id": resMine},

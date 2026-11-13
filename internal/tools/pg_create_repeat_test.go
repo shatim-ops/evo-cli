@@ -229,3 +229,30 @@ func TestPgCreate_RepeatsAfterALostAnswerAddNoRecords(t *testing.T) {
 		}
 	}
 }
+
+// D109 («Риск», 191, У1; the owner's «да» 13.11): a name the cluster has is
+// refused before the question — a call without consent gets the refusal,
+// not confirmation_required, and nothing is sent. The answer is the one
+// the check before the create gives (API_ERROR, «already exists, nothing
+// was created»).
+func TestPgCreate_TakenNameRefusedBeforeTheQuestion(t *testing.T) {
+	const cluster = "00000000-0000-4000-8000-0000000000e1"
+	for _, tool := range []struct {
+		name, kind string
+		args       map[string]any
+	}{
+		{"pg_db_create", "databases", map[string]any{"cluster_id": cluster, "name": "app", "owner": "app"}},
+		{"pg_user_create", "users", map[string]any{"cluster_id": cluster, "name": "app", "password": "Qwerty123456!"}},
+	} {
+		w := &pgRepeatWorld{kind: tool.kind, names: []string{"app"}}
+		r := dbaasRegistry(t, &fakeDbaas{}, "")
+		bare := httpretry.DefaultBase
+		httpretry.DefaultBase = w
+		m, text, isErr := callNamed(t, r, tool.name, tool.args)
+		httpretry.DefaultBase = bare
+		hint, _ := m["hint"].(string)
+		if !isErr || m["reason"] != "API_ERROR" || m["status"] == "confirmation_required" || !strings.Contains(hint, "already exists") || w.posts != 0 {
+			t.Errorf("%s without consent, the name taken: want the refusal before the question, nothing sent (%d): %s", tool.name, w.posts, text)
+		}
+	}
+}

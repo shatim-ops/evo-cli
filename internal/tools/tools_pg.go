@@ -527,16 +527,20 @@ func (s *Registry) handlePgDatabases(ctx context.Context, args map[string]any) (
 	return toJSON(map[string]any{"databases": items}), false
 }
 
-// planPgDbCreate plans pg_db_create. The client is built in the execution,
-// as in planPgUserCreate: a call without a key still asks first, as it did
-// (moving that refusal before the question is a breaking change, the
-// owner's to decide).
-func (s *Registry) planPgDbCreate(_ context.Context, args map[string]any) (*Plan, error) {
+// planPgDbCreate plans pg_db_create. A name the cluster has is refused
+// before the question (D109, pgTakenBeforeQuestion); a call without a key
+// still asks first, as it did — its client is built in the execution.
+func (s *Registry) planPgDbCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	cid := stringArg(args, "cluster_id")
 	name := stringArg(args, "name")
 	owner := stringArg(args, "owner")
 	if cid == "" || name == "" || owner == "" {
 		return answered(usageT("'cluster_id', 'name' and 'owner' are required", "нужны 'cluster_id', 'name' и 'owner'"), true), nil
+	}
+	if p := s.pgTakenBeforeQuestion(ctx, pgDatabase, name, cid, func(cli pgLister) func(context.Context) ([]map[string]any, error) {
+		return func(ctx context.Context) ([]map[string]any, error) { return cli.ListDatabases(ctx, cid) }
+	}); p != nil {
+		return p, nil
 	}
 	preview := map[string]any{"message": i18n.Tf("pg_db_create creates database %q (owner %q) in cluster %s.",
 		"pg_db_create создаёт базу данных %q (владелец %q) в кластере %s.", name, owner, cid)}
@@ -625,6 +629,11 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 	}
 	if err := pgPasswordRule(password); err != nil {
 		return nil, err
+	}
+	if p := s.pgTakenBeforeQuestion(ctx, pgUser, name, cid, func(cli pgLister) func(context.Context) ([]map[string]any, error) {
+		return func(ctx context.Context) ([]map[string]any, error) { return cli.ListUsers(ctx, cid) }
+	}); p != nil {
+		return p, nil
 	}
 	preview := map[string]any{"message": i18n.Tf("pg_user_create creates user %q in cluster %s.",
 		"pg_user_create создаёт пользователя %q в кластере %s.", name, cid)}
@@ -725,6 +734,28 @@ func (k pgNamed) existsHint(q string) string {
 	return i18n.T(
 		fmt.Sprintf("%s %s already exists in the cluster; nothing was created or changed. %s — ask the person what to do.", k.what, q, k.keep),
 		fmt.Sprintf("%s %s уже существует в кластере; ничего не создано и не изменено. %s, — спросите человека, что делать.", k.whatRU, q, k.keepRU))
+}
+
+// pgLister reads the databases and the users of a cluster.
+type pgLister interface {
+	ListDatabases(ctx context.Context, clusterID string) ([]map[string]any, error)
+	ListUsers(ctx context.Context, clusterID string) ([]map[string]any, error)
+}
+
+// pgTakenBeforeQuestion is the refusal, before the question, of a create of
+// a name the cluster has (D109; «Риск», 191, У1): the call would be refused
+// after the consent all the same (pgNameTaken in the execution, which
+// stays for a name made between the question and the consent). A client
+// not built, or a list not read, leaves the question as it was: nil.
+func (s *Registry) pgTakenBeforeQuestion(ctx context.Context, k pgNamed, name, cluster string, list func(pgLister) func(context.Context) ([]map[string]any, error)) *Plan {
+	cli, err := s.pgClient(ctx)
+	if err != nil {
+		return nil
+	}
+	if err := pgNameTaken(ctx, k, name, cluster, list(cli)); err != nil {
+		return answered(errResult(err), true)
+	}
+	return nil
 }
 
 // pgNameTaken refuses a create of the thing named name when the cluster
