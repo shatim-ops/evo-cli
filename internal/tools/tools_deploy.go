@@ -889,8 +889,11 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 	}
 	openOnlyToGroups(preview, groupOnly, target, proto, cidr, false)
 	sgUseFields(preview, use)
-	if len(willOpen) > 0 && sgrules.Internet(cidr) {
-		preview["open_to_internet"] = true
+	if len(willOpen) > 0 {
+		sgRulePrice(preview)
+		if sgrules.Internet(cidr) {
+			preview["open_to_internet"] = true
+		}
 	}
 	if len(wider) > 0 {
 		// Open by a rule wider than asked (a range, any protocol, a wider
