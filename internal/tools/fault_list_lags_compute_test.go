@@ -29,8 +29,7 @@ import (
 // leaves a second billable resource — each with what is known. Only
 // shrinks. Closes by 1.10.
 var listLagsComputePending = map[string]string{
-	"provision":      "the answer of the create of the address lost: the call itself reserves a second address, the first stays billed and bound to nothing; whether the list of addresses lags is not known (no run)",
-	"sg_rule_create": "the repeat adds a second rule of the same content; whether the list of rules lags, and whether the platform takes a rule twice, is not known (no run)",
+	"provision": "the answer of the create of the address lost: the call itself reserves a second address, the first stays billed and bound to nothing; whether the list of addresses lags is not known (no run)",
 }
 
 func TestFault_Matrix_ListBehindALostCreate_Compute(t *testing.T) {
