@@ -300,6 +300,13 @@ func noEmptyValue(t *Tool, names ...string) {
 	}
 }
 
+// withMinLength is p with no empty value (minLength, D36): an empty
+// string is refused USAGE before the call, not read as «not given» (D100).
+func withMinLength(p map[string]any) map[string]any {
+	p["minLength"] = 1
+	return p
+}
+
 // emptyScopeField is the path of the first scope field (scopeArgs) with an
 // empty string value in the object v, a manifest of steps: "" when there
 // is none. path names v itself.

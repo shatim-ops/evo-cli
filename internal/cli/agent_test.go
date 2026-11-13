@@ -983,3 +983,15 @@ func TestAgentSetup_UnwritableFileIsConfigInvalid(t *testing.T) {
 		t.Errorf("exit %d\n%s%s", code, stdout, stderr)
 	}
 }
+
+// `evo agent skill --group ”` printed nothing with exit code 0: an empty
+// value is refused, as an empty scope argument is (D100; FB19I-26 (б)).
+func TestAgentSkill_EmptyGroupIsUsage(t *testing.T) {
+	for _, g := range []string{"", " "} {
+		newProcess()
+		code, stdout, stderr := runCLI(t, "", "agent", "skill", "--group", g)
+		if code != clerrors.ExitCode(clerrors.New(clerrors.CodeUsage, "", "")) || !strings.Contains(stdout+stderr, "group is empty") {
+			t.Errorf("--group %q: exit %d, want USAGE naming group:\n%s%s", g, code, stdout, stderr)
+		}
+	}
+}
