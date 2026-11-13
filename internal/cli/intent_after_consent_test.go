@@ -65,12 +65,19 @@ func argValues(args map[string]any) []string {
 // print (a SHA-256 of the id and the canonical arguments, hex — the values
 // are not written into it, intent.Intent.Print), the start (the clock) and
 // the process (the system's number). A value of four characters of digits
-// or hex — «8443», the port of the world's sg_rule_create — is found in
-// them by chance: 13 places of the id and 61 of the print out of 16⁴, 6 of
-// the nanoseconds out of 10⁴, about 1 record in 580, twice as often since
-// the print came (#1620). It fell so in CI (1 of 158 calls, PR #1635,
-// 13.11) and in a loop of the test on main (see the PR). Every other
-// field — and one added later — is read for the values.
+// or hex — «8443», the port of the world's sg_rule_create, the only such
+// value of the world — is found in them by chance. Measured on 60000
+// records of that call written by intent.Open (13.11): 70 hold «8443», 11
+// in the id and 59 in the print, none elsewhere — 13 and 61 places out of
+// 16⁴ give 12 and 56. About 1 record in 860, 1 run of this test in 430;
+// before the print (#1620), 1 run in 2700. The fall in CI (1 of 158 calls,
+// PR #1635, 13.11) named no field, and some 500 runs of the test in a loop
+// did not repeat it — which those odds allow 1 time in 3: that it was
+// this, and not a value in another field, is the likely reading, not a
+// proven one. Hence the fields are named when it falls. The start and the
+// process hold digits too (6 places of the nanoseconds out of 10⁴) and
+// depend on no argument. Every other field — and one added later — is
+// read for the values.
 var intentRandom = []string{"id", "print", "started_at", "pid"}
 
 // intentSays is the record without intentRandom, field by field: where a
