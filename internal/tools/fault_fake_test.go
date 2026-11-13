@@ -133,6 +133,43 @@ type faultCloud struct {
 	// powerIgnored makes the platform take a power command (204) and
 	// leave the VM as it was: a command accepted and never acted on.
 	powerIgnored bool
+	// lag keeps what a create made out of the lists for its first lag
+	// reads of them (lagBy): the request is taken, the list is behind. A
+	// read by id and the refusal of a taken name do not lag.
+	lag    int
+	lagMu  sync.Mutex
+	behind map[string]int
+}
+
+// lagBy makes every list of the world n reads behind its creates.
+func (c *faultCloud) lagBy(n int) {
+	c.lagMu.Lock()
+	defer c.lagMu.Unlock()
+	c.lag = n
+}
+
+// made notes a resource the world has just stored.
+func (c *faultCloud) made(id string) {
+	c.lagMu.Lock()
+	defer c.lagMu.Unlock()
+	if c.lag > 0 {
+		if c.behind == nil {
+			c.behind = map[string]int{}
+		}
+		c.behind[id] = c.lag
+	}
+}
+
+// listed reports whether a list shows the resource at this read, and
+// counts the read.
+func (c *faultCloud) listed(id string) bool {
+	c.lagMu.Lock()
+	defer c.lagMu.Unlock()
+	if c.behind[id] > 0 {
+		c.behind[id]--
+		return false
+	}
+	return true
 }
 
 type faultVM struct {
@@ -392,6 +429,7 @@ func (c *faultCloud) storeVM(req provision.CreateVMRequest) (faultVM, bool) {
 	}
 	vm := faultVM{ID: id, Name: req.Name, Status: status, CreatedAt: time.Now(), FIPID: fipID}
 	c.vms = append(c.vms, vm)
+	c.made(id)
 	if fipID != "" {
 		for i := range c.fips {
 			if c.fips[i].ID == fipID {
@@ -570,7 +608,7 @@ func (c *faultCloud) ListVMsInProject(context.Context, string) ([]*provision.VM,
 	defer c.mu.Unlock()
 	var out []*provision.VM
 	for _, vm := range c.vms {
-		if vm.gone {
+		if vm.gone || !c.listed(vm.ID) {
 			continue
 		}
 		out = append(out, &provision.VM{ID: vm.ID, Name: vm.Name, Status: vm.Status, CreatedAt: vm.CreatedAt})
@@ -605,6 +643,7 @@ func (c *faultCloud) CreateFloatingIP(_ context.Context, req provision.CreateFlo
 		}
 	}
 	c.fips = append(c.fips, fip)
+	c.made(id)
 	c.mu.Unlock()
 	c.reachedPause("CreateFloatingIP")
 	if errors.Is(err, errFaultLost) || errors.Is(err, errFaultNameless) {
@@ -652,7 +691,7 @@ func (c *faultCloud) ListFloatingIPs(context.Context, string) ([]*provision.Floa
 	var out []*provision.FloatingIP
 	for i := range c.fips {
 		f := &c.fips[i]
-		if f.deleted {
+		if f.deleted || !c.listed(f.ID) {
 			continue
 		}
 		fip := &provision.FloatingIP{ID: f.ID, Name: f.Name, IPAddress: f.IP, State: c.readStateLocked(f)}
@@ -724,6 +763,7 @@ func (c *faultCloud) AddSecurityGroupRule(_ context.Context, _, _ string, rule p
 	rule.State = "created"
 	c.rules = append(c.rules, rule)
 	id := rule.ID
+	c.made(id)
 	c.mu.Unlock()
 	if errors.Is(err, errFaultLost) {
 		return nil, lostAnswer(err, clerrors.Wrap(clerrors.CodeAPIError, "lost", "", &provision.StatusError{Status: 500, Body: "lost"}))
@@ -744,6 +784,9 @@ func (c *faultCloud) ListSecurityGroupRules(context.Context, string) ([]*provisi
 	out := make([]*provision.SGRule, 0, len(c.rules))
 	for i := range c.rules {
 		r := c.rules[i]
+		if !c.listed(r.ID) {
+			continue
+		}
 		out = append(out, &r)
 	}
 	return out, nil

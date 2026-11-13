@@ -112,6 +112,14 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 				"Обновите его с --project-id %s; чтобы развернуть в новом проекте, спросите человека, удалить ли его сначала ('evo destroy').", existing.ProjectID))
 	}
 
+	// A stopped VM takes no upload and runs nothing: refused with the cause
+	// before the question (axis 1), not asked and then timed out on SSH —
+	// and before «nothing to deploy», which would say the service runs.
+	if !isNewDeploy {
+		if err := e.DeployVMStopped(ctx, existing); err != nil {
+			return err
+		}
+	}
 	// Skip only a deployment that finished with this file (UpToDate): after
 	// an SSH or Docker failure, or a deploy cut before compose up, the hash
 	// is already recorded, and a plain re-run must retry.
@@ -137,11 +145,6 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 			for _, w := range project.Warnings {
 				e.Printer.Warning(w)
 			}
-		}
-		// A stopped VM takes no upload: refused with the cause before the
-		// question (axis 1), not asked and then timed out on SSH.
-		if err := e.DeployVMStopped(ctx, existing); err != nil {
-			return err
 		}
 		// Port 22 from here, before the question (M2): the update uploads
 		// over SSH and would wait for it after consent.

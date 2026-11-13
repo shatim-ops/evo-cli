@@ -34,23 +34,30 @@ func consentedCall(r *Registry, tool string, args map[string]any, answer string)
 func TestIntent_AnotherCallOnTheSameResourceDoesNotSettleTheRecord(t *testing.T) {
 	const cut = `{"status":"error","reason":"API_UNREACHABLE"}`
 	const done = `{"status":"created"}`
-	rule := func(port float64, more ...string) map[string]any {
-		a := map[string]any{"security_group": resMine, "protocol": "tcp", "port": port, "cidr": "0.0.0.0/0"}
+	rule := func(port string, more ...any) map[string]any {
+		a := map[string]any{"security_group": resMine, "ports": port, "cidr": "0.0.0.0/0"}
 		for i := 0; i+1 < len(more); i += 2 {
-			a[more[i]] = more[i+1]
+			a[more[i].(string)] = more[i+1]
 		}
 		return a
 	}
-	const tool = "sg_rule_create"
+	// open_ports: a tool that makes rules of a group and is not one of
+	// everySendIsAChange — a call of those after a cut one is asked again
+	// whatever its arguments (the test below), and its question closes the
+	// record; sg_rule_create became one with FB19I-12.
+	const tool = "open_ports"
+	if everySendIsAChange[tool].read != "" {
+		t.Fatalf("%s is a tool every send of which is a change: its question closes the record, take another", tool)
+	}
 	for _, c := range []struct {
 		name  string
 		again map[string]any
 		left  int
 	}{
-		{"the same call", rule(22), 0},
-		{"the same call that waits otherwise", func() map[string]any { a := rule(22); a["wait"] = false; a["wait_seconds"] = 5.0; return a }(), 0},
-		{"another rule of the same group", rule(80), 1},
-		{"the same rule with one more argument", rule(22, "description", "ssh"), 1},
+		{"the same call", rule("22"), 0},
+		{"the same call that waits otherwise", func() map[string]any { a := rule("22"); a["wait"] = false; a["wait_seconds"] = 5.0; return a }(), 0},
+		{"another rule of the same group", rule("80"), 1},
+		{"the same rule with one more argument", rule("22", "allow_internet_on_shared_group", true), 1},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := ownerRegistry(t, &ownerFake{}, false, ownProject)
@@ -59,14 +66,14 @@ func TestIntent_AnotherCallOnTheSameResourceDoesNotSettleTheRecord(t *testing.T)
 			}
 			eng, _ := r.newEngine(nil)
 			dir := intent.Dir(eng.StateDir)
-			consentedCall(r, tool, rule(22), cut)
+			consentedCall(r, tool, rule("22"), cut)
 			was := intent.Pending(dir)
 			if len(was) != 1 || was[0].Print == "" || !was[0].Ended {
 				t.Fatalf("the record of the cut call: %+v", was)
 			}
 			// No value of an argument is in the file but the resource.
 			data, _ := os.ReadFile(dir + "/" + was[0].ID + ".json")
-			if strings.Contains(string(data), "0.0.0.0") || strings.Contains(string(data), `"tcp"`) {
+			if strings.Contains(string(data), "0.0.0.0") || strings.Contains(string(data), `"22"`) {
 				t.Errorf("the record holds a value of an argument:\n%s", data)
 			}
 			consentedCall(r, tool, c.again, done)
@@ -158,8 +165,8 @@ func TestIntent_TheQuestionAfterACutCallDoesNotLookAtThePrint(t *testing.T) {
 	eng, _ := r.newEngine(nil)
 	dir := intent.Dir(eng.StateDir)
 	asked := 0
-	for tool := range everySendIsAChange {
-		if len(idArgs[tool]) == 0 {
+	for tool, rule := range everySendIsAChange {
+		if len(idArgs[tool]) == 0 || rule.made {
 			continue // named by what it makes, not by a resource
 		}
 		asked++
@@ -167,7 +174,10 @@ func TestIntent_TheQuestionAfterACutCallDoesNotLookAtThePrint(t *testing.T) {
 		consentedCall(r, tool, map[string]any{target: resMine}, `{"status":"error","reason":"API_UNREACHABLE"}`)
 		sent := 0
 		tl, _ := r.Lookup(tool)
-		text, _ := r.intended(tl, func(context.Context, map[string]any) (string, bool) {
+		text, _ := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+			if confirmed, _ := args["confirmed"].(bool); !confirmed {
+				return `{"status":"error","reason":"USAGE"}`, true // the plan: nothing is sent
+			}
 			sent++
 			return `{"status":"ok"}`, false
 		})(context.Background(), map[string]any{target: resMine, "wait": false, "description": "another", "confirmed": true})

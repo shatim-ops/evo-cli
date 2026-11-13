@@ -8,7 +8,7 @@
 #
 # Причины провала:
 #   - вход неверен: зона не имя, слово dbaas_services не pg, kafka, redis;
-#     слово probes не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1; access, nodes или
+#     слово probes не access, nodes, pgrepeat, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1; access, nodes или
 #     p45 без dbaas_smoke и pg (проба DBaaS не пойдёт);
 #   - зона джоба не найдена или закрыта (enabled=false);
 #   - в зоне джоба у проекта нет подсети или группы безопасности;
@@ -22,7 +22,7 @@
 # ресурсов (образы, CMP-16).
 #
 # Окружение — входы workflow: ZONE, K8S_ZONE, PG_ZONE, KAFKA_ZONE,
-# REDIS_ZONE (пусто — ZONE), OS_SMOKE, K8S_SMOKE, DBAAS_SMOKE, DBAAS_SERVICES,
+# REDIS_ZONE (пусто — ZONE), OS_SMOKE, K8S_SMOKE, K8S_POD_CHART, DBAAS_SMOKE, DBAAS_SERVICES,
 # REDIS_SA (true/false), PROBES (платные пробы плана cloud-e2e rc.1 1.6);
 # RUN — суффикс прогона; PROJECT — для org_quotas.
 # Лог публичный: печатаются имена зон и ресурсов evo-e2e-*, коды квот и
@@ -83,11 +83,16 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	case "$w" in
 	p36 | p41 | p44 | dnslink) ;;
 	# Пробы графика 1.9 — область ops (live-plan включает её по этим словам).
-	g10 | g11 | g18) ;;
+	g10 | g11 | g17 | g18) ;;
 	# g16 с ожиданиями и уборкой — до 115 мин при пределе job области 150:
 	# с другой долгой пробой обрыв по времени оставил бы платные остатки.
 	g16)
 		[[ ! " ${PROBES:-} " =~ " g10 "|" g18 " ]] || fail "probes: «g16» идёт до 115 мин при пределе job 150 — запускайте её отдельно от g10 и g18"
+		;;
+	# Второй прогон Г-17 без шага tag_names (заключение «Риска» 183, У5):
+	# слово меняет ход пробы g17 и без неё ничего не значит.
+	g17nonames)
+		[[ " ${PROBES:-} " == *" g17 "* ]] || fail "probes: «g17nonames» — слово пробы g17 (без шага tag_names), а её слова нет"
 		;;
 	# Проба цены: ВМ пробы g10 остаётся остановленной на сутки.
 	g20)
@@ -96,11 +101,21 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	shared | cmp7 | r3f1)
 		[ "${DISK_SMOKE:-}" = true ] || fail "probes: «$w» — проба области disk, а disk_smoke не включён"
 		;;
-	access | nodes | p45 | g13)
+	access | nodes | p45 | pgrepeat | g13)
 		[ -n "${cluster_kinds[pg]:-}" ] || fail "probes: «$w» — проба джоба dbaas-pg, а он не идёт (dbaas_smoke и pg в dbaas_services)"
 		# READY до 60 мин + access ~30 + g13 до 60 + удаление до 120 —
 		# вплотную к пределу job 300 мин; без access запас 40+ мин.
+		# Принятый повтор может оставить кластер не в READY: тогда изменение
+		# кластера (g13) записало бы чужое следствие (заключение «Риска» 185).
+		[[ "$w" != pgrepeat || " ${PROBES:-} " != *" g13 "* ]] || fail "probes: «pgrepeat» и «g13» в одном запуске не идут — принятый повтор создания может испортить прогон изменения кластера"
 		[[ "$w" != g13 || " ${PROBES:-} " != *" access "* ]] || fail "probes: «g13» и «access» в одном запуске не идут — худший ход job dbaas-pg вплотную к пределу 300 мин"
+		;;
+	# Г-12 — в job k8s-smoke: создание до 40 мин + группа до 30 + проверки
+	# job ~35 + проба до 90 + удаление до 30 — при пределе job 300 мин; под
+	# из образа (k8s_pod_chart, SNAT до 10 мин и под до 25) снял бы запас.
+	g12)
+		[ "${K8S_SMOKE:-}" = true ] || fail "probes: «g12» — проба джоба k8s-smoke, а он не идёт (k8s_smoke)"
+		[ "${K8S_POD_CHART:-}" != true ] || fail "probes: «g12» и k8s_pod_chart в одном запуске не идут — худший ход job k8s-smoke вплотную к пределу 300 мин"
 		;;
 	g14)
 		[ -n "${cluster_kinds[kafka]:-}" ] || fail "probes: «$w» — проба джоба dbaas-kafka, а он не идёт (dbaas_smoke и kafka в dbaas_services)"
@@ -108,7 +123,7 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	g15)
 		[[ " ${DBAAS_SERVICES:-} " == *" redis "* && "${DBAAS_SMOKE:-}" == true ]] || fail "probes: «$w» — проба джоба dbaas-redis, а он не идёт (dbaas_smoke и redis в dbaas_services)"
 		;;
-	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g13, g14, g15, g16, g18, g20" ;;
+	*) fail "probes: «$w» — не access, nodes, pgrepeat, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g12, g13, g14, g15, g16, g17, g17nonames, g18, g20" ;;
 	esac
 done
 

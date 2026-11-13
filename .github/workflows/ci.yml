@@ -254,6 +254,15 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 300 .github/scripts/dbaas_delete_test.sh
 
+      # Удаление кластера Kubernetes cloud-e2e (k8s-delete.sh): отказ —
+      # повтор при смене состояния, остаток — поимённо; след кластера в
+      # проекте (k8s-footprint.sh) — заключение «Риска» 189, У2, У3.
+      - name: k8s-delete.sh и k8s-footprint.sh на поддельном evo
+        if: runner.os == 'Linux'
+        run: |
+          timeout 120 .github/scripts/k8s_delete_test.sh
+          timeout 120 .github/scripts/k8s_footprint_test.sh
+
       # Уборка cleanup_only рядом с живыми запусками (e2e_live_runs.sh) на
       # заглушке gh и поддельном evo: ресурсы незавершённого запуска не
       # удаляются; список запусков не прочитан — не удаляется ничего.
@@ -266,6 +275,13 @@ jobs:
       - name: область ops cloud-live.sh на заглушках
         if: runner.os == 'Linux'
         run: timeout 300 .github/scripts/cloud_live_ops_test.sh
+
+      # Проба повтора создания пользователя и базы PostgreSQL
+      # (pg-repeat-probe.sh) на заглушке curl: запись — только когда оба
+      # есть, ответ платформы записан, шаг не падает, секретов в журнале нет.
+      - name: pg-repeat-probe.sh на заглушке
+        if: runner.os == 'Linux'
+        run: timeout 60 .github/scripts/pg_repeat_probe_test.sh
 
       # D61 вживую (dbaas-passing-delete.sh) на поддельном evo: отказ USAGE —
       # 1 из 1, удаление принято — провал, кластер уже готов — не покрыто.

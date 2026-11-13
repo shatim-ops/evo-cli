@@ -30,20 +30,12 @@ const listLagsUnknown = "a second of the name after a lost answer: whether the s
 
 // listLagsPending are the creates whose repeat, after a lost answer and a
 // list that lags, leaves more billable resources than one clean call —
-// each with what is known. Only shrinks. Closes by 1.10; the six that cost
-// a cluster close by 1.9, each in its line (release plan 1.9, «Повтор
-// платного создания после потерянного ответа спрашивает заново»).
+// each with what is known. Only shrinks. Closes by 1.10.
 var listLagsPending = map[string]string{
 	"ar_create":         listLagsUnknown,
 	"cert_import":       listLagsUnknown,
 	"dns_record_create": listLagsUnknown,
-	"k8s_add_nodepool":  "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
-	"k8s_create":        "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
-	"kafka_create":      "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
-	"lb_create":         "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
 	"pg_backup_create":  listLagsUnknown,
-	"pg_create":         "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
-	"redis_create":      "Closes by 1.9 (owner's decision 13.11, #1590, question 20): the price of a cluster — a blocker of rc.1; " + listLagsUnknown,
 	"snat_create":       listLagsUnknown,
 	"tg_create":         listLagsUnknown,
 	"vpc_create":        listLagsUnknown,

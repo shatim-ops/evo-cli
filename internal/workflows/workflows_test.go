@@ -59,6 +59,8 @@ type workflow struct {
 			Env   map[string]string `yaml:"env"`
 			// ContinueOnError: a step whose failure does not fail the job.
 			ContinueOnError bool `yaml:"continue-on-error"`
+			// TimeoutMinutes: the limit of the step alone (0 — none).
+			TimeoutMinutes int `yaml:"timeout-minutes"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
