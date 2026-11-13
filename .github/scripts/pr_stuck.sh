@@ -40,8 +40,19 @@ $mark" 2>"$err" ||
     echo "::warning title=pr-stuck::строка в PR $n не оставлена: $(head -c 300 "$err" | tr '\n\r' '  ')" >&2
 }
 
+# The request limit of the token is one for the repository and the hour,
+# and main-red and the review spend it too. A round that meets it says so
+# and ends green: a red round would have main-red open an issue with the
+# same spent token (risk note 178). Any other refusal of the list is red.
 prs=$(gh pr list --state open --base main --limit 100 --json number,isDraft,headRefOid,mergeable \
-  --jq '.[] | select(.isDraft | not) | "\(.number)\t\(.headRefOid)\t\(.mergeable)"')
+  --jq '.[] | select(.isDraft | not) | "\(.number)\t\(.headRefOid)\t\(.mergeable)"' 2>"$err") || {
+  if grep -qi 'rate limit' "$err"; then
+    echo "::warning title=pr-stuck::лимит запросов исчерпан — обход пропущен до следующего круга: $(head -c 300 "$err" | tr '\n\r' '  ')" >&2
+    exit 0
+  fi
+  cat "$err" >&2
+  exit 1
+}
 
 while IFS=$'\t' read -r n sha mergeable; do
   [ -n "$n" ] || continue
