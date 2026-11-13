@@ -88,6 +88,8 @@ var vmPowerStateRows = map[string]map[string]vmStateRow{
 	},
 }
 
+func init() { addStateRows(stateRowsOf, vmPowerStateRows) }
+
 // vmStatesOfTheProduct are the states the planner of a power tool decides
 // by: the action's own, the ones it waits out, the ones there is nothing
 // to change in, error, and one it does not know.

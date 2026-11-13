@@ -320,6 +320,10 @@ var backupDeleteStateRows = map[string]string{
 	"error_deleting": "confirmation_required",
 }
 
+func init() {
+	addStateRows(stateRowsOf, map[string]map[string]string{"backup_delete": backupDeleteStateRows})
+}
+
 func TestBackupDelete_EveryStateOfTheSpec(t *testing.T) {
 	for st, want := range backupDeleteStateRows {
 		w := &deleteWorld{state: st, exists: true}
