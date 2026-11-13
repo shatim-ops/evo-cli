@@ -106,7 +106,11 @@ run g16long 1 PROBES='g16 g18'
 has g16long "probes: «g16» идёт до 115 мин при пределе job 150 — запускайте её отдельно от g10 и g18"
 # Пробы изменения кластера — в job своего сервиса.
 fresh dbchange
-run dbchange 0 DBAAS_SMOKE=true DBAAS_SERVICES='pg kafka redis' PROBES='g13 g14 g15'
+run dbchange 0 DBAAS_SMOKE=true DBAAS_SERVICES='pg kafka redis' PROBES='g13 g14 g15 pgrepeat'
+# pgrepeat — проба job dbaas-pg: без него слово ничего не запускает.
+fresh pgrepeatnopg
+run pgrepeatnopg 1 DBAAS_SMOKE=true DBAAS_SERVICES=kafka PROBES='pgrepeat'
+has pgrepeatnopg "probes: «pgrepeat» — проба джоба dbaas-pg"
 # g13 и access в одном запуске — худший ход job dbaas-pg вплотную к его
 # пределу: удаление кластера оборвалось бы по времени.
 fresh g13access

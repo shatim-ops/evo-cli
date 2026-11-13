@@ -8,7 +8,7 @@
 #
 # Причины провала:
 #   - вход неверен: зона не имя, слово dbaas_services не pg, kafka, redis;
-#     слово probes не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1; access, nodes или
+#     слово probes не access, nodes, pgrepeat, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1; access, nodes или
 #     p45 без dbaas_smoke и pg (проба DBaaS не пойдёт);
 #   - зона джоба не найдена или закрыта (enabled=false);
 #   - в зоне джоба у проекта нет подсети или группы безопасности;
@@ -96,7 +96,7 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	shared | cmp7 | r3f1)
 		[ "${DISK_SMOKE:-}" = true ] || fail "probes: «$w» — проба области disk, а disk_smoke не включён"
 		;;
-	access | nodes | p45 | g13)
+	access | nodes | p45 | pgrepeat | g13)
 		[ -n "${cluster_kinds[pg]:-}" ] || fail "probes: «$w» — проба джоба dbaas-pg, а он не идёт (dbaas_smoke и pg в dbaas_services)"
 		# READY до 60 мин + access ~30 + g13 до 60 + удаление до 120 —
 		# вплотную к пределу job 300 мин; без access запас 40+ мин.
@@ -108,7 +108,7 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	g15)
 		[[ " ${DBAAS_SERVICES:-} " == *" redis "* && "${DBAAS_SMOKE:-}" == true ]] || fail "probes: «$w» — проба джоба dbaas-redis, а он не идёт (dbaas_smoke и redis в dbaas_services)"
 		;;
-	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g13, g14, g15, g16, g18, g20" ;;
+	*) fail "probes: «$w» — не access, nodes, pgrepeat, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g13, g14, g15, g16, g18, g20" ;;
 	esac
 done
 

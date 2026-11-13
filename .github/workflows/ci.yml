@@ -267,6 +267,13 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 300 .github/scripts/cloud_live_ops_test.sh
 
+      # Проба повтора создания пользователя и базы PostgreSQL
+      # (pg-repeat-probe.sh) на заглушке curl: запись — только когда оба
+      # есть, ответ платформы записан, шаг не падает, секретов в журнале нет.
+      - name: pg-repeat-probe.sh на заглушке
+        if: runner.os == 'Linux'
+        run: timeout 60 .github/scripts/pg_repeat_probe_test.sh
+
       # D61 вживую (dbaas-passing-delete.sh) на поддельном evo: отказ USAGE —
       # 1 из 1, удаление принято — провал, кластер уже готов — не покрыто.
       - name: dbaas-passing-delete.sh на поддельном evo
