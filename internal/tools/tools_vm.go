@@ -5,11 +5,13 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -864,6 +866,55 @@ func flavorFacts(f *provision.Flavor) map[string]any {
 		"cpu_share": f.Share, "gpu": gpu, "spot": f.Spot()}
 }
 
+// flavorCostsMore reports whether flavor to is more than from on any axis
+// the price is made of — vCPU, RAM, the guaranteed share of a vCPU, GPUs —
+// or leaves spot for a flavor the platform does not stop. The name takes
+// no part: two flavors of one size are not told apart by the alphabet
+// («Риск», conclusion 200, У1).
+func flavorCostsMore(from, to *provision.Flavor) bool {
+	return to.VCPUs > from.VCPUs || to.RAMGB > from.RAMGB || shareCompare(to, from) > 0 ||
+		flavorGPUs(to) > flavorGPUs(from) || (from.Spot() && !to.Spot())
+}
+
+// flavorHoldsLess reports whether flavor to is less than from on any axis
+// of what a workload runs on — vCPU, RAM, the guaranteed share of a vCPU,
+// GPUs — or goes to spot, which the platform may stop (conclusion 200, У1).
+func flavorHoldsLess(from, to *provision.Flavor) bool {
+	return to.VCPUs < from.VCPUs || to.RAMGB < from.RAMGB || shareCompare(to, from) < 0 ||
+		flavorGPUs(to) < flavorGPUs(from) || (!from.Spot() && to.Spot())
+}
+
+// shareCompare compares the guaranteed shares of a vCPU of a and b, as
+// the API writes them («1:10» — 10 % of a core): 0 when either is not
+// named or not of that form — an unknown share is no evidence either way.
+func shareCompare(a, b *provision.Flavor) int {
+	x, okA := cpuShare(a)
+	y, okB := cpuShare(b)
+	if !okA || !okB {
+		return 0
+	}
+	return cmp.Compare(x, y)
+}
+
+// cpuShare is the guaranteed share of a vCPU of f, «1:10» — 0.1.
+func cpuShare(f *provision.Flavor) (float64, bool) {
+	one, part, ok := strings.Cut(f.Share, ":")
+	a, errA := strconv.Atoi(one)
+	b, errB := strconv.Atoi(part)
+	if !ok || errA != nil || errB != nil || a <= 0 || b <= 0 {
+		return 0, false
+	}
+	return float64(a) / float64(b), true
+}
+
+// flavorGPUs is the number of GPUs the flavor names, 0 when none.
+func flavorGPUs(f *provision.Flavor) int {
+	if f.GPU == nil {
+		return 0
+	}
+	return *f.GPU
+}
+
 // resizeWill is the preview of a change of flavor: the VM as it was read,
 // both flavors, what goes to the request, the price, and what the change
 // may cost the VM's work.
@@ -875,12 +926,12 @@ func (s *Registry) resizeWill(eng *engine.Engine, vm *provision.VMDetail, target
 	}
 	// No price without a probe of the price of a VM after the change (Г-22
 	// has one run): the class and where the rates are (CLAUDE.md §6, axis
-	// 4). A bigger target is said to cost more in words; a smaller one is
-	// not called a saving (conclusion 150, В2).
+	// 4). A target more on any axis of the price is said to cost more in
+	// words; a smaller one is not called a saving (conclusion 150, В2;
+	// conclusion 200, У1).
 	note := i18n.T("price unknown, the resource is billable: the VM is billed for its flavor by the rates at tariff_url; the price after the change is not calculated",
 		"цена неизвестна, ресурс платный: ВМ тарифицируется по своей конфигурации, тарифы — по tariff_url; цена после смены не рассчитывается")
-	bigger := vm.Flavor == nil || provision.CompareFlavorSize(target, vm.Flavor) > 0
-	if bigger {
+	if vm.Flavor == nil || flavorCostsMore(vm.Flavor, target) {
 		note += i18n.T("; the new flavor may cost more", "; новая конфигурация может стоить дороже")
 	}
 	will["price_classes"] = []engine.ResourcePrice{{Resource: engine.ResourceVM, Class: engine.PricePaidUnpriced, Note: note}}
@@ -896,7 +947,7 @@ func (s *Registry) resizeWill(eng *engine.Engine, vm *provision.VMDetail, target
 		will["interrupts"] = i18n.T("whether the change restarts the guest OS of the running VM is not known: plan for a short downtime",
 			"перезапускает ли смена гостевую ОС работающей ВМ — неизвестно: заложите короткий простой")
 	}
-	if !bigger && folderDeploymentOn(eng.StateDir, vm.ID) {
+	if vm.Flavor != nil && flavorHoldsLess(vm.Flavor, target) && folderDeploymentOn(eng.StateDir, vm.ID) {
 		// A warning, not a refusal: a smaller flavor is undone the same
 		// way and touches no data (conclusion 150, В4).
 		will["folder_deployment"] = i18n.T("this folder's deployment is on this VM: a smaller flavor may not hold what it runs; verify shows whether it answers",
@@ -992,13 +1043,22 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 	// moved: the VM was seen in the change. A call that sent nothing found
 	// it there.
 	moved := !sent || vm.State == "updating"
+	// onTarget: a read after the call's own request found the VM settled
+	// on the target without updating seen. It is taken as the end only on
+	// a second such read («Риск», conclusion 200, remark 1): one read is
+	// not proof the change ran and not that it has not begun.
+	onTarget := false
 	last, timedOut, atLimit, err := s.waitVMDetail(ctx, eng, vm, limit, func(d *provision.VMDetail) (bool, error) {
 		switch {
 		case d.State == "updating":
 			moved = true
 			return false, nil
 		case vmStable[d.State] && onFlavor(d, target):
-			return true, nil
+			if moved || onTarget {
+				return true, nil
+			}
+			onTarget = true
+			return false, nil
 		case vmStable[d.State] && !moved:
 			// The change is taken and the VM has not entered it yet.
 			return false, nil
@@ -1017,9 +1077,13 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 		// (conclusion 150, У2).
 		s.followFlavor(eng, vm.ID, target)
 	}
+	settled := onTarget && vmStable[last.State] && onFlavor(last, target)
 	switch {
 	case err != nil:
 		return errAnswer(err, vmResizeFields(last)), true
+	case (atLimit || timedOut > 0) && settled:
+		// Seen once on the target at the limit: the end, as the platform
+		// shows it, not a change that never began.
 	case (atLimit || timedOut > 0) && !moved:
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("the platform accepted the change of flavor of VM %s, and its state has not changed in %d s: still %s", "платформа приняла смену конфигурации ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", vm.ID, elapsed, last.State),

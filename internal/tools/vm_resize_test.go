@@ -485,3 +485,52 @@ func TestVMResize_EveryStateOfTheTableHasAWorld(t *testing.T) {
 		}
 	}
 }
+
+// «May cost more» and «a smaller flavor may not hold» are decided by every
+// axis of the price and of the work — vCPU, RAM, the share of a vCPU,
+// GPUs, spot — and never by the name: the pairs of the probe of «Риск»
+// (conclusion 200, У1), where the order «vCPU, then RAM, then the name»
+// kept silent or decided by the alphabet.
+func TestVMResize_MoreAndLessAreByEveryAxisNotByTheName(t *testing.T) {
+	gpu0, gpu1 := 0, 1
+	f := func(name string, cpu, ram int, share string, gpu *int, spot bool) *provision.Flavor {
+		return &provision.Flavor{ID: name, Name: name, VCPUs: cpu, RAMGB: ram, Share: share, GPU: gpu, Type: &provision.FlavorType{IsSpot: spot}}
+	}
+	cases := []struct {
+		from, to   *provision.Flavor
+		more, less bool
+	}{
+		{f("spot-2-4", 2, 4, "1:1", &gpu0, true), f("std-2-4", 2, 4, "1:1", &gpu0, false), true, false},
+		{f("std-2-4", 2, 4, "1:1", &gpu0, false), f("spot-2-4", 2, 4, "1:1", &gpu0, true), false, true},
+		{f("std-2-4", 2, 4, "1:1", &gpu0, false), f("gpu-2-4", 2, 4, "1:1", &gpu1, false), true, false},
+		{f("std-2-4", 2, 4, "1:1", &gpu0, false), f("std-1-8", 1, 8, "1:1", &gpu0, false), true, true},
+		{f("std-2-4", 2, 4, "1:1", &gpu0, false), f("std-4-2", 4, 2, "1:1", &gpu0, false), true, true},
+		{f("std-2-4", 2, 4, "1:10", &gpu0, false), f("dedicated-2-4", 2, 4, "1:1", &gpu0, false), true, false},
+		{f("dedicated-2-4", 2, 4, "1:1", &gpu0, false), f("burst-2-4", 2, 4, "1:10", &gpu0, false), false, true},
+		// One size, other names: the alphabet decides nothing.
+		{f("a-2-4", 2, 4, "1:1", &gpu0, false), f("z-2-4", 2, 4, "1:1", &gpu0, false), false, false},
+		{f("z-2-4", 2, 4, "1:1", &gpu0, false), f("a-2-4", 2, 4, "1:1", &gpu0, false), false, false},
+		// A share not named on one side is no evidence either way.
+		{f("std-2-4", 2, 4, "", &gpu0, false), f("x-2-4", 2, 4, "1:10", nil, false), false, false},
+		{f("std-2-4", 2, 4, "1:1", &gpu0, false), f("std-4-8", 4, 8, "1:1", &gpu0, false), true, false},
+	}
+	for _, c := range cases {
+		if got := flavorCostsMore(c.from, c.to); got != c.more {
+			t.Errorf("%s → %s: costs more = %v, want %v", c.from.Name, c.to.Name, got, c.more)
+		}
+		if got := flavorHoldsLess(c.from, c.to); got != c.less {
+			t.Errorf("%s → %s: holds less = %v, want %v", c.from.Name, c.to.Name, got, c.less)
+		}
+	}
+	// In the preview: fewer GB of RAM under this folder's deployment is
+	// warned of though the vCPUs grow, and the price says «more».
+	r, w, dir := vmResizeWorld(t, "running")
+	w.faultCloud.flavors = append(w.faultCloud.flavors, &provision.Flavor{ID: "00000000-0000-4000-8000-0000000000c5", Name: "cpu-4-0", VCPUs: 4, RAMGB: 0,
+		Share: "1:1", GPU: &gpu0, Type: &provision.FlavorType{}, Zones: []provision.FlavorZone{{ID: faultZone, Name: "ru.AZ-1", Enabled: true}}})
+	recordOn(t, dir, w.id)
+	m, text, _ := callNamed(t, r, "vm_resize", map[string]any{"name": "web", "flavor": "cpu-4-0"})
+	p, _ := m["preview"].(map[string]any)
+	if p["folder_deployment"] == nil || !strings.Contains(text, "may cost more") {
+		t.Errorf("4 vCPU and less RAM under the deployment: %s", text)
+	}
+}
