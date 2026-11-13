@@ -195,10 +195,17 @@ trap 'rm -f "$body" "$err"' EXIT
     # named as such, not taken for a log without failed tests. The log of a
     # job just ended may not be served yet: the read is tried again, and
     # why it was refused goes to this job's log (gh's error, no log text).
+    # A job log colours its lines: gh since 2.9x refuses an answer with
+    # terminal escapes unless told --allow-escape-sequences, and every read
+    # of a coloured log failed (run 43391080735, 13.11: the issue named no
+    # test). An older gh does not know the flag: then it reads without it.
+    # The escapes are cut before anything of the log is used.
     log='' got=0
     for try in $(seq 1 "$LOG_TRIES"); do
-      if log=$(gh api "repos/$GH_REPO/actions/jobs/$id/logs" 2>"$err"); then
+      if log=$(gh api --allow-escape-sequences "repos/$GH_REPO/actions/jobs/$id/logs" 2>"$err") ||
+        { grep -q 'unknown flag' "$err" && log=$(gh api "repos/$GH_REPO/actions/jobs/$id/logs" 2>"$err"); }; then
         got=1
+        log=$(sed -E $'s/\x1b\\[[0-9;?]*[A-Za-z]//g; s/\x1b//g' <<<"$log")
         break
       fi
       if [ "$try" = "$LOG_TRIES" ] || [ "$SECONDS" -ge "$LOG_WAIT" ]; then
