@@ -27,8 +27,8 @@ var (
 	releasedVersion = regexp.MustCompile(`(?m)^## \[(\d+)\.(\d+)\.\d+\]`)
 )
 
-// missList is a list of misses: a map of a test whose doc says it only
-// shrinks.
+// missList is a list of misses: a map of a test, or a count kept as a
+// number, whose doc says it only shrinks.
 type missList struct {
 	where, name string
 	deadline    [2]int // of the list; 0.0 — none
@@ -116,7 +116,7 @@ func missLists(t *testing.T, root string) []missList {
 		rel, _ := filepath.Rel(root, path)
 		for _, decl := range f.Decls {
 			g, ok := decl.(*ast.GenDecl)
-			if !ok || g.Tok != token.VAR {
+			if !ok || (g.Tok != token.VAR && g.Tok != token.CONST) {
 				continue
 			}
 			for _, sp := range g.Specs {
@@ -126,6 +126,17 @@ func missLists(t *testing.T, root string) []missList {
 					doc = g.Doc
 				}
 				if doc == nil || !isMissList(doc.Text()) || len(vs.Values) != 1 {
+					continue
+				}
+				// A count of misses kept as a number (createsUndeclared):
+				// each of the count is a line.
+				if lit, ok := vs.Values[0].(*ast.BasicLit); ok && lit.Kind == token.INT {
+					n, err := strconv.Atoi(lit.Value)
+					if err != nil {
+						return err
+					}
+					rel, _ := filepath.Rel(root, path)
+					out = append(out, missList{where: filepath.ToSlash(rel), name: vs.Names[0].Name, deadline: parseDeadline(doc.Text()), lines: n, byLine: map[[2]int]int{}})
 					continue
 				}
 				cl, ok := vs.Values[0].(*ast.CompositeLit)
@@ -163,7 +174,7 @@ func missLists(t *testing.T, root string) []missList {
 // isMissList: the doc comment says the list «only shrinks», on one line or
 // wrapped (bareRefs wrapped it and was not seen, 1.6).
 func isMissList(doc string) bool {
-	return strings.Contains(strings.Join(strings.Fields(doc), " "), "only shrinks")
+	return strings.Contains(strings.ToLower(strings.Join(strings.Fields(doc), " ")), "only shrinks")
 }
 
 func parseDeadline(s string) [2]int {
@@ -224,5 +235,71 @@ func TestMisses_DeadlineParts(t *testing.T) {
 		if versionReached(c.released, c.v) != c.want {
 			t.Errorf("versionReached(%v, %v) != %v", c.released, c.v, c.want)
 		}
+	}
+}
+
+// A list the sentinel does not see has no deadline anyone checks: «Only
+// shrinks» at the head of a sentence was not «only shrinks», and a doc
+// comment that stood over a constant written between it and its list
+// belonged to the constant (listLagsPending, untrustedFieldPending,
+// stateWorldsPendingShipped: 6 lists and 47 lines were out of the count on
+// 13.11), and so did the doc of a count kept as a number
+// (createsUndeclared). Every comment of a test that says a list only
+// shrinks and names its deadline is the doc of a list the sentinel counts.
+func TestMisses_EveryListThatOnlyShrinksIsSeen(t *testing.T) {
+	for _, doc := range []string{"Only shrinks. Closes by 1.10.", "It only\nshrinks.", "The list ONLY SHRINKS"} {
+		if !isMissList(doc) {
+			t.Errorf("isMissList does not see %q", doc)
+		}
+	}
+	root := filepath.Join("..", "..")
+	seen := map[string]bool{}
+	for _, l := range missLists(t, root) {
+		seen[l.where+" "+l.name] = true
+	}
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(filepath.Join(root, "internal"), func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		rel = filepath.ToSlash(rel)
+		if rel == "internal/testrules/misses_test.go" {
+			return nil // the sentinel's own words
+		}
+		docOf := map[*ast.CommentGroup]string{}
+		for _, decl := range f.Decls {
+			g, ok := decl.(*ast.GenDecl)
+			if !ok || (g.Tok != token.VAR && g.Tok != token.CONST) {
+				continue
+			}
+			for _, sp := range g.Specs {
+				vs := sp.(*ast.ValueSpec)
+				doc := vs.Doc
+				if doc == nil {
+					doc = g.Doc
+				}
+				if doc != nil {
+					docOf[doc] = vs.Names[0].Name
+				}
+			}
+		}
+		for _, c := range f.Comments {
+			if !isMissList(c.Text()) || parseDeadline(c.Text()) == [2]int{} {
+				continue
+			}
+			if name, ok := docOf[c]; !ok || !seen[rel+" "+name] {
+				t.Errorf("%s: the comment says a list only shrinks and closes by a version, and it is the doc of no list the sentinel counts — put it right over its map or its count",
+					fset.Position(c.Pos()))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

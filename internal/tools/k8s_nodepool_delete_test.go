@@ -212,3 +212,32 @@ func TestK8sNodePoolDelete_TheAnswerToTheDeleteIsLost(t *testing.T) {
 		}
 	}
 }
+
+// The only running pool of a cluster whose other pools are in error,
+// stopped or on their way: the preview said nothing, as if the cluster
+// kept working nodes (FB19I-10). A row per status of the specification
+// for the one other pool: running — no warning; going — the last pool;
+// any other — that no other pool is running, with its status.
+func TestK8sNodePoolDelete_WhatTheOtherPoolsAreIn(t *testing.T) {
+	for st := range poolStateRows["k8s_nodepool_scale"] {
+		w := &poolWorld{status: poolRunning, others: []string{st}}
+		w.setCount(2)
+		m, text, _ := poolDelete(t, w, false)
+		warn, _ := m["warning"].(string)
+		will, _ := m["preview"].(map[string]any)
+		switch {
+		case st == poolRunning:
+			if warn != "" {
+				t.Errorf("another pool running: want no warning: %s", text)
+			}
+		case poolGoing[st]:
+			if will["last_pool"] != true || !strings.Contains(warn, "no node pool") {
+				t.Errorf("the other pool %s: want the last pool: %s", st, text)
+			}
+		default:
+			if will["last_pool"] != false || !strings.Contains(warn, "no other node pool of the cluster is running") || !strings.Contains(warn, st) {
+				t.Errorf("the other pool %s: want the warning that no other pool is running, naming %s: %s", st, st, text)
+			}
+		}
+	}
+}

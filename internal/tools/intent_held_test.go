@@ -112,27 +112,28 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 			t.Errorf("the note of a held record: %v", notes)
 		}
 	})
-	t.Run("a new consented call ends the operation", func(t *testing.T) {
+	// A repeat with consent on the operation that goes on is a step of
+	// it: it opens no record of its own, so the first record — and the
+	// start the limit of the repeats counts from — stays (the interim
+	// delta audit of 1.9, FB19I-34; «Риск», conclusion 177, У7).
+	consented := func(r *Registry, answer string) {
+		tl, _ := r.Lookup("vm_start")
+		r.intended(tl, func(context.Context, map[string]any) (string, bool) { return answer, false })(
+			context.Background(), map[string]any{"vm_id": resMine, "confirmed": true})
+	}
+	t.Run("a repeat with consent ends the operation", func(t *testing.T) {
 		r, dir, _ := start(t)
-		end, err := r.beginIntent(context.Background(), "vm_start", map[string]any{"vm_id": resMine, "confirmed": true})
-		if err != nil {
-			t.Fatal(err)
-		}
-		end(`{"status":"started"}`)
+		consented(r, `{"status":"started"}`)
 		if left := intent.Pending(dir); len(left) != 0 {
 			t.Errorf("left %+v", left)
 		}
 	})
-	t.Run("a new consented call that goes on is the one held", func(t *testing.T) {
+	t.Run("a repeat with consent that goes on keeps the first record", func(t *testing.T) {
 		r, dir, first := start(t)
-		end, err := r.beginIntent(context.Background(), "vm_start", map[string]any{"vm_id": resMine, "confirmed": true})
-		if err != nil {
-			t.Fatal(err)
-		}
-		end(goesOn)
+		consented(r, goesOn)
 		left := intent.Pending(dir)
-		if len(left) != 1 || left[0].ID == first.ID || !left[0].Held {
-			t.Errorf("left %+v, want the record of the new call alone", left)
+		if len(left) != 1 || left[0].ID != first.ID || !left[0].Held || !left[0].StartedAt.Equal(first.StartedAt) {
+			t.Errorf("left %+v, want the first record alone, with its start: %+v", left, first)
 		}
 	})
 }

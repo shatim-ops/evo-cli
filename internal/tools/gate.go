@@ -146,12 +146,27 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 			text = r.questionNamesTheCut(ctx, t.Name, args, text)
 			return r.namedKept(ctx, t.Name, args, text), isErr
 		}
+		// The resource the call names cannot be read: nothing is sent,
+		// and no record is written by the spelling — a cut call of the
+		// same resource spelled another way would not be found («Риск»,
+		// conclusion 177, В1).
+		if _, _, err := r.resourceOf(ctx, t.Name, args); err != nil {
+			return errResult(err), true
+		}
 		if text, asked := r.askAgainAfterACut(ctx, t.Name, args); asked {
 			return text, true
 		}
-		end, err := r.beginIntent(ctx, t.Name, args)
-		if err != nil {
-			return errResult(err), true
+		// The operation of this call goes on under its held record: a
+		// repeat with consent is a step of it, not a new call — a new
+		// record would take the place of the first and move the start
+		// the limit of the repeats counts from («Риск», conclusion 177,
+		// У7).
+		end := func(string) {}
+		if !r.goesOn(ctx, t.Name, args) {
+			var err error
+			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
+				return errResult(err), true
+			}
 		}
 		text, isErr := next(ctx, args)
 		end(text)
