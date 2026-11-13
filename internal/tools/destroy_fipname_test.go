@@ -69,6 +69,7 @@ func TestDestroyTargeted_FIPByExactBootName(t *testing.T) {
 					Timings:  engine.Timings{FIPRetryInterval: time.Millisecond, DestroyPollInterval: time.Millisecond, DestroyPollTimeout: time.Second},
 				}, nil
 			})
+			r.SetStateDir(t.TempDir())
 			text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"name": "web", "confirmed": true})
 			if isErr {
 				t.Fatalf("destroy: %s", text)

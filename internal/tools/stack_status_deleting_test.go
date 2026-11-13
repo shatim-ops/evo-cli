@@ -30,7 +30,7 @@ func TestStackStatus_DeletingJobSaysWhatIsLeftAndTheNextStep(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stackHome(t)
-			r := newTestServer()
+			r := newTestServer(t)
 			j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 			key := j.Steps[0].Key
 			j.Steps[0].Status = "done"
@@ -62,7 +62,7 @@ func TestStackStatus_DeletingJobSaysWhatIsLeftAndTheNextStep(t *testing.T) {
 // a job the cloud is still deleting. Fable delta audit 1.8.0, FB180-16.
 func TestStackDestroy_PreviewOfDeletingJobDoesNotSayDestroyed(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	key := j.Steps[0].Key
 	j.Steps[0].Status = "done"

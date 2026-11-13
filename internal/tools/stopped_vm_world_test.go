@@ -116,7 +116,9 @@ func stoppedVMWorld(t *testing.T, vmState string, unreadable bool) (*Registry, f
 			Timings:   faultToolsTimings(),
 		}
 	}
-	return New(func(map[string]any) (*engine.Engine, error) { return mk(), nil }), mk, cloud, seen
+	r := New(func(map[string]any) (*engine.Engine, error) { return mk(), nil })
+	r.SetStateDir(dir)
+	return r, mk, cloud, seen
 }
 
 // stoppedVMCalls are the three ways to a deployment: each returns the

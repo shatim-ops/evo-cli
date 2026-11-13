@@ -55,7 +55,7 @@ func goneButDeleting(m map[string]any) string {
 // (status destroyed with deleting): the fix changes it with this test.
 func TestStackDestroy_DestroyedOnlyWhenNothingIsDeleting(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	key := j.Steps[0].Key
 	j.Steps[0].Status = "done"

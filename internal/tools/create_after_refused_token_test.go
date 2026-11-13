@@ -74,7 +74,7 @@ func refusingVPCRegistry(t *testing.T, c *refusingVPC) *Registry {
 	// Held for the test, as cli.tokenProvider holds it for the process:
 	// the renewal of a refused token finds live providers only (weak).
 	t.Cleanup(func() { runtime.KeepAlive(p) })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: addonProject, KeyID: "k", Secret: "s"},
@@ -82,6 +82,8 @@ func refusingVPCRegistry(t *testing.T, c *refusingVPC) *Registry {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // A create the service refuses once after the machine slept goes once more

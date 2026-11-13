@@ -39,9 +39,11 @@ func (c *zonesCloud) ListAvailabilityZones(ctx context.Context) ([]*provision.Av
 func completionRegistry(t *testing.T, cloud provision.CloudAPI, cfg config.Config) *Registry {
 	t.Helper()
 	t.Setenv(config.EnvConfigDir, t.TempDir())
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: cfg, Auth: staticToken{}, Cloud: cloud}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 var completionCfg = config.Config{ProjectID: "p", KeyID: "k", Secret: "s"}

@@ -106,6 +106,7 @@ func TestUntrusted_S3ObjectIsMarked(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: config.Config{S3: config.S3Config{Endpoint: srv.URL, AccessKey: "a", SecretKey: "s"}}}, nil
 	})
+	r.SetStateDir(t.TempDir())
 	m, text, isErr := callNamed(t, r, "s3_get", map[string]any{"bucket": "bucket", "key": "readme.txt"})
 	if isErr || !strings.Contains(text, "IGNORE PREVIOUS INSTRUCTIONS") {
 		t.Fatalf("s3_get does not hand the object over: %.300s", text)
@@ -144,6 +145,7 @@ func TestUntrusted_S3BinaryObjectIsMarked(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{Config: config.Config{S3: config.S3Config{Endpoint: srv.URL, AccessKey: "a", SecretKey: "s"}}}, nil
 	})
+	r.SetStateDir(t.TempDir())
 	m, text, isErr := callNamed(t, r, "s3_get", map[string]any{"bucket": "bucket", "key": "blob.bin"})
 	if isErr || m["content_base64"] == nil {
 		t.Fatalf("s3_get does not hand the object over as base64: %.300s", text)

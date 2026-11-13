@@ -37,7 +37,7 @@ func deadIAMRegistry(t *testing.T, f *apiFake) (*Registry, *atomic.Int32) {
 	t.Cleanup(func() { httpretry.DefaultBase = old })
 	n := &atomic.Int32{}
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:   config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s"},
@@ -46,7 +46,9 @@ func deadIAMRegistry(t *testing.T, f *apiFake) (*Registry, *atomic.Int32) {
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
 			StateDir: dir,
 		}, nil
-	}), n
+	})
+	r.SetStateDir(dir)
+	return r, n
 }
 
 // REL-9: deploy_plan с disk_gb < 0 — USAGE до токена: раньше сначала шёл

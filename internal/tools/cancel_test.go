@@ -124,6 +124,7 @@ func cancelRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) 
 			SSHPubKey: "ssh-ed25519 AAAA test",
 		}, nil
 	})
+	r.SetStateDir(dir)
 	return r, dir
 }
 
@@ -215,7 +216,7 @@ func TestCancel_DeployApplyAfterCreateRecordsVMAndKeepsPlan(t *testing.T) {
 // не считается, следующий crank берёт ВМ, а не создаёт вторую.
 func TestCancel_StackStepInterruptedAdoptsOnNextCrank(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"i","vm":{"name":"v"}}`)
 	ctx, cancel := context.WithCancel(context.Background())
 	calls := 0
@@ -244,7 +245,7 @@ func TestCancel_StackStepInterruptedAdoptsOnNextCrank(t *testing.T) {
 // следующий crank находит кластер через pg_list и не создаёт второй.
 func TestCancel_StackStepInterruptedReconcilesByName(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"i","postgres":{"name":"p"}}`)
 	ctx, cancel := context.WithCancel(context.Background())
 	creates := 0
@@ -346,6 +347,7 @@ func testProvisionErrorState(t *testing.T, status string) {
 			Timings:   engine.Timings{VMPollInterval: time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true})
 	if !isErr || !strings.Contains(text, "vm-err") || !strings.Contains(text, "fip-boot") || !strings.Contains(text, "destroy") {
 		t.Fatalf("answer must name the VM, its FIP and destroy: %s", text)

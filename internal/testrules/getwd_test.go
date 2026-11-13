@@ -24,14 +24,10 @@ import (
 // places. internal/tools does not call os.Getwd.
 
 // getwdInTools are the functions of internal/tools that call os.Getwd
-// today, "file: function" → what they take from it. They move to one
-// function of the path from StateDir. Only shrinks. Closes by 1.9.
-var getwdInTools = map[string]string{
-	"internal/tools/intent.go: cutCalls":    "the directory of the intent records",
-	"internal/tools/intent.go: settleHeld":  "the directory of the intent records",
-	"internal/tools/intent.go: namedKept":   "the directory of the intent records",
-	"internal/tools/intent.go: withPending": "the directory of the intent records",
-}
+// today, "file: function" → what they take from it. None: the directory
+// of a registry is declared at its build (Registry.SetStateDir). Only
+// shrinks.
+var getwdInTools = map[string]string{}
 
 func TestTools_DoNotAskTheProcessForItsDirectory(t *testing.T) {
 	root := filepath.Join("..", "..")

@@ -145,7 +145,7 @@ func TestProvenance_DestroyWhenTheVMsTimeIsUnread(t *testing.T) {
 func provenanceRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) {
 	t.Helper()
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:   config.Config{ProjectID: "00000000-0000-0000-0000-000000000001", KeyID: "k", Secret: "s"},
@@ -154,7 +154,9 @@ func provenanceRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, stri
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
 			StateDir: dir,
 		}, nil
-	}), dir
+	})
+	r.SetStateDir(dir)
+	return r, dir
 }
 
 // fipCloud has one available floating IP of any id asked for.
@@ -192,7 +194,7 @@ func TestProvenance_ReleaseFloatingIP(t *testing.T) {
 // A delete of deletePlan — a kind the state does not record — says
 // unknown, and why.
 func TestProvenance_DeletePlanIsUnknown(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	id := "00000000-0000-4000-8000-0000000000e1"
 	p := r.deletePlan("pg_delete", "pg_delete deletes %s.", "pg_delete удаляет %s.", id,
 		func() (map[string]any, error) {

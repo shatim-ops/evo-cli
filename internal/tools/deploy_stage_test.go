@@ -233,6 +233,7 @@ func stageRegistry(t *testing.T, vm *stageVM, budget time.Duration, tune ...func
 		}
 		return eng, nil
 	})
+	r.SetStateDir(dir)
 	r.SetCallBudget(budget)
 	return r
 }

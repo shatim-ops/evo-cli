@@ -31,7 +31,7 @@ func TestGateStack_AnswerBeforeTheQuestionIsTheAnswerWithConsent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r := projectServer("p-B")
+	r := projectServer(t, "p-B")
 	gone.ProjectID = "p-B"
 	if err := gone.Save(); err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestGateStack_AnswerBeforeTheQuestionIsTheAnswerWithConsent(t *testing.T) {
 // done (release plan 1.9, «Повтор у выпущенных инструментов», п. 4).
 func TestStackApply_JobDoneAsksAndSaysItCreatesNothing(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"g","secrets":[{"path":"a","value":"b"}]}`)
 	j.Steps[0].Status, j.Status = "done", "done"
 	j.Outputs[j.Steps[0].Key] = "ok"

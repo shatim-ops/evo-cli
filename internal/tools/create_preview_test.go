@@ -31,6 +31,7 @@ func TestProvisionPreview_ResolvedFromConfig(t *testing.T) {
 		}
 		return &engine.Engine{Config: cfg}, nil
 	})
+	r.SetStateDir(t.TempDir())
 	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "disk_size": float64(30), "no_public_ip": true})
 	if !isErr || engines != 1 {
 		t.Fatalf("isErr %v, engines %d, want true and 1", isErr, engines)
@@ -66,6 +67,7 @@ func TestProvisionPreview_ResolvedFromConfig(t *testing.T) {
 // and the image: TestProvision_NoZoneOrImageRefusedBeforePreview.
 func TestProvisionPreview_NoProjectRefused(t *testing.T) {
 	r := New(func(map[string]any) (*engine.Engine, error) { return &engine.Engine{}, nil })
+	r.SetStateDir(t.TempDir())
 	for _, confirmed := range []bool{false, true} {
 		text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": confirmed})
 		var resp map[string]any

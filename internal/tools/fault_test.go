@@ -109,6 +109,7 @@ func faultToolsRegistryOver(t *testing.T, cloud provision.CloudAPI) (*Registry, 
 			Timings:   faultToolsTimings(),
 		}, nil
 	})
+	r.SetStateDir(dir)
 	return r, dir
 }
 
@@ -273,6 +274,7 @@ func TestFault_Stack_PartialDoesNotCreateSecondVM(t *testing.T) {
 func TestFault_Stack_TakenByNameErrorAndDeleting(t *testing.T) {
 	faultToolsIsolate(t)
 	r := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	r.SetStateDir(t.TempDir())
 	for _, status := range []string{"ERROR", "DELETING", "error_creating"} {
 		r.handlers["vm_list"] = func(context.Context, map[string]any) (string, bool) {
 			return toJSON(map[string]any{"vms": []any{

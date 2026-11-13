@@ -29,6 +29,8 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
 // EngineFactory builds an *engine.Engine from a set of config overrides.
@@ -115,6 +117,9 @@ type Registry struct {
 	// pendingNoted: an answer of this process over MCP carried the intents
 	// earlier runs left (withPending) — the first JSON object; the CLI says
 	// them on stderr.
+	// stateDirOf: SetStateDir.
+	stateDirOf string
+
 	pendingMu    sync.Mutex
 	pendingNoted bool
 }
@@ -221,7 +226,46 @@ func callEndCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 // callRecords are the records the call itself opened (beginIntent), by
 // id: its own answer says how it ended and does not name them as what an
 // earlier run left (notePending).
-type callRecords struct{ ids []string }
+//
+// It also holds what the call has read of the directory of the records:
+// the layers of one call (the question after a cut call, the held record,
+// the records of another key) read it once and again only after the call
+// itself wrote there — not once each.
+// The holder is of one call and is not guarded: the layers of a call run
+// one after another, in its goroutine.
+type callRecords struct {
+	ids []string
+
+	root    string
+	pending []intent.Intent
+	read    bool
+}
+
+// pendingIn are the records of root as the call of ctx sees them: read
+// once for the call, and again after forgetPending. A call with no holder
+// (a layer called on its own) reads the directory.
+func pendingIn(ctx context.Context, root string) []intent.Intent {
+	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
+	if !ok {
+		return readPending(intent.Dir(root))
+	}
+	if !c.read || c.root != root {
+		c.root, c.pending, c.read = root, readPending(intent.Dir(root)), true
+	}
+	return c.pending
+}
+
+// readPending reads the records of a directory (tests count the reads of
+// a call).
+var readPending = intent.Pending
+
+// forgetPending makes the next pendingIn of the call read the directory:
+// the call wrote or closed a record there.
+func forgetPending(ctx context.Context) {
+	if c, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok {
+		c.read = false
+	}
+}
 
 type callRecordsKey struct{}
 
@@ -644,6 +688,32 @@ func AlwaysListed(t Tool) bool { return alwaysListed[t.Name] != "" }
 // SetServed tells the registry which tools the server serves (nil: all):
 // the cards of agent_skill mark the rest.
 func (r *Registry) SetServed(served func(name string) bool) { r.served = served }
+
+// SetStateDir declares the directory this registry works in: the one its
+// engines are built with (engine.StateDir). Every registry built with an
+// engine factory declares it — the records of the calls (intent) are
+// written and read there and nowhere else, whatever directory the process
+// stands in and whether an engine can be built. dir comes from the build
+// of evo, never from an argument of a tool.
+func (r *Registry) SetStateDir(dir string) { r.stateDirOf = dir }
+
+// stateDir is the directory declared by SetStateDir; false when none is.
+func (r *Registry) stateDir() (string, bool) { return r.stateDirOf, r.stateDirOf != "" }
+
+// stateDirUndeclared reports the defect of a build: a registry that can
+// reach the cloud and was told no directory for the records of its calls.
+func (r *Registry) stateDirUndeclared() bool { return r.newEngine != nil && r.stateDirOf == "" }
+
+// errNoStateDir refuses a call of a registry of stateDirUndeclared. The
+// reason is the one evo has for «it cannot work as it was set up»; the
+// words say whose defect it is — nothing the person sets repairs it.
+func errNoStateDir() error {
+	return clierrors.New(clierrors.CodeConfigInvalid,
+		i18n.T("evo was built without the directory of its call records: this is a defect of evo, not of your configuration",
+			"evo собран без каталога записей вызовов: это дефект evo, а не вашей конфигурации"),
+		i18n.T("Nothing was sent to the cloud. Report it: github.com/shatim-ops/evo-cli/issues.",
+			"В облако ничего не отправлено. Сообщите об этом: github.com/shatim-ops/evo-cli/issues."))
+}
 
 // HasSideEffects reports whether a tool that takes no consent is not a
 // read (sideEffectTools).

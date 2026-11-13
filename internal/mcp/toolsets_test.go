@@ -14,7 +14,7 @@ import (
 // tools/call инструмента вне них — ошибка инструмента, а не его вызов;
 // «all» и пустой список — все инструменты; неизвестная группа — ошибка.
 func TestSetToolsets(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	all := len(s.ListTools())
 
 	if err := s.SetToolsets([]string{"deploy", " VM ", "vpc"}); err != nil {

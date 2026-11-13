@@ -288,6 +288,12 @@ func unknownSubcommand(cmd *cobra.Command, args []string) error {
 	return stderrors.New(msg)
 }
 
+// stateDir is the directory evo works in — the working directory. The one
+// place it is decided: the engines are built with it (engine.StateDir) and
+// the registries are told it (tools.Registry.SetStateDir), so the state of
+// a deployment and the records of the calls are of the same directory.
+func stateDir() (string, error) { return os.Getwd() }
+
 func newRootCmd() *cobra.Command {
 	// One registry for the run: the trees, the completions and the
 	// command that runs read the same one (registryOf).
@@ -332,7 +338,7 @@ func newRootCmd() *cobra.Command {
 			// What a cut call of an earlier run may have left in the cloud
 			// (release plan 1.8, (и)): every command of this directory says
 			// it until it is settled; over MCP the first answer carries it.
-			if cwd, err := os.Getwd(); err == nil {
+			if cwd, err := stateDir(); err == nil {
 				printWarnings(output.New(flagJSON, flagNoColor), reg.PendingNotes(cwd))
 			}
 			return nil
@@ -416,7 +422,7 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 		printWarnings(printer, cfg.Warnings)
 	}
 
-	cwd, err := os.Getwd()
+	cwd, err := stateDir()
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("get working directory: %w", "текущий каталог: %w"), err)
 	}

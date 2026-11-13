@@ -56,7 +56,7 @@ func imageRegistry(t *testing.T, cloud provision.CloudAPI) *Registry {
 	t.Helper()
 	dir := t.TempDir()
 	compose := writeTestCompose(t)
-	return New(func(o map[string]any) (*engine.Engine, error) {
+	r := New(func(o map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		cfg := config.Config{ProjectID: "p", Region: "z", ImageID: "img-1", KeyID: "k", Secret: "s", ComposeFile: compose}
 		if v, ok := o["Image"].(string); ok {
@@ -71,6 +71,8 @@ func imageRegistry(t *testing.T, cloud provision.CloudAPI) *Registry {
 			StateDir: dir, SSHKeyPEM: []byte("key"), SSHPubKey: "ssh-ed25519 AAAA test",
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 func TestProvision_ImageNotInProjectRefusedBeforeAnyMutation(t *testing.T) {
@@ -163,6 +165,7 @@ func TestProvision_NoSecurityGroupRefused(t *testing.T) {
 			Timings: engine.Timings{VMPollInterval: time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	text, isErr := r.handlers["provision"](context.Background(), map[string]any{
 		"name": "web", "confirmed": true, "no_public_ip": true, "ports": []any{"80", "53/udp"}})
 	if !isErr || !strings.Contains(text, "CONFIG_INVALID") || cloud.creates != 0 {

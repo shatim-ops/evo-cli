@@ -113,7 +113,7 @@ func addonRegistry(t *testing.T, f *fakeMK8s) *Registry {
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = f
 	t.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: addonProject, KeyID: "k", Secret: "s"},
@@ -121,6 +121,8 @@ func addonRegistry(t *testing.T, f *fakeMK8s) *Registry {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 func TestK8sAddons_SearchAndFilters(t *testing.T) {
@@ -394,6 +396,7 @@ func TestK8sAddAddon_BadArguments(t *testing.T) {
 
 func TestK8sAddonTools_GroupAndMutating(t *testing.T) {
 	r := New(nilFactory)
+	r.SetStateDir(t.TempDir())
 	for name, mutating := range map[string]bool{"k8s_addons": false, "k8s_addon_versions": false, "k8s_add_addon": true} {
 		tl, ok := r.Lookup(name)
 		if !ok || tl.Group != "k8s" || tl.Mutating != mutating {

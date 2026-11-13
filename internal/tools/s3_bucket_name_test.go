@@ -24,6 +24,7 @@ func TestS3_BucketNameRefusedInCLILanguage(t *testing.T) {
 	// An engine with no S3 keys: a call that passes the check stops at
 	// the client's CONFIG_INVALID, before the network.
 	r := New(func(map[string]any) (*engine.Engine, error) { return &engine.Engine{}, nil })
+	r.SetStateDir(t.TempDir())
 	tools := 0
 	for _, tl := range r.Tools() {
 		props, _ := tl.InputSchema["properties"].(map[string]any)

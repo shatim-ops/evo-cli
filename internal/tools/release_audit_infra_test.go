@@ -211,7 +211,7 @@ func raRegistry(tb testing.TB, api http.RoundTripper, cloud provision.CloudAPI, 
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = api
 	tb.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		c := config.Config{ProjectID: raProject, KeyID: "k", Secret: "s"}
 		if cfg != nil {
@@ -224,6 +224,8 @@ func raRegistry(tb testing.TB, api http.RoundTripper, cloud provision.CloudAPI, 
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(tb.TempDir())
+	return r
 }
 
 func wantReason(t *testing.T, label string, m map[string]any, text, reason string) {
@@ -437,7 +439,7 @@ func TestLbCreate_ZoneFromTargetGroup(t *testing.T) {
 // порт ≤ 1024 больше не включает privileged (root) молча; превью
 // показывает все параметры и явную строку про root.
 func TestCaDeploy_ValidatesAndPreviewsEverything(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	for _, c := range []map[string]any{
 		{"name": "My_App"},
 		{"name": "-app"},
@@ -516,7 +518,7 @@ func TestK8sHelm_BadActionRefusedBeforeNetwork(t *testing.T) {
 
 // L-29: описание ar_create называло аргумент type, а он registry_type.
 func TestArCreate_DescriptionNamesRegistryType(t *testing.T) {
-	tl, _ := newTestServer().Lookup("ar_create")
+	tl, _ := newTestServer(t).Lookup("ar_create")
 	if !strings.Contains(tl.Description, "registry_type=") || strings.Contains(tl.Description, " type=") {
 		t.Errorf("ar_create description: %s", tl.Description)
 	}
@@ -583,7 +585,7 @@ func TestStackPlan_VMImageAndZone(t *testing.T) {
 // блокирует ~3 мин.
 func TestStackDestroy_ReportsAsyncDeletions(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"x","postgres":{"name":"p"},"secrets":[{"path":"a","value":"b"}]}`)
 	for _, st := range j.Steps {
 		st.Status = "done"
@@ -619,7 +621,7 @@ func TestStackDestroy_ReportsAsyncDeletions(t *testing.T) {
 // нет, — ошибка до подтверждения.
 func TestDeletePreviews_NameTheResource(t *testing.T) {
 	stackHome(t)
-	r := newTestServer()
+	r := newTestServer(t)
 	j := planJob(t, `{"name":"x","postgres":{"name":"p"},"secrets":[{"path":"a","value":"b"}]}`)
 	for _, st := range j.Steps {
 		if st.Key == "postgres" {

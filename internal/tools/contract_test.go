@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +25,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -165,7 +168,7 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: rt}, "")
 	cloud.Backoff = time.Millisecond
 	cloud.SetToken("a.eyJzdWIiOiJ4In0.c")
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		cfg := config.Config{
 			ProjectID: contractID, Region: contractID, ImageID: contractID,
@@ -188,6 +191,37 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 			},
 		}, nil
 	})
+	r.SetStateDir(dir)
+	contractRecords = intent.Dir(dir)
+	t.Cleanup(func() { contractRecords = "" })
+	return r
+}
+
+// contractRecords is the directory of the call records of the registry
+// contractRegCfg built last. A sweep sends every tool every answer of the
+// cloud through one registry, and most of those calls end with an outcome
+// unknown: their records stay, and every later call reads them all. Each
+// call of a sweep is a call of its own world — contractCall starts it with
+// no record of the calls before it.
+var contractRecords string
+
+// forgetContractRecords removes the records of contractRecords and leaves
+// the directory and the files being written: a sweep that calls its tools
+// from several goroutines (walkLang) has a call writing its record there
+// at the same moment. There the record of a call still going may be removed
+// by the call of another goroutine: the answers do not change, and such a
+// sweep does not tell what became of a record — the tests of the records
+// (TestIntent_*, TestStateDir_*) do.
+func forgetContractRecords() {
+	entries, err := os.ReadDir(contractRecords)
+	if contractRecords == "" || err != nil {
+		return
+	}
+	for _, e := range entries {
+		if name := e.Name(); strings.HasSuffix(name, ".json") && !strings.HasPrefix(name, ".") {
+			_ = os.Remove(filepath.Join(contractRecords, name))
+		}
+	}
 }
 
 func contractCall(tl Tool, args map[string]any, limit time.Duration) (text string, isErr bool, pan string) {
@@ -198,6 +232,7 @@ func contractCall(tl Tool, args map[string]any, limit time.Duration) (text strin
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
+	forgetContractRecords()
 	text, isErr = tl.Handler(ctx, args)
 	return text, isErr, ""
 }
@@ -416,6 +451,7 @@ func TestContract_GatePreviewDoesNotWrite(t *testing.T) {
 // a secret (internal/tools/registry.go). Annotations are TestToolsList_Annotations.
 func TestContract_Schema(t *testing.T) {
 	reg := New(func(map[string]any) (*engine.Engine, error) { return nil, nil })
+	reg.SetStateDir(t.TempDir())
 	known := map[string]bool{"string": true, "integer": true, "number": true, "boolean": true, "array": true, "object": true}
 	for _, tl := range reg.Tools() {
 		props := schemaProps(tl)

@@ -65,6 +65,7 @@ func TestCreate_ConfiguredZoneByName(t *testing.T) {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false), StateDir: t.TempDir(), Timings: faultToolsTimings(),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
 	cases := []struct {
 		tool, path string
 		args       map[string]any

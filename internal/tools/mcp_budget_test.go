@@ -104,7 +104,7 @@ func kubeWorld(t *testing.T, body string) *Registry {
 // call's budget, never by the world's short timeouts.
 func budgetComputeRegistry(t *testing.T, cloud *faultCloud, dir string, timings engine.Timings) *Registry {
 	t.Helper()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config: config.Config{ProjectID: faultProject, Region: faultZone, ImageID: faultImage,
@@ -118,6 +118,8 @@ func budgetComputeRegistry(t *testing.T, cloud *faultCloud, dir string, timings 
 			Timings:   timings,
 		}, nil
 	})
+	r.SetStateDir(dir)
+	return r
 }
 
 // budgeted is r with the budget of an MCP call in the slow world.
@@ -154,7 +156,7 @@ func budgetAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 	t.Cleanup(func() { httpretry.DefaultBase = old })
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: a}, "")
 	cloud.Backoff = time.Millisecond
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:   config.Config{ProjectID: dbaasProject, KeyID: "k", Secret: "s"},
@@ -164,6 +166,8 @@ func budgetAPIRegistry(t *testing.T, a *faultAPI) *Registry {
 			StateDir: t.TempDir(),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // computeBudget is a call of tool in the slow compute world; setup, when

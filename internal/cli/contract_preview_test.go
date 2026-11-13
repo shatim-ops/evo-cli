@@ -453,9 +453,14 @@ func parityServers(t *testing.T) parityMCP {
 		}
 		return toolEngine(o)
 	}
+	newServer := func() *mcp.Server {
+		s := mcp.New(factory, "test")
+		declareStateDir(s)
+		return s
+	}
 	serve := func(opts mcp.HTTPOptions) *httptest.Server {
 		opts.BearerToken = "parity-token"
-		h := mcp.NewHTTPHandler(mcp.New(factory, "test"), opts)
+		h := mcp.NewHTTPHandler(newServer(), opts)
 		ts := httptest.NewServer(h)
 		t.Cleanup(func() {
 			h.Close()
@@ -463,7 +468,7 @@ func parityServers(t *testing.T) parityMCP {
 		})
 		return ts
 	}
-	return parityMCP{stdio: mcp.New(factory, "test"), http: serve(mcp.HTTPOptions{}),
+	return parityMCP{stdio: newServer(), http: serve(mcp.HTTPOptions{}),
 		export: serve(mcp.HTTPOptions{AllowSecretExport: true})}
 }
 

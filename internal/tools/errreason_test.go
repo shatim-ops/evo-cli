@@ -101,6 +101,7 @@ func TestUncodedReason(t *testing.T) {
 // repo_url — USAGE до любого обращения к облаку.
 func TestUncodedReason_AuditExamples(t *testing.T) {
 	r := New(nilFactory)
+	r.SetStateDir(t.TempDir())
 	_, text, isErr := callNamed(t, r, "stack_apply", map[string]any{"job_id": "../../etc/passwd", "confirmed": true})
 	if !isErr || !strings.Contains(text, `"reason": "USAGE"`) || !strings.Contains(text, "invalid job_id") {
 		t.Errorf("stack_apply job_id=../../etc/passwd: %s", text)

@@ -34,7 +34,7 @@ func TestStackStatus_EveryFailedStepNamesItsReason(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			stackHome(t)
-			r := newTestServer()
+			r := newTestServer(t)
 			j := planJob(t, `{"name":"s","postgres":{"name":"p"}}`)
 			tc.setup(r)
 			r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})

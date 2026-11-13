@@ -51,6 +51,7 @@ func heldPowerWorld(t *testing.T, state string) (*Registry, *powerWorld, string)
 			Timings:  engine.Timings{VMPollInterval: time.Millisecond},
 		}, nil
 	})
+	r.SetStateDir(dir)
 	return budgeted(r), w, intent.Dir(dir)
 }
 

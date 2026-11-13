@@ -28,6 +28,7 @@ func TestAgentSkill_CardOfEveryGroupWithNoTerminalInIt(t *testing.T) {
 		engines++
 		return nil, errors.New("no engine: agent_skill reads the registry")
 	})
+	r.SetStateDir(t.TempDir())
 	tl, ok := r.Lookup("agent_skill")
 	if !ok {
 		t.Fatal("no tool agent_skill")

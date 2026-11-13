@@ -104,7 +104,7 @@ func dbaasRegistry(t *testing.T, f *fakeDbaas, region string) *Registry {
 	old := httpretry.DefaultBase
 	httpretry.DefaultBase = f
 	t.Cleanup(func() { httpretry.DefaultBase = old })
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: dbaasProject, Region: region, KeyID: "k", Secret: "s"},
@@ -113,6 +113,8 @@ func dbaasRegistry(t *testing.T, f *fakeDbaas, region string) *Registry {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 // kafka_list и redis_list читают все страницы по next_page_token с

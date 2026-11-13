@@ -49,6 +49,7 @@ func TestBreakR4_R4_19_DuplicateOpenPortOnce(t *testing.T) {
 			StateDir: t.TempDir(),
 		}, nil
 	})
+	reg.SetStateDir(t.TempDir())
 	tl, ok := reg.Lookup("open_ports")
 	if !ok {
 		t.Fatal("no open_ports")

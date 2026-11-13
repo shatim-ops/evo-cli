@@ -302,6 +302,7 @@ func ownerRegistry(t *testing.T, f *ownerFake, bound bool, allowed ...string) *R
 			StateDir: dir.(string),
 		}, nil
 	})
+	r.SetStateDir(dir.(string))
 	if bound {
 		r.SetProjectBound()
 	}

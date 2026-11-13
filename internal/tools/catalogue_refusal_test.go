@@ -200,9 +200,11 @@ func asCLI(err error, ce **clierrors.CLIError) bool {
 func natRegistry(t *testing.T, cloud provision.CloudAPI) *Registry {
 	t.Helper()
 	faultToolsIsolate(t)
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{Config: config.Config{ProjectID: faultProject, Region: faultZone, KeyID: "k", Secret: "s"},
 			Auth: staticToken{}, Cloud: cloud, Printer: output.NewWithWriter(&buf, output.ModeText, false)}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }

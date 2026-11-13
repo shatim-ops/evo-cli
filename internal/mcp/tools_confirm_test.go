@@ -23,6 +23,7 @@ func TestNewGates_PreviewFirstThenAction(t *testing.T) {
 		engines++
 		return nil, errors.New("no engine in tests")
 	}, "test")
+	s.SetStateDir(t.TempDir())
 
 	cases := []struct {
 		tool string
@@ -101,6 +102,7 @@ func TestNewGates_S3PutWithoutSettingsRefuses(t *testing.T) {
 	s := New(func(map[string]any) (*engine.Engine, error) {
 		return nil, errors.New("no engine in tests")
 	}, "test")
+	s.SetStateDir(t.TempDir())
 	out, isErr := s.handlers["s3_put"](context.Background(), map[string]any{"bucket": "bkt", "key": "k.txt", "content": "hello"})
 	if !isErr || strings.Contains(out, "confirmation_required") {
 		t.Fatalf("s3_put without S3 settings: want a refusal before the question, got %s", out)
@@ -108,6 +110,7 @@ func TestNewGates_S3PutWithoutSettingsRefuses(t *testing.T) {
 	// An engine whose profile has no S3 keys: the refusal says what to fix
 	// (CONFIG_INVALID, as the CLI's exit 2), still before the question.
 	s = New(func(map[string]any) (*engine.Engine, error) { return &engine.Engine{}, nil }, "test")
+	s.SetStateDir(t.TempDir())
 	out, isErr = s.handlers["s3_put"](context.Background(), map[string]any{"bucket": "bkt", "key": "k.txt", "content": "hello"})
 	if !isErr || strings.Contains(out, "confirmation_required") || !strings.Contains(out, `"CONFIG_INVALID"`) {
 		t.Fatalf("s3_put with a profile without S3 keys: want CONFIG_INVALID before the question, got %s", out)
@@ -121,6 +124,7 @@ func TestNewGates_DeployWithoutEngineRefuses(t *testing.T) {
 	s := New(func(map[string]any) (*engine.Engine, error) {
 		return nil, errors.New("no engine in tests")
 	}, "test")
+	s.SetStateDir(t.TempDir())
 	out, isErr := s.handlers["deploy"](context.Background(), map[string]any{"flavor": "lowcost10-2-4"})
 	if !isErr || strings.Contains(out, "confirmation_required") || !strings.Contains(out, "no engine in tests") {
 		t.Fatalf("deploy without an engine: want the factory's error before the question, got %s", out)
@@ -130,7 +134,7 @@ func TestNewGates_DeployWithoutEngineRefuses(t *testing.T) {
 // Новые инструменты под подтверждением обязаны объявлять confirmed в схеме,
 // иначе агент не узнает, как пройти гейт.
 func TestNewGates_SchemaAdvertisesConfirmed(t *testing.T) {
-	s := newTestServer()
+	s := newTestServer(t)
 	gated := map[string]bool{"deploy": true, "provision": true, "ca_start": true, "ca_stop": true,
 		"cert_issue_le": true, "cert_import": true, "cert_renew": true, "s3_put": true}
 	for _, tl := range s.ListTools() {

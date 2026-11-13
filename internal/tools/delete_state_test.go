@@ -44,7 +44,7 @@ func planAnswer(t *testing.T, p *Plan) map[string]any {
 func TestDeletePlan_ErasedIsAlreadyDeleted(t *testing.T) {
 	for _, status := range []string{"ERASED", "erased", "DELETED"} {
 		t.Run(status, func(t *testing.T) {
-			r := newTestServer()
+			r := newTestServer(t)
 			deletes := 0
 			p := r.deletePlan("pg_delete", "pg_delete deletes %s.", "pg_delete удаляет %s.",
 				"00000000-0000-4000-8000-0000000000e1",
@@ -67,7 +67,7 @@ func TestDeletePlan_ErasedIsAlreadyDeleted(t *testing.T) {
 }
 
 func TestDeletePlan_FailedRefusalSaysWhereToDelete(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	id := "00000000-0000-4000-8000-0000000000f9"
 	p := r.deletePlan("kafka_delete", "kafka_delete deletes %s.", "kafka_delete удаляет %s.", id,
 		func() (map[string]any, error) {
@@ -112,7 +112,7 @@ func TestDeletePlan_FailedRefusalSaysWhereToDelete(t *testing.T) {
 // read before the question is still true, and 1.5 answers with it, so
 // dropping it would be a breaking change.
 func TestDeletePlan_WayOutOnlyForTheRefusal(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	id := "00000000-0000-4000-8000-0000000000fa"
 	for _, status := range []string{"FAILED", "ERROR", "ERROR_DELETING"} {
 		for _, code := range []string{clierrors.CodeAuthRequired, clierrors.CodeAuthExpired, clierrors.CodeAuthFailed,
@@ -166,7 +166,7 @@ func TestNotTheState_EveryKeyAndConnectionReason(t *testing.T) {
 // is deleted; before 1.6 the question was asked and Cloud.ru refused
 // after it (DB-17, DB-19, NET-11).
 func TestDeletePlan_PassingStateRefusedBeforeTheQuestion(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	id := "00000000-0000-4000-8000-0000000000fb"
 	for _, status := range []string{"DEPLOYING", "CREATING", "PROVISIONING", "creating"} {
 		deleted := false
@@ -197,7 +197,7 @@ func TestDeletePlan_PassingStateRefusedBeforeTheQuestion(t *testing.T) {
 // repeated delete is (D26); before, the question was asked (DELETING with a
 // warning, ERASING with none) and Cloud.ru answered after it.
 func TestDeletePlan_DeletingStateAnsweredWithoutTheQuestion(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	id := "00000000-0000-4000-8000-0000000000fc"
 	for _, status := range []string{"DELETING", "ERASING", "deleting"} {
 		deleted := false

@@ -63,7 +63,7 @@ func (c *sgCloud) DeleteSecurityGroupRule(_ context.Context, sg, id string) erro
 func sgRegistry(t *testing.T, cloud *sgCloud) (*Registry, string) {
 	t.Helper()
 	dir := t.TempDir()
-	return New(func(map[string]any) (*engine.Engine, error) {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:   config.Config{ProjectID: "00000000-0000-0000-0000-000000000001"},
@@ -72,7 +72,9 @@ func sgRegistry(t *testing.T, cloud *sgCloud) (*Registry, string) {
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
 			StateDir: dir,
 		}, nil
-	}), dir
+	})
+	r.SetStateDir(dir)
+	return r, dir
 }
 
 func callSGTool(t *testing.T, r *Registry, name string, args map[string]any) string {
@@ -243,6 +245,7 @@ func TestOpenPorts_ProtocolEnumAndPerProtocolSkip(t *testing.T) {
 			StateDir: t.TempDir(),
 		}, nil
 	})
+	reg.SetStateDir(t.TempDir())
 	text, isErr := reg.handlers["open_ports"](context.Background(), map[string]any{"security_group": "sg-1", "ports": []any{float64(80)}, "protocol": "icmpx", "confirmed": true})
 	if !isErr || !strings.Contains(text, "USAGE") {
 		t.Fatalf("protocol icmpx accepted: %s", text)

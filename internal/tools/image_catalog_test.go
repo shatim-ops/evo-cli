@@ -61,8 +61,8 @@ func (catalogCloud) GetImage(_ context.Context, id string) (*provision.ImageDeta
 		AvailZones: []provision.ImageAvailZone{{AvailabilityZoneID: catZone, AvailabilityZoneName: "ru.AZ-1", State: "created"}}}, nil
 }
 
-func catalogRegistry() *Registry {
-	return New(func(map[string]any) (*engine.Engine, error) {
+func catalogRegistry(t testing.TB) *Registry {
+	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
 			Config:  config.Config{ProjectID: "00000000-0000-0000-0000-0000000000f1", KeyID: "k", Secret: "s"},
@@ -71,6 +71,8 @@ func catalogRegistry() *Registry {
 			Printer: output.NewWithWriter(&buf, output.ModeText, false),
 		}, nil
 	})
+	r.SetStateDir(t.TempDir())
+	return r
 }
 
 func callNamed(t *testing.T, r *Registry, name string, args map[string]any) (map[string]any, string, bool) {
@@ -90,7 +92,7 @@ func callNamed(t *testing.T, r *Registry, name string, args map[string]any) (map
 // image_list и его алиас list_images: компактные строки — без иконки,
 // шаблона и объектов зон; зоны — короткими именами.
 func TestImageList_CompactForMCP(t *testing.T) {
-	r := catalogRegistry()
+	r := catalogRegistry(t)
 	for _, name := range []string{"image_list"} {
 		m, text, isErr := callNamed(t, r, name, map[string]any{"query": "astra"})
 		if isErr {
@@ -130,7 +132,7 @@ func TestImageList_CompactForMCP(t *testing.T) {
 }
 
 func TestImageGet_ByNameCompactAndFull(t *testing.T) {
-	r := catalogRegistry()
+	r := catalogRegistry(t)
 	m, text, isErr := callNamed(t, r, "image_get", map[string]any{"image": "ASTRA_1.8.1"})
 	if isErr {
 		t.Fatal(text)

@@ -22,7 +22,7 @@ import (
 // failed on 80511fd. CUR122-1 is TestStackPlan_S3BucketNameCheckedAtPlan.
 
 func TestCUR122_BucketCreatePreviewForNameS3Rejects(t *testing.T) {
-	r := newTestServer()
+	r := newTestServer(t)
 	for _, name := range []string{"a..b", "192.168.0.1"} {
 		m, text, isErr := callNamed(t, r, "s3_bucket_create", map[string]any{"bucket": name})
 		if !isErr || m["reason"] != "USAGE" || m["status"] == "confirmation_required" {
@@ -87,7 +87,7 @@ func (c *fipZoneCloud) CreateVM(_ context.Context, req provision.CreateVMRequest
 func TestCUR122_K8sRussianHintsNameCommands(t *testing.T) {
 	i18n.SetLang(i18n.RU)
 	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
-	r := newTestServer()
+	r := newTestServer(t)
 	m, text, isErr := callNamed(t, r, "k8s_nodepools", nil)
 	hint, _ := m["hint"].(string)
 	if !isErr || strings.Contains(hint, "k8s_") || strings.Contains(hint, "confirmed=true") {

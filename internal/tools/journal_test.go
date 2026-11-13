@@ -61,6 +61,7 @@ func noEngine(map[string]any) (*engine.Engine, error) {
 func TestJournal_EveryToolRecordsOneCall(t *testing.T) {
 	journalOn(t)
 	r := New(noEngine)
+	r.SetStateDir(t.TempDir())
 	r.Wrap("vm_list", func(next Handler) Handler { return next })
 	names := map[string]bool{}
 	for _, tl := range r.Tools() {
@@ -87,6 +88,7 @@ func TestJournal_EveryToolRecordsOneCall(t *testing.T) {
 func TestJournal_NoValues(t *testing.T) {
 	journalOn(t)
 	r := New(noEngine)
+	r.SetStateDir(t.TempDir())
 	h := r.handlers["secret_create"]
 	const value = "s3cr3t-value-0123456789"
 	h(context.Background(), map[string]any{"path": value, "value": value})
@@ -109,6 +111,7 @@ func TestJournal_NoValues(t *testing.T) {
 func TestJournal_NestedCallIsDeeper(t *testing.T) {
 	journalOn(t)
 	r := New(noEngine)
+	r.SetStateDir(t.TempDir())
 	r.handlers["vm_list"](context.Background(), nil)
 	outer := journaled("outer_test", nil, func(ctx context.Context, _ map[string]any) (string, bool) {
 		return r.handlers["vm_list"](ctx, nil)
