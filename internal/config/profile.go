@@ -98,11 +98,34 @@ func Dir() string {
 	if d := os.Getenv(EnvConfigDir); d != "" {
 		return d
 	}
+	return DefaultDir()
+}
+
+// DefaultDir is Dir without CLOUDRU_CONFIG_DIR: where an evo started
+// without the shell's variables (by an app: Claude Desktop) reads the
+// profiles.
+func DefaultDir() string {
 	base := configBase()
 	if base == "" {
 		return ""
 	}
 	return filepath.Join(base, appDir)
+}
+
+// HasProfile reports whether config.yaml or credentials.yaml in dir holds
+// the profile name.
+func HasProfile(dir, name string) (bool, error) {
+	var s settingsFile
+	if _, err := readYAML(inDir(dir, settingsName), &s); err != nil {
+		return false, err
+	}
+	var c credentialsFile
+	if _, err := readYAML(inDir(dir, credentialsName), &c); err != nil {
+		return false, err
+	}
+	_, inSettings := s.Profiles[name]
+	_, inCredentials := c.Profiles[name]
+	return inSettings || inCredentials, nil
 }
 
 // userConfigDir is os.UserConfigDir; tests point it at a temp dir.

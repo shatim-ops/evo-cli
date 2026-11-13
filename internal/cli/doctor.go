@@ -26,13 +26,17 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: i18n.T("Check configuration, credentials and connectivity", "Проверить настройки, ключ доступа и связь с API"),
 		Long: i18n.T(`Check the setup: config files and their permissions, where each setting
-comes from, reachability of the IAM and Compute APIs, the credentials, and
-kubectl/helm in PATH (needed only by the k8s tools; a warning, not an error).
+comes from, reachability of the IAM and Compute APIs, the credentials,
+kubectl/helm in PATH (needed only by the k8s tools; a warning, not an error),
+and evo's entry in Claude Desktop, if it has one: the evo it starts is there
+and is this one, its profile is there (a warning, not an error).
 
 Exits with 2 if the configuration or credentials are broken, 1 if only
 connectivity checks failed.`, `Проверить окружение: файлы настроек и их права, откуда взята каждая
 настройка, доступность IAM и Compute API, ключ доступа, kubectl/helm в PATH
-(нужны только инструментам k8s; их отсутствие — предупреждение, не ошибка).
+(нужны только инструментам k8s; их отсутствие — предупреждение, не ошибка) и
+запись evo в Claude Desktop, если она есть: запускаемый evo на месте и это
+этот evo, её профиль есть (предупреждение, не ошибка).
 
 Код выхода 2 — сломаны настройки или ключ, 1 — не прошли только проверки
 связи.`),
@@ -81,6 +85,7 @@ func doctorLocal(own []tools.DoctorCheck) []tools.DoctorCheck {
 		Detail: fmt.Sprintf("evo %s %s/%s", version, runtime.GOOS, runtime.GOARCH),
 	}}
 	checks = append(checks, otherEvoChecks()...)
+	checks = append(checks, agentEntryChecks()...)
 	checks = append(checks, fileChecks()...)
 	checks = append(checks, own...)
 	for _, bin := range []string{"kubectl", "helm"} {
