@@ -13,6 +13,7 @@ mkdir "$work/bin"
 cat >"$work/bin/gh" <<'SH'
 #!/usr/bin/env bash
 echo "$*" >>"$FAKE_CALLS"
+[ -n "${GH_TOKEN:-}" ] || { echo "gh: GH_TOKEN не задан" >&2; exit 2; }
 [ "$1" = api ] || { echo "gh: не api: $*" >&2; exit 2; }
 shift
 post=0
@@ -30,7 +31,7 @@ case "$1" in
 esac
 SH
 chmod +x "$work/bin/gh"
-export PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" GH_REPO=o/r RUN_ID=7 HEAD_BRANCH=feature/x
+export PATH="$work/bin:$PATH" FAKE_CALLS="$work/calls" GH_REPO=o/r RUN_ID=7 HEAD_BRANCH=feature/x GH_TOKEN=fake
 fail=0
 
 # job JSON: name conclusion runner_id steps waited-minutes

@@ -52,5 +52,11 @@ if [ "$EVENT" = pull_request ]; then
 		exit 0
 	fi
 fi
+# Known limit: rerun-failed-jobs takes no sha. A push that lands between the
+# read of the head above and this call reruns a stale run, and its attempt
+# joins the group ci-<ref>, whose cancel-in-progress (pull_request) cancels
+# the newer run. The window is the seconds between the two calls; the newer
+# run then reads as cancelled with its runner given — no rerun here — and
+# the author's next push or «релиз» runs it again.
 gh api -X POST "repos/$GH_REPO/actions/runs/$RUN_ID/rerun-failed-jobs" >/dev/null
 echo "::notice::no-runner: повторены job без раннера — $starved (прогон $RUN_ID, $EVENT)"
