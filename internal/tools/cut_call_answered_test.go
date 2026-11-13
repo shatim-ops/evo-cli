@@ -35,10 +35,11 @@ func TestIntent_ACommandsQuestionKeepsTheCutCallUntilAPersonAnswers(t *testing.T
 	}
 	sent := 0
 	tl, _ := r.Lookup(tool)
-	call := r.intended(tl, func(_ context.Context, args map[string]any) (string, bool) {
+	call := r.intended(tl, func(ctx context.Context, args map[string]any) (string, bool) {
 		if confirmed, _ := args["confirmed"].(bool); !confirmed {
 			return `{"status":"confirmation_required","message":"cert_renew renews the certificate."}`, true
 		}
+		markSent(ctx)
 		sent++
 		return `{"status":"ok"}`, false
 	})
