@@ -107,8 +107,11 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// same tool as the next step. The record stays, named as that
 		// step names the resource, until a call of the step ends the
 		// operation (settleHeld) — and its StartedAt is the start the
-		// limit of the repeats counts from.
-		if next, goesOn := sameToolNext(name, answer); goesOn {
+		// limit of the repeats counts from. An error here is a refusal
+		// the outcome of which is known (not intent.OutcomeUnknown):
+		// nothing goes on, though its next step is the same call — a
+		// delete refused while a restore runs (FB19I-22).
+		if next, goesOn := sameToolNext(name, answer); goesOn && answerReason(answer) == "" {
 			// Named as a call of the step would be (the same rule of the
 			// project of a call addressed by id).
 			rec.Name, rec.Target = intentResource(name, next)
