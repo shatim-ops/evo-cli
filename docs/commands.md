@@ -1081,7 +1081,7 @@ evo backup list [flags]
       --ids stringArray        Только с одним из этих id (флаг повторяется или значения через запятую)
       --name string            Только с этой частью имени, регистр не важен
       --resource-id string     Только копии этой ВМ или диска: её id
-      --resource-type string   Только в этом состоянии: virtual_machine, disk
+      --resource-type string   Только этого типа: virtual_machine, disk
       --state string           Только в этом состоянии: creating, created, error_creating, updating, error, deleting, error_deleting
       --states stringArray     Только в одном из этих состояний: значения — как у state (флаг повторяется или значения через запятую)
 ```

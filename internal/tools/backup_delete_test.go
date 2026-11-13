@@ -50,6 +50,7 @@ type deleteWorld struct {
 	dependents   int
 	deletes      int
 	listed       []string
+	listCode     int // HTTP status of the list of backups; 0 answers it
 }
 
 func (w *deleteWorld) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -70,6 +71,11 @@ func (w *deleteWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/backups":
 		asked := r.URL.Query().Get("project_id")
 		w.listed = append(w.listed, asked)
+		if w.listCode != 0 {
+			rec.WriteHeader(w.listCode)
+			_, _ = rec.WriteString(`{"detail":"refused"}`)
+			break
+		}
 		items := []string{}
 		if asked == w.projectOf() {
 			items = append(items, w.backup())
@@ -334,5 +340,26 @@ func TestBackupDelete_EveryStateOfTheSpec(t *testing.T) {
 		if target, _ := m["target"].(map[string]any); want == "confirmation_required" && target["status"] != st {
 			t.Errorf("%s: the question does not name the state: %s", st, text)
 		}
+	}
+}
+
+// A key with the right to delete a backup and none to list the project's
+// (403): the delete was refused before the question, and the backup could
+// not be deleted through evo (FB19I-24 (в)). A refusal of the right is
+// not a fault to repeat: the preview says the dependents were not checked
+// and asks. Any other failure of the list still refuses.
+func TestBackupDelete_ListOfBackupsNotAllowed(t *testing.T) {
+	for _, code := range []int{401, 403} {
+		w := &deleteWorld{state: "created", exists: true, listCode: code}
+		m, text, _ := backupDelete(t, w, false)
+		will, _ := m["will_delete"].(map[string]any)
+		warn, _ := m["warning"].(string)
+		if m["status"] != "confirmation_required" || will["dependent_backups_checked"] != false || !strings.Contains(warn, "did not check") {
+			t.Errorf("%d: want the question with the dependents named not checked: %s", code, text)
+		}
+	}
+	w := &deleteWorld{state: "created", exists: true, listCode: 500}
+	if m, text, isErr := backupDelete(t, w, false); !isErr || m["reason"] != "API_ERROR" {
+		t.Errorf("500: want the refusal before the question: %s", text)
 	}
 }
