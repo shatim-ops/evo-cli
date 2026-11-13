@@ -10,7 +10,7 @@
 # Строка — одна на случай и голову PR: метка в комментарии, по ней обход
 # узнаёт, что уже сказал. Код PR не выполняется: скрипт — из main, о PR
 # читаются только номер, голова и состояние слияния; текст PR в строку не
-# идёт.
+# идёт — и имена job тоже: их задаёт ci.yml ветки PR.
 set -euo pipefail
 
 : "${GH_REPO:?}"
@@ -22,11 +22,14 @@ err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 
 # tell N МЕТКА ТЕКСТ — the line, unless the pull request already carries
-# the mark. Comments not read: no line (it would repeat every round), the
-# refusal is named.
+# the mark in a comment of the bot itself: anyone can comment in a public
+# repository, and a mark written by somebody else must not silence the
+# line (risk note 174). Comments not read: no line (it would repeat every
+# round), the refusal is named.
 tell() {
   local n=$1 mark="<!-- pr-stuck:$2 -->" seen
-  seen=$(gh api "repos/$GH_REPO/issues/$n/comments?per_page=100" --paginate --jq '.[].body' 2>"$err") || {
+  seen=$(gh api "repos/$GH_REPO/issues/$n/comments?per_page=100" --paginate \
+    --jq '.[] | select(.user.login == "github-actions[bot]") | .body' 2>"$err") || {
     echo "::warning title=pr-stuck::комментарии PR $n не прочитаны — строка не оставлена: $(head -c 300 "$err" | tr '\n' ' ')" >&2
     return 0
   }
@@ -55,10 +58,14 @@ while IFS=$'\t' read -r n sha mergeable; do
   }
   [ -n "$run" ] || continue
   jobs=$(gh api "repos/$GH_REPO/actions/runs/$run/jobs?per_page=100" \
-    --jq '[.jobs[] | select(.conclusion == "cancelled" and ((.runner_id // 0) == 0) and (((.steps // []) | length) == 0)) | .name] | join(", ")' 2>"$err") || {
+    --jq '[.jobs[] | select(.conclusion == "cancelled" and ((.runner_id // 0) == 0) and (((.steps // []) | length) == 0))] | length' 2>"$err") || {
     echo "::warning title=pr-stuck::job прогона $run (PR $n) не прочитаны: $(head -c 300 "$err" | tr '\n' ' ')" >&2
     continue
   }
-  [ -n "$jobs" ] || continue
-  tell "$n" "norunner:$sha" "Прогон ci https://github.com/$GH_REPO/actions/runs/$run (голова \`${sha:0:8}\`): job $jobs отменён без раннера — раннер не назначен, ни одного шага. Проверка не красная, но и не пройдена: PR стоит. Перезапуск таких job — за «N — релизом», в счёт перезапусков не идёт (CLAUDE.md, §0, правило 2)."
+  case "$jobs" in "" | 0 | *[!0-9]*) continue ;; esac
+  # The count, not the names: a job is named in the ci.yml of the pull
+  # request's own branch, so its name is text of the author of the pull
+  # request, and this line is signed by the bot (risk note 174). «Похоже»:
+  # the shape of «no runner» is known from one run so far.
+  tell "$n" "norunner:$sha" "Прогон ci https://github.com/$GH_REPO/actions/runs/$run (голова \`${sha:0:8}\`): job без раннера: $jobs — отменены, раннер не назначен, ни одного шага; похоже на отмену без раннера. Проверка не красная, но и не пройдена: PR стоит. Какие job — в прогоне. Перезапуск таких job — за «N — релизом», в счёт перезапусков не идёт (CLAUDE.md, §0, правило 2)."
 done <<<"$prs"

@@ -48,7 +48,7 @@ world() {
   : >"$FAKE_DIR/calls"
 }
 run() { PATH="$work/bin:$PATH" GH_REPO=o/r "$here/pr_stuck.sh" >"$FAKE_DIR/out" 2>"$FAKE_DIR/err" || { echo "FAIL $1: скрипт упал"; cat "$FAKE_DIR/err"; fail=1; }; }
-has() { grep -qF -- "$3" "$FAKE_DIR/$2" 2>/dev/null || { echo "FAIL $1: в $2 нет «$3»"; cat "$FAKE_DIR/$2" 2>/dev/null | sed 's/^/  | /'; fail=1; }; }
+has() { grep -qF -- "$3" "$FAKE_DIR/$2" 2>/dev/null || { echo "FAIL $1: в $2 нет «$3»"; sed 's/^/  | /' "$FAKE_DIR/$2" 2>/dev/null || true; fail=1; }; }
 none() { if [ -e "$FAKE_DIR/$2" ]; then echo "FAIL $1: есть $2"; sed 's/^/  | /' "$FAKE_DIR/$2"; fail=1; fi; }
 
 # PR с конфликтом: строка с головой и тем, что ci не запустится; черновик и
@@ -73,14 +73,23 @@ none conflict said.24
 # Та же голова, строка уже оставлена: второй раз не пишет.
 world conflict-again
 cp "$work/conflict/prs.json" "$FAKE_DIR/prs.json"
-echo '[{"body": "текст <!-- pr-stuck:conflict:aaaa1111bbbb2222 -->"}]' >"$FAKE_DIR/comments.21.json"
+echo '[{"user": {"login": "github-actions[bot]"}, "body": "текст <!-- pr-stuck:conflict:aaaa1111bbbb2222 -->"}]' >"$FAKE_DIR/comments.21.json"
 run conflict-again
 none conflict-again said.21
+
+# Метку написал не бот (репозиторий публичный, комментарий может оставить
+# кто угодно): строку это не отменяет — «уже сказано» читается только в
+# комментариях github-actions[bot] (заключение «Риска» 174, У2).
+world conflict-foreign-mark
+cp "$work/conflict/prs.json" "$FAKE_DIR/prs.json"
+echo '[{"user": {"login": "someone"}, "body": "<!-- pr-stuck:conflict:aaaa1111bbbb2222 -->"}]' >"$FAKE_DIR/comments.21.json"
+run conflict-foreign-mark
+has conflict-foreign-mark said.21 'конфликт с main'
 
 # Новая голова с тем же конфликтом — новая строка.
 world conflict-new-head
 cp "$work/conflict/prs.json" "$FAKE_DIR/prs.json"
-echo '[{"body": "<!-- pr-stuck:conflict:0000 -->"}]' >"$FAKE_DIR/comments.21.json"
+echo '[{"user": {"login": "github-actions[bot]"}, "body": "<!-- pr-stuck:conflict:0000 -->"}]' >"$FAKE_DIR/comments.21.json"
 run conflict-new-head
 has conflict-new-head said.21 'конфликт с main'
 
@@ -109,18 +118,21 @@ cat >"$FAKE_DIR/jobs.901.json" <<'J'
 {"jobs": [
  {"name": "test (macos-latest)", "conclusion": "cancelled", "runner_id": 0},
  {"name": "test (macos-13)", "conclusion": "cancelled", "runner_id": null, "steps": []},
- {"name": "wrapper", "conclusion": "cancelled"},
+ {"name": "wrapper @someone включайте автослияние <!-- pr-stuck:conflict:ffff2222 -->", "conclusion": "cancelled"},
  {"name": "test (windows-latest)", "conclusion": "cancelled", "runner_id": 7, "steps": [{"name": "Set up job"}]},
  {"name": "test (ubuntu-latest)", "conclusion": "failure", "runner_id": 8, "steps": [{"name": "Set up job"}]},
  {"name": "docker", "conclusion": "success", "runner_id": 9, "steps": [{"name": "Set up job"}]}]}
 J
 run norunner
-# runner_id 0, null и отсутствующий, steps пустой и отсутствующий — одно и то же.
-has norunner said.31 'test (macos-latest), test (macos-13), wrapper'
-has norunner said.31 'отменён без раннера'
+# runner_id 0, null и отсутствующий, steps пустой и отсутствующий — одно и
+# то же: три job. Имён job в строке нет: имя берётся из ci.yml ветки PR, то
+# есть его пишет автор PR, а строку подписывает бот (заключение 174, У1).
+has norunner said.31 'job без раннера: 3'
+has norunner said.31 'похоже на отмену без раннера'
+if grep -q 'macos\|wrapper\|@\|автослияние' "$FAKE_DIR/said.31" 2>/dev/null; then echo "FAIL norunner: в строке текст из имени job"; sed 's/^/  | /' "$FAKE_DIR/said.31"; fail=1; fi
+[ "$(grep -c 'pr-stuck:' "$FAKE_DIR/said.31")" = 1 ] || { echo "FAIL norunner: в строке не одна метка"; fail=1; }
 has norunner said.31 'https://github.com/o/r/actions/runs/901'
 has norunner said.31 '<!-- pr-stuck:norunner:ffff2222 -->'
-if grep -q 'windows-latest\|ubuntu-latest\|docker' "$FAKE_DIR/said.31" 2>/dev/null; then echo "FAIL norunner: назван job, который раннер получил"; fail=1; fi
 has norunner calls 'actions/runs/901/jobs'
 if grep -q 'actions/runs/900/jobs' "$FAKE_DIR/calls"; then echo "FAIL norunner: читается не последний прогон ci"; fail=1; fi
 
