@@ -52,12 +52,11 @@ var humanUnnamed = map[string]struct{ class, why string }{
 	"deploy_apply plan_id":                            {unnamedNoise, "id плана: у плана нет имени"},
 	"deploy_apply preview.cost.hourly_rub":            {unnamedPrice, "почасовая цена; человеку — месячная"},
 	"image_create will_create.has_user_data_template": {unnamedWork, "есть ли шаблон cloud-init"},
-	"k8s_add_addon version_from":                      {unnamedWork, "версия плагина — последняя"},
-	"kafka_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM)"},
-	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами"},
+	"kafka_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
+	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами; принято «Риском», 203"},
 	"provision preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"pg_create preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена узлов; человеку — месячная и полная почасовая"},
-	"redis_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM)"},
+	"pg_create preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена узлов; человеку — месячная и полная почасовая; принято «Риском», 203"},
+	"redis_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
 }
 
 // Release plan 1.5, С2: what the agent sees in a preview (preview.details,

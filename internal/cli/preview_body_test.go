@@ -37,7 +37,7 @@ const (
 var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"deploy availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"backup_restore action":       {unnamedNoise, "постоянное действие запроса (restore), не значение ресурса"},
+	"backup_restore action":       {unnamedNoise, "постоянное действие запроса (restore), не значение ресурса; принято «Риском», 203"},
 	"deploy interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
 	"deploy name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
 	"deploy description":          {unnamedNoise, "подпись правила «evo: port N»"},
@@ -61,13 +61,12 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"image_create availability_zones.availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
 
-	"k8s_add_addon resolveMode": {unnamedWork, "конфликты ресурсов не разрешаются"},
+	"k8s_add_addon resolveMode": {unnamedNoise, "превью называет то же значение resolve_mode без префикса RESOLVE_CONFLICTS_MODE_; принято «Риском», 203"},
 
-	"k8s_add_nodepool updateConfiguration.strategy":  {unnamedWork, "обновление узлов по одному (ROLLING_UPDATE)"},
-	"k8s_add_nodepool machineConfiguration.flavorId": {unnamedNoise, "id flavor, который превью называет по имени"},
+	"k8s_add_nodepool machineConfiguration.flavorId": {unnamedNoise, "id flavor, который превью называет по имени, vCPU и RAM; принято «Риском», 203"},
 
-	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": {unnamedNoise, "id flavor мастеров, который превью называет по имени"},
-	"k8s_create controlPlaneConfiguration.zones":                        {unnamedNoise, "id зоны, которую превью называет по имени"},
+	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": {unnamedNoise, "id flavor мастеров, который превью называет по имени, vCPU и RAM; принято «Риском», 203"},
+	"k8s_create controlPlaneConfiguration.zones":                        {unnamedNoise, "id зоны, которую превью называет по имени; принято «Риском», 203"},
 
 	"lb_create rules.listeners.name":        {unnamedNoise, "имя listener, которое evo даёт само"},
 	"lb_create rules.listeners.target_port": {unnamedWork, "порт цели равен порту listener"},
@@ -111,6 +110,7 @@ var bodyNamedAs = map[string]string{
 	"backup_restore resource.target_config.disk_type_name": "disk_type",
 	"k8s_add_addon appVersion":                             "version",
 	"k8s_add_nodepool machineConfiguration.disk.size":      "disk_gb",
+	"k8s_add_nodepool updateConfiguration.strategy":        "update_strategy",
 	"k8s_create networkConfiguration.privateVipSubnetId":   "subnet_id",
 	"lb_create availability_zone_specs.subnet_ids":         "subnet_id",
 	"subnet_create subnet_address":                         "cidr",
