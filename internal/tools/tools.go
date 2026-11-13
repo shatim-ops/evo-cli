@@ -560,6 +560,18 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{"backup_id": uuidProp("Backup UUID (from backup_list).")}, "backup_id"),
 		},
 		{
+			Name:        "backup_create",
+			Description: "Back up a VM or a disk (vm_id or disk_id). The backup is kept, and billed, until it is deleted, also after its source is gone; the preview names the backups of the source kept already. A backup of the source with the same name answers already_exists with its age: no new backup is made. A disk's backup takes about a minute, a VM's about ten: over MCP status creating and backup_get as the next step.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id":       uuidProp("VM to back up (from vm_list). vm_id or disk_id."),
+				"disk_id":     uuidProp("Disk to back up (from disk_list). vm_id or disk_id."),
+				"name":        strProp("Backup name."),
+				"description": strProp("Description."),
+				"wait":        boolPropTrue("false: answer once the cloud took the request. Default: wait (MCP: up to ~45 s)."),
+				"confirmed":   confirmedProp(),
+			}, "name"),
+		},
+		{
 			Name:        "backup_delete",
 			Description: "Permanently delete a backup: what it holds cannot be restored after; resources restored from it stay. The preview warns when its source no longer exists (the last copy of that data) and names the backups that depend on it. While a restore from it runs, the platform refuses the delete: an error with details.cause restore_in_progress and the same call as the next step.",
 			InputSchema: objSchema(map[string]any{
@@ -1537,6 +1549,7 @@ func (s *Registry) registerTools() {
 		"k8s_helm":             s.gated("k8s_helm", s.planK8sHelm),
 		"backup_list":          s.handleBackupList,
 		"backup_get":           s.handleBackupGet,
+		"backup_create":        s.gated("backup_create", s.planBackupCreate),
 		"backup_delete":        s.gated("backup_delete", s.planBackupDelete),
 		"disk_list":            s.handleDiskList,
 		"disk_create":          s.gated("disk_create", s.planDiskCreate),
@@ -3695,6 +3708,7 @@ var consentWords = map[string]string{
 	"dns_zone_create":     consentBillable,
 	"k8s_add_addon":       consentBillable,
 	"pg_backup_create":    consentBillable,
+	"backup_create":       consentBillable,
 	"secret_create":       consentBillable,
 	"subnet_create":       consentBillable,
 	"tg_create":           consentBillable,

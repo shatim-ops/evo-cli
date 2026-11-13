@@ -65,6 +65,72 @@ for pkgs in "${passes[@]}"; do
 	retry="${retry:+$retry }$failed"
 done
 
+# Время пакетов — в сводку прогона, по ОС (план 1.9, строка «CI», М3):
+# пять самых долгих и сигнал, когда пакет идёт дольше половины предела
+# -timeout. Рост времени виден до отказа: 12.11 internal/cli на macOS дошёл
+# до предела за сутки, и заметил это только красный job. Сигнал — строка
+# сводки и warning, job не красный. Предел берётся из флагов этого же
+# вызова go test, второго числа нет. Сортировка — в awk: sort на Windows
+# может оказаться не тем.
+limit=""
+prev=""
+for a in "$@"; do
+	case "$a" in -timeout=*) limit=${a#-timeout=} ;; esac
+	[ "$prev" != -timeout ] || limit=$a
+	prev=$a
+done
+flag=$limit
+case "$limit" in
+*[!0-9]*[hms] | [hms]) limit="" ;;
+*h) limit=$((${limit%h} * 3600)) ;;
+*m) limit=$((${limit%m} * 60)) ;;
+*s) limit=${limit%s} ;;
+*) limit="" ;;
+esac
+[ "$limit" != 0 ] || limit=""
+# Предел есть, но не число с h, m или s (составной «1h30m», «0»): сигнал
+# не должен пропасть молча.
+if [ -n "$flag" ] && [ -z "$limit" ]; then
+	echo "::warning::go test: предел -timeout «$flag» не разобран — сигнала о времени пакетов не будет (go_test_ci.sh понимает число с h, m или s)"
+fi
+module=${tools%/internal/tools}
+# Путь сводки идёт в awk через окружение, а не -v: в значении -v awk
+# разбирает escape-последовательности, и путь Windows (D:\a\_temp\…)
+# становился другим файлом.
+cat "$logs"/*.log 2>/dev/null | SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}" awk -F'\t' -v os="${RUNNER_OS:-local}" -v limit="$limit" -v module="$module" '
+	{ sub(/\r$/, "") } # строка на Windows может кончаться CR
+	($1 ~ /^(ok|FAIL)[ ]*$/) && $3 ~ /^[0-9.]+s$/ {
+		p = $2
+		if (module != "" && index(p, module "/") == 1) p = substr(p, length(module) + 2)
+		t = int($3 + 0)
+		if (!(p in sec) || t > sec[p]) sec[p] = t
+	}
+	END {
+		summary = ENVIRON["SUMMARY"]
+		n = 0
+		for (p in sec) n++
+		if (n == 0) {
+			# Ничего не разобрано — это не «всё быстро»: сказать прямо.
+			print "::warning::go test, " os ": время пакетов не разобрано — в выводе нет строк «ok/FAIL пакет время»"
+			exit
+		}
+		head = "### Время пакетов go test — " os
+		if (limit != "") head = head " (предел пакета " limit " с, сигнал от " int(limit / 2) " с)"
+		print head "\n\n| Пакет | Секунд |\n|---|---|" >>summary
+		for (k = 0; k < 5 && k < n; k++) {
+			best = ""
+			for (p in sec) if (!(p in done) && (best == "" || sec[p] > sec[best] || (sec[p] == sec[best] && p < best))) best = p
+			done[best] = 1
+			print "| " best " | " sec[best] " |" >>summary
+		}
+		print "" >>summary
+		if (limit == "") exit
+		for (p in sec) if (sec[p] > limit / 2) {
+			print "**" p " — " sec[p] " с: больше половины предела пакета (" limit " с). Время растёт — снижать до отказа, а не после.**\n" >>summary
+			print "::warning::go test, " os ": " p " — " sec[p] " с, больше половины предела пакета (" limit " с)"
+		}
+	}'
+
 [ "$red" = 0 ] || exit 1
 printf '%s' "$notes"
 if [ -n "$retry" ]; then

@@ -391,6 +391,7 @@ func BoolArg(args map[string]any, key string, def bool) bool { return boolArg(ar
 // The property descriptions say it instead; Tool.RequiredOneOf carries
 // it to docs/tools.md and the empty-arguments test.
 var requiredOneOf = map[string][][]string{
+	"backup_create":       {{"vm_id", "disk_id"}},
 	"pg_get":              {{"id", "cluster_id"}},
 	"pg_delete":           {{"id", "cluster_id"}},
 	"vm_get":              {{"vm_id", "name"}},
@@ -546,7 +547,7 @@ func groupOf(name string) string {
 // is engineFor's: the builders of the handlers' engines and clients use it.
 var projectTools = map[string]bool{
 	"vm_list": true, "list_subnets": true, "list_security_groups": true, "list_floating_ips": true,
-	"disk_list": true, "backup_list": true, "disk_create": true, "image_create": true, "snat_list": true, "snat_create": true, "subnet_create": true,
+	"disk_list": true, "backup_list": true, "backup_create": true, "disk_create": true, "image_create": true, "snat_list": true, "snat_create": true, "subnet_create": true,
 	"deploy_plan": true, "provision": true,
 	"vpc_list": true, "vpc_create": true, "vpc_route_create": true,
 	"k8s_list": true, "k8s_plan": true, "k8s_create": true,

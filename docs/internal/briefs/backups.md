@@ -34,7 +34,7 @@
 |---|---|---|---|---|
 | 1 | `backup_list` | `evo backup list` | чтение | `GET /api/v1/backups` |
 | 2 | `backup_get` | `evo backup get <backup_id>` | чтение | `GET /api/v1/backups/{backup_id}` |
-| 3 | `backup_create` | `evo backup create --vm <id> \| --disk <id> --name N` | создаёт, платно, с согласием | `POST /api/v1/backups` |
+| 3 | `backup_create` | `evo backup create --vm-id <id> \| --disk-id <id> --name N` | создаёт, платно, с согласием | `POST /api/v1/backups` |
 | 4 | `backup_delete` | `evo backup delete <backup_id>` | удаляет, с согласием | `DELETE /api/v1/backups/{backup_id}` |
 | 5 | `backup_restore` | `evo backup restore <backup_id> --name N` | создаёт, платно, с согласием | `POST /api/v1/backups/{backup_id}/action` |
 

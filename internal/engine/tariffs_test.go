@@ -15,7 +15,7 @@ import (
 // one goes here and in tariffs, or this test fails.
 var allResources = []string{ResourceVM, ResourceDisk, ResourceDiskResize, ResourcePGCluster,
 	ResourceK8sCluster, ResourceK8sNodePool, ResourceK8sAddon, ResourceS3Bucket, ResourceARRegistry, ResourceCAApp,
-	ResourceKafka, ResourceLB, ResourceRedis, ResourceSNAT, ResourceDNSZone, ResourceImage, ResourcePGBackup,
+	ResourceKafka, ResourceLB, ResourceRedis, ResourceSNAT, ResourceDNSZone, ResourceImage, ResourceBackup, ResourcePGBackup,
 	ResourceS3Object, ResourceSecret, ResourceStack, ResourceSubnet, ResourceTargetGroup, ResourceVPC, ResourceVPCRoute}
 
 func TestTariffs_EveryResource(t *testing.T) {

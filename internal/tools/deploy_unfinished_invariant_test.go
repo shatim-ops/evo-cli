@@ -32,8 +32,9 @@ var unfinishedRecord = map[string]bool{"creating": true, "provisioned": true, "d
 var inProgressLeavesFinished = map[string]string{}
 
 // inProgressPhasesElsewhere are the phases of deploy the walk of this test
-// does not reach: the test that holds the same for them, or why none does
-// yet and the work item.
+// need not reach: the test that holds the same for them, or why none does
+// yet and the work item. A closed list by the phases of the engine: a name
+// that is no phase fails.
 var inProgressPhasesElsewhere = map[string]string{
 	"vm": "engine.TestDeploy_BoundEndsTheWaitForTheVMInProgress: the record is creating",
 	// A probe that never answers held the whole call past its context
@@ -125,14 +126,27 @@ func TestDeploy_InProgressLeavesTheRecordUnfinished(t *testing.T) {
 			t.Errorf("inProgressLeavesFinished names phase %s, which no longer leaves the record finished: remove the line", phase)
 		}
 	}
+	phases := map[string]bool{}
+	for _, phase := range enginePhases(t) {
+		phases[phase] = true
+	}
+	for phase := range inProgressPhasesElsewhere {
+		if !phases[phase] {
+			t.Errorf("inProgressPhasesElsewhere names %s, which is no phase of the engine: remove the line", phase)
+		}
+	}
 	for _, phase := range enginePhases(t) {
 		if !seen[phase] && inProgressPhasesElsewhere[phase] == "" {
 			t.Errorf("phase %s of the engine: no walk answers deploying in it; reach it here, or name the test that holds it in inProgressPhasesElsewhere", phase)
 		}
 	}
+	// A phase named elsewhere that this walk reached too is no failure:
+	// whether a call is cut as early as the phase vm is the runner's speed
+	// (a slow Windows runner cut it there, 12.11), and a phase read twice
+	// is held twice. The record it left was read above, like any other.
 	for phase := range inProgressPhasesElsewhere {
 		if seen[phase] {
-			t.Errorf("inProgressPhasesElsewhere names phase %s, which the walk reaches: remove the line", phase)
+			t.Logf("phase %s is named in inProgressPhasesElsewhere and was reached by this walk as well", phase)
 		}
 	}
 }

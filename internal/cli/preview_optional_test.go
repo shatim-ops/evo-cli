@@ -44,6 +44,7 @@ const optionalSubnet = "00000000-0000-0000-0000-0000000000d1"
 // image_id) goes here, the other one is set.
 var optionalLeftOut = map[string]string{
 	"deploy image":                                  "an alternative of image_id",
+	"backup_create disk_id":                         "an alternative of vm_id: one backup is of one resource",
 	"sg_rule_create remote_group":                   "an alternative of cidr",
 	"sg_rule_create allow_internet_on_shared_group": "the word for a refusal (the internet on a shared group, D105), not a value the write takes: the preview says open_to_internet when it applies",
 	"sg_rule_delete allow_cut_ssh":                  "the word for a refusal (the last rule that lets SSH in), not a value the write takes: the preview says cuts_ssh when it applies",
