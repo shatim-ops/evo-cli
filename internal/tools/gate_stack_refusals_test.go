@@ -158,9 +158,21 @@ func TestStackApply_TheQuestionNamesEveryStep(t *testing.T) {
 	}
 	// The price of what the consent pays for: the class of each step to
 	// run, as stack_plan prices the job; a step done is paid already.
-	var m map[string]any
+	var m struct {
+		Preview struct {
+			Params []struct {
+				Key   string `json:"key"`
+				Value any    `json:"value"`
+			} `json:"params"`
+		} `json:"preview"`
+	}
 	_ = json.Unmarshal([]byte(text), &m)
-	cost, _ := m["cost"].(map[string]any)
+	var cost map[string]any
+	for _, p := range m.Preview.Params {
+		if p.Key == "steps_cost" {
+			cost, _ = p.Value.(map[string]any)
+		}
+	}
 	byComponent, _ := cost["by_component"].([]any)
 	components := map[string]bool{}
 	for _, l := range byComponent {

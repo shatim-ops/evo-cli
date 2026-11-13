@@ -1090,8 +1090,17 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 	// consented call does not need.
 	previewOf := func(ctx context.Context) (map[string]any, error) {
 		will := map[string]any{"will_create": s.stackSteps(job)}
+		keys := []string{"will_create"}
+		// The price of what the consent pays for: the steps not done, as
+		// stack_plan prices the job (CLAUDE.md §6, axes 1 and 4).
+		if !job.Done() {
+			pending := *job
+			pending.Steps = slices.DeleteFunc(slices.Clone(job.Steps), func(st *stack.Step) bool { return st.Status == "done" })
+			will["steps_cost"] = s.stackCost(ctx, &pending)
+			keys = append(keys, "steps_cost")
+		}
 		preview := map[string]any{"message": i18n.T("stack_apply provisions BILLABLE resources.",
-			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", will, []string{"will_create"})}
+			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", will, keys)}
 		// A job done: the question is asked as before — answering without
 		// it would change an exit code, which waits for the major — and
 		// says that the consent creates nothing, as deploy's does of an
@@ -1100,13 +1109,7 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 			preview["unchanged"] = true
 			preview["message"] = i18n.Tf("Stack job %s is done already: every step is made. stack_apply has nothing to do, and called with confirmed=true it creates nothing; stack_status shows the stack.",
 				"Задание стека %s уже выполнено: все шаги сделаны. stack_apply делать нечего, вызов с confirmed=true ничего не создаст; стек показывает stack_status.", id)
-			return preview, nil
 		}
-		// The price of what the consent pays for: the steps not done, as
-		// stack_plan prices the job (CLAUDE.md §6, axes 1 and 4).
-		pending := *job
-		pending.Steps = slices.DeleteFunc(slices.Clone(job.Steps), func(st *stack.Step) bool { return st.Status == "done" })
-		preview["cost"] = s.stackCost(ctx, &pending)
 		return preview, nil
 	}
 	return &Plan{PreviewOf: previewOf, Execute: func(ctx context.Context) (string, bool) {
