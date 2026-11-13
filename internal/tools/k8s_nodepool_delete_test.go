@@ -176,7 +176,7 @@ func TestK8sNodePoolDelete_AnswersTheOperation(t *testing.T) {
 // console», a word of the platform with no run, on a 500, a 503 or a 409
 // alike (FB19I-7).
 func TestK8sNodePoolDelete_RequestRefused(t *testing.T) {
-	for _, code := range []int{409, 500, 503} {
+	for _, code := range []int{401, 403, 409, 500, 503} {
 		w := &poolWorld{status: poolError, others: []string{poolRunning}, del: code}
 		w.setCount(2)
 		m, text, isErr := poolDelete(t, w, true)
@@ -196,11 +196,17 @@ func TestK8sNodePoolDelete_RequestRefused(t *testing.T) {
 		// A 4xx is the platform's refusal of this request: the pool stays,
 		// the same call gets the same refusal, the way is support. A 5xx
 		// may follow a delete taken: a read tells («Риск», 181, У1).
-		refused := code < 500
+		// 401 and 403 are of the key's right, not of the state: no «while
+		// its state holds», no support («Риск», 181, У3).
+		denied := code == 401 || code == 403
+		if denied && (strings.Contains(hint, "while its state holds") || strings.Contains(hint, "support") || !strings.Contains(hint, "no right to delete")) {
+			t.Errorf("%d: want the right of the key named, not the state and support: %s", code, text)
+		}
+		refused := code < 500 && !denied
 		if refused && (!strings.Contains(hint, "Cloud.ru refused the delete") || !strings.Contains(hint, "support") || !strings.Contains(hint, poolFixed) || !strings.Contains(hint, "the same call")) {
 			t.Errorf("%d: want the refusal said, the same call refused again and support as the way: %s", code, text)
 		}
-		if !refused && (!strings.Contains(hint, "outcome of the delete is unknown") || !strings.Contains(hint, "k8s_nodepool_get")) {
+		if !refused && !denied && (!strings.Contains(hint, "outcome of the delete is unknown") || !strings.Contains(hint, "k8s_nodepool_get")) {
 			t.Errorf("%d: want the outcome unknown and the read that tells: %s", code, text)
 		}
 		marked := false

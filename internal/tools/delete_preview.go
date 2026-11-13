@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -76,7 +77,7 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 		out["warning"] = warning
 	} else if unseen {
 		out["warning"] = i18n.Tf("it is %s: whether Cloud.ru deletes a %s in this state no run has shown — the outcome of the delete is unknown; a refusal names the platform's answer",
-			"он в состоянии %s: удаляет ли Cloud.ru %s в этом состоянии, ни один прогон не показал — исход удаления неизвестен; отказ назовёт ответ платформы",
+			"он в состоянии %s: удаляет ли Cloud.ru ресурс (%s) в этом состоянии, ни один прогон не показал — исход удаления неизвестен; отказ назовёт ответ платформы",
 			quoteCloud(status), i18n.T(decl.what, decl.whRU))
 	}
 	if unseen {
@@ -103,7 +104,6 @@ func inError(state string) bool {
 // explain (notTheState) keeps its own hint.
 func withStatus(execute func(context.Context) (string, bool), tool, status, id string) func(context.Context) (string, bool) {
 	decl := deleteTargets[tool]
-	what := i18n.T(decl.what, decl.whRU)
 	read := strings.TrimSuffix(tool, "_delete") + "_get"
 	readEN, readRU := read, read
 	if spec, ok := cliSpecs[read]; ok {
@@ -123,10 +123,16 @@ func withStatus(execute func(context.Context) (string, bool), tool, status, id s
 		m["resource_status"] = status
 		reason, _ := m["reason"].(string)
 		switch code := answerHTTPStatus(text); {
+		case (code == http.StatusUnauthorized || code == http.StatusForbidden) && !notTheState[reason]:
+			// The right of the key, not the state of the resource
+			// («Риск», 181, У3).
+			m["hint"] = i18n.T(
+				fmt.Sprintf("Cloud.ru denied the delete to this key (HTTP %d): the key was not accepted, or it or the role of its service account has no right to delete the %s; it stays, and a billable one is still billed. A key with that right deletes it.", code, decl.what),
+				fmt.Sprintf("Cloud.ru отказал этому ключу в удалении (HTTP %d): ключ не принят либо у него или у роли его сервисного аккаунта нет права удалять ресурс (%s); ресурс остаётся, платный — тарифицируется. Удалит ключ с этим правом.", code, decl.whRU))
 		case intent.DefiniteRefusal(code) && !notTheState[reason]:
-			m["hint"] = i18n.Tf("Cloud.ru refused the delete of the %s in %s: it stays, and a billable one is still billed; the same call gets the same refusal while its state holds. What to do with it is the person's decision; the way is Cloud.ru support, with its id %s.",
-				"Cloud.ru отклонил удаление: %s в состоянии %s остаётся, платный — тарифицируется; тот же вызов получит тот же отказ, пока состояние не сменится. Что с ним делать, решает человек; путь — поддержка Cloud.ru с его id %s.",
-				what, quoteCloud(status), id)
+			m["hint"] = i18n.T(
+				fmt.Sprintf("Cloud.ru refused the delete of the %s in %s: it stays, and a billable one is still billed; the same call gets the same refusal while its state holds. What to do with it is the person's decision; the way is Cloud.ru support, with its id %s.", decl.what, quoteCloud(status), id),
+				fmt.Sprintf("Cloud.ru отклонил удаление: ресурс (%s) в состоянии %s остаётся, платный ресурс тарифицируется; тот же вызов получит тот же отказ, пока состояние не сменится. Что с ним делать, решает человек; путь — поддержка Cloud.ru с id ресурса %s.", decl.whRU, quoteCloud(status), id))
 		case !notTheState[reason] || reason == clierrors.CodeAPIUnreachable:
 			m["hint"] = i18n.T(
 				fmt.Sprintf("The outcome of the delete is unknown: the request may have been taken. %s %s shows whether the %s is gone.", readEN, id, decl.what),
