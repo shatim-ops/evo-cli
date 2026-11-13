@@ -861,6 +861,9 @@ func (r *Registry) pendingNotes(root string, own []string, call callResource) (n
 			others++
 		}
 	}
+	if len(named) == 0 {
+		return nil, leftOut // nothing to name: no engine is built for the key
+	}
 	fold := max(others-foldPendingAfter, 0)
 	folded := 0
 	cur := r.maker()
