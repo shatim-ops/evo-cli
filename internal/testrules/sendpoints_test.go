@@ -168,6 +168,98 @@ func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 	}
 }
 
+// freshContexts are the places of production code that start a context of
+// their own (context.Background or context.TODO): "file<TAB>function" →
+// why its sends need no counter. The counter of a call's writes
+// (httpretry.CountWrites) lives in the call's context; a context made anew
+// does not carry it, so a write sent on it is not heard («Риск» on #1675,
+// R-86: the record of a cut call then stays open — the careful side, but a
+// blind spot of TestSendPoints_EveryWriteIsCounted). A root before any call
+// (main, a server) is fine: the gate counts on what it derives. A send
+// inside a call that must outlive its cancel keeps the counter with
+// context.WithoutCancel, which needs no line here.
+var freshContexts = map[string]string{
+	"internal/cli/main.go\trun":                         "the root of the process; the gate adds the counter per call",
+	"internal/cli/main.go\tnewRootCmd":                  "the root when cobra runs without a context (tests); nothing is sent before the gate",
+	"internal/cli/completion.go\tcompleteValues":        "shell completion runs no consented call: reads alone",
+	"internal/cli/trees.go\tsecretRef.readRaw":          "reads a secret from the terminal; sends nothing",
+	"internal/cli/configure_s3.go\trunConfigureS3":      "the preview of a local file write; sends nothing",
+	"internal/mcp/http.go\tNewHTTPHandler":              "the root of the HTTP server; the gate adds the counter per call",
+	"internal/mcp/http.go\tHTTPHandler.logf":            "a log line; sends nothing",
+	"internal/mcp/http.go\tServer.ListenAndServe":       "the shutdown of the HTTP server; sends nothing",
+	"internal/mcp/server.go\tServer.Run":                "the root of the stdio server; the gate adds the counter per call",
+	"internal/provision/findvm.go\tFindCreatedVM":       "a lookup by list after a lost answer: a GET, which is no write",
+	"internal/engine/deploy.go\tEngine.provisionVM":     "deletes the VM and its address after Ctrl-C, when the call's context is gone; the create was counted before, so the record is already marked sent",
+	"internal/engine/deploy.go\tEngine.releaseBootFIP":  "the rollback of an address the call created and counted; bounded on its own clock so a slow API does not hold the rollback",
+	"internal/engine/deploy.go\tEngine.handleInterrupt": "deletes the VM after Ctrl-C, when the call's context is gone; the create was counted before",
+}
+
+// Every context made anew in production code is declared: a write sent on
+// it would not be counted as a write of its call (freshContexts).
+func TestSendPoints_FreshContextsDeclared(t *testing.T) {
+	root := filepath.Join("..", "..")
+	var bad []string
+	seen := map[string]bool{}
+	for _, dir := range []string{"cmd", "internal"} {
+		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() && (d.Name() == "testdata" || d.Name() == "vendor") {
+				return filepath.SkipDir
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(root, path)
+			rel = filepath.ToSlash(rel)
+			local := importNames(f)
+			for _, decl := range f.Decls {
+				key := rel + "\t(package level)"
+				if fd, ok := decl.(*ast.FuncDecl); ok {
+					key = rel + "\t" + funcName(fd)
+				}
+				ast.Inspect(decl, func(n ast.Node) bool {
+					call, ok := n.(*ast.CallExpr)
+					if !ok {
+						return true
+					}
+					sel, ok := call.Fun.(*ast.SelectorExpr)
+					if !ok || (sel.Sel.Name != "Background" && sel.Sel.Name != "TODO") {
+						return true
+					}
+					if id, ok := sel.X.(*ast.Ident); !ok || local[id.Name] != "context" {
+						return true
+					}
+					seen[key] = true
+					if _, declared := freshContexts[key]; !declared {
+						bad = append(bad, fset.Position(call.Pos()).String()+": context."+sel.Sel.Name+" outside freshContexts — a write sent on it is not counted as a write of its call; derive from the call's context (context.WithoutCancel to outlive its cancel) or declare the place with why it sends no write")
+					}
+					return true
+				})
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for k := range freshContexts {
+		if !seen[k] {
+			bad = append(bad, strings.Replace(k, "\t", ": ", 1)+": in freshContexts, but makes no fresh context there; take the line out")
+		}
+	}
+	sort.Strings(bad)
+	for _, b := range bad {
+		t.Error(b)
+	}
+}
+
 // readMethodArg tells a method argument that is http.MethodGet or
 // http.MethodHead.
 func readMethodArg(e ast.Expr, local map[string]string) bool {
