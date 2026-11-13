@@ -83,7 +83,7 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	case "$w" in
 	p36 | p41 | p44 | dnslink) ;;
 	# Пробы графика 1.9 — область ops (live-plan включает её по этим словам).
-	g10 | g11 | g18) ;;
+	g10 | g11 | g17 | g18) ;;
 	# g16 с ожиданиями и уборкой — до 115 мин при пределе job области 150:
 	# с другой долгой пробой обрыв по времени оставил бы платные остатки.
 	g16)
@@ -108,7 +108,7 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	g15)
 		[[ " ${DBAAS_SERVICES:-} " == *" redis "* && "${DBAAS_SMOKE:-}" == true ]] || fail "probes: «$w» — проба джоба dbaas-redis, а он не идёт (dbaas_smoke и redis в dbaas_services)"
 		;;
-	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g13, g14, g15, g16, g18, g20" ;;
+	*) fail "probes: «$w» — не access, nodes, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g13, g14, g15, g16, g17, g18, g20" ;;
 	esac
 done
 

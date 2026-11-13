@@ -67,6 +67,7 @@ chmod +x "$tmp/bin/ssh-keygen"
 export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0 PROBE_WAIT_TWICE=1 SWEEP_PAUSE=1 API_RETRY_PAUSE=0
 fail=0
 n=0
+RM=https://resource-manager.api.cloud.ru/v1
 world() {
 	n=$((n + 1))
 	export FAKE_DIR="$tmp/w$n" RUNNER_TEMP="$tmp/w$n"
@@ -76,11 +77,14 @@ world() {
 	fake_evo_answer list_floating_ips 0 0 '{"floating_ips":[]}'
 	fake_evo_answer disk_list 0 0 '{"disks":[]}'
 	fake_evo_answer list_subnets 0 0 '{"subnets":[]}'
-	printf '%s\n' 'GET /backups[?]* 200 {"items":[],"total":0}' 'GET /protection-plans[?]* 200 {"items":[],"total":0}' >"$FAKE_DIR/http.default"
+	printf '%s\n' 'GET /backups[?]* 200 {"items":[],"total":0}' 'GET /protection-plans[?]* 200 {"items":[],"total":0}' \
+		"GET $RM/tags[?]* 200 {\"tags\":[]}" >"$FAKE_DIR/http.default"
 }
-# Уборка области читает списки планов защиты и копий (виды pplan и backup)
-# дважды: в цикле удаления и при проверке остатков.
-SW1='GET /protection-plans?project_id=p&limit=1000;GET /backups?project_id=p&limit=1000;'
+# Уборка области читает списки планов защиты, копий и тегов (виды pplan,
+# backup и tag) дважды: в цикле удаления и при проверке остатков. Запрос к
+# «Менеджеру ресурсов» заглушка пишет с хостом: он не Compute.
+TAGS="GET $RM/tags?projectId=p&pageSize=100;"
+SW1="GET /protection-plans?project_id=p&limit=1000;GET /backups?project_id=p&limit=1000;$TAGS"
 SW="$SW1$SW1"
 want() { if [ "$2" != "$3" ]; then printf 'FAIL %s\n  got:  %s\n  want: %s\n' "$1" "$2" "$3"; fail=1; fi; }
 calls() { tr '\n' ';' <"$FAKE_DIR/calls"; }
@@ -839,7 +843,8 @@ fake_evo_answer list_floating_ips 0 0 '{"floating_ips":[{"id":"sfip","name":"fip
 fake_evo_answer disk_list 0 0 '{"disks":[{"id":"sdisk","name":"'"$S"'-data","attached_to":[]}]}'
 fake_evo_answer list_subnets 0 0 '{"subnets":[{"id":"ssn","name":"'"$S"'-sn"}]}'
 fake_evo_answer list_security_groups 0 0 '{"security_groups":[{"id":"ssg","name":"'"$S"'-sg"}]}'
-printf '%s\n' 'GET /backups[?]* 200 {"items":[{"id":"sbk","name":"'"$S"'-bk"}],"total":1}' 'GET /protection-plans[?]* 200 {"items":[{"id":"spp","name":"'"$S"'-pp"}],"total":1}' >"$FAKE_DIR/http.default"
+printf '%s\n' 'GET /backups[?]* 200 {"items":[{"id":"sbk","name":"'"$S"'-bk"}],"total":1}' 'GET /protection-plans[?]* 200 {"items":[{"id":"spp","name":"'"$S"'-pp"}],"total":1}' \
+	"GET $RM/tags[?]* 200 {\"tags\":[{\"id\":\"stag\",\"tagKeyValue\":\"$S-tag=x\"}]}" >"$FAKE_DIR/http.default"
 rc=0
 PROBES=g20 GITHUB_REPOSITORY=o/r GH_TOKEN=t E2E_LIVE_TTL=0 "$here/cloud-live.sh" sweep evo-e2e- ops >"$tmp/out" 2>&1 || rc=$?
 want "стенд, общая уборка: код" "$rc" 0
@@ -1012,6 +1017,135 @@ want "без слов проб: только списки уборки" "$(calls
 # Строка списка — только «id<TAB>имя»: команда маски токена в список не
 # попадает (иначе уборка шлёт DELETE по ней).
 if grep -q '^DELETE' "$FAKE_DIR/calls"; then echo "FAIL: уборка без остатков что-то удаляла: $(calls)"; fail=1; fi
+
+# Г-17: первое чтение тегов → тег в «Менеджере ресурсов»: создание, чтение,
+# изменение → диск и ВМ с tag_ids в запросе создания → отбор по тегу в
+# Compute и в «Менеджере» → диск с tag_names → снятие и назначение диску →
+# ВМ удалена → удаление назначенного тега и повтор → диски удалены.
+# Заключение «Риска» 183: запись — только после чтения (У2), только по id
+# своего тега и на свои ВМ и диск (У3), удаление тега — после удаления ВМ
+# (У4); все запросы к «Менеджеру» — на хост из спецификации (У1).
+G=evo-e2e-ops-r7a1-g17
+g17_world() {
+	world
+	fake_evo_answer list_subnets 0 0 '{"subnets":[{"id":"sn0","name":"default","availability_zone_id":"z2"}]}'
+	fake_evo_answer image_get 0 0 '{"fields":[{"name":"hostname","filled_by":"evo","role":"vm_name"},{"name":"password","filled_by":"evo","role":"password"}]}'
+	fake_evo_answer destroy 0 0 '{"status":"deleted"}'
+	fake_evo_answer disk_delete 0 0 '{"status":"deleted"}'
+	fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+}
+g17_world
+cat >"$FAKE_DIR/http" <<H
+GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[{"id":"other","tagKeyValue":"env=prod","projectId":"p"}]}
+GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[{"id":"other","tagKeyValue":"env=prod","projectId":"p"},{"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}]}
+POST $RM/tags 200 {"id":"t1","tagKeyValue":"$G=probe","projectId":"p","customerId":"c-secret"}
+GET $RM/tags/t1[?]* 200 {"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}
+GET $RM/tags[?]projectId=p&key=* 200 {"tags":[{"id":"t1"}]}
+PATCH $RM/tags/t1 200 {"id":"t1"}
+POST! /disks 201 {"id":"d1"}
+POST! /disks 201 {"id":"d2"}
+GET /disks/d1 200 {"id":"d1","tags":[{"id":"t1","name":"$G"}]}
+GET /disks/d2 200 {"id":"d2","tags":[{"id":"t1","name":"$G"}]}
+POST .1/vms 201 [{"id":"vm1"}]
+GET /vms/vm1 200 {"id":"vm1","tags":[{"id":"t1","name":"$G"}]}
+GET /vms[?]* 200 {"items":[{"id":"vm1"}]}
+GET $RM/resources[?]* 200 {"resources":[{"resourceId":"d1","resourceTypeName":"disk"},{"resourceId":"vm1","resourceTypeName":"vm"}]}
+POST $RM/tags/t1/unassignResource 200 {}
+POST $RM/tags/t1/assignResource 200 {}
+DELETE! $RM/tags/t1[?]projectId=p 200 {}
+DELETE $RM/tags/t1[?]projectId=p 404 {"code":5,"message":"not found"}
+H
+rc=0
+PROBE_WAIT=1 PROBES=g17 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-17: код" "$rc" 0
+want "Г-17: запросы по порядку" "$(calls)" "${TAGS}POST $RM/tags;GET $RM/tags/t1?projectId=p;GET $RM/tags?projectId=p&key=$G;PATCH $RM/tags/t1;POST /disks;GET /disks/d1;POST .1/vms;GET /vms/vm1;GET /vms?project_id=p&tag_ids=t1&limit=100;GET $RM/resources?projectIds=p&tagIds=t1&pageSize=100;POST /disks;GET /disks/d2;${TAGS}POST $RM/tags/t1/unassignResource;GET /disks/d1;POST $RM/tags/t1/assignResource;GET /disks/d1;DELETE $RM/tags/t1?projectId=p;DELETE $RM/tags/t1?projectId=p;GET /disks/d1;${TAGS}$SW"
+want "Г-17: тело создания тега" "$(jq -c . "$FAKE_DIR/body.POST.https:..resource-manager.api.cloud.ru.v1.tags" 2>/dev/null)" "{\"key\":\"$G\",\"value\":\"probe\",\"description\":\"evo e2e probe\",\"projectId\":\"p\"}"
+want "Г-17: ВМ и оба диска удалены" "$(grep -c '^destroy yes=1' "$FAKE_DIR/evo-calls") $(grep -c '^disk_delete yes=1' "$FAKE_DIR/evo-calls")" "1 2"
+for s in 'Г-17: чтение тегов до записи.*тегов: 1.*тегов другого проекта в ответе: 0' "Г-17: создание тега.*пара в ответе: «$G=probe», проект тега: проект пробы" 'Г-17: чтение тега.*отбор по ключу — HTTP 200, найдено: 1' 'Г-17: изменение тега.*HTTP 200' 'Г-17: диск с tag_ids в запросе создания.*HTTP 201; tags в карточке диска: 1, поля тега: \["id","name"\]' 'Г-17: ВМ с tag_ids в запросе создания.*tags в карточке ВМ: 1.*отбор ВМ по tag_ids — HTTP 200, найдено: 1' 'Г-17: ресурсы по тегу в «Менеджере».*найдено: 2, виды: \["disk","vm"\]' 'Г-17: диск с tag_names.*id тега тот же, что у тега «Менеджера»: да; тегов с ключом пробы в «Менеджере»: 1' 'Г-17: снятие и назначение тега диску.*снятие — HTTP 200.*назначение — HTTP 200' 'Г-17: удаление тега, назначенного диску.*HTTP 200, повтор — HTTP 404.*tags диска после удаления тега: 1.*в «Менеджере»: 0'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-17: нет строки «$s»"; grep 'Г-17' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+done
+# Тело ВМ несёт tag_ids; в журнале нет id и значений полей тега (в объекте
+# тега — организация: customerId).
+jq -e '.[0].tag_ids == ["t1"]' "$FAKE_DIR/body.POST.https:..compute.api.cloud.ru.api.v1.1.vms" >/dev/null 2>&1 || { echo "FAIL: Г-17: в теле ВМ нет tag_ids"; fail=1; }
+if grep -v '::add-mask::' "$tmp/out" | grep -q 't1\|vm1\|c-secret\|env=prod'; then echo "FAIL: Г-17: id или значение чужого поля в строке лога"; grep -v '::add-mask::' "$tmp/out" | grep 't1\|vm1\|c-secret\|env=prod' | sed 's/^/  | /'; fail=1; fi
+if grep -q '::warning::Г-17' "$tmp/out"; then echo "FAIL: Г-17: предупреждение при одной сущности"; fail=1; fi
+# У3: ни одной записи по чужому тегу и ни одного запроса вне двух хостов.
+if grep -E '^(POST|PATCH|DELETE|PUT) ' "$FAKE_DIR/calls" | grep -q 'other'; then echo "FAIL: Г-17: запись по чужому тегу"; fail=1; fi
+if grep -q '^[A-Z]* https://' "$FAKE_DIR/calls" && grep '^[A-Z]* https://' "$FAKE_DIR/calls" | grep -qv "^[A-Z]* $RM/"; then echo "FAIL: Г-17: запрос на хост вне Compute и «Менеджера»"; fail=1; fi
+
+# У2: первое чтение не прошло — ни одной записи.
+g17_world
+echo "GET! $RM/tags[?]* 403 {\"code\":7,\"message\":\"permission denied\"}" >"$FAKE_DIR/http"
+rc=0
+PROBES=g17 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-17, чтение отказано: код" "$rc" 0
+want "Г-17, чтение отказано: записи нет" "$(calls)" "$TAGS$SW"
+grep -q 'Г-17.*не покрыто.*первое чтение тегов не прошло: HTTP 403.*запись не начинаю' "$tmp/out" || { echo "FAIL: Г-17: отказ первого чтения не назван"; grep 'Г-17' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+
+# У2: список проекта отдаёт тег другого проекта — тег шире проекта, записи нет.
+g17_world
+echo "GET! $RM/tags[?]* 200 {\"tags\":[{\"id\":\"o\",\"tagKeyValue\":\"a=b\",\"projectId\":\"another\"}]}" >"$FAKE_DIR/http"
+rc=0
+PROBES=g17 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-17, тег шире проекта: записи нет" "$(calls)" "$TAGS$SW"
+grep -q 'Г-17.*тег шире проекта — не покрыто' "$tmp/out" || { echo "FAIL: Г-17: «тег шире проекта» не назван"; fail=1; }
+
+# У5: tag_names принят, а тег на диске — не тег «Менеджера»: предупреждение
+# об остатке неизвестной сущности; со словом G17_TAG_NAMES=no шаг не идёт.
+g17_world
+cat >"$FAKE_DIR/http" <<H
+GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[]}
+GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[{"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}]}
+POST $RM/tags 200 {"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}
+POST! /disks 422 {"code":"tag_not_found","message":"no such tag"}
+POST! /disks 201 {"id":"d1"}
+POST! /disks 201 {"id":"d2"}
+GET /disks/d1 200 {"id":"d1","tags":[]}
+GET /disks/d2 200 {"id":"d2","tags":[{"id":"zz","name":"$G"}]}
+POST .1/vms 422 {"code":"tag_not_found","message":"no such tag"}
+DELETE $RM/tags/t1[?]* 200 {}
+H
+rc=0
+PROBE_WAIT=1 PROBES=g17 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-17, две сущности: код" "$rc" 0
+want "Г-17, две сущности: три запроса диска (с tag_ids, без тега, с tag_names)" "$(grep -c '^POST /disks$' "$FAKE_DIR/calls")" 3
+for s in 'Г-17: диск с tag_ids в запросе создания.*отказ HTTP 422.*машинный код: tag_not_found' 'Г-17: ВМ с tag_ids в запросе создания.*отказ HTTP 422' 'Г-17: диск с tag_names.*id тега тот же, что у тега «Менеджера»: нет; тегов с ключом пробы в «Менеджере»: 1' '::warning::Г-17: диск с tag_names принят, а тег на нём — не тег «Менеджера»'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-17, две сущности: нет строки «$s»"; grep 'Г-17' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+done
+if grep -q 'квота по машинному коду' "$tmp/out"; then echo "FAIL: Г-17: отказ не по квоте назван квотой"; fail=1; fi
+g17_world
+cat >"$FAKE_DIR/http" <<H
+POST $RM/tags 200 {"id":"t1","tagKeyValue":"$G=probe","projectId":"p"}
+POST /disks 201 {"id":"d1"}
+GET /disks/d1 200 {"id":"d1","tags":[]}
+POST .1/vms 422 {"code":"x","message":"no"}
+DELETE $RM/tags/t1[?]* 200 {}
+H
+rc=0
+G17_TAG_NAMES=no PROBE_WAIT=1 PROBES=g17 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "Г-17, без tag_names: один запрос диска" "$(grep -c '^POST /disks$' "$FAKE_DIR/calls")" 1
+grep -q 'Г-17: диск с tag_names.*не повторяется: остаток неубираем' "$tmp/out" || { echo "FAIL: Г-17: пропуск tag_names не назван"; fail=1; }
+
+# Уборка области: тег пробы, оставшийся после обрыва, удаляется по ключу;
+# чужой тег проекта — нет. Тег читается постранично.
+world
+cat >"$FAKE_DIR/http" <<H
+GET! $RM/tags[?]projectId=p&pageSize=100 200 {"tags":[{"id":"other","tagKeyValue":"env=prod"}],"nextPageToken":"n2"}
+GET! $RM/tags[?]projectId=p&pageSize=100&pageToken=n2 200 {"tags":[{"id":"tleft","tagKeyValue":"$G=probe"}]}
+DELETE $RM/tags/tleft[?]projectId=p 200 {}
+H
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+rc=0
+PROBES="" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+want "уборка тега: код" "$rc" 0
+want "уборка тега: удалён только тег пробы" "$(grep '^DELETE' "$FAKE_DIR/calls" | tr '\n' ';')" "DELETE $RM/tags/tleft?projectId=p;"
+# Список тегов не прочитан — вид не считается чистым: уборка красная.
+world
+echo "GET $RM/tags[?]* 500 {\"message\":\"boom\"}" >"$FAKE_DIR/http"
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+rc=0
+SWEEP_WAIT=1 PROBES="" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+[ "$rc" != 0 ] || { echo "FAIL: уборка тега: непрочитанный список тегов — зелёная уборка"; fail=1; }
 
 [ "$fail" = 0 ] && echo "cloud-live ops: ok"
 exit "$fail"
