@@ -139,7 +139,7 @@
   - ответы: 200
 - `DELETE /v3/nodePools/{nodePoolId}` (mk8s/openapi-v3.yaml) — Удаление группы узлов — тот же запрос в v3
   - ответы: 200
-- `GET /v3/nodePools/{nodePoolId}` (mk8s/openapi-v3.yaml) — Получение ресурса группы узлов по идентификатору — карточка группы: состояние и желаемое число узлов после принятого запроса
+- `GET /v3/nodePools/{nodePoolId}` (mk8s/openapi-v3.yaml) — Получение ресурса группы узлов по идентификатору — карточка группы: состояние и желаемое число узлов после принятого запроса; до обновления — допустимые версии (`versionUpgrade.availableVersions`)
   - ответы: 200
 - `POST /v3/clusters/{clusterId}:upgrade` (mk8s/openapi-v3.yaml) — Обновление плоскости управления кластера — тот же запрос в v3
   - `clusterId`* — string
@@ -149,7 +149,7 @@
   - `nodePoolId`* — string
   - `version` — string
   - ответы: 200
-- `GET /v3/clusters/{clusterId}` (mk8s/openapi-v3.yaml) — Получение информации о кластере — карточка кластера: состояние и версия после обновления
+- `GET /v3/clusters/{clusterId}` (mk8s/openapi-v3.yaml) — Получение информации о кластере — карточка кластера: состояние и версия после обновления; до него — допустимые версии (`versionUpgrade.availableVersions`), из них цель обновления
   - ответы: 200
 - `GET /v3/operations/{operationId}` (mk8s/openapi-v3.yaml) — Получение операции — операция запроса: done и форма поля error (Г6)
   - ответы: 200
