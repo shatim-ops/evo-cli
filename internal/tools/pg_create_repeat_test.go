@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
@@ -118,7 +119,7 @@ func TestPgCreate_RepeatAfterALostAnswerMakesNoSecond(t *testing.T) {
 // A record of an interrupted pg_db_create or pg_user_create closes when
 // doctor (checkByList) reads the cluster's list and finds the name: these
 // lists give no id, so the record is closed by the name alone, with no
-// «(id …)» in the words (FB19I-24 none; «Риск», 191, У2; declared with
+// «(id …)» in the words (found by name, with no id (databases and users of a PostgreSQL cluster); «Риск», 191, У2; declared with
 // «разработка C»). A name the list does not have keeps the record.
 func TestPgCreate_InterruptedRecordClosesByNameWithoutAnID(t *testing.T) {
 	const cluster = "00000000-0000-4000-8000-0000000000e1"
@@ -146,5 +147,45 @@ func TestPgCreate_InterruptedRecordClosesByNameWithoutAnID(t *testing.T) {
 		if _, settled := r.checkByList(context.Background(), gone, ""); settled {
 			t.Errorf("%s: a name not in the list closed the record", c.tool)
 		}
+	}
+}
+
+// doctor itself closes the record of an interrupted pg_db_create whose
+// database is now in the cluster: it reads pg_databases (no id in the
+// list) and closes the record by the name, naming it (FB19I-24; «Риск»,
+// 191, У2). A record whose name the list does not have stays.
+func TestDoctor_ClosesInterruptedPgDbCreateByName(t *testing.T) {
+	r, dir := targetRegistry(t, &disksCloud{})
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
+	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
+	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
+	if !r.Wrap("pg_databases", func(Handler) Handler {
+		return func(context.Context, map[string]any) (string, bool) {
+			return `{"databases":[{"name":"made"}]}`, false
+		}
+	}) {
+		t.Fatal("no tool pg_databases")
+	}
+	cluster := "cluster_id=00000000-0000-4000-8000-0000000000e1"
+	for _, in := range []intent.Intent{
+		{Tool: "pg_db_create", Name: "made", Target: cluster, ProjectID: "p"},
+		{Tool: "pg_db_create", Name: "not-yet", Target: cluster, ProjectID: "p"},
+	} {
+		if _, err := intent.Begin(intent.Dir(dir), in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
+	left := map[string]bool{}
+	for _, in := range intent.Pending(intent.Dir(dir)) {
+		left[in.Name] = true
+	}
+	if left["made"] || !left["not-yet"] {
+		t.Errorf("doctor left %v (want «made» closed, «not-yet» kept):\n%s", left, text)
+	}
+	if !strings.Contains(text, "the create took effect") || strings.Contains(text, "(id )") {
+		t.Errorf("doctor does not close «made» by name without an id:\n%s", text)
 	}
 }

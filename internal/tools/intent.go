@@ -984,7 +984,7 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	items, _ := m[c.field].([]any)
 	// found tells a match; listed is its id, which the lists of databases
 	// and users of a PostgreSQL cluster do not give — a create there is
-	// found by its name, with no id (FB19I-24 none; «разработка C» У2).
+	// found by its name, with no id (found by name, with no id (databases and users of a PostgreSQL cluster); «разработка C» У2).
 	matched := false
 	listed := ""
 	for _, it := range items {

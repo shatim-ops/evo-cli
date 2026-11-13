@@ -89,11 +89,11 @@ var repeatUndeclared = map[string]string{
 // п. 4; «Риск», заключение 120). "tool" → what a repeat does, and what 1.9
 // makes honest without changing the code. It only shrinks. Closes by 2.0.
 var repeatAsksUntilTheMajor = map[string]string{
-	"ca_start":       "a start of a running container app asks for consent; in 1.9 the state is read and named in the preview",
-	"ca_stop":        "a stop of a stopped container app asks for consent; in 1.9 the state is read and named in the preview",
-	"deploy":         "over MCP an unchanged compose file answers confirmation_required with unchanged: true and then changes nothing; the CLI asks nothing",
-	"k8s_add_addon":  "an addon the cluster has is asked about and sent; in 1.9 the preview says what OVERWRITE does to the installed one",
-	"stack_apply":    "an apply of a job done asks for consent and creates nothing; in 1.9 the question says so and carries unchanged: true",
+	"ca_start":      "a start of a running container app asks for consent; in 1.9 the state is read and named in the preview",
+	"ca_stop":       "a stop of a stopped container app asks for consent; in 1.9 the state is read and named in the preview",
+	"deploy":        "over MCP an unchanged compose file answers confirmation_required with unchanged: true and then changes nothing; the CLI asks nothing",
+	"k8s_add_addon": "an addon the cluster has is asked about and sent; in 1.9 the preview says what OVERWRITE does to the installed one",
+	"stack_apply":   "an apply of a job done asks for consent and creates nothing; in 1.9 the question says so and carries unchanged: true",
 }
 
 // TestConsent_EveryChangeDeclaresItsRepeat keeps the repeat of every
