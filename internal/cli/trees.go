@@ -937,6 +937,12 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 		fmt.Fprintln(w, text)
 		return nil
 	}
+	// The marker of the fields with text of the cloud is for a client of
+	// the JSON (--json, MCP); a person reads the table, whose cells are
+	// sanitized (output.SanitizeCell).
+	if m, ok := v.(map[string]any); ok {
+		delete(m, "_untrusted")
+	}
 	selection, empty := selectionLine(v)
 	if selection != "" {
 		fmt.Fprintln(w, selection)

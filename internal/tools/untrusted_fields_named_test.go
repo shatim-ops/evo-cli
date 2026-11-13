@@ -35,9 +35,7 @@ import (
 // outside the "_untrusted" of their answer, "tool: field" → the finding.
 // Only shrinks. Closes by 1.9, before rc.1 (release plan 1.9, «Сроки
 // храповиков «к 1.7–1.9»»).
-var untrustedFieldPending = map[string]string{
-	"backup_get: protection_plan": "FB19I-21 of the interim delta audit of 1.9: the name of the plan is the cloud's; «разработка B»",
-}
+var untrustedFieldPending = map[string]string{}
 
 // hostileNested adds to hostileBody the resources an answer of the cloud
 // names inside another, each named hostileName.
