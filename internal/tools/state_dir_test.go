@@ -105,7 +105,12 @@ func TestStateDir_RecordsAreOfTheDeclaredDirectoryNotOfTheProcess(t *testing.T) 
 	// finds the record and asks, and sends nothing.
 	next, _ := stateDirRegistry(dir, dir)
 	sent := 0
-	again := next.intended(reboot, func(context.Context, map[string]any) (string, bool) {
+	again := next.intended(reboot, func(_ context.Context, args map[string]any) (string, bool) {
+		// The layer asks the handler for the preview of its question
+		// without the consent: only a consented call sends.
+		if confirmed, _ := args["confirmed"].(bool); !confirmed {
+			return `{"status":"error","reason":"USAGE"}`, true
+		}
 		sent++
 		return `{"status":"reboot_accepted"}`, false
 	})
@@ -128,7 +133,12 @@ func TestStateDir_ARecordOfTheBuildBeforeIsRead(t *testing.T) {
 	r, _ := stateDirRegistry(dir, dir)
 	reboot, _ := r.Lookup("vm_reboot")
 	sent := 0
-	call := r.intended(reboot, func(context.Context, map[string]any) (string, bool) {
+	call := r.intended(reboot, func(_ context.Context, args map[string]any) (string, bool) {
+		// The layer asks the handler for the preview of its question
+		// without the consent: only a consented call sends.
+		if confirmed, _ := args["confirmed"].(bool); !confirmed {
+			return `{"status":"error","reason":"USAGE"}`, true
+		}
 		sent++
 		return `{"status":"reboot_accepted"}`, false
 	})
@@ -175,7 +185,12 @@ func TestStateDir_ADirectoryThatCannotTakeTheRecordRefusesTheCall(t *testing.T) 
 	r, _ := stateDirRegistry(dir, dir)
 	reboot, _ := r.Lookup("vm_reboot")
 	sent := 0
-	call := r.intended(reboot, func(context.Context, map[string]any) (string, bool) {
+	call := r.intended(reboot, func(_ context.Context, args map[string]any) (string, bool) {
+		// The layer asks the handler for the preview of its question
+		// without the consent: only a consented call sends.
+		if confirmed, _ := args["confirmed"].(bool); !confirmed {
+			return `{"status":"error","reason":"USAGE"}`, true
+		}
 		sent++
 		return `{"status":"reboot_accepted"}`, false
 	})
