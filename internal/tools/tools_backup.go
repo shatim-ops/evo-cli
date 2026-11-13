@@ -787,11 +787,12 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 		}, nil
 	}
 	return &Plan{PreviewOf: preview, Execute: func(ctx context.Context) (string, bool) {
+		asked := clock.Now()
 		_, err := api.RestoreBackup(ctx, id, cfg)
 		if err != nil && apiStatus(err) >= 400 && apiStatus(err) < 500 {
 			return errResult(fmt.Errorf(i18n.T("restore backup: %w", "восстановление копии: %w"), err)), true
 		}
-		return s.backupRestored(ctx, eng, args, list, id, name, err, boolArg(args, "wait", true))
+		return s.backupRestored(ctx, eng, args, list, id, name, asked, err, boolArg(args, "wait", true))
 	}}, nil
 }
 
@@ -809,18 +810,27 @@ var backupRestoreWait = diskReadyTimeout
 // between (conclusion 164, У5). sent is the error of the request, nil when
 // the platform took it: a lost answer is reconciled by the name too, and a
 // disk not found then may still come and be billed.
-func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), backupID, name string, sent error, wait bool) (string, bool) {
-	var found []map[string]any
+func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), backupID, name string, asked time.Time, sent error, wait bool) (string, bool) {
+	var found, before []map[string]any
 	read := func(ctx context.Context) (string, bool, error) {
 		items, err := list(ctx)
 		if err != nil {
 			return "", false, nil
 		}
-		found = found[:0]
+		found, before = found[:0], before[:0]
 		for _, d := range items {
-			if n, _ := d["name"].(string); n == name {
-				found = append(found, d)
+			if n, _ := d["name"].(string); n != name {
+				continue
 			}
+			// A disk of the name made before the restore was asked for is
+			// another's, not the restore's: the name and made after the
+			// request («Риск», 164, У5; FB19I-18). A disk with no time
+			// of its making is not told apart: it stays a candidate.
+			if at, err := time.Parse(time.RFC3339, fmt.Sprint(d["created_time"])); err == nil && at.Before(asked.Add(-restoreClockSkew)) {
+				before = append(before, d)
+				continue
+			}
+			found = append(found, d)
 		}
 		if len(found) != 1 {
 			return "", len(found) > 1, nil
@@ -844,6 +854,15 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 	}
 	last, _, _, werr := waitState(ctx, eng, limit, read, waiting, done)
 	ans := map[string]any{"backup_id": backupID, "name": name}
+	if len(before) > 0 {
+		ids := make([]any, 0, len(before))
+		for _, d := range before {
+			ids = append(ids, d["id"])
+		}
+		ans["other_disks"] = ids
+		ans["warning"] = i18n.Tf("disks named %s made before the restore was asked for are not the restore's: %v",
+			"диски с именем %s, созданные до запроса восстановления, — не его: %v", quoteCloud(name), ids)
+	}
 	if werr != nil {
 		// The call was cut while it looked for its disk: the restore was
 		// sent, and the disk may be made and billed all the same. It is
@@ -904,6 +923,11 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 	return toJSON(ans), false
 }
 
+// restoreClockSkew is how far the platform's clock may be behind the
+// local one when evo tells a disk made after the request from one made
+// before it (FB19I-18): a hypothesis no run has measured.
+const restoreClockSkew = 2 * time.Minute
+
 // restoreHeldLimit is how long a restore the platform took is waited for
 // by the repeats of its call: two runs of Г-16 listed a restored disk in
 // seconds; a disk not listed by then is not waited for any more. The
@@ -932,7 +956,7 @@ func (s *Registry) restoreHeld(eng *engine.Engine, id, name string) (since time.
 // same call next, until restoreHeldLimit: then the answer says it was not
 // listed and leaves a second restore to the person. Nothing is sent.
 func (s *Registry) restoreGoesOn(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), id, name string, since time.Time) (string, bool) {
-	text, isErr := s.backupRestored(ctx, eng, args, list, id, name, nil, false)
+	text, isErr := s.backupRestored(ctx, eng, args, list, id, name, since, nil, false)
 	if answerStatus(text) != "restoring" || clock.Now().Sub(since) < restoreHeldLimit {
 		return text, isErr
 	}
