@@ -48,6 +48,16 @@ last update, no more of the spec) it also reports, per request:
                   its price, work or security) the body of the spec does
                   not have: `error`
 
+and, per request that creates ("creates"):
+
+  create-answer-no-id  the answer of the create does not name what it made
+                       — it has no id, or the request is an action on
+                       another resource (…/{id}/action): `error` until the
+                       request accepts it with the test that holds «the
+                       request was taken, the resource is not listed yet —
+                       the repeat sends no second» (release plan 1.9), or
+                       with why a second is not made
+
 --update-fields rewrites the baseline from the specs, once the new fields
 are read or accepted (a version's step, or a PR that reads a new field).
 
@@ -456,6 +466,27 @@ def check_request(spec, req):
         props, required, _ = merge_schema(bs)
         if required:
             add("error", "body-missing", f"спецификация требует тело с полями {sorted(required)}")
+
+    # --- a create whose answer does not name what it made ---
+    # The repeat of a create is safe by the id its answer gives (createdIDs).
+    # An answer with no id, and an action on another resource — whose answer
+    # is that resource — leave the call to find what it made by a list, and
+    # a request the platform took whose resource is not listed yet invites a
+    # second one (backup_restore, #1580). Such a request says what holds its
+    # repeat: "accepted" with the test, or why a second is not made.
+    if req.get("creates") and method != "GET":
+        ss = success_schema(op)
+        fields = set(schema_fields(ss)) if ss else set()
+        top = {f for f in fields if "." not in f and "[" not in f}
+        named = "id" in top or (len(top) == 1 and next(iter(top)) + ".id" in fields)
+        if re.search(r"/\{[^}]+\}/action$", path):
+            add("error", "create-answer-no-id",
+                "создание — действие над другим ресурсом: ответ называет его, а не созданное; повтор принятого запроса, "
+                "ресурс которого ещё не в списке, шлёт второй — объявите в accepted тест, который это держит")
+        elif not named:
+            add("error", "create-answer-no-id",
+                "ответ создания не несёт id созданного: повтор принятого запроса, ресурс которого ещё не в списке, "
+                "шлёт второй — объявите в accepted тест, который это держит, либо почему второй не создаётся")
 
     # --- fields of impact (CLAUDE.md §6, axis 4): each is a field of the body ---
     impact = req.get("impact") or {}
