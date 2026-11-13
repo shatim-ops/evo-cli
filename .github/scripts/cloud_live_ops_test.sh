@@ -64,7 +64,7 @@ cat >"$tmp/bin/ssh-keygen" <<'FAKE'
 while [ $# -gt 0 ]; do case $1 in -f) : >"$2"; echo "ssh-ed25519 AAAA evo-probe" >"$2.pub"; shift ;; esac; shift; done
 FAKE
 chmod +x "$tmp/bin/ssh-keygen"
-export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0 SWEEP_PAUSE=1 API_RETRY_PAUSE=0
+export PATH="$tmp/bin:$PATH" KEY_ID=k SECRET=s PROJECT=p RUN=r7a1 ZONE=ru.AZ-2 GITHUB_STEP_SUMMARY=/dev/null PROBE_PAUSE=0 PROBE_WAIT_TWICE=1 SWEEP_PAUSE=1 API_RETRY_PAUSE=0
 fail=0
 n=0
 world() {
@@ -97,7 +97,7 @@ POST /security-groups/sg1/rules 201 {"id":"rule1"}
 GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}
 GET! /security-groups/sg1/rules/rule1 200 {"id":"rule1","remote_ip_prefix":"0.0.0.0/0","remote_security_group":null}
 GET /security-groups/sg1/rules/rule1 404
-GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0","state":"created"},{"id":"rule1","port_range":"18092:18092","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}}],"total":2}
+GET /security-groups/sg1/rules?limit=100 200 {"items":[{"id":"rule1","remote_ip_prefix":"0.0.0.0/0","state":"created"},{"id":"rule1","port_range":"18092:18092","remote_ip_prefix":null,"remote_security_group":{"id":"sg1","name":"evo-e2e-ops-r7a1-sg"}},{"id":"rule1","port_range":"18093:18093","remote_ip_prefix":"0.0.0.0/0","remote_security_group":null},{"id":"rule1","ip_protocol":"tcp","port_range":"1:65535","remote_ip_prefix":"198.18.255.1/32"}],"total":4}
 DELETE! /security-groups/sg1/rules/rule1 204
 DELETE! /security-groups/sg1/rules/rule1 422 [{"code":"security_group_rule_can_not_be_deleted_from_current_state","message":"no"}]
 DELETE /security-groups/sg1/rules/rule1 404 [{"code":"security_group_rule_not_found","message":"no"}]
@@ -111,14 +111,22 @@ rc=0
 PROBES=g11 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-11: код" "$rc" 0
 R=/security-groups/sg1/rules
-want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;GET /security-groups/sg1;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;POST $R;GET $R/rule1;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
+want "Г-11: запросы по порядку" "$(calls)" "POST /security-groups;GET /security-groups/sg1;POST $R;POST $R;POST $R;POST $R;POST $R;POST $R;GET $R/rule1;POST $R;GET $R/rule1;POST $R;GET $R?limit=100;POST $R;GET $R?limit=100;DELETE $R/rule1;DELETE $R/rule1;GET $R/rule1;DELETE $R/rule1;DELETE /security-groups/sg1;DELETE /security-groups/sg1;GET /security-groups/sg1;DELETE /security-groups/sg1;$SW"
 grep -q 'Г-11: готовность группы.*состояния: created' "$tmp/out" || { echo "FAIL: Г-11: готовность группы до правил не записана"; fail=1; }
-grep -q 'Г-11: чтение правил.*HTTP 200, правил: 2, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-11: чтение правил.*HTTP 200, правил: 4, поля правила: \["id","remote_ip_prefix","state"\].*«весь интернет» хранится как: <ip>/0' "$tmp/out" || { echo "FAIL: Г-11: правила не прочитаны списком группы"; grep 'чтение' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление правила.*HTTP 204, повтор сразу — HTTP 422, машинный код security_group_rule_can_not_be_deleted_from_current_state.*состояния: нет (404).*повтор после исчезновения — HTTP 404, машинный код security_group_rule_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления правила после исчезновения не записан"; grep 'удаление правила' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 grep -q 'Г-11: удаление группы.*повтор после исчезновения — HTTP 404, машинный код security_group_not_found' "$tmp/out" || { echo "FAIL: Г-11: повтор удаления группы после исчезновения не записан"; grep 'удаление группы' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # Правило с группой-источником в ответе списка (по списку его узнаёт evo):
 # форма источника и префикс — те же слова, что у чтения по id.
 grep -q 'Г-11: чтение правил.*правило с группой-источником в списке: объект remote_security_group с полями \["id","name"\], remote_ip_prefix: null' "$tmp/out" || { echo "FAIL: Г-11: форма группы-источника в списке не записана"; grep 'чтение правил' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+# Гипотеза Г5 дельта-аудита 1.9: правило без источника в ответе списка (по
+# списку evo решает, что останется открытым) и правило «все порты» — что
+# платформа хранит в port_range; при пустом значении evo не посчитает
+# правило ни открывающим порт, ни последним правилом SSH. Тело правила «все
+# порты»: tcp, port_range «any», источник — тестовый адрес, не интернет.
+grep -q 'Г-11: чтение правил.*правило без источника в списке: группы в ответе нет.*remote_ip_prefix: весь IPv4' "$tmp/out" || { echo "FAIL: Г-11: правило без источника в списке не записано"; grep 'чтение правил' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+jq -e 'select(.port_range == "any" and .ip_protocol == "tcp") | .remote_ip_prefix == "198.18.255.1/32"' "$FAKE_DIR/bodies" >/dev/null || { echo "FAIL: Г-11: тело правила «все порты» не то"; grep '"any"' "$FAKE_DIR/bodies"; fail=1; }
+grep -q 'Г-11: правило «все порты».*HTTP 201, port_range в ответе создания: «нет поля».*в списке: «1:65535»' "$tmp/out" || { echo "FAIL: Г-11: что хранится у правила «все порты», не записано"; grep 'все порты' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # Правило «откуда угодно» без источника вовсе: в теле нет ни адреса, ни
 # группы; в строке — что платформа хранит в remote_ip_prefix (от этого
 # зависит ветка «без префикса — любой» в sgrules.Coverage, план 1.9).
@@ -576,16 +584,17 @@ g16_world() {
 }
 g16_world
 fake_evo_answer disk_list 0 0 '{"disks":[{"id":"boot1","name":"evo-e2e-ops-r7a1-g16-boot","bootable":true,"disk_type":"SSD-NVMe","attached_to":["evo-e2e-ops-r7a1-g16"]},{"id":"rd1","name":"evo-e2e-ops-r7a1-g16-rd","attached_to":[]},{"id":"rb1","name":"evo-e2e-ops-r7a1-g16-rv-boot","bootable":true,"attached_to":["evo-e2e-ops-r7a1-g16-rv"]}]}'
-# disk_list читают: появление восстановленного диска, загрузочный диск ВМ,
+# disk_list читают: появление восстановленного диска, счёт дисков после
+# второго восстановления, загрузочный диск ВМ,
 # диски восстановленной ВМ, диск после удаления копии; дальше — уборка.
-for i in 1 2 3; do cp "$FAKE_DIR/disk_list.0.json" "$FAKE_DIR/disk_list.$i.json"; done
-fake_evo_answer disk_list 4 0 '{"disks":[]}'
+for i in 1 2 3 4; do cp "$FAKE_DIR/disk_list.0.json" "$FAKE_DIR/disk_list.$i.json"; done
+fake_evo_answer disk_list 5 0 '{"disks":[]}'
 cat >"$FAKE_DIR/http" <<'H'
 POST! /backups 201 {"id":"bd","state":"creating"}
 POST! /backups 201 {"id":"bv","state":"creating"}
 GET! /backups/bd 200 {"id":"bd","state":"creating","size":0}
-GET! /backups/bd 200 {"id":"bd","state":"created","size":5,"type":"full"}
-GET! /backups/bd 200 {"id":"bd","state":"created","size":5,"last_restore_time":"t"}
+GET! /backups/bd 200 {"id":"bd","state":"created","size":5,"type":"full","created_at":"2026-11-12T10:00:00Z"}
+GET! /backups/bd 200 {"id":"bd","state":"created","size":5,"last_restore_time":"2026-11-12T10:05:00"}
 GET! /backups/bd 200 {"id":"bd","state":"deleting"}
 GET /backups/bd 404 {"code":"not_found"}
 GET! /backups/bv 200 {"id":"bv","state":"created","size":9}
@@ -593,7 +602,8 @@ GET! /backups/bv 200 {"id":"bv","state":"created","size":9}
 GET /backups/bv 404
 GET! /backups?project_id=p&limit=1000 200 {"items":[{"id":"bd","name":"evo-e2e-ops-r7a1-g16-bd"},{"id":"bv","name":"evo-e2e-ops-r7a1-g16-bv"},{"id":"x","name":"someone"}],"total":3}
 GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd 200 {"items":[{"id":"bd","name":"evo-e2e-ops-r7a1-g16-bd"}],"total":1}
-POST /backups/bd/action 201 {"id":"bd","state":"updating"}
+POST! /backups/bd/action 201 {"id":"bd","state":"updating"}
+POST! /backups/bd/action 409 {"code":"disk_name_exists","message":"no"}
 POST /backups/bv/action 201 {"id":"bv","state":"updating"}
 DELETE! /backups/bd 204
 DELETE! /backups/bd 409 {"code":"conflict","message":"deleting"}
@@ -610,10 +620,16 @@ rc=0
 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-16: код" "$rc" 0
 L='?project_id=p&limit=1000'
-want "Г-16: запросы по порядку" "$(calls)" "POST /backups;GET /backups/bd;GET /backups/bd;POST /backups;GET /backups/bv;GET /backups$L;GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd;POST /backups/bd/action;GET /backups/bd;POST /backups/bv/action;GET /backups/bv;DELETE /backups/bd;DELETE /backups/bd;GET /backups/bd;GET /backups/bd;DELETE /backups/bd;DELETE /backups/bv;DELETE /backups/bv;GET /backups/bv;DELETE /backups/bv;POST /protection-plans;GET /protection-plans/pp;GET /protection-plans$L;DELETE /protection-plans/pp;DELETE /protection-plans/pp;GET /protection-plans/pp;GET /backups$L;$SW"
+want "Г-16: запросы по порядку" "$(calls)" "POST /backups;GET /backups/bd;GET /backups/bd;POST /backups;GET /backups/bv;GET /backups$L;GET /backups?project_id=p&name=evo-e2e-ops-r7a1-g16-bd;POST /backups/bd/action;GET /backups/bd;POST /backups/bd/action;POST /backups/bv/action;GET /backups/bv;DELETE /backups/bd;DELETE /backups/bd;GET /backups/bd;GET /backups/bd;DELETE /backups/bd;DELETE /backups/bv;DELETE /backups/bv;GET /backups/bv;DELETE /backups/bv;POST /protection-plans;GET /protection-plans/pp;GET /protection-plans$L;DELETE /protection-plans/pp;DELETE /protection-plans/pp;GET /protection-plans/pp;GET /backups$L;$SW"
 for s in 'Г-16: копия диска, ожидание готовности' 'creating → created' 'Г-16: восстановление диска' 'Г-16: восстановление ВМ' 'повтор сразу — HTTP 409' 'после исчезновения — HTTP 404' 'Г-16: план защиты' 'Г-16: копии ресурсов пробы под чужим именем'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-16: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
+# Гипотезы дельта-аудита 1.9 (Г3, Г7): вид времени у копии — от него зависят
+# возраст копии и предупреждение о недавнем восстановлении; второе
+# восстановление той же копии под тем же именем — отказ или второй диск.
+grep -q 'Г-16: копия диска, ожидание готовности.*created_at: RFC3339 с зоной' "$tmp/out" || { echo "FAIL: Г-16: вид created_at не записан"; grep 'ожидание готовности' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-16: восстановление диска.*last_restore_time: без зоны' "$tmp/out" || { echo "FAIL: Г-16: вид last_restore_time не записан"; grep 'восстановление диска' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-16: второе восстановление той же копии под тем же именем.*HTTP 409, машинный код disk_name_exists.*дисков с этим именем: 1' "$tmp/out" || { echo "FAIL: Г-16: второе восстановление не записано"; grep 'второе восстановление' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 # Восстановление: копия восстанавливается в новый ресурс с именем пробы
 # (уборка области найдёт его по префиксу); диск восстановленной ВМ назван
 # и привязан к загрузочному диску исходной.
@@ -669,6 +685,12 @@ rc=0
 # закрывалось до первого повтора, и случай краснел в чужих PR (#1535).
 PROBE_WAIT=120 PROBES=g16 "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 want "Г-16, запрет после восстановления: код" "$rc" 0
+# В этом мире второе восстановление принято (2xx), а второго диска за
+# предел ожидания нет: диск может появиться после уборки области — платный
+# остаток, которого никто не видел (заключение «Риска» по #1616). Проба
+# говорит это предупреждением и называет, что сделать после прогона.
+grep -q '::warning::Г-16: второе восстановление принято, а второго диска за .* с нет' "$tmp/out" || { echo "FAIL: Г-16: принятое второе восстановление без диска не названо предупреждением"; grep 'второе восстановление' "$tmp/out" | sed 's/^/  | /'; fail=1; }
+grep -q 'Г-16: второе восстановление.*через 30 минут — уборка области' "$tmp/out" || { echo "FAIL: Г-16: в строке нет отложенной уборки"; fail=1; }
 want "Г-16, запрет после восстановления: DELETE до принятия и повтор после исчезновения" "$(grep -c '^DELETE /backups/bd$' "$FAKE_DIR/calls")" 6
 grep -q 'удаление копии диска.*запрет «идёт восстановление» снят через .* с (попыток: 4).*повтор после исчезновения — HTTP 404' "$tmp/out" || { echo "FAIL: Г-16: время запрета после восстановления не записано"; grep 'удаление копии' "$tmp/out" | sed 's/^/  | /'; fail=1; }
 
