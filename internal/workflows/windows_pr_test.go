@@ -25,9 +25,10 @@ var windowsBuildTag = regexp.MustCompile(`(?m)^//go:build .*\bwindows\b`)
 // without a line of the code naming it.
 var processLookup = regexp.MustCompile(`\bos\.FindProcess\(`)
 
-// On a pull request Windows runs only the packages with code of Windows
-// (go_test_ci.sh, windowsPRPackages); main, the night and the release run
-// everything (owner's decision 29.10, audit #578, item 10). Every package
+// On a pull request Windows runs the packages with code of Windows
+// (go_test_ci.sh, windowsPRPackages), internal/engine (windowsPRAlways) and
+// internal/tools; main, the night and the release run everything (owner's
+// decisions 29.10, audit #578, item 10, and 13.11). Every package
 // whose code has a *_windows.go file, a build constraint naming windows,
 // reads runtime.GOOS or looks another process up is in the list, and every
 // package of the list is one: a new package of Windows code is not left to

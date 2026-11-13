@@ -56,7 +56,7 @@ func TestWorkflows_CleanupKnowsEveryCluster(t *testing.T) {
 		kind, own := "", false
 		for _, s := range j.Steps {
 			switch {
-			case strings.Contains(s.Run, "k8s delete"):
+			case strings.Contains(s.Run, "k8s delete"), strings.Contains(s.Run, "k8s-delete.sh"):
 				kind = "k8s"
 			case strings.Contains(s.Run, "dbaas-delete.sh"):
 				kind = j.Env["KIND"]

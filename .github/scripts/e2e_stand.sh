@@ -20,16 +20,20 @@
 #           (иначе отказ до чтения облака); удаляет то, что само показало
 #           перечнем, и ничего сверх; порядок — STAND_KINDS; в конце list
 #           пуст или код 1 с перечнем остатков.
-# Нужны evo (configure), а для копий, планов защиты и групп безопасности —
-# KEY_ID, SECRET, PROJECT (у evo их удаления нет: прямой запрос Compute).
+# Нужны evo (configure), а для копий, планов защиты, групп безопасности и
+# тегов — KEY_ID, SECRET, PROJECT (у evo их удаления нет: прямой запрос
+# Compute и «Менеджера ресурсов»).
 STAND_PREFIX=evo-stand-19
 # Срок стенда: тег STAND_TAG или дата STAND_UNTIL (план 1.9, решение B) —
 # что раньше. Выпущен ли тег, скрипту говорит вызывающий: STAND_TAG_OUT=1.
 STAND_TAG=v1.9.0
 STAND_UNTIL=2026-12-15
 # Виды ресурсов стенда в порядке удаления: сначала то, что само тратит и
-# порождает (планы защиты, копии), затем кластеры, ВМ, адреса, диски, сеть.
-STAND_KINDS="pplan backup k8s pg vm fip disk subnet sg"
+# порождает (планы защиты, копии), затем кластеры, ВМ, адреса, диски, сеть;
+# тег «Менеджера ресурсов» — последним, после ресурсов, которым назначен
+# (Вп-3, решено 12.11: один тег на ВМ стенда).
+STAND_KINDS="pplan backup k8s pg vm fip disk subnet sg tag"
+STAND_RM=https://resource-manager.api.cloud.ru/v1
 
 # stand_names — «вид<TAB>имя» ресурсов, которые создаёт стенд (Г-51). Имена
 # производных ресурсов evo строит сам от имени ВМ: адрес fip-<ВМ>-…,
@@ -39,7 +43,8 @@ stand_names() {
 		vm "$STAND_PREFIX-vm" \
 		k8s "$STAND_PREFIX-k8s" \
 		pg "$STAND_PREFIX-pg" \
-		backup "$STAND_PREFIX-bk"
+		backup "$STAND_PREFIX-bk" \
+		tag "$STAND_PREFIX-tag"
 }
 
 
@@ -48,7 +53,13 @@ stand_err() { jq -r '[.error.reason? // empty, .error.message? // empty] | join(
 # stand_api МЕТОД ПУТЬ — запрос Compute; код HTTP в $code, тело в $stand_tmp/api.json.
 stand_api() {
 	: >"$stand_tmp/api.json"
-	code=$(curl -sS -o "$stand_tmp/api.json" -w '%{http_code}' -X "$1" "https://compute.api.cloud.ru/api/v1$2" -H "Authorization: Bearer $STAND_TOKEN" 2>/dev/null) || code=000
+	code=$(curl -sS --connect-timeout 10 --max-time 120 -o "$stand_tmp/api.json" -w '%{http_code}' -X "$1" "https://compute.api.cloud.ru/api/v1$2" -H "Authorization: Bearer $STAND_TOKEN" 2>/dev/null) || code=000
+}
+# stand_rm МЕТОД ПУТЬ — запрос «Менеджера ресурсов» (теги; хост тот же, что
+# у пробы Г-17, заключение «Риска» 183); код HTTP в $code.
+stand_rm() {
+	: >"$stand_tmp/api.json"
+	code=$(curl -sS --connect-timeout 10 --max-time 120 -o "$stand_tmp/api.json" -w '%{http_code}' -X "$1" "$STAND_RM$2" -H "Authorization: Bearer $STAND_TOKEN" 2>/dev/null) || code=000
 }
 # Токен старше STAND_TOKEN_TTL (10 мин) берётся заново: sweep ждёт удалений
 # до получаса — дольше жизни одного токена.
@@ -57,7 +68,7 @@ stand_token() {
 	STAND_TOKEN=
 	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] && [ -n "${PROJECT:-}" ] || return 1
 	STAND_TOKEN=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-		curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
+		curl -sS --connect-timeout 10 --max-time 60 -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
 		jq -r '.access_token // .accessToken // empty') || STAND_TOKEN=
 	[ -n "$STAND_TOKEN" ] || return 1
 	STAND_TOKEN_AT=$SECONDS
@@ -95,6 +106,28 @@ stand_lst() {
 		jq -r --arg p "$STAND_PREFIX" --rawfile o "$stand_tmp/owners" '($o | split("\n") | map(select(. != ""))) as $own
 			| .items[] | select(((.name // "") | startswith($p)) or any((.resource.resource_id?, .resources[]?.resource_id?) | strings; . as $r | $own | index($r)))
 			| "\(.id)\t\(.name)\t\(.state // "")"' "$stand_tmp/api.json" ;;
+	tag)
+		# Постранично; ответ без массива tags — не прочитан, а не «тегов нет»:
+		# тег стенда остался бы невидим уборке (урок Г-17, У7).
+		[ -n "${STAND_TOKEN:-}" ] || return 1
+		local tok='' prev='' pages=0
+		while :; do
+			stand_rm GET "/tags?projectId=$PROJECT&pageSize=100${tok:+&pageToken=$tok}"
+			case "$code" in 2??) ;; *)
+				echo "$code" >"$stand_tmp/code.$1"
+				return 1
+				;;
+			esac
+			jq -e '.tags | type == "array"' "$stand_tmp/api.json" >/dev/null 2>&1 || return 1
+			jq -r --arg p "$STAND_PREFIX" '.tags[] | ((.key? // .tagKeyValue? // "") | tostring) as $k | select($k | startswith($p)) | "\(.id)\t\($k)\t"' "$stand_tmp/api.json"
+			prev=$tok
+			tok=$(jq -r '.nextPageToken // empty' "$stand_tmp/api.json" 2>/dev/null) || tok=
+			[ -n "$tok" ] || break
+			# Тот же токен — список ходит по кругу: не прочитан сразу.
+			[ "$tok" != "$prev" ] || return 1
+			pages=$((pages + 1))
+			[ "$pages" -lt 50 ] || return 1
+		done ;;
 	*) return 1 ;;
 	esac
 }
@@ -146,6 +179,13 @@ stand_del() {
 		stand_token || { why="нет токена IAM"; return 1; }
 		case "$1" in backup) arg=backups ;; pplan) arg=protection-plans ;; sg) arg=security-groups ;; esac
 		stand_api DELETE "/$arg/$2"
+		case "$code" in 2?? | 404) return 0 ;; esac
+		why="HTTP $code"
+		return 1
+		;;
+	tag)
+		stand_token || { why="нет токена IAM"; return 1; }
+		stand_rm DELETE "/tags/$2?projectId=$PROJECT"
 		case "$code" in 2?? | 404) return 0 ;; esac
 		why="HTTP $code"
 		return 1

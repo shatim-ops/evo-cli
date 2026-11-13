@@ -46,7 +46,7 @@ var untrustedFields = map[string]untrustedAnswer{
 	"s3_get": {fields: []string{"content", "content_base64"}, workload: true},
 	// deploy: the output of docker compose up — its log over MCP, the last
 	// lines of a failure (#558).
-	"deploy": {fields: []string{"log", "output"}, workload: true},
+	"deploy": {fields: []string{"log", "output", "ports_open_only_to_groups"}, workload: true},
 	// The status of the app the question of ca_start and ca_stop names, as
 	// the API gives it («Риск», conclusion 142).
 	"ca_start": {fields: []string{"app_status"}},
@@ -95,13 +95,20 @@ var untrustedFields = map[string]untrustedAnswer{
 	"backup_restore": {fields: []string{"preview", "will_create", "disk", "name"}},
 	// The names of the backup, its source and the backups that depend on
 	// it, in the preview.
-	"backup_delete": {fields: []string{"will_delete", "target"}},
+	"backup_delete": {fields: []string{"will_delete", "target", "resource_status"}},
 	// The name of the pool, in the preview and in the answer; the words
 	// and the code of the platform in a failed operation (details).
 	"k8s_nodepool_scale": {fields: []string{"preview", "name", "details"}},
 	// The cluster of the pool by its name, in the preview of the delete;
-	// the name of the pool, in the target (FB19I-9).
-	"k8s_nodepool_delete": {fields: []string{"preview", "target"}},
+	// the name of the pool, in the target (FB19I-9); its status in a
+	// refusal.
+	"k8s_nodepool_delete": {fields: []string{"preview", "target", "resource_status"}},
+	// The status of the resource as its service writes it, in the refusal
+	// of a delete in a state no run has shown («Риск», 181, У2): a word
+	// of the cloud, not of a closed set.
+	"k8s_delete": {fields: []string{"resource_status"}},
+	"lb_delete":  {fields: []string{"resource_status"}},
+	"tg_delete":  {fields: []string{"resource_status"}},
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.
