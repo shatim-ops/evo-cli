@@ -127,8 +127,8 @@ func withStatus(execute func(context.Context) (string, bool), tool, status, id s
 			// The right of the key, not the state of the resource
 			// («Риск», 181, У3).
 			m["hint"] = i18n.T(
-				fmt.Sprintf("Cloud.ru denied the delete to this key (HTTP %d): the key was not accepted, or it or the role of its service account has no right to delete the %s; it stays, and a billable one is still billed. A key with that right deletes it.", code, decl.what),
-				fmt.Sprintf("Cloud.ru отказал этому ключу в удалении (HTTP %d): ключ не принят либо у него или у роли его сервисного аккаунта нет права удалять ресурс (%s); ресурс остаётся, платный — тарифицируется. Удалит ключ с этим правом.", code, decl.whRU))
+				fmt.Sprintf("Cloud.ru denied the delete to this key (HTTP %d): the key was not accepted, or it or the role of its service account has no right to delete the %s; it stays, and a billable one is still billed. Try the delete with a key that has that right.", code, decl.what),
+				fmt.Sprintf("Cloud.ru отказал этому ключу в удалении (HTTP %d): ключ не принят либо у него или у роли его сервисного аккаунта нет права удалять ресурс (%s); ресурс остаётся, платный — тарифицируется. Попробуйте удалить ключом с этим правом.", code, decl.whRU))
 		case intent.DefiniteRefusal(code) && !notTheState[reason]:
 			m["hint"] = i18n.T(
 				fmt.Sprintf("Cloud.ru refused the delete of the %s in %s: it stays, and a billable one is still billed; the same call gets the same refusal while its state holds. What to do with it is the person's decision; the way is Cloud.ru support, with its id %s.", decl.what, quoteCloud(status), id),

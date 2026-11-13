@@ -176,7 +176,7 @@ func TestK8sNodePoolDelete_AnswersTheOperation(t *testing.T) {
 // console», a word of the platform with no run, on a 500, a 503 or a 409
 // alike (FB19I-7).
 func TestK8sNodePoolDelete_RequestRefused(t *testing.T) {
-	for _, code := range []int{401, 403, 409, 500, 503} {
+	for _, code := range []int{401, 403, 408, 409, 500, 503} {
 		w := &poolWorld{status: poolError, others: []string{poolRunning}, del: code}
 		w.setCount(2)
 		m, text, isErr := poolDelete(t, w, true)
@@ -202,7 +202,8 @@ func TestK8sNodePoolDelete_RequestRefused(t *testing.T) {
 		if denied && (strings.Contains(hint, "while its state holds") || strings.Contains(hint, "support") || !strings.Contains(hint, "no right to delete")) {
 			t.Errorf("%d: want the right of the key named, not the state and support: %s", code, text)
 		}
-		refused := code < 500 && !denied
+		// 408: the request may have been taken on the way — not a refusal.
+		refused := code < 500 && code != 408 && !denied
 		if refused && (!strings.Contains(hint, "Cloud.ru refused the delete") || !strings.Contains(hint, "support") || !strings.Contains(hint, poolFixed) || !strings.Contains(hint, "the same call")) {
 			t.Errorf("%d: want the refusal said, the same call refused again and support as the way: %s", code, text)
 		}
