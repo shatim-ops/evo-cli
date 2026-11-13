@@ -53,10 +53,17 @@ func TestWorkflows_RedMainOpensAnIssue(t *testing.T) {
 		}
 		// 'workflow_run' — pr-stuck is started by the end of a ci run, and
 		// its red round must reach the issue as its scheduled one does.
-		for _, ev := range []string{"'push'", "'schedule'", "'workflow_run'"} {
+		for _, ev := range []string{"'push'", "'schedule'"} {
 			if !strings.Contains(j.If, "github.event.workflow_run.event == "+ev) {
 				t.Errorf("main-red: job %s does not follow a run of %s", name, ev)
 			}
+		}
+		// A run started by another run counts for pr-stuck alone: the job
+		// carries issues: write and pull-requests: write, and must not
+		// start following such runs of ci, cloud-e2e or stand the day
+		// somebody gives them this trigger (risk note 178).
+		if !strings.Contains(j.If, "(github.event.workflow_run.event == 'workflow_run' && github.event.workflow_run.name == 'pr-stuck')") {
+			t.Errorf("main-red: job %s runs on %q, want a run started by workflow_run followed for pr-stuck alone", name, j.If)
 		}
 		for _, c := range []string{"'failure'", "'success'"} {
 			if !strings.Contains(j.If, "github.event.workflow_run.conclusion == "+c) {

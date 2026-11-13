@@ -49,6 +49,23 @@ func TestWorkflows_StuckPullRequestsAreTold(t *testing.T) {
 	if _, filtered := run["branches"]; filtered {
 		t.Error("pr-stuck: workflow_run is narrowed to branches — the run of a pull request must start the round too")
 	}
+	// A round by the end of a ci run is for the two cases the round exists
+	// for: a push to main (a merge may have left open pull requests in
+	// conflict) and a run that did not end green (a job no runner took
+	// leaves the run failed). A green run of a pull request starts none:
+	// every round spends the hourly request limit of the token, which
+	// main-red and the review share (risk note 178).
+	for name, j := range w.Jobs {
+		for _, want := range []string{
+			"github.event_name != 'workflow_run'",
+			"github.event.workflow_run.event == 'push'",
+			"github.event.workflow_run.conclusion != 'success'",
+		} {
+			if !strings.Contains(j.If, want) {
+				t.Errorf("pr-stuck: job %s runs on %q, want %s in it — a green run of a pull request must not start a round", name, j.If, want)
+			}
+		}
+	}
 	// The checkout is the default branch, never the head of the run that
 	// started the round.
 	for name, j := range w.Jobs {

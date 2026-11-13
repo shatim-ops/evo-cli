@@ -36,6 +36,17 @@ concurrency:
 
 jobs:
   round:
+    # Конец прогона ci запускает обход только в двух случаях, ради которых
+    # обход существует: push в main (слияние могло оставить открытые PR с
+    # конфликтом) и прогон, который кончился не зелёным (job без раннера
+    # оставляет прогон failure). Зелёный прогон PR обход не будит: каждый
+    # круг тратит часовой лимит запросов токена, общий с main-red и ревью.
+    # Два поля события читаются здесь, в выражении, — в шаги из события
+    # не идёт ничего.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.event == 'push' ||
+      github.event.workflow_run.conclusion != 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
