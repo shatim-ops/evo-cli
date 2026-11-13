@@ -127,6 +127,16 @@ has pgrepeatnopg "probes: «pgrepeat» — проба джоба dbaas-pg"
 fresh g13access
 run g13access 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES='access g13'
 has g13access "probes: «g13» и «access» в одном запуске не идут — худший ход job dbaas-pg вплотную к пределу 300 мин"
+# g12 — проба job k8s-smoke: без него слово ничего не запускает; с
+# подом из образа (SNAT зоны) худший ход job — вплотную к его пределу.
+fresh g12
+run g12 0 K8S_SMOKE=true PROBES=g12
+fresh g12nok8s
+run g12nok8s 1 PROBES=g12
+has g12nok8s "probes: «g12» — проба джоба k8s-smoke, а он не идёт (k8s_smoke)"
+fresh g12pod
+run g12pod 1 K8S_SMOKE=true K8S_POD_CHART=true PROBES=g12
+has g12pod "probes: «g12» и k8s_pod_chart в одном запуске не идут — худший ход job k8s-smoke вплотную к пределу 300 мин"
 fresh g14nokafka
 run g14nokafka 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES=g14
 has g14nokafka "probes: «g14» — проба джоба dbaas-kafka, а он не идёт (dbaas_smoke и kafka в dbaas_services)"
