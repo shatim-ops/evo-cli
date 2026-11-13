@@ -755,7 +755,20 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 				preview = p
 			}
 		}
-		ok, err := confirm.Ask(ctx, preview, opts)
+		ask := opts
+		if _, cut := resp["interrupted"]; cut {
+			// The question names a call of this tool that was cut with
+			// its outcome unknown: a call now is one more change, and
+			// only a person says whether to send it. --yes was given
+			// before the cut was known, so it does not answer; the
+			// record of the cut call stays until a person does («Риск»,
+			// conclusion 176, У1 and У2).
+			ask.PersonOnly = true
+			ask.Hint = i18n.T("--yes does not answer a question about a call that was cut. Look at the resource as the message says, then run the command at a terminal and answer the question.",
+				"--yes не отвечает на вопрос об оборванном вызове. Посмотрите ресурс, как сказано в сообщении, затем запустите команду в терминале и ответьте на вопрос.")
+			ask.Answered = func() { registryOf(cmd).CutCallAnswered(ctx, t.Name, args) }
+		}
+		ok, err := confirm.Ask(ctx, preview, ask)
 		if !ok {
 			return "", err
 		}

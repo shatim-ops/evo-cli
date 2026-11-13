@@ -190,26 +190,54 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 // is not sent. A client that timed out and sends the same call again,
 // with the consent of the first one, would make a second change the
 // person consented to once. The answer is the question again, saying what
-// is known; the record is closed, so the next consented call is sent as
-// any other.
+// is known; the record is closed (closeAsked), so the next consented call
+// is sent as any other.
 func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any) (string, bool) {
 	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return "", false
 	}
-	for _, in := range mine {
-		intent.Close(in)
-		forgetPending(ctx)
-	}
+	r.closeAsked(ctx, mine)
 	message, interrupted := cutCallWarning(name, mine)
 	return toJSON(map[string]any{"status": "confirmation_required", "interrupted": interrupted, "message": message}), true
 }
 
+// closeAsked closes the records mine of the cut calls a question has just
+// named — when the question is the answer of the call: over MCP it goes to
+// the model, which is told to ask the person. A command of the CLI makes
+// the call without consent itself and then answers the question — with
+// --yes, by a script, by nobody under --dry-run — so its question closes
+// nothing: the command says when a person answered it (CutCallAnswered).
+// Until then every run finds the record and asks again (the interim delta
+// audit of 1.9, high; «Риск», conclusion 176, У1 and У2).
+func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
+	if callerOf(ctx) != nil {
+		return
+	}
+	for _, in := range mine {
+		intent.Close(in)
+	}
+	forgetPending(ctx)
+}
+
+// CutCallAnswered closes the records of the caller's own cut calls of the
+// tool name on the resource args name: a person read the question that
+// named them (the answer's "interrupted") and answered it at the terminal,
+// yes or no. The call with consent that follows a yes is sent as any
+// other; after a no nothing is sent, and the cut call is asked about no
+// more.
+func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any) {
+	for _, in := range r.cutCalls(ctx, name, args) {
+		intent.Close(in)
+	}
+	forgetPending(ctx)
+}
+
 // questionNamesTheCut is the question of a call without consent, with the
 // caller's own cut call named in it: one question that says everything —
-// the preview and the cut call — and the record closed, so the consented
-// call that follows is sent as any other, not asked a second time
-// («Риск», conclusion 145, У2). An answer that is not a question (a
+// the preview and the cut call — and the record closed (closeAsked), so
+// the consented call that follows is sent as any other, not asked a second
+// time («Риск», conclusion 145, У2). An answer that is not a question (a
 // refusal, an answer with nothing to consent to) stays as it is, and so
 // does the record.
 func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args map[string]any, answer string) string {
@@ -229,10 +257,7 @@ func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args ma
 		message += " " + was
 	}
 	m["message"], m["interrupted"] = message, interrupted
-	for _, in := range mine {
-		intent.Close(in)
-		forgetPending(ctx)
-	}
+	r.closeAsked(ctx, mine)
 	return toJSON(m)
 }
 
@@ -272,7 +297,13 @@ func (r *Registry) settleHeld(ctx context.Context, name string, args map[string]
 		if !in.Held || in.Tool != name {
 			continue
 		}
-		if (in.Name == resource && in.Target == target && (resource != "" || target != "")) || answerNames(answer, in.Target) {
+		// The answer names the record's target for a call that named
+		// the resource another way; a record that names what the
+		// operation makes (a restore: the copy and the new disk) is of
+		// the call that names the same — another disk of the same copy
+		// is another operation («Риск», conclusion 176, У4).
+		if (in.Name == resource && in.Target == target && (resource != "" || target != "")) ||
+			(in.Name == "" && answerNames(answer, in.Target)) {
 			held = append(held, in)
 		}
 	}
