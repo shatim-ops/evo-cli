@@ -451,6 +451,10 @@ func TestBackupRestore_ACardWithoutTheDisk(t *testing.T) {
 		if !isErr || m["reason"] != "USAGE" || w.restores != 0 || strings.Contains(text, "confirmation_required") {
 			t.Errorf("%s: want USAGE before the question, nothing sent: %s", name, text)
 		}
+		// No promise the console restores it («Риск», 188, У3).
+		if hint, _ := m["hint"].(string); !strings.Contains(hint, "try the Cloud.ru console or ask Cloud.ru support") {
+			t.Errorf("%s: want the hint to name the console and support as a try: %s", name, text)
+		}
 	}
 	w := &restoreWorld{card: head + `,"resource_state":{"name":"data","size":10,"disk_type":"HDD",` + zone + `}}}`}
 	m, text, _ := backupRestore(t, w, nil)

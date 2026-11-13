@@ -364,17 +364,24 @@ func TestBackupDelete_EveryStateOfTheSpec(t *testing.T) {
 // not be deleted through evo (FB19I-24 (в)). A refusal of the right is
 // not a fault to repeat: the preview says the dependents were not checked
 // and asks. Any other failure of the list still refuses.
+// A key that was not accepted (401) would fail the delete too: refused
+// before the question, with what to check, not a repeat («Риск», 188, У1).
 func TestBackupDelete_ListOfBackupsNotAllowed(t *testing.T) {
-	for _, code := range []int{401, 403} {
-		w := &deleteWorld{state: "created", exists: true, listCode: code}
-		m, text, _ := backupDelete(t, w, false)
-		will, _ := m["will_delete"].(map[string]any)
-		warn, _ := m["warning"].(string)
-		if m["status"] != "confirmation_required" || will["dependent_backups_checked"] != false || !strings.Contains(warn, "did not check") {
-			t.Errorf("%d: want the question with the dependents named not checked: %s", code, text)
-		}
+	w := &deleteWorld{state: "created", exists: true, listCode: 403}
+	m, text, _ := backupDelete(t, w, false)
+	will, _ := m["will_delete"].(map[string]any)
+	warn, _ := m["warning"].(string)
+	if m["status"] != "confirmation_required" || will["dependent_backups_checked"] != false || !strings.Contains(warn, "did not check") ||
+		!strings.Contains(warn, "whether such backups stay and can still be restored from once this one is deleted, is not known") {
+		t.Errorf("403: want the question with the dependents named not checked and what follows: %s", text)
 	}
-	w := &deleteWorld{state: "created", exists: true, listCode: 500}
+	w = &deleteWorld{state: "created", exists: true, listCode: 401}
+	m, text, isErr := backupDelete(t, w, false)
+	hint, _ := m["hint"].(string)
+	if !isErr || m["reason"] != "API_ERROR" || !strings.Contains(text, "did not accept the key") || strings.Contains(hint, "Repeat the call;") || w.deletes != 0 {
+		t.Errorf("401: want the refusal before the question naming the key: %s", text)
+	}
+	w = &deleteWorld{state: "created", exists: true, listCode: 500}
 	if m, text, isErr := backupDelete(t, w, false); !isErr || m["reason"] != "API_ERROR" {
 		t.Errorf("500: want the refusal before the question: %s", text)
 	}

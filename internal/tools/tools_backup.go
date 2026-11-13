@@ -255,13 +255,21 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 		will["dependent_backups_checked"] = false
 		warnings = append(warnings, i18n.T("the backup does not name its project, so evo did not check which backups name it as their full one",
 			"копия не называет свой проект — какие копии называют её своей полной, evo не проверил"))
-	} else if all, err := api.ListBackups(ctx, project); err != nil && (apiStatus(err) == http.StatusUnauthorized || apiStatus(err) == http.StatusForbidden) {
+	} else if all, err := api.ListBackups(ctx, project); err != nil && apiStatus(err) == http.StatusForbidden {
 		// A key with the right to delete and none to list: a refusal of
 		// the right, not a fault a repeat clears — the question says what
-		// was not checked (FB19I-24 (в)).
+		// was not checked and what follows (FB19I-24 (в); «Риск», 188,
+		// У1, У2).
 		will["dependent_backups_checked"] = false
-		warnings = append(warnings, i18n.T("the key may not list the backups of the project, so evo did not check which backups name this one as their full one",
-			"ключу не разрешено читать список копий проекта — какие копии называют эту своей полной, evo не проверил"))
+		warnings = append(warnings, i18n.T("the key may not list the backups of the project, so evo did not check which backups name this one as their full one; whether such backups stay and can still be restored from once this one is deleted, is not known",
+			"ключу не разрешено читать список копий проекта — какие копии называют эту своей полной, evo не проверил; останутся ли такие копии и можно ли будет восстановить из них после удаления этой — неизвестно"))
+	} else if err != nil && apiStatus(err) == http.StatusUnauthorized {
+		// The key was not accepted: the delete would fail as well — a
+		// refusal before the question, with what to check, not a repeat
+		// («Риск», 188, У1).
+		return nil, clierrors.Wrap(clierrors.CodeAPIError,
+			i18n.Tf("backup %s: Cloud.ru did not accept the key when evo read the backups of the project (HTTP 401); nothing was sent", "копия %s: Cloud.ru не принял ключ при чтении списка копий проекта (HTTP 401); ничего не отправлено", id),
+			clierrors.TokenRejectedHint(), err)
 	} else if err == nil {
 		var deps []map[string]any
 		for _, b := range all {
@@ -738,7 +746,7 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 	if sizeGB <= 0 || zoneID == "" {
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("backup %s does not name the size and the zone of its disk (resource_state), so evo cannot say what disk it would make; nothing was sent", "копия %s не называет размер и зону своего диска (resource_state) — какой диск получится, evo сказать не может; ничего не отправлено", id),
-			i18n.T("backup_get shows the backup as the platform gives it; the Cloud.ru console restores it.", "Копию, как её отдаёт платформа, показывает evo backup get; восстановить её можно в консоли Cloud.ru.")),
+			i18n.T("backup_get shows the backup as the platform gives it; try the Cloud.ru console or ask Cloud.ru support, with its id.", "Копию, как её отдаёт платформа, показывает evo backup get; попробуйте консоль Cloud.ru или обратитесь в поддержку Cloud.ru с id копии.")),
 			map[string]any{"backup_id": id}), true), nil
 	}
 	cfg := provision.RestoreDiskConfig{Name: name, Description: stringArg(args, "description")}
