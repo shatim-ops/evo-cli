@@ -35,8 +35,10 @@ fi
 for c in "$squash" "$head" ${branch:+"$branch"} ${branch:+"$main"}; do
 	git rev-parse -q --verify "$c^{commit}" >/dev/null || { echo "нет коммита $c" >&2; exit 2; }
 done
-parents=$(git rev-list --parents -n1 "$squash" | wc -w)
-if [ "$parents" != 2 ]; then
+# rev-list --parents печатает коммит и его родителей: у squash (один
+# родитель) — два слова, у коммита слияния — три.
+words=$(git rev-list --parents -n1 "$squash" | wc -w)
+if [ "$words" != 2 ]; then
 	echo "разбор вручную: у $squash не один родитель — это не squash"
 	exit 3
 fi
@@ -55,19 +57,17 @@ else
 	fi
 fi
 if [ -n "$branch" ]; then
-	since=$(git rev-list -n1 "$squash")
+	# patch-id коммитов main после squash — один проход по истории, а не
+	# по проходу на каждый поздний коммит.
+	declare -A inmain=()
+	while read -r id c; do
+		inmain[$id]=$c
+	done < <(git log --no-merges -p --format='commit %H' "$squash..$main" | git patch-id --stable)
 	late=$(git rev-list --reverse --no-merges "$branch" "^$head" "^$main")
 	for c in $late; do
 		id=$(git diff "$c^" "$c" | git patch-id --stable | cut -d' ' -f1)
-		found=
-		for m in $(git rev-list --no-merges "$since..$main"); do
-			if [ "$(git diff "$m^" "$m" | git patch-id --stable | cut -d' ' -f1)" = "$id" ]; then
-				found=$m
-				break
-			fi
-		done
-		if [ -n "$found" ]; then
-			echo "поздний $(git log -1 --format='%h %s' "$c") — доставлен другим коммитом main $(git rev-parse --short "$found")"
+		if [ -n "${inmain[$id]:-}" ]; then
+			echo "поздний $(git log -1 --format='%h %s' "$c") — доставлен другим коммитом main $(git rev-parse --short "${inmain[$id]}")"
 		else
 			echo "поздний $(git log -1 --format='%h %s' "$c") — не доставлен: новым PR от main"
 			[ "$rc" = 0 ] && rc=1
