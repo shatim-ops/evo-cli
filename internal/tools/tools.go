@@ -4215,7 +4215,9 @@ func errAnswer(err error, fields map[string]any) string {
 		res["status"] = "error"
 	}
 	// Several refusals of one call: the first is the answer's error, each
-	// is in refusals (clierrors.Refusals).
+	// is in refusals (clierrors.Refusals). error and refusals are marked
+	// untrusted each by its own text: a first refusal of evo leaves error
+	// unmarked while a later one of a service marks refusals.
 	var untrusted []string
 	if all := clierrors.All(err); len(all) > 1 {
 		refusals := make([]map[string]any, len(all))
