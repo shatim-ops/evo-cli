@@ -19,6 +19,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
@@ -288,8 +289,9 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 				"status":       "unavailable",
 				"quota_usages": []any{},
 				"reason":       clierrors.CodeAPIError,
-				"note":         "this service account lacks customer/organization quota scope; quota usages are not readable with the current credentials",
-				"detail":       err.Error(),
+				"note": i18n.T("this service account lacks customer/organization quota scope; quota usages are not readable with the current credentials",
+					"у сервисного аккаунта нет прав на квоты организации: использование квот этим ключом не прочитать"),
+				"detail": err.Error(),
 			}), false
 		}
 		return errResult(err), true
