@@ -315,7 +315,7 @@ timeout: 600
 
 # Группа безопасности (имя или UUID), в которой deploy откроет порты compose.
 # Без неё берётся группа зоны по умолчанию (SSH-access_<зона>), иначе первая по имени — с предупреждением.
-# security_group: SSH-access_ru.AZ-2
+# security_group: <имя группы безопасности>
 
 # UUID проекта Cloud.ru (обязателен; console.cloud.ru или CLOUDRU_PROJECT_ID)
 %s
@@ -348,7 +348,7 @@ timeout: 600
 
 # Security group (name or UUID) deploy opens the compose ports in. Without it:
 # the zone's default group (SSH-access_<zone>), else the first by name, with a warning.
-# security_group: SSH-access_ru.AZ-2
+# security_group: <security group name>
 
 # Cloud.ru project UUID (required; console.cloud.ru or CLOUDRU_PROJECT_ID)
 %s
