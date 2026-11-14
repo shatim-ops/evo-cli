@@ -167,6 +167,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/e2e_port_rule_test.sh
 
+      # Разбор живых прогонов (live_run_report.sh, workflow live-run-report):
+      # issue на живой прогон, красный check без отчёта — на заглушке gh.
+      - name: разбор живых прогонов
+        if: runner.os == 'Linux'
+        run: .github/scripts/live_run_report_test.sh
+
       # Сверка доставки squash (squash_delivery.sh, правило 2 CLAUDE.md,
       # #1968): доставленная голова, поздний коммит, конфликт — на
       # временном репозитории.
