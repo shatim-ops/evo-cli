@@ -93,6 +93,13 @@ if [ "$rc" = 0 ]; then ok "закрыт со ссылкой на файл runs/ 
 echo "[{\"body\":\"https://github.com/o/$ei/blob/main/briefs/x.md\"}]" >"$D/comments-5.json"
 run check
 if [ "$rc" = 1 ]; then ok "ссылка не на отчёт — красный"; else bad "ссылка не на отчёт: $rc $out"; fi
+# Окно — не дальше недели: прогон без issue старше 7 суток не читается.
+NOW=$(date -d 2026-11-25T00:00:00Z +%s)
+echo '[]' >"$D/issues.json"
+echo '{"workflow_runs":[{"id":1,"run_number":230,"created_at":"2026-11-16T09:00:00Z"}]}' >"$D/runs-stand.json"
+run check
+if [ "$rc" = 0 ] && grep -q "created=>=2026-11-18" "$FAKE_CALLS" && grep -q "since=2026-11-18" "$FAKE_CALLS"; then ok "окно — неделя"; else bad "окно — неделя: $rc $out $(grep created= "$FAKE_CALLS" | head -1)"; fi
+rm "$D/runs-stand.json"
 run nothing
 if [ "$rc" = 2 ]; then ok "неверный вызов — код 2"; else bad "неверный вызов: $rc"; fi
 exit "$fail"

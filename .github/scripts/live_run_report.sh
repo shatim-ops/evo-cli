@@ -83,7 +83,13 @@ check)
 	: "${SINCE:?}"
 	now=${NOW:-$(date +%s)}
 	bad=0
+	# Окно — SINCE, но не дальше 7 суток назад: проверка идёт раз в час, и
+	# старше недели её красное уже было; так число запросов не растёт с
+	# числом прогонов (общий часовой лимит токена; остаток «Риска» 259).
 	since_s=$(date -d "$SINCE" +%s)
+	week=$((now - 7 * 86400))
+	[ "$since_s" -ge "$week" ] || since_s=$week
+	from=$(date -u -d "@$since_s" +%Y-%m-%dT%H:%M:%SZ)
 	# Открытые дольше суток.
 	while IFS=$'\t' read -r n created t; do
 		[ -n "$n" ] || continue
@@ -102,7 +108,7 @@ check)
 			echo "::error::#$n закрыт без ссылки на отчёт в evo-internal"
 			bad=1
 		fi
-	done < <(gh api "repos/$GH_REPO/issues?labels=$LABEL&state=closed&per_page=100" --paginate \
+	done < <(gh api "repos/$GH_REPO/issues?labels=$LABEL&state=closed&since=$from&per_page=100" --paginate \
 		--jq '.[] | select(.pull_request | not) | [.number, .closed_at] | @tsv')
 	# Живые прогоны после SINCE без issue.
 	for wf in $WORKFLOWS; do
@@ -113,10 +119,10 @@ check)
 				echo "::error::$wf $num: живой прогон без issue разбора"
 				bad=1
 			fi
-		done < <(gh api "repos/$GH_REPO/actions/workflows/$wf.yml/runs?status=completed&created=>=${SINCE%%T*}&per_page=100" \
-			--jq ".workflow_runs[] | select(.created_at >= \"$SINCE\") | [.id, .run_number] | @tsv")
+		done < <(gh api "repos/$GH_REPO/actions/workflows/$wf.yml/runs?status=completed&created=>=${from%%T*}&per_page=100" \
+			--jq ".workflow_runs[] | select(.created_at >= \"$from\") | [.id, .run_number] | @tsv")
 	done
-	[ "$bad" = 0 ] && echo "живые прогоны после $SINCE разобраны или в пределах суток"
+	[ "$bad" = 0 ] && echo "живые прогоны после $from разобраны или в пределах суток"
 	exit "$bad"
 	;;
 *)
