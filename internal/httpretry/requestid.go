@@ -127,14 +127,17 @@ func traced(req *http.Request, resp *http.Response, err error) {
 // (a short opaque token has the form of an id) names no request, and its
 // value is a secret that must not reach the text of an error (#1751).
 // traced asks of the answer's request too: a renewed token is set on a
-// clone of the caller's request (renewing).
+// clone of the caller's request (renewing). The case is not compared: an
+// echo of the token in another case is the same secret (#1751, `Bearer
+// AbCd-opaque` answered as `abcd-opaque`).
 func inRequest(req *http.Request, id string) bool {
+	id = strings.ToLower(id)
 	for name, vs := range req.Header {
 		if http.CanonicalHeaderKey(name) == RequestIDHeader {
 			continue
 		}
 		for _, v := range vs {
-			if strings.Contains(v, id) {
+			if strings.Contains(strings.ToLower(v), id) {
 				return true
 			}
 		}

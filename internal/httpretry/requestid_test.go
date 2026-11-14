@@ -176,28 +176,35 @@ func TestFailedRequest_ReplacedAnswer(t *testing.T) {
 
 // Id ответа, равный ключу или токену запроса (короткий непрозрачный токен
 // проходит форму id), в ошибку не попадает: значение заголовка запроса —
-// секрет, а не id ответа (внешняя проверка, #1751; CLAUDE.md §4).
+// секрет, а не id ответа (внешняя проверка, #1751; CLAUDE.md §4). Эхо в
+// другом регистре — тот же секрет: `Bearer AbCd-opaque` → id ответа
+// `abcd-opaque` (повторная проверка Астры, задание #1777, 2 из 2).
 func TestFailedRequest_AnsweredIDThatIsACredentialIsDropped(t *testing.T) {
-	const token = "tok3n-0paque"
-	f := roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		h := http.Header{}
-		h.Set(RequestIDHeader, token)
-		return &http.Response{StatusCode: 403, Header: h, Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
-	})
-	ctx := TraceRequests(context.Background())
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://vpc.api.cloud.ru/v1/vpcs", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := UserAgent(f).RoundTrip(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	got, ok := FailedRequest(ctx, 403)
-	if !ok || got.Sent == "" {
-		t.Fatalf("no failed request: %+v", got)
-	}
-	if got.Answered != "" {
-		t.Errorf("the answer's id is the request's credential and was kept: %q", got.Answered)
+	for _, c := range []struct{ name, token, echo string }{
+		{"exact", "tok3n-0paque", "tok3n-0paque"},
+		{"lower case", "AbCd-opaque", "abcd-opaque"},
+		{"upper case", "abcd-opaque", "ABCD-OPAQUE"},
+	} {
+		f := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			h := http.Header{}
+			h.Set(RequestIDHeader, c.echo)
+			return &http.Response{StatusCode: 403, Header: h, Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
+		})
+		ctx := TraceRequests(context.Background())
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://vpc.api.cloud.ru/v1/vpcs", nil)
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		resp, err := UserAgent(f).RoundTrip(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		got, ok := FailedRequest(ctx, 403)
+		if !ok || got.Sent == "" {
+			t.Fatalf("%s: no failed request: %+v", c.name, got)
+		}
+		if got.Answered != "" {
+			t.Errorf("%s: the answer's id is the request's credential and was kept: %q", c.name, got.Answered)
+		}
 	}
 }
 
