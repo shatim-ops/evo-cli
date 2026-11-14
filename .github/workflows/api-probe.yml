@@ -579,7 +579,8 @@ jobs:
           # порядке (с, без, без, с, с, без): одна пара не отличает заголовок
           # от прерывистого сбоя. Итог — счёт кодов с заголовком и без и
           # вывод: «не меняет», «меняет» (все коды с ним отличны от всех без
-          # него) или «смешанно». Обмен ключа (POST auth/token) — тоже: это
+          # него) или «смешанно» — без вывода о причине, с числом не-2xx в
+          # каждой группе. Обмен ключа (POST auth/token) — тоже: это
           # первый запрос evo к любому сервису; тело ответа — в /dev/null.
           ctl19() {
             local name=$1 method=$2 url=$3 i k with='' without='' c
@@ -599,8 +600,8 @@ jobs:
             done
             printf '%-28s с X-Request-Id:%s; без:%s — %s\n' "rid19_ctl_$name" "$with" "$without" "$(
               printf '%s\n%s\n' "$with" "$without" | awk '
-                NR == 1 { for (i = 1; i <= NF; i++) w[$i] = 1 }
-                NR == 2 { for (i = 1; i <= NF; i++) o[$i] = 1 }
+                NR == 1 { for (i = 1; i <= NF; i++) { w[$i] = 1; if ($i !~ /^2/) bw++ } }
+                NR == 2 { for (i = 1; i <= NF; i++) { o[$i] = 1; if ($i !~ /^2/) bo++ } }
                 END {
                   same = 1; apart = 1
                   for (c in w) { if (!(c in o)) same = 0; if (c in o) apart = 0 }
@@ -608,7 +609,7 @@ jobs:
                   n = 0; for (c in w) n++; for (c in o) if (!(c in w)) n++
                   if (same && n == 1) print "заголовок не меняет ответ"
                   else if (apart) print "ЗАГОЛОВОК МЕНЯЕТ ОТВЕТ"
-                  else print "смешанно — прерывистый сбой, не заголовок"
+                  else print "смешанно — смотрите счёт: заголовок не исключён (не 2xx: с ним " bw+0 ", без него " bo+0 ")"
                 }')"
           }
           ctl19 iam_token   POST token
