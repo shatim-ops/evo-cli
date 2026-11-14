@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -214,6 +215,11 @@ func deployChain(t *testing.T, r *Registry, vm *stageVM, args map[string]any, ca
 		select {
 		case text = <-got:
 		case <-time.After(progressWatch):
+			// The call outlived its budget tenfold: name where it waits,
+			// the next time it happens (main red 14.11 on Windows,
+			// TestDeploy_ChainEndsWhenSSHNeverAnswers, not reproduced).
+			buf := make([]byte, 1<<20)
+			t.Logf("deploy call %d did not answer within %s; goroutines:\n%s", i+1, progressWatch, buf[:runtime.Stack(buf, true)])
 			cancel()
 			<-got
 		}
