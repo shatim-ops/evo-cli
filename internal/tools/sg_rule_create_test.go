@@ -489,3 +489,31 @@ func TestSGRuleCreate_ARefusedRepeatKeepsTheCutCall(t *testing.T) {
 		})
 	}
 }
+
+// The name of the cut call's group was taken by a new group: the call by
+// that name goes to the new one, and its outcome says nothing of the cut
+// call on the first — the record is the same call only with the same
+// resolved target (R-101, the third kind; «Риск · 1.9 (2)», conclusion
+// 219).
+func TestSGRuleCreate_ACallToAnotherGroupOfTheNameKeepsTheCutCall(t *testing.T) {
+	w := newSGMakeWorld()
+	w.lose, w.lag = true, 1<<20
+	p := &renamedSG{sgMakeWorld: w}
+	r, _ := sgRegistryOver(t, p)
+	args := func(group string) map[string]any {
+		return map[string]any{"security_group": group, "direction": "ingress", "protocol": "tcp",
+			"ports": "8080", "cidr": "10.0.0.0/8", "confirmed": true}
+	}
+	callNamed(t, r, "sg_rule_create", args("db")) // cut after the write
+	const newGroup = "00000000-0000-4000-8000-0000000000e4"
+	p.groups = []*provision.SecurityGroup{{ID: sgOtherGroup, Name: "db-old", AvailabilityZoneID: faultZone},
+		{ID: newGroup, Name: "db", AvailabilityZoneID: faultZone}}
+	w.lose, w.lag = false, 0
+	if m, text, _ := callNamed(t, r, "sg_rule_create", args("db")); m["status"] != "created" || w.added() != 2 {
+		t.Fatalf("the call by the name now of another group: %s (writes %d), want it created there", text, w.added())
+	}
+	m, text, _ := callNamed(t, r, "sg_rule_create", args(sgOtherGroup))
+	if m["interrupted"] == nil || w.added() != 2 {
+		t.Errorf("the repeat by the id of the first group: %s (writes %d), want the question about its cut call and no third write", text, w.added())
+	}
+}

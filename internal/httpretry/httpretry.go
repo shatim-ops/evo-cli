@@ -358,19 +358,38 @@ func RouteNotFoundAsBadGateway(req *http.Request, resp *http.Response) *http.Res
 	if resp.StatusCode != http.StatusNotFound || req.Method == http.MethodHead {
 		return resp
 	}
-	head, _ := io.ReadAll(io.LimitReader(resp.Body, maxServiceBody))
+	head, body, _ := peek(resp.Body, maxServiceBody)
 	// A gateway's answer is short: one that fills the read is the service's.
 	if len(head) == maxServiceBody || serviceNotFound(head) {
-		resp.Body = struct {
-			io.Reader
-			io.Closer
-		}{io.MultiReader(bytes.NewReader(head), resp.Body), resp.Body}
+		resp.Body = body
 		return resp
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	resp.Body.Close()
 	return badGateway(resp, `{"message":"Cloud.ru answered 404 without the service's answer: `+routeNotFound+`"}`)
 }
+
+// peek reads the first n bytes of body at most. It returns them and the
+// body to give the caller in its place: those bytes, then the rest of
+// body — or, when the read ended with an error, that error, not an end
+// that reads as the whole answer (#1746, #1769). Every layer of Transport
+// that reads a body before its caller does reads it through peek.
+func peek(body io.ReadCloser, n int64) ([]byte, io.ReadCloser, error) {
+	head, err := io.ReadAll(io.LimitReader(body, n))
+	rest := io.Reader(body)
+	if err != nil {
+		rest = brokenBody{err}
+	}
+	return head, struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(head), rest), body}, err
+}
+
+// brokenBody reads as the error the read of a body ended with.
+type brokenBody struct{ err error }
+
+func (b brokenBody) Read([]byte) (int, error) { return 0, b.err }
 
 // routeNotFound is how the 502 of RouteNotFoundAsBadGateway says what it is.
 const routeNotFound = "the route or the address of the service is not there, and the resource was not checked"

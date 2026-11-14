@@ -33,7 +33,7 @@ func runBreakInstall(t *testing.T, osRelease string, env map[string]string, stub
 	}
 	root, bin := t.TempDir(), t.TempDir()
 	for name, body := range stubs {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(stubScript(body)), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
