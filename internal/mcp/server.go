@@ -91,7 +91,8 @@ type Annotations struct {
 	IdempotentHint  bool  `json:"idempotentHint,omitempty"`
 }
 
-// annotations derives the hints from the registry: a read is read-only and
+// annotations derives the hints from the registry (tools.EffectOf, the
+// decision the catalog's «Меняет» takes too): a read is read-only and
 // idempotent, a mutation is destructive by tools.IsDestructive. A tool that
 // reveals a secret (tools.IsSensitive: secret_value, cert_private_key) is
 // not read-only, so the client asks the person before the call; it changes
@@ -100,22 +101,20 @@ type Annotations struct {
 // (tools.HasSideEffects: stack_status, k8s_kubeconfig) is neither
 // read-only nor idempotent, and destroys nothing.
 func annotations(t tools.Tool) Annotations {
-	if tools.IsSensitive(t) {
-		d := false
-		return Annotations{DestructiveHint: &d, IdempotentHint: true}
+	no, yes := false, true
+	switch tools.EffectOf(t) {
+	case tools.EffectSecret:
+		return Annotations{DestructiveHint: &no, IdempotentHint: true}
+	case tools.EffectSideEffects:
+		// Not a read although it takes no consent: the stack advances, a
+		// token is minted; nothing is destroyed.
+		return Annotations{DestructiveHint: &no}
+	case tools.EffectDestructive:
+		return Annotations{DestructiveHint: &yes}
+	case tools.EffectMutating:
+		return Annotations{DestructiveHint: &no}
 	}
-	// Not a read although it takes no consent (tools.HasSideEffects): the
-	// stack advances, a token is minted; nothing is destroyed.
-	if tools.HasSideEffects(t) {
-		d := false
-		return Annotations{DestructiveHint: &d}
-	}
-	a := Annotations{ReadOnlyHint: !t.Mutating, IdempotentHint: !t.Mutating}
-	if t.Mutating {
-		d := tools.IsDestructive(t)
-		a.DestructiveHint = &d
-	}
-	return a
+	return Annotations{ReadOnlyHint: true, IdempotentHint: true}
 }
 
 // Server is an MCP server exposing evo operations over stdio.
