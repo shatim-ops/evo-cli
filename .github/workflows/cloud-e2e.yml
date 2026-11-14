@@ -309,11 +309,6 @@ jobs:
           EVO_LIVE_TARIFFS: "1"
         run: go test ./internal/engine/ -run '^TestLive_TariffPagesAnswer$' -count=1 -v
 
-      - name: каталог ответов (без сырого файла)
-        if: always()
-        uses: ./.github/actions/answers
-        with:
-          job: readonly
       # Журнал прогона: схема записи и --public (ни UUID, ни IP, ни
       # имени хоста). В лог — только сводка diag-check (sha256, счётчики),
       # файл не публикуется.
@@ -323,6 +318,12 @@ jobs:
           command -v evo >/dev/null || { echo "::warning::evo не собран — журнал не проверен"; exit 0; }
           evo diag export --out "$RUNNER_TEMP/evo-journal.jsonl" >/dev/null
           python3 scripts/diag-check.py --public "$RUNNER_TEMP/evo-journal.jsonl"
+
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: readonly
 
   e2e:
     needs: preflight
@@ -715,11 +716,6 @@ jobs:
           command -v evo >/dev/null || { echo "evo не собран — ресурсов не создавалось"; exit 0; }
           .github/scripts/cloud-live.sh sweep "evo-e2e-$AREA-$(printf '%s' "$RUN" | tr -cd 'a-z0-9' | cut -c1-16)" "$AREA"
 
-      - name: каталог ответов (без сырого файла)
-        if: always()
-        uses: ./.github/actions/answers
-        with:
-          job: live
       # Журнал прогона: схема записи и --public (ни UUID, ни IP, ни
       # имени хоста). В лог — только сводка diag-check (sha256, счётчики),
       # файл не публикуется.
@@ -729,6 +725,12 @@ jobs:
           command -v evo >/dev/null || { echo "::warning::evo не собран — журнал не проверен"; exit 0; }
           evo diag export --out "$RUNNER_TEMP/evo-journal.jsonl" >/dev/null
           python3 scripts/diag-check.py --public "$RUNNER_TEMP/evo-journal.jsonl"
+
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: live
 
   # Отечественные ОС по имени образа (шаг E, docs/internal/design-images.md):
   # init --image отказывает (Docker на них не ставится), vm create --image

@@ -36,13 +36,10 @@ func TestWorkflows_RawAnswersNeverLeaveTheJob(t *testing.T) {
 		if !evo {
 			continue
 		}
-		ends := false
-		for _, s := range j.Steps {
-			if s.Uses == "./.github/actions/answers" && strings.Contains(s.If, "always()") && s.With["job"] == name {
-				ends = true
-			}
-		}
-		if !ends {
+		// The last step: a step after it that reached the cloud would
+		// leave its records unread (review of #1811).
+		last := j.Steps[len(j.Steps)-1]
+		if last.Uses != "./.github/actions/answers" || !strings.Contains(last.If, "always()") || last.With["job"] != name {
 			t.Errorf("cloud-e2e/%s: runs evo but does not end with ./.github/actions/answers (if: always(), job: %s) — its raw answers stay unread", name, name)
 		}
 	}

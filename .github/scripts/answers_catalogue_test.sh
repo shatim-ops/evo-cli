@@ -53,6 +53,15 @@ for why in 'строк: 7' 'принято: 3' 'хост вне описи: 2' '
 	grep -q "$why" "$work/err" || { echo "FAIL: в счёте нет «$why»"; cat "$work/err"; fail=1; }
 done
 
+# Два ответа с разным типом одного поля — «?» и счёт таких полей.
+cat >"$work/kinds.jsonl" <<'J'
+{"request":"GET https://mk8s.api.cloud.ru/v3/clusters/{id}","status":200,"form":"json","paths":{"status":"name"}}
+{"request":"GET https://mk8s.api.cloud.ru/v3/clusters/{id}","status":200,"form":"json","paths":{"status":"number"}}
+J
+k=$(python3 -I "$here/answers_catalogue.py" --root "$root" --source s --date 2026-11-14 "$work/kinds.jsonl" 2>"$work/kerr")
+[ "$(jq -r '.[0].paths.status' <<<"$k")" = "?" ] || { echo "FAIL: разный тип поля — не «?»"; fail=1; }
+grep -q 'полей с разным типом: 1' "$work/kerr" || { echo "FAIL: нет счёта полей с разным типом"; cat "$work/kerr"; fail=1; }
+
 # Сырой файл не изменён и не удалён генератором: удаляет его job.
 [ -s "$work/raw.jsonl" ] || { echo "FAIL: сырой файл тронут"; fail=1; }
 

@@ -78,7 +78,7 @@ def main():
         fields = json.load(f)["requests"]
     services = {svc for svc, _ in tmpl}
 
-    count = {"строк": 0, "принято": 0, "не JSON": 0, "хост вне описи": 0, "путь вне описи": 0, "полей вне описи": 0}
+    count = {"строк": 0, "принято": 0, "не JSON": 0, "хост вне описи": 0, "путь вне описи": 0, "полей вне описи": 0, "полей с разным типом": 0}
     entries = {}
     lines = []
     if os.path.exists(a.raw):
@@ -127,6 +127,8 @@ def main():
         for p, kind in kept.items():
             prev = e["paths"].get(p)
             # Two records that disagree on a kind leave it unknown.
+            if prev not in (None, kind, "?"):
+                count["полей с разным типом"] += 1
             e["paths"][p] = kind if prev in (None, kind) else "?"
 
     print(json.dumps(sorted(entries.values(), key=lambda e: e["id"]), ensure_ascii=False, indent=2, sort_keys=True))
