@@ -138,6 +138,10 @@ type consoleWorld struct {
 	mu           sync.Mutex
 	refuse       int
 	refuseWrites bool
+	// plain: the refusal is text, not JSON — field=value pairs, as a proxy
+	// or a log line of a service could give (release plan, «Процесс · 1.9
+	// (5)»: the text outside JSON is served too).
+	plain bool
 	// served are the paths served marked since the last take, as
 	// "GET card", "GET list", "PUT card", "POST create", "<status> …".
 	served map[string]bool
@@ -210,6 +214,13 @@ func (c *consoleWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 		body["message"] = "refused"
 		body["vm"] = c.consoleObject()
 		b, _ := json.Marshal(body)
+		if c.plain {
+			var kv []string
+			for _, f := range c.fields {
+				kv = append(kv, f+"="+consoleMark(f))
+			}
+			b = []byte("refused: " + strings.Join(kv, " "))
+		}
 		c.note(fmt.Sprintf("%d %s", refuse, kind))
 		return answerWith(refuse, b), nil
 	}
@@ -327,7 +338,13 @@ func consoleInFiles(root string, fields []string) (bad []string, files int) {
 	return bad, files
 }
 
-func TestSecrets_VMConsoleFieldsLeaveNoSurface(t *testing.T) {
+func TestSecrets_VMConsoleFieldsLeaveNoSurface(t *testing.T) { walkConsoleWorld(t, false) }
+
+// The same walk with the refusals as text outside JSON: vnc_url=… in a body
+// that is not JSON is not hidden yet (hideConsole reads JSON keys only).
+func TestSecrets_VMConsoleFieldsOutsideJSON(t *testing.T) { walkConsoleWorld(t, true) }
+
+func walkConsoleWorld(t *testing.T, plain bool) {
 	fields := consoleFieldsOfProvision(t)
 	w, fake := withJSONWorld(t)
 	answers := filepath.Join(w.dir, "answers.jsonl")
@@ -336,7 +353,7 @@ func TestSecrets_VMConsoleFieldsLeaveNoSurface(t *testing.T) {
 		t.Fatalf("diag on: exit %d: %s%s", code, out, errOut)
 	}
 
-	world := &consoleWorld{base: w.rt, fields: fields}
+	world := &consoleWorld{base: w.rt, fields: fields, plain: plain}
 	oldBase := httpretry.DefaultBase
 	httpretry.DefaultBase = world
 	t.Cleanup(func() { httpretry.DefaultBase = oldBase })
