@@ -99,8 +99,8 @@ func findDbaasSpec(specs []map[string]any, specID string, cpu, ram int) map[stri
 // marks it optional, and the configured region is often empty (evo
 // configure without --region: cloud-e2e readonly #23 got API_ERROR from
 // kafka_specs and redis_specs). Order: the 'zone' argument (name or UUID),
-// the configured region, else the default zone of evo init (ru.AZ-2, else
-// the first listed). Returns the zone UUID and what to show for it: the
+// the configured region, else the zone the zone list marks default, as evo
+// init takes it (engine.DefaultZoneFirst; else the first listed). Returns the zone UUID and what to show for it: the
 // name when known.
 func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown string, err error) {
 	if ref == "" && eng.Config.Region != "" {
@@ -128,7 +128,7 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 		}
 		return z.ID, firstNonEmptyStr(z.Name, z.ID), nil
 	}
-	zones = engine.PreferredZoneFirst(zones)
+	zones = engine.DefaultZoneFirst(zones)
 	if len(zones) == 0 || zones[0].ID == "" {
 		return "", "", errors.New(i18n.T("no availability zones listed: pass 'zone'", "список зон доступности пуст: передайте 'zone'"))
 	}
@@ -230,7 +230,7 @@ func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, 
 			i18n.Tf("no subnet of the project in zone %s", "в зоне %s нет подсети проекта", shown),
 			i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); ", "Передайте subnet_id (список: list_subnets) или другую зону (region); ")+engine.NoSubnetAnywhere())}
 	default:
-		for _, z := range engine.PreferredZoneFirst(provision.OpenZones(zones)) {
+		for _, z := range engine.DefaultZoneFirst(provision.OpenZones(zones)) {
 			if i := provision.PickSubnet(subs, z.ID, z.Name); i >= 0 && provision.SubnetInZone(subs[i], z.ID, z.Name) {
 				return subs[i].ID, subs[i].Name, z.ID, z.Name, nil
 			}

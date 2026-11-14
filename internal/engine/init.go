@@ -175,28 +175,6 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	return nil
 }
 
-// preferredZone is the zone Kafka and Redis take when none is given
-// (kafka_specs, redis_specs and their creates): offered first because on
-// 15.10.2026 ru.AZ-1 failed three cloud-e2e runs in a row and ru.AZ-2
-// passed. evo init no longer takes it (agent run C2, Ц-7: one idea of «the
-// default zone» with the platform, DefaultZoneFirst); whether the
-// products of DBaaS take DefaultZoneFirst too is the release's question.
-const preferredZone = "ru.AZ-2"
-
-// PreferredZoneFirst moves preferredZone to the front, keeping the order of
-// the rest; zones without it are returned as they are.
-func PreferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
-	for i, z := range zones {
-		if z.Name == preferredZone {
-			out := make([]*provision.AvailabilityZone, 0, len(zones))
-			out = append(out, z)
-			out = append(out, zones[:i]...)
-			return append(out, zones[i+1:]...)
-		}
-	}
-	return zones
-}
-
 // defaultZone reports the zone the zone list marks default, while it takes
 // new resources: a closed zone is no default for a new VM (ru.AZ-1 on
 // 29.10, OPS-19).

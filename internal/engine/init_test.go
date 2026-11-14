@@ -301,28 +301,6 @@ func TestYAMLScalar_KeepsAString(t *testing.T) {
 	}
 }
 
-// Without ru.AZ-2 the API order stays: the first zone is the default.
-func TestPreferredZoneFirst(t *testing.T) {
-	names := func(zs []*provision.AvailabilityZone) string {
-		var n []string
-		for _, z := range zs {
-			n = append(n, z.Name)
-		}
-		return strings.Join(n, ",")
-	}
-	in := []*provision.AvailabilityZone{{Name: "ru.AZ-1"}, {Name: "ru.AZ-3"}, {Name: "ru.AZ-2"}}
-	if got := names(PreferredZoneFirst(in)); got != "ru.AZ-2,ru.AZ-1,ru.AZ-3" {
-		t.Errorf("order = %s", got)
-	}
-	if got := names(in); got != "ru.AZ-1,ru.AZ-3,ru.AZ-2" {
-		t.Errorf("input changed: %s", got)
-	}
-	other := []*provision.AvailabilityZone{{Name: "kz.AZ-1"}, {Name: "kz.AZ-2"}}
-	if got := names(PreferredZoneFirst(other)); got != "kz.AZ-1,kz.AZ-2" {
-		t.Errorf("order without ru.AZ-2 = %s", got)
-	}
-}
-
 // The zone list's default goes first while it takes new resources; a
 // closed default is no default; without one the API's order stays; the
 // input is not changed (agent run C2, Ц-7).
