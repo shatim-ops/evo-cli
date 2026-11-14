@@ -31,6 +31,41 @@ func NewRequestID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
+type operationKey struct{}
+
+type operation struct {
+	mu  sync.Mutex
+	ids map[string]string // by the method and the URL of a request
+}
+
+// Operation is ctx for one operation of a client that makes its request
+// anew for each attempt (minio, the client of S3): a request with the
+// method and the URL of one sent before it in ctx is its repeat and takes
+// its X-Request-Id, so the attempts of the operation share one, as the
+// attempts of Transport do (#1934). Another request — a page, the next
+// step — gets an id of its own.
+func Operation(ctx context.Context) context.Context {
+	return context.WithValue(ctx, operationKey{}, &operation{ids: map[string]string{}})
+}
+
+// requestID is the X-Request-Id of req: a new one, or, in an Operation,
+// the one of the request it repeats.
+func requestID(req *http.Request) string {
+	op, ok := req.Context().Value(operationKey{}).(*operation)
+	if !ok || req.URL == nil {
+		return NewRequestID()
+	}
+	key := req.Method + " " + req.URL.String()
+	op.mu.Lock()
+	defer op.mu.Unlock()
+	if id := op.ids[key]; id != "" {
+		return id
+	}
+	id := NewRequestID()
+	op.ids[key] = id
+	return id
+}
+
 // Failed is a request of a call the API answered with an error, or did not
 // answer (Status 0): the id evo sent and the id the answer carried, "" when
 // it carried none, or one not in the form of an id.
