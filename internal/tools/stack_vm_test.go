@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -151,5 +152,55 @@ func TestStackVMStep_TheStepsVMGoneIsFinalAndNotFoundByName(t *testing.T) {
 	st := loaded.Steps[0]
 	if st.ResourceID != "vm-1" || st.Status != "error" || st.Reason != "VM_NOT_FOUND" || !loaded.Failed() {
 		t.Errorf("шаг %+v, задание %s: want error VM_NOT_FOUND с vm-1, не vm-2", st, loaded.Status)
+	}
+}
+
+// Отказ NOT_FOUND шага с ВМ — не о ВМ: образ недоступен, ВМ шага на месте.
+// Отказ окончательный, но текст не говорит «ресурс шага пропал»: модель
+// спланировала бы стек заново при живой платной ВМ («Риск», 222, У1).
+func TestStackVMStep_ANotFoundAboutAnotherThingDoesNotSayTheVMIsGone(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
+	j.Steps[0].ResourceID, j.Steps[0].StartedAt = "vm-1", time.Now().Add(-time.Minute)
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r.handlers["provision"] = func(context.Context, map[string]any) (string, bool) {
+		return toJSON(map[string]any{"status": "error", "reason": "NOT_FOUND", "error": "image ubuntu is not available to the project"}), true
+	}
+	r.handlers["vm_list"] = fakeOK(map[string]any{"vms": []any{vmRow("vm-1", "web", "creating", 0)}})
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	loaded, err := stack.LoadJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Failed() || strings.Contains(loaded.Error, "gone") || !strings.Contains(loaded.Error, "vm-1") {
+		t.Errorf("задание %s: %q, want ошибку, которая называет vm-1 и не говорит «gone»", loaded.Status, loaded.Error)
+	}
+}
+
+// Шаг, ждущий свою операцию, знает id своего ресурса: по концу операции
+// имя его не заменяет, даже если список первым отдаёт другой ресурс с тем
+// же именем («Риск», 222, У2): иначе следующие шаги строились бы в чужой
+// сети, а stack_destroy удалил бы её.
+func TestStackStep_AnOperationsEndKeepsTheStepsOwnID(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"s","vpc":{"name":"net"}}`)
+	j.Steps[0].Status, j.Steps[0].ResourceID, j.Steps[0].OpID = "waiting", "vpc-A", "op-1"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r.handlers["vpc_operation"] = fakeOK(map[string]any{"done": true})
+	r.handlers["vpc_list"] = fakeOK(map[string]any{"vpcs": []any{
+		map[string]any{"id": "vpc-B", "name": "net"}, map[string]any{"id": "vpc-A", "name": "net"}}})
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	loaded, err := stack.LoadJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := loaded.Steps[0]; st.ResourceID != "vpc-A" || loaded.Outputs["vpc"] != "vpc-A" {
+		t.Errorf("шаг %s с %s, outputs.vpc %s: want vpc-A, свою", st.Status, st.ResourceID, loaded.Outputs["vpc"])
 	}
 }

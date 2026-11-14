@@ -339,10 +339,12 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 							failStep(job, st, clierrors.CodeAPIError, fmt.Sprintf("%s: operation failed: %v", st.Key, msg))
 							return
 						}
-						// The name finds what the operation made; the create's
-						// answer named it already when it could.
-						if id := s.findStepID(ctx, st); id != "" {
-							st.ResourceID = id
+						// The name finds what the operation made when the
+						// create's answer named nothing; a step that holds its
+						// id keeps it — another of the name is not the step's
+						// («Риск», 222, У2).
+						if st.ResourceID == "" {
+							st.ResourceID = s.findStepID(ctx, st)
 						}
 						id := st.ResourceID
 						job.Outputs[st.Key] = id
@@ -487,8 +489,16 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// goes on with, D102) is gone: final at once. Neither a
 					// resource found by name nor another create is the
 					// step's (Астра, #1766; «Риск», 216).
-					if st.ResourceID != "" && (reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound) {
+					// VM_NOT_FOUND says the step's VM is gone; NOT_FOUND may
+					// be about another thing (an image), the resource still
+					// there: kept for stack_destroy («Риск», 222, У1).
+					switch {
+					case st.ResourceID == "":
+					case reason == clierrors.CodeVMNotFound:
 						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s of the step is gone; no new one was made)", st.Key, err.Error(), st.ResourceID))
+						return
+					case reason == clierrors.CodeNotFound:
+						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s of the step kept for stack_destroy; no new one was made)", st.Key, err.Error(), st.ResourceID))
 						return
 					}
 					if ex := firstStr(res, "existing_id"); ex != "" && !resumed {
