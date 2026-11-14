@@ -773,15 +773,25 @@ func (r *Registry) namedKept(ctx context.Context, name string, args map[string]a
 }
 
 // intentResource is what a call names its resource by: the argument the create
-// declares (Decl.Created: name, bucket, path…), else name; and, for a call on
-// an existing resource, its first declared id argument (Decl.IDArgs) as
-// «argument=id» («Риск», conclusion 46, condition 2).
+// declares (Decl.Created: name, bucket, path…), else the first of the
+// arguments it names what it makes by (Decl.CreateName) the call gives — a
+// DNS zone by its name, else by its domain, the name the platform gives a
+// zone without one (#1989) — else name; and, for a call on an existing
+// resource, its first declared id argument (Decl.IDArgs) as «argument=id»
+// («Риск», conclusion 46, condition 2).
 func intentResource(tool string, args map[string]any) (name, target string) {
 	arg := "name"
 	if c, ok := createdOf(tool); ok && c.arg != "" {
 		arg = c.arg
 	}
 	name, _ = args[arg].(string)
+	if c, ok := createNameOf(tool); ok && name == "" {
+		for _, a := range c.args {
+			if name, _ = args[a].(string); name != "" {
+				break
+			}
+		}
+	}
 	for _, a := range decls[tool].IDArgs {
 		if a.why == whyProjectArg {
 			continue
