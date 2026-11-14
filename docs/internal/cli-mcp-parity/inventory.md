@@ -354,7 +354,7 @@
 | `evo vm create` | `provision` | name | image_metadata→--meta, ports→--port | — | confirmed, project_id, region | pairs:image_metadata, render |
 | `evo vm delete` | `destroy` | vm_id\|name | — | — | confirmed | — |
 | `evo vm flavors` | `list_flavors` | — | — | — | — | — |
-| `evo vm get` | `vm_get` | vm_id\|name | — | — | — | — |
+| `evo vm get` | `vm_get` | vm_id\|name | — | — | — | render |
 | `evo vm list` | `vm_list` | — | — | — | — | — |
 | `evo vm reboot` | `vm_reboot` | vm_id\|name | — | — | confirmed | — |
 | `evo vm resize` | `vm_resize` | vm_id\|name | — | — | confirmed | — |

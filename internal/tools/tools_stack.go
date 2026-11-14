@@ -1086,18 +1086,33 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 	if err != nil {
 		return nil, err
 	}
-	preview := map[string]any{"message": i18n.T("stack_apply provisions BILLABLE resources.",
-		"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", nil, nil)}
-	// A job done: the question is asked as before — answering without it
-	// would change an exit code, which waits for the major — and says that
-	// the consent creates nothing, as deploy's does of an unchanged
-	// compose file (unchanged: true).
-	if job.Done() {
-		preview["unchanged"] = true
-		preview["message"] = i18n.Tf("Stack job %s is done already: every step is made. stack_apply has nothing to do, and called with confirmed=true it creates nothing; stack_status shows the stack.",
-			"Задание стека %s уже выполнено: все шаги сделаны. stack_apply делать нечего, вызов с confirmed=true ничего не создаст; стек показывает stack_status.", id)
+	// The preview is built for the question only: its price reads what a
+	// consented call does not need.
+	previewOf := func(ctx context.Context) (map[string]any, error) {
+		will := map[string]any{"will_create": s.stackSteps(job)}
+		keys := []string{"will_create"}
+		// The price of what the consent pays for: the steps not done, as
+		// stack_plan prices the job (CLAUDE.md §6, axes 1 and 4).
+		if !job.Done() {
+			pending := *job
+			pending.Steps = slices.DeleteFunc(slices.Clone(job.Steps), func(st *stack.Step) bool { return st.Status == "done" })
+			will["steps_cost"] = s.stackCost(ctx, &pending)
+			keys = append(keys, "steps_cost")
+		}
+		preview := map[string]any{"message": i18n.T("stack_apply provisions BILLABLE resources.",
+			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", will, keys)}
+		// A job done: the question is asked as before — answering without
+		// it would change an exit code, which waits for the major — and
+		// says that the consent creates nothing, as deploy's does of an
+		// unchanged compose file (unchanged: true).
+		if job.Done() {
+			preview["unchanged"] = true
+			preview["message"] = i18n.Tf("Stack job %s is done already: every step is made. stack_apply has nothing to do, and called with confirmed=true it creates nothing; stack_status shows the stack.",
+				"Задание стека %s уже выполнено: все шаги сделаны. stack_apply делать нечего, вызов с confirmed=true ничего не создаст; стек показывает stack_status.", id)
+		}
+		return preview, nil
 	}
-	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+	return &Plan{PreviewOf: previewOf, Execute: func(ctx context.Context) (string, bool) {
 		unlock, err := s.lockJob(id)
 		if err != nil {
 			return errResult(err), true
@@ -1122,6 +1137,48 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 		out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
 		return toJSON(out), job.Failed()
 	}}, nil
+}
+
+// stackSteps is what the steps of job not done yet will call: the step,
+// its tool and the arguments it is called with, but confirmed. The
+// question of stack_apply names every resource the consent pays for, as
+// the job will create it (CLAUDE.md §6, axis 4): a reference to the
+// resource of another step is "$" and its key. An argument that holds a
+// secret (CLISpec.SecretFiles of the step's tool) is named, its value is
+// not (CLAUDE.md §4); nor is the value of stack.HiddenArgs, which the job
+// file does not keep either: the question gives its size.
+// secretNotShown stands for the value of a secret in the question.
+const secretNotShown = "(secret: not shown)"
+
+// notShown stands for a value of stack.HiddenArgs that is not a secret
+// (an object's body) in the question: its size.
+func notShown(v any) string {
+	s, _ := v.(string)
+	return fmt.Sprintf("(not shown: %d bytes)", len(s))
+}
+
+func (s *Registry) stackSteps(job *stack.Job) []map[string]any {
+	out := []map[string]any{}
+	for _, st := range job.Steps {
+		if st.Status == "done" {
+			continue
+		}
+		t, _ := s.Lookup(st.Tool)
+		row := map[string]any{"step": st.Key, "tool": st.Tool}
+		for k, v := range st.Args {
+			switch {
+			case k == "confirmed":
+			case t.CLI.SecretFiles[k]:
+				row[k] = secretNotShown
+			case stack.HiddenArgs[st.Tool] == k:
+				row[k] = notShown(v)
+			default:
+				row[k] = v
+			}
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // appliableJob is the job stack_apply may advance: there, of this server's

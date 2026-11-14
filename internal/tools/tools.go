@@ -102,10 +102,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_get",
-			Description: "Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface. Use it whenever you need a VM's IP: 'list' and 'status' read the local state and omit the private IP. Do not shell out to curl or ssh for it.",
+			Description: "Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface with its security groups and subnet. Use it whenever you need a VM's IP: 'list' and 'status' read the local state and omit the private IP. Do not shell out to curl or ssh for it. diagnose: true also reads the rules of each group and answers checks (ok, problem or unknown, each with its fact), exposure (ports open to the internet and the sources of port 22, as facts) and one result: ok, problem or incomplete. What evo could not read is in not_checked with why, never counted as ok. The answer names facts; changing a rule is a separate call with consent.",
 			InputSchema: objSchema(map[string]any{
-				"vm_id": strProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required."),
-				"name":  strProp("VM name (alternative to vm_id)."),
+				"vm_id":    strProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required."),
+				"name":     strProp("VM name (alternative to vm_id)."),
+				"diagnose": boolProp("Also read the rules of each security group of the VM and answer checks, exposure, result and not_checked."),
 			}),
 		},
 		{
@@ -333,7 +334,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "open_ports",
-			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group.",
+			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group. Each rule added is billable, price unknown.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
@@ -2788,11 +2789,13 @@ func vmReadyText(name, zone, ip, ssh string, took time.Duration) string {
 // engineStep adds to fields the way on that an engine's refusal names in
 // its details, in the answer as in the CLI's: deploy for a deployment that
 // deploy has not finished (D76), vm_start for one whose VM is stopped
-// («Риск», conclusion 132, У2). Other errors keep their details to the CLI.
+// («Риск», conclusion 132, У2), vm_get for one whose VM was on its way up
+// (FB19I-5). Other errors keep their details to the CLI.
 func engineStep(err error, fields map[string]any) map[string]any {
 	var unfinished *engine.DeployUnfinishedError
 	var stopped *engine.VMStoppedError
-	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) {
+	var transit *engine.VMInTransitError
+	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) && !stderrors.As(err, &transit) {
 		return fields
 	}
 	var ce *clierrors.CLIError

@@ -52,7 +52,7 @@ while IFS= read -r p; do
 	case $p in
 	internal/engine/* | internal/provision/* | internal/deploy/* | internal/deployplan/* | internal/bootstrap/* | \
 		internal/sgrules/* | internal/compose/* | \
-		internal/state/* | internal/tools/tools_deploy.go | internal/tools/tools_vm.go) area e2e ;;
+		internal/state/* | internal/tools/tools_deploy.go | internal/tools/tools_vm.go | internal/tools/tools_vm_diagnose.go) area e2e ;;
 	internal/dns/* | internal/tools/tools_dns.go) area dns ;;
 	internal/s3/* | internal/tools/tools_s3.go) area s3 ;;
 	internal/secret/* | internal/certmanager/* | internal/tools/tools_secret.go | internal/tools/tools_certmanager.go) area secrets ;;

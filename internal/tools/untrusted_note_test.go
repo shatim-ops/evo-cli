@@ -37,6 +37,7 @@ var untrustedMarkerOnly = map[string]string{
 	"vm_stop":             "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"vm_reboot":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"vm_resize":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
+	"vm_get":              "name, interfaces, security_groups, checks, exposure, image: the names of the VM, its interfaces, groups, subnets and the rules of the groups (descriptions too), not the output of a workload («Риск», conclusion 209, У5)",
 	"whoami":              "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
 	"backup_get":          "name, description, tags, resource_name, source, protection_plan: what the project's people named the backup, its tags, its source and its plan, not the output of a workload",
 	"backup_create":       "preview, will_create, backup, name: the names of the backup and of its source, not the output of a workload",
@@ -73,6 +74,7 @@ var untrustedMarkerOnly = map[string]string{
 	"vpc_operation":       "error: the failure of an operation as VPC words it, not the output of a workload",
 	"open_ports":          "open_only_to_groups, vms: the names of the security groups a rule lets a port in from and of the VMs under the group, in the preview and the answer, not the output of a workload",
 	"sg_rule_create":      "security_group, rule, preview: the name of the group and the descriptions of its rules in the preview and the answer, not the output of a workload",
+	"stack_apply":         "preview: the names and values of the steps of a manifest in the question, the caller's text, not the output of a workload",
 	"stack_plan":          "unknown_fields, error: the names of the fields a manifest has and its type does not, the caller's text, not the output of a workload (D108)",
 	"sg_rule_delete":      "security_group, rule, still_allowed_by, still_allowed_from_groups, vms: the name of the group, the descriptions of its rules and the names of the VMs under it in the preview and the answer, not the output of a workload",
 }

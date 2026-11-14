@@ -97,6 +97,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	"vm_stop":   {fields: []string{"preview", "name", "details"}},
 	"vm_reboot": {fields: []string{"preview", "name", "details"}},
 	"vm_resize": {fields: []string{"preview", "name", "details"}},
+	// The names of the VM, its interfaces, groups, subnets and the rules
+	// of the groups, as the cloud names them («Риск», conclusion 209, У5).
+	"vm_get": {fields: []string{"name", "interfaces", "security_groups", "checks", "exposure", "image"}},
 	// The roles of the key, as IAM names them: anyone who may create a
 	// custom role in the organization names it (A0-2).
 	"whoami": {fields: []string{"roles"}},
@@ -175,7 +178,11 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The names of the fields a manifest of stack_plan has and its type
 	// does not: the caller's text, which a manifest a cloned repository
 	// brings may write (D108; «Риск», 186, У8).
-	"stack_plan":     {fields: []string{"unknown_fields", "error"}},
+	"stack_plan": {fields: []string{"unknown_fields", "error"}},
+	// The steps of the job in the question of stack_apply: the names and
+	// the values of a manifest, the caller's text a cloned repository may
+	// bring, as stack_plan's.
+	"stack_apply":    {fields: []string{"preview"}},
 	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}},
 }
 

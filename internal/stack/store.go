@@ -425,6 +425,13 @@ func (j *Job) Save() error {
 // redactedValue replaces a secret value or object body on disk.
 const redactedValue = "<redacted: not kept on disk after the step>"
 
+// HiddenArgs are, by the tool of a step, the argument whose value evo
+// does not keep on disk once the step is done and does not show in the
+// question of stack_apply: a secret's value, and an object's body, which
+// may be a .env with a key («Риск», conclusion 213). One declaration for
+// both.
+var HiddenArgs = map[string]string{"secret_create": "value", "s3_put": "content"}
+
 // redactSpent drops the value of every secret and the body of every S3
 // object whose step is done, or all of them once the job is destroyed: the
 // job file would otherwise keep them in plain text forever. Paths, buckets
@@ -447,14 +454,9 @@ func (j *Job) redactSpent() {
 		if !spent(st.Key) {
 			continue
 		}
-		switch st.Tool {
-		case "secret_create":
-			if _, ok := st.Args["value"]; ok {
-				st.Args["value"] = redactedValue
-			}
-		case "s3_put":
-			if _, ok := st.Args["content"]; ok {
-				st.Args["content"] = redactedValue
+		if arg, ok := HiddenArgs[st.Tool]; ok {
+			if _, has := st.Args[arg]; has {
+				st.Args[arg] = redactedValue
 			}
 		}
 	}

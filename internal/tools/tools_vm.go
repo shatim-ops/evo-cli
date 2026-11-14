@@ -79,6 +79,7 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 		return errResult(err), true
 	}
 
+	diagnose := boolArg(args, "diagnose", false)
 	privateIP, publicIP := vmIPs(det)
 	ifaces := make([]map[string]any, 0, len(det.Interfaces))
 	for _, in := range det.Interfaces {
@@ -107,6 +108,24 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 	// The image the VM was made of: what vm_list selects by (images).
 	if img := vmImage(det); img != nil {
 		out["image"] = img
+	}
+	// The groups and the subnet of each interface: the list of the
+	// project's interfaces names them, the card does not. Without diagnose
+	// one attempt, its failure named in not_checked («Риск», conclusion
+	// 209, У1).
+	var missing []map[string]any
+	listed, err := vmInterfaces(ctx, eng, det.ID, !diagnose)
+	if err != nil {
+		missing = append(missing, notChecked("interfaces", err))
+	} else {
+		missing = vmGroupsOnRows(ifaces, det, listed)
+	}
+	if diagnose {
+		for k, v := range vmDiagnosis(ctx, eng, det, listed, missing) {
+			out[k] = v
+		}
+	} else if len(missing) > 0 {
+		out["not_checked"] = missing
 	}
 	return toJSON(out), false
 }

@@ -388,3 +388,21 @@ func TestTokenRejectedIsReported(t *testing.T) {
 		}
 	}
 }
+
+// A request under Once goes out once: an error or a status the transport
+// would repeat is its answer at once — the read of vm_get beside its card
+// must not turn a second into the waits of the repeats («Риск»,
+// conclusion 209, У1).
+func TestOnceSendsOneAttempt(t *testing.T) {
+	for _, f := range []*flaky{{n: 100, err: errors.New("EOF")}, {n: 100, status: http.StatusServiceUnavailable}} {
+		tr := &Transport{Base: f, Backoff: time.Hour}
+		req, _ := http.NewRequestWithContext(Once(context.Background()), http.MethodGet, "http://x/", nil)
+		resp, err := tr.RoundTrip(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+		if got := f.calls.Load(); got != 1 {
+			t.Errorf("calls = %d under Once, want 1 (err %v)", got, err)
+		}
+	}
+}

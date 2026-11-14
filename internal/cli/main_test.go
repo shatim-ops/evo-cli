@@ -35,6 +35,10 @@ func TestMain(m *testing.M) {
 	// that sets no world (setupCLI, the world of B-2) ends at a discovery
 	// nothing serves.
 	openBrowser = func(string) error { return nil }
+	// Port 22 of a VM of a world gets no answer and no connect is made:
+	// what the CI's network gives a documentation address, on every
+	// network (sshDial).
+	sshDial = func(context.Context, string) error { return context.DeadlineExceeded }
 	loginConfig = func(say func(string, string), open func(string) error) login.Config {
 		c := login.Default(say, open)
 		c.Issuer = "http://127.0.0.1:1/auth/system"

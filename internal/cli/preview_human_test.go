@@ -31,6 +31,9 @@ var previewForm = map[string]string{
 	// The marker is for a client of the JSON; the lines quote a name of
 	// the cloud on one line (renderAnswer, toolPreview).
 	"_untrusted": "the fields with text of the cloud, for a client of the JSON",
+	// engine.projectText; every origin has its words
+	// (TestProjectText_SaysEveryOriginInWords).
+	"project_from": "where the project comes from: «project: <id> (from the profile)» says it in words",
 }
 
 // humanUnnamed are the values of a preview's details that its human form
@@ -44,23 +47,16 @@ var previewForm = map[string]string{
 var humanUnnamed = map[string]struct{ class, why string }{
 	"deploy cost.hourly_rub":                          {unnamedPrice, "почасовая цена; человеку — месячная"},
 	"deploy preview.cost.hourly_rub":                  {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"deploy preview.project_from":                     {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
-	"deploy project_from":                             {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"deploy update":                                   {unnamedWork, "обновит ли deploy существующую ВМ"},
 	"deploy_apply expires_at":                         {unnamedNoise, "срок плана"},
 	"deploy_apply plan_id":                            {unnamedNoise, "id плана: у плана нет имени"},
 	"deploy_apply preview.cost.hourly_rub":            {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"disk_create preview.project_from":                {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
 	"image_create will_create.has_user_data_template": {unnamedWork, "есть ли шаблон cloud-init"},
-	"k8s_add_addon version_from":                      {unnamedWork, "версия плагина — последняя"},
-	"k8s_create preview.project_from":                 {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
-	"kafka_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM)"},
-	"pg_create preview.project_from":                  {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
-	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами"},
+	"kafka_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
+	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами; принято «Риском», 203"},
 	"provision preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"pg_create preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена узлов; человеку — месячная и полная почасовая"},
-	"provision preview.project_from":                  {unnamedWork, "откуда проект: из окружения, профиля или аргумента"},
-	"redis_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM)"},
+	"pg_create preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена узлов; человеку — месячная и полная почасовая; принято «Риском», 203"},
+	"redis_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
 }
 
 // Release plan 1.5, С2: what the agent sees in a preview (preview.details,
