@@ -544,6 +544,12 @@ jobs:
         if: runner.os == 'Linux'
         run: go vet ./.github/scripts/pricecard && go test ./.github/scripts/pricecard
 
+      # Сверка находок Астры (astra-findings.yml): неразобранное красит check
+      # run ленты, разобранное — нет; на поддельном gh.
+      - name: astra_findings.py на поддельном gh
+        if: runner.os == 'Linux'
+        run: .github/scripts/astra_findings_test.sh
+
       # Метки отзывов по полям форм Issues: таблицы скрипта совпадают с формами.
       - name: issue_labels.py на образцах форм
         if: runner.os == 'Linux'
