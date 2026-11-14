@@ -27,13 +27,16 @@ var cloudWordBefore = regexp.MustCompile(`(?i)(^|[^-\w])(status|state|id):? $`)
 // formatVerb: a verb of a format string, %% excluded.
 var formatVerb = regexp.MustCompile(`%[-+# 0]*(\*|\d+)?(\.(\*|\d+))?[a-zA-Z%]`)
 
+// stepKey marks a key of got that is a step of progress, not an error.
+const stepKey = "step: "
+
 // unquotedCloudWords are the places that still print a status, a state or
 // an id of the cloud bare in a text of evo: "file|function" → how many.
 // The list only shrinks (plan 1.9, «Инвариант quoteCloud: места для
 // убывающего списка», risk conclusions 232 and 235): a place fixed by
 // quoteCloud leaves it in the same PR, a new place fails the test. Its
-// fixes are the development's, by this list. Closes by 1.9 (the plan line:
-// before rc.1).
+// fixes are the development's, by this list. These are the errors and
+// refusals: Closes by 1.9 (owner's decision 14.11, before rc.1).
 var unquotedCloudWords = map[string]int{
 	"internal/deployplan/apply.go|ApplyWithTimeout":            1,
 	"internal/deployplan/apply.go|ForeignVMError.Error":        2,
@@ -41,10 +44,8 @@ var unquotedCloudWords = map[string]int{
 	"internal/engine/delete_wayout.go|FailedDeleteNote":        1,
 	"internal/engine/deploy.go|Engine.awaitCreated":            1,
 	"internal/engine/deploy.go|Engine.provisionVM":             1,
-	"internal/engine/deploy.go|Engine.settledBootFIP":          2,
 	"internal/engine/deploy.go|LostAddressError":               1,
 	"internal/engine/destroy.go|Engine.RefusedVMDelete":        1,
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM":        1,
 	"internal/engine/foreign_vm.go|foreignDeployVM":            2,
 	"internal/tools/delete_outcome.go|deleteRefusal":           1,
 	"internal/tools/delete_preview.go|withStatus":              1,
@@ -53,7 +54,7 @@ var unquotedCloudWords = map[string]int{
 	"internal/tools/namecheck.go|nameTakenResult":              2,
 	"internal/tools/own_vm.go|foreignVMResult":                 2,
 	"internal/tools/own_vm.go|recordedVMResult":                2,
-	"internal/tools/tools.go|Registry.provisionVM":             3,
+	"internal/tools/tools.go|Registry.provisionVM":             1,
 	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":  1,
 	"internal/tools/tools_disk.go|settledDisk":                 1,
 	"internal/tools/tools_disk.go|waitDiskAvailable":           1,
@@ -68,6 +69,15 @@ var unquotedCloudWords = map[string]int{
 	"internal/tools/tools_vm.go|Registry.planVMResize":         3,
 	"internal/tools/tools_vm.go|Registry.vmPowerRefused":       1,
 	"internal/tools/tools_vm.go|Registry.vmResizeRefused":      1,
+}
+
+// unquotedCloudSteps: the same for the text of a step of progress —
+// Printer.StepDone and Printer.Warning (owner's decision 14.11: the steps
+// later than the errors). The list only shrinks. Closes by 1.10.
+var unquotedCloudSteps = map[string]int{
+	"internal/engine/deploy.go|Engine.settledBootFIP":   2,
+	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
+	"internal/tools/tools.go|Registry.provisionVM":      2,
 }
 
 // A value that came from the cloud — a status, a state, an id — goes into
@@ -109,14 +119,25 @@ func TestCloudWords_QuotedInEvoText(t *testing.T) {
 			fmt.Printf("\t%q: %d,\n", k, got[k])
 		}
 	}
+	allowed := map[string]int{}
+	for k, n := range unquotedCloudWords {
+		allowed[k] = n
+	}
+	for k, n := range unquotedCloudSteps {
+		allowed[stepKey+k] = n
+	}
 	for k, n := range got {
-		if n > unquotedCloudWords[k] {
-			t.Errorf("%s: %d status, state or id of the cloud printed bare (%d allowed) — wrap the value in quoteCloud or print it with %%q", k, n, unquotedCloudWords[k])
+		if n > allowed[k] {
+			t.Errorf("%s: %d status, state or id of the cloud printed bare (%d allowed) — wrap the value in quoteCloud or print it with %%q", k, n, allowed[k])
 		}
 	}
-	for k, n := range unquotedCloudWords {
+	for k, n := range allowed {
 		if got[k] < n {
-			t.Errorf("unquotedCloudWords lists %d for %s, and %d are left — lower the line (the list only shrinks)", n, k, got[k])
+			list := "unquotedCloudWords"
+			if strings.HasPrefix(k, stepKey) {
+				list = "unquotedCloudSteps"
+			}
+			t.Errorf("%s lists %d for %s, and %d are left — lower the line (the list only shrinks)", list, n, strings.TrimPrefix(k, stepKey), got[k])
 		}
 	}
 }
@@ -139,6 +160,26 @@ func unquotedIn(t *testing.T, path, rel string) map[string]int {
 		if fn.Recv != nil && len(fn.Recv.List) == 1 {
 			name = recvName(fn.Recv.List[0].Type) + "." + name
 		}
+		// The format calls that are the text of a step of progress:
+		// Printer.StepDone and Printer.Warning.
+		step := map[*ast.CallExpr]bool{}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && (sel.Sel.Name == "StepDone" || sel.Sel.Name == "Warning") {
+				for _, a := range call.Args {
+					ast.Inspect(a, func(m ast.Node) bool {
+						if c, ok := m.(*ast.CallExpr); ok {
+							step[c] = true
+						}
+						return true
+					})
+				}
+			}
+			return true
+		})
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -148,7 +189,11 @@ func unquotedIn(t *testing.T, path, rel string) map[string]int {
 			if !ok {
 				return true
 			}
-			out[rel+"|"+name] += bareCloudWords(format, args)
+			k := rel + "|" + name
+			if step[call] {
+				k = stepKey + k
+			}
+			out[k] += bareCloudWords(format, args)
 			return true
 		})
 	}
