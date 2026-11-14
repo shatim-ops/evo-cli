@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -79,9 +80,10 @@ func TestK8sOperation_AnswersTheOperationAndItsResource(t *testing.T) {
 	if e, _ := m["error"].(map[string]any); isErr || m["done"] != true || e["message"] != "quota exceeded" {
 		t.Errorf("a failed operation: want done true and the service's error: %s", text)
 	}
-	// The error is the service's text, not evo's: the answer marks it.
-	if u, _ := m["_untrusted"].([]any); len(u) != 1 || u[0] != "error" {
-		t.Errorf("a failed operation: _untrusted %v, want [error]: %s", m["_untrusted"], text)
+	// The error and the state of the resource are the service's text, not
+	// evo's: the answer marks them (Астра, #1925: the state too).
+	if u, _ := m["_untrusted"].([]any); len(u) != 2 || !slices.Contains(u, any("error")) || !slices.Contains(u, any("resource_status")) {
+		t.Errorf("a failed operation: _untrusted %v, want error and resource_status: %s", m["_untrusted"], text)
 	}
 	if _, text, isErr = callNamed(t, r, "k8s_operation", map[string]any{"operation_id": "op-none"}); !isErr || !strings.Contains(text, "NOT_FOUND") {
 		t.Errorf("an operation that is not there: want NOT_FOUND: %s", text)
