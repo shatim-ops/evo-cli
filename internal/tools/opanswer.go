@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -30,22 +31,22 @@ import (
 // answer names no state: the service's specification gives the resource
 // none (a VPC, a DNS record) — the read that finds it then says so in a
 // note, not as an error (Астра, #1953).
-type resourceRead struct{ tool, arg, noState string }
+type resourceRead struct{ tool, arg, noState, noStateRU string }
 
 // operationReads are the reads of each *_operation's resource, tried in
 // order: an NLB operation is of a balancer or of a target group, a DNS one
 // of a zone or of a record (TestOperation_EveryOperationDeclared keeps the
 // table closed).
 var operationReads = map[string][]resourceRead{
-	"ar_operation":    {{"ar_get", "id", ""}},
-	"cert_operation":  {{"cert_get", "id", "the state of a certificate is the object issueState, not a word of the answer"}},
-	"dns_operation":   {{"dns_zone_get", "id", ""}, {"dns_record_get", "record_id", "a DNS record has no state in the DNS specification"}},
-	"k8s_operation":   {{"k8s_get", "cluster_id", ""}, {"k8s_nodepool_get", "nodepool_id", ""}},
-	"kafka_operation": {{"kafka_get", "cluster_id", ""}},
-	"lb_operation":    {{"lb_get", "id", ""}, {"tg_get", "id", ""}},
-	"pg_operation":    {{"pg_get", "id", ""}},
-	"redis_operation": {{"redis_get", "cluster_id", ""}},
-	"vpc_operation":   {{"vpc_get", "id", "a VPC has no state in the VPC specification (only its static routes do)"}},
+	"ar_operation":    {{"ar_get", "id", "", ""}},
+	"cert_operation":  {{"cert_get", "id", "the state of a certificate is the object issueState, not a word of the answer", "состояние сертификата — объект issueState, а не слово ответа"}},
+	"dns_operation":   {{"dns_zone_get", "id", "", ""}, {"dns_record_get", "record_id", "a DNS record has no state in the DNS specification", "у записи DNS в спецификации DNS нет состояния"}},
+	"k8s_operation":   {{"k8s_get", "cluster_id", "", ""}, {"k8s_nodepool_get", "nodepool_id", "", ""}},
+	"kafka_operation": {{"kafka_get", "cluster_id", "", ""}},
+	"lb_operation":    {{"lb_get", "id", "", ""}, {"tg_get", "id", "", ""}},
+	"pg_operation":    {{"pg_get", "id", "", ""}},
+	"redis_operation": {{"redis_get", "cluster_id", "", ""}},
+	"vpc_operation":   {{"vpc_get", "id", "a VPC has no state in the VPC specification (only its static routes do)", "у сети VPC в спецификации VPC нет состояния (оно есть только у статических маршрутов)"}},
 }
 
 // operation answers a *_operation call: get reads the operation named by
@@ -372,8 +373,8 @@ func (s *Registry) addResourceStatus(ctx context.Context, tool string, m map[str
 		}
 		// Found, with no state: said, never left out (Астра, #1953).
 		if r.noState != "" {
-			m["resource_status_note"] = i18n.Tf("%s finds the resource; it has no state to name: %s",
-				"%s находит ресурс; состояния у него нет: %s", r.tool, r.noState)
+			m["resource_status_note"] = i18n.T(fmt.Sprintf("%s finds the resource; it has no state to name: %s", r.tool, r.noState),
+				fmt.Sprintf("%s находит ресурс; состояния у него нет: %s", r.tool, r.noStateRU))
 			return
 		}
 		m["resource_status_error"] = clierrors.CodeAPIError

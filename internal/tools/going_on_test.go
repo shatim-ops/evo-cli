@@ -17,6 +17,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // goingOnReads records the reads goingOn makes: the deadline of each and
@@ -231,11 +232,21 @@ func TestAddResourceStatus_AResourceWithNoStateIsSaid(t *testing.T) {
 	if vpc["resource_status_error"] != nil || vpc["resource_status_note"] == nil || vpc["resource_status"] != nil {
 		t.Errorf("vpc_operation, a VPC (no state in its service): %v; want the note and no error", vpc)
 	}
-	// Every read that declares its resource stateless says why.
+	// In Russian, the reason is Russian too: the note is evo's text of the
+	// CLI («Риск», conclusion 255).
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	ru := map[string]any{"resource_id": "r-1"}
+	s.addResourceStatus(context.Background(), "vpc_operation", ru)
+	if note, _ := ru["resource_status_note"].(string); strings.Contains(note, "specification") || !strings.Contains(note, "спецификац") {
+		t.Errorf("vpc_operation in Russian: the reason of the note is not Russian: %q", note)
+	}
+	// Every read that declares its resource stateless says why, in both
+	// languages.
 	for op, reads := range operationReads {
 		for _, r := range reads {
-			if r.noState != "" && len(r.noState) < 20 {
-				t.Errorf("%s: %s declares no state with no reason: %q", op, r.tool, r.noState)
+			if (r.noState != "") != (r.noStateRU != "") || r.noState != "" && len(r.noState) < 20 {
+				t.Errorf("%s: %s declares no state with no reason in each language: %q, %q", op, r.tool, r.noState, r.noStateRU)
 			}
 		}
 	}
