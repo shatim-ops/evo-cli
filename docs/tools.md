@@ -95,7 +95,7 @@
 | `logs` | `evo logs` | нет | — | Retrieve container logs from the deployed VM via 'docker compose logs' over SSH. | Журналы контейнеров развёрнутой ВМ |
 | `destroy` | `evo vm delete` | удаляет | — | Permanently delete a VM and all data on it. | Удалить ВМ и все данные на ней (безвозвратно) |
 | `deploy_plan` | `evo deploy plan` | нет | — | Step 1 of the deploy wizard, read-only: resolves a VM configuration (flavor, image, zone, disk, network, SSH) with its monthly cost and a plan_id (cost.source … | Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая |
-| `deploy_apply` | `evo deploy apply` | да | `plan_id` | Creates only the VM, without the application, from a plan of deploy_plan (STEP 2 of the deploy wizard); a compose project is started by deploy, not by this … | Создать только ВМ по плану, без приложения (шаг 2 мастера; compose запускает evo deploy) |
+| `deploy_apply` | `evo deploy apply` | да | `plan_id` | Creates only the VM, without the application, from a plan of deploy_plan (STEP 2 of the deploy wizard): a compose project goes through deploy. | Создать только ВМ по плану, без приложения (шаг 2 мастера; compose запускает evo deploy) |
 | `open_ports` | `evo vpc open-ports` | да | `security_group`, `ports` | Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). | Открыть входящие порты в группе безопасности |
 | `close_ports` | `evo vpc close-ports` | да | `security_group`, `ports` | Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default). | Закрыть входящие порты в группе безопасности |
 
