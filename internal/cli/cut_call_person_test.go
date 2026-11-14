@@ -12,7 +12,6 @@ import (
 	"go/parser"
 	"go/token"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -21,7 +20,6 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/intent"
-	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // The question about a call that was cut with its outcome unknown is
@@ -171,10 +169,6 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 			// A person says yes, --yes or not: one request, the record
 			// closed.
 			for _, flags := range [][]string{{}, {"--yes"}} {
-				// The create the yes before made goes on in the world:
-				// the same call again would read it, not be cut
-				// (tools.MadeDir; the full audit of Астра, finding 01).
-				_ = os.RemoveAll(tools.MadeDir(w.dir))
 				if !cut() {
 					t.Fatal("the cut left no record")
 				}

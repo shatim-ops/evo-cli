@@ -39,15 +39,17 @@ type madeCall struct {
 }
 
 // MadeDir is the directory of the creates going on in root (rememberMade):
-// a world of a test that makes the same create twice on purpose clears it.
-func MadeDir(root string) string { return filepath.Join(config.DataDir(root), "made") }
+// a part of the intents' directory, so whatever clears the intents clears
+// it too; the reader of the intents skips it (intent.Pending reads *.json).
+func MadeDir(root string) string { return filepath.Join(intent.Dir(root), "made") }
 
 // madeKey is the file of the call of tool with the canonical arguments
-// canon (canonArgs) on the resource name, target, in project: the same
-// call, the same file. Values are hashed, not written in the name.
-func madeKey(tool string, canon []byte, name, target, project string) string {
+// canon (canonArgs) on the resource name, target: the same call, the same
+// file; its project and key are in it. Values are hashed, not written in
+// the name.
+func madeKey(tool string, canon []byte, name, target string) string {
 	h := sha256.New()
-	for _, part := range [][]byte{[]byte(tool), canon, []byte(name), []byte(target), []byte(project)} {
+	for _, part := range [][]byte{[]byte(tool), canon, []byte(name), []byte(target)} {
 		h.Write(part)
 		h.Write([]byte{0})
 	}
@@ -104,7 +106,7 @@ func (r *Registry) rememberMade(rec intent.Intent, answer string) {
 	if err != nil || os.MkdirAll(dir, 0o700) != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dir, madeKey(rec.Tool, rec.Canon, rec.Name, rec.Target, rec.ProjectID)), b, 0o600)
+	_ = config.WriteFileAtomic(filepath.Join(dir, madeKey(rec.Tool, rec.Canon, rec.Name, rec.Target)), b, 0o600)
 }
 
 // repeatOfMade answers a call of tool name whose same call before was
@@ -122,19 +124,24 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	if !rooted {
 		return "", false, false
 	}
+	// No create goes on here: nothing is read and no engine is built — the
+	// call is planned as any other.
+	if entries, err := os.ReadDir(MadeDir(root)); err != nil || len(entries) == 0 {
+		return "", false, false
+	}
 	resource, target, err := r.resourceOf(ctx, name, args)
 	if err != nil || (resource == "" && target == "") {
 		return "", false, false
 	}
-	eng, _ := r.engineOfCall(args)
-	if eng == nil {
+	file := filepath.Join(MadeDir(root), madeKey(name, r.canonArgs(name, args), resource, target))
+	b, err := config.ReadFileNoFollow(file)
+	var mc madeCall
+	if err != nil || json.Unmarshal(b, &mc) != nil || mc.Key == nil {
 		return "", false, false
 	}
-	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
-	file := filepath.Join(MadeDir(root), madeKey(name, r.canonArgs(name, args), resource, target, project))
-	b, err := os.ReadFile(file)
-	var mc madeCall
-	if err != nil || json.Unmarshal(b, &mc) != nil || mc.Key == nil || mc.Key.Other(eng.Maker()) {
+	eng, _ := r.engineOfCall(args)
+	if eng == nil || mc.Key.Other(eng.Maker()) ||
+		mc.ProjectID != projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args) {
 		return "", false, false
 	}
 	if _, listed := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID); listed {
