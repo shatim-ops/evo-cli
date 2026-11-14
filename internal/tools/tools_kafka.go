@@ -450,7 +450,7 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
 			"created": willCreate, "note": i18n.T("Async (~minutes). Poll kafka_operation(operation_id); then kafka_get for status READY + kafka_hosts.",
-				fmt.Sprintf("Асинхронно (несколько минут). Ход: evo kafka operation %s; затем evo kafka get %s — до статуса READY и kafka_hosts.", op.ID, op.ResourceID))}
+				fmt.Sprintf("Асинхронно (несколько минут). Ход: evo kafka operation %s; %s — до статуса READY и kafka_hosts.", quoteCloud(op.ID), clusterReadRU("kafka", op.ResourceID)))}
 		s.goingOn(ctx, out, "kafka_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
 	}}, nil
@@ -522,4 +522,16 @@ func (s *Registry) handleKafkaOperation(ctx context.Context, args map[string]any
 		return errResult(err), true
 	}
 	return s.operation(ctx, "kafka_operation", args, func(ctx context.Context) (any, error) { return cli.GetOperation(ctx, id) })
+}
+
+// clusterReadRU is the read of a new cluster of service svc (kafka, redis)
+// a Russian note names: «evo <svc> get "<id>"», or — when the cloud
+// answered the create without the cluster's id — the list that finds it by
+// name, as pg_create says (N-07): a command with an empty argument is no
+// step («Риск», conclusion 243, У1).
+func clusterReadRU(svc, id string) string {
+	if id == "" {
+		return "id кластера по имени покажет evo " + svc + " list, затем evo " + svc + " get <id>"
+	}
+	return "затем evo " + svc + " get " + quoteCloud(id)
 }

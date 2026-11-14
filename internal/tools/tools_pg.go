@@ -462,13 +462,13 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 			"operation_id": op.ID,
 			"created":      willCreate,
 			"note": i18n.T("Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; then pg_list/pg_get for status READY.",
-				fmt.Sprintf("Кластер создаётся асинхронно (несколько минут). Ход: evo pg operation %s — до done=true; затем evo pg list или evo pg get — до статуса READY.", op.ID)),
+				fmt.Sprintf("Кластер создаётся асинхронно (несколько минут). Ход: evo pg operation %s — до done=true; затем evo pg list или evo pg get — до статуса READY.", quoteCloud(op.ID))),
 		}
 		if op.ResourceID != "" {
 			out["cluster_id"] = op.ResourceID // release audit re-run, N-07
 		} else {
 			out["note"] = i18n.T("Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; pg_list shows the cluster's id by its name, then pg_get for status READY.",
-				fmt.Sprintf("Кластер создаётся асинхронно (несколько минут). Ход: evo pg operation %s — до done=true; id кластера по имени покажет evo pg list, затем evo pg get <id> — до статуса READY.", op.ID))
+				fmt.Sprintf("Кластер создаётся асинхронно (несколько минут). Ход: evo pg operation %s — до done=true; id кластера по имени покажет evo pg list, затем evo pg get <id> — до статуса READY.", quoteCloud(op.ID)))
 		}
 		s.goingOn(ctx, out, "pg_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
@@ -894,7 +894,7 @@ func (s *Registry) planPgBackupCreate(ctx context.Context, args map[string]any) 
 		// step after an operation — the backlog of 1.10).
 		out := map[string]any{"status": "backing_up", "operation_id": op.ID,
 			"note": i18n.T(fmt.Sprintf("Async — poll pg_operation(operation_id). The read of the operation does not read a backup: once it is done, pg_backups cluster_id=%s names the backup and its state.", cid),
-				fmt.Sprintf("Асинхронно — ход: evo pg operation %s. Чтение операции резервную копию не читает: когда операция кончится, копию и её состояние покажет evo pg backups %s.", op.ID, cid))}
+				fmt.Sprintf("Асинхронно — ход: evo pg operation %s. Чтение операции резервную копию не читает: когда операция кончится, копию и её состояние покажет evo pg backups %s.", quoteCloud(op.ID), cid))}
 		if op.ResourceID != "" {
 			out["backup_id"] = op.ResourceID
 		}
