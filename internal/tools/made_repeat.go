@@ -182,12 +182,14 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		mc.ProjectID != projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args) {
 		return "", false, false
 	}
+	// forget drops the file: nothing goes on, or nothing is known.
+	forget := func() { _ = os.Remove(file) }
 	if clock.Since(mc.StartedAt) > madeMaxAge {
-		_ = os.Remove(file)
+		forget()
 		return "", false, false
 	}
 	if _, listed := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID); listed {
-		_ = os.Remove(file)
+		forget()
 		return "", false, false
 	}
 	said := i18n.Tf("An earlier %s of %s was taken by the platform as %s and its outcome is not known yet: no second create was sent; this is its progress.",
@@ -200,7 +202,7 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		// failed: nothing goes on, the file goes, and the call is planned
 		// as any other — a new create («Риск», conclusion 268, 1).
 		if madeEnded(read, readErr, clock.Since(mc.StartedAt)) {
-			_ = os.Remove(file)
+			forget()
 			return "", false, false
 		}
 		var m map[string]any
