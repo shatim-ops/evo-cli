@@ -231,13 +231,16 @@ func SanitizeCell(s string) string { return sanitizeCell(s) }
 // sanitizeCell makes a table cell safe for a terminal. Cells carry names
 // and descriptions from the cloud: an escape sequence could repaint or
 // clear the screen, a tab or a line break would break the columns.
-// Invalid UTF-8 becomes U+FFFD.
+// A line or paragraph separator (Zl, Zp) breaks a line as a line break
+// does, and a format character (Cf: a bidi override, a zero-width space)
+// changes what the text reads as: the same class the preview escapes
+// (#1882; Astra, #1950). Invalid UTF-8 becomes U+FFFD.
 func sanitizeCell(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch {
-		case r == '\t' || r == '\n' || r == '\r':
+		case r == '\t' || r == '\n' || r == '\r' || unicode.In(r, unicode.Zl, unicode.Zp):
 			return ' '
-		case unicode.IsControl(r):
+		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r):
 			return '?'
 		}
 		return r

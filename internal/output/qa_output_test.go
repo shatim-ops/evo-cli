@@ -97,3 +97,23 @@ func TestNew_ErrorColorFollowsStderr(t *testing.T) {
 		t.Errorf("ANSI in a redirected stderr: %q", data)
 	}
 }
+
+// Разделители строки и абзаца (U+2028, U+2029) терминал переносит как
+// перевод строки, а форматный символ (U+202E — разворот направления)
+// перестраивает видимый текст: в ячейке таблицы и строке карточки их нет —
+// тот же класс, что в превью (#1882; Астра, #1950).
+func TestTable_SeparatorsAndFormatCharacters(t *testing.T) {
+	cell := "a\u2028PROBE\u2029b\u202ec\u200bd"
+	got := SanitizeCell(cell)
+	if strings.ContainsAny(got, "\u2028\u2029\u202e\u200b") {
+		t.Errorf("SanitizeCell(%q) = %q keeps a separator or a format character", cell, got)
+	}
+	if !strings.Contains(got, "PROBE") {
+		t.Errorf("printable text lost: %q", got)
+	}
+	var buf bytes.Buffer
+	NewWithWriter(&buf, ModePlain, false).Table([]string{"NAME"}, [][]string{{cell}})
+	if out := buf.String(); strings.ContainsAny(out, "\u2028\u2029\u202e") || len(strings.Split(strings.TrimSuffix(out, "\n"), "\n")) != 2 {
+		t.Errorf("the table keeps a separator or a format character:\n%q", out)
+	}
+}
