@@ -50,6 +50,20 @@ func TestRunWhy_NamesTheKillTheStepAndTheTime(t *testing.T) {
 		}
 	}
 
+	// The stamps of the stubs say how many seconds after the start each step
+	// came (finding of Astra #1741: the step alone does not tell a slow run
+	// from a wait).
+	stamped := run{root: t.TempDir(), started: 1000}
+	if err := os.WriteFile(filepath.Join(stamped.root, "stub-times"), []byte("1001 dpkg --print-architecture\n1006 cloud-init status --wait\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := stamped.stepTimes(4); got != "+1s dpkg --print-architecture, +6s cloud-init status --wait" {
+		t.Errorf("stepTimes = %q", got)
+	}
+	if !strings.Contains(stub(t), `>>"$EVO_ROOT/stub-times"`) {
+		t.Error("a stub does not stamp stub-times")
+	}
+
 	// A script that finished names no kill.
 	ok := filepath.Join(t.TempDir(), "ok.sh")
 	if err := os.WriteFile(ok, []byte("echo done\n"), 0o644); err != nil {
@@ -61,4 +75,10 @@ func TestRunWhy_NamesTheKillTheStepAndTheTime(t *testing.T) {
 	if !r.ok || strings.Contains(r.why(), "deadline") {
 		t.Errorf("a finished script: ok=%v why=%q", r.ok, r.why())
 	}
+}
+
+// stub is the file of a stub as runInstall writes it.
+func stub(t *testing.T) string {
+	t.Helper()
+	return stubScript(stubs["cloud-init"])
 }

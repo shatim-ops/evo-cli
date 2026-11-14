@@ -76,20 +76,20 @@ func declsSnapshot() map[string]declSnap {
 			Destructive:   tl.Decl.Destructive,
 		}
 		s.PartialConsent = funcName(tl.Decl.PartialConsent)
-		if c, ok := createdIDs[tl.Name]; ok {
+		if c := tl.Decl.Created; c.declared() {
 			s.Created = fmt.Sprintf("%+v", c)
 		}
-		if c, ok := createNames[tl.Name]; ok {
+		if c := tl.Decl.CreateName; len(c.args) > 0 {
 			s.CreateName = fmt.Sprintf("%+v", c)
 		}
-		s.Nameless = namelessCreates[tl.Name]
-		if d, ok := deleteTargets[tl.Name]; ok {
+		s.Nameless = tl.Decl.Nameless
+		if d := tl.Decl.Delete; d.arg != "" {
 			s.Delete = fmt.Sprintf("%+v", d)
 		}
-		for _, a := range idArgs[tl.Name] {
+		for _, a := range tl.Decl.IDArgs {
 			s.IDArgs = append(s.IDArgs, idArgSnap(a))
 		}
-		for _, r := range refArgs[tl.Name] {
+		for _, r := range tl.Decl.RefArgs {
 			s.RefArgs = append(s.RefArgs, fmt.Sprintf("%+v", r))
 		}
 		if !reflect.DeepEqual(s, declSnap{}) {

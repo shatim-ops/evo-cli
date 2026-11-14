@@ -391,7 +391,8 @@ func scan(dir string) (out []Intent, foreign []string) {
 // an existing resource by the name (D49), a new one, or «already deleted»
 // (D26). The same call is the same tool in the same project with the same
 // arguments (SameCall): another rule of the same security group is another
-// call, and its answer says nothing of this one. A record without a print
+// call, and its answer says nothing of this one; nor does a call of the
+// same arguments whose resolved target differs (R-101). A record without a print
 // (evo before the print) is the same call by its name or its target, as it
 // was. Only a record that began no later than done and is not in flight is
 // removed: the answer of one of two calls in flight says nothing of the
@@ -412,7 +413,11 @@ func Settle(dir string, done Intent) (kept []Intent) {
 			continue
 		}
 		if in.Print != "" {
-			if !in.SameCall(done.Canon) {
+			// The same arguments are the same call only on the same
+			// resource: a name may resolve to another resource now (a
+			// group renamed and its name taken by a new one), and the
+			// outcome there says nothing of the cut call (R-101).
+			if !in.SameCall(done.Canon) || in.Target != "" && done.Target != "" && in.Target != done.Target {
 				continue
 			}
 		} else if in.Name != done.Name || in.Target != done.Target {

@@ -23,7 +23,7 @@ import (
 // catalogue is completed from the read tool that lists them. One place
 // decides which list completes which argument (completionOf): toolRefs of
 // the tool, valueRefs by the argument's name (a name or an id of the
-// list), then the kinds of idArgs by their listTool, with a tool's
+// list), then the kinds of Decl.IDArgs by their listTool, with a tool's
 // exceptions in noCompletion. The CLI asks Complete for every
 // command alike. Nothing here writes, asks for consent or goes to the
 // journal; a secret's value is never listed.
@@ -42,7 +42,7 @@ type completion struct {
 
 // valueRefs complete an argument by its name, in every tool that has it,
 // unless noCompletion makes an exception; the rest of the ids come from
-// the kinds of idArgs.
+// the kinds of Decl.IDArgs.
 var valueRefs = map[string]completion{
 	"region":               {list: "list_zones", field: "name"},
 	"zone":                 {list: "list_zones", field: "name"},
@@ -87,7 +87,7 @@ var noCompletion = map[string]map[string]string{
 }
 
 // completionOf is how (tool, arg) is completed, if it is; an argument of
-// refArgs takes a name (D57), so names are offered too.
+// Decl.RefArgs takes a name (D57), so names are offered too.
 func (r *Registry) completionOf(tool, arg string) (completion, bool) {
 	c, ok := r.completionDeclared(tool, arg)
 	if ok && takesName(tool, arg) {
@@ -108,7 +108,7 @@ func (r *Registry) completionDeclared(tool, arg string) (completion, bool) {
 	if c, ok := valueRefs[arg]; ok && r.listable(c.list) {
 		return c, true
 	}
-	for _, a := range idArgs[tool] {
+	for _, a := range decls[tool].IDArgs {
 		if a.name == arg && a.kind != nil && a.kind.listTool != "" && r.listable(a.kind.listTool) {
 			return completion{list: a.kind.listTool, field: "id", byName: a.kind.byName}, true
 		}

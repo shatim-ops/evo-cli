@@ -48,7 +48,7 @@ var bare404Outside = map[string]string{
 // and its HEAD has no body to tell a route by. Not in the probe of D63.
 const s3Outside = "S3: minio, not httpretry.Transport; not in the probe of D63"
 
-// bare404Unreached are the deletes of deleteTargets whose confirmed call
+// bare404Unreached are the deletes of Decl.Delete whose confirmed call
 // with the contract arguments reaches no request in the contract world, so
 // this test does not check them: each with why. The list only shrinks — a
 // delete that reaches no request and is not here fails the test, and so
@@ -59,7 +59,7 @@ var bare404Unreached = map[string]string{}
 // there. A 404 whose body is not the service's — HTML, or nothing — says
 // that only of a route: a wrong address or a moved API would read as a done
 // delete, and «deleted» would not mean the resource is gone (CLAUDE.md §6,
-// axis 3). Every delete of deleteTargets, confirmed, in the contract world
+// axis 3). Every delete of Decl.Delete, confirmed, in the contract world
 // answering each kind of bare404Kinds, answers anything but
 // already_deleted, outside bare404Gone (1.4.0, E4).
 func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
@@ -67,8 +67,8 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 	reg := contractReg(t, rt)
 	found := map[string]string{}
 	reached := map[string]bool{}
-	names := make([]string, 0, len(deleteTargets))
-	for name := range deleteTargets {
+	var names []string
+	for name := range allDeletes() {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -79,7 +79,7 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 		}
 		if contractHTTPSkip[name] {
 			// A delete outside the contract world would leave E4 unchecked.
-			t.Errorf("%s: a delete of deleteTargets in contractHTTPSkip — E4 does not reach it", name)
+			t.Errorf("%s: a delete of Decl.Delete in contractHTTPSkip — E4 does not reach it", name)
 			continue
 		}
 		for _, kind := range bare404Kinds {
@@ -119,8 +119,8 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 		}
 	}
 	for name := range bare404Outside {
-		if _, ok := deleteTargets[name]; !ok {
-			t.Errorf("bare404Outside names %s, which deleteTargets does not declare: remove the line", name)
+		if _, ok := deleteOf(name); !ok {
+			t.Errorf("bare404Outside names %s, which Decl.Delete does not declare: remove the line", name)
 		}
 	}
 	for name := range bare404Gone {
@@ -131,12 +131,12 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 }
 
 // byTargetOnly leaves the resource of the delete tl named one way, by the
-// argument of deleteTargets: the contract arguments fill every argument,
+// argument of Decl.Delete: the contract arguments fill every argument,
 // and a delete refuses two names of one resource (vm_id and name, id and
 // ip_address) before any request. The ways are what the registry declares
 // — Tool.Decl.RequiredOneOf and the "a|b" positional of the CLI.
 func byTargetOnly(tl Tool, args map[string]any) map[string]any {
-	target := deleteTargets[tl.Name].arg
+	target := decls[tl.Name].Delete.arg
 	sets := slices.Clone(tl.Decl.RequiredOneOf)
 	for _, a := range tl.CLI.Args {
 		if strings.Contains(a, "|") {

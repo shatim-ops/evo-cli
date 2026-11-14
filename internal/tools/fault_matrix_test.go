@@ -243,7 +243,7 @@ func stateText(t *testing.T, dir string) string {
 //	(b) the same call again, the fault gone, converges: it leaves no more
 //	    billable objects than one clean call does;
 //	(c) an answer that is not an error gives the id of what the call made
-//	    where createdIDs says (checkCreatedID): stack steps and lostCreate
+//	    where Decl.Created says (checkCreatedID): stack steps and lostCreate
 //	    read it there (G13-14).
 func TestFault_Matrix(t *testing.T) {
 	prev := deployplan.SSHPortWait

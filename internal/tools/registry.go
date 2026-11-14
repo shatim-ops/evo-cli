@@ -68,7 +68,7 @@ type Tool struct {
 	ArgDescriptionsRU map[string]string `json:"-"`
 	// UntrustedOutput: the answer carries what a workload or a stored
 	// object wrote (logs, kubectl output, S3 objects), which the agent must
-	// not take for instructions (untrustedFields).
+	// not take for instructions (Decl.Untrusted).
 	UntrustedOutput bool `json:"-"`
 	// CLI is the tool's command in the CLI (cliSpecs).
 	CLI CLISpec `json:"-"`
@@ -358,7 +358,7 @@ func New(factory EngineFactory) *Registry {
 		if takesConsent(*t) && t.Decl.PartialConsent == nil {
 			t.Description += " " + consentText(t.Name)
 		}
-		if t.UntrustedOutput = untrustedFields[t.Name].workload; t.UntrustedOutput {
+		if t.UntrustedOutput = t.Decl.Untrusted.workload; t.UntrustedOutput {
 			t.Description += " " + untrustedOutputNote
 		}
 		t.CLI = cliSpecs[t.Name]
@@ -379,19 +379,19 @@ func New(factory EngineFactory) *Registry {
 			h = r.boundToProjects(*t, h)
 			// Inside requireProject too: the list of a name is the call's
 			// project's; outside boundToProjects: it checks the id.
-			if refs := refArgs[t.Name]; refs != nil {
+			if refs := decls[t.Name].RefArgs; refs != nil {
 				h = r.resolveRefs(refs, h)
 			}
 			if t.Decl.Project {
 				h = r.requireProject(h)
 			}
-			if _, ok := createdIDs[t.Name]; ok || targetArgs(t.Name) != nil {
+			if _, ok := createdOf(t.Name); ok || targetArgs(t.Name) != nil {
 				h = r.namedProject(*t, h)
 			}
-			if keys := echoedArgs[t.Name]; keys != nil {
-				h = namedArgs(keys, h)
+			if echoed := t.Decl.EchoedArgs; echoed != nil {
+				h = namedArgs(echoed, h)
 			}
-			if u := untrustedFields[t.Name]; u.marked() {
+			if u := t.Decl.Untrusted; u.marked() {
 				h = markUntrusted(u, h)
 			}
 			if r.unchecked == nil {
@@ -463,7 +463,7 @@ func (r *Registry) SetReadOnly() { r.readOnly = true }
 // agreement (billingClient), and the balance of the agreement is not given
 // (balanceRefused); org_projects lists that project, not the
 // organization's. A call in another project is the factory's to refuse,
-// and so is a resource a tool names by id (idArgs): before the handler,
+// and so is a resource a tool names by id (Decl.IDArgs): before the handler,
 // the registry finds the resource's project and asks the factory for an
 // engine there (boundToProjects); a *_operation tool reads only the
 // operations this registry started. evo mcp --allow-project sets it (H9),
