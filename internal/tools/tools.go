@@ -860,12 +860,12 @@ func (s *Registry) registerTools() {
 			Description: "List Managed Kafka flavor specifications (id, cpu, memory_gb, min_storage_gb, min/max_brokers) for a version. Read-only. Use to choose specification_id for kafka_create.",
 			InputSchema: objSchema(map[string]any{
 				"version_id": strProp("Version UUID (from kafka_versions); optional — defaults to latest."),
-				"zone":       strProp("Zone name (ru.AZ-2) or UUID. Default: the configured region's, else the zone list's default (list_zones)."),
+				"zone":       strProp("Zone name (ru.AZ-2) or UUID. Default: the configured region's, else ru.AZ-2."),
 			}),
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster. Refuses a taken name. Default subnet: the main subnet of the configured zone, else of the first zone with one (the zone list's default first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication. Controllers: combined; dedicated (controller_spec): Cloud.ru console only.",
+			Description: "Create a Managed Kafka cluster. Refuses a taken name. Default subnet: the main subnet of the configured zone, else of the first zone with one (ru.AZ-2 first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication. Controllers: combined; dedicated (controller_spec): Cloud.ru console only.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name, 2-63 characters."),
 				"version_id":       strProp("Kafka version UUID. Default: latest."),
@@ -914,7 +914,7 @@ func (s *Registry) registerTools() {
 			Description: "List Managed Redis flavor specifications (id, cpu, memory_gb, deployment_mode, min_storage_gb) for a version. Read-only. Use to choose specification_id for redis_create.",
 			InputSchema: objSchema(map[string]any{
 				"version_id": strProp("Version UUID (from redis_versions); optional — defaults to latest."),
-				"zone":       strProp("Zone name (ru.AZ-2) or UUID. Default: the configured region's, else the zone list's default (list_zones)."),
+				"zone":       strProp("Zone name (ru.AZ-2) or UUID. Default: the configured region's, else ru.AZ-2."),
 			}),
 		},
 		{

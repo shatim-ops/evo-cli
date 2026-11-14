@@ -322,7 +322,7 @@ func TestDefaultZoneFirst(t *testing.T) {
 		{[]*provision.AvailabilityZone{{Name: "ru.AZ-2"}, {Name: "ru.AZ-1"}}, "ru.AZ-2,ru.AZ-1"},
 	} {
 		before := names(tc.in)
-		if got := names(DefaultZoneFirst(tc.in)); got != tc.want {
+		if got := names(DefaultZoneFirst(tc.in, ZoneVM)); got != tc.want {
 			t.Errorf("DefaultZoneFirst(%s) = %s, want %s", before, got, tc.want)
 		}
 		if names(tc.in) != before {

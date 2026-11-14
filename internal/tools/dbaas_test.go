@@ -49,9 +49,7 @@ func (f *fakeDbaas) serve(w http.ResponseWriter, r *http.Request) {
 	host := r.URL.Host
 	switch {
 	case r.URL.Path == "/api/v1/availability-zones":
-		// The platform marks ru.AZ-2 default: the zone a create takes
-		// when none is given, as evo init and evo vm zones take it.
-		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1"},{"id":"`+zoneAZ2+`","name":"ru.AZ-2","default":true}]}`)
+		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1"},{"id":"`+zoneAZ2+`","name":"ru.AZ-2"}]}`)
 	case r.URL.Path == "/api/v1/subnets":
 		// Подсеть есть только в ru.AZ-1, как в новом проекте.
 		_, _ = io.WriteString(w, `{"items":[{"id":"sn-1","name":"Default_ru.AZ-1","default":true,"availability_zone":{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}}],"total":1}`)
