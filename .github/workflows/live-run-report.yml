@@ -25,13 +25,16 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: live-run-report
-  cancel-in-progress: false
-
 jobs:
   open:
     if: github.event_name == 'workflow_run'
+    # Группа — на прогон, а не на workflow: в одной группе GitHub держит
+    # один ожидающий запуск, и новый отменяет его — при пачке завершений
+    # событие прогона терялось бы (ревью Qwen на bf94125). Попытки одного
+    # прогона идут по одной: второе issue на прогон не заводится.
+    concurrency:
+      group: live-run-report-open-${{ github.event.workflow_run.name }}-${{ github.event.workflow_run.run_number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -57,6 +60,9 @@ jobs:
 
   check:
     if: github.event_name != 'workflow_run'
+    concurrency:
+      group: live-run-report-check
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
