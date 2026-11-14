@@ -2788,11 +2788,13 @@ func vmReadyText(name, zone, ip, ssh string, took time.Duration) string {
 // engineStep adds to fields the way on that an engine's refusal names in
 // its details, in the answer as in the CLI's: deploy for a deployment that
 // deploy has not finished (D76), vm_start for one whose VM is stopped
-// («Риск», conclusion 132, У2). Other errors keep their details to the CLI.
+// («Риск», conclusion 132, У2), vm_get for one whose VM was on its way up
+// (FB19I-5). Other errors keep their details to the CLI.
 func engineStep(err error, fields map[string]any) map[string]any {
 	var unfinished *engine.DeployUnfinishedError
 	var stopped *engine.VMStoppedError
-	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) {
+	var transit *engine.VMInTransitError
+	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) && !stderrors.As(err, &transit) {
 		return fields
 	}
 	var ce *clierrors.CLIError

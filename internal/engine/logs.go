@@ -57,8 +57,10 @@ func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
 		ts.SetToken(tok.Value)
 	}
 
-	// A stopped VM takes no SSH: the cause, not a timeout of it.
-	if err := e.vmStopped(ctx, active, clerrors.CodeSSHTimeout); err != nil {
+	// A stopped VM takes no SSH: the cause, not a timeout of it. One on
+	// its way up is tried, and a failure names its state (inTransit).
+	transit, err := e.vmStopped(ctx, active, clerrors.CodeSSHTimeout)
+	if err != nil {
 		return err
 	}
 
@@ -72,7 +74,7 @@ func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
 		return err
 	}
 	if err := e.Deployer.Connect(ctx, active.VMIP, 22, sshUser, e.SSHKeyPEM, active.SSHHostKeyFingerprint); err != nil {
-		return err
+		return inTransit(err, active, transit)
 	}
 	defer e.Deployer.Close()
 
@@ -83,10 +85,10 @@ func (e *Engine) Logs(ctx context.Context, opts LogsOptions) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return clerrors.Wrap(clerrors.CodeSSHTimeout,
+		return inTransit(clerrors.Wrap(clerrors.CodeSSHTimeout,
 			i18n.T("failed to retrieve logs", "не удалось получить журналы"),
 			i18n.T("Check that containers are running.", "Проверьте, что контейнеры запущены."),
-			err)
+			err), active, transit)
 	}
 	return nil
 }

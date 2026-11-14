@@ -13,7 +13,9 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/deploy"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -110,5 +112,51 @@ func TestDeploy_ARunningVMAsksAsBefore(t *testing.T) {
 	m, text, _ := callNamed(t, r, "deploy", map[string]any{})
 	if m["status"] != "confirmation_required" || m["update"] != true {
 		t.Fatalf("deploy to a running VM: %s, want the question of an update", text)
+	}
+}
+
+// Every state a power tool takes a VM from, through or to — but running —
+// is one logs, verify and deploy say something of beyond the failure of
+// SSH (engine.VMStateCovered): vm_reboot came after D104 and its
+// rebooting was left out (the interim delta audit of 1.9, FB19I-5). A new
+// power action with a state of its own fails here until it is covered.
+func TestPowerStates_EveryStateOffRunningIsCoveredByLogsAndVerify(t *testing.T) {
+	for tool, act := range vmPowerActions {
+		for _, st := range []string{act.from, act.via, act.to} {
+			if st != "" && st != "running" && !engine.VMStateCovered(st) {
+				t.Errorf("%s goes through %q: logs and verify name no cause for it (engine.vmStoppedStates / vmTransitStates)", tool, st)
+			}
+		}
+	}
+}
+
+// sshTimesOut is a deployer whose SSH does not answer, as a VM on its way
+// up does.
+type sshTimesOut struct{ deploy.Deployer }
+
+func (sshTimesOut) Connect(context.Context, string, int, string, []byte, string) error {
+	return clierrors.New(clierrors.CodeSSHTimeout, "ssh: connection timed out", "")
+}
+
+// The cause of a failure on a VM on its way up reaches the MCP answer of
+// logs as the CLI's --json error has it, with the reason logs had (the
+// interim delta audit of 1.9, FB19I-5).
+func TestLogs_AFailureOnAVMOnItsWayUpNamesTheStateOverMCP(t *testing.T) {
+	for _, vmState := range []string{"starting", "rebooting"} {
+		r, _, id := stoppedDeployment(t, vmState)
+		newEngine := r.newEngine
+		r.newEngine = func(a map[string]any) (*engine.Engine, error) {
+			e, err := newEngine(a)
+			if e != nil {
+				e.Deployer = sshTimesOut{}
+			}
+			return e, err
+		}
+		m, text, isErr := callNamed(t, r, "logs", map[string]any{})
+		next, _ := m["next_args"].(map[string]any)
+		if !isErr || m["reason"] != "SSH_TIMEOUT" || m["cause"] != "vm_in_transition" || m["vm_state"] != vmState ||
+			m["next_tool"] != "vm_get" || next["vm_id"] != id {
+			t.Errorf("logs of a deployment whose VM is %s, SSH timing out: %s, want SSH_TIMEOUT with cause vm_in_transition, vm_state %s and vm_get of %s", vmState, text, vmState, id)
+		}
 	}
 }
