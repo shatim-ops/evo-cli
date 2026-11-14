@@ -1133,20 +1133,30 @@ func namedParams(params []PreviewParam) []PreviewParam {
 // gave then cannot start a line that reads as evo's or move the terminal
 // (Astra, #1848). A line or paragraph separator breaks a line as a line
 // break does, and bytes that are no UTF-8 are not what the person reads:
-// they are escaped as well («Риск», conclusion 234). The one point for every value a human preview prints:
+// they are escaped as well («Риск», conclusion 234). Such bytes reach a
+// preview mostly as U+FFFD already — the answer of a tool is JSON, and so
+// is the request — and the replacement character reads as text: it is
+// escaped too, so the person sees that the value is not the one typed
+// (Astra, #1848 after #1882). The one point for every value a human preview prints:
 // the parameters of a preview (paramValue) and the fields of an answer
 // beside its message (the CLI). The data of the answer and the request
 // keep the value as given.
 func PreviewText(s string) string {
 	if !utf8.ValidString(s) {
-		return strconv.Quote(s)
+		return quotePreview(s)
 	}
 	for _, r := range s {
-		if unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
-			return strconv.Quote(s)
+		if r == utf8.RuneError || unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
+			return quotePreview(s)
 		}
 	}
 	return s
+}
+
+// quotePreview is s quoted as Go quotes it, U+FFFD escaped as well:
+// strconv.Quote keeps it, a printable character, as it is.
+func quotePreview(s string) string {
+	return strings.ReplaceAll(strconv.Quote(s), string(utf8.RuneError), `\ufffd`)
 }
 
 func paramLine(prm PreviewParam) string {
