@@ -148,6 +148,11 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if r.stateDirUndeclared() {
 			return errResult(errNoStateDir()), true
 		}
+		// The same create before was taken and goes on: its progress is
+		// read, with or without consent, and no second create is sent.
+		if text, isErr, ok := r.repeatOfMade(ctx, t.Name, args); ok {
+			return text, isErr
+		}
 		if confirmed, _ := args["confirmed"].(bool); !confirmed || !NeedsConsent(t, args) {
 			text, isErr := next(ctx, args)
 			r.settleHeld(ctx, t.Name, args, text)

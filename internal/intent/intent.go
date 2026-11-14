@@ -111,6 +111,15 @@ type Intent struct {
 	// counts from there, not from each repeat (release plan 1.9, «Намерение
 	// D92 держит запись, пока операция идёт»).
 	Held bool `json:"held,omitempty"`
+	// Made is the id a create named in an answer whose operation goes on
+	// in another tool's read (Next, NextArgs: its next step): the platform
+	// took the request, and its outcome is not known yet. The record stays
+	// with them, and the same call again reads that step instead of
+	// sending a second create (Астра #1963, the full audit of 14.11,
+	// finding 01). "" for any other record.
+	Made     string         `json:"made,omitempty"`
+	Next     string         `json:"next,omitempty"`
+	NextArgs map[string]any `json:"next_args,omitempty"`
 	// Print tells the same call again from another call of the tool on
 	// the same resource (a rule of a security group, a kubectl): the hash
 	// of the record's id and of the arguments that make the call what it

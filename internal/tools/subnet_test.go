@@ -37,6 +37,7 @@ type subnetAPI struct {
 	canDelete bool
 	gone      bool // GET and DELETE of the subnet answer 404
 	made      bool // a POST made subnet "web": the list shows it created
+	unlisted  bool // the list does not show what a POST made (Астра #1963)
 }
 
 func newSubnetAPI() *subnetAPI {
@@ -56,7 +57,7 @@ func (a *subnetAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		_, _ = fmt.Fprintf(rec, `[{"id":%q,"name":"ru.AZ-1"}]`, subnetZone)
 	case r.URL.Path == "/api/v1/subnets" && r.Method == http.MethodGet:
 		a.mu.Lock()
-		made := a.made
+		made := a.made && !a.unlisted
 		a.mu.Unlock()
 		if made {
 			_, _ = fmt.Fprintf(rec, `{"items":[%s,{"id":%q,"name":"web","state":"created"}],"total":2}`, old, subnetNew)
