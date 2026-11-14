@@ -195,6 +195,7 @@ func TestStackStep_AnOperationsEndKeepsTheStepsOwnID(t *testing.T) {
 	r.handlers["vpc_operation"] = fakeOK(map[string]any{"done": true})
 	r.handlers["vpc_list"] = fakeOK(map[string]any{"vpcs": []any{
 		map[string]any{"id": "vpc-B", "name": "net"}, map[string]any{"id": "vpc-A", "name": "net"}}})
+	r.handlers["vpc_get"] = fakeOK(map[string]any{"id": "vpc-A", "name": "net"})
 	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
 	loaded, err := stack.LoadJob(j.ID)
 	if err != nil {
@@ -265,50 +266,127 @@ func TestStackStep_TheWaitedResourceNotFoundEndsTheStep(t *testing.T) {
 	}
 }
 
-// Шаг VPC ждёт свою операцию; она кончилась, а сети A шага в списке нет —
-// только чужая B того же имени (Астра, #1830). Шаг не закрывается done с
-// отсутствующим ресурсом: промахи подряд до предела — ошибка; A в списке —
-// done с A.
+// Шаг, ждущий свою операцию (VPC, целевая группа), по её концу читает
+// свой ресурс по id — адресным чтением операции (operationReads), а не
+// списком (Астра, #1830, проверка #1866). Ресурс есть — done с ним. Чтение
+// отвечает NOT_FOUND — промах, а по сроку — ошибка, которая называет
+// адресное чтение. Чтение не удалось — шаг ждёт дальше без выхода: id не
+// проверен.
 func TestStackStep_AnOperationsEndChecksTheStepsResourceIsThere(t *testing.T) {
-	for _, present := range []bool{false, true} {
-		stackHome(t)
-		r := newTestServer(t)
-		j := planJob(t, `{"name":"probe","vpc":{"name":"same"}}`)
-		j.Steps[0].Status, j.Steps[0].ResourceID, j.Steps[0].OpID = "waiting", "vpc-A", "op-old"
-		if err := j.Save(); err != nil {
-			t.Fatal(err)
-		}
-		listed := []any{map[string]any{"id": "vpc-B", "name": "same"}}
-		if present {
-			listed = append(listed, map[string]any{"id": "vpc-A", "name": "same"})
-		}
-		r.handlers["vpc_operation"] = fakeOK(map[string]any{"done": true})
-		r.handlers["vpc_list"] = fakeOK(map[string]any{"vpcs": listed})
-		r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
-		for range maxStepMissing {
-			r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
-		}
-		loaded, err := stack.LoadJob(j.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !present {
-			// The time since the first miss has run out.
-			loaded.Steps[0].MissingSince = loaded.Steps[0].MissingSince.Add(-stepMissingFor)
-			if err := loaded.Save(); err != nil {
+	for _, kind := range []struct{ tool, poll, read, key string }{
+		{"vpc_create", "vpc_operation", "vpc_get", "vpc"},
+		{"tg_create", "lb_operation", "tg_get", "tg"},
+	} {
+		for _, read := range []string{"present", "gone", "unreadable"} {
+			stackHome(t)
+			r := newTestServer(t)
+			j := planJob(t, `{"name":"probe","vpc":{"name":"same"}}`)
+			st := j.Steps[0]
+			st.Key, st.Tool, st.PollTool = kind.key, kind.tool, kind.poll
+			st.Status, st.ResourceID, st.OpID = "waiting", "res-A", "op-old"
+			if err := j.Save(); err != nil {
 				t.Fatal(err)
 			}
-			r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
-			if loaded, err = stack.LoadJob(j.ID); err != nil {
+			r.handlers[kind.poll] = fakeOK(map[string]any{"done": true})
+			answer := func(context.Context, map[string]any) (string, bool) {
+				switch read {
+				case "gone":
+					return toJSON(map[string]any{"status": "error", "reason": "NOT_FOUND", "error": "not found"}), true
+				case "unreadable":
+					return toJSON(map[string]any{"status": "error", "reason": "API_ERROR", "error": "503"}), true
+				}
+				return toJSON(map[string]any{"id": "res-A", "name": "same", "status": "ACTIVE"}), false
+			}
+			for _, rr := range operationReads[kind.poll] {
+				r.handlers[rr.tool] = func(context.Context, map[string]any) (string, bool) {
+					return toJSON(map[string]any{"status": "error", "reason": "NOT_FOUND", "error": "not found"}), true
+				}
+			}
+			r.handlers[kind.read] = answer
+			r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+			loaded, err := stack.LoadJob(j.ID)
+			if err != nil {
 				t.Fatal(err)
 			}
+			if read == "gone" {
+				loaded.Steps[0].Missing = maxStepMissing
+				loaded.Steps[0].MissingSince = loaded.Steps[0].MissingSince.Add(-stepMissingFor)
+				if err := loaded.Save(); err != nil {
+					t.Fatal(err)
+				}
+				r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
+				if loaded, err = stack.LoadJob(j.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got := loaded.Steps[0]
+			name := kind.key + "/" + read
+			switch read {
+			case "present":
+				if got.Status != "done" || loaded.Outputs[kind.key] != "res-A" {
+					t.Errorf("%s: шаг %s, выход %q; want done с res-A", name, got.Status, loaded.Outputs[kind.key])
+				}
+			case "gone":
+				if got.Status != "error" || got.Reason != "NOT_FOUND" || loaded.Outputs[kind.key] != "" || !strings.Contains(loaded.Error, kind.read+" id=res-A") {
+					t.Errorf("%s: шаг %s %s, выход %q, %q; want NOT_FOUND без выхода, с адресным чтением", name, got.Status, got.Reason, loaded.Outputs[kind.key], loaded.Error)
+				}
+			case "unreadable":
+				if got.Status != "waiting" || loaded.Outputs[kind.key] != "" {
+					t.Errorf("%s: шаг %s, выход %q; want waiting без выхода: id не проверен", name, got.Status, loaded.Outputs[kind.key])
+				}
+			}
 		}
-		st := loaded.Steps[0]
-		switch {
-		case present && (st.Status != "done" || loaded.Outputs["vpc"] != "vpc-A"):
-			t.Errorf("A в списке: шаг %s, outputs.vpc %s; want done с vpc-A", st.Status, loaded.Outputs["vpc"])
-		case !present && (st.Status != "error" || st.Reason != "NOT_FOUND" || loaded.Outputs["vpc"] != ""):
-			t.Errorf("A нет: шаг %s %s, outputs.vpc %q; want ошибку NOT_FOUND без выхода", st.Status, st.Reason, loaded.Outputs["vpc"])
-		}
+	}
+}
+
+// Чтение ресурса шага, которое постоянно отказывает не NOT_FOUND
+// (AUTH_FAILED, API_UNREACHABLE, API_RATE_LIMITED), не держит задание в
+// running без конца: тот же срок, что у промахов, и ошибка с причиной
+// самого чтения; каждый опрос называет её в details («Риск», 239, У1).
+// Шаг целевой группы читает своё (tg_get), а не застревает на чужом
+// чтении операции (lb_get), которое отказывает (239, У2).
+func TestStackStep_AReadThatKeepsFailingEndsTheStepWithItsReason(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"probe","vpc":{"name":"same"}}`)
+	st := j.Steps[0]
+	st.Key, st.Tool, st.PollTool = "tg", "tg_create", "lb_operation"
+	st.Status, st.ResourceID, st.OpID = "waiting", "res-A", "op-old"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r.handlers["lb_operation"] = fakeOK(map[string]any{"done": true})
+	var lbCalls int
+	r.handlers["lb_get"] = func(context.Context, map[string]any) (string, bool) {
+		lbCalls++
+		return toJSON(map[string]any{"status": "error", "reason": "USAGE", "error": "400"}), true
+	}
+	r.handlers["tg_get"] = func(context.Context, map[string]any) (string, bool) {
+		return toJSON(map[string]any{"status": "error", "reason": "AUTH_FAILED", "error": "403"}), true
+	}
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	loaded, err := stack.LoadJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lbCalls != 0 {
+		t.Errorf("шаг tg читал чужое lb_get %d раз: своё чтение — tg_get", lbCalls)
+	}
+	if got := loaded.Steps[0]; got.Status != "waiting" || !strings.Contains(got.Detail, "AUTH_FAILED") {
+		t.Fatalf("первый сбой: шаг %s, details %q; want waiting и причину AUTH_FAILED", got.Status, got.Detail)
+	}
+	loaded.Steps[0].Missing = maxStepMissing
+	loaded.Steps[0].MissingSince = loaded.Steps[0].MissingSince.Add(-stepMissingFor)
+	if err := loaded.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
+	if loaded, err = stack.LoadJob(j.ID); err != nil {
+		t.Fatal(err)
+	}
+	got := loaded.Steps[0]
+	if got.Status != "error" || got.Reason != "AUTH_FAILED" || loaded.Outputs["tg"] != "" ||
+		!strings.Contains(loaded.Error, "tg_get id=res-A") || !strings.Contains(loaded.Error, "stack_destroy") {
+		t.Errorf("по сроку: шаг %s %s, выход %q, %q; want ошибку AUTH_FAILED с чтением и stack_destroy", got.Status, got.Reason, loaded.Outputs["tg"], loaded.Error)
 	}
 }
