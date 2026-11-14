@@ -289,13 +289,16 @@ func TestK8sAddAddon_InstallsWithConfig(t *testing.T) {
 	if isErr || m["status"] != "installing" || m["operation_id"] != "op-1" || m["cluster_addon_id"] != "ca-1" || m["namespace"] != "cert-manager" {
 		t.Fatalf("confirmed: %s", text)
 	}
-	if note, _ := m["note"].(string); !strings.Contains(note, `k8s_kubectl args="get pods -n cert-manager"`) || !strings.Contains(note, "remove it in the Cloud.ru console") {
+	// The namespace is the catalogue's word: the field is marked
+	// "_untrusted", and the note names the field, not the value — the note
+	// stays evo's text (Астра, #1925; «Риск», conclusion 247).
+	note, _ := m["note"].(string)
+	if !strings.Contains(note, `k8s_kubectl args="get pods -n <namespace>"`) || strings.Contains(note, "cert-manager\"") ||
+		strings.Contains(note, "-n cert-manager") || !strings.Contains(note, "remove it in the Cloud.ru console") {
 		t.Errorf("note: %s", note)
 	}
-	// The namespace is the catalogue's word, in the field and in the note's
-	// command: both are marked "_untrusted" (Астра, #1925).
-	if u, _ := m["_untrusted"].([]any); !slices.Contains(u, any("namespace")) || !slices.Contains(u, any("note")) {
-		t.Errorf("the catalogue's namespace in namespace and note, _untrusted %v: %s", m["_untrusted"], text)
+	if u, _ := m["_untrusted"].([]any); !slices.Contains(u, any("namespace")) || slices.Contains(u, any("note")) {
+		t.Errorf("_untrusted %v: want namespace, and not the note, which is evo's text: %s", m["_untrusted"], text)
 	}
 	if len(f.posts) != 1 {
 		t.Fatalf("posts: %v", f.posts)

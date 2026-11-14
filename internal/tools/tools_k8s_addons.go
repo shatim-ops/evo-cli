@@ -574,9 +574,14 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 			}
 			return errResult(err), true
 		}
+		// The namespace is the catalogue's word: the note names its field,
+		// not its value, and stays evo's text; the field is marked
+		// (Астра, #1925; «Риск», conclusion 247, the remainder 1 —
+		// k8s_kubectl splits args by spaces, so a quoted value would not
+		// run).
 		check := "get pods -A"
 		if r.AddonNamespace != "" {
-			check = "get pods -n " + r.AddonNamespace
+			check = "get pods -n <namespace>"
 		}
 		out := map[string]any{
 			"status": "installing", "cluster_id": clusterID, "addon": plan.addon.Name,
@@ -593,9 +598,7 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 		}
 		if r.AddonNamespace != "" {
 			out["namespace"] = r.AddonNamespace
-			// The catalogue's word, in the field and in the note's command
-			// (Астра, #1925).
-			cloudText(out, "namespace", "note")
+			cloudText(out, "namespace")
 		}
 		if res.OperationID != "" {
 			out["operation_id"] = res.OperationID
