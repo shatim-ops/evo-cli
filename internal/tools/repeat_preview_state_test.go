@@ -52,7 +52,9 @@ func TestCaStartStop_QuestionNamesTheStateOfTheApp(t *testing.T) {
 		status, body := http.StatusOK, `{"name":"app-1","status":"running"}`
 		f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
 			if r.Method != http.MethodGet {
-				_, _ = io.WriteString(w, `{}`)
+				// An operation done: a call with consent reads the app
+				// only for one going on (TestCaStartStop_TheAnswerIsTheOperations).
+				_, _ = io.WriteString(w, `{"id":"op-1","done":true}`)
 				return true
 			}
 			w.WriteHeader(status)
@@ -100,7 +102,7 @@ func TestCaStartStop_QuestionNamesTheStateOfTheApp(t *testing.T) {
 		}
 		for _, q := range f.calls {
 			if strings.HasPrefix(q, "GET ") {
-				t.Errorf("%s with consent read %s: the state is read for the question only", tool, q)
+				t.Errorf("%s with consent, its operation done, read %s: the state is read for the question only", tool, q)
 			}
 		}
 	}
