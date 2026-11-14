@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
@@ -1130,13 +1131,18 @@ func namedParams(params []PreviewParam) []PreviewParam {
 // terminal's escape, a bidi override), then quoted with them escaped. A
 // value the caller gave (a description, Decl.EchoedArgs) or the cloud
 // gave then cannot start a line that reads as evo's or move the terminal
-// (Astra, #1848). The one point for every value a human preview prints:
+// (Astra, #1848). A line or paragraph separator breaks a line as a line
+// break does, and bytes that are no UTF-8 are not what the person reads:
+// they are escaped as well («Риск», conclusion 234). The one point for every value a human preview prints:
 // the parameters of a preview (paramValue) and the fields of an answer
 // beside its message (the CLI). The data of the answer and the request
 // keep the value as given.
 func PreviewText(s string) string {
+	if !utf8.ValidString(s) {
+		return strconv.Quote(s)
+	}
 	for _, r := range s {
-		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+		if unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return strconv.Quote(s)
 		}
 	}

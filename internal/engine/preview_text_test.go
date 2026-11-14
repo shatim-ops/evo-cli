@@ -7,6 +7,7 @@ package engine
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // The rule of PreviewText holds for the whole value a preview prints, not
@@ -33,5 +34,27 @@ func TestPreviewText_WholeValue(t *testing.T) {
 	}
 	if got := paramValue("plain value"); got != "plain value" {
 		t.Errorf("a plain value changed: %q", got)
+	}
+}
+
+// A line or paragraph separator (Zl, Zp) breaks a line in a terminal as a
+// line break does, and a byte that is no UTF-8 is not what the person
+// reads: both are escaped too («Риск», conclusion 234, remark).
+func TestPreviewText_SeparatorsAndInvalidUTF8(t *testing.T) {
+	for name, v := range map[string]string{
+		"line separator":      "a\u2028PROBE",
+		"paragraph separator": "a\u2029PROBE",
+		"invalid UTF-8":       "a\xffPROBE",
+	} {
+		got := PreviewText(v)
+		if got == v || !strings.HasPrefix(got, `"`) {
+			t.Errorf("%s: %q printed as it is", name, got)
+		}
+		if !utf8.ValidString(got) || strings.ContainsAny(got, "\u2028\u2029") {
+			t.Errorf("%s: %q keeps the character raw", name, got)
+		}
+	}
+	if got := PreviewText("ВМ ноль-один"); got != "ВМ ноль-один" {
+		t.Errorf("printable non-ASCII text changed: %q", got)
 	}
 }
