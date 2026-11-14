@@ -24,6 +24,10 @@ import sys
 from urllib.parse import urlsplit
 
 API_HOST = re.compile(r"^([a-z0-9-]+)\.api\.cloud\.ru$")
+# The kinds httpretry.AnswerShape writes: the generator lets out a kind of
+# this set alone, so a writer that put a value there would not reach the
+# artifact («Риск», conclusion 226, У1).
+KINDS = {"uuid", "name", "number", "bool", "null", "object", "array"}
 
 
 def templates(root):
@@ -78,7 +82,7 @@ def main():
         fields = json.load(f)["requests"]
     services = {svc for svc, _ in tmpl}
 
-    count = {"строк": 0, "принято": 0, "не JSON": 0, "хост вне описи": 0, "путь вне описи": 0, "полей вне описи": 0, "полей с разным типом": 0}
+    count = {"строк": 0, "принято": 0, "не JSON": 0, "хост вне описи": 0, "путь вне описи": 0, "полей вне описи": 0, "полей с разным типом": 0, "видов вне набора": 0}
     entries = {}
     lines = []
     if os.path.exists(a.raw):
@@ -93,6 +97,8 @@ def main():
             method, url = rec["request"].split(" ", 1)
             status = int(rec["status"])
             paths = rec.get("paths") or {}
+            if not isinstance(paths, dict):
+                raise TypeError("paths")
         except (ValueError, KeyError, TypeError, AttributeError):
             count["не JSON"] += 1
             continue
@@ -111,6 +117,9 @@ def main():
         for p, kind in paths.items():
             if "*" in p.split(".") or p.replace(".[]", "[]") not in allowed:
                 count["полей вне описи"] += 1
+                continue
+            if not isinstance(kind, str) or kind not in KINDS:
+                count["видов вне набора"] += 1
                 continue
             kept[p] = kind
         count["принято"] += 1

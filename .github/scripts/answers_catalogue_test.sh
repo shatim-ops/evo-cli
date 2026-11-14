@@ -62,6 +62,21 @@ k=$(python3 -I "$here/answers_catalogue.py" --root "$root" --source s --date 202
 [ "$(jq -r '.[0].paths.status' <<<"$k")" = "?" ] || { echo "FAIL: разный тип поля — не «?»"; fail=1; }
 grep -q 'полей с разным типом: 1' "$work/kerr" || { echo "FAIL: нет счёта полей с разным типом"; cat "$work/kerr"; fail=1; }
 
+# Вид поля — только из закрытого набора AnswerShape («Риск», заключение
+# 226, У1): строка и объект на месте вида в выход не идут, счёт — в stderr.
+# Строка с paths не объектом — «не JSON», а не падение всего каталога.
+cat >"$work/kind.jsonl" <<'J'
+{"request":"GET https://mk8s.api.cloud.ru/v3/clusters/{id}","status":200,"form":"json","paths":{"status":"LEAK-my-project-name","controlPlane.version":{"x":"LEAK-nested"},"versionUpgrade.availableVersions.[]":"name"}}
+{"request":"GET https://mk8s.api.cloud.ru/v3/clusters/{id}","status":200,"form":"json","paths":["status"]}
+J
+rc=0
+v=$(python3 -I "$here/answers_catalogue.py" --root "$root" --source s --date 2026-11-14 "$work/kind.jsonl" 2>"$work/verr") || rc=$?
+[ "$rc" = 0 ] || { echo "FAIL: строка с paths не объектом уронила генератор (код $rc)"; cat "$work/verr"; fail=1; }
+if grep -q 'LEAK' <<<"$v"; then echo "FAIL: вид вне набора вышел в каталог"; printf '%s\n' "$v"; fail=1; fi
+[ "$(jq -cS '.[0].paths' <<<"$v" 2>/dev/null)" = '{"versionUpgrade.availableVersions.[]":"name"}' ] || { echo "FAIL: поля при виде вне набора: $v"; fail=1; }
+grep -q 'видов вне набора: 2' "$work/verr" || { echo "FAIL: нет счёта видов вне набора"; cat "$work/verr"; fail=1; }
+grep -q 'не JSON: 1' "$work/verr" || { echo "FAIL: paths не объектом — не «не JSON»"; cat "$work/verr"; fail=1; }
+
 # Сырой файл не изменён и не удалён генератором: удаляет его job.
 [ -s "$work/raw.jsonl" ] || { echo "FAIL: сырой файл тронут"; fail=1; }
 

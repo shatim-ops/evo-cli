@@ -730,7 +730,7 @@ jobs:
         if: always()
         uses: ./.github/actions/answers
         with:
-          job: live
+          job: live-${{ matrix.area }}
 
   # Отечественные ОС по имени образа (шаг E, docs/internal/design-images.md):
   # init --image отказывает (Docker на них не ставится), vm create --image
@@ -969,7 +969,7 @@ jobs:
         if: always()
         uses: ./.github/actions/answers
         with:
-          job: os-smoke
+          job: os-smoke-${{ matrix.os_id }}
 
   # Остатки прошлых прогонов (16.10.2026: отменённый прогон оставил ВМ
   # evo-e2e-app, её FIP и правило порта 80, следующий deploy упал на 409).

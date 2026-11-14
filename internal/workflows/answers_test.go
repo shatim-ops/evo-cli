@@ -39,7 +39,18 @@ func TestWorkflows_RawAnswersNeverLeaveTheJob(t *testing.T) {
 		// The last step: a step after it that reached the cloud would
 		// leave its records unread (review of #1811).
 		last := j.Steps[len(j.Steps)-1]
-		if last.Uses != "./.github/actions/answers" || !strings.Contains(last.If, "always()") || last.With["job"] != name {
+		// The name of the artifact is answers-<job>: a leg of a matrix adds
+		// its own key, or the second leg's upload conflicts with the first
+		// («Риск», conclusion 226, У2).
+		want := name
+		if len(j.Strategy.Matrix) > 0 {
+			got, _ := last.With["job"].(string)
+			if !strings.HasPrefix(got, name+"-${{ matrix.") || !strings.HasSuffix(got, "}}") {
+				t.Errorf("cloud-e2e/%s: a matrix job names its answers %q, want %s-${{ matrix.<key> }} — one artifact name for every leg", name, got, name)
+			}
+			want = got
+		}
+		if last.Uses != "./.github/actions/answers" || !strings.Contains(last.If, "always()") || last.With["job"] != want {
 			t.Errorf("cloud-e2e/%s: runs evo but does not end with ./.github/actions/answers (if: always(), job: %s) — its raw answers stay unread", name, name)
 		}
 	}
