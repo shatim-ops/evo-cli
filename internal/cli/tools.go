@@ -904,12 +904,14 @@ func argLines(m map[string]any) []string {
 	for _, k := range keys {
 		var v string
 		if s, ok := m[k].(string); ok {
-			v = engine.PreviewText(s)
+			v = s
 		} else {
 			b, _ := json.Marshal(m[k])
 			v = string(b)
 		}
-		lines = append(lines, k+": "+v)
+		// The line as printed: JSON escapes a line break, not a format
+		// character («Риск», conclusion 234).
+		lines = append(lines, k+": "+engine.PreviewText(v))
 	}
 	return lines
 }

@@ -44,3 +44,16 @@ func TestPreview_CallerValueStaysOnItsLine(t *testing.T) {
 		})
 	}
 }
+
+// A field beside the message that is a list or a map is printed as JSON,
+// which escapes a line break but not a format character (U+202E): the rule
+// holds for the line as printed («Риск», conclusion 234).
+func TestPreview_ArgLinesWholeValue(t *testing.T) {
+	for _, v := range []any{[]any{"ok", "x‮y"}, map[string]any{"k‮": "v"}} {
+		for _, l := range argLines(map[string]any{"field": v}) {
+			if strings.Contains(l, "‮") {
+				t.Errorf("%q prints a format character raw", l)
+			}
+		}
+	}
+}

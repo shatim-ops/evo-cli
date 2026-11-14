@@ -1191,12 +1191,18 @@ func notCheckedLine(v any) string {
 	return previewLabel("not checked", "не проверено") + strings.Join(words, "; ")
 }
 
-func paramValue(v any) string {
+// paramValue is a value of a preview as a person reads it: the whole of
+// it — a string, a key of a map, a list — through PreviewText («Риск»,
+// conclusion 234).
+func paramValue(v any) string { return PreviewText(paramText(v)) }
+
+// paramText is a value of a preview in words, as it is.
+func paramText(v any) string {
 	switch x := v.(type) {
 	case nil:
 		return ""
 	case string:
-		return PreviewText(x)
+		return x
 	case bool:
 		if x {
 			return i18n.T("yes", "да")
@@ -1210,7 +1216,7 @@ func paramValue(v any) string {
 	case []any:
 		parts := make([]string, 0, len(x))
 		for _, e := range x {
-			parts = append(parts, paramValue(e))
+			parts = append(parts, paramText(e))
 		}
 		return strings.Join(parts, ",")
 	case map[string]any:
@@ -1221,7 +1227,7 @@ func paramValue(v any) string {
 		sort.Strings(keys)
 		parts := make([]string, 0, len(keys))
 		for _, k := range keys {
-			parts = append(parts, strings.ReplaceAll(k, "_", "-")+" "+paramValue(x[k]))
+			parts = append(parts, strings.ReplaceAll(k, "_", "-")+" "+paramText(x[k]))
 		}
 		return strings.Join(parts, ", ")
 	}
