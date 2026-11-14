@@ -305,25 +305,35 @@ func foundAgain(st *stack.Step) {
 	st.Missing, st.MissingSince = 0, time.Time{}
 }
 
-// stepListed reports whether the list of step st's create holds its
-// resource by id; ok is false when the list could not be read or the step
-// is not found by a list (then nothing is known).
-func (s *Registry) stepListed(ctx context.Context, st *stack.Step) (listed, ok bool) {
-	f, found := stepFinder(st)
-	if !found {
-		return false, false
+// stepRead reads the resource of step st by its id, with the reads of its
+// operation's resource (operationReads of its PollTool), in order: found
+// when one reads it; ok false when no read can tell — the step's operation
+// has none, or a read failed otherwise than NOT_FOUND (then the id is not
+// checked, and the step does not end on it: Астра, #1830, #1866). check is
+// the addressed read to name in the answer: the read of the step's kind,
+// else the first.
+func (s *Registry) stepRead(ctx context.Context, st *stack.Step) (found, ok bool, check string) {
+	reads := operationReads[st.PollTool]
+	if len(reads) == 0 {
+		return false, false, ""
 	}
-	res, err := s.callTool(ctx, f.list, f.args)
-	if err != nil {
-		return false, false
-	}
-	arr, _ := res[f.field].([]any)
-	for _, it := range arr {
-		if m, isMap := it.(map[string]any); isMap && m["id"] == st.ResourceID && !statusGone(fmt.Sprint(m["status"])) {
-			return true, true
+	check = reads[0].tool + " " + reads[0].arg + "=" + st.ResourceID
+	own := strings.TrimSuffix(st.Tool, "_create") + "_get"
+	for _, r := range reads {
+		if r.tool == own {
+			check = r.tool + " " + r.arg + "=" + st.ResourceID
 		}
 	}
-	return false, true
+	for _, r := range reads {
+		res, err := s.callTool(ctx, r.tool, map[string]any{r.arg: st.ResourceID})
+		if err == nil {
+			return true, true, check
+		}
+		if reason, _ := res["reason"].(string); reason != clierrors.CodeNotFound {
+			return false, false, check
+		}
+	}
+	return false, true, check
 }
 
 // stackCrankInterval is the pause between cranks inside one stack_status
@@ -407,11 +417,17 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						// («Риск», 222, У2).
 						if st.ResourceID == "" {
 							st.ResourceID = s.findStepID(ctx, st)
-						} else if listed, ok := s.stepListed(ctx, st); ok && !listed {
-							// The operation is done and the step's resource is
-							// not there: not done with an output that is gone.
-							f, _ := stepFinder(st)
-							if stepMissing(job, st, "the operation is done, the resource is not in "+f.list, f.list) {
+						} else if found, ok, check := s.stepRead(ctx, st); check != "" && (!ok || !found) {
+							if !ok {
+								// The read failed: the id is not checked,
+								// and the step is not done on it.
+								st.Detail = "the operation is done; the read of its resource failed: " + check + " on the next poll"
+								continue
+							}
+							// The operation is done and the step's resource
+							// is not there: not done with an output that is
+							// gone.
+							if stepMissing(job, st, "the operation is done, "+check+" answers NOT_FOUND", check) {
 								return
 							}
 							continue
