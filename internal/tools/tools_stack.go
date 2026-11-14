@@ -434,6 +434,12 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				// stack_apply was confirmed for the whole stack. Jobs planned
 				// before provision and s3_put got their gates lack the flag.
 				args["confirmed"] = true
+				if st.Tool == "provision" && st.ResourceID != "" {
+					// The repeat goes on with the step's VM and no other: a VM
+					// gone since is refused, not made again (D102; «Риск»,
+					// conclusion 216, У2).
+					args["vm_id"] = st.ResourceID
+				}
 				res, err := s.callTool(ctx, st.Tool, args)
 				if err != nil && ctx.Err() != nil {
 					// Cancelled mid-create: not a failed attempt. Keep the id
@@ -1089,18 +1095,32 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 	// The preview is built for the question only: its price reads what a
 	// consented call does not need.
 	previewOf := func(ctx context.Context) (map[string]any, error) {
-		will := map[string]any{"will_create": s.stackSteps(job)}
+		create, finish, failed, steps := s.stackSteps(job)
+		will := map[string]any{"will_create": create}
 		keys := []string{"will_create"}
-		// The price of what the consent pays for: the steps not done, as
+		var warnings []string
+		if len(finish) > 0 {
+			will["will_finish"] = finish
+			keys = append(keys, "will_finish")
+			warnings = append(warnings, i18n.Tf("%d step(s) of will_finish are made already: the consent waits for them or finishes them and creates nothing there; steps_cost prices will_create only",
+				"уже сделано шагов will_finish: %d — согласие их дожидается или довершает и ничего там не создаёт; steps_cost — цена только will_create", len(finish)))
+		}
+		if len(failed) > 0 {
+			will["failed_steps"] = failed
+			keys = append(keys, "failed_steps")
+			warnings = append(warnings, i18n.Tf("the job is stopped by %d step(s) in error (failed_steps): the consent runs the steps that do not wait on them, and the job does not end done; whether to remove what it made (stack_destroy) — ask the person",
+				"задание остановлено шагами с ошибкой (failed_steps): %d — согласие выполнит шаги, которые от них не зависят, но задание не завершится; удалять ли созданное (stack_destroy) — спросите человека", len(failed)))
+		}
+		// The price of what the consent makes: the steps it creates, as
 		// stack_plan prices the job (CLAUDE.md §6, axes 1 and 4).
 		if !job.Done() {
 			pending := *job
-			pending.Steps = slices.DeleteFunc(slices.Clone(job.Steps), func(st *stack.Step) bool { return st.Status == "done" })
+			pending.Steps = steps
 			will["steps_cost"] = s.stackCost(ctx, &pending)
 			keys = append(keys, "steps_cost")
 		}
 		preview := map[string]any{"message": i18n.T("stack_apply provisions BILLABLE resources.",
-			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", will, keys)}
+			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", will, keys, warnings...)}
 		// A job done: the question is asked as before — answering without
 		// it would change an exit code, which waits for the major — and
 		// says that the consent creates nothing, as deploy's does of an
@@ -1139,14 +1159,6 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 	}}, nil
 }
 
-// stackSteps is what the steps of job not done yet will call: the step,
-// its tool and the arguments it is called with, but confirmed. The
-// question of stack_apply names every resource the consent pays for, as
-// the job will create it (CLAUDE.md §6, axis 4): a reference to the
-// resource of another step is "$" and its key. An argument that holds a
-// secret (CLISpec.SecretFiles of the step's tool) is named, its value is
-// not (CLAUDE.md §4); nor is the value of stack.HiddenArgs, which the job
-// file does not keep either: the question gives its size.
 // secretNotShown stands for the value of a secret in the question.
 const secretNotShown = "(secret: not shown)"
 
@@ -1157,10 +1169,56 @@ func notShown(v any) string {
 	return fmt.Sprintf("(not shown: %d bytes)", len(s))
 }
 
-func (s *Registry) stackSteps(job *stack.Job) []map[string]any {
-	out := []map[string]any{}
+// stepMade reports whether the resource of step st is made already, as
+// advance takes it: the step waits for it to be ready; a create was cut
+// off and its resource found (advance adopts it); or the VM of a
+// provision step is coming up (D69), which the next crank repeats with
+// the step's VM (vm_id) — a VM gone since is refused, not made again
+// (D102). Any other pending step is created, whatever id it holds
+// («Риск», conclusion 216, У1, У2).
+func stepMade(st *stack.Step) bool {
+	switch {
+	case st.Status == "waiting":
+		return true
+	case st.Status != "pending" || st.ResourceID == "":
+		return false
+	case st.Interrupted:
+		return true
+	default:
+		return st.Tool == "provision"
+	}
+}
+
+// stackSteps sorts the steps of job not done yet for the question of
+// stack_apply (CLAUDE.md §6, axis 4). create is what the consent makes:
+// each step, its tool and the arguments it is called with, but confirmed
+// — a reference to the resource of another step is "$" and its key; steps
+// are those steps, for their price. finish is what is made already
+// (stepMade): the step, its tool, the resource's id and the step's state
+// — the consent waits for it or finishes it, and pays for no new one
+// (Астра, #1748). failed is the steps in error, which stop the job: the
+// step, its tool, the class of its failure, its words and the resource it
+// left for stack_destroy («Риск», conclusion 216, У3).
+//
+// An argument that holds a secret (CLISpec.SecretFiles of the step's
+// tool) is named, its value is not (CLAUDE.md §4); nor is the value of
+// stack.HiddenArgs, which the job file does not keep either: the question
+// gives its size.
+func (s *Registry) stackSteps(job *stack.Job) (create, finish, failed []map[string]any, steps []*stack.Step) {
+	create, finish = []map[string]any{}, []map[string]any{}
 	for _, st := range job.Steps {
-		if st.Status == "done" {
+		switch {
+		case st.Status == "done":
+			continue
+		case st.Status == "error":
+			row := map[string]any{"step": st.Key, "tool": st.Tool, "reason": st.Reason, "detail": st.Detail}
+			if st.ResourceID != "" {
+				row["resource_id"] = st.ResourceID
+			}
+			failed = append(failed, row)
+			continue
+		case stepMade(st):
+			finish = append(finish, map[string]any{"step": st.Key, "tool": st.Tool, "resource_id": st.ResourceID, "state": st.Status})
 			continue
 		}
 		t, _ := s.Lookup(st.Tool)
@@ -1176,9 +1234,14 @@ func (s *Registry) stackSteps(job *stack.Job) []map[string]any {
 				row[k] = v
 			}
 		}
-		out = append(out, row)
+		if st.Interrupted {
+			// advance looks for what the cut-off create made first.
+			row["after_cut_off_create"] = true
+		}
+		create = append(create, row)
+		steps = append(steps, st)
 	}
-	return out
+	return create, finish, failed, steps
 }
 
 // appliableJob is the job stack_apply may advance: there, of this server's
