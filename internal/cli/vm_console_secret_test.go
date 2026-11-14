@@ -131,13 +131,15 @@ var vmPath = regexp.MustCompile(`^/api/v1(\.1)?/vms(/|$)`)
 // the answers of the world (refuse 0) or in a refusal of status refuse —
 // of every call, or of the writes only (refuseWrites), so that a write
 // whose reads come first is refused too. It counts, per case, which paths
-// it served marked.
+// it served marked. form names the shape of the body of a refusal and of
+// a create of an unknown shape (refusalForms).
 type consoleWorld struct {
 	base         http.RoundTripper
 	fields       []string
 	mu           sync.Mutex
 	refuse       int
 	refuseWrites bool
+	form         string
 	// served are the paths served marked since the last take, as
 	// "GET card", "GET list", "PUT card", "POST create", "<status> …".
 	served map[string]bool
@@ -151,6 +153,57 @@ func (c *consoleWorld) consoleObject() map[string]any {
 		o[f] = "https://console.example/" + consoleMark(f) + "?token=" + consoleMark(f)
 	}
 	return o
+}
+
+// refusalForms are the shapes a body evo puts into an error unparsed may
+// give the console fields: JSON as a service gives it, and JSON escaped
+// into a string. A form evo does not hide yet comes with the change that
+// hides it, as its failing test (#1945, #1946: deeper escaping, escaped
+// whitespace before the colon; text outside JSON).
+var refusalForms = map[string]func(c *consoleWorld) []byte{
+	"json":            func(c *consoleWorld) []byte { return c.refusalJSON() },
+	"escaped once":    func(c *consoleWorld) []byte { return c.escaped(1) },
+	"escaped 7 times": func(c *consoleWorld) []byte { return c.escaped(7) },
+}
+
+// refusalJSON is the refusal as a service of the platform could give it:
+// the fields at its top and inside the VM it names.
+func (c *consoleWorld) refusalJSON() []byte {
+	body := c.consoleObject()
+	body["message"] = "refused"
+	body["vm"] = c.consoleObject()
+	b, _ := json.Marshal(body)
+	return b
+}
+
+// escaped is the refusal JSON escaped into a string depth times.
+func (c *consoleWorld) escaped(depth int) []byte {
+	s := string(c.refusalJSON())
+	for d := 0; d < depth; d++ {
+		b, _ := json.Marshal(s)
+		s = `{"nested":` + string(b) + `}`
+	}
+	return []byte(s)
+}
+
+// formNames are the keys of refusalForms, sorted.
+func formNames() []string {
+	var out []string
+	for k := range refusalForms {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (c *consoleWorld) body() []byte {
+	c.mu.Lock()
+	form := c.form
+	c.mu.Unlock()
+	if form == "" {
+		form = "json"
+	}
+	return refusalForms[form](c)
 }
 
 func (c *consoleWorld) take() []string {
@@ -204,14 +257,8 @@ func (c *consoleWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	c.mu.Unlock()
 	if refuse != 0 {
-		// The body of a refusal: the fields at its top and inside the VM
-		// it names, as a JSON a service of the platform could give.
-		body := c.consoleObject()
-		body["message"] = "refused"
-		body["vm"] = c.consoleObject()
-		b, _ := json.Marshal(body)
 		c.note(fmt.Sprintf("%d %s", refuse, kind))
-		return answerWith(refuse, b), nil
+		return answerWith(refuse, c.body()), nil
 	}
 	if kind == "GET list" {
 		// The list of the project: the VM of parityCloud, read through the
@@ -337,6 +384,12 @@ func TestSecrets_VMConsoleFieldsLeaveNoSurface(t *testing.T) {
 	}
 
 	world := &consoleWorld{base: w.rt, fields: fields}
+	// A form that lost its marks would pass without testing anything.
+	for _, form := range formNames() {
+		if got := consoleLeaks(string(refusalForms[form](world)), fields); len(got) != len(fields) {
+			t.Fatalf("refusal form %q carries the marks of %v, not of every field %v", form, got, fields)
+		}
+	}
 	oldBase := httpretry.DefaultBase
 	httpretry.DefaultBase = world
 	t.Cleanup(func() { httpretry.DefaultBase = oldBase })
@@ -435,17 +488,29 @@ func TestSecrets_VMConsoleFieldsLeaveNoSurface(t *testing.T) {
 	refusals := []struct {
 		status int
 		writes bool
+		form   string
 	}{
-		{http.StatusForbidden, false}, {http.StatusUnprocessableEntity, false}, {http.StatusInternalServerError, false},
-		{http.StatusForbidden, true}, {http.StatusUnprocessableEntity, true},
+		{http.StatusForbidden, false, "json"}, {http.StatusUnprocessableEntity, false, "json"}, {http.StatusInternalServerError, false, "json"},
+		{http.StatusForbidden, true, "json"}, {http.StatusUnprocessableEntity, true, "json"},
+	}
+	// Every other form, on a refusal of every call: the reads and the writes
+	// of each tool reach the same unparsed body.
+	for _, form := range formNames() {
+		if form != "json" {
+			refusals = append(refusals, struct {
+				status int
+				writes bool
+				form   string
+			}{http.StatusUnprocessableEntity, false, form})
+		}
 	}
 	for _, f := range refusals {
 		world.mu.Lock()
-		world.refuse, world.refuseWrites = f.status, f.writes
+		world.refuse, world.refuseWrites, world.form = f.status, f.writes, f.form
 		world.mu.Unlock()
-		mode := fmt.Sprintf("refused %d", f.status)
+		mode := fmt.Sprintf("refused %d, %s", f.status, f.form)
 		if f.writes {
-			mode += " on writes"
+			mode += ", on writes"
 		}
 		for _, c := range cases {
 			if vmPathTools[c.tool.Name] {
@@ -459,9 +524,14 @@ func TestSecrets_VMConsoleFieldsLeaveNoSurface(t *testing.T) {
 
 	// A create whose answer evo does not know: its body goes to the error.
 	world.base = createOfUnknownShape{world.base, world}
-	for _, c := range cases {
-		if c.tool.Name == "provision" && c.state == "" {
-			run(c, "create of an unknown shape")
+	for _, form := range formNames() {
+		world.mu.Lock()
+		world.form = form
+		world.mu.Unlock()
+		for _, c := range cases {
+			if c.tool.Name == "provision" && c.state == "" {
+				run(c, "create of an unknown shape, "+form)
+			}
 		}
 	}
 
@@ -516,10 +586,8 @@ type createOfUnknownShape struct {
 
 func (c createOfUnknownShape) RoundTrip(r *http.Request) (*http.Response, error) {
 	if r.URL.Host == "compute.api.cloud.ru" && r.Method == http.MethodPost && vmPath.MatchString(r.URL.Path) && kindOf(r) != "POST action" {
-		body := map[string]any{"result": c.world.consoleObject(), "status": "accepted"}
-		b, _ := json.Marshal(body)
 		c.world.note("201 " + kindOf(r))
-		return answerWith(http.StatusCreated, b), nil
+		return answerWith(http.StatusCreated, c.world.body()), nil
 	}
 	return c.base.RoundTrip(r)
 }
