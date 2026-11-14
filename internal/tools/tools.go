@@ -3185,7 +3185,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	}
 	_, releaseAsked := args["release_ip"]
 	explicitRelease := releaseAsked && releaseIP
-	keptFIP, keptWhy := "", "evo did not make it"
+	keptFIP, keptWhy := "", i18n.T("evo did not make it", "его создал не evo")
 	if fipRec.VMIP == "" {
 		addr := firstNonEmptyStr(target.FloatingIP, target.PublicIP)
 		// An address found only on a VM this directory did not record is
@@ -3200,7 +3200,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				}
 			}
 			if e != nil {
-				keptWhy = fmt.Sprintf("could not check who made it (%v)", e)
+				keptWhy = i18n.Tf("could not check who made it (%v)", "не удалось проверить, кто его создал (%v)", e)
 			}
 			if !evoMade {
 				keptFIP, addr = addr, ""
@@ -3475,35 +3475,39 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 			"ВМ %s записана здесь, но в облаке её уже нет: destroy удаляет её локальную запись и освобождает перечисленное ниже. "+
 				"Получите согласие пользователя, затем вызовите снова с confirmed=true.", target.ID)
 	}
-	fip := "none: no floating IP of this VM is known"
+	fip := i18n.T("none: no floating IP of this VM is known", "нет: floating IP этой ВМ не известен")
 	switch {
 	case keptFIP != "":
-		fip = "will be kept: " + keptFIP + " — " + keptWhy + " (call with release_ip=true to release it)"
+		fip = i18n.Tf("will be kept: %s — %s (call with release_ip=true to release it)",
+			"будет сохранён: %s — %s (чтобы освободить, вызовите с --release-ip)", keptFIP, keptWhy)
 	case hasFIP && releaseIP:
 		// Future tense: the preview is before consent; "released:" read as
 		// already done (G130-36). The answer after confirmed=true still says
 		// "released floating IP …".
-		fip = "will be released: " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
+		fip = i18n.T("will be released: ", "будет освобождён: ") + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	case hasFIP:
-		fip = "will be kept (release_ip=false): " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
+		fip = i18n.T("will be kept (release_ip=false): ", "будет сохранён (--release-ip=false): ") + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	}
 	out := map[string]any{
 		"message":     msg,
 		"project_id":  projectID,
 		"target":      tgt,
 		"floating_ip": fip,
-		"floating_ip_rule": "evo releases a floating IP it made for this VM (recorded here, or named fip-<id>, fip-<name>-…, <name>-fip); " +
+		"floating_ip_rule": i18n.T("evo releases a floating IP it made for this VM (recorded here, or named fip-<id>, fip-<name>-…, <name>-fip); "+
 			"any other address on the VM is kept unless release_ip=true",
+			"evo освобождает floating IP, который сам создал для этой ВМ (записан здесь или назван fip-<id>, fip-<name>-…, <name>-fip); "+
+				"любой другой адрес ВМ сохраняется, если не указан --release-ip"),
 	}
 	var ports []string
 	for _, p := range rules {
 		if p.KeptFor != "" {
-			ports = append(ports, fmt.Sprintf("keep port %s in security group %s (still needed by deployment %s)", sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID, p.KeptFor))
+			ports = append(ports, i18n.Tf("keep port %s in security group %s (still needed by deployment %s)",
+				"сохранить порт %s в группе безопасности %s (он ещё нужен развёртыванию %s)", sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID, p.KeptFor))
 			continue
 		}
-		line := fmt.Sprintf("delete rule %s (port %s) in security group %s", p.Rule.ID, sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID)
+		line := i18n.Tf("delete rule %s (port %s) in security group %s", "удалить правило %s (порт %s) в группе безопасности %s", p.Rule.ID, sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID)
 		if p.RecordID == "" {
-			line += " (labelled for this VM, not recorded in this folder)"
+			line += i18n.T(" (labelled for this VM, not recorded in this folder)", " (помечено для этой ВМ, в этой папке не записано)")
 		}
 		ports = append(ports, line)
 	}
