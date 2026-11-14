@@ -5,8 +5,10 @@
 package httpretry
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -157,25 +159,60 @@ func inRequest(req *http.Request, id string) bool {
 // form is small, an upload is not where a credential goes.
 const maxEchoBody = 64 << 10
 
-// inBody reports whether the body req sent, read again (GetBody), holds
-// what has looks for, as sent or form-decoded. A body that cannot be read
-// again is not looked at.
+// inBody reports whether the body req sent may hold what has looks for:
+// read again (GetBody), as sent, form-decoded, or in a string of it as
+// JSON, decoded (an escape does not hide a value). A body that cannot be
+// read again whole — no GetBody, over maxEchoBody, a read that fails —
+// may hold it: an answered value not shown absent from the request is no
+// id (#1933).
 func inBody(req *http.Request, has func(string) bool) bool {
-	if req.GetBody == nil || req.ContentLength > maxEchoBody {
-		return false
+	if req.GetBody == nil {
+		return req.Body != nil && req.Body != http.NoBody
+	}
+	if req.ContentLength > maxEchoBody {
+		return true
 	}
 	rc, err := req.GetBody()
 	if err != nil {
-		return false
+		return true
 	}
 	defer rc.Close()
-	b, _, err := peek(rc, maxEchoBody)
-	if err != nil {
-		return false
+	b, _, err := peek(rc, maxEchoBody+1)
+	if err != nil || len(b) > maxEchoBody {
+		return true
 	}
 	if has(string(b)) {
 		return true
 	}
-	q, err := url.QueryUnescape(string(b))
-	return err == nil && has(q)
+	if q, err := url.QueryUnescape(string(b)); err == nil && has(q) {
+		return true
+	}
+	return inJSON(b, has)
+}
+
+// inJSON reports whether a string or a number of b, read as JSON, holds
+// what has looks for: keys and values alike. A body that is not JSON
+// holds none.
+func inJSON(b []byte, has func(string) bool) bool {
+	if !json.Valid(b) {
+		return false
+	}
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return false
+		}
+		switch v := tok.(type) {
+		case string:
+			if has(v) {
+				return true
+			}
+		case json.Number:
+			if has(v.String()) {
+				return true
+			}
+		}
+	}
 }
