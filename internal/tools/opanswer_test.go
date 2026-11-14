@@ -137,7 +137,7 @@ var operationErrorUnmarked = map[string]string{}
 func TestOperation_ErrorIsUntrusted(t *testing.T) {
 	for name := range operationReads {
 		marked := false
-		for _, f := range untrustedFields[name].fields {
+		for _, f := range decls[name].Untrusted.fields {
 			if f == "error" {
 				marked = true
 			}
@@ -145,7 +145,7 @@ func TestOperation_ErrorIsUntrusted(t *testing.T) {
 		_, pending := operationErrorUnmarked[name]
 		switch {
 		case !marked && !pending:
-			t.Errorf("%s answers the error of an operation as the service words it, and untrustedFields does not declare its field error: add {fields: []string{\"error\"}}", name)
+			t.Errorf("%s answers the error of an operation as the service words it, and Decl.Untrusted does not declare its field error: add Untrusted: untrustedAnswer{fields: []string{\"error\"}}", name)
 		case marked && pending:
 			t.Errorf("operationErrorUnmarked names %s, whose error is declared untrusted now: remove the line (the list only shrinks)", name)
 		}

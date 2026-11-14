@@ -22,23 +22,24 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 )
 
-// An argument of echoedArgs is a line a person reads in the preview: it has
+// An argument of Decl.EchoedArgs is a line a person reads in the preview: it has
 // a label of paramLabels, not its key, and the tool has the argument.
 func TestEchoedArgs_DeclarationsHold(t *testing.T) {
 	r := New(nil)
-	for tool, keys := range echoedArgs {
+	for tool, echoed := range allEchoedArgs() {
 		tl, ok := r.Lookup(tool)
 		if !ok {
-			t.Errorf("echoedArgs names %s, which is no tool", tool)
+			t.Errorf("Decl.EchoedArgs names %s, which is no tool", tool)
 			continue
 		}
 		props, _ := tl.InputSchema["properties"].(map[string]any)
-		for _, k := range keys {
+		for _, a := range echoed {
+			k := a.name
 			if _, has := props[k]; !has {
-				t.Errorf("echoedArgs[%s]: no argument %s", tool, k)
+				t.Errorf("Decl.EchoedArgs of %s: no argument %s", tool, k)
 			}
 			if engine.ParamLabel(k) == strings.ReplaceAll(k, "_", "-") {
-				t.Errorf("echoedArgs[%s]: %s has no label in paramLabels", tool, k)
+				t.Errorf("Decl.EchoedArgs of %s: %s has no label in paramLabels", tool, k)
 			}
 		}
 	}

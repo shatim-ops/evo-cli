@@ -486,7 +486,7 @@ func (s *Registry) planDiskAttach(ctx context.Context, args map[string]any) (*Pl
 // diskChangeTarget is what disk_attach and disk_detach change, as the plan
 // read it before the question (axis 4; agent run of 1.7.0: the preview
 // named neither the disk nor the VM): the disk — its id, name and size —
-// and the VM — its id and name. The names are the cloud's (untrustedFields).
+// and the VM — its id and name. The names are the cloud's (Decl.Untrusted).
 func diskChangeTarget(diskID string, disk map[string]any, vm *provision.VM) map[string]any {
 	out := map[string]any{"disk_id": diskID, "vm_id": vm.ID, "vm_name": vm.Name}
 	if name, _ := disk["name"].(string); name != "" {
@@ -711,7 +711,7 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 // deleted without vm»), and the disk's VMs are in the GetDisk answer the
 // plan reads anyway. The hint names the way out per VM: a boot disk goes
 // with its VM (destroy), a data disk is detached first (disk_detach); vms
-// are the VMs, for the answer's attached_vms (untrustedFields). nil for a
+// are the VMs, for the answer's attached_vms (Decl.Untrusted). nil for a
 // disk no VM has.
 func diskAttachedError(diskID string, disk map[string]any) ([]map[string]any, error) {
 	vms := diskVMs(disk)

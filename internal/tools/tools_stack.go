@@ -636,7 +636,7 @@ const unknownPathsNamed = 20
 // does not have: each path with the nearest name, then the fields of each
 // level once, in the error and in unknown_fields and known_fields (D108;
 // «Риск», 186, У1, У9). The names are the caller's text: quoted
-// (fieldSegment) and marked untrusted (untrustedFields).
+// (fieldSegment) and marked untrusted (Decl.Untrusted).
 func unknownManifestFields(unknown []unknownField) string {
 	more := 0
 	if len(unknown) > unknownPathsNamed {

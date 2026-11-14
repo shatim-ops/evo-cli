@@ -67,3 +67,27 @@ func allDeletes() iter.Seq2[string, deleteTarget] {
 		}
 	}
 }
+
+// allUntrusted are the tools whose answers carry text evo did not write,
+// and what of it.
+func allUntrusted() iter.Seq2[string, untrustedAnswer] {
+	return func(yield func(string, untrustedAnswer) bool) {
+		for name, d := range decls {
+			if (d.Untrusted.marked() || d.Untrusted.workload) && !yield(name, d.Untrusted) {
+				return
+			}
+		}
+	}
+}
+
+// allEchoedArgs are the creates whose preview names optional arguments as
+// the call gives them, and those arguments.
+func allEchoedArgs() iter.Seq2[string, []echoedArg] {
+	return func(yield func(string, []echoedArg) bool) {
+		for name, d := range decls {
+			if d.EchoedArgs != nil && !yield(name, d.EchoedArgs) {
+				return
+			}
+		}
+	}
+}
