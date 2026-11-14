@@ -55,7 +55,7 @@ func contractMap() map[string]axisEntry {
 			continue
 		}
 		e := axisEntry{Destructive: IsDestructive(tl)}
-		if c, ok := createdIDs[tl.Name]; ok {
+		if c, ok := createdOf(tl.Name); ok {
 			id := c.id
 			if id == "" {
 				id = c.arg
@@ -87,7 +87,7 @@ func contractMap() map[string]axisEntry {
 // Release plan 1.5, the map of the contract of CLAUDE.md §6, tool × axis:
 // docs/internal/contract-map.json is what the declarations of axes 1 and 3
 // say of every tool that changes the cloud (destructive, the taken name,
-// createdIDs, deleteTargets, deleteRefusals), so an audit reads one file
+// Decl.Created, deleteTargets, deleteRefusals), so an audit reads one file
 // and a PR that changes an axis shows it in its diff. The file is built
 // from the code: a stale one fails here. Axis 2 is a matter of the waits
 // of functions, not of tools (TestWaits_SayWhatTheyWaitFor).

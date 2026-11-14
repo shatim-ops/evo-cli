@@ -76,13 +76,13 @@ func declsSnapshot() map[string]declSnap {
 			Destructive:   tl.Decl.Destructive,
 		}
 		s.PartialConsent = funcName(tl.Decl.PartialConsent)
-		if c, ok := createdIDs[tl.Name]; ok {
+		if c := tl.Decl.Created; c.declared() {
 			s.Created = fmt.Sprintf("%+v", c)
 		}
-		if c, ok := createNames[tl.Name]; ok {
+		if c := tl.Decl.CreateName; len(c.args) > 0 {
 			s.CreateName = fmt.Sprintf("%+v", c)
 		}
-		s.Nameless = namelessCreates[tl.Name]
+		s.Nameless = tl.Decl.Nameless
 		if d, ok := deleteTargets[tl.Name]; ok {
 			s.Delete = fmt.Sprintf("%+v", d)
 		}

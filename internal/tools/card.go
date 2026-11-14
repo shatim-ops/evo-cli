@@ -18,7 +18,7 @@ import (
 // GroupCard is the card of a tool group for an agent (#515, option A,
 // layer B): every tool of the group with its command, what it does, where
 // its ids come from, what a create makes and what deletes it, and what to
-// wait with — all from the registry's declarations (createdIDs,
+// wait with — all from the registry's declarations (Decl.Created,
 // deleteTargets, idArgs, the group's operation tool), so it cannot drift
 // from the code — and the group's notes (cardNotes). English, as the rules
 // of the evo skill it goes with; the form of consent is said there, once.
@@ -167,7 +167,7 @@ var cardNotes = map[string][]string{
 
 // cardDoes is what a tool does, as the declarations say it.
 func cardDoes(t Tool, bound bool) string {
-	if c, ok := createdIDs[t.Name]; ok {
+	if c, ok := createdOf(t.Name); ok {
 		var parts []string
 		switch {
 		case c.id != "":

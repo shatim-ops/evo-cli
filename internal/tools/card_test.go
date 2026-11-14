@@ -13,7 +13,7 @@ import (
 // registry's declarations, so 155 tools are covered by construction, not
 // by prose. Every group has a card; the card names every tool of the group
 // with its command; what a create makes says where its id is, how to find
-// it and what deletes it (createdIDs); a delete says a repeat is safe
+// it and what deletes it (Decl.Created); a delete says a repeat is safe
 // (deleteTargets); an id argument says where the id comes from (idArgs); a
 // group with an operation tool says to wait with it. Consent is said in one
 // place, the rules of the evo skill: no card carries its form.
@@ -35,7 +35,7 @@ func TestGroupCards_CoverEveryToolFromTheDeclarations(t *testing.T) {
 			if tl.CLI.Group != "" && !strings.Contains(card, "`evo "+tl.CLI.Group+" "+tl.CLI.Verb+"`") {
 				t.Errorf("%s: the card does not give the command of %s", g, tl.Name)
 			}
-			if c, ok := createdIDs[tl.Name]; ok && c.delete != "" && !strings.Contains(card, "`"+c.delete+"`") {
+			if c, ok := createdOf(tl.Name); ok && c.delete != "" && !strings.Contains(card, "`"+c.delete+"`") {
 				t.Errorf("%s: the card does not say %s deletes what %s makes", g, c.delete, tl.Name)
 			}
 		}

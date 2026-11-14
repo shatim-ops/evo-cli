@@ -14,19 +14,19 @@ import (
 // stackManifestAll is a stack with a step of every kind.
 const stackManifestAll = `{"name":"s","vpc":{"name":"v"},"postgres":{"name":"p"},"kafka":{"name":"k"},"redis":{"name":"r"},"k8s":{"name":"k8"},"registry":{"name":"reg"},"snat":{"name":"sn"},"vm":{"name":"vm"},"nlb":{"name":"lb","port":80},"dns":{"zone_id":"z","name":"www"},"secrets":[{"path":"a","value":"b"}],"s3":[{"bucket":"b","key":"k","content":"c"}]}`
 
-// Every create says what names what it makes (createdIDs, G13-14): the
+// Every create says what names what it makes (Decl.Created, G13-14): the
 // field of its answer, the argument the delete takes, or why nothing; the
 // delete is a declared one and takes what the create gives. Every create
-// of a stack step is found by name (its list and createNames, stepFinder)
+// of a stack step is found by name (its list and Decl.CreateName, stepFinder)
 // and deleted by stack_destroy; a list serves lostCreate too, which may
 // find by another field (a route by its destination).
 func TestCreated_EveryCreateDeclared(t *testing.T) {
 	stackHome(t)
 	r := New(nil)
 	for _, tl := range r.Tools() {
-		c, declared := createdIDs[tl.Name]
+		c, declared := createdOf(tl.Name)
 		if createLike(tl) != declared {
-			t.Errorf("%s: makes a resource %v, in createdIDs %v", tl.Name, createLike(tl), declared)
+			t.Errorf("%s: makes a resource %v, in Decl.Created %v", tl.Name, createLike(tl), declared)
 			continue
 		}
 		if !declared {
@@ -48,7 +48,7 @@ func TestCreated_EveryCreateDeclared(t *testing.T) {
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for _, a := range append([]string{c.arg}, c.listArgs...) {
 			if _, ok := props[a]; a != "" && !ok {
-				t.Errorf("%s: createdIDs names argument %q, which its schema has not", tl.Name, a)
+				t.Errorf("%s: Decl.Created names argument %q, which its schema has not", tl.Name, a)
 			}
 		}
 		if c.list != "" {
@@ -68,29 +68,29 @@ func TestCreated_EveryCreateDeclared(t *testing.T) {
 			t.Errorf("%s: %s lives in %q, which the create does not take", tl.Name, c.delete, dt.parent)
 		}
 	}
-	for name := range createdIDs {
+	for name := range allCreated() {
 		if _, ok := r.Lookup(name); !ok {
-			t.Errorf("createdIDs names %s, which is not a tool", name)
+			t.Errorf("Decl.Created names %s, which is not a tool", name)
 		}
 	}
 	for _, st := range planJob(t, stackManifestAll).Steps {
-		c := createdIDs[st.Tool]
+		c := decls[st.Tool].Created
 		if !slices.Contains(stackTeardown, st.Tool) || c.delete == "" {
 			t.Errorf("step %s: %s is not in stackTeardown or declares no delete", st.Key, st.Tool)
 		}
 		if _, ok := stepFinder(st); c.arg == "" && !ok {
-			t.Errorf("step %s: %s is not found by name (createdIDs list)", st.Key, st.Tool)
+			t.Errorf("step %s: %s is not found by name (Decl.Created list)", st.Key, st.Tool)
 		}
 	}
 }
 
 // checkCreatedID is invariant (c) of the fault matrix: a create that does
-// not answer an error gives the id of what it made where createdIDs says,
+// not answer an error gives the id of what it made where Decl.Created says,
 // and the id names something the world bills — "ok" or an empty field
 // would leave the stack nothing to delete (G13-14).
 func checkCreatedID(t *testing.T, tool, text string, w faultWorld) {
 	t.Helper()
-	if createdIDs[tool].id == "" {
+	if decls[tool].Created.id == "" {
 		return
 	}
 	var res map[string]any
@@ -99,7 +99,7 @@ func checkCreatedID(t *testing.T, tool, text string, w faultWorld) {
 	}
 	id := createdID(tool, res)
 	if id == "" {
-		t.Errorf("(c) %s answered success without the id at %q: %s", tool, createdIDs[tool].id, text)
+		t.Errorf("(c) %s answered success without the id at %q: %s", tool, decls[tool].Created.id, text)
 		return
 	}
 	for _, b := range w.billed() {
