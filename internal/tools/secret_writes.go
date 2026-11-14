@@ -56,6 +56,9 @@ var (
 
 // refusalKeys are the fields of a refusal of a secret write that are evo's,
 // not the service's: its class, its status, what to do, which argument.
+// hint and warning are kept as texts of evo only: a hint or a warning that
+// quotes the service is a defect of the code that writes it, not of this
+// list («Риск», conclusion 266).
 var refusalKeys = map[string]bool{
 	"status": true, "reason": true, "hint": true, "warning": true, "argument": true, "format": true,
 	"access_denied": true, "http_status": true, apiStatusField: true,
@@ -87,6 +90,9 @@ func secretWriteAnswer(ctx context.Context, tool, text string, isErr bool) strin
 		return text
 	}
 	if !isErr {
+		// The fields beside the object are evo's (status, and the id, the
+		// state and the notes of a create found after a lost answer,
+		// lostCreate): only the object is the service's whole answer.
 		if obj, ok := m[o.field].(map[string]any); ok {
 			m[o.field] = publicFields(obj, o.keys)
 		}

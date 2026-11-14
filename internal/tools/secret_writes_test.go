@@ -48,6 +48,18 @@ func TestSecretWrites_ServiceTextAndFieldsStayIn(t *testing.T) {
 			t.Errorf("%s: the success shows a field not declared, or lost its id: %s", tool, text)
 		}
 	}
+	// The form the clients give a refusal: «secret API 400: <the service's
+	// message>», the status in the text only («Риск», conclusion 266).
+	for tool := range secretWrites {
+		refused := func(ctx context.Context, _ map[string]any) (string, bool) {
+			return failed(ctx, fmt.Errorf("add version: %w", fmt.Errorf("secret API 400: bad value %s", secretWriteMark)), nil), true
+		}
+		c := &Caller{}
+		text, _ := outer(tool, map[string]any{}, refused)(WithCaller(context.Background(), c), map[string]any{})
+		if strings.Contains(text, secretWriteMark) || c.Err == nil || strings.Contains(c.Err.Error(), secretWriteMark) || !strings.Contains(text, "400") {
+			t.Errorf("%s: the client's refusal shows the service's text, or lost its status: %s / %v", tool, text, c.Err)
+		}
+	}
 	// A refusal of evo itself, before any request, keeps its words.
 	local := func(ctx context.Context, _ map[string]any) (string, bool) {
 		return failed(ctx, usageErr("'path' and 'value' are required "+secretWriteMark, "нужны 'path' и 'value' "+secretWriteMark), nil), true
