@@ -36,9 +36,10 @@ type made struct {
 	what, whatRU string
 	// read lists the resources the list tool shows.
 	read func(ctx context.Context) ([]map[string]any, error)
-	// note is the answer's note of a resource made; pending its note in
-	// every other outcome — creating, waiting, failed, cancelled — which
-	// does not say it is created (Астра #1921). Empty: no note.
+	// note is the answer's note of a resource made; pending its note while
+	// it may still be made — creating, waiting, cancelled — which does not
+	// say it is created (Астра #1921). A failed one has none. Empty: no
+	// note.
 	note, noteRU, pending, pendingRU string
 }
 
@@ -104,6 +105,10 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		madeNote(res, m, true)
 		return toJSON(res), false
 	case err == nil && listed && kind == stateFailed:
+		// No note: the refusal says the platform did not make it and asks
+		// the person about the delete; «not made yet» would promise it
+		// still may be («Риск», conclusion 246, У1).
+		delete(res, "note")
 		res["status"] = "failed"
 		res[m.field] = mergedItem(res[m.field], item)
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,

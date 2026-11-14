@@ -176,8 +176,10 @@ func TestMadeAnswer_NoteSaysCreatedOnlyOfAMadeResource(t *testing.T) {
 		reads []string
 		note  string
 	}{
-		"made":     {[]string{"created"}, "DONE note"},
-		"failed":   {[]string{"error_creating"}, "PENDING note"},
+		"made": {[]string{"created"}, "DONE note"},
+		// A failed one: no note — its refusal says what happened and asks
+		// the person about the delete («Риск», conclusion 246, У1).
+		"failed":   {[]string{"error_creating"}, ""},
 		"creating": {[]string{"creating"}, "PENDING note"},
 		"absent":   {[]string{""}, "PENDING note"},
 		"other":    {[]string{"pending"}, "PENDING note"},
@@ -188,7 +190,7 @@ func TestMadeAnswer_NoteSaysCreatedOnlyOfAMadeResource(t *testing.T) {
 			if d, ok := out["details"].(map[string]any); ok && note == nil {
 				note = d["note"]
 			}
-			if note != c.note {
+			if c.note == "" && note != nil || c.note != "" && note != c.note {
 				t.Errorf("note %v, want %q: %v", note, c.note, out)
 			}
 		})
