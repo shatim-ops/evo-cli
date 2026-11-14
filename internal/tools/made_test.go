@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -195,4 +196,61 @@ func TestMadeAnswer_NoteSaysCreatedOnlyOfAMadeResource(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A state read from the cloud is the cloud's text: subnet_state and
+// nat_gateway_state go in "_untrusted" (Астра #1964); evo's own «unknown»
+// does not.
+func TestMadeAnswer_TheReadStateIsMarkedUntrusted(t *testing.T) {
+	out := madeRun(t, []string{"odd\nline\x1b[2J"}, subnetMade)
+	if out["subnet_state"] != "odd\nline\x1b[2J" || !slices.Contains(stringList(anyList(out["_untrusted"])), "subnet_state") {
+		t.Errorf("a read state is not marked: %v", out)
+	}
+	out = madeRun(t, []string{""}, subnetMade)
+	if slices.Contains(stringList(anyList(out["_untrusted"])), "subnet_state") {
+		t.Errorf("evo's unknown is marked as the cloud's: %v", out)
+	}
+}
+
+// A resource the last read did not list keeps no state of the create's
+// answer in its item (Астра #1922, the rest after #1936): subnet.status
+// «creating» would say what evo does not know. Its note says evo does not
+// know whether it is made, not that it is not made yet (Астра #1920, the
+// rest after #1936).
+func TestMadeAnswer_AnUnlistedResourceSaysNothingOfItsState(t *testing.T) {
+	m := subnetMade
+	m.note, m.pending, m.unknown = "DONE", "PENDING", "UNKNOWN"
+	for _, reads := range [][]string{{""}, {"creating", ""}} {
+		out := madeRun(t, reads, m)
+		item, _ := out["subnet"].(map[string]any)
+		if _, has := item["status"]; has {
+			t.Errorf("%v: the item keeps a status: %v", reads, item)
+		}
+		if _, has := item["state"]; has {
+			t.Errorf("%v: the item keeps a state: %v", reads, item)
+		}
+		if out["note"] != "UNKNOWN" {
+			t.Errorf("%v: note %v, want the one of an unknown state", reads, out["note"])
+		}
+	}
+	if out := madeRun(t, []string{"pending"}, m); out["note"] != "UNKNOWN" {
+		t.Errorf("a state of no list: note %v", out["note"])
+	}
+	if out := madeRun(t, []string{"creating"}, m); out["note"] != "PENDING" {
+		t.Errorf("creating: note %v", out["note"])
+	}
+}
+
+func anyList(v any) []any {
+	switch l := v.(type) {
+	case []any:
+		return l
+	case []string:
+		out := make([]any, len(l))
+		for i, s := range l {
+			out[i] = s
+		}
+		return out
+	}
+	return nil
 }

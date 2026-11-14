@@ -41,6 +41,10 @@ type made struct {
 	// say it is created (Астра #1921). A failed one has none. Empty: no
 	// note.
 	note, noteRU, pending, pendingRU string
+	// unknown is the note while evo does not know whether it is made — not
+	// in the last list read, or in a state of no list (Астра #1920); empty:
+	// pending.
+	unknown, unknownRU string
 }
 
 // madeAnswer is the answer of a create whose resource the platform makes
@@ -121,6 +125,19 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		res["status"] = "waiting"
 	}
 	res[m.field+"_state"] = last
+	if listed {
+		// The state is the cloud's text; evo's own «unknown» is not
+		// (Астра #1964).
+		cloudText(res, m.field+"_state")
+		res[m.field] = mergedItem(res[m.field], item)
+	} else {
+		// No state of the create's answer stands for what evo does not
+		// know (Астра #1922).
+		res[m.field] = mergedItem(res[m.field], nil)
+	}
+	if (!listed || kind == stateOther) && m.unknown != "" {
+		res["note"] = i18n.T(m.unknown, m.unknownRU)
+	}
 	res["next"] = i18n.Tf("%s %s is %s: the platform has not finished making it. %s ids=[%s] shows its state.",
 		"%s %s — %s: платформа ещё не завершила создание. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
 	switch {
