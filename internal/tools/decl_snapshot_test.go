@@ -83,13 +83,13 @@ func declsSnapshot() map[string]declSnap {
 			s.CreateName = fmt.Sprintf("%+v", c)
 		}
 		s.Nameless = tl.Decl.Nameless
-		if d, ok := deleteTargets[tl.Name]; ok {
+		if d := tl.Decl.Delete; d.arg != "" {
 			s.Delete = fmt.Sprintf("%+v", d)
 		}
-		for _, a := range idArgs[tl.Name] {
+		for _, a := range tl.Decl.IDArgs {
 			s.IDArgs = append(s.IDArgs, idArgSnap(a))
 		}
-		for _, r := range refArgs[tl.Name] {
+		for _, r := range tl.Decl.RefArgs {
 			s.RefArgs = append(s.RefArgs, fmt.Sprintf("%+v", r))
 		}
 		if !reflect.DeepEqual(s, declSnap{}) {

@@ -16,7 +16,10 @@ import (
 // a production second per look: the interval was a literal second, the
 // world could not shorten it, and the case of the fault matrix took 2 s —
 // over its limit on a loaded Windows runner («Процесс · 1.9 (3)», #1759,
-// job 132352130794).
+// job 132352130794). The time of the cut run is read against the same
+// case run whole on the same runner: a slow runner slows both, and only
+// the production pauses tell them apart (Windows took 721 ms over a
+// literal bound, #1809).
 func TestDeployApply_ACutFloatingIPIsLookedForAtTheWorldsPace(t *testing.T) {
 	prev := deployplan.SSHPortWait
 	deployplan.SSHPortWait = time.Millisecond
@@ -26,7 +29,9 @@ func TestDeployApply_ACutFloatingIPIsLookedForAtTheWorldsPace(t *testing.T) {
 		if c.tool != "deploy_apply" {
 			continue
 		}
+		begin := time.Now()
 		happy, _, _, _ := faultRun(t, c, 0, "")
+		whole := time.Since(begin)
 		for k, op := range happy.callLog() {
 			if op != "CreateFloatingIP" {
 				continue
@@ -34,10 +39,13 @@ func TestDeployApply_ACutFloatingIPIsLookedForAtTheWorldsPace(t *testing.T) {
 			ran = true
 			start := time.Now()
 			faultRun(t, c, k+1, faultCancel)
-			// The world's pace is milliseconds.
-			// wall-clock: half of one production look for the address (deployplan.FIPLookupInterval, a second).
-			if d := time.Since(start); d > 500*time.Millisecond {
-				t.Errorf("deploy_apply with its floating IP create cut took %s: the look for the address waits a production interval", d)
+			d := time.Since(start)
+			// The world's pace is milliseconds: the cut run is the whole
+			// run and a few reads more. At the production interval the
+			// three looks wait two seconds (floatingip.Lookup).
+			// wall-clock: half of the two production pauses (deployplan.FIPLookupInterval, a second each), over the whole run.
+			if d-whole > time.Second {
+				t.Errorf("deploy_apply with its floating IP create cut took %s, the whole run %s: the look for the address waits a production interval", d, whole)
 			}
 		}
 	}

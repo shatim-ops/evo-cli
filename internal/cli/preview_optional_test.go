@@ -73,7 +73,7 @@ var optionalLeftOut = map[string]string{
 var optionalUnnamed = map[string]string{}
 
 // optionalSummarized are the optional arguments the preview names by a
-// summary under their own key, not by the text sent (tools.summarizedArgs:
+// summary under their own key, not by the text sent (tools.echoedArg.summary:
 // a PEM chain, a cloud-init template are too long for a line of the
 // question): the summary carries the SHA-256 of what goes.
 var optionalSummarized = map[string]bool{

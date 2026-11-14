@@ -27,7 +27,7 @@ import (
 
 // deleteWatch is a started delete whose end the answer waits for.
 type deleteWatch struct {
-	tool  string         // the delete tool, a key of deleteTargets
+	tool  string         // the delete tool, a key of Decl.Delete
 	ref   string         // the resource as the call named it
 	ident map[string]any // the fields naming the resource in the answer
 	opID  string         // the operation of the delete
@@ -104,7 +104,7 @@ func opFailure(v any) (msg, code any, failed bool) {
 // sentence of evo (quoteCloud), as at k8s_nodepool_scale (FB19I-8).
 func deleteRefusal(w deleteWatch, msg, code any) error {
 	quoted := quoteCloud(fmt.Sprint(msg))
-	t := deleteTargets[w.tool]
+	t := decls[w.tool].Delete
 	what := i18n.T(t.what, t.whRU)
 	hint := i18n.T(w.hintEN, w.hintRU)
 	if w.hintEN == "" {
@@ -148,7 +148,7 @@ func opWatch[T any](tool, ref string, ident map[string]any, opID, opTool string,
 // to read: the resource itself is read until it is gone, and getTool shows
 // it later.
 func goneWatch(tool, ref string, ident map[string]any, opID, getTool string, get func(context.Context) (map[string]any, error)) deleteWatch {
-	arg := deleteTargets[tool].arg
+	arg := decls[tool].Delete.arg
 	return deleteWatch{tool: tool, ref: ref, ident: ident, opID: opID,
 		read: func(ctx context.Context) (map[string]any, error) {
 			m, err := get(ctx)

@@ -1789,7 +1789,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 // deploy found let in only from other security groups — not open to its
 // source — as evo deploy --json names them, apart from the line of the
 // log (the interim delta audit of 1.9, FB19I-16). The names of the groups
-// are text of the cloud: the field is declared in untrustedFields.
+// are text of the cloud: the field is declared in Decl.Untrusted.
 func deployPortsOnlyFromGroups(result map[string]any, only []sgrules.GroupOnlyPort) {
 	if len(only) > 0 {
 		result["ports_open_only_to_groups"] = only
@@ -3872,7 +3872,7 @@ var consentWords = map[string]string{
 	"s3_put":           consentOverwrites,
 }
 
-// consentWordless are the deletes (deleteTargets) whose consent note has
+// consentWordless are the deletes (Decl.Delete) whose consent note has
 // no word of its class, each with why: what goes is a setting or an
 // access the caller makes again, not data — «Deletes data» would be false
 // of it (FB19I-29). A delete is in consentWords or here
