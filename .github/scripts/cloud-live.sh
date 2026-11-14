@@ -417,7 +417,10 @@ sweep() {
 		}
 		while IFS=$'\t' read -r _ name; do
 			[ -n "$name" ] || continue
-			echo "::error::после прогона остался $kind $name — удалите его в консоли Cloud.ru"
+			# Консоль ВМ закрывает только удаление ВМ (заключение «Риска» 215, У5).
+			case "$kind $name" in "vm "*-console) echo "::error::после прогона осталась ВМ с открытой консолью $name — удалите её в консоли Cloud.ru: закрыть консоль можно только удалением ВМ" ;;
+			*) echo "::error::после прогона остался $kind $name — удалите его в консоли Cloud.ru" ;;
+			esac
 			left=$((left + 1))
 		done <"$tmp/l"
 	done
@@ -3222,6 +3225,124 @@ probe_g18() {
 	esac
 }
 
+# Проба консоли ВМ (D110, ТЗ docs/internal/briefs/vm-console.md, раздел 6,
+# У4; «да» владельца 14.11, #1733; два прогона в разные дни; заключение
+# «Риска» 215 — условия У1–У7). ВМ создаёт evo (provision, как у Г-10:
+# в user-data и на диске — только публичный ключ, секретов прогона нет);
+# дальше прямые запросы по спецификации: POST /vms/{id}/remote-console
+# {protocol} — ответ 204, ссылка потом в карточке (remote_console_url,
+# remote_console_ws, remote_console_protocol).
+# Ссылка — секрет (У1–У4): тело ответа с полями консоли не остаётся в
+# $tmp/api.json (общие функции печатают начало тела) — факты считаются
+# сразу, поля консоли из файла вычёркиваются; значения ещё и под
+# ::add-mask::. «Та же / другая» — сравнением в памяти, без хеша в журнале.
+# Имена параметров — только у пар «имя=значение» с именем формы
+# идентификатора; путь, фрагмент, часть до «@» — числом и длиной; хост —
+# «тот же, что у API / другой». По ссылке скрипт не ходит.
+# Вопросы раздела 6: (4) когда ссылка в карточке после 204; (5) есть ли она в
+# элементе списка; (3) меняет ли её повторный POST; (1) держится ли она в
+# карточке CONSOLE_WAIT секунд — не «работает» (У7); (7) POST на stopped;
+# serial — после остальных шагов (У5). Работает ли ссылка без входа (2),
+# закрытие (6), серийный вход (8), ключ только на чтение (5) — руками
+# владельца по брифу evo-internal: строка «не покрыто». Закрытием консоли
+# служит только удаление ВМ: её убирает уборка области (имя с префиксом), а
+# оставшуюся называет «осталась ВМ с открытой консолью».
+CONSOLE_APPEAR=${CONSOLE_APPEAR:-120}
+CONSOLE_WAIT=${CONSOLE_WAIT:-300}
+# con_facts — факты о ссылке из $tmp/api.json (карточка или элемент списка
+# с id $1, если задан) в $tmp/con.facts; значения — под маску; поля консоли
+# из $tmp/api.json вычёркиваются. Ссылка остаётся только в CON_URL (память).
+con_facts() {
+	local sel='.' u w
+	[ -z "${1:-}" ] || sel="[(if type == \"array\" then .[] else (.[]? | arrays | .[]) end) | objects | select(.id == \"$1\")] | first // {}"
+	u=$(jq -r "$sel | .remote_console_url // \"\"" "$tmp/api.json" 2>/dev/null) || u=
+	w=$(jq -r "$sel | .remote_console_ws // \"\"" "$tmp/api.json" 2>/dev/null) || w=
+	[ -z "$u" ] || mask "$u" "$(printf '%s' "$u" | sed 's/[?#].*//')"
+	[ -z "$w" ] || mask "$w"
+	CON_URL=$u
+	jq -nr --arg u "$u" --arg w "$w" --arg api compute.api.cloud.ru \
+		--argjson card "$(jq -c "$sel | {p: (.remote_console_protocol // \"нет\"), s: (if has(\"is_serial_ready\") then .is_serial_ready else \"нет поля\" end)}" "$tmp/api.json" 2>/dev/null || echo '{"p":"?","s":"?"}')" '
+		def parts: capture("^(?<scheme>[a-z][a-z0-9+.-]*)://(?<auth>[^/?#]*)(?<path>[^?#]*)(\\?(?<query>[^#]*))?(#(?<frag>.*))?$") // {};
+		($u | parts) as $p
+		| ($p.auth // "") as $a
+		| ($a | if test("@") then split("@")[1] else . end | split(":")[0]) as $host
+		| (($p.query // "") | if . == "" then [] else split("&") end) as $q
+		| [$q[] | select(test("^[A-Za-z_][A-Za-z0-9_.-]{0,31}=.+$")) | split("=")[0]] as $names
+		| "url: \(if $u == "" then "нет" else "есть, \($u | length) зн.; хост: \(if $host == $api then "тот же, что у API" else "другой" end); до «@»: \(if ($a | test("@")) then "есть" else "нет" end); путь: \(($p.path // "") | length) зн.; параметры: \(if ($names | length) == 0 then "нет имён" else ($names | join(",")) end)\(if ($q | length) > ($names | length) then ", прочих частей запроса: \(($q | length) - ($names | length))" else "" end); фрагмент: \(if ($p.frag // "") == "" then "нет" else "\($p.frag | length) зн." end)" end); ws: \(if $w == "" then "нет" else "есть" end); протокол: \($card.p); is_serial_ready: \($card.s)"' >"$tmp/con.facts" 2>/dev/null || echo "не разобрано" >"$tmp/con.facts"
+	jq -r "$sel | [paths(scalars) | map(tostring) | join(\".\")] | .[]" "$tmp/api.json" >"$tmp/api.json.keys" 2>/dev/null || : >"$tmp/api.json.keys"
+	jq 'walk(if type == "object" then del(.remote_console_url, .remote_console_ws, .vnc_url, .vnc_ws) else . end)' "$tmp/api.json" >"$tmp/api.clean" 2>/dev/null && mv "$tmp/api.clean" "$tmp/api.json" || : >"$tmp/api.json"
+}
+# con_answer — ответ POST консоли одной строкой без ссылки (заключение
+# «Риска» 215, условие к отказу): код; у 2xx — имена полей тела; у отказа —
+# машинный код, имена полей и текст только из полей ошибки, где всё вида
+# «схема://…» вырезано; начало сырого тела не печатается никогда.
+con_answer() {
+	local t
+	case "$code" in
+	2??) echo "HTTP $code, поля тела: $(keys_of)" ;;
+	*)
+		t=$(jq -r '[(if type == "array" then .[] else . end) | objects | [.code?, .message?, .detail?, .error?] | map(select(type == "string"))[]] | join("; ")' "$tmp/api.json" 2>/dev/null) || t=
+		t=$(printf '%s' "$t" | sed -E 's#[A-Za-z][A-Za-z0-9+.-]*://[^[:space:]"]*#<ссылка вырезана>#g' | redact | cut -c1-160)
+		echo "HTTP $code, машинный код: $(why_code); поля тела: $(keys_of); текст: ${t:-нет полей ошибки}"
+		;;
+	esac
+	: >"$tmp/api.json"
+}
+probe_console() {
+	local zid=$1 n=$prefix-console vm url g="Консоль ВМ" pc u1 u2 t0 seen='' until
+	iam_fresh || { gap "$g" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	tc provision --arg name="$n" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR"
+	[ "$rc" = 0 ] || { gap "$g: ВМ" "provision: код $rc, $reason: $why"; return 0; }
+	vm=$(j -r '.vm_id // empty')
+	mask "$vm" "$(j -r '.vm_ip // empty')"
+	[ -n "$vm" ] || { gap "$g: ВМ" "provision не отдал vm_id"; return 0; }
+	url="$C1/vms/$vm"
+	cget() { api GET "$1"; con_facts "${2:-}"; }
+	cpost() { api POST "$url/remote-console" "$(jq -nc --arg p "$1" '{protocol: $p}')"; }
+	cget "$url"
+	ok "$g: карточка до POST" "HTTP $code; $(cat "$tmp/con.facts")"
+	cpost vnc
+	pc=$(con_answer)
+	case "$code" in 2??) ;; *) ok "$g: POST vnc на running" "отказ: $pc"; return 0 ;; esac
+	t0=$SECONDS
+	until=$(($(date +%s) + CONSOLE_APPEAR))
+	while :; do
+		cget "$url"
+		if [ -n "$CON_URL" ]; then seen=$((SECONDS - t0)); break; fi
+		[ "$(date +%s)" -lt "$until" ] || break
+		sleep "$PROBE_PAUSE"
+	done
+	if [ -n "$seen" ]; then seen="через $seen с"; else seen="не появилась за $CONSOLE_APPEAR с"; fi
+	ok "$g: POST vnc на running" "$pc; ссылка в карточке: $seen; $(cat "$tmp/con.facts"); поля карточки консоли: $(grep -iE 'console|vnc|serial' "$tmp/api.json.keys" 2>/dev/null | sort -u | paste -sd, - | grep . || echo нет)"
+	u1=$CON_URL
+	cget "$C1/vms?project_id=$PROJECT&limit=100" "$vm"
+	ok "$g: элемент списка ВМ" "HTTP $code; ссылка в элементе: $([ -n "$CON_URL" ] && echo есть || echo нет)$([ -n "$CON_URL" ] && [ "$CON_URL" = "$u1" ] && echo ", та же, что в карточке" || true)"
+	cpost vnc
+	pc=$(con_answer)
+	sleep "$PROBE_PAUSE"
+	cget "$url"
+	u2=$CON_URL
+	ok "$g: повтор POST vnc" "$pc; ссылка: $([ "$u1" = "$u2" ] && echo та же || echo другая)"
+	sleep "$CONSOLE_WAIT"
+	cget "$url"
+	ok "$g: карточка через $CONSOLE_WAIT с" "HTTP $code; ссылка держится в карточке: $([ -n "$CON_URL" ] && [ "$CON_URL" = "$u2" ] && echo да || echo нет или другая) (не «работает»: вопрос 1 — руками); $(cat "$tmp/con.facts")"
+	# serial — после остальных шагов консоли (У5).
+	cpost serial
+	ok "$g: POST serial" "$(con_answer)"
+	power power_off
+	case "$code" in
+	2??)
+		ops_reach "$url" "${PROBE_WAIT:-600}" stopped || true
+		con_facts
+		cpost vnc
+		ok "$g: POST vnc на stopped" "$(con_answer); состояния до: $chain"
+		;;
+	*) refusal "$g: остановка" синхронно ;;
+	esac
+	CON_URL='' u1='' u2=''
+	gap "$g: вопросы 1, 2, 5 (ключ только на чтение), 6, 8 раздела 6" "только владелец руками по брифу evo-internal: открывается ли ссылка и как долго, без входа ли, видна ли ключу на чтение, как закрыть консоль, вход в серийную — до того «не установлено»"
+}
+
 area_ops() {
 	local zid
 	zid=$(zone_id)
@@ -3238,6 +3359,8 @@ area_ops() {
 	! probe_on g18 || probe_g18 "$zid"
 	QUOTA_HIT=0
 	! probe_on g17 || probe_g17 "$zid"
+	QUOTA_HIT=0
+	! probe_on console || probe_console "$zid"
 }
 
 # --- Область dbchange: изменение готового кластера DBaaS (Г-13…Г-15) ---------
