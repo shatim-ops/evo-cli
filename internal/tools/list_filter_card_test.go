@@ -152,7 +152,9 @@ func TestVMList_SelectsByImages(t *testing.T) {
 		reason, hint string
 	}{
 		{clierrors.New(clierrors.CodeVMNotFound, "vm not found", ""), "VM_NOT_FOUND", "Send the same call again"},
-		{context.DeadlineExceeded, "", "narrow the list with: zone"},
+		// A read out of its own time while the call has time left keeps the
+		// read's reason: the network, not the width of the selection.
+		{context.DeadlineExceeded, "API_UNREACHABLE", "narrow the list with: zone"},
 		{&provision.StatusError{Status: 429, Body: "{}"}, "API_RATE_LIMITED", ""},
 	} {
 		m, isErr, text := run(&imageCloud{failing: web2, failure: c.failure}, map[string]any{"images": []any{"ubuntu-22.04"}})
