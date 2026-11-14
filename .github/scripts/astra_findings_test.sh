@@ -162,6 +162,42 @@ echo '[{"user": {"login": "astra"}, "author_association": "NONE", "created_at": 
 run rest
 has rest check.json '#704: закрыта, последний вердикт Астры — «не закрыто»'
 
+# Краткое «закрыт» в отчёте задания — вердикт (#1747 → #1773); «не закрыт»
+# и «закрытие» — нет.
+world short
+cat >"$FAKE_DIR/issues.json" <<'J'
+[{"number": 721, "title": "a", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 722, "title": "b", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 723, "title": "c", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"}]
+J
+echo '{"number": 800, "title": "task", "state": "closed", "labels": [{"name": "астра-задание"}]}' >"$FAKE_DIR/issue.800.json"
+cat >"$FAKE_DIR/comments.800.json" <<'J'
+[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T06:00:00Z", "body": "[Астра] Отчёт.\n- **#721 — исходный дефект закрыт:** проба\n- **#722 — не закрыт:** остаток\n- #723: закрытие правила проверено"}]
+J
+for n in 721 722 723; do echo '[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T07:00:00Z", "body": "Закрыто, задание #800."}]' >"$FAKE_DIR/comments.$n.json"; done
+run short
+lacks short check.json '#721'
+has short check.json '#722: закрыта без «закрыто» Астры'
+has short check.json '#723: закрыта без «закрыто» Астры'
+
+# Остаток назван файлом, а не номером (#1758 → #1841): разобрано, когда
+# открытая находка Астры из плана называет исходную в теле; находка вне
+# плана или не Астры — нет.
+world restfile
+cat >"$FAKE_DIR/issues.json" <<'J'
+[{"number": 731, "title": "a", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 732, "title": "b", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 733, "title": "c", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 101, "title": "rest", "state": "open", "user": {"login": "astra"}, "body": "соседний сценарий #731", "labels": [{"name": "внешняя-проверка"}]},
+ {"number": 1013, "title": "rest off plan", "state": "open", "user": {"login": "astra"}, "body": "остаток #732", "labels": [{"name": "внешняя-проверка"}]},
+ {"number": 102, "title": "rest by other", "state": "open", "user": {"login": "someone"}, "body": "остаток #733", "labels": [{"name": "внешняя-проверка"}]}]
+J
+for n in 731 732 733; do echo '[{"user": {"login": "astra"}, "author_association": "NONE", "created_at": "2026-11-14T09:00:00Z", "body": "Не закрыто полностью: остаток — finding-x.md"}]' >"$FAKE_DIR/comments.$n.json"; done
+run restfile
+lacks restfile check.json '#731'
+has restfile check.json '#732: закрыта, последний вердикт Астры'
+has restfile check.json '#733: закрыта, последний вердикт Астры'
+
 # (4) «НЕ опубликовано» в задании, которое уже «готово»: разобрано, когда
 # после строки участник назвал в задании находку, куда она легла, и та
 # разобрана (#1866 → #1830); находка вне плана или имя постороннего — нет.
