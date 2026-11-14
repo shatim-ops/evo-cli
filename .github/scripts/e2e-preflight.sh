@@ -12,6 +12,8 @@
 #     p45 без dbaas_smoke и pg (проба DBaaS не пойдёт);
 #   - зона джоба не найдена или закрыта (enabled=false);
 #   - в зоне джоба у проекта нет подсети или группы безопасности;
+#   - пробы области ops в одном запуске с e2e_core или os_smoke — пик ВМ
+#     складывается сверх расчёта квот;
 #   - имя этого прогона (…-$RUN) уже занято ВМ или кластером;
 #   - исчерпана квота ресурса прогона (ВМ, vCPU, RAM, адреса, диски);
 #   - список, без которого не проверить, не прочитан.
@@ -21,7 +23,7 @@
 # туда не выйдет); квоты, которые не прочитаны или исчерпаны у других
 # ресурсов (образы, CMP-16).
 #
-# Окружение — входы workflow: ZONE, K8S_ZONE, PG_ZONE, KAFKA_ZONE,
+# Окружение — входы workflow: E2E_CORE (пусто — true, как у входа), ZONE, K8S_ZONE, PG_ZONE, KAFKA_ZONE,
 # REDIS_ZONE (пусто — ZONE), OS_SMOKE, K8S_SMOKE, K8S_POD_CHART, DBAAS_SMOKE, DBAAS_SERVICES,
 # REDIS_SA (true/false), PROBES (платные пробы плана cloud-e2e rc.1 1.6);
 # RUN — суффикс прогона; PROJECT — для org_quotas.
@@ -126,6 +128,20 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 	*) fail "probes: «$w» — не access, nodes, pgrepeat, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g12, g13, g14, g15, g16, g17, g17nonames, g18, g20, console" ;;
 	esac
 done
+
+# Живые запуски не складываются (план 1.9, «Живые запуски не
+# складываются», правило «релиза» к расчёту квот 12.11): квоты проекта e2e
+# рассчитаны на «фон + один запуск», и пробы области ops вместе с основным
+# e2e (e2e_core) или os_smoke удваивают пик ВМ. Проход кандидата, пробы и
+# базы — разными запусками.
+ops_words=()
+for w in ${probe_words[@]+"${probe_words[@]}"}; do
+	case "$w" in g10 | g11 | g16 | g17 | g18 | console) ops_words+=("$w") ;; esac
+done
+if [ ${#ops_words[@]} -gt 0 ]; then
+	[ "${E2E_CORE:-true}" != true ] || fail "probes: «${ops_words[*]}» — пробы области ops в одном запуске с основным e2e (e2e_core) складывают пик ВМ: запустите пробы отдельно, с e2e_core: false"
+	[ "${OS_SMOKE:-}" != true ] || fail "probes: «${ops_words[*]}» — пробы области ops в одном запуске с os_smoke складывают пик ВМ: os_smoke — с проходом кандидата, пробы — отдельным запуском"
+fi
 
 # Зоны прогона: «зона» → «джоб, джоб».
 declare -A jobs_in=()
