@@ -27,13 +27,13 @@ func TestConsentNote_OneWordingAtEveryToolThatAsks(t *testing.T) {
 		word := consentWords[tl.Name]
 		switch {
 		case !asks:
-			if word != "" || partialConsent[tl.Name] != nil || strings.Contains(tl.Description, "confirmed=true") {
+			if word != "" || tl.Decl.PartialConsent != nil || strings.Contains(tl.Description, "confirmed=true") {
 				bad = append(bad, tl.Name+": takes no confirmed, and its description or a declaration speaks of consent")
 			}
 			continue
-		case partialConsent[tl.Name] != nil:
+		case tl.Decl.PartialConsent != nil:
 			if !strings.Contains(tl.Description, "confirmed=true after the user approves") || strings.Contains(tl.Description, consentNote) || word != "" {
-				bad = append(bad, tl.Name+": in partialConsent — its description names confirmed=true after the user approves in its own sentence, and carries no note of all")
+				bad = append(bad, tl.Name+": in Decl.PartialConsent — its description names confirmed=true after the user approves in its own sentence, and carries no note of all")
 			}
 		default:
 			want := consentText(tl.Name)

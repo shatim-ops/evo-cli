@@ -43,23 +43,63 @@ type Decl struct {
 	// AlwaysListed: a server lists and serves the tool whatever its
 	// --toolsets, for this reason.
 	AlwaysListed string
+
+	// Sensitive: the tool reveals a secret in plaintext (a decrypted
+	// secret value, a private key). It takes confirmed, so the agent asks
+	// the person first, but it changes nothing, so the rule "a tool is
+	// mutating when it takes confirmed" does not apply: it is not Mutating
+	// (no destructiveHint, no mutating label in the CLI). It is not marked
+	// readOnlyHint either: a client may auto-approve read-only tools, and
+	// the plaintext would then land in the agent's context (and its logs)
+	// without the person seeing the call (security audit 19.10, SEC-4).
+	Sensitive bool
+	// SideEffects: the tool changes nothing the call asks to change, so it
+	// takes no confirmed and is not Mutating, but it is not a read either
+	// (A9, REL12-4): stack_status advances the stack it shows — its next
+	// steps create resources — and k8s_kubeconfig mints a token of the
+	// cluster. It is not marked readOnlyHint: a client that approves reads
+	// by itself would run it unseen. The value is what the effect is: the
+	// group card says it (cardDoes), and 'tools list/describe' mark the
+	// tool side_effects — one decision point for MCP, the card and the
+	// catalog (external review 11.11).
+	SideEffects string
+	// Destructive: a mutating tool, besides *_delete, that may delete or
+	// overwrite data: it gets destructiveHint in MCP, so a client asks the
+	// person every time. kubectl, apply and helm run whatever they are
+	// given (delete, uninstall); s3_put overwrites an existing key;
+	// k8s_add_addon with resolve_mode OVERWRITE replaces objects already in
+	// the cluster.
+	Destructive bool
+	// PartialConsent: the tool takes confirmed but needs it only for the
+	// calls this rule of its handler's gate says: k8s_kubectl for a command
+	// that is not a read (kubectlNeedsConsent), k8s_helm for install,
+	// upgrade and uninstall (helmNeedsConsent). Every call of any other
+	// tool that takes confirmed needs it.
+	PartialConsent func(args map[string]any) bool
 }
 
 // decls are the declarations of the tools of evo, in the order of
 // registerTools. A tool with nothing to declare has no entry.
 var decls = map[string]Decl{
-	"deploy":               {Group: "deploy"},
-	"provision":            {Group: "vm", Project: true},
-	"status":               {Group: "deploy"},
-	"list":                 {Group: "deploy"},
-	"vm_get":               {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
-	"vm_start":             {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
-	"vm_stop":              {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
-	"vm_reboot":            {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
-	"vm_resize":            {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
+	"deploy":    {Group: "deploy"},
+	"provision": {Group: "vm", Project: true},
+	"status":    {Group: "deploy"},
+	"list":      {Group: "deploy"},
+	"vm_get":    {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
+	"vm_start":  {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
+	// vm_stop deletes nothing on a disk, but it takes the service down and
+	// may lose what the VM held in memory: a client asks the person every
+	// time (D99, §4.3).
+	"vm_stop": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true},
+	// vm_reboot takes the service down for the time of the reboot (§5.2).
+	"vm_reboot": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true},
+	// vm_resize of a running VM: whether the guest OS restarts in it the
+	// probe does not see (Г-10), so the client asks the person every time
+	// (§6.5, В3: unknown is taken as a restart).
+	"vm_resize":            {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true},
 	"vm_list":              {Project: true},
 	"logs":                 {Group: "deploy"},
-	"destroy":              {Group: "deploy"},
+	"destroy":              {Group: "deploy", Destructive: true},
 	"list_zones":           {Group: "vm"},
 	"marketplace_list":     {Group: "image"},
 	"list_images":          {Group: "image"},
@@ -83,12 +123,20 @@ var decls = map[string]Decl{
 	// mk8s catalogues take projectId too: GET /v3/addons without it is a
 	// live 400, the spec requires it on /v3/addons and productConfiguration
 	// (Cursor review of PR #89).
-	"k8s_options":          {Project: true},
-	"k8s_plan":             {Project: true},
-	"k8s_create":           {Project: true},
+	"k8s_options":    {Project: true},
+	"k8s_plan":       {Project: true},
+	"k8s_create":     {Project: true},
+	"k8s_kubeconfig": {SideEffects: "returns a kubeconfig; mints a token of the cluster"},
+	// A scale down deletes nodes with the data on their disks; the hint is
+	// the tool's, not the call's, so a scale up asks too (D99; conclusion
+	// 112 of «Риск»).
+	"k8s_nodepool_scale":   {Destructive: true},
 	"k8s_addons":           {Project: true},
 	"k8s_addon_versions":   {Project: true},
-	"k8s_add_addon":        {Project: true},
+	"k8s_add_addon":        {Project: true, Destructive: true},
+	"k8s_kubectl":          {PartialConsent: kubectlNeedsConsent, Destructive: true},
+	"k8s_apply":            {Destructive: true},
+	"k8s_helm":             {PartialConsent: helmNeedsConsent, Destructive: true},
 	"backup_list":          {Project: true},
 	"backup_create":        {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}},
 	"disk_list":            {Project: true},
@@ -106,7 +154,7 @@ var decls = map[string]Decl{
 	"agent_skill":          {Group: "auth", AlwaysListed: "the card of a group is read by the agent that works with that group, whichever groups the server serves"},
 	"whoami":               {Group: "auth"},
 	"doctor":               {Group: "auth"},
-	"release_floating_ip":  {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}},
+	"release_floating_ip":  {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true},
 	"snat_list":            {Project: true},
 	"snat_create":          {Project: true},
 	"pg_list":              {Project: true},
@@ -129,7 +177,7 @@ var decls = map[string]Decl{
 	"dns_record_create":    {RequiredOneOf: [][]string{{"value", "values"}}},
 	"secret_list":          {Project: true},
 	"secret_get":           {Project: true},
-	"secret_value":         {Project: true},
+	"secret_value":         {Project: true, Sensitive: true},
 	"secret_create":        {Project: true},
 	"secret_add_version":   {Project: true},
 	"secret_delete":        {Project: true},
@@ -143,4 +191,9 @@ var decls = map[string]Decl{
 	"cert_list":            {Project: true},
 	"cert_issue_le":        {Project: true},
 	"cert_import":          {Project: true},
+	"cert_private_key":     {Sensitive: true},
+	"s3_put":               {Destructive: true},
+	"s3_rm":                {Destructive: true},
+	"stack_status":         {SideEffects: "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it"},
+	"stack_destroy":        {Destructive: true},
 }
