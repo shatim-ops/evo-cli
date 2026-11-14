@@ -128,6 +128,38 @@ type Decl struct {
 	// NoCompletion are the arguments named as in valueRefs that name
 	// something else in the tool, with why.
 	NoCompletion map[string]string
+
+	// CLI: the command of the tool (cliSpecs, cli_spec.go) and RU: its
+	// Russian description and the Russian descriptions of its arguments
+	// (toolsRU, descriptions_ru.go). Their texts stay in their files — the
+	// sessions that write the texts of a group edit them — and the
+	// declaration carries them (declareTexts): the registry and every
+	// reader take them from the declaration, not from the maps.
+	CLI CLISpec
+	RU  toolRU
+}
+
+func init() { declareTexts() }
+
+// declareTexts puts the command and the Russian description of each tool
+// into its declaration. A tool with neither is not added.
+func declareTexts() {
+	for name, c := range cliSpecs {
+		d := decls[name]
+		d.CLI = c
+		decls[name] = d
+	}
+	for name, ru := range toolsRU {
+		d := decls[name]
+		d.RU = ru
+		decls[name] = d
+	}
+}
+
+// commandOf is the command of tool, and whether it has one.
+func commandOf(tool string) (CLISpec, bool) {
+	c := decls[tool].CLI
+	return c, c.Verb != "" || c.Group != ""
 }
 
 // deleteOf is what tool deletes, and whether it is a delete.
