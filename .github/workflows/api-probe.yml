@@ -574,20 +574,45 @@ jobs:
           rid19 iam         "https://iam.api.cloud.ru/api/v1/roles?pageSize=1"
           rid19 dns         "https://dns.api.cloud.ru/v1/privateZones?projectId=$PROJECT"
           # Контрольная пара к X-Request-Id (#1703; «да» владельца 14.11, #1733,
-          # два прогона): run 52 — Redis 500, IAM 400 на запросы с заголовком.
-          # Тот же запрос без заголовка и запрос Redis так, как его шлёт evo
-          # (page_size): отличие кода «с id / без id» — заголовок отвергается.
+          # два прогона; заключение «Риска» к #1740): run 52 — Redis 500, IAM
+          # 400 на запросы с заголовком. На адрес — три пары в чередующемся
+          # порядке (с, без, без, с, с, без): одна пара не отличает заголовок
+          # от прерывистого сбоя. Итог — счёт кодов с заголовком и без и
+          # вывод: «не меняет», «меняет» (все коды с ним отличны от всех без
+          # него) или «смешанно». Обмен ключа (POST auth/token) — тоже: это
+          # первый запрос evo к любому сервису; тело ответа — в /dev/null.
           ctl19() {
-            local name=$1 url=$2 with without
-            with=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" -H "X-Request-Id: $(cat /proc/sys/kernel/random/uuid)" "$url" 2>/dev/null || echo 000)
-            without=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$url" 2>/dev/null || echo 000)
-            printf '%-28s с X-Request-Id http=%s, без http=%s — %s\n' "rid19_ctl_$name" "$with" "$without" \
-              "$([ "$with" = "$without" ] && echo "заголовок не меняет ответ" || echo "ЗАГОЛОВОК МЕНЯЕТ ОТВЕТ")"
+            local name=$1 method=$2 url=$3 i k with='' without='' c
+            for i in 1 0 0 1 1 0; do
+              k=()
+              [ "$i" = 0 ] || k=(-H "X-Request-Id: $(cat /proc/sys/kernel/random/uuid)")
+              if [ "$method" = POST ]; then
+                c=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
+                  curl -sS -X POST -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' "${k[@]}" --data-binary @- https://iam.api.cloud.ru/api/v1/auth/token 2>/dev/null || echo 000)
+              else
+                c=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "${k[@]}" "$url" 2>/dev/null || echo 000)
+              fi
+              if [ "$i" = 1 ]; then with="$with $c"; else without="$without $c"; fi
+            done
+            printf '%-28s с X-Request-Id:%s; без:%s — %s\n' "rid19_ctl_$name" "$with" "$without" "$(
+              printf '%s\n%s\n' "$with" "$without" | awk '
+                NR == 1 { for (i = 1; i <= NF; i++) w[$i] = 1 }
+                NR == 2 { for (i = 1; i <= NF; i++) o[$i] = 1 }
+                END {
+                  same = 1; apart = 1
+                  for (c in w) { if (!(c in o)) same = 0; if (c in o) apart = 0 }
+                  for (c in o) if (!(c in w)) same = 0
+                  n = 0; for (c in w) n++; for (c in o) if (!(c in w)) n++
+                  if (same && n == 1) print "заголовок не меняет ответ"
+                  else if (apart) print "ЗАГОЛОВОК МЕНЯЕТ ОТВЕТ"
+                  else print "смешанно — прерывистый сбой, не заголовок"
+                }')"
           }
-          ctl19 redis       "https://redis.api.cloud.ru/v1/clusters?project_id=$PROJECT"
-          ctl19 redis_page  "https://redis.api.cloud.ru/v1/clusters?project_id=$PROJECT&page_size=1"
-          ctl19 iam         "https://iam.api.cloud.ru/api/v1/roles?pageSize=1"
-          ctl19 compute     "$C/flavors?limit=1"
+          ctl19 iam_token   POST token
+          ctl19 redis       GET  "https://redis.api.cloud.ru/v1/clusters?project_id=$PROJECT"
+          ctl19 redis_page  GET  "https://redis.api.cloud.ru/v1/clusters?project_id=$PROJECT&page_size=1"
+          ctl19 iam         GET  "https://iam.api.cloud.ru/api/v1/roles?pageSize=1"
+          ctl19 compute     GET  "$C/flavors?limit=1"
           # Г-05: версия TLS по адресам API — принимает ли адрес 1.3 и 1.2
           # (запрос без токена: важна только установка соединения).
           echo "== Г-05: TLS по адресам API"
