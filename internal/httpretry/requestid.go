@@ -5,14 +5,17 @@
 package httpretry
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // RequestIDHeader is the header that names a request to Cloud.ru: evo
@@ -123,59 +126,118 @@ func traced(req *http.Request, resp *http.Response, err error) {
 	t.failed = append(t.failed, f)
 }
 
-// inRequest reports whether id is in what req sent other than its own
+// inRequest reports whether id echoes what req sent other than its own
 // X-Request-Id — a header, the query or the body: an answer that echoes a
 // key or a token of the request (a short opaque token has the form of an
 // id) names no request, and its value is a secret that must not reach the
 // text of an error (#1751). The secret of a key exchange is in the body
-// («Риск», conclusion 202). Case does not tell them apart: a service that
+// («Риск», conclusion 202). An echo is id within a value of the request,
+// or a value within id — the secret with a prefix or a suffix around it
+// («Риск», conclusion 249). Case does not tell them apart: a service that
 // echoes the value in another case echoes the same secret. traced asks of
 // the answer's request too: a renewed token is set on a clone of the
 // caller's request (renewing).
 func inRequest(req *http.Request, id string) bool {
 	id = strings.ToLower(id)
-	has := func(v string) bool { return strings.Contains(strings.ToLower(v), id) }
+	echoes := func(v string) bool {
+		if strings.Contains(strings.ToLower(v), id) {
+			return true
+		}
+		for _, part := range strings.FieldsFunc(v, valueSeparator) {
+			if len(part) >= minEchoValue && strings.Contains(id, strings.ToLower(part)) {
+				return true
+			}
+		}
+		return false
+	}
 	for name, vs := range req.Header {
 		if http.CanonicalHeaderKey(name) == RequestIDHeader {
 			continue
 		}
 		for _, v := range vs {
-			if has(v) {
+			if echoes(v) {
 				return true
 			}
 		}
 	}
 	if req.URL != nil {
-		if q, err := url.QueryUnescape(req.URL.RawQuery); has(req.URL.RawQuery) || err == nil && has(q) {
+		if q, err := url.QueryUnescape(req.URL.RawQuery); echoes(req.URL.RawQuery) || err == nil && echoes(q) {
 			return true
 		}
 	}
-	return inBody(req, has)
+	return inBody(req, echoes)
+}
+
+// minEchoValue is the shortest value of a request whose presence within an
+// answered id makes it an echo: shorter ones (true, GET, a port) are in
+// many an id that echoes nothing.
+const minEchoValue = 8
+
+// valueSeparator splits a header, a query or a form into its values: a
+// scheme from its token (Bearer), a name from its value, one pair from
+// the next.
+func valueSeparator(r rune) bool {
+	return unicode.IsSpace(r) || strings.ContainsRune(`,;=&"'`, r)
 }
 
 // maxEchoBody bounds the body inRequest reads again: a key exchange or a
 // form is small, an upload is not where a credential goes.
 const maxEchoBody = 64 << 10
 
-// inBody reports whether the body req sent, read again (GetBody), holds
-// what has looks for, as sent or form-decoded. A body that cannot be read
-// again is not looked at.
+// inBody reports whether the body req sent may hold what has looks for:
+// read again (GetBody), as sent, form-decoded, or in a string of it as
+// JSON, decoded (an escape does not hide a value). A body that cannot be
+// read again whole — no GetBody, over maxEchoBody, a read that fails —
+// may hold it: an answered value not shown absent from the request is no
+// id (#1933).
 func inBody(req *http.Request, has func(string) bool) bool {
-	if req.GetBody == nil || req.ContentLength > maxEchoBody {
-		return false
+	if req.GetBody == nil {
+		return req.Body != nil && req.Body != http.NoBody
+	}
+	if req.ContentLength > maxEchoBody {
+		return true
 	}
 	rc, err := req.GetBody()
 	if err != nil {
-		return false
+		return true
 	}
 	defer rc.Close()
-	b, _, err := peek(rc, maxEchoBody)
-	if err != nil {
-		return false
+	b, _, err := peek(rc, maxEchoBody+1)
+	if err != nil || len(b) > maxEchoBody {
+		return true
 	}
 	if has(string(b)) {
 		return true
 	}
-	q, err := url.QueryUnescape(string(b))
-	return err == nil && has(q)
+	if q, err := url.QueryUnescape(string(b)); err == nil && has(q) {
+		return true
+	}
+	return inJSON(b, has)
+}
+
+// inJSON reports whether a string or a number of b, read as JSON, holds
+// what has looks for: keys and values alike. A body that is not JSON
+// holds none.
+func inJSON(b []byte, has func(string) bool) bool {
+	if !json.Valid(b) {
+		return false
+	}
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return false
+		}
+		switch v := tok.(type) {
+		case string:
+			if has(v) {
+				return true
+			}
+		case json.Number:
+			if has(v.String()) {
+				return true
+			}
+		}
+	}
 }
