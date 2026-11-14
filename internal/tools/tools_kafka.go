@@ -137,7 +137,7 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 	if allClosed {
 		return "", "", clierrors.New(clierrors.CodeUsage,
 			i18n.T("every availability zone is closed for new resources (enabled=false in the zone list)", "все зоны доступности закрыты для новых ресурсов (в списке зон enabled=false)"),
-			i18n.T("Pass 'zone' only once a zone takes new resources: list_zones shows them.", "Передайте 'zone', когда зона снова примет новые ресурсы: их показывает evo vm zones."))
+			i18n.T("Pass 'zone' once a zone takes new resources: list_zones (evo vm zones) shows them.", "Передайте 'zone', когда зона снова примет новые ресурсы: их показывает list_zones (evo vm zones)."))
 	}
 	zones = engine.DefaultZoneFirst(provision.OpenZones(zones), engine.ZoneDBaaS)
 	if len(zones) == 0 || zones[0].ID == "" {
