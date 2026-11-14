@@ -141,8 +141,9 @@ func TestWorkflows_RawAnswersNeverLeaveTheJob(t *testing.T) {
 	}
 }
 
-// evoCall: a command line that runs evo (not a word of a comment or a path).
-var evoCall = regexp.MustCompile(`(^|[;&|(]\s*|\$\(\s*)(\./)?evo(\s|$)`)
+// evoCall: a command line that runs evo (not a word of a comment or a path),
+// also in a substitution: $(evo …) or `evo …` (Qwen review of #1878).
+var evoCall = regexp.MustCompile(`(^|[;&|(` + "`" + `]\s*|\$\(\s*)(\./)?evo(\s|$|` + "`" + `)`)
 
 // touchesRaw: the text names the raw file of answers, by its variable or
 // by the name of the file.
