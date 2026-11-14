@@ -116,3 +116,40 @@ func TestStackVMStep_ForeignVMWithSameNameIsNotAdopted(t *testing.T) {
 		}
 	}
 }
+
+// Шаг ВМ, у которого есть своя ВМ (D69: поднималась, когда кончился предел
+// вызова), повторяет provision с её vm_id (D102). Её больше нет — и на месте
+// появилась другая ВМ с тем же именем, созданная позже старта шага. Шаг не
+// подхватывает чужую ВМ по имени и не повторяет provision: отказ ресурса
+// шага окончательный с первого раза (Астра, остатки #1766; строка #1788).
+func TestStackVMStep_TheStepsVMGoneIsFinalAndNotFoundByName(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
+	j.Steps[0].ResourceID, j.Steps[0].StartedAt = "vm-1", time.Now().Add(-time.Minute)
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	r.handlers["provision"] = func(context.Context, map[string]any) (string, bool) {
+		calls.Add(1)
+		return toJSON(map[string]any{"status": "error", "reason": "VM_NOT_FOUND",
+			"error": "the VM the call went on with is gone; no new one was made"}), true
+	}
+	r.handlers["vm_list"] = fakeOK(map[string]any{"vms": []any{vmRow("vm-2", "web", "running", 0)}})
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	for range 4 {
+		r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
+	}
+	if n := calls.Load(); n != 1 {
+		t.Errorf("provision вызван %d раз, want 1: отказ ресурса шага окончательный", n)
+	}
+	loaded, err := stack.LoadJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := loaded.Steps[0]
+	if st.ResourceID != "vm-1" || st.Status != "error" || st.Reason != "VM_NOT_FOUND" || !loaded.Failed() {
+		t.Errorf("шаг %+v, задание %s: want error VM_NOT_FOUND с vm-1, не vm-2", st, loaded.Status)
+	}
+}

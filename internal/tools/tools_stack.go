@@ -189,14 +189,20 @@ const vmClockSkew = 2 * time.Minute
 // matches AND it was created after the step started: the name alone could
 // be a user's VM, which stack_destroy would then delete (QA R3/R8 class).
 // state is the VM's state ("" for other kinds). Steps that never started,
-// or VMs without a creation time, are not adopted.
+// or VMs without a creation time, are not adopted. A step that holds the
+// id of its resource finds that one or nothing: another of the same name
+// is not the step's (Астра, #1766).
 func (s *Registry) findStepResource(ctx context.Context, st *stack.Step) (id, state string) {
 	f, ok := stepFinder(st)
 	if !ok {
 		return "", ""
 	}
 	if st.Tool != "provision" {
-		return s.findIDByName(ctx, f.list, f.field, f.name, f.args), ""
+		id := s.findIDByName(ctx, f.list, f.field, f.name, f.args)
+		if st.ResourceID != "" && id != st.ResourceID {
+			return "", ""
+		}
+		return id, ""
 	}
 	if st.StartedAt.IsZero() {
 		return "", ""
@@ -212,6 +218,9 @@ func (s *Registry) findStepResource(ctx context.Context, st *stack.Step) (id, st
 			continue
 		}
 		if n, _ := m["name"].(string); n != f.name {
+			continue
+		}
+		if vid, _ := m["id"].(string); st.ResourceID != "" && vid != st.ResourceID {
 			continue
 		}
 		created, _ := m["created_time"].(string)
@@ -474,6 +483,14 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// (final audit, stage 1). An attempt whose create did go
 					// through with its answer lost leaves its resource
 					// named here, for the user to keep or delete.
+					// The step's own resource (the VM a repeat of provision
+					// goes on with, D102) is gone: final at once. Neither a
+					// resource found by name nor another create is the
+					// step's (Астра, #1766; «Риск», 216).
+					if st.ResourceID != "" && (reason == clierrors.CodeVMNotFound || reason == clierrors.CodeNotFound) {
+						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s of the step is gone; no new one was made)", st.Key, err.Error(), st.ResourceID))
+						return
+					}
 					if ex := firstStr(res, "existing_id"); ex != "" && !resumed {
 						failStep(job, st, reason, fmt.Sprintf("%s: %s — rename it in the manifest, or remove the existing one (%s); "+
 							"if an earlier attempt of this step created it, delete it or keep it: the stack does not adopt it by name", st.Key, err.Error(), ex))
