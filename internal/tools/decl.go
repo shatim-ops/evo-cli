@@ -104,6 +104,16 @@ type Decl struct {
 	// checks, the preview and the question see the id, and a name the
 	// project lacks is refused before them.
 	RefArgs []nameRef
+
+	// Completes are the arguments of the tool whose name means a different
+	// list in each product (version_id: kafka_versions in Kafka,
+	// redis_versions in Redis), or that name a list valueRefs has under
+	// another name (nodes_subnet_id: the subnets): Tab completes them from
+	// this list, never from the one valueRefs has for the name.
+	Completes map[string]completion
+	// NoCompletion are the arguments named as in valueRefs that name
+	// something else in the tool, with why.
+	NoCompletion map[string]string
 }
 
 // deleteOf is what tool deletes, and whether it is a delete.
@@ -188,8 +198,8 @@ var decls = map[string]Decl{
 	// live 400, the spec requires it on /v3/addons and productConfiguration
 	// (Cursor review of PR #89).
 	"k8s_options":    {Project: true},
-	"k8s_plan":       {Project: true, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
-	"k8s_create":     {Project: true, Created: created{id: "cluster_id", list: "k8s_list", field: "clusters", delete: "k8s_delete"}, CreateName: createName{args: []string{"name"}, rule: "k8sNameRe: the mk8s specification"}, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"k8s_plan":       {Project: true, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"cluster_sa_id": {list: "iam_service_accounts", field: "id"}}, NoCompletion: map[string]string{"flavor": "a control-plane flavor of k8s_options, not a VM flavor"}},
+	"k8s_create":     {Project: true, Created: created{id: "cluster_id", list: "k8s_list", field: "clusters", delete: "k8s_delete"}, CreateName: createName{args: []string{"name"}, rule: "k8sNameRe: the mk8s specification"}, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"cluster_sa_id": {list: "iam_service_accounts", field: "id"}}, NoCompletion: map[string]string{"flavor": "a control-plane flavor of k8s_options, not a VM flavor"}},
 	"k8s_kubeconfig": {SideEffects: "returns a kubeconfig; mints a token of the cluster", IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
 	"k8s_delete": {Delete: deleteTarget{arg: "cluster_id", what: "Kubernetes cluster", whRU: "кластер Kubernetes",
 		statePrefix: "OBJECT_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe}, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}},
@@ -203,7 +213,7 @@ var decls = map[string]Decl{
 	"k8s_nodepool_delete": {Delete: deleteTarget{arg: "nodepool_id", what: "node pool", whRU: "группа узлов", statePrefix: "OBJECT_STATUS_",
 		creatingUnseen: "probe Г-12, question 16 of docs/internal/briefs/k8s-nodepools.md",
 		failedUnseen:   "no run has deleted a node pool in error: probe Г-12 (docs/internal/briefs/k8s-nodepools.md; FB19I-7)"}, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}}},
-	"k8s_add_nodepool":   {Created: created{id: "nodepool_id", list: "k8s_nodepools", field: "node_pools", listArgs: []string{"cluster_id"}, delete: "k8s_nodepool_delete"}, CreateName: createName{args: []string{"name"}, what: "node pool", whRU: "группа узлов"}, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}}, RefArgs: []nameRef{{"nodes_subnet_id", refSubnet}, {"security_group_id", refSecurityGroup}}},
+	"k8s_add_nodepool":   {Created: created{id: "nodepool_id", list: "k8s_nodepools", field: "node_pools", listArgs: []string{"cluster_id"}, delete: "k8s_nodepool_delete"}, CreateName: createName{args: []string{"name"}, what: "node pool", whRU: "группа узлов"}, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}}, RefArgs: []nameRef{{"nodes_subnet_id", refSubnet}, {"security_group_id", refSecurityGroup}}, Completes: map[string]completion{"nodes_subnet_id": {list: "list_subnets", field: "id"}}, NoCompletion: map[string]string{"flavor": "a node flavor of k8s_options, not a VM flavor"}},
 	"k8s_addons":         {Project: true},
 	"k8s_addon_versions": {Project: true},
 	"k8s_add_addon":      {Project: true, Destructive: true, Created: created{none: "an addon of a cluster, known by its name; it goes with the cluster"}, Nameless: "the addon is named by the catalogue (k8s_addons)", IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}},
@@ -219,7 +229,7 @@ var decls = map[string]Decl{
 		creatingUnseen: "no run has deleted a backup still being created: the third run of probe Г-16 (docs/internal/briefs/backups.md)",
 		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16 (docs/internal/briefs/backups.md)"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}},
 	"backup_restore": {Created: created{id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}},
-	"disk_list":      {Project: true},
+	"disk_list":      {Project: true, Completes: map[string]completion{"type": {list: "list_disk_types", field: "name"}}},
 	"disk_create":    {Project: true, Created: created{id: "disk.id", lost: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "attach_to", why: whyListed}}},
 	"disk_attach":    {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}}},
 	"disk_detach":    {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}}},
@@ -229,7 +239,7 @@ var decls = map[string]Decl{
 	"ca_get":         {Project: true},
 	// Container Apps: an app is addressed by name with projectId in the
 	// query (containers/openapi.yaml); its image is a container image.
-	"ca_deploy":            {Project: true, Created: created{arg: "name", lost: "id", list: "ca_list", field: "containers", delete: "ca_delete"}, CreateName: createName{args: []string{"name"}, rule: "caNameRe: an RFC 1123 label"}, IDArgs: []idArg{{name: "image", why: whyContainerImage}}},
+	"ca_deploy":            {Project: true, Created: created{arg: "name", lost: "id", list: "ca_list", field: "containers", delete: "ca_delete"}, CreateName: createName{args: []string{"name"}, rule: "caNameRe: an RFC 1123 label"}, IDArgs: []idArg{{name: "image", why: whyContainerImage}}, NoCompletion: map[string]string{"image": "a container image of Artifact Registry, not a VM image of image_list (FB150-1)"}},
 	"ca_delete":            {Project: true, Delete: deleteTarget{arg: "name", what: "container app", whRU: "приложение Container Apps"}},
 	"ca_logs":              {Project: true},
 	"ca_start":             {Project: true},
@@ -247,19 +257,19 @@ var decls = map[string]Decl{
 	"pg_list":              {Project: true},
 	// Managed PostgreSQL, Kafka, Redis.
 	"pg_get":           {RequiredOneOf: [][]string{{"id", "cluster_id"}}, IDArgs: []idArg{{name: "id", kind: kindPG}, {name: "cluster_id", kind: kindPG}}},
-	"pg_create":        {Project: true, Created: created{id: "cluster_id", list: "pg_list", field: "clusters", delete: "pg_delete"}, CreateName: createName{args: []string{"name"}, what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"pg_create":        {Project: true, Created: created{id: "cluster_id", list: "pg_list", field: "clusters", delete: "pg_delete"}, CreateName: createName{args: []string{"name"}, what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"specification_id": {list: "pg_specs", field: "id"}}},
 	"pg_delete":        {RequiredOneOf: [][]string{{"id", "cluster_id"}}, Delete: deleteTarget{arg: "id", what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "id", kind: kindPG, target: true}, {name: "cluster_id", kind: kindPG, target: true}}},
 	"pg_operation":     {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
 	"kafka_list":       {Project: true},
 	"kafka_get":        {IDArgs: []idArg{{name: "cluster_id", kind: kindKafka}}},
-	"kafka_specs":      {IDArgs: []idArg{{name: "version_id", why: whyCatalogue}}},
-	"kafka_create":     {Project: true, Created: created{id: "cluster_id", list: "kafka_list", field: "clusters", delete: "kafka_delete"}, CreateName: createName{args: []string{"name"}, what: "Kafka cluster", whRU: "кластер Kafka"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"kafka_specs":      {IDArgs: []idArg{{name: "version_id", why: whyCatalogue}}, Completes: map[string]completion{"version_id": {list: "kafka_versions", field: "id"}}},
+	"kafka_create":     {Project: true, Created: created{id: "cluster_id", list: "kafka_list", field: "clusters", delete: "kafka_delete"}, CreateName: createName{args: []string{"name"}, what: "Kafka cluster", whRU: "кластер Kafka"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"version_id": {list: "kafka_versions", field: "id"}, "specification_id": {list: "kafka_specs", field: "id"}}},
 	"kafka_delete":     {Delete: deleteTarget{arg: "cluster_id", what: "Kafka cluster", whRU: "кластер Kafka"}, IDArgs: []idArg{{name: "cluster_id", kind: kindKafka, target: true}}},
 	"kafka_operation":  {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
 	"redis_list":       {Project: true},
 	"redis_get":        {IDArgs: []idArg{{name: "cluster_id", kind: kindRedis}}},
-	"redis_specs":      {IDArgs: []idArg{{name: "version_id", why: whyCatalogue}}},
-	"redis_create":     {Project: true, Created: created{id: "cluster_id", list: "redis_list", field: "clusters", delete: "redis_delete"}, CreateName: createName{args: []string{"name"}, what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"redis_specs":      {IDArgs: []idArg{{name: "version_id", why: whyCatalogue}}, Completes: map[string]completion{"version_id": {list: "redis_versions", field: "id"}}},
+	"redis_create":     {Project: true, Created: created{id: "cluster_id", list: "redis_list", field: "clusters", delete: "redis_delete"}, CreateName: createName{args: []string{"name"}, what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"version_id": {list: "redis_versions", field: "id"}, "specification_id": {list: "redis_specs", field: "id"}}},
 	"redis_delete":     {Delete: deleteTarget{arg: "cluster_id", what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "cluster_id", kind: kindRedis, target: true}}},
 	"redis_operation":  {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
 	"pg_databases":     {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}},
@@ -306,7 +316,7 @@ var decls = map[string]Decl{
 	"secret_get":        {Project: true},
 	"secret_value":      {Project: true, Sensitive: true},
 	// Secret Manager: the create carries projectId.
-	"secret_create":      {Project: true, Created: created{arg: "path", lost: "secret_id", list: "secret_list", field: "secrets", delete: "secret_delete"}, CreateName: createName{args: []string{"path"}, what: "secret", whRU: "секрет"}, IDArgs: []idArg{{name: "kms_key_id", why: whyReference}}},
+	"secret_create":      {Project: true, Created: created{arg: "path", lost: "secret_id", list: "secret_list", field: "secrets", delete: "secret_delete"}, CreateName: createName{args: []string{"path"}, what: "secret", whRU: "секрет"}, IDArgs: []idArg{{name: "kms_key_id", why: whyReference}}, NoCompletion: map[string]string{"path": "the path of a new secret: an existing one is refused (D49)"}},
 	"secret_add_version": {Project: true, Nameless: "a version of a secret that is there"},
 	"secret_delete":      {Project: true, Delete: deleteTarget{arg: "path", what: "secret", whRU: "секрет"}},
 	"ar_list":            {Project: true},
