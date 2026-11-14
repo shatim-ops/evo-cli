@@ -203,3 +203,59 @@ func TestStackApply_TheQuestionHidesAnObjectsBody(t *testing.T) {
 		t.Errorf("the question does not name the object and the size of its body: %s", text)
 	}
 }
+
+// A step whose resource is made already — waiting for it to be ready, or
+// pending with its id (a VM the next crank finishes) — is not one the
+// consent creates: the question names it apart, with its id, and its price
+// is not in steps_cost (Астра, #1748). The consent pays for what it makes.
+func TestStackApply_TheQuestionTellsAMadeResourceFromACreate(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"g","vpc":{"name":"net-g"},"secrets":[{"path":"app/db","value":"v"}]}`)
+	for _, st := range j.Steps {
+		if st.Tool == "vpc_create" {
+			st.Status, st.ResourceID, st.OpID = "waiting", "00000000-0000-4000-8000-0000000000aa", "op-1"
+		}
+	}
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID})
+	var m struct {
+		Preview struct {
+			Params []struct {
+				Key   string `json:"key"`
+				Value any    `json:"value"`
+			} `json:"params"`
+		} `json:"preview"`
+	}
+	_ = json.Unmarshal([]byte(text), &m)
+	params := map[string]string{}
+	for _, p := range m.Preview.Params {
+		b, _ := json.Marshal(p.Value)
+		params[p.Key] = string(b)
+	}
+	if strings.Contains(params["will_create"], "net-g") || !strings.Contains(params["will_create"], "app/db") {
+		t.Errorf("will_create, want the secret and not the VPC made already: %s", params["will_create"])
+	}
+	if !strings.Contains(params["will_finish"], "vpc") || !strings.Contains(params["will_finish"], "00000000-0000-4000-8000-0000000000aa") {
+		t.Errorf("will_finish, want the VPC made already with its id: %s", params["will_finish"])
+	}
+	if strings.Contains(params["steps_cost"], `"component":"vpc"`) || !strings.Contains(params["steps_cost"], `"component":"secret:0"`) {
+		t.Errorf("steps_cost, want the secret's and not the VPC's: %s", params["steps_cost"])
+	}
+	if !strings.Contains(text, "will_finish are made already") {
+		t.Errorf("the question does not say what will_finish is: %s", text)
+	}
+	// A pending step that holds its resource's id (a VM the next crank
+	// finishes, a cut-off create whose resource was found) is made too.
+	j2 := planJob(t, `{"name":"h","vpc":{"name":"net-h"}}`)
+	j2.Steps[0].ResourceID = "00000000-0000-4000-8000-0000000000bb"
+	if err := j2.Save(); err != nil {
+		t.Fatal(err)
+	}
+	text, _ = r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j2.ID})
+	if strings.Contains(text, "net-h") || !strings.Contains(text, "0000000000bb") {
+		t.Errorf("a pending step with its resource's id, want it in will_finish: %s", text)
+	}
+}
