@@ -483,14 +483,3 @@
   - `clusterAttributes[].count` — integer
   - ответы: 200
 
-### D110. Консоль ВМ: ссылка remote-console (раздел 6 ТЗ vm-console.md)
-
-- `POST /api/v1/vms/{vm_id}/remote-console` (compute/openapi-v3.yaml) — Запуск серийной или виртуальной консоли — vnc дважды, serial; vnc на остановленной
-  - `protocol`* — string: `vnc`, `serial`
-  - ответы: 204, 401, 403, 422, 500
-- `GET /api/v1/vms/{vm_id}` (compute/openapi-v3.yaml) — Получение информации о виртуальной машине — карточка: поля remote_console_* и is_serial_ready — без значения ссылки
-  - ответы: 200, 401, 403, 404, 422, 500
-- `GET /api/v1/vms` (compute/openapi-v3.yaml) — Получение списка виртуальных машин — элемент списка: есть ли ссылка
-  - query: `project_id*`, `vm_ids`, `tag_ids`, `availability_zone_ids`, `image_ids`, `flavor_ids`, `placement_group_ids`, `statuses`, `name`, `empty_fip`, `free_tier`, `support_gpu`, `offset`, `limit`, `order_by`, `order_desc`
-  - ответы: 200, 401, 403, 404, 422, 500
-
