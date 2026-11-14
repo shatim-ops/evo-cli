@@ -49,6 +49,12 @@ func TestCaStartStop_TheAnswerIsTheOperations(t *testing.T) {
 			t.Errorf("%s: app_status of the answer is not listed in _untrusted: %s", tc.tool, text)
 		}
 
+		op = `{}`
+		m, text, isErr = callNamed(t, r, tc.tool, args)
+		if isErr || m["status"] != "waiting" || m["next_tool"] != "ca_get" || !strings.Contains(fmt.Sprint(m["note"]), "not known") {
+			t.Errorf("%s, an answer with no operation: %s", tc.tool, text)
+		}
+
 		op = `{"id":"op-1","done":true,"error":{"code":9,"message":"quota"}}`
 		m, text, isErr = callNamed(t, r, tc.tool, args)
 		if !isErr || m["status"] == "ok" || !strings.Contains(text, "op-1") || !strings.Contains(text, "quota") {

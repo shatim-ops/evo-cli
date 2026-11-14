@@ -98,12 +98,8 @@ func (s *Registry) handleDiskList(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(err), true
 	}
-	only := stringArg(args, "disk_id")
 	out := make([]map[string]any, 0, len(disks))
 	for _, d := range disks {
-		if id, _ := d["id"].(string); only != "" && id != only {
-			continue
-		}
 		row := map[string]any{
 			"id": d["id"], "name": d["name"], "size_gb": d["size"],
 			"state": d["state"], "bootable": d["bootable"],
@@ -245,7 +241,7 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 		}
 		res := map[string]any{"status": "created", "disk": disk}
 		if attachTo == "" || vmID == "" {
-			return toJSON(diskCreated(res, disk)), false
+			return diskCreated(ctx, eng, res, disk, pid)
 		}
 
 		// Auto-attach. A disk just created is "creating": attached at once,
@@ -311,7 +307,7 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 			case st == "available":
 				return true, nil
 			case strings.HasPrefix(st, "error"):
-				return true, fmt.Errorf("the disk is in state %s", st)
+				return true, &diskFailed{state: st}
 			}
 			return false, nil
 		})
@@ -349,6 +345,11 @@ func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string,
 	}
 	return last, timedOut, err
 }
+
+// diskFailed ends a wait for a disk the platform put in an error state.
+type diskFailed struct{ state string }
+
+func (e *diskFailed) Error() string { return "the disk is in state " + e.state }
 
 // diskAtLimit ends a wait for a disk at the limit of an MCP call (D69):
 // the disk goes on in the cloud, the answer says its state and the step
@@ -756,27 +757,55 @@ func diskCreatePreview(eng *engine.Engine, req provision.CreateDiskReq, attachTo
 	return p
 }
 
-// diskCreated is the answer of disk_create without attach_to: created only
-// for a disk the platform made available; one it is still making is
-// creating, with its state and its read as the next step (CLAUDE.md §6,
-// axis 2; Астра #1814: the answer said created, its disk creating). The
-// create answers the state as status, the list and the read as state.
-func diskCreated(res, disk map[string]any) map[string]any {
+// diskCreated is the answer of disk_create without attach_to: created for
+// a disk the platform made available, as before — the disk is waited for
+// as the attach waits for it, within the limit of the call; one still
+// being made at the limit is creating, with its state and disk_list of
+// that disk as the next step; one the platform failed to make is its
+// refusal, with the disk's id (CLAUDE.md §6, axis 2; Астра #1814: the
+// answer said created, its disk creating; «Риск» conclusion 227).
+func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]any, projectID string) (string, bool) {
+	id, _ := disk["id"].(string)
 	st, _ := disk["state"].(string)
 	if st == "" {
 		st, _ = disk["status"].(string)
 	}
-	if strings.EqualFold(st, "available") {
-		return res
+	if !strings.EqualFold(st, "available") {
+		err := waitDiskAvailable(ctx, eng, id, projectID)
+		var lim *diskAtLimit
+		var failed *diskFailed
+		switch {
+		case errors.As(err, &lim):
+			st = lim.state
+		case errors.As(err, &failed):
+			res["status"] = "failed"
+			res["disk_id"] = id
+			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
+				i18n.Tf("Cloud.ru did not make disk %s: %v", "Cloud.ru не создал диск %s: %v", id, err),
+				i18n.Tf("disk_list ids=[%s] shows it; whether to delete it (disk_delete) — ask the person.",
+					"Диск показывает disk_list ids=[%s]; удалять ли его (disk_delete) — спросите человека.", id), err), res), true
+		case err != nil:
+			// Not available by the end of the wait: still being made.
+		default:
+			if d, e := eng.Cloud.GetDisk(ctx, id); e == nil {
+				res["disk"] = d
+			}
+			return toJSON(res), false
+		}
 	}
-	id, _ := disk["id"].(string)
-	if st == "" {
-		st = "unknown"
+	if !strings.EqualFold(st, "available") {
+		if st == "" {
+			st = "unknown"
+		}
+		res["status"] = "creating"
+		if st == "unknown" {
+			res["status"] = "waiting"
+		}
+		res["disk_id"] = id
+		res["disk_state"] = st
+		res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list ids=[%s] shows its state.",
+			"Диск %s — %s: платформа ещё не сделала его доступным. Его состояние показывает disk_list ids=[%s].", id, st, id)
+		nextStep(res, "disk_list", map[string]any{"ids": []any{id}})
 	}
-	res["status"] = "creating"
-	res["disk_id"] = id
-	res["disk_state"] = st
-	res["next"] = fmt.Sprintf("Disk %s is %s: the platform has not made it yet. disk_list disk_id=%s shows when it is available.", id, st, id)
-	nextStep(res, "disk_list", map[string]any{"disk_id": id})
-	return res
+	return toJSON(res), false
 }

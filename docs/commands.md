@@ -3443,7 +3443,6 @@ evo disk list [flags]
 ```
       --attached             true — только подключённые к ВМ, false — только свободные (false задаётся так: --attached=false)
       --bootable             true — только загрузочные, false — только остальные (false задаётся так: --bootable=false)
-      --disk-id string       Только этот диск: например, тот, что disk_create вернул ещё в создании
   -h, --help                 Справка по list
       --ids stringArray      Только с одним из этих id (флаг повторяется или значения через запятую)
       --name string          Только с этой частью имени, регистр не важен

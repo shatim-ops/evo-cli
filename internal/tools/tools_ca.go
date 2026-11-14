@@ -377,15 +377,24 @@ func caStartStopAnswer(ctx context.Context, cli *containerapp.Client, name, acti
 	if op.Done {
 		return toJSON(map[string]any{"status": "ok", "name": name, "action": action}), false
 	}
-	status, verb := "starting", "starts"
+	status := "starting"
+	note := i18n.T("Cloud.ru took the command and has not finished it: the app starts now. ca_get shows its state.",
+		"Cloud.ru принял команду и ещё не выполнил её: приложение запускается. Его состояние показывает ca_get.")
 	if action == "stop" {
-		status, verb = "stopping", "stops"
+		status = "stopping"
+		note = i18n.T("Cloud.ru took the command and has not finished it: the app stops now. ca_get shows its state.",
+			"Cloud.ru принял команду и ещё не выполнил её: приложение останавливается. Его состояние показывает ca_get.")
 	}
-	out := map[string]any{"status": status, "name": name, "action": action,
-		// The specification does not list the states of an app: the note
-		// names none.
-		"note": fmt.Sprintf("Cloud.ru took the command and has not finished it: the app %s now. ca_get shows its state.", verb),
+	// An answer with no operation (no id, not done) says nothing of the
+	// command: the state of the app is not known («Риск», conclusion 227).
+	if op.ID == "" {
+		status = "waiting"
+		note = i18n.T("Cloud.ru answered no operation: whether the command is carried out is not known. ca_get shows the state of the app.",
+			"Cloud.ru не вернул операцию: выполняется ли команда, неизвестно. Состояние приложения показывает ca_get.")
 	}
+	// The specification does not list the states of an app: the note
+	// names none.
+	out := map[string]any{"status": status, "name": name, "action": action, "note": note}
 	if m, err := cli.Get(ctx, name); err == nil {
 		if st, _ := m["status"].(string); st != "" {
 			out["app_status"] = st

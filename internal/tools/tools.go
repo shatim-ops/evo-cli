@@ -607,9 +607,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "disk_list",
 			Description: "List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). Read-only.",
-			InputSchema: objSchema(map[string]any{
-				"disk_id": uuidProp("Only this disk: e.g. one disk_create answered still creating."),
-			}),
+			InputSchema: objSchema(map[string]any{}),
 		},
 		{
 			Name:        "disk_create",
