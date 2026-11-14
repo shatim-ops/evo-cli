@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -209,22 +211,31 @@ func operationTime(m map[string]any, keys ...string) (time.Time, bool) {
 // with no read of its own (a backup, an addon), listed — the read of the
 // list that names it. One place for every create that answers an
 // operation.
+//
+// The write is made and paid for: the read of the state is one attempt
+// within goingOnLimit for all of its reads together (k8s_add_nodepool's
+// are two), its failure named in resource_status_error, not waited out —
+// the answer with the id goes («Риск», conclusion 242, У1; as vm_get's
+// read of the interfaces, conclusion 209). A resource the reads do not
+// find yet may be on its way — not "deleted", as a done operation's read
+// says — and the answer says not to create it again (У2).
 func (s *Registry) goingOn(ctx context.Context, ans map[string]any, opTool, opID, id string, listed func(context.Context) (map[string]any, error)) {
 	if opID == "" {
 		return
 	}
 	nextStep(ans, opTool, map[string]any{"operation_id": opID, "wait_seconds": opWaitMaxSeconds})
+	ctx, cancel := context.WithTimeout(httpretry.Once(ctx), goingOnLimit)
+	defer cancel()
 	m := map[string]any{"resource_id": id}
 	switch {
 	case listed != nil:
 		item, err := listed(ctx)
 		switch {
 		case err != nil:
-			m["resource_status_error"] = clierrors.CodeAPIError
+			m["resource_status_error"] = clierrors.Reason(err)
 		case item == nil:
 			m["resource_status"] = "not_found"
-			m["resource_status_note"] = i18n.T("the list does not name it yet: it may be on its way; the read of the operation says when it ends",
-				"список его ещё не называет: он может быть в пути; чтение операции скажет, когда она кончится")
+			m["resource_status_note"] = notFoundYet()
 		default:
 			for _, k := range []string{"status", "state", "phase"} {
 				if v, _ := item[k].(string); v != "" {
@@ -235,12 +246,25 @@ func (s *Registry) goingOn(ctx context.Context, ans map[string]any, opTool, opID
 		}
 	case id != "":
 		s.addResourceStatus(ctx, opTool, m)
+		if m["resource_status"] == "not_found" {
+			m["resource_status_note"] = notFoundYet()
+		}
 	}
 	for _, k := range []string{"resource_status", "resource_status_error", "resource_status_note"} {
 		if v, ok := m[k]; ok {
 			ans[k] = v
 		}
 	}
+}
+
+// goingOnLimit bounds the read of the state goingOn adds to the answer of
+// a create: the limit of a preview's read.
+var goingOnLimit = engine.PreviewLookupTimeout
+
+// notFoundYet is what "not_found" means right after a create.
+func notFoundYet() string {
+	return i18n.T("the reads do not find it yet: it may still be on its way; the read of the operation says when it ends and how — do not create it again",
+		"чтение его ещё не находит: он может быть ещё в пути; чтение операции скажет, когда и чем она кончится, — не создавайте его повторно")
 }
 
 // listedBy is the read of a resource with no read of its own: the item of
