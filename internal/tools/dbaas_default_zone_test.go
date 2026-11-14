@@ -37,6 +37,22 @@ func TestDbaasZone_TheZoneItsUseDeclares(t *testing.T) {
 	}
 }
 
+// A zone the list marks closed (enabled=false) takes no new resource: the
+// default of a DBaaS create is never one, and with every zone closed the
+// call is refused before any question («Риск», conclusion 269).
+func TestDbaasZone_AClosedZoneIsNoDefault(t *testing.T) {
+	no := false
+	closed := func(z *provision.AvailabilityZone) *provision.AvailabilityZone { z.Enabled = &no; return z }
+	zones := []*provision.AvailabilityZone{{ID: "z1", Name: "ru.AZ-1"}, closed(&provision.AvailabilityZone{ID: "z2", Name: "ru.AZ-2"})}
+	if _, shown, err := dbaasZone(context.Background(), &engine.Engine{Cloud: &listedZones{zones: zones}}, ""); err != nil || shown != "ru.AZ-1" {
+		t.Errorf("ru.AZ-2 closed: the zone %q (%v), want the open ru.AZ-1", shown, err)
+	}
+	all := []*provision.AvailabilityZone{closed(&provision.AvailabilityZone{ID: "z1", Name: "ru.AZ-1"}), closed(&provision.AvailabilityZone{ID: "z2", Name: "ru.AZ-2"})}
+	if _, shown, err := dbaasZone(context.Background(), &engine.Engine{Cloud: &listedZones{zones: all}}, ""); err == nil {
+		t.Errorf("every zone closed: the zone %q, want a refusal", shown)
+	}
+}
+
 // listedZones lists the zones it is given.
 type listedZones struct {
 	cancelCloud
