@@ -24,6 +24,16 @@ while [ $# -gt 0 ]; do
 done
 if [ "$post" = 1 ]; then cat >/dev/null; echo '{"access_token":"tok-fake"}'; exit 0; fi
 all='{"items":[{"id":"00000000-0000-4000-8000-0000000000e1","state":"running","availability_zone":{"id":"za"},"flavor":{"id":"f1"},"image":{"id":"i1"}},{"id":"00000000-0000-4000-8000-0000000000e2","state":"stopped","availability_zone":{"id":"za"},"flavor":{"id":"f1"},"image":{"id":"i1"}},{"id":"00000000-0000-4000-8000-0000000000e3","state":"running","availability_zone":{"id":"zb"},"flavor":{"id":"f2"}}]}'
+if [ -n "${FAKE_BROKEN:-}" ]; then
+	case "$url" in
+	*vms/*) b='{"id":"x","state":{"leak":"SECRETCARD"},"image":"SECRETIMG2"}' ;;
+	*vms*) b='{"items":[{"id":"bad id?x=SECRETID","state":{"leak":"SECRETSTATE"},"image":"SECRETIMG","availability_zone":{"id":"za"},"flavor":{"id":"f1"}}]}' ;;
+	*) b='{"items":[]}' ;;
+	esac
+	printf '%s' "$b" >"$out"
+	printf 200
+	exit 0
+fi
 case "$url" in
 *vms/00000000-0000-4000-8000-0000000000e3) b='{"id":"00000000-0000-4000-8000-0000000000e3","state":"running"}' ;;
 *vms/00000000-*) b='{"id":"x","state":"running","image":{"id":"i1","name":"img-name-secret"}}' ;;
@@ -65,6 +75,14 @@ if grep -q '^::error::' <<<"$out"; then
 	echo "FAIL: без STRICT — ::error::"
 	fail=1
 fi
+# Повреждённый ответ (#1757, #1758): state — объект, image — строка, id не
+# формы UUID. Ни фрагмента ответа в выводе (stdout и stderr): ошибки jq и
+# curl скрыты счётом, id чужой формы в URL не идёт.
+broken=$(PATH="$work/bin:$PATH" FAKE_BROKEN=1 KEY_ID=k SECRET=s PROJECT=p GITHUB_WORKSPACE="$here/../.." bash "$here/list_filter_probe.sh" 2>&1) || true
+if grep -q 'SECRET' <<<"$(grep -v '^::add-mask::' <<<"$broken")"; then
+	echo "FAIL: повреждённый ответ — его фрагмент в выводе:"; grep 'SECRET' <<<"$broken" | sed 's/^/  | /'; fail=1
+fi
+grep -qE '^vm_card_image +id не формы UUID: 1 — карточки не читались$' <<<"$broken" || { echo "FAIL: id чужой формы не назван"; printf '%s\n' "$broken" | sed 's/^/  | /'; fail=1; }
 code=0
 strict=$(PATH="$work/bin:$PATH" STRICT=1 KEY_ID=k SECRET=s PROJECT=p GITHUB_WORKSPACE="$here/../.." bash "$here/list_filter_probe.sh" 2>&1) || code=$?
 if [ "$code" != 1 ] || ! grep -qE '^::error::.* vms:availability_zone_ids vms:statuses — ' <<<"$strict"; then
