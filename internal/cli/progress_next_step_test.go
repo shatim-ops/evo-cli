@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -170,6 +171,14 @@ func TestProgress_ChangeGoingOnNamesTheNextStep(t *testing.T) {
 			// operation does not stand for it (Астра, #1815, class R).
 			if resourceStateNamed[c.tool.Name] && answer["resource_status"] == nil && answer["resource_status_error"] == nil {
 				t.Errorf("%s: status %s, and no resource_status: the agent sees the operation, not the resource", c.tool.Name, status)
+			}
+			// The state is the service's word: marked as its text (Астра,
+			// #1925); "not_found" is evo's.
+			if st, _ := answer["resource_status"].(string); resourceStateNamed[c.tool.Name] && st != "" && st != "not_found" {
+				u, _ := answer["_untrusted"].([]any)
+				if !slices.Contains(u, any("resource_status")) {
+					t.Errorf("%s: resource_status %q is the service's text, and _untrusted %v does not name it", c.tool.Name, st, answer["_untrusted"])
+				}
 			}
 			if want := afterOperation[c.tool.Name]; want != "" {
 				if note, _ := answer["note"].(string); !strings.Contains(note, want) {
