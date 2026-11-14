@@ -116,3 +116,83 @@ func TestMadeAnswer_TheStateOfTheCloudIsQuoted(t *testing.T) {
 		}
 	}
 }
+
+// madeRun runs madeAnswer over reads: each read lists the resource in the
+// state it names, "" leaves it out; the last read repeats.
+func madeRun(t *testing.T, reads []string, m made) map[string]any {
+	t.Helper()
+	const id = "00000000-0000-4000-8000-0000000000f1"
+	n := 0
+	m.read = func(context.Context) ([]map[string]any, error) {
+		st := reads[min(n, len(reads)-1)]
+		n++
+		items := []map[string]any{{"id": "other", "state": "created"}}
+		if st != "" {
+			items = append(items, map[string]any{"id": id, "state": st})
+		}
+		return items, nil
+	}
+	eng := &engine.Engine{Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 30 * time.Millisecond}}
+	res := map[string]any{m.field: map[string]any{"id": id, "state": "creating"}}
+	text, _ := madeAnswer(context.Background(), eng, res, m)
+	var out map[string]any
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		t.Fatalf("not JSON: %s", text)
+	}
+	return out
+}
+
+var subnetMade = made{tool: "subnet_create", list: "list_subnets", field: "subnet", idField: "subnet_id", what: "Subnet", whatRU: "Подсеть"}
+
+// A resource the last read did not list — never listed (Астра #1920) or
+// listed and then gone (Астра #1922) — is waiting with its state unknown,
+// and the text says evo does not know it, not that the platform is still
+// making it; the step reads it by id.
+func TestMadeAnswer_AResourceTheLastReadDidNotListIsUnknown(t *testing.T) {
+	for name, reads := range map[string][]string{
+		"never listed":      {""},
+		"listed, then gone": {"creating", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := madeRun(t, reads, subnetMade)
+			if m["status"] != "waiting" || m["subnet_state"] != "unknown" || m["next_tool"] != "list_subnets" {
+				t.Errorf("status %v, subnet_state %v, next_tool %v; want waiting, unknown, list_subnets", m["status"], m["subnet_state"], m["next_tool"])
+			}
+			next, _ := m["next"].(string)
+			if strings.Contains(next, "has not finished") || !strings.Contains(next, "evo does not know its state") {
+				t.Errorf("next: %q", next)
+			}
+		})
+	}
+}
+
+// A note that says the resource is created is said of a made resource
+// alone; every other outcome gets the note of a resource not yet made
+// (Астра #1921).
+func TestMadeAnswer_NoteSaysCreatedOnlyOfAMadeResource(t *testing.T) {
+	m := made{tool: "snat_create", list: "snat_list", field: "nat_gateway", idField: "nat_gateway_id", what: "SNAT gateway", whatRU: "Шлюз SNAT",
+		note: "DONE note", noteRU: "DONE", pending: "PENDING note", pendingRU: "PENDING"}
+	for name, c := range map[string]struct {
+		reads []string
+		note  string
+	}{
+		"made": {[]string{"created"}, "DONE note"},
+		// A failed one: no note — its refusal says what happened and asks
+		// the person about the delete («Риск», conclusion 246, У1).
+		"failed":   {[]string{"error_creating"}, ""},
+		"creating": {[]string{"creating"}, "PENDING note"},
+		"absent":   {[]string{""}, "PENDING note"},
+		"other":    {[]string{"pending"}, "PENDING note"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := madeRun(t, c.reads, m)
+			note := out["note"]
+			if d, ok := out["details"].(map[string]any); ok && note == nil {
+				note = d["note"]
+			}
+			if c.note == "" && note != nil || c.note != "" && note != c.note {
+				t.Errorf("note %v, want %q: %v", note, c.note, out)
+			}
+		})
+	}
+}

@@ -246,6 +246,125 @@ func TestFailedRequest_AnsweredIDFromTheBodyOrQueryIsDropped(t *testing.T) {
 	}
 }
 
+// Фильтр эха проверяет тело так, как его прочтёт сервис: JSON — по
+// декодированным строкам (escape-последовательность не прячет значение), а
+// тело, которое нельзя перечитать целиком (больше предела проверки или без
+// GetBody), может нести секрет — id ответа в текст ошибки не идёт: нельзя
+// проверить отсутствие эха — не id (внешняя проверка Астры, #1933). Оба
+// транспорта. Тело без эха id сохраняет: фильтр не глушит всё подряд.
+func TestFailedRequest_AnsweredIDNotShownAbsentFromTheBodyIsDropped(t *testing.T) {
+	large := `{"secret":"AbCd-opaque","padding":"` + strings.Repeat("x", maxEchoBody) + `"}`
+	type body struct {
+		name, body string
+		replayable bool
+		kept       bool
+	}
+	for _, c := range []body{
+		{"json escaped", `{"secret":"\u0041bCd-opaque"}`, true, false},
+		{"json escaped key", `{"\u0041bCd-opaque":1}`, true, false},
+		{"large body", large, true, false},
+		{"non replayable", `{"secret":"AbCd-opaque"}`, false, false},
+		{"non replayable without echo", `{"secret":"other"}`, false, false},
+		{"json without echo", `{"secret":"\u006fther"}`, true, true},
+		{"form without echo", "a=b", true, true},
+	} {
+		for _, tr := range []struct {
+			name string
+			rt   func(http.RoundTripper) http.RoundTripper
+		}{
+			{"ua", UserAgent},
+			{"retry", func(b http.RoundTripper) http.RoundTripper { return &Transport{Base: b} }},
+		} {
+			f := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.Body != nil {
+					_, _ = io.Copy(io.Discard, r.Body)
+				}
+				h := http.Header{}
+				h.Set(RequestIDHeader, "abcd-opaque")
+				return &http.Response{StatusCode: 403, Header: h, Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
+			})
+			ctx := TraceRequests(context.Background())
+			var rd io.Reader = strings.NewReader(c.body)
+			if !c.replayable {
+				rd = io.MultiReader(rd)
+			}
+			req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://iam.api.cloud.ru/api/v1/auth/token", rd)
+			resp, err := tr.rt(f).RoundTrip(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			got, ok := FailedRequest(ctx, 403)
+			if !ok || got.Sent == "" {
+				t.Fatalf("%s/%s: no failed request: %+v", tr.name, c.name, got)
+			}
+			if kept := got.Answered != ""; kept != c.kept {
+				t.Errorf("%s/%s: the answer's id kept %v, want %v", tr.name, c.name, kept, c.kept)
+			}
+		}
+	}
+}
+
+// Эхо секрета с приставкой или суффиксом — тоже секрет: значение запроса
+// (заголовок, строка, тело) внутри id ответа так же исключает id из текста
+// ошибки, как id внутри значения. Короткие значения (true, GET) id не
+// гасят (заключение «Риска» 249 к #1951, У1).
+func TestFailedRequest_AnsweredIDHoldingASecretIsDropped(t *testing.T) {
+	const secret = "S3cr3t-0paque"
+	for _, c := range []struct {
+		name, auth, body, query, echo string
+		kept                          bool
+	}{
+		{"token with a prefix", "Bearer " + secret, "", "", "req-" + secret, false},
+		{"token with a suffix", "Bearer " + secret, "", "", secret + ".1", false},
+		{"body value with a prefix", "", `{"secret":"` + secret + `"}`, "", "x-" + strings.ToLower(secret), false},
+		{"form value with a prefix", "", "client_secret=" + secret, "", "x-" + secret, false},
+		{"query value with a suffix", "", "", "token=" + secret, secret + "-1", false},
+		{"short values do not count", "Bearer short", `{"ok":true,"n":12}`, "a=GET", "req-short-true-12-get", true},
+	} {
+		for _, tr := range []struct {
+			name string
+			rt   func(http.RoundTripper) http.RoundTripper
+		}{
+			{"ua", UserAgent},
+			{"retry", func(b http.RoundTripper) http.RoundTripper { return &Transport{Base: b} }},
+		} {
+			f := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.Body != nil {
+					_, _ = io.Copy(io.Discard, r.Body)
+				}
+				h := http.Header{}
+				h.Set(RequestIDHeader, c.echo)
+				return &http.Response{StatusCode: 403, Header: h, Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
+			})
+			ctx := TraceRequests(context.Background())
+			url, method, body := "https://iam.api.cloud.ru/api/v1/auth/token", http.MethodGet, io.Reader(nil)
+			if c.query != "" {
+				url += "?" + c.query
+			}
+			if c.body != "" {
+				method, body = http.MethodPost, strings.NewReader(c.body)
+			}
+			req, _ := http.NewRequestWithContext(ctx, method, url, body)
+			if c.auth != "" {
+				req.Header.Set("Authorization", c.auth)
+			}
+			resp, err := tr.rt(f).RoundTrip(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			got, ok := FailedRequest(ctx, 403)
+			if !ok || got.Sent == "" {
+				t.Fatalf("%s/%s: no failed request: %+v", tr.name, c.name, got)
+			}
+			if kept := got.Answered != ""; kept != c.kept {
+				t.Errorf("%s/%s: the answer's id %q kept %v, want %v", tr.name, c.name, c.echo, kept, c.kept)
+			}
+		}
+	}
+}
+
 // Ошибка записи называет id записи, а не проверочного чтения после неё с
 // тем же статусом: POST 403, затем GET 403 — ошибка вызова о POST
 // (внешняя проверка, #1754; остаток 2 заключения «Риска» 202).

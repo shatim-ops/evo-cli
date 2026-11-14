@@ -40,7 +40,8 @@ last update, no more of the spec) it also reports, per request:
                 plan 1.6, the ratchet of the specs; «полнота ресурса», #496).
                 Ignored without a declaration: deprecated fields, *_at and
                 display* names, the fields of a mini reference ({id, name}),
-                readOnly fields of a body. A new object is reported once,
+                readOnly fields of a body, and the console fields of a VM
+                (consoleFields below), which the baseline does not keep. A new object is reported once,
                 not with every field under it.
   field-gone    a field of the baseline the spec no longer has: `info`
   field-baseline-missing  a request without a baseline: `warn`
@@ -77,6 +78,22 @@ enum:
 
 --update-states rewrites the states from the specs, key by key; the test of
 the worlds then asks for a row for each new state.
+
+With the console fields of a VM as package provision declares them
+(consoleFields in internal/provision/*.go outside the tests: the one list
+whose values evo hides, D110; brief docs/internal/briefs/vm-console.md §5)
+it also reports, for the answers of the VM paths of Compute (/api/v1/vms…,
+/api/v1.1/vms):
+
+  console-field-undeclared  a field of an answer whose name reads as a
+                            console (console, vnc, spice) and that the list
+                            does not have: `error` — evo would not hide its
+                            value («Риск», conclusion 244)
+  console-field-gone        a field of the list that no answer of the VM
+                            paths has: `error` — the name drifted, and the
+                            new one is not hidden
+  console-fields-missing    the list is not declared once in provision:
+                            `error`
 
 Findings are `error` (the request contradicts the spec), `warn` (the spec
 says nothing, or the code reads a field the spec does not have) or `info`.
@@ -267,6 +284,56 @@ def request_key(svc, req):
     return f"{svc['name']} {req['method']} {req['path']}"
 
 
+# The console fields of a VM (console-field-*): the paths of the VM in
+# Compute, the names that read as a console, and the declaration in Go.
+VM_PATH_RE = re.compile(r"^/api/v1(\.1)?/vms(/|$)")
+CONSOLE_NAME_RE = re.compile(r"console|vnc|spice", re.I)
+CONSOLE_DECL_RE = re.compile(r"\bvar\s+consoleFields\s*=\s*\[\]string\{([^}]*)\}")
+
+
+def console_fields(root):
+    """consoleFields of internal/provision outside its tests; None unless it
+    is declared exactly once."""
+    found = []
+    for path in sorted(glob.glob(os.path.join(root, "internal", "provision", "*.go"))):
+        if path.endswith("_test.go"):
+            continue
+        with open(path, encoding="utf-8") as f:
+            found += [re.findall(r'"([^"]+)"', m.group(1)) for m in CONSOLE_DECL_RE.finditer(f.read())]
+    return found[0] if len(found) == 1 and found[0] else None
+
+
+def field_name(path):
+    """The name of the field a path of schema_fields ends with."""
+    return path.replace("[]", "").split(".")[-1]
+
+
+def console_path(path, declared):
+    """Whether path ends with a console field of the list: the baseline of
+    the fields does not keep it (variant (a) of D110, finding #1860) and
+    field-new does not ask for it — the list declares it, and
+    console-field-* hold its name against the spec."""
+    return field_name(path) in (declared or [])
+
+
+def check_console(spec, svc, req, declared):
+    """console-field-undeclared of the answer of one request of a VM path of
+    Compute, and the names of the fields of that answer."""
+    if svc["name"] != "compute" or not VM_PATH_RE.match(req["path"]):
+        return [], None
+    _, _, op = spec.operation(req["method"], req["path"])
+    schema = success_schema(op) if op is not None else None
+    fields = schema_fields(schema) if schema else {}
+    names, out = set(), []
+    for path in sorted(fields):
+        name = field_name(path)
+        names.add(name)
+        if CONSOLE_NAME_RE.search(name) and name not in (declared or []):
+            out.append(["error", f"console-field-undeclared:{path}",
+                        f"поле ответа `{path}` по имени — консоль ВМ, но его нет в provision.consoleFields: evo не скроет его значение — добавить в перечень"])
+    return out, names
+
+
 TIME_RE = re.compile(r"(_at|At)$")
 DISPLAY_RE = re.compile(r"^display[_A-Z]")
 
@@ -277,7 +344,7 @@ def ignored_field(path, meta, body):
             or bool(TIME_RE.search(last)) or bool(DISPLAY_RE.match(last)))
 
 
-def check_fields(svc, req, current, baseline):
+def check_fields(svc, req, current, baseline, declared=None):
     """field-new / field-gone / field-baseline-missing of one request."""
     out = []
     key = request_key(svc, req)
@@ -297,7 +364,7 @@ def check_fields(svc, req, current, baseline):
             continue
         if path in used or any(u.startswith(path + ".") or u.startswith(path + "[]") for u in used):
             continue
-        if ignored_field(path, current[path], body):
+        if ignored_field(path, current[path], body) or console_path(path, declared):
             continue
         reported.append(path)
         where = "тела запроса" if body else "ответа"
@@ -842,6 +909,8 @@ def main():
             rows.append((svc["name"], where, req.get("code", ""), level, fid, text))
 
     specs = {}
+    declared = console_fields(args.root)
+    console_names = None  # the fields of the answers of the VM paths
     for svc in contract["services"]:
         if args.code_only:
             for req in svc["requests"]:
@@ -857,9 +926,22 @@ def main():
             current = request_fields(spec, req)
             # No operation in the spec (path-missing): an empty baseline, so
             # the operation's fields are new once the spec has it.
-            fresh[request_key(svc, req)] = sorted(current or {})
-            fields = [] if args.update_fields else check_fields(svc, req, current, baseline)
-            emit(svc, req, check_code_ref(req, used) + check_request(spec, req) + fields)
+            fresh[request_key(svc, req)] = sorted(p for p in (current or {}) if not console_path(p, declared))
+            fields = [] if args.update_fields else check_fields(svc, req, current, baseline, declared)
+            console, names = check_console(spec, svc, req, declared)
+            if names is not None:
+                console_names = (console_names or set()) | names
+            emit(svc, req, check_code_ref(req, used) + check_request(spec, req) + fields + console)
+
+    if console_names is not None:
+        if declared is None:
+            rows.append(("compute", "—", "internal/provision", "error", "console-fields-missing",
+                         "перечень полей консоли ВМ `consoleFields` не объявлен ровно один раз в internal/provision вне тестов"))
+            failed += 1
+        for name in sorted(set(declared or []) - console_names):
+            rows.append(("compute", "—", "internal/provision", "error", f"console-field-gone:{name}",
+                         f"поля `{name}` перечня consoleFields нет ни в одном ответе путей ВМ спецификации: имя разошлось — новое evo не скроет"))
+            failed += 1
 
     if args.update_fields and not args.code_only:
         doc = {"_comment": baseline_doc.get("_comment") or FIELDS_COMMENT, "requests": dict(sorted(fresh.items()))}
