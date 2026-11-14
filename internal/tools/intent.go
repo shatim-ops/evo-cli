@@ -7,7 +7,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -145,126 +144,12 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			intent.Settle(dir, rec)
 			return
 		}
-		// A create the platform took whose operation goes on in another
-		// tool's read: the record stays with the id and that step, and the
-		// same call again reads it rather than sending a second create
-		// (repeatOfMade; Астра #1963, the full audit of 14.11, finding 01).
-		if id, next, nextArgs, ok := madeGoesOn(name, answer); ok {
-			rec.Made, rec.Next, rec.NextArgs, rec.Sent = id, next, nextArgs, true
-			intent.End(rec)
-			return
-		}
+		// A create the platform took whose operation goes on: the same
+		// call again reads it (rememberMade, repeatOfMade).
+		r.rememberMade(rec, answer)
 		intent.Close(rec)
 		intent.Settle(dir, rec)
 	}, nil
-}
-
-// madeGoesOn tells the answer of a create whose resource the platform took
-// (the answer names its id) and whose operation goes on in the read of
-// another tool, its next step — or, with no step named, in the declared
-// list of the resource while the answer says creating or waiting: what a repeat of the call reads instead of
-// creating again. A refusal, an answer that names no id or no step, and a
-// step of the same tool (held: sameToolNext) are not.
-func madeGoesOn(tool, answer string) (id, next string, nextArgs map[string]any, ok bool) {
-	if _, isCreate := createdOf(tool); !isCreate || answerReason(answer) != "" {
-		return "", "", nil, false
-	}
-	var m map[string]any
-	if json.Unmarshal([]byte(answer), &m) != nil {
-		return "", "", nil, false
-	}
-	next, _ = m["next_tool"].(string)
-	nextArgs, _ = m["next_args"].(map[string]any)
-	id = createdID(tool, m)
-	if id == "" || next == tool {
-		return "", "", nil, false
-	}
-	if next == "" {
-		// An answer that says the resource is on its way and names no
-		// step: the declared list of the resource is the read, when it
-		// needs no parent.
-		c, _ := createdOf(tool)
-		if st, _ := m["status"].(string); (st != "creating" && st != "waiting") || c.list == "" || len(c.listArgs) > 0 {
-			return "", "", nil, false
-		}
-		next, nextArgs = c.list, nil
-	}
-	return id, next, nextArgs, true
-}
-
-// repeatOfMade answers a call of tool name whose same call before was
-// taken by the platform and goes on (madeGoesOn): it reads the step of
-// that operation and sends no second create — the consent given was to one
-// resource (Астра #1963, the full audit of 14.11, finding 01; release plan
-// 1.9, the line of #1992). What the list shows by the name is made: those
-// records close, and the call goes on as any other — the plan of the tool
-// answers the name taken. A call of other arguments is not the same call
-// and goes on too. ok false when no such record is there.
-func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[string]any) (text string, isErr, ok bool) {
-	if _, isCreate := createdOf(name); !isCreate {
-		return "", false, false
-	}
-	root, rooted := r.stateDir()
-	resource, target, err := r.resourceOf(ctx, name, args)
-	if !rooted || err != nil || (resource == "" && target == "") {
-		return "", false, false
-	}
-	// The same call: the same arguments but the consent and the wait
-	// (canonArgs). A call by the same name with other arguments is
-	// another create, the person's to make (the line of #1992).
-	canon := r.canonArgs(name, args)
-	var made []intent.Intent
-	for _, in := range pendingIn(ctx, root) {
-		if in.Made != "" && in.Tool == name && in.Name == resource && in.Target == target && in.SameCall(canon) {
-			made = append(made, in)
-		}
-	}
-	if len(made) == 0 {
-		return "", false, false
-	}
-	eng, _ := r.engineOfCall(args)
-	if eng == nil {
-		return "", false, false
-	}
-	cur, project := eng.Maker(), projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
-	var mine []intent.Intent
-	for _, in := range made {
-		if in.Key == nil || in.Key.Other(cur) || in.ProjectID != project {
-			continue
-		}
-		if _, listed := r.checkByList(ctx, in, in.ProjectID); listed {
-			intent.Close(in)
-			forgetPending(ctx)
-			continue
-		}
-		mine = append(mine, in)
-	}
-	if len(mine) == 0 {
-		return "", false, false
-	}
-	last := mine[len(mine)-1]
-	said := i18n.Tf("An earlier %s of %s was taken by the platform as %s and its outcome is not known yet: no second create was sent; this is its progress.",
-		"Предыдущий вызов %s для %s принят платформой как %s, его исход ещё неизвестен: второе создание не отправлено; ниже — его ход.",
-		name, quoteCloud(resource), last.Made)
-	out := map[string]any{"status": "waiting", "message": said}
-	if t, found := r.Lookup(last.Next); found && t.Handler != nil {
-		read, readErr := t.Handler(ctx, maps.Clone(last.NextArgs))
-		var m map[string]any
-		if json.Unmarshal([]byte(read), &m) == nil {
-			out = m
-			if was, _ := m["message"].(string); was != "" {
-				said += " " + was
-			}
-			out["message"] = said
-		}
-		isErr = readErr
-	}
-	if out["status"] == nil {
-		out["status"] = "waiting"
-	}
-	out["repeat_of"] = map[string]any{"tool": name, "id": last.Made, "started_at": last.StartedAt.UTC().Format(time.RFC3339)}
-	nextStep(out, last.Next, maps.Clone(last.NextArgs))
-	return toJSON(out), isErr, true
 }
 
 // engineOfCall is the engine a call with args goes with: that of its own
@@ -506,9 +391,7 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 		// A held record is an operation evo goes on with, not a cut call
 		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
 		// call whose change was seen going on, HoldCut).
-		// A record whose create the platform took (Made) is not a cut call:
-		// its repeat reads the operation (repeatOfMade).
-		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil || in.Made != "" {
+		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil {
 			continue
 		}
 		ofTool = append(ofTool, in)
