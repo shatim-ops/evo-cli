@@ -106,45 +106,10 @@ type Decl struct {
 	RefArgs []nameRef
 }
 
-// allIDArgs are the tools that declare arguments naming a resource by id,
-// and those arguments.
-func allIDArgs() iter.Seq2[string, []idArg] {
-	return func(yield func(string, []idArg) bool) {
-		for name, d := range decls {
-			if d.IDArgs != nil && !yield(name, d.IDArgs) {
-				return
-			}
-		}
-	}
-}
-
-// allRefArgs are the tools that take a name for a reference, and those
-// arguments.
-func allRefArgs() iter.Seq2[string, []nameRef] {
-	return func(yield func(string, []nameRef) bool) {
-		for name, d := range decls {
-			if d.RefArgs != nil && !yield(name, d.RefArgs) {
-				return
-			}
-		}
-	}
-}
-
 // deleteOf is what tool deletes, and whether it is a delete.
 func deleteOf(tool string) (deleteTarget, bool) {
 	d := decls[tool].Delete
 	return d, d.arg != ""
-}
-
-// allDeletes are the deletes and what they delete.
-func allDeletes() iter.Seq2[string, deleteTarget] {
-	return func(yield func(string, deleteTarget) bool) {
-		for name, d := range decls {
-			if d.Delete.arg != "" && !yield(name, d.Delete) {
-				return
-			}
-		}
-	}
 }
 
 // createdOf is the declaration of what tool creates, and whether it is a
