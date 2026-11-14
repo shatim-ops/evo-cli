@@ -90,6 +90,13 @@ var resourceStateNamed = map[string]bool{
 	"pg_backup_create": true, "pg_create": true, "redis_create": true,
 }
 
+// afterOperation are the creates whose resource the read of the operation
+// does not read (it knows only the operation's id): the note names the
+// read after the operation ends (#1816; «релиз», §0 rule 6: no second
+// field of the step in 1.9 — a convention of the step after an operation
+// is the backlog of 1.10).
+var afterOperation = map[string]string{"pg_backup_create": "pg_backups", "k8s_add_addon": "k8s_kubectl"}
+
 // nextStepProblem reads the answer of a change that is going on: "" when
 // it names the machine's next step (D69, nextStep), else what is wrong.
 // One rule for the two ways the platform reports a change: with an
@@ -163,6 +170,11 @@ func TestProgress_ChangeGoingOnNamesTheNextStep(t *testing.T) {
 			// operation does not stand for it (Астра, #1815, class R).
 			if resourceStateNamed[c.tool.Name] && answer["resource_status"] == nil && answer["resource_status_error"] == nil {
 				t.Errorf("%s: status %s, and no resource_status: the agent sees the operation, not the resource", c.tool.Name, status)
+			}
+			if want := afterOperation[c.tool.Name]; want != "" {
+				if note, _ := answer["note"].(string); !strings.Contains(note, want) {
+					t.Errorf("%s: the note does not name %s, the read after the operation ends: %s", c.tool.Name, want, note)
+				}
 			}
 		default:
 			t.Errorf("%s answers status %q, a word of neither vocabulary: add it to statusGoingOn (the cloud is still making the change — the answer then names next_tool) or to statusOver (the change is made)", c.tool.Name, status)

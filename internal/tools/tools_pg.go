@@ -887,7 +887,12 @@ func (s *Registry) planPgBackupCreate(ctx context.Context, args map[string]any) 
 			}
 			return lostCreate(ctx, "pg_backup_create", list, i18n.T("backup", "резервная копия"), name, nil, "pg_backups cluster_id="+cid, fmt.Errorf(i18n.T("create backup: %w", "создание резервной копии: %w"), err))
 		}
-		out := map[string]any{"status": "backing_up", "operation_id": op.ID, "note": "Async — poll pg_operation(operation_id)."}
+		// The read of the operation knows only its id and reads no backup:
+		// the note names the read after it ends (#1816; a convention of the
+		// step after an operation — the backlog of 1.10).
+		out := map[string]any{"status": "backing_up", "operation_id": op.ID,
+			"note": i18n.Tf("Async — poll pg_operation(operation_id). The read of the operation does not read a backup: once it is done, pg_backups cluster_id=%s names the backup and its state.",
+				"Асинхронно — опрашивайте pg_operation(operation_id). Чтение операции резервную копию не читает: когда операция кончится, копию и её состояние назовёт pg_backups cluster_id=%s.", cid)}
 		if op.ResourceID != "" {
 			out["backup_id"] = op.ResourceID
 		}
