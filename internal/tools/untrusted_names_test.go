@@ -57,7 +57,7 @@ func hostileVPCs() map[string]any {
 }
 
 // workloadFields are the names a field of the workload's text goes by: a
-// tool that answers one declares it in untrustedFields.
+// tool that answers one declares it in Decl.Untrusted.
 var workloadFields = []string{"log", "logs", "output", "stdout", "stderr"}
 
 // textFields are the fields of an answer that are evo's words to the agent,
@@ -125,11 +125,11 @@ func checkHostileAnswer(t *testing.T, r *Registry, name string, args map[string]
 	var m any
 	_ = json.Unmarshal([]byte(text), &m)
 	// A field of workload text without the declaration is a tool
-	// that forgot untrustedFields.
-	if top, ok := m.(map[string]any); ok && !untrustedFields[name].marked() {
+	// that forgot Decl.Untrusted.
+	if top, ok := m.(map[string]any); ok && !decls[name].Untrusted.marked() {
 		for _, f := range workloadFields {
 			if _, has := top[f]; has {
-				t.Errorf("%s answers %q, the workload's text, but untrustedFields does not declare it", name, f)
+				t.Errorf("%s answers %q, the workload's text, but Decl.Untrusted does not declare it", name, f)
 			}
 		}
 	}
@@ -169,13 +169,13 @@ func requiredArgs(tl Tool) map[string]any {
 
 // The answers of logs, ca_logs and k8s_kubectl carry text the workload
 // wrote; "_untrusted" names those fields, so a client that reads it treats
-// them as data. Every tool of untrustedFields is in the registry, and the
+// them as data. Every tool of Decl.Untrusted is in the registry, and the
 // marker leaves the rest of the answer as it was.
 func TestUntrusted_FieldsMarked(t *testing.T) {
 	r := New(nil)
-	for name := range untrustedFields {
+	for name := range allUntrusted() {
 		if _, ok := r.Lookup(name); !ok {
-			t.Errorf("untrustedFields names %s, which is no tool", name)
+			t.Errorf("Decl.Untrusted names %s, which is no tool", name)
 		}
 	}
 	h := markUntrusted(untrustedAnswer{fields: []string{"log", "output"}}, func(context.Context, map[string]any) (string, bool) {
@@ -209,7 +209,7 @@ func TestUntrusted_FieldsMarked(t *testing.T) {
 // is marked now or no longer answers the name. A delete is here for its
 // preview, which names the resource it would delete. metrics_scrape answers
 // the body of the cloud's answer as it is (exposition): workload text, like
-// a log, for untrustedFields — reported to «разработка» with this list.
+// a log, for Decl.Untrusted — reported to «разработка» with this list.
 // Closes by 1.9, before rc.1 (owner's decision 13.11, #1590, question 19,
 // (c); release plan 1.9, «Просроченные убывающие списки»): what stays is an
 // exception declared with a reason «Риск · 1.9» accepted.

@@ -18,8 +18,8 @@ import (
 // GroupCard is the card of a tool group for an agent (#515, option A,
 // layer B): every tool of the group with its command, what it does, where
 // its ids come from, what a create makes and what deletes it, and what to
-// wait with — all from the registry's declarations (createdIDs,
-// deleteTargets, idArgs, the group's operation tool), so it cannot drift
+// wait with — all from the registry's declarations (Decl.Created,
+// Decl.Delete, Decl.IDArgs, the group's operation tool), so it cannot drift
 // from the code — and the group's notes (cardNotes). English, as the rules
 // of the evo skill it goes with; the form of consent is said there, once.
 // false for a group that is not.
@@ -167,7 +167,7 @@ var cardNotes = map[string][]string{
 
 // cardDoes is what a tool does, as the declarations say it.
 func cardDoes(t Tool, bound bool) string {
-	if c, ok := createdIDs[t.Name]; ok {
+	if c, ok := createdOf(t.Name); ok {
 		var parts []string
 		switch {
 		case c.id != "":
@@ -185,7 +185,7 @@ func cardDoes(t Tool, bound bool) string {
 		}
 		return "creates: " + strings.Join(parts, "; ")
 	}
-	if _, ok := deleteTargets[t.Name]; ok {
+	if _, ok := deleteOf(t.Name); ok {
 		if bound {
 			// alreadyDeleted on a server bound to its projects (H9).
 			return "deletes; a repeat answers `NOT_FOUND`"
@@ -206,7 +206,7 @@ func cardDoes(t Tool, bound bool) string {
 // cardIDs are where the id arguments of a tool come from: "`arg` ← `list`".
 func cardIDs(tool string) string {
 	var out []string
-	for _, a := range idArgs[tool] {
+	for _, a := range decls[tool].IDArgs {
 		if a.kind != nil && a.kind.listTool != "" {
 			out = append(out, "`"+a.name+"` ← `"+a.kind.listTool+"`")
 		}

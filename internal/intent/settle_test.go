@@ -86,6 +86,43 @@ func TestSettle_OnlyAnEarlierCallThatIsNotInFlight(t *testing.T) {
 	}
 }
 
+// The same arguments on another resource are another call: a name that
+// now resolves to another group (renamed, its name taken by a new one) —
+// the call there says nothing of the cut call on the first, whose record
+// stays (R-101). Same arguments and the same target, or a record with no
+// target, are settled as before.
+func TestSettle_TheSameArgumentsOnAnotherTargetAreAnotherCall(t *testing.T) {
+	key := &state.Maker{KeyID: "k"}
+	canon := []byte(`{"security_group":"db","ports":"8080"}`)
+	t0 := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+	gone := deadPID(t)
+	for _, c := range []struct {
+		name, was, now string
+		removed        bool
+	}{
+		{"another target", "security_group=g1", "security_group=g2", false},
+		{"the same target", "security_group=g1", "security_group=g1", true},
+		{"the record names no target", "", "security_group=g2", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := Dir(t.TempDir())
+			if _, err := Open(dir, Intent{Tool: "sg_rule_create", Target: c.was, ProjectID: "p", Key: key, PID: gone, StartedAt: t0, Canon: canon}); err != nil {
+				t.Fatal(err)
+			}
+			done, err := Open(dir, Intent{Tool: "sg_rule_create", Target: c.now, ProjectID: "p", Key: key, PID: os.Getpid(),
+				StartedAt: t0.Add(time.Minute), Canon: canon})
+			if err != nil {
+				t.Fatal(err)
+			}
+			Close(done)
+			Settle(dir, done)
+			if removed := len(Pending(dir)) == 0; removed != c.removed {
+				t.Errorf("removed %v, want %v: %+v", removed, c.removed, Pending(dir))
+			}
+		})
+	}
+}
+
 // The print tells the same arguments in the same record and shows nothing
 // between two records: the id of the record is in the hash.
 func TestPrint_OfTheRecordNotOfTheArgumentsAlone(t *testing.T) {

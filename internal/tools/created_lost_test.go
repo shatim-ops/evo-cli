@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-// lostCreate panics for a tool whose createdIDs declare no id field or no
+// lostCreate panics for a tool whose Decl.Created declare no id field or no
 // list, and only the fault matrix reached every caller (Qwen review of
 // #306). Every call lostCreate(ctx, "<tool>", …) in production code names
 // its tool by a literal, and that tool declares both.
@@ -48,12 +48,12 @@ func TestCreated_LostCreateCallersDeclareListAndField(t *testing.T) {
 				return true
 			}
 			tool, _ := strconv.Unquote(lit.Value)
-			c, ok := createdIDs[tool]
+			c, ok := createdOf(tool)
 			switch {
 			case !ok:
-				t.Errorf("%s: lostCreate for %s, which is not in createdIDs", fset.Position(call.Pos()), tool)
+				t.Errorf("%s: lostCreate for %s, which is not in Decl.Created", fset.Position(call.Pos()), tool)
 			case c.lostField() == "" || c.list == "" || c.field == "":
-				t.Errorf("%s: lostCreate for %s, whose createdIDs declare no id field (%q), list (%q) or field (%q)",
+				t.Errorf("%s: lostCreate for %s, whose Decl.Created declare no id field (%q), list (%q) or field (%q)",
 					fset.Position(call.Pos()), tool, c.lostField(), c.list, c.field)
 			}
 			return true

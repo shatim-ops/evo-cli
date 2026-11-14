@@ -12,6 +12,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,18 @@ type run struct {
 	// context and how long it ran.
 	err, ctxErr error
 	took        time.Duration
+	// started is when the run began, in whole seconds: the stubs stamp
+	// stub-times in the same unit (date +%s).
+	started int64
+}
+
+// stubScript is the file of a stub: before its body it stamps the time,
+// its name and arguments into stub-times under EVO_ROOT, so a run cut by its
+// limit says how many seconds each step came after the start (why) — the
+// measure the limit of the break tests is set by (finding of Astra #1741).
+// calls stays as the tests read it.
+func stubScript(body string) string {
+	return "#!/bin/sh\necho \"$(date +%s) ${0##*/} $*\" >>\"$EVO_ROOT/stub-times\"\n" + body
 }
 
 // runScript runs cmd, made with ctx, and reads the calls the stubs wrote
@@ -106,7 +119,7 @@ type run struct {
 func runScript(ctx context.Context, cmd *exec.Cmd, root string) run {
 	start := time.Now()
 	out, err := cmd.CombinedOutput()
-	r := run{root: root, out: string(out), err: err, ctxErr: ctx.Err(), took: time.Since(start)}
+	r := run{root: root, out: string(out), err: err, ctxErr: ctx.Err(), took: time.Since(start), started: start.Unix()}
 	r.ok = r.err == nil && r.ctxErr == nil
 	if b, rerr := os.ReadFile(filepath.Join(root, "calls")); rerr == nil {
 		r.calls = strings.Split(strings.TrimSpace(string(b)), "\n")
@@ -125,7 +138,33 @@ func (r run) why() string {
 	if lines := strings.Split(strings.TrimSpace(r.out), "\n"); lines[len(lines)-1] != "" {
 		last = lines[len(lines)-1]
 	}
-	return fmt.Sprintf("process: %v; context: %v; last step: %s; last output: %s; took %s", r.err, r.ctxErr, step, last, r.took.Round(10*time.Millisecond))
+	return fmt.Sprintf("process: %v; context: %v; last step: %s; last output: %s; took %s; steps: %s", r.err, r.ctxErr, step, last, r.took.Round(10*time.Millisecond), r.stepTimes(4))
+}
+
+// stepTimes is the last n stamps of stub-times as «+Ns name args», seconds
+// after the start of the run; "no stamps" when the stubs wrote none.
+func (r run) stepTimes(n int) string {
+	b, err := os.ReadFile(filepath.Join(r.root, "stub-times"))
+	if err != nil {
+		return "no stamps"
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	var out []string
+	for _, l := range lines {
+		at, rest, ok := strings.Cut(l, " ")
+		sec, perr := strconv.ParseInt(at, 10, 64)
+		if !ok || perr != nil {
+			continue
+		}
+		out = append(out, fmt.Sprintf("+%ds %s", sec-r.started, rest))
+	}
+	if len(out) == 0 {
+		return "no stamps"
+	}
+	return strings.Join(out, ", ")
 }
 
 func (r run) file(t *testing.T, path string) string {
@@ -173,7 +212,7 @@ func runInstall(t *testing.T, v vm) run {
 	}
 	root, bin := t.TempDir(), t.TempDir()
 	for name, body := range stubs {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(stubScript(body)), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}

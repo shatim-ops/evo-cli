@@ -17,13 +17,13 @@ import (
 )
 
 // foreignFakes are the tests whose fake of a create answers without the id
-// field createdIDs declares, on purpose: "file: test" → why.
+// field Decl.Created declares, on purpose: "file: test" → why.
 var foreignFakes = map[string]string{}
 
 // The stack tests replaced the handlers of steps with fakes of their own
 // shape (fakeOK(map{"id": …})), so the "ok" written where snat_create
 // answers nat_gateway.id went unseen (G13-14, class K2). A test that
-// replaces the handler of a create that answers an id (createdIDs) answers
+// replaces the handler of a create that answers an id (Decl.Created) answers
 // with the field declared there — or runs the real handler over a fake
 // API — unless foreignFakes says why not.
 func TestCreatedFakes_AnswerTheDeclaredID(t *testing.T) {
@@ -51,7 +51,7 @@ func TestCreatedFakes_AnswerTheDeclaredID(t *testing.T) {
 					return true
 				}
 				tool := replacedHandler(as.Lhs[0])
-				if createdIDs[tool].id == "" {
+				if decls[tool].Created.id == "" {
 					return true
 				}
 				if answersKey(as.Rhs[0], idKeys(tool)) {
@@ -59,7 +59,7 @@ func TestCreatedFakes_AnswerTheDeclaredID(t *testing.T) {
 				}
 				seen[key] = true
 				if foreignFakes[key] == "" {
-					bad = append(bad, fmt.Sprintf("%s (%s): the fake of %s answers without %q (createdIDs)", key, fset.Position(as.Pos()), tool, createdIDs[tool].id))
+					bad = append(bad, fmt.Sprintf("%s (%s): the fake of %s answers without %q (Decl.Created)", key, fset.Position(as.Pos()), tool, decls[tool].Created.id))
 				}
 				return true
 			})
@@ -97,7 +97,7 @@ func replacedHandler(e ast.Expr) string {
 // idKeys are the top-level keys of the answer of tool that hold its id.
 func idKeys(tool string) map[string]bool {
 	out := map[string]bool{}
-	c := createdIDs[tool]
+	c := decls[tool].Created
 	for _, p := range []string{c.id, c.lostField()} {
 		k, _, _ := strings.Cut(p, ".")
 		out[k] = true

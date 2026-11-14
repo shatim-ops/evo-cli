@@ -91,24 +91,9 @@ type nameRef struct {
 	kind refKind
 }
 
-// refArgs are the reference arguments a name may stand in for (D57): the
-// registry swaps the name for its id before the handler, so the checks, the
-// preview and the question see the id, and a name the project lacks is
-// refused before them.
-var refArgs = map[string][]nameRef{
-	"provision":        {{"subnet_id", refSubnet}},
-	"pg_create":        {{"subnet_id", refSubnet}},
-	"kafka_create":     {{"subnet_id", refSubnet}},
-	"redis_create":     {{"subnet_id", refSubnet}},
-	"k8s_create":       {{"subnet_id", refSubnet}},
-	"k8s_plan":         {{"subnet_id", refSubnet}},
-	"lb_create":        {{"subnet_id", refSubnet}},
-	"k8s_add_nodepool": {{"nodes_subnet_id", refSubnet}, {"security_group_id", refSecurityGroup}},
-}
-
-// takesName: the argument of the tool is in refArgs.
+// takesName: the argument of the tool is in Decl.RefArgs.
 func takesName(tool, arg string) bool {
-	for _, ra := range refArgs[tool] {
+	for _, ra := range decls[tool].RefArgs {
 		if ra.arg == arg {
 			return true
 		}
@@ -117,7 +102,7 @@ func takesName(tool, arg string) bool {
 }
 
 // resolveRefs is the handler with the names of refs swapped for their ids
-// (refArgs); a call that passes ids reads nothing more, and what is not a
+// (Decl.RefArgs); a call that passes ids reads nothing more, and what is not a
 // name of the list reaches the handler as it is.
 func (r *Registry) resolveRefs(refs []nameRef, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
