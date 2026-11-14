@@ -13,7 +13,7 @@ import (
 // only a string leaf: a key of a map, a typed list or map, a list of the
 // JSON («Риск», conclusion 234 to #1848).
 func TestPreviewText_WholeValue(t *testing.T) {
-	const bad = "a\nPROBE‮"
+	const bad = "a\nPROBE\u202e"
 	for name, v := range map[string]any{
 		"string":           bad,
 		"list":             []any{"ok", bad},
@@ -24,7 +24,7 @@ func TestPreviewText_WholeValue(t *testing.T) {
 		"nested in a list": []any{map[string]any{"k": []any{bad}}},
 	} {
 		got := paramValue(v)
-		if strings.ContainsAny(got, "\n‮") {
+		if strings.ContainsAny(got, "\n\u202e") {
 			t.Errorf("%s: %q prints a control or format character raw", name, got)
 		}
 		if !strings.Contains(got, `\n`) {

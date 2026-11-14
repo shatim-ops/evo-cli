@@ -49,9 +49,9 @@ func TestPreview_CallerValueStaysOnItsLine(t *testing.T) {
 // which escapes a line break but not a format character (U+202E): the rule
 // holds for the line as printed («Риск», conclusion 234).
 func TestPreview_ArgLinesWholeValue(t *testing.T) {
-	for _, v := range []any{[]any{"ok", "x‮y"}, map[string]any{"k‮": "v"}} {
+	for _, v := range []any{[]any{"ok", "x\u202ey"}, map[string]any{"k\u202e": "v"}} {
 		for _, l := range argLines(map[string]any{"field": v}) {
-			if strings.Contains(l, "‮") {
+			if strings.Contains(l, "\u202e") {
 				t.Errorf("%q prints a format character raw", l)
 			}
 		}
