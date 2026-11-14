@@ -53,13 +53,20 @@ PAGE=${PROBE_PAGE:-100}
 # их объявляет inCloud в internal/tools/list_filters.go; список держит
 # TestListFilters_CloudParamsAreProbed.
 IN_CLOUD="vms:availability_zone_ids vms:statuses disks:availability_zone_id floating-ips:availability_zone_id subnets:availability_zone_ids security-groups:availability_zone_id"
+# ASKS — проверки, которые спрашивают облако о форме запроса, которой evo
+# не шлёт: несколько состояний одним значением через запятую (states у evo
+# отбирает локально — anyOf в list_filters.go без inCloud). Параметр у них
+# общий с проверкой из IN_CLOUD, а итог — ответ на вопрос к платформе, не
+# расхождение с evo: в строгую рамку он не идёт (cloud-e2e run 216).
+ASKS="vms_states_list"
 broken=""
-# strict PATH PARAM VERDICT — запоминает параметр облака с итогом не same.
+# strict CHECK PATH PARAM VERDICT — запоминает параметр облака с итогом не same.
 strict() {
 	[ "${STRICT:-}" = 1 ] || return 0
-	case " $IN_CLOUD " in *" $1:$2 "*) ;; *) return 0 ;; esac
-	[ "$3" = same ] && return 0
-	case " $broken " in *" $1:$2 "*) ;; *) broken="$broken $1:$2" ;; esac
+	case " $ASKS " in *" $1 "*) return 0 ;; esac
+	case " $IN_CLOUD " in *" $2:$3 "*) ;; *) return 0 ;; esac
+	[ "$4" = same ] && return 0
+	case " $broken " in *" $2:$3 "*) ;; *) broken="$broken $2:$3" ;; esac
 }
 
 # get URL FILE — тело в FILE, код HTTP на stdout.
@@ -96,7 +103,7 @@ check() {
 	local raw
 	if ! raw=$(jq -r "$values | .[]? | tostring" "$tmp/all.items"); then
 		printf '%-34s всего=%s: ответ не разобран (форма поля не та) — error\n' "$name" "$total"
-		strict "$2" "$param" error
+		strict "$name" "$2" "$param" error
 		return
 	fi
 	mapfile -t vals < <(printf '%s\n' "$raw" | grep . | head -n 4)
@@ -108,13 +115,13 @@ check() {
 		i=$((i + 1))
 		if ! jq -r --arg v "$v" "[.[] | $rule | .id] | unique | .[]" "$tmp/all.items" >"$tmp/evo"; then
 			printf '%-34s значение #%d: ответ не разобран (форма поля не та) — error\n' "$name" "$i"
-			strict "$2" "$param" error
+			strict "$name" "$2" "$param" error
 			continue
 		fi
 		code=$(get "$base&$param=$(jq -rn --arg v "$v" '$v | @uri')" "$tmp/cloud")
 		if [ "$code" != 200 ]; then
 			printf '%-34s значение #%d: http=%s — error\n' "$name" "$i" "$code" | redact
-			strict "$2" "$param" error
+			strict "$name" "$2" "$param" error
 			continue
 		fi
 		# unique: повтор id в ответе облака — не повод для diff.
@@ -126,7 +133,7 @@ check() {
 		else verdict="diff"
 		fi
 		printf '%-34s значение #%d: всего=%s облако=%s evo=%s — %s\n' "$name" "$i" "$total" "$nc" "$ne" "$verdict"
-		strict "$2" "$param" "$verdict"
+		strict "$name" "$2" "$param" "$verdict"
 	done
 }
 
