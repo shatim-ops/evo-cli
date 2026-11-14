@@ -3872,7 +3872,7 @@ var consentWords = map[string]string{
 	"s3_put":           consentOverwrites,
 }
 
-// consentWordless are the deletes (deleteTargets) whose consent note has
+// consentWordless are the deletes (Decl.Delete) whose consent note has
 // no word of its class, each with why: what goes is a setting or an
 // access the caller makes again, not data — «Deletes data» would be false
 // of it (FB19I-29). A delete is in consentWords or here

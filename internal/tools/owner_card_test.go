@@ -28,7 +28,7 @@ var cardPending = map[string]string{
 
 func TestOwnerKinds_AReadByIDDeclaresTheCard(t *testing.T) {
 	seen := 0
-	for tool, args := range idArgs {
+	for tool, args := range allIDArgs() {
 		if !strings.HasSuffix(tool, "_get") || len(args) != 1 || args[0].kind == nil {
 			continue
 		}
@@ -42,6 +42,6 @@ func TestOwnerKinds_AReadByIDDeclaresTheCard(t *testing.T) {
 		}
 	}
 	if seen == 0 {
-		t.Fatal("no read by id in idArgs: the test reads nothing")
+		t.Fatal("no read by id in Decl.IDArgs: the test reads nothing")
 	}
 }

@@ -88,6 +88,63 @@ type Decl struct {
 	// Nameless: the create makes a resource whose name the call does not
 	// give, and why.
 	Nameless string
+	// Delete: the tool deletes a resource, this one
+	// (TestAlreadyDeleted_EveryDeleteDeclared keeps the declarations
+	// closed). stack_destroy deletes the resources of a job through these
+	// tools and takes their already_deleted as gone; the job itself is
+	// never deleted (it is marked destroyed), so a job that is not there is
+	// a wrong id.
+	Delete deleteTarget
+	// IDArgs are the arguments of the tool that name a resource by id
+	// (TestProjectBound_IDArgsDeclared keeps the declarations closed: a new
+	// tool with such an argument fails it until the argument is declared).
+	IDArgs []idArg
+	// RefArgs are the reference arguments a name may stand in for (D57):
+	// the registry swaps the name for its id before the handler, so the
+	// checks, the preview and the question see the id, and a name the
+	// project lacks is refused before them.
+	RefArgs []nameRef
+}
+
+// allIDArgs are the tools that declare arguments naming a resource by id,
+// and those arguments.
+func allIDArgs() iter.Seq2[string, []idArg] {
+	return func(yield func(string, []idArg) bool) {
+		for name, d := range decls {
+			if d.IDArgs != nil && !yield(name, d.IDArgs) {
+				return
+			}
+		}
+	}
+}
+
+// allRefArgs are the tools that take a name for a reference, and those
+// arguments.
+func allRefArgs() iter.Seq2[string, []nameRef] {
+	return func(yield func(string, []nameRef) bool) {
+		for name, d := range decls {
+			if d.RefArgs != nil && !yield(name, d.RefArgs) {
+				return
+			}
+		}
+	}
+}
+
+// deleteOf is what tool deletes, and whether it is a delete.
+func deleteOf(tool string) (deleteTarget, bool) {
+	d := decls[tool].Delete
+	return d, d.arg != ""
+}
+
+// allDeletes are the deletes and what they delete.
+func allDeletes() iter.Seq2[string, deleteTarget] {
+	return func(yield func(string, deleteTarget) bool) {
+		for name, d := range decls {
+			if d.Delete.arg != "" && !yield(name, d.Delete) {
+				return
+			}
+		}
+	}
 }
 
 // createdOf is the declaration of what tool creates, and whether it is a
@@ -142,125 +199,205 @@ func allNameless() iter.Seq2[string, string] {
 // decls are the declarations of the tools of evo, in the order of
 // registerTools. A tool with nothing to declare has no entry.
 var decls = map[string]Decl{
-	"deploy":    {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the project (.evo.yaml, the directory), checked by provision.ValidName"},
-	"provision": {Group: "vm", Project: true, Created: created{id: "vm_id", list: "vm_list", field: "vms", delete: "destroy"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
-	"status":    {Group: "deploy"},
-	"list":      {Group: "deploy"},
-	"vm_get":    {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
-	"vm_start":  {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
+	"deploy": {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the project (.evo.yaml, the directory), checked by provision.ValidName", IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "project_id", why: whyProjectArg}}},
+	"provision": {Group: "vm", Project: true, Created: created{id: "vm_id", list: "vm_list", field: "vms", delete: "destroy"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", why: whyContinued}, {name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "subnet_id", why: whyListed},
+		{name: "project_id", why: whyProjectArg}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"status": {Group: "deploy"},
+	"list":   {Group: "deploy"},
+	// Compute.
+	"vm_get":   {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}},
+	"vm_start": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}},
 	// vm_stop deletes nothing on a disk, but it takes the service down and
 	// may lose what the VM held in memory: a client asks the person every
 	// time (D99, §4.3).
-	"vm_stop": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true},
+	"vm_stop": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}},
 	// vm_reboot takes the service down for the time of the reboot (§5.2).
-	"vm_reboot": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true},
+	"vm_reboot": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}},
 	// vm_resize of a running VM: whether the guest OS restarts in it the
 	// probe does not see (Г-10), so the client asks the person every time
 	// (§6.5, В3: unknown is taken as a restart).
-	"vm_resize":            {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true},
+	"vm_resize":            {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}},
 	"vm_list":              {Project: true},
 	"logs":                 {Group: "deploy"},
-	"destroy":              {Group: "deploy", Destructive: true},
+	"destroy":              {Group: "deploy", Destructive: true, Delete: deleteTarget{arg: "vm_id", what: "VM", whRU: "ВМ"}, IDArgs: []idArg{{name: "vm_id", why: whyListed}}},
 	"list_zones":           {Group: "vm"},
 	"marketplace_list":     {Group: "image"},
 	"list_images":          {Group: "image"},
-	"image_create":         {Project: true, Created: created{id: "image.id", lost: "image_id", list: "image_list", field: "images", delete: "image_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
-	"fip_attach":           {Group: "vpc"},
-	"image_get":            {RequiredOneOf: [][]string{{"image", "image_id"}}},
-	"deploy_plan":          {Group: "deploy", Project: true},
-	"deploy_apply":         {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the saved plan, checked by deploy_plan"},
+	"image_create":         {Project: true, Created: created{id: "image.id", lost: "image_id", list: "image_list", field: "images", delete: "image_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "disk_id", kind: kindDisk}}},
+	"fip_attach":           {Group: "vpc", IDArgs: []idArg{{name: "fip", why: whyListed}, {name: "vm", why: whyListed}}},
+	"image_get":            {RequiredOneOf: [][]string{{"image", "image_id"}}, IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}}},
+	"image_delete":         {Delete: deleteTarget{arg: "image_id", what: "image", whRU: "образ"}, IDArgs: []idArg{{name: "image_id", kind: kindImage, target: true}}},
+	"deploy_plan":          {Group: "deploy", Project: true, IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "base_plan_id", why: whyLocal}}},
+	"deploy_apply":         {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the saved plan, checked by deploy_plan", IDArgs: []idArg{{name: "plan_id", why: whyLocal}, {name: "vm_id", why: whyContinued}}},
 	"list_flavors":         {Group: "vm"},
 	"list_disk_types":      {Group: "disk"},
-	"list_subnets":         {Group: "vpc", Project: true},
-	"subnet_create":        {Group: "vpc", Project: true, Created: created{id: "subnet_id", list: "list_subnets", field: "subnets", delete: "subnet_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
-	"subnet_delete":        {Group: "vpc"},
+	"list_subnets":         {Group: "vpc", Project: true, IDArgs: []idArg{{name: "vpc_id", why: whyFilter}}},
+	"subnet_create":        {Group: "vpc", Project: true, Created: created{id: "subnet_id", list: "list_subnets", field: "subnets", delete: "subnet_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vpc_id", kind: kindVPC}, {name: "availability_zone_id", why: whyCatalogue}}},
+	"subnet_delete":        {Group: "vpc", Delete: deleteTarget{arg: "subnet_id", what: "subnet", whRU: "подсеть"}, IDArgs: []idArg{{name: "subnet_id", kind: kindSubnet, target: true}}},
 	"list_security_groups": {Group: "vpc", Project: true},
 	"list_floating_ips":    {Group: "vpc", Project: true},
-	"open_ports":           {Group: "deploy"},
-	"close_ports":          {Group: "deploy"},
-	"sg_rule_create":       {Group: "vpc", Created: created{id: "rule_id", delete: "sg_rule_delete"}, Nameless: "a rule has no name: it is known by its fields, and the same rule there answers already_exists"},
-	"sg_rule_delete":       {Group: "vpc"},
+	"open_ports":           {Group: "deploy", IDArgs: []idArg{{name: "security_group", why: whyListed}}},
+	"close_ports":          {Group: "deploy", Delete: deleteTarget{arg: "ports", parent: "security_group", what: "port rule", whRU: "правило порта"}, IDArgs: []idArg{{name: "security_group", why: whyListed}}},
+	"sg_rule_create":       {Group: "vpc", Created: created{id: "rule_id", delete: "sg_rule_delete"}, Nameless: "a rule has no name: it is known by its fields, and the same rule there answers already_exists", IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "remote_group", why: whyListed}}},
+	"sg_rule_delete":       {Group: "vpc", Delete: deleteTarget{arg: "rule_id", parent: "security_group", what: "security group rule", whRU: "правило группы безопасности"}, IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}}},
 	"k8s_list":             {Project: true},
+	// Managed Kubernetes.
+	"k8s_get": {IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
 	// mk8s catalogues take projectId too: GET /v3/addons without it is a
 	// live 400, the spec requires it on /v3/addons and productConfiguration
 	// (Cursor review of PR #89).
 	"k8s_options":    {Project: true},
-	"k8s_plan":       {Project: true},
-	"k8s_create":     {Project: true, Created: created{id: "cluster_id", list: "k8s_list", field: "clusters", delete: "k8s_delete"}, CreateName: createName{args: []string{"name"}, rule: "k8sNameRe: the mk8s specification"}},
-	"k8s_kubeconfig": {SideEffects: "returns a kubeconfig; mints a token of the cluster"},
+	"k8s_plan":       {Project: true, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"k8s_create":     {Project: true, Created: created{id: "cluster_id", list: "k8s_list", field: "clusters", delete: "k8s_delete"}, CreateName: createName{args: []string{"name"}, rule: "k8sNameRe: the mk8s specification"}, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"k8s_kubeconfig": {SideEffects: "returns a kubeconfig; mints a token of the cluster", IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
+	"k8s_delete": {Delete: deleteTarget{arg: "cluster_id", what: "Kubernetes cluster", whRU: "кластер Kubernetes",
+		statePrefix: "OBJECT_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe}, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}},
+	"k8s_operation":    {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
+	"k8s_nodepools":    {IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
+	"k8s_nodepool_get": {IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool}}},
 	// A scale down deletes nodes with the data on their disks; the hint is
 	// the tool's, not the call's, so a scale up asks too (D99; conclusion
 	// 112 of «Риск»).
-	"k8s_nodepool_scale":   {Destructive: true},
-	"k8s_add_nodepool":     {Created: created{id: "nodepool_id", list: "k8s_nodepools", field: "node_pools", listArgs: []string{"cluster_id"}, delete: "k8s_nodepool_delete"}, CreateName: createName{args: []string{"name"}, what: "node pool", whRU: "группа узлов"}},
-	"k8s_addons":           {Project: true},
-	"k8s_addon_versions":   {Project: true},
-	"k8s_add_addon":        {Project: true, Destructive: true, Created: created{none: "an addon of a cluster, known by its name; it goes with the cluster"}, Nameless: "the addon is named by the catalogue (k8s_addons)"},
-	"k8s_kubectl":          {PartialConsent: kubectlNeedsConsent, Destructive: true},
-	"k8s_apply":            {Destructive: true},
-	"k8s_helm":             {PartialConsent: helmNeedsConsent, Destructive: true},
-	"backup_list":          {Project: true},
-	"backup_create":        {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}, Created: created{id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
-	"backup_restore":       {Created: created{id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
-	"disk_list":            {Project: true},
-	"disk_create":          {Project: true, Created: created{id: "disk.id", lost: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
-	"ca_list":              {Project: true},
-	"ca_get":               {Project: true},
-	"ca_deploy":            {Project: true, Created: created{arg: "name", lost: "id", list: "ca_list", field: "containers", delete: "ca_delete"}, CreateName: createName{args: []string{"name"}, rule: "caNameRe: an RFC 1123 label"}},
-	"ca_delete":            {Project: true},
+	"k8s_nodepool_scale": {Destructive: true, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}}},
+	"k8s_nodepool_delete": {Delete: deleteTarget{arg: "nodepool_id", what: "node pool", whRU: "группа узлов", statePrefix: "OBJECT_STATUS_",
+		creatingUnseen: "probe Г-12, question 16 of docs/internal/briefs/k8s-nodepools.md",
+		failedUnseen:   "no run has deleted a node pool in error: probe Г-12 (docs/internal/briefs/k8s-nodepools.md; FB19I-7)"}, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}}},
+	"k8s_add_nodepool":   {Created: created{id: "nodepool_id", list: "k8s_nodepools", field: "node_pools", listArgs: []string{"cluster_id"}, delete: "k8s_nodepool_delete"}, CreateName: createName{args: []string{"name"}, what: "node pool", whRU: "группа узлов"}, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}}, RefArgs: []nameRef{{"nodes_subnet_id", refSubnet}, {"security_group_id", refSecurityGroup}}},
+	"k8s_addons":         {Project: true},
+	"k8s_addon_versions": {Project: true},
+	"k8s_add_addon":      {Project: true, Destructive: true, Created: created{none: "an addon of a cluster, known by its name; it goes with the cluster"}, Nameless: "the addon is named by the catalogue (k8s_addons)", IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}},
+	"k8s_kubectl":        {PartialConsent: kubectlNeedsConsent, Destructive: true, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}},
+	"k8s_apply":          {Destructive: true, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}},
+	"k8s_helm":           {PartialConsent: helmNeedsConsent, Destructive: true, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}},
+	"backup_list":        {Project: true, IDArgs: []idArg{{name: "resource_id", why: whyFilter}}},
+	"backup_get":         {IDArgs: []idArg{{name: "backup_id", kind: kindBackup}}},
+	"backup_create":      {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}, Created: created{id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "disk_id", kind: kindDisk}}},
+	// A backup's states are lower case (BackupState): the rule of a state
+	// under way, of a state being created and of a final one is the same.
+	"backup_delete": {Delete: deleteTarget{arg: "backup_id", what: "backup", whRU: "резервная копия",
+		creatingUnseen: "no run has deleted a backup still being created: the third run of probe Г-16 (docs/internal/briefs/backups.md)",
+		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16 (docs/internal/briefs/backups.md)"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}},
+	"backup_restore": {Created: created{id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}},
+	"disk_list":      {Project: true},
+	"disk_create":    {Project: true, Created: created{id: "disk.id", lost: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "attach_to", why: whyListed}}},
+	"disk_attach":    {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}}},
+	"disk_detach":    {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}}},
+	"disk_resize":    {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}}},
+	"disk_delete":    {Delete: deleteTarget{arg: "disk_id", what: "disk", whRU: "диск"}, IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}}},
+	"ca_list":        {Project: true},
+	"ca_get":         {Project: true},
+	// Container Apps: an app is addressed by name with projectId in the
+	// query (containers/openapi.yaml); its image is a container image.
+	"ca_deploy":            {Project: true, Created: created{arg: "name", lost: "id", list: "ca_list", field: "containers", delete: "ca_delete"}, CreateName: createName{args: []string{"name"}, rule: "caNameRe: an RFC 1123 label"}, IDArgs: []idArg{{name: "image", why: whyContainerImage}}},
+	"ca_delete":            {Project: true, Delete: deleteTarget{arg: "name", what: "container app", whRU: "приложение Container Apps"}},
 	"ca_logs":              {Project: true},
 	"ca_start":             {Project: true},
 	"ca_stop":              {Project: true},
-	"iam_service_accounts": {Group: "iam", Project: true},
+	"iam_service_accounts": {Group: "iam", Project: true, IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
 	"org_projects":         {Group: "org"},
-	"org_quotas":           {Group: "org"},
+	"org_quotas":           {Group: "org", IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
 	"agent_skill":          {Group: "auth", AlwaysListed: "the card of a group is read by the agent that works with that group, whichever groups the server serves"},
 	"whoami":               {Group: "auth"},
 	"doctor":               {Group: "auth"},
-	"release_floating_ip":  {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true},
+	"release_floating_ip":  {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}},
 	"snat_list":            {Project: true},
-	"snat_create":          {Project: true, Created: created{id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
+	"snat_create":          {Project: true, Created: created{id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "availability_zone_id", why: whyCatalogue}}},
+	"snat_delete":          {Delete: deleteTarget{arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"}, IDArgs: []idArg{{name: "id", kind: kindNAT, target: true}}},
 	"pg_list":              {Project: true},
-	"pg_get":               {RequiredOneOf: [][]string{{"id", "cluster_id"}}},
-	"pg_create":            {Project: true, Created: created{id: "cluster_id", list: "pg_list", field: "clusters", delete: "pg_delete"}, CreateName: createName{args: []string{"name"}, what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}},
-	"pg_delete":            {RequiredOneOf: [][]string{{"id", "cluster_id"}}},
-	"kafka_list":           {Project: true},
-	"kafka_create":         {Project: true, Created: created{id: "cluster_id", list: "kafka_list", field: "clusters", delete: "kafka_delete"}, CreateName: createName{args: []string{"name"}, what: "Kafka cluster", whRU: "кластер Kafka"}},
-	"redis_list":           {Project: true},
-	"redis_create":         {Project: true, Created: created{id: "cluster_id", list: "redis_list", field: "clusters", delete: "redis_delete"}, CreateName: createName{args: []string{"name"}, what: "Redis cluster", whRU: "кластер Redis"}},
-	"pg_db_create":         {Created: created{arg: "name", list: "pg_databases", field: "databases", listArgs: []string{"cluster_id"}, delete: "pg_db_delete"}, CreateName: createName{args: []string{"name"}, what: "database", whRU: "база данных"}},
-	"pg_user_create":       {Created: created{arg: "name", list: "pg_users", field: "users", listArgs: []string{"cluster_id"}, delete: "pg_user_delete"}, CreateName: createName{args: []string{"name"}, what: "database user", whRU: "пользователь базы данных"}},
-	"pg_backup_create":     {Created: created{id: "backup_id", list: "pg_backups", field: "backups", listArgs: []string{"cluster_id"}}, CreateName: createName{args: []string{"name"}, what: "backup", whRU: "резервная копия"}},
-	"lb_list":              {Project: true},
-	"tg_list":              {Project: true},
-	"tg_create":            {Project: true, RequiredOneOf: [][]string{{"vm_id", "targets"}}, Created: created{id: "tg_id", list: "tg_list", field: "target_groups", delete: "tg_delete"}, CreateName: createName{args: []string{"name"}, what: "target group", whRU: "целевая группа"}},
-	"lb_create":            {Project: true, Created: created{id: "lb_id", list: "lb_list", field: "load_balancers", delete: "lb_delete"}, CreateName: createName{args: []string{"name"}, what: "load balancer", whRU: "балансировщик"}},
-	"vpc_list":             {Project: true},
-	"vpc_create":           {Project: true, Created: created{id: "vpc_id", list: "vpc_list", field: "vpcs", delete: "vpc_delete"}, CreateName: createName{args: []string{"name"}, what: "VPC", whRU: "VPC"}},
-	"vpc_route_create":     {Project: true, RequiredOneOf: [][]string{{"next_hop_vip_id", "next_hop_vm_id", "next_hop_magic_router_id"}}, Created: created{id: "route_id", list: "vpc_routes", field: "routes", listArgs: []string{"vpc_id"}, delete: "vpc_route_delete"}, Nameless: "a route is known by its destination, named by no argument"},
-	"dns_zones":            {Project: true},
-	"dns_zone_create":      {Project: true, Created: created{id: "zone_id", list: "dns_zones", field: "zones", delete: "dns_zone_delete"}, CreateName: createName{args: []string{"name", "domain"}, what: "DNS zone", whRU: "DNS-зона"}},
-	"dns_record_create":    {RequiredOneOf: [][]string{{"value", "values"}}, Created: created{id: "record_id", list: "dns_records", field: "records", listArgs: []string{"zone_id"}, delete: "dns_record_delete"}, CreateName: createName{args: []string{"name"}, what: "DNS record", whRU: "DNS-запись"}},
-	"secret_list":          {Project: true},
-	"secret_get":           {Project: true},
-	"secret_value":         {Project: true, Sensitive: true},
-	"secret_create":        {Project: true, Created: created{arg: "path", lost: "secret_id", list: "secret_list", field: "secrets", delete: "secret_delete"}, CreateName: createName{args: []string{"path"}, what: "secret", whRU: "секрет"}},
-	"secret_add_version":   {Project: true, Nameless: "a version of a secret that is there"},
-	"secret_delete":        {Project: true},
-	"ar_list":              {Project: true},
-	"ar_get":               {Project: true},
-	"ar_create":            {Project: true, Created: created{id: "registry_id", list: "ar_list", field: "registries", delete: "ar_delete"}, CreateName: createName{args: []string{"name"}, what: "registry", whRU: "реестр"}},
-	"ar_delete":            {Project: true},
-	"metrics_history":      {Project: true},
-	"metrics_scrape":       {Project: true},
-	"audit_events":         {Project: true},
-	"cert_list":            {Project: true},
-	"cert_issue_le":        {Project: true, Created: created{id: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}},
-	"cert_import":          {Project: true, Created: created{id: "certificate.id", lost: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}},
-	"cert_private_key":     {Sensitive: true},
-	"s3_put":               {Destructive: true, Created: created{arg: "key", delete: "s3_rm"}, Nameless: "an object key may hold spaces anywhere: S3 takes any UTF-8"},
-	"s3_rm":                {Destructive: true},
-	"s3_bucket_create":     {Created: created{arg: "bucket", delete: "s3_bucket_delete"}, CreateName: createName{args: []string{"bucket"}, rule: "bucketNameRe and the S3 client's rule"}},
-	"stack_status":         {SideEffects: "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it"},
-	"stack_destroy":        {Destructive: true},
+	// Managed PostgreSQL, Kafka, Redis.
+	"pg_get":           {RequiredOneOf: [][]string{{"id", "cluster_id"}}, IDArgs: []idArg{{name: "id", kind: kindPG}, {name: "cluster_id", kind: kindPG}}},
+	"pg_create":        {Project: true, Created: created{id: "cluster_id", list: "pg_list", field: "clusters", delete: "pg_delete"}, CreateName: createName{args: []string{"name"}, what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"pg_delete":        {RequiredOneOf: [][]string{{"id", "cluster_id"}}, Delete: deleteTarget{arg: "id", what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "id", kind: kindPG, target: true}, {name: "cluster_id", kind: kindPG, target: true}}},
+	"pg_operation":     {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
+	"kafka_list":       {Project: true},
+	"kafka_get":        {IDArgs: []idArg{{name: "cluster_id", kind: kindKafka}}},
+	"kafka_specs":      {IDArgs: []idArg{{name: "version_id", why: whyCatalogue}}},
+	"kafka_create":     {Project: true, Created: created{id: "cluster_id", list: "kafka_list", field: "clusters", delete: "kafka_delete"}, CreateName: createName{args: []string{"name"}, what: "Kafka cluster", whRU: "кластер Kafka"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"kafka_delete":     {Delete: deleteTarget{arg: "cluster_id", what: "Kafka cluster", whRU: "кластер Kafka"}, IDArgs: []idArg{{name: "cluster_id", kind: kindKafka, target: true}}},
+	"kafka_operation":  {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
+	"redis_list":       {Project: true},
+	"redis_get":        {IDArgs: []idArg{{name: "cluster_id", kind: kindRedis}}},
+	"redis_specs":      {IDArgs: []idArg{{name: "version_id", why: whyCatalogue}}},
+	"redis_create":     {Project: true, Created: created{id: "cluster_id", list: "redis_list", field: "clusters", delete: "redis_delete"}, CreateName: createName{args: []string{"name"}, what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"redis_delete":     {Delete: deleteTarget{arg: "cluster_id", what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "cluster_id", kind: kindRedis, target: true}}},
+	"redis_operation":  {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
+	"pg_databases":     {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}},
+	"pg_db_create":     {Created: created{arg: "name", list: "pg_databases", field: "databases", listArgs: []string{"cluster_id"}, delete: "pg_db_delete"}, CreateName: createName{args: []string{"name"}, what: "database", whRU: "база данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
+	"pg_db_delete":     {Delete: deleteTarget{arg: "name", parent: "cluster_id", what: "database", whRU: "база данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
+	"pg_users":         {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}},
+	"pg_user_create":   {Created: created{arg: "name", list: "pg_users", field: "users", listArgs: []string{"cluster_id"}, delete: "pg_user_delete"}, CreateName: createName{args: []string{"name"}, what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
+	"pg_user_delete":   {Delete: deleteTarget{arg: "name", parent: "cluster_id", what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
+	"pg_backups":       {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}},
+	"pg_backup_create": {Created: created{id: "backup_id", list: "pg_backups", field: "backups", listArgs: []string{"cluster_id"}}, CreateName: createName{args: []string{"name"}, what: "backup", whRU: "резервная копия"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
+	"lb_list":          {Project: true, IDArgs: []idArg{{name: "vpc_id", why: whyFilter}}},
+	// Network Load Balancer.
+	"lb_get":       {IDArgs: []idArg{{name: "id", kind: kindNLB}}},
+	"lb_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
+	"tg_list":      {Project: true, IDArgs: []idArg{{name: "vpc_id", why: whyFilter}}},
+	"tg_get":       {IDArgs: []idArg{{name: "id", kind: kindTG}}},
+	"tg_create":    {Project: true, RequiredOneOf: [][]string{{"vm_id", "targets"}}, Created: created{id: "tg_id", list: "tg_list", field: "target_groups", delete: "tg_delete"}, CreateName: createName{args: []string{"name"}, what: "target group", whRU: "целевая группа"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "targets", kind: kindVM, ids: targetIDs}, {name: "interface_id", why: whyInParent}}},
+	"tg_delete": {Delete: deleteTarget{arg: "id", what: "target group", whRU: "группа целей",
+		statePrefix: "TARGET_GROUP_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe}, IDArgs: []idArg{{name: "id", kind: kindTG, target: true}}},
+	"lb_create": {Project: true, Created: created{id: "lb_id", list: "lb_list", field: "load_balancers", delete: "lb_delete"}, CreateName: createName{args: []string{"name"}, what: "load balancer", whRU: "балансировщик"}, IDArgs: []idArg{{name: "target_group_id", kind: kindTG}, {name: "vpc_id", kind: kindVPC}, {name: "subnet_id", why: whyListed}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+	"lb_delete": {Delete: deleteTarget{arg: "id", what: "load balancer", whRU: "балансировщик",
+		statePrefix: "NLB_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe}, IDArgs: []idArg{{name: "id", kind: kindNLB, target: true}}},
+	"vpc_list": {Project: true},
+	// VPC.
+	"vpc_get":       {IDArgs: []idArg{{name: "id", kind: kindVPC}}},
+	"vpc_create":    {Project: true, Created: created{id: "vpc_id", list: "vpc_list", field: "vpcs", delete: "vpc_delete"}, CreateName: createName{args: []string{"name"}, what: "VPC", whRU: "VPC"}},
+	"vpc_delete":    {Delete: deleteTarget{arg: "id", what: "VPC", whRU: "VPC"}, IDArgs: []idArg{{name: "id", kind: kindVPC, target: true}}},
+	"vpc_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
+	"vpc_routes":    {IDArgs: []idArg{{name: "vpc_id", kind: kindVPC}}},
+	"vpc_route_create": {Project: true, RequiredOneOf: [][]string{{"next_hop_vip_id", "next_hop_vm_id", "next_hop_magic_router_id"}}, Created: created{id: "route_id", list: "vpc_routes", field: "routes", listArgs: []string{"vpc_id"}, delete: "vpc_route_delete"}, Nameless: "a route is known by its destination, named by no argument", IDArgs: []idArg{{name: "vpc_id", kind: kindVPC, target: true}, {name: "next_hop_vm_id", kind: kindVM}, {name: "next_hop_interface_id", why: whyInParent},
+		{name: "next_hop_vip_id", why: whyReference}, {name: "next_hop_magic_router_id", why: whyReference}}},
+	"vpc_route_delete": {Delete: deleteTarget{arg: "route_id", parent: "vpc_id", what: "route", whRU: "маршрут"}, IDArgs: []idArg{{name: "vpc_id", kind: kindVPC, target: true}, {name: "route_id", why: whyInParent}}},
+	"dns_zones":        {Project: true},
+	"dns_zone_get":     {IDArgs: []idArg{{name: "id", kind: kindDNSZone}}},
+	// DNS.
+	"dns_zone_create":   {Project: true, Created: created{id: "zone_id", list: "dns_zones", field: "zones", delete: "dns_zone_delete"}, CreateName: createName{args: []string{"name", "domain"}, what: "DNS zone", whRU: "DNS-зона"}, IDArgs: []idArg{{name: "vpc_id", kind: kindVPC}}},
+	"dns_zone_delete":   {Delete: deleteTarget{arg: "id", what: "DNS zone", whRU: "DNS-зона"}, IDArgs: []idArg{{name: "id", kind: kindDNSZone, target: true}}},
+	"dns_operation":     {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
+	"dns_records":       {IDArgs: []idArg{{name: "zone_id", kind: kindDNSZone}}},
+	"dns_record_get":    {IDArgs: []idArg{{name: "record_id", kind: kindDNSRecord}}},
+	"dns_record_create": {RequiredOneOf: [][]string{{"value", "values"}}, Created: created{id: "record_id", list: "dns_records", field: "records", listArgs: []string{"zone_id"}, delete: "dns_record_delete"}, CreateName: createName{args: []string{"name"}, what: "DNS record", whRU: "DNS-запись"}, IDArgs: []idArg{{name: "zone_id", kind: kindDNSZone, target: true}}},
+	"dns_record_delete": {Delete: deleteTarget{arg: "record_id", what: "DNS record", whRU: "DNS-запись"}, IDArgs: []idArg{{name: "record_id", kind: kindDNSRecord, target: true}}},
+	"secret_list":       {Project: true},
+	"secret_get":        {Project: true},
+	"secret_value":      {Project: true, Sensitive: true},
+	// Secret Manager: the create carries projectId.
+	"secret_create":      {Project: true, Created: created{arg: "path", lost: "secret_id", list: "secret_list", field: "secrets", delete: "secret_delete"}, CreateName: createName{args: []string{"path"}, what: "secret", whRU: "секрет"}, IDArgs: []idArg{{name: "kms_key_id", why: whyReference}}},
+	"secret_add_version": {Project: true, Nameless: "a version of a secret that is there"},
+	"secret_delete":      {Project: true, Delete: deleteTarget{arg: "path", what: "secret", whRU: "секрет"}},
+	"ar_list":            {Project: true},
+	// Artifact Registry: GET and DELETE /v1/registries/{id} take projectId
+	// (required by ar/openapi.yaml); the operations do not.
+	"ar_get":       {Project: true, IDArgs: []idArg{{name: "id", why: whyInProject}}},
+	"ar_create":    {Project: true, Created: created{id: "registry_id", list: "ar_list", field: "registries", delete: "ar_delete"}, CreateName: createName{args: []string{"name"}, what: "registry", whRU: "реестр"}},
+	"ar_delete":    {Project: true, Delete: deleteTarget{arg: "id", what: "artifact registry", whRU: "реестр артефактов"}, IDArgs: []idArg{{name: "id", why: whyInProject}}},
+	"ar_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
+	// The project itself.
+	"billing_consumption": {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
+	"billing_finops":      {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
+	"metrics_history":     {Project: true},
+	"metrics_scrape":      {Project: true},
+	"audit_events":        {Project: true},
+	"cert_list":           {Project: true},
+	// Certificate Manager.
+	"cert_get":         {IDArgs: []idArg{{name: "id", kind: kindCert}}},
+	"cert_issue_le":    {Project: true, Created: created{id: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}},
+	"cert_import":      {Project: true, Created: created{id: "certificate.id", lost: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}},
+	"cert_renew":       {IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}}},
+	"cert_delete":      {Delete: deleteTarget{arg: "id", what: "certificate", whRU: "сертификат"}, IDArgs: []idArg{{name: "id", kind: kindCert, target: true}}},
+	"cert_usage":       {IDArgs: []idArg{{name: "id", kind: kindCert}}},
+	"cert_versions":    {IDArgs: []idArg{{name: "certificate_id", kind: kindCert}}},
+	"cert_private_key": {Sensitive: true, IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}, {name: "version_id", why: whyInParent}}},
+	"cert_operation":   {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}},
+	"s3_put":           {Destructive: true, Created: created{arg: "key", delete: "s3_rm"}, Nameless: "an object key may hold spaces anywhere: S3 takes any UTF-8"},
+	"s3_rm":            {Destructive: true, Delete: deleteTarget{arg: "key", parent: "bucket", what: "object", whRU: "объект"}},
+	"s3_bucket_create": {Created: created{arg: "bucket", delete: "s3_bucket_delete"}, CreateName: createName{args: []string{"bucket"}, rule: "bucketNameRe and the S3 client's rule"}},
+	"s3_bucket_delete": {Delete: deleteTarget{arg: "bucket", what: "bucket", whRU: "бакет"}},
+	// Stack jobs.
+	"stack_apply":   {IDArgs: []idArg{{name: "job_id", why: whyLocal}}},
+	"stack_status":  {SideEffects: "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it", IDArgs: []idArg{{name: "job_id", why: whyLocal}}},
+	"stack_destroy": {Destructive: true, IDArgs: []idArg{{name: "job_id", why: whyLocal}}},
 }

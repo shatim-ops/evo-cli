@@ -545,7 +545,7 @@ func TestContract_APIStatusReason(t *testing.T) {
 				}
 				continue
 			}
-			if _, del := deleteTargets[tl.Name]; del && kind == "404" && !isErr {
+			if _, del := deleteOf(tl.Name); del && kind == "404" && !isErr {
 				// A 404 on the delete target is a done delete (D26); a 404 on
 				// the parent stays NOT_FOUND and takes the check below.
 				if !strings.Contains(text, `"status": "already_deleted"`) {
