@@ -29,5 +29,6 @@ func TestVMPower_EveryToolTakesANameStrictly(t *testing.T) {
 // strictNotPower are the tools of strictVMRef that are not power tools,
 // each with why it takes a name strictly.
 var strictNotPower = map[string]string{
-	"vm_resize": "a change of flavor of the first VM of a name two VMs have would bill a VM the caller did not mean (D99, П2)",
+	"vm_console": "a read, strict from its first release: the place of the console of the first VM of a name two VMs have would send a person to a VM the caller did not mean (brief vm-console.md, §2, У5)",
+	"vm_resize":  "a change of flavor of the first VM of a name two VMs have would bill a VM the caller did not mean (D99, П2)",
 }

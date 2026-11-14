@@ -1022,6 +1022,19 @@
       "vpc_id why=\"a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with the items that list read; it reaches no API as an id\" target=false ids=false"
     ]
   },
+  "vm_console": {
+    "group": "vm",
+    "required_one_of": [
+      [
+        "vm_id",
+        "name"
+      ]
+    ],
+    "id_args": [
+      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+    ],
+    "untrusted": "{fields:[name where note] whole:false own:[] workload:false}"
+  },
   "vm_get": {
     "group": "vm",
     "required_one_of": [
