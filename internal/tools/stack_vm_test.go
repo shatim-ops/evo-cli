@@ -338,3 +338,55 @@ func TestStackStep_AnOperationsEndChecksTheStepsResourceIsThere(t *testing.T) {
 		}
 	}
 }
+
+// Чтение ресурса шага, которое постоянно отказывает не NOT_FOUND
+// (AUTH_FAILED, API_UNREACHABLE, API_RATE_LIMITED), не держит задание в
+// running без конца: тот же срок, что у промахов, и ошибка с причиной
+// самого чтения; каждый опрос называет её в details («Риск», 239, У1).
+// Шаг целевой группы читает своё (tg_get), а не застревает на чужом
+// чтении операции (lb_get), которое отказывает (239, У2).
+func TestStackStep_AReadThatKeepsFailingEndsTheStepWithItsReason(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"probe","vpc":{"name":"same"}}`)
+	st := j.Steps[0]
+	st.Key, st.Tool, st.PollTool = "tg", "tg_create", "lb_operation"
+	st.Status, st.ResourceID, st.OpID = "waiting", "res-A", "op-old"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r.handlers["lb_operation"] = fakeOK(map[string]any{"done": true})
+	var lbCalls int
+	r.handlers["lb_get"] = func(context.Context, map[string]any) (string, bool) {
+		lbCalls++
+		return toJSON(map[string]any{"status": "error", "reason": "USAGE", "error": "400"}), true
+	}
+	r.handlers["tg_get"] = func(context.Context, map[string]any) (string, bool) {
+		return toJSON(map[string]any{"status": "error", "reason": "AUTH_FAILED", "error": "403"}), true
+	}
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	loaded, err := stack.LoadJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lbCalls != 0 {
+		t.Errorf("шаг tg читал чужое lb_get %d раз: своё чтение — tg_get", lbCalls)
+	}
+	if got := loaded.Steps[0]; got.Status != "waiting" || !strings.Contains(got.Detail, "AUTH_FAILED") {
+		t.Fatalf("первый сбой: шаг %s, details %q; want waiting и причину AUTH_FAILED", got.Status, got.Detail)
+	}
+	loaded.Steps[0].Missing = maxStepMissing
+	loaded.Steps[0].MissingSince = loaded.Steps[0].MissingSince.Add(-stepMissingFor)
+	if err := loaded.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
+	if loaded, err = stack.LoadJob(j.ID); err != nil {
+		t.Fatal(err)
+	}
+	got := loaded.Steps[0]
+	if got.Status != "error" || got.Reason != "AUTH_FAILED" || loaded.Outputs["tg"] != "" ||
+		!strings.Contains(loaded.Error, "tg_get id=res-A") || !strings.Contains(loaded.Error, "stack_destroy") {
+		t.Errorf("по сроку: шаг %s %s, выход %q, %q; want ошибку AUTH_FAILED с чтением и stack_destroy", got.Status, got.Reason, loaded.Outputs["tg"], loaded.Error)
+	}
+}

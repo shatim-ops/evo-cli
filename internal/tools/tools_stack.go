@@ -283,7 +283,7 @@ const (
 // what is known — not found by its id — not that the resource is gone: it
 // may be there and billed, and stack_destroy of the job removes it by its
 // id («Риск», 230, У1). It reports whether the step ended.
-func stepMissing(job *stack.Job, st *stack.Step, why, check string) bool {
+func stepMissing(job *stack.Job, st *stack.Step, why, check, reason string) bool {
 	if st.Missing == 0 {
 		st.MissingSince = time.Now()
 	}
@@ -292,11 +292,15 @@ func stepMissing(job *stack.Job, st *stack.Step, why, check string) bool {
 	if st.Missing < maxStepMissing || time.Since(st.MissingSince) < stepMissingFor {
 		return false
 	}
-	failStep(job, st, clierrors.CodeNotFound, fmt.Sprintf(
-		"%s: resource %s of the step not found by its id: %s, %d times since %s; no new one was made. "+
+	what := "not found by its id"
+	if reason != clierrors.CodeNotFound {
+		what = "not read by its id (" + reason + ")"
+	}
+	failStep(job, st, reason, fmt.Sprintf(
+		"%s: resource %s of the step %s: %s, %d times since %s; no new one was made. "+
 			"Whether it is there, %s tells; stack_destroy of this job removes what the job made by id, and one that is not there any more is not an error to it — whether to remove it, ask the person; "+
 			"a new plan with the same names is refused while that resource is there",
-		st.Key, st.ResourceID, why, st.Missing, st.MissingSince.UTC().Format(time.RFC3339), check))
+		st.Key, st.ResourceID, what, why, st.Missing, st.MissingSince.UTC().Format(time.RFC3339), check))
 	return true
 }
 
@@ -305,35 +309,42 @@ func foundAgain(st *stack.Step) {
 	st.Missing, st.MissingSince = 0, time.Time{}
 }
 
-// stepRead reads the resource of step st by its id, with the reads of its
-// operation's resource (operationReads of its PollTool), in order: found
-// when one reads it; ok false when no read can tell — the step's operation
-// has none, or a read failed otherwise than NOT_FOUND (then the id is not
-// checked, and the step does not end on it: Астра, #1830, #1866). check is
-// the addressed read to name in the answer: the read of the step's kind,
-// else the first.
-func (s *Registry) stepRead(ctx context.Context, st *stack.Step) (found, ok bool, check string) {
+// stepRead reads the resource of step st by its id, with the read of its
+// own kind among the reads of its operation's resource (operationReads of
+// its PollTool: tg_create — tg_get), else with those reads in order: found
+// when one reads it; ok false when no read can tell — the operation has no
+// read, or a read failed otherwise than NOT_FOUND, whose reason says why
+// (then the id is not checked, and the step does not end done on it:
+// Астра, #1830, #1866; «Риск», 239). check is the addressed read the
+// answer names.
+func (s *Registry) stepRead(ctx context.Context, st *stack.Step) (found, ok bool, reason, check string) {
 	reads := operationReads[st.PollTool]
-	if len(reads) == 0 {
-		return false, false, ""
-	}
-	check = reads[0].tool + " " + reads[0].arg + "=" + st.ResourceID
 	own := strings.TrimSuffix(st.Tool, "_create") + "_get"
 	for _, r := range reads {
 		if r.tool == own {
-			check = r.tool + " " + r.arg + "=" + st.ResourceID
+			// Another kind's read of the same operation says nothing of
+			// this step's resource («Риск», 239, У2).
+			reads = []resourceRead{r}
+			break
 		}
 	}
+	if len(reads) == 0 {
+		return false, false, "", ""
+	}
+	check = reads[0].tool + " " + reads[0].arg + "=" + st.ResourceID
 	for _, r := range reads {
 		res, err := s.callTool(ctx, r.tool, map[string]any{r.arg: st.ResourceID})
 		if err == nil {
-			return true, true, check
+			return true, true, "", check
 		}
-		if reason, _ := res["reason"].(string); reason != clierrors.CodeNotFound {
-			return false, false, check
+		if reason, _ = res["reason"].(string); reason != clierrors.CodeNotFound {
+			if reason == "" {
+				reason = clierrors.CodeAPIError
+			}
+			return false, false, reason, check
 		}
 	}
-	return false, true, check
+	return false, true, clierrors.CodeNotFound, check
 }
 
 // stackCrankInterval is the pause between cranks inside one stack_status
@@ -417,17 +428,13 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						// («Риск», 222, У2).
 						if st.ResourceID == "" {
 							st.ResourceID = s.findStepID(ctx, st)
-						} else if found, ok, check := s.stepRead(ctx, st); check != "" && (!ok || !found) {
-							if !ok {
-								// The read failed: the id is not checked,
-								// and the step is not done on it.
-								st.Detail = "the operation is done; the read of its resource failed: " + check + " on the next poll"
-								continue
-							}
+						} else if found, _, reason, check := s.stepRead(ctx, st); check != "" && !found {
 							// The operation is done and the step's resource
-							// is not there: not done with an output that is
-							// gone.
-							if stepMissing(job, st, "the operation is done, "+check+" answers NOT_FOUND", check) {
+							// is not read: not found, or the read fails. Not
+							// done with an output that is not checked; the
+							// misses end the step, with the read's reason,
+							// as a resource not found does («Риск», 239, У1).
+							if stepMissing(job, st, "the operation is done, "+check+" answers "+reason, check, reason) {
 								return
 							}
 							continue
@@ -454,15 +461,17 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					if st.ResourceID != "" {
 						cl, err := s.callTool(ctx, st.StatusTool, map[string]any{st.StatusArg: st.ResourceID})
 						if err != nil {
-							// NOT_FOUND by the step's id is the resource gone,
-							// once it holds; any other failure of the read is
-							// the next crank's to retry.
-							if reason, _ := cl["reason"].(string); reason == clierrors.CodeNotFound {
-								if stepMissing(job, st, st.StatusTool+" answers NOT_FOUND", fmt.Sprintf("%s %s=%s", st.StatusTool, st.StatusArg, st.ResourceID)) {
-									return
-								}
-							} else {
-								st.Detail = "status: " + err.Error()
+							// Not found by the step's id, or the read fails:
+							// a miss, once it holds — the step ends with the
+							// read's reason, not running forever («Риск», 230,
+							// 239).
+							reason, _ := cl["reason"].(string)
+							if reason == "" {
+								reason = clierrors.CodeAPIError
+							}
+							check := fmt.Sprintf("%s %s=%s", st.StatusTool, st.StatusArg, st.ResourceID)
+							if stepMissing(job, st, st.StatusTool+" answers "+reason, check, reason) {
+								return
 							}
 						}
 						if err == nil {
