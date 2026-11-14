@@ -346,10 +346,51 @@ func (s *Registry) planCaStartStop(action string) Planner {
 			if err != nil {
 				return errResult(err), true
 			}
-			if err := cli.StartStop(ctx, name, action); err != nil {
+			op, err := cli.StartStop(ctx, name, action)
+			if err != nil {
 				return errResult(err), true
 			}
-			return toJSON(map[string]any{"status": "ok", "name": name, "action": action}), false
+			return caStartStopAnswer(ctx, cli, name, action, op)
 		}}, nil
 	}
+}
+
+// caStartStopAnswer is the answer of ca_start or ca_stop to the platform's
+// operation: ok only when the operation is done (the answer as shipped);
+// one that ended with an error is the platform's refusal; one still going
+// on is starting or stopping, with the state of the app and its read as
+// the next step — Container Apps has no tool that reads an operation, and
+// the app is read until it runs or stops, as ca_delete reads it until it
+// is gone (CLAUDE.md §6, axis 2; Астра #1813).
+func caStartStopAnswer(ctx context.Context, cli *containerapp.Client, name, action string, op *containerapp.Operation) (string, bool) {
+	if msg, code, failed := opFailure(op.Error); failed {
+		e := clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("Cloud.ru did not %s container app %q: %s (operation %s)", "Cloud.ru не выполнил %s приложения %q: %s (операция %s)",
+				action, name, quoteCloud(fmt.Sprint(msg)), op.ID),
+			i18n.T("ca_get shows the state of the app.", "Состояние приложения показывает ca_get."))
+		fields := map[string]any{"name": name, "action": action, "operation_id": op.ID}
+		if code != nil {
+			fields["platform_code"] = code
+		}
+		return errAnswer(e, fields), true
+	}
+	if op.Done {
+		return toJSON(map[string]any{"status": "ok", "name": name, "action": action}), false
+	}
+	status, verb := "starting", "starts"
+	if action == "stop" {
+		status, verb = "stopping", "stops"
+	}
+	out := map[string]any{"status": status, "name": name, "action": action,
+		// The specification does not list the states of an app: the note
+		// names none.
+		"note": fmt.Sprintf("Cloud.ru took the command and has not finished it: the app %s now. ca_get shows its state.", verb),
+	}
+	if m, err := cli.Get(ctx, name); err == nil {
+		if st, _ := m["status"].(string); st != "" {
+			out["app_status"] = st
+		}
+	}
+	nextStep(out, "ca_get", map[string]any{"name": name})
+	return toJSON(out), false
 }

@@ -98,8 +98,12 @@ func (s *Registry) handleDiskList(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(err), true
 	}
+	only := stringArg(args, "disk_id")
 	out := make([]map[string]any, 0, len(disks))
 	for _, d := range disks {
+		if id, _ := d["id"].(string); only != "" && id != only {
+			continue
+		}
 		row := map[string]any{
 			"id": d["id"], "name": d["name"], "size_gb": d["size"],
 			"state": d["state"], "bootable": d["bootable"],
@@ -241,7 +245,7 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 		}
 		res := map[string]any{"status": "created", "disk": disk}
 		if attachTo == "" || vmID == "" {
-			return toJSON(res), false
+			return toJSON(diskCreated(res, disk)), false
 		}
 
 		// Auto-attach. A disk just created is "creating": attached at once,
@@ -750,4 +754,29 @@ func diskCreatePreview(eng *engine.Engine, req provision.CreateDiskReq, attachTo
 	p.Add("attach_to", attachTo)
 	p.Price()
 	return p
+}
+
+// diskCreated is the answer of disk_create without attach_to: created only
+// for a disk the platform made available; one it is still making is
+// creating, with its state and its read as the next step (CLAUDE.md §6,
+// axis 2; Астра #1814: the answer said created, its disk creating). The
+// create answers the state as status, the list and the read as state.
+func diskCreated(res, disk map[string]any) map[string]any {
+	st, _ := disk["state"].(string)
+	if st == "" {
+		st, _ = disk["status"].(string)
+	}
+	if strings.EqualFold(st, "available") {
+		return res
+	}
+	id, _ := disk["id"].(string)
+	if st == "" {
+		st = "unknown"
+	}
+	res["status"] = "creating"
+	res["disk_id"] = id
+	res["disk_state"] = st
+	res["next"] = fmt.Sprintf("Disk %s is %s: the platform has not made it yet. disk_list disk_id=%s shows when it is available.", id, st, id)
+	nextStep(res, "disk_list", map[string]any{"disk_id": id})
+	return res
 }

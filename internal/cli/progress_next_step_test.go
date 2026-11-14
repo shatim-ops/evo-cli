@@ -5,11 +5,17 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // The answer of a change says whether the change is over (CLAUDE.md §6,
@@ -171,6 +177,162 @@ func TestProgress_ChangeGoingOnNamesTheNextStep(t *testing.T) {
 	for name := range noNextStep {
 		if found[name] == "" {
 			t.Errorf("noNextStep names %s, whose answer names the next step now or is no longer going on: remove the line (the list only shrinks)", name)
+		}
+	}
+}
+
+// overWithAChangeGoingOn reads an answer whose status says the change is
+// over: "" when no resource the answer carries is still on its way, else
+// what is. The status of the answer and the state of its resource say one
+// thing (Астра, #1814: disk_create answered created with its disk
+// creating).
+func overWithAChangeGoingOn(answer map[string]any) string {
+	keys := make([]string, 0, len(answer))
+	for k := range answer {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		res, ok := answer[k].(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, field := range []string{"status", "state"} {
+			if s, _ := res[field].(string); statusGoingOn[strings.ToLower(s)] {
+				return fmt.Sprintf("its %s is %s %q", k, field, s)
+			}
+		}
+	}
+	return ""
+}
+
+// unfinishedWorld turns the JSON world's answer of every write with an
+// operation into one the platform has not finished (done: false), and
+// tells whether the last such write of a case was read after: the reads
+// of operations and resources still answer as before, so a tool that
+// reads the operation or the resource sees it end.
+type unfinishedWorld struct {
+	mu sync.Mutex
+	// pending: the last write answered done: false and nothing was read
+	// since.
+	pending bool
+}
+
+func (u *unfinishedWorld) wrap(next func(*http.Request) (*http.Response, error)) func(*http.Request) (*http.Response, error) {
+	return func(r *http.Request) (*http.Response, error) {
+		resp, err := next(r)
+		read := r.Method == http.MethodGet || r.Method == http.MethodHead
+		if read {
+			u.mu.Lock()
+			u.pending = false
+			u.mu.Unlock()
+		}
+		if err != nil || resp == nil || resp.Body == nil || read {
+			return resp, err
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if bytes.Contains(body, []byte(`"done":true`)) {
+			body = bytes.ReplaceAll(body, []byte(`"done":true`), []byte(`"done":false`))
+			u.mu.Lock()
+			u.pending = true
+			u.mu.Unlock()
+		}
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		resp.ContentLength = int64(len(body))
+		resp.Header.Del("Content-Length")
+		return resp, nil
+	}
+}
+
+// RoundTrip sees the reads the world answers before its fixtures (a
+// resource gone after its delete: parityRT), as a read of the resource.
+func (u *unfinishedWorld) spy(next http.RoundTripper) http.RoundTripper {
+	return roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			u.mu.Lock()
+			u.pending = false
+			u.mu.Unlock()
+		}
+		return next.RoundTrip(r)
+	})
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func (u *unfinishedWorld) take() bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	p := u.pending
+	u.pending = false
+	return p
+}
+
+// overWhileGoingOn are the tools shipped before this check whose answer
+// says created while the resource it carries is still being made: found by
+// it, out of the 1.9 scope of the owner's decision 14.11 (release plan 1.9,
+// «Честный ход операций»: the false outcomes of Астра's inventory #1815).
+// "tool" → what the answer has. It only shrinks, and a new tool does not
+// join it.
+var overWhileGoingOn = map[string]string{
+	"snat_create":   "created, its nat_gateway CREATING",
+	"subnet_create": "created, its subnet creating",
+}
+
+// TestProgress_AnOverAnswerIsOver: the status of a change that is over
+// (statusOver) is not an answer to a change the platform has not finished
+// (owner's decision 14.11, release plan 1.9, «Честный ход операций», (1);
+// Астра #1813, #1814). Two ways it lies: the answer carries its resource
+// still on its way; or the platform answered the write with an operation
+// not done, and the tool read neither it nor the resource after — it
+// cannot know the change is over.
+func TestProgress_AnOverAnswerIsOver(t *testing.T) {
+	found := map[string]bool{}
+	for _, unfinished := range []bool{false, true} {
+		w, fake := withJSONWorld(t)
+		u := &unfinishedWorld{}
+		if unfinished {
+			w.rt.extra = u.wrap(w.rt.extra)
+			base := httpretry.DefaultBase
+			httpretry.DefaultBase = u.spy(base)
+			t.Cleanup(func() { httpretry.DefaultBase = base })
+		}
+		cases, _, _ := jsonCases(t)
+		for _, c := range cases {
+			if !c.tool.Mutating {
+				continue
+			}
+			u.take()
+			r := runJSONCase(t, c, w, fake)
+			pending := u.take()
+			if r.isErr {
+				continue
+			}
+			var answer map[string]any
+			if err := json.Unmarshal([]byte(r.text), &answer); err != nil {
+				continue
+			}
+			status, _ := answer["status"].(string)
+			if !statusOver[status] {
+				continue
+			}
+			if problem := overWithAChangeGoingOn(answer); problem != "" {
+				found[c.tool.Name] = true
+				if overWhileGoingOn[c.tool.Name] != "" {
+					continue
+				}
+				t.Errorf("%s answers status %q, and %s: name the state of the change (statusGoingOn) and the next step", c.tool.Name, status, problem)
+			}
+			if unfinished && pending {
+				t.Errorf("%s answers status %q to a write whose operation the platform answered not done, and read neither the operation nor the resource after: name the operation (operation_id), its state and the next step", c.tool.Name, status)
+			}
+		}
+	}
+	for name := range overWhileGoingOn {
+		if !found[name] {
+			t.Errorf("overWhileGoingOn names %s, whose answer no longer says created with its resource being made: remove the line (the list only shrinks)", name)
 		}
 	}
 }
