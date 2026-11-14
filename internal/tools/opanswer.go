@@ -200,6 +200,66 @@ func operationTime(m map[string]any, keys ...string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// goingOn names, in the answer ans of a change whose operation opID the
+// cloud is still making, the machine's next step — the read of the
+// operation, opTool, whose answer ends with the state of the resource —
+// and the state of the resource now, which the agent would otherwise read
+// blindly from a list (CLAUDE.md §6, axis 2; Астра, #1815). The state is
+// the read of opTool's resource id (addResourceStatus), or, for a resource
+// with no read of its own (a backup, an addon), listed — the read of the
+// list that names it. One place for every create that answers an
+// operation.
+func (s *Registry) goingOn(ctx context.Context, ans map[string]any, opTool, opID, id string, listed func(context.Context) (map[string]any, error)) {
+	if opID == "" {
+		return
+	}
+	nextStep(ans, opTool, map[string]any{"operation_id": opID, "wait_seconds": opWaitMaxSeconds})
+	m := map[string]any{"resource_id": id}
+	switch {
+	case listed != nil:
+		item, err := listed(ctx)
+		switch {
+		case err != nil:
+			m["resource_status_error"] = clierrors.CodeAPIError
+		case item == nil:
+			m["resource_status"] = "not_found"
+			m["resource_status_note"] = i18n.T("the list does not name it yet: it may be on its way; the read of the operation says when it ends",
+				"список его ещё не называет: он может быть в пути; чтение операции скажет, когда она кончится")
+		default:
+			for _, k := range []string{"status", "state", "phase"} {
+				if v, _ := item[k].(string); v != "" {
+					m["resource_status"] = v
+					break
+				}
+			}
+		}
+	case id != "":
+		s.addResourceStatus(ctx, opTool, m)
+	}
+	for _, k := range []string{"resource_status", "resource_status_error", "resource_status_note"} {
+		if v, ok := m[k]; ok {
+			ans[k] = v
+		}
+	}
+}
+
+// listedBy is the read of a resource with no read of its own: the item of
+// list whose id is id or, without one, whose name is name; nil when none.
+func listedBy(list func(context.Context) ([]map[string]any, error), id, name string) func(context.Context) (map[string]any, error) {
+	return func(ctx context.Context) (map[string]any, error) {
+		items, err := list(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range items {
+			if id != "" && it["id"] == id || id == "" && name != "" && it["name"] == name {
+				return it, nil
+			}
+		}
+		return nil, nil
+	}
+}
+
 // addResourceStatus sets resource_status of the operation m of tool: the
 // status the first read of operationReads that knows the resource gives,
 // "not_found" with resource_status_note when none does (a delete that is

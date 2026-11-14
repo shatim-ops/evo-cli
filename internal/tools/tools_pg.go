@@ -468,6 +468,7 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 		} else {
 			out["note"] = "Cluster creation is async (~minutes). Poll pg_operation(operation_id) until done=true; pg_list shows the cluster's id by its name, then pg_get for status READY."
 		}
+		s.goingOn(ctx, out, "pg_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
 	}}, nil
 }
@@ -890,6 +891,8 @@ func (s *Registry) planPgBackupCreate(ctx context.Context, args map[string]any) 
 		if op.ResourceID != "" {
 			out["backup_id"] = op.ResourceID
 		}
+		// A backup has no read of its own: the cluster's list names it.
+		s.goingOn(ctx, out, "pg_operation", op.ID, op.ResourceID, listedBy(list, op.ResourceID, name))
 		return toJSON(out), false
 	}}, nil
 }

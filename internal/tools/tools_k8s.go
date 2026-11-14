@@ -380,14 +380,16 @@ func (s *Registry) planK8sCreate(ctx context.Context, args map[string]any) (*Pla
 			}
 			return lostCreate(ctx, "k8s_create", list, i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, nil, "k8s_get cluster_id", err)
 		}
-		return toJSON(map[string]any{
+		out := map[string]any{
 			"status":       "creating",
 			"cluster_id":   op.ResourceID,
 			"operation_id": op.ID,
 			"name":         req.Name,
 			"note": i18n.T("Cluster is provisioning (async, about 10 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
 				fmt.Sprintf("Кластер создаётся (асинхронно, около 10 мин). Проверяйте evo k8s get %[1]s, пока статус не станет running, затем — evo k8s kubeconfig %[1]s.", op.ResourceID)),
-		}), false
+		}
+		s.goingOn(ctx, out, "k8s_operation", op.ID, op.ResourceID, nil)
+		return toJSON(out), false
 	}}, nil
 }
 
@@ -1163,12 +1165,14 @@ func (s *Registry) planK8sAddNodePool(ctx context.Context, args map[string]any) 
 			}
 			return lostCreate(ctx, "k8s_add_nodepool", list, i18n.T("node pool", "группа узлов"), name, nil, "k8s_nodepools cluster_id="+clusterID, fmt.Errorf(i18n.T("create node pool: %w", "создание группы узлов: %w"), err))
 		}
-		return toJSON(map[string]any{
+		out := map[string]any{
 			"status": "creating", "node_pool": name, "nodepool_id": op.ResourceID, "cluster_id": clusterID,
 			"operation_id": op.ID, "count": count, "flavor_id": flavor.FlavorID, "flavor": flavor.Name,
 			"note": i18n.T("Node pool is provisioning (async). Poll k8s_nodepools. NB: if Cloud.ru returns 503 'no healthy upstream' it's a transient backend outage — retry.",
 				fmt.Sprintf("Группа узлов создаётся (асинхронно). Проверяйте evo k8s nodepools %s. Если Cloud.ru отвечает 503 «no healthy upstream», это временный сбой сервиса — повторите.", clusterID)),
-		}), false
+		}
+		s.goingOn(ctx, out, "k8s_operation", op.ID, op.ResourceID, nil)
+		return toJSON(out), false
 	}}, nil
 }
 
