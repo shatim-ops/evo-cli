@@ -6,7 +6,10 @@ package provision
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // consoleFields are the fields of a VM — its card, an item of the list of
@@ -19,8 +22,12 @@ var consoleFields = []string{"vnc_url", "vnc_ws", "remote_console_url", "remote_
 
 // consoleKey finds a console field as a key, in any case, plain or inside
 // JSON escaped into a string any number of times (`\"vnc_url\": …`):
-// group 1 holds the backslashes before its quote.
-var consoleKey = regexp.MustCompile(`(?i)(\\*)"(?:` + strings.Join(consoleFields, "|") + `)\\*"\s*:\s*`)
+// group 1 holds the backslashes before its quote. Around the colon JSON
+// whitespace may stand as is or escaped (\n, \r, \t; Астра #1946).
+var consoleKey = regexp.MustCompile(`(?i)(\\*)"(?:` + strings.Join(consoleFields, "|") + `)\\*"` + jsonSpace + `:` + jsonSpace)
+
+// jsonSpace is JSON whitespace, as is or escaped at any depth.
+const jsonSpace = `(?:\s|\\+[nrt])*`
 
 // consolePlain finds a console field outside JSON — a name unquoted or in
 // single quotes followed by = or : («vnc_url=wss://…», a proxy's or a
@@ -38,8 +45,91 @@ const hiddenValue = "hidden"
 // the platform, an answer of an unknown shape — which may be cut at
 // maxErrorBody inside a value or not be JSON at all. A value cut short is
 // hidden up to the end of the body.
+//
+// Fail-closed (release plan 1.9; Астра #1945, #1946): a body that still
+// names a console field with a value evo did not hide — an escape deeper
+// than escapeDepth reads, the name in \u escapes or in free text — is
+// withheld whole (consoleBodyWithheld).
 func hideConsole(body []byte) string {
-	s := consolePlain.ReplaceAllString(string(body), "${1}"+hiddenValue)
+	s := hideConsoleValues(string(body))
+	if consoleLeft(s) {
+		return consoleBodyWithheld()
+	}
+	return s
+}
+
+// consoleBodyWithheld is what an error carries instead of a body that names
+// a console field evo could not hide.
+func consoleBodyWithheld() string {
+	return i18n.T("(the answer names a console field of the VM; evo withholds it whole)",
+		"(ответ называет поле консоли ВМ; evo не показывает его целиком)")
+}
+
+// consoleLeft reports whether s names a console field — in any case, with
+// its \u escapes read — whose value is not hiddenValue: what lies after the
+// name, past quotes, backslashes, JSON whitespace (escaped or not) and the
+// separator, does not start with it.
+func consoleLeft(s string) bool {
+	l := strings.ToLower(unescapeU(s))
+	for _, f := range consoleFields {
+		for i := 0; ; {
+			j := strings.Index(l[i:], f)
+			if j < 0 {
+				break
+			}
+			k := i + j + len(f)
+			for k < len(l) {
+				switch c := l[k]; {
+				case c == '\\' && k+1 < len(l) && strings.IndexByte("nrt", l[k+1]) >= 0:
+					k += 2
+					continue
+				case strings.IndexByte(`"'\\ :=`+"\t\r\n", c) >= 0:
+					k++
+					continue
+				}
+				break
+			}
+			if !strings.HasPrefix(l[k:], hiddenValue) {
+				return true
+			}
+			i = k
+		}
+	}
+	return false
+}
+
+// unescapeU reads every \uXXXX escape of s, at any depth, as its rune:
+// the run of backslashes before the u goes with it — escaped twice the
+// escape is \\u005f, and a backslash left before the rune would split the
+// name («Риск», conclusion 248, У1).
+func unescapeU(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' {
+			j := i
+			for j < len(s) && s[j] == '\\' {
+				j++
+			}
+			if j+4 < len(s) && s[j] == 'u' {
+				if r, err := strconv.ParseUint(s[j+1:j+5], 16, 32); err == nil {
+					b.WriteRune(rune(r))
+					i = j + 4
+					continue
+				}
+			}
+			// No escape after the run: it is text, once.
+			b.WriteString(s[i:j])
+			i = j - 1
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// hideConsoleValues replaces the value of every console field it reads.
+func hideConsoleValues(s string) string {
+	s = consolePlain.ReplaceAllString(s, "${1}"+hiddenValue)
 	locs := consoleKey.FindAllStringSubmatchIndex(s, -1)
 	if locs == nil {
 		return s

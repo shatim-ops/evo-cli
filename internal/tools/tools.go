@@ -3215,7 +3215,8 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				}
 			}
 			if e != nil {
-				keptWhy = i18n.Tf("could not check who made it (%v)", "не удалось проверить, кто его создал (%v)", e)
+				// The error carries what the cloud answered: quoted, one line.
+				keptWhy = i18n.Tf("could not check who made it (%s)", "не удалось проверить, кто его создал (%s)", quoteCloud(e.Error()))
 			}
 			if !evoMade {
 				keptFIP, addr = addr, ""
@@ -3503,14 +3504,14 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 	switch {
 	case keptFIP != "":
 		fip = i18n.Tf("will be kept: %s — %s (call with release_ip=true to release it)",
-			"будет сохранён: %s — %s (чтобы освободить, вызовите с --release-ip)", keptFIP, keptWhy)
+			"будет сохранён: %s — %s (чтобы освободить, вызовите с release_ip=true, в команде — --release-ip)", keptFIP, keptWhy)
 	case hasFIP && releaseIP:
 		// Future tense: the preview is before consent; "released:" read as
 		// already done (G130-36). The answer after confirmed=true still says
 		// "released floating IP …".
 		fip = i18n.T("will be released: ", "будет освобождён: ") + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	case hasFIP:
-		fip = i18n.T("will be kept (release_ip=false): ", "будет сохранён (--release-ip=false): ") + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
+		fip = i18n.T("will be kept (release_ip=false): ", "будет сохранён (release_ip=false, в команде — --release-ip=false): ") + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	}
 	out := map[string]any{
 		"message":     msg,
@@ -3520,7 +3521,7 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 		"floating_ip_rule": i18n.T("evo releases a floating IP it made for this VM (recorded here, or named fip-<id>, fip-<name>-…, <name>-fip); "+
 			"any other address on the VM is kept unless release_ip=true",
 			"evo освобождает floating IP, который сам создал для этой ВМ (записан здесь или назван fip-<id>, fip-<name>-…, <name>-fip); "+
-				"любой другой адрес ВМ сохраняется, если не указан --release-ip"),
+				"любой другой адрес ВМ сохраняется, если не указан release_ip=true (в команде — --release-ip)"),
 	}
 	var ports []string
 	for _, p := range rules {
