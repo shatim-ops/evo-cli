@@ -134,10 +134,10 @@ func TestAlreadyDeleted_Bare404IsNotGone(t *testing.T) {
 // argument of deleteTargets: the contract arguments fill every argument,
 // and a delete refuses two names of one resource (vm_id and name, id and
 // ip_address) before any request. The ways are what the registry declares
-// — Tool.RequiredOneOf and the "a|b" positional of the CLI.
+// — Tool.Decl.RequiredOneOf and the "a|b" positional of the CLI.
 func byTargetOnly(tl Tool, args map[string]any) map[string]any {
 	target := deleteTargets[tl.Name].arg
-	sets := slices.Clone(tl.RequiredOneOf)
+	sets := slices.Clone(tl.Decl.RequiredOneOf)
 	for _, a := range tl.CLI.Args {
 		if strings.Contains(a, "|") {
 			sets = append(sets, strings.Split(a, "|"))

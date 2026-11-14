@@ -90,7 +90,7 @@ func fullArgs(tl Tool) map[string]any {
 	delete(args, "image_metadata") // an array of field objects
 	// One argument of each "one of" set: two of them is USAGE before the
 	// project check (vpc_route_create next hops, break r4 R4-11).
-	for _, set := range tl.RequiredOneOf {
+	for _, set := range tl.Decl.RequiredOneOf {
 		for _, k := range set[1:] {
 			delete(args, k)
 		}
@@ -117,12 +117,11 @@ func fullArgs(tl Tool) map[string]any {
 func TestProjectTools_NoProjectIsConfigInvalidBeforeAnyRequest(t *testing.T) {
 	r, rec := noProjectRegistry(t)
 	want := clierrors.ProjectRequired()
-	for name := range projectTools {
-		tl, ok := r.Lookup(name)
-		if !ok {
-			t.Errorf("projectTools names %q, which is not a tool", name)
+	for _, tl := range r.Tools() {
+		if !tl.Decl.Project {
 			continue
 		}
+		name := tl.Name
 		m, text, isErr := callNamed(t, r, name, fullArgs(tl))
 		if !isErr || m["reason"] != clierrors.CodeConfigInvalid || m["error"] != want.Message || m["hint"] != want.Hint {
 			t.Errorf("%s without a project: %.300s", name, text)
