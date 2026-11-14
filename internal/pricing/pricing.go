@@ -92,6 +92,34 @@ const SourceVCPURAM = "estimate: rate-card (vCPU+RAM); not a billed price"
 // vCPU of the flavor's share of a core and of a GB of RAM.
 const SourceVCPUShare = "estimate: rate-card (vCPU by its share + RAM, price-calculation of 04.11.2026); not a billed price"
 
+// SourceFlavorCard is the Source of an estimate by the card's rate of the
+// flavor itself.
+const SourceFlavorCard = "estimate: rate-card (flavor); not a billed price"
+
+// SourceRU is the Russian text of source for a person reading the CLI
+// (D6; Астра #1835): the JSON and MCP keep source as it is — code compares
+// it. ok is false for a source this package does not make.
+func SourceRU(source string) (ru string, ok bool) {
+	switch source {
+	case SourceAPI:
+		return "API расчёта цены (Cloud.ru); без лицензии образа", true
+	case SourceAPIDisk:
+		return "API расчёта цены (Cloud.ru)", true
+	case SourceDiskCard:
+		return "оценка по тарифной карте (ГБ диска); не сумма счёта", true
+	case SourceVCPURAM:
+		return "оценка по тарифной карте (vCPU + RAM); не сумма счёта", true
+	case SourceVCPUShare:
+		return "оценка по тарифной карте (vCPU по его доле + RAM, расчёт цены от 04.11.2026); не сумма счёта", true
+	case SourceFlavorCard:
+		return "оценка по тарифной карте (flavor); не сумма счёта", true
+	case pgSource():
+		return "оценка по тарифу «" + pgTariffNameRaw + "» от " + PGTariffDate + " (версия " + PGTariffVersion +
+			"), с НДС; хранилище учтено на каждом узле; не сумма счёта", true
+	}
+	return "", false
+}
+
 // Breakdown is the components of an API price, in roubles per Period. The
 // API does not say the period of its components: Period is "month" or "hour"
 // when they add up to total_price_month or total_price_hour, "unknown"
@@ -258,7 +286,7 @@ func EstimateFor(flavorName, share string, vcpus, ramGB int, diskGB int, diskTyp
 	source := SourceVCPURAM
 	if v, ok := c.FlavorHourly[flavorName]; ok {
 		hourly = v
-		source = "estimate: rate-card (flavor); not a billed price"
+		source = SourceFlavorCard
 	} else if r, ok := c.ShareHourly[share]; ok {
 		hourly = float64(vcpus)*r.VCPU + float64(ramGB)*r.RAMGB
 		source = SourceVCPUShare
