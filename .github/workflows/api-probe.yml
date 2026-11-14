@@ -588,10 +588,13 @@ jobs:
               [ "$i" = 0 ] || k=(-H "X-Request-Id: $(cat /proc/sys/kernel/random/uuid)")
               if [ "$method" = POST ]; then
                 c=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-                  curl -sS -X POST -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' "${k[@]}" --data-binary @- https://iam.api.cloud.ru/api/v1/auth/token 2>/dev/null || echo 000)
+                  curl -sS -X POST -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' "${k[@]}" --data-binary @- https://iam.api.cloud.ru/api/v1/auth/token 2>/dev/null || true)
               else
-                c=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "${k[@]}" "$url" 2>/dev/null || echo 000)
+                c=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "${k[@]}" "$url" 2>/dev/null || true)
               fi
+              # On a cut, curl prints 000 through -w itself; an empty code is
+              # a curl that printed nothing.
+              c=${c:-000}
               if [ "$i" = 1 ]; then with="$with $c"; else without="$without $c"; fi
             done
             printf '%-28s с X-Request-Id:%s; без:%s — %s\n' "rid19_ctl_$name" "$with" "$without" "$(
