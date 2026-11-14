@@ -1570,7 +1570,7 @@ func (s *Registry) planStackDestroy(_ context.Context, args map[string]any) (*Pl
 					continue
 				}
 				c := decls[tool].Created
-				dt := deleteTargets[c.delete]
+				dt := decls[c.delete].Delete
 				if c.arg != "" {
 					// Deleted by the argument that named it (a secret by its
 					// path): its output only says it was made.

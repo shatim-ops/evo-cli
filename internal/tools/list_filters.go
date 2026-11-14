@@ -699,10 +699,19 @@ func (r *Registry) readCards(ctx context.Context, s listSpec, rows []any, conds 
 	if err != nil {
 		return err
 	}
+	// The reads end where an MCP call's budget leaves time to answer (D69):
+	// cards read one by one may take longer than the client waits (cloud-e2e
+	// 216: 50 cards ≈ 65 s), and a refusal that names how many were read
+	// reaches the agent where a call cut by the client does not.
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	for read, row := range rows {
 		item, _ := row.(map[string]any)
 		for _, c := range conds {
 			field, id := c.f.itemFields()[0], stringOf(item["id"])
+			if err := ctx.Err(); err != nil {
+				return cardError(ctx, c.f.arg, id, read, len(rows), narrow, err)
+			}
 			v, err := c.f.card(ctx, eng, id)
 			if err != nil {
 				return cardError(ctx, c.f.arg, id, read, len(rows), narrow, err)

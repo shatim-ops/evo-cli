@@ -59,9 +59,9 @@ func TestCreated_EveryCreateDeclared(t *testing.T) {
 		if c.delete == "" {
 			continue
 		}
-		dt, ok := deleteTargets[c.delete]
+		dt, ok := deleteOf(c.delete)
 		if !ok {
-			t.Errorf("%s: delete %q is not in deleteTargets", tl.Name, c.delete)
+			t.Errorf("%s: delete %q is not in Decl.Delete", tl.Name, c.delete)
 			continue
 		}
 		if _, ok := props[dt.parent]; dt.parent != "" && !ok {

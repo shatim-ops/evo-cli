@@ -139,7 +139,7 @@ func TestConsent_EveryChangeDeclaresItsRepeat(t *testing.T) {
 		var classes []string
 		if d, ok := declared[tl.Name]; ok {
 			if len(d.Deletes) > 0 {
-				classes = append(classes, "a delete (deleteTargets)")
+				classes = append(classes, "a delete (Decl.Delete)")
 			}
 			if d.Taken != "" {
 				classes = append(classes, "a create with its name checked (taken)")
