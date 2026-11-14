@@ -390,3 +390,62 @@ func TestPublicTrace_Rules(t *testing.T) {
 		}
 	}
 }
+
+// modelCoauthor is the line of co-authorship that names a model (release
+// plan 1.9, «Название модели — ни в коммиты, ни в squash main»): a word
+// between «Claude» and the address. «Claude <address>» names no model and
+// stays; a message keeps the link to the session, not the model.
+var modelCoauthor = regexp.MustCompile(`(?im)^co-authored-by:[ \t]*claude[ \t]+[^<\s][^<\n]*<.*$`)
+
+// TestPublicTrace_Text reads the texts that are not files of the
+// repository: the title and description of a PR, the messages of its
+// commits, the message of a commit on main (workflow public-trace). Each
+// file of EVO_PUBLIC_TRACE_TEXT (separated by the list separator of the
+// system) is one text; a trace in it fails, as a line of co-authorship that
+// names a model does — with EVO_PUBLIC_TRACE_MODEL=warn that line is a
+// warning: the commits of a PR made before the rule keep it, and the
+// release squashes them with a message of its own (the plan line). Unset:
+// nothing to read.
+func TestPublicTrace_Text(t *testing.T) {
+	list := os.Getenv("EVO_PUBLIC_TRACE_TEXT")
+	if list == "" {
+		t.Skip("EVO_PUBLIC_TRACE_TEXT is unset: no text of a PR or a commit to read")
+	}
+	services := inventoryServices(t, filepath.Join("..", ".."))
+	var bad []string
+	for _, path := range filepath.SplitList(list) {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		name := filepath.Base(path)
+		for _, f := range traceIn(name, string(b), services) {
+			bad = append(bad, fmt.Sprintf("%s:%d: %s %q", f.file, f.line, f.rule, f.match))
+		}
+		for _, m := range modelCoauthor.FindAllString(string(b), -1) {
+			msg := fmt.Sprintf("%s: a line of co-authorship names a model: %q — keep the link to the session only", name, strings.TrimSpace(m))
+			if os.Getenv("EVO_PUBLIC_TRACE_MODEL") == "warn" {
+				fmt.Printf("::warning title=Название модели в коммите::%s; squash — с сообщением без неё, автослияние не включать\n", msg)
+				continue
+			}
+			bad = append(bad, msg)
+		}
+	}
+	if len(bad) > 0 {
+		t.Fatal("the public trace of a PR or a commit (remove it from the text — the description, a message; a message already pushed is rewritten by squash):\n" + strings.Join(bad, "\n"))
+	}
+}
+
+func TestPublicTrace_ModelCoauthor(t *testing.T) {
+	for line, want := range map[string]bool{
+		"Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>": true,
+		"co-authored-by: claude sonnet <a@b>":                     true,
+		"Co-authored-by: Claude <noreply@anthropic.com>":          false,
+		"Claude-Session: https://claude.ai/code/session_x":        false,
+		"Co-Authored-By: Alice <a@b>":                             false,
+	} {
+		if got := modelCoauthor.MatchString("msg\n\n" + line); got != want {
+			t.Errorf("%q: names a model %v, want %v", line, got, want)
+		}
+	}
+}

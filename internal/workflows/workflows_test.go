@@ -1719,3 +1719,49 @@ func TestWorkflows_CloudE2ECoreCanBeOff(t *testing.T) {
 		t.Errorf("cloud-e2e: %d inputs of workflow_dispatch, GitHub takes 25", len(in))
 	}
 }
+
+// The public trace of the texts that are not files (owner's decision 14.11,
+// release plan «Сторож публичного следа в CI»): public-trace.yml reads the
+// title, the description and the commits of each PR on opening, each push
+// and each edit, and the message of each commit on main, through env into
+// files, with no secret, and runs TestPublicTrace_Text on them.
+func TestWorkflows_PublicTraceOfTexts(t *testing.T) {
+	w, ok := readWorkflows(t)["public-trace.yml"]
+	if !ok {
+		t.Fatal("no public-trace.yml — the texts of PRs and commits are not read")
+	}
+	pr, _ := w.On["pull_request"].(map[string]any)
+	types := fmt.Sprint(pr["types"])
+	for _, ty := range []string{"opened", "edited", "synchronize", "reopened"} {
+		if !strings.Contains(types, ty) {
+			t.Errorf("public-trace: pull_request types %s lack %s", types, ty)
+		}
+	}
+	push, _ := w.On["push"].(map[string]any)
+	if !strings.Contains(fmt.Sprint(push["branches"]), "main") {
+		t.Errorf("public-trace: push %v — the commits of main are read too", push)
+	}
+	if fmt.Sprint(w.Permissions) != "map[contents:read]" {
+		t.Errorf("public-trace: permissions %v — contents: read alone", w.Permissions)
+	}
+	text, runs := false, false
+	for name, j := range w.Jobs {
+		for _, s := range j.Steps {
+			if strings.Contains(s.Run+fmt.Sprint(s.With)+fmt.Sprint(s.Env), "secrets.") {
+				t.Errorf("public-trace %s: a step reads a secret", name)
+			}
+			if strings.Contains(s.Env["BODY"], "github.event.pull_request.body") && strings.Contains(s.Env["TITLE"], "github.event.pull_request.title") {
+				text = strings.Contains(s.Run, "EVO_PUBLIC_TRACE_TEXT") && strings.Contains(s.Run, "git log")
+			}
+			if strings.Contains(s.Run, "TestPublicTrace_Text") && strings.Contains(s.Run, "-v") {
+				runs = true
+			}
+		}
+	}
+	if !text {
+		t.Error("public-trace: no step writes the title, the description (through env) and the commits into EVO_PUBLIC_TRACE_TEXT")
+	}
+	if !runs {
+		t.Error("public-trace: no step runs TestPublicTrace_Text with -v (its warnings are printed only with it)")
+	}
+}
