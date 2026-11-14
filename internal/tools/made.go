@@ -158,12 +158,16 @@ func madeState(item map[string]any) string {
 }
 
 // mergedItem is the resource as the create answered it with what a later
-// read of it says over it: a list item may carry fewer fields.
+// read of it says over it: a list item may carry fewer fields. The state
+// is the read's alone — a state or status of the create's answer the read
+// does not name would say the resource is still being made (Астра #1854).
 func mergedItem(was any, read map[string]any) map[string]any {
 	out := map[string]any{}
 	if m, ok := was.(map[string]any); ok {
 		maps.Copy(out, m)
 	}
+	delete(out, "state")
+	delete(out, "status")
 	maps.Copy(out, read)
 	return out
 }

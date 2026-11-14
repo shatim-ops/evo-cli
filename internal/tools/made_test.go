@@ -63,7 +63,7 @@ func TestMadeAnswer_CreatedOnlyOfAMadeResource(t *testing.T) {
 				return []map[string]any{{"id": "other", "state": "created"}, {"id": id, "state": st}}, nil
 			}
 			eng := &engine.Engine{Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 30 * time.Millisecond}}
-			res := map[string]any{"subnet": map[string]any{"id": id, "name": "web", "state": c.answered}}
+			res := map[string]any{"subnet": map[string]any{"id": id, "name": "web", "state": c.answered, "status": c.answered}}
 			text, isErr := madeAnswer(ctx, eng, res, made{tool: "subnet_create", list: "list_subnets", field: "subnet",
 				idField: "subnet_id", what: "Subnet", whatRU: "Подсеть", read: read})
 			var m map[string]any
@@ -84,8 +84,8 @@ func TestMadeAnswer_CreatedOnlyOfAMadeResource(t *testing.T) {
 				t.Errorf("the next step: %v, want %v: %s", hasNext, c.next, text)
 			}
 			if c.status == "created" {
-				if sn, _ := m["subnet"].(map[string]any); sn["name"] != "web" {
-					t.Errorf("the created subnet lost the fields of the create's answer: %s", text)
+				if sn, _ := m["subnet"].(map[string]any); sn["name"] != "web" || c.reads != nil && (sn["status"] != nil || sn["state"] != c.reads[len(c.reads)-1]) {
+					t.Errorf("the created subnet lost the fields of the create's answer, or kept its state: %s", text)
 				}
 			}
 		})
