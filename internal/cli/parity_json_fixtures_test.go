@@ -242,6 +242,16 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			return write(`{"users":[{"name":"old"}]}`)
 		case strings.HasSuffix(p, "/backups") && get:
 			return write(`{"backups":[]}`)
+		// A database and a user of PostgreSQL are made and deleted with no
+		// operation: the create answers the resource (Database, User), the
+		// delete an empty object (openapi-postgresql).
+		case r.URL.Host == "postgresql.api.cloud.ru" && r.Method == http.MethodPost && strings.HasSuffix(p, "/databases"):
+			return write(`{"name":"app","owner":"app"}`)
+		case r.URL.Host == "postgresql.api.cloud.ru" && r.Method == http.MethodPost && strings.HasSuffix(p, "/users"):
+			return write(`{"name":"app"}`)
+		case r.URL.Host == "postgresql.api.cloud.ru" && r.Method == http.MethodDelete &&
+			(strings.Contains(p, "/databases/") || strings.Contains(p, "/users/")):
+			return write(`{}`)
 		case strings.HasPrefix(p, "/v1/operations/") || !get:
 			return write(jsonOp)
 		}
