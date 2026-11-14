@@ -904,7 +904,7 @@ func argLines(m map[string]any) []string {
 	for _, k := range keys {
 		var v string
 		if s, ok := m[k].(string); ok {
-			v = s
+			v = engine.PreviewText(s)
 		} else {
 			b, _ := json.Marshal(m[k])
 			v = string(b)

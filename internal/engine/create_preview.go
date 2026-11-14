@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
@@ -1122,6 +1124,25 @@ func namedParams(params []PreviewParam) []PreviewParam {
 	return out
 }
 
+// PreviewText is a text value as a person reads it in a preview — a
+// dry run and the question of consent alike: as it is, unless it holds a
+// control or format character (a line break, a carriage return, a
+// terminal's escape, a bidi override), then quoted with them escaped. A
+// value the caller gave (a description, Decl.EchoedArgs) or the cloud
+// gave then cannot start a line that reads as evo's or move the terminal
+// (Astra, #1848). The one point for every value a human preview prints:
+// the parameters of a preview (paramValue) and the fields of an answer
+// beside its message (the CLI). The data of the answer and the request
+// keep the value as given.
+func PreviewText(s string) string {
+	for _, r := range s {
+		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+			return strconv.Quote(s)
+		}
+	}
+	return s
+}
+
 func paramLine(prm PreviewParam) string {
 	if prm.Key == "not_checked" {
 		return notCheckedLine(prm.Value)
@@ -1175,7 +1196,7 @@ func paramValue(v any) string {
 	case nil:
 		return ""
 	case string:
-		return x
+		return PreviewText(x)
 	case bool:
 		if x {
 			return i18n.T("yes", "да")
