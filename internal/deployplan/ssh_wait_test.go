@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"strings"
 	"testing"
 	"time"
@@ -75,6 +76,11 @@ func TestWaitForSSHPort_SaysThePortState(t *testing.T) {
 // claim the VM boots — a rule that drops the packets gives the same — and
 // names the security group as the next check; a refusal names sshd (#1707).
 func TestSSHUnreachedNote_SaysTheFactNotACause(t *testing.T) {
+	// The words of the fact as an agent over MCP reads them (English); the
+	// Russian CLI says the same in its language (#1835).
+	was := i18n.Lang()
+	i18n.SetLang(i18n.EN)
+	t.Cleanup(func() { i18n.SetLang(was) })
 	silent := sshUnreachedNote("203.0.113.7", 2*time.Minute, portSilent)
 	for _, want := range []string{"did not answer", "from the machine evo runs on", "within 2m0s", "security group", "does not tell which"} {
 		if !strings.Contains(silent, want) {
