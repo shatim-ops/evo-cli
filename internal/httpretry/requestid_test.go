@@ -208,6 +208,44 @@ func TestFailedRequest_AnsweredIDThatIsACredentialIsDropped(t *testing.T) {
 	}
 }
 
+// Секрет обмена ключа идёт в теле запроса, а не в заголовке: эхо его в
+// X-Request-Id ответа — тоже секрет, а не id (замечание «Риска» к снятию
+// стопа 202, #1703). Так же — значение из строки запроса.
+func TestFailedRequest_AnsweredIDFromTheBodyOrQueryIsDropped(t *testing.T) {
+	for _, c := range []struct{ name, url, body, echo string }{
+		{"body", "https://iam.api.cloud.ru/api/v1/auth/token", `{"keyId":"k1","secret":"S3cr3t-0paque"}`, "s3cr3t-0paque"},
+		{"form body", "https://iam.api.cloud.ru/api/v1/auth/token", "client_id=k1&client_secret=S3cr3t-0paque", "S3cr3t-0paque"},
+		{"query", "https://vpc.api.cloud.ru/v1/vpcs?token=S3cr3t-0paque", "", "S3cr3t-0paque"},
+	} {
+		f := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.Body != nil {
+				_, _ = io.Copy(io.Discard, r.Body)
+			}
+			h := http.Header{}
+			h.Set(RequestIDHeader, c.echo)
+			return &http.Response{StatusCode: 401, Header: h, Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
+		})
+		ctx := TraceRequests(context.Background())
+		method, body := http.MethodGet, io.Reader(nil)
+		if c.body != "" {
+			method, body = http.MethodPost, strings.NewReader(c.body)
+		}
+		req, _ := http.NewRequestWithContext(ctx, method, c.url, body)
+		resp, err := UserAgent(f).RoundTrip(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		got, ok := FailedRequest(ctx, 401)
+		if !ok || got.Sent == "" {
+			t.Fatalf("%s: no failed request: %+v", c.name, got)
+		}
+		if got.Answered != "" {
+			t.Errorf("%s: the answer's id is the request's secret and was kept: %q", c.name, got.Answered)
+		}
+	}
+}
+
 // Ошибка записи называет id записи, а не проверочного чтения после неё с
 // тем же статусом: POST 403, затем GET 403 — ошибка вызова о POST
 // (внешняя проверка, #1754; остаток 2 заключения «Риска» 202).

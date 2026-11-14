@@ -8,7 +8,9 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -122,25 +124,59 @@ func traced(req *http.Request, resp *http.Response, err error) {
 	t.failed = append(t.failed, f)
 }
 
-// inRequest reports whether id is in a header of req other than its own
-// X-Request-Id: an answer that echoes a key or a token of the request
-// (a short opaque token has the form of an id) names no request, and its
-// value is a secret that must not reach the text of an error (#1751).
-// traced asks of the answer's request too: a renewed token is set on a
-// clone of the caller's request (renewing). The case is not compared: an
-// echo of the token in another case is the same secret (#1751, `Bearer
-// AbCd-opaque` answered as `abcd-opaque`).
+// inRequest reports whether id is in what req sent other than its own
+// X-Request-Id — a header, the query or the body: an answer that echoes a
+// key or a token of the request (a short opaque token has the form of an
+// id) names no request, and its value is a secret that must not reach the
+// text of an error (#1751). The secret of a key exchange is in the body
+// («Риск», conclusion 202). Case does not tell them apart: a service that
+// echoes the value in another case echoes the same secret. traced asks of
+// the answer's request too: a renewed token is set on a clone of the
+// caller's request (renewing).
 func inRequest(req *http.Request, id string) bool {
 	id = strings.ToLower(id)
+	has := func(v string) bool { return strings.Contains(strings.ToLower(v), id) }
 	for name, vs := range req.Header {
 		if http.CanonicalHeaderKey(name) == RequestIDHeader {
 			continue
 		}
 		for _, v := range vs {
-			if strings.Contains(strings.ToLower(v), id) {
+			if has(v) {
 				return true
 			}
 		}
 	}
-	return false
+	if req.URL != nil {
+		if q, err := url.QueryUnescape(req.URL.RawQuery); has(req.URL.RawQuery) || err == nil && has(q) {
+			return true
+		}
+	}
+	return inBody(req, has)
+}
+
+// maxEchoBody bounds the body inRequest reads again: a key exchange or a
+// form is small, an upload is not where a credential goes.
+const maxEchoBody = 64 << 10
+
+// inBody reports whether the body req sent, read again (GetBody), holds
+// what has looks for, as sent or form-decoded. A body that cannot be read
+// again is not looked at.
+func inBody(req *http.Request, has func(string) bool) bool {
+	if req.GetBody == nil || req.ContentLength > maxEchoBody {
+		return false
+	}
+	rc, err := req.GetBody()
+	if err != nil {
+		return false
+	}
+	defer rc.Close()
+	b, err := io.ReadAll(io.LimitReader(rc, maxEchoBody))
+	if err != nil {
+		return false
+	}
+	if has(string(b)) {
+		return true
+	}
+	q, err := url.QueryUnescape(string(b))
+	return err == nil && has(q)
 }
