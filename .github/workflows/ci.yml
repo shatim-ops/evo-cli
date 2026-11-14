@@ -367,10 +367,17 @@ jobs:
         run: timeout 120 .github/scripts/e2e_preflight_test.sh
 
       # install.sh — установщик evo; internal/bootstrap/install.sh ставит Docker
-      # на ВМ (release audit, REL-13); скрипты CI — .github/scripts.
+      # на ВМ (release audit, REL-13); скрипты CI — .github/scripts. Версия
+      # shellcheck — одна с сессиями (shellcheck.sh), а не из образа раннера
+      # (#1523: замечание раннера локально не выходило).
       - name: shellcheck
         if: runner.os == 'Linux'
-        run: shellcheck install.sh internal/bootstrap/install.sh .github/scripts/*.sh
+        run: .github/scripts/shellcheck.sh install.sh internal/bootstrap/install.sh .github/scripts/*.sh
+
+      # shellcheck.sh на заглушках: та же версия, релиз по SHA256, кэш.
+      - name: версия shellcheck
+        if: runner.os == 'Linux'
+        run: .github/scripts/shellcheck_test.sh
 
       # Запись CHANGELOG каждого PR — фрагмент changelog.d/<тема>.md
       # (changelog.d/README.md); перед тегом релиз вливает их скриптом.
