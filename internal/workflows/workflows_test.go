@@ -38,7 +38,12 @@ type workflow struct {
 		Uses           string `yaml:"uses"`
 		RunsOn         string `yaml:"runs-on"`
 		// Needs: a job name or a list of them.
-		Needs       any    `yaml:"needs"`
+		Needs any `yaml:"needs"`
+		// Concurrency: the group of the job itself.
+		Concurrency struct {
+			Group            string `yaml:"group"`
+			CancelInProgress string `yaml:"cancel-in-progress"`
+		} `yaml:"concurrency"`
 		Environment string `yaml:"environment"`
 		Strategy    struct {
 			Matrix      map[string]any `yaml:"matrix"`
@@ -205,6 +210,29 @@ func TestWorkflows_CIOncePerChange(t *testing.T) {
 	if !strings.Contains(w.Concurrency.Group, "github.ref") ||
 		strings.ReplaceAll(w.Concurrency.CancelInProgress, " ", "") != "${{github.event_name=='pull_request'}}" {
 		t.Errorf("ci: concurrency %+v, want a group per ref that cancels on pull_request only", w.Concurrency)
+	}
+	// A push to main has a group of its own commit: in a shared group
+	// GitHub keeps one pending run, and the next push replaced it even
+	// without cancel-in-progress — on 14.11 one run of main of eight came
+	// to its end, and product merges went without their own run (plan 1.9,
+	// «Push-прогон main … не отменяется документным»). Commits of internal
+	// docs alone share the group of the test matrix, among themselves only.
+	if g := strings.ReplaceAll(w.Concurrency.Group, " ", ""); !strings.Contains(g, "github.event_name=='push'&&format('-{0}',github.sha)") {
+		t.Errorf("ci: concurrency group %q, want a group per commit on push — a push to main must not replace the pending run of another", w.Concurrency.Group)
+	}
+	test := w.Jobs["test"]
+	if g := strings.ReplaceAll(test.Concurrency.Group, " ", ""); !strings.Contains(g, "matrix.os") ||
+		!strings.Contains(g, "(github.event_name=='push'&&needs.scope.outputs.docs=='yes')&&'main-docs'||github.run_id") ||
+		test.Concurrency.CancelInProgress != "false" {
+		t.Errorf("ci: test concurrency %+v, want a shared group per OS for pushes of internal docs alone and a group per run otherwise", test.Concurrency)
+	}
+	scope := w.Jobs["scope"]
+	var docs bool
+	for _, st := range scope.Steps {
+		docs = docs || (strings.Contains(st.Run, "HEAD^ HEAD") && strings.Contains(st.Run, "classify.sh") && strings.Contains(st.Run, "docs=no") && strings.Contains(st.Run, `"$REF" = refs/heads/main`))
+	}
+	if !docs {
+		t.Error("ci: scope does not tell a push of internal docs alone to main (classify.sh on HEAD^ HEAD, docs=no by default, main only — a release must never join the shared group)")
 	}
 }
 
