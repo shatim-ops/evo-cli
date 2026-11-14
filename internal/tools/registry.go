@@ -66,15 +66,14 @@ type Tool struct {
 	ShortRU           string            `json:"-"`
 	DescriptionRU     string            `json:"-"`
 	ArgDescriptionsRU map[string]string `json:"-"`
-	// RequiredOneOf are argument sets one argument of each the call must
-	// have, beside the schema's "required" (see requiredOneOf).
-	RequiredOneOf [][]string `json:"-"`
 	// UntrustedOutput: the answer carries what a workload or a stored
 	// object wrote (logs, kubectl output, S3 objects), which the agent must
 	// not take for instructions (untrustedFields).
 	UntrustedOutput bool `json:"-"`
 	// CLI is the tool's command in the CLI (cliSpecs).
-	CLI     CLISpec `json:"-"`
+	CLI CLISpec `json:"-"`
+	// Decl is the tool's declaration (decls).
+	Decl    Decl    `json:"-"`
 	Handler Handler `json:"-"`
 }
 
@@ -353,9 +352,9 @@ func New(factory EngineFactory) *Registry {
 	r.registerTools()
 	for i := range r.tools {
 		t := &r.tools[i]
+		t.Decl = decls[t.Name]
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
-		t.RequiredOneOf = requiredOneOf[t.Name]
 		if _, partial := partialConsent[t.Name]; takesConsent(*t) && !partial {
 			t.Description += " " + consentText(t.Name)
 		}
@@ -383,7 +382,7 @@ func New(factory EngineFactory) *Registry {
 			if refs := refArgs[t.Name]; refs != nil {
 				h = r.resolveRefs(refs, h)
 			}
-			if projectTools[t.Name] {
+			if t.Decl.Project {
 				h = r.requireProject(h)
 			}
 			if _, ok := createdIDs[t.Name]; ok || targetArgs(t.Name) != nil {
@@ -482,39 +481,13 @@ func ErrResult(err error) string { return withoutAPIStatus(errResult(err)) }
 // BoolArg reads a boolean argument, def when it is absent.
 func BoolArg(args map[string]any, key string, def bool) bool { return boolArg(args, key, def) }
 
-// requiredOneOf names the tools that need one argument of a set, which
-// "required" cannot say: each set is the arguments one of which the call
-// must have (vm_get: vm_id or name). The handler answers USAGE without
-// one.
-//
-// The input schema does not carry this as a top-level anyOf (QA 20.10,
-// QA-4): the Anthropic API refuses a tool whose input_schema has anyOf,
-// oneOf or allOf at the top level (400 «input_schema does not support
-// oneOf, allOf, or anyOf at the top level»), and an MCP client hands it
-// the schema as it is — one such tool fails every request of the session.
-// The property descriptions say it instead; Tool.RequiredOneOf carries
-// it to docs/tools.md and the empty-arguments test.
-var requiredOneOf = map[string][][]string{
-	"backup_create":       {{"vm_id", "disk_id"}},
-	"pg_get":              {{"id", "cluster_id"}},
-	"pg_delete":           {{"id", "cluster_id"}},
-	"vm_get":              {{"vm_id", "name"}},
-	"vm_start":            {{"vm_id", "name"}},
-	"vm_stop":             {{"vm_id", "name"}},
-	"vm_reboot":           {{"vm_id", "name"}},
-	"vm_resize":           {{"vm_id", "name"}},
-	"image_get":           {{"image", "image_id"}},
-	"release_floating_ip": {{"id", "ip_address"}},
-	"tg_create":           {{"vm_id", "targets"}},
-	"dns_record_create":   {{"value", "values"}},
-	"vpc_route_create":    {{"next_hop_vip_id", "next_hop_vm_id", "next_hop_magic_router_id"}},
-}
-
 // Groups returns the group names in alphabetical order.
 func Groups() []string {
 	seen := map[string]bool{}
-	for _, g := range groupByName {
-		seen[g] = true
+	for _, d := range decls {
+		if d.Group != "" {
+			seen[d.Group] = true
+		}
 	}
 	for _, p := range groupPrefixes {
 		seen[p.group] = true
@@ -553,52 +526,6 @@ func ParseToolsets(groups []string) ([]string, error) {
 	return want, nil
 }
 
-// groupByName assigns tools whose name does not start with their group.
-var groupByName = map[string]string{
-	"deploy":         "deploy",
-	"deploy_plan":    "deploy",
-	"deploy_apply":   "deploy",
-	"status":         "deploy",
-	"list":           "deploy",
-	"logs":           "deploy",
-	"destroy":        "deploy",
-	"open_ports":     "deploy",
-	"close_ports":    "deploy",
-	"sg_rule_create": "vpc",
-	"sg_rule_delete": "vpc",
-
-	"provision":    "vm",
-	"vm_get":       "vm",
-	"vm_start":     "vm",
-	"vm_stop":      "vm",
-	"vm_reboot":    "vm",
-	"vm_resize":    "vm",
-	"list_zones":   "vm",
-	"list_flavors": "vm",
-
-	"list_images":      "image",
-	"marketplace_list": "image",
-
-	"list_disk_types": "disk",
-
-	"list_subnets":         "vpc",
-	"subnet_create":        "vpc",
-	"subnet_delete":        "vpc",
-	"list_security_groups": "vpc",
-	"list_floating_ips":    "vpc",
-	"release_floating_ip":  "vpc",
-	"fip_attach":           "vpc",
-
-	"iam_service_accounts": "iam",
-	"org_projects":         "org",
-	"org_quotas":           "org",
-
-	"whoami": "auth",
-	// With the tools an agent reaches by default (evo agent setup).
-	"agent_skill": "auth",
-	"doctor":      "auth",
-}
-
 // groupPrefixes assigns the rest by name prefix.
 var groupPrefixes = []struct{ prefix, group string }{
 	{"vm_", "vm"},
@@ -628,7 +555,7 @@ var groupPrefixes = []struct{ prefix, group string }{
 // groupOf returns the group of a tool, or "" when none matches (a test
 // keeps that from happening).
 func groupOf(name string) string {
-	if g, ok := groupByName[name]; ok {
+	if g := decls[name].Group; g != "" {
 		return g
 	}
 	for _, p := range groupPrefixes {
@@ -639,40 +566,7 @@ func groupOf(name string) string {
 	return ""
 }
 
-// projectTools call a project-scoped API on every call: a list or a create
-// of the project (project_id in the query or the body, or the project in the
-// path: monitoring, audit), or resources addressed by name or path inside
-// the project (Container Apps, Secret Manager), and the mk8s catalogues
-// (projectId is required there). Without a project they
-// answer CONFIG_INVALID before any request (release audit, R-06): the API
-// said 422 "query.project_id: Field required", and that was API_ERROR,
-// exit 5. Tools addressing a resource by its id, catalogues (zones,
-// flavors, images, Marketplace, disk types), org_*, billing_*, Object
-// Storage and the local state work without one; a name a tool resolves
-// through a compute list hits the same check there (provision). The check
-// is engineFor's: the builders of the handlers' engines and clients use it.
-var projectTools = map[string]bool{
-	"vm_list": true, "list_subnets": true, "list_security_groups": true, "list_floating_ips": true,
-	"disk_list": true, "backup_list": true, "backup_create": true, "disk_create": true, "image_create": true, "snat_list": true, "snat_create": true, "subnet_create": true,
-	"deploy_plan": true, "provision": true,
-	"vpc_list": true, "vpc_create": true, "vpc_route_create": true,
-	"k8s_list": true, "k8s_plan": true, "k8s_create": true,
-	// mk8s catalogues take projectId too: GET /v3/addons without it is a
-	// live 400, the spec requires it on /v3/addons and productConfiguration
-	// (Cursor review of PR #89).
-	"k8s_options": true, "k8s_addons": true, "k8s_addon_versions": true, "k8s_add_addon": true,
-	"ca_list": true, "ca_get": true, "ca_deploy": true, "ca_delete": true, "ca_logs": true, "ca_start": true, "ca_stop": true,
-	"iam_service_accounts": true,
-	"pg_list":              true, "pg_create": true, "kafka_list": true, "kafka_create": true, "redis_list": true, "redis_create": true,
-	"lb_list": true, "lb_create": true, "tg_list": true, "tg_create": true,
-	"dns_zones": true, "dns_zone_create": true,
-	"secret_list": true, "secret_get": true, "secret_value": true, "secret_create": true, "secret_add_version": true, "secret_delete": true,
-	"ar_list": true, "ar_get": true, "ar_create": true, "ar_delete": true,
-	"metrics_history": true, "metrics_scrape": true, "audit_events": true,
-	"cert_list": true, "cert_issue_le": true, "cert_import": true,
-}
-
-// needsProject marks the context of a projectTools call that names no
+// needsProject marks the context of a call of a Decl.Project tool that names no
 // project itself (project_id).
 type needsProject struct{}
 
@@ -689,7 +583,7 @@ func (r *Registry) requireProject(next Handler) Handler {
 }
 
 // engineFor builds the engine of a handler, as newEngine does; for a
-// projectTools call with no project configured it is CONFIG_INVALID
+// Decl.Project call with no project configured it is CONFIG_INVALID
 // (errors.ProjectRequired), before any token or API request. With no key
 // either, the missing key is reported first (AUTH_REQUIRED, the same exit
 // code 2): it is the first step of a new setup, and 'evo configure' sets
@@ -742,14 +636,8 @@ var sideEffectTools = map[string]string{
 	"stack_status":   "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it",
 }
 
-// alwaysListed are the tools a server lists and serves whatever its
-// --toolsets, with why.
-var alwaysListed = map[string]string{
-	"agent_skill": "the card of a group is read by the agent that works with that group, whichever groups the server serves",
-}
-
 // AlwaysListed reports whether a server serves t under any --toolsets.
-func AlwaysListed(t Tool) bool { return alwaysListed[t.Name] != "" }
+func AlwaysListed(t Tool) bool { return t.Decl.AlwaysListed != "" }
 
 // SetServed tells the registry which tools the server serves (nil: all):
 // the cards of agent_skill mark the rest.
