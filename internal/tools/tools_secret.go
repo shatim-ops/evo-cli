@@ -180,6 +180,8 @@ func (s *Registry) planSecretAddVersion(ctx context.Context, args map[string]any
 		}
 		res, err := cli.AddVersion(ctx, body)
 		if err != nil {
+			err = noReceipt(err, i18n.Tf("A version may have been added: secret_get path=%s shows the versions — read it before any repeat, which adds one more.",
+				"Версия могла быть добавлена: версии покажет evo secret get %s — прочитайте до любого повтора, повтор добавит ещё одну.", path))
 			return errResult(fmt.Errorf(i18n.T("add version: %w", "добавление версии: %w"), err)), true
 		}
 		return toJSON(map[string]any{"status": "version_added", "version": res["version"]}), false

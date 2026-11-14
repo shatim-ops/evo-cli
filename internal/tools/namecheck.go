@@ -6,12 +6,14 @@ package tools
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/receipt"
 )
 
 // takenName finds a listed resource (cluster, registry) named name that is
@@ -87,6 +89,18 @@ func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 // the caller's.
 func noID(what string) error {
 	return clierrors.New(clierrors.CodeAPIError, "the API answered no "+what+" id", "")
+}
+
+// noReceipt gives err, when it is a 2xx with no receipt (receipt.ErrUnusable:
+// the outcome is unknown), the hint of the read to make before any repeat;
+// any other err as it is. One point for the creates whose answer names
+// what they made (Астра, the full audit of 14.11, findings 06 and 07).
+func noReceipt(err error, read string) error {
+	var ce *clierrors.CLIError
+	if !stderrors.Is(err, receipt.ErrUnusable) || !stderrors.As(err, &ce) {
+		return err
+	}
+	return clierrors.Wrap(ce.Code, ce.Message, read, err)
 }
 
 // lostCreate answers a create that sent its request but got no usable
