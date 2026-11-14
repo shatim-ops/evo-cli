@@ -7,6 +7,7 @@ package cli
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -52,7 +53,8 @@ func TestParityWorld_RefusedVMDelete409And422Alike(t *testing.T) {
 				if !r.isErr || r.code == 0 {
 					t.Errorf("%s (%s), DELETE %d: a refused delete is not a success: exit %d, %s", c.path, st, code, r.code, clipLine(r.text))
 				}
-				answers[code] = fmt.Sprintf("exit %d\nCLI: %s\nMCP: %s", r.code, r.errOut, r.text)
+				// Each call sends its own X-Request-Id: the rest is compared.
+				answers[code] = requestIDNamed.ReplaceAllString(fmt.Sprintf("exit %d\nCLI: %s\nMCP: %s", r.code, r.errOut, r.text), "")
 			}
 			ran++
 			if a, b := answers[http.StatusConflict], answers[http.StatusUnprocessableEntity]; a != b {
@@ -64,3 +66,7 @@ func TestParityWorld_RefusedVMDelete409And422Alike(t *testing.T) {
 		t.Fatal("no case of destroy reads the VM: the world tests nothing")
 	}
 }
+
+// requestIDNamed is how an error names its request (X-Request-Id, release
+// plan 1.9).
+var requestIDNamed = regexp.MustCompile(` \(X-Request-Id [^()]*\)`)

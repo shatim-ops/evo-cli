@@ -6,6 +6,7 @@ package tools
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -129,7 +130,7 @@ func TestPgUserCreate_RefusedForAUserThatExistsSaysSo(t *testing.T) {
 		}
 		// The users are not read: the answer is the refusal alone.
 		unread, unreadText := call(&pgUsersWorld{status: refusal.status, body: refusal.body, listFails: true})
-		if unread["hint"] != plain["hint"] || unread["reason"] != plain["reason"] || unread["error"] != plain["error"] {
+		if unread["hint"] != plain["hint"] || unread["reason"] != plain["reason"] || withoutRequestIDs(fmt.Sprint(unread["error"])) != withoutRequestIDs(fmt.Sprint(plain["error"])) {
 			t.Errorf("%d: users not read: the answer differs from the refusal alone:\n%s\n%s", refusal.status, unreadText, plainText)
 		}
 	}
