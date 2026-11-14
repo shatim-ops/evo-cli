@@ -26,23 +26,26 @@ import (
 // from its own times and resource_status from the read of its resource.
 
 // resourceRead is a tool that reads the resource of an operation and the
-// argument it takes the resource's id in.
-type resourceRead struct{ tool, arg string }
+// argument it takes the resource's id in. noState, when set, says why its
+// answer names no state: the service's specification gives the resource
+// none (a VPC, a DNS record) — the read that finds it then says so in a
+// note, not as an error (Астра, #1953).
+type resourceRead struct{ tool, arg, noState string }
 
 // operationReads are the reads of each *_operation's resource, tried in
 // order: an NLB operation is of a balancer or of a target group, a DNS one
 // of a zone or of a record (TestOperation_EveryOperationDeclared keeps the
 // table closed).
 var operationReads = map[string][]resourceRead{
-	"ar_operation":    {{"ar_get", "id"}},
-	"cert_operation":  {{"cert_get", "id"}},
-	"dns_operation":   {{"dns_zone_get", "id"}, {"dns_record_get", "record_id"}},
-	"k8s_operation":   {{"k8s_get", "cluster_id"}, {"k8s_nodepool_get", "nodepool_id"}},
-	"kafka_operation": {{"kafka_get", "cluster_id"}},
-	"lb_operation":    {{"lb_get", "id"}, {"tg_get", "id"}},
-	"pg_operation":    {{"pg_get", "id"}},
-	"redis_operation": {{"redis_get", "cluster_id"}},
-	"vpc_operation":   {{"vpc_get", "id"}},
+	"ar_operation":    {{"ar_get", "id", ""}},
+	"cert_operation":  {{"cert_get", "id", "the state of a certificate is the object issueState, not a word of the answer"}},
+	"dns_operation":   {{"dns_zone_get", "id", ""}, {"dns_record_get", "record_id", "a DNS record has no state in the DNS specification"}},
+	"k8s_operation":   {{"k8s_get", "cluster_id", ""}, {"k8s_nodepool_get", "nodepool_id", ""}},
+	"kafka_operation": {{"kafka_get", "cluster_id", ""}},
+	"lb_operation":    {{"lb_get", "id", ""}, {"tg_get", "id", ""}},
+	"pg_operation":    {{"pg_get", "id", ""}},
+	"redis_operation": {{"redis_get", "cluster_id", ""}},
+	"vpc_operation":   {{"vpc_get", "id", "a VPC has no state in the VPC specification (only its static routes do)"}},
 }
 
 // operation answers a *_operation call: get reads the operation named by
@@ -248,13 +251,18 @@ func (s *Registry) goingOn(ctx context.Context, ans map[string]any, opTool, opID
 		}
 	case id != "":
 		s.addResourceStatus(ctx, opTool, m)
-		if m["resource_status"] == "not_found" {
+		switch note, _ := m["resource_status_note"].(string); {
+		case m["resource_status"] == "not_found":
 			m["resource_status_note"] = notFoundYet()
+		case note != "":
+			// A create's answer: the step is the read, not a repeat.
+			m["resource_status_note"] = note + i18n.T(" — do not create it again", " — не создавайте его повторно")
 		}
 	}
 	// A state evo cannot name is said, never left out (Астра, #1924): the
-	// resource read with no state, or an operation that names no resource.
-	if m["resource_status"] == nil && m["resource_status_error"] == nil {
+	// list names the resource with no state, or the operation names no
+	// resource.
+	if m["resource_status"] == nil && m["resource_status_error"] == nil && m["resource_status_note"] == nil {
 		m["resource_status_error"] = clierrors.CodeAPIError
 		m["resource_status_note"] = noStateRead(id)
 	}
@@ -362,6 +370,15 @@ func (s *Registry) addResourceStatus(ctx context.Context, tool string, m map[str
 				return
 			}
 		}
+		// Found, with no state: said, never left out (Астра, #1953).
+		if r.noState != "" {
+			m["resource_status_note"] = i18n.Tf("%s finds the resource; it has no state to name: %s",
+				"%s находит ресурс; состояния у него нет: %s", r.tool, r.noState)
+			return
+		}
+		m["resource_status_error"] = clierrors.CodeAPIError
+		m["resource_status_note"] = i18n.Tf("%s finds the resource with no state: what it is now is not known; the read of the operation says when it ends and how",
+			"%s находит ресурс без состояния: каков он сейчас, неизвестно; чтение операции скажет, когда и чем она кончится", r.tool)
 		return
 	}
 	// The reads know the kind of resource the tool's create gives; a route
