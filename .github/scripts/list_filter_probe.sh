@@ -29,6 +29,12 @@ if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ] || [ -z "${PROJECT:-}" ]; then
 	echo "::error::нет KEY_ID / SECRET / PROJECT"
 	exit 1
 fi
+# stderr пробы (сообщения jq и curl) не идёт в публичный лог как есть: при
+# ответе неожиданной формы jq печатает его фрагмент, а маски на него нет
+# (внешняя проверка #1757, #1758). Всё stderr — в файл; в лог — только счёт.
+tmp=$(mktemp -d)
+exec 2>"$tmp/stderr"
+trap 'n=$(grep -c . "$tmp/stderr" 2>/dev/null || true); [ "${n:-0}" = 0 ] || echo "stderr пробы: ${n} строк скрыто — в них мог быть ответ API"; rm -rf "$tmp"' EXIT
 echo "::add-mask::$PROJECT"
 redact() { sed -E -f "${GITHUB_WORKSPACE:-.}/.github/scripts/redact.sed"; }
 
@@ -55,8 +61,6 @@ strict() {
 	[ "$3" = same ] && return 0
 	case " $broken " in *" $1:$2 "*) ;; *) broken="$broken $1:$2" ;; esac
 }
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
 
 # get URL FILE — тело в FILE, код HTTP на stdout.
 get() { curl -sS -H "Authorization: Bearer $TOKEN" -o "$2" -w '%{http_code}' "$1" || echo 000; }
@@ -89,14 +93,24 @@ check() {
 	# Не больше 4 значений на параметр: зон 2–3, состояний 2–4 — все; у
 	# flavor, cpu и ram — первые 4: семантика параметра одна на все значения,
 	# а каждая проверка — запрос к API.
-	mapfile -t vals < <(jq -r "$values | .[]? | tostring" "$tmp/all.items" | head -n 4)
+	local raw
+	if ! raw=$(jq -r "$values | .[]? | tostring" "$tmp/all.items"); then
+		printf '%-34s всего=%s: ответ не разобран (форма поля не та) — error\n' "$name" "$total"
+		strict "$2" "$param" error
+		return
+	fi
+	mapfile -t vals < <(printf '%s\n' "$raw" | grep . | head -n 4)
 	if [ "${#vals[@]}" = 0 ]; then
 		printf '%-34s всего=%s, значений нет — не проверено\n' "$name" "$total"
 		return
 	fi
 	for v in "${vals[@]}"; do
 		i=$((i + 1))
-		jq -r --arg v "$v" "[.[] | $rule | .id] | unique | .[]" "$tmp/all.items" >"$tmp/evo"
+		if ! jq -r --arg v "$v" "[.[] | $rule | .id] | unique | .[]" "$tmp/all.items" >"$tmp/evo"; then
+			printf '%-34s значение #%d: ответ не разобран (форма поля не та) — error\n' "$name" "$i"
+			strict "$2" "$param" error
+			continue
+		fi
 		code=$(get "$base&$param=$(jq -rn --arg v "$v" '$v | @uri')" "$tmp/cloud")
 		if [ "$code" != 200 ]; then
 			printf '%-34s значение #%d: http=%s — error\n' "$name" "$i" "$code" | redact
@@ -131,6 +145,51 @@ check snat_zone         nat-gateways     availability_zone_ids '[.[] | .availabi
 check flavors_zone      flavors          availability_zone_id  '[.[] | .availability_zones[]? | .availability_zone_id] | unique' 'select([.availability_zones[]? | .availability_zone_id] | index($v))' global
 check flavors_cpu       flavors          cpu                   '[.[] | .cpu] | unique'                 'select((.cpu | tostring) == $v)' global
 check flavors_ram       flavors          ram                   '[.[] | .ram] | unique'                 'select((.ram | tostring) == $v)' global
+
+# Проба 1.9 (строка плана «Проба чтения»: «да» владельца 14.11, #1733; два
+# прогона): отбор ВМ на стороне облака по образу и по id, несколько
+# состояний одним значением через запятую; несёт ли карточка живой ВМ
+# образ; время 50 чтений карточек против предела вызова MCP и лимита
+# частоты. Ускорение фильтра images у vm_list (#1496) — по итогу двух
+# прогонов, до них — гипотеза.
+check vms_image         vms              image_ids             '[.[] | .image.id // empty] | unique'   'select(.image.id == $v)'
+check vms_ids           vms              vm_ids                '[.[] | .id] | unique'                  'select(.id == $v)'
+check vms_states_list   vms              statuses              '[[.[] | (.state // .status)] | unique | join(",")]' 'select(((.state // .status) | ascii_downcase) as $s | ($v | ascii_downcase | split(",") | index($s)))'
+
+# cards — образ в карточке ВМ и время чтения карточек: CARD_READS чтений
+# (по кругу по ВМ проекта), коды ответа, 429 отдельно, время в мс. Ни id,
+# ни имя образа в лог не идут.
+cards() {
+	local n=${CARD_READS:-50} code ids k=0 ok=0 limited=0 other=0 withid=0 withname=0 start end
+	code=$(get "$C/vms?limit=$PAGE&project_id=$PROJECT" "$tmp/vms")
+	[ "$code" = 200 ] || { printf '%-34s список ВМ http=%s — не проверено\n' vm_card_image "$code"; return; }
+	# Только id формы UUID идут в URL (#1758): чужая форма — счётом.
+	local all bad
+	all=$(items "$tmp/vms" | jq -r '.[] | .id? | strings' 2>/dev/null) || all=
+	mapfile -t ids < <(printf '%s\n' "$all" | grep -E '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$' || true)
+	bad=$(printf '%s\n' "$all" | grep -c . || true)
+	bad=$((bad - ${#ids[@]}))
+	if [ "${#ids[@]}" = 0 ]; then
+		if [ "$bad" -gt 0 ]; then printf '%-34s id не формы UUID: %d — карточки не читались\n' vm_card_image "$bad"; else printf '%-34s ВМ в проекте нет — не проверено\n' vm_card_image; fi
+		return
+	fi
+	for id in "${ids[@]}"; do
+		[ "$(get "$C/vms/$id" "$tmp/card")" = 200 ] || continue
+		jq -e '.image.id? // empty' "$tmp/card" >/dev/null 2>&1 && withid=$((withid + 1))
+		jq -e '.image.name? // empty' "$tmp/card" >/dev/null 2>&1 && withname=$((withname + 1))
+	done
+	printf '%-34s карточек=%d: с image.id=%d, с image.name=%d\n' vm_card_image "${#ids[@]}" "$withid" "$withname"
+	start=$(date +%s%N)
+	while [ "$k" -lt "$n" ]; do
+		code=$(get "$C/vms/${ids[$((k % ${#ids[@]}))]}" "$tmp/card")
+		case "$code" in 200) ok=$((ok + 1)) ;; 429) limited=$((limited + 1)) ;; *) other=$((other + 1)) ;; esac
+		k=$((k + 1))
+	done
+	end=$(date +%s%N)
+	printf '%-34s чтений=%d (ВМ %d): http 200=%d, 429=%d, прочие=%d, за %d мс\n' vm_card_reads "$n" "${#ids[@]}" "$ok" "$limited" "$other" $(((end - start) / 1000000))
+}
+cards
+
 if [ -n "$broken" ]; then
 	echo "::error::облако отбирает не так, как evo, по параметрам, которые evo ему передаёт:$broken — убрать из inCloud, пункт в реестр расхождений"
 	exit 1
