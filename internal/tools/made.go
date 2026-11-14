@@ -9,6 +9,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -43,16 +44,19 @@ type made struct {
 // операций», (1)). One made already is created; else the call waits for it
 // within its limit, saying its state when it changes — made: created, with
 // the resource as read; one the platform failed to make (a state of
-// error): its refusal, with the id; still on its way at the limit:
-// creating, with its state and the list of that id as the next step; the
-// call cancelled: INTERRUPTED (D69), with the id and the same next step.
-// The resource stays in res[m.field] as the platform answered it, unless a
-// later read names it.
+// error): its refusal, with the id; still being made at the limit:
+// creating, with its state and the list of that id as the next step; in a
+// state of none of the closed lists (madeStates), or never listed: waiting,
+// with its state and the same next step («Риск · 1.9 (3)», conclusion 236,
+// У1); the call cancelled: INTERRUPTED (D69), with the id and the same
+// next step. The resource stays in res[m.field] as the platform answered
+// it, unless a later read names it. A state of the cloud in a text of evo
+// is quoted (quoteCloud; conclusion 236, У2).
 func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m made) (string, bool) {
 	res["status"] = "created"
 	item, _ := res[m.field].(map[string]any)
 	id, _ := item["id"].(string)
-	if isMade(madeState(item)) {
+	if madeKind(madeState(item)) == stateMade {
 		return toJSON(res), false
 	}
 	seen := false
@@ -73,34 +77,36 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		},
 		func(st string) string {
 			return i18n.Tf("%s %s: %s, waiting until it is made…", "%s %s: %s, жду завершения создания…",
-				i18n.T(m.what, m.whatRU), id, st)
+				i18n.T(m.what, m.whatRU), id, quoteCloud(st))
 		},
-		func(st string) (bool, error) {
-			return isMade(st) || madeFailed(st), nil
-		})
-	if !seen || last == "" {
+		func(st string) (bool, error) { return madeKind(st) != stateMaking, nil })
+	word := "unknown"
+	if seen {
+		word = quoteCloud(last)
+	} else {
 		last = "unknown"
 	}
 	res[m.idField] = id
+	kind := madeKind(last)
 	switch {
-	case err == nil && seen && isMade(last):
+	case err == nil && seen && kind == stateMade:
 		res[m.field] = mergedItem(res[m.field], item)
 		return toJSON(res), false
-	case err == nil && seen && madeFailed(last):
+	case err == nil && seen && kind == stateFailed:
 		res["status"] = "failed"
 		res[m.field] = mergedItem(res[m.field], item)
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("%s %s: Cloud.ru did not finish making it, state %s", "%s %s: Cloud.ru не завершил создание, состояние — %s", i18n.T(m.what, m.whatRU), id, last),
+			i18n.Tf("%s %s: Cloud.ru did not finish making it, state %s", "%s %s: Cloud.ru не завершил создание, состояние — %s", i18n.T(m.what, m.whatRU), id, word),
 			i18n.Tf("%s ids=[%s] shows it; whether to delete it (%s) — ask the person.",
 				"Состояние показывает %s ids=[%s]; удалять ли (%s) — спросите человека.", m.list, id, decls[m.tool].Created.delete)), res), true
 	}
 	res["status"] = "creating"
-	if last == "unknown" {
+	if !seen || kind == stateOther {
 		res["status"] = "waiting"
 	}
 	res[m.field+"_state"] = last
 	res["next"] = i18n.Tf("%s %s is %s: the platform has not finished making it. %s ids=[%s] shows its state.",
-		"%s %s — %s: платформа ещё не завершила создание. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, last, m.list, id)
+		"%s %s — %s: платформа ещё не завершила создание. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
 	nextStep(res, m.list, map[string]any{"ids": []any{id}})
 	if stderrors.Is(err, context.Canceled) {
 		return errAnswer(fmt.Errorf("%s: %w", i18n.Tf("%s %s: the wait was cancelled, the platform goes on making it",
@@ -109,18 +115,37 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 	return toJSON(res), false
 }
 
-// isMade tells a state of a resource the platform has made: one it names,
-// neither creating (the state of the published specifications of the
-// network resources: created, creating, error_creating…) nor an error.
-// Any other — created, updating, a status of a service's own — is past the
-// create.
-func isMade(st string) bool {
-	return st != "" && !strings.EqualFold(st, "creating") && !madeFailed(st)
-}
+// The kinds of the state of a resource a create makes (madeKind).
+const (
+	stateMade = iota
+	stateMaking
+	stateFailed
+	stateOther
+)
 
-// madeFailed tells a state of a resource the platform failed to make or
-// keep: error, error_creating….
-func madeFailed(st string) bool { return strings.HasPrefix(strings.ToLower(st), "error") }
+// madeStates and makingStates are the closed lists of the states of a
+// resource made and being made, by the published specifications of the
+// network resources (created, creating, updating, deleting, error…;
+// list_filters.go, networkStates). A state of neither, nor of error, is
+// another: not made («Риск · 1.9 (3)», conclusion 236, У1).
+var (
+	madeStates   = []string{"created", "updating"}
+	makingStates = []string{"creating"}
+)
+
+// madeKind is the kind of the state st, whatever its case.
+func madeKind(st string) int {
+	l := strings.ToLower(st)
+	switch {
+	case slices.Contains(madeStates, l):
+		return stateMade
+	case slices.Contains(makingStates, l):
+		return stateMaking
+	case strings.HasPrefix(l, "error"):
+		return stateFailed
+	}
+	return stateOther
+}
 
 // madeState is the state of a resource as its item names it: state, else
 // status (a list item may carry both, a create's answer one).
