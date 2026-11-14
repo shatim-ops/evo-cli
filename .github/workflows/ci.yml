@@ -272,6 +272,12 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 60 .github/scripts/no_runner_test.sh
 
+      # Сторож «вне loopback» (offnet.sh, job offnet) на образце журнала
+      # strace: адрес вне loopback из тестового бинарника — красный.
+      - name: offnet.sh на образце strace
+        if: runner.os == 'Linux'
+        run: timeout 60 .github/scripts/offnet_test.sh
+
       # Пробы графика 1.9 (область ops cloud-live.sh) на поддельном evo и
       # заглушке curl: порядок запросов, отказ платформы, уборка своего вида.
       - name: область ops cloud-live.sh на заглушках
@@ -554,6 +560,41 @@ jobs:
           fake="^($(jq -r 'del(._comment) | keys | map(. + "/") | join("|")' scripts/fake-servers.json))"
           dead="$("$(go env GOPATH)/bin/deadcode" ./... | grep -Ev "$fake" || true)"
           if [ -n "$dead" ]; then echo "недостижимый код:"; echo "$dead"; exit 1; fi
+
+  # Сторож «тест не открывает соединений вне loopback» (строка плана 1.9 о
+  # TestDeployApply_DeployKeySSHUnchanged: тест ждал «порт не ответил» от
+  # 203.0.113.12:22 и падал в сети, где этот адрес принимает TCP; в CI был
+  # зелёным, потому что адрес не маршрутизируется). Полный go test под
+  # strace записывает каждый connect тестовых бинарников; offnet.sh
+  # краснеет на адресе вне loopback (кроме OFFNET_ALLOW). Ночью и вручную:
+  # на каждом PR удвоил бы время Linux-job; красная ночь доходит до issue
+  # (main-red). Секретов нет, токен — только чтение.
+  offnet:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.11"
+          cache-dependency-path: go.sum
+      # Modules and strace before the trace: their downloads are no test's.
+      - run: go mod download && go build ./... && go vet ./...
+      - name: strace
+        run: command -v strace >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q strace; }
+      - name: go test под strace, соединения вне loopback
+        run: |
+          log="$RUNNER_TEMP/connect.log"
+          rc=0
+          strace -f --seccomp-bpf --decode-pids=comm -e trace=connect -o "$log" go test -count=1 ./... || rc=$?
+          # A failed test is the test job's; this job judges the trace.
+          [ "$rc" = 0 ] || echo "::warning::go test под strace: код $rc — журнал соединений разобран всё равно"
+          .github/scripts/offnet.sh "$log"
 
   # Сборка из main для живых прогонов (строка плана B-5, #1000): goreleaser
   # snapshot после зелёных тестов, архивы шести платформ и checksums.txt —
