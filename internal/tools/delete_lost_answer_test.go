@@ -95,7 +95,7 @@ var lostDeleteSaysNeverExisted = map[string]string{
 
 // Release plan 1.9, «Находки промежуточного дельта-аудита», class 1, for
 // the deletes: the request is taken and its answer is lost. For every
-// delete of deleteTargets, on one consent:
+// delete of Decl.Delete, on one consent:
 //
 //   - the call sends nothing but the delete of its target (a repeat of the
 //     same DELETE is the same request);
@@ -108,14 +108,14 @@ var lostDeleteSaysNeverExisted = map[string]string{
 // The world is the registry's, not a list: a new delete is in the class
 // or in lostDeleteUnreached with why.
 func TestDeleteLostAnswer_TheRepeatConverges(t *testing.T) {
-	names := make([]string, 0, len(deleteTargets))
-	for name := range deleteTargets {
+	var names []string
+	for name := range allDeletes() {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	reached := 0
 	for _, name := range names {
-		d := deleteTargets[name]
+		d := decls[name].Delete
 		args := goneArgs(name, d)
 		for k, v := range args {
 			switch v {
@@ -189,12 +189,12 @@ func TestDeleteLostAnswer_TheRepeatConverges(t *testing.T) {
 		}
 	}
 	for name := range lostDeleteSaysNeverExisted {
-		if _, ok := deleteTargets[name]; !ok {
-			t.Errorf("lostDeleteSaysNeverExisted names %s, which deleteTargets does not have", name)
+		if _, ok := deleteOf(name); !ok {
+			t.Errorf("lostDeleteSaysNeverExisted names %s, which Decl.Delete does not have", name)
 		}
 	}
-	if want := len(deleteTargets) - len(lostDeleteUnreached); reached != want || reached < 20 {
-		t.Errorf("the world reached %d deletes, want %d of %d (at least 20)", reached, want, len(deleteTargets))
+	if want := len(names) - len(lostDeleteUnreached); reached != want || reached < 20 {
+		t.Errorf("the world reached %d deletes, want %d of %d (at least 20)", reached, want, len(names))
 	}
-	t.Logf("deletes: %d, reached: %d, answer their own delete as «was not there»: %d", len(deleteTargets), reached, len(lostDeleteSaysNeverExisted))
+	t.Logf("deletes: %d, reached: %d, answer their own delete as «was not there»: %d", len(names), reached, len(lostDeleteSaysNeverExisted))
 }

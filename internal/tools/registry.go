@@ -379,7 +379,7 @@ func New(factory EngineFactory) *Registry {
 			h = r.boundToProjects(*t, h)
 			// Inside requireProject too: the list of a name is the call's
 			// project's; outside boundToProjects: it checks the id.
-			if refs := refArgs[t.Name]; refs != nil {
+			if refs := decls[t.Name].RefArgs; refs != nil {
 				h = r.resolveRefs(refs, h)
 			}
 			if t.Decl.Project {
@@ -463,7 +463,7 @@ func (r *Registry) SetReadOnly() { r.readOnly = true }
 // agreement (billingClient), and the balance of the agreement is not given
 // (balanceRefused); org_projects lists that project, not the
 // organization's. A call in another project is the factory's to refuse,
-// and so is a resource a tool names by id (idArgs): before the handler,
+// and so is a resource a tool names by id (Decl.IDArgs): before the handler,
 // the registry finds the resource's project and asks the factory for an
 // engine there (boundToProjects); a *_operation tool reads only the
 // operations this registry started. evo mcp --allow-project sets it (H9),

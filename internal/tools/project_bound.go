@@ -29,7 +29,7 @@ import (
 // another matter: GET /v1/clusters/{id} carries no project, and with a key
 // of the organization it reads, changes or deletes the cluster of any
 // project the key sees (release audit 1.2, REL12-3). So every argument that
-// names a resource by id is declared here (idArgs), and a bound registry
+// names a resource by id is declared here (Decl.IDArgs), and a bound registry
 // checks, before the handler runs, that the resource is in an allowed
 // project: its kind (ownerKind) finds the project, and the factory decides
 // whether it is allowed. An argument that needs no check says why. Without
@@ -93,152 +93,6 @@ const (
 		"evo has no lookup of its project"
 )
 
-// idArgs are the arguments of every tool that name a resource by id
-// (TestProjectBound_IDArgsDeclared keeps the list closed: a new tool with
-// such an argument fails it until the argument is declared here).
-var idArgs = map[string][]idArg{
-	// Compute.
-	"vm_get":         {{name: "vm_id", kind: kindVM}},
-	"vm_start":       {{name: "vm_id", kind: kindVM, target: true}},
-	"vm_stop":        {{name: "vm_id", kind: kindVM, target: true}},
-	"vm_reboot":      {{name: "vm_id", kind: kindVM, target: true}},
-	"vm_resize":      {{name: "vm_id", kind: kindVM, target: true}},
-	"destroy":        {{name: "vm_id", why: whyListed}},
-	"backup_get":     {{name: "backup_id", kind: kindBackup}},
-	"backup_create":  {{name: "vm_id", kind: kindVM}, {name: "disk_id", kind: kindDisk}},
-	"backup_restore": {{name: "backup_id", kind: kindBackup, target: true}},
-	"backup_delete":  {{name: "backup_id", kind: kindBackup, target: true}},
-	"image_get":      {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}},
-	"image_delete":   {{name: "image_id", kind: kindImage, target: true}},
-	"image_create":   {{name: "disk_id", kind: kindDisk}},
-	"deploy":         {{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "project_id", why: whyProjectArg}},
-	"provision": {{name: "vm_id", why: whyContinued}, {name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "subnet_id", why: whyListed},
-		{name: "project_id", why: whyProjectArg}},
-	"deploy_plan":         {{name: "image", kind: kindImage}, {name: "base_plan_id", why: whyLocal}},
-	"deploy_apply":        {{name: "plan_id", why: whyLocal}, {name: "vm_id", why: whyContinued}},
-	"fip_attach":          {{name: "fip", why: whyListed}, {name: "vm", why: whyListed}},
-	"release_floating_ip": {{name: "id", kind: kindFIP, target: true}},
-	"open_ports":          {{name: "security_group", why: whyListed}},
-	"close_ports":         {{name: "security_group", why: whyListed}},
-	"sg_rule_create":      {{name: "security_group", why: whyListed}, {name: "remote_group", why: whyListed}},
-	"sg_rule_delete":      {{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}},
-	"disk_create":         {{name: "attach_to", why: whyListed}},
-	"disk_attach":         {{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}},
-	"disk_detach":         {{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}},
-	"disk_resize":         {{name: "disk_id", kind: kindDisk, target: true}},
-	"disk_delete":         {{name: "disk_id", kind: kindDisk, target: true}},
-	"snat_create":         {{name: "availability_zone_id", why: whyCatalogue}},
-	"snat_delete":         {{name: "id", kind: kindNAT, target: true}},
-	"subnet_create":       {{name: "vpc_id", kind: kindVPC}, {name: "availability_zone_id", why: whyCatalogue}},
-	"subnet_delete":       {{name: "subnet_id", kind: kindSubnet, target: true}},
-	"list_subnets":        {{name: "vpc_id", why: whyFilter}},
-	"backup_list":         {{name: "resource_id", why: whyFilter}},
-	"lb_list":             {{name: "vpc_id", why: whyFilter}},
-	"tg_list":             {{name: "vpc_id", why: whyFilter}},
-
-	// Managed Kubernetes.
-	"k8s_get":             {{name: "cluster_id", kind: kindK8s}},
-	"k8s_kubeconfig":      {{name: "cluster_id", kind: kindK8s}},
-	"k8s_delete":          {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_operation":       {{name: "operation_id", kind: kindOperation}},
-	"k8s_nodepools":       {{name: "cluster_id", kind: kindK8s}},
-	"k8s_nodepool_get":    {{name: "nodepool_id", kind: kindK8sNodePool}},
-	"k8s_nodepool_scale":  {{name: "nodepool_id", kind: kindK8sNodePool, target: true}},
-	"k8s_nodepool_delete": {{name: "nodepool_id", kind: kindK8sNodePool, target: true}},
-	"k8s_add_nodepool":    {{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}},
-	"k8s_add_addon":       {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_kubectl":         {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_apply":           {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_helm":            {{name: "cluster_id", kind: kindK8s, target: true}},
-	"k8s_plan":            {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
-	"k8s_create":          {{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}},
-
-	// Managed PostgreSQL, Kafka, Redis.
-	"pg_get":           {{name: "id", kind: kindPG}, {name: "cluster_id", kind: kindPG}},
-	"pg_delete":        {{name: "id", kind: kindPG, target: true}, {name: "cluster_id", kind: kindPG, target: true}},
-	"pg_databases":     {{name: "cluster_id", kind: kindPG}},
-	"pg_db_create":     {{name: "cluster_id", kind: kindPG, target: true}},
-	"pg_db_delete":     {{name: "cluster_id", kind: kindPG, target: true}},
-	"pg_users":         {{name: "cluster_id", kind: kindPG}},
-	"pg_user_create":   {{name: "cluster_id", kind: kindPG, target: true}},
-	"pg_user_delete":   {{name: "cluster_id", kind: kindPG, target: true}},
-	"pg_backups":       {{name: "cluster_id", kind: kindPG}},
-	"pg_backup_create": {{name: "cluster_id", kind: kindPG, target: true}},
-	"pg_create":        {{name: "specification_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}},
-	"pg_operation":     {{name: "operation_id", kind: kindOperation}},
-	"kafka_get":        {{name: "cluster_id", kind: kindKafka}},
-	"kafka_delete":     {{name: "cluster_id", kind: kindKafka, target: true}},
-	"kafka_specs":      {{name: "version_id", why: whyCatalogue}},
-	"kafka_create":     {{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}},
-	"kafka_operation":  {{name: "operation_id", kind: kindOperation}},
-	"redis_get":        {{name: "cluster_id", kind: kindRedis}},
-	"redis_delete":     {{name: "cluster_id", kind: kindRedis, target: true}},
-	"redis_specs":      {{name: "version_id", why: whyCatalogue}},
-	"redis_create":     {{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}},
-	"redis_operation":  {{name: "operation_id", kind: kindOperation}},
-
-	// Network Load Balancer.
-	"lb_get":       {{name: "id", kind: kindNLB}},
-	"lb_delete":    {{name: "id", kind: kindNLB, target: true}},
-	"lb_create":    {{name: "target_group_id", kind: kindTG}, {name: "vpc_id", kind: kindVPC}, {name: "subnet_id", why: whyListed}},
-	"lb_operation": {{name: "operation_id", kind: kindOperation}},
-	"tg_get":       {{name: "id", kind: kindTG}},
-	"tg_delete":    {{name: "id", kind: kindTG, target: true}},
-	"tg_create":    {{name: "vm_id", kind: kindVM}, {name: "targets", kind: kindVM, ids: targetIDs}, {name: "interface_id", why: whyInParent}},
-
-	// VPC.
-	"vpc_get":       {{name: "id", kind: kindVPC}},
-	"vpc_delete":    {{name: "id", kind: kindVPC, target: true}},
-	"vpc_operation": {{name: "operation_id", kind: kindOperation}},
-	"vpc_routes":    {{name: "vpc_id", kind: kindVPC}},
-	"vpc_route_create": {{name: "vpc_id", kind: kindVPC, target: true}, {name: "next_hop_vm_id", kind: kindVM}, {name: "next_hop_interface_id", why: whyInParent},
-		{name: "next_hop_vip_id", why: whyReference}, {name: "next_hop_magic_router_id", why: whyReference}},
-	"vpc_route_delete": {{name: "vpc_id", kind: kindVPC, target: true}, {name: "route_id", why: whyInParent}},
-
-	// DNS.
-	"dns_zone_create":   {{name: "vpc_id", kind: kindVPC}},
-	"dns_zone_get":      {{name: "id", kind: kindDNSZone}},
-	"dns_zone_delete":   {{name: "id", kind: kindDNSZone, target: true}},
-	"dns_records":       {{name: "zone_id", kind: kindDNSZone}},
-	"dns_record_create": {{name: "zone_id", kind: kindDNSZone, target: true}},
-	"dns_record_get":    {{name: "record_id", kind: kindDNSRecord}},
-	"dns_record_delete": {{name: "record_id", kind: kindDNSRecord, target: true}},
-	"dns_operation":     {{name: "operation_id", kind: kindOperation}},
-
-	// Certificate Manager.
-	"cert_get":         {{name: "id", kind: kindCert}},
-	"cert_delete":      {{name: "id", kind: kindCert, target: true}},
-	"cert_usage":       {{name: "id", kind: kindCert}},
-	"cert_renew":       {{name: "certificate_id", kind: kindCert, target: true}},
-	"cert_versions":    {{name: "certificate_id", kind: kindCert}},
-	"cert_private_key": {{name: "certificate_id", kind: kindCert, target: true}, {name: "version_id", why: whyInParent}},
-	"cert_operation":   {{name: "operation_id", kind: kindOperation}},
-
-	// Artifact Registry: GET and DELETE /v1/registries/{id} take projectId
-	// (required by ar/openapi.yaml); the operations do not.
-	"ar_get":       {{name: "id", why: whyInProject}},
-	"ar_delete":    {{name: "id", why: whyInProject}},
-	"ar_operation": {{name: "operation_id", kind: kindOperation}},
-
-	// Secret Manager: the create carries projectId.
-	"secret_create": {{name: "kms_key_id", why: whyReference}},
-
-	// Container Apps: an app is addressed by name with projectId in the
-	// query (containers/openapi.yaml); its image is a container image.
-	"ca_deploy": {{name: "image", why: whyContainerImage}},
-
-	// The project itself.
-	"billing_consumption":  {{name: "project_id", why: whyProjectArg}},
-	"billing_finops":       {{name: "project_id", why: whyProjectArg}},
-	"org_quotas":           {{name: "project_id", why: whyProjectArg}},
-	"iam_service_accounts": {{name: "project_id", why: whyProjectArg}},
-
-	// Stack jobs.
-	"stack_apply":   {{name: "job_id", why: whyLocal}},
-	"stack_status":  {{name: "job_id", why: whyLocal}},
-	"stack_destroy": {{name: "job_id", why: whyLocal}},
-}
-
 // targetIDs are the VM ids of tg_create's targets ([{id, interface_id}]).
 func targetIDs(args map[string]any) []string {
 	raw, _ := args["targets"].([]any)
@@ -257,7 +111,7 @@ func targetIDs(args map[string]any) []string {
 // write lands in (idArg.target).
 func targetArgs(tool string) []idArg {
 	var out []idArg
-	for _, a := range idArgs[tool] {
+	for _, a := range decls[tool].IDArgs {
 		if a.target {
 			out = append(out, a)
 		}
@@ -279,7 +133,7 @@ func (a idArg) values(args map[string]any) []string {
 // checkedIDArgs are the arguments of the tool a bound registry checks.
 func checkedIDArgs(tool string) []idArg {
 	var out []idArg
-	for _, a := range idArgs[tool] {
+	for _, a := range decls[tool].IDArgs {
 		if a.kind != nil {
 			out = append(out, a)
 		}

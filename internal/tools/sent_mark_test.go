@@ -34,7 +34,7 @@ func TestIntent_ACallThatSentNoWriteLeavesNoRecord(t *testing.T) {
 		}
 		args := func() map[string]any {
 			a := map[string]any{"confirmed": true, "name": "web"}
-			for _, id := range idArgs[tl.Name] {
+			for _, id := range decls[tl.Name].IDArgs {
 				a[id.name] = resMine
 			}
 			return a

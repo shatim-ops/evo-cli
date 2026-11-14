@@ -75,7 +75,7 @@ func TestConsentNote_OneWordingAtEveryToolThatAsks(t *testing.T) {
 // not). A declared reason is not the word too.
 func TestConsentWord_EveryDeleteNamesItsClassOrWhyNot(t *testing.T) {
 	var bad []string
-	for name := range deleteTargets {
+	for name := range allDeletes() {
 		word, why := consentWords[name], consentWordless[name]
 		switch {
 		case word == "" && why == "":
@@ -85,8 +85,8 @@ func TestConsentWord_EveryDeleteNamesItsClassOrWhyNot(t *testing.T) {
 		}
 	}
 	for name := range consentWordless {
-		if _, ok := deleteTargets[name]; !ok {
-			bad = append(bad, name+": in consentWordless, but not a delete of deleteTargets")
+		if _, ok := deleteOf(name); !ok {
+			bad = append(bad, name+": in consentWordless, but not a delete of Decl.Delete")
 		}
 	}
 	sort.Strings(bad)
