@@ -3804,7 +3804,7 @@ func cidrProp(desc string) map[string]any {
 // named by the argument (confirmedDesc), at the same tool. The registry
 // adds the note (New), with the word of the tool's class before it
 // (consentWords); a description does not write it by hand. A tool that
-// asks for a part of its calls only (partialConsent) says which in its own
+// asks for a part of its calls only (Decl.PartialConsent) says which in its own
 // sentence instead: the note of all would be false of the rest.
 const consentNote = "Requires confirmed=true after the user approves."
 
