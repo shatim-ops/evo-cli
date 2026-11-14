@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // RequestIDHeader is the header that names a request to Cloud.ru: evo
@@ -125,34 +126,58 @@ func traced(req *http.Request, resp *http.Response, err error) {
 	t.failed = append(t.failed, f)
 }
 
-// inRequest reports whether id is in what req sent other than its own
+// inRequest reports whether id echoes what req sent other than its own
 // X-Request-Id — a header, the query or the body: an answer that echoes a
 // key or a token of the request (a short opaque token has the form of an
 // id) names no request, and its value is a secret that must not reach the
 // text of an error (#1751). The secret of a key exchange is in the body
-// («Риск», conclusion 202). Case does not tell them apart: a service that
+// («Риск», conclusion 202). An echo is id within a value of the request,
+// or a value within id — the secret with a prefix or a suffix around it
+// («Риск», conclusion 249). Case does not tell them apart: a service that
 // echoes the value in another case echoes the same secret. traced asks of
 // the answer's request too: a renewed token is set on a clone of the
 // caller's request (renewing).
 func inRequest(req *http.Request, id string) bool {
 	id = strings.ToLower(id)
-	has := func(v string) bool { return strings.Contains(strings.ToLower(v), id) }
+	echoes := func(v string) bool {
+		if strings.Contains(strings.ToLower(v), id) {
+			return true
+		}
+		for _, part := range strings.FieldsFunc(v, valueSeparator) {
+			if len(part) >= minEchoValue && strings.Contains(id, strings.ToLower(part)) {
+				return true
+			}
+		}
+		return false
+	}
 	for name, vs := range req.Header {
 		if http.CanonicalHeaderKey(name) == RequestIDHeader {
 			continue
 		}
 		for _, v := range vs {
-			if has(v) {
+			if echoes(v) {
 				return true
 			}
 		}
 	}
 	if req.URL != nil {
-		if q, err := url.QueryUnescape(req.URL.RawQuery); has(req.URL.RawQuery) || err == nil && has(q) {
+		if q, err := url.QueryUnescape(req.URL.RawQuery); echoes(req.URL.RawQuery) || err == nil && echoes(q) {
 			return true
 		}
 	}
-	return inBody(req, has)
+	return inBody(req, echoes)
+}
+
+// minEchoValue is the shortest value of a request whose presence within an
+// answered id makes it an echo: shorter ones (true, GET, a port) are in
+// many an id that echoes nothing.
+const minEchoValue = 8
+
+// valueSeparator splits a header, a query or a form into its values: a
+// scheme from its token (Bearer), a name from its value, one pair from
+// the next.
+func valueSeparator(r rune) bool {
+	return unicode.IsSpace(r) || strings.ContainsRune(`,;=&"'`, r)
 }
 
 // maxEchoBody bounds the body inRequest reads again: a key exchange or a
