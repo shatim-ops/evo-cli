@@ -763,7 +763,7 @@ func (r *Registry) namedKept(ctx context.Context, name string, args map[string]a
 
 // intentResource is what a call names its resource by: the argument the create
 // declares (Decl.Created: name, bucket, path…), else name; and, for a call on
-// an existing resource, its first declared id argument (idArgs) as
+// an existing resource, its first declared id argument (Decl.IDArgs) as
 // «argument=id» («Риск», conclusion 46, condition 2).
 func intentResource(tool string, args map[string]any) (name, target string) {
 	arg := "name"
@@ -771,7 +771,7 @@ func intentResource(tool string, args map[string]any) (name, target string) {
 		arg = c.arg
 	}
 	name, _ = args[arg].(string)
-	for _, a := range idArgs[tool] {
+	for _, a := range decls[tool].IDArgs {
 		if a.why == whyProjectArg {
 			continue
 		}
@@ -1027,7 +1027,7 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 	if !ok {
 		return idArg{}, nil, "", false
 	}
-	if d, isDelete := deleteTargets[in.Tool]; !isDelete || d.parent == a.name {
+	if d, isDelete := deleteOf(in.Tool); !isDelete || d.parent == a.name {
 		return idArg{}, nil, "", false
 	}
 	return a, a.kind, id, true

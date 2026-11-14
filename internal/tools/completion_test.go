@@ -132,13 +132,13 @@ func TestCompletion_DeclarationsHold(t *testing.T) {
 		}
 	}
 	// Every kind's list is a tool (a typo would leave its ids without Tab).
-	for tool, args := range idArgs {
+	for tool, args := range allIDArgs() {
 		for _, a := range args {
 			if a.kind == nil || a.kind.listTool == "" {
 				continue
 			}
 			if _, ok := r.Lookup(a.kind.listTool); !ok {
-				t.Errorf("idArgs[%s] %s: the list %s of its kind is no tool", tool, a.name, a.kind.listTool)
+				t.Errorf("decls[%s].IDArgs %s: the list %s of its kind is no tool", tool, a.name, a.kind.listTool)
 			}
 		}
 	}
@@ -161,7 +161,7 @@ func TestCompletionItems_TakesTheListWithTheField(t *testing.T) {
 
 // A reference toolRefs declares completes from its list: the nodes'
 // subnet of a node pool from the project's subnets, ids with their names,
-// and the names themselves: the argument takes one (refArgs, D57).
+// and the names themselves: the argument takes one (Decl.RefArgs, D57).
 func TestComplete_ToolRefFromItsList(t *testing.T) {
 	cloud := &otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}},
 		subnets: []*provision.Subnet{{ID: "00000000-0000-4000-8000-0000000000e1", Name: "nodes", AvailabilityZoneID: "z"}}}
