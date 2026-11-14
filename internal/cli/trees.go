@@ -938,6 +938,9 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 		fmt.Fprintln(w, text)
 		return nil
 	}
+	if i18n.Lang() == i18n.RU {
+		valuesRU(v)
+	}
 	// The marker of the fields with text of the cloud is for a client of
 	// the JSON (--json, MCP); a person reads the table, whose cells are
 	// sanitized (output.SanitizeCell).
