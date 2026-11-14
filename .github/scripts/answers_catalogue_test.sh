@@ -86,6 +86,23 @@ grep -q 'не JSON: 1' "$work/verr" || { echo "FAIL: paths не объектом
 [ "$(python3 -I "$here/answers_catalogue.py" --root "$root" --source s --date 2026-11-14 "$work/empty.jsonl" 2>/dev/null)" = "[]" ] || { echo "FAIL: пустой файл"; fail=1; }
 [ "$(python3 -I "$here/answers_catalogue.py" --root "$root" --source s --date 2026-11-14 "$work/nope.jsonl" 2>/dev/null)" = "[]" ] || { echo "FAIL: нет файла"; fail=1; }
 
+# Поля удалённой консоли ВМ (D110; задание #1857, п. 2; находка #1860) не
+# выходят в каталог даже именем — ни в карточке, ни в списке, хотя опись
+# контракта их перечисляет; остальные поля той же записи выходят.
+cat >"$work/console.jsonl" <<'J'
+{"request":"GET https://compute.api.cloud.ru/api/v1/vms/x","status":200,"paths":{"remote_console_url":"name","remote_console_ws":"name","remote_console_protocol":"name","vnc_url":"name","vnc_ws":"name","state":"name"}}
+{"request":"GET https://compute.api.cloud.ru/api/v1/vms","status":200,"paths":{"items[].remote_console_url":"name","items.[].vnc_ws":"name","items[].VNC_url":"name","items[].state":"name"}}
+J
+cs=$(python3 -I "$here/answers_catalogue.py" --root "$root" --source s --date 2026-11-14 "$work/console.jsonl" 2>"$work/cerr")
+if grep -qiE 'remote_console|vnc' <<<"$cs"; then echo "FAIL: поле консоли в каталоге"; printf '%s\n' "$cs"; fail=1; fi
+[ "$(jq -r '[.[] | .paths | keys[]] | sort | join(",")' <<<"$cs")" = "items[].state,state" ] ||
+	{ echo "FAIL: остальные поля записи консоли: $cs"; fail=1; }
+grep -q 'полей консоли: 8' "$work/cerr" || { echo "FAIL: нет счёта полей консоли"; cat "$work/cerr"; fail=1; }
+# Опись контракта поля консоли по-прежнему знает: без этого проверка выше
+# была бы зелёной и без фильтра генератора.
+grep -q '"remote_console_url"' "$root/scripts/api-contract-fields.json" ||
+	{ echo "FAIL: в описи нет remote_console_url — проверка консоли ничего не доказывает"; fail=1; }
+
 # Враждебная запись (#1862): адрес, который urlsplit отвергает, называя
 # netloc в тексте ошибки. Строка отброшена со счётом, генератор не падает,
 # в stderr — ни части записи.

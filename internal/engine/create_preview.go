@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
@@ -1122,6 +1124,25 @@ func namedParams(params []PreviewParam) []PreviewParam {
 	return out
 }
 
+// PreviewText is a text value as a person reads it in a preview — a
+// dry run and the question of consent alike: as it is, unless it holds a
+// control or format character (a line break, a carriage return, a
+// terminal's escape, a bidi override), then quoted with them escaped. A
+// value the caller gave (a description, Decl.EchoedArgs) or the cloud
+// gave then cannot start a line that reads as evo's or move the terminal
+// (Astra, #1848). The one point for every value a human preview prints:
+// the parameters of a preview (paramValue) and the fields of an answer
+// beside its message (the CLI). The data of the answer and the request
+// keep the value as given.
+func PreviewText(s string) string {
+	for _, r := range s {
+		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+			return strconv.Quote(s)
+		}
+	}
+	return s
+}
+
 func paramLine(prm PreviewParam) string {
 	if prm.Key == "not_checked" {
 		return notCheckedLine(prm.Value)
@@ -1170,7 +1191,13 @@ func notCheckedLine(v any) string {
 	return previewLabel("not checked", "не проверено") + strings.Join(words, "; ")
 }
 
-func paramValue(v any) string {
+// paramValue is a value of a preview as a person reads it: the whole of
+// it — a string, a key of a map, a list — through PreviewText («Риск»,
+// conclusion 234).
+func paramValue(v any) string { return PreviewText(paramText(v)) }
+
+// paramText is a value of a preview in words, as it is.
+func paramText(v any) string {
 	switch x := v.(type) {
 	case nil:
 		return ""
@@ -1189,7 +1216,7 @@ func paramValue(v any) string {
 	case []any:
 		parts := make([]string, 0, len(x))
 		for _, e := range x {
-			parts = append(parts, paramValue(e))
+			parts = append(parts, paramText(e))
 		}
 		return strings.Join(parts, ",")
 	case map[string]any:
@@ -1200,7 +1227,7 @@ func paramValue(v any) string {
 		sort.Strings(keys)
 		parts := make([]string, 0, len(keys))
 		for _, k := range keys {
-			parts = append(parts, strings.ReplaceAll(k, "_", "-")+" "+paramValue(x[k]))
+			parts = append(parts, strings.ReplaceAll(k, "_", "-")+" "+paramText(x[k]))
 		}
 		return strings.Join(parts, ", ")
 	}

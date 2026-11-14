@@ -349,7 +349,7 @@ func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string,
 // diskFailed ends a wait for a disk the platform put in an error state.
 type diskFailed struct{ state string }
 
-func (e *diskFailed) Error() string { return "the disk is in state " + e.state }
+func (e *diskFailed) Error() string { return "the disk is in state " + quoteCloud(e.state) }
 
 // diskAtLimit ends a wait for a disk at the limit of an MCP call (D69):
 // the disk goes on in the cloud, the answer says its state and the step

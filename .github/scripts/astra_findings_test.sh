@@ -63,7 +63,8 @@ world() {
   printf '| D1 | #102 |\n' >"$FAKE_DIR/docs/internal/standalone/DECISIONS.md"
 }
 run() {
-  PATH="$work/bin:$PATH" GH_REPO=o/r ASTRA_LOGIN=astra FEED=20 SINCE=2026-11-14T00:00:00Z ROOT="$FAKE_DIR" \
+  PATH="$work/bin:$PATH" GH_REPO=o/r ASTRA_LOGIN=astra FEED=20 SINCE=2026-11-14T00:00:00Z \
+    ASTRA_ACCOUNT_SINCE=2026-11-14T07:30:00Z ROOT="$FAKE_DIR" \
     python3 "$here/astra_findings.py" >"$FAKE_DIR/out" 2>"$FAKE_DIR/err" || echo $? >"$FAKE_DIR/code"
 }
 has() { grep -qF -- "$3" "$FAKE_DIR/$2" 2>/dev/null || { echo "FAIL $1: в $2 нет «$3»"; sed 's/^/  | /' "$FAKE_DIR/$2" 2>/dev/null || true; fail=1; }; }
@@ -109,13 +110,78 @@ echo '[{"user": {"login": "astra"}, "body": "закрыто"}, {"user": {"login"
 echo '[{"user": {"login": "someone"}, "body": "закрыто"}]' >"$FAKE_DIR/comments.203.json"
 echo '[{"user": {"login": "astra"}, "body": "Закрыто (пробы 1–3)."}]' >"$FAKE_DIR/comments.207.json"
 run closed
-has closed check.json '#202: закрыта без «закрыто» Астры'
+has closed check.json '#202: закрыта, последний вердикт Астры — «не закрыто»'
 has closed check.json '#203: закрыта без «закрыто» Астры'
 has closed check.json '#204: закрыта без «закрыто» Астры'
 lacks closed check.json '#201'
 lacks closed check.json '#205'
 lacks closed check.json '#206'
 lacks closed check.json '#207'
+
+# Признаки «релиза (4)» на данных 14.11.
+# (1) До своего аккаунта Астра публиковала от владельца, «[Астра] …»: её
+# вердикт — в отчёте задания (метка астра-задание), на строке с номером
+# находки; владелец в находке называет задание. После ASTRA_ACCOUNT_SINCE
+# «[Астра]» от владельца вердиктом не считается.
+# (2) «Не закрыто» с остатком — открытой находкой из плана — разобрано.
+# (3) Отчёт задания с меткой «отчёт» — не находка.
+world relay
+cat >"$FAKE_DIR/issues.json" <<'J'
+[{"number": 701, "title": "a", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 702, "title": "b", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 703, "title": "c", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 704, "title": "d", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 101, "title": "rest", "state": "open", "labels": [{"name": "внешняя-проверка"}]},
+ {"number": 1011, "title": "rest off plan", "state": "open", "labels": [{"name": "внешняя-проверка"}]},
+ {"number": 706, "title": "report", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z", "labels": [{"name": "внешняя-проверка"}, {"name": "отчёт"}]}]
+J
+printf '| строка | #101 |\n' >"$FAKE_DIR/docs/internal/release-plan.md"
+echo '{"number": 800, "title": "task", "state": "closed", "labels": [{"name": "астра-задание"}]}' >"$FAKE_DIR/issue.800.json"
+echo '{"number": 801, "title": "not a task", "state": "closed", "labels": []}' >"$FAKE_DIR/issue.801.json"
+cat >"$FAKE_DIR/comments.800.json" <<'J'
+[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T06:00:00Z", "body": "[Астра] Отчёт по заданию.\n- **#701 — закрыто по результатам проверки**\n- #702 — не закрыто: остаток"}]
+J
+echo '[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T06:00:00Z", "body": "[Астра] #703 — закрыто"}]' >"$FAKE_DIR/comments.801.json"
+echo '[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T07:00:00Z", "body": "Закрыто исправлением. Проверила Астра, задание #800."}]' >"$FAKE_DIR/comments.701.json"
+echo '[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T07:00:00Z", "body": "Закрыто. Задание #800."}]' >"$FAKE_DIR/comments.702.json"
+echo '[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T08:00:00Z", "body": "[Астра] закрыто"}, {"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T08:01:00Z", "body": "Закрыто, задание #801"}]' >"$FAKE_DIR/comments.703.json"
+echo '[{"user": {"login": "astra"}, "author_association": "NONE", "created_at": "2026-11-14T09:00:00Z", "body": "Не закрыто полностью: остаток — #101"}]' >"$FAKE_DIR/comments.704.json"
+run relay
+lacks relay check.json '#701'
+has relay check.json '#702: закрыта без «закрыто» Астры'
+has relay check.json '#703: закрыта без «закрыто» Астры'
+lacks relay check.json '#704'
+lacks relay check.json '#706'
+# Остаток вне плана — не разобрано.
+world rest
+cat >"$FAKE_DIR/issues.json" <<'J'
+[{"number": 704, "title": "d", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 1011, "title": "rest off plan", "state": "open", "labels": [{"name": "внешняя-проверка"}]}]
+J
+echo '[{"user": {"login": "astra"}, "author_association": "NONE", "created_at": "2026-11-14T09:00:00Z", "body": "Не закрыто полностью: остаток — #1011"}]' >"$FAKE_DIR/comments.704.json"
+run rest
+has rest check.json '#704: закрыта, последний вердикт Астры — «не закрыто»'
+
+# (4) «НЕ опубликовано» в задании, которое уже «готово»: разобрано, когда
+# после строки участник назвал в задании находку, куда она легла, и та
+# разобрана (#1866 → #1830); находка вне плана или имя постороннего — нет.
+world landed
+cat >"$FAKE_DIR/issues.json" <<'J'
+[{"number": 101, "title": "landed", "state": "open", "labels": [{"name": "внешняя-проверка"}]},
+ {"number": 1012, "title": "off plan", "state": "open", "labels": [{"name": "внешняя-проверка"}]}]
+J
+cat >"$FAKE_DIR/feed.comments.json" <<'J'
+[{"id": 31, "user": {"login": "astra"}, "body": "[Астра] задание #900 — готово\nНЕ опубликовано: finding.md", "created_at": "2026-11-14T10:00:00Z"},
+ {"id": 32, "user": {"login": "astra"}, "body": "[Астра] задание #901 — готово\nНЕ опубликовано: finding.md", "created_at": "2026-11-14T10:00:00Z"},
+ {"id": 33, "user": {"login": "astra"}, "body": "[Астра] задание #902 — готово\nНЕ опубликовано: finding.md", "created_at": "2026-11-14T10:00:00Z"}]
+J
+echo '[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T11:00:00Z", "body": "Разбор queue.log: находка легла в #101."}]' >"$FAKE_DIR/comments.900.json"
+echo '[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T11:00:00Z", "body": "Легла в #1012."}]' >"$FAKE_DIR/comments.901.json"
+echo '[{"user": {"login": "stranger"}, "author_association": "NONE", "created_at": "2026-11-14T11:00:00Z", "body": "Легла в #101."}]' >"$FAKE_DIR/comments.902.json"
+run landed
+lacks landed check.json 'задание #900'
+has landed check.json 'задание #901 (комментарий 32): сбой'
+has landed check.json 'задание #902 (комментарий 33): сбой'
 
 # Лента: строка разобрана, когда разобрано то, что она называет (решение
 # «релиза (4)», ручной отметки нет). Строки — из комментария, ревью и

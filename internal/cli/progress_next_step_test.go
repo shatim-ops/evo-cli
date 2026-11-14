@@ -277,10 +277,7 @@ func (u *unfinishedWorld) take() bool {
 // "tool" → what the answer has. It only shrinks, and a new tool does not
 // join it. Closes by 1.9 (owner's decision 14.11: subnet_create and
 // snat_create in 1.9, release plan 1.9, «Честный ход операций», (1)).
-var overWhileGoingOn = map[string]string{
-	"snat_create":   "created, its nat_gateway CREATING",
-	"subnet_create": "created, its subnet creating",
-}
+var overWhileGoingOn = map[string]string{}
 
 // TestProgress_AnOverAnswerIsOver: the status of a change that is over
 // (statusOver) is not an answer to a change the platform has not finished
