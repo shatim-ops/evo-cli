@@ -449,7 +449,8 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 			return lostCreate(ctx, "kafka_create", list, i18n.T("Kafka cluster", "кластер Kafka"), name, willCreate, "kafka_get cluster_id", fmt.Errorf(i18n.T("create cluster: %w", "создание кластера: %w"), err))
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
-			"created": willCreate, "note": "Async (~minutes). Poll kafka_operation(operation_id); then kafka_get for status READY + kafka_hosts."}
+			"created": willCreate, "note": i18n.T("Async (~minutes). Poll kafka_operation(operation_id); then kafka_get for status READY + kafka_hosts.",
+				fmt.Sprintf("Асинхронно (несколько минут). Ход: evo kafka operation %s; затем evo kafka get %s — до статуса READY и kafka_hosts.", op.ID, op.ResourceID))}
 		s.goingOn(ctx, out, "kafka_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
 	}}, nil
@@ -471,7 +472,8 @@ func kafkaBrokers(arg int, spec map[string]any) (brokers int, note string, err e
 	}
 	if brokers == 0 {
 		brokers = 1
-		note = "brokers: 1 (the specification gives no minimum): a single broker keeps one copy of each partition and stops on any broker failure. Pass brokers=3 for a replicated cluster."
+		note = i18n.T("brokers: 1 (the specification gives no minimum): a single broker keeps one copy of each partition and stops on any broker failure. Pass brokers=3 for a replicated cluster.",
+			"brokers: 1 (спецификация не задаёт минимума): единственный брокер хранит одну копию каждой партиции и останавливается при любом сбое брокера. Для кластера с репликацией передайте brokers=3.")
 	}
 	if minB > 0 && brokers < minB {
 		return 0, "", fmt.Errorf(i18n.T("brokers %d: this specification takes at least %d", "brokers %d: для этой конфигурации нужно не меньше %d"), brokers, minB)

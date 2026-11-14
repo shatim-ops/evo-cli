@@ -185,7 +185,8 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 		// Docs (Redis, «Создание кластера»): Master/Replica is a master and
 		// two replicas, Multi-AZ or Single-AZ. One subnet_id puts every host
 		// in its zone.
-		warn = "MASTER_REPLICA is a master and two replicas; with one subnet all hosts go to zone " + zone + " (Single-AZ, which the docs allow — Multi-AZ needs a subnet per zone, not available through evo). If the cluster ends FAILED it currently cannot be deleted via the API (Cloud.ru orphan-lock) and needs console cleanup."
+		warn = i18n.Tf("MASTER_REPLICA is a master and two replicas; with one subnet all hosts go to zone %s (Single-AZ, which the docs allow — Multi-AZ needs a subnet per zone, not available through evo). If the cluster ends FAILED it currently cannot be deleted via the API (Cloud.ru orphan-lock) and needs console cleanup.",
+			"MASTER_REPLICA — это мастер и две реплики; с одной подсетью все хосты будут в зоне %s (Single-AZ, документация это допускает; для Multi-AZ нужна подсеть в каждой зоне, через evo это недоступно). Если кластер окажется в FAILED, сейчас его нельзя удалить через API (orphan-lock Cloud.ru) — нужна уборка в консоли.", zone)
 	}
 	out := map[string]any{"message": i18n.T("redis_create provisions a BILLABLE Managed Redis cluster (async, ~minutes).",
 		"redis_create создаёт ПЛАТНЫЙ кластер Managed Redis (асинхронно, несколько минут)."),
@@ -216,7 +217,8 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 			return lostCreate(ctx, "redis_create", list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id", fmt.Errorf(i18n.T("create cluster: %w", "создание кластера: %w"), err))
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
-			"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}
+			"created": willCreate, "note": i18n.T(fmt.Sprintf("Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (%d here).", replicas+1),
+				fmt.Sprintf("Асинхронно (несколько минут). Ход: evo redis operation %s; затем evo redis get %s — до статуса READY и redis_hosts. evo redis get и evo redis list считают реплики хостами шарда вместе с мастером (здесь %d).", op.ID, op.ResourceID, replicas+1))}
 		s.goingOn(ctx, out, "redis_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
 	}}, nil

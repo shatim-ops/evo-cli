@@ -344,12 +344,13 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 						"версию плагина %s закрепить нельзя: API ставит по версии приложения (%s) и сам выбирает версию плагина", rel.AddonVersion, rel.AppVersion),
 					i18n.Tf("Give the app version: --version %s.", "Укажите версию приложения: --version %s.", rel.AppVersion))
 			}
-			p.warnings = append(p.warnings, fmt.Sprintf("app version %s has %d addon versions; the server picks one (expected %s)", rel.AppVersion, len(same), same[0].AddonVersion))
+			p.warnings = append(p.warnings, i18n.Tf("app version %s has %d addon versions; the server picks one (expected %s)",
+				"у версии приложения %s версий плагина: %d; сервер выберет одну (ожидается %s)", rel.AppVersion, len(same), same[0].AddonVersion))
 		}
 		p.release, p.requested = rel, true
 		switch m := mk8s.NormalizeMode(rel.Mode); m {
 		case mk8s.ModeEndOfLife, mk8s.ModeInactive, mk8s.ModeEndOfSupport:
-			p.warnings = append(p.warnings, fmt.Sprintf("version %s is %s", rel.AppVersion, m))
+			p.warnings = append(p.warnings, i18n.Tf("version %s is %s", "версия %s в режиме %s", rel.AppVersion, m))
 		}
 	} else {
 		rel, ok := mk8s.LatestRelease(rels)
@@ -360,7 +361,7 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 		}
 		p.release = rel
 		if m := mk8s.NormalizeMode(rel.Mode); m != mk8s.ModeActive {
-			p.warnings = append(p.warnings, fmt.Sprintf("no ACTIVE release; picked %s (%s)", rel.AppVersion, firstNonEmptyStr(m, "no mode")))
+			p.warnings = append(p.warnings, i18n.Tf("no ACTIVE release; picked %s (%s)", "выпуска ACTIVE нет; выбран %s (%s)", rel.AppVersion, firstNonEmptyStr(m, i18n.T("no mode", "режим не указан"))))
 		}
 	}
 
@@ -410,7 +411,8 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 		case p.workersMin < need:
 			p.notChecked = append(p.notChecked, "ready_workers")
 		default:
-			p.warnings = append(p.warnings, fmt.Sprintf("node pools ask for %d node(s); whether %d are ready is not checked", p.workersMin, need))
+			p.warnings = append(p.warnings, i18n.Tf("node pools ask for %d node(s); whether %d are ready is not checked",
+				"группы узлов запрашивают узлов: %d; готовы ли %d из них, не проверено", p.workersMin, need))
 		}
 	}
 
@@ -527,9 +529,11 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 	// инструментов», п. 4).
 	if plan.installed != nil && *plan.installed {
 		if resolveMode == mk8s.DefaultResolveMode {
-			plan.warnings = append(plan.warnings, plan.addon.Name+" is already installed in this cluster: with resolve_mode NONE its objects are kept, and the install may fail")
+			plan.warnings = append(plan.warnings, i18n.Tf("%s is already installed in this cluster: with resolve_mode NONE its objects are kept, and the install may fail",
+				"%s уже установлен в этом кластере: при resolve_mode NONE его объекты сохраняются, и установка может не пройти", plan.addon.Name))
 		} else {
-			plan.warnings = append(plan.warnings, plan.addon.Name+" is already installed in this cluster: resolve_mode OVERWRITE replaces its objects in the cluster with this install's")
+			plan.warnings = append(plan.warnings, i18n.Tf("%s is already installed in this cluster: resolve_mode OVERWRITE replaces its objects in the cluster with this install's",
+				"%s уже установлен в этом кластере: resolve_mode OVERWRITE заменит его объекты в кластере объектами этой установки", plan.addon.Name))
 		}
 	}
 	requirements := map[string]any{"kube_versions": r.Requirements.KubeVersions, "ready_workers": int(r.Requirements.ReadyWorkers)}
@@ -577,10 +581,15 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 		out := map[string]any{
 			"status": "installing", "cluster_id": clusterID, "addon": plan.addon.Name,
 			"version": r.AppVersion, "requirements": requirements,
-			"note": "Installation is async. Next: check the addon's pods with k8s_kubectl args=\"" + check + "\" (CLI: evo k8s kubectl " + clusterID + " " + check + ") " +
-				"until they are Running and Ready=True; pods of a Job (e.g. cert-manager-startupapicheck) end Completed. " +
-				"Pods stuck in ImagePullBackOff may mean the cluster has no internet egress: Cloud.ru needs a public SNAT gateway in the nodes' zone (" + snatDocURL + "). " +
+			"note": i18n.Tf("Installation is async. Next: check the addon's pods with k8s_kubectl args=\"%[1]s\" (CLI: evo k8s kubectl %[2]s %[1]s) "+
+				"until they are Running and Ready=True; pods of a Job (e.g. cert-manager-startupapicheck) end Completed. "+
+				"Pods stuck in ImagePullBackOff may mean the cluster has no internet egress: Cloud.ru needs a public SNAT gateway in the nodes' zone (%[3]s). "+
 				"evo has no command to remove an addon: remove it in the Cloud.ru console; it also goes with the cluster (k8s_delete).",
+				"Установка идёт асинхронно. Дальше проверьте поды плагина: evo k8s kubectl %[2]s %[1]s — "+
+					"пока они не станут Running и Ready=True; поды задания (Job, например cert-manager-startupapicheck) завершаются Completed. "+
+					"Поды в ImagePullBackOff могут означать, что у кластера нет выхода в интернет: Cloud.ru нужен публичный шлюз SNAT в зоне узлов (%[3]s). "+
+					"Команды удаления плагина в evo нет: удалите его в консоли Cloud.ru; он также удаляется вместе с кластером (evo k8s delete).",
+				check, clusterID, snatDocURL),
 		}
 		if r.AddonNamespace != "" {
 			out["namespace"] = r.AddonNamespace
