@@ -99,6 +99,11 @@ func TestHideConsole(t *testing.T) {
 		{`{"vnc_u`, `{"vnc_u`},
 		{`not json: vnc_url=wss://a`, `not json: vnc_url=wss://a`},
 		{`{"remote_console_protocol":"vnc","vnc_url":"a"}`, `{"remote_console_protocol":"hidden","vnc_url":"hidden"}`},
+		// «Риск», conclusion 244, residuals 1 and 4: a key in another case;
+		// an object whose strings hold a bracket and a comma.
+		{`{"VNC_URL":"wss://a","x":1}`, `{"VNC_URL":"hidden","x":1}`},
+		{`{"vnc_url":{"url":"}x,wss://a"},"x":1}`, `{"vnc_url":"hidden","x":1}`},
+		{`{"m":"{\"vnc_url\":{\"u\":\"],wss://a\"},\"x\":1}"}`, `{"m":"{\"vnc_url\":\"hidden\",\"x\":1}"}`},
 	} {
 		if got := hideConsole([]byte(c.in)); got != c.want {
 			t.Errorf("hideConsole(%s) = %s, want %s", c.in, got, c.want)

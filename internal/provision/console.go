@@ -17,10 +17,10 @@ import (
 // A new field with the same meaning goes here.
 var consoleFields = []string{"vnc_url", "vnc_ws", "remote_console_url", "remote_console_ws", "remote_console_protocol"}
 
-// consoleKey finds a console field as a key, plain or inside JSON escaped
-// into a string any number of times (`\"vnc_url\": …`): group 1 holds the
-// backslashes before its quote.
-var consoleKey = regexp.MustCompile(`(\\*)"(?:` + strings.Join(consoleFields, "|") + `)\\*"\s*:\s*`)
+// consoleKey finds a console field as a key, in any case, plain or inside
+// JSON escaped into a string any number of times (`\"vnc_url\": …`):
+// group 1 holds the backslashes before its quote.
+var consoleKey = regexp.MustCompile(`(?i)(\\*)"(?:` + strings.Join(consoleFields, "|") + `)\\*"\s*:\s*`)
 
 // hiddenValue replaces the value of a console field.
 const hiddenValue = "hidden"
@@ -71,29 +71,25 @@ func escapeDepth(n int) (int, bool) {
 // depth times, or len(s) when the body ends inside it.
 func valueEnd(s string, i, depth int) int {
 	quote := 1<<depth - 1 // backslashes before a quote of this depth
-	if open := i + quote; open < len(s) && s[open] == '"' && strings.Count(s[i:open], `\`) == quote {
-		// A string: it ends at the next quote of its own depth; one
-		// escaped deeper is inside it.
-		for j := open + 1; j < len(s); j++ {
-			if s[j] != '"' {
-				continue
-			}
-			k := j
-			for k > open+1 && s[k-1] == '\\' {
-				k--
-			}
-			// A quote of this depth has quote backslashes after the
-			// escaped backslashes of the text (2<<depth each).
-			if (j-k)%(2<<depth) == quote {
-				return j + 1
-			}
+	if open := i + quote; open < len(s) && s[open] == '"' && strings.Count(s[i:open], `\\`) == quote {
+		if end := stringEnd(s, open, depth); end > 0 {
+			return end
 		}
 		return len(s)
 	}
 	// Anything else — a number, null, an object — ends at a comma or a
-	// closing bracket outside the brackets it opens.
+	// closing bracket outside the brackets it opens and outside its
+	// strings («Риск», conclusion 244, residual 4).
 	level := 0
 	for j := i; j < len(s); j++ {
+		if s[j] == '"' && isQuote(s, i, j, depth) {
+			end := stringEnd(s, j, depth)
+			if end < 0 {
+				return len(s)
+			}
+			j = end - 1
+			continue
+		}
 		switch s[j] {
 		case '{', '[':
 			level++
@@ -109,6 +105,29 @@ func valueEnd(s string, i, depth int) int {
 		}
 	}
 	return len(s)
+}
+
+// stringEnd returns the end of the string whose opening quote of depth is at
+// open: past the next quote of its own depth (one escaped deeper is inside
+// it), or -1 when the body ends inside it.
+func stringEnd(s string, open, depth int) int {
+	for j := open + 1; j < len(s); j++ {
+		if s[j] == '"' && isQuote(s, open+1, j, depth) {
+			return j + 1
+		}
+	}
+	return -1
+}
+
+// isQuote reports whether the quote at j, with no text before from, is a
+// quote of depth: it has 2^depth-1 backslashes after the escaped
+// backslashes of the text (2<<depth each).
+func isQuote(s string, from, j, depth int) bool {
+	k := j
+	for k > from && s[k-1] == '\\' {
+		k--
+	}
+	return (j-k)%(2<<depth) == 1<<depth-1
 }
 
 // trimEscapes moves the end j of a value back over trailing backslashes and
