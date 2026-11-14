@@ -107,6 +107,11 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 	res[m.field+"_state"] = last
 	res["next"] = i18n.Tf("%s %s is %s: the platform has not finished making it. %s ids=[%s] shows its state.",
 		"%s %s — %s: платформа ещё не завершила создание. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
+	if seen && kind == stateOther {
+		// A state of no list: evo does not tell whether it is made.
+		res["next"] = i18n.Tf("%s %s is %s: evo does not know this state as made or being made. %s ids=[%s] shows its state.",
+			"%s %s — %s: evo не знает, сделан ли ресурс в этом состоянии. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
+	}
 	nextStep(res, m.list, map[string]any{"ids": []any{id}})
 	if stderrors.Is(err, context.Canceled) {
 		return errAnswer(fmt.Errorf("%s: %w", i18n.Tf("%s %s: the wait was cancelled, the platform goes on making it",
