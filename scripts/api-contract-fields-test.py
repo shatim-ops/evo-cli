@@ -374,5 +374,135 @@ class CreateAnswer(unittest.TestCase):
         self.assertEqual(lines, [])
 
 
+CONSOLE_SPEC = """
+openapi: 3.0.0
+paths:
+  /api/v1/vms/{vm_id}:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                  name: {type: string}
+                  is_serial_ready: {type: boolean}
+                  vnc_url: {type: string}
+                  remote_console_url: {type: string}
+  /api/v1/vms:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        vnc_url: {type: string}
+  /v1/console-logs:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  console_text: {type: string}
+"""
+
+
+class ConsoleFields(unittest.TestCase):
+    """console-field-*: the console fields of the answers of the VM paths of
+    Compute are the list of provision (brief vm-console.md §5; «Риск»,
+    conclusion 244)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.dir, "specs", "compute"))
+        os.makedirs(os.path.join(self.dir, "internal", "provision"))
+        self.spec = CONSOLE_SPEC
+        self.declare("console.go", ["vnc_url", "remote_console_url"])
+        # Another path of Compute: a console-like name there is not a VM's.
+        self.requests = [{"method": "GET", "path": "/api/v1/vms/{vm_id}", "reads": ["id", "name"]},
+                         {"method": "GET", "path": "/api/v1/vms", "reads": ["items[].id"]},
+                         {"method": "GET", "path": "/v1/console-logs"}]
+
+    def tearDown(self):
+        shutil.rmtree(self.dir)
+
+    def declare(self, name, fields):
+        with open(os.path.join(self.dir, "internal", "provision", name), "w") as f:
+            f.write("package provision\n\n// consoleFields …\nvar consoleFields = []string{" +
+                    ", ".join('"%s"' % x for x in fields) + "}\n")
+
+    def run_check(self):
+        with open(os.path.join(self.dir, "specs", "compute", "api.yaml"), "w") as f:
+            f.write(self.spec)
+        cp = os.path.join(self.dir, "contract.json")
+        with open(cp, "w") as f:
+            json.dump({"services": [{"name": "compute", "spec": "compute/api.yaml", "requests": self.requests}]}, f)
+        argv = ["api-contract-check.py", "--specs", os.path.join(self.dir, "specs"), "--contract", cp, "--root", self.dir,
+                "--fields", os.path.join(self.dir, "no-fields.json"), "--states", os.path.join(self.dir, "no-states.json")]
+        out, err = io.StringIO(), io.StringIO()
+        old = sys.argv
+        sys.argv = argv
+        try:
+            with redirect_stdout(out), redirect_stderr(err):
+                rc = check.main()
+        finally:
+            sys.argv = old
+        return rc, [l for l in out.getvalue().splitlines() if "console-field" in l]
+
+    def test_declared_as_the_spec(self):
+        rc, lines = self.run_check()
+        self.assertEqual(lines, [])
+        self.assertEqual(rc, 0)
+
+    def test_new_console_field(self):
+        self.spec = self.spec.replace("                  remote_console_url: {type: string}",
+                                      "                  remote_console_url: {type: string}\n                  spice_ws: {type: string}")
+        self.spec = self.spec.replace("                        vnc_url: {type: string}",
+                                      "                        vnc_url: {type: string}\n                        remote_console_ws: {type: string}")
+        rc, lines = self.run_check()
+        self.assertEqual(rc, 1, lines)
+        text = "\n".join(lines)
+        self.assertIn("console-field-undeclared:spice_ws", text)
+        self.assertIn("console-field-undeclared:items[].remote_console_ws", text)
+        self.assertNotIn("console_text", text)
+        self.assertEqual(len(lines), 2, text)
+
+    def test_name_gone_from_the_spec(self):
+        self.declare("console.go", ["vnc_url", "remote_console_url", "vnc_ws"])
+        rc, lines = self.run_check()
+        self.assertEqual(rc, 1, lines)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("console-field-gone:vnc_ws", lines[0])
+
+    def test_list_not_declared_once(self):
+        for files in (["console_test.go"], ["console.go", "types.go"]):
+            shutil.rmtree(os.path.join(self.dir, "internal", "provision"))
+            os.makedirs(os.path.join(self.dir, "internal", "provision"))
+            for name in files:
+                self.declare(name, ["vnc_url", "remote_console_url"])
+            rc, lines = self.run_check()
+            self.assertEqual(rc, 1, files)
+            self.assertTrue(any("console-fields-missing" in l for l in lines), (files, lines))
+
+    def test_no_vm_path_asks_nothing(self):
+        shutil.rmtree(os.path.join(self.dir, "internal", "provision"))
+        self.requests = [{"method": "GET", "path": "/v1/console-logs"}]
+        rc, lines = self.run_check()
+        self.assertEqual((rc, lines), (0, []))
+
+
 if __name__ == "__main__":
     unittest.main()
