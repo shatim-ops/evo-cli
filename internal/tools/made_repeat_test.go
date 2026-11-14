@@ -12,11 +12,13 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -80,6 +82,9 @@ func TestSubnetCreate_ARepeatAfterWaitingSendsNoSecondCreate(t *testing.T) {
 	_, text, _ = callNamed(t, r, "subnet_create", args)
 	if n := len(api.writes); n != 1 || !strings.Contains(text, subnetNew) {
 		t.Errorf("after the list shows it: %d creates, %s", n, text)
+	}
+	if n := madeFiles(t, r); n != 0 {
+		t.Errorf("the file of the create stays after the list shows it: %d", n)
 	}
 }
 
@@ -193,5 +198,80 @@ func TestSubnetCreate_ACallOfOtherArgumentsIsNotARepeat(t *testing.T) {
 	}
 	if m, text, _ = callNamed(t, r, "subnet_create", args); m["repeat_of"] == nil || len(api.writes) != 1 {
 		t.Errorf("the same call after it: %d creates, %s", len(api.writes), text)
+	}
+}
+
+// madeFiles counts the files of creates going on in the registry's state.
+func madeFiles(t *testing.T, r *Registry) int {
+	t.Helper()
+	root, _ := r.stateDir()
+	entries, _ := os.ReadDir(MadeDir(root))
+	return len(entries)
+}
+
+// «Риск», conclusion 268, 1: a create taken, then the resource not there —
+// past the grace of a list that lags, the read by id lists none of it: the
+// repeat with consent sends one new create, and the file goes. Within the
+// grace the same read is a list that does not show it yet: no create.
+func TestSubnetCreate_ARepeatAfterTheResourceIsGoneCreatesAgain(t *testing.T) {
+	api := newSubnetAPI()
+	api.unlisted = true
+	r := subnetRegistryWaiting(t, api)
+	now := time.Date(2026, 11, 14, 22, 0, 0, 0, time.UTC)
+	clock.Now = func() time.Time { return now }
+	t.Cleanup(func() { clock.Now = time.Now })
+	args := map[string]any{"name": "web", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1", "confirmed": true}
+	callNamed(t, r, "subnet_create", args)
+	now = now.Add(madeListGrace / 2)
+	if m, text, _ := callNamed(t, r, "subnet_create", args); m["repeat_of"] == nil || len(api.writes) != 1 {
+		t.Fatalf("within the grace: %d creates, %s", len(api.writes), text)
+	}
+	now = now.Add(madeListGrace)
+	if m, text, _ := callNamed(t, r, "subnet_create", args); m["repeat_of"] != nil || len(api.writes) != 2 {
+		t.Errorf("past the grace, the resource not listed by id: %d creates, %s", len(api.writes), text)
+	}
+}
+
+// «Риск», conclusion 268, 2: a file older than madeMaxAge is not read; it
+// goes, and the call is planned as any other.
+func TestSubnetCreate_AnOldFileOfACreateIsNotRead(t *testing.T) {
+	api := newSubnetAPI()
+	api.unlisted = true
+	r := subnetRegistryWaiting(t, api)
+	now := time.Date(2026, 11, 14, 22, 0, 0, 0, time.UTC)
+	clock.Now = func() time.Time { return now }
+	t.Cleanup(func() { clock.Now = time.Now })
+	args := map[string]any{"name": "web", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1", "confirmed": true}
+	callNamed(t, r, "subnet_create", args)
+	if madeFiles(t, r) != 1 {
+		t.Fatal("no file of the create going on")
+	}
+	now = now.Add(madeMaxAge + time.Minute)
+	if m, text, _ := callNamed(t, r, "subnet_create", args); m["repeat_of"] != nil || len(api.writes) != 2 {
+		t.Errorf("an old file: %d creates, %s", len(api.writes), text)
+	}
+}
+
+// What tells a create ended for its repeat, and what does not.
+func TestMadeEnded(t *testing.T) {
+	for _, c := range []struct {
+		read  string
+		isErr bool
+		age   time.Duration
+		want  bool
+	}{
+		{`{"reason":"NOT_FOUND","error":"x"}`, true, 0, true},
+		{`{"reason":"API_UNREACHABLE","error":"x"}`, true, time.Hour, false},
+		{`{"status":"error_creating"}`, false, 0, true},
+		{`{"state":"ERROR"}`, false, 0, true},
+		{`{"status":"failed"}`, false, 0, true},
+		{`{"status":"creating"}`, false, time.Hour, false},
+		{`{"count":0,"subnets":[]}`, false, madeListGrace / 2, false},
+		{`{"count":0,"subnets":[]}`, false, madeListGrace * 2, true},
+		{`{"count":1,"subnets":[{}]}`, false, time.Hour, false},
+	} {
+		if got := madeEnded(c.read, c.isErr, c.age); got != c.want {
+			t.Errorf("madeEnded(%s, %v, %v) = %v, want %v", c.read, c.isErr, c.age, got, c.want)
+		}
 	}
 }

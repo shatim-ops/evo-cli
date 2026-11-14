@@ -12,10 +12,12 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -37,6 +39,20 @@ type madeCall struct {
 	NextArgs  map[string]any `json:"next_args,omitempty"`
 	StartedAt time.Time      `json:"started_at"`
 }
+
+// madeMaxAge bounds the life of a file of a create going on: older, it is
+// not read and goes, and the call is planned as any other («Риск»,
+// conclusion 268, 2). The longest wait evo takes for a create of its own is
+// 30 minutes (restoreHeldLimit): four times that. A bound of evo, not a
+// statement of the platform.
+const madeMaxAge = 2 * time.Hour
+
+// madeListGrace is how long a read that lists nothing for the id is taken
+// for a list that does not show the resource yet, not for a resource gone
+// («Риск», conclusion 268, 1): the list and its lag look the same. A bound
+// of evo, not a statement of the platform; past it, the empty read is an
+// answer.
+const madeListGrace = 10 * time.Minute
 
 // MadeDir is the directory of the creates going on in root (rememberMade):
 // a part of the intents' directory, so whatever clears the intents clears
@@ -88,6 +104,28 @@ func madeGoesOn(tool, answer string) (id, next string, nextArgs map[string]any, 
 		next, nextArgs = c.list, nil
 	}
 	return id, next, nextArgs, true
+}
+
+// madeEnded tells a read of the step of a create that says nothing goes
+// on: the resource is not found by the read (NOT_FOUND), it or its
+// operation is in a state of error, or — past madeListGrace — a read by id
+// lists none of it. A read that fails otherwise tells nothing.
+func madeEnded(read string, isErr bool, age time.Duration) bool {
+	if isErr {
+		reason := answerReason(read)
+		return reason == clierrors.CodeNotFound || reason == clierrors.CodeVMNotFound
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(read), &m) != nil {
+		return false
+	}
+	for _, k := range []string{"status", "state"} {
+		if st, _ := m[k].(string); st != "" && (madeKind(st) == stateFailed || strings.EqualFold(st, "failed")) {
+			return true
+		}
+	}
+	count, counted := m["count"].(float64)
+	return counted && count == 0 && age > madeListGrace
 }
 
 // rememberMade keeps the create of the call of record rec when its answer
@@ -144,6 +182,10 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		mc.ProjectID != projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args) {
 		return "", false, false
 	}
+	if clock.Since(mc.StartedAt) > madeMaxAge {
+		_ = os.Remove(file)
+		return "", false, false
+	}
 	if _, listed := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID); listed {
 		_ = os.Remove(file)
 		return "", false, false
@@ -154,6 +196,13 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	out := map[string]any{"message": said}
 	if t, found := r.Lookup(mc.Next); found && t.Handler != nil {
 		read, readErr := t.Handler(ctx, maps.Clone(mc.NextArgs))
+		// The read says the resource is not there, or its operation
+		// failed: nothing goes on, the file goes, and the call is planned
+		// as any other — a new create («Риск», conclusion 268, 1).
+		if madeEnded(read, readErr, clock.Since(mc.StartedAt)) {
+			_ = os.Remove(file)
+			return "", false, false
+		}
 		var m map[string]any
 		if json.Unmarshal([]byte(read), &m) == nil {
 			out = m
