@@ -27,8 +27,9 @@
 # Признаки на данных 14.11 («1.9 — релиз (4)»): вердикт Астры — комментарий
 # её аккаунта, а до ASTRA_ACCOUNT_SINCE — и владельца с «[Астра]»; в том
 # числе отчёт задания (метка «астра-задание»), которое владелец называет в
-# находке, со строкой «#N … закрыто»; «не закрыто» с остатком — открытой
-# находкой из плана — разобрано; отчёт с меткой «отчёт» — не находка;
+# находке, со строкой «#N … закрыто» (или краткое «закрыт»); «не закрыто» с
+# остатком — открытой находкой из плана, номером или находкой Астры, которая
+# называет исходную в теле, — разобрано; отчёт с меткой «отчёт» — не находка;
 # «НЕ опубликовано» в задании — разобрано, когда участник назвал в задании
 # разобранную находку, куда она легла.
 #
@@ -51,8 +52,9 @@ import urllib.parse
 LABEL = "внешняя-проверка"
 PLAN_FILES = ["docs/internal/release-plan.md", "docs/internal/standalone/DECISIONS.md"]
 
-# «закрыто», но не «не закрыто» и не часть другого слова.
-CLOSED_RE = re.compile(r"(?<![А-Яа-яЁё])(?<!не )закрыто", re.IGNORECASE)
+# «закрыто» или краткое «закрыт», «закрыта» (#1773: «дефект закрыт»), но
+# не «не закрыт…» и не часть другого слова («закрытие», «незакрыто»).
+CLOSED_RE = re.compile(r"(?<![А-Яа-яЁё])(?<!не )закрыт(?:о|а|ы)?(?![А-Яа-яЁё])", re.IGNORECASE)
 TASK_RE = re.compile(r"задание\s+#(\d+)\s+—\s+(\S+)")
 NOT_PUBLISHED = "НЕ опубликовано"
 ISSUE_URL = re.compile(r"https://github\.com/([\w.-]+)/([\w.-]+)/issues/(\d+)")
@@ -95,8 +97,8 @@ def is_finding(issue):
 
 
 def says_closed(text):
-    """A positive «закрыто» and no «не закрыто» in the text."""
-    return bool(CLOSED_RE.search(text)) and "не закрыто" not in text.lower()
+    """A positive «закрыт(о)» and no «не закрыт…» in the text."""
+    return bool(CLOSED_RE.search(text)) and "не закрыт" not in text.lower()
 
 
 def unprocessed(repo, astra, feed, since, root, account_since=""):
@@ -109,7 +111,7 @@ def unprocessed(repo, astra, feed, since, root, account_since=""):
             "--paginate",
             f"repos/{repo}/issues?labels={urllib.parse.quote(LABEL)}&state=all&per_page=100",
             "--jq",
-            ".[] | {number, title, state, state_reason, closed_at, pull_request, labels: [(.labels // [])[] | .name]}",
+            ".[] | {number, title, state, state_reason, closed_at, pull_request, labels: [(.labels // [])[] | .name], user: .user.login, body}",
         )
     }
 
@@ -119,7 +121,7 @@ def unprocessed(repo, astra, feed, since, root, account_since=""):
             issues[n] = gh_lines(
                 f"repos/{repo}/issues/{n}",
                 "--jq",
-                "{number, title, state, state_reason, closed_at, pull_request, labels: [(.labels // [])[] | .name]}",
+                "{number, title, state, state_reason, closed_at, pull_request, labels: [(.labels // [])[] | .name], user: .user.login, body}",
             )[0]
         return issues[n]
 
@@ -147,7 +149,7 @@ def unprocessed(repo, astra, feed, since, root, account_since=""):
 
     def astra_verdict(n):
         """Why closed finding n has no «закрыто» of Астра; "" when it has."""
-        verdicts = [c for c in comments(n) if astra_voice(c) and "закрыто" in c["body"].lower()]
+        verdicts = [c for c in comments(n) if astra_voice(c) and "закрыт" in c["body"].lower()]
         if verdicts:
             last = verdicts[-1]["body"]
             if says_closed(last):
@@ -158,6 +160,13 @@ def unprocessed(repo, astra, feed, since, root, account_since=""):
                 int(m) for m in ISSUE_REF.findall(last)
                 if int(m) != n and is_label(int(m), LABEL) and issue(int(m))["state"] == "open"
             ]
+            # The rest named by a file, not a number (#1758 → #1841): an open
+            # finding of Астра that names this one in its body.
+            rest = rest or [
+                m for m, i in issues.items()
+                if m != n and i["state"] == "open" and is_finding(i) and is_label(m, LABEL) and i.get("user") == astra
+                and re.search(rf"#{n}(?!\d)", i.get("body") or "")
+            ]
             if rest and all(int(m) in refs for m in rest):
                 return ""
             return "закрыта, последний вердикт Астры — «не закрыто»"
@@ -165,7 +174,7 @@ def unprocessed(repo, astra, feed, since, root, account_since=""):
         # of the owner names the task, and Астра's report there says
         # «закрыто» of this finding on its line (#1743 → #1774).
         for c in comments(n):
-            if c["assoc"] != "OWNER" or "закрыто" not in c["body"].lower():
+            if c["assoc"] != "OWNER" or "закрыт" not in c["body"].lower():
                 continue
             for t in {int(m) for m in ISSUE_REF.findall(c["body"])} - {n}:
                 if not is_label(t, TASK_LABEL):
