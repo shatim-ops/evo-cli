@@ -178,7 +178,11 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The names of the fields a manifest of stack_plan has and its type
 	// does not: the caller's text, which a manifest a cloned repository
 	// brings may write (D108; «Риск», 186, У8).
-	"stack_plan":     {fields: []string{"unknown_fields", "error"}},
+	"stack_plan": {fields: []string{"unknown_fields", "error"}},
+	// The steps of the job in the question of stack_apply: the names and
+	// the values of a manifest, the caller's text a cloned repository may
+	// bring, as stack_plan's.
+	"stack_apply":    {fields: []string{"preview"}},
 	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}},
 }
 

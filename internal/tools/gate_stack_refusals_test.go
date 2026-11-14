@@ -128,3 +128,78 @@ func TestStackApply_JobDoneAsksAndSaysItCreatesNothing(t *testing.T) {
 		t.Errorf("the question of a job planned: %s", text)
 	}
 }
+
+// The question of stack_apply names what the consent creates: every step
+// not done yet, its tool and its arguments — the names of the resources
+// among them (CLAUDE.md §6, axis 4); a step done is not asked about again,
+// and the value of a secret is not in the question (CLAUDE.md §4). The
+// question prices the steps to run.
+func TestStackApply_TheQuestionNamesEveryStep(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"g","vpc":{"name":"net-g"},"secrets":[{"path":"app/db","value":"s3cr3t-value"}]}`)
+	for _, st := range j.Steps {
+		if st.Tool == "vpc_create" {
+			st.Status = "done"
+		}
+	}
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID})
+	if !strings.Contains(text, "app/db") || !strings.Contains(text, "secret_create") || !strings.Contains(text, secretNotShown) {
+		t.Errorf("the question does not name the step to run: %s", text)
+	}
+	if strings.Contains(text, "s3cr3t-value") {
+		t.Errorf("the value of a secret is in the question: %s", text)
+	}
+	if strings.Contains(text, "net-g") {
+		t.Errorf("the question names a step done: %s", text)
+	}
+	// The price of what the consent pays for: the class of each step to
+	// run, as stack_plan prices the job; a step done is paid already.
+	var m struct {
+		Preview struct {
+			Params []struct {
+				Key   string `json:"key"`
+				Value any    `json:"value"`
+			} `json:"params"`
+		} `json:"preview"`
+	}
+	_ = json.Unmarshal([]byte(text), &m)
+	var cost map[string]any
+	for _, p := range m.Preview.Params {
+		if p.Key == "steps_cost" {
+			cost, _ = p.Value.(map[string]any)
+		}
+	}
+	byComponent, _ := cost["by_component"].([]any)
+	components := map[string]bool{}
+	for _, l := range byComponent {
+		if line, _ := l.(map[string]any); line != nil && line["class"] != nil {
+			c, _ := line["component"].(string)
+			components[c] = true
+		}
+	}
+	if !components["secret:0"] || components["vpc"] {
+		t.Errorf("the question's cost, want the class of secret:0 and not of vpc, done: %v", cost)
+	}
+}
+
+// The body of an S3 object a stack puts is not in the question of
+// stack_apply either («Риск», conclusion 213, У1): evo keeps it off the job
+// file once the step is done, as a secret's value, and an object may be a
+// .env with a key. The question names its size. The human preview is
+// made from the same answer, so a value not in it is not shown there.
+func TestStackApply_TheQuestionHidesAnObjectsBody(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"g","s3":[{"bucket":"b-g","key":".env","content":"API_KEY=s3cr3t-body"}]}`)
+	text, _ := r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID})
+	if strings.Contains(text, "s3cr3t-body") {
+		t.Errorf("the body of the object is in the question: %s", text)
+	}
+	if !strings.Contains(text, ".env") || !strings.Contains(text, "not shown: 19 bytes") {
+		t.Errorf("the question does not name the object and the size of its body: %s", text)
+	}
+}
