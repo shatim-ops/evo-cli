@@ -6,6 +6,7 @@ package tools
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -118,7 +119,7 @@ func TestPgDbCreate_RefusedForADatabaseThatExistsSaysSo(t *testing.T) {
 			}
 		}
 		unread, unreadText := call(&pgDatabasesWorld{status: refusal.status, body: refusal.body, listFails: true})
-		if unread["hint"] != plain["hint"] || unread["reason"] != plain["reason"] || unread["error"] != plain["error"] {
+		if unread["hint"] != plain["hint"] || unread["reason"] != plain["reason"] || withoutRequestIDs(fmt.Sprint(unread["error"])) != withoutRequestIDs(fmt.Sprint(plain["error"])) {
 			t.Errorf("%d: databases not read: the answer differs from the refusal alone:\n%s\n%s", refusal.status, unreadText, plainText)
 		}
 	}

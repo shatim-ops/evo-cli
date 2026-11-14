@@ -181,8 +181,10 @@ func (s *Registry) planImageCreate(ctx context.Context, args map[string]any) (*P
 		return toJSON(map[string]any{
 			"status": "building",
 			"image":  img,
-			"note": "Image build is queued, not finished: it runs at roughly 0.7 GB per minute. " +
+			"note": i18n.T("Image build is queued, not finished: it runs at roughly 0.7 GB per minute. "+
 				"Poll image_get until it reports ready=true before booting from it.",
+				"Сборка образа поставлена в очередь и ещё не завершена: она идёт со скоростью примерно 0,7 ГБ в минуту. "+
+					"Прежде чем создавать из образа ВМ, дождитесь ready=true в evo image get."),
 		}), false
 	}}, nil
 }

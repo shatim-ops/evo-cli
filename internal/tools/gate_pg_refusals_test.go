@@ -38,7 +38,7 @@ func TestGatePg_RefusalWithoutConsentIsTheRefusalWithIt(t *testing.T) {
 					t.Errorf("%s, %s (confirmed %v): the refused call sent %s", c.tool, c.name, confirmed, q)
 				}
 			}
-			answers[i] = text
+			answers[i] = withoutRequestIDs(text)
 		}
 		if answers[0] != answers[1] {
 			t.Errorf("%s, %s: without consent\n%s\nwith confirmed=true\n%s", c.tool, c.name, answers[0], answers[1])

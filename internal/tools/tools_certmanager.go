@@ -88,7 +88,8 @@ func (s *Registry) planCertIssueLE(ctx context.Context, args map[string]any) (*P
 			return lostCreate(ctx, "cert_issue_le", list, i18n.T("certificate", "сертификат"), name, nil, "cert_get id", fmt.Errorf(i18n.T("issue certificate: %w", "выпуск сертификата: %w"), err))
 		}
 		// Async: return the operation; the caller polls cert_operation until done.
-		out := map[string]any{"status": "issuing", "note": "Let's Encrypt issuance is async — poll cert_operation with this operation id until done=true. Domains must have delegated zones in Evolution DNS.", "operation": op}
+		out := map[string]any{"status": "issuing", "note": i18n.T("Let's Encrypt issuance is async — poll cert_operation with this operation id until done=true. Domains must have delegated zones in Evolution DNS.",
+			"Сертификат Let's Encrypt выпускается асинхронно — опрашивайте evo cert operation с id этой операции до done=true. Зоны доменов должны быть делегированы в Evolution DNS."), "operation": op}
 		// The operation does not name the certificate; the list does, at once
 		// (fault matrix, process audit 1.2.1).
 		if items, err := list(ctx); err == nil {

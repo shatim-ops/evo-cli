@@ -423,13 +423,14 @@ func (s *Registry) handleK8sKubeconfig(ctx context.Context, args map[string]any)
 		embed = v
 	}
 	if !embed {
-		return toJSON(map[string]any{"kubeconfig": plain, "auth": "cloudlogin exec-plugin (must be installed)"}), false
+		return toJSON(map[string]any{"kubeconfig": plain, "auth": i18n.T("cloudlogin exec-plugin (must be installed)", "плагин cloudlogin (должен быть установлен)")}), false
 	}
 	keyID, secret := s.accessKey()
 	if keyID == "" || secret == "" {
 		return toJSON(map[string]any{
 			"kubeconfig": plain,
-			"warning":    "embed_token requested but no Cloud.ru access key is configured (evo configure, or CLOUDRU_KEY_ID/CLOUDRU_SECRET) — returned the raw kubeconfig, which needs the 'cloudlogin' exec plugin.",
+			"warning": i18n.T("embed_token requested but no Cloud.ru access key is configured (evo configure, or CLOUDRU_KEY_ID/CLOUDRU_SECRET) — returned the raw kubeconfig, which needs the 'cloudlogin' exec plugin.",
+				"embed_token запрошен, но ключ доступа Cloud.ru не настроен (evo configure или CLOUDRU_KEY_ID/CLOUDRU_SECRET) — возвращён исходный kubeconfig, которому нужен плагин cloudlogin."),
 		}), false
 	}
 	tok, e := mk8s.FetchOIDCToken(ctx, mk8s.OIDCURLFromKubeconfig(plain), keyID, secret)
@@ -442,8 +443,9 @@ func (s *Registry) handleK8sKubeconfig(ctx context.Context, args map[string]any)
 	}
 	return toJSON(map[string]any{
 		"kubeconfig": embedded,
-		"auth":       "embedded bearer token (no cloudlogin needed)",
-		"note":       "Token TTL ~1h — re-fetch the kubeconfig if kubectl starts returning 401.",
+		"auth":       i18n.T("embedded bearer token (no cloudlogin needed)", "встроенный bearer-токен (cloudlogin не нужен)"),
+		"note": i18n.T("Token TTL ~1h — re-fetch the kubeconfig if kubectl starts returning 401.",
+			"Токен действует около часа — получите kubeconfig заново, если kubectl начнёт отвечать 401."),
 	}), false
 }
 

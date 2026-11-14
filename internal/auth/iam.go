@@ -302,8 +302,10 @@ func (p *IAMProvider) keep(tok Token) {
 // with exponential backoff. 4xx responses are final.
 func (p *IAMProvider) exchange(ctx context.Context) (Token, error) {
 	delay := exchangeBaseDelay
+	// One id for every attempt: support sees the exchange as one request.
+	id := httpretry.NewRequestID()
 	for attempt := 1; ; attempt++ {
-		tok, retryable, err := p.exchangeOnce(ctx)
+		tok, retryable, err := p.exchangeOnce(ctx, id)
 		if err == nil || !retryable || attempt == exchangeAttempts || ctx.Err() != nil {
 			return tok, err
 		}
@@ -314,9 +316,9 @@ func (p *IAMProvider) exchange(ctx context.Context) (Token, error) {
 	}
 }
 
-// exchangeOnce performs one HTTP POST to the IAM endpoint and reports
-// whether a failure is worth retrying.
-func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bool, err error) {
+// exchangeOnce performs one HTTP POST to the IAM endpoint, named by the
+// X-Request-Id id, and reports whether a failure is worth retrying.
+func (p *IAMProvider) exchangeOnce(ctx context.Context, id string) (tok Token, retryable bool, err error) {
 	p.exchanges++
 	payload, err := json.Marshal(map[string]string{"keyId": p.creds.KeyID, "secret": p.creds.Secret})
 	if err != nil {
@@ -333,6 +335,7 @@ func (p *IAMProvider) exchangeOnce(ctx context.Context) (tok Token, retryable bo
 		)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(httpretry.RequestIDHeader, id)
 
 	// No redirects: on 307/308 the client would POST the same body, with
 	// the key secret, to wherever Location points. IAM answers directly;

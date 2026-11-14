@@ -1,0 +1,3 @@
+### Исправлено
+
+- **Ответы Kubernetes, баз и стеков на русском — по-русски.** Без `EVO_LANG` (язык по умолчанию русский) заметки, следующие шаги и предупреждения печатались по-английски: `pg_create`, `pg_backup_create`, `kafka_create`, `redis_create`, `k8s_kubeconfig`, `k8s_add_addon`, `k8s_kubectl`, `k8s_helm`, `stack_plan`, `stack_apply`, `stack_status` и `stack_destroy`. Теперь эти тексты следуют языку CLI, как и остальные тексты evo, и называют команды CLI (`evo pg operation <id>`, `evo stack status <id>`), а не имена инструментов. С `EVO_LANG=en` и в ответах MCP тексты прежние, английские. Ключи полей и значения облака не переводятся.

@@ -73,3 +73,13 @@ func Prefix(prefix string, err error) error {
 	}
 	return fmt.Errorf("%s%w", prefix, err)
 }
+
+// Suffix puts context after the message of err (" (X-Request-Id …)") and
+// keeps the code and the hint of its CLIError, as Prefix does in front.
+func Suffix(err error, suffix string) error {
+	var ce *CLIError
+	if stderrors.As(err, &ce) {
+		return Wrap(ce.Code, ce.Message+suffix, ce.Hint, err)
+	}
+	return fmt.Errorf("%w%s", err, suffix)
+}

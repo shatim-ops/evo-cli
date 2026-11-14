@@ -101,13 +101,15 @@ func (s *Registry) planVpcCreate(ctx context.Context, args map[string]any) (*Pla
 			}
 			return lostCreate(ctx, "vpc_create", cli.ListVPCs, "VPC", name, nil, "vpc_list", fmt.Errorf(i18n.T("create vpc: %w", "создание vpc: %w"), err))
 		}
-		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id); then vpc_get for the status."}
+		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": i18n.T("Async — poll vpc_operation(operation_id); then vpc_get for the status.",
+			"Асинхронно — опрашивайте evo vpc operation <operation_id>; затем статус покажет evo vpc get.")}
 		// The VPC's id is in the create's answer: named at once (fault matrix,
 		// process audit 1.2.1; as pg_create, N-07).
 		if op.ResourceID != "" {
 			out["vpc_id"] = op.ResourceID
 		} else {
-			out["note"] = "Async — poll vpc_operation(operation_id); then vpc_list for the id."
+			out["note"] = i18n.T("Async — poll vpc_operation(operation_id); then vpc_list for the id.",
+				"Асинхронно — опрашивайте evo vpc operation <operation_id>; затем id покажет evo vpc list.")
 		}
 		return toJSON(out), false
 	}}, nil
@@ -250,7 +252,7 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 			}
 			return lostCreate(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), subnet, nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf(i18n.T("create route: %w", "создание маршрута: %w"), err))
 		}
-		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll vpc_operation(operation_id)."}
+		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": i18n.T("Async — poll vpc_operation(operation_id).", "Асинхронно — опрашивайте evo vpc operation <operation_id>.")}
 		if op.ResourceID != "" {
 			out["route_id"] = op.ResourceID
 		}
