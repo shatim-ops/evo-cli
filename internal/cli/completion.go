@@ -101,7 +101,7 @@ func tabNeeds(t tools.Tool) (alone map[string]bool, oneOf [][]string) {
 			}
 		}
 	}
-	return alone, t.RequiredOneOf
+	return alone, t.Decl.RequiredOneOf
 }
 
 // flagsToGo lists, as candidates of Tab, the flags of cmd's tool arguments

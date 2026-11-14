@@ -267,7 +267,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_apply",
-			Description: "STEP 2 of the deploy wizard: executes a plan from deploy_plan. Creates the VM without the application: a compose project goes through deploy. Its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args: repeat the same call to finish it.",
+			Description: "Creates only the VM, without the application, from a plan of deploy_plan (STEP 2 of the deploy wizard): a compose project goes through deploy. Its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args: repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
 				"plan_id":      strProp("The plan_id returned by deploy_plan."),
 				"confirmed":    confirmedProp(),
@@ -346,12 +346,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "close_ports",
-			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. Identify the group by 'security_group' (name or UUID). Only rules of exactly that port, protocol and source go; ports with no such rule are already closed (status already_deleted when none is open; NOT_FOUND on a server with --allow-project). A zone's group is shared: closing a port affects every VM in it. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh.",
+			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default). Only rules of exactly that port, protocol and source go — one from before the task too: not an undo of open_ports. To close what an open_ports call added, pass only the ports of its opened, with its protocol and cidr. Ports with no such rule are already closed (already_deleted when none is open; NOT_FOUND on a server with --allow-project). A zone's group is shared: every VM in it is affected. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh.",
 			InputSchema: objSchema(map[string]any{
-				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
-				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to close, e.g. [8080]."},
+				"security_group": strProp("Security group: name or UUID (list_security_groups)."),
+				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to close."},
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
-				"cidr":           cidrProp("Source CIDR of the rules (default 0.0.0.0/0 = anywhere)."),
+				"cidr":           cidrProp("Source CIDR of the rules (default 0.0.0.0/0)."),
 				"allow_cut_ssh":  boolProp("true to delete the last rule letting SSH in: the person decides, not the model."),
 				"confirmed":      confirmedProp(),
 			}, "security_group", "ports"),

@@ -187,3 +187,76 @@ func TestRecordAnswers_NotThroughALink(t *testing.T) {
 		t.Errorf("written through the link: %q", b)
 	}
 }
+
+// onceBroken is a body whose first read gives part of it and an error,
+// and the next ones the end of the stream (#1746).
+type onceBroken struct{ n int }
+
+func (b *onceBroken) Read(p []byte) (int, error) {
+	b.n++
+	if b.n == 1 {
+		return copy(p, "prefix"), io.ErrUnexpectedEOF
+	}
+	return 0, io.EOF
+}
+
+func (b *onceBroken) Close() error { return nil }
+
+// Ошибка чтения тела, которую увидела запись формы, доходит до
+// вызывающего после тех же байтов: обрыв не выглядит полным ответом
+// (внешняя проверка, #1746). Форма оборванного тела не пишется.
+func TestRecordAnswers_ReadErrorReachesTheCaller(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "answers.jsonl")
+	t.Setenv(EnvRecordAnswers, path)
+	base := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: &onceBroken{}, Request: r}, nil
+	})
+	req, _ := http.NewRequest(http.MethodGet, "https://vpc.api.cloud.ru/v1/vpcs", nil)
+	resp, err := UserAgent(base).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(b) != "prefix" || err != io.ErrUnexpectedEOF {
+		t.Errorf("the caller read %q, %v; want %q, %v", b, err, "prefix", io.ErrUnexpectedEOF)
+	}
+	if got, _ := os.ReadFile(path); len(got) != 0 {
+		t.Errorf("the form of a broken body was written: %s", got)
+	}
+}
+
+// Файл, который уже есть с правами шире 0600, получает 0600 до первой
+// дописанной строки: docs/auth.md обещает 0600 (внешняя проверка, #1747).
+func TestRecordAnswers_ExistingFileIs0600(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix modes")
+	}
+	path := filepath.Join(t.TempDir(), "answers.jsonl")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvRecordAnswers, path)
+	base := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"a":1}`)), Request: r}, nil
+	})
+	req, _ := http.NewRequest(http.MethodGet, "https://vpc.api.cloud.ru/v1/vpcs", nil)
+	resp, err := UserAgent(base).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o600 {
+		t.Errorf("the file has mode %04o after a line was written, want 0600", st.Mode().Perm())
+	}
+	if len(readAnswers(t, path)) != 1 {
+		t.Error("no line written")
+	}
+}
