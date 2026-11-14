@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // consoleCard is a card of a VM whose console fields carry markers: plain,
@@ -143,10 +144,14 @@ func TestHideConsole_FailsClosed(t *testing.T) {
 		deep = `{"nested":` + string(b) + `}`
 	}
 	for name, body := range map[string]string{
-		"depth 8":         deep,
-		"name in \\u":     `{"\u0076nc_url":"MARK"}`,
-		"name in text":    `{"message":"bad vnc_url MARK given"}`,
-		"upper, in text":  `refused: VNC_URL MARK`,
+		"depth 8":        deep,
+		"name in \\u":    `{"\u0076nc_url":"MARK"}`,
+		"name in text":   `{"message":"bad vnc_url MARK given"}`,
+		"upper, in text": `refused: VNC_URL MARK`,
+		// «Риск», conclusion 248, У1: \u of the name escaped twice and three
+		// times.
+		"\\u at depth 2":  `{"m":"{\\\"vnc\\u005furl\\\":\\\"MARK\\\"}"}`,
+		"\\u at depth 3":  `{"m":"{\\\\\\\"vnc\\\\u005furl\\\\\\\":\\\\\\\"MARK\\\\\\\"}"}`,
 		"escaped unicode": `{"m":"{\"remote_console\u005furl\":\"MARK\"}"}`,
 	} {
 		got := hideConsole([]byte(body))
@@ -165,5 +170,18 @@ func TestHideConsole_FailsClosed(t *testing.T) {
 	}
 	if got := hideConsole([]byte(seven)); strings.Contains(got, "MARK") || !strings.Contains(got, "KEEP") {
 		t.Errorf("depth 7: %s", got)
+	}
+}
+
+// A body of backslashes up to the bound is read in linear time: hideConsole
+// runs on every refusal.
+func TestHideConsole_LongRunOfBackslashes(t *testing.T) {
+	body := []byte(`{"m":"` + strings.Repeat(`\`, maxErrorBody) + `"}`)
+	done := make(chan struct{})
+	go func() { hideConsole(body); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second): // wall-clock: a guard against a quadratic read, far above a linear one
+		t.Fatal("hideConsole of 64 KiB of backslashes did not end in 5 s")
 	}
 }

@@ -98,16 +98,29 @@ func consoleLeft(s string) bool {
 	return false
 }
 
-// unescapeU reads every \uXXXX escape of s, at any depth, as its rune.
+// unescapeU reads every \uXXXX escape of s, at any depth, as its rune:
+// the run of backslashes before the u goes with it — escaped twice the
+// escape is \\u005f, and a backslash left before the rune would split the
+// name («Риск», conclusion 248, У1).
 func unescapeU(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+5 < len(s) && s[i+1] == 'u' {
-			if r, err := strconv.ParseUint(s[i+2:i+6], 16, 32); err == nil {
-				b.WriteRune(rune(r))
-				i += 5
-				continue
+		if s[i] == '\\' {
+			j := i
+			for j < len(s) && s[j] == '\\' {
+				j++
 			}
+			if j+4 < len(s) && s[j] == 'u' {
+				if r, err := strconv.ParseUint(s[j+1:j+5], 16, 32); err == nil {
+					b.WriteRune(rune(r))
+					i = j + 4
+					continue
+				}
+			}
+			// No escape after the run: it is text, once.
+			b.WriteString(s[i:j])
+			i = j - 1
+			continue
 		}
 		b.WriteByte(s[i])
 	}
