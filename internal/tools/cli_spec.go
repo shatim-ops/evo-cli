@@ -4,6 +4,11 @@
 
 package tools
 
+import (
+	"slices"
+	"strings"
+)
+
 // CLISpec is how a tool is presented in the CLI: its command, which of its
 // arguments are positional, how its flags are named, and how its answer is
 // shown. It is part of the tool's description, like its schema: the command
@@ -306,4 +311,15 @@ var cliSpecs = map[string]CLISpec{
 	"close_ports":    {Group: "vpc", Verb: "close-ports", Args: []string{"security_group"}, Rename: map[string]string{"ports": "port"}},
 	"sg_rule_create": {Group: "vpc", Verb: "sg-rule-create", Args: []string{"security_group"}},
 	"sg_rule_delete": {Group: "vpc", Verb: "sg-rule-delete", Args: []string{"security_group"}},
+}
+
+// cliCommand is the command of the CLI that runs tool («evo disk attach»):
+// what a Russian text of the CLI names where the English one names the
+// tool (D6, #1834). A tool with no command is named as it is.
+func cliCommand(tool string) string {
+	spec, ok := cliSpecs[tool]
+	if !ok {
+		return tool
+	}
+	return strings.Join(slices.DeleteFunc([]string{"evo", spec.Group, spec.Verb}, func(s string) bool { return s == "" }), " ")
 }

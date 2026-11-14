@@ -275,7 +275,8 @@ func (s *Registry) planTgCreate(ctx context.Context, args map[string]any) (*Plan
 			}
 			return lostCreate(ctx, "tg_create", cli.ListTargetGroups, i18n.T("target group", "целевая группа"), name, nil, "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
 		}
-		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": "Async — poll lb_operation(operation_id) until done=true; then tg_list for the id."}
+		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": i18n.T("Async — poll lb_operation(operation_id) until done=true; then tg_list for the id.",
+			"Асинхронно — опрашивайте evo lb operation <operation_id> до done=true; затем id покажет evo tg list.")}
 		if op.ResourceID != "" {
 			out["tg_id"] = op.ResourceID
 		}
@@ -432,7 +433,8 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 			}
 			return lostCreate(ctx, "lb_create", cli.ListNLB, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf(i18n.T("create load balancer: %w", "создание балансировщика: %w"), err))
 		}
-		out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": "Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING."}
+		out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": i18n.T("Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING.",
+			"Асинхронно — опрашивайте evo lb operation <operation_id> до done=true; затем внешний IP и статус RUNNING покажет evo lb get.")}
 		// The balancer's id is in the create's answer: named at once (fault
 		// matrix, process audit 1.2.1; as pg_create, N-07).
 		if op.ResourceID != "" {

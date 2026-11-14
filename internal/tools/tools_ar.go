@@ -111,14 +111,16 @@ func (s *Registry) planArCreate(ctx context.Context, args map[string]any) (*Plan
 		}
 		out := map[string]any{
 			"status": "creating", "operation_id": op.ID,
-			"note": "Async — poll ar_operation(operation_id) until done=true; then ar_get for the status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key).",
+			"note": i18n.T("Async — poll ar_operation(operation_id) until done=true; then ar_get for the status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key).",
+				"Асинхронно — опрашивайте evo ar operation <operation_id> до done=true; затем статус ACTIVE покажет evo ar get. Образы отправляйте в <registry>.cr.cloud.ru (docker login с ключом сервисного аккаунта)."),
 		}
 		// The registry's id is in the create's answer: named at once, not left
 		// to ar_list (fault matrix, process audit 1.2.1; as pg_create, N-07).
 		if op.ResourceID != "" {
 			out["registry_id"] = op.ResourceID
 		} else {
-			out["note"] = "Async — poll ar_operation(operation_id) until done=true; then ar_list for the id/status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key)."
+			out["note"] = i18n.T("Async — poll ar_operation(operation_id) until done=true; then ar_list for the id/status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key).",
+				"Асинхронно — опрашивайте evo ar operation <operation_id> до done=true; затем id и статус ACTIVE покажет evo ar list. Образы отправляйте в <registry>.cr.cloud.ru (docker login с ключом сервисного аккаунта).")
 		}
 		return toJSON(out), false
 	}}, nil
