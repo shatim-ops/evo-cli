@@ -106,8 +106,8 @@ func withStatus(execute func(context.Context) (string, bool), tool, status, id s
 	decl := decls[tool].Delete
 	read := strings.TrimSuffix(tool, "_delete") + "_get"
 	readEN, readRU := read, read
-	if spec, ok := cliSpecs[read]; ok {
-		readRU = "evo " + spec.Group + " " + spec.Verb
+	if _, ok := cliSpecs[read]; ok {
+		readRU = cliCommand(read)
 	} else {
 		readEN, readRU = "a read of it", "чтение"
 	}

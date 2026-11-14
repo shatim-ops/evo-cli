@@ -228,7 +228,8 @@ func (s *Registry) planCaDeploy(ctx context.Context, args map[string]any) (*Plan
 			"status":       "deploying",
 			"name":         name,
 			"operation_id": op.ID,
-			"note":         "Container app is deploying (async). Use ca_get for status + public URL, ca_logs for logs. Scales to zero when idle.",
+			"note": i18n.T("Container app is deploying (async). Use ca_get for status + public URL, ca_logs for logs. Scales to zero when idle.",
+				"Container App развёртывается (асинхронно). Состояние и публичный URL покажет evo ca get, журнал — evo ca logs. Без нагрузки приложение масштабируется до нуля."),
 		}), false
 	}}, nil
 }
@@ -292,11 +293,14 @@ func caLogsOutput(res *containerapp.LogsResult, system bool) map[string]any {
 	switch {
 	case res.Cut:
 		out["truncated"] = true
-		out["note"] = fmt.Sprintf("Read %d lines and the API still names a next page; it does not document the order of pages, so the newest lines may be missing. The console shows the full log: Container Apps → <app> → Logs (%s).", res.Read, caLogsDoc)
+		out["note"] = i18n.Tf("Read %d lines and the API still names a next page; it does not document the order of pages, so the newest lines may be missing. The console shows the full log: Container Apps → <app> → Logs (%s).",
+			"Прочитано строк: %d, а API называет ещё страницу; порядок страниц не документирован, поэтому самых новых строк может не быть. Полный журнал — в консоли: Container Apps → <приложение> → Logs (%s).", res.Read, caLogsDoc)
 	case len(res.Lines) == 0 && system:
-		out["note"] = "No system events for this container app. App logs (stdout/stderr): ca_logs without system."
+		out["note"] = i18n.T("No system events for this container app. App logs (stdout/stderr): ca_logs without system.",
+			"Системных событий у этого Container App нет. Журнал приложения (stdout/stderr): evo ca logs без --system.")
 	case len(res.Lines) == 0:
-		out["note"] = fmt.Sprintf("No app log lines. App logs are what the container writes to stdout and stderr (%s); logs of the \"Request logging\" option go to the Logging service, not here. The delivery delay of logs is not documented: if the app has just served requests, call ca_logs again in a minute. system=true shows platform events (start, scaling, errors).", caLogsDoc)
+		out["note"] = i18n.Tf("No app log lines. App logs are what the container writes to stdout and stderr (%s); logs of the \"Request logging\" option go to the Logging service, not here. The delivery delay of logs is not documented: if the app has just served requests, call ca_logs again in a minute. system=true shows platform events (start, scaling, errors).",
+			"Строк журнала приложения нет. Журнал приложения — то, что контейнер пишет в stdout и stderr (%s); журналы опции «Request logging» уходят в сервис Logging, а не сюда. Задержка доставки журнала не документирована: если приложение только что обработало запросы, повторите evo ca logs через минуту. --system показывает события платформы (запуск, масштабирование, ошибки).", caLogsDoc)
 	}
 	return out
 }

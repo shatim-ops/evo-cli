@@ -265,7 +265,7 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 			if errors.As(err, &lim) {
 				// The disk is the call's (D49): disk_attach finishes it, with
 				// the consent this call was given.
-				answer := diskAtLimitAnswer(lim, diskID, "it is attached once available.", "disk_attach", diskAttachArgs(diskID, attachTo))
+				answer := diskAtLimitAnswer(lim, diskID, i18n.T("it is attached once available.", "диск подключится, когда станет available."), "disk_attach", diskAttachArgs(diskID, attachTo))
 				answer["disk"] = disk
 				return toJSON(answer), false
 			}
@@ -283,9 +283,11 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 		} else {
 			// Not the create's "creating" without a word (axis 2).
 			delete(res, "disk")
-			res["disk_note"] = fmt.Sprintf("The disk is attached; its state after the attach was not read (%v): disk_list shows it.", err)
+			res["disk_note"] = i18n.Tf("The disk is attached; its state after the attach was not read (%v): disk_list shows it.",
+				"Диск подключён; его состояние после подключения прочитать не удалось (%v): его показывает evo disk list.", err)
 		}
-		res["note"] = "Disk created and attached. On the VM: partition/format the new device (e.g. mkfs.ext4 /dev/vdX) and mount it — attaching does NOT grow the existing filesystem."
+		res["note"] = i18n.T("Disk created and attached. On the VM: partition/format the new device (e.g. mkfs.ext4 /dev/vdX) and mount it — attaching does NOT grow the existing filesystem.",
+			"Диск создан и подключён. На ВМ разметьте и отформатируйте новое устройство (например, mkfs.ext4 /dev/vdX) и смонтируйте его — подключение НЕ увеличивает существующую файловую систему.")
 		return toJSON(res), false
 	}}, nil
 }
@@ -365,7 +367,8 @@ func (e *diskAtLimit) Error() string {
 // that goes on (next_tool with next_args).
 func diskAtLimitAnswer(lim *diskAtLimit, diskID, why, tool string, nextArgs map[string]any) map[string]any {
 	answer := map[string]any{"status": lim.state, "disk_id": diskID, "disk_state": lim.state,
-		"next": fmt.Sprintf("Disk %s is %s at the time limit of an MCP call; %s Call %s to go on: it waits for the disk again.", diskID, lim.state, why, tool)}
+		"next": i18n.Tf("Disk %s is %s at the time limit of an MCP call; %s Call %s to go on: it waits for the disk again.",
+			"Диск %s — %s к пределу времени вызова; %s Чтобы продолжить, повторите %s: команда снова дождётся диска.", diskID, quoteCloud(lim.state), why, i18n.T(tool, cliCommand(tool)))}
 	if lim.state == "" || lim.state == "unknown" {
 		answer["status"] = "waiting"
 	}
@@ -389,7 +392,7 @@ func settlingPlan(err error, diskID, tool string, args map[string]any) (*Plan, e
 	if !errors.As(err, &lim) {
 		return nil, err
 	}
-	return answered(toJSON(diskAtLimitAnswer(lim, diskID, "it cannot be changed until its state settles.", tool, maps.Clone(args))), false), nil
+	return answered(toJSON(diskAtLimitAnswer(lim, diskID, i18n.T("it cannot be changed until its state settles.", "менять его можно, когда состояние устоится."), tool, maps.Clone(args))), false), nil
 }
 
 // diskTransient are the states of a disk the platform changes on its own
@@ -475,7 +478,7 @@ func (s *Registry) planDiskAttach(ctx context.Context, args map[string]any) (*Pl
 				if werr := waitDiskAvailable(ctx, eng, diskID, eng.Config.ProjectID); werr != nil {
 					var lim *diskAtLimit
 					if errors.As(werr, &lim) {
-						return toJSON(diskAtLimitAnswer(lim, diskID, "it is attached once available.", "disk_attach", diskAttachArgs(diskID, vmRef))), false
+						return toJSON(diskAtLimitAnswer(lim, diskID, i18n.T("it is attached once available.", "диск подключится, когда станет available."), "disk_attach", diskAttachArgs(diskID, vmRef))), false
 					}
 					return errResult(fmt.Errorf(i18n.T("attach disk: %w (waited for the new disk: %v)", "привязка диска: %w (ожидание нового диска: %v)"), err, werr)), true
 				}
@@ -677,9 +680,11 @@ func (s *Registry) planDiskResize(ctx context.Context, args map[string]any) (*Pl
 // the note named /dev/vda for a data disk).
 func resizedNote(disk map[string]any) string {
 	if boot, _ := disk["bootable"].(bool); boot {
-		return "Disk grown. On the VM grow the partition + filesystem to use it: e.g. `growpart /dev/vda 2 && resize2fs /dev/vda2`."
+		return i18n.T("Disk grown. On the VM grow the partition + filesystem to use it: e.g. `growpart /dev/vda 2 && resize2fs /dev/vda2`.",
+			"Диск увеличен. Чтобы место стало доступно, на ВМ расширьте раздел и файловую систему: например, `growpart /dev/vda 2 && resize2fs /dev/vda2`.")
 	}
-	return "Disk grown. On the VM find its device with `lsblk`, grow its partition if it has one (`growpart <device> <n>`), then its filesystem (`resize2fs` for ext4, `xfs_growfs` for XFS)."
+	return i18n.T("Disk grown. On the VM find its device with `lsblk`, grow its partition if it has one (`growpart <device> <n>`), then its filesystem (`resize2fs` for ext4, `xfs_growfs` for XFS).",
+		"Диск увеличен. На ВМ найдите его устройство через `lsblk`, расширьте раздел, если он есть (`growpart <device> <n>`), затем файловую систему (`resize2fs` для ext4, `xfs_growfs` для XFS).")
 }
 
 // planDiskDelete plans the delete of a disk by id (gate.go).
