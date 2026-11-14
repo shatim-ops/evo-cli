@@ -120,7 +120,7 @@ func (a *CloudRuAdapter) CreateVM(ctx context.Context, req CreateVMRequest) (*VM
 		return &vm, nil
 	}
 
-	return nil, clierrors.New(clierrors.CodeAPIError, i18n.Tf("create VM returned unexpected response: %s", "неожиданный ответ API на создание ВМ: %s", respBody), i18n.T("Check API documentation", "Сверьтесь с документацией API"))
+	return nil, clierrors.New(clierrors.CodeAPIError, i18n.Tf("create VM returned unexpected response: %s", "неожиданный ответ API на создание ВМ: %s", hideConsole(respBody)), i18n.T("Check API documentation", "Сверьтесь с документацией API"))
 }
 
 // GetVM retrieves a virtual machine by ID via GET /api/v1/vms/{id}.
@@ -332,6 +332,15 @@ func (a *CloudRuAdapter) GetFloatingIP(ctx context.Context, id string) (*Floatin
 // maxErrorBody bounds how much of an error response is read into a message.
 const maxErrorBody = 64 << 10
 
+// readErrorBody reads and closes the body of a refused call: at most
+// maxErrorBody, with the values of the console fields of a VM hidden
+// (hideConsole) — the one way a refusal reaches the text of an error.
+func readErrorBody(resp *http.Response) string {
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+	resp.Body.Close()
+	return hideConsole(b)
+}
+
 // Texts shared by several errors of the adapter, in the language of the CLI.
 func hintUnexpectedFormat() string {
 	return i18n.T("API returned unexpected format", "API вернул ответ в неожиданном формате")
@@ -449,9 +458,8 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 		return nil, clierrors.New(clierrors.CodeAPIRateLimited, msgRateLimited(), hintRateLimited())
 
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-		resp.Body.Close()
-		cause := &StatusError{Status: resp.StatusCode, Body: string(respBody)}
+		respBody := readErrorBody(resp)
+		cause := &StatusError{Status: resp.StatusCode, Body: respBody}
 		if resp.StatusCode == http.StatusUnauthorized {
 			return nil, clierrors.Wrap(clierrors.CodeAuthExpired, i18n.T("Cloud.ru API rejected the token (401)", "API Cloud.ru отклонил токен (401)"),
 				clierrors.TokenRejectedHint(), cause)
@@ -466,21 +474,19 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 
 	case resp.StatusCode >= 500 && resp.StatusCode < 600 && method == http.MethodGet && resp.Header.Get(httpretry.Replaced) == "":
 		// A read the transport repeated (computeRetry) and still failed.
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		msg := i18n.Tf("API returned status %d after %d retries: %s", "API вернул статус %d после %d повторов: %s", resp.StatusCode, httpretry.MaxRetries, string(respBody))
+		respBody := readErrorBody(resp)
+		msg := i18n.Tf("API returned status %d after %d retries: %s", "API вернул статус %d после %d повторов: %s", resp.StatusCode, httpretry.MaxRetries, respBody)
 		return nil, clierrors.New(clierrors.CodeAPIError, msg, hintStatusPage())
 
 	default:
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-		resp.Body.Close()
-		msg := i18n.Tf("API returned status %d: %s", "API вернул статус %d: %s", resp.StatusCode, string(respBody))
+		respBody := readErrorBody(resp)
+		msg := i18n.Tf("API returned status %d: %s", "API вернул статус %d: %s", resp.StatusCode, respBody)
 		hint := hintStatusPage()
 		if resp.StatusCode < 500 {
 			// 400/409/422: this request is refused; waiting will not help.
 			hint = i18n.T("Cloud.ru rejected the request; the message above says why.", "Cloud.ru отклонил запрос; причина — в сообщении выше.")
 		}
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, msg, hint, &StatusError{Status: resp.StatusCode, Body: string(respBody)})
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, msg, hint, &StatusError{Status: resp.StatusCode, Body: respBody})
 	}
 }
 
