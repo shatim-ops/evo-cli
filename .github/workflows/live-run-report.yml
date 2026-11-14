@@ -1,0 +1,78 @@
+name: live-run-report
+
+# Каждый живой прогон — отчёт (план 1.9, строка «Каждый живой прогон —
+# отчёт», решение владельца 14.11): разбор api-probe 54, cloud-e2e 218 и
+# 219 пропущен на 3–4,5 часа, у прогона не было хозяина разбора.
+#
+# Завершённый прогон cloud-e2e, api-probe, cloud-readonly-os или stand (в
+# том числе по расписанию и запущенный cloud-e2e-weekly) заводит issue
+# «Разбор живого прогона <workflow> <номер>» с меткой «разбор-прогона»;
+# закрывается оно комментарием со ссылкой на отчёт в evo-internal. Раз в
+# час check краснеет на issue, открытом дольше суток, на закрытом без
+# ссылки и на живом прогоне без issue; красный запуск по расписанию
+# доводит до «релиза» main-red (issue «main красный: live-run-report»).
+#
+# Скрипт — из main (workflow_run и schedule идут на ветке по умолчанию);
+# данные прогона — через env (internal/workflows). Секретов нет.
+
+on:
+  workflow_run:
+    workflows: [cloud-e2e, api-probe, cloud-readonly-os, stand]
+    types: [completed]
+  schedule:
+    - cron: "37 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: live-run-report
+  cancel-in-progress: false
+
+jobs:
+  open:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Job прогона — начался ли job, который трогает облако.
+      actions: read
+      # Issue разбора и его метка.
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: issue разбора живого прогона
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: .github/scripts/live_run_report.sh open
+
+  check:
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Прогоны четырёх workflow и их job.
+      actions: read
+      # Issue разбора и их комментарии.
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: разобран ли каждый живой прогон
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Сторож — с 15.11: прогоны до него разобраны вручную
+          # (evo-internal, runs/).
+          SINCE: "2026-11-15T00:00:00Z"
+        run: .github/scripts/live_run_report.sh check
