@@ -3222,6 +3222,78 @@ probe_g18() {
 	esac
 }
 
+# Проба консоли ВМ (D110, ТЗ docs/internal/briefs/vm-console.md, раздел 6,
+# У4; «да» владельца 14.11, #1733; два прогона в разные дни). ВМ создаёт
+# evo (provision, как у Г-10); дальше прямые запросы по
+# спецификации: POST /vms/{id}/remote-console {protocol} — ответ 204, ссылка
+# потом в карточке (remote_console_url, remote_console_ws,
+# remote_console_protocol). Ссылку проба не печатает никогда: только есть ли
+# поле, длину, имена параметров запроса без значений и «та же / другая» по
+# хешу. Вопросы раздела 6: (4) когда ссылка появляется после 204; (5) есть
+# ли она в элементе списка ВМ; (3) меняет ли повторный POST ссылку; (1)
+# держится ли она в карточке через CONSOLE_WAIT секунд; (7) принимается ли
+# POST на stopped; serial при is_serial_ready. Работает ли ссылка без входа
+# (2), как закрыть консоль (6) и вход в серийную (8) — только человек: строка
+# «не покрыто». ВМ убирает уборка области (имя с префиксом прогона).
+CONSOLE_APPEAR=${CONSOLE_APPEAR:-120}
+CONSOLE_WAIT=${CONSOLE_WAIT:-300}
+probe_console() {
+	local zid=$1 n=$prefix-console vm url g="Консоль ВМ" pc h1 h2 t0 seen='' until
+	iam_fresh || { gap "$g" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+	tc provision --arg name="$n" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR"
+	[ "$rc" = 0 ] || { gap "$g: ВМ" "provision: код $rc, $reason: $why"; return 0; }
+	vm=$(j -r '.vm_id // empty')
+	mask "$vm" "$(j -r '.vm_ip // empty')"
+	[ -n "$vm" ] || { gap "$g: ВМ" "provision не отдал vm_id"; return 0; }
+	url="$C1/vms/$vm"
+	# con_line — поля консоли последней карточки без значений ссылки.
+	con_line() {
+		jq -r 'def q: if test("[?]") then (split("?")[1] | split("&") | map(split("=")[0]) | join(",")) else "нет" end;
+			"url: \(if (.remote_console_url // "") == "" then "нет" else "есть, \(.remote_console_url | length) зн., параметры запроса: \(.remote_console_url | q)" end); ws: \(if (.remote_console_ws // "") == "" then "нет" else "есть" end); протокол: \(.remote_console_protocol // "нет"); is_serial_ready: \(if has("is_serial_ready") then .is_serial_ready else "нет поля" end)"' "$tmp/api.json" 2>/dev/null || echo "не JSON"
+	}
+	con_hash() { jq -r '.remote_console_url // ""' "$tmp/api.json" 2>/dev/null | sha256sum | cut -c1-12; }
+	cpost() { api POST "$url/remote-console" "$(jq -nc --arg p "$1" '{protocol: $p}')"; }
+	api GET "$url"
+	ok "$g: карточка до POST" "HTTP $code; $(con_line)"
+	cpost vnc
+	pc=$code
+	case "$pc" in 2??) ;; *) refusal "$g: POST vnc на running" синхронно; return 0 ;; esac
+	t0=$SECONDS
+	until=$(($(date +%s) + CONSOLE_APPEAR))
+	while :; do
+		api GET "$url"
+		if [ "$(jq -r '.remote_console_url // ""' "$tmp/api.json" 2>/dev/null)" != "" ]; then seen=$((SECONDS - t0)); break; fi
+		[ "$(date +%s)" -lt "$until" ] || break
+		sleep "$PROBE_PAUSE"
+	done
+	if [ -n "$seen" ]; then seen="через $seen с"; else seen="не появилась за $CONSOLE_APPEAR с"; fi
+	ok "$g: POST vnc на running" "HTTP $pc; ссылка в карточке: $seen; $(con_line)"
+	h1=$(con_hash)
+	api GET "$C1/vms?project_id=$PROJECT&limit=100"
+	ok "$g: элемент списка ВМ" "HTTP $code; ссылка в элементе: $(jq -r --arg id "$vm" '[(if type == "array" then .[] else (.[]? | arrays | .[]) end) | objects | select(.id == $id)] | first // {} | if (.remote_console_url // "") == "" then "нет" else "есть" end' "$tmp/api.json" 2>/dev/null || echo '?')"
+	cpost vnc
+	pc=$code
+	sleep "$PROBE_PAUSE"
+	api GET "$url"
+	h2=$(con_hash)
+	ok "$g: повтор POST vnc" "HTTP $pc; ссылка: $([ "$h1" = "$h2" ] && echo та же || echo другая)"
+	cpost serial
+	ok "$g: POST serial" "$(brief)"
+	sleep "$CONSOLE_WAIT"
+	api GET "$url"
+	ok "$g: карточка через $CONSOLE_WAIT с" "HTTP $code; $(con_line); ссылка vnc: $([ "$(con_hash)" = "$h2" ] && echo та же || echo другая или нет)"
+	power power_off
+	case "$code" in
+	2??)
+		ops_reach "$url" "${PROBE_WAIT:-600}" stopped || true
+		cpost vnc
+		ok "$g: POST vnc на stopped" "$(brief); состояния до: $chain"
+		;;
+	*) refusal "$g: остановка" синхронно ;;
+	esac
+	gap "$g: вопросы 2, 6, 8 раздела 6" "только человек: открывается ли ссылка без входа в консоль Cloud.ru, как закрыть консоль, вход в серийную"
+}
+
 area_ops() {
 	local zid
 	zid=$(zone_id)
@@ -3238,6 +3310,8 @@ area_ops() {
 	! probe_on g18 || probe_g18 "$zid"
 	QUOTA_HIT=0
 	! probe_on g17 || probe_g17 "$zid"
+	QUOTA_HIT=0
+	! probe_on console || probe_console "$zid"
 }
 
 # --- Область dbchange: изменение готового кластера DBaaS (Г-13…Г-15) ---------

@@ -23,8 +23,13 @@ while [ $# -gt 0 ]; do
 	esac
 done
 if [ "$post" = 1 ]; then cat >/dev/null; echo '{"access_token":"tok-fake"}'; exit 0; fi
-all='{"items":[{"id":"00000000-0000-4000-8000-0000000000e1","state":"running","availability_zone":{"id":"za"},"flavor":{"id":"f1"}},{"id":"00000000-0000-4000-8000-0000000000e2","state":"stopped","availability_zone":{"id":"za"},"flavor":{"id":"f1"}},{"id":"00000000-0000-4000-8000-0000000000e3","state":"running","availability_zone":{"id":"zb"},"flavor":{"id":"f2"}}]}'
+all='{"items":[{"id":"00000000-0000-4000-8000-0000000000e1","state":"running","availability_zone":{"id":"za"},"flavor":{"id":"f1"},"image":{"id":"i1"}},{"id":"00000000-0000-4000-8000-0000000000e2","state":"stopped","availability_zone":{"id":"za"},"flavor":{"id":"f1"},"image":{"id":"i1"}},{"id":"00000000-0000-4000-8000-0000000000e3","state":"running","availability_zone":{"id":"zb"},"flavor":{"id":"f2"}}]}'
 case "$url" in
+*vms/00000000-0000-4000-8000-0000000000e3) b='{"id":"00000000-0000-4000-8000-0000000000e3","state":"running"}' ;;
+*vms/00000000-*) b='{"id":"x","state":"running","image":{"id":"i1","name":"img-name-secret"}}' ;;
+*vms*image_ids=i1*) b='{"items":[{"id":"00000000-0000-4000-8000-0000000000e1"},{"id":"00000000-0000-4000-8000-0000000000e2"}]}' ;;
+*vms*vm_ids=*) id=${url##*vm_ids=}; id=${id%%&*}; b="{\"items\":[{\"id\":\"$id\"}]}" ;;
+*vms*statuses=running%2Cstopped*) b=$all ;;
 *vms*availability_zone_ids=za*) b='{"items":[{"id":"00000000-0000-4000-8000-0000000000e1"},{"id":"00000000-0000-4000-8000-0000000000e2"}]}' ;;
 *vms*statuses=running*) b='{"items":[{"id":"00000000-0000-4000-8000-0000000000e1"}]}' ;;
 *vms*statuses=stopped*) b='{"items":[{"id":"00000000-0000-4000-8000-0000000000e2"},{"id":"00000000-0000-4000-8000-0000000000e2"}]}' ;;
@@ -44,6 +49,14 @@ want '^vms_zone +значение #2: всего=3 облако=3 evo=1 — igno
 want '^vms_state +значение #1: всего=3 облако=1 evo=2 — diff$'
 want '^vms_state +значение #2: всего=3 облако=1 evo=1 — same$'
 want '^disks_zone +всего=0, значений нет — не проверено$'
+# Проба 1.9 (строка плана «Проба чтения»): отбор ВМ по образу и по id,
+# состояния списком; образ в карточке; время чтения карточек.
+want '^vms_image +значение #1: всего=3 облако=2 evo=2 — same$'
+want '^vms_ids +значение #3: всего=3 облако=1 evo=1 — same$'
+want '^vms_states_list +значение #1: всего=3 облако=3 evo=3 — same$'
+want '^vm_card_image +карточек=3: с image\.id=2, с image\.name=2$'
+want '^vm_card_reads +чтений=50 \(ВМ 3\): http 200=50, 429=0, прочие=0, за [0-9]+ мс$'
+if grep -q 'img-name-secret\|i1' <<<"$(grep -v '^::add-mask::' <<<"$out")"; then echo "FAIL: в выводе образ"; fail=1; fi
 if grep -qE '0000000000e[0-9]|tok-fake|za|zb|f1|f2' <<<"$(grep -v '^::add-mask::' <<<"$out")"; then
 	echo "FAIL: в выводе id, токен или значения"
 	fail=1

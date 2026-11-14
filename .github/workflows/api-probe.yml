@@ -573,6 +573,21 @@ jobs:
           rid19 redis       "https://redis.api.cloud.ru/v1/clusters?project_id=$PROJECT"
           rid19 iam         "https://iam.api.cloud.ru/api/v1/roles?pageSize=1"
           rid19 dns         "https://dns.api.cloud.ru/v1/privateZones?projectId=$PROJECT"
+          # Контрольная пара к X-Request-Id (#1703; «да» владельца 14.11, #1733,
+          # два прогона): run 52 — Redis 500, IAM 400 на запросы с заголовком.
+          # Тот же запрос без заголовка и запрос Redis так, как его шлёт evo
+          # (page_size): отличие кода «с id / без id» — заголовок отвергается.
+          ctl19() {
+            local name=$1 url=$2 with without
+            with=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" -H "X-Request-Id: $(cat /proc/sys/kernel/random/uuid)" "$url" 2>/dev/null || echo 000)
+            without=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$url" 2>/dev/null || echo 000)
+            printf '%-28s с X-Request-Id http=%s, без http=%s — %s\n' "rid19_ctl_$name" "$with" "$without" \
+              "$([ "$with" = "$without" ] && echo "заголовок не меняет ответ" || echo "ЗАГОЛОВОК МЕНЯЕТ ОТВЕТ")"
+          }
+          ctl19 redis       "https://redis.api.cloud.ru/v1/clusters?project_id=$PROJECT"
+          ctl19 redis_page  "https://redis.api.cloud.ru/v1/clusters?project_id=$PROJECT&page_size=1"
+          ctl19 iam         "https://iam.api.cloud.ru/api/v1/roles?pageSize=1"
+          ctl19 compute     "$C/flavors?limit=1"
           # Г-05: версия TLS по адресам API — принимает ли адрес 1.3 и 1.2
           # (запрос без токена: важна только установка соединения).
           echo "== Г-05: TLS по адресам API"
