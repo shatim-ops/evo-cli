@@ -40,7 +40,8 @@ case "$path" in
     [ ! -f "$FAKE_DIR/issues.fail" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
     case "$path" in *labels=%D0%B2%D0%BD%D0%B5%D1%88%D0%BD%D1%8F%D1%8F-*) ;; *) echo "метка не закодирована: $path" >&2; exit 1 ;; esac
     give issues.json '[]' ;;
-  repos/o/r/issues/20/comments*) give feed.comments.json '[]' ;;
+  repos/o/r/issues/20/comments*)
+    if [ -f "$FAKE_DIR/feed.comments.raw" ]; then cat "$FAKE_DIR/feed.comments.raw"; else give feed.comments.json '[]'; fi ;;
   repos/o/r/pulls/20/reviews*) give feed.reviews.json '[]' ;;
   repos/o/r/pulls/20/comments*) give feed.review_comments.json '[]' ;;
   repos/o/r/pulls/20) jq -cn '{head: {sha: "feedhead"}} | '"$q" ;;
@@ -167,6 +168,26 @@ lacks feed check.json 'находка #7'
 # До SINCE и не от Астры — не строки ленты.
 lacks feed check.json 'задание #300'
 lacks feed check.json 'задание #309'
+
+# Имя репозитория в ссылке — без учёта регистра (ревью Qwen): находка
+# этого репозитория проверяется, а не уходит в непроверяемые.
+world case
+cat >"$FAKE_DIR/feed.comments.json" <<'J'
+[{"id": 21, "user": {"login": "astra"}, "body": "[Астра] задание #310 — готово\n- находка: https://github.com/O/R/issues/601", "created_at": "2026-11-14T08:10:00Z"}]
+J
+echo '{"number": 601, "title": "t", "state": "open"}' >"$FAKE_DIR/issue.601.json"
+run case
+has case check.json 'задание #310 (комментарий 21): находка #601 — открыта'
+lacks case check.json 'этот токен её не читает'
+
+# Ответ не JSON (страница ошибки) — красный job с названным отказом, без
+# traceback и без check run (ревью Qwen).
+world html
+echo '<html>503</html>' >"$FAKE_DIR/feed.comments.raw"
+run html
+has html err 'ответ не JSON'
+lacks html err 'Traceback'
+[ ! -e "$FAKE_DIR/check.json" ] || { echo "FAIL html: check run поставлен"; fail=1; }
 
 # Только непроверяемое — проверка зелёная, но список в итоге есть.
 world external

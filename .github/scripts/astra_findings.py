@@ -56,7 +56,11 @@ def gh_lines(*args):
     r = subprocess.run(["gh", "api", *args], check=False, capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"gh api {args[0]}: {r.stderr.strip()[:300]}")
-    return [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
+    try:
+        return [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
+    except ValueError as e:
+        # Not JSON (an error page): a list not read, said without the text.
+        raise RuntimeError(f"gh api {args[0]}: ответ не JSON ({type(e).__name__})") from None
 
 
 def plan_refs(root):
@@ -166,7 +170,8 @@ def unprocessed(repo, astra, feed, since, root):
             continue
         for owner, name, n in ISSUE_URL.findall(body):
             n = int(n)
-            if f"{owner}/{name}" != repo:
+            # GitHub names are not case-sensitive.
+            if f"{owner}/{name}".lower() != repo.lower():
                 unchecked.append(f"{where}: находка в {owner}/{name} #{n} — этот токен её не читает")
                 continue
             if why := finding_problem(n):
