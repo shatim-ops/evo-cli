@@ -195,13 +195,15 @@ func kubectlAtLimit(out, verb string, args map[string]any) map[string]any {
 		"output": out,
 	}
 	if kubectlReadOnly(strings.Fields(stringArg(args, "args"))) {
-		answer["next"] = fmt.Sprintf("kubectl %s was stopped at the time limit of an MCP call; it reads and changes nothing. Call k8s_kubectl again: a command that waits (rollout status, wait, logs -f) goes on from the cluster's state; give it --timeout under 40s to answer within one call.", verb)
+		answer["next"] = i18n.Tf("kubectl %s was stopped at the time limit of an MCP call; it reads and changes nothing. Call k8s_kubectl again: a command that waits (rollout status, wait, logs -f) goes on from the cluster's state; give it --timeout under 40s to answer within one call.",
+			"kubectl %s остановлен по пределу времени вызова MCP; команда только читает и ничего не меняет. Вызовите k8s_kubectl снова: ожидающая команда (rollout status, wait, logs -f) продолжит от состояния кластера; дайте ей --timeout меньше 40 с, чтобы она ответила за один вызов.", verb)
 		// A read needs no consent: the step carries none («Риск»,
 		// conclusion 126).
 		nextSameCall(answer, "k8s_kubectl", args)
 		return answer
 	}
-	answer["next"] = fmt.Sprintf("kubectl %s was stopped at the time limit of an MCP call. What it sent the cluster before that goes on there; check the result with a read (k8s_kubectl \"get …\") before you repeat the change.", verb)
+	answer["next"] = i18n.Tf("kubectl %s was stopped at the time limit of an MCP call. What it sent the cluster before that goes on there; check the result with a read (k8s_kubectl \"get …\") before you repeat the change.",
+		"kubectl %s остановлен по пределу времени вызова MCP. То, что он успел отправить в кластер, там продолжается; проверьте результат чтением (k8s_kubectl \"get …\"), прежде чем повторять изменение.", verb)
 	return answer
 }
 
@@ -405,7 +407,8 @@ func (s *Registry) planK8sHelm(_ context.Context, args map[string]any) (*Plan, e
 		}
 		if capped && (action == "install" || action == "upgrade") {
 			answer := map[string]any{"status": "deploying", "action": action, "output": out,
-				"next": fmt.Sprintf("helm %s: the cluster took the release's manifests (helm says deployed); its pods may still be starting — deployed does not mean ready. Read the release with k8s_helm action=status, and the pods with k8s_kubectl \"get pods -n <namespace>\".", action)}
+				"next": i18n.T(fmt.Sprintf("helm %s: the cluster took the release's manifests (helm says deployed); its pods may still be starting — deployed does not mean ready. Read the release with k8s_helm action=status, and the pods with k8s_kubectl \"get pods -n <namespace>\".", action),
+					fmt.Sprintf("helm %s: кластер принял манифесты выпуска (helm пишет deployed); его поды могут ещё запускаться — deployed не значит «готов». Состояние выпуска покажет evo k8s helm %s status, поды — evo k8s kubectl %s get pods -n <namespace>.", action, stringArg(args, "cluster_id"), stringArg(args, "cluster_id")))}
 			nextStep(answer, "k8s_helm", helmStatusArgs(args))
 			return toJSON(answer), false
 		}
@@ -437,13 +440,16 @@ func helmAtLimit(out, stage string, args map[string]any) map[string]any {
 		// Before helm touched the cluster: the same call again, with the
 		// consent it was given — a declared continuation (owner's
 		// decision 12.11; «Риск», conclusion 126).
-		answer["next"] = fmt.Sprintf("helm %s was stopped at the time limit of an MCP call, before the release was touched. Call k8s_helm again with the same arguments.", stage)
+		answer["next"] = i18n.Tf("helm %s was stopped at the time limit of an MCP call, before the release was touched. Call k8s_helm again with the same arguments.",
+			"helm %s остановлен по пределу времени вызова MCP, до изменения выпуска. Вызовите k8s_helm снова с теми же аргументами.", stage)
 		nextStep(answer, "k8s_helm", maps.Clone(args))
 	case action == "list" || action == "status":
-		answer["next"] = fmt.Sprintf("helm %s was stopped at the time limit of an MCP call; it changes nothing. Call k8s_helm again.", action)
+		answer["next"] = i18n.Tf("helm %s was stopped at the time limit of an MCP call; it changes nothing. Call k8s_helm again.",
+			"helm %s остановлен по пределу времени вызова MCP; команда ничего не меняет. Вызовите k8s_helm снова.", action)
 		nextSameCall(answer, "k8s_helm", args)
 	default:
-		answer["next"] = fmt.Sprintf("helm (%s) was stopped at the time limit of an MCP call; the release may be left mid-operation. Read it with k8s_helm action=status: a release in pending-install or pending-upgrade is ended with helm rollback or uninstall.", stage)
+		answer["next"] = i18n.Tf("helm (%s) was stopped at the time limit of an MCP call; the release may be left mid-operation. Read it with k8s_helm action=status: a release in pending-install or pending-upgrade is ended with helm rollback or uninstall.",
+			"helm (%s) остановлен по пределу времени вызова MCP; выпуск мог остаться посреди операции. Прочитайте его через k8s_helm action=status: выпуск в pending-install или pending-upgrade завершают helm rollback или uninstall.", stage)
 		nextStep(answer, "k8s_helm", helmStatusArgs(args))
 	}
 	return answer

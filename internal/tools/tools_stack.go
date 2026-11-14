@@ -883,10 +883,12 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		"cost":       s.stackCost(ctx, job),
 		// The instruction about consent, in next as deploy_plan has it
 		// (A9, decision 21.10).
-		"next": "The stack is BILLABLE: show the user the steps and the cost, and on explicit approval call stack_apply with this job_id and confirmed=true.",
+		"next": i18n.T("The stack is BILLABLE: show the user the steps and the cost, and on explicit approval call stack_apply with this job_id and confirmed=true.",
+			fmt.Sprintf("Стек ПЛАТНЫЙ: покажите пользователю шаги и стоимость и только после явного согласия выполните evo stack apply %s.", job.ID)),
 	}
 	if s.readOnly {
-		out["next"] = "Show the user the steps and the cost; creating the stack (stack_apply) needs a server without --read-only."
+		out["next"] = i18n.T("Show the user the steps and the cost; creating the stack (stack_apply) needs a server without --read-only.",
+			"Покажите пользователю шаги и стоимость; создать стек (stack_apply) может только сервер без --read-only.")
 	}
 	// message, the field of 1.2, says the same until 2.0 (--json is kept
 	// within a major, RELEASING).
@@ -900,7 +902,8 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	// Warn if a prior job for this stack name still holds resources — applying now
 	// would create duplicates (double billing). Point the user at stack_destroy.
 	if orphans := stack.FindResourcefulJobs(m.Name, job.ID); len(orphans) > 0 {
-		out["warning"] = fmt.Sprintf("%d earlier job(s) for stack %q still hold resources — applying THIS plan will create DUPLICATES. Whether to destroy them first (stack_destroy) — ask the person.", len(orphans), m.Name)
+		out["warning"] = i18n.Tf("%d earlier job(s) for stack %q still hold resources — applying THIS plan will create DUPLICATES. Whether to destroy them first (stack_destroy) — ask the person.",
+			"прежних заданий стека %[2]q с ресурсами: %[1]d — выполнение ЭТОГО плана создаст ДУБЛИ. Удалять ли их сначала (evo stack destroy) — спросите человека.", len(orphans), m.Name)
 		out["existing_jobs"] = orphans
 	}
 	return toJSON(out), false
@@ -1290,7 +1293,8 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 		if unchanged {
 			out["unchanged"] = true
 		}
-		out["note"] = "Async — poll stack_status(job_id) until status=done. Each poll advances the deploy."
+		out["note"] = i18n.T("Async — poll stack_status(job_id) until status=done. Each poll advances the deploy.",
+			fmt.Sprintf("Асинхронно — следите через evo stack status %q, пока не будет status=done. Каждый опрос продвигает развёртывание.", job.ID))
 		return toJSON(out), job.Failed()
 	}}, nil
 }
@@ -1535,7 +1539,8 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 		maps.Copy(shown, job.Passwords())
 		if job.Planned() {
 			out := compact(job)
-			out["note"] = "Not started: call stack_apply with this job_id and confirmed=true after the user approved the plan. stack_status only reports progress."
+			out["note"] = i18n.T("Not started: call stack_apply with this job_id and confirmed=true after the user approved the plan. stack_status only reports progress.",
+				fmt.Sprintf("Не начато: выполните evo stack apply %s после того, как пользователь одобрил план. evo stack status только сообщает ход.", job.ID))
 			return toJSON(out), false
 		}
 		if !job.Running() {
@@ -1543,8 +1548,10 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 		}
 		if s.readOnly {
 			out := compact(job)
-			out["note"] = "Not advanced: this server runs with --read-only and acts on no consent, the one stack_apply was given included. " +
-				"The cloud goes on with the steps already started; a server without --read-only advances the job when it polls it."
+			out["note"] = i18n.T("Not advanced: this server runs with --read-only and acts on no consent, the one stack_apply was given included. "+
+				"The cloud goes on with the steps already started; a server without --read-only advances the job when it polls it.",
+				"Не продвинуто: этот сервер работает с --read-only и не исполняет согласий, включая данное stack_apply. "+
+					"Начатые шаги облако продолжает; сервер без --read-only продвинет задание при опросе.")
 			return toJSON(out), false
 		}
 		rem := time.Until(deadline)
@@ -1577,7 +1584,8 @@ var stackTeardown = []string{
 // re-checks them and finishes what waits for them — a VM's floating IP and
 // record (D69); stack_status does not move it (D96, FB180-15).
 func stackDestroyNext(out map[string]any, id string) {
-	out["next"] = fmt.Sprintf("Call stack_destroy with job_id %s and confirmed=true again until 'deleting' is empty.", id)
+	out["next"] = i18n.Tf("Call stack_destroy with job_id %s and confirmed=true again until 'deleting' is empty.",
+		"Повторяйте evo stack destroy %s, пока список deleting не опустеет.", id)
 	nextStep(out, "stack_destroy", map[string]any{"job_id": id, "confirmed": true})
 }
 
@@ -1715,7 +1723,8 @@ func (s *Registry) planStackDestroy(_ context.Context, args map[string]any) (*Pl
 		out := map[string]any{"status": job.Status, "deleted": deleted, "failed": failed}
 		if len(deleting) > 0 {
 			out["deleting"] = deleting
-			out["note"] = "Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names."
+			out["note"] = i18n.T("Deletion accepted; the resources in 'deleting' are still being removed by the cloud (minutes; Postgres ~5 min). Check them with pg_list, k8s_list, lb_list and the like before reusing their names.",
+				"Удаление принято; ресурсы из deleting облако ещё удаляет (минуты; Postgres — около 5 мин). Прежде чем занимать их имена, проверьте их через evo pg list, evo k8s list, evo lb list и подобные.")
 			// The same call checks them again and finishes what waits for
 			// them — a VM's floating IP and record (D69).
 			stackDestroyNext(out, id)
