@@ -438,3 +438,54 @@ func TestSGRuleCreate_ACutCallIsFoundHoweverTheGroupIsSpelled(t *testing.T) {
 		})
 	}
 }
+
+// renamedSG is the world of sg_rule_create whose groups a test replaces
+// after a call: the group renamed, or a second group of the same name.
+type renamedSG struct {
+	*sgMakeWorld
+	groups []*provision.SecurityGroup
+}
+
+func (p *renamedSG) ListSecurityGroups(ctx context.Context, pr string) ([]*provision.SecurityGroup, error) {
+	if p.groups != nil {
+		return p.groups, nil
+	}
+	return p.sgMakeWorld.ListSecurityGroups(ctx, pr)
+}
+
+// A repeat refused before anything is sent says nothing of the outcome of
+// the cut call: it keeps its record. The cut call named the group by a
+// name that no longer resolves to one group — renamed (NOT_FOUND) or a
+// second of the same name (USAGE); the repeat by that name is refused, and
+// the next one by id must still be asked about, not sent («Риск · 1.9 (2)»,
+// check of #1726; R-101).
+func TestSGRuleCreate_ARefusedRepeatKeepsTheCutCall(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		groups []*provision.SecurityGroup
+	}{
+		{"renamed", []*provision.SecurityGroup{{ID: sgOtherGroup, Name: "db-old", AvailabilityZoneID: faultZone}}},
+		{"a second group of the name", []*provision.SecurityGroup{{ID: sgOtherGroup, Name: "db", AvailabilityZoneID: faultZone},
+			{ID: "00000000-0000-4000-8000-0000000000e3", Name: "db", AvailabilityZoneID: faultZone}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newSGMakeWorld()
+			w.lose, w.lag = true, 1<<20
+			p := &renamedSG{sgMakeWorld: w}
+			r, _ := sgRegistryOver(t, p)
+			args := func(group string) map[string]any {
+				return map[string]any{"security_group": group, "direction": "ingress", "protocol": "tcp",
+					"ports": "8080", "cidr": "10.0.0.0/8", "confirmed": true}
+			}
+			callNamed(t, r, "sg_rule_create", args("db")) // cut after the write
+			p.groups = c.groups
+			if _, text, isErr := callNamed(t, r, "sg_rule_create", args("db")); !isErr || w.added() != 1 {
+				t.Fatalf("the repeat by the name that no longer resolves: %s (writes %d), want a refusal with nothing sent", text, w.added())
+			}
+			m, text, _ := callNamed(t, r, "sg_rule_create", args(sgOtherGroup))
+			if m["interrupted"] == nil || w.added() != 1 {
+				t.Errorf("the repeat by id: %s (writes %d), want the question about the cut call and no second write", text, w.added())
+			}
+		})
+	}
+}
