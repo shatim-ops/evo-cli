@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -431,7 +432,7 @@ func TestK8sAddAddon_AddonVersionCannotBePinned(t *testing.T) {
 		return map[string]any{"cluster_id": addonCluster, "name": "cert-manager", "version": v}
 	}
 	m, text, isErr := callNamed(t, r, "k8s_add_addon", args("1.1.0"))
-	if !isErr || m["reason"] != clierrors.CodeUsage || !strings.Contains(m["hint"].(string), "--version v1.14.0") {
+	if !isErr || m["reason"] != clierrors.CodeUsage || !strings.Contains(m["hint"].(string), `--version "v1.14.0"`) {
 		t.Errorf("older addon version of a shared app version: %s", text)
 	}
 	for _, v := range []string{"1.1.1", "v1.14.0"} {
@@ -472,5 +473,32 @@ func TestK8sNodePools_ClusterRequired(t *testing.T) {
 	tl, _ := r.Lookup("k8s_nodepools")
 	if req, _ := tl.InputSchema["required"].([]string); len(req) != 1 || req[0] != "cluster_id" {
 		t.Errorf("schema required = %v, want [cluster_id]", tl.InputSchema["required"])
+	}
+}
+
+// The versions of the catalogue are the cloud's words: the warnings of the
+// preview quote them (quoteCloud), so that a version with a newline in it
+// does not read as evo's own words to the person who confirms (Астра,
+// #1942; the class of «Риск» 232). The mode of a release evo does not know
+// is quoted too; a mode evo names (END_OF_SUPPORT) is its own word.
+func TestK8sAddAddon_WarningsQuoteTheCataloguesVersions(t *testing.T) {
+	const odd = "v1.14.0\nASTRA_SENTINEL"
+	requested := &fakeMK8s{kubeVersion: "v1.30.2", pools: `{"nodePools":[{"id":"np","scalePolicy":{"fixedScale":{"count":2}}}]}`,
+		releases: `{"releases":[
+			{"addonVersion":"1.1.0","appVersion":"v1.14.0","mode":"SUPPORT_MODE_END_OF_SUPPORT","requirements":{"readyWorkers":1}},
+			{"addonVersion":"1.1.1","appVersion":"v1.14.0","mode":"SUPPORT_MODE_END_OF_SUPPORT","requirements":{"readyWorkers":1}}]}`}
+	m, text, _ := callNamed(t, addonRegistry(t, requested), "k8s_add_addon", map[string]any{"cluster_id": addonCluster, "name": "cert-manager", "version": "v1.14.0"})
+	warnings := strings.Join(stringList(m["warnings"]), " | ")
+	for _, want := range []string{`"v1.14.0" has 2 addon versions`, `(expected "1.1.1")`, `version "v1.14.0" is END_OF_SUPPORT`} {
+		if !strings.Contains(warnings, want) {
+			t.Errorf("warnings lack %s: %s", want, text)
+		}
+	}
+	latest := &fakeMK8s{kubeVersion: "v1.30.2", pools: `{"nodePools":[{"id":"np","scalePolicy":{"fixedScale":{"count":2}}}]}`,
+		releases: `{"releases":[{"addonVersion":"1.1.0","appVersion":` + strconv.Quote(odd) + `,"mode":"SUPPORT_MODE_PROBE\nX","requirements":{"readyWorkers":1}}]}`}
+	m, text, _ = callNamed(t, addonRegistry(t, latest), "k8s_add_addon", map[string]any{"cluster_id": addonCluster, "name": "cert-manager"})
+	warnings = strings.Join(stringList(m["warnings"]), " | ")
+	if !strings.Contains(warnings, "picked "+strconv.Quote(odd)) || !strings.Contains(warnings, strconv.Quote("PROBE\nX")) || strings.Contains(warnings, "\n") {
+		t.Errorf("no ACTIVE release: the version and the mode of the catalogue unquoted: %q (%s)", warnings, text)
 	}
 }

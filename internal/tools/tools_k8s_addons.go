@@ -341,16 +341,17 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 			if rel.AddonVersion != same[0].AddonVersion {
 				return nil, clierrors.New(clierrors.CodeUsage,
 					i18n.Tf("addon version %s cannot be pinned: the API installs by app version (%s) and picks the addon version itself",
-						"версию плагина %s закрепить нельзя: API ставит по версии приложения (%s) и сам выбирает версию плагина", rel.AddonVersion, rel.AppVersion),
-					i18n.Tf("Give the app version: --version %s.", "Укажите версию приложения: --version %s.", rel.AppVersion))
+						"версию плагина %s закрепить нельзя: API ставит по версии приложения (%s) и сам выбирает версию плагина", quoteCloud(rel.AddonVersion), quoteCloud(rel.AppVersion)),
+					i18n.Tf("Give the app version: --version %s.", "Укажите версию приложения: --version %s.", quoteCloud(rel.AppVersion)))
 			}
 			p.warnings = append(p.warnings, i18n.Tf("app version %s has %d addon versions; the server picks one (expected %s)",
-				"у версии приложения %s версий плагина: %d; сервер выберет одну (ожидается %s)", rel.AppVersion, len(same), same[0].AddonVersion))
+				"у версии приложения %s версий плагина: %d; сервер выберет одну (ожидается %s)", quoteCloud(rel.AppVersion), len(same), quoteCloud(same[0].AddonVersion)))
 		}
 		p.release, p.requested = rel, true
 		switch m := mk8s.NormalizeMode(rel.Mode); m {
 		case mk8s.ModeEndOfLife, mk8s.ModeInactive, mk8s.ModeEndOfSupport:
-			p.warnings = append(p.warnings, i18n.Tf("version %s is %s", "версия %s в режиме %s", rel.AppVersion, m))
+			// The mode is one evo names; the version is the catalogue's word.
+			p.warnings = append(p.warnings, i18n.Tf("version %s is %s", "версия %s в режиме %s", quoteCloud(rel.AppVersion), m))
 		}
 	} else {
 		rel, ok := mk8s.LatestRelease(rels)
@@ -361,7 +362,13 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 		}
 		p.release = rel
 		if m := mk8s.NormalizeMode(rel.Mode); m != mk8s.ModeActive {
-			p.warnings = append(p.warnings, i18n.Tf("no ACTIVE release; picked %s (%s)", "выпуска ACTIVE нет; выбран %s (%s)", rel.AppVersion, firstNonEmptyStr(m, i18n.T("no mode", "режим не указан"))))
+			// The version and a mode evo does not know are the catalogue's
+			// words: quoted (Астра, #1942).
+			mode := i18n.T("no mode", "режим не указан")
+			if m != "" {
+				mode = quoteCloud(m)
+			}
+			p.warnings = append(p.warnings, i18n.Tf("no ACTIVE release; picked %s (%s)", "выпуска ACTIVE нет; выбран %s (%s)", quoteCloud(rel.AppVersion), mode))
 		}
 	}
 
