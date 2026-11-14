@@ -49,6 +49,19 @@ func sgRuleWanted(want provision.SGRule, sourceGroup *provision.SecurityGroup) m
 	return out
 }
 
+// sgRulePrice puts the price of a rule of a security group into the
+// preview of a call that creates one: no tariff evo has read says a rule
+// is free, so the class of the price and where the rates are, not «0 ₽»
+// (CLAUDE.md §6, axis 4). One point for every tool that sends the create
+// of a rule — sg_rule_create and open_ports (the interim delta audit of
+// 1.9, FB19I-17 (a)).
+func sgRulePrice(preview map[string]any) {
+	preview["price_classes"] = []engine.ResourcePrice{{Resource: resourceSGRule, Class: engine.PricePaidUnpriced,
+		Note: i18n.T("price unknown, the resource is billable: no line of the tariffs at tariff_url names a rule of a security group",
+			"цена неизвестна, ресурс платный: в тарифах по tariff_url нет строки о правиле группы безопасности")}}
+	preview["tariff_url"] = engine.TariffURL(engine.ResourceVPC)
+}
+
 // sgRuleCall is a call of sg_rule_create as its arguments alone tell it,
 // before anything is read: the group and the source as the call names
 // them, and the rule it asks for.
@@ -188,13 +201,8 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 	wanted := sgRuleWanted(want, sourceGroup)
 	will := map[string]any{"rule": wanted,
 		"security_group": map[string]any{"id": group.ID, "name": group.Name, "default": group.Default},
-		// No tariff evo has read says a rule is free: the class of the
-		// price and where the rates are, not «0 ₽» (CLAUDE.md §6, axis 4).
-		"price_classes": []engine.ResourcePrice{{Resource: resourceSGRule, Class: engine.PricePaidUnpriced,
-			Note: i18n.T("price unknown, the resource is billable: no line of the tariffs at tariff_url names a rule of a security group",
-				"цена неизвестна, ресурс платный: в тарифах по tariff_url нет строки о правиле группы безопасности")}},
-		"tariff_url": engine.TariffURL(engine.ResourceVPC),
 	}
+	sgRulePrice(will)
 	sgUseFields(will, use)
 	if internet {
 		will["open_to_internet"] = true

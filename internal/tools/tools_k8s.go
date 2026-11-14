@@ -1135,7 +1135,9 @@ func (s *Registry) planK8sAddNodePool(ctx context.Context, args map[string]any) 
 		preview, err := s.completePreview(ctx, nil, k8sPreview(engine.ResourceK8sNodePool, name, args,
 			map[string]any{"flavor": flavor.Name, "cpu": flavor.CPU, "ram_gb": flavor.RAM, "count": count, "disk_gb": diskSize,
 				"zone": zone.name, "nodes_subnet_id": nodesSubnetID, "nodes_subnet_name": nodesSubnetName,
-				"security_group_id": sgID, "security_group_name": sgName}))
+				"security_group_id": sgID, "security_group_name": sgName,
+				// evo chooses it: the preview names it (CLAUDE.md §6, axis 4).
+				"update_strategy": mk8s.StrategyRollingUpdate}))
 		if err != nil {
 			return nil, err
 		}
@@ -1152,7 +1154,7 @@ func (s *Registry) planK8sAddNodePool(ctx context.Context, args map[string]any) 
 			ScalePolicy:          mk8s.ScalePolicy{FixedScale: &mk8s.FixedScale{Count: count}},
 			MachineConfiguration: mk8s.MachineConfigurationRequest{FlavorID: flavor.FlavorID, Disk: &mk8s.DiskRequest{Size: diskSize}},
 			NetworkConfiguration: mk8s.NodePoolNetworkConfigurationRequest{NodesSubnetID: nodesSubnetID, SecurityGroupID: sgID},
-			UpdateConfiguration:  mk8s.NodePoolUpdateConfiguration{Strategy: "NODE_POOL_UPDATE_STRATEGY_ROLLING_UPDATE"},
+			UpdateConfiguration:  mk8s.NodePoolUpdateConfiguration{Strategy: mk8s.StrategyRollingUpdate},
 		}
 		op, err := cli.CreateNodePool(ctx, req)
 		if err != nil || op.ID == "" {
@@ -1415,7 +1417,7 @@ func k8sPreview(resource, name string, args, resolved map[string]any) engine.Cre
 	}
 	p.Add("cluster_id", stringArg(args, "cluster_id"))
 	skip := []string{"name", "zone", "cluster_id"}
-	for _, k := range []string{"flavor", "cpu", "ram_gb", "count", "disk_gb", "version", "master_count", "subnet_id", "subnet_name", "nodes_subnet_id", "nodes_subnet_name", "security_group_id", "security_group_name", "kube_api_internet"} {
+	for _, k := range []string{"flavor", "cpu", "ram_gb", "count", "disk_gb", "version", "master_count", "subnet_id", "subnet_name", "nodes_subnet_id", "nodes_subnet_name", "security_group_id", "security_group_name", "kube_api_internet", "update_strategy"} {
 		if v, ok := resolved[k]; ok {
 			p.Add(k, v)
 			skip = append(skip, k)
