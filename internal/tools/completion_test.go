@@ -129,6 +129,12 @@ func TestCompletion_DeclarationsHold(t *testing.T) {
 			if _, ok := props[arg]; !ok {
 				t.Errorf("Decl.NoCompletion of %s names %s, which the tool does not take", tool, arg)
 			}
+			// One declaration per argument: a list and a "no list" for the
+			// same argument leave Tab to whichever is read first (Qwen to
+			// #1839).
+			if _, both := decls[tool].Completes[arg]; both {
+				t.Errorf("%s, %s: declared both in Decl.Completes and in Decl.NoCompletion — keep one", tool, arg)
+			}
 		}
 	}
 	// Every kind's list is a tool (a typo would leave its ids without Tab).

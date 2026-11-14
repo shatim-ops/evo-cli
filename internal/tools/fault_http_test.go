@@ -341,6 +341,9 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 					item["state"] = "creating" // a disk's field (waitDisk)
 				} else if path == "/api/v1/disks" {
 					item["state"] = "available"
+				} else if path == "/api/v1/subnets" || path == "/api/v1/nat-gateways" {
+					// The state the published specification names (made.go).
+					item["state"] = "created"
 				}
 				items = append(items, item)
 			}

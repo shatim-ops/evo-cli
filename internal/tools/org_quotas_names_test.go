@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // FB15-8 (release plan 1.6, «Квоты в превью»): org_quotas names each quota
@@ -57,5 +59,28 @@ func TestOrgQuotas_NameAndUnitOfEachQuota(t *testing.T) {
 		if _, has := other["name"]; has || strings.Contains(text, `"name":""`) {
 			t.Errorf("a type the catalogue does not name got a name: %s", text)
 		}
+	}
+}
+
+// A key without the organization's quota scope gets a note in the CLI's
+// language (D6; Astra's list #1835); status and reason stay machine words.
+func TestOrgQuotas_UnavailableNoteSpeaksCLILanguage(t *testing.T) {
+	defer i18n.SetLang(i18n.Lang())
+	i18n.SetLang("ru")
+	f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Host != "organization.api.cloud.ru" {
+			return false
+		}
+		http.Error(w, `{"message":"dont have permissions to customers"}`, http.StatusForbidden)
+		return true
+	}}
+	r := apiFakeRegistry(t, f)
+	m, text, isErr := callNamed(t, r, "org_quotas", nil)
+	if isErr || m["status"] != "unavailable" {
+		t.Fatalf("want the soft «unavailable»: %s", text)
+	}
+	note, _ := m["note"].(string)
+	if !strings.Contains(note, "квот") || strings.Contains(note, "lacks") {
+		t.Errorf("note in Russian CLI: %q", note)
 	}
 }
