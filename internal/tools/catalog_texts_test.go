@@ -29,8 +29,13 @@ func TestCatalog_CloseAndApplyTextsSayWhatTheyDo(t *testing.T) {
 			t.Errorf("close_ports promises a reversal (%q): it deletes a rule that was there before the task too", bad)
 		}
 	}
-	if !strings.Contains(en, "opened") || !strings.Contains(ru, "opened") {
-		t.Errorf("close_ports does not send to the ports open_ports added (opened):\n%s\n%s", en, ru)
+	// With the protocol and the source of that call: close_ports defaults to
+	// tcp from 0.0.0.0/0, and the ports of an udp or own-cidr open_ports
+	// passed alone would delete another rule («Риск», conclusion 217, У1).
+	for _, want := range []string{"opened", "protocol", "cidr"} {
+		if !strings.Contains(en, want) || !strings.Contains(ru, want) {
+			t.Errorf("close_ports does not name %q of the open_ports call whose ports it closes:\n%s\n%s", want, en, ru)
+		}
 	}
 	da, _ := r.Lookup("deploy_apply")
 	first, _, _ := strings.Cut(da.Description, ". ")
