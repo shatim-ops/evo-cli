@@ -183,7 +183,7 @@ func vmConsoleAnswer(det *provision.VMDetail) map[string]any {
 			"ВМ запущена: это условие консоли, а не обещание, что она откроется. ") + page
 	case det.State == "stopped":
 		note = i18n.T("The VM is stopped; only a running VM has a console. Starting it is vm_start: it is charged, and the person decides. ",
-			"ВМ остановлена; консоль есть только у запущенной ВМ. Запуск — vm_start: он платный, решает человек. ") + page
+			"ВМ остановлена; консоль есть только у запущенной ВМ. Запуск — 'evo vm start': он платный, решает человек. ") + page
 	default:
 		note = i18n.Tf("The VM is in state %s; only a running VM has a console. ",
 			"ВМ в состоянии %s; консоль есть только у запущенной ВМ. ", quoteCloud(det.State)) + page

@@ -14,6 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -139,5 +140,17 @@ func TestVMConsole_CardWithConsoleFieldsAnswersNoneOfThem(t *testing.T) {
 		if !isErr || strings.Contains(text, marker) {
 			t.Errorf("a refusal %d of the card: error %v, %s", status, isErr, text)
 		}
+	}
+}
+
+// In the Russian CLI the note of a stopped VM names the command, as the
+// Russian description does (border D6; «Риск», conclusion 244, residual 5).
+func TestVMConsole_StoppedNoteRUNamesTheCommand(t *testing.T) {
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	r, _ := vmStartWorld(t, "stopped")
+	m, text, _ := callNamed(t, r, "vm_console", map[string]any{"name": "web"})
+	if note, _ := m["note"].(string); !strings.Contains(note, "'evo vm start'") {
+		t.Errorf("the Russian note does not name the command: %s", text)
 	}
 }
