@@ -275,7 +275,8 @@ func (u *unfinishedWorld) take() bool {
 // it, out of the 1.9 scope of the owner's decision 14.11 (release plan 1.9,
 // «Честный ход операций»: the false outcomes of Астра's inventory #1815).
 // "tool" → what the answer has. It only shrinks, and a new tool does not
-// join it.
+// join it. Closes by 1.9 (owner's decision 14.11: subnet_create and
+// snat_create in 1.9, release plan 1.9, «Честный ход операций», (1)).
 var overWhileGoingOn = map[string]string{
 	"snat_create":   "created, its nat_gateway CREATING",
 	"subnet_create": "created, its subnet creating",
