@@ -4,6 +4,8 @@
 
 package tools
 
+import "iter"
+
 // Decl is the declaration of a tool: what the registry, the server and the
 // invariants need to know of it besides its name, description and schema.
 // Every rule of a tool is read from it, not from a list keyed by the tool's
@@ -76,13 +78,72 @@ type Decl struct {
 	// upgrade and uninstall (helmNeedsConsent). Every call of any other
 	// tool that takes confirmed needs it.
 	PartialConsent func(args map[string]any) bool
+
+	// Created: the tool is a create, and this is what names what it makes
+	// (created.go).
+	Created created
+	// CreateName: the create names what it makes by these arguments, by
+	// this rule (create_names.go, D30).
+	CreateName createName
+	// Nameless: the create makes a resource whose name the call does not
+	// give, and why.
+	Nameless string
+}
+
+// createdOf is the declaration of what tool creates, and whether it is a
+// create.
+func createdOf(tool string) (created, bool) {
+	c := decls[tool].Created
+	return c, c.declared()
+}
+
+// allCreated are the creates and what names what they make.
+func allCreated() iter.Seq2[string, created] {
+	return func(yield func(string, created) bool) {
+		for name, d := range decls {
+			if d.Created.declared() && !yield(name, d.Created) {
+				return
+			}
+		}
+	}
+}
+
+// createNameOf is the rule of the name of what tool makes, and whether it
+// declares one.
+func createNameOf(tool string) (createName, bool) {
+	c := decls[tool].CreateName
+	return c, len(c.args) > 0
+}
+
+// allCreateNames are the creates and the rule of the name of what they
+// make.
+func allCreateNames() iter.Seq2[string, createName] {
+	return func(yield func(string, createName) bool) {
+		for name, d := range decls {
+			if len(d.CreateName.args) > 0 && !yield(name, d.CreateName) {
+				return
+			}
+		}
+	}
+}
+
+// allNameless are the creates that make a resource whose name the call
+// does not give, and why.
+func allNameless() iter.Seq2[string, string] {
+	return func(yield func(string, string) bool) {
+		for name, d := range decls {
+			if d.Nameless != "" && !yield(name, d.Nameless) {
+				return
+			}
+		}
+	}
 }
 
 // decls are the declarations of the tools of evo, in the order of
 // registerTools. A tool with nothing to declare has no entry.
 var decls = map[string]Decl{
-	"deploy":    {Group: "deploy"},
-	"provision": {Group: "vm", Project: true},
+	"deploy":    {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the project (.evo.yaml, the directory), checked by provision.ValidName"},
+	"provision": {Group: "vm", Project: true, Created: created{id: "vm_id", list: "vm_list", field: "vms", delete: "destroy"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
 	"status":    {Group: "deploy"},
 	"list":      {Group: "deploy"},
 	"vm_get":    {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}},
@@ -103,21 +164,21 @@ var decls = map[string]Decl{
 	"list_zones":           {Group: "vm"},
 	"marketplace_list":     {Group: "image"},
 	"list_images":          {Group: "image"},
-	"image_create":         {Project: true},
+	"image_create":         {Project: true, Created: created{id: "image.id", lost: "image_id", list: "image_list", field: "images", delete: "image_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
 	"fip_attach":           {Group: "vpc"},
 	"image_get":            {RequiredOneOf: [][]string{{"image", "image_id"}}},
 	"deploy_plan":          {Group: "deploy", Project: true},
-	"deploy_apply":         {Group: "deploy"},
+	"deploy_apply":         {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the saved plan, checked by deploy_plan"},
 	"list_flavors":         {Group: "vm"},
 	"list_disk_types":      {Group: "disk"},
 	"list_subnets":         {Group: "vpc", Project: true},
-	"subnet_create":        {Group: "vpc", Project: true},
+	"subnet_create":        {Group: "vpc", Project: true, Created: created{id: "subnet_id", list: "list_subnets", field: "subnets", delete: "subnet_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
 	"subnet_delete":        {Group: "vpc"},
 	"list_security_groups": {Group: "vpc", Project: true},
 	"list_floating_ips":    {Group: "vpc", Project: true},
 	"open_ports":           {Group: "deploy"},
 	"close_ports":          {Group: "deploy"},
-	"sg_rule_create":       {Group: "vpc"},
+	"sg_rule_create":       {Group: "vpc", Created: created{id: "rule_id", delete: "sg_rule_delete"}, Nameless: "a rule has no name: it is known by its fields, and the same rule there answers already_exists"},
 	"sg_rule_delete":       {Group: "vpc"},
 	"k8s_list":             {Project: true},
 	// mk8s catalogues take projectId too: GET /v3/addons without it is a
@@ -125,25 +186,27 @@ var decls = map[string]Decl{
 	// (Cursor review of PR #89).
 	"k8s_options":    {Project: true},
 	"k8s_plan":       {Project: true},
-	"k8s_create":     {Project: true},
+	"k8s_create":     {Project: true, Created: created{id: "cluster_id", list: "k8s_list", field: "clusters", delete: "k8s_delete"}, CreateName: createName{args: []string{"name"}, rule: "k8sNameRe: the mk8s specification"}},
 	"k8s_kubeconfig": {SideEffects: "returns a kubeconfig; mints a token of the cluster"},
 	// A scale down deletes nodes with the data on their disks; the hint is
 	// the tool's, not the call's, so a scale up asks too (D99; conclusion
 	// 112 of «Риск»).
 	"k8s_nodepool_scale":   {Destructive: true},
+	"k8s_add_nodepool":     {Created: created{id: "nodepool_id", list: "k8s_nodepools", field: "node_pools", listArgs: []string{"cluster_id"}, delete: "k8s_nodepool_delete"}, CreateName: createName{args: []string{"name"}, what: "node pool", whRU: "группа узлов"}},
 	"k8s_addons":           {Project: true},
 	"k8s_addon_versions":   {Project: true},
-	"k8s_add_addon":        {Project: true, Destructive: true},
+	"k8s_add_addon":        {Project: true, Destructive: true, Created: created{none: "an addon of a cluster, known by its name; it goes with the cluster"}, Nameless: "the addon is named by the catalogue (k8s_addons)"},
 	"k8s_kubectl":          {PartialConsent: kubectlNeedsConsent, Destructive: true},
 	"k8s_apply":            {Destructive: true},
 	"k8s_helm":             {PartialConsent: helmNeedsConsent, Destructive: true},
 	"backup_list":          {Project: true},
-	"backup_create":        {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}},
+	"backup_create":        {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}, Created: created{id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
+	"backup_restore":       {Created: created{id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
 	"disk_list":            {Project: true},
-	"disk_create":          {Project: true},
+	"disk_create":          {Project: true, Created: created{id: "disk.id", lost: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
 	"ca_list":              {Project: true},
 	"ca_get":               {Project: true},
-	"ca_deploy":            {Project: true},
+	"ca_deploy":            {Project: true, Created: created{arg: "name", lost: "id", list: "ca_list", field: "containers", delete: "ca_delete"}, CreateName: createName{args: []string{"name"}, rule: "caNameRe: an RFC 1123 label"}},
 	"ca_delete":            {Project: true},
 	"ca_logs":              {Project: true},
 	"ca_start":             {Project: true},
@@ -156,44 +219,48 @@ var decls = map[string]Decl{
 	"doctor":               {Group: "auth"},
 	"release_floating_ip":  {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true},
 	"snat_list":            {Project: true},
-	"snat_create":          {Project: true},
+	"snat_create":          {Project: true, Created: created{id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}},
 	"pg_list":              {Project: true},
 	"pg_get":               {RequiredOneOf: [][]string{{"id", "cluster_id"}}},
-	"pg_create":            {Project: true},
+	"pg_create":            {Project: true, Created: created{id: "cluster_id", list: "pg_list", field: "clusters", delete: "pg_delete"}, CreateName: createName{args: []string{"name"}, what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}},
 	"pg_delete":            {RequiredOneOf: [][]string{{"id", "cluster_id"}}},
 	"kafka_list":           {Project: true},
-	"kafka_create":         {Project: true},
+	"kafka_create":         {Project: true, Created: created{id: "cluster_id", list: "kafka_list", field: "clusters", delete: "kafka_delete"}, CreateName: createName{args: []string{"name"}, what: "Kafka cluster", whRU: "кластер Kafka"}},
 	"redis_list":           {Project: true},
-	"redis_create":         {Project: true},
+	"redis_create":         {Project: true, Created: created{id: "cluster_id", list: "redis_list", field: "clusters", delete: "redis_delete"}, CreateName: createName{args: []string{"name"}, what: "Redis cluster", whRU: "кластер Redis"}},
+	"pg_db_create":         {Created: created{arg: "name", list: "pg_databases", field: "databases", listArgs: []string{"cluster_id"}, delete: "pg_db_delete"}, CreateName: createName{args: []string{"name"}, what: "database", whRU: "база данных"}},
+	"pg_user_create":       {Created: created{arg: "name", list: "pg_users", field: "users", listArgs: []string{"cluster_id"}, delete: "pg_user_delete"}, CreateName: createName{args: []string{"name"}, what: "database user", whRU: "пользователь базы данных"}},
+	"pg_backup_create":     {Created: created{id: "backup_id", list: "pg_backups", field: "backups", listArgs: []string{"cluster_id"}}, CreateName: createName{args: []string{"name"}, what: "backup", whRU: "резервная копия"}},
 	"lb_list":              {Project: true},
 	"tg_list":              {Project: true},
-	"tg_create":            {Project: true, RequiredOneOf: [][]string{{"vm_id", "targets"}}},
-	"lb_create":            {Project: true},
+	"tg_create":            {Project: true, RequiredOneOf: [][]string{{"vm_id", "targets"}}, Created: created{id: "tg_id", list: "tg_list", field: "target_groups", delete: "tg_delete"}, CreateName: createName{args: []string{"name"}, what: "target group", whRU: "целевая группа"}},
+	"lb_create":            {Project: true, Created: created{id: "lb_id", list: "lb_list", field: "load_balancers", delete: "lb_delete"}, CreateName: createName{args: []string{"name"}, what: "load balancer", whRU: "балансировщик"}},
 	"vpc_list":             {Project: true},
-	"vpc_create":           {Project: true},
-	"vpc_route_create":     {Project: true, RequiredOneOf: [][]string{{"next_hop_vip_id", "next_hop_vm_id", "next_hop_magic_router_id"}}},
+	"vpc_create":           {Project: true, Created: created{id: "vpc_id", list: "vpc_list", field: "vpcs", delete: "vpc_delete"}, CreateName: createName{args: []string{"name"}, what: "VPC", whRU: "VPC"}},
+	"vpc_route_create":     {Project: true, RequiredOneOf: [][]string{{"next_hop_vip_id", "next_hop_vm_id", "next_hop_magic_router_id"}}, Created: created{id: "route_id", list: "vpc_routes", field: "routes", listArgs: []string{"vpc_id"}, delete: "vpc_route_delete"}, Nameless: "a route is known by its destination, named by no argument"},
 	"dns_zones":            {Project: true},
-	"dns_zone_create":      {Project: true},
-	"dns_record_create":    {RequiredOneOf: [][]string{{"value", "values"}}},
+	"dns_zone_create":      {Project: true, Created: created{id: "zone_id", list: "dns_zones", field: "zones", delete: "dns_zone_delete"}, CreateName: createName{args: []string{"name", "domain"}, what: "DNS zone", whRU: "DNS-зона"}},
+	"dns_record_create":    {RequiredOneOf: [][]string{{"value", "values"}}, Created: created{id: "record_id", list: "dns_records", field: "records", listArgs: []string{"zone_id"}, delete: "dns_record_delete"}, CreateName: createName{args: []string{"name"}, what: "DNS record", whRU: "DNS-запись"}},
 	"secret_list":          {Project: true},
 	"secret_get":           {Project: true},
 	"secret_value":         {Project: true, Sensitive: true},
-	"secret_create":        {Project: true},
-	"secret_add_version":   {Project: true},
+	"secret_create":        {Project: true, Created: created{arg: "path", lost: "secret_id", list: "secret_list", field: "secrets", delete: "secret_delete"}, CreateName: createName{args: []string{"path"}, what: "secret", whRU: "секрет"}},
+	"secret_add_version":   {Project: true, Nameless: "a version of a secret that is there"},
 	"secret_delete":        {Project: true},
 	"ar_list":              {Project: true},
 	"ar_get":               {Project: true},
-	"ar_create":            {Project: true},
+	"ar_create":            {Project: true, Created: created{id: "registry_id", list: "ar_list", field: "registries", delete: "ar_delete"}, CreateName: createName{args: []string{"name"}, what: "registry", whRU: "реестр"}},
 	"ar_delete":            {Project: true},
 	"metrics_history":      {Project: true},
 	"metrics_scrape":       {Project: true},
 	"audit_events":         {Project: true},
 	"cert_list":            {Project: true},
-	"cert_issue_le":        {Project: true},
-	"cert_import":          {Project: true},
+	"cert_issue_le":        {Project: true, Created: created{id: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}},
+	"cert_import":          {Project: true, Created: created{id: "certificate.id", lost: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}},
 	"cert_private_key":     {Sensitive: true},
-	"s3_put":               {Destructive: true},
+	"s3_put":               {Destructive: true, Created: created{arg: "key", delete: "s3_rm"}, Nameless: "an object key may hold spaces anywhere: S3 takes any UTF-8"},
 	"s3_rm":                {Destructive: true},
+	"s3_bucket_create":     {Created: created{arg: "bucket", delete: "s3_bucket_delete"}, CreateName: createName{args: []string{"bucket"}, rule: "bucketNameRe and the S3 client's rule"}},
 	"stack_status":         {SideEffects: "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it"},
 	"stack_destroy":        {Destructive: true},
 }

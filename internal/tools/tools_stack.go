@@ -118,18 +118,18 @@ func (s *Registry) findIDByName(ctx context.Context, tool, field, name string, e
 }
 
 // stepFind is how to find what a step makes by its name: the list tool of
-// its create and the array of the answer (createdIDs), the name the step
-// gives it (createNames) and the create's arguments the list takes too.
+// its create and the array of the answer (Decl.Created), the name the step
+// gives it (Decl.CreateName) and the create's arguments the list takes too.
 type stepFind struct {
 	list, field, name string
 	args              map[string]any
 }
 
 // stepFinder is the stepFind of st; ok is false for a create not found by
-// name (its createdIDs declare no list).
+// name (its Decl.Created declare no list).
 func stepFinder(st *stack.Step) (f stepFind, ok bool) {
-	c := createdIDs[st.Tool]
-	n := createNames[st.Tool]
+	c := decls[st.Tool].Created
+	n := decls[st.Tool].CreateName
 	if c.list == "" || len(n.args) == 0 {
 		return stepFind{}, false
 	}
@@ -523,7 +523,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					continue
 				}
 				if st.ReadyKind == "" {
-					// synchronous — capture what it made (createdIDs) and
+					// synchronous — capture what it made (Decl.Created) and
 					// finish. An answer that names nothing is not success:
 					// the step made something billed or nothing, and only
 					// its name can tell (G13-14: it was "ok", and
@@ -1361,7 +1361,7 @@ func (s *Registry) handleStackStatus(ctx context.Context, args map[string]any) (
 }
 
 // stackTeardown are the creates of stack steps in the order stack_destroy
-// deletes what they made (createdIDs names the delete): what uses a
+// deletes what they made (Decl.Created names the delete): what uses a
 // resource before it, the VPC last — its subnets must be empty.
 var stackTeardown = []string{
 	"dns_record_create", "lb_create", "tg_create", "k8s_create", "kafka_create", "redis_create",
@@ -1479,7 +1479,7 @@ func (s *Registry) planStackDestroy(_ context.Context, args map[string]any) (*Pl
 				if st.Tool != tool || ref == "" {
 					continue
 				}
-				c := createdIDs[tool]
+				c := decls[tool].Created
 				dt := deleteTargets[c.delete]
 				if c.arg != "" {
 					// Deleted by the argument that named it (a secret by its

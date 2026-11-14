@@ -29,13 +29,13 @@ func createLike(t Tool) bool {
 func TestCreateNames_EveryCreateDeclared(t *testing.T) {
 	seen := map[string]bool{}
 	for _, tl := range New(nil).Tools() {
-		c, declared := createNames[tl.Name]
-		_, nameless := namelessCreates[tl.Name]
+		c, declared := createNameOf(tl.Name)
+		nameless := decls[tl.Name].Nameless != ""
 		switch {
 		case createLike(tl) && !declared && !nameless:
-			t.Errorf("%s makes a resource but is in neither createNames nor namelessCreates (D30: one rule for the name of a new resource)", tl.Name)
+			t.Errorf("%s makes a resource but is in neither Decl.CreateName nor Decl.Nameless (D30: one rule for the name of a new resource)", tl.Name)
 		case declared && nameless:
-			t.Errorf("%s is in createNames and in namelessCreates", tl.Name)
+			t.Errorf("%s is in Decl.CreateName and in Decl.Nameless", tl.Name)
 		}
 		if !declared {
 			continue
@@ -44,18 +44,18 @@ func TestCreateNames_EveryCreateDeclared(t *testing.T) {
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for _, a := range c.args {
 			if _, ok := props[a]; !ok {
-				t.Errorf("%s: createNames names argument %q, which its schema has not", tl.Name, a)
+				t.Errorf("%s: Decl.CreateName names argument %q, which its schema has not", tl.Name, a)
 			}
 		}
 	}
-	for name := range createNames {
+	for name := range allCreateNames() {
 		if !seen[name] {
-			t.Errorf("createNames names %s, which is not a tool", name)
+			t.Errorf("Decl.CreateName names %s, which is not a tool", name)
 		}
 	}
-	for name, why := range namelessCreates {
+	for name, why := range allNameless() {
 		if _, ok := New(nil).Lookup(name); !ok || why == "" {
-			t.Errorf("namelessCreates: %s is not a tool, or no reason is given", name)
+			t.Errorf("Decl.Nameless: %s is not a tool, or no reason is given", name)
 		}
 	}
 }
@@ -73,14 +73,14 @@ func TestCreateNames_SpacesRefusedBeforeTheCloud(t *testing.T) {
 		return true
 	}}
 	r := apiFakeRegistry(t, f)
-	names := make([]string, 0, len(createNames))
-	for name := range createNames {
+	var names []string
+	for name := range allCreateNames() {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
 		tl, _ := r.Lookup(name)
-		for _, arg := range createNames[name].args {
+		for _, arg := range decls[name].CreateName.args {
 			for _, bad := range []string{"web ", " web", "  ", "we\x00b", "web\n", strings.Repeat("w", 256)} {
 				for _, confirmed := range []bool{false, true} {
 					args := contractArgs(tl)
