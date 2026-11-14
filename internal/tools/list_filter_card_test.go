@@ -169,6 +169,11 @@ func TestVMList_SelectsByImages(t *testing.T) {
 		if hint := stringArg(m, "hint"); !strings.Contains(hint, c.hint) || (c.failure == context.DeadlineExceeded && strings.Contains(strings.ToLower(hint), "later")) {
 			t.Errorf("%v: hint %q, want %q", c.failure, hint, c.hint)
 		}
+		// A read out of its own time is not the call out of its time: the
+		// words do not say what the reason does not («Риск», conclusion 231).
+		if c.failure == context.DeadlineExceeded && (strings.Contains(msg, "call ran out") || strings.Contains(stringArg(m, "hint"), "will run out the same way")) {
+			t.Errorf("a read out of its own time words itself as the call out of its time: %s", text)
+		}
 	}
 
 	// More VMs than evo reads cards of in one call: a refusal that names

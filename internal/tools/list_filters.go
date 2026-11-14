@@ -738,19 +738,24 @@ func (r *Registry) readCards(ctx context.Context, s listSpec, rows []any, conds 
 func cardError(ctx context.Context, filter, id string, read, of int, narrow []string, err error) error {
 	reason, msg, hint := errReason(err, nil)
 	switch {
-	case stderrors.Is(err, context.DeadlineExceeded) || stderrors.Is(ctx.Err(), context.DeadlineExceeded):
+	case stderrors.Is(ctx.Err(), context.DeadlineExceeded):
 		// The call's own time (D69), not the cloud's answer: the cloud
 		// answered every card read so far, and the selection is too wide
 		// for one call, as a list over cardReads is — USAGE, whose way out
 		// is the arguments. API_UNREACHABLE would read as «Cloud.ru is
-		// down» and send the agent to retry («Риск», conclusion 225). A
-		// read that timed out on its own keeps its reason.
-		if stderrors.Is(ctx.Err(), context.DeadlineExceeded) {
-			reason = clierrors.CodeUsage
-		}
+		// down» and send the agent to retry («Риск», conclusion 225).
+		reason = clierrors.CodeUsage
 		msg = i18n.T("the call ran out of its time", "вызову не хватило времени")
 		hint = i18n.Tf("The same call again will run out the same way: narrow the list with: %s.",
 			"Тот же вызов ещё раз закончится так же: сузьте список: %s.", strings.Join(narrow, ", "))
+	case stderrors.Is(err, context.DeadlineExceeded):
+		// One read out of its own time while the call has time left: the
+		// network or the service was slow, and the reason stays the read's
+		// — so do the words: not «the call ran out» («Риск», conclusion
+		// 231).
+		msg = i18n.T("the read of the card ran out of its time", "чтение карточки не уложилось в своё время")
+		hint = i18n.Tf("Send the same call again; if the reads keep running out, narrow the list with: %s.",
+			"Повторите тот же вызов; если чтения снова не уложатся, сузьте список: %s.", strings.Join(narrow, ", "))
 	case notThere(err):
 		msg = i18n.T("it is gone from the list since evo read it", "его уже нет в списке, который прочитал evo")
 		hint = i18n.T("Send the same call again: it reads the list anew.", "Повторите тот же вызов: он прочитает список заново.")
