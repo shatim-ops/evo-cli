@@ -175,6 +175,9 @@ var decls = map[string]Decl{
 	// The names of the VM, its interfaces, groups, subnets and the rules
 	// of the groups, as the cloud names them («Риск», conclusion 209, У5).
 	"vm_get": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}, Untrusted: untrustedAnswer{fields: []string{"name", "interfaces", "security_groups", "checks", "exposure", "image"}}},
+	// A read: no consent, on --read-only too. The name of the VM is the
+	// cloud's, and where and note quote it (brief vm-console.md, §4, У3).
+	"vm_console": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}, Untrusted: untrustedAnswer{fields: []string{"name", "where", "note"}}},
 	// The VM a power tool names in its preview and its answer, as the
 	// cloud names it.
 	"vm_start": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},

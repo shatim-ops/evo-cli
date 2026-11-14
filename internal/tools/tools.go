@@ -110,6 +110,14 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_console",
+			Description: "Where a human opens the console of one VM, by vm_id or name: state, serial_ready and console_available (true only while the VM is running; a condition, not a promise that the console opens). The console opens in the Cloud.ru web console after the person signs in; evo does not open it, hand out a console link or connect to the VM, and an agent has no use for the page. A stopped VM is someone's decision: starting it is vm_start, charged, and the person's call.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id": uuidProp("VM UUID (from vm_list). vm_id or name is required."),
+				"name":  strProp("VM name (alternative to vm_id); two VMs of the name are refused with both ids."),
+			}),
+		},
+		{
 			Name:        "vm_start",
 			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. Already running: already_running, no question. Starting: waited for, no second command. A repeat that must send the command asks again. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. A running VM is charged for its flavor.",
 			InputSchema: objSchema(map[string]any{
@@ -1522,6 +1530,7 @@ func (s *Registry) registerTools() {
 		"status":               s.handleStatus,
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
+		"vm_console":           s.handleVMConsole,
 		"vm_start":             s.gated("vm_start", s.planVMPower("vm_start")),
 		"vm_stop":              s.gated("vm_stop", s.planVMPower("vm_stop")),
 		"vm_reboot":            s.gated("vm_reboot", s.planVMPower("vm_reboot")),

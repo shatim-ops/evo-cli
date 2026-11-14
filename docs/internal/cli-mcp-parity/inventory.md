@@ -177,6 +177,7 @@
 | vm | `list_flavors` | нет | дерево | `evo vm flavors` | да/да |
 | vm | `list_zones` | нет | дерево | `evo vm zones`, `evo list-zones` (алиас) | да/да |
 | vm | `provision` | да | дерево | `evo vm create` | да/да |
+| vm | `vm_console` | нет | дерево | `evo vm console` | да/да |
 | vm | `vm_get` | нет | дерево | `evo vm get` | да/да |
 | vm | `vm_list` | нет | дерево | `evo vm list` | да/да |
 | vm | `vm_reboot` | да | дерево | `evo vm reboot` | да/да |
@@ -351,6 +352,7 @@
 | `evo tg delete` | `tg_delete` | id | — | — | confirmed | — |
 | `evo tg get` | `tg_get` | id | — | — | — | — |
 | `evo tg list` | `tg_list` | — | — | — | — | — |
+| `evo vm console` | `vm_console` | vm_id\|name | — | — | — | — |
 | `evo vm create` | `provision` | name | image_metadata→--meta, ports→--port | — | confirmed, project_id, region | pairs:image_metadata, render |
 | `evo vm delete` | `destroy` | vm_id\|name | — | — | confirmed | — |
 | `evo vm flavors` | `list_flavors` | — | — | — | — | — |

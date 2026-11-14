@@ -34,8 +34,9 @@ func looksUUID(s string) bool {
 // operations (D99) are strict from their first release; whether the
 // released tools change their answer the same way is the owner's
 // decision, open — until then theirs stays, and this list is the one
-// place the difference lives.
-var strictVMRef = map[string]bool{"vm_start": true, "vm_stop": true, "vm_reboot": true, "vm_resize": true}
+// place the difference lives. vm_console is strict from its first release
+// too (brief vm-console.md, §2, У5).
+var strictVMRef = map[string]bool{"vm_start": true, "vm_stop": true, "vm_reboot": true, "vm_resize": true, "vm_console": true}
 
 // resolveVM finds a VM by id or name, as the released tools do.
 func (s *Registry) resolveVM(ctx context.Context, ref, projectID string) (*provision.VM, error) {

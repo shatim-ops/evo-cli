@@ -708,6 +708,9 @@ type VMDetail struct {
 	// Zone is the availability zone of the VM (availability_zone{id,name}
 	// of the card); nil when the answer carries none.
 	Zone *ZoneRef `json:"availability_zone,omitempty"`
+	// SerialReady is is_serial_ready of the card: the serial console is
+	// ready on the VM; nil when the answer carries none (vm_console).
+	SerialReady *bool `json:"is_serial_ready,omitempty"`
 }
 
 // AttachedFloatingIP is the address and ID of the first floating IP bound to
