@@ -209,10 +209,13 @@ func (s *Registry) planCertDelete(ctx context.Context, args map[string]any) (*Pl
 		return answered(s.deleteFailed("cert_delete", id, err)), nil
 	}
 	// One value of force for the preview and the DELETE (Астра, full audit
-	// 14.11, finding 04): the argument, false by default.
+	// 14.11, finding 04): the argument, false by default. What force means
+	// is the specification's (Certificate Manager, DELETE
+	// /v1/certificate/{id}, parameter force: to delete a certificate even
+	// if other services use it).
 	force, _ := args["force"].(bool)
-	preview := map[string]any{"force": force, "message": i18n.Tf("cert_delete permanently deletes certificate %q if no service uses it (force=false: if one does, the service refuses and nothing is deleted).",
-		"cert_delete безвозвратно удаляет сертификат %q, если его не использует ни один сервис (force=false: если использует, сервис откажет и ничего не удалит).", id),
+	preview := map[string]any{"force": force, "message": i18n.Tf("cert_delete permanently deletes certificate %q if no service uses it (force=false: if one does, the service refuses the delete, by its specification).",
+		"cert_delete безвозвратно удаляет сертификат %q, если его не использует ни один сервис (force=false: если использует, сервис откажет в удалении — по его спецификации).", id),
 	}
 	if force {
 		preview["message"] = i18n.Tf("cert_delete permanently deletes certificate %q even if a service uses it (force=true): a load balancer or listener bound to it loses HTTPS.",
