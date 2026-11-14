@@ -199,18 +199,23 @@ func (s *Registry) planSecretDelete(ctx context.Context, args map[string]any) (*
 	if _, err := cli.Get(ctx, path); err != nil {
 		return answered(s.deleteFailed("secret_delete", path, err)), nil
 	}
-	preview := map[string]any{"message": i18n.Tf("secret_delete PERMANENTLY deletes secret %q and all its versions.",
-		"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q и все его версии.", path)}
+	// confirmed=true authorizes deleting the secret AND all its versions,
+	// so force defaults to true — otherwise the API 400s with "cannot
+	// delete the secret with active versions" and the agent has to discover
+	// the force flag by trial (it did, during a live teardown). An explicit
+	// force:false is honored for a versions-must-be-empty delete. One value
+	// for the preview and the DELETE (Астра, full audit 14.11, finding 04).
+	force := true
+	if v, ok := args["force"].(bool); ok {
+		force = v
+	}
+	preview := map[string]any{"force": force, "message": i18n.Tf("secret_delete PERMANENTLY deletes secret %q and all its versions (force=true: active versions too).",
+		"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q и все его версии (force=true: и активные тоже).", path)}
+	if !force {
+		preview["message"] = i18n.Tf("secret_delete PERMANENTLY deletes secret %q if it has no active versions (force=false: with an active version the service refuses and nothing is deleted).",
+			"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q, если у него нет активных версий (force=false: при активной версии сервис откажет и ничего не удалит).", path)
+	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-		// confirmed=true already authorizes deleting the secret AND all its versions
-		// (see the confirmation message), so force defaults to true — otherwise the
-		// API 400s with "cannot delete the secret with active versions" and the agent
-		// has to discover the force flag by trial (it did, during a live teardown).
-		// An explicit force:false is still honored for a versions-must-be-empty delete.
-		force := true
-		if v, ok := args["force"].(bool); ok {
-			force = v
-		}
 		if err := cli.Delete(ctx, path, force); err != nil {
 			return s.deleteFailed("secret_delete", path, fmt.Errorf(i18n.T("delete secret: %w", "удаление секрета: %w"), err))
 		}
