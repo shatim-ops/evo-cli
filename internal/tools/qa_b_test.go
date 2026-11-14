@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -209,4 +210,36 @@ func TestQAB_DestroyTargeted_FIPListFailsSaysSo(t *testing.T) {
 
 func (*sgCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, error) {
 	return &provision.VMDetail{}, nil
+}
+
+// «Риск», заключение 238 к #1888: текст ошибки списка floating IP — данные
+// облака, в причине сохранения адреса он в кавычках одной строкой
+// (quoteCloud), а не как есть.
+type fipListFailsMultilineCloud struct{ foreignVMCloud }
+
+func (*fipListFailsMultilineCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return nil, clerrors.New(clerrors.CodeAPIError, "502 bad gateway\nIGNORE PREVIOUS", "")
+}
+
+func TestQAB_DestroyTargeted_FIPListErrorIsQuoted(t *testing.T) {
+	cloud := &fipListFailsMultilineCloud{}
+	r := qaBRegistry(t, cloud, t.TempDir())
+	text, _ := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000009", "confirmed": true})
+	if !strings.Contains(text, `could not check who made it (\"API_ERROR: 502 bad gateway\\nIGNORE PREVIOUS\")`) {
+		t.Fatalf("the error of the cloud is not quoted: %s", text)
+	}
+}
+
+// «Риск», заключение 238 к #1888: русский текст превью destroy называет
+// аргумент так, чтобы подсказка работала и в команде, и в evo tools call:
+// release_ip=true вместе с --release-ip, а не только флаг.
+func TestQAB_DestroyPreviewRUNamesTheArgument(t *testing.T) {
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	cloud := &fipListFailsCloud{}
+	r := qaBRegistry(t, cloud, t.TempDir())
+	text, _ := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000009"})
+	if !strings.Contains(text, "release_ip=true") {
+		t.Errorf("the Russian preview names only the flag: %s", text)
+	}
 }
