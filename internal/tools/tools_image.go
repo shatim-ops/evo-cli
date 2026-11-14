@@ -187,6 +187,24 @@ func (s *Registry) planImageCreate(ctx context.Context, args map[string]any) (*P
 	}}, nil
 }
 
+// floatingIPFor is the floating IP of the project ref names by address or
+// id, once a call: the layer of intents resolves it before the plan of
+// fip_attach does (idArg.party).
+func floatingIPFor(ctx context.Context, eng *engine.Engine, ref string) (*provision.FloatingIP, error) {
+	return onceACall(ctx, "fip\x00"+ref+"\x00"+eng.Config.ProjectID, func() (*provision.FloatingIP, error) {
+		fips, err := eng.Cloud.ListFloatingIPs(ctx, eng.Config.ProjectID)
+		if err != nil {
+			return nil, fmt.Errorf(i18n.T("list floating ips: %w", "список floating IP: %w"), err)
+		}
+		for _, f := range fips {
+			if f.ID == ref || f.IPAddress == ref {
+				return f, nil
+			}
+		}
+		return nil, fmt.Errorf(i18n.T("floating IP %q not found", "floating IP %q не найден"), ref)
+	})
+}
+
 // planFipAttach plans fip_attach, which binds an existing free floating IP
 // to a VM's primary interface. Needed whenever a VM ends up without a
 // public address — e.g. when provisioning from a large custom image takes
@@ -207,22 +225,12 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 	pid := eng.Config.ProjectID
 
 	// Resolve the floating IP by address or UUID, and refuse one already in use.
-	fips, err := eng.Cloud.ListFloatingIPs(ctx, pid)
+	fip, err := floatingIPFor(ctx, eng, fipRef)
 	if err != nil {
-		return nil, fmt.Errorf(i18n.T("list floating ips: %w", "список floating IP: %w"), err)
+		return nil, err
 	}
-	var fip *provision.FloatingIP
-	for _, f := range fips {
-		if f.ID == fipRef || f.IPAddress == fipRef {
-			if f.OnNATGateway() {
-				return nil, fmt.Errorf(i18n.T("floating IP %q belongs to a SNAT gateway and cannot be attached to a VM", "floating IP %q принадлежит SNAT-шлюзу, к ВМ его не привязать"), fipRef)
-			}
-			fip = f
-			break
-		}
-	}
-	if fip == nil {
-		return nil, fmt.Errorf(i18n.T("floating IP %q not found", "floating IP %q не найден"), fipRef)
+	if fip.OnNATGateway() {
+		return nil, fmt.Errorf(i18n.T("floating IP %q belongs to a SNAT gateway and cannot be attached to a VM", "floating IP %q принадлежит SNAT-шлюзу, к ВМ его не привязать"), fipRef)
 	}
 	fipID, fipName := fip.ID, fip.Name
 
