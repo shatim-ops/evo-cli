@@ -147,11 +147,13 @@
 С `--json` — один объект JSON в stderr, stdout остаётся для данных:
 
 ```json
-{"error":{"code":2,"reason":"AUTH_FAILED","message":"IAM отклонил ключ доступа (статус 401)","hint":"Повтор тем же ключом не поможет. Новый ключ — evo login (вход через браузер, нужен человек) или evo configure. Ключ берётся из CLOUDRU_KEY_ID / CLOUDRU_SECRET, если они заданы, иначе из профиля: если он должен работать, проверьте там Key ID и секрет — ключ мог быть удалён или истечь, а сервисный аккаунт выключен."}}
+{"error":{"code":2,"reason":"AUTH_FAILED","message":"IAM rejected the credentials (status 401)","hint":"Retrying with the same key will not help. For a new key: evo login (a sign-in in the browser, a person is needed) or evo configure. The key comes from CLOUDRU_KEY_ID / CLOUDRU_SECRET when they are set, else from the profile: if it should work, check the key ID and secret there — the key may have been deleted or expired, or the service account disabled."}}
 ```
 
-Сообщения и подсказки — на языке CLI (по умолчанию русский, `EVO_LANG=en` —
-английский), ключи JSON и коды — всегда английские.
+Текстом сообщения и подсказки — на языке CLI (по умолчанию русский,
+`EVO_LANG=en` — английский). С `--json` весь ответ — английский, как ответ
+инструмента MCP: сообщение, подсказка, поля ответа и предупреждения; ключи
+JSON и коды — английские всегда.
 
 Предупреждения (устаревшая переменная, права `credentials.yaml`, порты, которые
 не удалось открыть) с `--json` — тоже строки JSON в stderr, перед ошибкой:
