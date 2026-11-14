@@ -71,7 +71,7 @@ func escapeDepth(n int) (int, bool) {
 // depth times, or len(s) when the body ends inside it.
 func valueEnd(s string, i, depth int) int {
 	quote := 1<<depth - 1 // backslashes before a quote of this depth
-	if open := i + quote; open < len(s) && s[open] == '"' && strings.Count(s[i:open], `\\`) == quote {
+	if open := i + quote; open < len(s) && s[open] == '"' && strings.Count(s[i:open], `\`) == quote {
 		if end := stringEnd(s, open, depth); end > 0 {
 			return end
 		}
