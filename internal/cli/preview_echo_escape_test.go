@@ -49,11 +49,41 @@ func TestPreview_CallerValueStaysOnItsLine(t *testing.T) {
 // which escapes a line break but not a format character (U+202E): the rule
 // holds for the line as printed («Риск», conclusion 234).
 func TestPreview_ArgLinesWholeValue(t *testing.T) {
-	for _, v := range []any{[]any{"ok", "x\u202ey"}, map[string]any{"k\u202e": "v"}} {
+	for _, v := range []any{[]any{"ok", "x\u202ey"}, map[string]any{"k\u202e": "v"}, []any{"x\ufffdy"}} {
 		for _, l := range argLines(map[string]any{"field": v}) {
-			if strings.Contains(l, "\u202e") {
+			if strings.ContainsAny(l, "\u202e\ufffd") {
 				t.Errorf("%q prints a format character raw", l)
 			}
 		}
+	}
+}
+
+// Bytes of the caller that are no UTF-8 reach the preview replaced with
+// U+FFFD — the answer of the tool is JSON — and the request carries the
+// same U+FFFD. The preview shows the value as it goes, quoted, the
+// replacement escaped: «ok\ufffdEND», not the replacement character raw, which
+// reads as text
+// (Astra, #1848 after #1882).
+func TestPreview_InvalidUTF8ShownReplaced(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		args []string
+	}{
+		{"preview parameter", []string{"--dry-run", "vpc", "create", "net", "--description", "ok\x80END"}},
+		{"field beside the message", []string{"--dry-run", "tools", "call", "pg_db_create",
+			"--arg", "cluster_id=" + parityVM, "--arg", "name=app", "--arg", "owner=app", "--arg", "lc_collate=ok\x80END"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			withJSONWorld(t)
+			newProcess()
+			code, out, errOut := runCLI(t, "", c.args...)
+			all := out + errOut
+			if strings.Contains(all, "\ufffd") || strings.Contains(all, "\x80") {
+				t.Errorf("the replaced byte prints raw (exit %d): %q", code, all)
+			}
+			if !strings.Contains(all, `"ok\ufffdEND"`) {
+				t.Errorf("the value is not quoted with the replacement escaped (exit %d): %q", code, all)
+			}
+		})
 	}
 }

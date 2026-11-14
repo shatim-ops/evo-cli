@@ -167,6 +167,13 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/e2e_port_rule_test.sh
 
+      # Сверка доставки squash (squash_delivery.sh, правило 2 CLAUDE.md,
+      # #1968): доставленная голова, поздний коммит, конфликт — на
+      # временном репозитории.
+      - name: сверка доставки squash
+        if: runner.os == 'Linux'
+        run: .github/scripts/squash_delivery_test.sh
+
       # Проба фильтров списков 1.8.2 в api-probe (list_filter_probe.sh):
       # вердикты same / ignored / diff и ни одного id в выводе, на заглушке curl.
       - name: проба фильтров списков в api-probe
