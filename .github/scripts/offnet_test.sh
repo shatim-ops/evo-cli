@@ -45,6 +45,12 @@ out=$(OFFNET_ALLOW=$'engine.test [2001:db8::1]:443 a documented unreachable addr
 [ "$rc" = 1 ] || { echo "FAIL: список снял не только своё — код $rc"; fail=1; }
 if grep -q '2001:db8' <<<"$out"; then echo "FAIL: строка списка не сняла своё место"; fail=1; fi
 
+# Строка списка другого бинарника, чьё имя кончается так же («xtools.test»),
+# и другого порта (:222) не снимает место.
+rc=0
+out=$(OFFNET_ALLOW=$'xtools.test 203.0.113.12:22 other binary\ntools.test 203.0.113.12:222 other port\n' "$here/offnet.sh" "$work/trace" 2>&1) || rc=$?
+grep -q 'tools.test → 203.0.113.12:22 (2 раза)' <<<"$out" || { echo "FAIL: чужая строка списка сняла место"; printf '%s\n' "$out" | sed 's/^/  | /'; fail=1; }
+
 # Пустой или непрочитанный журнал — красный: сторож, который ничего не
 # видел, не говорит «чисто».
 rc=0

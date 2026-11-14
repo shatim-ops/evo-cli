@@ -12,7 +12,8 @@
 # сторож, который ничего не видел, не говорит «чисто».
 set -euo pipefail
 trace=${1:?usage: offnet.sh STRACE_LOG}
-[ -s "$trace" ] || { echo "offnet: журнал strace пуст или не прочитан ($trace) — проверка не состоялась" >&2; exit 2; }
+[ -e "$trace" ] || { echo "offnet: журнала strace нет ($trace) — strace не запустился, проверка не состоялась" >&2; exit 2; }
+[ -s "$trace" ] || { echo "offnet: журнал strace пуст ($trace) — проверка не состоялась" >&2; exit 2; }
 
 found=$(awk '
 	# pid<comm> connect(fd, {sa_family=AF_INET...}...)
@@ -36,7 +37,8 @@ allow=${OFFNET_ALLOW:-}
 bad=0
 while read -r comm where n; do
 	[ -n "$comm" ] || continue
-	if [ -n "$allow" ] && printf '%s\n' "$allow" | grep -qF -- "$comm $where "; then continue; fi
+	# Exact first two fields: a substring would let «ax.test …» cover «x.test …».
+	if [ -n "$allow" ] && printf '%s\n' "$allow" | awk -v c="$comm" -v w="$where" '$1 == c && $2 == w { f = 1 } END { exit !f }'; then continue; fi
 	[ "$n" = 1 ] && times="1 раз" || times="$n раза"
 	echo "::error::offnet: $comm → $where ($times) — тест открыл соединение вне loopback: подмените проверку сети (как deployplan.DialSSH) или объявите место в OFFNET_ALLOW с причиной"
 	bad=1
