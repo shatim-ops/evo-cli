@@ -390,6 +390,12 @@ poll:
 	}, nil
 }
 
+// FIPLookupInterval is the pause between the looks for the floating IP a
+// cut create may have made (floatingip.Reserve). Tests (here and in the
+// packages that drive deploy_apply) shorten it: a literal second made a
+// case of the fault matrix wait two of them («Процесс · 1.9 (3)», #1759).
+var FIPLookupInterval = time.Second
+
 // SSHPortWait bounds the wait for port 22 after the VM runs. Tests (here and
 // in the packages that drive deploy_apply) shorten it.
 var SSHPortWait = 120 * time.Second
@@ -536,7 +542,7 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		ProjectID:          plan.ProjectID,
 		InterfaceID:        ifaceID,
 		AvailabilityZoneID: plan.VM.Zone.ID,
-	}, own, time.Second, nil)
+	}, own, FIPLookupInterval, nil)
 	if e == nil && f != nil && f.ID != "" {
 		return f.IPAddress, f.ID, "public IP attached (created a new floating IP)"
 	}

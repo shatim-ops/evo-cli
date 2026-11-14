@@ -260,3 +260,22 @@ func TestVMGet_AReadOutOfItsLimitSaysSo(t *testing.T) {
 		t.Errorf("a read out of its time limit: %s, want not_checked to name the limit", text)
 	}
 }
+
+// The allowed address pairs of an interface (Astra, task 3; release plan
+// 1.9, «Разрешённые пары адресов интерфейса ВМ»): vm_get names them from
+// the same list as the groups — an empty list when none are set, so «none»
+// and «not read» (not_checked) differ.
+func TestVMGet_NamesTheAllowedAddressPairs(t *testing.T) {
+	w := newDiagWorld(t)
+	w.ifaces[0].AllowedAddressPairs = []provision.AddressPair{{IPAddress: "10.0.0.50", MACAddress: "fa:16:3e:00:00:01"}}
+	m, text := diagCall(t, w, map[string]any{"vm_id": w.vmID})
+	pairs, _ := firstRow(t, m)["allowed_address_pairs"].([]any)
+	if len(pairs) != 1 || pairs[0].(map[string]any)["ip_address"] != "10.0.0.50" || pairs[0].(map[string]any)["mac_address"] != "fa:16:3e:00:00:01" {
+		t.Errorf("an interface with a pair: %s, want the pair named", text)
+	}
+	w = newDiagWorld(t)
+	m, text = diagCall(t, w, map[string]any{"vm_id": w.vmID})
+	if pairs, ok := firstRow(t, m)["allowed_address_pairs"].([]any); !ok || len(pairs) != 0 {
+		t.Errorf("an interface with no pairs: %s, want an empty allowed_address_pairs", text)
+	}
+}

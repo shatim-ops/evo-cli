@@ -1009,8 +1009,9 @@ func securityGroupByRef(ctx context.Context, eng *engine.Engine, ref string) (*p
 		i18n.T("list_security_groups lists the project's groups.", "Группы проекта — в выводе list_security_groups."))
 }
 
-// planClosePorts plans close_ports (gate.go), the way back from open_ports
-// (G13-9, D37): the ingress rules of exactly the ports, protocol and source
+// planClosePorts plans close_ports (gate.go), the delete of the ingress
+// rules open_ports adds — not its undo: a rule of the port that was there
+// before goes too (G13-9, D37; #1743): the ingress rules of exactly the ports, protocol and source
 // given, read before the question. A group that is not there is the call's
 // error; no rule to close is already deleted (D26), with no question. The
 // group is shared per zone: the preview says so, as open_ports' does.
