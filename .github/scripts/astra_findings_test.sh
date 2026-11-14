@@ -26,6 +26,12 @@ done
 give() { # ФАЙЛ УМОЛЧАНИЕ
   if [ -f "$FAKE_DIR/$1" ]; then jq -c "$q" "$FAKE_DIR/$1"; else jq -cn "$2 | $q"; fi
 }
+# Списки — только с --paginate: на заглушке всё умещается в одну страницу,
+# и забытая пагинация иначе прошла бы (ревью Qwen #1873).
+case "$path" in
+  repos/o/r/check-runs | repos/o/r/pulls/20) ;;
+  *) [[ " $* " == *" --paginate "* ]] || { echo "нет --paginate: $path" >&2; exit 1; } ;;
+esac
 case "$path" in
   repos/o/r/check-runs) cat >"$FAKE_DIR/check.json" ;;
   repos/o/r/issues\?labels=*)
