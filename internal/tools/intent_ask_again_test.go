@@ -191,7 +191,7 @@ func unnamedBy(tl Tool) []string {
 	// is refused before the layer (tools.CheckArgs).
 	required, _ := tl.InputSchema["required"].([]string)
 	ways := [][]string{}
-	for _, group := range requiredOneOf[tl.Name] {
+	for _, group := range tl.Decl.RequiredOneOf {
 		for _, arg := range group {
 			ways = append(ways, append([]string{arg}, required...))
 		}

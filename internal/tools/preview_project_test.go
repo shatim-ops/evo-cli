@@ -28,7 +28,7 @@ func previewProject(m map[string]any) (project, note string) {
 // declares which argument names that resource (idArg.target), so that its
 // preview names the resource's project and not the call's (release plan
 // 1.9, «Превью называет проект записи»). A tool whose request carries the
-// project (projectTools, or the project_id argument) writes into the
+// project (Decl.Project, or the project_id argument) writes into the
 // call's project and needs none. A new tool without the declaration fails
 // here.
 func TestPreviewProject_TargetDeclared(t *testing.T) {
@@ -62,7 +62,7 @@ func TestPreviewProject_TargetDeclared(t *testing.T) {
 		}
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		_, namesItsProject := props["project_id"]
-		if namesItsProject || projectTools[tl.Name] || len(targets) > 0 {
+		if namesItsProject || tl.Decl.Project || len(targets) > 0 {
 			continue
 		}
 		for _, a := range checkedIDArgs(tl.Name) {

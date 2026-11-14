@@ -1,0 +1,1016 @@
+{
+  "agent_skill": {
+    "group": "auth",
+    "always_listed": "the card of a group is read by the agent that works with that group, whichever groups the server serves"
+  },
+  "ar_create": {
+    "project": true,
+    "created": "{id:registry_id lost: arg: none: list:ar_list field:registries listArgs:[] delete:ar_delete}",
+    "create_name": "{args:[name] rule: what:registry whRU:реестр}"
+  },
+  "ar_delete": {
+    "project": true,
+    "delete": "{arg:id parent: what:artifact registry whRU:реестр артефактов statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "id why=\"the request carries the project (projectId in the query), and the API looks the resource up in that project\" target=false ids=false"
+    ]
+  },
+  "ar_get": {
+    "project": true,
+    "id_args": [
+      "id why=\"the request carries the project (projectId in the query), and the API looks the resource up in that project\" target=false ids=false"
+    ]
+  },
+  "ar_list": {
+    "project": true
+  },
+  "ar_operation": {
+    "id_args": [
+      "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
+    ]
+  },
+  "audit_events": {
+    "project": true
+  },
+  "backup_create": {
+    "project": true,
+    "required_one_of": [
+      [
+        "vm_id",
+        "disk_id"
+      ]
+    ],
+    "created": "{id:backup_id lost: arg: none: list:backup_list field:backups listArgs:[] delete:backup_delete}",
+    "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
+    "id_args": [
+      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
+      "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
+    ]
+  },
+  "backup_delete": {
+    "delete": "{arg:backup_id parent: what:backup whRU:резервная копия statePrefix: creatingUnseen:no run has deleted a backup still being created: the third run of probe Г-16 (docs/internal/briefs/backups.md) failedUnseen:no run has deleted a backup in error: the third run of probe Г-16 (docs/internal/briefs/backups.md)}",
+    "id_args": [
+      "backup_id why=\"\" target=true ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
+    ]
+  },
+  "backup_get": {
+    "id_args": [
+      "backup_id why=\"\" target=false ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
+    ]
+  },
+  "backup_list": {
+    "project": true,
+    "id_args": [
+      "resource_id why=\"a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with the items that list read; it reaches no API as an id\" target=false ids=false"
+    ]
+  },
+  "backup_restore": {
+    "created": "{id:disk_id lost: arg: none: list:disk_list field:disks listArgs:[] delete:disk_delete}",
+    "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
+    "id_args": [
+      "backup_id why=\"\" target=true ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
+    ]
+  },
+  "billing_consumption": {
+    "id_args": [
+      "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
+    ]
+  },
+  "billing_finops": {
+    "id_args": [
+      "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
+    ]
+  },
+  "ca_delete": {
+    "project": true,
+    "delete": "{arg:name parent: what:container app whRU:приложение Container Apps statePrefix: creatingUnseen: failedUnseen:}"
+  },
+  "ca_deploy": {
+    "project": true,
+    "created": "{id: lost:id arg:name none: list:ca_list field:containers listArgs:[] delete:ca_delete}",
+    "create_name": "{args:[name] rule:caNameRe: an RFC 1123 label what: whRU:}",
+    "id_args": [
+      "image why=\"a container image reference (registry/name:tag) the app pulls, not a Cloud.ru resource id\" target=false ids=false"
+    ]
+  },
+  "ca_get": {
+    "project": true
+  },
+  "ca_list": {
+    "project": true
+  },
+  "ca_logs": {
+    "project": true
+  },
+  "ca_start": {
+    "project": true
+  },
+  "ca_stop": {
+    "project": true
+  },
+  "cert_delete": {
+    "delete": "{arg:id parent: what:certificate whRU:сертификат statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "id why=\"\" target=true ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}"
+    ]
+  },
+  "cert_get": {
+    "id_args": [
+      "id why=\"\" target=false ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}"
+    ]
+  },
+  "cert_import": {
+    "project": true,
+    "created": "{id:certificate.id lost:certificate_id arg: none: list:cert_list field:certificates listArgs:[] delete:cert_delete}",
+    "create_name": "{args:[name] rule: what:certificate whRU:сертификат}"
+  },
+  "cert_issue_le": {
+    "project": true,
+    "created": "{id:certificate_id lost: arg: none: list:cert_list field:certificates listArgs:[] delete:cert_delete}",
+    "create_name": "{args:[name] rule: what:certificate whRU:сертификат}"
+  },
+  "cert_list": {
+    "project": true
+  },
+  "cert_operation": {
+    "id_args": [
+      "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
+    ]
+  },
+  "cert_private_key": {
+    "sensitive": true,
+    "id_args": [
+      "certificate_id why=\"\" target=true ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}",
+      "version_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false"
+    ]
+  },
+  "cert_renew": {
+    "id_args": [
+      "certificate_id why=\"\" target=true ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}"
+    ]
+  },
+  "cert_usage": {
+    "id_args": [
+      "id why=\"\" target=false ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}"
+    ]
+  },
+  "cert_versions": {
+    "id_args": [
+      "certificate_id why=\"\" target=false ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}"
+    ]
+  },
+  "close_ports": {
+    "group": "deploy",
+    "delete": "{arg:ports parent:security_group what:port rule whRU:правило порта statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
+    ]
+  },
+  "deploy": {
+    "group": "deploy",
+    "created": "{id:vm_id lost: arg: none: list: field: listArgs:[] delete:destroy}",
+    "nameless": "the VM is named by the project (.evo.yaml, the directory), checked by provision.ValidName",
+    "id_args": [
+      "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
+      "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
+      "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
+    ]
+  },
+  "deploy_apply": {
+    "group": "deploy",
+    "created": "{id:vm_id lost: arg: none: list: field: listArgs:[] delete:destroy}",
+    "nameless": "the VM is named by the saved plan, checked by deploy_plan",
+    "id_args": [
+      "plan_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false",
+      "vm_id why=\"the VM the next step of a call goes on with (continuedVM, D102): the call only reads it by id, to refuse when it is gone; what the call writes lands in its own project, as without the argument\" target=false ids=false"
+    ]
+  },
+  "deploy_plan": {
+    "group": "deploy",
+    "project": true,
+    "id_args": [
+      "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
+      "base_plan_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
+    ]
+  },
+  "destroy": {
+    "group": "deploy",
+    "destructive": true,
+    "delete": "{arg:vm_id parent: what:VM whRU:ВМ statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "vm_id why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
+    ]
+  },
+  "disk_attach": {
+    "id_args": [
+      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
+      "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
+    ]
+  },
+  "disk_create": {
+    "project": true,
+    "created": "{id:disk.id lost:disk_id arg: none: list:disk_list field:disks listArgs:[] delete:disk_delete}",
+    "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
+    "id_args": [
+      "attach_to why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
+    ]
+  },
+  "disk_delete": {
+    "delete": "{arg:disk_id parent: what:disk whRU:диск statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
+    ]
+  },
+  "disk_detach": {
+    "id_args": [
+      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
+      "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
+    ]
+  },
+  "disk_list": {
+    "project": true
+  },
+  "disk_resize": {
+    "id_args": [
+      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
+    ]
+  },
+  "dns_operation": {
+    "id_args": [
+      "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
+    ]
+  },
+  "dns_record_create": {
+    "required_one_of": [
+      [
+        "value",
+        "values"
+      ]
+    ],
+    "created": "{id:record_id lost: arg: none: list:dns_records field:records listArgs:[zone_id] delete:dns_record_delete}",
+    "create_name": "{args:[name] rule: what:DNS record whRU:DNS-запись}",
+    "id_args": [
+      "zone_id why=\"\" target=true ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
+    ]
+  },
+  "dns_record_delete": {
+    "delete": "{arg:record_id parent: what:DNS record whRU:DNS-запись statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "record_id why=\"\" target=true ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:false}"
+    ]
+  },
+  "dns_record_get": {
+    "id_args": [
+      "record_id why=\"\" target=false ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:false}"
+    ]
+  },
+  "dns_records": {
+    "id_args": [
+      "zone_id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
+    ]
+  },
+  "dns_zone_create": {
+    "project": true,
+    "created": "{id:zone_id lost: arg: none: list:dns_zones field:zones listArgs:[] delete:dns_zone_delete}",
+    "create_name": "{args:[name domain] rule: what:DNS zone whRU:DNS-зона}",
+    "id_args": [
+      "vpc_id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
+    ]
+  },
+  "dns_zone_delete": {
+    "delete": "{arg:id parent: what:DNS zone whRU:DNS-зона statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "id why=\"\" target=true ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
+    ]
+  },
+  "dns_zone_get": {
+    "id_args": [
+      "id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
+    ]
+  },
+  "dns_zones": {
+    "project": true
+  },
+  "doctor": {
+    "group": "auth"
+  },
+  "fip_attach": {
+    "group": "vpc",
+    "id_args": [
+      "fip why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
+      "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
+    ]
+  },
+  "iam_service_accounts": {
+    "group": "iam",
+    "project": true,
+    "id_args": [
+      "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
+    ]
+  },
+  "image_create": {
+    "project": true,
+    "created": "{id:image.id lost:image_id arg: none: list:image_list field:images listArgs:[] delete:image_delete}",
+    "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
+    "id_args": [
+      "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
+    ]
+  },
+  "image_delete": {
+    "delete": "{arg:image_id parent: what:image whRU:образ statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "image_id why=\"\" target=true ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}"
+    ]
+  },
+  "image_get": {
+    "required_one_of": [
+      [
+        "image",
+        "image_id"
+      ]
+    ],
+    "id_args": [
+      "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
+      "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}"
+    ]
+  },
+  "k8s_add_addon": {
+    "project": true,
+    "destructive": true,
+    "created": "{id: lost: arg: none:an addon of a cluster, known by its name; it goes with the cluster list: field: listArgs:[] delete:}",
+    "nameless": "the addon is named by the catalogue (k8s_addons)",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_add_nodepool": {
+    "created": "{id:nodepool_id lost: arg: none: list:k8s_nodepools field:node_pools listArgs:[cluster_id] delete:k8s_nodepool_delete}",
+    "create_name": "{args:[name] rule: what:node pool whRU:группа узлов}",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}",
+      "nodes_subnet_id why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
+      "security_group_id why=\"\" target=false ids=false kind={what:\"security group\" byName:false list:\"list_security_groups\" check:true project:true card:false}"
+    ],
+    "ref_args": [
+      "{arg:nodes_subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}",
+      "{arg:security_group_id kind:{en:security group ru:группа безопасности list:list_security_groups}}"
+    ]
+  },
+  "k8s_addon_versions": {
+    "project": true
+  },
+  "k8s_addons": {
+    "project": true
+  },
+  "k8s_apply": {
+    "destructive": true,
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_create": {
+    "project": true,
+    "created": "{id:cluster_id lost: arg: none: list:k8s_list field:clusters listArgs:[] delete:k8s_delete}",
+    "create_name": "{args:[name] rule:k8sNameRe: the mk8s specification what: whRU:}",
+    "id_args": [
+      "subnet_id why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
+      "cluster_sa_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false"
+    ],
+    "ref_args": [
+      "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
+    ]
+  },
+  "k8s_delete": {
+    "delete": "{arg:cluster_id parent: what:Kubernetes cluster whRU:кластер Kubernetes statePrefix:OBJECT_STATUS_ creatingUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9) failedUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9)}",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_get": {
+    "id_args": [
+      "cluster_id why=\"\" target=false ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_helm": {
+    "destructive": true,
+    "partial_consent": "github.com/shatim-ops/evo-cli/internal/tools.helmNeedsConsent",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_kubeconfig": {
+    "side_effects": "returns a kubeconfig; mints a token of the cluster",
+    "id_args": [
+      "cluster_id why=\"\" target=false ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_kubectl": {
+    "destructive": true,
+    "partial_consent": "github.com/shatim-ops/evo-cli/internal/tools.kubectlNeedsConsent",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_list": {
+    "project": true
+  },
+  "k8s_nodepool_delete": {
+    "delete": "{arg:nodepool_id parent: what:node pool whRU:группа узлов statePrefix:OBJECT_STATUS_ creatingUnseen:probe Г-12, question 16 of docs/internal/briefs/k8s-nodepools.md failedUnseen:no run has deleted a node pool in error: probe Г-12 (docs/internal/briefs/k8s-nodepools.md; FB19I-7)}",
+    "id_args": [
+      "nodepool_id why=\"\" target=true ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_nodepool_get": {
+    "id_args": [
+      "nodepool_id why=\"\" target=false ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_nodepool_scale": {
+    "destructive": true,
+    "id_args": [
+      "nodepool_id why=\"\" target=true ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_nodepools": {
+    "id_args": [
+      "cluster_id why=\"\" target=false ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
+    ]
+  },
+  "k8s_operation": {
+    "id_args": [
+      "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
+    ]
+  },
+  "k8s_options": {
+    "project": true
+  },
+  "k8s_plan": {
+    "project": true,
+    "id_args": [
+      "subnet_id why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
+      "cluster_sa_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false"
+    ],
+    "ref_args": [
+      "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
+    ]
+  },
+  "kafka_create": {
+    "project": true,
+    "created": "{id:cluster_id lost: arg: none: list:kafka_list field:clusters listArgs:[] delete:kafka_delete}",
+    "create_name": "{args:[name] rule: what:Kafka cluster whRU:кластер Kafka}",
+    "id_args": [
+      "specification_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false",
+      "version_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false",
+      "subnet_id why=\"\" target=false ids=false kind={what:\"subnet\" byName:false list:\"list_subnets\" check:true project:true card:false}"
+    ],
+    "ref_args": [
+      "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
+    ]
+  },
+  "kafka_delete": {
+    "delete": "{arg:cluster_id parent: what:Kafka cluster whRU:кластер Kafka statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Kafka cluster\" byName:false list:\"kafka_list\" check:true project:true card:false}"
+    ]
+  },
+  "kafka_get": {
+    "id_args": [
+      "cluster_id why=\"\" target=false ids=false kind={what:\"Kafka cluster\" byName:false list:\"kafka_list\" check:true project:true card:false}"
+    ]
+  },
+  "kafka_list": {
+    "project": true
+  },
+  "kafka_operation": {
+    "id_args": [
+      "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
+    ]
+  },
+  "kafka_specs": {
+    "id_args": [
+      "version_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false"
+    ]
+  },
+  "lb_create": {
+    "project": true,
+    "created": "{id:lb_id lost: arg: none: list:lb_list field:load_balancers listArgs:[] delete:lb_delete}",
+    "create_name": "{args:[name] rule: what:load balancer whRU:балансировщик}",
+    "id_args": [
+      "target_group_id why=\"\" target=false ids=false kind={what:\"target group\" byName:false list:\"tg_list\" check:true project:true card:true}",
+      "vpc_id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}",
+      "subnet_id why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
+    ],
+    "ref_args": [
+      "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
+    ]
+  },
+  "lb_delete": {
+    "delete": "{arg:id parent: what:load balancer whRU:балансировщик statePrefix:NLB_STATUS_ creatingUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9) failedUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9)}",
+    "id_args": [
+      "id why=\"\" target=true ids=false kind={what:\"load balancer\" byName:false list:\"lb_list\" check:true project:true card:true}"
+    ]
+  },
+  "lb_get": {
+    "id_args": [
+      "id why=\"\" target=false ids=false kind={what:\"load balancer\" byName:false list:\"lb_list\" check:true project:true card:true}"
+    ]
+  },
+  "lb_list": {
+    "project": true,
+    "id_args": [
+      "vpc_id why=\"a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with the items that list read; it reaches no API as an id\" target=false ids=false"
+    ]
+  },
+  "lb_operation": {
+    "id_args": [
+      "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
+    ]
+  },
+  "list": {
+    "group": "deploy"
+  },
+  "list_disk_types": {
+    "group": "disk"
+  },
+  "list_flavors": {
+    "group": "vm"
+  },
+  "list_floating_ips": {
+    "group": "vpc",
+    "project": true
+  },
+  "list_images": {
+    "group": "image"
+  },
+  "list_security_groups": {
+    "group": "vpc",
+    "project": true
+  },
+  "list_subnets": {
+    "group": "vpc",
+    "project": true,
+    "id_args": [
+      "vpc_id why=\"a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with the items that list read; it reaches no API as an id\" target=false ids=false"
+    ]
+  },
+  "list_zones": {
+    "group": "vm"
+  },
+  "logs": {
+    "group": "deploy"
+  },
+  "marketplace_list": {
+    "group": "image"
+  },
+  "metrics_history": {
+    "project": true
+  },
+  "metrics_scrape": {
+    "project": true
+  },
+  "open_ports": {
+    "group": "deploy",
+    "id_args": [
+      "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
+    ]
+  },
+  "org_projects": {
+    "group": "org"
+  },
+  "org_quotas": {
+    "group": "org",
+    "id_args": [
+      "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
+    ]
+  },
+  "pg_backup_create": {
+    "created": "{id:backup_id lost: arg: none: list:pg_backups field:backups listArgs:[cluster_id] delete:}",
+    "create_name": "{args:[name] rule: what:backup whRU:резервная копия}",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "pg_backups": {
+    "id_args": [
+      "cluster_id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "pg_create": {
+    "project": true,
+    "created": "{id:cluster_id lost: arg: none: list:pg_list field:clusters listArgs:[] delete:pg_delete}",
+    "create_name": "{args:[name] rule: what:PostgreSQL cluster whRU:кластер PostgreSQL}",
+    "id_args": [
+      "specification_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false",
+      "subnet_id why=\"\" target=false ids=false kind={what:\"subnet\" byName:false list:\"list_subnets\" check:true project:true card:false}"
+    ],
+    "ref_args": [
+      "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
+    ]
+  },
+  "pg_databases": {
+    "id_args": [
+      "cluster_id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "pg_db_create": {
+    "created": "{id: lost: arg:name none: list:pg_databases field:databases listArgs:[cluster_id] delete:pg_db_delete}",
+    "create_name": "{args:[name] rule: what:database whRU:база данных}",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "pg_db_delete": {
+    "delete": "{arg:name parent:cluster_id what:database whRU:база данных statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "pg_delete": {
+    "required_one_of": [
+      [
+        "id",
+        "cluster_id"
+      ]
+    ],
+    "delete": "{arg:id parent: what:PostgreSQL cluster whRU:кластер PostgreSQL statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}",
+      "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "pg_get": {
+    "required_one_of": [
+      [
+        "id",
+        "cluster_id"
+      ]
+    ],
+    "id_args": [
+      "id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}",
+      "cluster_id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "pg_list": {
+    "project": true
+  },
+  "pg_operation": {
+    "id_args": [
+      "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
+    ]
+  },
+  "pg_user_create": {
+    "created": "{id: lost: arg:name none: list:pg_users field:users listArgs:[cluster_id] delete:pg_user_delete}",
+    "create_name": "{args:[name] rule: what:database user whRU:пользователь базы данных}",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "pg_user_delete": {
+    "delete": "{arg:name parent:cluster_id what:database user whRU:пользователь базы данных statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "pg_users": {
+    "id_args": [
+      "cluster_id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
+    ]
+  },
+  "provision": {
+    "group": "vm",
+    "project": true,
+    "created": "{id:vm_id lost: arg: none: list:vm_list field:vms listArgs:[] delete:destroy}",
+    "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
+    "id_args": [
+      "vm_id why=\"the VM the next step of a call goes on with (continuedVM, D102): the call only reads it by id, to refuse when it is gone; what the call writes lands in its own project, as without the argument\" target=false ids=false",
+      "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
+      "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
+      "subnet_id why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
+      "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
+    ],
+    "ref_args": [
+      "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
+    ]
+  },
+  "redis_create": {
+    "project": true,
+    "created": "{id:cluster_id lost: arg: none: list:redis_list field:clusters listArgs:[] delete:redis_delete}",
+    "create_name": "{args:[name] rule: what:Redis cluster whRU:кластер Redis}",
+    "id_args": [
+      "specification_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false",
+      "version_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false",
+      "subnet_id why=\"\" target=false ids=false kind={what:\"subnet\" byName:false list:\"list_subnets\" check:true project:true card:false}"
+    ],
+    "ref_args": [
+      "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
+    ]
+  },
+  "redis_delete": {
+    "delete": "{arg:cluster_id parent: what:Redis cluster whRU:кластер Redis statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Redis cluster\" byName:false list:\"redis_list\" check:true project:true card:false}"
+    ]
+  },
+  "redis_get": {
+    "id_args": [
+      "cluster_id why=\"\" target=false ids=false kind={what:\"Redis cluster\" byName:false list:\"redis_list\" check:true project:true card:false}"
+    ]
+  },
+  "redis_list": {
+    "project": true
+  },
+  "redis_operation": {
+    "id_args": [
+      "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
+    ]
+  },
+  "redis_specs": {
+    "id_args": [
+      "version_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false"
+    ]
+  },
+  "release_floating_ip": {
+    "group": "vpc",
+    "required_one_of": [
+      [
+        "id",
+        "ip_address"
+      ]
+    ],
+    "destructive": true,
+    "delete": "{arg:id parent: what:floating IP whRU:floating IP statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "id why=\"\" target=true ids=false kind={what:\"floating IP\" byName:false list:\"list_floating_ips\" check:true project:true card:false}"
+    ]
+  },
+  "s3_bucket_create": {
+    "created": "{id: lost: arg:bucket none: list: field: listArgs:[] delete:s3_bucket_delete}",
+    "create_name": "{args:[bucket] rule:bucketNameRe and the S3 client's rule what: whRU:}"
+  },
+  "s3_bucket_delete": {
+    "delete": "{arg:bucket parent: what:bucket whRU:бакет statePrefix: creatingUnseen: failedUnseen:}"
+  },
+  "s3_put": {
+    "destructive": true,
+    "created": "{id: lost: arg:key none: list: field: listArgs:[] delete:s3_rm}",
+    "nameless": "an object key may hold spaces anywhere: S3 takes any UTF-8"
+  },
+  "s3_rm": {
+    "destructive": true,
+    "delete": "{arg:key parent:bucket what:object whRU:объект statePrefix: creatingUnseen: failedUnseen:}"
+  },
+  "secret_add_version": {
+    "project": true,
+    "nameless": "a version of a secret that is there"
+  },
+  "secret_create": {
+    "project": true,
+    "created": "{id: lost:secret_id arg:path none: list:secret_list field:secrets listArgs:[] delete:secret_delete}",
+    "create_name": "{args:[path] rule: what:secret whRU:секрет}",
+    "id_args": [
+      "kms_key_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false"
+    ]
+  },
+  "secret_delete": {
+    "project": true,
+    "delete": "{arg:path parent: what:secret whRU:секрет statePrefix: creatingUnseen: failedUnseen:}"
+  },
+  "secret_get": {
+    "project": true
+  },
+  "secret_list": {
+    "project": true
+  },
+  "secret_value": {
+    "project": true,
+    "sensitive": true
+  },
+  "sg_rule_create": {
+    "group": "vpc",
+    "created": "{id:rule_id lost: arg: none: list: field: listArgs:[] delete:sg_rule_delete}",
+    "nameless": "a rule has no name: it is known by its fields, and the same rule there answers already_exists",
+    "id_args": [
+      "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
+      "remote_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
+    ]
+  },
+  "sg_rule_delete": {
+    "group": "vpc",
+    "delete": "{arg:rule_id parent:security_group what:security group rule whRU:правило группы безопасности statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
+      "rule_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false"
+    ]
+  },
+  "snat_create": {
+    "project": true,
+    "created": "{id:nat_gateway.id lost:nat_gateway_id arg: none: list:snat_list field:nat_gateways listArgs:[] delete:snat_delete}",
+    "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
+    "id_args": [
+      "availability_zone_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false"
+    ]
+  },
+  "snat_delete": {
+    "delete": "{arg:id parent: what:SNAT gateway whRU:SNAT-шлюз statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "id why=\"\" target=true ids=false kind={what:\"SNAT gateway\" byName:false list:\"snat_list\" check:true project:true card:false}"
+    ]
+  },
+  "snat_list": {
+    "project": true
+  },
+  "stack_apply": {
+    "id_args": [
+      "job_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
+    ]
+  },
+  "stack_destroy": {
+    "destructive": true,
+    "id_args": [
+      "job_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
+    ]
+  },
+  "stack_status": {
+    "side_effects": "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it",
+    "id_args": [
+      "job_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
+    ]
+  },
+  "status": {
+    "group": "deploy"
+  },
+  "subnet_create": {
+    "group": "vpc",
+    "project": true,
+    "created": "{id:subnet_id lost: arg: none: list:list_subnets field:subnets listArgs:[] delete:subnet_delete}",
+    "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
+    "id_args": [
+      "vpc_id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}",
+      "availability_zone_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false"
+    ]
+  },
+  "subnet_delete": {
+    "group": "vpc",
+    "delete": "{arg:subnet_id parent: what:subnet whRU:подсеть statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "subnet_id why=\"\" target=true ids=false kind={what:\"subnet\" byName:false list:\"list_subnets\" check:true project:true card:false}"
+    ]
+  },
+  "tg_create": {
+    "project": true,
+    "required_one_of": [
+      [
+        "vm_id",
+        "targets"
+      ]
+    ],
+    "created": "{id:tg_id lost: arg: none: list:tg_list field:target_groups listArgs:[] delete:tg_delete}",
+    "create_name": "{args:[name] rule: what:target group whRU:целевая группа}",
+    "id_args": [
+      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
+      "targets why=\"\" target=false ids=true kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
+      "interface_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false"
+    ]
+  },
+  "tg_delete": {
+    "delete": "{arg:id parent: what:target group whRU:группа целей statePrefix:TARGET_GROUP_STATUS_ creatingUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9) failedUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9)}",
+    "id_args": [
+      "id why=\"\" target=true ids=false kind={what:\"target group\" byName:false list:\"tg_list\" check:true project:true card:true}"
+    ]
+  },
+  "tg_get": {
+    "id_args": [
+      "id why=\"\" target=false ids=false kind={what:\"target group\" byName:false list:\"tg_list\" check:true project:true card:true}"
+    ]
+  },
+  "tg_list": {
+    "project": true,
+    "id_args": [
+      "vpc_id why=\"a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with the items that list read; it reaches no API as an id\" target=false ids=false"
+    ]
+  },
+  "vm_get": {
+    "group": "vm",
+    "required_one_of": [
+      [
+        "vm_id",
+        "name"
+      ]
+    ],
+    "id_args": [
+      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+    ]
+  },
+  "vm_list": {
+    "project": true
+  },
+  "vm_reboot": {
+    "group": "vm",
+    "required_one_of": [
+      [
+        "vm_id",
+        "name"
+      ]
+    ],
+    "destructive": true,
+    "id_args": [
+      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+    ]
+  },
+  "vm_resize": {
+    "group": "vm",
+    "required_one_of": [
+      [
+        "vm_id",
+        "name"
+      ]
+    ],
+    "destructive": true,
+    "id_args": [
+      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+    ]
+  },
+  "vm_start": {
+    "group": "vm",
+    "required_one_of": [
+      [
+        "vm_id",
+        "name"
+      ]
+    ],
+    "id_args": [
+      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+    ]
+  },
+  "vm_stop": {
+    "group": "vm",
+    "required_one_of": [
+      [
+        "vm_id",
+        "name"
+      ]
+    ],
+    "destructive": true,
+    "id_args": [
+      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+    ]
+  },
+  "vpc_create": {
+    "project": true,
+    "created": "{id:vpc_id lost: arg: none: list:vpc_list field:vpcs listArgs:[] delete:vpc_delete}",
+    "create_name": "{args:[name] rule: what:VPC whRU:VPC}"
+  },
+  "vpc_delete": {
+    "delete": "{arg:id parent: what:VPC whRU:VPC statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "id why=\"\" target=true ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
+    ]
+  },
+  "vpc_get": {
+    "id_args": [
+      "id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
+    ]
+  },
+  "vpc_list": {
+    "project": true
+  },
+  "vpc_operation": {
+    "id_args": [
+      "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
+    ]
+  },
+  "vpc_route_create": {
+    "project": true,
+    "required_one_of": [
+      [
+        "next_hop_vip_id",
+        "next_hop_vm_id",
+        "next_hop_magic_router_id"
+      ]
+    ],
+    "created": "{id:route_id lost: arg: none: list:vpc_routes field:routes listArgs:[vpc_id] delete:vpc_route_delete}",
+    "nameless": "a route is known by its destination, named by no argument",
+    "id_args": [
+      "vpc_id why=\"\" target=true ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}",
+      "next_hop_vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
+      "next_hop_interface_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false",
+      "next_hop_vip_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false",
+      "next_hop_magic_router_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false"
+    ]
+  },
+  "vpc_route_delete": {
+    "delete": "{arg:route_id parent:vpc_id what:route whRU:маршрут statePrefix: creatingUnseen: failedUnseen:}",
+    "id_args": [
+      "vpc_id why=\"\" target=true ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}",
+      "route_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false"
+    ]
+  },
+  "vpc_routes": {
+    "id_args": [
+      "vpc_id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
+    ]
+  },
+  "whoami": {
+    "group": "auth"
+  }
+}
