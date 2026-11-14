@@ -198,7 +198,8 @@ func madeGoesOn(tool, answer string) (id, next string, nextArgs map[string]any, 
 // resource (Астра #1963, the full audit of 14.11, finding 01; release plan
 // 1.9, the line of #1992). What the list shows by the name is made: those
 // records close, and the call goes on as any other — the plan of the tool
-// answers the name taken. ok false when no such record is there.
+// answers the name taken. A call of other arguments is not the same call
+// and goes on too. ok false when no such record is there.
 func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[string]any) (text string, isErr, ok bool) {
 	if _, isCreate := createdOf(name); !isCreate {
 		return "", false, false
@@ -208,9 +209,13 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	if !rooted || err != nil || (resource == "" && target == "") {
 		return "", false, false
 	}
+	// The same call: the same arguments but the consent and the wait
+	// (canonArgs). A call by the same name with other arguments is
+	// another create, the person's to make (the line of #1992).
+	canon := r.canonArgs(name, args)
 	var made []intent.Intent
 	for _, in := range pendingIn(ctx, root) {
-		if in.Made != "" && in.Tool == name && in.Name == resource && in.Target == target {
+		if in.Made != "" && in.Tool == name && in.Name == resource && in.Target == target && in.SameCall(canon) {
 			made = append(made, in)
 		}
 	}

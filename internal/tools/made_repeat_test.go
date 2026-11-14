@@ -176,3 +176,22 @@ func TestCreate_ARepeatWhileItsOperationGoesOnSendsNoSecondCreate(t *testing.T) 
 		}
 	}
 }
+
+// A call by the same name with other arguments is not a repeat of the one
+// that goes on: it is planned as any other — here refused before the
+// question for its own reason — and the record of the first stays.
+func TestSubnetCreate_ACallOfOtherArgumentsIsNotARepeat(t *testing.T) {
+	api := newSubnetAPI()
+	api.unlisted = true
+	r := subnetRegistryWaiting(t, api)
+	args := map[string]any{"name": "web", "cidr": "10.10.0.0/24", "zone": "ru.AZ-1", "confirmed": true}
+	callNamed(t, r, "subnet_create", args)
+	other := map[string]any{"name": "web", "cidr": "10.0.0.0/25", "zone": "ru.AZ-1", "confirmed": true}
+	m, text, _ := callNamed(t, r, "subnet_create", other)
+	if m["repeat_of"] != nil || m["reason"] != "USAGE" || len(api.writes) != 1 {
+		t.Errorf("another call by the name: %d creates, %s", len(api.writes), text)
+	}
+	if m, text, _ = callNamed(t, r, "subnet_create", args); m["repeat_of"] == nil || len(api.writes) != 1 {
+		t.Errorf("the same call after it: %d creates, %s", len(api.writes), text)
+	}
+}
