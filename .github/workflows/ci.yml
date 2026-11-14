@@ -21,9 +21,15 @@ on:
   workflow_dispatch:
 
 # Новый push в PR отменяет его идущую проверку; main и релиз
-# (workflow_call из release.yml) не отменяются никогда.
+# (workflow_call из release.yml) не отменяются никогда. Push в main — своя
+# группа на коммит: в общей группе GitHub держит один ожидающий прогон, и
+# следующий push вытеснял его и без cancel-in-progress — 14.11 с 09:13 до
+# 10:25 из восьми прогонов main дошёл один, продуктовые #1811, #1828,
+# #1839 слиты без своего прогона (план 1.9, строка «Push-прогон main после
+# продуктового слияния не отменяется документным»). Документные коммиты
+# делят группу матрицы test (job test, ниже) только между собой.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # GITHUB_TOKEN только на чтение: сборке и тестам писать в репозиторий
@@ -44,21 +50,38 @@ jobs:
     timeout-minutes: 5
     outputs:
       macos: ${{ steps.paths.outputs.macos }}
+      # docs=yes — push в main меняет только docs/internal/*.md (тот же
+      # classify.sh): его матрица test встаёт в общую очередь документных
+      # коммитов и не вытесняет продуктовый прогон.
+      docs: ${{ steps.paths.outputs.docs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         with:
           persist-credentials: false
-          # Нужна база PR, чтобы взять diff base...head.
-          fetch-depth: 0
+          # Нужна база PR, чтобы взять diff base...head; у push — родитель.
+          fetch-depth: ${{ github.event_name == 'push' && 2 || 0 }}
       # --no-renames: переименование кода в docs/internal/*.md — два пути,
       # старый не docs/internal, и macOS остаётся.
       - name: macOS нужен
         id: paths
         env:
           EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
+          if [ "$EVENT" = push ] && [ "$REF" = refs/heads/main ]; then
+            # Squash-слияние — один коммит; родителя нет или diff не взят —
+            # не документный: свой прогон, не общая очередь. Только main:
+            # выпуск (workflow_call из release.yml на push тега) в общую
+            # очередь не встаёт никогда.
+            docs=no
+            if files=$(git diff --no-renames --name-only HEAD^ HEAD) && [ -n "$files" ] &&
+              [ "$(.github/scripts/classify.sh <<<"$files" | grep '^macos=')" = macos=no ]; then
+              docs=yes
+            fi
+            echo "docs=$docs" >> "$GITHUB_OUTPUT"
+          fi
           if [ "$EVENT" != pull_request ]; then
             echo macos=yes >> "$GITHUB_OUTPUT"
             exit 0
@@ -83,6 +106,13 @@ jobs:
     # Упал или не ответил scope — полная матрица, а не пропуск test:
     # пропущенная обязательная проверка считается пройденной.
     if: ${{ !cancelled() }}
+    # Документный push в main: матрица test — в общей группе на ОС, новый
+    # документный коммит вытесняет ожидающий документный (его проверяет
+    # следующий, он включает предыдущий). Всё остальное — группа на прогон:
+    # продуктовый коммит не вытесняется ничем; scope не ответил — тоже.
+    concurrency:
+      group: ci-test-${{ matrix.os }}-${{ (github.event_name == 'push' && needs.scope.outputs.docs == 'yes') && 'main-docs' || github.run_id }}
+      cancel-in-progress: false
     strategy:
       # Падение на одной ОС не должно скрывать результат остальных.
       fail-fast: false
