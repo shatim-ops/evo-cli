@@ -26,7 +26,7 @@ type refusedState struct {
 	passing                  bool
 }
 
-// deleteRefusals declares, for every delete of deleteTargets, the states in
+// deleteRefusals declares, for every delete of Decl.Delete, the states in
 // which the platform refuses it (CLAUDE.md §6, axis 3: such an answer says
 // so and names the way out — support, the console — and is no success). A
 // delete with none known says why: the list is
@@ -122,8 +122,8 @@ var waysOut = map[bool][]string{
 // X“»; live: DB-17 (Kafka in DEPLOYING and FAILED), DB-21 (PostgreSQL in
 // FAILED).
 func TestDelete_RefusedInStateSaysSoAndTheWayOut(t *testing.T) {
-	names := make([]string, 0, len(deleteTargets))
-	for name := range deleteTargets {
+	var names []string
+	for name := range allDeletes() {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -137,7 +137,7 @@ func TestDelete_RefusedInStateSaysSoAndTheWayOut(t *testing.T) {
 			t.Errorf("%s: deleteRefusals declares no state and no reason", name)
 			continue
 		}
-		d := deleteTargets[name]
+		d := decls[name].Delete
 		for _, s := range decl.states {
 			var writes atomic.Int32
 			r := erasedRegistry(t, refusingWorld(s, &writes))
@@ -170,8 +170,8 @@ func TestDelete_RefusedInStateSaysSoAndTheWayOut(t *testing.T) {
 		}
 	}
 	for name := range deleteRefusals {
-		if _, ok := deleteTargets[name]; !ok {
-			t.Errorf("deleteRefusals names %s, which is no delete of deleteTargets", name)
+		if _, ok := deleteOf(name); !ok {
+			t.Errorf("deleteRefusals names %s, which is no delete of Decl.Delete", name)
 		}
 	}
 }

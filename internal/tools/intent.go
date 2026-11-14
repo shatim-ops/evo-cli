@@ -213,7 +213,7 @@ type changeRule struct {
 	// (intentResource). It reads the cloud as the plan of the tool does,
 	// through the same resolver, so the call reads once.
 	target func(ctx context.Context, r *Registry, args map[string]any) (name, target string, err error)
-	// made: the tool makes a resource its list shows by name (createdIDs).
+	// made: the tool makes a resource its list shows by name (Decl.Created).
 	// A cut call whose resource is listed has an outcome that can be read:
 	// its record closes and the repeat is answered as any call on a name
 	// that is taken — the question is asked only while the list does not
@@ -248,7 +248,7 @@ const (
 // the parent it is made in, parent, when it has one — whatever the other
 // arguments of the repeat are.
 func paidCreate(tool, parent string, name func(args map[string]any) string) changeRule {
-	return changeRule{read: createdIDs[tool].list, made: true,
+	return changeRule{read: decls[tool].Created.list, made: true,
 		target: func(_ context.Context, _ *Registry, args map[string]any) (string, string, error) {
 			target := ""
 			if id := stringArg(args, parent); parent != "" && id != "" {
@@ -324,7 +324,7 @@ func spelledArgs(in intent.Intent) map[string]any {
 	}
 	if in.Name != "" {
 		arg := "name"
-		if c, ok := createdIDs[in.Tool]; ok && c.arg != "" {
+		if c, ok := createdOf(in.Tool); ok && c.arg != "" {
 			arg = c.arg
 		}
 		args[arg] = in.Name
@@ -762,16 +762,16 @@ func (r *Registry) namedKept(ctx context.Context, name string, args map[string]a
 }
 
 // intentResource is what a call names its resource by: the argument the create
-// declares (createdIDs: name, bucket, path…), else name; and, for a call on
-// an existing resource, its first declared id argument (idArgs) as
+// declares (Decl.Created: name, bucket, path…), else name; and, for a call on
+// an existing resource, its first declared id argument (Decl.IDArgs) as
 // «argument=id» («Риск», conclusion 46, condition 2).
 func intentResource(tool string, args map[string]any) (name, target string) {
 	arg := "name"
-	if c, ok := createdIDs[tool]; ok && c.arg != "" {
+	if c, ok := createdOf(tool); ok && c.arg != "" {
 		arg = c.arg
 	}
 	name, _ = args[arg].(string)
-	for _, a := range idArgs[tool] {
+	for _, a := range decls[tool].IDArgs {
 		if a.why == whyProjectArg {
 			continue
 		}
@@ -1027,7 +1027,7 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 	if !ok {
 		return idArg{}, nil, "", false
 	}
-	if d, isDelete := deleteTargets[in.Tool]; !isDelete || d.parent == a.name {
+	if d, isDelete := deleteOf(in.Tool); !isDelete || d.parent == a.name {
 		return idArg{}, nil, "", false
 	}
 	return a, a.kind, id, true
@@ -1081,7 +1081,7 @@ func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind
 		"не удалось прочитать ресурс «%s» %s по id (%s): не проверено — повторите doctor", k.what, what, reason), false
 }
 
-// checkByList reads the list of what in names (createdIDs: list, field),
+// checkByList reads the list of what in names (Decl.Created: list, field),
 // as doctor does for each intent (release plan 1.8, (и), PR-2; «Риск»,
 // conclusion 46): a create whose resource is listed by its name took
 // effect; a delete whose target is not listed took effect — the outcome is
@@ -1095,10 +1095,10 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	if in.ProjectID != "" && active != "" && in.ProjectID != active {
 		return i18n.Tf("the record is of project %s, the active one is %s: check it there", "запись из проекта %s, активный — %s: проверьте в нём", quoteCloud(in.ProjectID), active), false
 	}
-	c, isCreate := createdIDs[in.Tool]
+	c, isCreate := createdOf(in.Tool)
 	_, targetID, isDelete := strings.Cut(in.Target, "=")
 	if !isCreate {
-		for _, cc := range createdIDs {
+		for _, cc := range allCreated() {
 			if cc.delete == in.Tool && cc.list != "" {
 				c = cc
 				break
@@ -1168,7 +1168,7 @@ func (r *Registry) listToolOf(tool string) string {
 	case "stack_apply", "stack_destroy":
 		return "stack_status"
 	}
-	if c, ok := createdIDs[tool]; ok && c.list != "" {
+	if c, ok := createdOf(tool); ok && c.list != "" {
 		return c.list
 	}
 	for _, suffix := range []string{"_create", "_delete"} {

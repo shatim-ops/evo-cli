@@ -3804,7 +3804,7 @@ func cidrProp(desc string) map[string]any {
 // named by the argument (confirmedDesc), at the same tool. The registry
 // adds the note (New), with the word of the tool's class before it
 // (consentWords); a description does not write it by hand. A tool that
-// asks for a part of its calls only (partialConsent) says which in its own
+// asks for a part of its calls only (Decl.PartialConsent) says which in its own
 // sentence instead: the note of all would be false of the rest.
 const consentNote = "Requires confirmed=true after the user approves."
 
@@ -3872,7 +3872,7 @@ var consentWords = map[string]string{
 	"s3_put":           consentOverwrites,
 }
 
-// consentWordless are the deletes (deleteTargets) whose consent note has
+// consentWordless are the deletes (Decl.Delete) whose consent note has
 // no word of its class, each with why: what goes is a setting or an
 // access the caller makes again, not data — «Deletes data» would be false
 // of it (FB19I-29). A delete is in consentWords or here

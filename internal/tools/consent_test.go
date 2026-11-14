@@ -16,20 +16,17 @@ import (
 // NeedsConsent is the one decision behind the gates and evo mcp
 // --read-only (spec §8 Q12): every tool is classified by its schema — a tool
 // without confirmed never needs consent, one with it always does, but the
-// partialConsent ones, whose rule is the gate of their handler. The rest of
+// Decl.PartialConsent ones, whose rule is the gate of their handler. The rest of
 // the cross-check, every tool against its handler on a fake cloud, is
 // TestReadOnly_EveryTool (internal/cli).
 func TestNeedsConsent_Classified(t *testing.T) {
 	reg := New(func(map[string]any) (*engine.Engine, error) { return nil, errors.New("no engine in tests") })
 	reg.SetStateDir(t.TempDir())
-	for name := range partialConsent {
-		tl, ok := reg.Lookup(name)
-		if !ok || !takesConsent(tl) {
-			t.Errorf("partialConsent: %s is no tool that takes confirmed", name)
-		}
-	}
 	for _, tl := range reg.Tools() {
-		_, partial := partialConsent[tl.Name]
+		partial := tl.Decl.PartialConsent != nil
+		if partial && !takesConsent(tl) {
+			t.Errorf("Decl.PartialConsent: %s is no tool that takes confirmed", tl.Name)
+		}
 		if takesConsent(tl) != (tl.Mutating || IsSensitive(tl)) {
 			t.Errorf("%s: takes confirmed %v, mutating %v, sensitive %v", tl.Name, takesConsent(tl), tl.Mutating, IsSensitive(tl))
 		}

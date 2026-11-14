@@ -365,6 +365,30 @@
           "path": "/v2/billing/calculate-price-ext"
         }
       ]
+    },
+    {
+      "id": "D110",
+      "title": "Консоль ВМ: ссылка remote-console (раздел 6 ТЗ vm-console.md)",
+      "requests": [
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "POST",
+          "path": "/api/v1/vms/{vm_id}/remote-console",
+          "note": "vnc дважды, serial; vnc на остановленной"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/vms/{vm_id}",
+          "note": "карточка: поля remote_console_* и is_serial_ready — без значения ссылки"
+        },
+        {
+          "spec": "compute/openapi-v3.yaml",
+          "method": "GET",
+          "path": "/api/v1/vms",
+          "note": "элемент списка: есть ли ссылка"
+        }
+      ]
     }
   ]
 }

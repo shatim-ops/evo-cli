@@ -20,7 +20,7 @@ import (
 // «Превью называет проект записи»). One point for every such tool, not a
 // line in each handler.
 //
-// A call whose request carries the project (a create of createdIDs) names
+// A call whose request carries the project (a create of Decl.Created) names
 // the call's: the project_id argument, else the configuration's. A preview
 // that names it already (engine.CreatePreview: project_id with
 // project_from) is left as it is. Where the project comes from

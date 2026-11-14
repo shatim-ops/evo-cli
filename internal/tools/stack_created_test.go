@@ -102,7 +102,7 @@ func TestStack_DestroyOldOKOutput(t *testing.T) {
 }
 
 // stack_destroy deletes the resource of each step through the delete tool
-// its create declares (createdIDs), naming it by the argument deleteTargets
+// its create declares (Decl.Created), naming it by the argument Decl.Delete
 // declares for that tool. It passed cluster_id to pg_delete, whose target is
 // id: aliasArg took both, by luck.
 func TestStack_DestroyCallsDeleteByItsTarget(t *testing.T) {
@@ -118,7 +118,7 @@ func TestStack_DestroyCallsDeleteByItsTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := map[string]map[string]any{}
-	for tool := range deleteTargets {
+	for tool := range allDeletes() {
 		r.handlers[tool] = func(_ context.Context, args map[string]any) (string, bool) {
 			calls[tool] = args
 			return toJSON(map[string]any{"status": "deleted"}), false
@@ -128,9 +128,9 @@ func TestStack_DestroyCallsDeleteByItsTarget(t *testing.T) {
 		t.Fatalf("stack_destroy: %v", out)
 	}
 	for _, st := range j.Steps {
-		c, ok := createdIDs[st.Tool]
+		c, ok := createdOf(st.Tool)
 		if !ok || c.delete == "" {
-			t.Errorf("step %s: %s declares no delete in createdIDs", st.Key, st.Tool)
+			t.Errorf("step %s: %s declares no delete in Decl.Created", st.Key, st.Tool)
 			continue
 		}
 		args, ok := calls[c.delete]
@@ -138,7 +138,7 @@ func TestStack_DestroyCallsDeleteByItsTarget(t *testing.T) {
 			t.Errorf("step %s: stack_destroy did not call %s", st.Key, c.delete)
 			continue
 		}
-		dt := deleteTargets[c.delete]
+		dt := decls[c.delete].Delete
 		tl, _ := r.Lookup(c.delete)
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for _, need := range []string{dt.arg, dt.parent} {

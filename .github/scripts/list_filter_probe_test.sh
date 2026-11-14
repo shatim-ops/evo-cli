@@ -34,6 +34,15 @@ if [ -n "${FAKE_BROKEN:-}" ]; then
 	printf 200
 	exit 0
 fi
+# FAKE_STRICT_OK: облако отбирает, как evo, по каждому параметру IN_CLOUD, а
+# список состояний через запятую отвергает 422 (cloud-e2e run 216).
+if [ -n "${FAKE_STRICT_OK:-}" ]; then
+	case "$url" in
+	*vms*statuses=running%2Cstopped*) printf '{"code":"invalid"}' >"$out"; printf 422; exit 0 ;;
+	*vms*availability_zone_ids=zb*) printf '{"items":[{"id":"00000000-0000-4000-8000-0000000000e3"}]}' >"$out"; printf 200; exit 0 ;;
+	*vms*statuses=running*) printf '{"items":[{"id":"00000000-0000-4000-8000-0000000000e1"},{"id":"00000000-0000-4000-8000-0000000000e3"}]}' >"$out"; printf 200; exit 0 ;;
+	esac
+fi
 case "$url" in
 *vms/00000000-0000-4000-8000-0000000000e3) b='{"id":"00000000-0000-4000-8000-0000000000e3","state":"running"}' ;;
 *vms/00000000-*) b='{"id":"x","state":"running","image":{"id":"i1","name":"img-name-secret"}}' ;;
@@ -88,6 +97,16 @@ strict=$(PATH="$work/bin:$PATH" STRICT=1 KEY_ID=k SECRET=s PROJECT=p GITHUB_WORK
 if [ "$code" != 1 ] || ! grep -qE '^::error::.* vms:availability_zone_ids vms:statuses — ' <<<"$strict"; then
 	echo "FAIL: STRICT=1 — выход $code, нужна ошибка по vms:availability_zone_ids и vms:statuses:"
 	grep '^::error::' <<<"$strict" || true
+	fail=1
+fi
+# Проверка-вопрос (ASKS): форма, которой evo облаку не шлёт, — states у evo
+# отбирает локально. Её отказ печатается, но строгую рамку не роняет
+# (cloud-e2e run 216: 422 на «a,b» засчитан как расхождение vms:statuses).
+code=0
+ok=$(PATH="$work/bin:$PATH" FAKE_STRICT_OK=1 STRICT=1 KEY_ID=k SECRET=s PROJECT=p GITHUB_WORKSPACE="$here/../.." bash "$here/list_filter_probe.sh" 2>&1) || code=$?
+if [ "$code" != 0 ] || grep -q '^::error::' <<<"$ok" || ! grep -qE '^vms_states_list +значение #1: http=422 — error$' <<<"$ok"; then
+	echo "FAIL: STRICT=1, IN_CLOUD как у evo, список через запятую — 422: выход $code, ждали 0 и строку отказа без ::error::"
+	printf '%s\n' "$ok" | grep -E '::error::|vms_state' | sed 's/^/  | /'
 	fail=1
 fi
 # Полная страница: в заглушке у vms 3 элемента — при PROBE_PAGE=3 vms не
