@@ -98,6 +98,11 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// Whatever the end does to the record, the call reads the
 		// directory anew after it.
 		defer forgetPending(ctx)
+		// The parties the mark of its first write named (markSent): the
+		// record keeps them, and its settling compares them.
+		if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && own.hasOpen && own.open.ID == rec.ID {
+			rec.Parties = own.open.Parties
+		}
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			// No write went out — every client of evo counts its writes,
 			// and so do kubectl, helm and ssh (httpretry.NoteWrite): the
