@@ -167,6 +167,12 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/e2e_port_rule_test.sh
 
+      # Разбор живых прогонов (live_run_report.sh, workflow live-run-report):
+      # issue на живой прогон, красный check без отчёта — на заглушке gh.
+      - name: разбор живых прогонов
+        if: runner.os == 'Linux'
+        run: .github/scripts/live_run_report_test.sh
+
       # Сверка доставки squash (squash_delivery.sh, правило 2 CLAUDE.md,
       # #1968): доставленная голова, поздний коммит, конфликт — на
       # временном репозитории.
@@ -367,10 +373,17 @@ jobs:
         run: timeout 120 .github/scripts/e2e_preflight_test.sh
 
       # install.sh — установщик evo; internal/bootstrap/install.sh ставит Docker
-      # на ВМ (release audit, REL-13); скрипты CI — .github/scripts.
+      # на ВМ (release audit, REL-13); скрипты CI — .github/scripts. Версия
+      # shellcheck — одна с сессиями (shellcheck.sh), а не из образа раннера
+      # (#1523: замечание раннера локально не выходило).
       - name: shellcheck
         if: runner.os == 'Linux'
-        run: shellcheck install.sh internal/bootstrap/install.sh .github/scripts/*.sh
+        run: .github/scripts/shellcheck.sh install.sh internal/bootstrap/install.sh .github/scripts/*.sh
+
+      # shellcheck.sh на заглушках: та же версия, релиз по SHA256, кэш.
+      - name: версия shellcheck
+        if: runner.os == 'Linux'
+        run: .github/scripts/shellcheck_test.sh
 
       # Запись CHANGELOG каждого PR — фрагмент changelog.d/<тема>.md
       # (changelog.d/README.md); перед тегом релиз вливает их скриптом.
@@ -582,19 +595,16 @@ jobs:
           "$(go env GOPATH)/bin/staticcheck" ./...
 
       # Workflow: синтаксис, выражения ${{ }}, права и shellcheck каждого
-      # скрипта run (shellcheck на раннере уже есть). Версия зафиксирована;
-      # поднимать вручную (аудит процессов 1.2.1, PR 7).
+      # скрипта run — той же версией, что шаг shellcheck (shellcheck.sh), а
+      # не shellcheck образа раннера: 0.10 раннера помечал SC2015 на проверке
+      # входов «[ -n "$A" ] && [ -n "$B" ] || …», 0.11 — нет, и исключение
+      # SC2015 больше не нужно. Версия actionlint зафиксирована; поднимать
+      # вручную (аудит процессов 1.2.1, PR 7).
       - name: actionlint
         if: runner.os == 'Linux'
-        env:
-          # SC2015 (info): «[ -n "$A" ] && [ -n "$B" ] || { echo …; exit 1; }»
-          # — проверка входов во всех workflow, где ветка «или» и должна
-          # срабатывать, когда любая проверка ложна. shellcheck 0.10 раннера
-          # помечает её, 0.11 — нет; прочие проверки shellcheck действуют.
-          SHELLCHECK_OPTS: --exclude=SC2015
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          "$(go env GOPATH)/bin/actionlint"
+          "$(go env GOPATH)/bin/actionlint" -shellcheck=.github/scripts/shellcheck.sh
 
       # Функции, недостижимые из main: deadcode печатает их и выходит с 0,
       # поэтому провал — непустой вывод. Сейчас таких нет (§2 CLAUDE.md:

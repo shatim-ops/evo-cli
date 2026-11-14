@@ -19,7 +19,10 @@ on:
     # pr-stuck — обход открытых PR: упавший обход молчит о стоящих PR, и
     # его красный тоже должен дойти до issue. Обход запускается концом
     # прогона ci (событие workflow_run) и расписанием — оба в условии job.
-    workflows: [ci, cloud-e2e, stand, pr-stuck]
+    # live-run-report — сверка разбора живых прогонов: её красный запуск по
+    # расписанию (прогон без отчёта, issue дольше суток) должен дойти до
+    # «релиза» (план 1.9, «Каждый живой прогон — отчёт»).
+    workflows: [ci, cloud-e2e, stand, pr-stuck, live-run-report]
     types: [completed]
     branches: [main]
 
