@@ -55,4 +55,16 @@ run
 check "сумма не совпала — отказ" 2 -
 grep -q "release a.sh\|installed a.sh" "$CALLS" && { echo "FAIL при несовпадении суммы что-то запущено"; fail=1; }
 grep -q SHA256 "$work/err" || { echo "FAIL отказ не называет SHA256"; fail=1; }
+
+# Другая платформа без нужной версии — отказ с причиной, без скачивания.
+cat >"$work/bin/uname" <<'SH'
+#!/usr/bin/env bash
+case "$1" in -s) echo Darwin ;; -m) echo arm64 ;; esac
+SH
+chmod +x "$work/bin/uname"
+rm -rf "$work/cache"
+run
+check "другая платформа — отказ" 2 -
+grep -q "curl\|release a.sh\|installed a.sh" "$CALLS" && { echo "FAIL другая платформа: что-то скачано или запущено"; fail=1; }
+grep -q "Darwin/arm64" "$work/err" || { echo "FAIL отказ не называет платформу"; fail=1; }
 exit "$fail"
