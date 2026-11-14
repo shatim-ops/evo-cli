@@ -91,3 +91,27 @@ func allEchoedArgs() iter.Seq2[string, []echoedArg] {
 		}
 	}
 }
+
+// allCompletes are the tools that declare the list of an argument, and
+// those lists.
+func allCompletes() iter.Seq2[string, map[string]completion] {
+	return func(yield func(string, map[string]completion) bool) {
+		for name, d := range decls {
+			if d.Completes != nil && !yield(name, d.Completes) {
+				return
+			}
+		}
+	}
+}
+
+// allNoCompletion are the tools whose arguments named as in valueRefs
+// name something else, and why.
+func allNoCompletion() iter.Seq2[string, map[string]string] {
+	return func(yield func(string, map[string]string) bool) {
+		for name, d := range decls {
+			if d.NoCompletion != nil && !yield(name, d.NoCompletion) {
+				return
+			}
+		}
+	}
+}
