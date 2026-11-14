@@ -818,7 +818,7 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 	if err != nil {
 		return nil, err
 	}
-	target, err := securityGroupByRef(ctx, eng, sgRef)
+	target, err := securityGroupFor(ctx, eng, sgRef)
 	if err != nil {
 		return nil, err
 	}
