@@ -50,8 +50,9 @@ var unquotedCloudWords = map[string]int{
 	"internal/tools/delete_outcome.go|deleteRefusal":           1,
 	"internal/tools/delete_preview.go|withStatus":              1,
 	"internal/tools/intent.go|Registry.checkByList":            1,
+	"internal/tools/made.go|madeAnswer":                        1, // #1865, after the list was made
 	"internal/tools/namecheck.go|lostCreate":                   2,
-	"internal/tools/namecheck.go|nameTakenResult":              2,
+	"internal/tools/namecheck.go|nameTakenResult":              1,
 	"internal/tools/own_vm.go|foreignVMResult":                 2,
 	"internal/tools/own_vm.go|recordedVMResult":                2,
 	"internal/tools/tools.go|Registry.provisionVM":             1,
