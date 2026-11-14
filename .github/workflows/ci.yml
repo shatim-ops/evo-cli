@@ -278,6 +278,12 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 60 .github/scripts/offnet_test.sh
 
+      # Каталог ответов из записи evo (answers_catalogue.py, cloud-e2e):
+      # наружу — только запросы по шаблонам описей и поля из описи.
+      - name: answers_catalogue.py на образце записи
+        if: runner.os == 'Linux'
+        run: timeout 60 .github/scripts/answers_catalogue_test.sh
+
       # Пробы графика 1.9 (область ops cloud-live.sh) на поддельном evo и
       # заглушке curl: порядок запросов, отказ платформы, уборка своего вида.
       - name: область ops cloud-live.sh на заглушках

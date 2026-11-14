@@ -1,0 +1,30 @@
+name: answers
+description: >-
+  Каталог ответов платформы из файла EVO_RECORD_ANSWERS (строка плана 1.9
+  «Запись ответов», #1716). Сырой файл несёт хост и сегменты пути, которые
+  не id (бакет, ключ S3, зона DNS), — он не выгружается и удаляется здесь же
+  (заключение «Риска» 206, условие У2); артефактом на 7 дней уходит только
+  выход answers_catalogue.py: запросы по шаблонам описей, поля из описи.
+inputs:
+  job:
+    description: имя job — в имени артефакта и источнике строк
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: каталог ответов из записи evo
+      shell: bash
+      env:
+        JOB: ${{ inputs.job }}
+      run: |
+        out="$RUNNER_TEMP/answers-$JOB.json"
+        python3 -I .github/scripts/answers_catalogue.py --root . \
+          --source "cloud-e2e run $GITHUB_RUN_NUMBER ($JOB)" --date "$(date -u +%F)" \
+          "$EVO_RECORD_ANSWERS" >"$out" || echo '[]' >"$out"
+        rm -f "$EVO_RECORD_ANSWERS"
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: answers-${{ inputs.job }}
+        path: ${{ runner.temp }}/answers-${{ inputs.job }}.json
+        retention-days: 7
+        if-no-files-found: ignore
