@@ -187,11 +187,13 @@ type Step struct {
 	OpID       string `json:"op_id,omitempty"`
 	ResourceID string `json:"resource_id,omitempty"`
 	Attempts   int    `json:"attempts,omitempty"` // create retries used (transient-error tolerance)
-	// Missing counts the cranks in a row that did not find the step's
-	// resource by its id while the step waits: a read right after a create
-	// may lag, so one miss is not the resource gone (Астра, #1829, #1830).
-	Missing int    `json:"missing,omitempty"`
-	Detail  string `json:"detail,omitempty"`
+	// Missing counts the cranks that did not find the step's resource by
+	// its id while the step waits, since MissingSince, the first of them; a
+	// read that finds it resets both. A read right after a create may lag,
+	// so a miss is not the resource gone (Астра, #1829, #1830).
+	Missing      int       `json:"missing,omitempty"`
+	MissingSince time.Time `json:"missing_since,omitzero"`
+	Detail       string    `json:"detail,omitempty"`
 	// Reason is the class of what ended the step in error, a code of
 	// internal/errors (the reason its tool answered, or the cloud's
 	// failure): stack_status names it in error_reasons (G140-5).

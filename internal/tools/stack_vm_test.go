@@ -226,20 +226,42 @@ func TestStackStep_TheWaitedResourceNotFoundEndsTheStep(t *testing.T) {
 		t.Fatal("pg_create вызван: шаг создаёт заново")
 		return "", true
 	}
+	// Частый опрос сразу после создания: промахов больше предела по счёту,
+	// но время от первого промаха не вышло — задание не падает («Риск»,
+	// 230, У2).
 	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
-	if loaded, _ := stack.LoadJob(j.ID); loaded.Failed() {
-		t.Fatalf("один промах чтения уже провалил задание: %+v", loaded.Steps[0])
-	}
-	for range maxStepMissing {
+	for range maxStepMissing + 1 {
 		r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
 	}
 	loaded, err := stack.LoadJob(j.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if loaded.Failed() || loaded.Steps[0].Missing < maxStepMissing {
+		t.Fatalf("частый опрос до срока провалил задание или не считал промахи: %s %+v", loaded.Status, loaded.Steps[0])
+	}
+	// Срок от первого промаха вышел: следующий прогон кончает шаг.
+	loaded.Steps[0].MissingSince = loaded.Steps[0].MissingSince.Add(-stepMissingFor)
+	if err := loaded.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
+	if loaded, err = stack.LoadJob(j.ID); err != nil {
+		t.Fatal(err)
+	}
 	st := loaded.Steps[0]
 	if !loaded.Failed() || st.Status != "error" || st.Reason != "NOT_FOUND" || st.ResourceID != "cl-A" || !strings.Contains(loaded.Error, "cl-A") {
 		t.Errorf("шаг %s %s %s, задание %s %q: want ошибку NOT_FOUND, названную по cl-A", st.Status, st.Reason, st.ResourceID, loaded.Status, loaded.Error)
+	}
+	// Текст не утверждает, что ресурса нет: он говорит, что установлено,
+	// чем проверить и что убирает stack_destroy («Риск», 230, У1).
+	for _, want := range []string{"not found by its id", "pg_get", "stack_destroy"} {
+		if !strings.Contains(loaded.Error, want) {
+			t.Errorf("текст ошибки не называет %q: %s", want, loaded.Error)
+		}
+	}
+	if strings.Contains(loaded.Error, "gone") {
+		t.Errorf("текст утверждает, что ресурс пропал: %s", loaded.Error)
 	}
 }
 
@@ -269,6 +291,17 @@ func TestStackStep_AnOperationsEndChecksTheStepsResourceIsThere(t *testing.T) {
 		loaded, err := stack.LoadJob(j.ID)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if !present {
+			// The time since the first miss has run out.
+			loaded.Steps[0].MissingSince = loaded.Steps[0].MissingSince.Add(-stepMissingFor)
+			if err := loaded.Save(); err != nil {
+				t.Fatal(err)
+			}
+			r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
+			if loaded, err = stack.LoadJob(j.ID); err != nil {
+				t.Fatal(err)
+			}
 		}
 		st := loaded.Steps[0]
 		switch {

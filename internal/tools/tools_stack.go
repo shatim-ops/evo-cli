@@ -264,24 +264,45 @@ func failStep(job *stack.Job, st *stack.Step, reason, msg string) {
 // maxStepAttempts bounds create retries per step (transient-error tolerance).
 const maxStepAttempts = 4
 
-// maxStepMissing is how many cranks in a row a waiting step may not find
-// its resource by its id before the resource counts as gone: a read right
-// after a create may lag behind it (Астра, #1829, #1830).
-const maxStepMissing = 4
+// maxStepMissing and stepMissingFor bound how long a waiting step may not
+// find its resource by its id before the step ends: so many misses, and so
+// long since the first. A read right after a create may lag behind it,
+// and a client that polls stack_status often would spend a count alone in
+// seconds («Риск», 230, У2). stepMissingFor is a hypothesis until a probe
+// measures the lag of the platform's reads after a create.
+const (
+	maxStepMissing = 4
+	stepMissingFor = 10 * time.Minute
+)
 
 // stepMissing counts a crank that did not find the resource of waiting
-// step st by its id (why says how), and ends the step when the misses
-// reach maxStepMissing: the resource is gone, and the step names it — it
-// does not wait on it forever, nor end done with an output that is not
-// there. It reports whether the step ended.
-func stepMissing(job *stack.Job, st *stack.Step, why string) bool {
+// step st by its id (why says how; check is the read that would tell),
+// and ends the step once the misses reach maxStepMissing and stepMissingFor
+// has passed since the first: the step does not wait on the resource
+// forever, nor end done with an output that is not there. The answer says
+// what is known — not found by its id — not that the resource is gone: it
+// may be there and billed, and stack_destroy of the job removes it by its
+// id («Риск», 230, У1). It reports whether the step ended.
+func stepMissing(job *stack.Job, st *stack.Step, why, check string) bool {
+	if st.Missing == 0 {
+		st.MissingSince = time.Now()
+	}
 	st.Missing++
-	st.Detail = fmt.Sprintf("%s (%d of %d)", why, st.Missing, maxStepMissing)
-	if st.Missing < maxStepMissing {
+	st.Detail = fmt.Sprintf("%s (%d since %s)", why, st.Missing, st.MissingSince.UTC().Format(time.RFC3339))
+	if st.Missing < maxStepMissing || time.Since(st.MissingSince) < stepMissingFor {
 		return false
 	}
-	failStep(job, st, clierrors.CodeNotFound, fmt.Sprintf("%s: resource %s of the step is gone: %s, %d times in a row; no new one was made", st.Key, st.ResourceID, why, st.Missing))
+	failStep(job, st, clierrors.CodeNotFound, fmt.Sprintf(
+		"%s: resource %s of the step not found by its id: %s, %d times since %s; no new one was made. "+
+			"Whether it is there, %s tells; stack_destroy of this job removes what the job made by id, and one that is not there any more is not an error to it — whether to remove it, ask the person; "+
+			"a new plan with the same names is refused while that resource is there",
+		st.Key, st.ResourceID, why, st.Missing, st.MissingSince.UTC().Format(time.RFC3339), check))
 	return true
+}
+
+// foundAgain resets the misses of step st: its resource is read by its id.
+func foundAgain(st *stack.Step) {
+	st.Missing, st.MissingSince = 0, time.Time{}
 }
 
 // stepListed reports whether the list of step st's create holds its
@@ -389,12 +410,13 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						} else if listed, ok := s.stepListed(ctx, st); ok && !listed {
 							// The operation is done and the step's resource is
 							// not there: not done with an output that is gone.
-							if stepMissing(job, st, "the operation is done, the resource is not listed") {
+							f, _ := stepFinder(st)
+							if stepMissing(job, st, "the operation is done, the resource is not in "+f.list, f.list) {
 								return
 							}
 							continue
 						}
-						st.Missing = 0
+						foundAgain(st)
 						id := st.ResourceID
 						job.Outputs[st.Key] = id
 						if st.Key == "lb" && id != "" {
@@ -420,7 +442,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 							// once it holds; any other failure of the read is
 							// the next crank's to retry.
 							if reason, _ := cl["reason"].(string); reason == clierrors.CodeNotFound {
-								if stepMissing(job, st, st.StatusTool+" answers NOT_FOUND") {
+								if stepMissing(job, st, st.StatusTool+" answers NOT_FOUND", fmt.Sprintf("%s %s=%s", st.StatusTool, st.StatusArg, st.ResourceID)) {
 									return
 								}
 							} else {
@@ -428,7 +450,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 							}
 						}
 						if err == nil {
-							st.Missing = 0
+							foundAgain(st)
 							status, _ := cl[st.StatusField].(string)
 							if status == "" {
 								status, _ = cl["status"].(string)
