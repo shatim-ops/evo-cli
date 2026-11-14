@@ -197,6 +197,20 @@ run restfile
 lacks restfile check.json '#731'
 has restfile check.json '#732: закрыта, последний вердикт Астры'
 has restfile check.json '#733: закрыта, последний вердикт Астры'
+# Issue без метки, догруженный в тот же словарь (другая находка ссылается),
+# остатком не считается (ревью Qwen #1901).
+world restlabel
+printf '| строка | #101 | #103 |\n' >"$FAKE_DIR/docs/internal/release-plan.md"
+cat >"$FAKE_DIR/issues.json" <<'J'
+[{"number": 730, "title": "z", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"},
+ {"number": 734, "title": "a", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"}]
+J
+# #730 — раньше #734 — называет #103 в «закрыто»: #103 догружается в словарь.
+echo '[{"user": {"login": "owner"}, "author_association": "OWNER", "created_at": "2026-11-14T07:00:00Z", "body": "Закрыто, задание #103."}]' >"$FAKE_DIR/comments.730.json"
+echo '{"number": 103, "title": "unlabelled", "state": "open", "user": {"login": "astra"}, "body": "остаток #734", "labels": []}' >"$FAKE_DIR/issue.103.json"
+echo '[{"user": {"login": "astra"}, "author_association": "NONE", "created_at": "2026-11-14T09:00:00Z", "body": "Не закрыто: остаток — finding-y.md"}]' >"$FAKE_DIR/comments.734.json"
+run restlabel
+has restlabel check.json '#734: закрыта, последний вердикт Астры'
 
 # (4) «НЕ опубликовано» в задании, которое уже «готово»: разобрано, когда
 # после строки участник назвал в задании находку, куда она легла, и та

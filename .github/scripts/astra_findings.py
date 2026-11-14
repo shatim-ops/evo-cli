@@ -121,7 +121,7 @@ def unprocessed(repo, astra, feed, since, root, account_since=""):
             issues[n] = gh_lines(
                 f"repos/{repo}/issues/{n}",
                 "--jq",
-                "{number, title, state, state_reason, closed_at, pull_request, labels: [(.labels // [])[] | .name]}",
+                "{number, title, state, state_reason, closed_at, pull_request, labels: [(.labels // [])[] | .name], user: .user.login, body}",
             )[0]
         return issues[n]
 
@@ -164,7 +164,7 @@ def unprocessed(repo, astra, feed, since, root, account_since=""):
             # finding of Астра that names this one in its body.
             rest = rest or [
                 m for m, i in issues.items()
-                if m != n and i["state"] == "open" and is_finding(i) and i.get("user") == astra
+                if m != n and i["state"] == "open" and is_finding(i) and is_label(m, LABEL) and i.get("user") == astra
                 and re.search(rf"#{n}(?!\d)", i.get("body") or "")
             ]
             if rest and all(int(m) in refs for m in rest):
