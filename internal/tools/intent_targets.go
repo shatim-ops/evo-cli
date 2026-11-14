@@ -6,11 +6,9 @@ package tools
 
 import (
 	"context"
-	stderrors "errors"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
-	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -74,9 +72,13 @@ func vmSettled(tool string) func(ctx context.Context, r *Registry, args map[stri
 // by its id or its name (changeRule.target): the group's id, read as the
 // plan of the tool reads it (securityGroupFor), so a cut call is found
 // however the repeat spells the group (release plan 1.9, #1608). Nothing
-// is read for a call its arguments refuse (valid) or for a name that is no
-// group, or two: such a call is left as it spells the group, and the plan
-// refuses it in its own words and order, before anything is sent.
+// is read for a call its arguments refuse (valid): it is left as it spells
+// the group, and the plan refuses it in its own words and order, before
+// anything is sent. A name that is no group, or two, refuses the call
+// here with the error the plan would give, as vmTarget does: no record is
+// opened for it, so a refusal that sent nothing does not settle the record
+// of a cut call of the same arguments (R-101; «Риск · 1.9 (2)», check of
+// #1726).
 func groupTarget(arg string, valid func(args map[string]any) error) func(ctx context.Context, r *Registry, args map[string]any) (name, target string, err error) {
 	return func(ctx context.Context, r *Registry, args map[string]any) (string, string, error) {
 		ref := stringArg(args, arg)
@@ -91,10 +93,6 @@ func groupTarget(arg string, valid func(args map[string]any) error) func(ctx con
 			return "", "", err
 		}
 		group, err := securityGroupFor(ctx, eng, ref)
-		var ce *clierrors.CLIError
-		if stderrors.As(err, &ce) && (ce.Code == clierrors.CodeNotFound || ce.Code == clierrors.CodeUsage) {
-			return "", arg + "=" + ref, nil
-		}
 		if err != nil {
 			return "", "", err
 		}

@@ -14,7 +14,7 @@ import (
 )
 
 // External review of 11.11 (GPT on 71afe86), п. 2: stack_status advances
-// the stack it shows — its next steps create resources (sideEffectTools,
+// the stack it shows — its next steps create resources (Decl.SideEffects,
 // and its MCP annotation is not readOnlyHint), while «evo tools list» and
 // «describe» gave it "mutating": false and its agent card «reads». An agent
 // that picks tools by the catalog or the card took it for a read. Whether a
