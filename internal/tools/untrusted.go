@@ -97,6 +97,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	"vm_stop":   {fields: []string{"preview", "name", "details"}},
 	"vm_reboot": {fields: []string{"preview", "name", "details"}},
 	"vm_resize": {fields: []string{"preview", "name", "details"}},
+	// The names of the VM, its interfaces, groups, subnets and the rules
+	// of the groups, as the cloud names them («Риск», conclusion 209, У5).
+	"vm_get": {fields: []string{"name", "interfaces", "security_groups", "checks", "exposure", "image"}},
 	// The roles of the key, as IAM names them: anyone who may create a
 	// custom role in the organization names it (A0-2).
 	"whoami": {fields: []string{"roles"}},

@@ -60,12 +60,13 @@ type treeCmd struct {
 type renderFunc func(p *output.Printer, w io.Writer, text string) error
 
 // treeRenders is the closed set of views a CLISpec.Render may name (vm
-// create, image list, image get, the Marketplace showcase, k8s addons, ca
+// create, vm get, image list, image get, the Marketplace showcase, k8s addons, ca
 // logs, metrics scrape, org projects, the billing reports); --json still prints the tool's answer as is.
 var treeRenders = map[string]renderFunc{
 	"vm-created":       renderVMCreated,
 	"image-list":       renderImageList,
 	"image-card":       renderImageCard,
+	"vm-card":          renderVMCard,
 	"marketplace-list": renderMarketplaceList,
 	"addon-list":       renderAddonList,
 	"addon-versions":   renderAddonVersions,
@@ -998,6 +999,28 @@ func renderAnswer(p *output.Printer, w io.Writer, text string, view tableView) e
 		}
 	}
 	return nil
+}
+
+// renderVMCard shows vm_get: with diagnose, its one result first — a
+// person reads the first line, and «not everything was checked» is never
+// below a table that looks fine («Риск», conclusion 209, У2); then every
+// field, as the generic table shows a resource.
+func renderVMCard(p *output.Printer, w io.Writer, text string) error {
+	var a struct {
+		Result string `json:"result"`
+	}
+	if json.Unmarshal([]byte(text), &a) == nil && a.Result != "" {
+		line := map[string]string{
+			"ok":         i18n.T("Result: ok — every check passed", "Итог: ok — все проверки прошли"),
+			"problem":    i18n.T("Result: problem — see the checks with result problem", "Итог: problem — см. проверки с результатом problem"),
+			"incomplete": i18n.T("Result: incomplete — not everything was checked (not_checked, unknown)", "Итог: incomplete — проверено не всё (not_checked, unknown)"),
+		}[a.Result]
+		if line == "" {
+			line = i18n.Tf("Result: %s", "Итог: %s", output.SanitizeCell(a.Result))
+		}
+		fmt.Fprintln(w, line)
+	}
+	return renderAnswer(p, w, text, tableView{})
 }
 
 // filterLabelRU names a filter for a person; a filter not here goes by
