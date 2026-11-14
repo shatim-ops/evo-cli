@@ -36,6 +36,10 @@ type made struct {
 	what, whatRU string
 	// read lists the resources the list tool shows.
 	read func(ctx context.Context) ([]map[string]any, error)
+	// note is the answer's note of a resource made; pending its note in
+	// every other outcome — creating, waiting, failed, cancelled — which
+	// does not say it is created (Астра #1921). Empty: no note.
+	note, noteRU, pending, pendingRU string
 }
 
 // madeAnswer is the answer of a create whose resource the platform makes
@@ -57,9 +61,13 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 	item, _ := res[m.field].(map[string]any)
 	id, _ := item["id"].(string)
 	if madeKind(madeState(item)) == stateMade {
+		madeNote(res, m, true)
 		return toJSON(res), false
 	}
-	seen := false
+	// listed is whether the last read that answered listed the resource:
+	// one listed and then gone is not in the state it was in (Астра
+	// #1922).
+	listed := false
 	last, _, _, err := waitState(ctx, eng, madeLimit,
 		func(ctx context.Context) (string, bool, error) {
 			items, err := m.read(ctx)
@@ -67,9 +75,10 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 				// A read that failed is no state: the wait reads again.
 				return "", false, nil
 			}
+			listed = false
 			for _, it := range items {
 				if iid, _ := it["id"].(string); iid == id {
-					item, seen = it, true
+					item, listed = it, true
 					return madeState(it), true, nil
 				}
 			}
@@ -81,18 +90,20 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		},
 		func(st string) (bool, error) { return madeKind(st) != stateMaking, nil })
 	word := "unknown"
-	if seen {
+	if listed {
 		word = quoteCloud(last)
 	} else {
 		last = "unknown"
 	}
 	res[m.idField] = id
 	kind := madeKind(last)
+	madeNote(res, m, false)
 	switch {
-	case err == nil && seen && kind == stateMade:
+	case err == nil && listed && kind == stateMade:
 		res[m.field] = mergedItem(res[m.field], item)
+		madeNote(res, m, true)
 		return toJSON(res), false
-	case err == nil && seen && kind == stateFailed:
+	case err == nil && listed && kind == stateFailed:
 		res["status"] = "failed"
 		res[m.field] = mergedItem(res[m.field], item)
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
@@ -101,13 +112,19 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 				"Состояние показывает %s ids=[%s]; удалять ли (%s) — спросите человека.", m.list, id, decls[m.tool].Created.delete)), res), true
 	}
 	res["status"] = "creating"
-	if !seen || kind == stateOther {
+	if !listed || kind == stateOther {
 		res["status"] = "waiting"
 	}
 	res[m.field+"_state"] = last
 	res["next"] = i18n.Tf("%s %s is %s: the platform has not finished making it. %s ids=[%s] shows its state.",
 		"%s %s — %s: платформа ещё не завершила создание. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
-	if seen && kind == stateOther {
+	switch {
+	case !listed:
+		// Not in the last list read: never listed yet, or listed and
+		// gone. Neither says it is being made (Астра #1920, #1922).
+		res["next"] = i18n.Tf("%s %s is not in the list evo read last: evo does not know its state. %s ids=[%s] shows it.",
+			"%s %s нет в списке, который evo прочитал последним: evo не знает его состояния. Его показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, m.list, id)
+	case kind == stateOther:
 		// A state of no list: evo does not tell whether it is made.
 		res["next"] = i18n.Tf("%s %s is %s: evo does not know this state as made or being made. %s ids=[%s] shows its state.",
 			"%s %s — %s: evo не знает, сделан ли ресурс в этом состоянии. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
@@ -118,6 +135,17 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 			"%s %s: ожидание прервано, платформа продолжает создание", i18n.T(m.what, m.whatRU), id), err), res), true
 	}
 	return toJSON(res), false
+}
+
+// madeNote sets the note of m in res: of a resource made when done, else
+// the one that does not say it is created.
+func madeNote(res map[string]any, m made, done bool) {
+	switch {
+	case done && m.note != "":
+		res["note"] = i18n.T(m.note, m.noteRU)
+	case m.pending != "":
+		res["note"] = i18n.T(m.pending, m.pendingRU)
+	}
 }
 
 // The kinds of the state of a resource a create makes (madeKind).
