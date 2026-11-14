@@ -450,7 +450,7 @@ func withHeaders(req *http.Request) *http.Request {
 		r.Header.Set("User-Agent", product.UserAgent())
 	}
 	if id {
-		r.Header.Set(RequestIDHeader, newRequestID())
+		r.Header.Set(RequestIDHeader, NewRequestID())
 	}
 	return r
 }

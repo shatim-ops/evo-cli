@@ -173,3 +173,54 @@ func TestFailedRequest_ReplacedAnswer(t *testing.T) {
 		t.Errorf("the replaced 502 is not named: %+v, %v", got, ok)
 	}
 }
+
+// Id ответа, равный ключу или токену запроса (короткий непрозрачный токен
+// проходит форму id), в ошибку не попадает: значение заголовка запроса —
+// секрет, а не id ответа (внешняя проверка, #1751; CLAUDE.md §4).
+func TestFailedRequest_AnsweredIDThatIsACredentialIsDropped(t *testing.T) {
+	const token = "tok3n-0paque"
+	f := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		h := http.Header{}
+		h.Set(RequestIDHeader, token)
+		return &http.Response{StatusCode: 403, Header: h, Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
+	})
+	ctx := TraceRequests(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://vpc.api.cloud.ru/v1/vpcs", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := UserAgent(f).RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	got, ok := FailedRequest(ctx, 403)
+	if !ok || got.Sent == "" {
+		t.Fatalf("no failed request: %+v", got)
+	}
+	if got.Answered != "" {
+		t.Errorf("the answer's id is the request's credential and was kept: %q", got.Answered)
+	}
+}
+
+// Ошибка записи называет id записи, а не проверочного чтения после неё с
+// тем же статусом: POST 403, затем GET 403 — ошибка вызова о POST
+// (внешняя проверка, #1754; остаток 2 заключения «Риска» 202).
+func TestFailedRequest_TheWriteOverTheReadAfterIt(t *testing.T) {
+	f := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
+	})
+	ctx := TraceRequests(context.Background())
+	var sent []string
+	for _, m := range []string{http.MethodPost, http.MethodGet} {
+		req, _ := http.NewRequestWithContext(ctx, m, "https://dbaas.api.cloud.ru/v1/clusters", nil)
+		resp, err := UserAgent(f).RoundTrip(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sent = append(sent, resp.Request.Header.Get(RequestIDHeader))
+		resp.Body.Close()
+	}
+	got, _ := FailedRequest(ctx, 403)
+	if got.Sent != sent[0] {
+		t.Errorf("the error names %q (the GET's is %q), want the POST's %q", got.Sent, sent[1], sent[0])
+	}
+}

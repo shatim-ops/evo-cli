@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -19,8 +20,9 @@ import (
 // (release plan 1.9). Most services answer an id of their own in it.
 const RequestIDHeader = "X-Request-Id"
 
-// newRequestID is a random UUID, version 4.
-func newRequestID() string {
+// NewRequestID is a random UUID, version 4: the X-Request-Id of a request
+// a caller repeats itself (the IAM exchange), so its attempts share one.
+func NewRequestID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
 	b[6] = b[6]&0x0f | 0x40
@@ -35,6 +37,8 @@ type Failed struct {
 	Status   int
 	Sent     string
 	Answered string
+	// write: the request was not a read (readMethod).
+	write bool
 }
 
 // answeredID is the form of an id an answer may carry: the value is the
@@ -58,8 +62,12 @@ func TraceRequests(ctx context.Context) context.Context {
 	return context.WithValue(ctx, traceKey{}, &trace{})
 }
 
-// FailedRequest is the last request of the call of ctx (TraceRequests)
-// answered with status, or, with status 0, not answered at all.
+// FailedRequest is the request of the call of ctx (TraceRequests) its
+// error is about: the last write answered with status, or, with status 0,
+// not answered at all — else the last read so answered. A call whose
+// write is refused reads after it to say why, and that read may be
+// answered alike (POST 403, then GET 403: #1754): the error is the
+// write's.
 func FailedRequest(ctx context.Context, status int) (Failed, bool) {
 	t, ok := ctx.Value(traceKey{}).(*trace)
 	if !ok {
@@ -67,10 +75,19 @@ func FailedRequest(ctx context.Context, status int) (Failed, bool) {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	var read *Failed
 	for i := len(t.failed) - 1; i >= 0; i-- {
-		if t.failed[i].Status == status {
-			return t.failed[i], true
+		f := &t.failed[i]
+		switch {
+		case f.Status != status:
+		case f.write:
+			return *f, true
+		case read == nil:
+			read = f
 		}
+	}
+	if read != nil {
+		return *read, true
 	}
 	return Failed{}, false
 }
@@ -86,12 +103,12 @@ func traced(req *http.Request, resp *http.Response, err error) {
 	if !ok {
 		return
 	}
-	f := Failed{Sent: req.Header.Get(RequestIDHeader)}
+	f := Failed{Sent: req.Header.Get(RequestIDHeader), write: !readMethod(req.Method)}
 	switch {
 	case err != nil:
 	case resp.StatusCode >= 400:
 		f.Status = resp.StatusCode
-		if id := resp.Header.Get(RequestIDHeader); answeredID.MatchString(id) {
+		if id := resp.Header.Get(RequestIDHeader); answeredID.MatchString(id) && !inRequest(req, id) && (resp.Request == nil || !inRequest(resp.Request, id)) {
 			f.Answered = id
 		}
 	default:
@@ -103,4 +120,24 @@ func traced(req *http.Request, resp *http.Response, err error) {
 		t.failed = append(t.failed[:0], t.failed[1:]...)
 	}
 	t.failed = append(t.failed, f)
+}
+
+// inRequest reports whether id is in a header of req other than its own
+// X-Request-Id: an answer that echoes a key or a token of the request
+// (a short opaque token has the form of an id) names no request, and its
+// value is a secret that must not reach the text of an error (#1751).
+// traced asks of the answer's request too: a renewed token is set on a
+// clone of the caller's request (renewing).
+func inRequest(req *http.Request, id string) bool {
+	for name, vs := range req.Header {
+		if http.CanonicalHeaderKey(name) == RequestIDHeader {
+			continue
+		}
+		for _, v := range vs {
+			if strings.Contains(v, id) {
+				return true
+			}
+		}
+	}
+	return false
 }

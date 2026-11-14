@@ -182,3 +182,30 @@ func TestIAMProvider_UntrustedCertificateIsNotRetried(t *testing.T) {
 		t.Errorf("retried: %d exchanges, delays %v", p.Exchanges(), delays)
 	}
 }
+
+// Повторы обмена ключа на токен — один запрос для поддержки: у всех
+// попыток один X-Request-Id (внешняя проверка, #1752; описание #1703).
+func TestIAMProvider_RepeatsShareOneRequestID(t *testing.T) {
+	var ids []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ids = append(ids, r.Header.Get("X-Request-Id"))
+		http.Error(w, "busy", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	oldEndpoint := IAMEndpoint
+	IAMEndpoint = srv.URL
+	defer func() { IAMEndpoint = oldEndpoint }()
+	p := NewIAMProvider(Credentials{KeyID: "k", Secret: "s"}, srv.Client(), nil)
+	var delays []time.Duration
+	p.sleep = recordSleep(&delays)
+	_, _ = p.Token(context.Background())
+	if len(ids) != exchangeAttempts || ids[0] == "" {
+		t.Fatalf("ids of the attempts: %q", ids)
+	}
+	for _, id := range ids[1:] {
+		if id != ids[0] {
+			t.Errorf("the attempts carry different ids: %q", ids)
+			break
+		}
+	}
+}
