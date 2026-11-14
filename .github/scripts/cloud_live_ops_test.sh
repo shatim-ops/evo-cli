@@ -1418,15 +1418,22 @@ CONSOLE_WAIT=0 CONSOLE_APPEAR=5 PROBES=console "$here/cloud-live.sh" ops >"$tmp/
 want "консоль: код" "$rc" 0
 want "консоль: тела POST — vnc, vnc, serial, power_off, vnc" "$(jq -c 'select(has("keyId") | not)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"protocol":"vnc"};{"protocol":"vnc"};{"protocol":"serial"};{"state":"power_off"};{"protocol":"vnc"};'
 for s in 'Консоль ВМ: карточка до POST.*url: нет; ws: нет; протокол: нет; is_serial_ready: true' \
-	'Консоль ВМ: POST vnc на running.*HTTP 204; ссылка в карточке: через [0-9]* с; url: есть, [0-9]* зн., параметры запроса: token,x; ws: есть; протокол: vnc' \
-	'Консоль ВМ: элемент списка ВМ.*ссылка в элементе: есть' \
+	'Консоль ВМ: POST vnc на running.*HTTP 204; ссылка в карточке: через [0-9]* с; url: есть, [0-9]* зн.; хост: другой; до «@»: нет; путь: 4 зн.; параметры: token,x; фрагмент: нет; ws: есть; протокол: vnc' \
+	'Консоль ВМ: элемент списка ВМ.*ссылка в элементе: есть, та же, что в карточке' \
 	'Консоль ВМ: повтор POST vnc.*HTTP 204; ссылка: другая' \
+	'Консоль ВМ: карточка через 0 с.*ссылка держится в карточке: да' \
 	'Консоль ВМ: POST serial.*HTTP 422' \
-	'Консоль ВМ: карточка через 0 с.*ссылка vnc: та же' \
 	'Консоль ВМ: POST vnc на stopped.*HTTP 422' \
-	'Консоль ВМ: вопросы 2, 6, 8 раздела 6 *не покрыто'; do
+	'Консоль ВМ: вопросы 1, 2, 5 (ключ только на чтение), 6, 8 раздела 6 *не покрыто'; do
 	grep -q "$s" "$tmp/out" || { echo "FAIL: консоль: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 done
+# serial — после остальных шагов консоли (У5 заключения «Риска» 215): перед
+# ним уже прошли оба vnc и чтение через CONSOLE_WAIT.
+grep -n 'Консоль ВМ: карточка через\|Консоль ВМ: POST serial' "$tmp/out" | head -1 | grep -q 'карточка через' || { echo "FAIL: консоль: serial раньше прочих шагов"; fail=1; }
+# По ссылке скрипт не ходит (У4): запросов на хост ссылки нет.
+if grep -q 'console.example.test' "$FAKE_DIR/calls"; then echo "FAIL: консоль: запрос на хост ссылки"; fail=1; fi
+# Значения — ещё и под маской (У1, второй барьер).
+grep -q '^::add-mask::https://console.example.test/vnc?token=SECRET1' "$tmp/out" || { echo "FAIL: консоль: ссылка не под маской"; fail=1; }
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'SECRET\|console.example.test\|wss://'; then echo "FAIL: консоль: ссылка в выводе"; fail=1; fi
 
 [ "$fail" = 0 ] && echo "cloud-live ops: ok"
