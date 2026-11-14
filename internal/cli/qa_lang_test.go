@@ -59,8 +59,13 @@ func TestQA11_ToolErrorsInCLILanguage(t *testing.T) {
 			t.Cleanup(func() { i18n.SetLang(old) })
 			fc := setupCLI(t)
 			for _, c := range cases {
+				// Russian: the person's text, without --json
+				// (personError); --json is English in both (D6).
 				code, _, stderr := runCLI(t, "", append([]string{"--json"}, c.args...)...)
 				e := lastJSONError(t, stderr)
+				if lang == i18n.RU {
+					code, e = personError(t, c.args...)
+				}
 				want := c.ru
 				if lang == i18n.EN {
 					want = c.en

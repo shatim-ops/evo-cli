@@ -130,6 +130,81 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 	return toJSON(out), false
 }
 
+// handleVMConsole answers where a person opens the console of one VM, and
+// whether the VM can have one now (D110, variant (a); brief vm-console.md).
+// It is a read: evo does not order the console, never calls the method that
+// hands it out, and no answer carries the console fields of the card — the
+// types of provision drop them, and hideConsole drops them from the bodies
+// of refusals. console_available is a necessary condition, not a promise:
+// true only while the VM is running. No next_tool in any state: a stopped VM
+// is someone's decision, and the step is text in note («Риск», conclusion
+// 240, У4).
+func (s *Registry) handleVMConsole(ctx context.Context, args map[string]any) (string, bool) {
+	ref, _, err := oneOfArgs(args, vmRefNotBoth(), "vm_id", "name")
+	if err != nil {
+		return errResult(err), true
+	}
+	if ref == "" {
+		return usageT("vm_id or name is required", "нужен vm_id или name"), true
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	// A name resolves strictly (strictVMRef): two VMs of a name are
+	// refused with both ids, none is VM_NOT_FOUND.
+	id := ref
+	if !looksUUID(ref) {
+		vm, err := s.resolveVMFor(ctx, "vm_console", ref, eng.Config.ProjectID)
+		if err != nil {
+			return errResult(err), true
+		}
+		id = vm.ID
+	}
+	det, err := eng.Cloud.GetVMDetail(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	return toJSON(vmConsoleAnswer(det)), false
+}
+
+// vmConsoleAnswer is the answer of vm_console on the card det.
+func vmConsoleAnswer(det *provision.VMDetail) map[string]any {
+	name := quoteCloud(det.Name)
+	available := det.State == "running"
+	// Who opens the page and what evo does not do: every state says it.
+	page := i18n.T(
+		"The page opens after the person signs in to the Cloud.ru web console; evo does not open the console, hand out a link to it or connect to the VM, and an agent has no use for the page.",
+		"Страница открывается после входа человека в личный кабинет Cloud.ru; evo консоль не открывает, ссылку на неё не выдаёт и к ВМ не подключается, агенту страница не нужна.")
+	var note string
+	switch {
+	case available:
+		note = i18n.T("The VM is running: a condition of the console, not a promise that it opens. ",
+			"ВМ запущена: это условие консоли, а не обещание, что она откроется. ") + page
+	case det.State == "stopped":
+		note = i18n.T("The VM is stopped; only a running VM has a console. Starting it is vm_start: it is charged, and the person decides. ",
+			"ВМ остановлена; консоль есть только у запущенной ВМ. Запуск — 'evo vm start': он платный, решает человек. ") + page
+	default:
+		note = i18n.Tf("The VM is in state %s; only a running VM has a console. ",
+			"ВМ в состоянии %s; консоль есть только у запущенной ВМ. ", quoteCloud(det.State)) + page
+	}
+	out := map[string]any{
+		"vm_id":             det.ID,
+		"name":              det.Name,
+		"state":             det.State,
+		"console_available": available,
+		"where": i18n.Tf("Open the console of VM %s in the Cloud.ru web console.",
+			"Откройте консоль ВМ %s в личном кабинете Cloud.ru.", name),
+		"note": note,
+	}
+	// No is_serial_ready in the card: no serial_ready in the answer, not
+	// false.
+	if det.SerialReady != nil {
+		out["serial_ready"] = *det.SerialReady
+	}
+	return out
+}
+
 // vmImage is the image of a VM as its card names it, id and name; nil
 // when the card names none.
 func vmImage(det *provision.VMDetail) any {

@@ -17,7 +17,7 @@ import (
 // conclusion 204, У1). A field added to such a type that keeps the link —
 // by its name, or a map or raw JSON of the whole card — fails here.
 func TestConsoleFieldsAreNotRead(t *testing.T) {
-	card := map[string]any{"id": "vm-1", "name": "web", "state": "running",
+	card := map[string]any{"id": "vm-1", "name": "web", "state": "running", "is_serial_ready": true,
 		"interfaces": []any{map[string]any{"id": "if-1", "ip_address": "10.0.0.8", "primary": true, "state": "created"}}}
 	for i, f := range consoleFields {
 		card[f] = fmt.Sprintf("https://console.example/%d-MARKER", i)
@@ -35,6 +35,12 @@ func TestConsoleFieldsAreNotRead(t *testing.T) {
 		if strings.Contains(string(out), "MARKER") {
 			t.Errorf("%s keeps a link to the console: %s", name, out)
 		}
+	}
+	// is_serial_ready is read (vm_console): the card has it, the console
+	// fields still not.
+	var det VMDetail
+	if err := json.Unmarshal(body, &det); err != nil || det.SerialReady == nil || !*det.SerialReady {
+		t.Errorf("VMDetail does not read is_serial_ready: %v %v", err, det.SerialReady)
 	}
 	var page struct {
 		Items []VM `json:"items"`

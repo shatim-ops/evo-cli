@@ -212,6 +212,7 @@
   - [evo verify](#evo-verify)
   - [evo version](#evo-version)
   - [evo vm](#evo-vm)
+    - [evo vm console](#evo-vm-console)
     - [evo vm create](#evo-vm-create)
     - [evo vm delete](#evo-vm-delete)
     - [evo vm flavors](#evo-vm-flavors)
@@ -9756,6 +9757,7 @@ evo vm [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo vm console](#evo-vm-console)	 - Где человек открывает консоль ВМ и доступна ли она сейчас
 * [evo vm create](#evo-vm-create)	 - Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip)
 * [evo vm delete](#evo-vm-delete)	 - Удалить ВМ и все данные на ней (безвозвратно)
 * [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц
@@ -9766,6 +9768,47 @@ evo vm [flags]
 * [evo vm start](#evo-vm-start)	 - Запустить остановленную ВМ и дождаться состояния running
 * [evo vm stop](#evo-vm-stop)	 - Остановить работающую ВМ и дождаться состояния stopped
 * [evo vm zones](#evo-vm-zones)	 - Зоны доступности (UUID и имя)
+
+## evo vm console
+
+Где человек открывает консоль ВМ и доступна ли она сейчас
+
+### Synopsis
+
+```text
+Где человек открывает консоль ВМ и доступна ли она сейчас.
+
+Где человек открывает консоль ВМ, по UUID или имени: состояние, serial_ready и console_available (true только у запущенной ВМ — это условие, а не обещание, что консоль откроется). Консоль открывается в личном кабинете Cloud.ru после входа человека; evo её не открывает, ссылку на неё не выдаёт и к ВМ не подключается. Две ВМ с одним именем — отказ с обоими id. Остановленная ВМ — чьё-то решение: запуск — 'evo vm start', он платный, решает человек. Только чтение.
+
+Вызывает инструмент vm_console (подробнее: 'evo tools describe vm_console').
+```
+
+```
+evo vm console <vm-id|name> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по console
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vm](#evo-vm)	 - Виртуальные машины
 
 ## evo vm create
 

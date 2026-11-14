@@ -288,6 +288,7 @@
 |---|---|---|---|---|---|
 | `provision` | `evo vm create` | да | — | Provision a bare VM (docker-compose: use 'deploy'). | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
 | `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface with its security groups and subnet. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
+| `vm_console` | `evo vm console` | нет | `vm_id` или `name` | Where a human opens the console of one VM, by vm_id or name: state, serial_ready and console_available (true only while the VM is running; a condition, not a … | Где человек открывает консоль ВМ и доступна ли она сейчас |
 | `vm_start` | `evo vm start` | да | `vm_id` или `name` | Start a stopped VM (power_on) and wait until it is running. | Запустить остановленную ВМ и дождаться состояния running |
 | `vm_stop` | `evo vm stop` | удаляет | `vm_id` или `name` | Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. | Остановить работающую ВМ и дождаться состояния stopped |
 | `vm_reboot` | `evo vm reboot` | удаляет | `vm_id` или `name` | Reboot a running VM (reboot) and wait until it runs again: the VM and what runs on it do not answer meanwhile, and unsaved data in memory may be lost. | Перезагрузить работающую ВМ и дождаться состояния running |
