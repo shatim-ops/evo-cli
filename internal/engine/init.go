@@ -40,7 +40,7 @@ type InitOptions struct {
 // taken from the Cloud.ru API, not from a list baked into the binary: zone
 // and image UUIDs differ between tenants and change over time. Without a
 // terminal (or with NonInteractive) it takes the first zone of initZones
-// (one with a subnet of the project, ru.AZ-2 first) and the newest plain
+// (one with a subnet of the project, the default zone first) and the newest plain
 // Ubuntu (else Debian) image and prints what it chose.
 func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	// Lstat: a link in place of the file — dangling too — is a file that
