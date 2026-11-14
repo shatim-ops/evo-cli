@@ -256,6 +256,10 @@ def unprocessed(repo, astra, feed, since, root, account_since=""):
             if f"{owner}/{name}".lower() != repo.lower():
                 unchecked.append(f"{where}: находка в {owner}/{name} #{n} — этот токен её не читает")
                 continue
+            # A report («отчёт», «находок нет») named as a finding: «релиз»
+            # reads and closes it, no verdict of Астра on it (#1908).
+            if not is_finding(issue(n)):
+                continue
             if why := finding_problem(n):
                 out.append(f"{where}: находка #{n} — {why}")
         for n in sorted({int(n) for n in COMMENT_IN.findall(body)}):
