@@ -22,12 +22,13 @@ var consoleFields = []string{"vnc_url", "vnc_ws", "remote_console_url", "remote_
 // group 1 holds the backslashes before its quote.
 var consoleKey = regexp.MustCompile(`(?i)(\\*)"(?:` + strings.Join(consoleFields, "|") + `)\\*"\s*:\s*`)
 
-// consolePlain finds a console field outside JSON — an unquoted name
-// followed by = or : («vnc_url=wss://…», a proxy's or a log's text) — with
+// consolePlain finds a console field outside JSON — a name unquoted or in
+// single quotes followed by = or : («vnc_url=wss://…», a proxy's or a
+// log's text, {'vnc_url': …} of a Python dict) — with
 // its value: quoted to its closing quote, else up to a space or a quote.
 // A quoted JSON key is followed by its quote, not by = or :, and is
 // consoleKey's.
-var consolePlain = regexp.MustCompile(`(?i)\b((?:` + strings.Join(consoleFields, "|") + `)\s*[=:]\s*)(?:"[^"]*"?|'[^']*'?|[^\s"'<>]*)`)
+var consolePlain = regexp.MustCompile(`(?i)\b((?:` + strings.Join(consoleFields, "|") + `)'?\s*[=:]\s*)(?:"[^"]*"?|'[^']*'?|[^\s"'<>]*)`)
 
 // hiddenValue replaces the value of a console field.
 const hiddenValue = "hidden"

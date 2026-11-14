@@ -103,6 +103,8 @@ func TestHideConsole(t *testing.T) {
 		{`refused: vnc_url=wss://a?t=1&u=2 remote_console_url=https://b state=x`, `refused: vnc_url=hidden remote_console_url=hidden state=x`},
 		{`VNC_WS: 'wss://a b'`, `VNC_WS: hidden`},
 		{`remote_console_ws = "wss://a", x`, `remote_console_ws = hidden, x`},
+		// A key in single quotes (a Python dict in a message; «Риск», 244).
+		{`{'vnc_url': 'wss://a', 'x': 1}`, `{'vnc_url': hidden, 'x': 1}`},
 		{`{"remote_console_protocol":"vnc","vnc_url":"a"}`, `{"remote_console_protocol":"hidden","vnc_url":"hidden"}`},
 		// «Риск», conclusion 244, residuals 1 and 4: a key in another case;
 		// an object whose strings hold a bracket and a comma.
