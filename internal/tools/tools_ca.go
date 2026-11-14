@@ -174,7 +174,7 @@ func caDeployPreview(req containerapp.CreateContainerReq) map[string]any {
 	if req.Configuration.Privileged {
 		p["runs_as"] = "root (privileged=true)"
 	} else {
-		p["runs_as"] = "UID 1000 (not privileged)"
+		p["runs_as"] = i18n.T("UID 1000 (not privileged)", "UID 1000 (без привилегий)")
 	}
 	if len(c.Env) > 0 {
 		names := make([]string, 0, len(c.Env))
