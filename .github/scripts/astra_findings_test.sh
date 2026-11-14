@@ -212,6 +212,25 @@ echo '[{"user": {"login": "astra"}, "author_association": "NONE", "created_at": 
 run restlabel
 has restlabel check.json '#734: закрыта, последний вердикт Астры'
 
+# Строка ленты называет отчёт как находку («находок нет», метка «отчёт»),
+# закрытый «релизом» без вердикта Астры, — разобрано (#1874 → #1908);
+# закрытая находка без вердикта рядом — нет.
+world reportline
+cat >"$FAKE_DIR/issues.json" <<'J'
+[{"number": 741, "title": "[Астра] Аудит #9 по #8: новых находок нет", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z", "labels": [{"name": "внешняя-проверка"}, {"name": "отчёт"}]},
+ {"number": 742, "title": "[Астра] Пересчёт", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z", "labels": [{"name": "внешняя-проверка"}, {"name": "отчёт"}]},
+ {"number": 743, "title": "[Астра] дефект", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z", "labels": [{"name": "внешняя-проверка"}]}]
+J
+cat >"$FAKE_DIR/feed.comments.json" <<'J'
+[{"id": 51, "user": {"login": "astra"}, "body": "[Астра] задание #330 — готово\n- находка: https://github.com/o/r/issues/741\n- находка: https://github.com/o/r/issues/742", "created_at": "2026-11-14T10:00:00Z"},
+ {"id": 52, "user": {"login": "astra"}, "body": "[Астра] задание #331 — готово\n- находка: https://github.com/o/r/issues/743", "created_at": "2026-11-14T10:00:00Z"}]
+J
+run reportline
+lacks reportline check.json 'задание #330'
+lacks reportline check.json '#741'
+lacks reportline check.json '#742'
+has reportline check.json 'задание #331 (комментарий 52): находка #743 — закрыта без «закрыто» Астры'
+
 # (4) «НЕ опубликовано» в задании, которое уже «готово»: разобрано, когда
 # после строки участник назвал в задании находку, куда она легла, и та
 # разобрана (#1866 → #1830); находка вне плана или имя постороннего — нет.
