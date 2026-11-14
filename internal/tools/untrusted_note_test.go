@@ -17,8 +17,8 @@ import (
 )
 
 // untrustedNoteOnly are the tools whose description says their answer is
-// untrusted data (untrustedFields.workload) while the answer carries no
-// "_untrusted" (untrustedFields): tool → the field. It only shrinks. Empty:
+// untrusted data (Decl.Untrusted.workload) while the answer carries no
+// "_untrusted" (Decl.Untrusted): tool → the field. It only shrinks. Empty:
 // its deadline 1.7 is met, and a new line comes with a deadline of its own
 // and its plan line (release plan 1.7, «Недоверенный вывод без маркера»: the
 // marker at these tools, one map both are made from).
@@ -88,14 +88,14 @@ var untrustedMarkerOnly = map[string]string{
 func TestUntrusted_NoteIffMarker(t *testing.T) {
 	var bad []string
 	for _, tl := range New(nil).Tools() {
-		note, marker := tl.UntrustedOutput, untrustedFields[tl.Name].marked()
+		note, marker := tl.UntrustedOutput, tl.Decl.Untrusted.marked()
 		_, noteOnly := untrustedNoteOnly[tl.Name]
 		_, markerOnly := untrustedMarkerOnly[tl.Name]
 		switch {
 		case note && !marker && !noteOnly:
-			bad = append(bad, tl.Name+": its description says the answer is untrusted, the answer has no _untrusted (untrustedFields)")
+			bad = append(bad, tl.Name+": its description says the answer is untrusted, the answer has no _untrusted (Decl.Untrusted)")
 		case !note && marker && !markerOnly:
-			bad = append(bad, tl.Name+": its answer marks _untrusted, its description has no note (untrustedFields.workload)")
+			bad = append(bad, tl.Name+": its answer marks _untrusted, its description has no note (Decl.Untrusted.workload)")
 		case noteOnly && !(note && !marker):
 			bad = append(bad, tl.Name+": in untrustedNoteOnly, but the note and the marker agree now; take the line out (the list only shrinks)")
 		case markerOnly && !(!note && marker):
