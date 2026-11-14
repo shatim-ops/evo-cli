@@ -1396,7 +1396,7 @@ SWEEP_WAIT=1 PROBES="" "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
 world
 fake_evo_answer provision 0 0 '{"vm_id":"vm1","vm_ip":"203.0.113.7","status":"ok"}'
 fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
-U1='"remote_console_url":"https://console.example.test/vnc?token=SECRET1&x=1","remote_console_ws":"wss://console.example.test/ws","remote_console_protocol":"vnc"'
+U1='"remote_console_url":"https://console.example.test/vnc/abcdefghijklmnopqrst?token=SECRET1LONG&x=1","remote_console_ws":"wss://console.example.test/ws","remote_console_protocol":"vnc"'
 U2='"remote_console_url":"https://console.example.test/vnc?token=SECRET2&x=1","remote_console_ws":"wss://console.example.test/ws","remote_console_protocol":"vnc"'
 cat >"$FAKE_DIR/http" <<H
 GET! /vms/vm1 200 {"id":"vm1","state":"running","is_serial_ready":true}
@@ -1418,7 +1418,7 @@ CONSOLE_WAIT=0 CONSOLE_APPEAR=5 PROBES=console "$here/cloud-live.sh" ops >"$tmp/
 want "консоль: код" "$rc" 0
 want "консоль: тела POST — vnc, vnc, serial, power_off, vnc" "$(jq -c 'select(has("keyId") | not)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"protocol":"vnc"};{"protocol":"vnc"};{"protocol":"serial"};{"state":"power_off"};{"protocol":"vnc"};'
 for s in 'Консоль ВМ: карточка до POST.*url: нет; ws: нет; протокол: нет; is_serial_ready: true' \
-	'Консоль ВМ: POST vnc на running.*HTTP 204, поля тела: \[\]; ссылка в карточке: через [0-9]* с; url: есть, [0-9]* зн.; хост: другой; до «@»: нет; путь: 4 зн.; параметры: token,x; фрагмент: нет; ws: есть; протокол: vnc' \
+	'Консоль ВМ: POST vnc на running.*HTTP 204, поля тела: \[\]; ссылка в карточке: через [0-9]* с; url: есть, [0-9]* зн.; хост: другой; до «@»: нет; путь: 25 зн.; параметры: token,x; фрагмент: нет; ws: есть; протокол: vnc' \
 	'Консоль ВМ: элемент списка ВМ.*ссылка в элементе: есть, та же, что в карточке' \
 	'Консоль ВМ: повтор POST vnc.*HTTP 204, поля тела: \[\]; ссылка: другая' \
 	'Консоль ВМ: карточка через 0 с.*ссылка держится в карточке: да' \
@@ -1433,8 +1433,32 @@ done
 grep -n 'Консоль ВМ: карточка через\|Консоль ВМ: POST serial' "$tmp/out" | head -1 | grep -q 'карточка через' || { echo "FAIL: консоль: serial раньше прочих шагов"; fail=1; }
 # По ссылке скрипт не ходит (У4): запросов на хост ссылки нет.
 if grep -q 'console.example.test' "$FAKE_DIR/calls"; then echo "FAIL: консоль: запрос на хост ссылки"; fail=1; fi
-# Значения — ещё и под маской (У1, второй барьер).
-grep -q '^::add-mask::https://console.example.test/vnc?token=SECRET1' "$tmp/out" || { echo "FAIL: консоль: ссылка не под маской"; fail=1; }
+# Значения — ещё и под маской (У1, второй барьер), и части ссылки, которые
+# отказ может привести без схемы: значение параметра от 8 знаков, сегмент
+# пути от 16 (заключение «Риска» 215, условие к отказу).
+for m in 'https://console.example.test/vnc/abcdefghijklmnopqrst?token=SECRET1LONG' SECRET1LONG abcdefghijklmnopqrst; do
+	grep -q "^::add-mask::$m" "$tmp/out" || { echo "FAIL: консоль: не под маской: $m"; fail=1; }
+done
+if grep -qx '::add-mask::1' "$tmp/out"; then echo "FAIL: консоль: короткое значение под маской"; fail=1; fi
+
+# Отказ остановки с телом карточки (ссылка в нём, полей ошибки нет) — тот же
+# con_answer: ни ссылки, ни сырого тела в строке «остановка».
+world
+fake_evo_answer provision 0 0 '{"vm_id":"vm1","vm_ip":"203.0.113.7","status":"ok"}'
+fake_evo_answer list_security_groups 0 0 '{"security_groups":[]}'
+cat >"$FAKE_DIR/http" <<H
+GET! /vms/vm1 200 {"id":"vm1","state":"running"}
+POST! /vms/vm1/remote-console 204
+GET /vms/vm1 200 {"id":"vm1","state":"running",$U1}
+GET /vms[?]* 200 {"items":[{"id":"vm1",$U1}]}
+POST! /vms/vm1/remote-console 204
+POST! /vms/vm1/remote-console 204
+POST /vms/vm1/set-power 409 {"id":"vm1",$U1}
+H
+rc=0
+CONSOLE_WAIT=0 CONSOLE_APPEAR=5 PROBES=console "$here/cloud-live.sh" ops >"$tmp/out" 2>&1 || rc=$?
+grep -q 'Консоль ВМ: остановка.*отказ: HTTP 409, машинный код: .*; поля тела: \["id","remote_console_protocol","remote_console_url","remote_console_ws"\]; текст: нет полей ошибки' "$tmp/out" || { echo "FAIL: консоль: отказ остановки"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if grep -v '::add-mask::' "$tmp/out" | grep -q 'SECRET\|console.example.test'; then echo "FAIL: консоль: ссылка в отказе остановки"; fail=1; fi
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'SECRET\|console.example.test\|wss://'; then echo "FAIL: консоль: ссылка в выводе"; fail=1; fi
 
 [ "$fail" = 0 ] && echo "cloud-live ops: ok"

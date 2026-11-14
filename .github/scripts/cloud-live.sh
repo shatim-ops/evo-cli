@@ -3259,6 +3259,15 @@ con_facts() {
 	w=$(jq -r "$sel | .remote_console_ws // \"\"" "$tmp/api.json" 2>/dev/null) || w=
 	[ -z "$u" ] || mask "$u" "$(printf '%s' "$u" | sed 's/[?#].*//')"
 	[ -z "$w" ] || mask "$w"
+	# Parts of a link that may be its token without the scheme — the values
+	# of its parameters from 8 characters, the segments of its path from 16
+	# — go under the mask too: a refusal may quote them bare (conclusion 215).
+	local part
+	while IFS= read -r part; do
+		[ -z "$part" ] || mask "$part"
+	done < <(printf '%s\n%s\n' "$u" "$w" | jq -Rr 'select(. != "") | (capture("^[a-z][a-z0-9+.-]*://[^/?#]*(?<path>[^?#]*)(\\?(?<q>[^#]*))?") // {}) as $p
+		| (($p.q // "") | split("&")[] | split("=")[1:] | join("=") | select(length >= 8)),
+		  (($p.path // "") | split("/")[] | select(length >= 16))' 2>/dev/null)
 	CON_URL=$u
 	jq -nr --arg u "$u" --arg w "$w" --arg api compute.api.cloud.ru \
 		--argjson card "$(jq -c "$sel | {p: (.remote_console_protocol // \"нет\"), s: (if has(\"is_serial_ready\") then .is_serial_ready else \"нет поля\" end)}" "$tmp/api.json" 2>/dev/null || echo '{"p":"?","s":"?"}')" '
@@ -3337,7 +3346,7 @@ probe_console() {
 		cpost vnc
 		ok "$g: POST vnc на stopped" "$(con_answer); состояния до: $chain"
 		;;
-	*) refusal "$g: остановка" синхронно ;;
+	*) ok "$g: остановка" "отказ: $(con_answer)" ;;
 	esac
 	CON_URL='' u1='' u2=''
 	gap "$g: вопросы 1, 2, 5 (ключ только на чтение), 6, 8 раздела 6" "только владелец руками по брифу evo-internal: открывается ли ссылка и как долго, без входа ли, видна ли ключу на чтение, как закрыть консоль, вход в серийную — до того «не установлено»"
