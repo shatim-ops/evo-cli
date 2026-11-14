@@ -40,7 +40,8 @@ last update, no more of the spec) it also reports, per request:
                 plan 1.6, the ratchet of the specs; «полнота ресурса», #496).
                 Ignored without a declaration: deprecated fields, *_at and
                 display* names, the fields of a mini reference ({id, name}),
-                readOnly fields of a body. A new object is reported once,
+                readOnly fields of a body, and the console fields of a VM
+                (consoleFields below), which the baseline does not keep. A new object is reported once,
                 not with every field under it.
   field-gone    a field of the baseline the spec no longer has: `info`
   field-baseline-missing  a request without a baseline: `warn`
@@ -302,6 +303,19 @@ def console_fields(root):
     return found[0] if len(found) == 1 and found[0] else None
 
 
+def field_name(path):
+    """The name of the field a path of schema_fields ends with."""
+    return path.replace("[]", "").split(".")[-1]
+
+
+def console_path(path, declared):
+    """Whether path ends with a console field of the list: the baseline of
+    the fields does not keep it (variant (a) of D110, finding #1860) and
+    field-new does not ask for it — the list declares it, and
+    console-field-* hold its name against the spec."""
+    return field_name(path) in (declared or [])
+
+
 def check_console(spec, svc, req, declared):
     """console-field-undeclared of the answer of one request of a VM path of
     Compute, and the names of the fields of that answer."""
@@ -312,7 +326,7 @@ def check_console(spec, svc, req, declared):
     fields = schema_fields(schema) if schema else {}
     names, out = set(), []
     for path in sorted(fields):
-        name = path.replace("[]", "").split(".")[-1]
+        name = field_name(path)
         names.add(name)
         if CONSOLE_NAME_RE.search(name) and name not in (declared or []):
             out.append(["error", f"console-field-undeclared:{path}",
@@ -330,7 +344,7 @@ def ignored_field(path, meta, body):
             or bool(TIME_RE.search(last)) or bool(DISPLAY_RE.match(last)))
 
 
-def check_fields(svc, req, current, baseline):
+def check_fields(svc, req, current, baseline, declared=None):
     """field-new / field-gone / field-baseline-missing of one request."""
     out = []
     key = request_key(svc, req)
@@ -350,7 +364,7 @@ def check_fields(svc, req, current, baseline):
             continue
         if path in used or any(u.startswith(path + ".") or u.startswith(path + "[]") for u in used):
             continue
-        if ignored_field(path, current[path], body):
+        if ignored_field(path, current[path], body) or console_path(path, declared):
             continue
         reported.append(path)
         where = "тела запроса" if body else "ответа"
@@ -912,8 +926,8 @@ def main():
             current = request_fields(spec, req)
             # No operation in the spec (path-missing): an empty baseline, so
             # the operation's fields are new once the spec has it.
-            fresh[request_key(svc, req)] = sorted(current or {})
-            fields = [] if args.update_fields else check_fields(svc, req, current, baseline)
+            fresh[request_key(svc, req)] = sorted(p for p in (current or {}) if not console_path(p, declared))
+            fields = [] if args.update_fields else check_fields(svc, req, current, baseline, declared)
             console, names = check_console(spec, svc, req, declared)
             if names is not None:
                 console_names = (console_names or set()) | names
