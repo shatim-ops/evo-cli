@@ -42,15 +42,15 @@ func TestPreviewText_WholeValue(t *testing.T) {
 // reads: both are escaped too («Риск», conclusion 234, remark).
 func TestPreviewText_SeparatorsAndInvalidUTF8(t *testing.T) {
 	for name, v := range map[string]string{
-		"line separator":      "a PROBE",
-		"paragraph separator": "a PROBE",
+		"line separator":      "a\u2028PROBE",
+		"paragraph separator": "a\u2029PROBE",
 		"invalid UTF-8":       "a\xffPROBE",
 	} {
 		got := PreviewText(v)
 		if got == v || !strings.HasPrefix(got, `"`) {
 			t.Errorf("%s: %q printed as it is", name, got)
 		}
-		if !utf8.ValidString(got) || strings.ContainsAny(got, "  ") {
+		if !utf8.ValidString(got) || strings.ContainsAny(got, "\u2028\u2029") {
 			t.Errorf("%s: %q keeps the character raw", name, got)
 		}
 	}

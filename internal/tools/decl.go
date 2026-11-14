@@ -195,7 +195,7 @@ var decls = map[string]Decl{
 	"marketplace_list":     {Group: "image"},
 	"list_images":          {Group: "image"},
 	"image_create":         {Project: true, Created: created{id: "image.id", lost: "image_id", list: "image_list", field: "images", delete: "image_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "disk_id", kind: kindDisk}}, EchoedArgs: []echoedArg{{name: "description"}, {name: "display_name"}, {name: "user_data_template", summary: templateSummary}}},
-	"fip_attach":           {Group: "vpc", IDArgs: []idArg{{name: "fip", why: whyListed}, {name: "vm", why: whyListed}}},
+	"fip_attach":           {Group: "vpc", IDArgs: []idArg{{name: "fip", why: whyListed, party: partyFloatingIP}, {name: "vm", why: whyListed, party: partyVM}}},
 	"image_get":            {RequiredOneOf: [][]string{{"image", "image_id"}}, IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}}},
 	"image_delete":         {Delete: deleteTarget{arg: "image_id", what: "image", whRU: "образ"}, IDArgs: []idArg{{name: "image_id", kind: kindImage, target: true}}},
 	"deploy_plan":          {Group: "deploy", Project: true, IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "base_plan_id", why: whyLocal}}},
@@ -209,7 +209,7 @@ var decls = map[string]Decl{
 	"list_floating_ips":    {Group: "vpc", Project: true},
 	// The names of the source groups of a port only groups let in: not
 	// named by the caller, unlike the group of the call.
-	"open_ports":  {Group: "deploy", IDArgs: []idArg{{name: "security_group", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"open_only_to_groups", "vms"}}},
+	"open_ports":  {Group: "deploy", IDArgs: []idArg{{name: "security_group", why: whyListed, party: partyGroup}}, Untrusted: untrustedAnswer{fields: []string{"open_only_to_groups", "vms"}}},
 	"close_ports": {Group: "deploy", Delete: deleteTarget{arg: "ports", parent: "security_group", what: "port rule", whRU: "правило порта"}, IDArgs: []idArg{{name: "security_group", why: whyListed}}},
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
@@ -230,10 +230,12 @@ var decls = map[string]Decl{
 	// (Cursor review of PR #89).
 	// The zones and the flavors of a catalogue, as the platform names
 	// them: text evo did not write.
-	"k8s_options":    {Project: true, Untrusted: untrustedAnswer{fields: []string{"flavors", "zones", "defaults"}}},
-	"k8s_plan":       {Project: true, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"cluster_sa_id": {list: "iam_service_accounts", field: "id"}}, NoCompletion: map[string]string{"flavor": "a control-plane flavor of k8s_options, not a VM flavor"}},
-	"k8s_create":     {Project: true, Created: created{id: "cluster_id", list: "k8s_list", field: "clusters", delete: "k8s_delete"}, CreateName: createName{args: []string{"name"}, rule: "k8sNameRe: the mk8s specification"}, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"cluster_sa_id": {list: "iam_service_accounts", field: "id"}}, NoCompletion: map[string]string{"flavor": "a control-plane flavor of k8s_options, not a VM flavor"}},
-	"k8s_kubeconfig": {SideEffects: "returns a kubeconfig; mints a token of the cluster", IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
+	"k8s_options": {Project: true, Untrusted: untrustedAnswer{fields: []string{"flavors", "zones", "defaults"}}},
+	"k8s_plan":    {Project: true, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"cluster_sa_id": {list: "iam_service_accounts", field: "id"}}, NoCompletion: map[string]string{"flavor": "a control-plane flavor of k8s_options, not a VM flavor"}},
+	"k8s_create":  {Project: true, Created: created{id: "cluster_id", list: "k8s_list", field: "clusters", delete: "k8s_delete"}, CreateName: createName{args: []string{"name"}, rule: "k8sNameRe: the mk8s specification"}, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"cluster_sa_id": {list: "iam_service_accounts", field: "id"}}, NoCompletion: map[string]string{"flavor": "a control-plane flavor of k8s_options, not a VM flavor"}},
+	// The kubeconfig is the service's text as it gives it, comments and
+	// names included (Astra, #1803).
+	"k8s_kubeconfig": {SideEffects: "returns a kubeconfig; mints a token of the cluster", IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}, Untrusted: untrustedAnswer{fields: []string{"kubeconfig"}}},
 	// The status of the resource as its service writes it, in the refusal
 	// of a delete in a state no run has shown («Риск», 181, У2): a word
 	// of the cloud, not of a closed set.
@@ -290,7 +292,7 @@ var decls = map[string]Decl{
 	"disk_create":    {Project: true, Created: created{id: "disk.id", lost: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "attach_to", why: whyListed}}},
 	// The disk and the VM the preview of disk_attach and disk_detach names,
 	// as the cloud names them.
-	"disk_attach": {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"will_attach", "attached_vms"}}},
+	"disk_attach": {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed, party: partyVM}}, Untrusted: untrustedAnswer{fields: []string{"will_attach", "attached_vms"}}},
 	"disk_detach": {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"will_detach", "attached_vms"}}},
 	"disk_resize": {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}}},
 	// The VMs a disk is attached to, as the cloud names them: the refusal
@@ -411,8 +413,11 @@ var decls = map[string]Decl{
 	"cert_versions":    {IDArgs: []idArg{{name: "certificate_id", kind: kindCert}}},
 	"cert_private_key": {Sensitive: true, IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}, {name: "version_id", why: whyInParent}}},
 	"cert_operation":   {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
-	// An object of S3: anyone with write access to the bucket wrote it.
-	"s3_get":           {Untrusted: untrustedAnswer{fields: []string{"content", "content_base64"}, workload: true}},
+	// The keys of a bucket: whoever wrote an object named it (Astra, #1804).
+	"s3_ls": {Untrusted: untrustedAnswer{fields: []string{"objects"}}},
+	// An object of S3: anyone with write access to the bucket wrote it, and
+	// named it: the key a call took from a list is that name (#1763).
+	"s3_get":           {Untrusted: untrustedAnswer{fields: []string{"content", "content_base64", "key"}, workload: true}},
 	"s3_put":           {Destructive: true, Created: created{arg: "key", delete: "s3_rm"}, Nameless: "an object key may hold spaces anywhere: S3 takes any UTF-8"},
 	"s3_rm":            {Destructive: true, Delete: deleteTarget{arg: "key", parent: "bucket", what: "object", whRU: "объект"}},
 	"s3_bucket_create": {Created: created{arg: "bucket", delete: "s3_bucket_delete"}, CreateName: createName{args: []string{"bucket"}, rule: "bucketNameRe and the S3 client's rule"}},
@@ -424,8 +429,11 @@ var decls = map[string]Decl{
 	"stack_plan": {Untrusted: untrustedAnswer{fields: []string{"unknown_fields", "error"}}},
 	// The steps of the job in the question of stack_apply: the names and
 	// the values of a manifest, the caller's text a cloned repository may
-	// bring, as stack_plan's.
-	"stack_apply":   {IDArgs: []idArg{{name: "job_id", why: whyLocal}}, Untrusted: untrustedAnswer{fields: []string{"preview"}}},
-	"stack_status":  {SideEffects: "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it", IDArgs: []idArg{{name: "job_id", why: whyLocal}}},
+	// bring, as stack_plan's. The job's error and the details of its steps
+	// carry what a step's tool and operation answered: the service's text
+	// (Astra, #1762).
+	"stack_apply": {IDArgs: []idArg{{name: "job_id", why: whyLocal}}, Untrusted: untrustedAnswer{fields: []string{"preview", "error", "details"}}},
+	// The job's error and the details of its steps, as in stack_apply.
+	"stack_status":  {Untrusted: untrustedAnswer{fields: []string{"error", "details"}}, SideEffects: "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it", IDArgs: []idArg{{name: "job_id", why: whyLocal}}},
 	"stack_destroy": {Destructive: true, IDArgs: []idArg{{name: "job_id", why: whyLocal}}},
 }

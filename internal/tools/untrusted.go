@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // quoteCloud is a value the cloud gave — a resource's name — as evo's own
@@ -62,8 +63,19 @@ func (u untrustedAnswer) in(m map[string]any) []string {
 	return has
 }
 
+// serviceText reports whether the message of err carries what a service
+// answered: the text of an API's refusal (its body, or grpc-message when
+// the body is empty) or of an operation the cloud reported failed. The
+// error answer of every tool marks it (errAnswer), whatever the tool
+// declares: anyone who names a resource of the project may have written
+// the service's words about it (Astra, #1802).
+func serviceText(err error) bool {
+	return apiStatus(err) != 0 || operationFailedRE.MatchString(strings.ToLower(err.Error()))
+}
+
 // markUntrusted adds "_untrusted" to the answers of a tool that declares
-// them (Decl.Untrusted): the fields of u the answer has.
+// them (Decl.Untrusted): the fields of u the answer has, beside those the
+// answer marks itself (an error's, errAnswer).
 func markUntrusted(u untrustedAnswer, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		text, isErr := next(ctx, args)
@@ -79,6 +91,11 @@ func markUntrusted(u untrustedAnswer, next Handler) Handler {
 		has := u.in(m)
 		if len(has) == 0 {
 			return text, isErr
+		}
+		for _, f := range stringList(m["_untrusted"]) {
+			if !slices.Contains(has, f) {
+				has = append(has, f)
+			}
 		}
 		m["_untrusted"] = has
 		return toJSON(m), isErr

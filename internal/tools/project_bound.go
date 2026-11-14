@@ -72,6 +72,12 @@ type idArg struct {
 	target bool
 	// ids reads the argument; nil reads it as one string.
 	ids func(args map[string]any) []string
+	// party resolves the argument the way the tool's handler does (a name
+	// or an address to the id of the resource): the change acts on that
+	// resource, and the record of the call names it (intent.Intent.Parties)
+	// — the same arguments on another resource are another call (R-101).
+	// nil for an argument that is an id already or names no participant.
+	party func(ctx context.Context, r *Registry, ref string) (id string, err error)
 }
 
 // Reasons of the arguments that need no check.

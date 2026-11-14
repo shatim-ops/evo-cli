@@ -5,8 +5,11 @@
 package workflows
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,8 +22,12 @@ import (
 // #1716): every job that runs evo ends with .github/actions/answers, which
 // makes the catalogue lines of answers_catalogue.py, removes the raw file
 // and uploads only those lines, for 7 days at most; no step of any
-// workflow uploads the raw file. What the generator lets out is
-// answers_catalogue_test.sh's, which ci runs.
+// workflow uploads the raw file. No step of a workflow names the raw file,
+// a line of the action names it only to run the generator on it or remove
+// it, the action calls no evo, and the artifact of a matrix leg is named by
+// a coordinate of its matrix (#1861: five mutations passed a match of
+// lines). What the generator lets out is answers_catalogue_test.sh's, which
+// ci runs.
 func TestWorkflows_RawAnswersNeverLeaveTheJob(t *testing.T) {
 	ws := readWorkflows(t)
 	e2e := ws["cloud-e2e.yml"]
@@ -45,8 +52,10 @@ func TestWorkflows_RawAnswersNeverLeaveTheJob(t *testing.T) {
 		want := name
 		if len(j.Strategy.Matrix) > 0 {
 			got, _ := last.With["job"].(string)
-			if !strings.HasPrefix(got, name+"-${{ matrix.") || !strings.HasSuffix(got, "}}") {
-				t.Errorf("cloud-e2e/%s: a matrix job names its answers %q, want %s-${{ matrix.<key> }} — one artifact name for every leg", name, got, name)
+			key := strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(got, name+"-${{ matrix.")), "}}")
+			key = strings.TrimSpace(key)
+			if !strings.HasPrefix(got, name+"-${{ matrix.") || !strings.HasSuffix(got, "}}") || !matrixKeys(j.Strategy.Matrix)[key] {
+				t.Errorf("cloud-e2e/%s: a matrix job names its answers %q, want %s-${{ matrix.<key> }} with a key of its matrix %v — one artifact name for every leg (#1861)", name, got, name, keysOf(matrixKeys(j.Strategy.Matrix)))
 			}
 			want = got
 		}
@@ -58,6 +67,11 @@ func TestWorkflows_RawAnswersNeverLeaveTheJob(t *testing.T) {
 	for file, w := range ws {
 		for jn, j := range w.Jobs {
 			for _, s := range j.Steps {
+				// Only evo writes the raw file and only the action reads it:
+				// a step that names it could print or copy it (#1861).
+				if touchesRaw(s.Run+fmt.Sprint(s.With)+fmt.Sprint(s.Env), base) {
+					t.Errorf("%s/%s: step %q names the raw file of answers — only .github/actions/answers reads it", file, jn, s.Name)
+				}
 				if strings.HasPrefix(s.Uses, "actions/upload-artifact@") {
 					if p, _ := s.With["path"].(string); strings.Contains(p, base) || strings.Contains(p, "EVO_RECORD_ANSWERS") {
 						t.Errorf("%s/%s: uploads the raw file of answers (%s)", file, jn, p)
@@ -85,11 +99,29 @@ func TestWorkflows_RawAnswersNeverLeaveTheJob(t *testing.T) {
 	}
 	made, removed, uploads := false, false, 0
 	for _, s := range a.Runs.Steps {
-		if strings.Contains(s.Run, ".github/scripts/answers_catalogue.py") {
-			made = true
+		// Each line of the action that names the raw file is the generator
+		// reading it into the catalogue or its removal — no cat, cp or
+		// other reader (#1861: three mutations passed the line match).
+		for _, l := range logicalLines(s.Run) {
+			if !touchesRaw(l, base) {
+				continue
+			}
+			switch {
+			case strings.Contains(l, ".github/scripts/answers_catalogue.py") && strings.Count(l, "EVO_RECORD_ANSWERS") == 1 &&
+				strings.Contains(l, `"$EVO_RECORD_ANSWERS" >"$out"`):
+				made = true
+			case l == `rm -f "$EVO_RECORD_ANSWERS"`:
+				removed = true
+			default:
+				t.Errorf("answers: line %q names the raw file — only the generator reads it and rm removes it", l)
+			}
 		}
-		if strings.Contains(s.Run, `rm -f "$EVO_RECORD_ANSWERS"`) {
-			removed = true
+		// No call of evo inside the action: a call after the removal
+		// writes records that nobody reads (#1861).
+		for _, l := range logicalLines(s.Run) {
+			if evoCall.MatchString(l) {
+				t.Errorf("answers: line %q calls evo — the action ends the job's calls of evo, it makes none", l)
+			}
 		}
 		if strings.HasPrefix(s.Uses, "actions/upload-artifact@") {
 			uploads++
@@ -107,4 +139,69 @@ func TestWorkflows_RawAnswersNeverLeaveTheJob(t *testing.T) {
 	if !runsStep(ws["ci.yml"], ".github/scripts/answers_catalogue_test.sh") {
 		t.Error("ci: answers_catalogue.py is not tested (answers_catalogue_test.sh)")
 	}
+}
+
+// evoCall: a command line that runs evo (not a word of a comment or a path),
+// also in a substitution: $(evo …) or `evo …` (Qwen review of #1878).
+var evoCall = regexp.MustCompile(`(^|[;&|(` + "`" + `]\s*|\$\(\s*)(\./)?evo(\s|$|` + "`" + `)`)
+
+// touchesRaw: the text names the raw file of answers, by its variable or
+// by the name of the file.
+func touchesRaw(text, base string) bool {
+	return strings.Contains(text, "EVO_RECORD_ANSWERS") || strings.Contains(text, base)
+}
+
+// logicalLines: the lines of a run script with the continuations joined,
+// trimmed, without comments and empty lines.
+func logicalLines(run string) []string {
+	var out []string
+	cur := ""
+	for _, l := range strings.Split(run, "\n") {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, "#") {
+			continue
+		}
+		if c, ok := strings.CutSuffix(l, "\\"); ok {
+			cur += strings.TrimSpace(c) + " "
+			continue
+		}
+		if l = strings.TrimSpace(cur + l); l != "" {
+			out = append(out, l)
+		}
+		cur = ""
+	}
+	return out
+}
+
+// matrixKeys: the coordinates of a matrix — its keys and the keys of its
+// include entries, not include and exclude themselves.
+func matrixKeys(m map[string]any) map[string]bool {
+	out := map[string]bool{}
+	for k, v := range m {
+		if k == "exclude" {
+			continue
+		}
+		if k != "include" {
+			out[k] = true
+			continue
+		}
+		list, _ := v.([]any)
+		for _, e := range list {
+			if em, ok := e.(map[string]any); ok {
+				for ek := range em {
+					out[ek] = true
+				}
+			}
+		}
+	}
+	return out
+}
+
+func keysOf(m map[string]bool) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
 }

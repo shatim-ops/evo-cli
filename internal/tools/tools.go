@@ -4215,7 +4215,10 @@ func errAnswer(err error, fields map[string]any) string {
 		res["status"] = "error"
 	}
 	// Several refusals of one call: the first is the answer's error, each
-	// is in refusals (clierrors.Refusals).
+	// is in refusals (clierrors.Refusals). error and refusals are marked
+	// untrusted each by its own text: a first refusal of evo leaves error
+	// unmarked while a later one of a service marks refusals.
+	var untrusted []string
 	if all := clierrors.All(err); len(all) > 1 {
 		refusals := make([]map[string]any, len(all))
 		for i, e := range all {
@@ -4226,6 +4229,12 @@ func errAnswer(err error, fields map[string]any) string {
 			}
 		}
 		res["refusals"] = refusals
+		for _, e := range all {
+			if serviceText(e) {
+				untrusted = append(untrusted, "refusals")
+				break
+			}
+		}
 		err = all[0]
 	}
 	reason, msg, hint := errReason(err, res)
@@ -4246,6 +4255,12 @@ func errAnswer(err error, fields map[string]any) string {
 	}
 	res["error"] = msg
 	res["reason"] = reason
+	if serviceText(err) {
+		untrusted = append([]string{"error"}, untrusted...)
+	}
+	if untrusted != nil {
+		res["_untrusted"] = untrusted
+	}
 	// A refusal of rights reads as such in fields of its own, whatever the
 	// service and its reason (decision 21.10): "no role" told apart from
 	// the other errors not by the text only.

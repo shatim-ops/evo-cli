@@ -38,6 +38,13 @@ type declSnap struct {
 	Delete         string     `json:"delete,omitempty"`
 	IDArgs         []string   `json:"id_args,omitempty"`
 	RefArgs        []string   `json:"ref_args,omitempty"`
+	// The rest of the declaration went into the snapshot after the move
+	// («Риск», conclusion 228): what of the answer is untrusted, what the
+	// preview echoes, and Tab's lists and exceptions.
+	Untrusted    string            `json:"untrusted,omitempty"`
+	EchoedArgs   []string          `json:"echoed_args,omitempty"`
+	Completes    map[string]string `json:"completes,omitempty"`
+	NoCompletion map[string]string `json:"no_completion,omitempty"`
 }
 
 // funcName names a function of a declaration; "" for none.
@@ -92,6 +99,23 @@ func declsSnapshot() map[string]declSnap {
 		for _, r := range tl.Decl.RefArgs {
 			s.RefArgs = append(s.RefArgs, fmt.Sprintf("%+v", r))
 		}
+		if u := tl.Decl.Untrusted; !reflect.DeepEqual(u, untrustedAnswer{}) {
+			s.Untrusted = fmt.Sprintf("%+v", u)
+		}
+		for _, e := range tl.Decl.EchoedArgs {
+			a := e.name
+			if f := funcName(e.summary); f != "" {
+				a += " summary=" + f
+			}
+			s.EchoedArgs = append(s.EchoedArgs, a)
+		}
+		for arg, c := range tl.Decl.Completes {
+			if s.Completes == nil {
+				s.Completes = map[string]string{}
+			}
+			s.Completes[arg] = fmt.Sprintf("%+v", c)
+		}
+		s.NoCompletion = tl.Decl.NoCompletion
 		if !reflect.DeepEqual(s, declSnap{}) {
 			out[tl.Name] = s
 		}

@@ -12,7 +12,8 @@ and its path matches a template of scripts/api-contract.json or
 scripts/probe-requests.json — the request out is the template, not the
 record; a path of the body passes only when scripts/api-contract-fields.json
 lists it for that request (so the keys of labels and tags do not). What
-is dropped is counted on stderr by reason.
+is dropped is counted on stderr by reason; nothing else of a record
+reaches stderr, which goes to a public log (#1862).
 
 usage: answers_catalogue.py --root REPO --source TEXT --date YYYY-MM-DD RAW
 """
@@ -99,10 +100,12 @@ def main():
             paths = rec.get("paths") or {}
             if not isinstance(paths, dict):
                 raise TypeError("paths")
+            # Inside the guard: urlsplit names the netloc in its error, and
+            # the error of a line must not carry the line (#1862).
+            u = urlsplit(url)
         except (ValueError, KeyError, TypeError, AttributeError):
             count["не JSON"] += 1
             continue
-        u = urlsplit(url)
         m = API_HOST.match(u.hostname or "")
         svc = m.group(1) if m else None
         if svc not in services:
@@ -145,4 +148,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:  # noqa: BLE001
+        # The message and the traceback of an error may quote a record, and
+        # stderr goes to a public log (#1862): the kind of the error alone.
+        print(f"answers-catalogue: сбой генератора ({type(e).__name__})", file=sys.stderr)
+        sys.exit(1)
