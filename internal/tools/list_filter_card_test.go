@@ -248,6 +248,12 @@ func TestVMList_CardsWithinTheCallBudget(t *testing.T) {
 		!strings.Contains(msg, "nothing was selected") || !strings.Contains(hint, "narrow the list with: zone") {
 		t.Errorf("want «ran out of its time», the count read and «narrow», nothing selected: %s", text)
 	}
+	// The cloud answered: the selection is too wide for one call, as a list
+	// over cardReads is — USAGE, not API_UNREACHABLE, which an agent reads
+	// as «Cloud.ru is down» and retries («Риск», conclusion 225).
+	if r := stringArg(m, "reason"); r != clierrors.CodeUsage {
+		t.Errorf("reason %s, want %s: %s", r, clierrors.CodeUsage, text)
+	}
 	if len(cloud.cards) != 2 {
 		t.Errorf("%d cards asked for, want 2: none after the budget ran out", len(cloud.cards))
 	}

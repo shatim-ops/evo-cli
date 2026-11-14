@@ -729,15 +729,25 @@ func (r *Registry) readCards(ctx context.Context, s listSpec, rows []any, conds 
 // cardError is the failure to read a card under a filter, with what the
 // bare error of the read does not say («Риск», conclusion 149): which
 // filter read it, of which item, how many cards were read of how many, and
-// that nothing was selected. The reason stays the read's. The hint is the
-// read's too, but for two failures whose cause is the selection itself: an
-// item gone between the list and its card — the same call again reads the
-// list anew; and a call out of its time — the same call runs out the same
-// way, so the hint says to narrow, not to retry later.
+// that nothing was selected. The reason stays the read's, but for a call
+// out of its own time: USAGE, as for a list too long to read. The hint is
+// the read's too, but for two failures whose cause is the selection
+// itself: an item gone between the list and its card — the same call again
+// reads the list anew; and a call out of its time — the same call runs out
+// the same way, so the hint says to narrow, not to retry later.
 func cardError(ctx context.Context, filter, id string, read, of int, narrow []string, err error) error {
 	reason, msg, hint := errReason(err, nil)
 	switch {
 	case stderrors.Is(err, context.DeadlineExceeded) || stderrors.Is(ctx.Err(), context.DeadlineExceeded):
+		// The call's own time (D69), not the cloud's answer: the cloud
+		// answered every card read so far, and the selection is too wide
+		// for one call, as a list over cardReads is — USAGE, whose way out
+		// is the arguments. API_UNREACHABLE would read as «Cloud.ru is
+		// down» and send the agent to retry («Риск», conclusion 225). A
+		// read that timed out on its own keeps its reason.
+		if stderrors.Is(ctx.Err(), context.DeadlineExceeded) {
+			reason = clierrors.CodeUsage
+		}
 		msg = i18n.T("the call ran out of its time", "вызову не хватило времени")
 		hint = i18n.Tf("The same call again will run out the same way: narrow the list with: %s.",
 			"Тот же вызов ещё раз закончится так же: сузьте список: %s.", strings.Join(narrow, ", "))
