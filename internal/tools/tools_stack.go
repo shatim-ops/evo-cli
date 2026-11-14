@@ -264,6 +264,47 @@ func failStep(job *stack.Job, st *stack.Step, reason, msg string) {
 // maxStepAttempts bounds create retries per step (transient-error tolerance).
 const maxStepAttempts = 4
 
+// maxStepMissing is how many cranks in a row a waiting step may not find
+// its resource by its id before the resource counts as gone: a read right
+// after a create may lag behind it (Астра, #1829, #1830).
+const maxStepMissing = 4
+
+// stepMissing counts a crank that did not find the resource of waiting
+// step st by its id (why says how), and ends the step when the misses
+// reach maxStepMissing: the resource is gone, and the step names it — it
+// does not wait on it forever, nor end done with an output that is not
+// there. It reports whether the step ended.
+func stepMissing(job *stack.Job, st *stack.Step, why string) bool {
+	st.Missing++
+	st.Detail = fmt.Sprintf("%s (%d of %d)", why, st.Missing, maxStepMissing)
+	if st.Missing < maxStepMissing {
+		return false
+	}
+	failStep(job, st, clierrors.CodeNotFound, fmt.Sprintf("%s: resource %s of the step is gone: %s, %d times in a row; no new one was made", st.Key, st.ResourceID, why, st.Missing))
+	return true
+}
+
+// stepListed reports whether the list of step st's create holds its
+// resource by id; ok is false when the list could not be read or the step
+// is not found by a list (then nothing is known).
+func (s *Registry) stepListed(ctx context.Context, st *stack.Step) (listed, ok bool) {
+	f, found := stepFinder(st)
+	if !found {
+		return false, false
+	}
+	res, err := s.callTool(ctx, f.list, f.args)
+	if err != nil {
+		return false, false
+	}
+	arr, _ := res[f.field].([]any)
+	for _, it := range arr {
+		if m, isMap := it.(map[string]any); isMap && m["id"] == st.ResourceID && !statusGone(fmt.Sprint(m["status"])) {
+			return true, true
+		}
+	}
+	return false, true
+}
+
 // stackCrankInterval is the pause between cranks inside one stack_status
 // call. A variable only so that tests can shorten it.
 var stackCrankInterval = 8 * time.Second
@@ -345,7 +386,15 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						// («Риск», 222, У2).
 						if st.ResourceID == "" {
 							st.ResourceID = s.findStepID(ctx, st)
+						} else if listed, ok := s.stepListed(ctx, st); ok && !listed {
+							// The operation is done and the step's resource is
+							// not there: not done with an output that is gone.
+							if stepMissing(job, st, "the operation is done, the resource is not listed") {
+								return
+							}
+							continue
 						}
+						st.Missing = 0
 						id := st.ResourceID
 						job.Outputs[st.Key] = id
 						if st.Key == "lb" && id != "" {
@@ -366,7 +415,20 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					}
 					if st.ResourceID != "" {
 						cl, err := s.callTool(ctx, st.StatusTool, map[string]any{st.StatusArg: st.ResourceID})
+						if err != nil {
+							// NOT_FOUND by the step's id is the resource gone,
+							// once it holds; any other failure of the read is
+							// the next crank's to retry.
+							if reason, _ := cl["reason"].(string); reason == clierrors.CodeNotFound {
+								if stepMissing(job, st, st.StatusTool+" answers NOT_FOUND") {
+									return
+								}
+							} else {
+								st.Detail = "status: " + err.Error()
+							}
+						}
 						if err == nil {
+							st.Missing = 0
 							status, _ := cl[st.StatusField].(string)
 							if status == "" {
 								status, _ = cl["status"].(string)

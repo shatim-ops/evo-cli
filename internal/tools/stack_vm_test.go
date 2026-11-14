@@ -204,3 +204,78 @@ func TestStackStep_AnOperationsEndKeepsTheStepsOwnID(t *testing.T) {
 		t.Errorf("шаг %s с %s, outputs.vpc %s: want vpc-A, свою", st.Status, st.ResourceID, loaded.Outputs["vpc"])
 	}
 }
+
+// Шаг PostgreSQL ждёт готовности своего кластера A; чтение A отвечает
+// NOT_FOUND, в списке только чужой B того же имени (Астра, #1829). Один
+// промах — не отказ: чтение после создания может отставать. Промахи подряд
+// до предела — окончательный исход: шаг и задание в ошибке, причина
+// названа, B не подхвачен, create не зовётся.
+func TestStackStep_TheWaitedResourceNotFoundEndsTheStep(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"probe","postgres":{"name":"same"}}`)
+	j.Steps[0].Status, j.Steps[0].ResourceID = "waiting", "cl-A"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	r.handlers["pg_get"] = func(context.Context, map[string]any) (string, bool) {
+		return toJSON(map[string]any{"status": "error", "reason": "NOT_FOUND", "error": "cluster not found"}), true
+	}
+	r.handlers["pg_list"] = fakeOK(map[string]any{"clusters": []any{map[string]any{"id": "cl-B", "name": "same"}}})
+	r.handlers["pg_create"] = func(context.Context, map[string]any) (string, bool) {
+		t.Fatal("pg_create вызван: шаг создаёт заново")
+		return "", true
+	}
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	if loaded, _ := stack.LoadJob(j.ID); loaded.Failed() {
+		t.Fatalf("один промах чтения уже провалил задание: %+v", loaded.Steps[0])
+	}
+	for range maxStepMissing {
+		r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
+	}
+	loaded, err := stack.LoadJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := loaded.Steps[0]
+	if !loaded.Failed() || st.Status != "error" || st.Reason != "NOT_FOUND" || st.ResourceID != "cl-A" || !strings.Contains(loaded.Error, "cl-A") {
+		t.Errorf("шаг %s %s %s, задание %s %q: want ошибку NOT_FOUND, названную по cl-A", st.Status, st.Reason, st.ResourceID, loaded.Status, loaded.Error)
+	}
+}
+
+// Шаг VPC ждёт свою операцию; она кончилась, а сети A шага в списке нет —
+// только чужая B того же имени (Астра, #1830). Шаг не закрывается done с
+// отсутствующим ресурсом: промахи подряд до предела — ошибка; A в списке —
+// done с A.
+func TestStackStep_AnOperationsEndChecksTheStepsResourceIsThere(t *testing.T) {
+	for _, present := range []bool{false, true} {
+		stackHome(t)
+		r := newTestServer(t)
+		j := planJob(t, `{"name":"probe","vpc":{"name":"same"}}`)
+		j.Steps[0].Status, j.Steps[0].ResourceID, j.Steps[0].OpID = "waiting", "vpc-A", "op-old"
+		if err := j.Save(); err != nil {
+			t.Fatal(err)
+		}
+		listed := []any{map[string]any{"id": "vpc-B", "name": "same"}}
+		if present {
+			listed = append(listed, map[string]any{"id": "vpc-A", "name": "same"})
+		}
+		r.handlers["vpc_operation"] = fakeOK(map[string]any{"done": true})
+		r.handlers["vpc_list"] = fakeOK(map[string]any{"vpcs": listed})
+		r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+		for range maxStepMissing {
+			r.handleStackStatus(context.Background(), map[string]any{"job_id": j.ID, "wait_seconds": float64(1)})
+		}
+		loaded, err := stack.LoadJob(j.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := loaded.Steps[0]
+		switch {
+		case present && (st.Status != "done" || loaded.Outputs["vpc"] != "vpc-A"):
+			t.Errorf("A в списке: шаг %s, outputs.vpc %s; want done с vpc-A", st.Status, loaded.Outputs["vpc"])
+		case !present && (st.Status != "error" || st.Reason != "NOT_FOUND" || loaded.Outputs["vpc"] != ""):
+			t.Errorf("A нет: шаг %s %s, outputs.vpc %q; want ошибку NOT_FOUND без выхода", st.Status, st.Reason, loaded.Outputs["vpc"])
+		}
+	}
+}
