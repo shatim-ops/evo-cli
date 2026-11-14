@@ -499,8 +499,8 @@ func TestWorkflows_WindowsProfileACLChecked(t *testing.T) {
 // 1.4.0 ships without an rc (owner's decision 27.10): the session journal
 // of the live runs is checked instead. In the cloud-e2e jobs that call evo
 // against the cloud, the journal is on from the first call after configure
-// to the end, and its last step runs diag-check.py --public on it even when
-// a step before failed.
+// to the end, and diag-check.py --public runs on it after the last step that
+// calls evo, even when a step before failed.
 func TestWorkflows_CloudE2EJournalChecked(t *testing.T) {
 	jobs := readWorkflows(t)["cloud-e2e.yml"].Jobs
 	for _, name := range []string{"readonly", "live"} {
@@ -522,8 +522,16 @@ func TestWorkflows_CloudE2EJournalChecked(t *testing.T) {
 		if on != configure+1 || configure < 0 {
 			t.Errorf("cloud-e2e/%s: the journal goes on right after configure (configure step %d, diag on step %d)", name, configure, on)
 		}
-		if check != len(steps)-1 {
-			t.Errorf("cloud-e2e/%s: diag-check --public is the last step (step %d of %d)", name, check, len(steps))
+		if check < 0 {
+			t.Errorf("cloud-e2e/%s: no diag-check --public step", name)
+			continue
+		}
+		// Nothing after the check calls evo, so the journal it read is the
+		// whole journal; the step of answers that ends the job runs no evo.
+		for i, s := range steps[check+1:] {
+			if strings.Contains(s.Run, "evo ") || strings.Contains(s.Run, "cloud-live.sh") {
+				t.Errorf("cloud-e2e/%s: step %d (%s) calls evo after diag-check --public — its records go unchecked", name, check+1+i, s.Name)
+			}
 		}
 	}
 }

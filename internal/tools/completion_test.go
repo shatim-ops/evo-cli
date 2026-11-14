@@ -109,25 +109,25 @@ func TestCompletion_DeclarationsHold(t *testing.T) {
 			t.Errorf("valueRefs[%s]: %s is not a read without a required argument", arg, c.list)
 		}
 	}
-	for tool, args := range toolRefs {
+	for tool, args := range allCompletes() {
 		tl, ok := r.Lookup(tool)
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for arg, c := range args {
 			if _, has := props[arg]; !ok || !has || !r.listable(c.list) {
-				t.Errorf("toolRefs[%s][%s]: the tool's argument completed from %s, a read without a required argument", tool, arg, c.list)
+				t.Errorf("Decl.Completes of %s, %s: the tool's argument completed from %s, a read without a required argument", tool, arg, c.list)
 			}
 		}
 	}
-	for tool, args := range noCompletion {
+	for tool, args := range allNoCompletion() {
 		tl, ok := r.Lookup(tool)
 		if !ok {
-			t.Errorf("noCompletion names %s, which is no tool", tool)
+			t.Errorf("Decl.NoCompletion names %s, which is no tool", tool)
 			continue
 		}
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for arg := range args {
 			if _, ok := props[arg]; !ok {
-				t.Errorf("noCompletion[%s] names %s, which the tool does not take", tool, arg)
+				t.Errorf("Decl.NoCompletion of %s names %s, which the tool does not take", tool, arg)
 			}
 		}
 	}
@@ -159,7 +159,7 @@ func TestCompletionItems_TakesTheListWithTheField(t *testing.T) {
 	}
 }
 
-// A reference toolRefs declares completes from its list: the nodes'
+// A reference Decl.Completes declares completes from its list: the nodes'
 // subnet of a node pool from the project's subnets, ids with their names,
 // and the names themselves: the argument takes one (Decl.RefArgs, D57).
 func TestComplete_ToolRefFromItsList(t *testing.T) {

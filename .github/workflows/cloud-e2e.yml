@@ -161,6 +161,10 @@ permissions:
 # и VM повторяют это выражение (TestWorkflows_E2ENamesCarryTheRun).
 env:
   RUN: r${{ github.run_number }}a${{ github.run_attempt }}
+  # Каждый ответ API, который получил evo, — строка формы в этот файл
+  # (httpretry, #1714); в конце job его разбирает .github/actions/answers и
+  # удаляет: наружу — только выход генератора (заключение «Риска» 206, У2).
+  EVO_RECORD_ANSWERS: /tmp/evo-answers.jsonl
 
 jobs:
   # Проверка до прогона (ретро релиза 1.5, run 147 и 148): только чтение, до
@@ -220,6 +224,11 @@ jobs:
           DISK_SMOKE: ${{ inputs.disk_smoke }}
           PROBES: ${{ inputs.probes }}
         run: .github/scripts/e2e-preflight.sh
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: preflight
 
   # Без платных ресурсов: чтения API через CLI, все инструменты только для
   # чтения без аргументов, MCP по stdio и HTTP (гейт подтверждения,
@@ -309,6 +318,12 @@ jobs:
           command -v evo >/dev/null || { echo "::warning::evo не собран — журнал не проверен"; exit 0; }
           evo diag export --out "$RUNNER_TEMP/evo-journal.jsonl" >/dev/null
           python3 scripts/diag-check.py --public "$RUNNER_TEMP/evo-journal.jsonl"
+
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: readonly
 
   e2e:
     needs: preflight
@@ -554,6 +569,11 @@ jobs:
           BEFORE: ${{ runner.temp }}/sg-before.json
         run: |
           "$GITHUB_WORKSPACE/.github/scripts/e2e_port_rule.sh"
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: e2e
 
   # Области live, выбранные входами, — матрица job live. Не выбрана ни одна —
   # дешёвые области, которые трогает ветка (diff с main, classify.sh; решение
@@ -705,6 +725,12 @@ jobs:
           command -v evo >/dev/null || { echo "::warning::evo не собран — журнал не проверен"; exit 0; }
           evo diag export --out "$RUNNER_TEMP/evo-journal.jsonl" >/dev/null
           python3 scripts/diag-check.py --public "$RUNNER_TEMP/evo-journal.jsonl"
+
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: live-${{ matrix.area }}
 
   # Отечественные ОС по имени образа (шаг E, docs/internal/design-images.md):
   # init --image отказывает (Docker на них не ставится), vm create --image
@@ -939,6 +965,11 @@ jobs:
           done
           echo "::error::после vm delete осталось правило «evo:» для порта $PORT"
           exit 1
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: os-smoke-${{ matrix.os_id }}
 
   # Остатки прошлых прогонов (16.10.2026: отменённый прогон оставил ВМ
   # evo-e2e-app, её FIP и правило порта 80, следующий deploy упал на 409).
@@ -1160,6 +1191,11 @@ jobs:
       - name: ВМ пробы цены Г-20 не старше срока
         if: always()
         run: evo tools call vm_list --json | .github/scripts/e2e_live_runs.sh overdue
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: cleanup
 
   # Managed Kubernetes вживую (до 16.10.2026 не проверялся ни разу): кластер
   # с одним мастером → пул из одного узла → плагин cert-manager → поды
@@ -1516,6 +1552,11 @@ jobs:
         if: always() && contains(format(' {0} ', inputs.probes), ' g12 ')
         continue-on-error: true
         run: .github/scripts/k8s-footprint.sh check "$RUNNER_TEMP/footprint"
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: k8s-smoke
 
   # DBaaS вживую (вход dbaas_smoke): три job'а идут параллельно — PostgreSQL,
   # Kafka, Redis. Каждый: зона открыта и кластера с нашим именем нет →
@@ -1882,6 +1923,11 @@ jobs:
       - name: Расписание копий @daily и */5 (P45, проба)
         if: ${{ !cancelled() && contains(format(' {0} ', inputs.probes), ' p45 ') }}
         run: .github/scripts/pg-schedule-probe.sh
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: dbaas-pg
 
   dbaas-kafka:
     needs: preflight
@@ -2053,6 +2099,11 @@ jobs:
           # Отмена прогона — одна попытка удаления (dbaas-delete.sh).
           DBAAS_ONCE: ${{ job.status == 'cancelled' }}
         run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: dbaas-kafka
 
   dbaas-redis:
     needs: preflight
@@ -2222,6 +2273,11 @@ jobs:
           # Отмена прогона — одна попытка удаления (dbaas-delete.sh).
           DBAAS_ONCE: ${{ job.status == 'cancelled' }}
         run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: dbaas-redis
 
   # Проба G140-6 (Grok 1.4.0; реестр к DB-3/DB-11), разрешена владельцем
   # (#432, Р8): evo шлёт для STANDALONE replicas=0, платформа отвечает 400
@@ -2322,3 +2378,8 @@ jobs:
           # Отмена прогона — одна попытка удаления (dbaas-delete.sh).
           DBAAS_ONCE: ${{ job.status == 'cancelled' }}
         run: .github/scripts/dbaas-delete.sh redis "$CLUSTER"
+      - name: каталог ответов (без сырого файла)
+        if: always()
+        uses: ./.github/actions/answers
+        with:
+          job: redis-standalone-probe
