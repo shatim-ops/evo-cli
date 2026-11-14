@@ -215,6 +215,7 @@ jobs:
           PG_ZONE: ${{ inputs.pg_zone }}
           KAFKA_ZONE: ${{ inputs.kafka_zone }}
           REDIS_ZONE: ${{ inputs.redis_zone }}
+          E2E_CORE: ${{ inputs.e2e_core }}
           OS_SMOKE: ${{ inputs.os_smoke }}
           K8S_SMOKE: ${{ inputs.k8s_smoke }}
           K8S_POD_CHART: ${{ inputs.k8s_pod_chart }}

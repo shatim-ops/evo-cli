@@ -141,9 +141,13 @@ func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]
 		// A script that reads status alone must not wait for it to come up.
 		answer = "failed"
 	}
-	return toJSON(map[string]any{"status": answer, idField: id, "resource_status": status, "created": created,
+	out := map[string]any{"status": answer, idField: id, "resource_status": status, "created": created,
 		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s) и оплачивается", kind, name, id, status),
-		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}), false
+		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}
+	// The state is the list's word, the service's: marked as goingOn marks
+	// it (Астра, #1952).
+	cloudText(out, "resource_status")
+	return toJSON(out), false
 }
 
 // needSpecResult is the answer of pg_create, kafka_create and redis_create
