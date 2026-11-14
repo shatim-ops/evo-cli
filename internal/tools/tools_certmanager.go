@@ -208,11 +208,20 @@ func (s *Registry) planCertDelete(ctx context.Context, args map[string]any) (*Pl
 	if _, err := cli.Get(ctx, id); err != nil {
 		return answered(s.deleteFailed("cert_delete", id, err)), nil
 	}
-	preview := map[string]any{"message": i18n.Tf("cert_delete permanently deletes certificate %q. If it is bound to a load balancer/listener, deletion can break HTTPS. (force=true deletes it despite active usage.)",
-		"cert_delete безвозвратно удаляет сертификат %q. Если он привязан к балансировщику или обработчику, удаление может сломать HTTPS. (force=true — удалить, хотя сертификат используется.)", id),
+	// One value of force for the preview and the DELETE (Астра, full audit
+	// 14.11, finding 04): the argument, false by default. What force means
+	// is the specification's (Certificate Manager, DELETE
+	// /v1/certificate/{id}, parameter force: to delete a certificate even
+	// if other services use it).
+	force, _ := args["force"].(bool)
+	preview := map[string]any{"force": force, "message": i18n.Tf("cert_delete permanently deletes certificate %q if no service uses it (force=false: if one does, the service refuses the delete, by its specification).",
+		"cert_delete безвозвратно удаляет сертификат %q, если его не использует ни один сервис (force=false: если использует, сервис откажет в удалении — по его спецификации).", id),
+	}
+	if force {
+		preview["message"] = i18n.Tf("cert_delete permanently deletes certificate %q even if a service uses it (force=true): a load balancer or listener bound to it loses HTTPS.",
+			"cert_delete безвозвратно удаляет сертификат %q, даже если его использует сервис (force=true): привязанный балансировщик или обработчик теряет HTTPS.", id)
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-		force, _ := args["force"].(bool)
 		if err := cli.Delete(ctx, id, force); err != nil {
 			return s.deleteFailed("cert_delete", id, err)
 		}
