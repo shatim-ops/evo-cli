@@ -215,8 +215,10 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 			list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, url.Values{}) }
 			return lostCreate(ctx, "redis_create", list, i18n.T("Redis cluster", "кластер Redis"), name, willCreate, "redis_get cluster_id", fmt.Errorf(i18n.T("create cluster: %w", "создание кластера: %w"), err))
 		}
-		return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
-			"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}), false
+		out := map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
+			"created": willCreate, "note": "Async (~minutes). Poll redis_operation(operation_id); then redis_get for status READY + redis_hosts. redis_get and redis_list report replicas as hosts per shard, the master included (" + fmt.Sprint(replicas+1) + " here)."}
+		s.goingOn(ctx, out, "redis_operation", op.ID, op.ResourceID, nil)
+		return toJSON(out), false
 	}}, nil
 }
 

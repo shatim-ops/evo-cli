@@ -448,8 +448,10 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 			list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, kafkaQuery()) }
 			return lostCreate(ctx, "kafka_create", list, i18n.T("Kafka cluster", "кластер Kafka"), name, willCreate, "kafka_get cluster_id", fmt.Errorf(i18n.T("create cluster: %w", "создание кластера: %w"), err))
 		}
-		return toJSON(map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
-			"created": willCreate, "note": "Async (~minutes). Poll kafka_operation(operation_id); then kafka_get for status READY + kafka_hosts."}), false
+		out := map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,
+			"created": willCreate, "note": "Async (~minutes). Poll kafka_operation(operation_id); then kafka_get for status READY + kafka_hosts."}
+		s.goingOn(ctx, out, "kafka_operation", op.ID, op.ResourceID, nil)
+		return toJSON(out), false
 	}}, nil
 }
 

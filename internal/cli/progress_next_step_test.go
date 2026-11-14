@@ -75,19 +75,27 @@ var noNextStep = map[string]string{
 	"dns_record_create": "creating, operation_id: next is dns_operation",
 	"dns_zone_create":   "creating, operation_id: next is dns_operation",
 	"image_create":      "building, no operation_id",
-	"k8s_add_addon":     "installing, operation_id: next is k8s_operation",
-	"k8s_add_nodepool":  "creating, operation_id: next is k8s_operation",
-	"k8s_create":        "creating, operation_id: next is k8s_operation",
-	"kafka_create":      "creating, operation_id: next is kafka_operation",
 	"lb_create":         "creating, operation_id: next is lb_operation",
-	"pg_backup_create":  "backing_up, operation_id: next is pg_operation",
-	"pg_create":         "creating, operation_id: next is pg_operation",
-	"redis_create":      "creating, operation_id: next is redis_operation",
 	"tg_create":         "creating, operation_id: next is lb_operation",
 	"vpc_create":        "creating, operation_id: next is vpc_operation",
 	"vpc_route_create":  "creating, operation_id: next is vpc_operation",
 	"vpc_route_delete":  "deleting, operation_id: next is vpc_operation",
 }
+
+// resourceStateNamed are the creates whose answer, while the cloud makes
+// the resource, names its state now (resource_status), beside the step
+// (release plan 1.9, «Честный ход», #1816; Астра, #1815).
+var resourceStateNamed = map[string]bool{
+	"k8s_add_addon": true, "k8s_add_nodepool": true, "k8s_create": true, "kafka_create": true,
+	"pg_backup_create": true, "pg_create": true, "redis_create": true,
+}
+
+// afterOperation are the creates whose resource the read of the operation
+// does not read (it knows only the operation's id): the note names the
+// read after the operation ends (#1816; «релиз», §0 rule 6: no second
+// field of the step in 1.9 — a convention of the step after an operation
+// is the backlog of 1.10).
+var afterOperation = map[string]string{"pg_backup_create": "pg_backups", "k8s_add_addon": "k8s_kubectl"}
 
 // nextStepProblem reads the answer of a change that is going on: "" when
 // it names the machine's next step (D69, nextStep), else what is wrong.
@@ -156,6 +164,17 @@ func TestProgress_ChangeGoingOnNamesTheNextStep(t *testing.T) {
 			goingOn++
 			if problem := nextStepProblem(c.tool.Name, answer, registry); problem != "" {
 				found[c.tool.Name] = fmt.Sprintf("status %s, %s", status, problem)
+			}
+			// A create of the database and Kubernetes services names the
+			// state of its resource as well as the step: the state of the
+			// operation does not stand for it (Астра, #1815, class R).
+			if resourceStateNamed[c.tool.Name] && answer["resource_status"] == nil && answer["resource_status_error"] == nil {
+				t.Errorf("%s: status %s, and no resource_status: the agent sees the operation, not the resource", c.tool.Name, status)
+			}
+			if want := afterOperation[c.tool.Name]; want != "" {
+				if note, _ := answer["note"].(string); !strings.Contains(note, want) {
+					t.Errorf("%s: the note does not name %s, the read after the operation ends: %s", c.tool.Name, want, note)
+				}
 			}
 		default:
 			t.Errorf("%s answers status %q, a word of neither vocabulary: add it to statusGoingOn (the cloud is still making the change — the answer then names next_tool) or to statusOver (the change is made)", c.tool.Name, status)
