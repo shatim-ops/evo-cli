@@ -380,6 +380,8 @@ func TestPublicTrace_Rules(t *testing.T) {
 		{"a.md", "the host 77.88.21.3 and 128.0.0.0", []string{"ipv4:77.88.21.3", "ipv4:128.0.0.0"}},
 		{"a.md", "see evo-internal/runs/ and evo-internal/runs/rc-1.9.md", []string{"internal-path:evo-internal/runs/rc-1.9.md"}},
 		{"docs/internal/briefs/x.md", "write to evo-internal/runs/rc-1.9.md", nil},
+		{"a.md", "evo-internal/audits/2026/november/report.md", []string{"internal-path:evo-internal/audits/2026/november/report.md"}},
+		{"a.md", "the site www.mycloud.ru", nil},
 	} {
 		var got []string
 		for _, f := range traceIn(c.file, c.text, services) {
