@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
+	"maps"
 	"testing"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -63,7 +64,13 @@ func TestToolError_SameAfterReasonContract(t *testing.T) {
 			if !stderrors.As(before, &b) || !stderrors.As(after, &a) {
 				t.Fatalf("%v: not a CLIError", err)
 			}
-			if a.Code != b.Code || a.Message != b.Message || a.Hint != b.Hint || a.Err != b.Err || a.Details != nil || clerrors.ExitCode(after) != clerrors.ExitCode(before) {
+			// The one detail an error answer adds: "_untrusted" names its
+			// error when the text is a service's (#1802).
+			details := maps.Clone(a.Details)
+			if u, _ := details["_untrusted"].([]any); len(u) == 1 && u[0] == "error" {
+				delete(details, "_untrusted")
+			}
+			if a.Code != b.Code || a.Message != b.Message || a.Hint != b.Hint || a.Err != b.Err || len(details) != 0 || clerrors.ExitCode(after) != clerrors.ExitCode(before) {
 				t.Errorf("%s %v:\n before %+v exit %d\n after  %+v exit %d", lang, err,
 					*b, clerrors.ExitCode(before), *a, clerrors.ExitCode(after))
 			}
