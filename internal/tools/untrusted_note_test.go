@@ -59,7 +59,6 @@ var untrustedMarkerOnly = map[string]string{
 	"kafka_get":           "the whole answer: the cluster as its service has it, not the output of a workload",
 	"redis_get":           "the whole answer: the cluster as its service has it, not the output of a workload",
 	"k8s_options":         "flavors, zones, defaults: the names of the catalogue's flavors and zones, not the output of a workload",
-	"k8s_addon_versions":  "display_name: the name of the addon as the catalogue words it, not the output of a workload",
 	"k8s_addons":          "addons: the names and descriptions of the catalogue's addons, not the output of a workload",
 	"k8s_plan":            "flavor: the name of the catalogue's flavor, not the output of a workload",
 	"metrics_history":     "series: the names of the instances whose metrics they are, not the output of a workload",

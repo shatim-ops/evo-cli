@@ -399,8 +399,7 @@
     }
   },
   "k8s_addon_versions": {
-    "project": true,
-    "untrusted": "{fields:[display_name] whole:false own:[] workload:false}"
+    "project": true
   },
   "k8s_addons": {
     "project": true,

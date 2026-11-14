@@ -209,6 +209,13 @@ func (s *Registry) handleK8sAddonVersions(ctx context.Context, args map[string]a
 	} else {
 		out["note"] = "No installable release (all END_OF_LIFE or INACTIVE)."
 	}
+	// The name the catalogue words is its text (Астра, the full audit of
+	// 14.11, finding 05) — marked here, not by Decl.Untrusted, whose
+	// marker decodes the answer again and sorts the keys of the schema the
+	// person reads.
+	if addon.DisplayName != "" {
+		cloudText(out, "display_name")
+	}
 	return toJSON(out), false
 }
 
