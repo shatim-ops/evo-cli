@@ -71,11 +71,11 @@ func declsSnapshot() map[string]declSnap {
 			Project:       tl.Decl.Project,
 			RequiredOneOf: tl.Decl.RequiredOneOf,
 			AlwaysListed:  tl.Decl.AlwaysListed,
-			Sensitive:     sensitiveTools[tl.Name],
-			SideEffects:   sideEffectTools[tl.Name],
-			Destructive:   destructiveTools[tl.Name],
+			Sensitive:     tl.Decl.Sensitive,
+			SideEffects:   tl.Decl.SideEffects,
+			Destructive:   tl.Decl.Destructive,
 		}
-		s.PartialConsent = funcName(partialConsent[tl.Name])
+		s.PartialConsent = funcName(tl.Decl.PartialConsent)
 		if c, ok := createdIDs[tl.Name]; ok {
 			s.Created = fmt.Sprintf("%+v", c)
 		}

@@ -193,10 +193,10 @@ func cardDoes(t Tool, bound bool) string {
 		return "deletes; a repeat answers `already_deleted`"
 	}
 	switch {
-	case sensitiveTools[t.Name]:
+	case IsSensitive(t):
 		return "reveals a secret"
 	case HasSideEffects(t):
-		return sideEffectTools[t.Name]
+		return t.Decl.SideEffects
 	case t.Mutating:
 		return "changes"
 	}
