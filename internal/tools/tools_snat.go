@@ -149,8 +149,8 @@ func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Pl
 		}
 		return madeAnswer(ctx, eng, map[string]any{"nat_gateway": gw}, made{tool: "snat_create", list: "snat_list", field: "nat_gateway", idField: "nat_gateway_id",
 			what: "SNAT gateway", whatRU: "Шлюз SNAT", read: list,
-			note:      "SNAT gateway created — private-subnet nodes in this zone have outbound internet. It is billable; whether and when to delete it (snat_delete) — ask the person.",
-			noteRU:    "Шлюз SNAT создан — узлы приватных подсетей этой зоны получили исходящий доступ в интернет. Шлюз платный; удалять ли его и когда (snat_delete) — спросите человека.",
+			note:      "SNAT gateway created — private-subnet nodes in this zone get outbound internet through it. It is billable; whether and when to delete it (snat_delete) — ask the person.",
+			noteRU:    "Шлюз SNAT создан — через него узлы приватных подсетей этой зоны выходят в интернет. Шлюз платный; удалять ли его и когда (snat_delete) — спросите человека.",
 			pending:   "The SNAT gateway is not made yet: private-subnet nodes in this zone have outbound internet only once it is. It is billable; whether and when to delete it (snat_delete) — ask the person.",
 			pendingRU: "Шлюз SNAT ещё не сделан: узлы приватных подсетей этой зоны получат исходящий доступ в интернет, только когда он будет сделан. Шлюз платный; удалять ли его и когда (snat_delete) — спросите человека."})
 	}}, nil
