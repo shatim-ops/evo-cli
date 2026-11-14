@@ -35,7 +35,7 @@ type created struct {
 	// takes too.
 	list, field string
 	listArgs    []string
-	// delete is the tool that deletes it (deleteTargets); "" for none.
+	// delete is the tool that deletes it (Decl.Delete); "" for none.
 	delete string
 }
 

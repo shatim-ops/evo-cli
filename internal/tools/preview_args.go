@@ -17,34 +17,15 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// echoedArgs are the optional arguments a create sends as the call gives
-// them and its preview names as they are (CLAUDE.md §6, axis 4: the
-// preview names everything evo sends; release plan 1.6, «Превью называет
-// заданные необязательные аргументы»). One point for them all, as
-// namedProject is for the project, not a line in each handler. A secret
-// never goes here: the preview shows the value as the call gives it, or
-// its summary (summarizedArgs).
-var echoedArgs = map[string][]string{
-	"cert_issue_le":    {"description"},
-	"cert_import":      {"description", "intermediate_certificate"},
-	"dns_zone_create":  {"description"},
-	"image_create":     {"description", "display_name", "user_data_template"},
-	"kafka_create":     {"description"},
-	"lb_create":        {"target_port"},
-	"pg_create":        {"description"},
-	"pg_db_create":     {"lc_collate", "lc_ctype"},
-	"redis_create":     {"description"},
-	"vpc_create":       {"description"},
-	"vpc_route_create": {"description"},
-}
-
-// summarizedArgs are the arguments of echoedArgs whose text is too long
-// for a line of the question — a PEM chain, a cloud-init template: the
-// preview names what is in it and a SHA-256 of what is sent, so a person
-// checks it and an agent sees what goes.
-var summarizedArgs = map[string]func(string) string{
-	"intermediate_certificate": certChainSummary,
-	"user_data_template":       templateSummary,
+// echoedArg is an optional argument a create sends as the call gives it
+// and its preview names (Decl.EchoedArgs). summary, when set, is what the
+// preview names for an argument whose text is too long for a line of the
+// question — a PEM chain, a cloud-init template: what is in it and a
+// SHA-256 of what is sent, so a person checks it and an agent sees what
+// goes.
+type echoedArg struct {
+	name    string
+	summary func(string) string
 }
 
 // certChainSummary names each certificate of a PEM chain (as given, or in
@@ -93,13 +74,13 @@ func textSummary(v string) string {
 		len(v), strings.Count(strings.TrimRight(v, "\n"), "\n")+1, sha256.Sum256([]byte(v)))
 }
 
-// namedArgs is the handler of a tool of echoedArgs whose preview names
+// namedArgs is the handler of a tool of Decl.EchoedArgs whose preview names
 // the arguments of the list the call gives: in the params of the preview
 // object where there is one (engine.CreatePreview), else beside the
 // message, where the CLI shows every field. An argument the preview names
 // already, under its own key, is left as it is. confirmation_required is
 // the one status of a preview (gated): any other answer is not one.
-func namedArgs(keys []string, next Handler) Handler {
+func namedArgs(echoed []echoedArg, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		text, isErr := next(ctx, args)
 		var m map[string]any
@@ -115,14 +96,15 @@ func namedArgs(keys []string, next Handler) Handler {
 			}
 		}
 		changed := false
-		for _, k := range keys {
+		for _, a := range echoed {
+			k := a.name
 			v, ok := args[k]
 			if !ok || v == nil || v == "" || named[k] {
 				continue
 			}
-			if sum := summarizedArgs[k]; sum != nil {
+			if a.summary != nil {
 				if text, isText := v.(string); isText {
-					v = sum(text)
+					v = a.summary(text)
 				}
 			}
 			if isPreview {

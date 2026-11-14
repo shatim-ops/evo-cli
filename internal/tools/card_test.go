@@ -14,7 +14,7 @@ import (
 // by prose. Every group has a card; the card names every tool of the group
 // with its command; what a create makes says where its id is, how to find
 // it and what deletes it (Decl.Created); a delete says a repeat is safe
-// (deleteTargets); an id argument says where the id comes from (idArgs); a
+// (Decl.Delete); an id argument says where the id comes from (Decl.IDArgs); a
 // group with an operation tool says to wait with it. Consent is said in one
 // place, the rules of the evo skill: no card carries its form.
 func TestGroupCards_CoverEveryToolFromTheDeclarations(t *testing.T) {
