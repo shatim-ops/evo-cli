@@ -247,15 +247,75 @@ func TestStackApply_TheQuestionTellsAMadeResourceFromACreate(t *testing.T) {
 	if !strings.Contains(text, "will_finish are made already") {
 		t.Errorf("the question does not say what will_finish is: %s", text)
 	}
-	// A pending step that holds its resource's id (a VM the next crank
-	// finishes, a cut-off create whose resource was found) is made too.
-	j2 := planJob(t, `{"name":"h","vpc":{"name":"net-h"}}`)
-	j2.Steps[0].ResourceID = "00000000-0000-4000-8000-0000000000bb"
-	if err := j2.Save(); err != nil {
+	// A pending step is made only where advance takes its id for the
+	// resource («Риск», 216, У1): a cut-off create whose resource was
+	// found. A pending step with an id but no cut-off is created again —
+	// the question names it so, and prices it.
+	for _, tc := range []struct {
+		interrupted bool
+		made        bool
+	}{{true, true}, {false, false}} {
+		j2 := planJob(t, `{"name":"h","vpc":{"name":"net-h"}}`)
+		j2.Steps[0].ResourceID, j2.Steps[0].Interrupted = "00000000-0000-4000-8000-0000000000bb", tc.interrupted
+		if err := j2.Save(); err != nil {
+			t.Fatal(err)
+		}
+		text, _ = r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j2.ID})
+		if created := strings.Contains(text, "net-h") && strings.Contains(text, `"component": "vpc"`); created == tc.made {
+			t.Errorf("a pending step with an id, interrupted %v: want made %v: %s", tc.interrupted, tc.made, text)
+		}
+	}
+}
+
+// The step of a VM that is coming up (pending with its VM, D69) is made:
+// the next crank repeats provision with the step's VM (vm_id), so a VM
+// gone since is refused (D102) and no other is made («Риск», 216, У2).
+func TestStackApply_TheVMOfAStepIsTheOneTheRepeatGoesOnWith(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"s","vm":{"name":"web"}}`)
+	j.Steps[0].ResourceID = "vm-1"
+	if err := j.Save(); err != nil {
 		t.Fatal(err)
 	}
-	text, _ = r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j2.ID})
-	if strings.Contains(text, "net-h") || !strings.Contains(text, "0000000000bb") {
-		t.Errorf("a pending step with its resource's id, want it in will_finish: %s", text)
+	text, _ := r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID})
+	if !strings.Contains(text, "will_finish") || !strings.Contains(text, "vm-1") {
+		t.Errorf("the question, want the VM coming up in will_finish: %s", text)
+	}
+	var got []any
+	r.handlers["provision"] = func(_ context.Context, args map[string]any) (string, bool) {
+		got = append(got, args["vm_id"])
+		return toJSON(map[string]any{"status": "error", "reason": "VM_NOT_FOUND", "error": "the VM the call went on with is gone; no new one was made"}), true
+	}
+	r.handlers["vm_list"] = fakeOK(map[string]any{"vms": []any{}})
+	r.gated("stack_apply", r.planStackApply)(context.Background(), map[string]any{"job_id": j.ID, "confirmed": true})
+	if len(got) == 0 || got[0] != "vm-1" {
+		t.Errorf("provision called with vm_id %v, want vm-1: a VM gone would be made again", got)
+	}
+}
+
+// A job in error is asked about as before, and the question names the
+// step that stopped it, its reason and the resource it left
+// («Риск», 216, У3): the consent pays for the steps of a stack that does
+// not end.
+func TestStackApply_TheQuestionNamesTheStepInError(t *testing.T) {
+	stackHome(t)
+	r := newTestServer(t)
+	j := planJob(t, `{"name":"g","vpc":{"name":"net-g"},"secrets":[{"path":"app/db","value":"v"}]}`)
+	for _, st := range j.Steps {
+		if st.Tool == "vpc_create" {
+			st.Status, st.Reason, st.ResourceID = "error", "API_ERROR", "00000000-0000-4000-8000-0000000000cc"
+			st.Detail = "vpc: the operation failed"
+		}
+	}
+	j.Status, j.Error = "error", "vpc: the operation failed"
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := r.handlers["stack_apply"](context.Background(), map[string]any{"job_id": j.ID})
+	for _, want := range []string{"failed_steps", "API_ERROR", "0000000000cc", "stopped"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the question of a job in error does not say %q: %s", want, text)
+		}
 	}
 }

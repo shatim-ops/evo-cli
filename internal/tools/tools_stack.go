@@ -434,6 +434,12 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 				// stack_apply was confirmed for the whole stack. Jobs planned
 				// before provision and s3_put got their gates lack the flag.
 				args["confirmed"] = true
+				if st.Tool == "provision" && st.ResourceID != "" {
+					// The repeat goes on with the step's VM and no other: a VM
+					// gone since is refused, not made again (D102; «Риск»,
+					// conclusion 216, У2).
+					args["vm_id"] = st.ResourceID
+				}
 				res, err := s.callTool(ctx, st.Tool, args)
 				if err != nil && ctx.Err() != nil {
 					// Cancelled mid-create: not a failed attempt. Keep the id
@@ -1089,15 +1095,21 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 	// The preview is built for the question only: its price reads what a
 	// consented call does not need.
 	previewOf := func(ctx context.Context) (map[string]any, error) {
-		create, finish, steps := s.stackSteps(job)
+		create, finish, failed, steps := s.stackSteps(job)
 		will := map[string]any{"will_create": create}
 		keys := []string{"will_create"}
-		var warning string
+		var warnings []string
 		if len(finish) > 0 {
 			will["will_finish"] = finish
 			keys = append(keys, "will_finish")
-			warning = i18n.Tf("%d step(s) of will_finish are made already: the consent waits for them or finishes them and creates nothing there; steps_cost prices will_create only",
-				"уже сделано шагов will_finish: %d — согласие их дожидается или довершает и ничего там не создаёт; steps_cost — цена только will_create", len(finish))
+			warnings = append(warnings, i18n.Tf("%d step(s) of will_finish are made already: the consent waits for them or finishes them and creates nothing there; steps_cost prices will_create only",
+				"уже сделано шагов will_finish: %d — согласие их дожидается или довершает и ничего там не создаёт; steps_cost — цена только will_create", len(finish)))
+		}
+		if len(failed) > 0 {
+			will["failed_steps"] = failed
+			keys = append(keys, "failed_steps")
+			warnings = append(warnings, i18n.Tf("the job is stopped by %d step(s) in error (failed_steps): the consent runs the steps that do not wait on them, and the job does not end done; whether to remove what it made (stack_destroy) — ask the person",
+				"задание остановлено шагами с ошибкой (failed_steps): %d — согласие выполнит шаги, которые от них не зависят, но задание не завершится; удалять ли созданное (stack_destroy) — спросите человека", len(failed)))
 		}
 		// The price of what the consent makes: the steps it creates, as
 		// stack_plan prices the job (CLAUDE.md §6, axes 1 and 4).
@@ -1108,7 +1120,7 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 			keys = append(keys, "steps_cost")
 		}
 		preview := map[string]any{"message": i18n.T("stack_apply provisions BILLABLE resources.",
-			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", will, keys, warning)}
+			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", will, keys, warnings...)}
 		// A job done: the question is asked as before — answering without
 		// it would change an exit code, which waits for the major — and
 		// says that the consent creates nothing, as deploy's does of an
@@ -1157,12 +1169,24 @@ func notShown(v any) string {
 	return fmt.Sprintf("(not shown: %d bytes)", len(s))
 }
 
-// stepMade reports whether the resource of step st is made already: the
-// step waits for it to be ready, or a pending step holds its id — a VM
-// the next crank finishes, a create cut off whose resource was found. The
-// next crank waits for it or finishes it, and creates nothing (advance).
+// stepMade reports whether the resource of step st is made already, as
+// advance takes it: the step waits for it to be ready; a create was cut
+// off and its resource found (advance adopts it); or the VM of a
+// provision step is coming up (D69), which the next crank repeats with
+// the step's VM (vm_id) — a VM gone since is refused, not made again
+// (D102). Any other pending step is created, whatever id it holds
+// («Риск», conclusion 216, У1, У2).
 func stepMade(st *stack.Step) bool {
-	return st.Status == "waiting" || st.Status == "running" || st.ResourceID != ""
+	switch {
+	case st.Status == "waiting":
+		return true
+	case st.Status != "pending" || st.ResourceID == "":
+		return false
+	case st.Interrupted:
+		return true
+	default:
+		return st.Tool == "provision"
+	}
 }
 
 // stackSteps sorts the steps of job not done yet for the question of
@@ -1172,17 +1196,26 @@ func stepMade(st *stack.Step) bool {
 // are those steps, for their price. finish is what is made already
 // (stepMade): the step, its tool, the resource's id and the step's state
 // — the consent waits for it or finishes it, and pays for no new one
-// (Астра, #1748). A step in error stops the job and is in neither.
+// (Астра, #1748). failed is the steps in error, which stop the job: the
+// step, its tool, the class of its failure, its words and the resource it
+// left for stack_destroy («Риск», conclusion 216, У3).
 //
 // An argument that holds a secret (CLISpec.SecretFiles of the step's
 // tool) is named, its value is not (CLAUDE.md §4); nor is the value of
 // stack.HiddenArgs, which the job file does not keep either: the question
 // gives its size.
-func (s *Registry) stackSteps(job *stack.Job) (create, finish []map[string]any, steps []*stack.Step) {
+func (s *Registry) stackSteps(job *stack.Job) (create, finish, failed []map[string]any, steps []*stack.Step) {
 	create, finish = []map[string]any{}, []map[string]any{}
 	for _, st := range job.Steps {
 		switch {
-		case st.Status == "done" || st.Status == "error":
+		case st.Status == "done":
+			continue
+		case st.Status == "error":
+			row := map[string]any{"step": st.Key, "tool": st.Tool, "reason": st.Reason, "detail": st.Detail}
+			if st.ResourceID != "" {
+				row["resource_id"] = st.ResourceID
+			}
+			failed = append(failed, row)
 			continue
 		case stepMade(st):
 			finish = append(finish, map[string]any{"step": st.Key, "tool": st.Tool, "resource_id": st.ResourceID, "state": st.Status})
@@ -1208,7 +1241,7 @@ func (s *Registry) stackSteps(job *stack.Job) (create, finish []map[string]any, 
 		create = append(create, row)
 		steps = append(steps, st)
 	}
-	return create, finish, steps
+	return create, finish, failed, steps
 }
 
 // appliableJob is the job stack_apply may advance: there, of this server's
