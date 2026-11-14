@@ -22,5 +22,8 @@ func TestMain(m *testing.M) {
 	// connect: the fake clouds' documentation addresses are not dialled,
 	// whatever network the tests run in (#1707).
 	deployplan.DialSSH = func(context.Context, string, time.Duration) error { return sshNoAnswer{} }
+	// The looks for a floating IP whose create was cut go at the world's
+	// pace, not a production second each (deployplan.FIPLookupInterval).
+	deployplan.FIPLookupInterval = time.Millisecond
 	os.Exit(m.Run())
 }
