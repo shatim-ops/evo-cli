@@ -103,12 +103,24 @@ func findAddon(ctx context.Context, cli *mk8s.Client, name string) (mk8s.Addon, 
 			return a, nil
 		}
 	}
+	return mk8s.Addon{}, addonNotFound(all, name)
+}
+
+// addonNotFound is the NOT_FOUND of an addon name the catalogue all does
+// not have, with the similar names it has. They are the catalogue's words:
+// each is quoted (quoteCloud) before they are joined (Астра, the full
+// audit of 14.11, finding 09).
+func addonNotFound(all []mk8s.Addon, name string) error {
 	hint := i18n.T("List the addons: evo k8s addons <substring> (MCP: k8s_addons query=…).",
 		"Список плагинов: evo k8s addons <подстрока> (MCP: k8s_addons query=…).")
 	if similar := similarAddons(all, name); len(similar) > 0 {
-		hint += i18n.Tf(" Similar: %s.", " Похожие: %s.", strings.Join(similar, ", "))
+		quoted := make([]string, len(similar))
+		for i, n := range similar {
+			quoted[i] = quoteCloud(n)
+		}
+		hint += i18n.Tf(" Similar: %s.", " Похожие: %s.", strings.Join(quoted, ", "))
 	}
-	return mk8s.Addon{}, clierrors.New(clierrors.CodeNotFound,
+	return clierrors.New(clierrors.CodeNotFound,
 		i18n.Tf("addon %q not found in the Managed Kubernetes catalogue", "плагин %q не найден в каталоге Managed Kubernetes", name), hint)
 }
 
