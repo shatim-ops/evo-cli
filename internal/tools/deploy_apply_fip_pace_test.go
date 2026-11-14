@@ -34,8 +34,8 @@ func TestDeployApply_ACutFloatingIPIsLookedForAtTheWorldsPace(t *testing.T) {
 			ran = true
 			start := time.Now()
 			faultRun(t, c, k+1, faultCancel)
-			// wall-clock: half of one production look for the address (a
-			// second): the world's pace is milliseconds.
+			// The world's pace is milliseconds.
+			// wall-clock: half of one production look for the address (deployplan.FIPLookupInterval, a second).
 			if d := time.Since(start); d > 500*time.Millisecond {
 				t.Errorf("deploy_apply with its floating IP create cut took %s: the look for the address waits a production interval", d)
 			}
