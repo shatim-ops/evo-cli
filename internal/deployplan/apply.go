@@ -472,12 +472,17 @@ func waitForSSHPort(ctx context.Context, ip string, timeout time.Duration, show 
 func sshUnreachedNote(ip string, waited time.Duration, state portState) string {
 	switch state {
 	case portUnchecked:
-		return "SSH port 22 of " + ip + " was not checked: the call had no time left for it. Retry the same ssh command in about a minute; do NOT recreate the VM."
+		return i18n.Tf("SSH port 22 of %s was not checked: the call had no time left for it. Retry the same ssh command in about a minute; do NOT recreate the VM.",
+			"Порт SSH 22 адреса %s не проверен: у вызова не осталось времени. Повторите ту же команду ssh примерно через минуту; ВМ НЕ пересоздавайте.", ip)
 	case portRefused:
-		return "SSH port 22 of " + ip + " refused the connection when evo checked it from the machine evo runs on: the address answers, and nothing listens on port 22 yet — sshd may still be starting. Retry the same ssh command in about a minute; if it is still refused, the image may run no sshd on port 22. Do NOT recreate the VM."
+		return i18n.Tf("SSH port 22 of %s refused the connection when evo checked it from the machine evo runs on: the address answers, and nothing listens on port 22 yet — sshd may still be starting. Retry the same ssh command in about a minute; if it is still refused, the image may run no sshd on port 22. Do NOT recreate the VM.",
+			"Порт SSH 22 адреса %s отказал в соединении при проверке с машины, где работает evo: адрес отвечает, но порт 22 пока никто не слушает — возможно, sshd ещё запускается. Повторите ту же команду ssh примерно через минуту; если отказ повторится, возможно, образ не запускает sshd на порту 22. ВМ НЕ пересоздавайте.", ip)
 	}
-	return "SSH port 22 of " + ip + " did not answer evo's TCP check from the machine evo runs on within " + waited.Round(time.Second).String() +
-		": the VM may still be booting, or a security group or a network on the way may drop the packets — this check does not tell which. Retry the same ssh command in about a minute; if it still gets no answer, check the rules for port 22 of the VM's security group (list_security_groups) against the address you connect from. Do NOT recreate the VM."
+	return i18n.Tf("SSH port 22 of %s did not answer evo's TCP check from the machine evo runs on within %s"+
+		": the VM may still be booting, or a security group or a network on the way may drop the packets — this check does not tell which. Retry the same ssh command in about a minute; if it still gets no answer, check the rules for port 22 of the VM's security group (list_security_groups) against the address you connect from. Do NOT recreate the VM.",
+		"Порт SSH 22 адреса %s не ответил на TCP-проверку evo с машины, где работает evo, за %s"+
+			": ВМ может ещё загружаться, либо пакеты отбрасывает группа безопасности или сеть по пути — эта проверка не различает причины. Повторите ту же команду ssh примерно через минуту; если ответа нет и тогда, сверьте правила порта 22 группы безопасности ВМ (evo vpc security-groups) с адресом, с которого подключаетесь. ВМ НЕ пересоздавайте.",
+		ip, waited.Round(time.Second).String())
 }
 
 // ensureFloatingIP returns the VM's public IP, its floating IP id and a
@@ -504,13 +509,13 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	detail, err := cloud.GetVMDetail(ctx, vmID)
 	if err == nil {
 		if ip, id := detail.AttachedFloatingIP(); ip != "" {
-			return ip, id, "public IP attached"
+			return ip, id, i18n.T("public IP attached", "публичный IP подключён")
 		}
 	}
 	// Plans written by older versions may name a FIP attached at creation.
 	if plan.Network.AttachFIPID != "" {
 		if f, gerr := cloud.GetFloatingIP(ctx, plan.Network.AttachFIPID); gerr == nil && f.IPAddress != "" {
-			return f.IPAddress, f.ID, "public IP attached (existing floating IP)"
+			return f.IPAddress, f.ID, i18n.T("public IP attached (existing floating IP)", "публичный IP подключён (существующий floating IP)")
 		}
 	}
 	if err != nil || len(detail.Interfaces) == 0 {
@@ -533,7 +538,8 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	// One an earlier apply asked for with no answer, listed now, is taken:
 	// not a second create (D107; «Риск», conclusion 180, У2).
 	if x := floatingip.Find(ctx, cloud, plan.ProjectID, provision.FitName(plan.VM.Name, "-fip"), own); x != nil {
-		return x.IPAddress, x.ID, "public IP attached (found the floating IP an earlier apply asked for by its name)"
+		return x.IPAddress, x.ID, i18n.T("public IP attached (found the floating IP an earlier apply asked for by its name)",
+			"публичный IP подключён (найден по имени floating IP, запрошенный прошлым применением плана)")
 	}
 	// One create: with no answer it is looked for by its name, and not
 	// sent again (floatingip.Reserve; conclusion 180, У1).
@@ -544,7 +550,7 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		AvailabilityZoneID: plan.VM.Zone.ID,
 	}, own, FIPLookupInterval, nil)
 	if e == nil && f != nil && f.ID != "" {
-		return f.IPAddress, f.ID, "public IP attached (created a new floating IP)"
+		return f.IPAddress, f.ID, i18n.T("public IP attached (created a new floating IP)", "публичный IP подключён (создан новый floating IP)")
 	}
 	if provision.IsQuotaError(e) {
 		return "", "", "⚠️ Floating-IP quota exhausted — the VM was created WITHOUT a public IP. Increase the floating-IP quota in the Cloud.ru console, then attach an IP to this VM manually."

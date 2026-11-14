@@ -165,10 +165,12 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 	// size anew.
 	plan.SourceParams = params
 
-	apply := "On explicit approval, call deploy_apply with this plan_id and confirmed=true."
+	apply := i18n.T("On explicit approval, call deploy_apply with this plan_id and confirmed=true.",
+		"После явного согласия примените план: evo deploy apply с plan_id этого плана.")
 	if plan.ComposeRequired {
 		// deploy_apply makes the VM and nothing on it (G13-7).
-		apply += " deploy_apply creates the VM without the application: to deploy the compose project, call deploy instead."
+		apply += i18n.T(" deploy_apply creates the VM without the application: to deploy the compose project, call deploy instead.",
+			" evo deploy apply создаёт ВМ без приложения: чтобы развернуть проект compose, используйте evo deploy.")
 	}
 	// Compact, user-facing view (omit internal fields like meta_fields/public_key).
 	view := map[string]any{
@@ -180,7 +182,7 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 		"cost":             plan.Cost,
 		"warnings":         plan.Warnings,
 		"compose_required": plan.ComposeRequired,
-		"next":             "Show this plan and its monthly cost to the user. " + apply,
+		"next":             i18n.T("Show this plan and its monthly cost to the user. ", "Покажите пользователю план и его месячную стоимость. ") + apply,
 	}
 	// deploy_apply appends these to authorized_keys of the VM: the user
 	// approves them with the plan.
@@ -189,13 +191,17 @@ func (s *Registry) handleDeployPlan(ctx context.Context, args map[string]any) (s
 			plan.UserKeysHash = userKeysHash(keys)
 			view["user_ssh_keys"] = describeUserKeys(keys, rejected)
 			view["user_ssh_keys_file"] = filepath.Join(filepath.Base(config.DataDir(eng.StateDir)), keysFile)
-			view["next"] = "Show this plan, its monthly cost and the user_ssh_keys to the user: those keys get an SSH login on the VM, and the file may have come with a repository someone else wrote. " + apply
+			view["next"] = i18n.T("Show this plan, its monthly cost and the user_ssh_keys to the user: those keys get an SSH login on the VM, and the file may have come with a repository someone else wrote. ",
+				"Покажите пользователю план, месячную стоимость и user_ssh_keys: эти ключи получат вход на ВМ по SSH, а файл мог прийти с чужим репозиторием. ") + apply
 		}
 	}
 	if s.readOnly {
-		view["note"] = "Not saved: this server runs with --read-only, so the plan has no plan_id and deploy_apply is refused here; " +
-			"a server without --read-only makes the plan again with deploy_plan and applies it."
-		view["next"] = "Show this plan and its monthly cost to the user; creating the VM needs a server without --read-only."
+		view["note"] = i18n.T("Not saved: this server runs with --read-only, so the plan has no plan_id and deploy_apply is refused here; "+
+			"a server without --read-only makes the plan again with deploy_plan and applies it.",
+			"План не сохранён: сервер работает с --read-only, поэтому у плана нет plan_id и deploy_apply здесь недоступен; "+
+				"сервер без --read-only строит план заново (deploy_plan) и применяет его.")
+		view["next"] = i18n.T("Show this plan and its monthly cost to the user; creating the VM needs a server without --read-only.",
+			"Покажите пользователю план и его месячную стоимость; создать ВМ можно только на сервере без --read-only.")
 		return toJSON(view), false
 	}
 	if err := deployplan.Save(eng.StateDir, plan); err != nil {
@@ -454,7 +460,7 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 			fields = map[string]any{"vm_id": res.VMID, "plan_id": planID}
 			if res.Password != "" {
 				fields["password"] = res.Password
-				fields["note"] = strings.TrimSpace(passwordOnce)
+				fields["note"] = strings.TrimSpace(passwordOnce())
 			}
 		}
 		return errAnswer(err, fields), true
@@ -483,12 +489,13 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 		// so far and the plan to repeat, which finishes the VM (D69).
 		out := map[string]any{"status": "creating", "vm_id": res.VMID, "vm_status": res.VMStatus, "plan_id": planID,
 			"elapsed_sec": res.ElapsedSec,
-			"next":        fmt.Sprintf("The VM is still being created. Call deploy_apply again with next_args (plan_id %s, confirmed=true, vm_id): it adopts this VM (no second one), waits and finishes it (public IP, SSH, ports); if the VM is gone by then, it refuses and creates nothing. vm_get vm_id=%s shows its state.", planID, res.VMID)}
+			"next": i18n.Tf("The VM is still being created. Call deploy_apply again with next_args (plan_id %s, confirmed=true, vm_id): it adopts this VM (no second one), waits and finishes it (public IP, SSH, ports); if the VM is gone by then, it refuses and creates nothing. vm_get vm_id=%s shows its state.",
+				"ВМ ещё создаётся. Повторите evo deploy apply %s с --vm-id %[2]s: команда продолжит эту ВМ (вторую не создаст), дождётся её и доделает (публичный IP, SSH, порты); если ВМ к тому времени исчезнет — откажет и ничего не создаст. Состояние показывает evo vm get %[2]s.", planID, res.VMID)}
 		// The consent goes on for this VM and no other (continuedVM, D102).
 		nextStep(out, "deploy_apply", map[string]any{"plan_id": planID, "confirmed": true, continuedVMArg: res.VMID})
 		if res.Password != "" {
 			out["password"] = res.Password
-			out["next"] = out["next"].(string) + passwordOnce
+			out["next"] = out["next"].(string) + passwordOnce()
 		}
 		return toJSON(out), false
 	case "error":
@@ -504,7 +511,7 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 		hint := fmt.Sprintf("Call deploy_apply again with the same plan_id %s in a few minutes: it adopts the VM and finishes it (IP, SSH, ports); it is billed meanwhile; whether to delete it instead (destroy vm_id %s) — ask the person.", planID, res.VMID)
 		if res.Password != "" {
 			fields["password"] = res.Password
-			hint += passwordOnce
+			hint += passwordOnce()
 		}
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
 			i18n.Tf("VM %s is not running yet: %s", "ВМ %s ещё не запущена: %s", res.VMID, res.Note), hint), fields), true
@@ -525,18 +532,21 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 	// the same reused IP is dropped first, so the new VM is not refused.
 	if res.PublicIP != "" && plan.PublicKey == eng.SSHPubKey {
 		dataDir := config.DataDir(eng.StateDir)
-		note := "Connect with the ssh command above (agent deploy key)."
+		note := i18n.T("Connect with the ssh command above (agent deploy key).", "Подключайтесь командой ssh выше (ключ развёртывания агента).")
 		hostKey := ""
 		if keys, keysFile := approvedKeys, approvedFile; len(keys) > 0 {
 			hk, kErr := appendKeys(ctx, res.PublicIP, plan.SSH.Login, eng.SSHKeyPEM, keys)
 			if kErr != nil {
-				note += fmt.Sprintf(" WARNING: user key auto-append failed (%v) — append the public key to ~/.ssh/authorized_keys on the VM manually.", kErr)
+				note += i18n.Tf(" WARNING: user key auto-append failed (%v) — append the public key to ~/.ssh/authorized_keys on the VM manually.",
+					" ВНИМАНИЕ: не удалось добавить ключ пользователя (%v) — добавьте открытый ключ в ~/.ssh/authorized_keys на ВМ вручную.", kErr)
 			} else {
 				hostKey = hk
-				note += fmt.Sprintf(" User SSH access configured automatically (%d key(s) from %s/%s).", len(keys), filepath.Base(dataDir), keysFile)
+				note += i18n.Tf(" User SSH access configured automatically (%d key(s) from %s/%s).",
+					" Вход пользователя по SSH настроен автоматически (ключей: %d, из %s/%s).", len(keys), filepath.Base(dataDir), keysFile)
 			}
 		} else {
-			note += " No " + filepath.Base(dataDir) + "/" + userKeysFile + " configured — to give the user SSH access, append their public key to ~/.ssh/authorized_keys on the VM after install."
+			note += i18n.Tf(" No %s/%s configured — to give the user SSH access, append their public key to ~/.ssh/authorized_keys on the VM after install.",
+				" Файла %s/%s нет — чтобы дать пользователю вход по SSH, добавьте его открытый ключ в ~/.ssh/authorized_keys на ВМ после установки.", filepath.Base(dataDir), userKeysFile)
 		}
 		ssh, warning := deployKeySSH(eng.StateDir, plan.SSH.Login, res.PublicIP, hostKey)
 		res.SSH = ssh
@@ -1219,7 +1229,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 			"status":   "ok",
 			"released": fipIP,
 			"id":       fipID,
-			"message":  fmt.Sprintf("floating IP %s released", fipIP),
+			"message":  i18n.Tf("floating IP %s released", "floating IP %s освобождён", fipIP),
 		}), false
 	}, state, state, fipID)}, nil
 }
