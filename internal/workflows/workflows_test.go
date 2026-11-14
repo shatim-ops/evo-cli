@@ -109,10 +109,15 @@ func TestWorkflows_PRCodeNeverRunsWithSecrets(t *testing.T) {
 				if !strings.HasPrefix(s.Uses, "actions/checkout@") {
 					continue
 				}
-				for _, k := range []string{"ref", "repository"} {
-					if _, ok := s.With[k]; ok {
-						t.Errorf("%s, job %s: checkout with %s: the PR's code would run with the secrets", name, job, k)
-					}
+				// ref: main names the default branch itself — what a review
+				// event, which runs on the merge ref of the PR, must check
+				// out to keep the PR's code out (astra-findings). Any other
+				// ref, and any repository, may be the PR's.
+				if r, ok := s.With["ref"]; ok && r != "main" {
+					t.Errorf("%s, job %s: checkout with ref %v: the PR's code would run with the secrets", name, job, r)
+				}
+				if _, ok := s.With["repository"]; ok {
+					t.Errorf("%s, job %s: checkout with repository: the PR's code would run with the secrets", name, job)
 				}
 			}
 			if prt && !strings.Contains(j.If, "github.event.pull_request.head.repo.full_name == github.repository") {

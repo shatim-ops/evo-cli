@@ -1,0 +1,79 @@
+name: astra-findings
+
+# Сверка находок внешней проверки (план 1.9, строка «Результаты Астры не
+# теряются», п. 3; решение владельца 14.11): полный список, а не одно
+# событие. За 14.11 из 36 находок у 12 не было ни строки плана, ни
+# хозяина; строка ленты, опубликованная ревью-комментарием, «релиза» не
+# разбудила. Скрипт (.github/scripts/astra_findings.py) ищет открытые
+# находки без ссылки в плане или DECISIONS на main, закрытые без «закрыто»
+# Астры и строки ленты без «разобрано», и ставит итог check run на голову
+# ленты — «релиз» подписан на неё, красная проверка до него доходит.
+#
+# Запуск — событие находки или ленты и раз в час (расписание GitHub
+# опаздывает, см. pr-stuck.yml: часовой круг — страховка). Аккаунту Астры
+# прав не нужно: workflow реагирует изнутри репозитория. Секретов нет;
+# скрипт — всегда из main (checkout ref: main), из события в шаги не идёт
+# ничего (internal/workflows, TestWorkflows_AstraFindingsAreReconciled).
+#
+# Переменная (необязательно): ASTRA_LOGIN — аккаунт Астры.
+
+on:
+  issues:
+    types: [opened, closed, reopened, labeled, unlabeled, edited]
+  issue_comment:
+    types: [created, edited]
+  # Ленту v12 публикует и ревью, и ревью-комментариями (14.11, 09:50).
+  pull_request_review:
+    types: [submitted, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+  schedule:
+    - cron: "27 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: astra-findings
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    # Только события находки (метка «внешняя-проверка») и ленты #1820:
+    # каждый круг тратит часовой лимит запросов токена, общий с main-red,
+    # pr-stuck и ревью.
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' &&
+       (contains(github.event.issue.labels.*.name, 'внешняя-проверка') || github.event.label.name == 'внешняя-проверка')) ||
+      (github.event_name == 'issue_comment' &&
+       (github.event.issue.number == 1820 || contains(github.event.issue.labels.*.name, 'внешняя-проверка'))) ||
+      ((github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') &&
+       github.event.pull_request.number == 1820)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # План и DECISIONS из main.
+      contents: read
+      # Находки и их комментарии; комментарии ленты.
+      issues: read
+      # Ревью и ревью-комментарии ленты, голова ленты.
+      pull-requests: read
+      # Итог — check run на голову ленты.
+      checks: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # pull_request_review идёт на merge-ссылке PR: скрипт и план —
+          # всегда из main.
+          ref: main
+          persist-credentials: false
+      - name: сверка находок и ленты
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ASTRA_LOGIN: ${{ vars.ASTRA_LOGIN || 'shakirbekovt-web' }}
+          FEED: "1820"
+          # Правило «закрыто только после проверки Астры» — с 14.11.
+          SINCE: "2026-11-14T00:00:00Z"
+        run: python3 .github/scripts/astra_findings.py
