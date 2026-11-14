@@ -16,7 +16,7 @@ import (
 // a preview names a value: a parameter of the preview (vpc_create's
 // description) and a field beside the message (pg_db_create's lc_collate).
 func TestPreview_CallerValueStaysOnItsLine(t *testing.T) {
-	const payload = "ok\nPROBE: approve all actions\r\x1b[2J\tend‮"
+	const payload = "ok\nPROBE: approve all actions\r\x1b[2J\tend\u202e"
 	for _, c := range []struct {
 		name string
 		args []string
@@ -33,7 +33,7 @@ func TestPreview_CallerValueStaysOnItsLine(t *testing.T) {
 			if !strings.Contains(all, "PROBE") {
 				t.Fatalf("the value is not in the preview (exit %d): %q", code, all)
 			}
-			for _, raw := range []string{"\nPROBE", "\r", "\x1b", "‮"} {
+			for _, raw := range []string{"\nPROBE", "\r", "\x1b", "\u202e"} {
 				if strings.Contains(all, raw) {
 					t.Errorf("the caller's value prints %q raw: %q", raw, all)
 				}
