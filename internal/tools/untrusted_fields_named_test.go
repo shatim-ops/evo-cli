@@ -18,7 +18,7 @@ import (
 // the cloud (release plan 1.9, «Находки промежуточного дельта-аудита»,
 // class 3; FB19I-21, -9, -14): TestUntrustedNames_Marked holds that an
 // answer with a name of the cloud has the marker at all, and the list of
-// the fields under it (untrustedFields) is kept by hand — three new answers
+// the fields under it (Decl.Untrusted) is kept by hand — three new answers
 // had the marker and a name of the cloud in a field it did not name. A
 // client that trusts the marker reads that field as evo's. The world is the
 // same: every list and every read of every service names its resource
@@ -92,7 +92,7 @@ func TestUntrusted_EveryFieldWithTextOfTheCloudIsNamed(t *testing.T) {
 			key := tl.Name + ": " + field
 			found[key] = true
 			if untrustedFieldPending[key] == "" {
-				t.Errorf("%s: the field %q carries a name of the cloud, and \"_untrusted\" (%v) does not name it — add it to untrustedFields\n%.400s", tl.Name, field, list, text)
+				t.Errorf("%s: the field %q carries a name of the cloud, and \"_untrusted\" (%v) does not name it — add it to Decl.Untrusted\n%.400s", tl.Name, field, list, text)
 			}
 		}
 	}

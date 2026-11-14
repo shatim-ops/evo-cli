@@ -68,7 +68,7 @@ type Tool struct {
 	ArgDescriptionsRU map[string]string `json:"-"`
 	// UntrustedOutput: the answer carries what a workload or a stored
 	// object wrote (logs, kubectl output, S3 objects), which the agent must
-	// not take for instructions (untrustedFields).
+	// not take for instructions (Decl.Untrusted).
 	UntrustedOutput bool `json:"-"`
 	// CLI is the tool's command in the CLI (cliSpecs).
 	CLI CLISpec `json:"-"`
@@ -358,7 +358,7 @@ func New(factory EngineFactory) *Registry {
 		if takesConsent(*t) && t.Decl.PartialConsent == nil {
 			t.Description += " " + consentText(t.Name)
 		}
-		if t.UntrustedOutput = untrustedFields[t.Name].workload; t.UntrustedOutput {
+		if t.UntrustedOutput = t.Decl.Untrusted.workload; t.UntrustedOutput {
 			t.Description += " " + untrustedOutputNote
 		}
 		t.CLI = cliSpecs[t.Name]
@@ -388,10 +388,10 @@ func New(factory EngineFactory) *Registry {
 			if _, ok := createdOf(t.Name); ok || targetArgs(t.Name) != nil {
 				h = r.namedProject(*t, h)
 			}
-			if keys := echoedArgs[t.Name]; keys != nil {
-				h = namedArgs(keys, h)
+			if echoed := t.Decl.EchoedArgs; echoed != nil {
+				h = namedArgs(echoed, h)
 			}
-			if u := untrustedFields[t.Name]; u.marked() {
+			if u := t.Decl.Untrusted; u.marked() {
 				h = markUntrusted(u, h)
 			}
 			if r.unchecked == nil {
