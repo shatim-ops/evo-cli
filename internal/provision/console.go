@@ -22,16 +22,23 @@ var consoleFields = []string{"vnc_url", "vnc_ws", "remote_console_url", "remote_
 // group 1 holds the backslashes before its quote.
 var consoleKey = regexp.MustCompile(`(?i)(\\*)"(?:` + strings.Join(consoleFields, "|") + `)\\*"\s*:\s*`)
 
+// consolePlain finds a console field outside JSON — an unquoted name
+// followed by = or : («vnc_url=wss://…», a proxy's or a log's text) — with
+// its value: quoted to its closing quote, else up to a space or a quote.
+// A quoted JSON key is followed by its quote, not by = or :, and is
+// consoleKey's.
+var consolePlain = regexp.MustCompile(`(?i)\b((?:` + strings.Join(consoleFields, "|") + `)\s*[=:]\s*)(?:"[^"]*"?|'[^']*'?|[^\s"'<>]*)`)
+
 // hiddenValue replaces the value of a console field.
 const hiddenValue = "hidden"
 
 // hideConsole returns body with the value of every console field replaced,
-// as text: it is for bodies evo puts into an error unparsed — a refusal of
+// as JSON or as text outside it (consolePlain): it is for bodies evo puts into an error unparsed — a refusal of
 // the platform, an answer of an unknown shape — which may be cut at
 // maxErrorBody inside a value or not be JSON at all. A value cut short is
 // hidden up to the end of the body.
 func hideConsole(body []byte) string {
-	s := string(body)
+	s := consolePlain.ReplaceAllString(string(body), "${1}"+hiddenValue)
 	locs := consoleKey.FindAllStringSubmatchIndex(s, -1)
 	if locs == nil {
 		return s

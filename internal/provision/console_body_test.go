@@ -97,7 +97,12 @@ func TestHideConsole(t *testing.T) {
 		{`{"vnc_url":"wss://cut`, `{"vnc_url":"hidden"`},
 		{`{"vnc_url":`, `{"vnc_url":"hidden"`},
 		{`{"vnc_u`, `{"vnc_u`},
-		{`not json: vnc_url=wss://a`, `not json: vnc_url=wss://a`},
+		// Text outside JSON: field=value and field: value («Процесс · 1.9
+		// (5)», TestSecrets_VMConsoleFieldsOutsideJSON).
+		{`not json: vnc_url=wss://a`, `not json: vnc_url=hidden`},
+		{`refused: vnc_url=wss://a?t=1&u=2 remote_console_url=https://b state=x`, `refused: vnc_url=hidden remote_console_url=hidden state=x`},
+		{`VNC_WS: 'wss://a b'`, `VNC_WS: hidden`},
+		{`remote_console_ws = "wss://a", x`, `remote_console_ws = hidden, x`},
 		{`{"remote_console_protocol":"vnc","vnc_url":"a"}`, `{"remote_console_protocol":"hidden","vnc_url":"hidden"}`},
 		// «Риск», conclusion 244, residuals 1 and 4: a key in another case;
 		// an object whose strings hold a bracket and a comma.
