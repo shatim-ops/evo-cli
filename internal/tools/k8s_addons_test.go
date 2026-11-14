@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -290,6 +291,11 @@ func TestK8sAddAddon_InstallsWithConfig(t *testing.T) {
 	}
 	if note, _ := m["note"].(string); !strings.Contains(note, `k8s_kubectl args="get pods -n cert-manager"`) || !strings.Contains(note, "remove it in the Cloud.ru console") {
 		t.Errorf("note: %s", note)
+	}
+	// The namespace is the catalogue's word, in the field and in the note's
+	// command: both are marked "_untrusted" (Астра, #1925).
+	if u, _ := m["_untrusted"].([]any); !slices.Contains(u, any("namespace")) || !slices.Contains(u, any("note")) {
+		t.Errorf("the catalogue's namespace in namespace and note, _untrusted %v: %s", m["_untrusted"], text)
 	}
 	if len(f.posts) != 1 {
 		t.Fatalf("posts: %v", f.posts)

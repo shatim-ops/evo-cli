@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -240,6 +241,7 @@ func (s *Registry) goingOn(ctx context.Context, ans map[string]any, opTool, opID
 			for _, k := range []string{"status", "state", "phase"} {
 				if v, _ := item[k].(string); v != "" {
 					m["resource_status"] = v
+					cloudText(m, "resource_status")
 					break
 				}
 			}
@@ -250,10 +252,19 @@ func (s *Registry) goingOn(ctx context.Context, ans map[string]any, opTool, opID
 			m["resource_status_note"] = notFoundYet()
 		}
 	}
+	// A state evo cannot name is said, never left out (Астра, #1924): the
+	// resource read with no state, or an operation that names no resource.
+	if m["resource_status"] == nil && m["resource_status_error"] == nil {
+		m["resource_status_error"] = clierrors.CodeAPIError
+		m["resource_status_note"] = noStateRead(id)
+	}
 	for _, k := range []string{"resource_status", "resource_status_error", "resource_status_note"} {
 		if v, ok := m[k]; ok {
 			ans[k] = v
 		}
+	}
+	if m["_untrusted"] != nil {
+		cloudText(ans, "resource_status")
 	}
 }
 
@@ -265,6 +276,39 @@ var goingOnLimit = engine.PreviewLookupTimeout
 func notFoundYet() string {
 	return i18n.T("the reads do not find it yet: it may still be on its way; the read of the operation says when it ends and how — do not create it again",
 		"чтение его ещё не находит: он может быть ещё в пути; чтение операции скажет, когда и чем она кончится, — не создавайте его повторно")
+}
+
+// noStateRead is resource_status_note when the create's answer cannot
+// name the state of resource id: the read found it with no state, or the
+// cloud's answer named no resource ("").
+func noStateRead(id string) string {
+	if id == "" {
+		return i18n.T("the cloud's answer to the create names no id of the resource, so its state is not read; the read of the operation says when it ends and what it made — do not create it again",
+			"ответ облака на создание не назвал id ресурса, и его состояние не прочитано; чтение операции скажет, когда она кончится и что создала, — не создавайте его повторно")
+	}
+	return i18n.T("the read finds the resource with no state; the read of the operation says when it ends and how — do not create it again",
+		"чтение находит ресурс без состояния; чтение операции скажет, когда и чем она кончится, — не создавайте его повторно")
+}
+
+// cloudText adds fields to the "_untrusted" of answer m: their text is the
+// service's, not evo's — a state anyone with access to the project may have
+// steered, a value of a catalogue (Астра, #1925). One point for the fields
+// evo copies from a read into its own answer; markUntrusted keeps them
+// beside those the tool declares.
+func cloudText(m map[string]any, fields ...string) {
+	var has []string
+	switch u := m["_untrusted"].(type) {
+	case []string:
+		has = u
+	case []any:
+		has = stringList(u)
+	}
+	for _, f := range fields {
+		if !slices.Contains(has, f) {
+			has = append(has, f)
+		}
+	}
+	m["_untrusted"] = has
 }
 
 // listedBy is the read of a resource with no read of its own: the item of
@@ -314,6 +358,7 @@ func (s *Registry) addResourceStatus(ctx context.Context, tool string, m map[str
 		for _, k := range []string{"status", "state", "phase"} {
 			if v, _ := res[k].(string); v != "" {
 				m["resource_status"] = v
+				cloudText(m, "resource_status")
 				return
 			}
 		}

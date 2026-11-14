@@ -593,6 +593,9 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 		}
 		if r.AddonNamespace != "" {
 			out["namespace"] = r.AddonNamespace
+			// The catalogue's word, in the field and in the note's command
+			// (Астра, #1925).
+			cloudText(out, "namespace", "note")
 		}
 		if res.OperationID != "" {
 			out["operation_id"] = res.OperationID
