@@ -51,11 +51,22 @@ func recorded(req *http.Request, resp *http.Response) *http.Response {
 	}
 	var head []byte
 	if resp.Body != nil {
-		head, _ = io.ReadAll(io.LimitReader(resp.Body, maxRecordedBody+1))
+		var err error
+		head, err = io.ReadAll(io.LimitReader(resp.Body, maxRecordedBody+1))
+		rest := io.Reader(resp.Body)
+		if err != nil {
+			// The caller gets the bytes read and then the same error, not
+			// an end that reads as the whole answer (#1746); a broken body
+			// has no form to record.
+			rest = brokenBody{err}
+		}
 		resp.Body = struct {
 			io.Reader
 			io.Closer
-		}{io.MultiReader(bytes.NewReader(head), resp.Body), resp.Body}
+		}{io.MultiReader(bytes.NewReader(head), rest), resp.Body}
+		if err != nil {
+			return resp
+		}
 	}
 	line := map[string]any{"request": req.Method + " " + requestForm(req), "status": resp.StatusCode}
 	paths := map[string]string{}
@@ -91,10 +102,33 @@ func recorded(req *http.Request, resp *http.Response) *http.Response {
 	if err != nil {
 		return resp
 	}
+	defer f.Close()
+	// The mode of OpenFile is of a file it creates: a file already there
+	// with a wider one gets 0600 before a line goes in, or no line (#1747).
+	if !private(f) {
+		return resp
+	}
 	_, _ = f.Write(append(b, '\n'))
-	_ = f.Close()
 	return resp
 }
+
+// private reports whether f is readable by its owner only, making it so
+// when it is not.
+func private(f *os.File) bool {
+	st, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	if st.Mode().Perm() == 0o600 {
+		return true
+	}
+	return f.Chmod(0o600) == nil
+}
+
+// brokenBody reads as the error the read of a body ended with.
+type brokenBody struct{ err error }
+
+func (b brokenBody) Read([]byte) (int, error) { return 0, b.err }
 
 // recordBelow is req that a layer under the caller may record (recordedBy),
 // with what it says of it.

@@ -30,7 +30,7 @@ func usageRequired(text string) (bool, string) {
 // него отвечал USAGE «… is required» (pg_get, snat_create, open_ports, …).
 // Каждый из 152 инструментов вызывается с пустыми аргументами (облако —
 // транспорт, отвечающий 500): «required» в ответе — только у инструмента с
-// required или с набором «одно из» (Tool.RequiredOneOf). Затем — только с
+// required или с набором «одно из» (Tool.Decl.RequiredOneOf). Затем — только с
 // аргументами из required и первым из каждого набора: «required» в ответе
 // значит, что required неполон.
 func TestQA4_RequiredMatchesHandlers(t *testing.T) {
@@ -39,7 +39,7 @@ func TestQA4_RequiredMatchesHandlers(t *testing.T) {
 	n := 0
 	for _, tl := range reg.Tools() {
 		n++
-		declared := len(schemaRequired(tl)) > 0 || len(tl.RequiredOneOf) > 0
+		declared := len(schemaRequired(tl)) > 0 || len(tl.Decl.RequiredOneOf) > 0
 		text, _, pan := contractCall(tl, nil, 300*time.Millisecond)
 		if pan != "" {
 			t.Errorf("%s: panic on empty arguments", tl.Name)
@@ -64,7 +64,7 @@ func TestQA4_RequiredMatchesHandlers(t *testing.T) {
 		for _, k := range schemaRequired(tl) {
 			args[k] = full[k]
 		}
-		for _, set := range tl.RequiredOneOf {
+		for _, set := range tl.Decl.RequiredOneOf {
 			args[set[0]] = full[set[0]]
 		}
 		text, _, pan = contractCall(tl, args, 300*time.Millisecond)
@@ -86,12 +86,11 @@ func TestQA4_RequiredMatchesHandlers(t *testing.T) {
 func TestQA4_EmptyOneOfIsUsage(t *testing.T) {
 	rt := &contractRT{kind: "500"}
 	reg := contractReg(t, rt)
-	for name := range requiredOneOf {
-		tl, ok := reg.Lookup(name)
-		if !ok {
-			t.Errorf("requiredOneOf names %s, not a tool", name)
+	for _, tl := range reg.Tools() {
+		if tl.Decl.RequiredOneOf == nil {
 			continue
 		}
+		name := tl.Name
 		for _, args := range []map[string]any{nil, {"confirmed": true}} {
 			rt.take()
 			text, isErr, pan := contractCall(tl, args, 200*time.Millisecond)
@@ -121,7 +120,7 @@ func TestQA4_SchemaHasNoTopLevelComposition(t *testing.T) {
 		for _, r := range schemaRequired(tl) {
 			req[r] = true
 		}
-		for _, set := range tl.RequiredOneOf {
+		for _, set := range tl.Decl.RequiredOneOf {
 			if len(set) < 2 {
 				t.Errorf("%s: one-of set %v", tl.Name, set)
 			}

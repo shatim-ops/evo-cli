@@ -74,7 +74,7 @@ func genToolsDoc() []byte {
 				reqs = append(reqs, "`"+n+"`")
 			}
 			// One of a set (vm_get: vm_id or name): "`vm_id` или `name`".
-			for _, set := range t.RequiredOneOf {
+			for _, set := range t.Decl.RequiredOneOf {
 				reqs = append(reqs, "`"+strings.Join(set, "` или `")+"`")
 			}
 			req := "—"

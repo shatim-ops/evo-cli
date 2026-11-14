@@ -42,7 +42,7 @@ func requiredFlags(tl tools.Tool) map[string]bool {
 			}
 		}
 	}
-	for _, set := range tl.RequiredOneOf {
+	for _, set := range tl.Decl.RequiredOneOf {
 		for _, a := range set {
 			args[a] = true
 		}
