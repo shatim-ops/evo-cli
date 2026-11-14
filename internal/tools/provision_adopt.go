@@ -81,13 +81,14 @@ func provisionCreating(args map[string]any, vmID, vmName, vmStatus, password str
 		"vm_status":   vmStatus,
 		"name":        vmName,
 		"elapsed_sec": elapsedSec,
-		"next": fmt.Sprintf("The VM is still being created. Call provision again with next_args (name %s, confirmed=true, vm_id) from the same folder: it adopts this VM (no second one), waits and finishes it (public IP, ports); if the VM is gone by then, it refuses and creates nothing. vm_get vm_id=%s shows its state.%s",
+		"next": i18n.Tf("The VM is still being created. Call provision again with next_args (name %s, confirmed=true, vm_id) from the same folder: it adopts this VM (no second one), waits and finishes it (public IP, ports); if the VM is gone by then, it refuses and creates nothing. vm_get vm_id=%s shows its state.%s",
+			"ВМ ещё создаётся. Повторите evo vm create %s с --vm-id %[2]s из той же папки: команда продолжит эту ВМ (вторую не создаст), дождётся её и доделает (публичный IP, порты); если ВМ к тому времени исчезнет — откажет и ничего не создаст. Состояние показывает evo vm get %[2]s.%[3]s",
 			vmName, vmID, warning),
 	}
 	nextStep(out, "provision", repeat)
 	if password != "" {
 		out["password"] = password
-		out["next"] = out["next"].(string) + passwordOnce
+		out["next"] = out["next"].(string) + passwordOnce()
 	}
 	return out
 }

@@ -1871,11 +1871,12 @@ func deployInProgress(result map[string]any, going *engine.InProgress, args map[
 		// takes it, and with force it would start another (#769).
 		delete(repeat, "force")
 	}
-	result["next"] = fmt.Sprintf("Deploy is still in progress (%s). Call deploy again with the same arguments: it takes the VM in the state and goes on from there; a stage on the VM goes on without the call and is not run twice.", going.Phase)
+	result["next"] = i18n.Tf("Deploy is still in progress (%s). Call deploy again with the same arguments: it takes the VM in the state and goes on from there; a stage on the VM goes on without the call and is not run twice.",
+		"Развёртывание ещё идёт (%s). Повторите evo deploy с теми же аргументами: команда возьмёт ВМ из состояния и продолжит; этап на ВМ идёт и без вызова и не запускается дважды.", going.Phase)
 	if going.Note != "" {
 		// Why the phase may never end comes first: the person may have to
 		// act — open outbound 22, reboot the VM (D80).
-		result["next"] = "Read warning first: it says why the phase may never end. " + result["next"].(string)
+		result["next"] = i18n.T("Read warning first: it says why the phase may never end. ", "Сначала прочитайте warning: там сказано, почему этап может не закончиться. ") + result["next"].(string)
 	}
 	nextStep(result, "deploy", repeat)
 	return result
@@ -2678,9 +2679,10 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				if deployKey {
 					sshCmd, sshWarning = deployKeySSH(eng.StateDir, sshUser, publicIP, "")
 				}
-				msg := fmt.Sprintf("VM %s is active at %s. SSH: %s%s", vm.ID, publicIP, sshCmd, sshWarning)
+				msg := i18n.Tf("VM %s is active at %s. SSH: %s%s", "ВМ %s работает по адресу %s. SSH: %s%s", vm.ID, publicIP, sshCmd, sshWarning)
 				if noPublicIP {
-					msg = fmt.Sprintf("VM %s is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC.", vm.ID)
+					msg = i18n.Tf("VM %s is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC.",
+						"ВМ %s работает в приватной сети: публичного IP нет, тип интерфейса regular. Её можно сделать целью балансировщика; доступ — только из VPC.", vm.ID)
 				}
 				res := map[string]any{
 					"status":   "ok",
@@ -2713,11 +2715,11 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					res["ports"] = opened
 				}
 				if portsNote != "" {
-					msg += " Ports: " + portsNote + "."
+					msg += i18n.T(" Ports: ", " Порты: ") + portsNote + "."
 				}
 				if password != "" {
 					res["password"] = password
-					msg += passwordOnce
+					msg += passwordOnce()
 				}
 				res["message"] = msg
 				if diskNote != "" {
@@ -2728,7 +2730,8 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				}
 				// Only when it was: an attach that failed is the answer above.
 				if !noPublicIP && bootFIP == nil {
-					note := "the public IP could not be reserved before the VM was created; it was attached after boot, so the first boot can be slow"
+					note := i18n.T("the public IP could not be reserved before the VM was created; it was attached after boot, so the first boot can be slow",
+						"публичный IP не удалось зарезервировать до создания ВМ; он подключён после запуска, поэтому первый запуск может быть медленнее")
 					if w, ok := res["warning"].(string); ok {
 						note = w + "; " + note
 					}
@@ -2810,7 +2813,10 @@ func engineStep(err error, fields map[string]any) map[string]any {
 
 // passwordOnce is the sentence of a provision answer that carries the
 // password evo generated for the image: no copy of it is kept.
-const passwordOnce = " The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
+func passwordOnce() string {
+	return i18n.T(" The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere.",
+		" Пароль ВМ есть только в этом ответе (password): сохраните его сейчас — evo нигде его не хранит.")
+}
 
 // handleStatus is the answer of 'evo status --json', which it prints: the
 // local record, what the cloud said about its VM and, when the cloud
@@ -3315,21 +3321,25 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		// The floating IP first, as the CLI destroy does: it stays attached until
 		// the VM is gone. Only then the record goes — dropping it before a failed
 		// release left the FIP billed with no trace (QA r3 R1).
-		msg := "VM deleted"
+		msg := i18n.T("VM deleted", "ВМ удалена")
 		if alreadyGone {
-			msg = "VM already deleted (not found in the cloud); its local record is cleaned up"
+			msg = i18n.T("VM already deleted (not found in the cloud); its local record is cleaned up",
+				"ВМ уже удалена (в облаке не найдена); локальная запись очищена")
 		}
 		if keptFIP != "" {
-			msg += "; floating IP " + keptFIP + " kept: " + keptWhy + " — whether to release it (release_floating_ip, or destroy with release_ip=true), ask the person"
+			msg += i18n.Tf("; floating IP %s kept: %s — whether to release it (release_floating_ip, or destroy with release_ip=true), ask the person",
+				"; floating IP %s сохранён: %s — освобождать ли его (evo vpc fip-release или evo vm delete с --release-ip), решает человек", keptFIP, keptWhy)
 		}
 		fipLeft := false
 		if releaseIP && hasFIP {
 			if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
 				fipLeft = true
-				msg += fmt.Sprintf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
-					"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
+				msg += i18n.Tf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
+					"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release",
+					"; ВНИМАНИЕ: floating IP %s НЕ освобождён и продолжает оплачиваться (%v) — "+
+						"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
 			} else {
-				msg += "; released floating IP " + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
+				msg += i18n.T("; released floating IP ", "; освобождён floating IP ") + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 			}
 		}
 		// The addresses asked for this VM with no answer (floatingip):
@@ -3344,15 +3354,18 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			})
 			for _, m := range rel {
 				lostReleased = append(lostReleased, m.Name)
-				msg += "; released floating IP " + m.Name + ", requested with no answer from the cloud"
+				msg += i18n.Tf("; released floating IP %s, requested with no answer from the cloud",
+					"; освобождён floating IP %s, запрошенный ранее без ответа облака", m.Name)
 			}
 			for _, m := range miss {
 				lostMissing = append(lostMissing, m.Name)
-				msg += "; floating IP " + m.Name + ", requested " + m.RequestedAt.UTC().Format(time.RFC3339) +
-					" with no answer, is not listed: if list_floating_ips shows it later, it is billed — whether to release it (release_floating_ip), ask the person"
+				msg += i18n.Tf("; floating IP %s, requested %s with no answer, is not listed: if list_floating_ips shows it later, it is billed — whether to release it (release_floating_ip), ask the person",
+					"; floating IP %s, запрошенного %s без ответа, нет в списке: если evo vpc fips покажет его позже, он оплачивается — освобождать ли его (evo vpc fip-release), решает человек",
+					m.Name, m.RequestedAt.UTC().Format(time.RFC3339))
 			}
 			if lerr != nil {
-				msg += fmt.Sprintf("; the floating IPs requested with no answer were not checked (%v): destroy checks them again", lerr)
+				msg += i18n.Tf("; the floating IPs requested with no answer were not checked (%v): destroy checks them again",
+					"; floating IP, запрошенные без ответа, не проверены (%v): повтор evo vm delete проверит их снова", lerr)
 			}
 		}
 
@@ -3408,10 +3421,11 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			out["lost_floating_ips_not_found"] = lostMissing
 		}
 		if len(rules.Closed) > 0 {
-			msg += "; closed ports " + strings.Join(rules.Closed, ",")
+			msg += i18n.T("; closed ports ", "; закрыты порты ") + strings.Join(rules.Closed, ",")
 		}
 		if len(rules.Failed) > 0 {
-			msg += "; WARNING: could not delete the rules for ports " + strings.Join(rules.Failed, "; ") + " — call destroy again to retry"
+			msg += i18n.Tf("; WARNING: could not delete the rules for ports %s — call destroy again to retry",
+				"; ВНИМАНИЕ: не удалось удалить правила портов %s — повторите evo vm delete", strings.Join(rules.Failed, "; "))
 		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
@@ -3423,7 +3437,8 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		if stateErr != nil {
 			// The VM is gone; only the local bookkeeping is stale. Say so rather
 			// than leave port rules open without a word.
-			msg += fmt.Sprintf("; WARNING: the local state was not updated (%v): its record of this VM stays, and the port rules that deployment opened were not closed — close them in the Cloud.ru console if nothing else uses them", stateErr)
+			msg += i18n.Tf("; WARNING: the local state was not updated (%v): its record of this VM stays, and the port rules that deployment opened were not closed — close them in the Cloud.ru console if nothing else uses them",
+				"; ВНИМАНИЕ: локальное состояние не обновлено (%v): запись этой ВМ осталась, а правила портов, открытые развёртыванием, не закрыты — закройте их в консоли Cloud.ru, если они больше не нужны", stateErr)
 		}
 		out["message"] = msg
 		return toJSON(out), false
@@ -3586,12 +3601,13 @@ func destroyDeleting(ctx context.Context, eng *engine.Engine, statePath, project
 		vmStatus = vm.Status
 	}
 	out := map[string]any{"status": "deleting", "vm_id": target.ID, "name": target.Name, "vm_status": vmStatus,
-		"next": fmt.Sprintf("Cloud.ru is deleting VM %s; it is billed until it is gone. Call destroy with vm_id %s and confirmed=true again: it waits for the VM, then releases its floating IP and port rules and drops the record.", target.ID, target.ID)}
+		"next": i18n.Tf("Cloud.ru is deleting VM %s; it is billed until it is gone. Call destroy with vm_id %s and confirmed=true again: it waits for the VM, then releases its floating IP and port rules and drops the record.",
+			"Cloud.ru удаляет ВМ %s; пока она не удалена, она оплачивается. Повторите evo vm delete %s с подтверждением: команда дождётся удаления ВМ, затем освободит её floating IP, удалит правила портов и запись.", target.ID, target.ID)}
 	if keepFIP {
-		out["floating_ip"] = "kept until the VM is gone: " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
+		out["floating_ip"] = i18n.T("kept until the VM is gone: ", "сохранён до удаления ВМ: ") + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	}
 	if stateErr != nil {
-		out["warning"] = fmt.Sprintf("the local state was not updated: %v", stateErr)
+		out["warning"] = i18n.Tf("the local state was not updated: %v", "локальное состояние не обновлено: %v", stateErr)
 	}
 	// The call found the VM deleting already: a repeat. A VM can stay in
 	// DELETING (OPS-18), and repeating would go on for ever while it is
@@ -3659,7 +3675,7 @@ func provisionNoPublicIP(res map[string]any, vmID, fipID string, fipErr error) s
 	res["floating_ip_id"] = fipID
 	res["message"] = fmt.Sprintf("VM %s is active and billed, but it has no public IP: attaching one failed, so it cannot be reached by SSH from outside.%s", vmID, fipNote)
 	if _, ok := res["password"]; ok {
-		res["message"] = res["message"].(string) + passwordOnce
+		res["message"] = res["message"].(string) + passwordOnce()
 	}
 	return errAnswer(clierrors.Wrap(code,
 		fmt.Sprintf("VM %s is active, but its public IP was not attached (%v)", vmID, fipErr),
