@@ -20,6 +20,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -259,14 +260,24 @@ type resolvedOnce struct {
 // of intents resolves the resource a call names before the plan of the
 // tool does, by the same resolver, and the call reads the cloud once for
 // both. A call with no holder (a layer called on its own) reads each time.
+// Under resolvedOnly it reads nothing: what the call has not resolved is
+// errNotResolved.
 func onceACall[T any](ctx context.Context, key string, read func() (T, error)) (T, error) {
 	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
 	if !ok {
+		if ctx.Value(resolvedOnlyKey{}) != nil {
+			var zero T
+			return zero, errNotResolved
+		}
 		return read()
 	}
 	if was, ok := c.resolved[key]; ok {
 		v, _ := was.value.(T)
 		return v, was.err
+	}
+	if ctx.Value(resolvedOnlyKey{}) != nil {
+		var zero T
+		return zero, errNotResolved
 	}
 	v, err := read()
 	if c.resolved == nil {
@@ -302,13 +313,28 @@ func forgetPending(ctx context.Context) {
 	}
 }
 
+// resolvedOnlyKey marks a context in which onceACall reads nothing and
+// tells only what the call has resolved already (resolvedOnly).
+type resolvedOnlyKey struct{}
+
+// errNotResolved is onceACall's answer under resolvedOnly for what the
+// call has not resolved.
+var errNotResolved = errors.New("not resolved by the call")
+
+// resolvedOnly is ctx in which onceACall reads nothing (resolvedOnlyKey).
+func resolvedOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, resolvedOnlyKey{}, true)
+}
+
 // markSent is told by the counter of the call's writes
 // (httpretry.CountWrites) right before a write goes out, until it says the
 // call is marked: the record the call opened is marked at once — a process
 // killed after the write leaves the mark. A write before the record is
 // opened marks nothing and does not spend the mark (false). An error: the
-// mark is not written, and the write does not go out.
-func markSent(ctx context.Context) (marked bool, err error) {
+// mark is not written, and the write does not go out. The mark names the
+// parties the call has resolved by then (parties; nil names none): what
+// the write goes to, read before it as the handler read it (R-101).
+func markSent(ctx context.Context, parties func() []string) (marked bool, err error) {
 	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
 	if !ok || !c.hasOpen {
 		// Nothing to mark yet: the next write asks again.
@@ -316,6 +342,9 @@ func markSent(ctx context.Context) (marked bool, err error) {
 	}
 	if c.open.Sent {
 		return true, nil
+	}
+	if parties != nil {
+		c.open.Parties = parties()
 	}
 	if err := intent.MarkSent(c.open); err != nil {
 		return false, err

@@ -86,5 +86,50 @@ grep -q 'не JSON: 1' "$work/verr" || { echo "FAIL: paths не объектом
 [ "$(python3 -I "$here/answers_catalogue.py" --root "$root" --source s --date 2026-11-14 "$work/empty.jsonl" 2>/dev/null)" = "[]" ] || { echo "FAIL: пустой файл"; fail=1; }
 [ "$(python3 -I "$here/answers_catalogue.py" --root "$root" --source s --date 2026-11-14 "$work/nope.jsonl" 2>/dev/null)" = "[]" ] || { echo "FAIL: нет файла"; fail=1; }
 
+# Враждебная запись (#1862): адрес, который urlsplit отвергает, называя
+# netloc в тексте ошибки. Строка отброшена со счётом, генератор не падает,
+# в stderr — ни части записи.
+cat >"$work/hostile.jsonl" <<'J'
+{"request":"GET https://SECRET_MARKER\uff1abad.api.cloud.ru/api/v1/vms/id","status":200,"paths":{}}
+{"request":"GET https://[SECRET_MARKER2/api/v1/vms/id","status":200,"paths":{}}
+J
+rc=0
+h=$(python3 -I "$here/answers_catalogue.py" --root "$root" --source s --date 2026-11-14 "$work/hostile.jsonl" 2>"$work/herr") || rc=$?
+[ "$rc" = 0 ] || { echo "FAIL: враждебная запись уронила генератор (код $rc)"; fail=1; }
+[ "$h" = "[]" ] || { echo "FAIL: враждебная запись дала строки: $h"; fail=1; }
+if grep -q SECRET_MARKER "$work/herr"; then echo "FAIL: часть записи в stderr генератора"; sed 's/^/  | /' "$work/herr"; fail=1; fi
+grep -q 'не JSON: 2' "$work/herr" || { echo "FAIL: враждебные строки не в счёте"; cat "$work/herr"; fail=1; }
+
+# Шаг composite action .github/actions/answers целиком, как его исполняет
+# runner (bash -eo pipefail): в лог job из stderr генератора проходит только
+# строка счёта. Генератор, упавший с частью записи в тексте ошибки (мир —
+# подменённый python3), не печатает её; выход — '[]', сырой файл удалён.
+step=$(awk '/^      run: \|$/ {on=1; next} on && /^    - / {on=0} on {sub(/^        /, ""); print}' "$root/.github/actions/answers/action.yml")
+[ -n "$step" ] || { echo "FAIL: шаг action не найден"; fail=1; }
+action() { # МИР: запускает шаг в каталоге репозитория, лог — в $work/МИР.log
+	local w=$1
+	mkdir -p "$work/$w/tmp"
+	cp "$work/hostile.jsonl" "$work/$w/raw.jsonl"
+	(cd "$root" && PATH="$work/$w/bin:$PATH" RUNNER_TEMP="$work/$w/tmp" JOB=t GITHUB_RUN_NUMBER=0 \
+		EVO_RECORD_ANSWERS="$work/$w/raw.jsonl" bash -eo pipefail -c "$step") >"$work/$w.log" 2>&1 ||
+		{ echo "FAIL $w: шаг упал"; cat "$work/$w.log"; fail=1; }
+	if grep -q SECRET_MARKER "$work/$w.log"; then echo "FAIL $w: часть записи в логе job"; sed 's/^/  | /' "$work/$w.log"; fail=1; fi
+	[ ! -e "$work/$w/raw.jsonl" ] || { echo "FAIL $w: сырой файл не удалён"; fail=1; }
+	[ "$(cat "$work/$w/tmp/answers-t.json")" = "[]" ] || { echo "FAIL $w: выход не '[]'"; fail=1; }
+	[ ! -e "$work/$w/tmp/answers-t.err" ] || { echo "FAIL $w: файл stderr остался"; fail=1; }
+}
+action real
+grep -q '^answers-catalogue: строк: 2, ' "$work/real.log" || { echo "FAIL real: в логе нет строки счёта"; cat "$work/real.log"; fail=1; }
+mkdir -p "$work/crash/bin"
+cat >"$work/crash/bin/python3" <<'SH'
+#!/usr/bin/env bash
+echo "Traceback: ValueError: netloc 'SECRET_MARKER' contains invalid characters" >&2
+echo "answers-catalogue: строк: 1, адрес: SECRET_MARKER: 1" >&2
+exit 1
+SH
+chmod +x "$work/crash/bin/python3"
+action crash
+grep -q 'каталог ответов не собран (код 1)' "$work/crash.log" || { echo "FAIL crash: нет предупреждения о сбое"; cat "$work/crash.log"; fail=1; }
+
 [ "$fail" = 0 ] || exit 1
 echo "answers-catalogue: ok"

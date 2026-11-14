@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -80,6 +81,13 @@ type Intent struct {
 	// Target is the resource a call on an existing one names, as
 	// «argument=id» (vm_id=…): a delete, a resize. Not a secret.
 	Target string `json:"target,omitempty"`
+	// Parties are the other resources the change acts on that the call
+	// named by a name or an address, as evo resolved them before the
+	// call went out («argument=id», sorted): the VM a disk is attached
+	// to, the group a port is opened in. A name may later resolve to
+	// another resource, and a call there is another call (R-101). Nil in
+	// a record of evo before them, or of a call that resolves none.
+	Parties []string `json:"parties,omitempty"`
 	// ProjectID is the project the request names. A call that addresses
 	// its resource by id and sends no project has none: the write lands
 	// where the resource is, which the call's project does not tell (R-82).
@@ -273,6 +281,7 @@ func Open(dir string, in Intent) (Intent, error) {
 		in.Print = printOf(in.ID, in.Canon)
 	}
 	sort.Strings(in.Args)
+	sort.Strings(in.Parties)
 	if err := write(in); err != nil {
 		return Intent{}, notWritten(dir, err)
 	}
@@ -392,12 +401,12 @@ func scan(dir string) (out []Intent, foreign []string) {
 // (D26). The same call is the same tool in the same project with the same
 // arguments (SameCall): another rule of the same security group is another
 // call, and its answer says nothing of this one; nor does a call of the
-// same arguments whose resolved target differs (R-101). A record without a print
-// (evo before the print) is the same call by its name or its target, as it
-// was. Only a record that began no later than done and is not in flight is
-// removed: the answer of one of two calls in flight says nothing of the
-// other, whose record must outlive it (the interim delta audit of 1.9,
-// FB19I-13 and FB19I-34; «Риск», conclusion 177, У4, У6 and У8). An
+// same arguments whose resolved target or parties differ (R-101). A record
+// without a print (evo before the print) is the same call by its name or its
+// target, as it was. Only a record that began no later than done and is not
+// in flight is removed: the answer of one of two calls in flight says
+// nothing of the other, whose record must outlive it (the interim delta
+// audit of 1.9, FB19I-13 and FB19I-34; «Риск», conclusion 177, У4, У6 and У8). An
 // operation going on (Held) is not a cut call: the call that ends it
 // closes it. A record another key left is kept and returned: the key of
 // done may not see what that key changed — its «already deleted» is a 404
@@ -414,10 +423,12 @@ func Settle(dir string, done Intent) (kept []Intent) {
 		}
 		if in.Print != "" {
 			// The same arguments are the same call only on the same
-			// resource: a name may resolve to another resource now (a
-			// group renamed and its name taken by a new one), and the
-			// outcome there says nothing of the cut call (R-101).
-			if !in.SameCall(done.Canon) || in.Target != "" && done.Target != "" && in.Target != done.Target {
+			// resources: a name may resolve to another resource now (a
+			// group renamed and its name taken by a new one, a VM's name
+			// given to another VM), and the outcome there says nothing
+			// of the cut call (R-101).
+			if !in.SameCall(done.Canon) || in.Target != "" && done.Target != "" && in.Target != done.Target ||
+				in.Parties != nil && done.Parties != nil && !slices.Equal(in.Parties, done.Parties) {
 				continue
 			}
 		} else if in.Name != done.Name || in.Target != done.Target {
