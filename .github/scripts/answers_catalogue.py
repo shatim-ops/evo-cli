@@ -11,8 +11,10 @@ output: a line passes only when its host is a service of the inventory
 and its path matches a template of scripts/api-contract.json or
 scripts/probe-requests.json — the request out is the template, not the
 record; a path of the body passes only when scripts/api-contract-fields.json
-lists it for that request (so the keys of labels and tags do not). What
-is dropped is counted on stderr by reason.
+lists it for that request (so the keys of labels and tags do not), and
+no field of the remote console passes at all (D110, #1860). What is
+dropped is counted on stderr by reason; nothing else of a record reaches
+stderr, which goes to a public log (#1862).
 
 usage: answers_catalogue.py --root REPO --source TEXT --date YYYY-MM-DD RAW
 """
@@ -28,6 +30,11 @@ API_HOST = re.compile(r"^([a-z0-9-]+)\.api\.cloud\.ru$")
 # this set alone, so a writer that put a value there would not reach the
 # artifact («Риск», conclusion 226, У1).
 KINDS = {"uuid", "name", "number", "bool", "null", "object", "array"}
+# Fields of the remote console of a VM (D110: its link is a secret) stay
+# out of the catalogue by name, not only by value, whatever the inventory
+# lists for the request: scripts/api-contract-fields.json is the contract
+# of the API and keeps them (task #1857, item 2; finding #1860).
+CONSOLE_FIELD = re.compile(r"^(remote_console|vnc)_", re.IGNORECASE)
 
 
 def templates(root):
@@ -82,7 +89,7 @@ def main():
         fields = json.load(f)["requests"]
     services = {svc for svc, _ in tmpl}
 
-    count = {"строк": 0, "принято": 0, "не JSON": 0, "хост вне описи": 0, "путь вне описи": 0, "полей вне описи": 0, "полей с разным типом": 0, "видов вне набора": 0}
+    count = {"строк": 0, "принято": 0, "не JSON": 0, "хост вне описи": 0, "путь вне описи": 0, "полей вне описи": 0, "полей с разным типом": 0, "видов вне набора": 0, "полей консоли": 0}
     entries = {}
     lines = []
     if os.path.exists(a.raw):
@@ -99,10 +106,12 @@ def main():
             paths = rec.get("paths") or {}
             if not isinstance(paths, dict):
                 raise TypeError("paths")
+            # Inside the guard: urlsplit names the netloc in its error, and
+            # the error of a line must not carry the line (#1862).
+            u = urlsplit(url)
         except (ValueError, KeyError, TypeError, AttributeError):
             count["не JSON"] += 1
             continue
-        u = urlsplit(url)
         m = API_HOST.match(u.hostname or "")
         svc = m.group(1) if m else None
         if svc not in services:
@@ -115,6 +124,9 @@ def main():
         allowed = set(fields.get(f"{svc} {method} {t}", ()))
         kept = {}
         for p, kind in paths.items():
+            if any(CONSOLE_FIELD.match(seg.removesuffix("[]")) for seg in p.split(".")):
+                count["полей консоли"] += 1
+                continue
             if "*" in p.split(".") or p.replace(".[]", "[]") not in allowed:
                 count["полей вне описи"] += 1
                 continue
@@ -145,4 +157,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:  # noqa: BLE001
+        # The message and the traceback of an error may quote a record, and
+        # stderr goes to a public log (#1862): the kind of the error alone.
+        print(f"answers-catalogue: сбой генератора ({type(e).__name__})", file=sys.stderr)
+        sys.exit(1)

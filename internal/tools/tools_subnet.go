@@ -234,7 +234,8 @@ func (s *Registry) planSubnetCreate(ctx context.Context, args map[string]any) (*
 				return lostCreate(ctx, "subnet_create", list, i18n.T("subnet", "подсеть"), name, nil, "list_subnets",
 					fmt.Errorf(i18n.T("create subnet: %w", "создание подсети: %w"), err))
 			}
-			return toJSON(map[string]any{"status": "created", "subnet_id": id, "subnet": m}), false
+			return madeAnswer(ctx, eng, map[string]any{"subnet_id": id, "subnet": m}, made{tool: "subnet_create", list: "list_subnets",
+				field: "subnet", idField: "subnet_id", what: "Subnet", whatRU: "Подсеть", read: list})
 		},
 	}, nil
 }

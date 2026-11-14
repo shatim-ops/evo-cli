@@ -60,7 +60,7 @@ connectivity checks failed.`, `Проверить окружение: файлы
 			} else {
 				rows := make([][]string, len(answer.Checks))
 				for i, ch := range answer.Checks {
-					rows[i] = []string{statusText(ch.Status), ch.Name, ch.Detail}
+					rows[i] = []string{statusText(ch.Status), checkLabel(ch.Name), ch.Detail}
 				}
 				p.Table([]string{i18n.T("Status", "Статус"), i18n.T("Check", "Проверка"), i18n.T("Detail", "Подробности")}, rows)
 			}
@@ -74,6 +74,32 @@ connectivity checks failed.`, `Проверить окружение: файлы
 		},
 	}
 	return engineCmd(cmd, "doctor")
+}
+
+// checkLabels are the names of doctor's checks in the human column, in the
+// CLI's language (D6; Astra's list #1835): the JSON keeps the machine name.
+var checkLabels = map[string][2]string{
+	"version":               {"version", "версия"},
+	"config":                {"config", "настройки"},
+	"config dir":            {"config dir", "каталог настроек"},
+	"legacy config":         {"legacy config", "старые настройки"},
+	"other evo":             {"other evo", "другой evo"},
+	"credentials":           {"credentials", "ключ доступа"},
+	"key term":              {"key term", "срок ключа"},
+	"key roles":             {"key roles", "роли ключа"},
+	"key scope":             {"key scope", "область действия ключа"},
+	"pending operation":     {"pending operation", "незавершённая операция"},
+	"lost floating IP":      {"lost floating IP", "floating IP с неизвестным исходом создания"},
+	"foreign intent record": {"foreign intent record", "чужая запись намерения"},
+}
+
+// checkLabel is the name of a check as the human column shows it: its
+// label, else the name as it is (a file, a program, a service: D6).
+func checkLabel(name string) string {
+	if l, ok := checkLabels[name]; ok {
+		return i18n.T(l[0], l[1])
+	}
+	return name
 }
 
 // doctorLocal is the CLI's part of doctor's answer (tools.Caller.Doctor):

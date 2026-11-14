@@ -36,6 +36,7 @@ type subnetAPI struct {
 	vpcs      string // the vpcs of /v1/vpcs
 	canDelete bool
 	gone      bool // GET and DELETE of the subnet answer 404
+	made      bool // a POST made subnet "web": the list shows it created
 }
 
 func newSubnetAPI() *subnetAPI {
@@ -54,6 +55,13 @@ func (a *subnetAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Path == "/api/v1/availability-zones":
 		_, _ = fmt.Fprintf(rec, `[{"id":%q,"name":"ru.AZ-1"}]`, subnetZone)
 	case r.URL.Path == "/api/v1/subnets" && r.Method == http.MethodGet:
+		a.mu.Lock()
+		made := a.made
+		a.mu.Unlock()
+		if made {
+			_, _ = fmt.Fprintf(rec, `{"items":[%s,{"id":%q,"name":"web","state":"created"}],"total":2}`, old, subnetNew)
+			break
+		}
 		_, _ = fmt.Fprintf(rec, `{"items":[%s],"total":1}`, old)
 	case r.URL.Path == "/api/v1/subnets" && r.Method == http.MethodPost:
 		raw, _ := io.ReadAll(r.Body)
@@ -70,6 +78,9 @@ func (a *subnetAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 			_, _ = io.WriteString(rec, `{"detail":"Either subnet_address or prefix_length should be submitted, not both"}`)
 			break
 		}
+		a.mu.Lock()
+		a.made = true
+		a.mu.Unlock()
 		rec.WriteHeader(http.StatusCreated)
 		_, _ = fmt.Fprintf(rec, `{"id":%q,"name":"web","state":"creating","subnet_address":"10.10.0.0/24","vpc_id":%q}`, subnetNew, subnetVPC)
 	case r.URL.Path == "/api/v1/subnets/"+subnetOld && a.gone:

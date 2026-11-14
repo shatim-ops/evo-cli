@@ -70,12 +70,14 @@ func nameFree(ctx context.Context, list func(context.Context) ([]map[string]any,
 // nameTakenResult is the answer of a create tool whose name is in use: USAGE
 // (the call is wrong, nothing was sent to create anything) with the existing
 // id in existing_id, so a stack step knows the resource is not its own.
+// The name and the status are the cloud's words in evo's text: quoted
+// («Риск», conclusion 232).
 func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 	if status == "" {
 		status = "unknown"
 	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("a %s named %q already exists (id %s, status %s); a second one would be billed separately", "%s с именем %q уже есть (id %s, статус %s); второй оплачивался бы отдельно", kind, name, id, status),
+		i18n.Tf("a %s named %s already exists (id %s, status %s); a second one would be billed separately", "%s с именем %s уже есть (id %s, статус %s); второй оплачивался бы отдельно", kind, quoteCloud(name), id, quoteCloud(status)),
 		i18n.Tf("Use the existing one (%s), or pick another name.", "Используйте существующий (%s) или выберите другое имя.", getHint)),
 		map[string]any{"existing_id": id}), true
 }

@@ -123,6 +123,45 @@ func TestSettle_TheSameArgumentsOnAnotherTargetAreAnotherCall(t *testing.T) {
 	}
 }
 
+// The same arguments with the same target on other parties are another
+// call: the VM a name resolved to is now another VM — the record of the
+// cut call stays (R-101 at disk_attach, fip_attach, open_ports). The same
+// parties, or a record that names none (evo before them), are settled as
+// before.
+func TestSettle_TheSameArgumentsOnOtherPartiesAreAnotherCall(t *testing.T) {
+	key := &state.Maker{KeyID: "k"}
+	canon := []byte(`{"disk_id":"d1","vm":"web"}`)
+	t0 := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+	gone := deadPID(t)
+	for _, c := range []struct {
+		name     string
+		was, now []string
+		removed  bool
+	}{
+		{"other parties", []string{"vm=v1"}, []string{"vm=v2"}, false},
+		{"the same parties", []string{"vm=v1"}, []string{"vm=v1"}, true},
+		{"the record names no parties", nil, []string{"vm=v2"}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := Dir(t.TempDir())
+			if _, err := Open(dir, Intent{Tool: "disk_attach", Target: "disk_id=d1", Parties: c.was, ProjectID: "p", Key: key, PID: gone,
+				StartedAt: t0, Canon: canon}); err != nil {
+				t.Fatal(err)
+			}
+			done, err := Open(dir, Intent{Tool: "disk_attach", Target: "disk_id=d1", Parties: c.now, ProjectID: "p", Key: key, PID: os.Getpid(),
+				StartedAt: t0.Add(time.Minute), Canon: canon})
+			if err != nil {
+				t.Fatal(err)
+			}
+			Close(done)
+			Settle(dir, done)
+			if removed := len(Pending(dir)) == 0; removed != c.removed {
+				t.Errorf("removed %v, want %v: %+v", removed, c.removed, Pending(dir))
+			}
+		})
+	}
+}
+
 // The print tells the same arguments in the same record and shows nothing
 // between two records: the id of the record is in the hash.
 func TestPrint_OfTheRecordNotOfTheArgumentsAlone(t *testing.T) {
