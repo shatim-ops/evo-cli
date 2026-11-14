@@ -1,0 +1,121 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
+package provision
+
+import (
+	"regexp"
+	"strings"
+)
+
+// consoleFields are the fields of a VM — its card, an item of the list of
+// VMs, the answer of PUT, rebuild and create — that hold its console: access
+// to the VM. No type evo reads a VM into keeps them
+// (TestConsoleFieldsAreNotRead), and hideConsole drops their values from
+// every body evo does not parse (D110; «Риск», conclusions 204, 229, 240).
+// A new field with the same meaning goes here.
+var consoleFields = []string{"vnc_url", "vnc_ws", "remote_console_url", "remote_console_ws", "remote_console_protocol"}
+
+// consoleKey finds a console field as a key, plain or inside JSON escaped
+// into a string any number of times (`\"vnc_url\": …`): group 1 holds the
+// backslashes before its quote.
+var consoleKey = regexp.MustCompile(`(\\*)"(?:` + strings.Join(consoleFields, "|") + `)\\*"\s*:\s*`)
+
+// hiddenValue replaces the value of a console field.
+const hiddenValue = "hidden"
+
+// hideConsole returns body with the value of every console field replaced,
+// as text: it is for bodies evo puts into an error unparsed — a refusal of
+// the platform, an answer of an unknown shape — which may be cut at
+// maxErrorBody inside a value or not be JSON at all. A value cut short is
+// hidden up to the end of the body.
+func hideConsole(body []byte) string {
+	s := string(body)
+	locs := consoleKey.FindAllStringSubmatchIndex(s, -1)
+	if locs == nil {
+		return s
+	}
+	var b strings.Builder
+	last := 0
+	for _, l := range locs {
+		if l[0] < last {
+			continue // inside a value already hidden
+		}
+		depth, ok := escapeDepth(l[3] - l[2])
+		if !ok {
+			continue
+		}
+		b.WriteString(s[last:l[1]])
+		end := valueEnd(s, l[1], depth)
+		q := strings.Repeat(`\`, 1<<depth-1) + `"`
+		b.WriteString(q + hiddenValue + q)
+		last = end
+	}
+	b.WriteString(s[last:])
+	return b.String()
+}
+
+// escapeDepth is how many times JSON was escaped into a string when a quote
+// carries n backslashes: 0 → 0, 1 → 1, 3 → 2, 7 → 3.
+func escapeDepth(n int) (int, bool) {
+	for d := 0; d < 8; d++ {
+		if n == 1<<d-1 {
+			return d, true
+		}
+	}
+	return 0, false
+}
+
+// valueEnd returns the end of the JSON value that starts at i in s, escaped
+// depth times, or len(s) when the body ends inside it.
+func valueEnd(s string, i, depth int) int {
+	quote := 1<<depth - 1 // backslashes before a quote of this depth
+	if open := i + quote; open < len(s) && s[open] == '"' && strings.Count(s[i:open], `\`) == quote {
+		// A string: it ends at the next quote of its own depth; one
+		// escaped deeper is inside it.
+		for j := open + 1; j < len(s); j++ {
+			if s[j] != '"' {
+				continue
+			}
+			k := j
+			for k > open+1 && s[k-1] == '\\' {
+				k--
+			}
+			// A quote of this depth has quote backslashes after the
+			// escaped backslashes of the text (2<<depth each).
+			if (j-k)%(2<<depth) == quote {
+				return j + 1
+			}
+		}
+		return len(s)
+	}
+	// Anything else — a number, null, an object — ends at a comma or a
+	// closing bracket outside the brackets it opens.
+	level := 0
+	for j := i; j < len(s); j++ {
+		switch s[j] {
+		case '{', '[':
+			level++
+		case '}', ']':
+			if level == 0 {
+				return trimEscapes(s, i, j)
+			}
+			level--
+		case ',':
+			if level == 0 {
+				return trimEscapes(s, i, j)
+			}
+		}
+	}
+	return len(s)
+}
+
+// trimEscapes moves the end j of a value back over trailing backslashes and
+// spaces, which belong to the text around it.
+func trimEscapes(s string, i, j int) int {
+	for j > i && (s[j-1] == ' ' || s[j-1] == '\\' || s[j-1] == '\n' || s[j-1] == '\t' || s[j-1] == '\r') {
+		j--
+	}
+	return j
+}
