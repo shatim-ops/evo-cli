@@ -77,9 +77,9 @@ var refUncompleted = map[string]struct{ why, item string }{
 
 // Release plan 1.5, Tab in the whole CLI: an argument that references a
 // resource or an entry of a catalogue is completed (completionOf: valueRefs,
-// the kinds of idArgs), or noCompletion says why not, or refUncompleted
+// the kinds of Decl.IDArgs), or Decl.NoCompletion says why not, or refUncompleted
 // does. Escaped before the invariant (#478, «разработка»): a reference by
-// name in a new tool without a line in valueRefs or noCompletion was left
+// name in a new tool without a line in valueRefs or Decl.NoCompletion was left
 // without Tab, silently.
 func TestCompletion_EveryReferenceIsCompletedOrSaysWhy(t *testing.T) {
 	r := New(nil)
@@ -91,7 +91,7 @@ func TestCompletion_EveryReferenceIsCompletedOrSaysWhy(t *testing.T) {
 			if !refArg.MatchString(arg) {
 				continue
 			}
-			if _, no := noCompletion[tl.Name][arg]; no {
+			if _, no := tl.Decl.NoCompletion[arg]; no {
 				continue
 			}
 			k := tl.Name + " " + arg
@@ -109,7 +109,7 @@ func TestCompletion_EveryReferenceIsCompletedOrSaysWhy(t *testing.T) {
 	}
 	sort.Strings(missing)
 	for _, k := range missing {
-		t.Errorf("%s: a reference Tab does not complete — declare its list (valueRefs, idArgs) or why not (noCompletion, refUncompleted)", k)
+		t.Errorf("%s: a reference Tab does not complete — declare its list (valueRefs, Decl.IDArgs) or why not (Decl.NoCompletion, refUncompleted)", k)
 	}
 	for k, line := range refUncompleted {
 		if !seen[k] {

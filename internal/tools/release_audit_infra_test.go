@@ -765,6 +765,7 @@ func TestLbCreate_VPCOfAnotherTargetGroupRefused(t *testing.T) {
 // умолчание) проверялась только на шаге redis — после того как vpc, pg,
 // kafka и k8s уже созданы. Теперь — USAGE на stack_plan.
 func TestStackPlan_RedisShapeCheckedAtPlan(t *testing.T) {
+	stackHome(t)
 	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, nil)
 	for _, c := range []struct {
 		label    string
@@ -855,6 +856,7 @@ func raS3(c *config.Config) { c.S3 = config.S3Config{AccessKey: "a", SecretKey: 
 // stack that could not finish. Now stack_plan refuses it, naming s3[i].bucket,
 // before a job exists; a valid name plans as before.
 func TestStackPlan_S3BucketNameCheckedAtPlan(t *testing.T) {
+	stackHome(t)
 	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, raS3)
 	for _, bad := range []string{"../x", "a/b"} {
 		mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": bad, "key": "k", "content": "c"}}}
@@ -878,6 +880,7 @@ func TestStackPlan_S3BucketNameCheckedAtPlan(t *testing.T) {
 // buckets: one that is not there is NOT_FOUND naming s3[i].bucket, and no
 // job is planned.
 func TestStackPlan_NamedBucketMustExist(t *testing.T) {
+	stackHome(t)
 	r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, raS3)
 	mf := map[string]any{"name": "s1", "vm": map[string]any{"name": "vm"},
 		"s3": []any{map[string]any{"bucket": "no-such-bucket", "key": "k", "content": "c"}}}
@@ -955,6 +958,7 @@ func TestK8s_EqualFlavorsByNameWhateverCatalogOrder(t *testing.T) {
 // --read-only server, where stack_apply is refused, says creating the
 // stack needs another server.
 func TestStackPlan_ConsentInNext(t *testing.T) {
+	stackHome(t)
 	mf := map[string]any{"name": "s1", "s3": []any{map[string]any{"bucket": "my-bucket", "key": "k", "content": "c"}}}
 	for _, readOnly := range []bool{false, true} {
 		r := raRegistry(t, &raAPI{}, raCloud{subnets: raSubnets()}, raS3)

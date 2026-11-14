@@ -46,7 +46,7 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	// question and without a DELETE (D26).
 	// The state as every delete names it; status stays the service's own
 	// word in the answer's fields.
-	decl := deleteTargets[tool]
+	decl := decls[tool].Delete
 	state := strings.TrimPrefix(status, decl.statePrefix)
 	unseen := decl.creatingUnseen != "" && engine.PassingDeleteState(state) ||
 		decl.failedUnseen != "" && inError(state)
@@ -71,7 +71,7 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 		"target":  target,
 		// A kind the folder's state does not record: unknown, said by the
 		// one rule of every delete preview (P3).
-		"provenance": engine.ProvenanceOf(deleteTargets[tool].what, id, time.Time{}, nil, nil, nil),
+		"provenance": engine.ProvenanceOf(decls[tool].Delete.what, id, time.Time{}, nil, nil, nil),
 	}
 	if warning, _ := engine.DeleteWayOut(state, id); warning != "" {
 		out["warning"] = warning
@@ -103,7 +103,7 @@ func inError(state string) bool {
 // resource in the state: no run has shown it. An error the state does not
 // explain (notTheState) keeps its own hint.
 func withStatus(execute func(context.Context) (string, bool), tool, status, id string) func(context.Context) (string, bool) {
-	decl := deleteTargets[tool]
+	decl := decls[tool].Delete
 	read := strings.TrimSuffix(tool, "_delete") + "_get"
 	readEN, readRU := read, read
 	if spec, ok := cliSpecs[read]; ok {

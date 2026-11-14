@@ -34,7 +34,7 @@ func TestIntent_ACallThatSentNoWriteLeavesNoRecord(t *testing.T) {
 		}
 		args := func() map[string]any {
 			a := map[string]any{"confirmed": true, "name": "web"}
-			for _, id := range idArgs[tl.Name] {
+			for _, id := range decls[tl.Name].IDArgs {
 				a[id.name] = resMine
 			}
 			return a
@@ -117,7 +117,7 @@ func TestIntent_AWriteBeforeTheRecordDoesNotSpendItsMark(t *testing.T) {
 	eng, _ := r.newEngine(nil)
 	dir := intent.Dir(eng.StateDir)
 	holder := context.WithValue(context.Background(), callRecordsKey{}, &callRecords{})
-	ctx := httpretry.CountWrites(holder, func() (bool, error) { return markSent(holder) })
+	ctx := httpretry.CountWrites(holder, func() (bool, error) { return markSent(holder, nil) })
 	if err := httpretry.NoteWrite(ctx); err != nil { // before the record
 		t.Fatal(err)
 	}

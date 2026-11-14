@@ -169,11 +169,11 @@ func TestIntent_TheQuestionAfterACutCallDoesNotLookAtThePrint(t *testing.T) {
 	dir := intent.Dir(eng.StateDir)
 	asked := 0
 	for tool, rule := range everySendIsAChange {
-		if len(idArgs[tool]) == 0 || rule.made || rule.settledBy != nil {
+		if len(decls[tool].IDArgs) == 0 || rule.made || rule.settledBy != nil {
 			continue // named by what it makes, or asked about by the state of its resource
 		}
 		asked++
-		target := idArgs[tool][0].name
+		target := decls[tool].IDArgs[0].name
 		consentedCall(r, tool, map[string]any{target: resMine}, `{"status":"error","reason":"API_UNREACHABLE"}`)
 		sent := 0
 		tl, _ := r.Lookup(tool)

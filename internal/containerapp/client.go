@@ -94,6 +94,10 @@ type Operation struct {
 	ID         string `json:"id"`
 	ResourceID string `json:"resourceId,omitempty"`
 	Done       bool   `json:"done"`
+	// Error is the platform's status of an operation that ended with an
+	// error (AsyncOperation.error: code, message); nil while it goes on
+	// or when it succeeded.
+	Error any `json:"error,omitempty"`
 }
 
 type Resources struct {
@@ -227,15 +231,20 @@ func (c *Client) Delete(ctx context.Context, name string) (*Operation, error) {
 	return &op, nil
 }
 
-func (c *Client) StartStop(ctx context.Context, name, action string) error {
+// StartStop starts or stops an app (action "start" or "stop"). The platform
+// answers an operation (AsyncOperation), which may not be done yet: the
+// answer is read, not dropped (Астра #1813).
+func (c *Client) StartStop(ctx context.Context, name, action string) (*Operation, error) {
 	data, st, err := c.do(ctx, http.MethodPost, "/v2/containers/"+url.PathEscape(name)+":"+action, nil, map[string]any{})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if st != 200 {
-		return apiError(st, data)
+		return nil, apiError(st, data)
 	}
-	return nil
+	var op Operation
+	_ = json.Unmarshal(data, &op)
+	return &op, nil
 }
 
 // logsPageSize is the pageSize of an app logs request. The specification

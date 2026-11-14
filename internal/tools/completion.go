@@ -21,10 +21,10 @@ import (
 // Completion of argument values by Tab (release plan 1.5, dogfood 28.10):
 // an argument that names a resource of the project or an entry of a
 // catalogue is completed from the read tool that lists them. One place
-// decides which list completes which argument (completionOf): toolRefs of
-// the tool, valueRefs by the argument's name (a name or an id of the
-// list), then the kinds of idArgs by their listTool, with a tool's
-// exceptions in noCompletion. The CLI asks Complete for every
+// decides which list completes which argument (completionOf): Decl.Completes
+// of the tool, valueRefs by the argument's name (a name or an id of the
+// list), then the kinds of Decl.IDArgs by their listTool, with a tool's
+// exceptions in Decl.NoCompletion. The CLI asks Complete for every
 // command alike. Nothing here writes, asks for consent or goes to the
 // journal; a secret's value is never listed.
 
@@ -41,8 +41,8 @@ type completion struct {
 }
 
 // valueRefs complete an argument by its name, in every tool that has it,
-// unless noCompletion makes an exception; the rest of the ids come from
-// the kinds of idArgs.
+// unless Decl.NoCompletion makes an exception; the rest of the ids come from
+// the kinds of Decl.IDArgs.
 var valueRefs = map[string]completion{
 	"region":               {list: "list_zones", field: "name"},
 	"zone":                 {list: "list_zones", field: "name"},
@@ -60,34 +60,8 @@ var valueRefs = map[string]completion{
 	"security_group_id":    {list: "list_security_groups", field: "id"},
 }
 
-// toolRefs complete an argument of one tool whose name means a different
-// list in each product (version_id: kafka_versions in Kafka,
-// redis_versions in Redis), or that names a list valueRefs has under
-// another name (nodes_subnet_id: the subnets).
-var toolRefs = map[string]map[string]completion{
-	"kafka_create":     {"version_id": {list: "kafka_versions", field: "id"}, "specification_id": {list: "kafka_specs", field: "id"}},
-	"kafka_specs":      {"version_id": {list: "kafka_versions", field: "id"}},
-	"redis_create":     {"version_id": {list: "redis_versions", field: "id"}, "specification_id": {list: "redis_specs", field: "id"}},
-	"redis_specs":      {"version_id": {list: "redis_versions", field: "id"}},
-	"pg_create":        {"specification_id": {list: "pg_specs", field: "id"}},
-	"k8s_add_nodepool": {"nodes_subnet_id": {list: "list_subnets", field: "id"}},
-	"k8s_create":       {"cluster_sa_id": {list: "iam_service_accounts", field: "id"}},
-	"k8s_plan":         {"cluster_sa_id": {list: "iam_service_accounts", field: "id"}},
-	"disk_list":        {"type": {list: "list_disk_types", field: "name"}},
-}
-
-// noCompletion are the arguments named as in valueRefs that name
-// something else in a tool, with why.
-var noCompletion = map[string]map[string]string{
-	"k8s_create":       {"flavor": "a control-plane flavor of k8s_options, not a VM flavor"},
-	"k8s_plan":         {"flavor": "a control-plane flavor of k8s_options, not a VM flavor"},
-	"k8s_add_nodepool": {"flavor": "a node flavor of k8s_options, not a VM flavor"},
-	"secret_create":    {"path": "the path of a new secret: an existing one is refused (D49)"},
-	"ca_deploy":        {"image": "a container image of Artifact Registry, not a VM image of image_list (FB150-1)"},
-}
-
 // completionOf is how (tool, arg) is completed, if it is; an argument of
-// refArgs takes a name (D57), so names are offered too.
+// Decl.RefArgs takes a name (D57), so names are offered too.
 func (r *Registry) completionOf(tool, arg string) (completion, bool) {
 	c, ok := r.completionDeclared(tool, arg)
 	if ok && takesName(tool, arg) {
@@ -97,18 +71,19 @@ func (r *Registry) completionOf(tool, arg string) (completion, bool) {
 }
 
 func (r *Registry) completionDeclared(tool, arg string) (completion, bool) {
-	if _, no := noCompletion[tool][arg]; no {
+	d := decls[tool]
+	if _, no := d.NoCompletion[arg]; no {
 		return completion{}, false
 	}
 	// The tool's own declaration decides: its list or none, never the
 	// list valueRefs has for the same name in another product.
-	if c, ok := toolRefs[tool][arg]; ok {
+	if c, ok := d.Completes[arg]; ok {
 		return c, r.listable(c.list)
 	}
 	if c, ok := valueRefs[arg]; ok && r.listable(c.list) {
 		return c, true
 	}
-	for _, a := range idArgs[tool] {
+	for _, a := range d.IDArgs {
 		if a.name == arg && a.kind != nil && a.kind.listTool != "" && r.listable(a.kind.listTool) {
 			return completion{list: a.kind.listTool, field: "id", byName: a.kind.byName}, true
 		}

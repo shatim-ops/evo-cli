@@ -52,6 +52,7 @@ var wallClockReads = map[string]struct {
 	"internal/tools/opwait.go\twaitState":                       {1, wallWait}, // D69: the last sleep ends at the bound
 	"internal/tools/registry.go\tbudgetLeft":                    {1, wallWait}, // D69: what is left of the call budget
 	"internal/tools/tools_stack.go\tRegistry.handleStackStatus": {1, wallWait}, // the budget of one poll
+	"internal/tools/tools_stack.go\tstepMissing":                {1, wallWait}, // how long a step has not found its resource («Риск», 230)
 	"internal/mcp/http.go\tHTTPHandler.dispatch":                {1, wallLog},  // duration_ms of the log
 	"internal/mcp/http.go\tHTTPHandler.touchSession":            {1, wallWait}, // TTL of the session
 	"internal/tools/journal.go\tjournaled":                      {1, wallLog},  // ms of the session journal (D46)

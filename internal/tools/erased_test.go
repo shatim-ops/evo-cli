@@ -50,9 +50,9 @@ func erasedWorld(writes *atomic.Int32) func(http.ResponseWriter, *http.Request) 
 // takes it as deleted.
 func TestAlreadyDeleted_ErasedClusterIsDeleted(t *testing.T) {
 	for _, name := range erasedDeletes {
-		d, ok := deleteTargets[name]
+		d, ok := deleteOf(name)
 		if !ok {
-			t.Fatalf("%s is not in deleteTargets", name)
+			t.Fatalf("%s is not in Decl.Delete", name)
 		}
 		for _, confirmed := range []bool{false, true} {
 			var writes atomic.Int32

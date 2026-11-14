@@ -204,14 +204,14 @@ func TestVMStop_PreviewNamesTheFoldersDeployment(t *testing.T) {
 }
 
 // vm_stop takes the service down: a client asks the person every time
-// (destructiveTools; §4.3, В1).
+// (Decl.Destructive; §4.3, В1).
 func TestVMStop_IsDestructiveForTheClient(t *testing.T) {
 	r, _ := vmStartWorld(t, "running")
 	tl, _ := r.Lookup("vm_stop")
 	if !IsDestructive(tl) {
-		t.Error("vm_stop is not in destructiveTools")
+		t.Error("vm_stop is not in Decl.Destructive")
 	}
 	if start, _ := r.Lookup("vm_start"); IsDestructive(start) {
-		t.Error("vm_start is in destructiveTools: it stops nothing")
+		t.Error("vm_start is in Decl.Destructive: it stops nothing")
 	}
 }

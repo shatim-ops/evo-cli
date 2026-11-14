@@ -89,3 +89,80 @@ func TestRouteNotFoundAfterTheRenewedToken(t *testing.T) {
 		t.Errorf("after the renewed token: status %d, %s %q; want 502 replaced", resp.StatusCode, Replaced, resp.Header.Get(Replaced))
 	}
 }
+
+// brokenAfter is a body that gives data and then err, in the same read as
+// the data's last bytes or in a read of its own, and io.EOF after that:
+// a connection that broke once (#1746, #1769).
+type brokenAfter struct {
+	data     string
+	err      error
+	ownRead  bool
+	off, end int
+}
+
+func (b *brokenAfter) Read(p []byte) (int, error) {
+	if b.off < len(b.data) {
+		n := copy(p, b.data[b.off:])
+		b.off += n
+		if b.off == len(b.data) && !b.ownRead {
+			b.end++
+			return n, b.err
+		}
+		return n, nil
+	}
+	if b.end++; b.end == 1 {
+		return 0, b.err
+	}
+	return 0, io.EOF
+}
+
+func (b *brokenAfter) Close() error { return nil }
+
+// The service's 404 that RouteNotFoundAsBadGateway passes on is the body
+// the API gave, its error included: a read that broke does not end as a
+// whole answer (external review, #1769; the same class as #1746).
+func TestRouteNotFound_ReadErrorReachesTheCaller(t *testing.T) {
+	service := `{"code":5,"message":"resource not found","details":[]}`
+	edge := `{"code":5,"message":"resource not found","details":"` + strings.Repeat("x", maxServiceBody) + `"}`
+	for _, c := range []struct {
+		name, body string
+		ownRead    bool
+		want       int
+	}{
+		{"error with the bytes", service, false, 404},
+		{"error in a read of its own", service, true, 404},
+		// Cut short of the read, the service's JSON is not whole: the
+		// answer is replaced (D63), which is its own expected result.
+		{"limit -1", edge[:maxServiceBody-1], false, 502},
+		{"limit", edge[:maxServiceBody], false, 404},
+		{"limit +1", edge[:maxServiceBody+1], true, 404},
+	} {
+		rt := rtFunc(func(r *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 404, Header: http.Header{"Content-Type": {"application/json"}},
+				Body: &brokenAfter{data: c.body, err: io.ErrUnexpectedEOF, ownRead: c.ownRead}, Request: r}, nil
+		})
+		resp := RouteNotFoundAsBadGateway(httptestRequest(), mustRT(t, rt))
+		b, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != c.want {
+			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.want)
+		}
+		if c.want == 404 && (string(b) != c.body || err != io.ErrUnexpectedEOF) {
+			t.Errorf("%s: the caller read %d of %d bytes, %v; want all of them and %v", c.name, len(b), len(c.body), err, io.ErrUnexpectedEOF)
+		}
+	}
+}
+
+func httptestRequest() *http.Request {
+	req, _ := http.NewRequest(http.MethodDelete, "https://api.example/v1/things/x", nil)
+	return req
+}
+
+func mustRT(t *testing.T, rt http.RoundTripper) *http.Response {
+	t.Helper()
+	resp, err := rt.RoundTrip(httptestRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}

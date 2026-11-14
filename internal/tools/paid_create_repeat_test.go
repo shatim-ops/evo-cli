@@ -224,7 +224,7 @@ var repeatNotAsked = map[string]string{
 }
 
 func TestPaidCreate_EveryCreateIsDeclaredOrNamedWithAReason(t *testing.T) {
-	for tool := range createdIDs {
+	for tool := range allCreated() {
 		_, asked := everySendIsAChange[tool]
 		reason := repeatNotAsked[tool]
 		switch {
@@ -235,8 +235,8 @@ func TestPaidCreate_EveryCreateIsDeclaredOrNamedWithAReason(t *testing.T) {
 		}
 	}
 	for tool := range repeatNotAsked {
-		if _, ok := createdIDs[tool]; !ok {
-			t.Errorf("repeatNotAsked names %s, which creates nothing (createdIDs)", tool)
+		if _, ok := createdOf(tool); !ok {
+			t.Errorf("repeatNotAsked names %s, which creates nothing (Decl.Created)", tool)
 		}
 	}
 	// The measured eight are the ones the fault matrix still finds.
@@ -251,8 +251,8 @@ func TestPaidCreate_EveryCreateIsDeclaredOrNamedWithAReason(t *testing.T) {
 		if !rule.made {
 			continue
 		}
-		if rule.read != createdIDs[tool].list || rule.read == "" || rule.target == nil {
-			t.Errorf("%s: a create that asks reads %q (its list is %q), target set %v", tool, rule.read, createdIDs[tool].list, rule.target != nil)
+		if rule.read != decls[tool].Created.list || rule.read == "" || rule.target == nil {
+			t.Errorf("%s: a create that asks reads %q (its list is %q), target set %v", tool, rule.read, decls[tool].Created.list, rule.target != nil)
 		}
 	}
 }

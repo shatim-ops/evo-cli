@@ -5,11 +5,17 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // The answer of a change says whether the change is over (CLAUDE.md §6,
@@ -69,19 +75,27 @@ var noNextStep = map[string]string{
 	"dns_record_create": "creating, operation_id: next is dns_operation",
 	"dns_zone_create":   "creating, operation_id: next is dns_operation",
 	"image_create":      "building, no operation_id",
-	"k8s_add_addon":     "installing, operation_id: next is k8s_operation",
-	"k8s_add_nodepool":  "creating, operation_id: next is k8s_operation",
-	"k8s_create":        "creating, operation_id: next is k8s_operation",
-	"kafka_create":      "creating, operation_id: next is kafka_operation",
 	"lb_create":         "creating, operation_id: next is lb_operation",
-	"pg_backup_create":  "backing_up, operation_id: next is pg_operation",
-	"pg_create":         "creating, operation_id: next is pg_operation",
-	"redis_create":      "creating, operation_id: next is redis_operation",
 	"tg_create":         "creating, operation_id: next is lb_operation",
 	"vpc_create":        "creating, operation_id: next is vpc_operation",
 	"vpc_route_create":  "creating, operation_id: next is vpc_operation",
 	"vpc_route_delete":  "deleting, operation_id: next is vpc_operation",
 }
+
+// resourceStateNamed are the creates whose answer, while the cloud makes
+// the resource, names its state now (resource_status), beside the step
+// (release plan 1.9, «Честный ход», #1816; Астра, #1815).
+var resourceStateNamed = map[string]bool{
+	"k8s_add_addon": true, "k8s_add_nodepool": true, "k8s_create": true, "kafka_create": true,
+	"pg_backup_create": true, "pg_create": true, "redis_create": true,
+}
+
+// afterOperation are the creates whose resource the read of the operation
+// does not read (it knows only the operation's id): the note names the
+// read after the operation ends (#1816; «релиз», §0 rule 6: no second
+// field of the step in 1.9 — a convention of the step after an operation
+// is the backlog of 1.10).
+var afterOperation = map[string]string{"pg_backup_create": "pg_backups", "k8s_add_addon": "k8s_kubectl"}
 
 // nextStepProblem reads the answer of a change that is going on: "" when
 // it names the machine's next step (D69, nextStep), else what is wrong.
@@ -151,6 +165,17 @@ func TestProgress_ChangeGoingOnNamesTheNextStep(t *testing.T) {
 			if problem := nextStepProblem(c.tool.Name, answer, registry); problem != "" {
 				found[c.tool.Name] = fmt.Sprintf("status %s, %s", status, problem)
 			}
+			// A create of the database and Kubernetes services names the
+			// state of its resource as well as the step: the state of the
+			// operation does not stand for it (Астра, #1815, class R).
+			if resourceStateNamed[c.tool.Name] && answer["resource_status"] == nil && answer["resource_status_error"] == nil {
+				t.Errorf("%s: status %s, and no resource_status: the agent sees the operation, not the resource", c.tool.Name, status)
+			}
+			if want := afterOperation[c.tool.Name]; want != "" {
+				if note, _ := answer["note"].(string); !strings.Contains(note, want) {
+					t.Errorf("%s: the note does not name %s, the read after the operation ends: %s", c.tool.Name, want, note)
+				}
+			}
 		default:
 			t.Errorf("%s answers status %q, a word of neither vocabulary: add it to statusGoingOn (the cloud is still making the change — the answer then names next_tool) or to statusOver (the change is made)", c.tool.Name, status)
 		}
@@ -171,6 +196,160 @@ func TestProgress_ChangeGoingOnNamesTheNextStep(t *testing.T) {
 	for name := range noNextStep {
 		if found[name] == "" {
 			t.Errorf("noNextStep names %s, whose answer names the next step now or is no longer going on: remove the line (the list only shrinks)", name)
+		}
+	}
+}
+
+// overWithAChangeGoingOn reads an answer whose status says the change is
+// over: "" when no resource the answer carries is still on its way, else
+// what is. The status of the answer and the state of its resource say one
+// thing (Астра, #1814: disk_create answered created with its disk
+// creating).
+func overWithAChangeGoingOn(answer map[string]any) string {
+	keys := make([]string, 0, len(answer))
+	for k := range answer {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		res, ok := answer[k].(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, field := range []string{"status", "state"} {
+			if s, _ := res[field].(string); statusGoingOn[strings.ToLower(s)] {
+				return fmt.Sprintf("its %s is %s %q", k, field, s)
+			}
+		}
+	}
+	return ""
+}
+
+// unfinishedWorld turns the JSON world's answer of every write with an
+// operation into one the platform has not finished (done: false), and
+// tells whether the last such write of a case was read after: the reads
+// of operations and resources still answer as before, so a tool that
+// reads the operation or the resource sees it end.
+type unfinishedWorld struct {
+	mu sync.Mutex
+	// pending: the last write answered done: false and nothing was read
+	// since.
+	pending bool
+}
+
+func (u *unfinishedWorld) wrap(next func(*http.Request) (*http.Response, error)) func(*http.Request) (*http.Response, error) {
+	return func(r *http.Request) (*http.Response, error) {
+		resp, err := next(r)
+		read := r.Method == http.MethodGet || r.Method == http.MethodHead
+		if read {
+			u.mu.Lock()
+			u.pending = false
+			u.mu.Unlock()
+		}
+		if err != nil || resp == nil || resp.Body == nil || read {
+			return resp, err
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if bytes.Contains(body, []byte(`"done":true`)) {
+			body = bytes.ReplaceAll(body, []byte(`"done":true`), []byte(`"done":false`))
+			u.mu.Lock()
+			u.pending = true
+			u.mu.Unlock()
+		}
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		resp.ContentLength = int64(len(body))
+		resp.Header.Del("Content-Length")
+		return resp, nil
+	}
+}
+
+// RoundTrip sees the reads the world answers before its fixtures (a
+// resource gone after its delete: parityRT), as a read of the resource.
+func (u *unfinishedWorld) spy(next http.RoundTripper) http.RoundTripper {
+	return roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			u.mu.Lock()
+			u.pending = false
+			u.mu.Unlock()
+		}
+		return next.RoundTrip(r)
+	})
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func (u *unfinishedWorld) take() bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	p := u.pending
+	u.pending = false
+	return p
+}
+
+// overWhileGoingOn are the tools shipped before this check whose answer
+// says created while the resource it carries is still being made: found by
+// it, out of the 1.9 scope of the owner's decision 14.11 (release plan 1.9,
+// «Честный ход операций»: the false outcomes of Астра's inventory #1815).
+// "tool" → what the answer has. It only shrinks, and a new tool does not
+// join it. Closes by 1.9 (owner's decision 14.11: subnet_create and
+// snat_create in 1.9, release plan 1.9, «Честный ход операций», (1)).
+var overWhileGoingOn = map[string]string{}
+
+// TestProgress_AnOverAnswerIsOver: the status of a change that is over
+// (statusOver) is not an answer to a change the platform has not finished
+// (owner's decision 14.11, release plan 1.9, «Честный ход операций», (1);
+// Астра #1813, #1814). Two ways it lies: the answer carries its resource
+// still on its way; or the platform answered the write with an operation
+// not done, and the tool read neither it nor the resource after — it
+// cannot know the change is over.
+func TestProgress_AnOverAnswerIsOver(t *testing.T) {
+	found := map[string]bool{}
+	for _, unfinished := range []bool{false, true} {
+		w, fake := withJSONWorld(t)
+		u := &unfinishedWorld{}
+		if unfinished {
+			w.rt.extra = u.wrap(w.rt.extra)
+			base := httpretry.DefaultBase
+			httpretry.DefaultBase = u.spy(base)
+			t.Cleanup(func() { httpretry.DefaultBase = base })
+		}
+		cases, _, _ := jsonCases(t)
+		for _, c := range cases {
+			if !c.tool.Mutating {
+				continue
+			}
+			u.take()
+			r := runJSONCase(t, c, w, fake)
+			pending := u.take()
+			if r.isErr {
+				continue
+			}
+			var answer map[string]any
+			if err := json.Unmarshal([]byte(r.text), &answer); err != nil {
+				continue
+			}
+			status, _ := answer["status"].(string)
+			if !statusOver[status] {
+				continue
+			}
+			if problem := overWithAChangeGoingOn(answer); problem != "" {
+				found[c.tool.Name] = true
+				if overWhileGoingOn[c.tool.Name] != "" {
+					continue
+				}
+				t.Errorf("%s answers status %q, and %s: name the state of the change (statusGoingOn) and the next step", c.tool.Name, status, problem)
+			}
+			if unfinished && pending {
+				t.Errorf("%s answers status %q to a write whose operation the platform answered not done, and read neither the operation nor the resource after: name the operation (operation_id), its state and the next step", c.tool.Name, status)
+			}
+		}
+	}
+	for name := range overWhileGoingOn {
+		if !found[name] {
+			t.Errorf("overWhileGoingOn names %s, whose answer no longer says created with its resource being made: remove the line (the list only shrinks)", name)
 		}
 	}
 }

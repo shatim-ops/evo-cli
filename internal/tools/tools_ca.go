@@ -346,10 +346,60 @@ func (s *Registry) planCaStartStop(action string) Planner {
 			if err != nil {
 				return errResult(err), true
 			}
-			if err := cli.StartStop(ctx, name, action); err != nil {
+			op, err := cli.StartStop(ctx, name, action)
+			if err != nil {
 				return errResult(err), true
 			}
-			return toJSON(map[string]any{"status": "ok", "name": name, "action": action}), false
+			return caStartStopAnswer(ctx, cli, name, action, op)
 		}}, nil
 	}
+}
+
+// caStartStopAnswer is the answer of ca_start or ca_stop to the platform's
+// operation: ok only when the operation is done (the answer as shipped);
+// one that ended with an error is the platform's refusal; one still going
+// on is starting or stopping, with the state of the app and its read as
+// the next step — Container Apps has no tool that reads an operation, and
+// the app is read until it runs or stops, as ca_delete reads it until it
+// is gone (CLAUDE.md §6, axis 2; Астра #1813).
+func caStartStopAnswer(ctx context.Context, cli *containerapp.Client, name, action string, op *containerapp.Operation) (string, bool) {
+	if msg, code, failed := opFailure(op.Error); failed {
+		e := clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("Cloud.ru did not %s container app %q: %s (operation %s)", "Cloud.ru не выполнил %s приложения %q: %s (операция %s)",
+				action, name, quoteCloud(fmt.Sprint(msg)), op.ID),
+			i18n.T("ca_get shows the state of the app.", "Состояние приложения показывает ca_get."))
+		fields := map[string]any{"name": name, "action": action, "operation_id": op.ID}
+		if code != nil {
+			fields["platform_code"] = code
+		}
+		return errAnswer(e, fields), true
+	}
+	if op.Done {
+		return toJSON(map[string]any{"status": "ok", "name": name, "action": action}), false
+	}
+	status := "starting"
+	note := i18n.T("Cloud.ru took the command and has not finished it: the app starts now. ca_get shows its state.",
+		"Cloud.ru принял команду и ещё не выполнил её: приложение запускается. Его состояние показывает ca_get.")
+	if action == "stop" {
+		status = "stopping"
+		note = i18n.T("Cloud.ru took the command and has not finished it: the app stops now. ca_get shows its state.",
+			"Cloud.ru принял команду и ещё не выполнил её: приложение останавливается. Его состояние показывает ca_get.")
+	}
+	// An answer with no operation (no id, not done) says nothing of the
+	// command: the state of the app is not known («Риск», conclusion 227).
+	if op.ID == "" {
+		status = "waiting"
+		note = i18n.T("Cloud.ru answered no operation: whether the command is carried out is not known. ca_get shows the state of the app.",
+			"Cloud.ru не вернул операцию: выполняется ли команда, неизвестно. Состояние приложения показывает ca_get.")
+	}
+	// The specification does not list the states of an app: the note
+	// names none.
+	out := map[string]any{"status": status, "name": name, "action": action, "note": note}
+	if m, err := cli.Get(ctx, name); err == nil {
+		if st, _ := m["status"].(string); st != "" {
+			out["app_status"] = st
+		}
+	}
+	nextStep(out, "ca_get", map[string]any{"name": name})
+	return toJSON(out), false
 }

@@ -49,7 +49,7 @@ func idLike(arg string) bool {
 	return strings.HasSuffix(arg, "_id") || strings.HasSuffix(arg, "_ids")
 }
 
-// Every argument that names a resource by id is declared in idArgs: with
+// Every argument that names a resource by id is declared in Decl.IDArgs: with
 // the kind a project-bound registry checks, or with the reason it needs
 // none. A new tool (or argument) without a declaration fails here, so the
 // check of --allow-project cannot be forgotten (REL12-3).
@@ -58,7 +58,7 @@ func TestProjectBound_IDArgsDeclared(t *testing.T) {
 	for _, tl := range r.Tools() {
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		declared := map[string]bool{}
-		for _, a := range idArgs[tl.Name] {
+		for _, a := range decls[tl.Name].IDArgs {
 			if declared[a.name] {
 				t.Errorf("%s: %s declared twice", tl.Name, a.name)
 			}
@@ -77,12 +77,12 @@ func TestProjectBound_IDArgsDeclared(t *testing.T) {
 		}
 		for p := range props {
 			if idLike(p) && !declared[p] {
-				t.Errorf("%s takes %s, which names a resource: declare it in idArgs (a kind to check, or why none is needed)", tl.Name, p)
+				t.Errorf("%s takes %s, which names a resource: declare it in Decl.IDArgs (a kind to check, or why none is needed)", tl.Name, p)
 			}
 		}
 		if strings.HasSuffix(tl.Name, "_operation") {
 			ok := false
-			for _, a := range idArgs[tl.Name] {
+			for _, a := range decls[tl.Name].IDArgs {
 				ok = ok || a.name == "operation_id" && a.kind == kindOperation
 			}
 			if !ok {
@@ -90,9 +90,9 @@ func TestProjectBound_IDArgsDeclared(t *testing.T) {
 			}
 		}
 	}
-	for name := range idArgs {
+	for name := range allIDArgs() {
 		if _, ok := r.Lookup(name); !ok {
-			t.Errorf("idArgs names %s, which is not a tool", name)
+			t.Errorf("Decl.IDArgs names %s, which is not a tool", name)
 		}
 	}
 }
@@ -336,7 +336,7 @@ func (c ownerCase) args(id string) map[string]any {
 func ownerCases(t *testing.T) []ownerCase {
 	t.Helper()
 	var out []ownerCase
-	for tool := range idArgs {
+	for tool := range allIDArgs() {
 		for _, a := range checkedIDArgs(tool) {
 			out = append(out, ownerCase{tool, a})
 		}
@@ -631,7 +631,7 @@ func listedCases(id string) map[string]map[string]any {
 func TestProjectBound_ListedForeignResourceRefused(t *testing.T) {
 	stackHome(t)
 	cases := listedCases(resForeign)
-	for tool, args := range idArgs {
+	for tool, args := range allIDArgs() {
 		for _, a := range args {
 			if a.why == whyListed {
 				if _, ok := cases[tool+"."+a.name]; !ok {
@@ -643,8 +643,8 @@ func TestProjectBound_ListedForeignResourceRefused(t *testing.T) {
 	gone := listedCases(resGone)
 	for key, args := range cases {
 		tool, arg, _ := strings.Cut(key, ".")
-		if a := slices.IndexFunc(idArgs[tool], func(a idArg) bool { return a.name == arg && a.why == whyListed }); a < 0 {
-			t.Errorf("listedCases %s: not a whyListed argument of idArgs", key)
+		if a := slices.IndexFunc(decls[tool].IDArgs, func(a idArg) bool { return a.name == arg && a.why == whyListed }); a < 0 {
+			t.Errorf("listedCases %s: not a whyListed argument of Decl.IDArgs", key)
 			continue
 		}
 		answers := map[string]string{}

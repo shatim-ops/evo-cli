@@ -594,6 +594,9 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 		if res.Status != "" {
 			out["addon_status"] = res.Status
 		}
+		// An addon has no read of its own: the cluster's list names it.
+		addons := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusterAddons(ctx, clusterID) }
+		s.goingOn(ctx, out, "k8s_operation", res.OperationID, res.ID, listedBy(addons, res.ID, plan.addon.Name))
 		if len(plan.warnings) > 0 {
 			out["warnings"] = plan.warnings
 		}

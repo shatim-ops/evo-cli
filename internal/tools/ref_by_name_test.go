@@ -48,22 +48,22 @@ func TestRefByName(t *testing.T) {
 	}
 }
 
-// D57: refArgs is the one declaration of an argument that takes a name —
+// D57: Decl.RefArgs is the one declaration of an argument that takes a name —
 // the tool has the argument, its description says so in both languages,
 // and Tab offers names from the same list the name is looked up in.
 func TestRefArgs_DeclarationsHold(t *testing.T) {
 	r := New(nil)
-	for tool, refs := range refArgs {
+	for tool, refs := range allRefArgs() {
 		tl, ok := r.Lookup(tool)
 		if !ok {
-			t.Errorf("refArgs names %s, which is no tool", tool)
+			t.Errorf("Decl.RefArgs names %s, which is no tool", tool)
 			continue
 		}
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for _, ra := range refs {
 			p, _ := props[ra.arg].(map[string]any)
 			if p == nil {
-				t.Errorf("refArgs[%s]: no argument %s", tool, ra.arg)
+				t.Errorf("decls[%s].RefArgs: no argument %s", tool, ra.arg)
 				continue
 			}
 			if d, _ := p["description"].(string); !strings.Contains(d, "UUID or name") {

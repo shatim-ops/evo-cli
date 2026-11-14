@@ -226,6 +226,18 @@ type Interface struct {
 	// Subnet is the subnet of the interface (vm_get): the card of a VM
 	// does not name it.
 	Subnet *InterfaceSubnet `json:"subnet,omitempty"`
+	// AllowedAddressPairs are the addresses besides its own the interface
+	// lets through (vm_get). evo reads them and does not set them: the
+	// write is 1.10 (release plan 1.9, «Разрешённые пары адресов
+	// интерфейса ВМ»).
+	AllowedAddressPairs []AddressPair `json:"allowed_address_pairs,omitempty"`
+}
+
+// AddressPair is an allowed address pair of an interface
+// (AllowedAddressPairMiniResponse).
+type AddressPair struct {
+	IPAddress  string `json:"ip_address"`
+	MACAddress string `json:"mac_address"`
 }
 
 // InterfaceGroup is a security group of an interface, as the list names it.

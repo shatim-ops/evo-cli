@@ -87,7 +87,7 @@ func TestParity_YesEqualsConfirmed(t *testing.T) {
 	}
 
 	gone := goneRegistry(t)
-	for name, d := range deleteTargets {
+	for name, d := range allDeletes() {
 		tl, _ := gone.Lookup(name)
 		args := goneArgs(name, d)
 		if diff := yesDiff(handlerCall(tl, args, false), handlerCall(tl, args, true)); diff != "" {
@@ -97,7 +97,7 @@ func TestParity_YesEqualsConfirmed(t *testing.T) {
 	for _, name := range erasedDeletes {
 		var writes atomic.Int32
 		tl, _ := erasedRegistry(t, erasedWorld(&writes)).Lookup(name)
-		args := map[string]any{deleteTargets[name].arg: liveID}
+		args := map[string]any{decls[name].Delete.arg: liveID}
 		if diff := yesDiff(handlerCall(tl, args, false), handlerCall(tl, args, true)); diff != "" {
 			found[name+": ERASED"] = diff
 		}

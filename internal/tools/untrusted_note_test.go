@@ -17,8 +17,8 @@ import (
 )
 
 // untrustedNoteOnly are the tools whose description says their answer is
-// untrusted data (untrustedFields.workload) while the answer carries no
-// "_untrusted" (untrustedFields): tool → the field. It only shrinks. Empty:
+// untrusted data (Decl.Untrusted.workload) while the answer carries no
+// "_untrusted" (Decl.Untrusted): tool → the field. It only shrinks. Empty:
 // its deadline 1.7 is met, and a new line comes with a deadline of its own
 // and its plan line (release plan 1.7, «Недоверенный вывод без маркера»: the
 // marker at these tools, one map both are made from).
@@ -74,7 +74,10 @@ var untrustedMarkerOnly = map[string]string{
 	"vpc_operation":       "error: the failure of an operation as VPC words it, not the output of a workload",
 	"open_ports":          "open_only_to_groups, vms: the names of the security groups a rule lets a port in from and of the VMs under the group, in the preview and the answer, not the output of a workload",
 	"sg_rule_create":      "security_group, rule, preview: the name of the group and the descriptions of its rules in the preview and the answer, not the output of a workload",
-	"stack_apply":         "preview: the names and values of the steps of a manifest in the question, the caller's text, not the output of a workload",
+	"stack_apply":         "preview, error, details: the names and values of the steps of a manifest in the question, the caller's text, and what the steps' tools and operations answered, the service's text, not the output of a workload",
+	"stack_status":        "error, details: what the steps' tools and operations answered, the service's text (#1762), not the output of a workload",
+	"k8s_kubeconfig":      "kubeconfig: the configuration as Managed Kubernetes gives it (#1803), not the output of a workload",
+	"s3_ls":               "objects: the keys of a bucket as whoever wrote the objects named them (#1804), not the output of a workload",
 	"stack_plan":          "unknown_fields, error: the names of the fields a manifest has and its type does not, the caller's text, not the output of a workload (D108)",
 	"sg_rule_delete":      "security_group, rule, still_allowed_by, still_allowed_from_groups, vms: the name of the group, the descriptions of its rules and the names of the VMs under it in the preview and the answer, not the output of a workload",
 }
@@ -88,14 +91,14 @@ var untrustedMarkerOnly = map[string]string{
 func TestUntrusted_NoteIffMarker(t *testing.T) {
 	var bad []string
 	for _, tl := range New(nil).Tools() {
-		note, marker := tl.UntrustedOutput, untrustedFields[tl.Name].marked()
+		note, marker := tl.UntrustedOutput, tl.Decl.Untrusted.marked()
 		_, noteOnly := untrustedNoteOnly[tl.Name]
 		_, markerOnly := untrustedMarkerOnly[tl.Name]
 		switch {
 		case note && !marker && !noteOnly:
-			bad = append(bad, tl.Name+": its description says the answer is untrusted, the answer has no _untrusted (untrustedFields)")
+			bad = append(bad, tl.Name+": its description says the answer is untrusted, the answer has no _untrusted (Decl.Untrusted)")
 		case !note && marker && !markerOnly:
-			bad = append(bad, tl.Name+": its answer marks _untrusted, its description has no note (untrustedFields.workload)")
+			bad = append(bad, tl.Name+": its answer marks _untrusted, its description has no note (Decl.Untrusted.workload)")
 		case noteOnly && !(note && !marker):
 			bad = append(bad, tl.Name+": in untrustedNoteOnly, but the note and the marker agree now; take the line out (the list only shrinks)")
 		case markerOnly && !(!note && marker):
@@ -172,7 +175,7 @@ func TestUntrusted_S3BinaryObjectIsMarked(t *testing.T) {
 		t.Fatalf("s3_get does not hand the object over as base64: %.300s", text)
 	}
 	u, _ := m["_untrusted"].([]any)
-	if len(u) != 1 || u[0] != "content_base64" {
-		t.Errorf("s3_get: _untrusted = %v, want [content_base64]: %.300s", m["_untrusted"], text)
+	if len(u) != 2 || u[0] != "content_base64" || u[1] != "key" {
+		t.Errorf("s3_get: _untrusted = %v, want [content_base64 key]: %.300s", m["_untrusted"], text)
 	}
 }

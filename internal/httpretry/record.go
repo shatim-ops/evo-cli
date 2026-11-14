@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"os"
 	"regexp"
@@ -51,11 +50,12 @@ func recorded(req *http.Request, resp *http.Response) *http.Response {
 	}
 	var head []byte
 	if resp.Body != nil {
-		head, _ = io.ReadAll(io.LimitReader(resp.Body, maxRecordedBody+1))
-		resp.Body = struct {
-			io.Reader
-			io.Closer
-		}{io.MultiReader(bytes.NewReader(head), resp.Body), resp.Body}
+		var err error
+		head, resp.Body, err = peek(resp.Body, maxRecordedBody+1)
+		// A broken body has no form to record (#1746).
+		if err != nil {
+			return resp
+		}
 	}
 	line := map[string]any{"request": req.Method + " " + requestForm(req), "status": resp.StatusCode}
 	paths := map[string]string{}
@@ -91,9 +91,27 @@ func recorded(req *http.Request, resp *http.Response) *http.Response {
 	if err != nil {
 		return resp
 	}
+	defer f.Close()
+	// The mode of OpenFile is of a file it creates: a file already there
+	// with a wider one gets 0600 before a line goes in, or no line (#1747).
+	if !private(f) {
+		return resp
+	}
 	_, _ = f.Write(append(b, '\n'))
-	_ = f.Close()
 	return resp
+}
+
+// private reports whether f is readable by its owner only, making it so
+// when it is not.
+func private(f *os.File) bool {
+	st, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	if st.Mode().Perm() == 0o600 {
+		return true
+	}
+	return f.Chmod(0o600) == nil
 }
 
 // recordBelow is req that a layer under the caller may record (recordedBy),

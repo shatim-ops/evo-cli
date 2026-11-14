@@ -70,12 +70,14 @@ func nameFree(ctx context.Context, list func(context.Context) ([]map[string]any,
 // nameTakenResult is the answer of a create tool whose name is in use: USAGE
 // (the call is wrong, nothing was sent to create anything) with the existing
 // id in existing_id, so a stack step knows the resource is not its own.
+// The name and the status are the cloud's words in evo's text: quoted
+// («Риск», conclusion 232).
 func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 	if status == "" {
 		status = "unknown"
 	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("a %s named %q already exists (id %s, status %s); a second one would be billed separately", "%s с именем %q уже есть (id %s, статус %s); второй оплачивался бы отдельно", kind, name, id, status),
+		i18n.Tf("a %s named %s already exists (id %s, status %s); a second one would be billed separately", "%s с именем %s уже есть (id %s, статус %s); второй оплачивался бы отдельно", kind, quoteCloud(name), id, quoteCloud(status)),
 		i18n.Tf("Use the existing one (%s), or pick another name.", "Используйте существующий (%s) или выберите другое имя.", getHint)),
 		map[string]any{"existing_id": id}), true
 }
@@ -92,9 +94,9 @@ func noID(what string) error {
 // operation id; createErr says which. The service may have made the
 // resource, and then it is billed: list reads the resources again, and one
 // with the name (free before the create, takenName) is answered as made,
-// by its id under the field createdIDs declares for tool (fault matrix,
+// by its id under the field Decl.Created declares for tool (fault matrix,
 // process audit 1.2.1). When the list cannot be read either, the error
-// says the resource may exist and where to look, the list tool createdIDs
+// says the resource may exist and where to look, the list tool Decl.Created
 // declares; and so does it when the list does not show it (yet): the
 // answer names the read, it does not invite a repeat («Риск», conclusion
 // 179, У6).
@@ -110,10 +112,10 @@ func noID(what string) error {
 // may have given for a backend that applied the request — and a success
 // without an id are reconciled by name.
 func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]map[string]any, error), kind, name string, created map[string]any, getHint string, createErr error) (string, bool) {
-	c := createdIDs[tool]
+	c := decls[tool].Created
 	idField, listTool := c.lostField(), c.list
 	if idField == "" || listTool == "" {
-		panic("tools: lostCreate for " + tool + ", whose createdIDs declare no id field or list")
+		panic("tools: lostCreate for " + tool + ", whose Decl.Created declare no id field or list")
 	}
 	if st := apiStatus(createErr); st >= 400 && st < 500 {
 		return errResult(createErr), true

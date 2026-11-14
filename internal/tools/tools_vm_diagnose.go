@@ -111,6 +111,17 @@ func interfaceGroups(in *provision.Interface) []map[string]any {
 	return groups
 }
 
+// interfacePairs are the allowed address pairs of in as an answer names
+// them: an empty list when none are set — «none» and «not read»
+// (not_checked) differ.
+func interfacePairs(in *provision.Interface) []map[string]any {
+	pairs := make([]map[string]any, 0, len(in.AllowedAddressPairs))
+	for _, p := range in.AllowedAddressPairs {
+		pairs = append(pairs, map[string]any{"ip_address": p.IPAddress, "mac_address": p.MACAddress})
+	}
+	return pairs
+}
+
 // interfaceSubnet is the subnet of in as an answer names it; nil when the
 // list names none.
 func interfaceSubnet(in *provision.Interface) map[string]any {
@@ -133,6 +144,7 @@ func vmGroupsOnRows(rows []map[string]any, det *provision.VMDetail, listed map[s
 			continue
 		}
 		rows[i]["security_groups"] = interfaceGroups(li)
+		rows[i]["allowed_address_pairs"] = interfacePairs(li)
 		if sub := interfaceSubnet(li); sub != nil {
 			rows[i]["subnet"] = sub
 		}

@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -151,7 +152,9 @@ func TestVMList_SelectsByImages(t *testing.T) {
 		reason, hint string
 	}{
 		{clierrors.New(clierrors.CodeVMNotFound, "vm not found", ""), "VM_NOT_FOUND", "Send the same call again"},
-		{context.DeadlineExceeded, "", "narrow the list with: zone"},
+		// A read out of its own time while the call has time left keeps the
+		// read's reason: the network, not the width of the selection.
+		{context.DeadlineExceeded, "API_UNREACHABLE", "narrow the list with: zone"},
 		{&provision.StatusError{Status: 429, Body: "{}"}, "API_RATE_LIMITED", ""},
 	} {
 		m, isErr, text := run(&imageCloud{failing: web2, failure: c.failure}, map[string]any{"images": []any{"ubuntu-22.04"}})
@@ -165,6 +168,11 @@ func TestVMList_SelectsByImages(t *testing.T) {
 		}
 		if hint := stringArg(m, "hint"); !strings.Contains(hint, c.hint) || (c.failure == context.DeadlineExceeded && strings.Contains(strings.ToLower(hint), "later")) {
 			t.Errorf("%v: hint %q, want %q", c.failure, hint, c.hint)
+		}
+		// A read out of its own time is not the call out of its time: the
+		// words do not say what the reason does not («Риск», conclusion 231).
+		if c.failure == context.DeadlineExceeded && (strings.Contains(msg, "call ran out") || strings.Contains(stringArg(m, "hint"), "will run out the same way")) {
+			t.Errorf("a read out of its own time words itself as the call out of its time: %s", text)
 		}
 	}
 
@@ -200,5 +208,60 @@ func TestVMGet_NamesTheImage(t *testing.T) {
 	img, _ := m["image"].(map[string]any)
 	if isErr || img["id"] != imgAstra || img["name"] != "astra-1.8" {
 		t.Errorf("vm_get does not name the image: %s", text)
+	}
+}
+
+// slowCards is imageCloud whose cards after the first come only when the
+// call gives up on them: a cloud that answers each card in more time than
+// the call has left (cloud-e2e 216: 50 cards ≈ 65 s, 2 of 2).
+type slowCards struct{ imageCloud }
+
+func (c *slowCards) GetVMDetail(ctx context.Context, id string) (*provision.VMDetail, error) {
+	if len(c.cards) > 0 {
+		c.cards = append(c.cards, id)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return c.imageCloud.GetVMDetail(ctx, id)
+}
+
+// The cards of a filter are read within the budget of an MCP call (D69):
+// a call that would read past it answers «narrow» with how many it read,
+// in time to reach the agent, not cut by the client at its own limit
+// (release plan 1.9, «Фильтр по карточкам у vm_list укладывается в предел
+// вызова клиента»). Nothing is selected in part («Риск», conclusion 149).
+func TestVMList_CardsWithinTheCallBudget(t *testing.T) {
+	cloud := &slowCards{}
+	r, _ := targetRegistry(t, cloud)
+	budgeted(r)
+	tl, _ := r.Lookup("vm_list")
+	got := make(chan string, 1)
+	go func() {
+		text, _ := tl.Handler(context.Background(), map[string]any{"images": []any{"ubuntu-22.04"}})
+		got <- text
+	}()
+	var text string
+	select {
+	case text = <-got:
+	// wall-clock: a margin over worldBudget, not a wait — a call that
+	// answers is not waited out (budgetWatch).
+	case <-time.After(budgetWatch):
+		t.Fatal("vm_list read the cards past the budget of the call")
+	}
+	var m map[string]any
+	_ = json.Unmarshal([]byte(text), &m)
+	msg, hint := stringArg(m, "error"), stringArg(m, "hint")
+	if m["vms"] != nil || !strings.Contains(msg, "ran out of its time") || !strings.Contains(msg, "(1 of 3 read)") ||
+		!strings.Contains(msg, "nothing was selected") || !strings.Contains(hint, "narrow the list with: zone") {
+		t.Errorf("want «ran out of its time», the count read and «narrow», nothing selected: %s", text)
+	}
+	// The cloud answered: the selection is too wide for one call, as a list
+	// over cardReads is — USAGE, not API_UNREACHABLE, which an agent reads
+	// as «Cloud.ru is down» and retries («Риск», conclusion 225).
+	if r := stringArg(m, "reason"); r != clierrors.CodeUsage {
+		t.Errorf("reason %s, want %s: %s", r, clierrors.CodeUsage, text)
+	}
+	if len(cloud.cards) != 2 {
+		t.Errorf("%d cards asked for, want 2: none after the budget ran out", len(cloud.cards))
 	}
 }

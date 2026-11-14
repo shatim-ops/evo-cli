@@ -43,7 +43,12 @@ func EstimatePG(s PGSize) Estimate {
 		DiskMonthlyRub:    diskMonthly,
 		TotalMonthlyRub:   round2(computeMonthly + diskMonthly),
 		TotalHourlyRub:    round4(compute + disk),
-		Source: "estimate: tariff «" + pgTariffNameRaw + "» of " + PGTariffDate + " (version " + PGTariffVersion +
-			"), with VAT; storage counted on each node; not a billed price",
+		Source:            pgSource(),
 	}
+}
+
+// pgSource is the Source of EstimatePG.
+func pgSource() string {
+	return "estimate: tariff «" + pgTariffNameRaw + "» of " + PGTariffDate + " (version " + PGTariffVersion +
+		"), with VAT; storage counted on each node; not a billed price"
 }

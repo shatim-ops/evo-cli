@@ -17,6 +17,7 @@ import (
 // not decide a test (#1707).
 func TestMain(m *testing.M) {
 	SSHPortWait = 10 * time.Millisecond
+	FIPLookupInterval = time.Millisecond
 	DialSSH = func(context.Context, string, time.Duration) error { return timeoutErr{} }
 	os.Exit(m.Run())
 }

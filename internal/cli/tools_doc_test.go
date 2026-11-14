@@ -24,7 +24,7 @@ const (
 )
 
 // genToolsDoc renders the registry: per group, every tool with its command
-// (CLISpec), whether it changes anything, its required arguments, the
+// (CLISpec), what it does besides answering (tools.EffectOf), its required arguments, the
 // first sentence of its description (the MCP description, in English) and
 // its Russian summary (ShortRU).
 func genToolsDoc() []byte {
@@ -49,7 +49,11 @@ func genToolsDoc() []byte {
 создаёт или меняет ресурсы и без `+"`confirmed=true`"+` (в CLI — `+"`--yes`"+`)
 только показывает превью; «удаляет» — может удалить или перезаписать данные;
 «нет, секрет» — ничего не меняет, но показывает секрет открытым текстом и
-тоже требует `+"`confirmed=true`"+` (`+"`--yes`"+`).
+тоже требует `+"`confirmed=true`"+` (`+"`--yes`"+`); «побочно» — согласия не
+просит, но это не чтение: кроме ответа вызов делает ещё одно действие
+(продвигает стек, выпускает токен кластера); какое — говорит карточка группы
+(`+"`agent_skill`"+`), в MCP у такого инструмента нет `+"`readOnlyHint`"+`; «нет» —
+только чтение.
 Группы — для `+"`evo mcp --toolsets`"+` и `+"`evo tools list --group`"+`.
 
 `, toolsRegenerateHint)
@@ -61,13 +65,15 @@ func genToolsDoc() []byte {
 		fmt.Fprintf(&buf, "## %s\n\n| Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |\n|---|---|---|---|---|---|\n", g)
 		for _, t := range list {
 			changes := "нет"
-			switch {
-			case tools.IsDestructive(t):
+			switch tools.EffectOf(t) {
+			case tools.EffectDestructive:
 				changes = "удаляет"
-			case t.Mutating:
+			case tools.EffectMutating:
 				changes = "да"
-			case tools.IsSensitive(t):
+			case tools.EffectSecret:
 				changes = "нет, секрет"
+			case tools.EffectSideEffects:
+				changes = "побочно"
 			}
 			var reqs []string
 			for _, n := range requiredArgs(t) {
@@ -165,6 +171,32 @@ func TestToolsDoc(t *testing.T) {
 	for _, tl := range newRegistry().Tools() {
 		if !bytes.Contains(got, []byte("| `"+tl.Name+"` |")) {
 			t.Errorf("%s is not in docs/tools.md", tl.Name)
+		}
+	}
+}
+
+// «Меняет» says «нет» of a read only: a tool that takes no consent but is
+// not a read (tools.EffectSideEffects: stack_status advances the stack,
+// k8s_kubeconfig mints a token) has no readOnlyHint in MCP, and the
+// catalog does not call it a read either (external review, #1744). The
+// column and the hints take one decision, tools.EffectOf.
+func TestToolsDoc_NoMeansARead(t *testing.T) {
+	cells := map[string]string{}
+	for _, line := range strings.Split(string(genToolsDoc()), "\n") {
+		f := strings.Split(line, " | ")
+		if len(f) < 3 || !strings.HasPrefix(f[0], "| `") {
+			continue
+		}
+		cells[strings.Trim(f[0], "| `")] = f[2]
+	}
+	for _, tl := range newRegistry().Tools() {
+		cell, ok := cells[tl.Name]
+		if !ok {
+			t.Errorf("%s: no row in the catalog", tl.Name)
+			continue
+		}
+		if read := tools.EffectOf(tl) == tools.EffectRead; (cell == "нет") != read {
+			t.Errorf("%s: «Меняет» is %q, a read: %v", tl.Name, cell, read)
 		}
 	}
 }

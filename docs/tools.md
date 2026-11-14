@@ -13,7 +13,11 @@
 создаёт или меняет ресурсы и без `confirmed=true` (в CLI — `--yes`)
 только показывает превью; «удаляет» — может удалить или перезаписать данные;
 «нет, секрет» — ничего не меняет, но показывает секрет открытым текстом и
-тоже требует `confirmed=true` (`--yes`).
+тоже требует `confirmed=true` (`--yes`); «побочно» — согласия не
+просит, но это не чтение: кроме ответа вызов делает ещё одно действие
+(продвигает стек, выпускает токен кластера); какое — говорит карточка группы
+(`agent_skill`), в MCP у такого инструмента нет `readOnlyHint`; «нет» —
+только чтение.
 Группы — для `evo mcp --toolsets` и `evo tools list --group`.
 
 ## ar
@@ -95,9 +99,9 @@
 | `logs` | `evo logs` | нет | — | Retrieve container logs from the deployed VM via 'docker compose logs' over SSH. | Журналы контейнеров развёрнутой ВМ |
 | `destroy` | `evo vm delete` | удаляет | — | Permanently delete a VM and all data on it. | Удалить ВМ и все данные на ней (безвозвратно) |
 | `deploy_plan` | `evo deploy plan` | нет | — | Step 1 of the deploy wizard, read-only: resolves a VM configuration (flavor, image, zone, disk, network, SSH) with its monthly cost and a plan_id (cost.source … | Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая |
-| `deploy_apply` | `evo deploy apply` | да | `plan_id` | STEP 2 of the deploy wizard: executes a plan from deploy_plan. | Шаг 2 мастера развёртывания: выполнить рассчитанный план |
+| `deploy_apply` | `evo deploy apply` | да | `plan_id` | Creates only the VM, without the application, from a plan of deploy_plan (STEP 2 of the deploy wizard): a compose project goes through deploy. | Создать только ВМ по плану, без приложения (шаг 2 мастера; compose запускает evo deploy) |
 | `open_ports` | `evo vpc open-ports` | да | `security_group`, `ports` | Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). | Открыть входящие порты в группе безопасности |
-| `close_ports` | `evo vpc close-ports` | да | `security_group`, `ports` | Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default) — the way back from open_ports. | Закрыть входящие порты в группе безопасности |
+| `close_ports` | `evo vpc close-ports` | да | `security_group`, `ports` | Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default). | Закрыть входящие порты в группе безопасности |
 
 ## disk
 
@@ -151,7 +155,7 @@
 | `k8s_options` | `evo k8s options` | нет | — | List available Kubernetes versions (by release channel), node flavors and zones for mk8s; a flavor's purpose (CONTROLPLANE/DATAPLANE) when named. | Версии Kubernetes, flavor узлов и зоны для кластеров |
 | `k8s_plan` | `evo k8s plan` | нет | — | Step 1 for Managed Kubernetes: resolve a cluster config (version, control-plane flavor, master count, subnet, service account) without creating anything. | Шаг 1: рассчитать конфигурацию кластера, ничего не создавая |
 | `k8s_create` | `evo k8s create` | да | — | STEP 2 for Managed Kubernetes: create the cluster resolved by k8s_plan, with the same args. | Шаг 2: создать кластер по расчёту k8s plan (платно, асинхронно, около 10 минут) |
-| `k8s_kubeconfig` | `evo k8s kubeconfig` | нет | `cluster_id` | Get the kubeconfig of a Managed Kubernetes cluster. | kubeconfig кластера (по умолчанию со встроенным токеном примерно на час) |
+| `k8s_kubeconfig` | `evo k8s kubeconfig` | побочно | `cluster_id` | Get the kubeconfig of a Managed Kubernetes cluster. | kubeconfig кластера (по умолчанию со встроенным токеном примерно на час) |
 | `k8s_delete` | `evo k8s delete` | удаляет | `cluster_id` | Permanently delete a Managed Kubernetes cluster. | Удалить кластер Managed Kubernetes (асинхронно) |
 | `k8s_operation` | `evo k8s operation` | нет | `operation_id` | Poll a Managed Kubernetes async operation by id (from k8s_create, k8s_delete and the node pool changes). | Состояние асинхронной операции Managed Kubernetes |
 | `k8s_nodepools` | `evo k8s nodepools` | нет | `cluster_id` | List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). | Группы узлов кластера |
@@ -275,7 +279,7 @@
 |---|---|---|---|---|---|
 | `stack_plan` | `evo stack plan` | нет | `manifest` | Plan a multi-resource stack from one declarative manifest. | Спланировать стек ресурсов по одному манифесту (ничего не создаёт) |
 | `stack_apply` | `evo stack apply` | да | `job_id` | Apply a planned stack (from stack_plan). | Создать ресурсы спланированного стека (платно) |
-| `stack_status` | `evo stack status` | нет | `job_id` | Poll a stack: compact progress {status, done[], running[], pending[], details{step: reason} of a step not done, error_reasons{step: reason code, e.g. | Ход развёртывания стека |
+| `stack_status` | `evo stack status` | побочно | `job_id` | Poll a stack: compact progress {status, done[], running[], pending[], details{step: reason} of a step not done, error_reasons{step: reason code, e.g. | Ход развёртывания стека |
 | `stack_destroy` | `evo stack destroy` | удаляет | `job_id` | Tear down every resource of a stack, in reverse order. | Удалить все ресурсы стека (безвозвратно) |
 
 ## vm

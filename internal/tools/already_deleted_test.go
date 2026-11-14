@@ -101,7 +101,7 @@ func goneRegistry(t *testing.T) *Registry {
 }
 
 // deleteLike: a tool that changes the cloud and whose name says it
-// deletes — the tools deleteTargets must declare.
+// deletes — the tools Decl.Delete must declare.
 func deleteLike(t Tool) bool {
 	n := t.Name
 	return t.Mutating && (strings.HasSuffix(n, "_delete") || strings.HasSuffix(n, "_rm") ||
@@ -112,25 +112,25 @@ func deleteLike(t Tool) bool {
 func TestAlreadyDeleted_EveryDeleteDeclared(t *testing.T) {
 	seen := map[string]bool{}
 	for _, tl := range New(nil).Tools() {
-		_, declared := deleteTargets[tl.Name]
+		_, declared := deleteOf(tl.Name)
 		if deleteLike(tl) && !declared {
-			t.Errorf("%s deletes a resource but is not in deleteTargets (D26: a repeated delete answers already_deleted)", tl.Name)
+			t.Errorf("%s deletes a resource but is not in Decl.Delete (D26: a repeated delete answers already_deleted)", tl.Name)
 		}
 		if !declared {
 			continue
 		}
 		seen[tl.Name] = true
-		d := deleteTargets[tl.Name]
+		d := decls[tl.Name].Delete
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for _, a := range []string{d.arg, d.parent} {
 			if _, ok := props[a]; a != "" && !ok {
-				t.Errorf("%s: deleteTargets names argument %q, which its schema has not", tl.Name, a)
+				t.Errorf("%s: Decl.Delete names argument %q, which its schema has not", tl.Name, a)
 			}
 		}
 	}
-	for name := range deleteTargets {
+	for name := range allDeletes() {
 		if !seen[name] {
-			t.Errorf("deleteTargets names %s, which is not a tool", name)
+			t.Errorf("Decl.Delete names %s, which is not a tool", name)
 		}
 	}
 }
@@ -162,13 +162,13 @@ func goneArgs(name string, d deleteTarget) map[string]any {
 // (owner's decision 22.10, D26).
 func TestAlreadyDeleted_RepeatedDeleteIsDeleted(t *testing.T) {
 	r := goneRegistry(t)
-	names := make([]string, 0, len(deleteTargets))
-	for name := range deleteTargets {
+	var names []string
+	for name := range allDeletes() {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		d := deleteTargets[name]
+		d := decls[name].Delete
 		for _, confirmed := range []bool{false, true} {
 			args := goneArgs(name, d)
 			if confirmed {
@@ -230,7 +230,7 @@ func TestNamesTarget_ElementsAreWhole(t *testing.T) {
 // A parent that is not there is the call's error, not a repeat: NOT_FOUND.
 func TestAlreadyDeleted_ParentGoneIsNotFound(t *testing.T) {
 	r := goneRegistry(t)
-	for name, d := range deleteTargets {
+	for name, d := range allDeletes() {
 		if d.parent == "" {
 			continue
 		}
@@ -261,7 +261,7 @@ func TestAlreadyDeleted_ParentGoneIsNotFound(t *testing.T) {
 // the target of a delete whose schema says format uuid (D36).
 func TestAlreadyDeleted_WrongFormIsUsage(t *testing.T) {
 	uuids := 0
-	for name, d := range deleteTargets {
+	for name, d := range allDeletes() {
 		tl, _ := New(nil).Lookup(name)
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		if p, _ := props[d.arg].(map[string]any); p["format"] != "uuid" {
@@ -360,14 +360,14 @@ func apiFakeS3Registry(t *testing.T, f *apiFake) *Registry {
 func TestAlreadyDeleted_BoundServerKeepsNotFound(t *testing.T) {
 	r := goneRegistry(t)
 	r.SetProjectBound()
-	names := make([]string, 0, len(deleteTargets))
-	for name := range deleteTargets {
+	var names []string
+	for name := range allDeletes() {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	for _, name := range names {
 		for _, confirmed := range []bool{false, true} {
-			args := goneArgs(name, deleteTargets[name])
+			args := goneArgs(name, decls[name].Delete)
 			if confirmed {
 				args["confirmed"] = true
 			}
@@ -386,7 +386,7 @@ func TestAlreadyDeleted_BoundServerKeepsNotFound(t *testing.T) {
 // sg_rule_delete). In both languages.
 func TestAlreadyDeleted_DescriptionNamesTheBoundAnswer(t *testing.T) {
 	for _, tl := range New(nil).Tools() {
-		if _, ok := deleteTargets[tl.Name]; !ok {
+		if _, ok := deleteOf(tl.Name); !ok {
 			continue
 		}
 		for lang, d := range map[string]string{"en": tl.Description, "ru": tl.DescriptionRU} {

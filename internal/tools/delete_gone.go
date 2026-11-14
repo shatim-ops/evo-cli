@@ -52,51 +52,6 @@ type deleteTarget struct {
 // D61 действует у k8s_delete, lb_delete, tg_delete»).
 const unseenBeforeProbe = "no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9)"
 
-// deleteTargets are the tools that delete a resource
-// (TestAlreadyDeleted_EveryDeleteDeclared keeps the list closed).
-var deleteTargets = map[string]deleteTarget{
-	"ar_delete":         {arg: "id", what: "artifact registry", whRU: "реестр артефактов"},
-	"close_ports":       {arg: "ports", parent: "security_group", what: "port rule", whRU: "правило порта"},
-	"sg_rule_delete":    {arg: "rule_id", parent: "security_group", what: "security group rule", whRU: "правило группы безопасности"},
-	"ca_delete":         {arg: "name", what: "container app", whRU: "приложение Container Apps"},
-	"cert_delete":       {arg: "id", what: "certificate", whRU: "сертификат"},
-	"destroy":           {arg: "vm_id", what: "VM", whRU: "ВМ"},
-	"disk_delete":       {arg: "disk_id", what: "disk", whRU: "диск"},
-	"dns_record_delete": {arg: "record_id", what: "DNS record", whRU: "DNS-запись"},
-	"dns_zone_delete":   {arg: "id", what: "DNS zone", whRU: "DNS-зона"},
-	"image_delete":      {arg: "image_id", what: "image", whRU: "образ"},
-	"k8s_delete": {arg: "cluster_id", what: "Kubernetes cluster", whRU: "кластер Kubernetes",
-		statePrefix: "OBJECT_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe},
-	// A backup's states are lower case (BackupState): the rule of a state
-	// under way, of a state being created and of a final one is the same.
-	"backup_delete": {arg: "backup_id", what: "backup", whRU: "резервная копия",
-		creatingUnseen: "no run has deleted a backup still being created: the third run of probe Г-16 (docs/internal/briefs/backups.md)",
-		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16 (docs/internal/briefs/backups.md)"},
-	"k8s_nodepool_delete": {arg: "nodepool_id", what: "node pool", whRU: "группа узлов", statePrefix: "OBJECT_STATUS_",
-		creatingUnseen: "probe Г-12, question 16 of docs/internal/briefs/k8s-nodepools.md",
-		failedUnseen:   "no run has deleted a node pool in error: probe Г-12 (docs/internal/briefs/k8s-nodepools.md; FB19I-7)"},
-	"kafka_delete": {arg: "cluster_id", what: "Kafka cluster", whRU: "кластер Kafka"},
-	"lb_delete": {arg: "id", what: "load balancer", whRU: "балансировщик",
-		statePrefix: "NLB_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe},
-	"pg_db_delete":        {arg: "name", parent: "cluster_id", what: "database", whRU: "база данных"},
-	"pg_delete":           {arg: "id", what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"},
-	"pg_user_delete":      {arg: "name", parent: "cluster_id", what: "database user", whRU: "пользователь базы данных"},
-	"redis_delete":        {arg: "cluster_id", what: "Redis cluster", whRU: "кластер Redis"},
-	"release_floating_ip": {arg: "id", what: "floating IP", whRU: "floating IP"},
-	"s3_bucket_delete":    {arg: "bucket", what: "bucket", whRU: "бакет"},
-	"s3_rm":               {arg: "key", parent: "bucket", what: "object", whRU: "объект"},
-	"secret_delete":       {arg: "path", what: "secret", whRU: "секрет"},
-	"snat_delete":         {arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"},
-	"subnet_delete":       {arg: "subnet_id", what: "subnet", whRU: "подсеть"},
-	"tg_delete": {arg: "id", what: "target group", whRU: "группа целей",
-		statePrefix: "TARGET_GROUP_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe},
-	"vpc_delete":       {arg: "id", what: "VPC", whRU: "VPC"},
-	"vpc_route_delete": {arg: "route_id", parent: "vpc_id", what: "route", whRU: "маршрут"},
-	// stack_destroy deletes the resources of a job through these tools and
-	// takes their already_deleted as gone; the job itself is never deleted
-	// (it is marked destroyed), so a job that is not there is a wrong id.
-}
-
 // isGone reports whether err says the resource is not there: its reason,
 // as the error answer gives it, is NOT_FOUND or VM_NOT_FOUND.
 func isGone(err error) bool {
@@ -117,9 +72,9 @@ func (s *Registry) alreadyDeleted(tool, key, ref string, err error) (out string,
 	if err == nil || !isGone(err) {
 		return "", false, false
 	}
-	t, ok := deleteTargets[tool]
+	t, ok := deleteOf(tool)
 	if !ok {
-		panic("tools: alreadyDeleted for " + tool + ", which deleteTargets does not declare")
+		panic("tools: alreadyDeleted for " + tool + ", which Decl.Delete does not declare")
 	}
 	if key == "" {
 		key = t.arg

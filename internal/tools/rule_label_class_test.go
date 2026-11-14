@@ -16,7 +16,7 @@ import (
 // way evo deletes a VM closes the port rules it opened for that VM in
 // another folder — found by the label with the VM's id, not by this
 // folder's state — and only those. destroy is the one tool that deletes a
-// VM (deleteTargets); it names its VM by vm_id or by name, and
+// VM (Decl.Delete); it names its VM by vm_id or by name, and
 // stack_destroy deletes a stack's VM through it. The CLI's vm delete is the
 // same handler (TestParity_*). Each way runs from folder B, whose state
 // records nothing, in a project where folder A's evo opened port 8080 for
@@ -67,7 +67,7 @@ func TestRuleLabel_EveryVMDeleteClosesItsRulesFromAnotherFolder(t *testing.T) {
 		})
 	}
 	// A new tool that deletes a VM joins the cases above, or this fails.
-	for name, d := range deleteTargets {
+	for name, d := range allDeletes() {
 		if d.what == "VM" && !covered[name] {
 			t.Errorf("%s deletes a VM, but no case here deletes one with it from another folder", name)
 		}

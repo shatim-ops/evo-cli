@@ -17,7 +17,7 @@ import (
 // in every list.
 const takenBefore = "0f0f0000-0000-4000-8000-0000000000f0"
 
-// takenArgs are the arguments of each create of createdIDs that has a list
+// takenArgs are the arguments of each create of Decl.Created that has a list
 // (lostCreate looks its resource up by name there), its name the world's
 // taken one ("web"), the rest as a valid call has them (parityArgs of
 // internal/cli).
@@ -66,7 +66,7 @@ var takenNotReached = map[string]string{}
 // stack step and to the person, and stack_destroy or a cleanup deletes
 // what someone else made (QA R3/R8; the VM of a stack:
 // TestStackVMStep_ForeignVMWithSameNameIsNotAdopted). Every create of
-// createdIDs with a list, its name taken long before and its write's answer
+// Decl.Created with a list, its name taken long before and its write's answer
 // lost: it refuses the taken name, or answers the error, and never names
 // the resource that was there as the one it made. Release plan 1.5, «„ресурс
 // был до нас“ для каждого create».
@@ -76,7 +76,7 @@ func TestCreate_NeverTakesWhatWasThereBefore(t *testing.T) {
 	// a flavor of the node pool (cpu, ram, no GPU).
 	obj := `{"id":"` + takenBefore + `","flavorId":"` + takenBefore + `","zoneId":"` + takenBefore + `","name":"web","path":"web","status":"ACTIVE","state":"active","cpu":2,"ram":4,"created_at":"2020-01-01T00:00:00Z"}`
 	fields := map[string]bool{"items": true, "flavors": true, "zones": true}
-	for _, c := range createdIDs {
+	for _, c := range allCreated() {
 		if c.field != "" {
 			fields[c.field] = true
 		}
@@ -93,7 +93,7 @@ func TestCreate_NeverTakesWhatWasThereBefore(t *testing.T) {
 		writeBody: `{"truncated`}
 	reg := contractReg(t, rt)
 	names := []string{}
-	for n, c := range createdIDs {
+	for n, c := range allCreated() {
 		if c.list != "" {
 			names = append(names, n)
 		}
@@ -102,7 +102,7 @@ func TestCreate_NeverTakesWhatWasThereBefore(t *testing.T) {
 	for _, n := range names {
 		tl, ok := reg.Lookup(n)
 		if !ok {
-			t.Errorf("createdIDs names %s, which is no tool", n)
+			t.Errorf("Decl.Created names %s, which is no tool", n)
 			continue
 		}
 		a, ok := takenArgs[n]
@@ -137,8 +137,8 @@ func TestCreate_NeverTakesWhatWasThereBefore(t *testing.T) {
 		}
 	}
 	for n := range takenArgs {
-		if c, ok := createdIDs[n]; !ok || c.list == "" {
-			t.Errorf("takenArgs names %s, which is no create of createdIDs with a list", n)
+		if c, ok := createdOf(n); !ok || c.list == "" {
+			t.Errorf("takenArgs names %s, which is no create of Decl.Created with a list", n)
 		}
 	}
 }

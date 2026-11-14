@@ -231,7 +231,7 @@ func TestEverySendIsAChange_ToolNamesItsResource(t *testing.T) {
 			t.Errorf("everySendIsAChange: the read of %s is %q, which is no tool", tool, read)
 		}
 		if bad := unnamedBy(tl); len(bad) > 0 {
-			t.Errorf("%s is in everySendIsAChange, and its intent names no resource when it is called by %v: a cut call of it is found by no later call — name the resource (idArgs, or the argument name)", tool, bad)
+			t.Errorf("%s is in everySendIsAChange, and its intent names no resource when it is called by %v: a cut call of it is found by no later call — name the resource (Decl.IDArgs, or the argument name)", tool, bad)
 		}
 	}
 	// The rule tells the two apart: a tool addressed by an id or a name,

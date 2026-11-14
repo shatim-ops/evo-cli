@@ -20,6 +20,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -68,7 +69,7 @@ type Tool struct {
 	ArgDescriptionsRU map[string]string `json:"-"`
 	// UntrustedOutput: the answer carries what a workload or a stored
 	// object wrote (logs, kubectl output, S3 objects), which the agent must
-	// not take for instructions (untrustedFields).
+	// not take for instructions (Decl.Untrusted).
 	UntrustedOutput bool `json:"-"`
 	// CLI is the tool's command in the CLI (cliSpecs).
 	CLI CLISpec `json:"-"`
@@ -259,14 +260,24 @@ type resolvedOnce struct {
 // of intents resolves the resource a call names before the plan of the
 // tool does, by the same resolver, and the call reads the cloud once for
 // both. A call with no holder (a layer called on its own) reads each time.
+// Under resolvedOnly it reads nothing: what the call has not resolved is
+// errNotResolved.
 func onceACall[T any](ctx context.Context, key string, read func() (T, error)) (T, error) {
 	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
 	if !ok {
+		if ctx.Value(resolvedOnlyKey{}) != nil {
+			var zero T
+			return zero, errNotResolved
+		}
 		return read()
 	}
 	if was, ok := c.resolved[key]; ok {
 		v, _ := was.value.(T)
 		return v, was.err
+	}
+	if ctx.Value(resolvedOnlyKey{}) != nil {
+		var zero T
+		return zero, errNotResolved
 	}
 	v, err := read()
 	if c.resolved == nil {
@@ -302,13 +313,28 @@ func forgetPending(ctx context.Context) {
 	}
 }
 
+// resolvedOnlyKey marks a context in which onceACall reads nothing and
+// tells only what the call has resolved already (resolvedOnly).
+type resolvedOnlyKey struct{}
+
+// errNotResolved is onceACall's answer under resolvedOnly for what the
+// call has not resolved.
+var errNotResolved = errors.New("not resolved by the call")
+
+// resolvedOnly is ctx in which onceACall reads nothing (resolvedOnlyKey).
+func resolvedOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, resolvedOnlyKey{}, true)
+}
+
 // markSent is told by the counter of the call's writes
 // (httpretry.CountWrites) right before a write goes out, until it says the
 // call is marked: the record the call opened is marked at once — a process
 // killed after the write leaves the mark. A write before the record is
 // opened marks nothing and does not spend the mark (false). An error: the
-// mark is not written, and the write does not go out.
-func markSent(ctx context.Context) (marked bool, err error) {
+// mark is not written, and the write does not go out. The mark names the
+// parties the call has resolved by then (parties; nil names none): what
+// the write goes to, read before it as the handler read it (R-101).
+func markSent(ctx context.Context, parties func() []string) (marked bool, err error) {
 	c, ok := ctx.Value(callRecordsKey{}).(*callRecords)
 	if !ok || !c.hasOpen {
 		// Nothing to mark yet: the next write asks again.
@@ -316,6 +342,9 @@ func markSent(ctx context.Context) (marked bool, err error) {
 	}
 	if c.open.Sent {
 		return true, nil
+	}
+	if parties != nil {
+		c.open.Parties = parties()
 	}
 	if err := intent.MarkSent(c.open); err != nil {
 		return false, err
@@ -355,10 +384,10 @@ func New(factory EngineFactory) *Registry {
 		t.Decl = decls[t.Name]
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
-		if _, partial := partialConsent[t.Name]; takesConsent(*t) && !partial {
+		if takesConsent(*t) && t.Decl.PartialConsent == nil {
 			t.Description += " " + consentText(t.Name)
 		}
-		if t.UntrustedOutput = untrustedFields[t.Name].workload; t.UntrustedOutput {
+		if t.UntrustedOutput = t.Decl.Untrusted.workload; t.UntrustedOutput {
 			t.Description += " " + untrustedOutputNote
 		}
 		t.CLI = cliSpecs[t.Name]
@@ -379,19 +408,19 @@ func New(factory EngineFactory) *Registry {
 			h = r.boundToProjects(*t, h)
 			// Inside requireProject too: the list of a name is the call's
 			// project's; outside boundToProjects: it checks the id.
-			if refs := refArgs[t.Name]; refs != nil {
+			if refs := decls[t.Name].RefArgs; refs != nil {
 				h = r.resolveRefs(refs, h)
 			}
 			if t.Decl.Project {
 				h = r.requireProject(h)
 			}
-			if _, ok := createdIDs[t.Name]; ok || targetArgs(t.Name) != nil {
+			if _, ok := createdOf(t.Name); ok || targetArgs(t.Name) != nil {
 				h = r.namedProject(*t, h)
 			}
-			if keys := echoedArgs[t.Name]; keys != nil {
-				h = namedArgs(keys, h)
+			if echoed := t.Decl.EchoedArgs; echoed != nil {
+				h = namedArgs(echoed, h)
 			}
-			if u := untrustedFields[t.Name]; u.marked() {
+			if u := t.Decl.Untrusted; u.marked() {
 				h = markUntrusted(u, h)
 			}
 			if r.unchecked == nil {
@@ -463,7 +492,7 @@ func (r *Registry) SetReadOnly() { r.readOnly = true }
 // agreement (billingClient), and the balance of the agreement is not given
 // (balanceRefused); org_projects lists that project, not the
 // organization's. A call in another project is the factory's to refuse,
-// and so is a resource a tool names by id (idArgs): before the handler,
+// and so is a resource a tool names by id (Decl.IDArgs): before the handler,
 // the registry finds the resource's project and asks the factory for an
 // engine there (boundToProjects); a *_operation tool reads only the
 // operations this registry started. evo mcp --allow-project sets it (H9),
@@ -605,36 +634,9 @@ func (r *Registry) engineFor(ctx context.Context, overrides map[string]any) (*en
 	return eng, nil
 }
 
-// sensitiveTools reveal a secret in plaintext (a decrypted secret value, a
-// private key). They take confirmed, so the agent asks the person first, but
-// they change nothing, so the rule "a tool is mutating when it takes
-// confirmed" does not apply: they are not Mutating (no destructiveHint, no
-// mutating label in the CLI). They are not marked readOnlyHint either: a
-// client may auto-approve read-only tools, and the plaintext would then land
-// in the agent's context (and its logs) without the person seeing the call
-// (security audit 19.10, SEC-4).
-var sensitiveTools = map[string]bool{
-	"cert_private_key": true,
-	"secret_value":     true,
-}
-
 // IsSensitive reports whether a tool reveals a secret and asks for consent
-// although it changes nothing (sensitiveTools).
-func IsSensitive(t Tool) bool { return sensitiveTools[t.Name] }
-
-// sideEffectTools change nothing the call asks to change, so they take no
-// confirmed and are not Mutating, but they are not reads either (A9,
-// REL12-4): stack_status advances the stack it shows — its next steps
-// create resources — and k8s_kubeconfig mints a token of the cluster. They
-// are not marked readOnlyHint: a client that approves reads by itself
-// would run them unseen.
-// The value is what the effect is: the group card says it (cardDoes), and
-// 'tools list/describe' mark the tool side_effects — one decision point for
-// MCP, the card and the catalog (external review 11.11).
-var sideEffectTools = map[string]string{
-	"k8s_kubeconfig": "returns a kubeconfig; mints a token of the cluster",
-	"stack_status":   "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it",
-}
+// although it changes nothing (Decl.Sensitive).
+func IsSensitive(t Tool) bool { return t.Decl.Sensitive }
 
 // AlwaysListed reports whether a server serves t under any --toolsets.
 func AlwaysListed(t Tool) bool { return t.Decl.AlwaysListed != "" }
@@ -670,69 +672,28 @@ func errNoStateDir() error {
 }
 
 // HasSideEffects reports whether a tool that takes no consent is not a
-// read (sideEffectTools).
-func HasSideEffects(t Tool) bool { return sideEffectTools[t.Name] != "" }
-
-// destructiveTools are the mutating tools, besides *_delete, that may delete
-// or overwrite data: they get destructiveHint in MCP, so a client asks the
-// person every time. kubectl, apply and helm run whatever they are given
-// (delete, uninstall); s3_put overwrites an existing key; k8s_add_addon with
-// resolve_mode OVERWRITE replaces objects already in the cluster.
-var destructiveTools = map[string]bool{
-	"destroy": true,
-	// vm_stop deletes nothing on a disk, but it takes the service down and
-	// may lose what the VM held in memory: a client asks the person every
-	// time (D99, §4.3).
-	"vm_stop": true,
-	// vm_reboot takes the service down for the time of the reboot (§5.2).
-	"vm_reboot": true,
-	// vm_resize of a running VM: whether the guest OS restarts in it the
-	// probe does not see (Г-10), so the client asks the person every time
-	// (§6.5, В3: unknown is taken as a restart).
-	"vm_resize":           true,
-	"stack_destroy":       true,
-	"release_floating_ip": true,
-	"s3_rm":               true,
-	"s3_put":              true,
-	"k8s_kubectl":         true,
-	"k8s_apply":           true,
-	"k8s_helm":            true,
-	"k8s_add_addon":       true,
-	// A scale down deletes nodes with the data on their disks; the hint is
-	// the tool's, not the call's, so a scale up asks too (D99; conclusion
-	// 112 of «Риск»).
-	"k8s_nodepool_scale": true,
-}
+// read (Decl.SideEffects).
+func HasSideEffects(t Tool) bool { return t.Decl.SideEffects != "" }
 
 // IsDestructive reports whether a mutating tool may delete or overwrite
 // data; the other mutating tools only add or change in place.
 func IsDestructive(t Tool) bool {
-	return t.Mutating && (strings.HasSuffix(t.Name, "_delete") || destructiveTools[t.Name])
+	return t.Mutating && (strings.HasSuffix(t.Name, "_delete") || t.Decl.Destructive)
 }
 
 // isMutating reports whether the tool changes state in the cloud.
 func isMutating(t Tool) bool {
-	return takesConsent(t) && !sensitiveTools[t.Name]
+	return takesConsent(t) && !t.Decl.Sensitive
 }
 
 // takesConsent reports whether some call of the tool needs the person's
 // consent: its schema has confirmed. Those are the mutating tools and
-// sensitiveTools; the schema is where the agent learns it, so it is where
+// Decl.Sensitive tools; the schema is where the agent learns it, so it is where
 // the registry reads it too.
 func takesConsent(t Tool) bool {
 	props, _ := t.InputSchema["properties"].(map[string]any)
 	_, gated := props["confirmed"]
 	return gated
-}
-
-// partialConsent are the tools that take confirmed but need it only for
-// some calls, by the rule their handler gates on: k8s_kubectl for a
-// command that is not a read (kubectlNeedsConsent), k8s_helm for install,
-// upgrade and uninstall (helmNeedsConsent). Every call of any other tool
-// that takes confirmed needs it.
-var partialConsent = map[string]func(args map[string]any) bool{
-	"k8s_kubectl": kubectlNeedsConsent,
-	"k8s_helm":    helmNeedsConsent,
 }
 
 // NeedsConsent reports whether this call of t needs confirmed=true: the
@@ -744,8 +705,8 @@ func NeedsConsent(t Tool, args map[string]any) bool {
 	if !takesConsent(t) {
 		return false
 	}
-	if needs, partial := partialConsent[t.Name]; partial {
-		return needs(args)
+	if t.Decl.PartialConsent != nil {
+		return t.Decl.PartialConsent(args)
 	}
 	return true
 }
@@ -753,6 +714,5 @@ func NeedsConsent(t Tool, args map[string]any) bool {
 // AlwaysNeedsConsent reports whether every call of t needs confirmed=true
 // (NeedsConsent whatever the arguments).
 func AlwaysNeedsConsent(t Tool) bool {
-	_, partial := partialConsent[t.Name]
-	return takesConsent(t) && !partial
+	return takesConsent(t) && t.Decl.PartialConsent == nil
 }

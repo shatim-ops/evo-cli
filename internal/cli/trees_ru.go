@@ -7,6 +7,7 @@ package cli
 import (
 	"maps"
 
+	"github.com/shatim-ops/evo-cli/internal/pricing"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -174,3 +175,25 @@ var listNoteRU = map[string]string{
 
 // noteLabelRU names the other notes under a list.
 var noteLabelRU = map[string]string{"note": "Примечание", "warning": "Предупреждение", "hint": "Подсказка", "tariff_url": "Тарифы"}
+
+// valuesRU puts into an answer the Russian text of the values the CLI
+// knows one of: a price's source (pricing.SourceRU). The JSON and MCP keep
+// the value — code compares it; a person reads the table (D6; Астра #1835).
+func valuesRU(v any) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, e := range x {
+			if s, ok := e.(string); ok && k == "source" {
+				if ru, known := pricing.SourceRU(s); known {
+					x[k] = ru
+				}
+				continue
+			}
+			valuesRU(e)
+		}
+	case []any:
+		for _, e := range x {
+			valuesRU(e)
+		}
+	}
+}

@@ -28,7 +28,7 @@ import (
 var internalListArgs = []string{"project_id"}
 
 func TestListFilters_InternalFindsPassNoFilter(t *testing.T) {
-	for create, c := range createdIDs {
+	for create, c := range allCreated() {
 		if c.list == "" {
 			continue
 		}
