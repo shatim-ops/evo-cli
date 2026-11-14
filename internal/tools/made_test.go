@@ -254,3 +254,17 @@ func anyList(v any) []any {
 	}
 	return nil
 }
+
+// The Russian notes of snat_create are the CLI's: they name the commands of
+// evo, not the tools (border D6; «Риск», conclusion 261).
+func TestSnatCreate_RussianNotesNameCommands(t *testing.T) {
+	m := snatMadeNotes()
+	for _, note := range []string{m.noteRU, m.pendingRU, m.unknownRU} {
+		if strings.Contains(note, "snat_") || !strings.Contains(note, "'evo snat delete") {
+			t.Errorf("a Russian note names a tool: %q", note)
+		}
+	}
+	if !strings.Contains(m.unknownRU, "'evo snat list'") {
+		t.Errorf("the note of an unknown state does not name the list command: %q", m.unknownRU)
+	}
+}
