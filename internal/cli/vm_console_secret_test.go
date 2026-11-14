@@ -49,6 +49,7 @@ import (
 // not here fails TestSecrets_VMConsoleFieldsLeaveNoSurface, and so does a
 // tool here that no longer reaches one.
 var vmPathTools = map[string]bool{
+	"vm_console":    true,
 	"backup_create": true,
 	"deploy":        true,
 	"deploy_apply":  true,
