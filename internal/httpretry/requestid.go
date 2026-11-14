@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -170,7 +169,7 @@ func inBody(req *http.Request, has func(string) bool) bool {
 		return false
 	}
 	defer rc.Close()
-	b, err := io.ReadAll(io.LimitReader(rc, maxEchoBody))
+	b, _, err := peek(rc, maxEchoBody)
 	if err != nil {
 		return false
 	}
