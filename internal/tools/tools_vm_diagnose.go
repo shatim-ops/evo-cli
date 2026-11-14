@@ -92,8 +92,12 @@ func vmInterfaces(ctx context.Context, eng *engine.Engine, id string, once bool)
 func notChecked(check string, err error) map[string]any {
 	why := i18n.Tf("Cloud.ru did not answer the read (%s)", "Cloud.ru не ответил на чтение (%s)", clierrors.Reason(err))
 	var ce *clierrors.CLIError
-	if stderrors.As(err, &ce) && ce.Code == clierrors.CodeAuthFailed {
+	switch {
+	case stderrors.As(err, &ce) && ce.Code == clierrors.CodeAuthFailed:
 		why = i18n.T("the key has no role to read it (IAM, 403)", "у ключа нет роли на это чтение (IAM, 403)")
+	case stderrors.Is(err, context.DeadlineExceeded):
+		why = i18n.T("the read ran out of its time limit; diagnose reads it with the usual repeats",
+			"чтение не уложилось в свой предел времени; diagnose читает его с обычными повторами")
 	}
 	return map[string]any{"check": check, "reason": clierrors.Reason(err), "why": why}
 }

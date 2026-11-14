@@ -249,3 +249,14 @@ func TestVMGet_DiagnoseBoundsTheRules(t *testing.T) {
 		t.Errorf("a group of %d rules: %d shown, total %v, more %q\n%.400s", vmRulesShown+7, len(rules), g["rules_total"], more, text)
 	}
 }
+
+// The read beside the card ran out of its limit: not_checked says so, not
+// «Cloud.ru did not answer» (Qwen on #1731).
+func TestVMGet_AReadOutOfItsLimitSaysSo(t *testing.T) {
+	w := newDiagWorld(t)
+	w.ifaceErr = clierrors.Wrap(clierrors.CodeAPIUnreachable, "request cancelled", "", context.DeadlineExceeded)
+	_, text := diagCall(t, w, map[string]any{"vm_id": w.vmID})
+	if !strings.Contains(text, "limit") {
+		t.Errorf("a read out of its time limit: %s, want not_checked to name the limit", text)
+	}
+}
