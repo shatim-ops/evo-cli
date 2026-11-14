@@ -17,17 +17,20 @@
 #   - находка, закрытая (как выполненная) после SINCE без «закрыто» от
 #     аккаунта Астры в её комментариях — закрыта без проверки (п. 2);
 #   - строка ленты (комментарий, ревью или ревью-комментарий аккаунта Астры
-#     в FEED после SINCE) «задание #N — …», за которой нет более позднего
-#     комментария в ленте от владельца или участника репозитория (не от
-#     Астры) со словом «разобрано» и «#N»; строка «НЕ опубликовано» без
-#     номера задания — так же, без «#N».
+#     в FEED после SINCE) «задание #N — готово», у которой названная
+#     находка этого репозитория не разобрана (как выше) или issue/PR из
+#     «комментарий в #M» открыт и не назван в плане; «сбой» или
+#     «НЕ опубликовано» — пока позже нет «готово» того же задания; без
+#     номера задания — всегда (из данных не выводится). Ручной отметки нет
+#     (решение «1.9 — релиза (4)», 14.11).
 #
 # Итог — check run ASTRA_CHECK на голову ленты: есть неразобранное —
 # failure со списком, нет — success. «Релиз» подписан на ленту, красная
 # проверка до него доходит. В итог идут только номера issue, заданий и
 # комментариев, без текста issue и комментариев: метку на issue ставят
 # только те, у кого есть запись, но текст ленты может написать любой.
-# Находки в evo-internal этот токен не читает: их сверяет «релиз» (п. 4).
+# Находки в evo-internal этот токен не читает: итог их перечисляет, не
+# краснея, сверяет «релиз» (п. 4).
 #
 # --print — итог в stdout без check run (проверка и ручной запуск).
 import json
@@ -44,9 +47,8 @@ PLAN_FILES = ["docs/internal/release-plan.md", "docs/internal/standalone/DECISIO
 CLOSED_RE = re.compile(r"(?<![А-Яа-яЁё])(?<!не )закрыто", re.IGNORECASE)
 TASK_RE = re.compile(r"задание\s+#(\d+)\s+—\s+(\S+)")
 NOT_PUBLISHED = "НЕ опубликовано"
-# Who may mark a feed line «разобрано»: anyone can comment in a public
-# repository, and a stranger's «разобрано» must not silence a line.
-WRITERS = {"OWNER", "MEMBER", "COLLABORATOR"}
+ISSUE_URL = re.compile(r"https://github\.com/([\w.-]+)/([\w.-]+)/issues/(\d+)")
+COMMENT_IN = re.compile(r"комментарий в #(\d+)")
 
 
 def gh_lines(*args):
@@ -71,37 +73,67 @@ def is_finding(issue):
 
 
 def unprocessed(repo, astra, feed, since, root):
-    out = []
+    """The unprocessed findings and feed lines, and what the data cannot tell."""
+    out, unchecked = [], []
     refs = plan_refs(root)
-    issues = gh_lines(
-        "--paginate",
-        f"repos/{repo}/issues?labels={urllib.parse.quote(LABEL)}&state=all&per_page=100",
-        "--jq",
-        ".[] | {number, title, state, state_reason, closed_at, pull_request}",
-    )
-    for i in sorted((i for i in issues if is_finding(i)), key=lambda i: i["number"]):
-        n = i["number"]
-        if i["state"] == "open":
-            if n not in refs:
-                out.append(f"#{n}: открыта, нет ссылки в release-plan.md или DECISIONS.md на main")
-            continue
-        # Закрыта как невыполнимая (дубль, опровергнута) — не проверка
-        # исправления; решение о ней — в самом issue.
-        if i.get("state_reason") == "not_planned" or (i.get("closed_at") or "") < since:
-            continue
-        comments = gh_lines(
+    issues = {
+        i["number"]: i
+        for i in gh_lines(
             "--paginate",
-            f"repos/{repo}/issues/{n}/comments?per_page=100",
+            f"repos/{repo}/issues?labels={urllib.parse.quote(LABEL)}&state=all&per_page=100",
             "--jq",
-            ".[] | {login: .user.login, body}",
+            ".[] | {number, title, state, state_reason, closed_at, pull_request}",
         )
-        verdicts = [c["body"] for c in comments if c["login"] == astra and "закрыто" in c["body"].lower()]
-        last = verdicts[-1] if verdicts else ""
-        if not CLOSED_RE.search(last) or "не закрыто" in last.lower():
-            out.append(f"#{n}: закрыта без «закрыто» Астры")
+    }
+
+    def issue(n):
+        # An issue or pull request named by a feed line but not labelled.
+        if n not in issues:
+            issues[n] = gh_lines(
+                f"repos/{repo}/issues/{n}",
+                "--jq",
+                "{number, title, state, state_reason, closed_at, pull_request}",
+            )[0]
+        return issues[n]
+
+    verdict = {}
+
+    def astra_closed(n):
+        if n not in verdict:
+            comments = gh_lines(
+                "--paginate",
+                f"repos/{repo}/issues/{n}/comments?per_page=100",
+                "--jq",
+                ".[] | {login: .user.login, body}",
+            )
+            said = [c["body"] for c in comments if c["login"] == astra and "закрыто" in c["body"].lower()]
+            last = said[-1] if said else ""
+            verdict[n] = bool(CLOSED_RE.search(last)) and "не закрыто" not in last.lower()
+        return verdict[n]
+
+    def finding_problem(n):
+        """Why finding n is not processed; "" when it is."""
+        i = issue(n)
+        if i["state"] == "open":
+            return "" if n in refs else "открыта, нет ссылки в release-plan.md или DECISIONS.md на main"
+        # Закрыта как невыполнимая (дубль, опровергнута) — не проверка
+        # исправления; решение о ней — в самом issue. Закрытые до правила —
+        # тоже.
+        if i.get("state_reason") == "not_planned" or (i.get("closed_at") or "") < since:
+            return ""
+        return "" if astra_closed(n) else "закрыта без «закрыто» Астры"
+
+    for n in sorted(n for n, i in list(issues.items()) if is_finding(i)):
+        if why := finding_problem(n):
+            out.append(f"#{n}: {why}")
 
     # The feed: issue comments, review bodies and review comments of the
-    # draft pull request, in time order.
+    # draft pull request, in time order. A line is processed when what it
+    # names is: each finding of this repository processed (above), each
+    # issue or pull request it commented on named in the plan or closed; a
+    # failed or unpublished task — when a later line of the same task is
+    # done and published. Nothing is marked by hand (decision of «1.9 —
+    # релиз (4)», 14.11).
     lines = []
     for path in (f"issues/{feed}/comments", f"pulls/{feed}/reviews", f"pulls/{feed}/comments"):
         when = ".submitted_at" if path.endswith("reviews") else ".created_at"
@@ -109,27 +141,40 @@ def unprocessed(repo, astra, feed, since, root):
             "--paginate",
             f"repos/{repo}/{path}?per_page=100",
             "--jq",
-            f".[] | {{id, login: .user.login, assoc: (.author_association // \"\"), body: (.body // \"\"), at: ({when} // \"\")}}",
+            f".[] | {{id, login: .user.login, body: (.body // \"\"), at: ({when} // \"\")}}",
         )
-    lines.sort(key=lambda c: c["at"])
+    lines = sorted((c for c in lines if c["login"] == astra and c["at"] >= since), key=lambda c: c["at"])
     for k, c in enumerate(lines):
-        if c["login"] != astra or c["at"] < since:
-            continue
-        m = TASK_RE.search(c["body"])
-        if not m and NOT_PUBLISHED not in c["body"]:
+        body = c["body"]
+        m = TASK_RE.search(body)
+        failed = NOT_PUBLISHED in body or (m is not None and m.group(2).startswith("сбой"))
+        if not m and not failed:
             continue  # «жива» and other lines that are not results
-        later = [
-            d["body"]
-            for d in lines[k + 1 :]
-            if d["login"] != astra and d["assoc"] in WRITERS and "разобрано" in d["body"].lower()
-        ]
-        if m:
-            task = m.group(1)
-            if not any(re.search(rf"#{task}(?!\d)", b) for b in later):
-                out.append(f"лента, задание #{task} (комментарий {c['id']}): нет «разобрано #{task}»")
-        elif not later:
-            out.append(f"лента, «НЕ опубликовано» (комментарий {c['id']}): нет «разобрано»")
-    return out
+        where = f"лента, задание #{m.group(1)}" if m else "лента"
+        where += f" (комментарий {c['id']})"
+        if failed:
+            if not m:
+                out.append(f"{where}: «НЕ опубликовано» без номера задания — из данных не выводится")
+                continue
+            redone = any(
+                (d := TASK_RE.search(e["body"])) and d.group(1) == m.group(1) and d.group(2).startswith("готово")
+                and NOT_PUBLISHED not in e["body"]
+                for e in lines[k + 1 :]
+            )
+            if not redone:
+                out.append(f"{where}: сбой или «НЕ опубликовано», позже нет «готово» того же задания")
+            continue
+        for owner, name, n in ISSUE_URL.findall(body):
+            n = int(n)
+            if f"{owner}/{name}" != repo:
+                unchecked.append(f"{where}: находка в {owner}/{name} #{n} — этот токен её не читает")
+                continue
+            if why := finding_problem(n):
+                out.append(f"{where}: находка #{n} — {why}")
+        for n in sorted({int(n) for n in COMMENT_IN.findall(body)}):
+            if n not in refs and issue(n)["state"] != "closed":
+                out.append(f"{where}: комментарий в #{n} — #{n} открыт и не назван в плане")
+    return out, unchecked
 
 
 def main():
@@ -140,15 +185,19 @@ def main():
     root = os.environ.get("ROOT", ".")
     name = os.environ.get("ASTRA_CHECK", "astra-findings")
     try:
-        left = unprocessed(repo, astra, feed, since, root)
+        left, unchecked = unprocessed(repo, astra, feed, since, root)
     except RuntimeError as e:
         # A list not read is no verdict: red, with the refusal named.
         print(f"::error title=astra-findings::сверка не прочитала список: {e}", file=sys.stderr)
         return 1
     title = f"неразобранного: {len(left)}" if left else "всё разобрано"
     summary = "\n".join(f"- {l}" for l in left) or "Неразобранных находок и строк ленты нет."
+    if unchecked:
+        # Not red: the token of this repository cannot read them; «релиз»
+        # reconciles them by hand (plan, item 4).
+        summary += "\n\nНе выводится из данных, сверяет «релиз»:\n" + "\n".join(f"- {l}" for l in unchecked)
     print(f"сверка: {title}")
-    if left:
+    if left or unchecked:
         print(summary)
     if "--print" in sys.argv:
         return 0

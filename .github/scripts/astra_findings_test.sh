@@ -30,6 +30,8 @@ give() { # ФАЙЛ УМОЛЧАНИЕ
 # и забытая пагинация иначе прошла бы (ревью Qwen #1873).
 case "$path" in
   repos/o/r/check-runs | repos/o/r/pulls/20) ;;
+  repos/o/r/issues/*/* | repos/o/r/issues\?* | repos/o/r/pulls/*/*) [[ " $* " == *" --paginate "* ]] || { echo "нет --paginate: $path" >&2; exit 1; } ;;
+  repos/o/r/issues/*) ;;
   *) [[ " $* " == *" --paginate "* ]] || { echo "нет --paginate: $path" >&2; exit 1; } ;;
 esac
 case "$path" in
@@ -45,6 +47,9 @@ case "$path" in
   repos/o/r/issues/*/comments*)
     n=${path#repos/o/r/issues/}
     give "comments.${n%%/*}.json" '[]' ;;
+  repos/o/r/issues/*)
+    n=${path#repos/o/r/issues/}
+    give "issue.$n.json" '{"number": 0, "title": "", "state": "open"}' ;;
   *) echo "неизвестный путь $path" >&2; exit 1 ;;
 esac
 SH
@@ -111,38 +116,66 @@ lacks closed check.json '#205'
 lacks closed check.json '#206'
 lacks closed check.json '#207'
 
-# Лента: строка задания — из комментария, ревью и ревью-комментария; без
-# более позднего «разобрано #N» от владельца или участника — красная.
-# «разобрано» от самой Астры, от постороннего, раньше строки или с другим
-# номером не считается. «жива» и строки до SINCE — не результаты.
+# Лента: строка разобрана, когда разобрано то, что она называет (решение
+# «релиза (4)», ручной отметки нет). Строки — из комментария, ревью и
+# ревью-комментария; «жива» и строки до SINCE — не результаты, как и
+# строки не от Астры.
 world feed
+cat >"$FAKE_DIR/issues.json" <<'J'
+[{"number": 101, "title": "a", "state": "open"},
+ {"number": 401, "title": "b", "state": "open"},
+ {"number": 402, "title": "c", "state": "closed", "state_reason": "completed", "closed_at": "2026-11-14T10:00:00Z"}]
+J
+echo '[{"user": {"login": "astra"}, "body": "закрыто"}]' >"$FAKE_DIR/comments.402.json"
+echo '{"number": 501, "title": "t", "state": "open"}' >"$FAKE_DIR/issue.501.json"
+echo '{"number": 502, "title": "t", "state": "closed"}' >"$FAKE_DIR/issue.502.json"
 cat >"$FAKE_DIR/feed.comments.json" <<'J'
 [{"id": 1, "user": {"login": "astra"}, "body": "[Астра] жива: заданий 2", "created_at": "2026-11-14T08:00:00Z"},
- {"id": 2, "user": {"login": "astra"}, "body": "[Астра] задание #301 — готово", "created_at": "2026-11-14T08:10:00Z"},
- {"id": 3, "user": {"login": "owner"}, "author_association": "OWNER", "body": "разобрано: задание #301", "created_at": "2026-11-14T08:20:00Z"},
- {"id": 4, "user": {"login": "astra"}, "body": "[Астра] задание #302 — сбой", "created_at": "2026-11-14T08:30:00Z"},
- {"id": 5, "user": {"login": "astra"}, "body": "разобрано #302", "created_at": "2026-11-14T08:40:00Z"},
- {"id": 6, "user": {"login": "owner"}, "author_association": "OWNER", "body": "разобрано #3020", "created_at": "2026-11-14T08:41:00Z"},
- {"id": 7, "user": {"login": "astra"}, "body": "[Астра] задание #300 — готово", "created_at": "2026-11-13T08:00:00Z"},
- {"id": 8, "user": {"login": "owner"}, "author_association": "OWNER", "body": "разобрано #304", "created_at": "2026-11-14T08:45:00Z"},
- {"id": 13, "user": {"login": "stranger"}, "author_association": "NONE", "body": "разобрано #303", "created_at": "2026-11-14T09:10:00Z"}]
+ {"id": 2, "user": {"login": "astra"}, "body": "[Астра] задание #301 — готово\n- находка: https://github.com/o/r/issues/101\n- находка: https://github.com/o/r/issues/402\n- комментарий в #101\n- комментарий в #502", "created_at": "2026-11-14T08:10:00Z"},
+ {"id": 3, "user": {"login": "astra"}, "body": "[Астра] задание #302 — готово\n- находка: https://github.com/o/r/issues/401\n- комментарий в #501", "created_at": "2026-11-14T08:20:00Z"},
+ {"id": 4, "user": {"login": "astra"}, "body": "[Астра] задание #303 — сбой", "created_at": "2026-11-14T08:30:00Z"},
+ {"id": 5, "user": {"login": "astra"}, "body": "[Астра] задание #304 — сбой", "created_at": "2026-11-14T08:31:00Z"},
+ {"id": 6, "user": {"login": "astra"}, "body": "[Астра] задание #304 — готово", "created_at": "2026-11-14T08:40:00Z"},
+ {"id": 7, "user": {"login": "astra"}, "body": "[Астра] задание #300 — готово\n- комментарий в #501", "created_at": "2026-11-13T08:00:00Z"},
+ {"id": 8, "user": {"login": "owner"}, "body": "[Астра] задание #309 — готово\n- комментарий в #501", "created_at": "2026-11-14T08:45:00Z"}]
 J
 cat >"$FAKE_DIR/feed.reviews.json" <<'J'
-[{"id": 9, "user": {"login": "astra"}, "body": "[Астра] задание #303 — готово", "submitted_at": "2026-11-14T09:00:00Z"},
+[{"id": 9, "user": {"login": "astra"}, "body": "[Астра] задание #305 — готово\n- находка: https://github.com/o/internal/issues/7", "submitted_at": "2026-11-14T09:00:00Z"},
  {"id": 10, "user": {"login": "astra"}, "body": "", "submitted_at": null}]
 J
 cat >"$FAKE_DIR/feed.review_comments.json" <<'J'
-[{"id": 11, "user": {"login": "astra"}, "body": "[Астра] задание #304 — готово\nНЕ опубликовано: x", "created_at": "2026-11-14T08:44:00Z"},
+[{"id": 11, "user": {"login": "astra"}, "body": "[Астра] задание #306 — готово\nНЕ опубликовано: находка 2", "created_at": "2026-11-14T08:44:00Z"},
  {"id": 12, "user": {"login": "astra"}, "body": "НЕ опубликовано: находка 2", "created_at": "2026-11-14T09:30:00Z"}]
 J
 run feed
-has feed check.json 'задание #302 (комментарий 4)'
-has feed check.json 'задание #303 (комментарий 9)'
-has feed check.json '«НЕ опубликовано» (комментарий 12)'
-lacks feed check.json '#301'
-lacks feed check.json '#300'
-lacks feed check.json '#304'
-lacks feed check.json 'комментарий 1)'
+# Разобрано: находка в плане, находка закрыта с «закрыто», комментарий в
+# issue из плана и в закрытый.
+lacks feed check.json 'задание #301'
+# Находка без строки плана и комментарий в открытый issue вне плана.
+has feed check.json 'задание #302 (комментарий 3): находка #401 — открыта, нет ссылки'
+has feed check.json 'задание #302 (комментарий 3): комментарий в #501 — #501 открыт и не назван в плане'
+# Сбой без повтора — красный; сбой, за которым «готово» того же задания, — нет.
+has feed check.json 'задание #303 (комментарий 4): сбой или «НЕ опубликовано»'
+lacks feed check.json 'задание #304'
+# «НЕ опубликовано» в строке задания — красная, пока нет «готово» без него.
+has feed check.json 'задание #306 (комментарий 11): сбой или «НЕ опубликовано»'
+# Без номера задания — из данных не выводится.
+has feed check.json 'лента (комментарий 12): «НЕ опубликовано» без номера задания'
+# Находка в другом репозитории — названа, но проверку не красит.
+has feed check.json 'находка в o/internal #7 — этот токен её не читает'
+lacks feed check.json 'находка #7'
+# До SINCE и не от Астры — не строки ленты.
+lacks feed check.json 'задание #300'
+lacks feed check.json 'задание #309'
+
+# Только непроверяемое — проверка зелёная, но список в итоге есть.
+world external
+cat >"$FAKE_DIR/feed.reviews.json" <<'J'
+[{"id": 9, "user": {"login": "astra"}, "body": "[Астра] задание #305 — готово\n- находка: https://github.com/o/internal/issues/7", "submitted_at": "2026-11-14T09:00:00Z"}]
+J
+run external
+has external check.json '"conclusion": "success"'
+has external check.json 'Не выводится из данных'
 
 # Всё разобрано — зелёная проверка, итог называет это словами.
 world green
