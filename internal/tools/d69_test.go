@@ -82,7 +82,7 @@ func TestD69_DeployApplyCancelledNamesVMPlanAndPassword(t *testing.T) {
 		t.Errorf("the password made for this VM is lost: %s", text)
 	}
 	// The agent learns it gets the password once (Qwen on #745).
-	if n, _ := m["note"].(string); n != strings.TrimSpace(passwordOnce) {
+	if n, _ := m["note"].(string); n != strings.TrimSpace(passwordOnce()) {
 		t.Errorf("the answer does not say the password is shown once: %s", text)
 	}
 }

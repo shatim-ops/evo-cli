@@ -179,6 +179,8 @@ func TestStackStatus_GoesOnAfterOneRefusedToken(t *testing.T) {
 	op, opCalls := refusedOnce(map[string]any{"id": "op-1", "done": true})
 	pg, pgCalls := refusedOnce(map[string]any{"id": "pg-1", "status": "READY"})
 	r.handlers["vpc_operation"], r.handlers["pg_get"] = op, pg
+	// The end of the vpc step's operation reads its VPC by id (#1830).
+	r.handlers["vpc_get"] = fakeOK(map[string]any{"id": "vpc-1", "name": "v", "status": "ACTIVE"})
 	got := callTool(t, r.handleStackStatus, map[string]any{"job_id": j.ID, "wait_seconds": float64(5)})
 	if *opCalls < 2 || *pgCalls < 2 {
 		t.Fatalf("the world did not reach the refusal (vpc_operation %d, pg_get %d): it checks nothing — %v", *opCalls, *pgCalls, got)
