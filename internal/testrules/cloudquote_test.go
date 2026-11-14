@@ -63,7 +63,6 @@ var unquotedCloudWords = map[string]int{
 	"internal/tools/tools_sg.go|Registry.sgRuleDeleted":        1,
 	"internal/tools/tools_sg_create.go|Registry.sgRuleCreated": 1,
 	"internal/tools/tools_stack.go|Registry.advance":           1,
-	"internal/tools/tools_stack.go|stepMissing":                1,
 	"internal/tools/tools_vm.go|Registry.finishVMPower":        1,
 	"internal/tools/tools_vm.go|Registry.finishVMResize":       1,
 	"internal/tools/tools_vm.go|Registry.planVMPower":          4,
