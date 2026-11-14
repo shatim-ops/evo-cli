@@ -49,6 +49,85 @@ func sgRuleWanted(want provision.SGRule, sourceGroup *provision.SecurityGroup) m
 	return out
 }
 
+// sgRulePrice puts the price of a rule of a security group into the
+// preview of a call that creates one: no tariff evo has read says a rule
+// is free, so the class of the price and where the rates are, not «0 ₽»
+// (CLAUDE.md §6, axis 4). One point for every tool that sends the create
+// of a rule — sg_rule_create and open_ports (the interim delta audit of
+// 1.9, FB19I-17 (a)).
+func sgRulePrice(preview map[string]any) {
+	preview["price_classes"] = []engine.ResourcePrice{{Resource: resourceSGRule, Class: engine.PricePaidUnpriced,
+		Note: i18n.T("price unknown, the resource is billable: no line of the tariffs at tariff_url names a rule of a security group",
+			"цена неизвестна, ресурс платный: в тарифах по tariff_url нет строки о правиле группы безопасности")}}
+	preview["tariff_url"] = engine.TariffURL(engine.ResourceVPC)
+}
+
+// sgRuleCall is a call of sg_rule_create as its arguments alone tell it,
+// before anything is read: the group and the source as the call names
+// them, and the rule it asks for.
+type sgRuleCall struct {
+	group, source, sourceArg string
+	want                     provision.SGRule
+}
+
+// sgRuleArgs checks the arguments of sg_rule_create that need no read:
+// the one point both the plan and the layer of intents (groupTarget)
+// refuse a call by before the cloud is read.
+func sgRuleArgs(args map[string]any) (sgRuleCall, error) {
+	sgRef, direction, proto := stringArg(args, "security_group"), stringArg(args, "direction"), stringArg(args, "protocol")
+	if sgRef == "" || direction == "" || proto == "" || stringArg(args, "ports") == "" {
+		return sgRuleCall{}, usageErr("'security_group', 'direction', 'protocol' and 'ports' are required",
+			"нужны 'security_group', 'direction', 'protocol' и 'ports'")
+	}
+	ports, ok := sgrules.Ports(stringArg(args, "ports"))
+	if !ok {
+		return sgRuleCall{}, clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("ports %q is neither a port nor a range of ports within 1-65535", "ports %q — не порт и не диапазон портов в пределах 1-65535", stringArg(args, "ports")),
+			i18n.T("Pass one port (443) or a range (8000:8100).", "Укажите один порт (443) или диапазон (8000:8100)."))
+	}
+	source, sourceArg, err := oneOfArgs(args, clierrors.New(clierrors.CodeUsage,
+		i18n.T("pass cidr or remote_group, not both", "укажите cidr или remote_group, не оба"),
+		i18n.T("A rule has one source: a CIDR, or another security group.", "У правила один источник: CIDR или другая группа безопасности.")),
+		"cidr", "remote_group")
+	if err != nil {
+		return sgRuleCall{}, err
+	}
+	if sourceArg == "" {
+		return sgRuleCall{}, clierrors.New(clierrors.CodeUsage,
+			i18n.T("the source of the rule is required: 'cidr' or 'remote_group'", "нужен источник правила: 'cidr' или 'remote_group'"),
+			i18n.T("evo has no default source: ask the person which addresses the rule is for (for egress — the destination).",
+				"Источника по умолчанию нет: спросите человека, для каких адресов правило (для egress — назначение)."))
+	}
+	description := stringArg(args, "description")
+	if utf8.RuneCountInString(description) > sgRuleDescriptionMax {
+		return sgRuleCall{}, usageErr(fmt.Sprintf("'description' is longer than %d characters", sgRuleDescriptionMax),
+			fmt.Sprintf("'description' длиннее %d знаков", sgRuleDescriptionMax))
+	}
+	if sgrules.IsRuleLabel(description) {
+		// The label deploy gives the rules of its ports: a delete of the
+		// VM it names would close this rule as the deployment's.
+		return sgRuleCall{}, clierrors.New(clierrors.CodeUsage,
+			i18n.T("'description' has the form of the label evo gives the port rules of a deployment («evo: port … (vm …)»): a delete of that VM would delete this rule too",
+				"'description' имеет форму метки, которую evo ставит правилам портов развёртывания («evo: port … (vm …)»): удаление той ВМ удалило бы и это правило"),
+			i18n.T("Give the rule a description of its own.", "Дайте правилу своё описание."))
+	}
+	want := provision.SGRule{Direction: direction, IPProtocol: proto, PortRange: ports, EtherType: "IPv4", Description: description}
+	if sourceArg == "cidr" {
+		if want.RemoteIPPrefix, want.EtherType, ok = sgrules.Prefix(source); !ok {
+			return sgRuleCall{}, clierrors.New(clierrors.CodeUsage,
+				i18n.Tf("cidr %q is neither a CIDR nor an address", "cidr %q — не CIDR и не адрес", source),
+				i18n.T("Pass a CIDR, e.g. 203.0.113.0/24.", "Укажите CIDR, например 203.0.113.0/24."))
+		}
+	}
+	return sgRuleCall{group: sgRef, source: source, sourceArg: sourceArg, want: want}, nil
+}
+
+// sgRuleArgsValid is sgRuleArgs as a check (groupTarget).
+func sgRuleArgsValid(args map[string]any) error {
+	_, err := sgRuleArgs(args)
+	return err
+}
+
 // planSGRuleCreate plans sg_rule_create (gate.go;
 // docs/internal/briefs/sg-rules.md §3): one rule of a security group,
 // named whole by the caller — no default for the direction or the source.
@@ -59,62 +138,23 @@ func sgRuleWanted(want provision.SGRule, sourceGroup *provision.SecurityGroup) m
 // group is refused without the person's word for it — the decision of
 // open_ports (D105, internetOnSharedGroup).
 func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*Plan, error) {
-	sgRef, direction, proto := stringArg(args, "security_group"), stringArg(args, "direction"), stringArg(args, "protocol")
-	if sgRef == "" || direction == "" || proto == "" || stringArg(args, "ports") == "" {
-		return nil, usageErr("'security_group', 'direction', 'protocol' and 'ports' are required",
-			"нужны 'security_group', 'direction', 'protocol' и 'ports'")
-	}
-	ports, ok := sgrules.Ports(stringArg(args, "ports"))
-	if !ok {
-		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("ports %q is neither a port nor a range of ports within 1-65535", "ports %q — не порт и не диапазон портов в пределах 1-65535", stringArg(args, "ports")),
-			i18n.T("Pass one port (443) or a range (8000:8100).", "Укажите один порт (443) или диапазон (8000:8100)."))
-	}
-	source, sourceArg, err := oneOfArgs(args, clierrors.New(clierrors.CodeUsage,
-		i18n.T("pass cidr or remote_group, not both", "укажите cidr или remote_group, не оба"),
-		i18n.T("A rule has one source: a CIDR, or another security group.", "У правила один источник: CIDR или другая группа безопасности.")),
-		"cidr", "remote_group")
+	call, err := sgRuleArgs(args)
 	if err != nil {
 		return nil, err
 	}
-	if sourceArg == "" {
-		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.T("the source of the rule is required: 'cidr' or 'remote_group'", "нужен источник правила: 'cidr' или 'remote_group'"),
-			i18n.T("evo has no default source: ask the person which addresses the rule is for (for egress — the destination).",
-				"Источника по умолчанию нет: спросите человека, для каких адресов правило (для egress — назначение)."))
-	}
-	description := stringArg(args, "description")
-	if utf8.RuneCountInString(description) > sgRuleDescriptionMax {
-		return nil, usageErr(fmt.Sprintf("'description' is longer than %d characters", sgRuleDescriptionMax),
-			fmt.Sprintf("'description' длиннее %d знаков", sgRuleDescriptionMax))
-	}
-	if sgrules.IsRuleLabel(description) {
-		// The label deploy gives the rules of its ports: a delete of the
-		// VM it names would close this rule as the deployment's.
-		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.T("'description' has the form of the label evo gives the port rules of a deployment («evo: port … (vm …)»): a delete of that VM would delete this rule too",
-				"'description' имеет форму метки, которую evo ставит правилам портов развёртывания («evo: port … (vm …)»): удаление той ВМ удалило бы и это правило"),
-			i18n.T("Give the rule a description of its own.", "Дайте правилу своё описание."))
-	}
-	want := provision.SGRule{Direction: direction, IPProtocol: proto, PortRange: ports, EtherType: "IPv4", Description: description}
-	if sourceArg == "cidr" {
-		if want.RemoteIPPrefix, want.EtherType, ok = sgrules.Prefix(source); !ok {
-			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("cidr %q is neither a CIDR nor an address", "cidr %q — не CIDR и не адрес", source),
-				i18n.T("Pass a CIDR, e.g. 203.0.113.0/24.", "Укажите CIDR, например 203.0.113.0/24."))
-		}
-	}
+	sgRef, source, sourceArg, want := call.group, call.source, call.sourceArg, call.want
+	direction, proto, ports := want.Direction, want.IPProtocol, want.PortRange
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	group, err := securityGroupByRef(ctx, eng, sgRef)
+	group, err := securityGroupFor(ctx, eng, sgRef)
 	if err != nil {
 		return nil, err
 	}
 	var sourceGroup *provision.SecurityGroup
 	if sourceArg == "remote_group" {
-		if sourceGroup, err = securityGroupByRef(ctx, eng, source); err != nil {
+		if sourceGroup, err = securityGroupFor(ctx, eng, source); err != nil {
 			return nil, err
 		}
 		want.RemoteSecurityGroupID = sourceGroup.ID
@@ -161,13 +201,8 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 	wanted := sgRuleWanted(want, sourceGroup)
 	will := map[string]any{"rule": wanted,
 		"security_group": map[string]any{"id": group.ID, "name": group.Name, "default": group.Default},
-		// No tariff evo has read says a rule is free: the class of the
-		// price and where the rates are, not «0 ₽» (CLAUDE.md §6, axis 4).
-		"price_classes": []engine.ResourcePrice{{Resource: resourceSGRule, Class: engine.PricePaidUnpriced,
-			Note: i18n.T("price unknown, the resource is billable: no line of the tariffs at tariff_url names a rule of a security group",
-				"цена неизвестна, ресурс платный: в тарифах по tariff_url нет строки о правиле группы безопасности")}},
-		"tariff_url": engine.TariffURL(engine.ResourceVPC),
 	}
+	sgRulePrice(will)
 	sgUseFields(will, use)
 	if internet {
 		will["open_to_internet"] = true

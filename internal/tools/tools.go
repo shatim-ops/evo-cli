@@ -26,6 +26,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
@@ -101,10 +102,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vm_get",
-			Description: "Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface. Use it whenever you need a VM's IP: 'list' and 'status' read the local state and omit the private IP. Do not shell out to curl or ssh for it.",
+			Description: "Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface with its security groups and subnet. Use it whenever you need a VM's IP: 'list' and 'status' read the local state and omit the private IP. Do not shell out to curl or ssh for it. diagnose: true also reads the rules of each group and answers checks (ok, problem or unknown, each with its fact), exposure (ports open to the internet and the sources of port 22, as facts) and one result: ok, problem or incomplete. What evo could not read is in not_checked with why, never counted as ok. The answer names facts; changing a rule is a separate call with consent.",
 			InputSchema: objSchema(map[string]any{
-				"vm_id": strProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required."),
-				"name":  strProp("VM name (alternative to vm_id)."),
+				"vm_id":    strProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required."),
+				"name":     strProp("VM name (alternative to vm_id)."),
+				"diagnose": boolProp("Also read the rules of each security group of the VM and answer checks, exposure, result and not_checked."),
 			}),
 		},
 		{
@@ -332,7 +334,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "open_ports",
-			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group.",
+			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group. Each rule added is billable, price unknown.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
@@ -1760,6 +1762,9 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			}
 
 			deployErr := eng.Deploy(ctx, opts)
+			if ask, ok := floatingip.AsAsk(deployErr); ok {
+				return s.addressQuestion(ctx, "deploy", eng, ask, map[string]any{"log": buf.String()}), false
+			}
 
 			result := map[string]any{"log": buf.String()}
 			if sf, e := state.Read(state.DefaultPath(eng.StateDir)); e == nil {
@@ -1951,7 +1956,7 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 				"На ВМ %s уже работает тот же compose-файл: deploy делать нечего, вызов с confirmed=true ничего не изменит. force=true — развернуть заново.",
 				firstNonEmptyStr(rec.VMName, rec.VMID))
 		}
-		return toJSON(answer), nil
+		return s.deployAddressAnswer(ctx, eng, answer), nil
 	}
 	// The VM deploy would create, with the reads of provision's preview
 	// (spec REQ-7).
@@ -1970,7 +1975,17 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 			answer[k] = v
 		}
 	}
-	return toJSON(answer), nil
+	return s.deployAddressAnswer(ctx, eng, answer), nil
+}
+
+// deployAddressAnswer is the answer of deploy's question: with the address
+// an earlier run asked for with no answer named in it when the list does
+// not show it (addressQuestion; D107, «Риск», conclusion 180, У2).
+func (s *Registry) deployAddressAnswer(ctx context.Context, eng *engine.Engine, answer map[string]any) string {
+	if ask := eng.DeployAddressAsked(ctx); ask != nil {
+		return s.addressQuestion(ctx, "deploy", eng, ask, answer)
+	}
+	return toJSON(answer)
 }
 
 // deployLive is 'evo deploy': the engine shows its steps, its prompts and
@@ -2024,6 +2039,9 @@ func deployFields(err error, fields map[string]any) map[string]any {
 	}
 	if arg := engine.MissingSetting(err); arg != "" {
 		add("missing", []string{arg})
+	}
+	if lost, ok := floatingip.AsLost(err); ok {
+		add("floating_ip_name", lost.Name)
 	}
 	var ce *clierrors.CLIError
 	if stderrors.As(err, &ce) {
@@ -2154,6 +2172,15 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 		answer["adopts"] = map[string]any{"vm_id": rec.VMID, "vm_status": vm.Status}
 		answer["message"] = i18n.Tf("provision finishes VM %s (%s), which an earlier call of this name left creating in this folder: no second VM is created; it waits for the VM, then gives it its public IP and ports. preview has the VM and its monthly cost.",
 			"provision доделывает ВМ %s (%s), которую прошлый вызов с этим именем оставил создаваться в этом каталоге: второй ВМ не будет; он дождётся ВМ и даст ей внешний IP и порты. В preview — ВМ и её цена в месяц.", rec.VMID, vm.Status)
+	}
+	// The address an earlier call of this name asked for with no answer,
+	// not listed now: the question, with or without consent — a person
+	// says whether to reserve another (D107; «Риск», conclusion 180, У2).
+	if vm == nil && !noPublicIP {
+		project := firstNonEmptyStr(stringArg(args, "project_id"), eng.Config.ProjectID)
+		if ask := addressAsked(ctx, eng, project, stringArg(args, "name")); ask != nil {
+			return answered(s.addressQuestion(ctx, "provision", eng, ask, answer), false), nil
+		}
 	}
 	return &Plan{
 		Preview: answer,
@@ -2387,14 +2414,24 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	// up their apt mirror at first boot and need the internet for it; a VM
 	// that boots offline can spend 10+ minutes on mirror timeouts before
 	// sshd starts. A FIP that cannot be reserved now is attached after boot.
+	statePath := state.DefaultPath(eng.StateDir)
 	var bootFIP *provision.FloatingIP
 	if adopted != nil && adoptRec.FloatingIPID != "" {
 		// The boot FIP the first call made: waited for below, not made again.
 		bootFIP = &provision.FloatingIP{ID: adoptRec.FloatingIPID}
 	} else if !noPublicIP && adopted == nil {
-		bootFIP, err = eng.CreateBootFIP(ctx, projectID, region, vmName)
+		// The marks of addresses lost by earlier calls are read first and
+		// this call's own is left (floatingip): no VM is created beside an
+		// address nothing finds.
+		err, werr := withAddressMarks(statePath, func(sf *state.File) (err error) {
+			bootFIP, err = eng.CreateBootFIP(ctx, projectID, region, vmName, sf)
+			return err
+		})
+		if ask, ok := floatingip.AsAsk(err); ok {
+			return s.addressQuestion(ctx, "provision", eng, ask, nil), false
+		}
 		if err != nil {
-			return errResult(err), true
+			return errAnswer(err, addressFields(err, werr)), true
 		}
 		req.Interfaces[0].AttachExternalIPID = engine.BootFIPAttachID(bootFIP)
 		if bootFIP != nil {
@@ -2409,7 +2446,6 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	// saveState records the VM in the local state, so status and destroy
 	// see it (and release its FIP). Its error goes into the answer: a VM
 	// missing from the state is billed and destroy cannot find it.
-	statePath := state.DefaultPath(eng.StateDir)
 	// ports holds what sgrules.Open recorded (the group, the ports, the
 	// rules it created): destroy deletes those rules.
 	var ports state.DeploymentRecord
@@ -2587,7 +2623,18 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				case !noPublicIP:
 					// The FIP made after boot is recorded too, so destroy
 					// releases it even when attaching it failed.
-					ip, id, err := eng.AssignFloatingIP(readCtx, vm.ID, projectID, region)
+					var ip, id string
+					err, werr := withAddressMarks(statePath, func(sf *state.File) (err error) {
+						ip, id, err = eng.AssignFloatingIP(readCtx, vm.ID, vmName, projectID, region, sf)
+						return err
+					})
+					if _, lost := floatingip.AsLost(err); lost {
+						// No second address: the VM is recorded, the call
+						// stops with what may be billed (D107).
+						serr := saveState(vm.ID, "provisioned", "")
+						fields := leftFields(addressFields(err, werr))
+						return errAnswer(fmt.Errorf("%w%s", err, notInState(vm.ID, serr)), fields), true
+					}
 					publicIP, fipID, fipErr = ip, id, err
 				}
 				if ctx.Err() != nil {
@@ -2742,11 +2789,13 @@ func vmReadyText(name, zone, ip, ssh string, took time.Duration) string {
 // engineStep adds to fields the way on that an engine's refusal names in
 // its details, in the answer as in the CLI's: deploy for a deployment that
 // deploy has not finished (D76), vm_start for one whose VM is stopped
-// («Риск», conclusion 132, У2). Other errors keep their details to the CLI.
+// («Риск», conclusion 132, У2), vm_get for one whose VM was on its way up
+// (FB19I-5). Other errors keep their details to the CLI.
 func engineStep(err error, fields map[string]any) map[string]any {
 	var unfinished *engine.DeployUnfinishedError
 	var stopped *engine.VMStoppedError
-	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) {
+	var transit *engine.VMInTransitError
+	if !stderrors.As(err, &unfinished) && !stderrors.As(err, &stopped) && !stderrors.As(err, &transit) {
 		return fields
 	}
 	var ce *clierrors.CLIError
@@ -3283,6 +3332,29 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				msg += "; released floating IP " + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 			}
 		}
+		// The addresses asked for this VM with no answer (floatingip):
+		// released when listed by their name, else named — the marks close
+		// either way (D107; «Риск», conclusion 180, Т3 and Т4).
+		var lostReleased, lostMissing []string
+		if releaseIP {
+			var rel, miss []state.LostFloatingIP
+			lerr, _ := withAddressMarks(statePath, func(sf *state.File) (err error) {
+				rel, miss, err = floatingip.Release(ctx, eng.Cloud, sf, projectID, target.Name, target.ID, fipRec.FloatingIPID)
+				return err
+			})
+			for _, m := range rel {
+				lostReleased = append(lostReleased, m.Name)
+				msg += "; released floating IP " + m.Name + ", requested with no answer from the cloud"
+			}
+			for _, m := range miss {
+				lostMissing = append(lostMissing, m.Name)
+				msg += "; floating IP " + m.Name + ", requested " + m.RequestedAt.UTC().Format(time.RFC3339) +
+					" with no answer, is not listed: if list_floating_ips shows it later, it is billed — whether to release it (release_floating_ip), ask the person"
+			}
+			if lerr != nil {
+				msg += fmt.Sprintf("; the floating IPs requested with no answer were not checked (%v): destroy checks them again", lerr)
+			}
+		}
 
 		// Local state: delete the port rules the deployment created (the same
 		// code as the CLI destroy) and drop the record — unless its FIP is still
@@ -3328,6 +3400,12 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		if alreadyGone {
 			out["status"] = "already_deleted"
+		}
+		if len(lostReleased) > 0 {
+			out["lost_floating_ips_released"] = lostReleased
+		}
+		if len(lostMissing) > 0 {
+			out["lost_floating_ips_not_found"] = lostMissing
 		}
 		if len(rules.Closed) > 0 {
 			msg += "; closed ports " + strings.Join(rules.Closed, ",")
@@ -3433,6 +3511,20 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 		out["port_rules"] = ports
 	}
 	return out
+}
+
+// addressFields are the fields of an answer stopped by a floating IP
+// whose create got no answer: its name, to look it up by, and a state that
+// could not keep its mark.
+func addressFields(err, werr error) map[string]any {
+	fields := map[string]any{}
+	if lost, ok := floatingip.AsLost(err); ok {
+		fields["floating_ip_name"] = lost.Name
+		if werr != nil {
+			fields["state_error"] = werr.Error()
+		}
+	}
+	return fields
 }
 
 // fipLeftAnswer is the error answer of a provision whose VM was not created:

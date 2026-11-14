@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -156,7 +157,7 @@ var sleepPaths = []sleepPath{
 		name:  "assignFloatingIP",
 		setup: func(t *testing.T, c *faultCloud) any { return sleepVM(t, c) },
 		run: func(e *Engine, c *faultCloud, made any) bool {
-			ip, _, err := assignFloatingIP(context.Background(), c, e.timings(), nil, made.(*provision.VM).ID, faultProject, faultZone)
+			ip, _, err := assignFloatingIP(context.Background(), c, e.timings(), nil, made.(*provision.VM).ID, fipName(made.(*provision.VM).ID), faultProject, faultZone)
 			return err == nil && ip != ""
 		},
 	},
@@ -178,12 +179,12 @@ var sleepPaths = []sleepPath{
 	{
 		// After a Ctrl-C of the create: the boot address made before it is
 		// looked up by name (three lookups).
-		name:  "findBootFIP",
+		name:  "floatingip.Lookup",
 		setup: func(t *testing.T, c *faultCloud) any { return sleepFIP(t, c) },
 		run: func(e *Engine, c *faultCloud, made any) bool {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			f := e.findBootFIP(ctx, faultProject, made.(*provision.FloatingIP).Name)
+			f := floatingip.Lookup(ctx, e.Cloud, faultProject, made.(*provision.FloatingIP).Name, nil, e.timings().FIPLookupInterval, nil)
 			return f != nil && f.ID == made.(*provision.FloatingIP).ID
 		},
 	},

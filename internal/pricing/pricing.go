@@ -292,6 +292,10 @@ func (e Estimate) WithFloatingIP() Estimate {
 	return e
 }
 
+// FloatingIPMonthlyRub is the card's rate of one floating IP a month: the
+// price a question about reserving one more address names.
+func FloatingIPMonthlyRub() float64 { return round2(load().FloatingIPMonthly) }
+
 // EstimateDisk is the rate card's estimate of a disk alone: diskGB at the
 // card's rate of its type.
 func EstimateDisk(diskGB int, diskType string) Estimate {

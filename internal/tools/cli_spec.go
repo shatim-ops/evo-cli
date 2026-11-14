@@ -78,7 +78,7 @@ type CLISpec struct {
 var cliSpecs = map[string]CLISpec{
 	// vm
 	"vm_list":      {Group: "vm", Verb: "list", Columns: []string{"id", "name", "state", "zone", "created_time"}},
-	"vm_get":       {Group: "vm", Verb: "get", Args: []string{"vm_id|name"}},
+	"vm_get":       {Group: "vm", Verb: "get", Args: []string{"vm_id|name"}, Render: "vm-card"},
 	"vm_start":     {Group: "vm", Verb: "start", Args: []string{"vm_id|name"}},
 	"vm_stop":      {Group: "vm", Verb: "stop", Args: []string{"vm_id|name"}},
 	"vm_reboot":    {Group: "vm", Verb: "reboot", Args: []string{"vm_id|name"}},

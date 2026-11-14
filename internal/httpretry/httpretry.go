@@ -203,6 +203,22 @@ func NotAChange(ctx context.Context) context.Context {
 	return context.WithValue(ctx, notAChangeKey{}, true)
 }
 
+type onceKey struct{}
+
+// Once is ctx for a request sent once: an error or a status the Transport
+// would repeat is the answer at once. For a read beside the one a call is
+// for, whose failure the call names instead of waiting it out («Риск»,
+// conclusion 209, У1: the interfaces vm_get reads beside the card).
+func Once(ctx context.Context) context.Context {
+	return context.WithValue(ctx, onceKey{}, true)
+}
+
+// IsOnce reports whether a request under ctx is sent once (Once).
+func IsOnce(ctx context.Context) bool {
+	_, once := ctx.Value(onceKey{}).(bool)
+	return once
+}
+
 type countedKey struct{}
 
 // noteWrite counts req when it is a write of a counting context, once: a
@@ -242,7 +258,7 @@ func (t uaTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		traced(req, nil, err)
 		return nil, err
 	}
-	resp = answer(req, resp)
+	resp = answer(req, recordedBy(req, resp))
 	traced(req, resp, nil)
 	return resp, nil
 }
@@ -500,8 +516,14 @@ func (t *Transport) roundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
+		r, below := recordBelow(r)
 		resp, err := t.base().RoundTrip(r)
-		last := attempt == MaxRetries || req.Context().Err() != nil
+		if err == nil && !*below {
+			// The API's answer, before the transport reads it: each
+			// attempt is one (EnvRecordAnswers).
+			resp = recorded(r, resp)
+		}
+		last := attempt == MaxRetries || IsOnce(req.Context()) || req.Context().Err() != nil
 		if err != nil {
 			// A certificate the system does not trust stays untrusted.
 			resend := readMethod(req.Method) || slices.Contains(t.Policy.DropMethods, req.Method)

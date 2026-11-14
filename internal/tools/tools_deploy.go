@@ -9,7 +9,9 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -297,6 +299,23 @@ func recordDeployment(stateDir string, maker *state.Maker, plan *deployplan.Plan
 			rec.OpenedRules = mergeRules(old.OpenedRules, rec.OpenedRules)
 		}
 		sf.UpsertDeployment(rec)
+		// The VM's floating IP whose create got no answer keeps its mark,
+		// for destroy, doctor and the repeat's question; an address the
+		// apply has now ends the marks of its VM name (D107; «Риск»,
+		// conclusion 180, У3).
+		// A mark a person answered stays: the address the apply has now may
+		// be the second one (Т4 of conclusion 180; conclusion 205).
+		switch {
+		case res.LostFloatingIP != "":
+			floatingip.Note(sf, state.LostFloatingIP{Name: res.LostFloatingIP, ProjectID: plan.ProjectID, VMName: plan.VM.Name,
+				VMID: res.VMID, RequestedAt: clock.Now(), CreatedBy: maker})
+		case res.FloatingIPID != "":
+			for _, m := range floatingip.Of(sf, plan.ProjectID, plan.VM.Name, res.VMID) {
+				if !m.Answered {
+					floatingip.Forget(sf, plan.ProjectID, m.Name)
+				}
+			}
+		}
 		return nil
 	})
 }
@@ -359,14 +378,23 @@ func (s *Registry) planDeployApply(ctx context.Context, args map[string]any) (*P
 	if len(approvedKeys) > 0 {
 		preview.Add("user_ssh_public_keys", userKeyNames(approvedKeys))
 	}
+	answer := map[string]any{
+		"message": i18n.Tf("deploy_apply executes plan %s: it creates VM %s (billable). preview has the VM, its SSH keys and the monthly cost deploy_plan quoted for it.",
+			"deploy_apply выполнит план %s: создаст ВМ %s (платно). В preview — ВМ, её ключи SSH и цена в месяц, которую назвал deploy_plan.", plan.PlanID, plan.VM.Name),
+		"plan_id":    plan.PlanID,
+		"expires_at": plan.ExpiresAt,
+		"preview":    preview,
+	}
+	// The address an earlier apply asked for with no answer, not listed
+	// now: the question, with or without consent (D107; «Риск»,
+	// conclusion 180, У2).
+	if plan.Network.FloatingIP {
+		if ask := addressAsked(ctx, eng, plan.ProjectID, plan.VM.Name); ask != nil {
+			return answered(s.addressQuestion(ctx, "deploy_apply", eng, ask, answer), false), nil
+		}
+	}
 	return &Plan{
-		Preview: map[string]any{
-			"message": i18n.Tf("deploy_apply executes plan %s: it creates VM %s (billable). preview has the VM, its SSH keys and the monthly cost deploy_plan quoted for it.",
-				"deploy_apply выполнит план %s: создаст ВМ %s (платно). В preview — ВМ, её ключи SSH и цена в месяц, которую назвал deploy_plan.", plan.PlanID, plan.VM.Name),
-			"plan_id":    plan.PlanID,
-			"expires_at": plan.ExpiresAt,
-			"preview":    preview,
-		},
+		Preview: answer,
 		Execute: func(ctx context.Context) (string, bool) {
 			return s.applyDeployPlan(ctx, args, eng, plan, approvedKeys, approvedFile)
 		},
@@ -401,6 +429,13 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 	}
 	// Only the folder's own VM is adopted (D73).
 	plan.Owned = folderVMs(eng)
+	// After a person's yes the address of a lost create may still come:
+	// the new one bears another name («Риск», conclusion 205).
+	if sf, err := state.Read(state.DefaultPath(eng.StateDir)); err == nil {
+		if name := provision.FitName(plan.VM.Name, "-fip"); floatingip.NameFor(sf, plan.ProjectID, name, clock.Now()) != name {
+			plan.FloatingIPName = floatingip.NameFor(sf, plan.ProjectID, name, clock.Now())
+		}
+	}
 	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.VMPollTimeout(), until, show)
 	var foreign *deployplan.ForeignVMError
 	if stderrors.As(err, &foreign) {
@@ -854,8 +889,11 @@ func (s *Registry) planOpenPorts(ctx context.Context, args map[string]any) (*Pla
 	}
 	openOnlyToGroups(preview, groupOnly, target, proto, cidr, false)
 	sgUseFields(preview, use)
-	if len(willOpen) > 0 && sgrules.Internet(cidr) {
-		preview["open_to_internet"] = true
+	if len(willOpen) > 0 {
+		sgRulePrice(preview)
+		if sgrules.Internet(cidr) {
+			preview["open_to_internet"] = true
+		}
 	}
 	if len(wider) > 0 {
 		// Open by a rule wider than asked (a range, any protocol, a wider

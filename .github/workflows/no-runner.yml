@@ -1,0 +1,41 @@
+name: no-runner
+
+# Job ci, которому GitHub не выдал раннер, — один автоповтор (бэклог
+# «Процесса» 1.9, строка плана «Поручение преемнику «Процесса · 1.9»»): за
+# 12–13.11 семь job test (macos-latest) отменены без единого шага ровно через
+# 15 мин после создания, на PR и на main; повтор проходил каждый раз, а
+# ручной повтор «релиза» (правило 2 CLAUDE.md, #783) держал PR и красил main
+# до него. Что повторяется и что нет — .github/scripts/no_runner.sh и его
+# тест. Код PR здесь не выполняется: workflow_run идёт на ветке по
+# умолчанию, скрипт — из main; данные прогона — через env (internal/workflows).
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  rerun:
+    # Only a cancelled first attempt can hold a job given no runner; the
+    # script checks the jobs themselves.
+    if: github.event.workflow_run.conclusion == 'cancelled' && github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: повтор job без раннера
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          EVENT: ${{ github.event.workflow_run.event }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: .github/scripts/no_runner.sh

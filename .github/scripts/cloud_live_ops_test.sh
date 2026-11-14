@@ -1088,10 +1088,12 @@ GET! $O/op2 200 {"id":"op2","done":true,"error":null}
 PATCH! $P 200 {"id":"op3"}
 GET! $P 200 $(pool SCALING_DOWN 1)
 GET! $P 200 $(pool RUNNING 1)
+GET! $KC 200 {"id":"c1","status":"OBJECT_STATUS_RUNNING","controlPlane":{"version":"v1.31.1"},"versionUpgrade":{"upgradeAvailable":true,"availableVersions":["v1.32.0","v1.31.9"]}}
 POST $KC:upgrade 200 {"id":"op4"}
 GET! $KC 200 {"id":"c1","status":"OBJECT_STATUS_UPGRADING","controlPlane":{"version":"v1.31.1"}}
-GET! $KC 200 {"id":"c1","status":"OBJECT_STATUS_RUNNING","controlPlane":{"version":"v1.32.1"}}
-POST $P:upgrade 400 {"code":"FAILED_PRECONDITION","message":"pool is busy"}
+GET! $KC 200 {"id":"c1","status":"OBJECT_STATUS_RUNNING","controlPlane":{"version":"v1.32.0"}}
+GET! $P 200 {"id":"np1","status":"OBJECT_STATUS_RUNNING","version":"v1.31.1","versionUpgrade":{"upgradeAvailable":true,"availableVersions":["v1.32.0"]}}
+POST $P:upgrade 400 {"code":9,"message":"cluster or node pool has state which prohibits node pool editing"}
 DELETE! $P2 409 {"code":"FAILED_PRECONDITION","message":"node pool is being created"}
 GET! $P2 200 $(pool PROVISIONING 1 np2)
 GET! $P2 200 $(pool RUNNING 1 np2)
@@ -1109,7 +1111,11 @@ H
 rc=0
 K8S_CLUSTER_ID=c1 K8S_UPGRADE_TO=v1.32.1 K8S_SETTLE=1000 "$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
 want "Г-12: код" "$rc" 0
-want "Г-12: тела запросов — масштаб 2, повтор 2, 1, версия кластера и группы, 0" "$(jq -c 'select(has("keyId") | not)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"scalePolicy":{"fixedScale":{"count":2}}};{"scalePolicy":{"fixedScale":{"count":2}}};{"scalePolicy":{"fixedScale":{"count":1}}};{"version":"v1.32.1"};{"version":"v1.32.1"};{"scalePolicy":{"fixedScale":{"count":0}}};'
+# Версия обновления — новейшая из тех, что карточка кластера (затем
+# группы) называет допустимыми (versionUpgrade.availableVersions), а не
+# версия каталога K8S_UPGRADE_TO: прогон 215 — каталог дал v1.36.3, кластер
+# её отверг (K8S-18).
+want "Г-12: тела запросов — масштаб 2, повтор 2, 1, версия кластера и группы по карточке, 0" "$(jq -c 'select(has("keyId") | not)' "$FAKE_DIR/bodies" | tr '\n' ';')" '{"scalePolicy":{"fixedScale":{"count":2}}};{"scalePolicy":{"fixedScale":{"count":2}}};{"scalePolicy":{"fixedScale":{"count":1}}};{"version":"v1.32.0"};{"version":"v1.32.0"};{"scalePolicy":{"fixedScale":{"count":0}}};'
 # Обновление версии — долгий и необратимый шаг — идёт после второй группы:
 # зависшее обновление не съедает её (заключение «Риска» 189, У1).
 first() { grep -n "$1" "$FAKE_DIR/calls" | head -1 | cut -d: -f1; }
@@ -1117,8 +1123,10 @@ first() { grep -n "$1" "$FAKE_DIR/calls" | head -1 | cut -d: -f1; }
 want "Г-12: удаления — вторая группа (отказ, готовая, повтор) и последняя" "$(grep '^DELETE' "$FAKE_DIR/calls" | sed "s#$MK##" | tr '\n' ';')" "DELETE /nodePools/np2;DELETE /nodePools/np2;DELETE /nodePools/np2;DELETE /nodePools/np1;"
 for s in 'Г-12: масштаб 1→2.*первое чтение после ответа: OBJECT_STATUS_RUNNING/2 узл.*повтор сразу: HTTP 200, вторая операция; операция сразу: done=false, error: {}; состояния: .*SCALING_UP.*операция в конце: done=true, error: нет поля; вторая операция в конце: done=true, error: null' \
 	'Г-12: масштаб 2→1.*SCALING_DOWN/1 узл.* → OBJECT_STATUS_RUNNING/1 узл' \
-	'Г-12: обновление версии кластера.*UPGRADING/v1.31.1 → OBJECT_STATUS_RUNNING/v1.32.1.*операция в конце: done=true, error: объект, ключи code' \
-	'Г-12: обновление версии группы.*отказ HTTP 400.*машинный код: FAILED_PRECONDITION' \
+	'Г-12: обновление версии кластера: цель.*карточка: \["v1.32.0","v1.31.9"\], upgradeAvailable=true; выбрана v1.32.0; каталог: v1.32.1' \
+	'Г-12: обновление версии кластера ok.*UPGRADING/v1.31.1 → OBJECT_STATUS_RUNNING/v1.32.0.*операция в конце: done=true, error: объект, ключи code' \
+	'Г-12: обновление версии группы: цель.*карточка: \["v1.32.0"\], upgradeAvailable=true; выбрана v1.32.0' \
+	'Г-12: обновление версии группы ok.*отказ HTTP 400.*машинный код: 9 (FAILED_PRECONDITION)' \
 	'Г-12: удаление создающейся группы.*отказ HTTP 409' 'Г-12: вторая группа готова.*PROVISIONING.* → OBJECT_STATUS_RUNNING' \
 	'Г-12: удаление готовой группы.*DELETING/1 узл.* → нет (404)' 'Г-12: повтор удаления после исчезновения.*отказ HTTP 404.*NOT_FOUND' \
 	'Г-12: масштаб 1→0.*отказ HTTP 400.*evo сегодня: k8s_nodepool_scale' 'Г-12: удаление последней группы.*DELETING/1 узл.* → нет (404)'; do
@@ -1154,8 +1162,41 @@ rc=0
 K8S_CLUSTER_ID=c1 K8S_BUDGET=0 "$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
 want "Г-12, срок вышел: код" "$rc" 0
 want "Г-12, срок вышел: запросов к mk8s нет" "$(if [ -f "$FAKE_DIR/calls" ]; then grep -c mk8s "$FAKE_DIR/calls" || true; else echo 0; fi)" 0
-grep -q 'нет K8S_UPGRADE_TO' "$tmp/out" || { echo "FAIL: Г-12: версия без цели не названа"; fail=1; }
+grep -q 'обновление версии кластера.*срок пробы' "$tmp/out" || { echo "FAIL: Г-12: версия после срока не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 grep -q 'срок пробы' "$tmp/out" || { echo "FAIL: Г-12: истёкший срок не назван"; fail=1; }
+
+# Карточка кластера не называет версий обновления — обновления не шлются
+# (ни кластера, ни группы), строка «не покрыто» называет, что ответила
+# карточка и что предлагал каталог; масштаб до 0 и удаление идут дальше.
+k8s_world
+cat >"$FAKE_DIR/http" <<H
+PATCH! $P 200 {"id":"op1"}
+GET! $P 200 $(pool RUNNING 2)
+PATCH! $P 400 {"code":9,"message":"cluster or node pool has state which prohibits node pool editing"}
+PATCH! $P 200 {"id":"op3"}
+GET! $P 200 $(pool RUNNING 1)
+DELETE! $P2 200 {"id":"op5"}
+GET! $P2 404 {"code":5,"message":"resource not found"}
+DELETE! $P2 404 {"code":5,"message":"resource not found"}
+GET! $KC 200 {"id":"c1","status":"OBJECT_STATUS_RUNNING","versionUpgrade":{"upgradeAvailable":false,"availableVersions":[]}}
+PATCH! $P 200 {"id":"op6"}
+GET! $P 200 $(pool RUNNING 0)
+DELETE! $P 200 {"id":"op7"}
+GET $P 404 {"code":5}
+GET $O/* 200 {"done":true}
+H
+: >"$FAKE_DIR/bodies"
+rc=0
+K8S_CLUSTER_ID=c1 K8S_UPGRADE_TO=v1.36.3 K8S_SETTLE=0 "$here/cloud-live.sh" k8schange >"$tmp/out" 2>&1 || rc=$?
+want "Г-12, версий в карточке нет: код" "$rc" 0
+want "Г-12, версий в карточке нет: обновлений не слали" "$(grep -c ':upgrade$' "$FAKE_DIR/calls" || true)" 0
+want "Г-12, версий в карточке нет: масштаб до 0 и удаление последней группы" "$(grep -c "^PATCH $P\$\|^DELETE $P\$" "$FAKE_DIR/calls" | tr -d ' ')" 5
+for s in 'Г-12: обновление версии кластера.*не покрыто.*карточка не называет версий обновления: \[\], upgradeAvailable=false; каталог: v1.36.3' \
+	'Г-12: обновление версии группы.*не покрыто.*версия кластера не обновлена' \
+	'повтор сразу: отказ HTTP 400, машинный код: 9 (FAILED_PRECONDITION)' \
+	'Г-12: повтор удаления после исчезновения.*отказ HTTP 404.*машинный код: 5 (NOT_FOUND)'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: Г-12, версий в карточке нет: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
 
 # Не одна группа в кластере или нет кластера — запросов нет.
 k8s_world

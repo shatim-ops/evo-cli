@@ -24,6 +24,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/deploy"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/provision"
@@ -262,9 +263,12 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		if rec.VMIP == "" && rec.VMID != "" {
 			// The floating IP failed on an earlier run: try again instead
 			// of failing on "no public IP" on every re-run.
-			e.recoverFloatingIP(ctx, &rec)
+			ferr := e.recoverFloatingIP(ctx, &rec, stateFile)
 			stateFile.UpsertDeployment(rec)
 			_ = state.Write(statePath, stateFile)
+			if ferr != nil {
+				return ferr
+			}
 		}
 		// An earlier run may have stopped before the ports were opened, or
 		// the compose file publishes new ones: open what is missing. Records
@@ -566,6 +570,39 @@ func (e *Engine) DeployUpdateOf(force bool) *DeployUpdate {
 	return u
 }
 
+// DeployAddressAsked is the question a deploy of this directory asks
+// before it reserves a floating IP: the address an earlier run asked for
+// with no answer is not listed now (floatingip.Settle) — nil when there is
+// none, or the deploy reserves no address. It reads only.
+func (e *Engine) DeployAddressAsked(ctx context.Context) *floatingip.AskError {
+	sf, err := state.Read(state.DefaultPath(e.StateDir))
+	if err != nil || len(sf.LostFloatingIPs) == 0 {
+		return nil
+	}
+	projectID, vmName, vmID := e.Config.ProjectID, e.deployVMName(), ""
+	own := floatingip.Free
+	if rec := sf.ActiveComposeDeployment(); rec != nil {
+		if !needsFloatingIP(rec) {
+			return nil
+		}
+		projectID, vmName, vmID, own = e.projectOf(rec), rec.VMName, rec.VMID, floatingip.FreeOrOf(rec.VMID)
+	}
+	lctx, cancel := context.WithTimeout(ctx, PreviewLookupTimeout)
+	defer cancel()
+	_, err = floatingip.Settle(lctx, e.Cloud, sf, projectID, vmName, vmID, own)
+	ask, _ := floatingip.AsAsk(err)
+	return ask
+}
+
+// deployVMName is the name deploy gives the VM of this directory.
+func (e *Engine) deployVMName() string {
+	projectName := e.Config.ProjectName
+	if projectName == "" {
+		projectName = filepath.Base(e.StateDir)
+	}
+	return vmNameFor(projectName)
+}
+
 // resolveFlavor determines the VM flavor via auto-sizing or explicit selection.
 func (e *Engine) resolveFlavor(ctx context.Context, opts DeployOptions, project *compose.Project) (string, error) {
 	flavor := opts.Flavor
@@ -679,11 +716,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		return state.DeploymentRecord{}, err
 	}
 
-	projectName := e.Config.ProjectName
-	if projectName == "" {
-		projectName = filepath.Base(e.StateDir)
-	}
-	vmName := vmNameFor(projectName)
+	vmName := e.deployVMName()
 	// A VM of the project with this name, one this folder did not make, is
 	// refused here, before the question (FB170-2, D73): the create would
 	// get a 409 after the consent.
@@ -811,7 +844,14 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	// boot, the VM boots offline and cloud-init can spend 10+ minutes on
 	// mirror timeouts before sshd starts. A FIP that cannot be made now is
 	// attached after boot, as before.
-	bootFIP, err := e.createBootFIP(ctx, projectID, region, vmName)
+	bootFIP, err := e.createBootFIP(ctx, projectID, region, vmName, stateFile)
+	if _, lost := floatingip.AsLost(err); lost {
+		// The mark of the address goes to the state before the answer:
+		// destroy, doctor and the next deploy name it.
+		if werr := state.Write(statePath, stateFile); werr != nil {
+			e.Printer.Warning(i18n.Tf("the state file could not be saved (%v)", "файл state не удалось сохранить (%v)", werr))
+		}
+	}
 	if err != nil {
 		return state.DeploymentRecord{}, err
 	}
@@ -1009,7 +1049,16 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				if bootFIP != nil {
 					publicIP, fipID, err = e.waitBootFIP(ctx, bootFIP, vm.ID, projectID)
 				} else {
-					publicIP, fipID, err = e.assignFloatingIP(ctx, vm.ID, projectID, region)
+					publicIP, fipID, err = e.assignFloatingIP(ctx, vm.ID, rec.VMName, projectID, region, stateFile)
+				}
+				if _, lost := floatingip.AsLost(err); lost {
+					// The VM is recorded with the mark of its address, and
+					// the call stops: no second address is reserved for it.
+					rec.Status = "provisioned"
+					rec.UpdatedAt = time.Now()
+					stateFile.UpsertDeployment(rec)
+					_ = state.Write(statePath, stateFile)
+					return rec, err
 				}
 
 				// Record the FIP even if it is not confirmed: destroy releases it.
@@ -1079,27 +1128,53 @@ func statusText(s string) string {
 // as soon as the FIP exists, even with an error: the caller records it, so
 // destroy releases it (release audit, R-02). The waits are the engine's
 // Timings: a test world waits milliseconds, not the production 5 s polls.
-func (e *Engine) AssignFloatingIP(ctx context.Context, vmID, projectID, azID string) (ip, fipID string, err error) {
-	return assignFloatingIP(ctx, e.Cloud, e.timings(), nil, vmID, projectID, azID)
+//
+// The marks of sf come first (floatingip.Settle): the address an earlier
+// call asked for with no answer is taken when the list shows it free or on
+// this VM; not shown, the call asks (an AskError) before it reserves
+// another. A create of this call with no answer leaves its mark in sf and
+// answers LostAddressError. sf is changed in memory; the caller writes it.
+func (e *Engine) AssignFloatingIP(ctx context.Context, vmID, vmName, projectID, azID string, sf *state.File) (ip, fipID string, err error) {
+	return e.giveFloatingIP(ctx, nil, vmID, vmName, projectID, azID, sf)
 }
 
 // assignFloatingIP prints its progress: the waits add up to minutes.
-func (e *Engine) assignFloatingIP(ctx context.Context, vmID, projectID, azID string) (ip, fipID string, err error) {
-	return assignFloatingIP(ctx, e.Cloud, e.timings(), e.Printer.StepDone, vmID, projectID, azID)
+func (e *Engine) assignFloatingIP(ctx context.Context, vmID, vmName, projectID, azID string, sf *state.File) (ip, fipID string, err error) {
+	return e.giveFloatingIP(ctx, e.Printer.StepDone, vmID, vmName, projectID, azID, sf)
+}
+
+// giveFloatingIP is AssignFloatingIP with its progress.
+func (e *Engine) giveFloatingIP(ctx context.Context, progress func(string), vmID, vmName, projectID, azID string, sf *state.File) (string, string, error) {
+	f, err := floatingip.Settle(ctx, e.Cloud, sf, projectID, vmName, vmID, floatingip.FreeOrOf(vmID))
+	if err != nil {
+		return "", "", askAddress(err)
+	}
+	if f != nil {
+		if f.BoundTo(vmID) {
+			return f.IPAddress, f.ID, nil
+		}
+		return e.attachToPrimary(ctx, f, vmID, projectID)
+	}
+	// After a person's yes the address of the lost create may still come:
+	// the new one bears another name (floatingip.NameFor).
+	name := floatingip.NameFor(sf, projectID, fipName(vmID), clock.Now())
+	ip, id, err := assignFloatingIP(ctx, e.Cloud, e.timings(), progress, vmID, name, projectID, azID)
+	if lost, ok := floatingip.AsLost(err); ok {
+		floatingip.Note(sf, state.LostFloatingIP{Name: lost.Name, ProjectID: projectID, VMName: vmName, VMID: vmID,
+			RequestedAt: clock.Now(), CreatedBy: e.Maker()})
+		return "", "", LostAddressError(lost, vmID, "")
+	}
+	return ip, id, err
 }
 
 // fipProgressEvery is how many polls pass between progress lines.
 const fipProgressEvery = 6
 
-// fipLookupAfterCut bounds the search for a floating IP whose create a
-// cancelled call may have made: one list request.
-const fipLookupAfterCut = 10 * time.Second
-
 // assignFloatingIP creates a floating IP and attaches it to the VM's primary
 // interface. It returns the address and the FIP ID; the ID is set as soon as
 // the FIP exists, even when the wait for it fails, so the caller can record
 // it for destroy. progress (may be nil) receives human-readable status.
-func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, progress func(string), vmID, projectID, azID string) (string, string, error) {
+func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, progress func(string), vmID, name, projectID, azID string) (string, string, error) {
 	start := clock.Now()
 	report := func(format string, args ...any) {
 		if progress != nil {
@@ -1161,52 +1236,35 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 			"у ВМ %s за %s не найден основной интерфейс (или он не готов)"), vmID, elapsed())
 	}
 
-	// Create floating IP with retry.
+	// Create floating IP with retry — only after a refusal, which made no
+	// address. A create with no answer is sent once: the address is looked
+	// for by its name, and one not found is a floatingip.LostError, not a
+	// second create (D107; «Риск», conclusion 180, У1).
 	report("%s", i18n.T("Creating floating IP...", "Создание floating IP..."))
 	var fip *provision.FloatingIP
 	var err error
-	// cut answers a call that ended after a create was sent: the cloud may
-	// have made the floating IP, billed, with the answer lost. It is found
-	// by its name under a context of its own, so the caller records it and
-	// destroy releases it (the budget of an MCP call, D69, ends calls here
-	// as a cancel did; CLAUDE.md §6, axis 3).
-	cut := func() (string, string, error) {
-		lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fipLookupAfterCut)
-		defer cancel()
-		if found := findFloatingIPByName(lctx, cloud, projectID, fipName(vmID)); found != nil {
-			return found.IPAddress, found.ID, ctx.Err()
-		}
-		return "", "", ctx.Err()
-	}
 	for attempt := 0; attempt < 5; attempt++ {
-		fip, err = cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
-			Name:               fipName(vmID),
+		fip, err = floatingip.Reserve(ctx, cloud, provision.CreateFloatingIPRequest{
+			Name:               name,
 			ProjectID:          projectID,
 			InterfaceID:        ifaceID,
 			AvailabilityZoneID: azID,
-		})
-		if err == nil {
+		}, floatingip.FreeOrOf(vmID, ifaceID), t.FIPLookupInterval, func(line string) { report("%s", line) })
+		if err == nil || !floatingip.Refused(err) {
 			break
-		}
-		if ctx.Err() != nil {
-			return cut()
 		}
 		report(i18n.T("Creating floating IP failed (%v), retrying", "Не удалось создать floating IP (%v), повтор"), err)
 		select {
 		case <-ctx.Done():
-			return cut()
+			return "", "", ctx.Err()
 		case <-time.After(t.FIPRetryInterval):
 		}
 	}
 	if err != nil {
-		// The platform may have made the FIP before the response was lost
-		// (then the next attempts fail: the interface already has one).
-		// It is billed, so find it by its name.
-		found := findFloatingIPByName(ctx, cloud, projectID, fipName(vmID))
-		if found == nil {
-			return "", "", fmt.Errorf(i18n.T("create floating IP: %w", "создание floating IP: %w"), err)
+		if _, lost := floatingip.AsLost(err); lost {
+			return "", "", err
 		}
-		fip = found
+		return "", "", fmt.Errorf(i18n.T("create floating IP: %w", "создание floating IP: %w"), err)
 	}
 
 	// Poll until floating IP is active.
@@ -1243,7 +1301,22 @@ func assignFloatingIP(ctx context.Context, cloud provision.CloudAPI, t Timings, 
 // When that fails the VM still gets an IP after boot (nil, nil) — except on
 // a quota rejection: the IP would fail after boot too, and the VM would be
 // billed with no way in, so that is an error before anything is created.
-func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName string) (*provision.FloatingIP, error) {
+//
+// The address of an earlier call whose create got no answer is looked for
+// first, by its exact name in sf (floatingip.Settle): found, it is taken;
+// not found, the call asks before it reserves another (an AskError). A
+// create of this call with no answer is not sent again: the call stops
+// before the VM, with the mark of the address in sf (a LostError the
+// caller writes), and no VM is billed beside an address nothing finds
+// (D107; «Риск», conclusion 180, (а)). sf is changed in memory only.
+func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName string, sf *state.File) (*provision.FloatingIP, error) {
+	if f, err := floatingip.Settle(ctx, e.Cloud, sf, projectID, vmName, "", floatingip.Free); err != nil {
+		return nil, askAddress(err)
+	} else if f != nil {
+		e.Printer.StepDone(i18n.Tf("Taking floating IP %s, which an earlier call reserved with no answer",
+			"Беру floating IP %s, который прошлый вызов зарезервировал без ответа облака", f.IPAddress))
+		return e.settledBootFIP(ctx, f, projectID), nil
+	}
 	// A free boot FIP of this VM name left by an earlier run (its release
 	// failed after a 409, break r3a R3A-2) is taken instead of a second
 	// billed address. A boot FIP name is unique to its VM name.
@@ -1253,24 +1326,17 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 		return f, nil
 	}
 	name := provision.BootFIPName(vmName, clock.Now())
-	fip, err := e.Cloud.CreateFloatingIP(ctx, provision.CreateFloatingIPRequest{
+	fip, err := floatingip.Reserve(ctx, e.Cloud, provision.CreateFloatingIPRequest{
 		Name:               name,
 		ProjectID:          projectID,
 		AvailabilityZoneID: azID,
-	})
-	if (err != nil || fip == nil || fip.ID == "") && !provision.IsQuotaError(err) {
-		// The create may have reached the cloud with its answer lost: then
-		// the FIP exists under this unique name. Taken as the boot FIP, it is
-		// recorded and released like one, not left billed (QA r3 R7).
-		if f := e.findBootFIP(ctx, projectID, name); f != nil {
-			return e.settledBootFIP(ctx, f, projectID), nil
-		}
-		if ctx.Err() != nil {
-			e.Printer.Warning(i18n.Tf("reserving floating IP %s was interrupted: the platform may still create it; check 'evo vpc fips' and release it ('evo vpc fip-release') if it is there",
-				"резервирование floating IP %s прервано: платформа ещё может его создать; проверьте 'evo vpc fips' и освободите его ('evo vpc fip-release'), если он там есть", name))
-		}
+	}, floatingip.Free, e.timings().FIPLookupInterval, e.Printer.StepDone)
+	if lost, ok := floatingip.AsLost(err); ok {
+		floatingip.Note(sf, state.LostFloatingIP{Name: lost.Name, ProjectID: projectID, VMName: vmName,
+			RequestedAt: clock.Now(), CreatedBy: e.Maker()})
+		return nil, LostAddressError(lost, "", "")
 	}
-	if err != nil || fip == nil || fip.ID == "" {
+	if err != nil {
 		if provision.IsQuotaError(err) {
 			return nil, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 				i18n.T("no public IP can be reserved: the floating IP quota is exhausted",
@@ -1279,13 +1345,56 @@ func (e *Engine) createBootFIP(ctx context.Context, projectID, azID, vmName stri
 					"Ничего не создано. Увеличьте квоту в консоли Cloud.ru или спросите человека, какой floating IP можно освободить ('evo vpc fips', 'evo vpc fip-release'), и повторите."),
 				err)
 		}
-		if ctx.Err() == nil {
-			e.Printer.Warning(i18n.Tf("could not reserve a public IP before creating the VM (%v); it will be attached after boot, which can make the first boot slow",
-				"не удалось зарезервировать внешний IP до создания ВМ (%v); он будет привязан после загрузки, из-за этого первая загрузка может затянуться", err))
-		}
+		// Refused: no address came of it (floatingip.Refused).
+		e.Printer.Warning(i18n.Tf("could not reserve a public IP before creating the VM (%v); it will be attached after boot, which can make the first boot slow",
+			"не удалось зарезервировать внешний IP до создания ВМ (%v); он будет привязан после загрузки, из-за этого первая загрузка может затянуться", err))
 		return nil, nil
 	}
 	return e.settledBootFIP(ctx, fip, projectID), nil
+}
+
+// askAddress is the refusal of a call that reached the reserve of an
+// address without the question its preview asks (DeployAddressAsked):
+// CONFIRMATION_REQUIRED, exit 3. A tool answers the question itself
+// (floatingip.AsAsk finds it in the chain); nothing was sent.
+func askAddress(err error) error {
+	ask, ok := floatingip.AsAsk(err)
+	if !ok {
+		return err
+	}
+	return clerrors.Wrap(clerrors.CodeConfirmationRequired,
+		i18n.Tf("floating IP %s, which an earlier run asked for, got no answer from the cloud, and the list does not show it: the request may have been accepted, and the address billed. No second address was requested",
+			"floating IP %s, который запросил прошлый запуск, не получил ответа облака, и список его не показывает: запрос мог быть принят, а адрес — тарифицироваться. Второй адрес не запрашивался", ask.Mark.Name),
+		i18n.Tf("Check list_floating_ips for the name %s; whether to reserve another address is the person's to answer.",
+			"Проверьте 'evo vpc fips' по имени %s, затем запустите команду в терминале и ответьте на вопрос: резервировать ли другой адрес, решает человек.", ask.Mark.Name),
+		err)
+}
+
+// LostAddressError is the answer of a call stopped by the create of a
+// floating IP that got no answer (floatingip.LostError): what may be
+// billed, that nothing more was sent, and how to find it. vmID and vmState
+// name the VM the address was for once it exists ("" before it). Its
+// reason is that of the create — API_ERROR, API_UNREACHABLE, INTERRUPTED:
+// the outcome is not known (intent.OutcomeUnknown).
+func LostAddressError(lost *floatingip.LostError, vmID, vmState string) error {
+	code := clerrors.Reason(lost.Err)
+	if code == clerrors.ReasonGeneral || code == clerrors.ReasonInterrupted {
+		code = clerrors.CodeAPIError
+	}
+	if vmID == "" {
+		return clerrors.Wrap(code,
+			i18n.Tf("reserving floating IP %s got no answer from the cloud (%v): the request may have been accepted, and the address billed. No VM was created, and no second address was requested",
+				"резервирование floating IP %s не получило ответа облака (%v): запрос мог быть принят, а адрес — тарифицироваться. ВМ не создана, второй адрес не запрашивался", lost.Name, lost.Err),
+			i18n.Tf("Check list_floating_ips for the name %s, then repeat the same call: it takes that address if the list shows it bound to nothing; if the list does not show it, the call asks first — whether to reserve another address is the person's to answer.",
+				"Проверьте 'evo vpc fips' по имени %s и повторите ту же команду: она возьмёт этот адрес, если список показывает его ни к чему не привязанным; если списка с ним нет, команда сначала спросит — резервировать ли другой адрес, решает человек.", lost.Name),
+			lost)
+	}
+	return clerrors.Wrap(code,
+		i18n.Tf("VM %s is created (state %s) and billed, but reserving its floating IP %s got no answer from the cloud (%v): the request may have been accepted, and the address billed. No second address was requested",
+			"ВМ %s создана (состояние %s) и тарифицируется, но резервирование её floating IP %s не получило ответа облака (%v): запрос мог быть принят, а адрес — тарифицироваться. Второй адрес не запрашивался", vmID, statusText(vmState), lost.Name, lost.Err),
+		i18n.Tf("Check list_floating_ips for the name %s and the VM with vm_get %s, then repeat the same call: it takes that address if the list shows it free or on this VM; if the list does not show it, the call asks first — whether to reserve another address is the person's to answer.",
+			"Проверьте 'evo vpc fips' по имени %s и ВМ — 'evo vm get %s', затем повторите ту же команду: она возьмёт этот адрес, если список показывает его свободным или на этой ВМ; если списка с ним нет, команда сначала спросит — резервировать ли другой адрес, решает человек.", lost.Name, vmID),
+		lost)
 }
 
 // settlePolls is how many polls a floating IP still being created is
@@ -1350,46 +1459,19 @@ func (e *Engine) leftBootFIP(ctx context.Context, projectID, vmName string) *pro
 	if err != nil {
 		return nil
 	}
+	// Two of the VM name are not told apart: none is taken (К1 of
+	// conclusion 180) — the address of a call cut with no answer is found
+	// by its exact name (floatingip.Settle), not by its prefix.
+	var left *provision.FloatingIP
 	for _, f := range fips {
 		if f != nil && f.ID != "" && provision.IsBootFIPOf(f.Name, vmName) && f.Available() {
-			return f
-		}
-	}
-	return nil
-}
-
-// findBootFIP looks the boot FIP up by its unique name after a failed
-// create. The lookup outlives a Ctrl-C during the POST (ctx cancelled), and
-// then tries three times: the server may create the address a moment after
-// the client hung up (review Grok on #85).
-func (e *Engine) findBootFIP(ctx context.Context, projectID, name string) *provision.FloatingIP {
-	lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-	defer cancel()
-	attempts := 1
-	if ctx.Err() != nil {
-		attempts = 3
-		e.Printer.StepDone(i18n.Tf("Looking for floating IP %s made before the interruption...",
-			"Ищу floating IP %s, созданный до прерывания...", name))
-	}
-	for i := 0; i < attempts; i++ {
-		if i > 0 {
-			select {
-			case <-lctx.Done():
+			if left != nil {
 				return nil
-			case <-time.After(e.timings().FIPLookupInterval):
 			}
-		}
-		fips, err := e.Cloud.ListFloatingIPs(lctx, projectID)
-		if err != nil {
-			continue
-		}
-		for _, f := range fips {
-			if f.Name == name && f.ID != "" {
-				return f
-			}
+			left = f
 		}
 	}
-	return nil
+	return left
 }
 
 // releaseBootFIP deletes a boot FIP whose VM was not created or was deleted.
@@ -1457,6 +1539,11 @@ func (e *Engine) waitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmI
 		}
 	}
 	// Not attached at creation: bind it to the primary interface.
+	return e.attachToPrimary(ctx, fip, vmID, projectID)
+}
+
+// attachToPrimary binds the floating IP fip to the VM's primary interface.
+func (e *Engine) attachToPrimary(ctx context.Context, fip *provision.FloatingIP, vmID, projectID string) (string, string, error) {
 	e.Printer.StepDone(i18n.Tf("Attaching floating IP %s...", "Привязка floating IP %s...", fip.IPAddress))
 	detail, err := e.Cloud.GetVMDetail(ctx, vmID)
 	if err != nil {
@@ -1511,42 +1598,38 @@ func vmNameFor(project string) string {
 // recovery of a lost create response look it up by it.
 func fipName(vmID string) string { return "fip-" + vmID }
 
-// findFloatingIPByName returns the project's floating IP with that name, or nil.
-func findFloatingIPByName(ctx context.Context, cloud provision.CloudAPI, projectID, name string) *provision.FloatingIP {
-	fips, err := cloud.ListFloatingIPs(ctx, projectID)
-	if err != nil {
-		return nil
-	}
-	for _, f := range fips {
-		if f.Name == name {
-			return f
-		}
-	}
-	return nil
-}
-
 // recoverFloatingIP gives a recorded VM without a public address one: the
 // recorded floating IP's address, else a new floating IP. Failures are
 // warnings; the caller reports the missing address.
-func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRecord) {
+//
+// A create of the address with no answer, or the question about one an
+// earlier run asked for (floatingip), is the error: the run stops there.
+func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRecord, sf *state.File) error {
 	if rec.FloatingIPID != "" {
 		// Never a second one next to the recorded FIP.
 		f, err := e.Cloud.GetFloatingIP(ctx, rec.FloatingIPID)
 		if err != nil {
 			e.Printer.Warning(i18n.Tf("floating IP %s: %v", "не удалось прочитать floating IP %s: %v", rec.FloatingIPID, err))
-			return
+			return nil
 		}
 		rec.VMIP = f.IPAddress
-		return
+		return nil
 	}
-	ip, fipID, err := e.assignFloatingIP(ctx, rec.VMID, e.projectOf(rec), rec.Region)
+	ip, fipID, err := e.assignFloatingIP(ctx, rec.VMID, rec.VMName, e.projectOf(rec), rec.Region, sf)
 	if fipID != "" {
 		rec.FloatingIPID = fipID
 	}
 	rec.VMIP = ip
+	if _, lost := floatingip.AsLost(err); lost {
+		return err
+	}
+	if _, ask := floatingip.AsAsk(err); ask {
+		return err
+	}
 	if err != nil {
 		e.Printer.Warning(i18n.Tf("floating IP: %v", "floating IP не назначен: %v", err))
 	}
+	return nil
 }
 
 // awaitCreated waits for the VM of a record left creating — a deploy whose
@@ -2067,8 +2150,11 @@ func (e *Engine) vmLeftRunning(ctx context.Context, err error, vmID string) erro
 	if !stderrors.Is(ctx.Err(), context.Canceled) && !stderrors.Is(err, context.Canceled) {
 		return err
 	}
+	// A cut create of the VM's floating IP is named with the VM: the
+	// address may be billed too (D107; «Риск», conclusion 180, У1).
+	lost, isLost := floatingip.AsLost(err)
 	var cliErr *clerrors.CLIError
-	if stderrors.As(err, &cliErr) && strings.Contains(cliErr.Hint, vmID) {
+	if !isLost && stderrors.As(err, &cliErr) && strings.Contains(cliErr.Hint, vmID) {
 		return err // handleInterrupt already said what happened to the VM
 	}
 	e.Printer.Warning(i18n.Tf("Interrupted. VM %s left running.", "Прервано. ВМ %s продолжает работать.", vmID))
@@ -2076,9 +2162,14 @@ func (e *Engine) vmLeftRunning(ctx context.Context, err error, vmID string) erro
 	if !stderrors.Is(err, context.Canceled) {
 		cause = fmt.Errorf("%w: %w", context.Canceled, err)
 	}
+	hint := vmStillRunningHint(vmID)
+	if isLost {
+		hint += " " + i18n.Tf("Its floating IP %s was requested with no answer and may be billed: check list_floating_ips for the name; the next deploy takes it if it is listed, or asks first.",
+			"Её floating IP %s запрошен без ответа облака и может тарифицироваться: проверьте 'evo vpc fips' по имени; следующий deploy возьмёт его, если он в списке, или сначала спросит.", lost.Name)
+	}
 	return clerrors.Wrap(clerrors.CodeVMProvisionFailed,
 		deployInterrupted(),
-		vmStillRunningHint(vmID),
+		hint,
 		cause)
 }
 
@@ -2155,8 +2246,8 @@ func (e *Engine) printVerifyResults(results []verify.ProbeResult, ip string) {
 
 // CreateBootFIP, WaitBootFIP and ReleaseBootFIP give the MCP provision tool
 // the same public-IP-at-create path as deploy.
-func (e *Engine) CreateBootFIP(ctx context.Context, projectID, azID, vmName string) (*provision.FloatingIP, error) {
-	return e.createBootFIP(ctx, projectID, azID, vmName)
+func (e *Engine) CreateBootFIP(ctx context.Context, projectID, azID, vmName string, sf *state.File) (*provision.FloatingIP, error) {
+	return e.createBootFIP(ctx, projectID, azID, vmName, sf)
 }
 
 // WaitBootFIP: see CreateBootFIP.

@@ -57,10 +57,12 @@ func runBreakInstall(t *testing.T, osRelease string, env map[string]string, stub
 	for k, val := range env {
 		cmd.Env = append(cmd.Env, k+"="+val)
 	}
-	out, err := cmd.CombinedOutput()
-	r := run{root: root, out: string(out), ok: err == nil && ctx.Err() == nil}
-	if b, rerr := os.ReadFile(filepath.Join(root, "calls")); rerr == nil {
-		r.calls = strings.Split(strings.TrimSpace(string(b)), "\n")
+	r := runScript(ctx, cmd, root)
+	// A run that did not finish says why before any check of its files: a
+	// kill by the limit under a loaded runner and a broken script otherwise
+	// fail the same file check (TestBreakR4_R4_16 on macOS, 14.11).
+	if !r.ok {
+		t.Logf("the install script did not finish: %s", r.why())
 	}
 	return r
 }

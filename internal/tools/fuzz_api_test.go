@@ -39,7 +39,7 @@ var oddStatuses = []int{http.StatusOK, http.StatusCreated, http.StatusBadRequest
 func readToolsNoArgs(r *Registry) []string {
 	var names []string
 	for _, tl := range r.Tools() {
-		if !tl.Mutating && len(schemaRequired(tl)) == 0 && len(tl.RequiredOneOf) == 0 {
+		if !tl.Mutating && len(schemaRequired(tl)) == 0 && len(tl.Decl.RequiredOneOf) == 0 {
 			names = append(names, tl.Name)
 		}
 	}

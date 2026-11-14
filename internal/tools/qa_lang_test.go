@@ -183,7 +183,7 @@ func langArgSets(tl Tool) []map[string]any {
 	for _, k := range schemaRequired(tl) {
 		req[k] = full[k]
 	}
-	for _, set := range tl.RequiredOneOf {
+	for _, set := range tl.Decl.RequiredOneOf {
 		req[set[0]] = full[set[0]]
 	}
 	sets := []map[string]any{nil, {"confirmed": true}, {"bogus_arg": 1}, req, full,

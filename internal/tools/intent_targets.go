@@ -6,7 +6,12 @@ package tools
 
 import (
 	"context"
+	stderrors "errors"
 	"strings"
+
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // vmTarget is the target of a call that names a VM by vm_id or by name
@@ -63,4 +68,45 @@ func vmSettled(tool string) func(ctx context.Context, r *Registry, args map[stri
 		}
 		return outcomeAsk, nil
 	}
+}
+
+// groupTarget is the target of a call that names a security group in arg
+// by its id or its name (changeRule.target): the group's id, read as the
+// plan of the tool reads it (securityGroupFor), so a cut call is found
+// however the repeat spells the group (release plan 1.9, #1608). Nothing
+// is read for a call its arguments refuse (valid) or for a name that is no
+// group, or two: such a call is left as it spells the group, and the plan
+// refuses it in its own words and order, before anything is sent.
+func groupTarget(arg string, valid func(args map[string]any) error) func(ctx context.Context, r *Registry, args map[string]any) (name, target string, err error) {
+	return func(ctx context.Context, r *Registry, args map[string]any) (string, string, error) {
+		ref := stringArg(args, arg)
+		if ref == "" {
+			return "", "", nil
+		}
+		if valid(args) != nil {
+			return "", arg + "=" + ref, nil
+		}
+		eng, err := r.authedEngine(ctx, nil)
+		if err != nil {
+			return "", "", err
+		}
+		group, err := securityGroupFor(ctx, eng, ref)
+		var ce *clierrors.CLIError
+		if stderrors.As(err, &ce) && (ce.Code == clierrors.CodeNotFound || ce.Code == clierrors.CodeUsage) {
+			return "", arg + "=" + ref, nil
+		}
+		if err != nil {
+			return "", "", err
+		}
+		return "", arg + "=" + group.ID, nil
+	}
+}
+
+// securityGroupFor is securityGroupByRef once a call: the layer of intents
+// resolves the group a call names before the plan of the tool does
+// (changeRule.target).
+func securityGroupFor(ctx context.Context, eng *engine.Engine, ref string) (*provision.SecurityGroup, error) {
+	return onceACall(ctx, "sg\x00"+ref+"\x00"+eng.Config.ProjectID, func() (*provision.SecurityGroup, error) {
+		return securityGroupByRef(ctx, eng, ref)
+	})
 }

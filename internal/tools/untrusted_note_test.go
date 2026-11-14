@@ -37,15 +37,29 @@ var untrustedMarkerOnly = map[string]string{
 	"vm_stop":             "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"vm_reboot":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
 	"vm_resize":           "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",
+	"vm_get":              "name, interfaces, security_groups, checks, exposure, image: the names of the VM, its interfaces, groups, subnets and the rules of the groups (descriptions too), not the output of a workload («Риск», conclusion 209, У5)",
 	"whoami":              "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
-	"backup_get":          "name, description, tags, resource_name, source: what the project's people named the backup, its tags and its source, not the output of a workload",
+	"backup_get":          "name, description, tags, resource_name, source, protection_plan: what the project's people named the backup, its tags, its source and its plan, not the output of a workload",
 	"backup_create":       "preview, will_create, backup, name: the names of the backup and of its source, not the output of a workload",
 	"backup_restore":      "preview, will_create, disk, name: the names of the backup, its disk and the new disk, not the output of a workload",
 	"backup_delete":       "preview, target, resource_status: the names of the backup, its source and the backups that depend on it, and its state in a refusal, not the output of a workload",
 	"backup_list":         "backups: the names of the backups and of their sources, not the output of a workload",
 	"k8s_nodepool_get":    "name, cluster_name, labels, taints: what the project's people named the pool, its cluster and its nodes, not the output of a workload",
 	"k8s_nodepool_delete": "preview, target, resource_status: the name of the cluster of the pool in the preview, the name of the pool in the target and its status in a refusal, not the output of a workload",
-	"k8s_delete":          "resource_status: the status of the cluster in a refusal, as its service writes it, not the output of a workload",
+	"k8s_delete":          "resource_status, target: the status of the cluster in a refusal, as its service writes it, and its name in the target of the preview, not the output of a workload",
+	"kafka_delete":        "target: the name of the cluster in the target of the preview, not the output of a workload",
+	"redis_delete":        "target: the name of the cluster in the target of the preview, not the output of a workload",
+	"k8s_list":            "clusters: the names of the clusters, not the output of a workload",
+	"pg_list":             "clusters: the names of the clusters, not the output of a workload",
+	"kafka_list":          "clusters: the names of the clusters, not the output of a workload",
+	"redis_list":          "clusters: the names of the clusters, not the output of a workload",
+	"k8s_get":             "the whole answer: the cluster as its service has it, with the names of what it holds, not the output of a workload",
+	"pg_get":              "the whole answer but access: the cluster as its service has it, not the output of a workload",
+	"kafka_get":           "the whole answer: the cluster as its service has it, not the output of a workload",
+	"redis_get":           "the whole answer: the cluster as its service has it, not the output of a workload",
+	"k8s_options":         "flavors, zones, defaults: the names of the catalogue's flavors and zones, not the output of a workload",
+	"kafka_specs":         "availability_zone, specifications: the names of the catalogue's zone and specifications, not the output of a workload",
+	"redis_specs":         "availability_zone, specifications: the names of the catalogue's zone and specifications, not the output of a workload",
 	"lb_delete":           "resource_status: the status of the balancer in a refusal, as its service writes it, not the output of a workload",
 	"tg_delete":           "resource_status: the status of the target group in a refusal, as its service writes it, not the output of a workload",
 	"k8s_nodepool_scale":  "preview, name, details: the name of the pool in the preview and the answer and the platform's words of a failed operation, not the output of a workload",
@@ -60,6 +74,7 @@ var untrustedMarkerOnly = map[string]string{
 	"vpc_operation":       "error: the failure of an operation as VPC words it, not the output of a workload",
 	"open_ports":          "open_only_to_groups, vms: the names of the security groups a rule lets a port in from and of the VMs under the group, in the preview and the answer, not the output of a workload",
 	"sg_rule_create":      "security_group, rule, preview: the name of the group and the descriptions of its rules in the preview and the answer, not the output of a workload",
+	"stack_apply":         "preview: the names and values of the steps of a manifest in the question, the caller's text, not the output of a workload",
 	"stack_plan":          "unknown_fields, error: the names of the fields a manifest has and its type does not, the caller's text, not the output of a workload (D108)",
 	"sg_rule_delete":      "security_group, rule, still_allowed_by, still_allowed_from_groups, vms: the name of the group, the descriptions of its rules and the names of the VMs under it in the preview and the answer, not the output of a workload",
 }
@@ -73,7 +88,7 @@ var untrustedMarkerOnly = map[string]string{
 func TestUntrusted_NoteIffMarker(t *testing.T) {
 	var bad []string
 	for _, tl := range New(nil).Tools() {
-		note, marker := tl.UntrustedOutput, untrustedFields[tl.Name].fields != nil
+		note, marker := tl.UntrustedOutput, untrustedFields[tl.Name].marked()
 		_, noteOnly := untrustedNoteOnly[tl.Name]
 		_, markerOnly := untrustedMarkerOnly[tl.Name]
 		switch {

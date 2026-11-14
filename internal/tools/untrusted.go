@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
+	"sort"
 	"strconv"
 )
 
@@ -25,9 +27,39 @@ func quoteCloud(s string) string { return strconv.Quote(s) }
 // data, never instructions (process audit 1.2.1, П9). Workload says the
 // text is what a workload or a stored object wrote, and New ends the
 // tool's description with untrustedOutputNote (Tool.UntrustedOutput).
+//
+// Whole says the answer is the body of the service as it has it, every
+// field of it the cloud's — a read that passes the resource on: the
+// answer lists every field it has, but those of own, which evo adds.
+// An error answer of such a tool is evo's and is not marked.
 type untrustedAnswer struct {
 	fields   []string
+	whole    bool
+	own      []string
 	workload bool
+}
+
+// marked reports whether the answers of the tool say "_untrusted".
+func (u untrustedAnswer) marked() bool { return u.fields != nil || u.whole }
+
+// in is the fields of the answer m the marker names.
+func (u untrustedAnswer) in(m map[string]any) []string {
+	var has []string
+	if u.whole {
+		for f := range m {
+			if f != "_untrusted" && !slices.Contains(u.own, f) {
+				has = append(has, f)
+			}
+		}
+		sort.Strings(has)
+		return has
+	}
+	for _, f := range u.fields {
+		if _, ok := m[f]; ok {
+			has = append(has, f)
+		}
+	}
+	return has
 }
 
 // untrustedFields is the one declaration of the rule «text from the cloud
@@ -65,6 +97,9 @@ var untrustedFields = map[string]untrustedAnswer{
 	"vm_stop":   {fields: []string{"preview", "name", "details"}},
 	"vm_reboot": {fields: []string{"preview", "name", "details"}},
 	"vm_resize": {fields: []string{"preview", "name", "details"}},
+	// The names of the VM, its interfaces, groups, subnets and the rules
+	// of the groups, as the cloud names them («Риск», conclusion 209, У5).
+	"vm_get": {fields: []string{"name", "interfaces", "security_groups", "checks", "exposure", "image"}},
 	// The roles of the key, as IAM names them: anyone who may create a
 	// custom role in the organization names it (A0-2).
 	"whoami": {fields: []string{"roles"}},
@@ -81,12 +116,32 @@ var untrustedFields = map[string]untrustedAnswer{
 	"pg_operation":    {fields: []string{"error"}},
 	"redis_operation": {fields: []string{"error"}},
 	"vpc_operation":   {fields: []string{"error"}},
+	// The clusters of a list by their names: anyone with access to the
+	// project names a cluster (release plan 1.9, «Просроченные убывающие
+	// списки»).
+	"k8s_list":   {fields: []string{"clusters"}},
+	"pg_list":    {fields: []string{"clusters"}},
+	"kafka_list": {fields: []string{"clusters"}},
+	"redis_list": {fields: []string{"clusters"}},
+	// A cluster as its service answers it, whole: its name, and the names
+	// of what it holds, are what members of the project wrote. access of
+	// pg_get is evo's.
+	"k8s_get":   {whole: true},
+	"pg_get":    {whole: true, own: []string{"access"}},
+	"kafka_get": {whole: true},
+	"redis_get": {whole: true},
+	// The zones and the flavors of a catalogue, as the platform names
+	// them: text evo did not write.
+	"k8s_options": {fields: []string{"flavors", "zones", "defaults"}},
+	"kafka_specs": {fields: []string{"availability_zone", "specifications"}},
+	"redis_specs": {fields: []string{"availability_zone", "specifications"}},
 	// The name of a node pool and the labels and taints of its nodes:
 	// anyone with access to the project writes them.
 	"k8s_nodepool_get": {fields: []string{"name", "cluster_name", "labels", "taints"}},
 	// A backup and its source, as anyone with access to the project names
 	// them (docs/internal/briefs/backups.md).
-	"backup_get":  {fields: []string{"name", "description", "tags", "resource_name", "source"}},
+	// The plan of a backup by its name too (FB19I-21).
+	"backup_get":  {fields: []string{"name", "description", "tags", "resource_name", "source", "protection_plan"}},
 	"backup_list": {fields: []string{"backups"}},
 	// The names of the backup and of its source, in the preview and the
 	// answer (the audit of #1544, С1).
@@ -107,9 +162,12 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The status of the resource as its service writes it, in the refusal
 	// of a delete in a state no run has shown («Риск», 181, У2): a word
 	// of the cloud, not of a closed set.
-	"k8s_delete": {fields: []string{"resource_status"}},
-	"lb_delete":  {fields: []string{"resource_status"}},
-	"tg_delete":  {fields: []string{"resource_status"}},
+	// The cluster by its name, in the target of the preview of the delete.
+	"k8s_delete":   {fields: []string{"resource_status", "target"}},
+	"kafka_delete": {fields: []string{"target"}},
+	"redis_delete": {fields: []string{"target"}},
+	"lb_delete":    {fields: []string{"resource_status"}},
+	"tg_delete":    {fields: []string{"resource_status"}},
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.
@@ -120,27 +178,29 @@ var untrustedFields = map[string]untrustedAnswer{
 	// The names of the fields a manifest of stack_plan has and its type
 	// does not: the caller's text, which a manifest a cloned repository
 	// brings may write (D108; «Риск», 186, У8).
-	"stack_plan":     {fields: []string{"unknown_fields", "error"}},
+	"stack_plan": {fields: []string{"unknown_fields", "error"}},
+	// The steps of the job in the question of stack_apply: the names and
+	// the values of a manifest, the caller's text a cloned repository may
+	// bring, as stack_plan's.
+	"stack_apply":    {fields: []string{"preview"}},
 	"sg_rule_delete": {fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}},
 }
 
 // markUntrusted adds "_untrusted" to the answers of a tool of
-// untrustedFields: the fields of the list the answer has.
-func markUntrusted(fields []string, next Handler) Handler {
+// untrustedFields: the fields of u the answer has.
+func markUntrusted(u untrustedAnswer, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		text, isErr := next(ctx, args)
+		if u.whole && isErr {
+			return text, isErr
+		}
 		dec := json.NewDecoder(bytes.NewReader([]byte(text)))
 		dec.UseNumber()
 		var m map[string]any
 		if dec.Decode(&m) != nil {
 			return text, isErr
 		}
-		var has []string
-		for _, f := range fields {
-			if _, ok := m[f]; ok {
-				has = append(has, f)
-			}
-		}
+		has := u.in(m)
 		if len(has) == 0 {
 			return text, isErr
 		}

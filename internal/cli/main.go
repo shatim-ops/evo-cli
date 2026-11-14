@@ -36,6 +36,14 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
+// sshDial is the check of port 22 the engines of the CLI make (SSHDial):
+// a TCP connect. Tests of the CLI answer with documentation addresses
+// (203.0.113.0/24): TestMain replaces it with «no answer» and no connect,
+// so a network that answers those addresses (a proxy, a VPN) does not
+// decide a test (release plan 1.9, «Тест … ходит в настоящую сеть»; the
+// guard of «Процесс · 1.9 (3)» found this connect).
+var sshDial = engine.DialSSH
+
 // Build identity, passed to Main by cmd/evo (and the legacy cmd/cloudru-vm),
 // whose own variables a release build sets through goreleaser:
 //
@@ -452,7 +460,7 @@ func buildEngine(flagOverrides map[string]any) (*engine.Engine, error) {
 		QuotaProbe: tools.QuotaProbe,
 		// Port 22 of the VM from here before the question of an update
 		// (M2).
-		SSHDial: engine.DialSSH,
+		SSHDial: sshDial,
 		// Created on first use: list-zones and friends leave no key behind.
 		SSHKeyLoader: func() ([]byte, string, error) {
 			priv, pub, err := loadOrGenerateSSHKey(cwd)

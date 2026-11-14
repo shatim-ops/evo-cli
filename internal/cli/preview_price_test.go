@@ -28,7 +28,7 @@ var noPriceInPreview = map[string]string{
 	"dns_record_create": priceNoNewResource, "dns_record_delete": priceNoNewResource, "dns_zone_delete": priceNoNewResource,
 	"fip_attach": priceNoNewResource, "image_delete": priceNoNewResource, "k8s_apply": priceNoNewResource,
 	"k8s_delete": priceNoNewResource, "k8s_nodepool_delete": priceNoNewResource, "backup_delete": priceNoNewResource, "k8s_helm": priceNoNewResource, "k8s_kubectl": priceNoNewResource,
-	"kafka_delete": priceNoNewResource, "lb_delete": priceNoNewResource, "close_ports": priceNoNewResource, "open_ports": priceNoNewResource, "sg_rule_delete": priceNoNewResource,
+	"kafka_delete": priceNoNewResource, "lb_delete": priceNoNewResource, "close_ports": priceNoNewResource, "sg_rule_delete": priceNoNewResource,
 	"pg_db_create": priceNoNewResource, "pg_db_delete": priceNoNewResource, "pg_delete": priceNoNewResource,
 	"pg_user_create": priceNoNewResource, "pg_user_delete": priceNoNewResource, "redis_delete": priceNoNewResource,
 	"release_floating_ip": priceNoNewResource, "s3_bucket_delete": priceNoNewResource, "s3_rm": priceNoNewResource,
@@ -106,7 +106,13 @@ func eachPreview(t *testing.T, fn func(tl tools.Tool, p map[string]any)) {
 			bad = append(bad, tl.Name+": no preview on the fake cloud (parityArgs): "+clipLine(fmt.Sprint(got)))
 			continue
 		}
+		// A preview is under «preview», or the answer itself for the tools
+		// whose question carries its fields at the top (open_ports, the
+		// deletes): read either, or the latter are checked against nothing.
 		p, _ := got["preview"].(map[string]any)
+		if p == nil {
+			p = got
+		}
 		blob, _ := json.Marshal(p)
 		for k := range tl.CLI.SecretFiles {
 			if v, _ := args[k].(string); v != "" && strings.Contains(string(blob), v) {

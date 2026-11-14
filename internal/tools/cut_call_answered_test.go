@@ -62,7 +62,7 @@ func TestIntent_ACommandsQuestionKeepsTheCutCallUntilAPersonAnswers(t *testing.T
 		}
 	}
 	// A person answered the question of the command.
-	r.CutCallAnswered(command, tool, args(false))
+	r.CutCallAnswered(command, tool, args(false), nil)
 	if left := intent.Pending(dir); len(left) != 0 {
 		t.Fatalf("the person answered and the record stays: %+v", left)
 	}
@@ -80,7 +80,7 @@ func TestIntent_ACommandsQuestionKeepsTheCutCallUntilAPersonAnswers(t *testing.T
 		if _, err := intent.Open(dir, other); err != nil {
 			t.Fatal(err)
 		}
-		r.CutCallAnswered(command, tool, args(false))
+		r.CutCallAnswered(command, tool, args(false), nil)
 		if got := len(intent.Pending(dir)); got != i+1 {
 			t.Errorf("the answer closed a record that is not the caller's cut call of the tool on the resource: %+v (%d left, want %d)", other, got, i+1)
 		}
