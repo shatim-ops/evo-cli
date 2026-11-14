@@ -116,7 +116,12 @@ func TestK8sNodePool_EveryStatusOfTheTableHasAWorld(t *testing.T) {
 						problem = "no question"
 					}
 				case poolRowSettles:
-					if problem = usage("until the status settles"); problem == "" && len(w.reqs) < 3 {
+					// The read of the card and at least one read of the
+					// wait: the wait reads at once, then until its limit.
+					// More reads than these two depend on the runner's
+					// speed — 30 ms of the world's wait held one read on
+					// a loaded macOS (#1973, 14.11).
+					if problem = usage("until the status settles"); problem == "" && len(w.reqs) < 2 {
 						problem = "did not wait for the status"
 					}
 				case poolRowNotRunning:
