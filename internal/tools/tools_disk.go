@@ -349,7 +349,7 @@ func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string,
 // diskFailed ends a wait for a disk the platform put in an error state.
 type diskFailed struct{ state string }
 
-func (e *diskFailed) Error() string { return "the disk is in state " + e.state }
+func (e *diskFailed) Error() string { return "the disk is in state " + quoteCloud(e.state) }
 
 // diskAtLimit ends a wait for a disk at the limit of an MCP call (D69):
 // the disk goes on in the cloud, the answer says its state and the step
@@ -763,13 +763,16 @@ func diskCreatePreview(eng *engine.Engine, req provision.CreateDiskReq, attachTo
 // being made at the limit is creating, with its state and disk_list of
 // that disk as the next step; one the platform failed to make is its
 // refusal, with the disk's id (CLAUDE.md §6, axis 2; Астра #1814: the
-// answer said created, its disk creating; «Риск» conclusion 227).
+// answer said created, its disk creating; «Риск» conclusion 227). The
+// outcome is the wait's: a read after it that names the disk otherwise —
+// not available, or no disk — does not make created say creating (Астра
+// #1854). A wait the caller cancelled is INTERRUPTED (D69), with the disk's
+// id and the same next step. A state of the cloud in a text of evo is
+// quoted (quoteCloud).
 func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]any, projectID string) (string, bool) {
 	id, _ := disk["id"].(string)
-	st, _ := disk["state"].(string)
-	if st == "" {
-		st, _ = disk["status"].(string)
-	}
+	st := diskState(disk)
+	cancelled := false
 	if !strings.EqualFold(st, "available") {
 		err := waitDiskAvailable(ctx, eng, id, projectID)
 		var lim *diskAtLimit
@@ -786,11 +789,18 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 					"Диск показывает disk_list ids=[%s]; удалять ли его (disk_delete) — спросите человека.", id), err), res), true
 		case err != nil:
 			// Not available by the end of the wait: still being made.
+			cancelled = errors.Is(err, context.Canceled)
 		default:
-			// The disk as it is now, when the read names it; else the
-			// create's answer stays, with its id (axis 3).
-			if d, e := eng.Cloud.GetDisk(ctx, id); e == nil && d["id"] == id {
+			// The disk as it is now, when the read names it available;
+			// else the create's answer, with its id (axis 3) and the
+			// state the wait saw.
+			if d, e := eng.Cloud.GetDisk(ctx, id); e == nil && d["id"] == id && strings.EqualFold(diskState(d), "available") {
 				res["disk"] = d
+			} else {
+				was := maps.Clone(disk)
+				delete(was, "status")
+				was["state"] = "available"
+				res["disk"] = was
 			}
 			return toJSON(res), false
 		}
@@ -805,9 +815,27 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		}
 		res["disk_id"] = id
 		res["disk_state"] = st
+		word := st
+		if st != "unknown" {
+			word = quoteCloud(st)
+		}
 		res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list ids=[%s] shows its state.",
-			"Диск %s — %s: платформа ещё не сделала его доступным. Его состояние показывает disk_list ids=[%s].", id, st, id)
+			"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list ids=[%s].", id, word, id)
 		nextStep(res, "disk_list", map[string]any{"ids": []any{id}})
 	}
+	if cancelled {
+		return errAnswer(fmt.Errorf("%s: %w", i18n.Tf("disk %s: the wait was cancelled, the platform goes on making it",
+			"диск %s: ожидание прервано, платформа продолжает создание", id), context.Canceled), res), true
+	}
 	return toJSON(res), false
+}
+
+// diskState is the state of a disk as its card names it: state, else
+// status.
+func diskState(d map[string]any) string {
+	if st, _ := d["state"].(string); st != "" {
+		return st
+	}
+	st, _ := d["status"].(string)
+	return st
 }
