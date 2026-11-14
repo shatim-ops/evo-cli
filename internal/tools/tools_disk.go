@@ -787,7 +787,9 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		case err != nil:
 			// Not available by the end of the wait: still being made.
 		default:
-			if d, e := eng.Cloud.GetDisk(ctx, id); e == nil {
+			// The disk as it is now, when the read names it; else the
+			// create's answer stays, with its id (axis 3).
+			if d, e := eng.Cloud.GetDisk(ctx, id); e == nil && d["id"] == id {
 				res["disk"] = d
 			}
 			return toJSON(res), false
