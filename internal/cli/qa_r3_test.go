@@ -5,7 +5,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -79,22 +78,13 @@ func TestVMList_RejectedKey_Russian(t *testing.T) {
 	fc := setupCLI(t)
 	saveProfile(t, "default", "p-1")
 	fc.iamStatus = http.StatusUnauthorized
-	code, _, stderr := runCLI(t, "", "--json", "vm", "list")
+	code, e := personError(t, "vm", "list")
 	if code != clerrors.ExitAuth {
-		t.Fatalf("exit %d, want %d: %s", code, clerrors.ExitAuth, stderr)
+		t.Fatalf("exit %d, want %d: %+v", code, clerrors.ExitAuth, e)
 	}
-	var got struct {
-		Error struct {
-			Reason, Message, Hint string
-		} `json:"error"`
-	}
-	lines := strings.Split(strings.TrimSpace(stderr), "\n")
-	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &got); err != nil {
-		t.Fatalf("stderr: %v\n%s", err, stderr)
-	}
-	if got.Error.Reason != clerrors.CodeAuthFailed ||
-		!strings.Contains(got.Error.Message, "IAM отклонил ключ доступа (статус 401)") ||
-		!strings.Contains(got.Error.Hint, "проверьте там Key ID и секрет") {
-		t.Errorf("error %+v", got.Error)
+	if e.Reason != clerrors.CodeAuthFailed ||
+		!strings.Contains(e.Message, "IAM отклонил ключ доступа (статус 401)") ||
+		!strings.Contains(e.Hint, "проверьте там Key ID и секрет") {
+		t.Errorf("error %+v", e)
 	}
 }

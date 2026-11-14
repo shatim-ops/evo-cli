@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -52,7 +53,11 @@ func TestVMCreate_JSONStdoutIsToolAnswerProgressNowhere(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s\n%s", code, out, errOut)
 	}
-	if want := toolAnswer(t, cloud) + "\n"; out != want {
+	// --json is the tool's answer over MCP, English in Russian too (D6).
+	i18n.SetLang(i18n.EN)
+	want := toolAnswer(t, cloud) + "\n"
+	i18n.SetLang(i18n.RU)
+	if out != want {
 		t.Errorf("stdout is not the tool's answer:\n got %q\nwant %q", out, want)
 	}
 	// --json: no progress at all, as deploy --json; stderr holds JSON lines
