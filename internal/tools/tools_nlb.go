@@ -280,6 +280,7 @@ func (s *Registry) planTgCreate(ctx context.Context, args map[string]any) (*Plan
 		if op.ResourceID != "" {
 			out["tg_id"] = op.ResourceID
 		}
+		s.goingOn(ctx, out, "lb_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
 	}}, nil
 }
@@ -440,6 +441,7 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		if op.ResourceID != "" {
 			out["lb_id"] = op.ResourceID
 		}
+		s.goingOn(ctx, out, "lb_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
 	}}, nil
 }

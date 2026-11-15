@@ -122,6 +122,7 @@ func (s *Registry) planArCreate(ctx context.Context, args map[string]any) (*Plan
 			out["note"] = i18n.T("Async — poll ar_operation(operation_id) until done=true; then ar_list for the id/status ACTIVE. Push images to <registry>.cr.cloud.ru (docker login with the SA key).",
 				"Асинхронно — опрашивайте evo ar operation <operation_id> до done=true; затем id и статус ACTIVE покажет evo ar list. Образы отправляйте в <registry>.cr.cloud.ru (docker login с ключом сервисного аккаунта).")
 		}
+		s.goingOn(ctx, out, "ar_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
 	}}, nil
 }

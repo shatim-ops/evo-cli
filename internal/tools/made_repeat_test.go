@@ -173,6 +173,19 @@ func TestCreate_ARepeatWhileItsOperationGoesOnSendsNoSecondCreate(t *testing.T) 
 			if rep, _ := m["repeat_of"].(map[string]any); rep == nil || m["next_tool"] == nil {
 				t.Errorf("the repeat does not name the first create and its read: %s", text)
 			}
+			// An answer that names its operation goes on in the read of
+			// it, not of the list (the remainder of finding 01: ar, lb, tg,
+			// vpc; §6, axis 2).
+			var f map[string]any
+			_ = json.Unmarshal([]byte(first), &f)
+			if f["operation_id"] != nil {
+				if next, _ := m["next_tool"].(string); !strings.HasSuffix(next, "_operation") {
+					t.Errorf("the create answers its operation %v, the repeat reads %v: %s", f["operation_id"], m["next_tool"], text)
+				}
+				if next, _ := f["next_tool"].(string); !strings.HasSuffix(next, "_operation") {
+					t.Errorf("the create answers its operation %v and names the step %v: %s", f["operation_id"], f["next_tool"], first)
+				}
+			}
 		})
 	}
 	for tool := range finding01 {
@@ -269,6 +282,11 @@ func TestMadeEnded(t *testing.T) {
 		{`{"count":0,"subnets":[]}`, false, madeListGrace / 2, false},
 		{`{"count":0,"subnets":[]}`, false, madeListGrace * 2, true},
 		{`{"count":1,"subnets":[{}]}`, false, time.Hour, false},
+		// The read of an operation: ended with an error, done, going on.
+		{`{"id":"op-1","done":true,"error":{"code":13,"message":"x"}}`, false, 0, true},
+		{`{"id":"op-1","done":true,"error":"x"}`, false, 0, true},
+		{`{"id":"op-1","done":true,"resource_status":"ACTIVE"}`, false, 0, false},
+		{`{"id":"op-1","done":false}`, false, time.Hour, false},
 	} {
 		if got := madeEnded(c.read, c.isErr, c.age); got != c.want {
 			t.Errorf("madeEnded(%s, %v, %v) = %v, want %v", c.read, c.isErr, c.age, got, c.want)
