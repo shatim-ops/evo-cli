@@ -433,7 +433,7 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 	case len(projects) == 1:
 		p := projects[0]
 		if !printer.IsJSON() {
-			fmt.Fprintf(con.out, i18n.T("Using project %s (%s)\n", "Проект: %s (%s)\n"), p.Name, p.ID)
+			fmt.Fprintf(con.out, i18n.T("Using project %s (%s)\n", "Проект: %s (%s)\n"), output.SanitizeCell(p.Name), output.SanitizeCell(p.ID))
 		}
 		return p.ID, nil
 	case len(projects) == 0:
@@ -468,7 +468,7 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 		if p.ID == current {
 			mark, def = "*", i+1
 		}
-		fmt.Fprintf(con.out, " %s%2d) %s  %s\n", mark, i+1, p.ID, p.Name)
+		fmt.Fprintf(con.out, " %s%2d) %s  %s\n", mark, i+1, output.SanitizeCell(p.ID), output.SanitizeCell(p.Name))
 	}
 	for {
 		prompt := i18n.T("Choose a project (number or ID): ", "Выберите проект (номер или ID): ")
@@ -626,7 +626,7 @@ func askZone(ctx context.Context, eng *engine.Engine, current string, con *conso
 		if z.ID == current {
 			mark, def = "*", i+1
 		}
-		fmt.Fprintf(con.out, " %s%2d) %s  %s\n", mark, i+1, z.Name, z.ID)
+		fmt.Fprintf(con.out, " %s%2d) %s  %s\n", mark, i+1, output.SanitizeCell(z.Name), output.SanitizeCell(z.ID))
 	}
 	prompt := i18n.Tf("Choose a zone (number, name or ID) [%d]: ", "Выберите зону (номер, имя или ID) [%d]: ", def)
 	for {

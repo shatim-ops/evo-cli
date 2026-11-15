@@ -494,3 +494,28 @@ func TestSearch_SharedLeavesProjectImagesOut(t *testing.T) {
 		}
 	}
 }
+
+// A command shown to copy quotes every word the shell would read as
+// anything but itself: a field or image name from the cloud is data, not
+// shell syntax (Risk 273-1).
+func TestShellQuote_CloudWordsStayOneWord(t *testing.T) {
+	for in, want := range map[string]string{
+		"ubuntu-22.04":  "ubuntu-22.04",
+		"user_password": "user_password",
+		"x $(id)":       "'x $(id)'",
+		"a;reboot":      "'a;reboot'",
+		"a|b":           "'a|b'",
+		"a&b":           "'a&b'",
+		"a>b":           "'a>b'",
+		"a*":            "'a*'",
+		"it's":          `'it'\''s'`,
+		"":              "''",
+	} {
+		if got := ShellQuote(in); got != want {
+			t.Errorf("ShellQuote(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := MetaFlags([]string{"license_key", "x $(id)"}, "<value>"); got != " --meta license_key=<value> --meta 'x $(id)'=<value>" {
+		t.Errorf("MetaFlags = %q", got)
+	}
+}
