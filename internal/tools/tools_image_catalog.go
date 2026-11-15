@@ -244,7 +244,7 @@ func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (str
 		"fields":          fields,
 		"fields_required": needs,
 		"create": map[string]any{
-			"cli":  "evo vm create <vm-name> --image " + images.ShellQuote(img.Name) + metaFlags(needs),
+			"cli":  "evo vm create <vm-name> --image " + images.ShellQuote(img.Name) + images.MetaFlags(needs, "<value>"),
 			"tool": "provision",
 			"args": map[string]any{"image_id": img.ID},
 		},
@@ -260,15 +260,6 @@ func (s *Registry) handleImageGet(ctx context.Context, args map[string]any) (str
 		out["note"] = notInProjectNote + " Pick another image: image_list (it hides such images by default)."
 	}
 	return toJSON(out), false
-}
-
-// metaFlags are the --meta flags of the fields the person must fill.
-func metaFlags(fields []string) string {
-	out := ""
-	for _, f := range fields {
-		out += " --meta " + f + "=<value>"
-	}
-	return out
 }
 
 // handleListImages is list_images as it was before image_list: the full
