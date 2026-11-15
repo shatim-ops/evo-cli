@@ -28,17 +28,6 @@ var shippedVMRefCalls = map[string]func(ref string) map[string]any{
 	"vm_get":     func(ref string) map[string]any { return map[string]any{"vm_id": ref} },
 }
 
-// shippedVMRefPreviewHasNoID are the released tools whose preview names
-// the VM only as the call named it, not by the id it was resolved to: with
-// two VMs of a name the preview does not tell which one the write goes to.
-// For them the test sees only that the call is not refused. "tool" → what
-// the preview has. A finding for «разработка» (CLAUDE.md §6, axis 4), not
-// a miss of this test: the line goes when the preview names the id.
-var shippedVMRefPreviewHasNoID = map[string]string{
-	"disk_create": "the preview names attach_to as given",
-	"fip_attach":  "will_attach.vm is the name as given",
-}
-
 // The reference to a VM is resolved at one point, with the strictness
 // declared per tool (strictVMRef, D99): the tools of the first wave refuse
 // a name two VMs have and answer VM_NOT_FOUND; the released ones keep the
@@ -75,10 +64,6 @@ func TestVMRef_ReleasedToolsKeepTheirAnswer(t *testing.T) {
 		switch {
 		case m["status"] == "error":
 			t.Errorf("%s by a name two VMs have: refused (%v) — a released tool takes the first VM of the name; refusing is breaking\n%s", tool, m["reason"], text)
-		case shippedVMRefPreviewHasNoID[tool] != "":
-			if strings.Contains(text, agentDiskVM) {
-				t.Errorf("shippedVMRefPreviewHasNoID names %s, whose answer names the VM's id now: remove the line", tool)
-			}
 		case !strings.Contains(text, agentDiskVM):
 			t.Errorf("%s by a name two VMs have: the answer does not name the first VM %s\n%s", tool, agentDiskVM, text)
 		case strings.Contains(text, shippedVMRefSecond):
