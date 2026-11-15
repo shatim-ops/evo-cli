@@ -69,16 +69,12 @@ var statusOver = map[string]bool{
 // 1.9, «Инварианты до новых изменяющих операций», Н3; R-17: next_tool and
 // next_args are additive, not breaking).
 var noNextStep = map[string]string{
-	"ar_create":         "creating, operation_id: next is ar_operation",
 	"ca_deploy":         "deploying, operation_id",
 	"cert_issue_le":     "issuing, no operation_id",
 	"cert_renew":        "renewing, no operation_id",
 	"dns_record_create": "creating, operation_id: next is dns_operation",
 	"dns_zone_create":   "creating, operation_id: next is dns_operation",
 	"image_create":      "building, no operation_id",
-	"lb_create":         "creating, operation_id: next is lb_operation",
-	"tg_create":         "creating, operation_id: next is lb_operation",
-	"vpc_create":        "creating, operation_id: next is vpc_operation",
 	"vpc_route_create":  "creating, operation_id: next is vpc_operation",
 	"vpc_route_delete":  "deleting, operation_id: next is vpc_operation",
 }
@@ -87,8 +83,9 @@ var noNextStep = map[string]string{
 // the resource, names its state now (resource_status), beside the step
 // (release plan 1.9, «Честный ход», #1816; Астра, #1815).
 var resourceStateNamed = map[string]bool{
-	"k8s_add_addon": true, "k8s_add_nodepool": true, "k8s_create": true, "kafka_create": true,
-	"pg_backup_create": true, "pg_create": true, "redis_create": true,
+	"ar_create": true, "k8s_add_addon": true, "k8s_add_nodepool": true, "k8s_create": true, "kafka_create": true,
+	"lb_create": true, "pg_backup_create": true, "pg_create": true, "redis_create": true, "tg_create": true,
+	"vpc_create": true,
 }
 
 // afterOperation are the creates whose resource the read of the operation

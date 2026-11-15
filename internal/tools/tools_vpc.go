@@ -111,6 +111,7 @@ func (s *Registry) planVpcCreate(ctx context.Context, args map[string]any) (*Pla
 			out["note"] = i18n.T("Async — poll vpc_operation(operation_id); then vpc_list for the id.",
 				"Асинхронно — опрашивайте evo vpc operation <operation_id>; затем id покажет evo vpc list.")
 		}
+		s.goingOn(ctx, out, "vpc_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
 	}}, nil
 }

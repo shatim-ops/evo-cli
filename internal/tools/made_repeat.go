@@ -108,7 +108,8 @@ func madeGoesOn(tool, answer string) (id, next string, nextArgs map[string]any, 
 
 // madeEnded tells a read of the step of a create that says nothing goes
 // on: the resource is not found by the read (NOT_FOUND), it or its
-// operation is in a state of error, or — past madeListGrace — a read by id
+// operation is in a state of error, its operation is done with an error,
+// or — past madeListGrace — a read by id
 // lists none of it. A read that fails otherwise tells nothing.
 func madeEnded(read string, isErr bool, age time.Duration) bool {
 	if isErr {
@@ -121,6 +122,12 @@ func madeEnded(read string, isErr bool, age time.Duration) bool {
 	}
 	for _, k := range []string{"status", "state"} {
 		if st, _ := m[k].(string); st != "" && (madeKind(st) == stateFailed || strings.EqualFold(st, "failed")) {
+			return true
+		}
+	}
+	// The read of an operation (*_operation): done with an error.
+	if done, _ := m["done"].(bool); done {
+		if _, _, failed := opFailure(m["error"]); failed {
 			return true
 		}
 	}
