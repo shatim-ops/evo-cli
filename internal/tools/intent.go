@@ -144,6 +144,9 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			intent.Settle(dir, rec)
 			return
 		}
+		// A create the platform took whose operation goes on: the same
+		// call again reads it (rememberMade, repeatOfMade).
+		r.rememberMade(rec, answer)
 		intent.Close(rec)
 		intent.Settle(dir, rec)
 	}, nil

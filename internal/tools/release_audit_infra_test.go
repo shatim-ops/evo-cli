@@ -810,7 +810,10 @@ func TestK8s_NotesInCLIWords(t *testing.T) {
 			[]string{"k8s_nodepools"},
 			[]string{"evo k8s nodepools cl-1"}},
 	}
+	// Each language its own state: the same k8s_create again in one
+	// state is a repeat of the first, which goes on, and reads it.
 	notes := func() []string {
+		r = raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
 		var out []string
 		for _, c := range calls {
 			m, text, isErr := callNamed(t, r, c.tool, c.args)
