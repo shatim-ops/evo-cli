@@ -80,10 +80,4 @@ func TestHeld_EveryCreateNamesWhatItMakesInItsRecord(t *testing.T) {
 // tool → why. The walk found them when it was written. The list only
 // shrinks: a line whose tool names its resource now fails the test.
 // Closes by 1.9 (gap П2 of the coverage of 1.9, before rc.1).
-var heldNameMisses = map[string]string{
-	// The zone is named by domain, and intentResource reads name (or
-	// Created.arg): two zones of one VPC are one record — a held record of
-	// one closes on the answer of the other. The fix — the layer reads the
-	// arguments of CreateName — is «разработка»'s (intent.go).
-	"dns_zone_create": "the record reads name, the zone is named by domain",
-}
+var heldNameMisses = map[string]string{}

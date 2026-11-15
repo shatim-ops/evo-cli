@@ -318,7 +318,7 @@ var cliSpecs = map[string]CLISpec{
 // what a Russian text of the CLI names where the English one names the
 // tool (D6, #1834). A tool with no command is named as it is.
 func cliCommand(tool string) string {
-	spec, ok := cliSpecs[tool]
+	spec, ok := commandOf(tool)
 	if !ok {
 		return tool
 	}

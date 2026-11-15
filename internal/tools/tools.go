@@ -1360,7 +1360,7 @@ func (s *Registry) registerTools() {
 			Description: "List TLS certificates in the project; filter by name, dns_name, common_name, type, state. TLS ends on the VM or app that serves the site — the load balancer is L4 TCP without TLS. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Name or part of the certificate name (optional)."),
-				"dns_name":    strProp("One of the certificate's DNS names, e.g. shkrbkv.ru (optional)."),
+				"dns_name":    strProp("One of the certificate's DNS names, e.g. example.com (optional)."),
 				"common_name": strProp("Partial common-name (CN) filter (optional)."),
 				"type":        strProp("CERTIFICATE_TYPE_IMPORTED | CERTIFICATE_TYPE_SELF_SIGNED | CERTIFICATE_TYPE_LETS_ENCRYPT (optional)."),
 				"state":       strProp("CERTIFICATE_STATE_ACTIVE | CERTIFICATE_STATE_EXPIRED (optional)."),
@@ -1376,7 +1376,7 @@ func (s *Registry) registerTools() {
 			Description: "Issue a FREE Let's Encrypt TLS certificate for one or more domains (async). The certificate goes to the application: lb_create is L4 TCP and terminates no TLS, so HTTPS ends on the VM (its web server holds the certificate, or issues its own). The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Display name for the certificate. Required."),
-				"dns_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"]. Required."},
+				"dns_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Domains for CN/SAN, e.g. [\"example.com\",\"www.example.com\"]. Required."},
 				"description": strProp("Optional description."),
 				"confirmed":   confirmedProp(),
 			}, "name", "dns_names"),
