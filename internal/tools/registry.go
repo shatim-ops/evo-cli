@@ -390,8 +390,8 @@ func New(factory EngineFactory) *Registry {
 		if t.UntrustedOutput = t.Decl.Untrusted.workload; t.UntrustedOutput {
 			t.Description += " " + untrustedOutputNote
 		}
-		t.CLI = cliSpecs[t.Name]
-		ru := toolsRU[t.Name]
+		t.CLI = t.Decl.CLI
+		ru := t.Decl.RU
 		t.ShortRU, t.DescriptionRU = ru.Short, ru.Long
 		t.ArgDescriptionsRU = argDescriptionsRU(*t, ru.Args)
 		spec, isList := listSpecs[t.Name]
