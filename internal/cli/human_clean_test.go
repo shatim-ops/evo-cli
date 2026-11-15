@@ -128,10 +128,9 @@ func clipAround(s string, i int) string {
 var humanUncleanMisses = map[string]string{
 	"deploy":                           "the step «ВМ <name> (<id>) активна» of deploy names the VM as the cloud sends it — «разработка»",
 	"deploy (every optional argument)": "the same step of deploy — «разработка»",
-	"backup_restore (every optional argument)":     "the line «Подтверждено: создать диск … в зоне <zone>» of the consent names the zone as the cloud sends it — «разработка»",
-	"lb_list (every optional argument)":            "the hint «Известные: …» of a refused filter (internal/tools/list_filters.go) lists the names as the cloud sends them — «разработка»",
-	"tg_list (every optional argument)":            "the same hint of a refused filter — «разработка»",
-	"k8s_addon_versions (every optional argument)": "the title «Схема настроек <version>» of --full — #2026 (C(7)) prints it through output.SanitizeCell",
+	"backup_restore (every optional argument)": "the line «Подтверждено: создать диск … в зоне <zone>» of the consent names the zone as the cloud sends it — «разработка»",
+	"lb_list (every optional argument)":        "the hint «Известные: …» of a refused filter (internal/tools/list_filters.go) lists the names as the cloud sends them — «разработка»",
+	"tg_list (every optional argument)":        "the same hint of a refused filter — «разработка»",
 }
 
 // humanLocalCommands are the local commands (localCommands): no tool, so
