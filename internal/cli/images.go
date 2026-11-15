@@ -255,9 +255,7 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 	if len(a.FieldsRequired) > 0 {
 		fmt.Fprintln(w, i18n.Tf("Needs values evo cannot make itself: %s — pass them with --meta field=value.",
 			"Нужны значения, которых evo сам не знает: %s — передайте их: --meta поле=значение.", output.SanitizeCell(strings.Join(a.FieldsRequired, ", "))))
-		for _, f := range a.FieldsRequired {
-			meta += " --meta " + output.SanitizeCell(f) + i18n.T("=<value>", "=<значение>")
-		}
+		meta = output.SanitizeCell(images.MetaFlags(a.FieldsRequired, i18n.T("<value>", "<значение>")))
 	}
 
 	fmt.Fprintln(w)
