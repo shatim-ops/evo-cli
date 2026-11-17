@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -154,7 +155,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			FloatingIPID: fipID,
 			SSH:          sshString(plan.SSH.Login, ip),
 			ElapsedSec:   int(clock.Since(start).Seconds()),
-			Note:         "VM already existed — adopted (idempotent), nothing recreated; it is " + existing.Status + ": start it in the Cloud.ru console, then call deploy_apply again; whether to delete it instead (destroy) — ask the person",
+			Note:         "VM already existed — adopted (idempotent), nothing recreated; it is " + strconv.Quote(existing.Status) + ": start it in the Cloud.ru console, then call deploy_apply again; whether to delete it instead (destroy) — ask the person",
 		}, nil
 	}
 
@@ -241,7 +242,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		return nil, fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err)
 	}
 
-	show.done(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", plan.VM.Name, vm.ID))
+	show.done(i18n.Tf("Request accepted: VM %s, id %q", "Запрос принят: ВМ %s, id %q", plan.VM.Name, vm.ID))
 	return finishApply(ctx, cloud, plan, vm, password, start, pollTimeout, until, show, "")
 }
 
@@ -323,7 +324,7 @@ poll:
 				return &ApplyResult{
 					VMID: vm.ID, Status: "error", Password: password,
 					ElapsedSec: int(clock.Since(start).Seconds()),
-					Note:       "VM entered state " + cur.Status + "; whether to delete it (destroy) and retry — ask the person",
+					Note:       "VM entered state " + strconv.Quote(cur.Status) + "; whether to delete it (destroy) and retry — ask the person",
 				}, nil
 			}
 		}
@@ -606,7 +607,7 @@ type ForeignVMError struct {
 }
 
 func (e *ForeignVMError) Error() string {
-	return fmt.Sprintf("a VM named %q already exists (id %s, status %s), and this folder's evo did not create it (its state does not record it); nothing was created", e.Name, e.ID, e.Status)
+	return fmt.Sprintf("a VM named %q already exists (id %q, status %q), and this folder's evo did not create it (its state does not record it); nothing was created", e.Name, e.ID, e.Status)
 }
 
 // findVMByName looks the plan's VM up in its project. GET /vms without a

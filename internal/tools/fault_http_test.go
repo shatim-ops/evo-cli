@@ -582,7 +582,7 @@ func TestLostCreate_FoundSaysItsStatus(t *testing.T) {
 		return []map[string]any{{"id": "c-1", "name": "evo-k", "status": "FAILED"}}, nil
 	}
 	text, isErr := lostCreate(context.Background(), "kafka_create", failed, "Kafka cluster", "evo-k", nil, "kafka_get cluster_id", errors.New("create cluster: lost"))
-	if isErr || !strings.Contains(text, "c-1") || !strings.Contains(text, "status FAILED") {
+	if isErr || !strings.Contains(text, "c-1") || !strings.Contains(text, `status \"FAILED\"`) {
 		t.Errorf("answer %s: want c-1 and its status FAILED", text)
 	}
 	// A script that reads status alone must not wait for a failed one to
