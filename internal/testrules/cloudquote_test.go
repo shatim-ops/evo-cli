@@ -63,11 +63,7 @@ var unquotedCloudLocals = map[string]int{
 	"internal/tools/tools_backup.go|backupOfTheName":                1,
 	"internal/tools/tools_deploy.go|Registry.planReleaseFloatingIP": 2,
 	"internal/tools/tools_deploy.go|appliedPlan":                    4,
-	"internal/tools/tools_disk.go|Registry.planDiskCreate":          1,
-	"internal/tools/tools_disk.go|diskAttachedError":                4,
-	"internal/tools/tools_disk.go|diskCreated":                      2,
 	"internal/tools/tools_pg.go|Registry.planPgCreate":              1,
-	"internal/tools/tools_snat.go|Registry.planSnatCreate":          1,
 	"internal/tools/tools_stack.go|Registry.advance":                2,
 }
 
