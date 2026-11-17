@@ -126,12 +126,15 @@ func (p *Printer) Step(n, total int, msg string) {
 	}
 }
 
-// StepDone prints step completion: "    detail"
+// StepDone prints step completion: "    detail". The detail is one line
+// that may name what the cloud sent (a VM's name): it is printed cleaned
+// (sanitizeCell), the one point for every step of every command.
 func (p *Printer) StepDone(detail string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
+	detail = sanitizeCell(detail)
 	if p.color {
 		fmt.Fprintf(p.out, "    %s%s%s\n", colorDim, detail, colorReset)
 	} else {
