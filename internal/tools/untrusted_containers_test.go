@@ -5,11 +5,11 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"maps"
 	"net/http"
 	"slices"
-	"sort"
 	"testing"
 	"time"
 
@@ -112,18 +112,41 @@ func TestUntrustedContainers_MarkedInEveryAnswer(t *testing.T) {
 			}
 		}
 	}
-	// The worlds must reach each field: a field no answer has is no check.
-	var missing []string
-	for _, f := range untrustedContainers {
-		if seen[f] == 0 {
-			missing = append(missing, f)
+	t.Logf("answers with a field of untrustedContainers: %v", seen)
+}
+
+// Any answer of any tool with the fields of untrustedContainers marks
+// them, whatever handler gave it: the one point is the registry's wrap of
+// every call (outer), over the policies of a transport too (Wrap: the
+// refusals of --read-only and of MCP over HTTP are answers with an error).
+// The worlds above reach error, hint and preview; this reaches every field
+// with no world of its own (warnings of deploy_plan #2244 and
+// marketplace_list #2245, failures of open_ports #2246, failed of
+// stack_destroy #2247).
+func TestUntrustedContainers_MarkedOverAnyHandler(t *testing.T) {
+	answer := map[string]any{"status": "error", "error": "e", "warnings": []any{"w"}, "failures": []any{"f"},
+		"failed": []any{"x"}, "preview": map[string]any{"message": "p"}, "hint": "h"}
+	for _, isErr := range []bool{false, true} {
+		r := New(nil)
+		for _, tl := range r.Tools() {
+			r.Wrap(tl.Name, func(Handler) Handler {
+				return func(context.Context, map[string]any) (string, bool) { return toJSON(answer), isErr }
+			})
+		}
+		for _, tl := range r.Tools() {
+			text, _ := tl.Handler(context.Background(), map[string]any{})
+			var m map[string]any
+			if err := json.Unmarshal([]byte(text), &m); err != nil {
+				t.Fatalf("%s: not JSON: %s", tl.Name, text)
+			}
+			if _, kept := m["warnings"]; !kept {
+				continue // the call was refused before the handler: the worlds above see it
+			}
+			if bad := unmarkedContainers(m); len(bad) > 0 {
+				t.Errorf("%s (error %v): %v not in _untrusted %v", tl.Name, isErr, bad, m["_untrusted"])
+			}
 		}
 	}
-	sort.Strings(missing)
-	if len(missing) > 0 {
-		t.Errorf("no answer of the worlds has %v: the check does not see them", missing)
-	}
-	t.Logf("answers with a field of untrustedContainers: %v", seen)
 }
 
 // The check of a field: named — passes; not named, or a marker of another
