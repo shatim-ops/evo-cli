@@ -67,7 +67,7 @@ case "$log" in *"internal/a/a.go:4"*) ;; *) echo "FAIL: строка Go с ма�
 git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 
 # Маркер кириллицей при локали C и документы разработки — провал.
-for text in 'по решению владельца' 'см. docs/RELEASING.md' 'решения D — DECISIONS.md' 'фрагмент changelog.d/x.md'; do
+for text in 'Решение владельца 17.11' 'по решению владельца' 'см. docs/RELEASING.md' 'решения D — DECISIONS.md' 'фрагмент changelog.d/x.md'; do
 	echo "$text" >>docs/guide.md
 	git -c user.name=t -c user.email=t@t commit -qam marker
 	rc=0
