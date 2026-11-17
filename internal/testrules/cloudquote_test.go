@@ -63,10 +63,10 @@ var unquotedCloudSteps = map[string]int{
 // (cloudLocals; «Риск», conclusion 312-2): errors and texts here,
 // steps of progress in unquotedCloudLocalSteps. The list only shrinks: a
 // place fixed by quoteCloud leaves it in the same PR. Its fixes are the
-// development's, by this list: A — tools_disk, tools_nlb, tools_snat;
-// B — tools_backup; C — tools_deploy, made.go, tools_stack; the rest
-// (engine, delete_preview, tools.go, tools_pg, opanswer) — by the release's
-// line. Closes by 1.9
+// development's, by this list: A — tools_disk, tools_nlb, tools_snat,
+// engine/deploy.go, engine/destroy.go; B — tools_backup, tools_pg;
+// C — tools_deploy, made.go, tools_stack, opanswer.go,
+// engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
 	"internal/engine/create_preview.go|ShowCreatePreview":           1,
