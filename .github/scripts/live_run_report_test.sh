@@ -16,6 +16,10 @@ d=$FAKE_DATA
 q=.
 a=("$@")
 for ((i = 0; i < ${#a[@]}; i++)); do [ "${a[i]}" != --jq ] || q=${a[i + 1]}; done
+# FAKE_FAIL — часть пути, на которой GitHub «не отвечает».
+if [ "$1" = api ] && [ -n "${FAKE_FAIL:-}" ] && [[ "$*" == *"$FAKE_FAIL"* ]]; then
+  echo "HTTP 502: Bad Gateway" >&2; exit 1
+fi
 # GitHub отвечает не JSON на путь с байтами вне ASCII: заглушка — так же.
 if [ "$1" = api ] && LC_ALL=C grep -q '[^ -~]' <<<"$*"; then
   for x in "$@"; do case $x in repos/*) if LC_ALL=C grep -q '[^ -~]' <<<"$x"; then echo "invalid character '<' looking for beginning of value" >&2; exit 1; fi ;; esac; done
@@ -74,6 +78,16 @@ if ! grep -q "issue create" "$FAKE_CALLS" && grep -q "issue comment 5 --body П�
 RUN_ID=3 RUN_NUMBER=54 RUN_URL=u WORKFLOW=api-probe CONCLUSION=success RUN_ATTEMPT=3 run open
 if ! grep -q "issue edit" "$FAKE_CALLS"; then ok "зелёная попытка заголовок не трогает"; else bad "зелёная попытка: $(cat "$FAKE_CALLS")"; fi
 
+# Без ответа API — красный с причиной, а не тихий исход (Qwen и «Риск»
+# 278 к #2070).
+cp "$D/issues.json" "$D/issues.saved"
+echo '[]' >"$D/issues.json"
+FAKE_FAIL=/actions/runs/ RUN_ID=1 RUN_NUMBER=230 RUN_URL=u WORKFLOW=cloud-e2e CONCLUSION=success run open
+if [ "$rc" = 1 ] && grep -q "не состоялась" <<<"$out" && ! grep -q "разбора не нужно" <<<"$out"; then ok "open: нет ответа о jobs — красный"; else bad "open без jobs: $rc $out"; fi
+FAKE_FAIL=/issues RUN_ID=1 RUN_NUMBER=230 RUN_URL=u WORKFLOW=cloud-e2e CONCLUSION=success run open
+if [ "$rc" = 1 ] && grep -q "не состоялась" <<<"$out" && ! grep -q "issue create" "$FAKE_CALLS"; then ok "open: нет ответа об issue — красный, issue не заводит"; else bad "open без issue: $rc $out"; fi
+mv "$D/issues.saved" "$D/issues.json"
+
 # check
 # Адрес закрытого репозитория собран из частей: путь в нём глубже
 # верхнего каталога — находка сторожа публичного следа.
@@ -111,6 +125,14 @@ echo '[]' >"$D/issues.json"
 echo '{"workflow_runs":[{"id":1,"run_number":230,"created_at":"2026-11-16T09:00:00Z"}]}' >"$D/runs-stand.json"
 run check
 if [ "$rc" = 0 ] && grep -q "created=>=2026-11-18" "$FAKE_CALLS" && grep -q "since=2026-11-18" "$FAKE_CALLS"; then ok "окно — неделя"; else bad "окно — неделя: $rc $out $(grep created= "$FAKE_CALLS" | head -1)"; fi
+rm "$D/runs-stand.json"
+for f in /issues /actions/workflows/; do
+  FAKE_FAIL=$f run check
+  if [ "$rc" = 1 ] && grep -q "не состоялась" <<<"$out" && ! grep -q "разобраны" <<<"$out"; then ok "check: нет ответа ($f) — красный"; else bad "check без ответа ($f): $rc $out"; fi
+done
+echo '{"workflow_runs":[{"id":1,"run_number":231,"created_at":"2026-11-24T09:00:00Z"}]}' >"$D/runs-stand.json"
+FAKE_FAIL=/actions/runs/ run check
+if [ "$rc" = 1 ] && grep -q "не состоялась" <<<"$out"; then ok "check: нет ответа о jobs прогона — красный"; else bad "check без jobs: $rc $out"; fi
 rm "$D/runs-stand.json"
 run nothing
 if [ "$rc" = 2 ]; then ok "неверный вызов — код 2"; else bad "неверный вызов: $rc"; fi

@@ -34,13 +34,26 @@ REPORT_RE='evo-internal(/pull/[0-9]+|#[0-9]+|/blob/[^ )]*/runs/)'
 
 title_of() { printf 'Разбор живого прогона %s %s' "$1" "$2"; }
 
-# live RUN_ID — начался ли job вне NOT_LIVE (хотя бы один шаг).
+# api_fail WHAT — ответа GitHub нет: красный с причиной, а не «нечего
+# разбирать» и не «всё разобрано» (ревью Qwen и «Риск» 278 к #2070:
+# сбой сторожа — красная проверка, а не тихий зелёный).
+# Вывод — в исходный stdout (fd 3): из подстановки $(…) строка не уходит
+# в значение, а код 1 вызывающий передаёт дальше.
+exec 3>&1
+api_fail() {
+	echo "::error::GitHub API не ответил ($1): проверка не состоялась" >&3
+	exit 1
+}
+
+# live RUN_ID — начался ли job вне NOT_LIVE (хотя бы один шаг): 0 — да,
+# 1 — нет; без ответа API — api_fail.
 live() {
-	local skip
+	local skip n
 	skip=$(jq -nc --arg s "$NOT_LIVE" '$s | split(" ")')
-	gh api "repos/$GH_REPO/actions/runs/$1/jobs?filter=all&per_page=100" \
-		--jq "[.jobs[] | select((.name as \$n | $skip | index(\$n) | not) and ((.steps // []) | length > 0))] | length" |
-		grep -qv '^0$'
+	n=$(gh api "repos/$GH_REPO/actions/runs/$1/jobs?filter=all&per_page=100" \
+		--jq "[.jobs[] | select((.name as \$n | $skip | index(\$n) | not) and ((.steps // []) | length > 0))] | length") ||
+		api_fail "jobs прогона $1"
+	[ "$n" != 0 ]
 }
 
 # issues STATE [SINCE] JQ — issue сторожа: метка — параметром -f, gh кодирует
@@ -56,7 +69,10 @@ issues() {
 # issue_of TITLE — номер issue сторожа с этим заголовком (с «— красный» или
 # без), открытого или закрытого; пусто — нет.
 issue_of() {
-	issues all "" ".[] | select(.pull_request | not) | select(.title == \"$1\" or (.title | startswith(\"$1 — \"))) | .number" | head -n1
+	local all
+	all=$(issues all "" ".[] | select(.pull_request | not) | select(.title == \"$1\" or (.title | startswith(\"$1 — \"))) | .number") ||
+		api_fail "issue с меткой $LABEL"
+	head -n1 <<<"$all"
 }
 
 case "${1:-}" in
@@ -69,7 +85,7 @@ open)
 	t=$(title_of "$WORKFLOW" "$RUN_NUMBER")
 	red=
 	[ "$CONCLUSION" = success ] || red=" — красный ($CONCLUSION)"
-	n=$(issue_of "$t")
+	n=$(issue_of "$t") || exit 1
 	if [ -n "$n" ]; then
 		gh issue comment "$n" --body "Попытка ${RUN_ATTEMPT:-?}: $CONCLUSION — $RUN_URL" >/dev/null
 		[ -z "$red" ] || gh issue edit "$n" --title "$t$red" >/dev/null
@@ -99,6 +115,10 @@ check)
 	week=$((now - 7 * 86400))
 	[ "$since_s" -ge "$week" ] || since_s=$week
 	from=$(date -u -d "@$since_s" +%Y-%m-%dT%H:%M:%SZ)
+	open_list=$(issues open "" '.[] | select(.pull_request | not) | [.number, .created_at, .title] | @tsv') ||
+		api_fail "открытые issue"
+	closed_list=$(issues closed "$from" '.[] | select(.pull_request | not) | [.number, .closed_at] | @tsv') ||
+		api_fail "закрытые issue"
 	# Открытые дольше суток.
 	while IFS=$'\t' read -r n created t; do
 		[ -n "$n" ] || continue
@@ -107,27 +127,32 @@ check)
 			echo "::error::#$n открыт $age ч без отчёта: $t"
 			bad=1
 		fi
-	done < <(issues open "" '.[] | select(.pull_request | not) | [.number, .created_at, .title] | @tsv')
+	done <<<"$open_list"
 	# Закрытые после SINCE без ссылки на отчёт.
 	while IFS=$'\t' read -r n closed; do
 		[ -n "$n" ] || continue
 		[ "$(date -d "$closed" +%s)" -ge "$since_s" ] || continue
-		if ! gh api "repos/$GH_REPO/issues/$n/comments?per_page=100" --paginate --jq '.[].body' | grep -Eq "$REPORT_RE"; then
+		bodies=$(gh api "repos/$GH_REPO/issues/$n/comments?per_page=100" --paginate --jq '.[].body') ||
+			api_fail "комментарии #$n"
+		if ! grep -Eq "$REPORT_RE" <<<"$bodies"; then
 			echo "::error::#$n закрыт без ссылки на отчёт в evo-internal"
 			bad=1
 		fi
-	done < <(issues closed "$from" '.[] | select(.pull_request | not) | [.number, .closed_at] | @tsv')
+	done <<<"$closed_list"
 	# Живые прогоны после SINCE без issue.
 	for wf in $WORKFLOWS; do
+		runs=$(gh api "repos/$GH_REPO/actions/workflows/$wf.yml/runs?status=completed&created=>=${from%%T*}&per_page=100" \
+			--jq ".workflow_runs[] | select(.created_at >= \"$from\") | [.id, .run_number] | @tsv") ||
+			api_fail "прогоны $wf"
 		while IFS=$'\t' read -r id num; do
 			[ -n "$id" ] || continue
 			live "$id" || continue
-			if [ -z "$(issue_of "$(title_of "$wf" "$num")")" ]; then
+			n=$(issue_of "$(title_of "$wf" "$num")") || exit 1
+			if [ -z "$n" ]; then
 				echo "::error::$wf $num: живой прогон без issue разбора"
 				bad=1
 			fi
-		done < <(gh api "repos/$GH_REPO/actions/workflows/$wf.yml/runs?status=completed&created=>=${from%%T*}&per_page=100" \
-			--jq ".workflow_runs[] | select(.created_at >= \"$from\") | [.id, .run_number] | @tsv")
+		done <<<"$runs"
 	done
 	[ "$bad" = 0 ] && echo "живые прогоны после $from разобраны или в пределах суток"
 	exit "$bad"
