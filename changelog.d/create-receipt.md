@@ -1,6 +1,6 @@
 ### Миграция
 
-- **`pg_db_create`, `pg_user_create` и `secret_add_version`: ответ облака 2xx без квитанции — ошибка, а не успех** (решение владельца 17.11, #1999). Затронуты `evo pg db-create`, `evo pg user-create` и `evo secret add-version`. Было: HTTP 200 с пустым объектом или оборванным JSON — `created` или `version_added`, код 0. Стало: `API_ERROR`, код 5, сообщение «создано ли, неизвестно». Подсказка называет чтение до повтора: `evo pg databases <cluster-id>`, `evo pg users <cluster-id>` или `evo secret get <path>`. Второго запроса evo не шлёт. Что поменять: скрипт, который считал код 0 успехом, на коде 5 с `reason: API_ERROR` читает названный список. Ресурс там есть — создание прошло. Повтор `secret add-version` без такой проверки добавит ещё одну версию.
+- **`pg_db_create`, `pg_user_create` и `secret_add_version`: ответ облака 2xx без квитанции — ошибка, а не успех** (D112, решение владельца 17.11, #1999). Затронуты `evo pg db-create`, `evo pg user-create` и `evo secret add-version`. Было: HTTP 200 с пустым объектом или оборванным JSON — `created` или `version_added`, код 0. Стало: `API_ERROR`, код 5, сообщение «создано ли, неизвестно». Подсказка называет чтение до повтора: `evo pg databases <cluster-id>`, `evo pg users <cluster-id>` или `evo secret get <path>`. Второго запроса evo не шлёт. Что поменять: скрипт, который считал код 0 успехом, на коде 5 с `reason: API_ERROR` читает названный список. Ресурс там есть — создание прошло. Повтор `secret add-version` без такой проверки добавит ещё одну версию.
 
 ### Исправлено
 
