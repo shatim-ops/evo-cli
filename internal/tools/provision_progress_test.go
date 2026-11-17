@@ -28,7 +28,8 @@ import (
 
 // progressCloud answers the polls of the new VM with states in turn (the
 // last one then forever); onPoll runs at every poll (a Ctrl-C mid-wait).
-// fields are the metadata fields of its image (none by default).
+// fields are the metadata fields of its image (none by default); id is the
+// id of the VM it makes, "vm-made" when not set.
 type progressCloud struct {
 	cancelCloud
 	mu       sync.Mutex
@@ -37,6 +38,15 @@ type progressCloud struct {
 	onPoll   func(n int)
 	rulesAdd int
 	fields   []provision.ImageMetadataField
+	id       string
+}
+
+// vmID is the id of the VM the cloud makes.
+func (c *progressCloud) vmID() string {
+	if c.id == "" {
+		return "vm-made"
+	}
+	return c.id
 }
 
 func (c *progressCloud) GetImage(context.Context, string) (*provision.ImageDetail, error) {
@@ -46,7 +56,7 @@ func (c *progressCloud) GetImage(context.Context, string) (*provision.ImageDetai
 func (c *progressCloud) CreateVM(_ context.Context, req provision.CreateVMRequest) (*provision.VM, error) {
 	c.creates++
 	c.createReq = req
-	return &provision.VM{ID: "vm-made"}, nil
+	return &provision.VM{ID: c.vmID()}, nil
 }
 func (c *progressCloud) GetVM(context.Context, string) (*provision.VM, error) {
 	c.mu.Lock()
@@ -58,7 +68,7 @@ func (c *progressCloud) GetVM(context.Context, string) (*provision.VM, error) {
 	if hook != nil {
 		hook(n)
 	}
-	return &provision.VM{ID: "vm-made", Status: st}, nil
+	return &provision.VM{ID: c.vmID(), Status: st}, nil
 }
 func (*progressCloud) GetFloatingIP(context.Context, string) (*provision.FloatingIP, error) {
 	return &provision.FloatingIP{ID: "fip-boot", IPAddress: "203.0.113.9", State: "in_use"}, nil
@@ -185,18 +195,18 @@ func TestProvisionProgress_LiveLineClosedOnEveryExit(t *testing.T) {
 		next    string // the next step said, "" for none
 	}{
 		"success":        {states: []string{"creating", "active"}, timeout: time.Minute},
-		"error":          {states: []string{"creating", "error"}, timeout: time.Minute, isErr: true, next: "VM vm-made is in state error and is billed; check it: evo vm get vm-made; delete it: evo vm delete vm-made\n"},
-		"error_creating": {states: []string{"creating", "error_creating"}, timeout: time.Minute, isErr: true, next: "VM vm-made is in state error_creating and is billed; check it: evo vm get vm-made; delete it: evo vm delete vm-made\n"},
+		"error":          {states: []string{"creating", "error"}, timeout: time.Minute, isErr: true, next: "VM 00000000-0000-4000-8000-0000000000b7 is in state \"error\" and is billed; check it: evo vm get 00000000-0000-4000-8000-0000000000b7; delete it: evo vm delete 00000000-0000-4000-8000-0000000000b7\n"},
+		"error_creating": {states: []string{"creating", "error_creating"}, timeout: time.Minute, isErr: true, next: "VM 00000000-0000-4000-8000-0000000000b7 is in state \"error_creating\" and is billed; check it: evo vm get 00000000-0000-4000-8000-0000000000b7; delete it: evo vm delete 00000000-0000-4000-8000-0000000000b7\n"},
 		"timeout": {states: []string{"creating"}, timeout: 40 * time.Millisecond, isErr: true,
-			next: "VM vm-made is still being created and is billed; check it: evo vm get vm-made; delete it: evo vm delete vm-made; to wait longer next time: CLOUDRU_TIMEOUT (seconds)\n"},
+			next: "VM 00000000-0000-4000-8000-0000000000b7 is still being created and is billed; check it: evo vm get 00000000-0000-4000-8000-0000000000b7; delete it: evo vm delete 00000000-0000-4000-8000-0000000000b7; to wait longer next time: CLOUDRU_TIMEOUT (seconds)\n"},
 		"ctrl-c": {states: []string{"creating"}, timeout: time.Minute, cancel: true, isErr: true,
-			next: "VM vm-made is still being created and is billed; check it: evo vm get vm-made; delete it: evo vm delete vm-made\n"},
+			next: "VM 00000000-0000-4000-8000-0000000000b7 is still being created and is billed; check it: evo vm get 00000000-0000-4000-8000-0000000000b7; delete it: evo vm delete 00000000-0000-4000-8000-0000000000b7\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			run := func(watched bool) (string, bool, string, string) {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
-				cloud := &progressCloud{states: tc.states}
+				cloud := &progressCloud{states: tc.states, id: "00000000-0000-4000-8000-0000000000b7"}
 				if tc.cancel {
 					cloud.onPoll = func(n int) {
 						if n == 3 {
@@ -217,7 +227,7 @@ func TestProvisionProgress_LiveLineClosedOnEveryExit(t *testing.T) {
 			if tc.next == "" && strings.Contains(seen, "evo vm delete") {
 				t.Errorf("a next step on success:\n%q", seen)
 			}
-			if rec := stateHasVM(t, dir, "vm-made"); tc.isErr && rec.Status == "running" {
+			if rec := stateHasVM(t, dir, "00000000-0000-4000-8000-0000000000b7"); tc.isErr && rec.Status == "running" {
 				t.Errorf("record = %+v", rec)
 			}
 			mcp, mcpErr, quiet, mcpDir := run(false)
@@ -227,7 +237,7 @@ func TestProvisionProgress_LiveLineClosedOnEveryExit(t *testing.T) {
 			if mcp = inDir(mcp, mcpDir, dir); mcp != text || mcpErr != isErr {
 				t.Errorf("the answer differs from MCP's:\nCLI %s\nMCP %s", text, mcp)
 			}
-			stateHasVM(t, mcpDir, "vm-made")
+			stateHasVM(t, mcpDir, "00000000-0000-4000-8000-0000000000b7")
 		})
 	}
 }

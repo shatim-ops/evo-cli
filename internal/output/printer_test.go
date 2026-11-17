@@ -338,6 +338,13 @@ func TestStepLines_PrintTheCloudsTextCleaned(t *testing.T) {
 			}
 		}
 	}
+	// An error keeps its line breaks (the matches of an ambiguous name, one
+	// per line); each line is cleaned.
+	var eb bytes.Buffer
+	NewWithWriter(&eb, ModePlain, false).Errorf("%s", "first\n  "+dirty)
+	if out := eb.String(); !strings.Contains(out, "first\n  web") || strings.ContainsAny(out, "\x1b\r\x00\u202e\u2028") {
+		t.Errorf("Errorf of two lines: %q", out)
+	}
 	// Progress prints on a terminal only, redrawn in place with \r by
 	// design: its text past that \r is clean.
 	var buf bytes.Buffer
