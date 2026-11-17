@@ -370,14 +370,21 @@ func bareInConcat(ops []ast.Expr) int {
 	return n
 }
 
-// quoted: the argument is quoteCloud(…).
+// quoted: the argument is quoteCloud(…), or strconv.Quote(…) where a
+// package has no quoteCloud — it escapes as %q does.
 func quoted(e ast.Expr) bool {
 	c, ok := e.(*ast.CallExpr)
 	if !ok {
 		return false
 	}
-	id, ok := c.Fun.(*ast.Ident)
-	return ok && id.Name == "quoteCloud"
+	switch f := c.Fun.(type) {
+	case *ast.Ident:
+		return f.Name == "quoteCloud"
+	case *ast.SelectorExpr:
+		pkg, ok := f.X.(*ast.Ident)
+		return ok && pkg.Name == "strconv" && f.Sel.Name == "Quote"
+	}
+	return false
 }
 
 // The detector itself: what counts as bare and what does not.
