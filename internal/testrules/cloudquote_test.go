@@ -54,7 +54,6 @@ var unquotedCloudSteps = map[string]int{
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
 	"internal/engine/create_preview.go|ShowCreatePreview":           1,
-	"internal/engine/deploy.go|Engine.provisionVM":                  1,
 	"internal/tools/delete_preview.go|Registry.deletePlan":          1,
 	"internal/tools/made.go|madeAnswer":                             10,
 	"internal/tools/tools.go|destroyTargetPreview":                  1,
@@ -64,21 +63,17 @@ var unquotedCloudLocals = map[string]int{
 	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":       3,
 	"internal/tools/tools_deploy.go|Registry.planReleaseFloatingIP": 2,
 	"internal/tools/tools_deploy.go|appliedPlan":                    4,
-	"internal/tools/tools_disk.go|Registry.planDiskCreate":          2,
+	"internal/tools/tools_disk.go|Registry.planDiskCreate":          1,
 	"internal/tools/tools_disk.go|diskAttachedError":                4,
-	"internal/tools/tools_disk.go|diskCreated":                      5,
-	"internal/tools/tools_nlb.go|Registry.planLbCreate":             1,
-	"internal/tools/tools_nlb.go|Registry.planTgCreate":             2,
+	"internal/tools/tools_disk.go|diskCreated":                      2,
 	"internal/tools/tools_pg.go|Registry.planPgCreate":              1,
-	"internal/tools/tools_snat.go|Registry.planSnatCreate":          2,
+	"internal/tools/tools_snat.go|Registry.planSnatCreate":          1,
 	"internal/tools/tools_stack.go|Registry.advance":                2,
 }
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only
 // shrinks. Closes by 1.9 (owner's decision 17.11).
-var unquotedCloudLocalSteps = map[string]int{
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
-}
+var unquotedCloudLocalSteps = map[string]int{}
 
 // A value that came from the cloud — a status, a state, an id — goes into
 // a text of evo (an error, a warning, a hint, a step) only through
