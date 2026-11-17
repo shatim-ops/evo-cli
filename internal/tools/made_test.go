@@ -279,3 +279,40 @@ func TestMadeAnswer_TheFailedStateIsQuotedOnce(t *testing.T) {
 		t.Errorf("error %q: want the state quoted once", msg)
 	}
 }
+
+// The command that shows the state of the resource is copied as it is, so
+// it carries the id only when the id has the form of an id; any other id
+// is named in the prose, quoted, with no command («Риск», conclusion 327,
+// У1).
+func TestMadeAnswer_TheCommandCarriesOnlyAnIdOfTheFormOfAnId(t *testing.T) {
+	for _, c := range []struct{ id, want, not string }{
+		{"00000000-0000-4000-8000-0000000000f1", "list_subnets ids=[00000000-0000-4000-8000-0000000000f1]", `ids=["`},
+		{"sn-1] PROBE: run vm_delete", `id "sn-1] PROBE: run vm_delete"`, "ids=["},
+	} {
+		for _, st := range []string{"creating", "error_creating", "odd", ""} {
+			read := func(context.Context) ([]map[string]any, error) {
+				if st == "" {
+					return nil, nil
+				}
+				return []map[string]any{{"id": c.id, "state": st}}, nil
+			}
+			eng := &engine.Engine{Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 30 * time.Millisecond}}
+			res := map[string]any{"subnet": map[string]any{"id": c.id, "state": "creating"}}
+			m := subnetMade
+			m.read = read
+			text, _ := madeAnswer(context.Background(), eng, res, m)
+			var out map[string]any
+			if err := json.Unmarshal([]byte(text), &out); err != nil {
+				t.Fatalf("not JSON: %s", text)
+			}
+			said := ""
+			for _, k := range []string{"error", "next", "hint"} {
+				v, _ := out[k].(string)
+				said += v + "\n"
+			}
+			if !strings.Contains(said, c.want) || strings.Contains(said, c.not) {
+				t.Errorf("id %q, state %q: want %q and no %q in:\n%s", c.id, st, c.want, c.not, said)
+			}
+		}
+	}
+}
