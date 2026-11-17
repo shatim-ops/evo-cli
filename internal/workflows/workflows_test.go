@@ -1745,7 +1745,15 @@ func TestWorkflows_PublicTraceOfTexts(t *testing.T) {
 		t.Errorf("public-trace: permissions %v — contents: read alone", w.Permissions)
 	}
 	text, runs := false, false
+	// No secret at any level: the workflow's env, a job's env, a step's
+	// run, with or env (Qwen to 5e8bb7a: the job's env was not read).
+	if strings.Contains(fmt.Sprint(w.Env), "secrets.") {
+		t.Error("public-trace: the workflow's env reads a secret")
+	}
 	for name, j := range w.Jobs {
+		if strings.Contains(fmt.Sprint(j.Env), "secrets.") {
+			t.Errorf("public-trace %s: the job's env reads a secret", name)
+		}
 		for _, s := range j.Steps {
 			if strings.Contains(s.Run+fmt.Sprint(s.With)+fmt.Sprint(s.Env), "secrets.") {
 				t.Errorf("public-trace %s: a step reads a secret", name)
