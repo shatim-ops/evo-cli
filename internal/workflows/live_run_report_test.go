@@ -6,7 +6,11 @@ package workflows
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -60,5 +64,33 @@ func TestWorkflows_LiveRunsGetAReport(t *testing.T) {
 	trig, _ = ws["main-red.yml"].On["workflow_run"].(map[string]any)
 	if !slices.Contains(trig["workflows"].([]any), any("live-run-report")) {
 		t.Error("main-red does not follow live-run-report: its red reaches no one")
+	}
+}
+
+// A job of NOT_LIVE gets no report, so it must not be able to change the
+// cloud: it is a job of cloud-e2e whose environment holds a key only for
+// reading (cloud-readonly) or none. A job renamed or given the key of
+// cloud-e2e on main leaves the list red here, not unreported («релиз»
+// 17.11: the nightly readonly job, cloud-e2e 220 and 221).
+func TestWorkflows_NotLiveJobsOnlyRead(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "live_run_report.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^NOT_LIVE="([^"]*)"$`).FindSubmatch(b)
+	if m == nil {
+		t.Fatal("live_run_report.sh: no NOT_LIVE=\"…\"")
+	}
+	jobs := readWorkflows(t)["cloud-e2e.yml"].Jobs
+	for _, name := range strings.Fields(string(m[1])) {
+		j, ok := jobs[name]
+		if !ok {
+			t.Errorf("NOT_LIVE names %s, cloud-e2e has no such job", name)
+			continue
+		}
+		if env := j.Environment; env != "" && env != "cloud-readonly" &&
+			env != "${{ github.ref == 'refs/heads/main' && 'cloud-readonly' || 'cloud-e2e' }}" {
+			t.Errorf("NOT_LIVE job %s runs in environment %q, want cloud-readonly or none", name, env)
+		}
 	}
 }
