@@ -88,8 +88,12 @@ var alwaysUntrusted = []string{"error", "warnings", "failures", "failed", "previ
 // hides an error whose text is the service's (untrustedError) — is the
 // marker of the tool and of errAnswer, not this one.
 func markAlways(next Handler) Handler {
-	return markUntrusted(untrustedAnswer{fields: alwaysUntrusted}, next)
+	return markUntrusted(alwaysMarked, next)
 }
+
+// alwaysMarked is the marker of alwaysUntrusted: markAlways, and the answer
+// a CLI command shows at its gate (Caller.ask), so the two are one.
+var alwaysMarked = untrustedAnswer{fields: alwaysUntrusted}
 
 // markUntrusted adds "_untrusted" to the answers of a tool that declares
 // them (Decl.Untrusted): the fields of u the answer has, beside those the
@@ -100,22 +104,28 @@ func markUntrusted(u untrustedAnswer, next Handler) Handler {
 		if u.whole && isErr {
 			return text, isErr
 		}
-		dec := json.NewDecoder(bytes.NewReader([]byte(text)))
-		dec.UseNumber()
-		var m map[string]any
-		if dec.Decode(&m) != nil {
-			return text, isErr
-		}
-		has := u.in(m)
-		if len(has) == 0 {
-			return text, isErr
-		}
-		for _, f := range stringList(m["_untrusted"]) {
-			if !slices.Contains(has, f) {
-				has = append(has, f)
-			}
-		}
-		m["_untrusted"] = has
-		return toJSON(m), isErr
+		return withUntrusted(u, text), isErr
 	}
+}
+
+// withUntrusted is answer text with the fields of u it has added to its
+// "_untrusted"; text as it is when it has none or is not an object.
+func withUntrusted(u untrustedAnswer, text string) string {
+	dec := json.NewDecoder(bytes.NewReader([]byte(text)))
+	dec.UseNumber()
+	var m map[string]any
+	if dec.Decode(&m) != nil {
+		return text
+	}
+	has := u.in(m)
+	if len(has) == 0 {
+		return text
+	}
+	for _, f := range stringList(m["_untrusted"]) {
+		if !slices.Contains(has, f) {
+			has = append(has, f)
+		}
+	}
+	m["_untrusted"] = has
+	return toJSON(m)
 }
