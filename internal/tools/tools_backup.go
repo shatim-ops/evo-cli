@@ -613,7 +613,7 @@ func (s *Registry) backupCreated(ctx context.Context, eng *engine.Engine, api pr
 			return i18n.Tf("backup %s: %s", "копия %s: %s", id, quoteCloud(st))
 		}
 		done := func(st string) (bool, error) { return st != "creating" && st != "updating", nil }
-		last, _, _, err := waitState(ctx, eng, backupWaitLimit, read, waiting, done)
+		last, _, _, _, err := waitState(ctx, eng, backupWaitLimit, read, waiting, done)
 		if err != nil {
 			return errAnswer(err, ans), true
 		}
@@ -894,7 +894,7 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 	if !wait {
 		limit = 0
 	}
-	last, _, _, werr := waitState(ctx, eng, limit, read, waiting, done)
+	last, _, _, _, werr := waitState(ctx, eng, limit, read, waiting, done)
 	ans := map[string]any{"backup_id": backupID, "name": name}
 	if len(before) > 0 {
 		ids := make([]any, 0, len(before))
