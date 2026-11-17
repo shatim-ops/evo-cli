@@ -56,6 +56,26 @@ git -c user.name=t -c user.email=t@t commit -qam gocomment
 log=$("$here/release_export.sh" HEAD "$tmp/s3" 2>&1) || { echo "FAIL: маркер в комментарии Go — провал: $log"; fail=1; }
 case "$log" in *"файлов Go с маркерами внутреннего в комментариях: 1"*) ;; *) echo "FAIL: отчёт о Go: $log"; fail=1 ;; esac
 
+# Маркер в строке Go — текст продукта: провал, файл и строка названы.
+printf 'package a\n\n// A does nothing.\nfunc A() string { return "see docs/internal/x.md" }\n' >internal/a/a.go
+printf 'package main\n\nimport "example.test/x/internal/a"\n\nfunc main() { _ = a.A() }\n' >cmd/x/main.go
+git -c user.name=t -c user.email=t@t commit -qam gostring
+rc=0
+log=$("$here/release_export.sh" HEAD "$tmp/s4" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: маркер в строке Go — код $rc, ждём 1"; fail=1; }
+case "$log" in *"internal/a/a.go:4"*) ;; *) echo "FAIL: строка Go с маркером не названа: $log"; fail=1 ;; esac
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+
+# Маркер кириллицей при локали C и документы разработки — провал.
+for text in 'по решению владельца' 'см. docs/RELEASING.md' 'решения D — DECISIONS.md' 'фрагмент changelog.d/x.md'; do
+	echo "$text" >>docs/guide.md
+	git -c user.name=t -c user.email=t@t commit -qam marker
+	rc=0
+	LC_ALL=C LANG=C "$here/release_export.sh" HEAD "$tmp/s-$RANDOM" >/dev/null 2>&1 || rc=$?
+	[ "$rc" = 1 ] || { echo "FAIL: «$text» при LC_ALL=C — код $rc, ждём 1"; fail=1; }
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+
 # Латинское Astra (Astra Linux) — не маркер.
 echo 'образ Astra Linux' >>docs/guide.md
 git -c user.name=t -c user.email=t@t commit -qam astra

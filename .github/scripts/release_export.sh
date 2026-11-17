@@ -13,10 +13,15 @@
 # КАТАЛОГ; исходный SHA печатается для описания релиза. Проверки:
 #   - путь вне списка включения — провал (код 1);
 #   - маркер внутреннего (docs/internal, роли, заключения «Риска», Астра,
-#     решения владельца, evo-internal, handoff/) в файле не на Go — провал
-#     (код 1);
-#   - тот же маркер в файле Go — только число файлов в отчёте: комментарии
-#     кода уже публичны в evo-cli (решение «релиза» 17.11, ТЗ п. 1);
+#     решения владельца, evo-internal, handoff/, документы разработки
+#     RELEASING.md, DECISIONS.md, changelog.d) в файле не на Go — провал
+#     (код 1); в строке Go (тексте продукта) — тоже провал;
+#   - тот же маркер в комментарии Go — только число файлов в отчёте:
+#     комментарии кода уже публичны в evo-cli (решение «релиза» 17.11, ТЗ
+#     п. 1);
+#   Маркеры — литеральные последовательности, классы — только из ASCII
+#   (окончание падежа — [^ ]{0,4}): совпадают при любой локали, LC_ALL=C
+#   тоже («Риск», 335, У1).
 #   - go build ./... и go vet ./... на снимке.
 # КАТАЛОГ не существует или пуст. Код 2 — ошибка вызова.
 set -euo pipefail
@@ -60,7 +65,7 @@ done < <(find "$out" -type f -not -path "$out/.git/*")
 
 # Маркеры внутреннего.
 # Астра — внешняя проверка, кириллицей; латинское Astra — это Astra Linux.
-markers='docs/internal|«Риск|«Риска»|Risk», conclusion|conclusion [0-9]|«Процесс|«разработк|— релиз|Астр(а|ы|е|у|ой)[ ,.)#]|evo-internal|решени[ея] владельца|owner'"'"'s decision|release-plan|handoff/'
+markers='docs/internal|«Риск|«Риска»|Risk», conclusion|conclusion [0-9]|«Процесс|«разработк|— релиз|Астр(а|ы|е|у|ой)[ ,.)#]|evo-internal|решени[^ ]{0,4} владельца|owner'"'"'s decision|release-plan|handoff/|RELEASING\.md|DECISIONS\.md|changelog\.d'
 gofiles=0
 while IFS= read -r f; do
 	rel=${f#"$out"/}
@@ -69,6 +74,62 @@ while IFS= read -r f; do
 	*) echo "::error::маркер внутреннего в $rel: $(grep -m1 -oE "$markers" "$f")"; bad=1 ;;
 	esac
 done < <(grep -rlE "$markers" "$out" --exclude-dir=.git || true)
+# Строки Go — текст продукта, который видит пользователь или агент: маркер
+# в них — провал; комментарии — отчёт выше («Риск», 335, У2). Разбор —
+# go/scanner, вне снимка.
+scan=$(mktemp -d)
+trap 'rm -rf "$scan"' EXIT
+cat >"$scan/scan.go" <<'GO'
+package main
+
+import (
+	"fmt"
+	"go/scanner"
+	"go/token"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+)
+
+func main() {
+	re := regexp.MustCompile(os.Args[2])
+	root := os.Args[1]
+	bad := 0
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return err
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		fset := token.NewFileSet()
+		var s scanner.Scanner
+		s.Init(fset.AddFile(path, -1, len(src)), src, nil, 0)
+		for {
+			pos, tok, lit := s.Scan()
+			if tok == token.EOF {
+				break
+			}
+			if (tok == token.STRING || tok == token.CHAR) && re.MatchString(lit) {
+				rel, _ := filepath.Rel(root, path)
+				fmt.Printf("%s:%d: %s\n", rel, fset.Position(pos).Line, re.FindString(lit))
+				bad++
+			}
+		}
+		return nil
+	})
+	if bad > 0 {
+		os.Exit(1)
+	}
+}
+GO
+if ! found=$(cd "$scan" && go run scan.go "$out" "$markers"); then
+	while IFS= read -r l; do echo "::error::маркер внутреннего в строке Go $l"; done <<<"$found"
+	bad=1
+fi
 echo "файлов Go с маркерами внутреннего в комментариях: $gofiles"
 [ "$bad" = 0 ] || { echo "release_export: снимок не чист — не коммичу" >&2; exit 1; }
 
