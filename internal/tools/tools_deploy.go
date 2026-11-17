@@ -501,7 +501,7 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 	case "error":
 		deployplan.Delete(eng.StateDir, planID)
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
-			i18n.Tf("VM %s is in an error state: %s", "ВМ %s в состоянии ошибки: %s", res.VMID, quoteCloud(res.Note)),
+			i18n.Tf("VM %s is in an error state — %s", "ВМ %s в состоянии ошибки — %s", res.VMID, res.Note),
 			i18n.Tf("Whether to delete it (destroy vm_id %s) — ask the person; then run deploy_plan again (in another zone if it repeats).", "Удалять ли её (destroy vm_id %s) — спросите человека; затем снова выполните deploy_plan (при повторе — в другой зоне).", res.VMID)),
 			map[string]any{"vm_id": res.VMID}), true
 	case "timeout":
@@ -519,7 +519,7 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 		// An adopted VM that is stopped (or stopping, shut off, …) does not
 		// start by itself: retrying the plan would answer the same.
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
-			fmt.Sprintf("VM %s is %s: %s", res.VMID, res.Status, res.Note),
+			fmt.Sprintf("VM %s is %s: %s", res.VMID, quoteCloud(res.Status), res.Note),
 			fmt.Sprintf("Ask the user to start it in the Cloud.ru console, then call deploy_apply again with the same plan_id %s; whether to delete it instead (destroy vm_id %s) — ask the person. Retrying before it runs answers the same.", planID, res.VMID)),
 			map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}), true
 	}

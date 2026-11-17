@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -154,7 +155,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 			FloatingIPID: fipID,
 			SSH:          sshString(plan.SSH.Login, ip),
 			ElapsedSec:   int(clock.Since(start).Seconds()),
-			Note:         "VM already existed — adopted (idempotent), nothing recreated; it is " + existing.Status + ": start it in the Cloud.ru console, then call deploy_apply again; whether to delete it instead (destroy) — ask the person",
+			Note:         "VM already existed — adopted (idempotent), nothing recreated; it is " + strconv.Quote(existing.Status) + ": start it in the Cloud.ru console, then call deploy_apply again; whether to delete it instead (destroy) — ask the person",
 		}, nil
 	}
 
@@ -323,7 +324,7 @@ poll:
 				return &ApplyResult{
 					VMID: vm.ID, Status: "error", Password: password,
 					ElapsedSec: int(clock.Since(start).Seconds()),
-					Note:       "VM entered state " + cur.Status + "; whether to delete it (destroy) and retry — ask the person",
+					Note:       "VM entered state " + strconv.Quote(cur.Status) + "; whether to delete it (destroy) and retry — ask the person",
 				}, nil
 			}
 		}
