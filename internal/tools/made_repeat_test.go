@@ -318,24 +318,29 @@ func TestMadeEnded(t *testing.T) {
 		isErr bool
 		age   time.Duration
 		want  bool
+		op    bool // the read is of an operation
 	}{
-		{`{"reason":"NOT_FOUND","error":"x"}`, true, 0, true},
-		{`{"reason":"API_UNREACHABLE","error":"x"}`, true, time.Hour, false},
-		{`{"status":"error_creating"}`, false, 0, true},
-		{`{"state":"ERROR"}`, false, 0, true},
-		{`{"status":"failed"}`, false, 0, true},
-		{`{"status":"creating"}`, false, time.Hour, false},
-		{`{"count":0,"subnets":[]}`, false, madeListGrace / 2, false},
-		{`{"count":0,"subnets":[]}`, false, madeListGrace * 2, true},
-		{`{"count":1,"subnets":[{}]}`, false, time.Hour, false},
+		{`{"reason":"NOT_FOUND","error":"x"}`, true, 0, true, false},
+		// An operation not found yet is not a resource gone: within
+		// madeListGrace it goes on («Риск», conclusion 310, У1).
+		{`{"reason":"NOT_FOUND","error":"x"}`, true, 0, false, true},
+		{`{"reason":"NOT_FOUND","error":"x"}`, true, madeListGrace * 2, true, true},
+		{`{"reason":"API_UNREACHABLE","error":"x"}`, true, time.Hour, false, false},
+		{`{"status":"error_creating"}`, false, 0, true, false},
+		{`{"state":"ERROR"}`, false, 0, true, false},
+		{`{"status":"failed"}`, false, 0, true, false},
+		{`{"status":"creating"}`, false, time.Hour, false, false},
+		{`{"count":0,"subnets":[]}`, false, madeListGrace / 2, false, false},
+		{`{"count":0,"subnets":[]}`, false, madeListGrace * 2, true, false},
+		{`{"count":1,"subnets":[{}]}`, false, time.Hour, false, false},
 		// The read of an operation: ended with an error, done, going on.
-		{`{"id":"op-1","done":true,"error":{"code":13,"message":"x"}}`, false, 0, true},
-		{`{"id":"op-1","done":true,"error":"x"}`, false, 0, true},
-		{`{"id":"op-1","done":true,"resource_status":"ACTIVE"}`, false, 0, false},
-		{`{"id":"op-1","done":false}`, false, time.Hour, false},
+		{`{"id":"op-1","done":true,"error":{"code":13,"message":"x"}}`, false, 0, true, false},
+		{`{"id":"op-1","done":true,"error":"x"}`, false, 0, true, false},
+		{`{"id":"op-1","done":true,"resource_status":"ACTIVE"}`, false, 0, false, false},
+		{`{"id":"op-1","done":false}`, false, time.Hour, false, false},
 	} {
-		if got := madeEnded(c.read, c.isErr, c.age); got != c.want {
-			t.Errorf("madeEnded(%s, %v, %v) = %v, want %v", c.read, c.isErr, c.age, got, c.want)
+		if got := madeEnded(c.read, c.isErr, c.age, c.op); got != c.want {
+			t.Errorf("madeEnded(%s, %v, %v, op %v) = %v, want %v", c.read, c.isErr, c.age, c.op, got, c.want)
 		}
 	}
 }

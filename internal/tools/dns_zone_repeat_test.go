@@ -22,6 +22,7 @@ type dnsRepeatAPI struct {
 	mu     sync.Mutex
 	posts  int
 	listed string // the visibility whose list shows the zone; "" — none
+	opGone bool   // the read of the operation answers 404
 }
 
 const dnsRepeatZone = "00000000-0000-4000-8000-0000000000f1"
@@ -43,6 +44,9 @@ func (a *dnsRepeatAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		} else {
 			_, _ = io.WriteString(rec, `{"zones":[],"total":0}`)
 		}
+	case strings.HasPrefix(r.URL.Path, "/v1/operations/") && a.opGone:
+		rec.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(rec, `{"message":"operation not found"}`)
 	case strings.HasPrefix(r.URL.Path, "/v1/operations/"):
 		_, _ = fmt.Fprintf(rec, `{"id":"op-1","resourceId":%q,"done":false}`, dnsRepeatZone)
 	default:
@@ -85,5 +89,23 @@ func TestDNSZoneCreate_RepeatReadsItsOperationInBothVisibilities(t *testing.T) {
 				t.Errorf("the zone listed: %d POSTs, want 1 and no repeat_of: %s", api.posts, text)
 			}
 		})
+	}
+}
+
+// «Риск», conclusion 310, У1: the read of the operation answers 404 — an
+// operation the platform does not show yet, not a zone gone. Within
+// madeListGrace a repeat with consent sends no second create, and answers
+// waiting, not the read's NOT_FOUND, which would read as the zone gone.
+func TestDNSZoneCreate_RepeatWhileItsOperationIsNotFoundSendsNoSecondCreate(t *testing.T) {
+	api := &dnsRepeatAPI{dnsVPCAPI: &dnsVPCAPI{subnetAPI: newSubnetAPI()}, opGone: true}
+	r := waitingRegistry(t, api)
+	args := map[string]any{"name": "evo-z", "domain": "corp.example.", "confirmed": true}
+	if _, text, _ := callNamed(t, r, "dns_zone_create", args); api.posts != 1 {
+		t.Fatalf("the create: %d POSTs: %s", api.posts, text)
+	}
+	m, text, isErr := callNamed(t, r, "dns_zone_create", args)
+	rep, _ := m["repeat_of"].(map[string]any)
+	if api.posts != 1 || rep["id"] != dnsRepeatZone || isErr || m["status"] != "waiting" || m["reason"] != nil || m["next_tool"] != "dns_operation" {
+		t.Errorf("the repeat with consent, the operation not found: %d POSTs, want 1, waiting with repeat_of and the read as the next step: %s", api.posts, text)
 	}
 }
