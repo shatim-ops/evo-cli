@@ -48,6 +48,9 @@ type restoreWorld struct {
 	// card replaces the backup's card the world answers, when set: a card
 	// the platform may give unlike its specification.
 	card string
+	// list is the list of the project's backups the world answers; none
+	// when empty.
+	list string
 	// dir is the directory of the state of every call on the world: the
 	// records of the calls (D92) live there, as evo\'s beside its state.
 	dir string
@@ -60,6 +63,15 @@ func (w *restoreWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/backups/"+brBackup:
 		_, _ = rec.WriteString(w.backup())
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/backups":
+		list := w.list
+		if list == "" {
+			// The live form (cloud-e2e 226): the list names the zone of the
+			// backup's disk, flat.
+			list = `{"items":[{"id":"` + brBackup + `","name":"before-change","resource":{"resource_id":"` + brSource + `","resource_type":"disk",` +
+				`"resource_state":{"name":"data","size":10,"availability_zone_id":"` + brZone + `"}}}],"total":1}`
+		}
+		_, _ = rec.WriteString(list)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disks":
 		items := append([]map[string]any{}, w.disks...)
 		b, _ := json.Marshal(map[string]any{"items": items, "total": len(items)})
@@ -122,9 +134,12 @@ func (w *restoreWorld) backup() string {
 	if typ == "" {
 		typ = "SSD"
 	}
+	// The card as the platform gives it (cloud-e2e 226, opsevo; the
+	// catalogue of the answers of run 44094405740): the size of the disk,
+	// and no zone — the list names it — and no resource_exists.
 	return `{"id":"` + brBackup + `","project_id":"` + proj + `","name":"before-change","state":"` + st + `","type":"full","size":10240,"created_at":"2026-11-12T10:00:00Z",` +
-		`"resource":{"resource_id":"` + brSource + `","resource_type":"` + kind + `","resource_exists":true,"resource_state":{"name":"data","size":10,` +
-		`"disk_type":{"name":"` + typ + `"},"availability_zone":{"id":"` + brZone + `","name":"ru.AZ-1"}}}}`
+		`"resource":{"resource_id":"` + brSource + `","resource_type":"` + kind + `","resource_state":{"name":"data","size":10,` +
+		`"disk_type":{"name":"` + typ + `"}}}}`
 }
 
 func restoreRegistry(t *testing.T, w *restoreWorld) *Registry {
@@ -446,7 +461,7 @@ func TestBackupRestore_ACardWithoutTheDisk(t *testing.T) {
 		"no size":           head + `,"resource_state":{"name":"data","disk_type":{"name":"SSD"},` + zone + `}}}`,
 		"no zone":           head + `,"resource_state":{"name":"data","size":10,"disk_type":{"name":"SSD"}}}}`,
 	} {
-		w := &restoreWorld{card: card}
+		w := &restoreWorld{card: card, list: `{"items":[],"total":0}`}
 		m, text, isErr := backupRestore(t, w, nil)
 		if !isErr || m["reason"] != "USAGE" || w.restores != 0 || strings.Contains(text, "confirmation_required") {
 			t.Errorf("%s: want USAGE before the question, nothing sent: %s", name, text)
@@ -461,5 +476,38 @@ func TestBackupRestore_ACardWithoutTheDisk(t *testing.T) {
 	will, _ := m["will_create"].(map[string]any)
 	if m["status"] != "confirmation_required" || will["disk_type"] != "HDD" || will["disk_type_from"] != "backup" {
 		t.Errorf("a disk type as a string: want it taken as the backup's type: %s", text)
+	}
+}
+
+// The live form of a backup (cloud-e2e 226, opsevo, the catalogue of the
+// answers of run 44094405740): the card GET /api/v1/backups/{id} names the
+// size of its disk in resource.resource_state and no zone in any form; the
+// list GET /api/v1/backups names it, flat, as
+// resource.resource_state.availability_zone_id. The specification has an
+// object availability_zone in the card, and the world was built by it:
+// backup_restore refused every real backup with USAGE. The zone is read
+// where the platform gives it — the card in either form, else the backup's
+// item of the list — and a card in the spec's form keeps working.
+func TestBackupRestore_TheZoneOfTheLiveForm(t *testing.T) {
+	head := `{"id":"` + brBackup + `","project_id":"` + raProject + `","name":"b","state":"created","type":"full",` +
+		`"resource":{"resource_id":"` + brSource + `","resource_type":"disk","resource_exists":true,`
+	live := head + `"resource_state":{"name":"data","size":10,"disk_type":{"name":"SSD"}}}}`
+	listed := `{"items":[{"id":"` + brBackup + `","name":"b","resource":{"resource_id":"` + brSource + `","resource_type":"disk",` +
+		`"resource_state":{"name":"data","size":10,"availability_zone_id":"` + brZone + `"}}}],"total":1}`
+	for name, w := range map[string]*restoreWorld{
+		"the card without a zone, the list with it flat": {card: live, list: listed},
+		"the card with the zone flat":                    {card: head + `"resource_state":{"name":"data","size":10,"disk_type":{"name":"SSD"},"availability_zone_id":"` + brZone + `"}}}`},
+	} {
+		m, text, _ := backupRestore(t, w, nil)
+		will, _ := m["will_create"].(map[string]any)
+		if m["status"] != "confirmation_required" || will["zone_id"] != brZone || will["size_gb"] != float64(10) || w.restores != 0 {
+			t.Errorf("%s: want the question with the zone %s and 10 GB, nothing sent: %s", name, brZone, text)
+		}
+	}
+	// Neither the card nor the list names the zone: refused before the
+	// question, as before.
+	w := &restoreWorld{card: live, list: `{"items":[{"id":"` + brBackup + `","resource":{"resource_state":{"size":10}}}],"total":1}`}
+	if m, text, isErr := backupRestore(t, w, nil); !isErr || m["reason"] != "USAGE" || w.restores != 0 {
+		t.Errorf("no zone anywhere: want USAGE before the question: %s", text)
 	}
 }
