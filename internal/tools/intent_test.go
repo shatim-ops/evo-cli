@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -18,8 +19,10 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
 // Release plan 1.8, (и) («Риск», conclusion 46; cloud-e2e 181, R3-F1 2 of
@@ -103,13 +106,12 @@ func TestPending_ReadOnBothSurfaces(t *testing.T) {
 	if !strings.Contains(first, "pending_operations") || strings.Contains(second, "pending_operations") {
 		t.Errorf("the first MCP answer carries the intent once:\n%s\n%s", first, second)
 	}
-	// doctor's probes go to a local server: tests do not touch the network.
-	srv := httptest.NewServer(http.NotFoundHandler())
-	defer srv.Close()
-	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
-	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
-	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
-	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
+	// doctor names the intent with or without a key. With one it reads the
+	// key in IAM and the Organization API — real hosts, whose base the
+	// tools do not let a test move (offnet, nightly 15.11: this test was
+	// the connections to them, #2036); without one its probes go to a
+	// local server only, and tests do not touch the network.
+	text := doctorOnFake(t, noKeyRegistry(t, dir))
 	if !strings.Contains(text, "pending operation") || !strings.Contains(text, "disk-1") {
 		t.Errorf("doctor does not name the intent:\n%s", text)
 	}
@@ -319,4 +321,23 @@ func TestDoctor_NamesAForeignRecord(t *testing.T) {
 	if _, err := os.Stat(planted); err != nil {
 		t.Errorf("doctor removed the foreign record: %v", err)
 	}
+}
+
+// noKeyRegistry is a registry on the state directory dir whose engine has
+// a project, a token and no access key: doctor reads the intents there
+// and asks the cloud nothing about a key (readKey reads only a set key).
+func noKeyRegistry(t *testing.T, dir string) *Registry {
+	t.Helper()
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		var buf bytes.Buffer
+		return &engine.Engine{
+			Config:   config.Config{ProjectID: "p"},
+			Auth:     staticToken{},
+			Cloud:    &disksCloud{},
+			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
+			StateDir: dir,
+		}, nil
+	})
+	r.SetStateDir(dir)
+	return r
 }
