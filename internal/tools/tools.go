@@ -2779,10 +2779,18 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 // after a create that stopped with its VM in the cloud — Ctrl-C, the wait
 // ran out, a failed state: the VM stays, billed, until it is deleted.
 // failed is the state of a VM that failed, "" for one still being created.
+//
+// The commands are copied as they are: the id goes into them only when it
+// has the form of an id (isUUID), and the state the cloud sent is quoted
+// (quoteCloud), never a part of a command («Риск», conclusion 291-2).
 func vmLeftNote(vmID, failed string) string {
+	if !isUUID(vmID) {
+		return i18n.Tf("VM %s is billed; its id is not of the form of an id, so no command is named with it; find the VM: evo vm list",
+			"ВМ %s оплачивается; её id не той формы, поэтому команда с ним не названа; найти ВМ: evo vm list", quoteCloud(vmID))
+	}
 	if failed != "" {
 		return i18n.Tf("VM %[1]s is in state %[2]s and is billed; check it: evo vm get %[1]s; delete it: evo vm delete %[1]s",
-			"ВМ %[1]s в состоянии %[2]s и оплачивается; проверить: evo vm get %[1]s; удалить: evo vm delete %[1]s", vmID, failed)
+			"ВМ %[1]s в состоянии %[2]s и оплачивается; проверить: evo vm get %[1]s; удалить: evo vm delete %[1]s", vmID, quoteCloud(failed))
 	}
 	return i18n.Tf("VM %[1]s is still being created and is billed; check it: evo vm get %[1]s; delete it: evo vm delete %[1]s",
 		"ВМ %[1]s продолжает создаваться и оплачивается; проверить: evo vm get %[1]s; удалить: evo vm delete %[1]s", vmID)

@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -284,12 +285,15 @@ const (
 // may be there and billed, and stack_destroy of the job removes it by its
 // id («Риск», 230, У1). It reports whether the step ended.
 func stepMissing(job *stack.Job, st *stack.Step, why, check, reason string) bool {
+	// The first miss is a value of the answer (the detail, the text the
+	// step ends with): internal/clock. The limit is counted from it on the
+	// same clock, as restoreHeldLimit is.
 	if st.Missing == 0 {
-		st.MissingSince = time.Now()
+		st.MissingSince = clock.Now()
 	}
 	st.Missing++
 	st.Detail = fmt.Sprintf("%s (%d since %s)", why, st.Missing, st.MissingSince.UTC().Format(time.RFC3339))
-	if st.Missing < maxStepMissing || time.Since(st.MissingSince) < stepMissingFor {
+	if st.Missing < maxStepMissing || clock.Since(st.MissingSince) < stepMissingFor {
 		return false
 	}
 	what := "not found by its id"
