@@ -6,7 +6,11 @@ package workflows
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -60,5 +64,52 @@ func TestWorkflows_LiveRunsGetAReport(t *testing.T) {
 	trig, _ = ws["main-red.yml"].On["workflow_run"].(map[string]any)
 	if !slices.Contains(trig["workflows"].([]any), any("live-run-report")) {
 		t.Error("main-red does not follow live-run-report: its red reaches no one")
+	}
+}
+
+// notLiveWithAWriteKey are the jobs of NOT_LIVE that may run with the key
+// of cloud-e2e, with the reason they still change nothing: a standing
+// exception, not a debt — a new line is a decision with its reason.
+var notLiveWithAWriteKey = map[string]string{
+	"preflight": "on a branch it runs in cloud-e2e after the owner's click and only reads (e2e-preflight.sh); on main — cloud-readonly",
+}
+
+// A job of NOT_LIVE gets no report, so it must not be able to change the
+// cloud: it is a job of cloud-e2e whose environment holds a key only for
+// reading (cloud-readonly) or none; a key of cloud-e2e — only in
+// notLiveWithAWriteKey with its reason. And a job of cloud-readonly is in
+// NOT_LIVE: it reads, a report of it is noise («релиз» 17.11: the nightly
+// readonly job, cloud-e2e 220 and 221; Qwen on #2099).
+func TestWorkflows_NotLiveJobsOnlyRead(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "live_run_report.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^NOT_LIVE="([^"]*)"$`).FindSubmatch(b)
+	if m == nil {
+		t.Fatal("live_run_report.sh: no NOT_LIVE=\"…\"")
+	}
+	notLive := strings.Fields(string(m[1]))
+	jobs := readWorkflows(t)["cloud-e2e.yml"].Jobs
+	for _, name := range notLive {
+		j, ok := jobs[name]
+		if !ok {
+			t.Errorf("NOT_LIVE names %s, cloud-e2e has no such job", name)
+			continue
+		}
+		_, declared := notLiveWithAWriteKey[name]
+		if env := j.Environment; env != "" && env != "cloud-readonly" && !declared {
+			t.Errorf("NOT_LIVE job %s runs in environment %q, want cloud-readonly or none", name, env)
+		}
+	}
+	for name := range notLiveWithAWriteKey {
+		if !slices.Contains(notLive, name) {
+			t.Errorf("notLiveWithAWriteKey names %s, NOT_LIVE has no such job: drop the line", name)
+		}
+	}
+	for name, j := range jobs {
+		if j.Environment == "cloud-readonly" && !slices.Contains(notLive, name) {
+			t.Errorf("cloud-e2e job %s reads with cloud-readonly but is not in NOT_LIVE", name)
+		}
 	}
 }
