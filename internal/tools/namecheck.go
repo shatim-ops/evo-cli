@@ -79,7 +79,7 @@ func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 		status = "unknown"
 	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("a %s named %s already exists (id %s, status %s); a second one would be billed separately", "%s с именем %s уже есть (id %s, статус %s); второй оплачивался бы отдельно", kind, quoteCloud(name), id, quoteCloud(status)),
+		i18n.Tf("a %s named %s already exists (id %s, status %s); a second one would be billed separately", "%s с именем %s уже есть (id %s, статус %s); второй оплачивался бы отдельно", kind, quoteCloud(name), quoteCloud(id), quoteCloud(status)),
 		i18n.Tf("Use the existing one (%s), or pick another name.", "Используйте существующий (%s) или выберите другое имя.", getHint)),
 		map[string]any{"existing_id": id}), true
 }
@@ -156,7 +156,7 @@ func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]
 		answer = "failed"
 	}
 	out := map[string]any{"status": answer, idField: id, "resource_status": status, "created": created,
-		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s) и оплачивается", kind, name, id, status),
+		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s) и оплачивается", kind, name, quoteCloud(id), quoteCloud(status)),
 		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}
 	// The state is the list's word, the service's: marked as goingOn marks
 	// it (Астра, #1952).

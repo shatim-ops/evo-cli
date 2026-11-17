@@ -109,7 +109,7 @@ func deleteRefusal(w deleteWatch, msg, code any) error {
 	hint := i18n.T(w.hintEN, w.hintRU)
 	if w.hintEN == "" {
 		hint = i18n.Tf("Delete it in the console; if Cloud.ru keeps refusing, contact Cloud.ru support with its id %s and the operation %s.",
-			"Удалите его в личном кабинете; если Cloud.ru снова откажет, обратитесь в поддержку Cloud.ru с его id %s и операцией %s.", w.ref, w.opID)
+			"Удалите его в личном кабинете; если Cloud.ru снова откажет, обратитесь в поддержку Cloud.ru с его id %s и операцией %s.", quoteCloud(w.ref), w.opID)
 	}
 	if code == nil {
 		return clierrors.New(clierrors.CodeAPIError,

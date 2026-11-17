@@ -277,7 +277,7 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 				hint+" "+i18n.T("Or detach this one from its VM first.", "Или сначала отвяжите этот от его ВМ."))
 		}
 		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("floating IP %s is not free (state %s); nothing was attached", "floating IP %s не свободен (состояние %s); ничего не привязано", fip.IPAddress, fip.State),
+			i18n.Tf("floating IP %s is not free (state %s); nothing was attached", "floating IP %s не свободен (состояние %s); ничего не привязано", fip.IPAddress, quoteCloud(fip.State)),
 			hint)
 	}
 	if vmIP != "" {

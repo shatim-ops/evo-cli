@@ -488,7 +488,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 							case isTerminalFail(status):
 								// FAILED/ERROR/ERASED — never reaches READY; fail the
 								// job instead of polling forever.
-								failStep(job, st, clierrors.CodeAPIError, fmt.Sprintf("%s: cluster reached terminal status %s", st.Key, status))
+								failStep(job, st, clierrors.CodeAPIError, fmt.Sprintf("%s: cluster reached terminal status %s", st.Key, quoteCloud(status)))
 								return
 							default:
 								st.Detail = "status=" + status

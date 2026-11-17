@@ -2766,7 +2766,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; a destroy of the VM releases it — ask the person before deleting.", ip)
 				}
 				return errAnswer(fmt.Errorf("VM %s entered state %s. It is recorded in the state; whether to delete it (destroy vm_id %s) — ask the person.%s%s",
-					vm.ID, updated.Status, vm.ID, fipNote, notInState(vm.ID, serr)),
+					vm.ID, quoteCloud(updated.Status), vm.ID, fipNote, notInState(vm.ID, serr)),
 					map[string]any{"vm_id": vm.ID, "floating_ip_id": fipID}), true
 			}
 		case <-ctx.Done():

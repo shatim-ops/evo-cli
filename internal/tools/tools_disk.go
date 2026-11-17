@@ -315,7 +315,7 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 			return false, nil
 		})
 	if timeout > 0 {
-		return fmt.Errorf("the disk did not become available within %s (state %s)", timeout, last)
+		return fmt.Errorf("the disk did not become available within %s (state %s)", timeout, quoteCloud(last))
 	}
 	return err
 }
@@ -429,7 +429,7 @@ func settledDisk(ctx context.Context, eng *engine.Engine, diskID string) (map[st
 		return nil, err
 	case timedOut > 0:
 		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("disk %s is in state %s: it cannot be changed until the state settles", "диск %s в состоянии %s: менять его можно, когда состояние устоится", diskID, last),
+			i18n.Tf("disk %s is in state %s: it cannot be changed until the state settles", "диск %s в состоянии %s: менять его можно, когда состояние устоится", diskID, quoteCloud(last)),
 			i18n.T("Repeat the call when disk_list shows the disk available or in_use.", "Повторите вызов, когда disk_list покажет диск в available или in_use."))
 	}
 	return eng.Cloud.GetDisk(ctx, diskID)

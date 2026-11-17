@@ -241,7 +241,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		return nil, fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err)
 	}
 
-	show.done(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", plan.VM.Name, vm.ID))
+	show.done(i18n.Tf("Request accepted: VM %s, id %q", "Запрос принят: ВМ %s, id %q", plan.VM.Name, vm.ID))
 	return finishApply(ctx, cloud, plan, vm, password, start, pollTimeout, until, show, "")
 }
 
@@ -606,7 +606,7 @@ type ForeignVMError struct {
 }
 
 func (e *ForeignVMError) Error() string {
-	return fmt.Sprintf("a VM named %q already exists (id %s, status %s), and this folder's evo did not create it (its state does not record it); nothing was created", e.Name, e.ID, e.Status)
+	return fmt.Sprintf("a VM named %q already exists (id %q, status %q), and this folder's evo did not create it (its state does not record it); nothing was created", e.Name, e.ID, e.Status)
 }
 
 // findVMByName looks the plan's VM up in its project. GET /vms without a
