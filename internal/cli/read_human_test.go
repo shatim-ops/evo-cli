@@ -198,6 +198,17 @@ func TestRead_VolatileHidesTheTestDir(t *testing.T) {
 	if !shownAsWritten("0755", human) {
 		t.Errorf("the rest of the line is lost: %q", human)
 	}
+	// On Windows the answer holds the path in JSON (\\ between the parts)
+	// and the human output as it is (\): both read as the same <dir>.
+	path := `C:\Users\RUNNER~1\AppData\Local\Temp\TestRead_HumanShowsEveryValue3020022521\001\helm.bat`
+	inJSON, _ := json.Marshal(path)
+	var answer string
+	if err := json.Unmarshal([]byte(readVolatile(string(inJSON))), &answer); err != nil {
+		t.Fatal(err)
+	}
+	if got := readVolatile(path); got != answer || !strings.HasPrefix(got, "<dir>") {
+		t.Errorf("the human output reads as %q, the answer as %q: the same path", got, answer)
+	}
 }
 
 // clipLong is s on one line, cut to what a log of CI shows in full.
