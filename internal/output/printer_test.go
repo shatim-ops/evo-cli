@@ -313,3 +313,32 @@ func columnStarts(line string) []int {
 	}
 	return starts
 }
+
+// Every step line — Step, StepDone, Progress — prints what the cloud sent
+// cleaned: the one point for the terminal, the "log" of an MCP answer and
+// the progress of an MCP call (Астра #2089, #2090).
+func TestStepLines_PrintTheCloudsTextCleaned(t *testing.T) {
+	const dirty = "web\x1b[2J\rOVER\x00‮ X"
+	for name, print := range map[string]func(p *Printer){
+		"Step":     func(p *Printer) { p.Step(0, 0, dirty) },
+		"Step n/m": func(p *Printer) { p.Step(1, 2, dirty) },
+		"StepDone": func(p *Printer) { p.StepDone(dirty) },
+	} {
+		for _, mode := range []Mode{ModePlain, ModeText} {
+			var buf bytes.Buffer
+			print(NewWithWriter(&buf, mode, false))
+			out := strings.Trim(buf.String(), "\n ")
+			if !strings.Contains(out, "OVER") || strings.ContainsAny(out, "\x1b\r\x00‮ ") {
+				t.Errorf("%s (mode %v): %q", name, mode, buf.String())
+			}
+		}
+	}
+	// Progress prints on a terminal only, redrawn in place with \r by
+	// design: its text past that \r is clean.
+	var buf bytes.Buffer
+	p := NewWithWriter(&buf, ModeText, false)
+	p.Progress(dirty)
+	if line := strings.TrimLeft(buf.String(), "\r"); strings.ContainsAny(line, "\x1b\x00‮ ") || strings.Contains(line, "\rOVER") {
+		t.Errorf("Progress: %q", buf.String())
+	}
+}

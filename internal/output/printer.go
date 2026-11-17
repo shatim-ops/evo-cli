@@ -109,12 +109,16 @@ func NewWithWriters(out, errOut io.Writer, mode Mode, color bool) *Printer {
 }
 
 // Step prints a step indicator: "==> [1/5] Message...". A command of one
-// step (total 0) has no counter: "==> Message...".
+// step (total 0) has no counter: "==> Message...". The message may carry
+// what the cloud sent (a state, a name): it is printed cleaned, as
+// StepDone and Progress print theirs — the step lines go to the terminal,
+// to the "log" of an MCP answer and to the progress of an MCP call alike.
 func (p *Printer) Step(n, total int, msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
+	msg = sanitizeCell(msg)
 	prefix := fmt.Sprintf("==> [%d/%d] %s", n, total, msg)
 	if total == 0 {
 		prefix = "==> " + msg
@@ -128,7 +132,7 @@ func (p *Printer) Step(n, total int, msg string) {
 
 // StepDone prints step completion: "    detail". The detail is one line
 // that may name what the cloud sent (a VM's name): it is printed cleaned
-// (sanitizeCell), the one point for every step of every command.
+// (sanitizeCell), as Step and Progress print theirs.
 func (p *Printer) StepDone(detail string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
