@@ -111,6 +111,12 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		return out
 	}
 	switch reason := answerReason(answer); {
+	case reason != "" && intent.OutcomeUnknown(reason, answerHTTPStatus(answer)):
+		// Cut after it sent — the network, a time limit, Ctrl-C: what it
+		// made may be there, named by its argument too («Риск», conclusion
+		// 311, У2). A call that sent no write at all is an error at its
+		// end (beginIntent), whatever this says.
+		out.Result, out.Reason, out.ResourceID = history.Unknown, reason, made()
 	case reason != "":
 		if id := madeByAnswer(); id != "" {
 			out.Result, out.Reason, out.ResourceID = history.Unknown, reason, id

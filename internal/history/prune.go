@@ -5,7 +5,6 @@
 package history
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -221,17 +220,14 @@ func dayFiles(dir string) ([]string, map[string]int64, error) {
 }
 
 // rawLines are the lines of data as they are, each with what a reader
-// makes of it; an empty line is none.
+// makes of it; an empty line is none. A line too long for a reader is one
+// line it does not read — kept — and the lines after it are read as
+// ReadAll reads them (lines).
 func rawLines(data []byte) []rawLine {
 	var out []rawLine
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 0, 4096), maxLine)
-	for sc.Scan() {
-		if len(bytes.TrimSpace(sc.Bytes())) == 0 {
-			continue
-		}
-		r := rawLine{text: sc.Text()}
-		r.ok = json.Unmarshal(sc.Bytes(), &r.line) == nil && wellFormed(r.line)
+	for _, raw := range lines(data) {
+		r := rawLine{text: string(raw)}
+		r.ok = len(raw) <= maxLine && json.Unmarshal(raw, &r.line) == nil && wellFormed(r.line)
 		out = append(out, r)
 	}
 	return out

@@ -42,6 +42,7 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 		Skipped   int            `json:"skipped"`
 		Hidden    int            `json:"hidden_without_project"`
 		Truncated bool           `json:"truncated"`
+		LiveCut   bool           `json:"live_truncated"`
 		Retired   string         `json:"retired_through"`
 		Note      string         `json:"note"`
 	}
@@ -86,6 +87,10 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 		}
 		p.Table([]string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID",
 			i18n.T("Outcome", "Итог"), i18n.T("Check with", "Проверить")}, rows)
+	}
+	if a.LiveCut {
+		fmt.Fprintln(w, i18n.T("Only the last live lines are shown, there are more: narrow it to a project with --project-id.",
+			"Показаны только последние живые строки, есть ещё — сузьте по проекту через --project-id."))
 	}
 	if a.Truncated {
 		fmt.Fprintln(w, i18n.T("Only the last lines are shown: give a later --since.", "Показаны только последние строки: укажите более позднее --since."))

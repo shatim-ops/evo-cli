@@ -110,18 +110,24 @@ func TestPrune_OverTheCeilingTheOldestGoFirst(t *testing.T) {
 }
 
 // What the pruning cannot read or does not know — a line of a newer evo,
-// a broken line — it does not drop: it is kept as live (У8).
+// a broken line, a line longer than a reader takes — it does not drop: it
+// is kept as live (У8); a live line after the long one is kept too, the
+// file read on past it («Риск», conclusion 311, У1).
 func TestPrune_WhatItDoesNotKnowItKeeps(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), DirName)
 	newer := `{"format":2,"time":"2026-07-01T10:00:00Z","tool":"disk_create","intent_id":"c000000000000001","outcome":"moved"}`
 	broken := `{"format":1,"time"`
-	writeDay(t, dir, "2026-07-01", newer, broken)
+	long := `{"format":1,"name":"` + strings.Repeat("x", maxLine) + `"}`
+	after := lineOf("c000000000000002", Created, "disk", "d-after", "2026-07-01T10:05:00Z")
+	writeDay(t, dir, "2026-07-01", newer, broken, long, after)
 	if _, err := Prune(dir, pruneNow); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, LiveName))
-	if !strings.Contains(string(data), newer) || !strings.Contains(string(data), broken) {
-		t.Errorf("%s: %q; want the lines it does not know, as they are", LiveName, data)
+	for _, want := range []string{newer, broken, long, after} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("%s does not keep %.80q; want the lines it does not know as they are, and the live line after the long one", LiveName, want)
+		}
 	}
 }
 

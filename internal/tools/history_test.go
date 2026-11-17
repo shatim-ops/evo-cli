@@ -117,7 +117,10 @@ func TestHistoryOutcome_OneReadingOfAnAnswer(t *testing.T) {
 		{"disk_delete", `{"status":"already_deleted"}`, map[string]any{"disk_id": "d-1"}, history.Outcome{Result: history.AlreadyDeleted, Kind: "disk", ResourceID: "d-1"}},
 		{"vm_start", `{"status":"already_running"}`, nil, history.Outcome{Result: history.Changed}},
 		{"vm_reboot", `{"status":"reboot_accepted"}`, nil, history.Outcome{Result: history.Changed}},
-		{"disk_create", `{"error":"x","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Error, Kind: "disk", Reason: "API_ERROR"}},
+		// API_ERROR is an outcome not known (D92): the line stays live.
+		{"disk_create", `{"error":"x","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Unknown, Kind: "disk", Reason: "API_ERROR"}},
+		// A refusal that is certain: nothing made.
+		{"disk_create", `{"error":"x","reason":"USAGE"}`, nil, history.Outcome{Result: history.Error, Kind: "disk", Reason: "USAGE"}},
 		// У1: the create's «already» names the resource of the name.
 		{"disk_create", `{"status":"already_exists","disk":{"id":"d-1"}}`, nil, history.Outcome{Result: history.Found, Kind: "disk", ResourceID: "d-1"}},
 		// У2: a refusal that names what was made — a VM in an error state,
@@ -276,5 +279,29 @@ func TestHistory_ACallPrunesTheJournalAfterItsLine(t *testing.T) {
 	}
 	if len(ids) != 2 || !slices.Contains(ids, "d-old") || !slices.Contains(ids, "d-1") {
 		t.Errorf("the journal after the call: %v; want the live line of the old file and the call's", ids)
+	}
+}
+
+// A create by name cut after it sent — the network, a time limit, Ctrl-C —
+// may have made its resource: the line is unknown, with the name of its
+// argument, and live; only a refusal that is certain is an error («Риск»,
+// conclusion 311, У2). Through the gate, end to end.
+func TestHistory_ACutCreateByNameStaysLive(t *testing.T) {
+	for _, reason := range []string{"API_UNREACHABLE", "INTERRUPTED", "API_ERROR"} {
+		r, dir := targetRegistry(t, &goneCloud{})
+		tool, _ := r.Lookup("secret_create")
+		h := r.intended(tool, func(ctx context.Context, _ map[string]any) (string, bool) {
+			_ = httpretry.NoteWrite(ctx)
+			return `{"error":"cut","reason":"` + reason + `"}`, true
+		})
+		h(context.Background(), map[string]any{"path": "app/db", "value": "s3cr3t-value", "confirmed": true})
+		lines, raw := historyOf(t, dir)
+		live := history.Live(lines)
+		if len(lines) != 1 || lines[0].Outcome != history.Unknown || lines[0].ResourceID != "app/db" || len(live) != 1 {
+			t.Errorf("%s: lines %+v, live %d; want unknown with the path, live", reason, lines, len(live))
+		}
+		if strings.Contains(raw, "s3cr3t-value") {
+			t.Errorf("%s: the value of the secret in the journal", reason)
+		}
 	}
 }

@@ -224,3 +224,17 @@ func TestAppend_AfterATornTailTheLineIsWhole(t *testing.T) {
 		t.Errorf("after a torn tail: %q; want the torn bytes on their line, then the new line whole", data)
 	}
 }
+
+// An outcome not known of a call on a resource is known once a later line
+// says the resource is gone (311-3): the unknown line is no longer live.
+func TestLive_AnUnknownIsClosedByALaterGone(t *testing.T) {
+	cut := Line{Format: Format, IntentID: "a", Kind: "disk", ResourceID: "d-1", Outcome: Unknown, ProjectID: "p"}
+	gone := Line{Format: Format, IntentID: "b", Kind: "disk", ResourceID: "d-1", Outcome: Deleted}
+	if got := Live([]Line{cut, gone}); len(got) != 0 {
+		t.Errorf("an unknown cut call on d-1, then d-1 deleted: live %+v, want none", got)
+	}
+	// Gone before the cut call: the call's outcome is still not known.
+	if got := Live([]Line{gone, cut}); len(got) != 1 {
+		t.Errorf("d-1 deleted, then a cut call on d-1: live %d, want the cut call", len(got))
+	}
+}
