@@ -3885,7 +3885,10 @@ ev_vm() {
 		shift 4
 		t0=$SECONDS
 		op "$how" "$tool" "$vm" "$@"
-		if [ "$how" = mcp ] && [ "$rc" = 0 ] && case "$st_got" in starting | stopping) true ;; *) false ;; esac &&
+		# Только у шага, чей итог — сам переход: у повтора (already_*) слово
+		# хода — не тот ответ, что ждут, и остаётся провалом («Риск», 317, У1).
+		if [ "$how" = mcp ] && [ "$rc" = 0 ] && case "$want" in already_*) false ;; *) true ;; esac &&
+			case "$st_got" in starting | stopping) true ;; *) false ;; esac &&
 			[ -z "$(j -r '.status? // empty')" ] && [ -n "$(j -r '.state? // empty')" ]; then
 			handed="evo перестал ждать и передал vm_get: $st_got, vm_get — $(j -r .state) через $((SECONDS - t0)) с"
 		else
