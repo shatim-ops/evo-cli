@@ -6,8 +6,11 @@ package history
 
 import (
 	"encoding/json"
+	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -259,5 +262,83 @@ func TestPrune_ALineTheReaderSkipsClosesNothing(t *testing.T) {
 	j, _ := ReadAll(dir, check)
 	if len(Live(j.Lines)) != 1 {
 		t.Errorf("after pruning live %+v; want the create", Live(j.Lines))
+	}
+}
+
+// The invariant of the pruning on random journals («Риск», conclusion 324
+// revised, У2): what is live as history finds it — ReadAll with the
+// reader's Check, then Live — is the same before and after Prune, and every
+// line the reader does not take is kept byte for byte. The journals mix
+// days within and past KeepDays, times out of the order of the file (a
+// clock turned back), creates and deletes of shared resources, lines of a
+// tool the reader does not know, broken lines and lines of another format.
+func TestPrune_KeepsWhatHistoryFindsLive(t *testing.T) {
+	check := func(l Line) bool { return l.Tool != "future_delete" }
+	liveSet := func(dir string) []string {
+		j, err := ReadAll(dir, check)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// As history reads it: the lines of all files by their times
+		// (handleHistory), then Live.
+		sort.SliceStable(j.Lines, func(a, b int) bool { return j.Lines[a].Time < j.Lines[b].Time })
+		var out []string
+		for _, l := range Live(j.Lines) {
+			out = append(out, l.IntentID+"|"+l.Outcome+"|"+l.ResourceID+"|"+l.Time)
+		}
+		sort.Strings(out)
+		return out
+	}
+	days := []string{"2026-06-01", "2026-07-01", "2026-08-01", "2026-11-10", "2026-11-17"}
+	outcomes := []string{Created, Created, Deleted, AlreadyDeleted, Found, Unknown, NotFound}
+	for seed := int64(1); seed <= 300; seed++ {
+		rng := rand.New(rand.NewSource(seed))
+		dir := filepath.Join(t.TempDir(), DirName)
+		var odd []string // the lines the reader does not take
+		n := 0
+		for _, day := range days {
+			if rng.Intn(4) == 0 {
+				continue
+			}
+			var lines []string
+			for k := rng.Intn(8); k >= 0; k-- {
+				n++
+				id := fmt.Sprintf("%016x", n)
+				at := fmt.Sprintf("%sT%02d:00:00Z", day, rng.Intn(24))
+				res := fmt.Sprintf("r-%d", rng.Intn(4))
+				l := lineOf(id, outcomes[rng.Intn(len(outcomes))], "disk", res, at)
+				switch rng.Intn(10) {
+				case 0:
+					l = strings.Replace(l, `"disk_create"`, `"future_delete"`, 1)
+					odd = append(odd, l)
+				case 1:
+					l = `{"format":1,"time"` + fmt.Sprint(n)
+					odd = append(odd, l)
+				case 2:
+					l = strings.Replace(l, `"format":1`, `"format":2`, 1)
+					odd = append(odd, l)
+				}
+				lines = append(lines, l)
+			}
+			writeDay(t, dir, day, lines...)
+		}
+		before := liveSet(dir)
+		if _, err := Prune(dir, pruneNow, check); err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
+		}
+		if after := liveSet(dir); strings.Join(after, "\n") != strings.Join(before, "\n") {
+			t.Fatalf("seed %d: live before %v, after %v", seed, before, after)
+		}
+		var kept strings.Builder
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			data, _ := os.ReadFile(filepath.Join(dir, e.Name()))
+			kept.Write(data)
+		}
+		for _, l := range odd {
+			if !strings.Contains(kept.String(), l+"\n") {
+				t.Fatalf("seed %d: the line the reader does not take is gone: %s", seed, l)
+			}
+		}
 	}
 }
