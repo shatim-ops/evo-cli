@@ -1195,7 +1195,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	// Both refusals come before the consent: the call cannot go through
 	// whatever the person answers (A6, D31).
 	if onNAT {
-		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway and is released with it (snat_delete) — whether to delete the gateway, ask the person; not released", fipIP, fipID)
+		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway and is released with it (snat_delete) — whether to delete the gateway, ask the person; not released", fipIP, quoteCloud(fipID))
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("It goes with its SNAT gateway: whether to delete the gateway (snat_delete) — ask the person.", "Он освободится вместе с SNAT-шлюзом: удалять ли шлюз (snat_delete) — спросите человека.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
@@ -1203,7 +1203,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 
 	// Safety: never release an IP that is attached to a VM.
 	if state == "in_use" {
-		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it from the VM first; not released", fipIP, fipID)
+		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it from the VM first; not released", fipIP, quoteCloud(fipID))
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("Detach it from the VM, then release it.", "Отвяжите его от ВМ, затем освободите.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
@@ -1306,9 +1306,10 @@ func appliedPlan(stateDir, planID string) error {
 		if d.Source != state.SourceDeployApply || d.PlanID != planID {
 			continue
 		}
-		vm := d.VMID
+		// The VM's id and name are the cloud's: quoted in evo's text.
+		vm := quoteCloud(d.VMID)
 		if d.VMName != "" {
-			vm += " (" + d.VMName + ")"
+			vm += " (" + quoteCloud(d.VMName) + ")"
 		}
 		switch d.Status {
 		case "running":
@@ -1330,7 +1331,7 @@ func appliedPlan(stateDir, planID string) error {
 		}
 		return clierrors.New(clierrors.CodeNotFound,
 			i18n.Tf("plan %q is gone, and the VM it made, %s, was not finished (the record says %s)",
-				"плана %q больше нет, а ВМ, которую он создал, %s, не доведена (в записи — %s)", planID, vm, d.Status),
+				"плана %q больше нет, а ВМ, которую он создал, %s, не доведена (в записи — %s)", planID, vm, quoteCloud(d.Status)),
 			i18n.Tf("status and vm_get show the VM. It may still be there and billed: whether to delete it (destroy vm_id %s) — ask the person.",
 				"ВМ показывают status и vm_get. Она, возможно, ещё есть и оплачивается: удалять ли её (destroy vm_id %s) — спросите человека.", d.VMID))
 	}
