@@ -126,8 +126,6 @@ func clipAround(s string, i int) string {
 // clean now fails the test. Closes by 1.9 (release plan 1.9, before
 // rc.1): the fix is «разработки»; «Процесс» does not change product code.
 var humanUncleanMisses = map[string]string{
-	"deploy":                           "the step «ВМ <name> (<id>) активна» of deploy names the VM as the cloud sends it — «разработка»",
-	"deploy (every optional argument)": "the same step of deploy — «разработка»",
 	"backup_restore (every optional argument)": "the line «Подтверждено: создать диск … в зоне <zone>» of the consent names the zone as the cloud sends it — «разработка»",
 }
 
