@@ -4504,9 +4504,12 @@ func provisionInputError(ctx context.Context, eng *engine.Engine) (args []string
 			"Передайте region — имя зоны (например, ru.AZ-2) или её UUID (list_zones): у сервера не задан CLOUDRU_REGION.")
 		if zones, lerr := listZones(ctx, eng); lerr == nil {
 			if z := engine.DefaultZone(zones, engine.ZoneVM); z != nil {
+				// The name is the cloud's text: quoted in evo's hint, and
+				// the field is declared untrusted («Риск» 286).
 				fields["default_zone"] = z.Name
-				hint = i18n.Tf("The default zone is %[1]s (list_zones): pass region: %[2]s; the server has no CLOUDRU_REGION to default to.",
-					"Зона по умолчанию — %[1]s (list_zones): передайте region: %[2]s — у сервера не задан CLOUDRU_REGION.", z.Name, quoteCloud(z.Name))
+				cloudText(fields, "default_zone")
+				hint = i18n.Tf("The default zone is %[1]s (list_zones): pass region: %[1]s; the server has no CLOUDRU_REGION to default to.",
+					"Зона по умолчанию — %[1]s (list_zones): передайте region: %[1]s — у сервера не задан CLOUDRU_REGION.", quoteCloud(z.Name))
 			}
 		}
 		errs = append(errs, clierrors.New(clierrors.CodeConfigInvalid,

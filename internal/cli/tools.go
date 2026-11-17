@@ -22,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -1017,7 +1018,9 @@ var missingInputHints = map[string]func(flag string, answer map[string]any) stri
 // command that keeps it.
 func zoneHint(flag string, answer map[string]any) string {
 	if z, _ := answer["default_zone"].(string); z != "" {
-		z = output.SanitizeCell(z)
+		// The cloud's name goes into commands to copy: one shell word, its
+		// line breaks and format characters gone («Риск» 286).
+		z = images.ShellQuote(output.SanitizeCell(z))
 		return i18n.Tf("The default zone is %[1]s (evo vm zones): add %[2]s %[1]s, or keep it in the profile: evo configure --region %[1]s.",
 			"Зона по умолчанию — %[1]s (evo vm zones): добавьте %[2]s %[1]s или запомните её в профиле: evo configure --region %[1]s.", z, flag)
 	}

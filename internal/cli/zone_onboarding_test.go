@@ -454,3 +454,27 @@ func TestVMCreate_NoZoneNamesTheDefaultZone(t *testing.T) {
 		t.Errorf("tools call: %+v", call)
 	}
 }
+
+// nastyZoneCloud marks as default a zone whose name has shell syntax and a
+// line break.
+type nastyZoneCloud struct{ exampleCloud }
+
+func (nastyZoneCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
+	open := true
+	return []*provision.AvailabilityZone{{ID: zoneAZ1, Name: "x $(id);\nrm", Enabled: &open, Default: true}}, nil
+}
+
+// The CLI's hint puts the zone into commands to copy: the name is one
+// shell word there, its line break gone («Риск» 286, У1).
+func TestVMCreate_NoZoneDefaultZoneIsOneShellWord(t *testing.T) {
+	withCloud(t, nastyZoneCloud{})
+	t.Setenv("CLOUDRU_REGION", "")
+	_, _, ce := execTree(t, "vm", "create", "my-vm", "--image", "Ubuntu-24.04")
+	if ce == nil || ce.Code != clerrors.CodeConfigInvalid {
+		t.Fatalf("vm create: %+v", ce)
+	}
+	if strings.Contains(ce.Hint, "\n") || strings.Contains(ce.Hint, "--region x $(id)") ||
+		!strings.Contains(ce.Hint, "--region 'x $(id); rm'") || !strings.Contains(ce.Hint, "evo configure --region 'x $(id); rm'") {
+		t.Errorf("the zone in the hint is not one quoted word: %q", ce.Hint)
+	}
+}
