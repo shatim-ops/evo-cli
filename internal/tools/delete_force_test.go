@@ -91,10 +91,14 @@ func TestSecretDeleteHelp_SaysTheDefaultForce(t *testing.T) {
 			t.Errorf("%s of secret_delete does not say force defaults to true and deletes what other resources use: %q", what, text)
 		}
 	}
+	// In Russian the help of the command gives the default of the flag
+	// itself (docs/commands.md: «по умолчанию true»): the description of
+	// the argument names what force does, Long the default.
 	ru := toolsRU["secret_delete"]
-	for what, text := range map[string]string{"Long": ru.Long, "force": ru.Args["force"]} {
-		if !strings.Contains(text, "умолчани") || !strings.Contains(text, "другие ресурсы") {
-			t.Errorf("Russian %s of secret_delete does not say the default and «другие ресурсы»: %q", what, text)
-		}
+	if !strings.Contains(ru.Long, "умолчани") || !strings.Contains(ru.Long, "другие ресурсы") {
+		t.Errorf("Russian Long of secret_delete does not say the default and «другие ресурсы»: %q", ru.Long)
+	}
+	if !strings.Contains(ru.Args["force"], "другие ресурсы") || strings.Contains(ru.Args["force"], "умолчани") {
+		t.Errorf("Russian force of secret_delete: want «другие ресурсы» and no default of its own (the help adds it): %q", ru.Args["force"])
 	}
 }
