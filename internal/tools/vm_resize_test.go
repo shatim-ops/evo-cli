@@ -7,6 +7,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -147,6 +148,35 @@ func TestVMResize_SameFlavorIsAlreadyResizedWithoutAQuestion(t *testing.T) {
 				t.Errorf("%s confirmed=%v: a repeat wrote %d", flavor, confirmed, n)
 			}
 		}
+	}
+}
+
+// 110-09: a stable VM whose card names the flavor of the call by its id
+// is already_resized from the card alone — no read of the catalogue of
+// flavors, no question, no write; a catalogue that cannot be read does not
+// stand in the way. By the name the catalogue is read: the card's name is
+// not the id the call names.
+func TestVMResize_SameFlavorIDAnswersWithoutTheCatalogue(t *testing.T) {
+	for _, st := range []string{"running", "stopped"} {
+		r, w, _ := vmResizeWorld(t, st)
+		w.failNth("ListFlavors", 1, faultTransport)
+		m, text, isErr := callNamed(t, r, "vm_resize", map[string]any{"vm_id": w.id, "flavor": faultFlavor})
+		if isErr || m["status"] != "already_resized" || m["flavor_id"] != faultFlavor || m["state"] != st {
+			t.Errorf("%s: %s", st, text)
+		}
+		for _, op := range w.callLog() {
+			if op == "ListFlavors" {
+				t.Errorf("%s: the catalogue was read: %v", st, w.callLog())
+			}
+		}
+		if n := w.resizeCalls(); n != 0 {
+			t.Errorf("%s: a repeat wrote %d", st, n)
+		}
+	}
+	r, w, _ := vmResizeWorld(t, "running")
+	if m, text, _ := callNamed(t, r, "vm_resize", map[string]any{"vm_id": w.id, "flavor": "low-1-1"}); m["status"] != "already_resized" ||
+		!slices.Contains(w.callLog(), "ListFlavors") {
+		t.Errorf("by the name: %s %v", text, w.callLog())
 	}
 }
 
