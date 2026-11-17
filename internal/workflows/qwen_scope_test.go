@@ -140,7 +140,8 @@ func declaredPolicy(f *ast.File) (why string, types []string) {
 }
 
 // policyUse names why f is the code of secrets or of intents by what it
-// does: it uses the intent records (any intent.X: the record, its
+// does: it repeats the user's text in a preview (EchoedArgs, echoedArg),
+// it uses the intent records (any intent.X: the record, its
 // directory, the refusal that closes it),
 // declares secret inputs (SecretFiles: in a literal) or reads them
 // (x.SecretFiles), calls a function of the package whose name is
@@ -155,6 +156,12 @@ func policyUse(f *ast.File, layerTypes, policyCalls map[string]bool) string {
 		case *ast.KeyValueExpr:
 			if id, ok := x.Key.(*ast.Ident); ok && id.Name == "SecretFiles" {
 				why = "declares secret inputs (SecretFiles)"
+			}
+		case *ast.Ident:
+			// The text of the user a preview repeats (Decl.EchoedArgs):
+			// a template with a password reached the preview (#2138).
+			if x.Name == "echoedArg" || x.Name == "EchoedArgs" {
+				why = "repeats the user's text in a preview (" + x.Name + ")"
 			}
 		case *ast.SelectorExpr:
 			if x.Sel.Name == "SecretFiles" {
@@ -289,6 +296,7 @@ func TestQwenScope_PolicyCodeIsFoundByCode(t *testing.T) {
 		"package p\nvar redactedKeys = 1":                                              true,
 		"package p\nvar specs = map[string]S{\"a\": {SecretFiles: map[string]bool{}}}": true,
 		"package p\nfunc f(t T) bool { return t.CLI.SecretFiles[\"k\"] }":              true,
+		"package p\nfunc f(e []echoedArg) {}":                                          true,
 		"package p\nfunc f(in I) { intent.Close(in) }":                                 true,
 		"package p\nfunc settled() (outcome, error) { return 0, nil }":                 true,
 		"package p\n// secret in a comment\nfunc f() string { return \"intent\" }":     false,
