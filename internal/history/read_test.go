@@ -112,3 +112,39 @@ func TestAppend_WhatEvoWritesEvoReads(t *testing.T) {
 		t.Errorf("a name longer than a reader takes: %d bytes, valid %v; want cut to %d, on a rune, with the mark", len(cut), utf8.ValidString(cut), maxText)
 	}
 }
+
+// A line that is not valid UTF-8 is not evo's — evo writes JSON, whose
+// encoder never writes such bytes — and is skipped and counted: decoded,
+// its bytes would become U+FFFD, and two resources of different ids would
+// become one — a broken line would close another's live line (Астра,
+// #2260).
+func TestReadAll_ALineNotOfUTF8IsSkipped(t *testing.T) {
+	mk := func(outcome, id, at, intent string) []byte {
+		return []byte(`{"format":1,"time":"` + at + `","tool":"disk_create","project_id":"p","kind":"disk","resource_id":"` + id + `","outcome":"` + outcome + `","intent_id":"` + intent + `"}`)
+	}
+	for _, c := range []struct {
+		name          string
+		created       []byte
+		live, skipped int
+	}{
+		{"both broken", mk(Created, "bad-\xff", "2026-11-17T10:00:00Z", "0000000000000001"), 0, 2},
+		{"a valid create, a broken delete", mk(Created, "bad-�", "2026-11-17T10:00:00Z", "0000000000000001"), 1, 1},
+	} {
+		dir := filepath.Join(t.TempDir(), DirName)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		deleted := mk(Deleted, "bad-\xfe", "2026-11-17T10:01:00Z", "0000000000000002")
+		data := append(append(append(c.created, '\n'), deleted...), '\n')
+		if err := os.WriteFile(filepath.Join(dir, "2026-11-17.jsonl"), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		j, err := ReadAll(dir, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if j.Skipped != c.skipped || len(Live(j.Lines)) != c.live {
+			t.Errorf("%s: skipped %d, live %d; want %d skipped, %d live: %+v", c.name, j.Skipped, len(Live(j.Lines)), c.skipped, c.live, j.Lines)
+		}
+	}
+}

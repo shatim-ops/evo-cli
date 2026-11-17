@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 )
@@ -81,13 +82,26 @@ func ReadAll(dir string, check Check) (Journal, error) {
 // read adds the lines of the file data.
 func (j *Journal) read(data []byte, check Check) {
 	for _, raw := range lines(data) {
-		var l Line
-		if len(raw) > maxLine || json.Unmarshal(raw, &l) != nil || !wellFormed(l) || (check != nil && !check(l)) {
+		l, ok := parse(raw)
+		if !ok || (check != nil && !check(l)) {
 			j.Skipped++
 			continue
 		}
 		j.Lines = append(j.Lines, l)
 	}
+}
+
+// parse is the line raw as a reader takes it, and whether it is one of
+// evo's form: not longer than a reader takes, valid UTF-8 — evo writes it
+// by the JSON encoder, which never writes another; decoded, a byte that is
+// not would become U+FFFD, and two resources of different ids one, a
+// broken line closing another's live one (Астра, #2260) — and wellFormed.
+func parse(raw []byte) (Line, bool) {
+	var l Line
+	if len(raw) > maxLine || !utf8.Valid(raw) || json.Unmarshal(raw, &l) != nil || !wellFormed(l) {
+		return Line{}, false
+	}
+	return l, true
 }
 
 // lines are the lines of data that are not blank, whatever their length:
