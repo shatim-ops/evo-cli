@@ -91,7 +91,7 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		},
 		func(st string) string {
 			return i18n.Tf("%s %s: %s, waiting until it is made…", "%s %s: %s, жду завершения создания…",
-				i18n.T(m.what, m.whatRU), id, quoteCloud(st))
+				i18n.T(m.what, m.whatRU), quoteCloud(id), quoteCloud(st))
 		},
 		func(st string) (bool, error) { return madeKind(st) != stateMaking, nil })
 	word := "unknown"
@@ -116,9 +116,9 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		res["status"] = "failed"
 		res[m.field] = mergedItem(res[m.field], item)
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("%s %s: Cloud.ru did not finish making it, state %s", "%s %s: Cloud.ru не завершил создание, состояние — %s", i18n.T(m.what, m.whatRU), id, quoteCloud(last)),
+			i18n.Tf("%s %s: Cloud.ru did not finish making it, state %s", "%s %s: Cloud.ru не завершил создание, состояние — %s", i18n.T(m.what, m.whatRU), quoteCloud(id), quoteCloud(last)),
 			i18n.Tf("%s ids=[%s] shows it; whether to delete it (%s) — ask the person.",
-				"Состояние показывает %s ids=[%s]; удалять ли (%s) — спросите человека.", m.list, id, decls[m.tool].Created.delete)), res), true
+				"Состояние показывает %s ids=[%s]; удалять ли (%s) — спросите человека.", m.list, quoteCloud(id), decls[m.tool].Created.delete)), res), true
 	}
 	res["status"] = "creating"
 	if !listed || kind == stateOther {
@@ -139,22 +139,22 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		res["note"] = i18n.T(m.unknown, m.unknownRU)
 	}
 	res["next"] = i18n.Tf("%s %s is %s: the platform has not finished making it. %s ids=[%s] shows its state.",
-		"%s %s — %s: платформа ещё не завершила создание. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
+		"%s %s — %s: платформа ещё не завершила создание. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), quoteCloud(id), word, m.list, quoteCloud(id))
 	switch {
 	case !listed:
 		// Not in the last list read: never listed yet, or listed and
 		// gone. Neither says it is being made (Астра #1920, #1922).
 		res["next"] = i18n.Tf("%s %s is not in the list evo read last: evo does not know its state. %s ids=[%s] shows it.",
-			"%s %s нет в списке, который evo прочитал последним: evo не знает его состояния. Его показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, m.list, id)
+			"%s %s нет в списке, который evo прочитал последним: evo не знает его состояния. Его показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), quoteCloud(id), m.list, quoteCloud(id))
 	case kind == stateOther:
 		// A state of no list: evo does not tell whether it is made.
 		res["next"] = i18n.Tf("%s %s is %s: evo does not know this state as made or being made. %s ids=[%s] shows its state.",
-			"%s %s — %s: evo не знает, сделан ли ресурс в этом состоянии. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
+			"%s %s — %s: evo не знает, сделан ли ресурс в этом состоянии. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), quoteCloud(id), word, m.list, quoteCloud(id))
 	}
 	nextStep(res, m.list, map[string]any{"ids": []any{id}})
 	if stderrors.Is(err, context.Canceled) {
 		return errAnswer(fmt.Errorf("%s: %w", i18n.Tf("%s %s: the wait was cancelled, the platform goes on making it",
-			"%s %s: ожидание прервано, платформа продолжает создание", i18n.T(m.what, m.whatRU), id), err), res), true
+			"%s %s: ожидание прервано, платформа продолжает создание", i18n.T(m.what, m.whatRU), quoteCloud(id)), err), res), true
 	}
 	return toJSON(res), false
 }
