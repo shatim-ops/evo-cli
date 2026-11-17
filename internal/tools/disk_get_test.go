@@ -5,12 +5,17 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 const diskGetID = "00000000-0000-4000-8000-0000000000d1"
@@ -20,13 +25,19 @@ const diskGetID = "00000000-0000-4000-8000-0000000000d1"
 type diskGetCloud struct {
 	*faultCloud
 	card map[string]any
+	// at is the id the card is read by; "" — the card's own.
+	at string
 }
 
 func (c *diskGetCloud) GetDisk(ctx context.Context, id string) (map[string]any, error) {
 	if err := c.gate("GetDisk"); err != nil {
 		return nil, err
 	}
-	if c.card == nil || c.card["id"] != id {
+	at, _ := c.card["id"].(string)
+	if c.at != "" {
+		at = c.at
+	}
+	if c.card == nil || at != id {
 		return nil, clerrors.New(clerrors.CodeNotFound, "disk not found", "")
 	}
 	return c.card, nil
@@ -145,5 +156,79 @@ func TestDiskGet_BoundServerReadsNoDiskOfAnotherProject(t *testing.T) {
 	r = ownerRegistry(t, f, true, ownProject, ownOther)
 	if m, text, isErr := callOwned(t, r, "disk_get", map[string]any{"disk_id": resMine}, true); isErr || m["id"] != resMine {
 		t.Errorf("a disk of the allowed project: %s", text)
+	}
+}
+
+// A card of a disk whose fields carry what anyone could write: each fact
+// keeps its one type, or is named in not_checked; the id is the call's;
+// every string of the cloud the answer shows is named in _untrusted —
+// serial_id and the names of the VMs too («Риск», conclusion 336, У1, У2).
+func TestDiskGet_AHostileCardKeepsTypesAndMarks(t *testing.T) {
+	card := fullDiskCard()
+	card["id"] = hostileMarker
+	card["name"] = hostileMarker
+	card["serial_id"] = hostileMarker
+	card["encrypted"] = "true"
+	card["bootable"] = map[string]any{"note": hostileMarker}
+	card["readonly"] = float64(0)
+	card["shared"] = []any{true}
+	card["size"] = "20 GB " + hostileMarker
+	card["vms"] = []any{map[string]any{"id": "x", "name": hostileMarker, "primary": false, "state": hostileMarker}}
+	c := &diskGetCloud{faultCloud: &faultCloud{}, card: card, at: diskGetID}
+	r, _ := faultToolsRegistryOver(t, c)
+	m, text, isErr := callNamed(t, r, "disk_get", map[string]any{"disk_id": diskGetID})
+	if isErr {
+		t.Fatal(text)
+	}
+	if m["id"] != diskGetID {
+		t.Errorf("id is not the call's: %v", m["id"])
+	}
+	for _, f := range []string{"encrypted", "bootable", "readonly", "shared", "size_gb"} {
+		if _, has := m[f]; has {
+			t.Errorf("%s of another type is in the answer: %v", f, m[f])
+		}
+	}
+	named := map[string]bool{}
+	nc, _ := m["not_checked"].([]any)
+	for _, x := range nc {
+		row, _ := x.(map[string]any)
+		named[row["check"].(string)] = true
+	}
+	for _, f := range []string{"encrypted", "bootable", "readonly", "shared", "size_gb"} {
+		if !named[f] {
+			t.Errorf("%s of another type is not named in not_checked: %v", f, nc)
+		}
+	}
+	marked := stringList(m["_untrusted"])
+	for _, f := range []string{"name", "serial_id", "attached_vms", "state"} {
+		if !slices.Contains(marked, f) {
+			t.Errorf("%s carries the cloud's text, _untrusted is %v", f, marked)
+		}
+	}
+}
+
+// hostileFlavorWorld is a world whose card of a VM names its flavor with
+// what anyone could write.
+type hostileFlavorWorld struct{ *powerWorld }
+
+func (w *hostileFlavorWorld) GetVMDetail(ctx context.Context, id string) (*provision.VMDetail, error) {
+	d, err := w.powerWorld.GetVMDetail(ctx, id)
+	if err == nil && d.Flavor != nil {
+		d.Flavor = &provision.Flavor{ID: d.Flavor.ID, Name: hostileMarker}
+	}
+	return d, err
+}
+
+// The name of the VM's flavor in vm_get is the cloud's text: marked («Риск»,
+// conclusion 336, У2).
+func TestVMGet_AHostileFlavorNameIsMarked(t *testing.T) {
+	_, w, dir := vmResizeWorld(t, "running")
+	r := New(func(map[string]any) (*engine.Engine, error) {
+		return &engine.Engine{StateDir: dir, Config: config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
+			Auth: staticToken{}, Cloud: &hostileFlavorWorld{w}, Printer: output.NewWithWriter(&bytes.Buffer{}, output.ModeText, false)}, nil
+	})
+	m, text, _ := callNamed(t, r, "vm_get", map[string]any{"vm_id": w.id})
+	if m["flavor_name"] != hostileMarker || !slices.Contains(stringList(m["_untrusted"]), "flavor_name") {
+		t.Errorf("vm_get: %s", text)
 	}
 }
