@@ -53,7 +53,7 @@ func TestPending_ARecordNotOfItsOwnFormIsNotReadAndRemovesNothing(t *testing.T) 
 	}
 	// Even an intent handed in with such an id removes nothing.
 	Close(Intent{ID: "../state", Dir: dir}, history.Outcome{Result: history.Found})
-	Settle(dir, Intent{Tool: "vm_create", Name: "x"}, history.Outcome{})
+	Settle(dir, Intent{Tool: "vm_create", Name: "x"}, history.Outcome{Result: history.Found})
 	if _, err := os.Stat(state); err != nil {
 		t.Fatalf("a record removed a file outside the intents: %v", err)
 	}

@@ -57,8 +57,6 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"disk_create size":                 {unnamedNoise, "size_gb в форме API"},
 	"disk_resize size":                 {unnamedNoise, "size_gb в форме API"},
 
-	"dns_record_create public_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
-
 	"fip_attach interface_id": {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
 	"fip_attach name":         {unnamedNoise, "имя адреса при привязке"},
 
@@ -71,9 +69,9 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": {unnamedNoise, "id flavor мастеров, который превью называет по имени, vCPU и RAM; принято «Риском», 203"},
 	"k8s_create controlPlaneConfiguration.zones":                        {unnamedNoise, "id зоны, которую превью называет по имени; принято «Риском», 203"},
 
-	"lb_create rules.listeners.name":        {unnamedNoise, "имя listener, которое evo даёт само"},
-	"lb_create rules.listeners.target_port": {unnamedWork, "порт цели равен порту listener"},
-	"lb_create rules.name":                  {unnamedNoise, "имя правила, которое evo даёт само"},
+	"lb_create rules.listeners.name":        {unnamedNoise, "имя listener, которое evo даёт само (lst-<порт>) из названного превью порта; принято «Риском», 294"},
+	"lb_create rules.listeners.target_port": {unnamedWork, "превью называет порт цели в listener («443→8443») и строкой target_port, по умолчанию он равен порту listener; принято «Риском», 294"},
+	"lb_create rules.name":                  {unnamedNoise, "имя правила, которое evo даёт само (rule-<имя>) из названного превью имени; принято «Риском», 294"},
 
 	"open_ports description": {unnamedNoise, "подпись правила"},
 	"open_ports direction":   {unnamedNoise, "правило входящее"},
@@ -84,8 +82,8 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"provision interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
 	"provision name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
 
-	"secret_add_version payload": {unnamedSecret, "значение секрета"},
-	"secret_create payload":      {unnamedSecret, "значение секрета"},
+	"secret_add_version payload": {unnamedSecret, "значение секрета; принято «Риском», 294"},
+	"secret_create payload":      {unnamedSecret, "значение секрета; принято «Риском», 294"},
 
 	"vpc_route_create nextHop.virtualMachine.interface.id":      {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
 	"vpc_route_create nextHop.virtualMachine.virtualMachine.id": {unnamedNoise, "id ВМ, которую превью называет по имени"},
@@ -103,6 +101,7 @@ var bodyNamedAs = map[string]string{
 	"vm_reboot state":                 "command",
 	"ca_deploy configuration.ingress.publiclyAccessible": "public",
 	"lb_create external_address_spec.allocate":           "external",
+	"dns_record_create public_zone_id":                   "zone_id",
 
 	"ca_deploy template.containers.containerPort":          "port",
 	"ca_deploy template.scaling.maxInstanceCount":          "max_instances",

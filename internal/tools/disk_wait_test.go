@@ -63,3 +63,40 @@ func TestDiskWait_SaysTheStateWhileWaiting(t *testing.T) {
 		t.Errorf("a state is said once, when it changes: %d lines with creating", n)
 	}
 }
+
+// dirtyDiskCloud lists the disk in a state with an escape sequence, a
+// carriage return, NUL and a bidi override, then available.
+type dirtyDiskCloud struct {
+	cancelCloud
+	mu    sync.Mutex
+	polls int
+}
+
+func (c *dirtyDiskCloud) ListDisks(context.Context, string) ([]map[string]any, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.polls++
+	state := "creating\x1b[2J\rOVER\x00\u202e"
+	if c.polls > 2 {
+		state = "available"
+	}
+	return []map[string]any{{"id": "d-1", "state": state}}, nil
+}
+
+// The state of the disk the wait says goes out cleaned — to the
+// terminal and to the progress of an MCP call alike (Астра #2090).
+func TestDiskWait_TheStateItSaysIsCleaned(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	ctx := WithProgress(context.Background(), func(l string) { mu.Lock(); lines = append(lines, l); mu.Unlock() })
+	eng := &engine.Engine{Cloud: &dirtyDiskCloud{}, Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: time.Second}}
+	if err := waitDiskAvailable(ctx, eng, "d-1", "p"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "OVER") || strings.ContainsAny(joined, "\x1b\r\x00\u202e") {
+		t.Errorf("the state goes out as the cloud sent it: %q", joined)
+	}
+}

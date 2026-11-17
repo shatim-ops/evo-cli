@@ -68,10 +68,10 @@ func TestSettle_OnlyAnEarlierCallThatIsNotInFlight(t *testing.T) {
 				t.Fatal(err)
 			}
 			if c.in.Held {
-				Hold(rec, history.Outcome{})
+				Hold(rec, history.Outcome{Result: history.Found})
 			}
 			if c.ended {
-				End(rec, history.Outcome{})
+				End(rec, history.Outcome{Result: history.Found})
 			}
 			done, err := Open(dir, Intent{Tool: "disk_create", Name: "data", ProjectID: "p", Key: key, PID: os.Getpid(),
 				StartedAt: t0.Add(time.Minute), Canon: canon})
@@ -79,7 +79,7 @@ func TestSettle_OnlyAnEarlierCallThatIsNotInFlight(t *testing.T) {
 				t.Fatal(err)
 			}
 			Close(done, history.Outcome{Result: history.Found})
-			Settle(dir, done, history.Outcome{})
+			Settle(dir, done, history.Outcome{Result: history.Found})
 			if removed := len(Pending(dir)) == 0; removed != c.removed {
 				t.Errorf("removed %v, want %v: %+v", removed, c.removed, Pending(dir))
 			}
@@ -116,7 +116,7 @@ func TestSettle_TheSameArgumentsOnAnotherTargetAreAnotherCall(t *testing.T) {
 				t.Fatal(err)
 			}
 			Close(done, history.Outcome{Result: history.Found})
-			Settle(dir, done, history.Outcome{})
+			Settle(dir, done, history.Outcome{Result: history.Found})
 			if removed := len(Pending(dir)) == 0; removed != c.removed {
 				t.Errorf("removed %v, want %v: %+v", removed, c.removed, Pending(dir))
 			}
@@ -155,7 +155,7 @@ func TestSettle_TheSameArgumentsOnOtherPartiesAreAnotherCall(t *testing.T) {
 				t.Fatal(err)
 			}
 			Close(done, history.Outcome{Result: history.Found})
-			Settle(dir, done, history.Outcome{})
+			Settle(dir, done, history.Outcome{Result: history.Found})
 			if removed := len(Pending(dir)) == 0; removed != c.removed {
 				t.Errorf("removed %v, want %v: %+v", removed, c.removed, Pending(dir))
 			}

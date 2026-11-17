@@ -119,13 +119,24 @@ for w in ${probe_words[@]+"${probe_words[@]}"}; do
 		[ "${K8S_SMOKE:-}" = true ] || fail "probes: «g12» — проба джоба k8s-smoke, а он не идёт (k8s_smoke)"
 		[ "${K8S_POD_CHART:-}" != true ] || fail "probes: «g12» и k8s_pod_chart в одном запуске не идут — худший ход job k8s-smoke вплотную к пределу 300 мин"
 		;;
+	# Операции второго дня кодом evo (гейт rc.1, п. 7): своя область opsevo
+	# в job live; часть Kubernetes — k8sevo в job k8s-smoke, отдельным
+	# запуском. k8sevo меняет и удаляет ту же группу узлов, что и Г-12, и
+	# вместе с ней не укладывается в предел job.
+	opsevo)
+		[[ " ${PROBES:-} " != *" k8sevo "* ]] || fail "probes: «opsevo» и «k8sevo» — разными запусками (строка плана 1.9: часть Kubernetes — отдельным запуском)"
+		;;
+	k8sevo)
+		[ "${K8S_SMOKE:-}" = true ] || fail "probes: «k8sevo» — область джоба k8s-smoke, а он не идёт (k8s_smoke)"
+		[[ " ${PROBES:-} " != *" g12 "* ]] || fail "probes: «k8sevo» и «g12» в одном запуске не идут — обе меняют и удаляют одну группу узлов"
+		;;
 	g14)
 		[ -n "${cluster_kinds[kafka]:-}" ] || fail "probes: «$w» — проба джоба dbaas-kafka, а он не идёт (dbaas_smoke и kafka в dbaas_services)"
 		;;
 	g15)
 		[[ " ${DBAAS_SERVICES:-} " == *" redis "* && "${DBAAS_SMOKE:-}" == true ]] || fail "probes: «$w» — проба джоба dbaas-redis, а он не идёт (dbaas_smoke и redis в dbaas_services)"
 		;;
-	*) fail "probes: «$w» — не access, nodes, pgrepeat, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g12, g13, g14, g15, g16, g17, g17nonames, g18, g20, console" ;;
+	*) fail "probes: «$w» — не access, nodes, pgrepeat, p36, p41, p44, p45, dnslink, shared, cmp7, r3f1, g10, g11, g12, g13, g14, g15, g16, g17, g17nonames, g18, g20, console, opsevo, k8sevo" ;;
 	esac
 done
 
@@ -134,13 +145,23 @@ done
 # рассчитаны на «фон + один запуск», и пробы области ops вместе с основным
 # e2e (e2e_core) или os_smoke удваивают пик ВМ. Проход кандидата, пробы и
 # базы — разными запусками.
-ops_words=()
+ops_words=() evo_words=()
 for w in ${probe_words[@]+"${probe_words[@]}"}; do
-	case "$w" in g10 | g11 | g16 | g17 | g18 | console) ops_words+=("$w") ;; esac
+	case "$w" in
+	g10 | g11 | g16 | g17 | g18 | console) ops_words+=("$w") ;;
+	opsevo) evo_words+=("$w") ;;
+	esac
 done
 if [ ${#ops_words[@]} -gt 0 ]; then
 	[ "${E2E_CORE:-true}" != true ] || fail "probes: «${ops_words[*]}» — пробы области ops в одном запуске с основным e2e (e2e_core) складывают пик ВМ: запустите пробы отдельно, с e2e_core: false"
 	[ "${OS_SMOKE:-}" != true ] || fail "probes: «${ops_words[*]}» — пробы области ops в одном запуске с os_smoke складывают пик ВМ: os_smoke — с проходом кандидата, пробы — отдельным запуском"
+fi
+# Область opsevo — две ВМ, диски и копия: так же не складывается ни с
+# основным e2e и os_smoke, ни с пробами области ops.
+if [ ${#evo_words[@]} -gt 0 ]; then
+	[ "${E2E_CORE:-true}" != true ] || fail "probes: «opsevo» — область opsevo в одном запуске с основным e2e (e2e_core) складывает пик ВМ: запустите её отдельно, с e2e_core: false"
+	[ "${OS_SMOKE:-}" != true ] || fail "probes: «opsevo» — область opsevo в одном запуске с os_smoke складывает пик ВМ: запустите её отдельно"
+	[ ${#ops_words[@]} = 0 ] || fail "probes: «opsevo» и «${ops_words[*]}» — области opsevo и ops в одном запуске складывают пик ВМ: запустите их разными запусками"
 fi
 
 # Зоны прогона: «зона» → «джоб, джоб».

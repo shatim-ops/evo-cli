@@ -71,7 +71,10 @@ func Known(outcome string) bool { return outcomes[outcome] }
 // Outcome is what the end of a call says of it: the part of a line the
 // caller knows and the record of the intent does not.
 type Outcome struct {
-	Result      string
+	Result string
+	// Kind is the kind of the resource ("disk"): with ResourceID it tells
+	// one resource from another of the same id or name.
+	Kind        string
 	ResourceID  string
 	Reason      string
 	OperationID string
@@ -97,6 +100,7 @@ type Line struct {
 	// resource: a name, «argument=id». Not a value of a secret.
 	Name        string `json:"name,omitempty"`
 	Target      string `json:"target,omitempty"`
+	Kind        string `json:"kind,omitempty"`
 	ResourceID  string `json:"resource_id,omitempty"`
 	Outcome     string `json:"outcome"`
 	Reason      string `json:"reason,omitempty"`
@@ -170,40 +174,59 @@ func FileOf(dir string, at time.Time) string {
 
 // Live are the lines of what may still be in the cloud, in the order of
 // lines: the reading history and the cleanup share (the ТЗ of the
-// journal, §0, 7 and 9). Two things are live:
+// journal, §0, 7 and 9). A line closes only on an outcome that is certain;
+// in doubt it is live («Риск», conclusion 300). Two things are live:
 //
-//   - a call whose last line is unknown: what it did is not known yet;
-//   - a resource with a line created or found and no later line of the same
-//     id that says it is gone (deleted, already_deleted, not_found).
+//   - a call whose last line is unknown, or found with no id: what it did
+//     is not known, or not where;
+//   - a resource with a line created or found and no later line that says
+//     it is gone (deleted, already_deleted, not_found) of the same kind and
+//     id in the same project. A line with no project — a call on a
+//     resource by its id, whose project the call did not know (R-82) —
+//     meets a line of any project of the same kind and id: an id names one
+//     resource; a name in two projects names two (У4).
 //
 // A line changed, error or found with no id closes nothing: a VM rebooted
-// or resized is the VM created, live until it is deleted («Риск», the
-// condition on the code of D43). A line of a form or an outcome a reader
-// does not know is live: a newer evo wrote it, and what it says is not
-// this one's to drop.
+// or resized is the VM created, live until it is deleted. A line of a form
+// or an outcome a reader does not know is live: a newer evo wrote it, and
+// what it says is not this one's to drop.
 func Live(lines []Line) []Line {
 	last := map[string]int{}
-	byResource := map[string]int{}
+	type held struct {
+		i       int
+		project string
+	}
+	byResource := map[string][]held{}
 	for i, l := range lines {
 		last[l.IntentID] = i
 		if l.ResourceID == "" {
 			continue
 		}
+		key := l.Kind + "\x00" + l.ResourceID
 		switch l.Outcome {
 		case Created, Found:
-			byResource[l.ResourceID] = i
+			byResource[key] = append(byResource[key], held{i, l.ProjectID})
 		case Deleted, AlreadyDeleted, NotFound:
-			delete(byResource, l.ResourceID)
+			kept := byResource[key][:0]
+			for _, h := range byResource[key] {
+				if h.project != "" && l.ProjectID != "" && h.project != l.ProjectID {
+					kept = append(kept, h)
+				}
+			}
+			byResource[key] = kept
 		}
 	}
 	live := map[int]bool{}
 	for _, i := range last {
-		if l := lines[i]; l.Outcome == Unknown || l.Format != Format || !Known(l.Outcome) {
+		l := lines[i]
+		if l.Outcome == Unknown || (l.Outcome == Found && l.ResourceID == "") || l.Format != Format || !Known(l.Outcome) {
 			live[i] = true
 		}
 	}
-	for _, i := range byResource {
-		live[i] = true
+	for _, hs := range byResource {
+		for _, h := range hs {
+			live[h.i] = true
+		}
 	}
 	var out []Line
 	for i, l := range lines {

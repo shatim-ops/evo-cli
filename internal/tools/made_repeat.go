@@ -195,7 +195,7 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		forget()
 		return "", false, false
 	}
-	if _, listed := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID); listed {
+	if _, listed, _ := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID); listed {
 		forget()
 		return "", false, false
 	}

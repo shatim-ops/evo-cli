@@ -77,7 +77,7 @@ func TestJournal_EveryEndOfARecordIsALine(t *testing.T) {
 	Hold(held, history.Outcome{Result: history.Created, ResourceID: "c-3"})
 	HoldCut(cut, time.Now())
 	repeat := open("b")
-	Settle(dir, repeat, history.Outcome{Result: history.Created, ResourceID: "c-2"})
+	Settle(dir, repeat, history.Outcome{Result: history.Found, ResourceID: "c-2"})
 
 	want := []struct{ id, outcome, resource, reason string }{
 		{closed.ID, history.Created, "c-1", ""},
