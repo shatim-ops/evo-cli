@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
@@ -214,8 +215,10 @@ func nextStep(answer map[string]any, tool string, args map[string]any) {
 // ends the wait at once — the resource is not there any more, and a wait
 // that went on would answer «still on its way» for what is gone. waiting words each state that does not end the wait,
 // and the wait says it when the state changes: a wait is not silent, in the CLI and over MCP alike
-// (CLAUDE.md §6, axis 2). It returns the last state read and how the wait
-// ended: by done (err is done's), by its own limit (timedOut is how long it
+// (CLAUDE.md §6, axis 2); while the state stays, a line with the state and
+// the time waited goes out every Engine.ProgressInterval, so a resource that
+// stands in one state for the whole wait does not leave it silent. It
+// returns the last state read and how the wait ended: by done (err is done's), by its own limit (timedOut is how long it
 // waited) or by the budget of an MCP call (atLimit, D69) — the resource
 // goes on in the cloud, and the caller answers its state and the next
 // step, not an error. One loop for the waits on a state: a disk's, a VM's
@@ -236,6 +239,9 @@ func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
 	timeout, capped := callBound(ctx, timeout)
 	deadline := time.Now().Add(timeout)
 	last = "unknown"
+	// The time waited goes into a progress line: a reading of internal/clock.
+	start := clock.Now()
+	shown := start
 	for {
 		st, seen, err := read(ctx)
 		if err != nil {
@@ -244,8 +250,14 @@ func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
 		}
 		if seen {
 			ok, err := done(st)
-			if st != last && !ok {
+			switch {
+			case ok:
+			case st != last:
 				pp.Step(0, 0, waiting(st))
+				shown = clock.Now()
+			case clock.Since(shown) >= eng.ProgressInterval():
+				pp.Step(0, 0, waiting(st)+i18n.Tf(" (%s so far)", " (прошло %s)", engine.ElapsedText(clock.Since(start))))
+				shown = clock.Now()
 			}
 			last = st
 			if ok {
