@@ -426,6 +426,11 @@ func TestWorkflows_CloudE2EYieldsToAPerson(t *testing.T) {
 	if len(w.On) != 1 {
 		t.Errorf("cloud-e2e-yield: triggers %v, want workflow_run alone", w.On)
 	}
+	// --keep-cleanup knows the cleanup by the name of its run.
+	if !strings.Contains(readFile(t, ".github/workflows/cloud-e2e.yml"), "run-name: ${{ inputs.cleanup_only && 'cloud-e2e (cleanup_only)' || 'cloud-e2e' }}") ||
+		!strings.Contains(readFile(t, ".github/scripts/weekly_stale.sh"), `.display_title != "cloud-e2e (cleanup_only)"`) {
+		t.Error("cloud-e2e-yield: the cleanup is not told by the name of its run (run-name of cloud-e2e.yml and weekly_stale.sh --keep-cleanup)")
+	}
 	if p, _ := w.Permissions.(map[string]any); len(p) != 0 {
 		t.Errorf("cloud-e2e-yield: workflow permissions %v, want {}", w.Permissions)
 	}
@@ -449,8 +454,10 @@ func TestWorkflows_CloudE2EYieldsToAPerson(t *testing.T) {
 				t.Errorf("cloud-e2e-yield: step %q reads a secret or checks out another ref", s.Name)
 			}
 		}
-		if strings.TrimSpace(runs) != `.github/scripts/weekly_stale.sh "$GITHUB_REPOSITORY"` {
-			t.Errorf("cloud-e2e-yield: job %s runs %q, want weekly_stale.sh alone", name, runs)
+		// The cleanup waits in a group of its own and holds no run of a
+		// person: it is kept («Риск», conclusion 307, У1).
+		if strings.TrimSpace(runs) != `.github/scripts/weekly_stale.sh "$GITHUB_REPOSITORY" --keep-cleanup` {
+			t.Errorf("cloud-e2e-yield: job %s runs %q, want weekly_stale.sh --keep-cleanup alone", name, runs)
 		}
 	}
 }
@@ -1867,4 +1874,14 @@ func TestWorkflows_WindowsTestNamesTheProcessor(t *testing.T) {
 		}
 	}
 	t.Error("ci: no step before gotest names the processor of the Windows runner")
+}
+
+// readFile reads a file of the repository by its path from the root.
+func readFile(t *testing.T, rel string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

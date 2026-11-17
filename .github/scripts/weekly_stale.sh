@@ -12,12 +12,24 @@
 # владельца 17.11, прогон 222).
 #
 #   weekly_stale.sh REPO  — отменить; печатает «отменён <id> (<дата>)».
+#   weekly_stale.sh REPO --keep-cleanup — то же, кроме уборки (имя прогона
+#     «cloud-e2e (cleanup_only)»): её зовёт cloud-e2e-yield, а уборка стоит в
+#     своей группе очереди и ручной запуск не держит («Риск», 307, У1).
 set -euo pipefail
 repo=${1:?репозиторий}
+keep=''
+case "${2:-}" in
+'') ;;
+--keep-cleanup) keep=' | select(.display_title != "cloud-e2e (cleanup_only)")' ;;
+*)
+	echo "::error::неизвестный ключ: $2" >&2
+	exit 2
+	;;
+esac
 # Сбой чтения или отмены не срывает недельный запуск: новый прогон встанет
 # в очередь concurrency, как и без этого шага (ревью Qwen #1111).
 ids=$(gh api "repos/$repo/actions/workflows/cloud-e2e.yml/runs?status=waiting&per_page=100" \
-	--jq '.workflow_runs[] | select(.triggering_actor.login == "github-actions[bot]") | "\(.id) \(.created_at)"') || {
+	--jq ".workflow_runs[] | select(.triggering_actor.login == \"github-actions[bot]\")$keep | \"\\(.id) \\(.created_at)\"") || {
 	echo "::warning::список ждущих прогонов cloud-e2e не прочитан — отмена пропущена"
 	exit 0
 }

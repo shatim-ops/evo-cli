@@ -1,4 +1,8 @@
 name: cloud-e2e
+# Уборка видна по имени прогона: cloud-e2e-yield не отменяет ждущую уборку
+# (она в своей группе очереди и ручной запуск не держит; заключение
+# «Риска» 307, У1) — weekly_stale.sh --keep-cleanup.
+run-name: ${{ inputs.cleanup_only && 'cloud-e2e (cleanup_only)' || 'cloud-e2e' }}
 
 # Сквозная проверка на настоящем Cloud.ru: init → deploy → verify → logs -f →
 # destroy → правило порта приложения удалено из группы безопасности. Создаёт платную ВМ и floating IP, поэтому запускается только
