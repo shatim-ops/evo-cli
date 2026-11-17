@@ -96,7 +96,7 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	}
 	var all []rawLine
 	from := map[string][2]int{} // file → its lines in all
-	for _, name := range append([]string{LiveName}, days...) {
+	for _, name := range readOrder(days) {
 		data, err := config.ReadFileNoFollow(filepath.Join(dir, name))
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -146,7 +146,7 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	// The live lines of LiveName and of the files that go, once each.
 	var kept bytes.Buffer
 	seen := map[string]bool{}
-	for _, name := range append([]string{LiveName}, days...) {
+	for _, name := range readOrder(days) {
 		r, ok := from[name]
 		if !ok || (name != LiveName && !retire[name]) {
 			continue
@@ -240,21 +240,20 @@ func rawLines(data []byte, check Check) []rawLine {
 // liveOfRaw is the live mask of raw lines: Live of the lines a reader
 // reads, and every line it does not — kept, never dropped.
 func liveOfRaw(all []rawLine) []bool {
+	// Each line once, where the reader first meets it (readOrder): a copy
+	// of a line is the line, and is as live as it is.
 	var lines []Line
-	var at []int
-	for i, r := range all {
-		if r.ok {
+	first := map[string]int{} // text → index in lines
+	for _, r := range all {
+		if _, dup := first[r.text]; r.ok && !dup {
+			first[r.text] = len(lines)
 			lines = append(lines, r.line)
-			at = append(at, i)
 		}
 	}
 	mask := liveMask(lines)
 	live := make([]bool, len(all))
 	for i, r := range all {
-		live[i] = !r.ok
-	}
-	for k, i := range at {
-		live[i] = live[i] || mask[k]
+		live[i] = !r.ok || mask[first[r.text]]
 	}
 	return live
 }
@@ -302,7 +301,7 @@ func Describe(dir string, check Check) (Summary, error) {
 		s.Oldest = strings.TrimSuffix(days[0], ".jsonl")
 	}
 	var all []rawLine
-	for _, name := range append([]string{LiveName}, days...) {
+	for _, name := range readOrder(days) {
 		data, err := config.ReadFileNoFollow(filepath.Join(dir, name))
 		if err != nil {
 			continue

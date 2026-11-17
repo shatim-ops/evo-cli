@@ -70,7 +70,7 @@ func ReadAll(dir string, check Check) (Journal, error) {
 		}
 	}
 	sort.Strings(names)
-	names = append([]string{LiveName}, names...)
+	names = readOrder(names)
 	j := Journal{seen: map[string]bool{}}
 	for _, name := range names {
 		data, err := config.ReadFileNoFollow(filepath.Join(dir, name))
@@ -83,6 +83,17 @@ func ReadAll(dir string, check Check) (Journal, error) {
 		j.read(data, check)
 	}
 	return j, nil
+}
+
+// readOrder is the order a reader and the pruning read the files of a
+// journal in: the days, oldest first, then LiveName. A line is taken once,
+// where it is first met (seen, liveOfRaw): a copy LiveName holds after a
+// pruning killed before it removed the file of its day is met in that
+// file first — lines of one second keep the order they were written in,
+// whatever file holds them («Риск», conclusion 324 revised). LiveName
+// holds lines of retired days only, older than every file kept.
+func readOrder(days []string) []string {
+	return append(append([]string(nil), days...), LiveName)
 }
 
 // read adds the lines of the file data.
