@@ -257,17 +257,17 @@ func Dirs(root string) []string {
 }
 
 // Begin writes in before the call goes out and returns the end of it:
-// done writes the line of out and removes the file — or keeps it, when
-// out is unknown (the answer was lost): the next run names it. An error
-// means nothing was written: the caller refuses the call before it goes
-// out.
-func Begin(dir string, in Intent) (done func(out history.Outcome), err error) {
+// done writes the line of out and removes the file — or keeps it (End),
+// when keep: the outcome is not known and the next run names it. An
+// error means nothing was written: the caller refuses the call before it
+// goes out.
+func Begin(dir string, in Intent) (done func(out history.Outcome, keep bool), err error) {
 	rec, err := Open(dir, in)
 	if err != nil {
 		return nil, err
 	}
-	return func(out history.Outcome) {
-		if out.Result == history.Unknown {
+	return func(out history.Outcome, keep bool) {
+		if keep {
 			End(rec, out)
 			return
 		}

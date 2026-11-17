@@ -104,18 +104,19 @@ func TestJournal_EveryEndOfARecordIsALine(t *testing.T) {
 		t.Errorf("the operation of the answer is not in the line: %+v", got[0])
 	}
 
-	// The end of Begin: an outcome known removes the record, unknown keeps
-	// it — with its line either way.
+	// The end of Begin: kept, the record stays (End); else it goes — with
+	// its line either way, unknown too (a login that left what its undo
+	// could not remove).
 	for _, c := range []struct {
 		result string
 		kept   bool
-	}{{history.Created, false}, {history.Unknown, true}} {
+	}{{history.Created, false}, {history.Unknown, true}, {history.Unknown, false}} {
 		done, err := Begin(dir, Intent{Tool: "login", Name: "evo", StartedAt: time.Now()})
 		if err != nil {
 			t.Fatal(err)
 		}
 		before := len(Pending(dir))
-		done(history.Outcome{Result: c.result})
+		done(history.Outcome{Result: c.result}, c.kept)
 		if after := len(Pending(dir)); (after == before) != c.kept {
 			t.Errorf("Begin's end with %s: %d records before, %d after; kept %v", c.result, before, after, c.kept)
 		}

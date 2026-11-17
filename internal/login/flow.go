@@ -194,7 +194,9 @@ type project struct {
 type session struct {
 	// intentDone ends the intent of the key (№ 37) with the line of its
 	// outcome in the journal of changes (D43); nil without one.
-	intentDone func(history.Outcome)
+	intentDone func(out history.Outcome, keep bool)
+	// undoLeft: the rollback could not remove what this login made.
+	undoLeft bool
 	// keyUnknown: the issue of the key failed with an outcome the cloud
 	// did not say (intent.OutcomeUnknown) — the key may be in the cloud
 	// with no id evo knows, so its intent stays (FB180-3).
@@ -599,17 +601,24 @@ func (s *session) grant(ctx context.Context, pl plan, say func(string)) (Result,
 	// there, and evo doctor and the next run name it — its line in the
 	// journal is unknown. A login that failed undid what it made (R-44).
 	if s.intentDone != nil {
-		out := history.Outcome{Result: history.Created}
-		switch {
-		case s.keyUnknown:
-			out = history.Outcome{Result: history.Unknown, Reason: clierrors.Reason(err)}
-		case err != nil:
-			out = history.Outcome{Result: history.Error, Reason: clierrors.Reason(err)}
-		}
-		s.intentDone(out)
+		s.intentDone(loginOutcome(err, s.keyUnknown, s.undoLeft), s.keyUnknown)
 		s.intentDone = nil
 	}
 	return res, err
+}
+
+// loginOutcome is the line of the journal of changes a login ends with:
+// created; error — refused, and what it made undone (R-44); unknown when
+// the key's answer was lost (FB180-3) or the undo left what it could not
+// remove — the account or the key may be in the cloud.
+func loginOutcome(err error, keyUnknown, undoLeft bool) history.Outcome {
+	switch {
+	case keyUnknown || (err != nil && undoLeft):
+		return history.Outcome{Result: history.Unknown, Reason: clierrors.Reason(err)}
+	case err != nil:
+		return history.Outcome{Result: history.Error, Reason: clierrors.Reason(err)}
+	}
+	return history.Outcome{Result: history.Created}
 }
 
 func (s *session) make(ctx context.Context, pl plan, say func(string)) (Result, error) {
@@ -807,6 +816,7 @@ func (s *session) rollback(ctx context.Context, cause error) error {
 		}
 	}
 	s.made = nil
+	s.undoLeft = len(left) > 0
 	slices.Reverse(made)
 	if s.keyUnknown {
 		left = append(left, tKeyMaybeLeft())
