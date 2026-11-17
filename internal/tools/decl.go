@@ -452,7 +452,7 @@ var decls = map[string]Decl{
 	"cert_usage":       {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
 	"cert_versions":    {IDArgs: []idArg{{name: "certificate_id", kind: kindCert}}},
 	"cert_private_key": {Sensitive: true, IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}, {name: "version_id", why: whyInParent}}},
-	"cert_operation":   {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}, whole: true}},
+	"cert_operation":   {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}, whole: true, own: opOwnFields}},
 	// The keys of a bucket: whoever wrote an object named it (Astra, #1804).
 	"s3_ls": {Untrusted: untrustedAnswer{fields: []string{"objects"}}},
 	// An object of S3: anyone with write access to the bucket wrote it, and
@@ -477,3 +477,8 @@ var decls = map[string]Decl{
 	"stack_status":  {Untrusted: untrustedAnswer{fields: []string{"error", "details"}}, SideEffects: "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it", IDArgs: []idArg{{name: "job_id", why: whyLocal}}},
 	"stack_destroy": {Destructive: true, IDArgs: []idArg{{name: "job_id", why: whyLocal}}},
 }
+
+// opOwnFields are the fields evo adds to an operation it passes on whole
+// (cert_operation): its time, its hint and details for a quota, the step
+// that waits on — evo's words, not the service's («Риск» 293-1).
+var opOwnFields = []string{"details", "elapsed_note", "elapsed_sec", "hint", "next_args", "next_tool", "note", "still_running"}

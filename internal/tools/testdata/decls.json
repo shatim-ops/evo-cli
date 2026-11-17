@@ -162,7 +162,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[error] whole:true own:[details elapsed_note elapsed_sec hint next_args next_tool note still_running] workload:false}"
   },
   "cert_private_key": {
     "sensitive": true,
