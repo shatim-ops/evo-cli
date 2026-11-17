@@ -56,7 +56,7 @@ func TestPrune_AnOldFileGoesItsLiveLinesStay(t *testing.T) {
 		lineOf("a000000000000004", Unknown, "", "", "2026-07-01T10:03:00Z"), // live: outcome unknown
 	)
 	writeDay(t, dir, "2026-11-16", lineOf("a000000000000005", Created, "disk", "d-5", "2026-11-16T10:00:00Z"))
-	p, err := Prune(dir, pruneNow)
+	p, err := Prune(dir, pruneNow, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestPrune_OverTheCeilingTheOldestGoFirst(t *testing.T) {
 	writeDay(t, dir, "2026-11-11", lineOf("b000000000000003", Created, "disk", "d-3", "2026-11-11T10:00:00Z"))
 	writeDay(t, dir, "2026-11-17", lineOf("b000000000000004", Created, "disk", "d-4", "2026-11-17T10:00:00Z"))
 	ceiling = 400 // about two lines: the oldest closed lines go
-	p, err := Prune(dir, pruneNow)
+	p, err := Prune(dir, pruneNow, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestPrune_OverTheCeilingTheOldestGoFirst(t *testing.T) {
 	// Live lines over the ceiling: kept, and said.
 	ceiling = 10
 	_ = os.Remove(filepath.Join(dir, prunedName))
-	if p, _ := Prune(dir, pruneNow.Add(24*time.Hour)); !p.OverCeiling {
+	if p, _ := Prune(dir, pruneNow.Add(24*time.Hour), nil); !p.OverCeiling {
 		t.Error("the live lines are over the ceiling and the pruning does not say so")
 	}
 	if got := len(intents(t, dir)); got != 2 {
@@ -120,7 +120,7 @@ func TestPrune_WhatItDoesNotKnowItKeeps(t *testing.T) {
 	long := `{"format":1,"name":"` + strings.Repeat("x", maxLine) + `"}`
 	after := lineOf("c000000000000002", Created, "disk", "d-after", "2026-07-01T10:05:00Z")
 	writeDay(t, dir, "2026-07-01", newer, broken, long, after)
-	if _, err := Prune(dir, pruneNow); err != nil {
+	if _, err := Prune(dir, pruneNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, LiveName))
@@ -146,7 +146,7 @@ func TestPrune_AKilledPruningLosesNothingAndDoublesNothing(t *testing.T) {
 	if got := intents(t, dir); len(got) != 1 {
 		t.Errorf("read %v; want the line once", got)
 	}
-	if _, err := Prune(dir, pruneNow); err != nil {
+	if _, err := Prune(dir, pruneNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, LiveName))
@@ -155,7 +155,7 @@ func TestPrune_AKilledPruningLosesNothingAndDoublesNothing(t *testing.T) {
 	}
 	// Deleted later: the next pruning drops it from LiveName.
 	writeDay(t, dir, "2026-11-18", lineOf("d000000000000002", Deleted, "disk", "d-1", "2026-11-18T10:00:00Z"))
-	if _, err := Prune(dir, pruneNow.Add(24*time.Hour)); err != nil {
+	if _, err := Prune(dir, pruneNow.Add(24*time.Hour), nil); err != nil {
 		t.Fatal(err)
 	}
 	if data, _ := os.ReadFile(filepath.Join(dir, LiveName)); strings.Contains(string(data), "d000000000000001") {
@@ -167,14 +167,14 @@ func TestPrune_AKilledPruningLosesNothingAndDoublesNothing(t *testing.T) {
 func TestPrune_OnceADay(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), DirName)
 	writeDay(t, dir, "2026-11-16", lineOf("e000000000000001", Created, "disk", "d-1", "2026-11-16T10:00:00Z"))
-	if _, err := Prune(dir, pruneNow); err != nil {
+	if _, err := Prune(dir, pruneNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	writeDay(t, dir, "2026-07-01", lineOf("e000000000000002", Deleted, "disk", "d-9", "2026-07-01T10:00:00Z"))
-	if p, _ := Prune(dir, pruneNow.Add(time.Hour)); len(p.Retired) != 0 {
+	if p, _ := Prune(dir, pruneNow.Add(time.Hour), nil); len(p.Retired) != 0 {
 		t.Errorf("a second pruning the same day retired %v", p.Retired)
 	}
-	if p, _ := Prune(dir, pruneNow.Add(24*time.Hour)); len(p.Retired) != 1 {
+	if p, _ := Prune(dir, pruneNow.Add(24*time.Hour), nil); len(p.Retired) != 1 {
 		t.Errorf("the next day's pruning retired %v, want the old file", p.Retired)
 	}
 }
@@ -182,7 +182,7 @@ func TestPrune_OnceADay(t *testing.T) {
 // Describe gives doctor the size, the oldest day and the live lines.
 func TestDescribe_SizeOldestLive(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), DirName)
-	if s, err := Describe(dir); err != nil || s != (Summary{}) {
+	if s, err := Describe(dir, nil); err != nil || s != (Summary{}) {
 		t.Errorf("no journal: %+v, %v; want an empty one", s, err)
 	}
 	writeDay(t, dir, "2026-11-10",
@@ -190,7 +190,7 @@ func TestDescribe_SizeOldestLive(t *testing.T) {
 		lineOf("9000000000000002", Created, "disk", "d-2", "2026-11-10T10:01:00Z"),
 		lineOf("9000000000000003", Deleted, "disk", "d-2", "2026-11-10T10:02:00Z"))
 	writeDay(t, dir, "2026-11-12", lineOf("9000000000000004", Unknown, "", "", "2026-11-12T10:00:00Z"))
-	s, err := Describe(dir)
+	s, err := Describe(dir, nil)
 	if err != nil || s.Oldest != "2026-11-10" || s.Live != 2 || s.Bytes == 0 || s.OverCeiling {
 		t.Errorf("%+v, %v; want oldest 2026-11-10, 2 live, some bytes", s, err)
 	}
@@ -207,7 +207,7 @@ func TestPrune_TodaysFileNeverGoes(t *testing.T) {
 		lineOf("f100000000000001", Created, "disk", "d-1", "2026-11-17T10:00:00Z"),
 		lineOf("f100000000000002", Deleted, "disk", "d-1", "2026-11-17T10:01:00Z"))
 	ceiling = 10
-	p, err := Prune(dir, pruneNow)
+	p, err := Prune(dir, pruneNow, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,5 +216,48 @@ func TestPrune_TodaysFileNeverGoes(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "2026-11-17.jsonl")); err != nil {
 		t.Errorf("today's file is gone: %v", err)
+	}
+}
+
+// The pruning finds what is live by the rule history reads it by: the
+// lines in the order of their times, not of the file. A clock turned back
+// writes a delete at 10:00 after a create at 12:00; history takes the
+// delete as earlier, and so does the pruning — the create stays live, and
+// its line is kept (Астра, #2296).
+func TestPrune_LiveByTheTimeOfTheLines(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	writeDay(t, dir, "2026-07-01",
+		lineOf("a000000000000001", Created, "secret", "app/db", "2026-07-01T12:00:00Z"),
+		lineOf("a000000000000002", Deleted, "secret", "app/db", "2026-07-01T10:00:00Z"))
+	j, _ := ReadAll(dir, nil)
+	if len(Live(j.Lines)) != 1 {
+		t.Fatalf("history's rule: live %+v; want the create", Live(j.Lines))
+	}
+	if _, err := Prune(dir, pruneNow, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := intents(t, dir); len(got) != 1 || got[0] != "a000000000000001:created" {
+		t.Errorf("after pruning: %v; want the live create kept", got)
+	}
+}
+
+// The pruning checks a line as the reader does (Check): a line the reader
+// skips — a tool it does not know, a reason not of evo — closes nothing and
+// is kept as it is, with the create it would have closed (Астра, #2297).
+func TestPrune_ALineTheReaderSkipsClosesNothing(t *testing.T) {
+	check := func(l Line) bool { return l.Tool == "disk_create" || l.Tool == "disk_delete" }
+	dir := filepath.Join(t.TempDir(), DirName)
+	odd := strings.Replace(lineOf("b000000000000002", Deleted, "disk", "d-1", "2026-07-01T11:00:00Z"), `"disk_create"`, `"future_delete"`, 1)
+	writeDay(t, dir, "2026-07-01", lineOf("b000000000000001", Created, "disk", "d-1", "2026-07-01T10:00:00Z"), odd)
+	if _, err := Prune(dir, pruneNow, check); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, LiveName))
+	if !strings.Contains(string(data), "b000000000000001") || !strings.Contains(string(data), "future_delete") {
+		t.Errorf("%s: %q; want the create and the line the reader skips, kept", LiveName, data)
+	}
+	j, _ := ReadAll(dir, check)
+	if len(Live(j.Lines)) != 1 {
+		t.Errorf("after pruning live %+v; want the create", Live(j.Lines))
 	}
 }

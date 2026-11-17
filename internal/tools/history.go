@@ -237,10 +237,11 @@ func settledOutcome(in intent.Intent, listedID string) history.Outcome {
 }
 
 // pruneJournal keeps the journal of changes beside the records of dir in
-// its bounds (history.Prune); a pruning that fails is said once, and the
-// call answers as it would.
-func pruneJournal(dir string) {
-	if _, err := history.Prune(history.DirOf(dir), clock.Now()); err != nil {
+// its bounds (history.Prune), each line checked as history checks it
+// (historyCheck); a pruning that fails is said once, and the call answers
+// as it would.
+func (r *Registry) pruneJournal(dir string) {
+	if _, err := history.Prune(history.DirOf(dir), clock.Now(), r.historyCheck); err != nil {
 		config.Warn(i18n.Tf("the journal of changes in %s was not pruned (%v); it is pruned the next time",
 			"журнал изменений %s не очищен (%v); очистка — в следующий раз", history.DirOf(dir), err))
 	}
@@ -250,8 +251,8 @@ func pruneJournal(dir string) {
 // size, its oldest day and its live lines; a warning when the live lines
 // alone are over the ceiling — none is removed, and the journal grows. No
 // check for a journal that is not there.
-func journalCheck(dir string) (DoctorCheck, bool) {
-	s, err := history.Describe(dir)
+func (r *Registry) journalCheck(dir string) (DoctorCheck, bool) {
+	s, err := history.Describe(dir, r.historyCheck)
 	if err != nil {
 		return DoctorCheck{Name: "journal of changes", Status: CheckWarn, Detail: CheckDetail(err)}, true
 	}
