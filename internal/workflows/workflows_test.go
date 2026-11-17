@@ -1746,3 +1746,23 @@ func TestWorkflows_LongGoTestsSetTheirTimeout(t *testing.T) {
 		}
 	}
 }
+
+// The Go heap crash of windows/amd64 comes on some runners only
+// (golang/go#81238): the Windows test job names the runner's processor in
+// its log and summary before go test, so the weekly count of crashes can
+// be matched with it (owner's decision on #2071, variant В).
+func TestWorkflows_WindowsTestNamesTheProcessor(t *testing.T) {
+	steps := readWorkflows(t)["ci.yml"].Jobs["test"].Steps
+	for _, s := range steps {
+		if s.ID == "gotest" {
+			break
+		}
+		if strings.Contains(s.Run, "Win32_Processor") {
+			if s.If != "runner.os == 'Windows'" || s.Shell != "pwsh" || !strings.Contains(s.Run, "GITHUB_STEP_SUMMARY") {
+				t.Errorf("ci: the processor step runs if=%q shell=%q, want Windows, pwsh, a line in the summary", s.If, s.Shell)
+			}
+			return
+		}
+	}
+	t.Error("ci: no step before gotest names the processor of the Windows runner")
+}
