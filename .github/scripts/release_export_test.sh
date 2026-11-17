@@ -67,7 +67,7 @@ case "$log" in *"internal/a/a.go:4"*) ;; *) echo "FAIL: строка Go с ма�
 git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 
 # Маркер кириллицей при локали C и документы разработки — провал.
-for text in 'по решению владельца' 'см. docs/RELEASING.md' 'решения D — DECISIONS.md' 'фрагмент changelog.d/x.md'; do
+for text in 'Решение владельца 17.11' 'по решению владельца' 'см. docs/RELEASING.md' 'решения D — DECISIONS.md' 'фрагмент changelog.d/x.md'; do
 	echo "$text" >>docs/guide.md
 	git -c user.name=t -c user.email=t@t commit -qam marker
 	rc=0
@@ -75,6 +75,16 @@ for text in 'по решению владельца' 'см. docs/RELEASING.md' '
 	[ "$rc" = 1 ] || { echo "FAIL: «$text» при LC_ALL=C — код $rc, ждём 1"; fail=1; }
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
+
+# Файл Go, который сканер не прочёл (битая ссылка), — провал «строки Go не
+# проверены», а не «чисто» («Риск», 337).
+ln -s nowhere.go internal/a/broken.go
+git add internal/a/broken.go && git -c user.name=t -c user.email=t@t commit -qm broken-link
+rc=0
+log=$("$here/release_export.sh" HEAD "$tmp/s-link" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: непрочитанный файл Go — код $rc, ждём 1"; fail=1; }
+case "$log" in *"строки Go не проверены"*"снимок не чист"*) ;; *) echo "FAIL: ошибка сканера не провалила снимок до сборки: $log"; fail=1 ;; esac
+git rm -q internal/a/broken.go && git -c user.name=t -c user.email=t@t commit -qm no-link
 
 # Латинское Astra (Astra Linux) — не маркер.
 echo 'образ Astra Linux' >>docs/guide.md
