@@ -6,6 +6,7 @@ package cli
 
 import (
 	"encoding/json"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -229,7 +230,10 @@ func refIndex(answer any) (own map[string]bool, names map[string]string, field m
 	walk = func(key string, v any) {
 		switch x := v.(type) {
 		case map[string]any:
-			for k, e := range x {
+			// In the order of the keys: the first name an id gets is its
+			// name, whatever the order of the map.
+			for _, k := range slices.Sorted(maps.Keys(x)) {
+				e := x[k]
 				s, ok := e.(string)
 				if !ok {
 					walk(k, e)
@@ -253,9 +257,16 @@ func refIndex(answer any) (own map[string]bool, names map[string]string, field m
 					name, _ = x["name"].(string)
 				case strings.HasSuffix(k, "_id"):
 					name, _ = x[strings.TrimSuffix(k, "_id")+"_name"].(string)
-					if _, hasID := x["id"]; name == "" && !hasID {
-						// A row of a catalogue keyed by the id: {"name":
-						// "gen-2-4", "flavor_id": …}.
+					if _, hasID := x["id"]; name == "" && !hasID && strings.HasPrefix(key, strings.TrimSuffix(k, "_id")) {
+						// A row of a catalogue keyed by the id, in a list
+						// of its kind: {"flavors": [{"name": "gen-2-4",
+						// "flavor_id": …}]}. Elsewhere the name is of the
+						// object, not of what it refers to: {"name":
+						// "data", "availability_zone_id": …} of a preview
+						// named the zone after the disk, and the map's
+						// order chose which name the zone got
+						// (TestHuman_NoBareReferenceUUID flaked on main
+						// d0a21c25 after #2248).
 						name, _ = x["name"].(string)
 					}
 				}
@@ -277,6 +288,27 @@ func refIndex(answer any) (own map[string]bool, names map[string]string, field m
 	}
 	walk("", answer)
 	return own, names, field
+}
+
+// A name names the id of a row of a list of its kind, not an id the object
+// refers to: the index of names is the same whatever the order of a map.
+func TestRefIndex_NameOfACatalogueRowOnly(t *testing.T) {
+	const disk, zone, flavor = "00000000-0000-4000-8000-0000000000d1", "00000000-0000-0000-0000-0000000000b2", "00000000-0000-4000-8000-0000000000f1"
+	answer := map[string]any{
+		"restore":     map[string]any{"name": "restored", "disk_id": disk, "availability_zone_id": zone},
+		"will_create": map[string]any{"name": "data", "availability_zone_id": zone},
+		"flavors":     []any{map[string]any{"name": "gen-2-4", "flavor_id": flavor}},
+		"source":      map[string]any{"disk_id": disk, "disk_name": "data"},
+	}
+	for range 50 {
+		_, names, _ := refIndex(answer)
+		if names[zone] != "" {
+			t.Fatalf("the zone is named %q after the object it is a field of", names[zone])
+		}
+		if names[flavor] != "gen-2-4" || names[disk] != "data" {
+			t.Fatalf("names %v, want the row of the catalogue and the disk named", names)
+		}
+	}
 }
 
 // lineField is the key of the answer a UUID on line l is the value of: of
