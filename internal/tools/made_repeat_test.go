@@ -150,6 +150,48 @@ func TestSnatCreate_ARepeatAfterWaitingSendsNoSecondCreate(t *testing.T) {
 var finding01 = map[string]bool{"pg_create": true, "kafka_create": true, "redis_create": true, "k8s_create": true, "k8s_add_nodepool": true,
 	"lb_create": true, "ar_create": true, "vpc_create": true, "tg_create": true, "pg_backup_create": true}
 
+// madeRepeatCreates are the creates whose repeat, while the answer of the
+// first goes on (madeGoesOn), reads its step instead of asking the consent
+// again: the list the «Миграция» of D113 names
+// (changelog.d/made-repeat-no-second-create.md). A create of the matrix
+// whose answer goes on and is not here fails the test — the «Миграция»
+// would miss it (Астра, #2075: disk_create, dns_zone_create) — and one here
+// whose answer no longer goes on fails it too.
+var madeRepeatCreates = map[string]bool{"pg_create": true, "kafka_create": true, "redis_create": true, "k8s_create": true,
+	"k8s_add_nodepool": true, "lb_create": true, "ar_create": true, "vpc_create": true, "tg_create": true, "pg_backup_create": true,
+	"subnet_create": true, "snat_create": true, "disk_create": true, "dns_zone_create": true}
+
+// madeRepeatOwnWorld are the creates of the matrix the world of a paid
+// create does not run, with why; their repeats are their own tests'.
+var madeRepeatOwnWorld = map[string]string{
+	"provision":    "the VM's create goes through the engine; its repeat after a lost answer — TestPaidCreate_*, provision's own",
+	"deploy_apply": "a plan applied by id; its repeat is the plan's (deploy_apply tests)",
+}
+
+func TestCreate_EveryCreateWhoseAnswerGoesOnIsInTheMigration(t *testing.T) {
+	for _, c := range faultMatrixCases {
+		if rule, changes := everySendIsAChange[c.tool]; changes && !rule.made {
+			continue // read before it is sent, not repeated by its answer
+		}
+		if _, isCreate := createdOf(c.tool); !isCreate || madeRepeatOwnWorld[c.tool] != "" {
+			continue
+		}
+		t.Run(c.tool, func(t *testing.T) {
+			_, r, _, _, _ := paidCreateWorld(t, c, 1000)
+			first, _ := r.handlers[c.tool](context.Background(), maps.Clone(c.args))
+			_, _, _, goesOn := madeGoesOn(c.tool, first)
+			// subnet_create's answer in this world is created at once: its
+			// waiting answer is TestSubnetCreate_*'s.
+			switch {
+			case goesOn && !madeRepeatCreates[c.tool]:
+				t.Errorf("the answer goes on, so a repeat reads it with no question: add %s to madeRepeatCreates and to the «Миграция» of D113\n%.400s", c.tool, first)
+			case !goesOn && madeRepeatCreates[c.tool] && c.tool != "subnet_create":
+				t.Errorf("in madeRepeatCreates, but the answer does not go on: %.400s", first)
+			}
+		})
+	}
+}
+
 func TestCreate_ARepeatWhileItsOperationGoesOnSendsNoSecondCreate(t *testing.T) {
 	ran := map[string]bool{}
 	for _, c := range faultMatrixCases {
