@@ -54,9 +54,23 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		details, _ := res["details"].(map[string]any)
 		return createdRef(name, args, details)
 	}
+	// What a refusal says the call made is in its answer only: a create
+	// named by its argument (secret_create's path) has the name whatever
+	// the cloud did, and a refusal that made nothing names none («Риск»,
+	// conclusion 300, finding 300-1).
+	madeByAnswer := func() string {
+		if !isCreate {
+			return ""
+		}
+		if id := createdID(name, res); id != "" {
+			return id
+		}
+		details, _ := res["details"].(map[string]any)
+		return createdID(name, details)
+	}
 	switch reason := answerReason(answer); {
 	case reason != "":
-		if id := made(); id != "" {
+		if id := madeByAnswer(); id != "" {
 			out.Result, out.Reason, out.ResourceID = history.Unknown, reason, id
 			break
 		}

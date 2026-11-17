@@ -124,6 +124,9 @@ func TestHistoryOutcome_OneReadingOfAnAnswer(t *testing.T) {
 		{"provision", `{"error":"x","reason":"API_ERROR","details":{"vm_id":"vm-1","floating_ip_id":"fip-1"}}`, nil, history.Outcome{Result: history.Unknown, Kind: "VM", Reason: "API_ERROR", ResourceID: "vm-1"}},
 		{"stack_apply", `{"status":"partial","job_id":"j-1"}`, nil, history.Outcome{Result: history.Unknown, JobID: "j-1"}},
 		{"stack_apply", `{"status":"running","job_id":"j-1"}`, nil, history.Outcome{Result: history.Changed, JobID: "j-1"}},
+		// 300-1: a create named by its argument, refused: no id from the
+		// argument — the refusal made nothing.
+		{"secret_create", `{"error":"x","reason":"USAGE"}`, map[string]any{"path": "app/db"}, history.Outcome{Result: history.Error, Kind: "secret", Reason: "USAGE"}},
 		// У3: a delete that goes on.
 		{"lb_delete", `{"status":"deleting","operation_id":"op-2","next_tool":"lb_operation"}`, map[string]any{"id": "lb-1"}, history.Outcome{Result: history.Unknown, Kind: "load balancer", ResourceID: "lb-1", OperationID: "op-2"}},
 		{"destroy", `{"status":"deleting"}`, map[string]any{"vm_id": "vm-1"}, history.Outcome{Result: history.Unknown, Kind: "VM", ResourceID: "vm-1"}},
