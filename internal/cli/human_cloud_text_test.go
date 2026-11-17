@@ -62,3 +62,22 @@ func TestHumanOutput_CloudNamesAreSanitized(t *testing.T) {
 		t.Errorf("addon-versions --full prints the version raw: %q", addon.String())
 	}
 }
+
+// evo project use names the project it set by its name from the project
+// list: the cloud's text, printed sanitized like the menus of configure
+// (plan 1.9, the rest of humanUncleanMisses: «project use», a probe first).
+func TestHumanOutput_ProjectUseNameIsSanitized(t *testing.T) {
+	fc := setupCLI(t)
+	saveProfile(t, "default", "p-2")
+	fc.orgProject = `[{"id":"p-1","name":"` + cloudProbe + `"},{"id":"p-2","name":"two"}]`
+	for _, args := range [][]string{{"project", "use", "p-1"}, {"--dry-run", "project", "use", "p-1"}} {
+		newProcess()
+		code, stdout, stderr := runCLI(t, "", args...)
+		if code != 0 {
+			t.Fatalf("%v: exit %d: %s", args, code, stderr)
+		}
+		if hasProbeChars(stdout+stderr) || !strings.Contains(stdout+stderr, "PROBE") {
+			t.Errorf("%v prints the project's name raw: %q", args, stdout+stderr)
+		}
+	}
+}

@@ -1,0 +1,59 @@
+name: public-trace
+
+# Публичный след в текстах, которые не файлы репозитория (решение владельца
+# 14.11, строка плана «Сторож публичного следа в CI», часть 2): заголовок и
+# описание PR, сообщения его коммитов, сообщение коммита в main (squash).
+# Правила — те же, что у файлов (internal/repolayout/public_trace_test.go,
+# TestPublicTrace_Text); там же — строка соавторства с названием модели
+# (строка плана «Название модели — ни в коммиты, ни в squash main»): в
+# коммитах PR — предупреждение (squash пишет «релиз»), в main — красный.
+# Текст события — только через env, в файл; код PR — без секретов.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-trace-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  text:
+    if: github.event_name == 'push' || github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.11"
+          cache-dependency-path: go.sum
+      - name: тексты PR и коммитов
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          dir="$RUNNER_TEMP/trace"
+          mkdir -p "$dir"
+          if [ "$EVENT" = pull_request ]; then
+            printf '%s\n\n%s\n' "$TITLE" "$BODY" >"$dir/pr-description"
+            git log --format='%B%n' "$BASE..$HEAD" >"$dir/pr-commits"
+            echo "EVO_PUBLIC_TRACE_TEXT=$dir/pr-description:$dir/pr-commits" >>"$GITHUB_ENV"
+            echo "EVO_PUBLIC_TRACE_MODEL=warn" >>"$GITHUB_ENV"
+          else
+            git log -1 --format='%B' HEAD >"$dir/main-commit"
+            echo "EVO_PUBLIC_TRACE_TEXT=$dir/main-commit" >>"$GITHUB_ENV"
+          fi
+      - name: публичный след
+        run: go test ./internal/repolayout -run '^TestPublicTrace_Text$' -count=1 -v

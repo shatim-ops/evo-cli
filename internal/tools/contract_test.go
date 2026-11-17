@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -224,9 +225,17 @@ func forgetContractRecords() {
 	}
 }
 
+// contractCall runs a handler and names a panic of its own. A runtime
+// fault (nil dereference, index out of range) is not survived: the run
+// that goes on after a recovered hardware fault can corrupt the heap on
+// windows/amd64 (golang/go#81238), so it fails the package with the
+// handler's stack (testrules, TestRecoverInTestsRepanicsARuntimeFault).
 func contractCall(tl Tool, args map[string]any, limit time.Duration) (text string, isErr bool, pan string) {
 	defer func() {
 		if p := recover(); p != nil {
+			if _, fault := p.(runtime.Error); fault {
+				panic(p)
+			}
 			pan = "panic"
 		}
 	}()

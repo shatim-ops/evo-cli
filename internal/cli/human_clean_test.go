@@ -125,10 +125,7 @@ func clipAround(s string, i int) string {
 // where and who closes it. The list only shrinks: a run whose output is
 // clean now fails the test. Closes by 1.9 (release plan 1.9, before
 // rc.1): the fix is «разработки»; «Процесс» does not change product code.
-var humanUncleanMisses = map[string]string{
-	"lb_list (every optional argument)": "the hint «Известные: …» of a refused filter (internal/tools/list_filters.go) lists the names as the cloud sends them — «разработка»",
-	"tg_list (every optional argument)": "the same hint of a refused filter — «разработка»",
-}
+var humanUncleanMisses = map[string]string{}
 
 // humanLocalCommands are the local commands (localCommands): no tool, so
 // no case of the world above. Each says whether its human output can carry
@@ -142,7 +139,7 @@ var humanLocalCommands = map[string]struct {
 	"evo login":                 {true, "a browser and a loopback port: the world has no login flow. Closes by 1.10"},
 	"evo logout":                {true, "deletes the key evo login made, by its token: the world has no login flow. Closes by 1.10"},
 	"evo configure s3":          {true, "makes S3 keys from the access key: the world has no IAM flow for it. Closes by 1.10"},
-	"evo project use":           {true, "names the project by its name from the project list (printer.Success, not output.SanitizeCell — a hypothesis from the code, to «разработка»); the world's list is empty and its IAM gives no token. Closes by 1.10"},
+	"evo project use":           {true, "names the project by its name from the project list: the world's list is empty and its IAM gives no token; TestHumanOutput_ProjectUseNameIsSanitized checks it by its own test. Closes by 1.10"},
 	"evo init":                  {true, "interactive menus of zones and images: the world runs no stdin menus. Closes by 1.10"},
 	"evo verify":                {true, "prints what the ports of the deployed app answer: text of the app, not of the cloud, of the same class. Closes by 1.10"},
 	"evo tools call":            {true, "prints the tool's answer as JSON — machine output, as --json, not the human one this test reads"},

@@ -381,3 +381,35 @@ func TestDeploy_ZoneByNameOnPreview(t *testing.T) {
 		t.Errorf("облако изменено: %v", cloud.mutations)
 	}
 }
+
+// nastyDefaultZone lists a default zone whose name is the cloud's text
+// with shell syntax and a line break in it.
+type nastyDefaultZone struct{ otherZoneCloud }
+
+const nastyZoneName = "x $(id);\nrm"
+
+func (*nastyDefaultZone) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
+	open := true
+	return []*provision.AvailabilityZone{{ID: "z", Name: nastyZoneName, Enabled: &open, Default: true}}, nil
+}
+
+// The refusal without a zone names the default zone as the cloud's text:
+// quoted in the hint (quoteCloud), and default_zone is declared untrusted
+// («Риск» 286, У2).
+func TestProvision_NoZoneDefaultZoneIsCloudText(t *testing.T) {
+	cloud := &nastyDefaultZone{otherZoneCloud{cancelCloud: cancelCloud{cancel: func() {}}}}
+	r := zoneRegistry(t, cloud, config.Config{ProjectID: "p", ImageID: "img-1", KeyID: "k", Secret: "s"})
+	m, text, _ := callNamed(t, r, "provision", map[string]any{"name": "web"})
+	hint, _ := m["hint"].(string)
+	if strings.Contains(hint, nastyZoneName) || strings.Count(hint, quoteCloud(nastyZoneName)) != 2 {
+		t.Errorf("the zone's name in the hint is not quoted twice: %q", hint)
+	}
+	untrusted, _ := m["_untrusted"].([]any)
+	marked := false
+	for _, f := range untrusted {
+		marked = marked || f == "default_zone"
+	}
+	if m["default_zone"] != nastyZoneName || !marked {
+		t.Errorf("default_zone is not the cloud's text declared untrusted: %s", text)
+	}
+}
