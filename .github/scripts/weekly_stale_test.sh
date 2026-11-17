@@ -10,11 +10,12 @@ cat >"$tmp/gh" <<'GH'
 # Заглушка gh api: отмена — в журнал $LOG; список — из $RUNS через
 # jq-фильтр вызова, его адрес — в $GETS; прогон по id — его статус: из
 # $NOW (id=статус через пробел: одобрен между списком и отменой) или
-# из $RUNS.
+# из $RUNS; id из $UNREAD — сбой чтения (код 1).
 if [ "$1 $2" = "api -X" ]; then echo "$4" >>"$LOG"; exit 0; fi
 case "$2" in
 */actions/runs/*)
 	id=${2##*/}
+	for p in ${UNREAD:-}; do [ "$p" = "$id" ] && exit 1; done
 	for p in ${NOW:-}; do [ "${p%%=*}" = "$id" ] && { echo "${p#*=}"; exit 0; }; done
 	jq -r ".workflow_runs[] | select(.id == $id) | .status // \"waiting\"" "$RUNS"
 	;;
@@ -81,6 +82,14 @@ got=$(tr '\n' ' ' <"$LOG")
 [ "$got" = "repos/o/r/actions/runs/224/cancel repos/o/r/actions/runs/225/cancel " ] ||
 	{ echo "FAIL: после одобрения отменены «$got», ждём 224 и 225"; fail=1; }
 case "$out" in *"222"*"in_progress"*) ;; *) echo "FAIL: вывод про одобренный «$out»"; fail=1 ;; esac
+# Статус не прочитан (сбой gh api, «Риск» 307-1): не отменяется — без
+# статуса одобрение не исключено.
+: >"$LOG"
+out=$(UNREAD="222 224" "$here/weekly_stale.sh" o/r)
+got=$(tr '\n' ' ' <"$LOG")
+[ "$got" = "repos/o/r/actions/runs/223/cancel repos/o/r/actions/runs/225/cancel " ] ||
+	{ echo "FAIL: статус не прочитан, а отменены «$got», ждём 223 и 225"; fail=1; }
+case "$out" in *"224"*"не прочитан"*) ;; *) echo "FAIL: вывод про непрочитанный «$out»"; fail=1 ;; esac
 rc=0
 "$here/weekly_stale.sh" o/r --what >/dev/null 2>&1 || rc=$?
 [ "$rc" = 2 ] || { echo "FAIL: неизвестный ключ — код $rc, ждём 2"; fail=1; }
