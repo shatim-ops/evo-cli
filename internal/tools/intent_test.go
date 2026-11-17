@@ -5,7 +5,6 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -19,10 +18,8 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
-	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
-	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
 // Release plan 1.8, (и) («Риск», conclusion 46; cloud-e2e 181, R3-F1 2 of
@@ -91,7 +88,7 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 // MCP carries it once, doctor names it, and the note says where to look,
 // not what to delete (release plan 1.8, (и); «Риск», conclusion 46).
 func TestPending_ReadOnBothSurfaces(t *testing.T) {
-	r, dir := targetRegistry(t, &disksCloud{})
+	r, dir := targetRegistryWith(t, &disksCloud{}, noKey)
 	t.Chdir(dir)
 	if _, err := intent.Begin(intent.Dir(dir), intent.Intent{Tool: "disk_create", Name: "disk-1", ProjectID: "p", Surface: "cli", PID: 42}); err != nil {
 		t.Fatal(err)
@@ -106,12 +103,9 @@ func TestPending_ReadOnBothSurfaces(t *testing.T) {
 	if !strings.Contains(first, "pending_operations") || strings.Contains(second, "pending_operations") {
 		t.Errorf("the first MCP answer carries the intent once:\n%s\n%s", first, second)
 	}
-	// doctor names the intent with or without a key. With one it reads the
-	// key in IAM and the Organization API — real hosts, whose base the
-	// tools do not let a test move (offnet, nightly 15.11: this test was
-	// the connections to them, #2036); without one its probes go to a
-	// local server only, and tests do not touch the network.
-	text := doctorOnFake(t, noKeyRegistry(t, dir))
+	// The world has no key (noKey): doctor's probes go to a local server,
+	// and tests do not touch the network.
+	text := doctorOnFake(t, r)
 	if !strings.Contains(text, "pending operation") || !strings.Contains(text, "disk-1") {
 		t.Errorf("doctor does not name the intent:\n%s", text)
 	}
@@ -186,7 +180,7 @@ func (c *disksCloud) ListDisks(context.Context, string) ([]map[string]any, error
 // so its record stays until the same delete settles it.
 func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 	cloud := &disksCloud{}
-	r, dir := targetRegistry(t, cloud)
+	r, dir := targetRegistryWith(t, cloud, noKey)
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
@@ -291,7 +285,7 @@ func TestPending_RecordTextIsUntrusted(t *testing.T) {
 // record of evo's form is neither read nor removed — and not hidden either:
 // doctor names it, a warning, so a planted one is seen.
 func TestDoctor_NamesAForeignRecord(t *testing.T) {
-	r, dir := targetRegistry(t, &disksCloud{})
+	r, dir := targetRegistryWith(t, &disksCloud{}, noKey)
 	if err := os.MkdirAll(intent.Dir(dir), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -321,23 +315,4 @@ func TestDoctor_NamesAForeignRecord(t *testing.T) {
 	if _, err := os.Stat(planted); err != nil {
 		t.Errorf("doctor removed the foreign record: %v", err)
 	}
-}
-
-// noKeyRegistry is a registry on the state directory dir whose engine has
-// a project, a token and no access key: doctor reads the intents there
-// and asks the cloud nothing about a key (readKey reads only a set key).
-func noKeyRegistry(t *testing.T, dir string) *Registry {
-	t.Helper()
-	r := New(func(map[string]any) (*engine.Engine, error) {
-		var buf bytes.Buffer
-		return &engine.Engine{
-			Config:   config.Config{ProjectID: "p"},
-			Auth:     staticToken{},
-			Cloud:    &disksCloud{},
-			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
-			StateDir: dir,
-		}, nil
-	})
-	r.SetStateDir(dir)
-	return r
 }

@@ -155,7 +155,7 @@ func TestPgCreate_InterruptedRecordClosesByNameWithoutAnID(t *testing.T) {
 // list) and closes the record by the name, naming it (FB19I-24; «Риск»,
 // 191, У2). A record whose name the list does not have stays.
 func TestDoctor_ClosesInterruptedPgDbCreateByName(t *testing.T) {
-	r, dir := targetRegistry(t, &disksCloud{})
+	r, dir := targetRegistryWith(t, &disksCloud{}, noKey)
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
