@@ -60,8 +60,8 @@ func TestPrune_AnOldFileGoesItsLiveLinesStay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.Retired) != 1 || p.Retired[0] != "2026-07-01.jsonl" {
-		t.Errorf("retired %v, want the file of July only", p.Retired)
+	if len(p.Retired) != 1 || p.Retired[0] != "2026-07-01.jsonl" || RetiredThrough(dir) != "2026-07-01" {
+		t.Errorf("retired %v through %q, want the file of July only", p.Retired, RetiredThrough(dir))
 	}
 	if _, err := os.Stat(filepath.Join(dir, "2026-07-01.jsonl")); !os.IsNotExist(err) {
 		t.Error("the old file is still there")

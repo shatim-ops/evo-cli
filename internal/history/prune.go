@@ -37,6 +37,9 @@ const (
 	LiveName = "live.jsonl"
 	// prunedName marks the day of the last pruning: once a day.
 	prunedName = "pruned"
+	// retiredName names the newest day whose file was retired: the
+	// lines of that day and before are kept only if live.
+	retiredName = "retired"
 	// pruneLimit bounds a pruning: what does not fit goes on next time.
 	pruneLimit = 2 * time.Second
 )
@@ -181,6 +184,15 @@ func Prune(dir string, now time.Time) (Pruned, error) {
 		}
 		p.Retired = append(p.Retired, n)
 	}
+	if len(p.Retired) > 0 {
+		through := strings.TrimSuffix(p.Retired[len(p.Retired)-1], ".jsonl")
+		if was := RetiredThrough(dir); was > through {
+			through = was
+		}
+		if err := config.WriteFileAtomic(filepath.Join(dir, retiredName), []byte(through+"\n"), 0o600); err != nil {
+			return p, err
+		}
+	}
 	return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
 }
 
@@ -245,4 +257,19 @@ func liveOfRaw(all []rawLine) []bool {
 		live[i] = live[i] || mask[k]
 	}
 	return live
+}
+
+// RetiredThrough is the newest day whose file a pruning retired
+// (2026-08-18): the lines of that day and before are kept only if live.
+// "" when none was.
+func RetiredThrough(dir string) string {
+	data, err := config.ReadFileNoFollow(filepath.Join(dir, retiredName))
+	if err != nil {
+		return ""
+	}
+	day := strings.TrimSpace(string(data))
+	if _, err := time.Parse(time.DateOnly, day); err != nil {
+		return ""
+	}
+	return day
 }

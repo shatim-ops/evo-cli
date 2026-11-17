@@ -42,6 +42,7 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 		Skipped   int            `json:"skipped"`
 		Hidden    int            `json:"hidden_without_project"`
 		Truncated bool           `json:"truncated"`
+		Retired   string         `json:"retired_through"`
 		Note      string         `json:"note"`
 	}
 	if err := json.Unmarshal([]byte(text), &a); err != nil {
@@ -88,6 +89,10 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 	}
 	if a.Truncated {
 		fmt.Fprintln(w, i18n.T("Only the last lines are shown: give a later --since.", "Показаны только последние строки: укажите более позднее --since."))
+	}
+	if a.Retired != "" {
+		fmt.Fprintln(w, i18n.Tf("Lines of %s and before were pruned: only what was live of them is kept.",
+			"Строки за %s и раньше вычищены: из них оставлено только живое.", a.Retired))
 	}
 	if a.Skipped > 0 {
 		fmt.Fprintln(w, i18n.Tf("%d lines of the journal are not evo's form and were skipped.", "Строк журнала не в форме evo, пропущено: %d.", a.Skipped))
