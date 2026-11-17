@@ -49,7 +49,7 @@
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
-      "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
+      "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[preview will_create backup name] whole:false own:[] workload:false deep:false}"
   },
@@ -240,7 +240,7 @@
   },
   "disk_attach": {
     "id_args": [
-      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
+      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:true}",
       "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
     "untrusted": "{fields:[will_attach attached_vms result disk_state] whole:false own:[] workload:false deep:false}"
@@ -257,16 +257,22 @@
   "disk_delete": {
     "delete": "{arg:disk_id parent: what:disk whRU:диск statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
-      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
+      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[attached_vms] whole:false own:[] workload:false deep:false}"
   },
   "disk_detach": {
     "id_args": [
-      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
+      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:true}",
       "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
     "untrusted": "{fields:[will_detach attached_vms result] whole:false own:[] workload:false deep:false}"
+  },
+  "disk_get": {
+    "id_args": [
+      "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:true}"
+    ],
+    "untrusted": "{fields:[name state disk_type zone serial_id attached_vms] whole:false own:[] workload:false}"
   },
   "disk_list": {
     "project": true,
@@ -277,7 +283,7 @@
   },
   "disk_resize": {
     "id_args": [
-      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
+      "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[disk] whole:false own:[] workload:false deep:false}"
   },
@@ -376,7 +382,7 @@
     "created": "{id:image.id lost:image_id arg: none: list:image_list field:images listArgs:[] read: delete:image_delete}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
-      "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
+      "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[image will_create] whole:false own:[] workload:false deep:false}",
     "echoed_args": [
@@ -1125,7 +1131,7 @@
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[id name interfaces security_groups checks not_checked exposure image] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name interfaces security_groups checks not_checked exposure image flavor_name] whole:false own:[] workload:false deep:false}"
   },
   "vm_list": {
     "project": true,

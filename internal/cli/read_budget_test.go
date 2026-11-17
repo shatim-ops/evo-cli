@@ -31,6 +31,8 @@ type listBudget struct{ n, perObject int }
 var answerBudget = map[string]listBudget{
 	// "tool key": {n, budget}, // measured bytes per object
 	"backup_list backups":                  {2, 330}, // 263
+	"disk_get attached_vms":                {1, 110}, // 87
+	"disk_get not_checked":                 {5, 90},  // 69
 	"disk_list disks":                      {1, 140}, // 112
 	"dns_zones zones":                      {1, 220}, // 172
 	"doctor checks":                        {7, 120}, // 94
