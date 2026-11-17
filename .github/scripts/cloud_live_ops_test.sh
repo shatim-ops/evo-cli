@@ -1656,5 +1656,20 @@ want "k8sevo, срок вышел: код" "$rc" 1
 want "k8sevo, срок вышел: вызовов нет" "$(surface)" ""
 grep -q 'код 1, BUDGET: срок области (0 с) вышел' "$tmp/out" || { echo "FAIL: k8sevo: срок не назван"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 
+# Срок выходит, пока MCP ведёт операцию по next_tool: повторы не идут до
+# MCP_FOLLOW_MAX — цикл останавливается по сроку (заключение «Риска» 292, У1).
+world
+evo_cli_mcp
+answers k8s_nodepools '{"node_pools":[{"id":"npid1"}]}'
+answers k8s_nodepool_get "$(np 1)" "$(np 2)"
+answers k8s_nodepool_scale '{"status":"scaled"}' '{"status":"scaling","next_tool":"k8s_operation","next_args":{"operation_id":"op1"}}'
+answers k8s_operation '{"status":"pending","next_tool":"k8s_operation","next_args":{"operation_id":"op1"}}'
+rc=0
+EV_BUDGET=3 MCP_FOLLOW_SLEEP=2 K8S_CLUSTER_ID=c1 "$here/cloud-live.sh" k8sevo >"$tmp/out" 2>&1 || rc=$?
+want "k8sevo, срок в повторах MCP: код" "$rc" 1
+n=$(grep -c '^mcp k8s_operation$' "$FAKE_DIR/surface" || true)
+[ "$n" -le 2 ] || { echo "FAIL: k8sevo: повторы MCP после срока ($n)"; fail=1; }
+grep -q 'повторы по next_tool остановлены' "$tmp/out" || { echo "FAIL: k8sevo: остановка повторов по сроку не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
 [ "$fail" = 0 ] && echo "cloud-live ops: ok"
 exit "$fail"

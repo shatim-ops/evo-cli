@@ -3754,11 +3754,13 @@ evo_cmd() {
 }
 # mc ИНСТРУМЕНТ АРГУМЕНТЫ_JSON — вызов по MCP с confirmed: true и повторы
 # по next_tool с next_args, пока ответ — ход операции (…ing, и waiting), не
-# больше MCP_FOLLOW_MAX: так поступает агент (D69, H14). Итог — в
+# больше MCP_FOLLOW_MAX: так поступает агент (D69, H14), и не после срока
+# области (ev_deadline): иначе 60 повторов после срока — до 51 мин сверх
+# него, мимо предела job (заключение «Риска» 292, У1). Итог — в
 # $tmp/r.json, status первого ответа — в $mc_first; $rc — 0 при isError
 # false; $reason и $why — как у tc.
 mc() {
-	local name=$1 args n=0 st nt
+	local name=$1 args n=0 st nt late=0
 	args=$(jq -c '. + {confirmed: true}' <<<"$2")
 	mc_first=''
 	while :; do
@@ -3771,6 +3773,7 @@ mc() {
 		case "$st" in *ing) ;; *) break ;; esac
 		nt=$(j -r '.next_tool? // empty')
 		[ -n "$nt" ] && [ "$n" -lt "$MCP_FOLLOW_MAX" ] || break
+		if [ -n "$ev_deadline" ] && [ "$(date +%s)" -ge "$ev_deadline" ]; then late=1; break; fi
 		name=$nt
 		args=$(j -c '.next_args? // {}')
 		sleep "${MCP_FOLLOW_SLEEP:-5}"
@@ -3781,6 +3784,7 @@ mc() {
 	[ -n "$reason" ] || reason=-
 	why=$(j -r 'if (.error? | type) == "string" then .error else (.error.message? // empty) end' | tr '\n' ' ' | redact | cut -c1-300)
 	[ "$MCP_ISERR" = false ] || [ "$MCP_ISERR" = true ] || why="MCP: $MCP_ISERR"
+	[ "$late" = 0 ] || { rc=1 reason=BUDGET why="срок области ($EV_BUDGET с) вышел — повторы по next_tool остановлены на «$st»"; }
 }
 # ev_can ПРОВЕРКА — срок области не вышел; вышел — строка и код 1.
 ev_can() {
