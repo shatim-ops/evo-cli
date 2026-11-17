@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -154,6 +155,12 @@ func TestCreate_NoReceiptRepeatAsksAndSendsNothing(t *testing.T) {
 		if strings.Contains(msg, "before the cloud answered") || !strings.Contains(msg, "did not name") {
 			t.Errorf("%s: the question says the call was cut, though the cloud answered it without a receipt: %s", c.tool, msg)
 		}
+		// A database and a user have no price of their own — the cluster
+		// is billed: the question names no second billed resource
+		// (CLAUDE.md §6, axis 4; «Риск», conclusion 288, У4).
+		if strings.Contains(msg, "billed") {
+			t.Errorf("%s: the question names a price the resource has not: %s", c.tool, msg)
+		}
 		if strings.Contains(text, "s3cret-value") || strings.Contains(text, "Qwerty123456!") {
 			t.Errorf("%s: a secret value in the answer", c.tool)
 		}
@@ -162,5 +169,29 @@ func TestCreate_NoReceiptRepeatAsksAndSendsNothing(t *testing.T) {
 		if _, text, _ := callNamed(t, r, c.tool, c.args); w.posts != 2 {
 			t.Errorf("%s: the call with consent after the question sent %d create requests in all, want 2: %s", c.tool, w.posts, text)
 		}
+	}
+}
+
+// A create of the class says a yes makes a second billed resource only
+// when the resource is billed: the rule declares it (notBilled), and the
+// question of each tool says the price its rule declares (У4).
+func TestCutCallWarning_PriceIsTheRules(t *testing.T) {
+	cut := []intent.Intent{{Tool: "x", Name: "app", StartedAt: time.Now()}}
+	for tool, rule := range everySendIsAChange {
+		if !rule.made {
+			continue
+		}
+		msg, _ := cutCallWarning(tool, cut)
+		if billed := strings.Contains(msg, "billed"); billed == rule.notBilled {
+			t.Errorf("%s: notBilled %v, and the question says «billed» %v: %s", tool, rule.notBilled, billed, msg)
+		}
+	}
+	for _, tool := range []string{"pg_db_create", "pg_user_create"} {
+		if !everySendIsAChange[tool].notBilled {
+			t.Errorf("%s: a database and a user of a cluster are not billed on their own; the rule does not say so", tool)
+		}
+	}
+	if everySendIsAChange["pg_create"].notBilled {
+		t.Error("pg_create: a cluster is billed; the rule says it is not")
 	}
 }
