@@ -58,8 +58,8 @@ func TestDeletePreview_NamesTheForceTheDeleteSends(t *testing.T) {
 			}
 			name := fmt.Sprintf("%s force=%v", c.tool, force)
 			m, text, _ := callNamed(t, r, c.tool, args)
-			if m["status"] != "confirmation_required" {
-				t.Fatalf("%s: preview: %s", name, text)
+			if m["status"] != "confirmation_required" || len(sent) != 0 {
+				t.Fatalf("%s: preview sent %d DELETE before the consent: %s", name, len(sent), text)
 			}
 			if m["force"] != want || !strings.Contains(fmt.Sprint(m["message"]), fmt.Sprintf("force=%v", want)) {
 				t.Errorf("%s: the preview names force %v, message %q; want force %v in both", name, m["force"], m["message"], want)
@@ -71,6 +71,30 @@ func TestDeletePreview_NamesTheForceTheDeleteSends(t *testing.T) {
 			if wantQ := map[bool]string{true: "true", false: ""}[want]; len(sent) != 1 || sent[0] != wantQ {
 				t.Errorf("%s: DELETE sent force %q; want %q — the value of the preview", name, sent, wantQ)
 			}
+		}
+	}
+}
+
+// The help of secret_delete says what force does by default — it deletes
+// a secret with active versions and one other resources use (the Secret
+// Manager specification) — in the description of the tool and of the
+// argument, in both languages (owner's decision 17.11, #1995, variant В:
+// the default stays in 1.9 and is said, not changed).
+func TestSecretDeleteHelp_SaysTheDefaultForce(t *testing.T) {
+	tl, ok := New(nil).Lookup("secret_delete")
+	if !ok {
+		t.Fatal("no secret_delete")
+	}
+	prop, _ := tl.InputSchema["properties"].(map[string]any)["force"].(map[string]any)
+	for what, text := range map[string]string{"description": tl.Description, "force": fmt.Sprint(prop["description"])} {
+		if !strings.Contains(text, "default") || !strings.Contains(text, "true") || !strings.Contains(text, "other resources") {
+			t.Errorf("%s of secret_delete does not say force defaults to true and deletes what other resources use: %q", what, text)
+		}
+	}
+	ru := toolsRU["secret_delete"]
+	for what, text := range map[string]string{"Long": ru.Long, "force": ru.Args["force"]} {
+		if !strings.Contains(text, "умолчани") || !strings.Contains(text, "другие ресурсы") {
+			t.Errorf("Russian %s of secret_delete does not say the default and «другие ресурсы»: %q", what, text)
 		}
 	}
 }
