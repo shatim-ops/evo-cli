@@ -419,3 +419,38 @@ func TestDeploy_NoZoneAskedAtTerminal(t *testing.T) {
 		t.Errorf("terminal: the zone chosen did not reach the call again:\n%s", stderr)
 	}
 }
+
+// defaultZoneCloud lists ru.AZ-2 as the default zone (zoneList: ru.AZ-3 is
+// closed).
+type defaultZoneCloud struct{ exampleCloud }
+
+func (defaultZoneCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
+	open, closed := true, false
+	return []*provision.AvailabilityZone{
+		{ID: zoneAZ1, Name: "ru.AZ-1", Enabled: &open},
+		{ID: zoneAZ2, Name: "ru.AZ-2", Enabled: &open, Default: true},
+		{ID: zoneAZ3, Name: "ru.AZ-3", Enabled: &closed},
+	}, nil
+}
+
+// A refusal of vm create without a zone names the default zone of evo vm
+// zones and the exact flag and command, in the CLI and over MCP alike;
+// its code and reason stay (plan 1.9, decisions of the owner 17.11, (2);
+// #2073). A list with no default zone keeps the hint without one (above).
+func TestVMCreate_NoZoneNamesTheDefaultZone(t *testing.T) {
+	russian(t)
+	withCloud(t, defaultZoneCloud{})
+	t.Setenv("CLOUDRU_REGION", "")
+
+	_, errOut, ce := execTree(t, "vm", "create", "my-vm", "--image", "Ubuntu-24.04")
+	if ce == nil || ce.Code != clerrors.CodeConfigInvalid || clerrors.ExitCode(ce) != clerrors.ExitAuth ||
+		ce.Message != "не задана зона доступности (region)" ||
+		ce.Hint != "Зона по умолчанию — ru.AZ-2 (evo vm zones): добавьте --region ru.AZ-2 или запомните её в профиле: evo configure --region ru.AZ-2." {
+		t.Fatalf("vm create: %+v\n%s", ce, errOut)
+	}
+
+	_, _, call := execTree(t, "tools", "call", "provision", "--arg", "name=my-vm", "--arg", "image=Ubuntu-24.04")
+	if call == nil || call.Code != ce.Code || !strings.Contains(call.Hint, `region: "ru.AZ-2"`) || !strings.Contains(call.Hint, "list_zones") {
+		t.Errorf("tools call: %+v", call)
+	}
+}

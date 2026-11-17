@@ -998,22 +998,29 @@ func argsHint(help string) string {
 // missingInputHints are the CLI's hints for an input a call lacks, by the
 // tool argument, with the command's flag for it: what the tool's hint says
 // to an agent (the argument, the server's settings), in the CLI's terms.
-var missingInputHints = map[string]func(flag string) string{
+var missingInputHints = map[string]func(flag string, answer map[string]any) string{
 	"region": zoneHint,
 	// disk_create's zone (D86): the same setting by another argument.
 	"zone": zoneHint,
-	"image": func(flag string) string {
+	"image": func(flag string, _ map[string]any) string {
 		return i18n.Tf("Pass %[1]s (list: evo image list), e.g. %[1]s Ubuntu-24.04.",
 			"Задайте %[1]s (список: evo image list), например %[1]s Ubuntu-24.04.", flag)
 	},
-	"subnet_id": func(flag string) string {
+	"subnet_id": func(flag string, _ map[string]any) string {
 		return i18n.Tf("Pass %[1]s (list: evo vpc subnets) or another zone with --region; if the project has no subnet in any zone, create one: evo vpc subnet-create.",
 			"Задайте %[1]s (список: evo vpc subnets) или другую зону через --region; если в проекте нет подсети ни в одной зоне — создайте её: evo vpc subnet-create.", flag)
 	},
 }
 
-// zoneHint is the CLI's hint for the zone a call lacks, by its flag.
-func zoneHint(flag string) string {
+// zoneHint is the CLI's hint for the zone a call lacks, by its flag: with
+// the default zone the answer names (default_zone), the exact flag and the
+// command that keeps it.
+func zoneHint(flag string, answer map[string]any) string {
+	if z, _ := answer["default_zone"].(string); z != "" {
+		z = output.SanitizeCell(z)
+		return i18n.Tf("The default zone is %[1]s (evo vm zones): add %[2]s %[1]s, or keep it in the profile: evo configure --region %[1]s.",
+			"Зона по умолчанию — %[1]s (evo vm zones): добавьте %[2]s %[1]s или запомните её в профиле: evo configure --region %[1]s.", z, flag)
+	}
 	return i18n.Tf("Pass %s (list: evo vm zones), or keep a zone in the profile: evo configure --region <zone>.",
 		"Задайте %s (список: evo vm zones) или evo configure --region <зона>.", flag)
 }
@@ -1021,7 +1028,8 @@ func zoneHint(flag string) string {
 // missingInputHint is the CLI's hint for each input of missing (the
 // "missing" of an answer) it has one for, one after another — a call that
 // lacks several names them all (Refusals) — "" when it has none.
-func missingInputHint(missing any, h toolHints) string {
+func missingInputHint(answer map[string]any, h toolHints) string {
+	missing := answer["missing"]
 	if h.flag == nil {
 		return ""
 	}
@@ -1030,7 +1038,7 @@ func missingInputHint(missing any, h toolHints) string {
 	for _, a := range args {
 		name, _ := a.(string)
 		if hint, ok := missingInputHints[name]; ok {
-			hints = append(hints, hint("--"+h.flag(name)))
+			hints = append(hints, hint("--"+h.flag(name), answer))
 		}
 	}
 	return strings.Join(hints, " ")
@@ -1075,7 +1083,7 @@ func toolError(text string, h toolHints) error {
 		}
 		reason, _ = m["reason"].(string)
 		hint, _ = m["hint"].(string)
-		if cli := missingInputHint(m["missing"], h); cli != "" {
+		if cli := missingInputHint(m, h); cli != "" {
 			hint = cli
 		}
 		arg, _ := m["argument"].(string)

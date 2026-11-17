@@ -2120,8 +2120,9 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	if err != nil {
 		return nil, err
 	}
-	if missing, err := provisionInputError(eng); err != nil {
-		return answered(errAnswer(err, map[string]any{"missing": missing}), true), nil
+	if missing, fields, err := provisionInputError(ctx, eng); err != nil {
+		fields["missing"] = missing
+		return answered(errAnswer(err, fields), true), nil
 	}
 	noPublicIP, _ := args["no_public_ip"].(bool)
 	// The configuration names the project, the zone and the image; the
@@ -4481,8 +4482,14 @@ func willPreview(resource, name, zone string, will map[string]any, keys []string
 // project, is configuration (CONFIG_INVALID): the profile keeps it (evo
 // configure --region); the image is the call's own (USAGE, as it was). The
 // hint names the arguments and the server's settings, for an agent; the
-// CLI names its own flags instead, from the argument (toolError).
-func provisionInputError(eng *engine.Engine) (args []string, err error) {
+// CLI names its own flags instead, from the argument (toolError). A zone
+// that is not set is named by the default zone of the zone list, when it
+// has one (engine.DefaultZone, evo vm zones): the hint says the exact
+// argument, and fields carry it as default_zone for the CLI's hint (plan
+// 1.9, decisions of the owner 17.11, (2)). The list is a read: it is read
+// only for that refusal, and a list that cannot be read names no zone.
+func provisionInputError(ctx context.Context, eng *engine.Engine) (args []string, fields map[string]any, err error) {
+	fields = map[string]any{}
 	var errs []error
 	if eng.ImageRef() == "" {
 		args = append(args, "image")
@@ -4493,12 +4500,19 @@ func provisionInputError(eng *engine.Engine) (args []string, err error) {
 	}
 	if eng.Config.Region == "" {
 		args = append(args, "region")
+		hint := i18n.T("Pass region: a zone name such as ru.AZ-2 or its UUID (list_zones); the server has no CLOUDRU_REGION to default to.",
+			"Передайте region — имя зоны (например, ru.AZ-2) или её UUID (list_zones): у сервера не задан CLOUDRU_REGION.")
+		if zones, lerr := listZones(ctx, eng); lerr == nil {
+			if z := engine.DefaultZone(zones, engine.ZoneVM); z != nil {
+				fields["default_zone"] = z.Name
+				hint = i18n.Tf("The default zone is %[1]s (list_zones): pass region: %[2]s; the server has no CLOUDRU_REGION to default to.",
+					"Зона по умолчанию — %[1]s (list_zones): передайте region: %[2]s — у сервера не задан CLOUDRU_REGION.", z.Name, quoteCloud(z.Name))
+			}
+		}
 		errs = append(errs, clierrors.New(clierrors.CodeConfigInvalid,
-			i18n.T("no availability zone is set (region)", "не задана зона доступности (region)"),
-			i18n.T("Pass region: a zone name such as ru.AZ-2 or its UUID (list_zones); the server has no CLOUDRU_REGION to default to.",
-				"Передайте region — имя зоны (например, ru.AZ-2) или её UUID (list_zones): у сервера не задан CLOUDRU_REGION.")))
+			i18n.T("no availability zone is set (region)", "не задана зона доступности (region)"), hint))
 	}
-	return args, clierrors.Join(errs...)
+	return args, fields, clierrors.Join(errs...)
 }
 
 // resolveVMZone resolves the zone of a new VM — eng.Config.Region: the region
