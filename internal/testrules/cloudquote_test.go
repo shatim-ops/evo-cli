@@ -180,6 +180,18 @@ func unquotedIn(t *testing.T, path, rel string) map[string]int {
 			}
 			return true
 		})
+		// A text glued with + is a format too: "VM entered state " +
+		// cur.Status reached ApplyResult bare (risk conclusion 301-1, #2140).
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			b, ok := n.(*ast.BinaryExpr)
+			if !ok || b.Op != token.ADD {
+				return true
+			}
+			if c := bareInConcat(concatOperands(b)); c > 0 {
+				out[rel+"|"+name] += c
+			}
+			return false // the operands of a chain are counted once
+		})
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -312,6 +324,52 @@ func bareCloudWords(format string, args []ast.Expr) int {
 	return n
 }
 
+// concatOperands flattens a chain a + b + c into its operands.
+func concatOperands(e ast.Expr) []ast.Expr {
+	switch v := e.(type) {
+	case *ast.BinaryExpr:
+		if v.Op == token.ADD {
+			return append(concatOperands(v.X), concatOperands(v.Y)...)
+		}
+	case *ast.ParenExpr:
+		return concatOperands(v.X)
+	}
+	return []ast.Expr{e}
+}
+
+// bareInConcat counts the operands of a glued text that are a status, a
+// state or an id of the cloud and not quoteCloud(…): an operand right
+// after a literal that ends with a cloud word, or a field named Status or
+// State whatever comes before it. A chain with no string literal is no
+// text.
+func bareInConcat(ops []ast.Expr) int {
+	text := false
+	for _, op := range ops {
+		if _, ok := literal(op); ok {
+			text = true
+		}
+	}
+	if !text {
+		return 0
+	}
+	n := 0
+	for i, op := range ops {
+		if _, ok := literal(op); ok || quoted(op) {
+			continue
+		}
+		after := false
+		if i > 0 {
+			if prev, ok := literal(ops[i-1]); ok && cloudWordBefore.MatchString(prev) {
+				after = true
+			}
+		}
+		if sel, ok := op.(*ast.SelectorExpr); after || ok && (sel.Sel.Name == "Status" || sel.Sel.Name == "State") {
+			n++
+		}
+	}
+	return n
+}
+
 // quoted: the argument is quoteCloud(…).
 func quoted(e ast.Expr) bool {
 	c, ok := e.(*ast.CallExpr)
@@ -343,6 +401,28 @@ func TestCloudWords_Detector(t *testing.T) {
 	} {
 		if got := bareCloudWords(c.format, c.args); got != c.want {
 			t.Errorf("%q: %d bare, want %d", c.format, got, c.want)
+		}
+	}
+}
+
+// The detector of glued text: a value after a cloud word, a Status or State
+// field — bare; quoteCloud, a literal, a chain with no text — not.
+func TestCloudWords_DetectorOfConcat(t *testing.T) {
+	for src, want := range map[string]int{
+		`"VM entered state " + cur.Status + "; retry"`:                    1,
+		`"VM entered state " + quoteCloud(cur.Status) + "; retry"`:        0,
+		`"it is " + vm.Status + ": start it"`:                             1,
+		`"(id " + id + ", status " + st + ")"`:                            2,
+		`"VM " + name + " is ready"`:                                      0,
+		`a + b`:                                                           0,
+		`"disk " + quoteCloud(d.ID) + " in state " + quoteCloud(d.State)`: 0,
+	} {
+		e, err := parser.ParseExpr(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := bareInConcat(concatOperands(e)); got != want {
+			t.Errorf("%s: %d bare, want %d", src, got, want)
 		}
 	}
 }
