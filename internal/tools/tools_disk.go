@@ -328,7 +328,7 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 // so a wait is not silent (CLAUDE.md §6, axis 2).
 func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string, limit time.Duration,
 	waiting string, done func(state string) (bool, error)) (last string, timedOut time.Duration, err error) {
-	last, timedOut, atLimit, err := waitState(ctx, eng, limit,
+	last, timedOut, atLimit, reads, err := waitState(ctx, eng, limit,
 		func(ctx context.Context) (string, bool, error) {
 			disks, err := eng.Cloud.ListDisks(ctx, projectID)
 			if err != nil {
@@ -344,7 +344,7 @@ func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string,
 		},
 		func(st string) string { return fmt.Sprintf(waiting, diskID, st) }, done)
 	if atLimit {
-		return last, 0, &diskAtLimit{state: last}
+		return last, 0, &diskAtLimit{state: last, reads: reads}
 	}
 	return last, timedOut, err
 }
@@ -357,7 +357,10 @@ func (e *diskFailed) Error() string { return "the disk is in state " + quoteClou
 // diskAtLimit ends a wait for a disk at the limit of an MCP call (D69):
 // the disk goes on in the cloud, the answer says its state and the step
 // that goes on from there.
-type diskAtLimit struct{ state string }
+type diskAtLimit struct {
+	state string
+	reads waitReads
+}
 
 func (e *diskAtLimit) Error() string {
 	return fmt.Sprintf("the disk is %s at the time limit of the call", e.state)
@@ -373,6 +376,7 @@ func diskAtLimitAnswer(lim *diskAtLimit, diskID, why, tool string, nextArgs map[
 	if lim.state == "" || lim.state == "unknown" {
 		answer["status"] = "waiting"
 	}
+	lim.reads.put(answer)
 	nextStep(answer, tool, nextArgs)
 	return answer
 }
@@ -789,6 +793,7 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		switch {
 		case errors.As(err, &lim):
 			st = lim.state
+			lim.reads.put(res)
 		case errors.As(err, &failed):
 			res["status"] = "failed"
 			res["disk_id"] = id
@@ -815,7 +820,8 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		}
 	}
 	if !strings.EqualFold(st, "available") {
-		if st == "" {
+		known := st != ""
+		if !known {
 			st = "unknown"
 		}
 		res["status"] = "creating"
@@ -824,9 +830,11 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		}
 		res["disk_id"] = id
 		res["disk_state"] = st
-		word := st
-		if st != "unknown" {
-			word = quoteCloud(st)
+		// The cloud's state is quoted, "unknown" too; none is evo's own
+		// word, not in quotes, so the two read apart (Астра #2176).
+		word := quoteCloud(st)
+		if !known {
+			word = i18n.T("in an unknown state", "в неизвестном состоянии")
 		}
 		res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list ids=[%s] shows its state.",
 			"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list ids=[%s].", id, word, id)

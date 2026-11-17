@@ -37,7 +37,7 @@ func TestWaitState_SaysTheTimeWhileTheStateStays(t *testing.T) {
 	ctx := WithProgress(context.Background(), func(l string) { mu.Lock(); lines = append(lines, l); mu.Unlock() })
 	eng := &engine.Engine{Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: time.Second, VMProgressInterval: 30 * time.Second}}
 	polls := 0
-	last, _, _, err := waitState(ctx, eng, time.Second,
+	last, _, _, _, err := waitState(ctx, eng, time.Second,
 		func(context.Context) (string, bool, error) {
 			polls++
 			if polls > 8 {

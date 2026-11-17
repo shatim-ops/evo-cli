@@ -425,7 +425,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 		// transition of this very change is not another's: it is waited
 		// for below, to its end.
 		if vmSettling[state] && state != act.via {
-			last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, vmSettleTimeout,
+			last, timedOut, atLimit, reads, err := s.waitVM(ctx, eng, vm, vmSettleTimeout,
 				func(st string) (bool, error) { return !vmSettling[st] || st == act.via, nil })
 			switch {
 			case err != nil:
@@ -433,12 +433,13 @@ func (s *Registry) planVMPower(tool string) Planner {
 			case atLimit:
 				// No question yet: the state, and the same call again.
 				ans := vmAnswer(vm, "waiting", last)
+				reads.put(ans)
 				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; it cannot be changed until its state settles. Call %s again when it settles: it shows the preview and asks before it sends the command.", vm.ID, last, tool)
 				nextSameCall(ans, tool, vmRef(args, vm))
 				return answered(toJSON(ans), false), nil
 			case timedOut > 0:
 				return nil, clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("VM %s is in state %s: it cannot be changed until the state settles", "ВМ %s в состоянии %s: менять её можно, когда состояние устоится", vm.ID, last),
+					i18n.Tf("VM %s is in state %s: it cannot be changed until the state settles", "ВМ %s в состоянии %s: менять её можно, когда состояние устоится", vm.ID, quoteCloud(last)),
 					i18n.T("Repeat the call when vm_get shows the VM running or stopped.", "Повторите вызов, когда vm_get покажет ВМ в running или stopped."))
 			}
 			state = last
@@ -458,7 +459,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			// the action starts is the step — with a preview and a
 			// question of its own (§5.1: a reboot is not a way to start).
 			err := clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, state, i18n.T(act.verb[0], act.verb[1])),
+				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, quoteCloud(state), i18n.T(act.verb[0], act.verb[1])),
 				i18n.Tf("It has to be %s first.", "Сначала она должна быть в %s.", act.from))
 			fields := map[string]any{"vm_id": vm.ID, "state": state}
 			if first := vmToolTo(act.from); first != "" {
@@ -467,7 +468,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			return answered(errAnswer(err, fields), true), nil
 		case vmNothingToChange[state]:
 			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, state, i18n.T(act.verb[0], act.verb[1])),
+				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, quoteCloud(state), i18n.T(act.verb[0], act.verb[1])),
 				i18n.T("vm_get shows the VM; what to do with it is the person's decision.", "ВМ показывает vm_get; что с ней делать — решает человек."))
 		}
 		// What the write sends and what it changes: the command, and the
@@ -499,7 +500,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			// Not refused: whether the platform takes the command in this
 			// state is not known (conclusion 111, the question of error).
 			preview["warning"] = i18n.Tf("the VM is in state %s, not %s: whether the platform accepts %s is unknown",
-				"ВМ в состоянии %s, а не %s: примет ли платформа %s — неизвестно", state, act.from, i18n.T(act.noun[0], act.noun[1]))
+				"ВМ в состоянии %s, а не %s: примет ли платформа %s — неизвестно", quoteCloud(state), act.from, i18n.T(act.noun[0], act.noun[1]))
 		}
 		return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 			if err := eng.Cloud.SetVMPower(ctx, vm.ID, act.command); err != nil {
@@ -564,7 +565,7 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 		details["platform_code"] = code
 	}
 	return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-		i18n.Tf("the platform refused %s of VM %s in state %s", "платформа отказала: %s ВМ %s в состоянии %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, now.State), hint, cause),
+		i18n.Tf("the platform refused %s of VM %s in state %s", "платформа отказала: %s ВМ %s в состоянии %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, quoteCloud(now.State)), hint, cause),
 		map[string]any{"vm_id": vm.ID, "state": now.State, "details": details}), true
 }
 
@@ -627,13 +628,14 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		// settle is said as such — evo does not know whether the VM went
 		// through faster than it reads or has not begun; not the end, and
 		// not an error a repeat would answer with a second change (§5.2).
-		last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, vmSettleTimeout,
+		last, timedOut, atLimit, reads, err := s.waitVM(ctx, eng, vm, vmSettleTimeout,
 			func(st string) (bool, error) { return st != act.from, nil })
 		switch {
 		case err != nil:
 			return errAnswer(err, map[string]any{"vm_id": vm.ID, "state": last}), true
 		case atLimit || timedOut > 0:
 			ans := vmAnswer(vm, act.unseen, last)
+			reads.put(ans)
 			ans["elapsed_sec"] = int(clock.Since(started).Seconds())
 			ans["warning"] = i18n.Tf("the platform accepted %s and evo did not see the state of the VM change: whether it took place, the uptime of the guest OS tells",
 				"платформа приняла команду «%s», а смены состояния ВМ evo не увидел: состоялась ли она, скажет время работы гостевой ОС", i18n.T(act.noun[0], act.noun[1]))
@@ -643,7 +645,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		}
 		moved = last == act.via
 	}
-	last, timedOut, atLimit, err := s.waitVM(ctx, eng, vm, limit, func(st string) (bool, error) {
+	last, timedOut, atLimit, reads, err := s.waitVM(ctx, eng, vm, limit, func(st string) (bool, error) {
 		switch {
 		case st == act.to && (moved || act.to != act.from):
 			return true, nil
@@ -663,7 +665,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 				i18n.T("What to do with the VM is the person's decision; vm_get shows it.", "Что делать с ВМ — решает человек; её показывает vm_get."))
 		}
 		return true, clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("VM %s is in state %s after %s, not %s", "ВМ %s: состояние %s после команды «%s», а не %s", vm.ID, st, i18n.T(act.noun[0], act.noun[1]), act.to),
+			i18n.Tf("VM %s is in state %s after %s, not %s", "ВМ %s: состояние %s после команды «%s», а не %s", vm.ID, quoteCloud(st), i18n.T(act.noun[0], act.noun[1]), act.to),
 			i18n.T("vm_get shows the VM.", "ВМ показывает vm_get."))
 	})
 	elapsed := int(clock.Since(started).Seconds())
@@ -676,11 +678,12 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("the platform accepted %s of VM %s, and its state has not changed in %d s: still %s", "платформа приняла команду «%s» для ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, elapsed, last),
 			i18n.T("vm_get shows the VM; whether to send the command again is the person's decision.", "ВМ показывает vm_get; слать ли команду снова — решает человек.")),
-			map[string]any{"vm_id": vm.ID, "state": last, "elapsed_sec": elapsed}), true
+			readsPut(reads, map[string]any{"vm_id": vm.ID, "state": last, "elapsed_sec": elapsed})), true
 	case atLimit || timedOut > 0:
 		// The status is the action's word for «on its way», not the raw
 		// state: the statuses of a tool are a closed list.
 		ans := vmAnswer(vm, act.via, last)
+		reads.put(ans)
 		ans["elapsed_sec"] = elapsed
 		if !since.IsZero() {
 			ans["since_start_sec"] = int(clock.Since(since).Seconds())
@@ -718,7 +721,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 // waitVM polls the state of vm until done ends the wait (waitState),
 // saying each state it passes.
 func (s *Registry) waitVM(ctx context.Context, eng *engine.Engine, vm *provision.VMDetail, limit time.Duration,
-	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, err error) {
+	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, reads waitReads, err error) {
 	return waitState(ctx, eng, limit,
 		func(ctx context.Context) (string, bool, error) {
 			d, err := eng.Cloud.GetVMDetail(ctx, vm.ID)
@@ -839,19 +842,20 @@ func (s *Registry) planVMResize() Planner {
 		// The transient state of another change settles first; a change
 		// to this very target is not another's: it is waited for below.
 		if vmSettling[vm.State] && !resizingTo(vm, target) {
-			last, timedOut, atLimit, err := s.waitVMDetail(ctx, eng, vm, vmSettleTimeout,
+			last, timedOut, atLimit, reads, err := s.waitVMDetail(ctx, eng, vm, vmSettleTimeout,
 				func(d *provision.VMDetail) (bool, error) { return !vmSettling[d.State] || resizingTo(d, target), nil })
 			switch {
 			case err != nil:
 				return nil, err
 			case atLimit:
 				ans := vmResizeAnswer(last, "waiting")
+				reads.put(ans)
 				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; its flavor cannot be changed until its state settles. Call %s again when it settles: it shows the preview and asks before it sends the change.", vm.ID, last.State, tool)
 				nextSameCall(ans, tool, vmRef(args, vm))
 				return answered(toJSON(ans), false), nil
 			case timedOut > 0:
 				return nil, clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("VM %s is in state %s: its flavor can be changed when the state settles", "ВМ %s в состоянии %s: менять её конфигурацию можно, когда состояние устоится", vm.ID, last.State),
+					i18n.Tf("VM %s is in state %s: its flavor can be changed when the state settles", "ВМ %s в состоянии %s: менять её конфигурацию можно, когда состояние устоится", vm.ID, quoteCloud(last.State)),
 					i18n.T("Repeat the call when vm_get shows the VM running or stopped.", "Повторите вызов, когда vm_get покажет ВМ в running или stopped."))
 			}
 			vm = last
@@ -868,7 +872,7 @@ func (s *Registry) planVMResize() Planner {
 			return answered(toJSON(vmResizeAnswer(vm, "already_resized")), false), nil
 		case vmNothingToChange[vm.State]:
 			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to resize", "ВМ %s в состоянии %s: менять конфигурацию нечего", vm.ID, vm.State),
+				i18n.Tf("VM %s is in state %s: there is nothing to resize", "ВМ %s в состоянии %s: менять конфигурацию нечего", vm.ID, quoteCloud(vm.State)),
 				i18n.T("vm_get shows the VM; what to do with it is the person's decision.", "ВМ показывает vm_get; что с ней делать — решает человек."))
 		}
 		// A known limit of the pair: the flavor is not given in the zone of
@@ -888,7 +892,7 @@ func (s *Registry) planVMResize() Planner {
 			// Not refused: whether the platform takes the change in this
 			// state is not known (conclusion 111, the question of error).
 			preview["warning"] = i18n.Tf("the VM is in state %s, not running or stopped: whether the platform accepts the change is unknown",
-				"ВМ в состоянии %s, а не running или stopped: примет ли платформа смену конфигурации — неизвестно", vm.State)
+				"ВМ в состоянии %s, а не running или stopped: примет ли платформа смену конфигурации — неизвестно", quoteCloud(vm.State))
 		}
 		planned := vm.State
 		return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
@@ -926,7 +930,7 @@ func unknownFlavor(want string, flavors []*provision.Flavor, vm *provision.VMDet
 			names = append(names, "…")
 			break
 		}
-		names = append(names, f.Name)
+		names = append(names, quoteCloud(f.Name))
 	}
 	return clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("flavor %q not found in the project", "flavor %q в проекте не найден", want),
@@ -1103,7 +1107,7 @@ func (s *Registry) vmResizeRefused(ctx context.Context, eng *engine.Engine, vm *
 	}
 	fields["details"] = details
 	return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-		i18n.Tf("the platform refused to change the flavor of VM %s to %s in state %s", "платформа отказала в смене конфигурации ВМ %s на %s в состоянии %s", vm.ID, target.Name, now.State),
+		i18n.Tf("the platform refused to change the flavor of VM %s to %s in state %s", "платформа отказала в смене конфигурации ВМ %s на %s в состоянии %s", vm.ID, quoteCloud(target.Name), quoteCloud(now.State)),
 		hint, cause), fields), true
 }
 
@@ -1142,7 +1146,7 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 	// a second such read («Риск», conclusion 200, remark 1): one read is
 	// not proof the change ran and not that it has not begun.
 	onTarget := false
-	last, timedOut, atLimit, err := s.waitVMDetail(ctx, eng, vm, limit, func(d *provision.VMDetail) (bool, error) {
+	last, timedOut, atLimit, reads, err := s.waitVMDetail(ctx, eng, vm, limit, func(d *provision.VMDetail) (bool, error) {
 		switch {
 		case d.State == "updating":
 			moved = true
@@ -1162,7 +1166,7 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 				i18n.T("What to do with the VM is the person's decision; vm_get shows it.", "Что делать с ВМ — решает человек; её показывает vm_get."))
 		}
 		return true, clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("VM %s is in state %s after the change of flavor", "ВМ %s: состояние %s после смены конфигурации", vm.ID, d.State),
+			i18n.Tf("VM %s is in state %s after the change of flavor", "ВМ %s: состояние %s после смены конфигурации", vm.ID, quoteCloud(d.State)),
 			i18n.T("vm_get shows the VM.", "ВМ показывает vm_get."))
 	})
 	elapsed := int(clock.Since(started).Seconds())
@@ -1182,9 +1186,10 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("the platform accepted the change of flavor of VM %s, and its state has not changed in %d s: still %s", "платформа приняла смену конфигурации ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", vm.ID, elapsed, last.State),
 			i18n.T("vm_get shows the VM; whether to send the change again is the person's decision.", "ВМ показывает vm_get; слать ли смену снова — решает человек.")),
-			vmResizeFieldsElapsed(last, elapsed)), true
+			readsPut(reads, vmResizeFieldsElapsed(last, elapsed))), true
 	case atLimit || timedOut > 0:
 		ans := vmResizeAnswer(last, "resizing")
+		reads.put(ans)
 		ans["elapsed_sec"] = elapsed
 		if !since.IsZero() {
 			ans["since_start_sec"] = int(clock.Since(since).Seconds())
@@ -1209,10 +1214,10 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 // waitVMDetail is waitVM that gives done the card of the VM, not only its
 // state: a change of flavor ends by the flavor the card names.
 func (s *Registry) waitVMDetail(ctx context.Context, eng *engine.Engine, vm *provision.VMDetail, limit time.Duration,
-	done func(d *provision.VMDetail) (bool, error)) (last *provision.VMDetail, timedOut time.Duration, atLimit bool, err error) {
+	done func(d *provision.VMDetail) (bool, error)) (last *provision.VMDetail, timedOut time.Duration, atLimit bool, reads waitReads, err error) {
 	last = vm
 	cur := vm
-	_, timedOut, atLimit, err = waitState(ctx, eng, limit,
+	_, timedOut, atLimit, reads, err = waitState(ctx, eng, limit,
 		func(ctx context.Context) (string, bool, error) {
 			d, err := eng.Cloud.GetVMDetail(ctx, vm.ID)
 			var ce *clierrors.CLIError
@@ -1232,7 +1237,7 @@ func (s *Registry) waitVMDetail(ctx context.Context, eng *engine.Engine, vm *pro
 			last = cur
 			return done(cur)
 		})
-	return last, timedOut, atLimit, err
+	return last, timedOut, atLimit, reads, err
 }
 
 // flavorName is the name of the flavor the card of the VM names, "" when

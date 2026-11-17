@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/history"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -242,6 +244,7 @@ var parityArgs = map[string]map[string]any{
 	"whoami":      {},
 	"agent_skill": {"group": "pg"},
 	"doctor":      {},
+	"history":     {"since": "2026-01-01"},
 }
 
 // paritySetup prepares what a preview reads from disk; it returns the
@@ -258,6 +261,10 @@ var paritySetup = map[string]func(t *testing.T, w parityWorld) (map[string]any, 
 	"stack_status": func(t *testing.T, _ parityWorld) (map[string]any, func()) {
 		return map[string]any{"job_id": parityStackJob(t, "").ID}, func() {}
 	},
+	// history: the journal of the folder holds a resource made and live,
+	// and one made and deleted — its lines and live are lists of objects
+	// (И9 measures them, И1 reads their columns).
+	"history": recordJournal,
 	// status and logs of the deployment of the directory.
 	"status": recordDeployment,
 	"logs":   recordDeployment,
@@ -395,6 +402,36 @@ func recordDeployment(t *testing.T, w parityWorld) (map[string]any, func()) {
 		_ = os.Remove(path)
 		_ = os.Remove(compose)
 	}
+}
+
+// recordJournal writes three lines to the journal of changes of the
+// world's folder: a disk made and live, a VPC made and deleted.
+func recordJournal(t *testing.T, w parityWorld) (map[string]any, func()) {
+	t.Helper()
+	dir := history.DirOf(intent.Dir(w.dir))
+	// The calls the world made before write their own lines here: each
+	// surface reads these three only. The folder is the world's, under
+	// the test's temporary directory — never a journal of the machine.
+	if rel, err := filepath.Rel(os.TempDir(), dir); err != nil || strings.HasPrefix(rel, "..") {
+		t.Fatalf("the journal of the world %s is not under the temporary directory %s", dir, os.TempDir())
+	}
+	_ = os.RemoveAll(dir)
+	// A fixed time, the same for every surface the world answers: since
+	// of parityArgs takes it in, whatever the day the test runs.
+	at := "2026-11-17T10:00:00Z"
+	for _, l := range []history.Line{
+		{Time: at, Tool: "disk_create", Surface: "cli", ProjectID: pvProject, Zone: pvZone, Name: "jdisk", Kind: "disk",
+			ResourceID: "00000000-0000-4000-8000-0000000d1001", Outcome: history.Created, IntentID: "0000000000000a01"},
+		{Time: at, Tool: "vpc_create", Surface: "mcp", ProjectID: pvProject, Name: "net", Kind: "VPC",
+			ResourceID: "00000000-0000-4000-8000-0000000d1002", Outcome: history.Created, IntentID: "0000000000000a02"},
+		{Time: at, Tool: "vpc_delete", Surface: "mcp", ProjectID: pvProject, Target: "id=00000000-0000-4000-8000-0000000d1002", Kind: "VPC",
+			ResourceID: "00000000-0000-4000-8000-0000000d1002", Outcome: history.Deleted, IntentID: "0000000000000a03"},
+	} {
+		if err := history.Append(dir, l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return nil, func() { _ = os.RemoveAll(dir) }
 }
 
 // parityStackJob saves a planned stack with one VPC; built is the ID of the

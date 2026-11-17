@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // VM represents a Cloud.ru virtual machine.
@@ -541,6 +543,17 @@ func (i *Image) Usable() bool {
 func VMFailed(status string) bool {
 	s := strings.ToLower(status)
 	return s == "error" || strings.HasPrefix(s, "error_")
+}
+
+// VMStatusPhrase is "status <status>" for a text of evo: the cloud's
+// status in quotes, as every value of the cloud there; none — evo's own
+// word, not in quotes, so that it does not read as the status the cloud
+// gave (Астра, #2153).
+func VMStatusPhrase(status string) string {
+	if status == "" {
+		return i18n.T("status unknown", "статус неизвестен")
+	}
+	return i18n.Tf("status %q", "статус %q", status)
 }
 
 // ImageDetail contains full image info including required metadata fields.

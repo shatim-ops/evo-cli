@@ -11,6 +11,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -56,12 +57,9 @@ func vmNameFree(ctx context.Context, eng *engine.Engine, name string, own func(i
 // new VM, and adopts only one it left creating. The way out is another
 // name; that VM is shown by vm_get, and its delete is the person's call.
 func recordedVMResult(name, id, status string) (string, bool) {
-	if status == "" {
-		status = "unknown"
-	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("a VM named %q already exists (id %s, status %s): this folder's evo created it, and provision makes a new VM; nothing was created",
-			"ВМ с именем %q уже есть (id %s, статус %s): её создал evo этой папки, а provision создаёт новую ВМ; ничего не создано", name, quoteCloud(id), quoteCloud(status)),
+		i18n.Tf("a VM named %q already exists (id %s, %s): this folder's evo created it, and provision makes a new VM; nothing was created",
+			"ВМ с именем %q уже есть (id %s, %s): её создал evo этой папки, а provision создаёт новую ВМ; ничего не создано", name, quoteCloud(id), provision.VMStatusPhrase(status)),
 		i18n.Tf("Pick another name (name). That VM is in this folder's state: vm_get vm_id=%s shows it; whether to delete it, ask the person.",
 			"Выберите другое имя (name). Та ВМ — в state этой папки: её показывает vm_get vm_id=%s; удалять ли её, спросите человека.", id)),
 		map[string]any{"existing_id": id}), true
@@ -72,12 +70,9 @@ func recordedVMResult(name, id, status string) (string, bool) {
 // floating IP, the plan's ports and a record destroy deletes it by. The
 // way out is another name; a delete is the person's own decision.
 func foreignVMResult(name, id, status string) (string, bool) {
-	if status == "" {
-		status = "unknown"
-	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("a VM named %q already exists (id %s, status %s), and this folder's evo did not create it (its state does not record it); nothing was created",
-			"ВМ с именем %q уже есть (id %s, статус %s), и её создал не evo этой папки (в её state её нет); ничего не создано", name, quoteCloud(id), quoteCloud(status)),
+		i18n.Tf("a VM named %q already exists (id %s, %s), and this folder's evo did not create it (its state does not record it); nothing was created",
+			"ВМ с именем %q уже есть (id %s, %s), и её создал не evo этой папки (в её state её нет); ничего не создано", name, quoteCloud(id), provision.VMStatusPhrase(status)),
 		i18n.T("Pick another name (name). Whether to delete that VM, ask the person: it may be someone else's.",
 			"Выберите другое имя (name). Удалять ли ту ВМ, спросите человека: она может быть чужой.")),
 		map[string]any{"existing_id": id}), true

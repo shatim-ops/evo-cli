@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -74,7 +75,10 @@ type Outcome struct {
 	Result string
 	// Kind is the kind of the resource ("disk"): with ResourceID it tells
 	// one resource from another of the same id or name.
-	Kind        string
+	Kind string
+	// Parent is the resource the resource lives in, as «argument=id»
+	// ("cluster_id=…", "bucket=…"): a name is one in one parent only.
+	Parent      string
 	ResourceID  string
 	Reason      string
 	OperationID string
@@ -101,6 +105,7 @@ type Line struct {
 	Name        string `json:"name,omitempty"`
 	Target      string `json:"target,omitempty"`
 	Kind        string `json:"kind,omitempty"`
+	Parent      string `json:"parent,omitempty"`
 	ResourceID  string `json:"resource_id,omitempty"`
 	Outcome     string `json:"outcome"`
 	Reason      string `json:"reason,omitempty"`
@@ -137,6 +142,11 @@ func Append(dir string, l Line) error {
 		return fmt.Errorf("outcome %q is not of the journal", l.Outcome)
 	}
 	l.Format = Format
+	// What evo writes evo reads: a text longer than a reader takes is cut,
+	// with a mark, not dropped with its line (311, У1).
+	for _, f := range []*string{&l.Tool, &l.Surface, &l.ProjectID, &l.Zone, &l.Name, &l.Target, &l.Kind, &l.Parent, &l.ResourceID, &l.Reason, &l.OperationID, &l.JobID, &l.StateDir} {
+		*f = fit(*f)
+	}
 	at, err := time.Parse(time.RFC3339, l.Time)
 	if err != nil {
 		return err
@@ -184,4 +194,118 @@ func Append(dir string, l Line) error {
 // FileOf is the file of the day of at in dir.
 func FileOf(dir string, at time.Time) string {
 	return filepath.Join(dir, at.UTC().Format("2006-01-02")+".jsonl")
+}
+
+// Live are the lines of what may still be in the cloud, in the order of
+// lines: the reading history and the cleanup share (the ТЗ of the
+// journal, §0, 7 and 9). A line closes only on an outcome that is certain;
+// in doubt it is live («Риск», conclusion 300). Two things are live:
+//
+//   - a call whose last line is unknown, or found with no id: what it did
+//     is not known, or not where;
+//   - a resource with a line created or found and no later line that says
+//     it is gone (deleted, already_deleted, not_found) of the same kind,
+//     parent and id in the same project — a database of one cluster is
+//     not the database of the name in another (Астра, #2165). A line with no project — a call on a
+//     resource by its id, whose project the call did not know (R-82) —
+//     meets a line of any project of the same kind and id: an id names one
+//     resource; a name in two projects names two (У4).
+//
+// A line changed, error or found with no id closes nothing: a VM rebooted
+// or resized is the VM created, live until it is deleted. A line of a form
+// or an outcome a reader does not know is live: a newer evo wrote it, and
+// what it says is not this one's to drop.
+func Live(lines []Line) []Line {
+	last := map[string]int{}
+	type mark struct {
+		i       int
+		project string
+	}
+	held := map[string][]mark{} // created or found, not gone yet
+	gone := map[string][]mark{} // deleted, already_deleted, not_found
+	key := func(l Line) string { return l.Kind + "\x00" + l.Parent + "\x00" + l.ResourceID }
+	for i, l := range lines {
+		// A line of a form or an outcome this reader does not know is
+		// kept, as data, and acts on no other: what it says is not
+		// this reader's to trust (Астра, #2168).
+		if l.Format != Format || !Known(l.Outcome) {
+			continue
+		}
+		last[l.IntentID] = i
+		if l.ResourceID == "" {
+			continue
+		}
+		k := key(l)
+		switch l.Outcome {
+		case Created, Found:
+			held[k] = append(held[k], mark{i, l.ProjectID})
+		case Deleted, AlreadyDeleted, NotFound:
+			gone[k] = append(gone[k], mark{i, l.ProjectID})
+			kept := held[k][:0]
+			for _, h := range held[k] {
+				if !sameProject(h.project, l.ProjectID) {
+					kept = append(kept, h)
+				}
+			}
+			held[k] = kept
+		}
+	}
+	// goneAfter tells a resource a later line says is gone: an outcome
+	// not known of a call on it is known now (311-3).
+	goneAfter := func(l Line, at int) bool {
+		for _, g := range gone[key(l)] {
+			if g.i > at && sameProject(g.project, l.ProjectID) {
+				return true
+			}
+		}
+		return false
+	}
+	live := map[int]bool{}
+	for _, i := range last {
+		l := lines[i]
+		switch {
+		case l.Outcome == Unknown && l.ResourceID != "" && goneAfter(l, i):
+		case l.Outcome == Unknown || (l.Outcome == Found && l.ResourceID == ""):
+			live[i] = true
+		}
+	}
+	for i, l := range lines {
+		if l.Format != Format || !Known(l.Outcome) {
+			live[i] = true
+		}
+	}
+	for _, hs := range held {
+		for _, h := range hs {
+			live[h.i] = true
+		}
+	}
+	var out []Line
+	for i, l := range lines {
+		if live[i] {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// sameProject tells two lines of one project: the same one, or a line
+// with none — a call on a resource by id, whose project the call did not
+// know (R-82); an id names one resource, whatever the project («Риск»,
+// conclusion 300, У4).
+func sameProject(a, b string) bool { return a == "" || b == "" || a == b }
+
+// cutMark ends a text cut to maxText.
+const cutMark = "…[cut]"
+
+// fit is s cut to maxText bytes, on a rune, with cutMark; s itself when it
+// fits.
+func fit(s string) string {
+	if len(s) <= maxText {
+		return s
+	}
+	n := maxText - len(cutMark)
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + cutMark
 }
