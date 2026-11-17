@@ -75,6 +75,7 @@
 | disk | `disk_create` | да | дерево | `evo disk create` | да/да |
 | disk | `disk_delete` | да | дерево | `evo disk delete` | да/да |
 | disk | `disk_detach` | да | дерево | `evo disk detach` | да/да |
+| disk | `disk_get` | нет | дерево | `evo disk get` | да/да |
 | disk | `disk_list` | нет | дерево | `evo disk list` | да/да |
 | disk | `disk_resize` | да | дерево | `evo disk resize` | да/да |
 | disk | `list_disk_types` | нет | дерево | `evo disk types` | да/да |
@@ -255,6 +256,7 @@
 | `evo disk create` | `disk_create` | name | — | — | confirmed | — |
 | `evo disk delete` | `disk_delete` | disk_id | — | — | confirmed | — |
 | `evo disk detach` | `disk_detach` | disk_id | — | — | confirmed | — |
+| `evo disk get` | `disk_get` | disk_id | — | — | — | — |
 | `evo disk list` | `disk_list` | — | — | — | — | — |
 | `evo disk resize` | `disk_resize` | disk_id | — | — | confirmed | — |
 | `evo disk types` | `list_disk_types` | — | — | — | — | — |

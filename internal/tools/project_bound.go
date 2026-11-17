@@ -306,6 +306,12 @@ func byProjectField(what, listTool string, get func(ctx context.Context, c *owne
 // inProjectList is a kind whose answer by id names no project: the list of
 // the call's project (admitted by the factory when its engine was built)
 // must hold the id.
+// withCard is k that reads its resource by id with card.
+func withCard(k *ownerKind, card func(ctx context.Context, c *ownerCall, id string) (map[string]any, error)) *ownerKind {
+	k.card = card
+	return k
+}
+
 func inProjectList(what, listTool string, list func(ctx context.Context, c *ownerCall) ([]string, error)) *ownerKind {
 	k := &ownerKind{what: what, listTool: listTool}
 	// held: the call's project holds id (a name is the handler's to find
@@ -386,10 +392,18 @@ var (
 		}
 		return api.GetBackup(ctx, id)
 	})
-	kindDisk = inProjectList("disk", "disk_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	// A disk by id: disk_get, and evo doctor checks a cut disk_delete with
+	// it (FB19I-20).
+	kindDisk = withCard(inProjectList("disk", "disk_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		disks, err := eng.Cloud.ListDisks(ctx, eng.Config.ProjectID)
 		return mapIDs(disks), err
-	}))
+	})), func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+		eng, err := c.engine(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return eng.Cloud.GetDisk(ctx, id)
+	})
 	kindFIP = inProjectList("floating IP", "list_floating_ips", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		fips, err := eng.Cloud.ListFloatingIPs(ctx, eng.Config.ProjectID)
 		ids := make([]string, 0, len(fips))

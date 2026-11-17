@@ -73,6 +73,7 @@ var parityArgs = map[string]map[string]any{
 	"disk_attach":     {"disk_id": parityVM, "vm": "web"},
 	"disk_detach":     {"disk_id": parityAttachedDisk, "vm": "web"},
 	"disk_resize":     {"disk_id": parityVM, "size_gb": float64(50)},
+	"disk_get":        {"disk_id": parityAttachedDisk},
 	"disk_delete":     {"disk_id": parityVM},
 	"disk_list":       {},
 	"backup_list":     {},
