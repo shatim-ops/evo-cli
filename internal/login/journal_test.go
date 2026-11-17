@@ -7,6 +7,7 @@ package login
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,4 +42,26 @@ func journalOf(t *testing.T, dir string) (lines []history.Line, raw string) {
 		}
 	}
 	return lines, b.String()
+}
+
+// The line a login ends with (Qwen on #2139, medium): a login whose undo
+// left what it made — the account, the key — is unknown, not error: what
+// is in the cloud is not known to be nothing; the lost answer of the key
+// is unknown as before.
+func TestLoginOutcome_AnUndoThatLeftIsUnknown(t *testing.T) {
+	failed := errors.New("refused")
+	for _, c := range []struct {
+		err                  error
+		keyUnknown, undoLeft bool
+		want                 string
+	}{
+		{nil, false, false, history.Created},
+		{failed, false, false, history.Error},
+		{failed, false, true, history.Unknown},
+		{failed, true, false, history.Unknown},
+	} {
+		if got := loginOutcome(c.err, c.keyUnknown, c.undoLeft).Result; got != c.want {
+			t.Errorf("err %v, key unknown %v, undo left %v: %s, want %s", c.err, c.keyUnknown, c.undoLeft, got, c.want)
+		}
+	}
 }
