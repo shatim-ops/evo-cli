@@ -1461,5 +1461,215 @@ grep -q 'Консоль ВМ: остановка.*отказ: HTTP 409, маши
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'SECRET\|console.example.test'; then echo "FAIL: консоль: ссылка в отказе остановки"; fail=1; fi
 if grep -v '::add-mask::' "$tmp/out" | grep -q 'SECRET\|console.example.test\|wss://'; then echo "FAIL: консоль: ссылка в выводе"; fail=1; fi
 
+# Область opsevo (гейт rc.1, п. 7): операции второго дня кодом evo — каждая
+# через CLI (команда evo по CLISpec) и через MCP (evo mcp по stdio, сеанс на
+# вызов), повтор — через другую поверхность и безопасен, после каждого шага
+# — чтение через evo. Поддельные команды CLI (vm, vpc, backup, k8s) и evo mcp
+# отвечают ответами инструмента из того же каталога, что evo tools call, и
+# пишут «поверхность инструмент» в $FAKE_DIR/surface, аргументы — в
+# $FAKE_DIR/surface.args.
+evo_cli_mcp() {
+	local g
+	for g in vm vpc backup k8s; do
+		fake_evo_run "$g" <<'RUN'
+#!/usr/bin/env bash
+yes=() w=() flags=()
+while [ $# -gt 0 ]; do
+	case $1 in
+	--yes) yes=(--yes) ;;
+	--json) ;;
+	--*) flags+=("$1" "$2"); shift ;;
+	*) w+=("$1") ;;
+	esac
+	shift
+done
+case "${w[0]} ${w[1]}" in
+"vm "*) tool=vm_${w[1]} ;;
+"vpc sg-rule-"*) tool=${w[1]//-/_} ;;
+"backup "*) tool=backup_${w[1]} ;;
+"k8s nodepool-"*) tool=k8s_nodepool_${w[1]#nodepool-} ;;
+*) echo "{\"error\":{\"reason\":\"USAGE\",\"message\":\"fake: ${w[*]}\"}}" >&2; exit 2 ;;
+esac
+echo "cli $tool" >>"$FAKE_DIR/surface"
+echo "cli $tool ${w[*]:2} ${flags[*]}" >>"$FAKE_DIR/surface.args"
+exec evo "${yes[@]}" tools call "$tool" --json
+RUN
+	done
+	fake_evo_run mcp <<'RUN'
+#!/usr/bin/env bash
+req=$(sed -n 3p)
+id=$(jq -r .id <<<"$req")
+tool=$(jq -r .params.name <<<"$req")
+echo "mcp $tool" >>"$FAKE_DIR/surface"
+echo "mcp $tool $(jq -c .params.arguments <<<"$req")" >>"$FAKE_DIR/surface.args"
+if out=$(evo tools call "$tool" --json 2>"$FAKE_DIR/mcp.err"); then e=false; else e=true out=$(cat "$FAKE_DIR/mcp.err"); fi
+jq -nc --argjson i "$id" --arg t "$out" --argjson e "$e" '{jsonrpc: "2.0", id: $i, result: {content: [{type: "text", text: $t}], isError: $e}}'
+RUN
+}
+# ssh: true — ответ; «bash -s write» и «bash -s» — sha256 записанного и
+# прочитанного файла ($FAKE_DIR/sha.write, sha.read).
+cat >"$tmp/bin/ssh" <<'FAKE'
+#!/usr/bin/env bash
+cat >/dev/null 2>&1 <&0 &
+case " $* " in
+*" bash -s write "*) cat "$FAKE_DIR/sha.write" ;;
+*" bash -s "*) cat "$FAKE_DIR/sha.read" ;;
+esac
+FAKE
+chmod +x "$tmp/bin/ssh"
+SHA_A=$(printf a | sha256sum | cut -c1-64)
+SHA_B=$(printf b | sha256sum | cut -c1-64)
+export EV_WAIT=1 EV_PAUSE=0 EV_PAUSE_DEL=0 MCP_FOLLOW_SLEEP=0
+vmget() { printf '{"id":"vmid1","name":"evo-e2e-opsevo-r7a1-vm","state":"%s","public_ip":""}' "$1"; }
+answers() { # ИНСТРУМЕНТ ОТВЕТ… — ответы вызовов по порядку
+	local t=$1 i=0 a
+	shift
+	for a in "$@"; do fake_evo_answer "$t" "$i" 0 "$a"; i=$((i + 1)); done
+}
+opsevo_world() {
+	world
+	evo_cli_mcp
+	echo "$SHA_A" >"$FAKE_DIR/sha.write"
+	echo "$SHA_A" >"$FAKE_DIR/sha.read"
+	answers provision '{"vm_id":"vmid1","status":"ok"}' '{"vm_id":"vmid2","vm_ip":"203.0.113.9","ssh_user":"user1","status":"ok"}'
+	answers vm_get "$(vmget running)" "$(vmget stopped)" "$(vmget stopped)" "$(vmget running)" "$(vmget running)" \
+		"$(vmget stopped)" "$(vmget stopped)" "$(vmget running)"
+	answers vm_stop '{"status":"stopped"}' '{"status":"already_stopped"}' '{"status":"stopped"}' '{"status":"already_stopped"}'
+	answers vm_start '{"status":"started"}' '{"status":"already_running"}' '{"status":"started"}' '{"status":"already_running"}'
+	answers vm_reboot '{"status":"rebooted"}' '{"status":"reboot_accepted"}'
+	answers list_flavors '{"flavors":[{"name":"lowcost10-2-4","vcpus":2,"ram_gb":4},{"name":"lowcost10-4-8","vcpus":4,"ram_gb":8},{"name":"lowcost10-8-16","vcpus":8,"ram_gb":16}]}'
+	answers vm_resize '{"status":"resized"}' '{"status":"already_resized"}' '{"status":"resized"}' '{"status":"already_resized"}'
+	answers vm_console '{"vm_id":"vmid1","state":"running","console_available":true,"where":"Откройте консоль ВМ в личном кабинете Cloud.ru."}'
+	answers sg_rule_create '{"status":"created","rule_id":"ruleid1"}' '{"status":"already_exists","rule_id":"ruleid1"}'
+	answers list_security_groups '{"security_groups":[{"id":"sgid1","name":"evo-e2e-opsevo-r7a1-sg","rules":[{"id":"ruleid1"}]}]}' \
+		'{"security_groups":[{"id":"sgid1","name":"evo-e2e-opsevo-r7a1-sg","rules":[]}]}' '{"security_groups":[]}'
+	answers sg_rule_delete '{"status":"deleted"}' '{"status":"already_deleted"}'
+	answers disk_create '{"disk_id":"diskid1","status":"ok"}'
+	answers disk_list '{"disks":[{"id":"diskid1","attached_to":["vmid2"],"state":"in-use"}]}' \
+		'{"disks":[{"id":"diskid1","attached_to":[],"state":"available"}]}' \
+		'{"disks":[{"id":"diskid1","state":"available"},{"id":"diskid2","state":"available"}]}' \
+		'{"disks":[{"id":"diskid1","state":"available"},{"id":"diskid2","attached_to":["vmid2"],"state":"in-use"}]}' '{"disks":[]}'
+	answers disk_detach '{"status":"ok"}'
+	answers disk_attach '{"status":"ok"}'
+	answers backup_create '{"status":"created","backup_id":"bkid1"}' '{"status":"already_exists","backup_id":"bkid1"}'
+	answers backup_list '{"backups":[{"id":"bkid1","state":"created"}]}' '{"backups":[{"id":"bkid1","state":"created"}]}' '{"backups":[]}'
+	answers backup_restore '{"status":"created","disk_id":"diskid2"}'
+	answers backup_delete '{"status":"deleted"}' '{"status":"already_deleted"}'
+	cat >"$FAKE_DIR/http" <<-'H'
+		POST /security-groups 201 {"id":"sgid1","name":"evo-e2e-opsevo-r7a1-sg"}
+		GET /security-groups/sgid1 200 {"id":"sgid1","state":"created"}
+		GET! /vms/vmid1 200 {"id":"vmid1","flavor":{"name":"lowcost10-4-8"}}
+		GET /vms/vmid1 200 {"id":"vmid1","flavor":{"name":"lowcost10-2-4"}}
+	H
+}
+surface() { if [ -f "$FAKE_DIR/surface" ]; then tr '\n' ';' <"$FAKE_DIR/surface"; fi; }
+opsevo_world
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+want "opsevo: код" "$rc" 0
+want "opsevo: поверхности по порядку" "$(surface)" "cli vm_stop;mcp vm_stop;mcp vm_start;cli vm_start;mcp vm_stop;cli vm_stop;cli vm_start;mcp vm_start;cli vm_reboot;mcp vm_reboot;cli vm_resize;mcp vm_resize;mcp vm_resize;cli vm_resize;cli vm_console;mcp vm_console;cli sg_rule_create;mcp sg_rule_create;mcp sg_rule_delete;cli sg_rule_delete;cli backup_create;mcp backup_create;cli backup_list;mcp backup_list;mcp backup_restore;cli backup_delete;cli backup_list;mcp backup_delete;"
+# После каждого шага ВМ — чтение vm_get (и одно после provision).
+want "opsevo: чтений vm_get" "$(grep -c '^vm_get ' "$FAKE_DIR/evo-calls")" 15
+for s in 'provision без публичного адреса *ok' 'vm_stop (cli) *ok *status stopped; vm_get после: stopped' 'vm_stop (mcp) *ok *status already_stopped' \
+	'vm_reboot (mcp) *ok *status reboot_accepted' 'vm_resize: flavor в карточке *ok *lowcost10-4-8' 'vm_resize: flavor в карточке *ok *lowcost10-2-4' \
+	'vm_resize (cli) *ok *status already_resized' 'vm_console (mcp) *ok' 'sg_rule_create (mcp) *ok *already_exists, то же правило' \
+	'sg_rule_delete (cli) *ok *повтор — already_deleted' 'backup_create (mcp) *ok *already_exists, та же копия' 'backup_list (mcp) *ok' \
+	'backup_restore (mcp) *ok' 'sha256 файла после восстановления *ok *совпал' 'backup_delete (mcp) *ok *повтор — already_deleted' \
+	'остатков evo-e2e-opsevo-r7a1\* нет'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: opsevo: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
+# MCP — всегда с согласием (confirmed: true); число узлов и flavor — в
+# аргументах; CLI — флаги команды, не --arg.
+if grep '^mcp ' "$FAKE_DIR/surface.args" | grep -vq '"confirmed":true'; then echo "FAIL: opsevo: вызов MCP без confirmed"; fail=1; fi
+grep -qx 'cli vm_resize vmid1 --flavor lowcost10-4-8' "$FAKE_DIR/surface.args" || { echo "FAIL: opsevo: vm resize не той командой"; grep resize "$FAKE_DIR/surface.args"; fail=1; }
+grep -qx 'cli sg_rule_delete sgid1 --rule-id ruleid1' "$FAKE_DIR/surface.args" || { echo "FAIL: opsevo: sg-rule-delete не той командой"; fail=1; }
+grep -qx 'cli backup_create evo-e2e-opsevo-r7a1-bk --disk-id diskid1' "$FAKE_DIR/surface.args" || { echo "FAIL: opsevo: backup create не той командой"; fail=1; }
+grep -q '^mcp vm_resize {"vm_id":"vmid1","flavor":"lowcost10-2-4","confirmed":true}$' "$FAKE_DIR/surface.args" || { echo "FAIL: opsevo: vm_resize по MCP не с теми аргументами"; grep 'mcp vm_resize' "$FAKE_DIR/surface.args"; fail=1; }
+grep -q '^provision yes=1' "$FAKE_DIR/evo-calls" || { echo "FAIL: opsevo: provision"; fail=1; }
+# id — только под маской.
+if grep -v '::add-mask::' "$tmp/out" | grep -qE 'vmid1|sgid1|ruleid1|bkid1|diskid[12]'; then echo "FAIL: opsevo: id в строке лога"; grep -v '::add-mask::' "$tmp/out" | grep -E 'vmid1|sgid1|ruleid1|bkid1|diskid[12]' | sed 's/^/  | /'; fail=1; fi
+
+# Ссылка консоли в ответе (D110): провал, ответ и ссылка в лог не идут.
+# sha256 восстановленного файла другой — провал. Повтор удаления правила
+# ответил не already_deleted (D26) — провал.
+opsevo_world
+answers vm_console '{"vm_id":"vmid1","state":"running","console_available":true,"url":"https://console.example.test/vnc?token=SECRETCON1"}'
+echo "$SHA_B" >"$FAKE_DIR/sha.read"
+answers sg_rule_delete '{"status":"deleted"}' '{"status":"deleted"}'
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+want "opsevo, провалы: код" "$rc" 1
+for s in 'vm_console (cli) *FAIL *в ответе есть адрес со схемой' 'sha256 файла после восстановления *FAIL *другой' \
+	'sg_rule_delete (cli) *FAIL *status deleted, ждали already_deleted'; do
+	grep -q "$s" "$tmp/out" || { echo "FAIL: opsevo: нет строки «$s»"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+done
+if grep -q 'SECRETCON1\|console.example.test' "$tmp/out"; then echo "FAIL: opsevo: ссылка консоли в выводе"; fail=1; fi
+
+# Шаг питания не прошёл: дальше ВМ не меняется (смены flavor и консоли
+# нет), группа и копия не созданы — а оставшуюся ВМ находит и удаляет
+# уборка области (trap EXIT).
+world
+evo_cli_mcp
+answers provision '{"vm_id":"vmid1","status":"ok"}' '{"error":{"reason":"API_ERROR","message":"quota"}}'
+fake_evo_answer provision 1 1 '{"error":{"reason":"API_ERROR","message":"quota"}}'
+answers vm_get "$(vmget running)"
+fake_evo_answer vm_stop 0 1 '{"error":{"reason":"API_ERROR","message":"refused"}}'
+answers vm_list '{"vms":[{"id":"vmid1","name":"evo-e2e-opsevo-r7a1-vm"}]}' '{"vms":[]}'
+answers destroy '{"status":"deleted"}'
+answers list_security_groups '{"security_groups":[]}'
+echo 'POST /security-groups 422 {"code":"quota_exceeded","message":"no"}' >"$FAKE_DIR/http"
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+want "opsevo, провал питания: код" "$rc" 1
+want "opsevo, провал питания: поверхности" "$(surface)" "cli vm_stop;"
+grep -q 'vm_stop (cli) *FAIL *код 1, API_ERROR' "$tmp/out" || { echo "FAIL: opsevo: провал остановки не назван"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+grep -q 'vm_resize, vm_console *не покрыто' "$tmp/out" || { echo "FAIL: opsevo: после провала питания ВМ менялась дальше"; fail=1; }
+grep -q '^destroy yes=1' "$FAKE_DIR/evo-calls" || { echo "FAIL: opsevo: уборка не удалила ВМ"; fail=1; }
+grep -q 'остатков evo-e2e-opsevo-r7a1\* нет' "$tmp/out" || { echo "FAIL: opsevo: остатки после уборки"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
+# Область k8sevo (job k8s-smoke): масштаб 1→2 через CLI и повтор через MCP,
+# 2→1 через MCP и повтор через CLI, удаление через CLI и повтор через MCP
+# после исчезновения; после каждого шага — k8s_nodepool_get.
+np() { printf '{"id":"npid1","status":"OBJECT_STATUS_RUNNING","scale":"fixed","desired":%s}' "$1"; }
+world
+evo_cli_mcp
+answers k8s_nodepools '{"node_pools":[{"id":"npid1"}]}' '{"node_pools":[]}'
+answers k8s_nodepool_get "$(np 1)" "$(np 2)" "$(np 2)" "$(np 1)"
+answers k8s_nodepool_scale '{"status":"scaled"}' '{"status":"already_scaled"}' '{"status":"scaling","operation_id":"op1"}' '{"status":"already_scaled"}'
+answers k8s_nodepool_delete '{"status":"deleting","operation_id":"op2"}' '{"status":"already_deleted"}'
+rc=0
+K8S_CLUSTER_ID=c1 "$here/cloud-live.sh" k8sevo >"$tmp/out" 2>&1 || rc=$?
+want "k8sevo: код" "$rc" 0
+want "k8sevo: поверхности по порядку" "$(surface)" "cli k8s_nodepool_scale;mcp k8s_nodepool_scale;mcp k8s_nodepool_scale;cli k8s_nodepool_scale;cli k8s_nodepool_delete;mcp k8s_nodepool_delete;"
+want "k8sevo: чтений группы" "$(grep -c '^k8s_nodepool_get ' "$FAKE_DIR/evo-calls")" 5
+grep -q '^mcp k8s_nodepool_scale {"nodepool_id":"npid1","count":1,"confirmed":true}$' "$FAKE_DIR/surface.args" || { echo "FAIL: k8sevo: count по MCP — не число"; grep 'mcp k8s' "$FAKE_DIR/surface.args"; fail=1; }
+grep -qx 'cli k8s_nodepool_scale npid1 --count 2' "$FAKE_DIR/surface.args" || { echo "FAIL: k8sevo: nodepool-scale не той командой"; fail=1; }
+grep -q 'k8s_nodepool_delete (mcp) *ok *повтор — already_deleted' "$tmp/out" || { echo "FAIL: k8sevo: повтор удаления"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+# Срок области вышел — шаг не шлётся (предел шага job k8s-smoke).
+world
+evo_cli_mcp
+answers k8s_nodepools '{"node_pools":[{"id":"npid1"}]}'
+answers k8s_nodepool_get "$(np 1)"
+rc=0
+EV_BUDGET=0 K8S_CLUSTER_ID=c1 "$here/cloud-live.sh" k8sevo >"$tmp/out" 2>&1 || rc=$?
+want "k8sevo, срок вышел: код" "$rc" 1
+want "k8sevo, срок вышел: вызовов нет" "$(surface)" ""
+grep -q 'код 1, BUDGET: срок области (0 с) вышел' "$tmp/out" || { echo "FAIL: k8sevo: срок не назван"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
+# Срок выходит, пока MCP ведёт операцию по next_tool: повторы не идут до
+# MCP_FOLLOW_MAX — цикл останавливается по сроку (заключение «Риска» 292, У1).
+world
+evo_cli_mcp
+answers k8s_nodepools '{"node_pools":[{"id":"npid1"}]}'
+answers k8s_nodepool_get "$(np 1)" "$(np 2)"
+answers k8s_nodepool_scale '{"status":"scaled"}' '{"status":"scaling","next_tool":"k8s_operation","next_args":{"operation_id":"op1"}}'
+answers k8s_operation '{"status":"pending","next_tool":"k8s_operation","next_args":{"operation_id":"op1"}}'
+rc=0
+EV_BUDGET=3 MCP_FOLLOW_SLEEP=2 K8S_CLUSTER_ID=c1 "$here/cloud-live.sh" k8sevo >"$tmp/out" 2>&1 || rc=$?
+want "k8sevo, срок в повторах MCP: код" "$rc" 1
+n=$(grep -c '^mcp k8s_operation$' "$FAKE_DIR/surface" || true)
+[ "$n" -le 2 ] || { echo "FAIL: k8sevo: повторы MCP после срока ($n)"; fail=1; }
+grep -q 'повторы по next_tool остановлены' "$tmp/out" || { echo "FAIL: k8sevo: остановка повторов по сроку не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+
 [ "$fail" = 0 ] && echo "cloud-live ops: ok"
 exit "$fail"

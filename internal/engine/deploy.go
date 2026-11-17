@@ -515,7 +515,8 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 		}
 		return e.Printer.JSON(out)
 	}
-	e.Printer.Success(i18n.Tf("\nDeployment complete! VM IP: %s", "\nГотово! IP ВМ: %s", rec.VMIP))
+	e.Printer.Success("")
+	e.Printer.Success(i18n.Tf("Deployment complete! VM IP: %s", "Готово! IP ВМ: %s", rec.VMIP))
 	return nil
 }
 

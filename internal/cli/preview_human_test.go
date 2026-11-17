@@ -45,18 +45,17 @@ var previewForm = map[string]string{
 // (c); release plan 1.9, «Просроченные убывающие списки»): what stays is an
 // exception declared with a reason «Риск · 1.9» accepted.
 var humanUnnamed = map[string]struct{ class, why string }{
-	"deploy cost.hourly_rub":                          {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"deploy preview.cost.hourly_rub":                  {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"deploy update":                                   {unnamedWork, "обновит ли deploy существующую ВМ"},
-	"deploy_apply expires_at":                         {unnamedNoise, "срок плана"},
-	"deploy_apply plan_id":                            {unnamedNoise, "id плана: у плана нет имени"},
-	"deploy_apply preview.cost.hourly_rub":            {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"image_create will_create.has_user_data_template": {unnamedWork, "есть ли шаблон cloud-init"},
-	"kafka_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
-	"pg_create will_create.specification_id":          {unnamedNoise, "спецификация, которую превью называет параметрами; принято «Риском», 203"},
-	"provision preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"pg_create preview.cost.hourly_rub":               {unnamedPrice, "почасовая цена узлов; человеку — месячная и полная почасовая; принято «Риском», 203"},
-	"redis_create will_create.specification_id":       {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
+	"deploy cost.hourly_rub":                    {unnamedPrice, "почасовая цена; человеку — месячная"},
+	"deploy preview.cost.hourly_rub":            {unnamedPrice, "почасовая цена; человеку — месячная"},
+	"deploy update":                             {unnamedWork, "обновит ли deploy существующую ВМ"},
+	"deploy_apply expires_at":                   {unnamedNoise, "срок плана"},
+	"deploy_apply plan_id":                      {unnamedNoise, "id плана: у плана нет имени"},
+	"deploy_apply preview.cost.hourly_rub":      {unnamedPrice, "почасовая цена; человеку — месячная"},
+	"kafka_create will_create.specification_id": {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
+	"pg_create will_create.specification_id":    {unnamedNoise, "спецификация, которую превью называет параметрами; принято «Риском», 203"},
+	"provision preview.cost.hourly_rub":         {unnamedPrice, "почасовая цена; человеку — месячная"},
+	"pg_create preview.cost.hourly_rub":         {unnamedPrice, "почасовая цена узлов; человеку — месячная и полная почасовая; принято «Риском», 203"},
+	"redis_create will_create.specification_id": {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
 }
 
 // Release plan 1.5, С2: what the agent sees in a preview (preview.details,

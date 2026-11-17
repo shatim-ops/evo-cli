@@ -160,7 +160,7 @@ func (s *Registry) planImageCreate(ctx context.Context, args map[string]any) (*P
 	preview := map[string]any{
 		"message": i18n.T("image_create makes a billable image from a disk.",
 			"image_create создаёт платный образ из диска."),
-		"preview": willPreview(engine.ResourceImage, name, firstNonEmptyStr(zoneName, zoneID), args, []string{"disk_id", "min_cpu", "min_ram", "min_disk"}),
+		"preview": willPreview(engine.ResourceImage, name, firstNonEmptyStr(zoneName, zoneID), withCloudInit(args, req.UserDataTemplate != ""), []string{"disk_id", "min_cpu", "min_ram", "min_disk", "has_user_data_template"}),
 		"will_create": map[string]any{
 			"name": name, "from_disk": diskID,
 			"zone":    firstNonEmptyStr(zoneRef, zoneName, zoneID),
@@ -352,4 +352,16 @@ func (s *Registry) planImageDelete(ctx context.Context, args map[string]any) (*P
 		}
 		return toJSON(map[string]any{"status": "deleted", "image_id": imageID}), false
 	}}, nil
+}
+
+// withCloudInit is args with has_user_data_template: whether the image
+// carries a cloud-init template, which a VM booted from it runs. The
+// preview names it, as the answer's will_create does (§6, axis 4).
+func withCloudInit(args map[string]any, has bool) map[string]any {
+	out := make(map[string]any, len(args)+1)
+	for k, v := range args {
+		out[k] = v
+	}
+	out["has_user_data_template"] = has
+	return out
 }
