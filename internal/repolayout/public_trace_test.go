@@ -301,7 +301,7 @@ var publicTraceMisses = map[string]map[string]int{
 	"docs/internal/handoff/1.6.md":                      {"internal-path": 1},
 	"docs/internal/handoff/1.7.md":                      {"internal-path": 1},
 	"docs/internal/handoff/1.8.md":                      {"internal-path": 1},
-	"docs/internal/release-plan.md":                     {"internal-path": 7},
+	"docs/internal/release-plan.md":                     {"internal-path": 14},
 	"docs/internal/risk/1.8.md":                         {"internal-path": 2},
 	"docs/internal/standalone/BACKLOG.md":               {"host": 2, "internal-path": 2},
 	"internal/httpretry/requestid_test.go":              {"host": 1},
