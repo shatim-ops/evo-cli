@@ -10,6 +10,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -62,7 +63,6 @@ var unquotedCloudLocals = map[string]int{
 	"internal/tools/tools_backup.go|Registry.backupRestored":   1,
 	"internal/tools/tools_backup.go|Registry.planBackupCreate": 1,
 	"internal/tools/tools_backup.go|backupOfTheName":           1,
-	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":  3,
 	"internal/tools/tools_disk.go|Registry.planDiskCreate":     2,
 	"internal/tools/tools_disk.go|diskAttachedError":           4,
 	"internal/tools/tools_disk.go|diskCreated":                 5,
@@ -194,6 +194,7 @@ func unquotedIn(t *testing.T, path, rel string) map[string]int {
 			return false // the operands of a chain are counted once
 		})
 		cloud := cloudLocals(fn.Body)
+		guards := uuidGuarded(fn.Body)
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -207,7 +208,7 @@ func unquotedIn(t *testing.T, path, rel string) map[string]int {
 			if step[call] {
 				k = stepKey + k
 			}
-			out[k] += bareCloudWords(format, args, cloud)
+			out[k] += bareCloudWords(format, args, cloud, guards[call])
 			return true
 		})
 	}
@@ -307,7 +308,11 @@ func literal(e ast.Expr) (string, bool) {
 // status, a state or an id the cloud gave (cloudLocals): the words before
 // the verb do not tell what a variable holds («does not find %s» with the
 // resource id of the operation, «Риск», 312-2).
-func bareCloudWords(format string, args []ast.Expr, cloud map[string]bool) int {
+//
+// A variable checked by isUUID in the branch the call is in (uuidGuarded)
+// is an id in the form of an id — it may stand bare in a command a person
+// copies («Риск», 291-2, 314).
+func bareCloudWords(format string, args []ast.Expr, cloud, guarded map[string]bool) int {
 	n, arg := 0, 0
 	for _, loc := range formatVerb.FindAllStringIndex(format, -1) {
 		verb := format[loc[0]:loc[1]]
@@ -320,7 +325,7 @@ func bareCloudWords(format string, args []ast.Expr, cloud map[string]bool) int {
 			return n
 		}
 		v := verb[len(verb)-1]
-		if (v == 's' || v == 'v') && (arg >= len(args) || !quoted(args[arg])) &&
+		if (v == 's' || v == 'v') && (arg >= len(args) || !quoted(args[arg]) && !isCloudLocal(args[arg], guarded)) &&
 			(cloudWordBefore.MatchString(format[:loc[0]]) || arg < len(args) && isCloudLocal(args[arg], cloud)) {
 			n++
 		}
@@ -334,8 +339,10 @@ func bareCloudWords(format string, args []ast.Expr, cloud map[string]bool) int {
 // the person gives them (as "--project-id %s" above).
 var cloudField = regexp.MustCompile(`(?i)^(id|status|state|phase|resource_?id|[a-z_]*_id|[a-z]*ID)$`)
 
-// configField: a field or a key of the configuration, not the cloud's.
-var configField = regexp.MustCompile(`(?i)^(project_?id|key_?id)$`)
+// configField: a field or a key that is not the cloud's — of the
+// configuration (the project, the key) or one evo gives itself (the id of
+// a plan of deploy_plan; C(7) on #2211).
+var configField = regexp.MustCompile(`(?i)^(project_?id|key_?id|plan_?id)$`)
 
 // cloudLocals are the local variables of a function body assigned a status,
 // a state or an id of the cloud: a field (x.Status, x.ResourceID) or a key
@@ -374,6 +381,106 @@ func cloudSource(e ast.Expr) bool {
 		}
 	}
 	return false
+}
+
+// uuidGuarded: for each call of a function body, the variables the
+// branch it is in has checked with isUUID — the one check of the form of
+// an id (as vmLeftNote; «Риск», 314): the body of «if isUUID(x)», the
+// «else» of «if !isUUID(x)», the case «case isUUID(x):» of a switch with
+// no tag, and the cases after «case !isUUID(x):» in it (that case took
+// every x that is no id). Only a branch under the call counts, not the
+// look of the value.
+func uuidGuarded(body *ast.BlockStmt) map[*ast.CallExpr]map[string]bool {
+	out := map[*ast.CallExpr]map[string]bool{}
+	with := func(g map[string]bool, name string) map[string]bool {
+		c := maps.Clone(g)
+		if c == nil {
+			c = map[string]bool{}
+		}
+		c[name] = true
+		return c
+	}
+	var walk func(n ast.Node, g map[string]bool)
+	walk = func(n ast.Node, g map[string]bool) {
+		ast.Inspect(n, func(c ast.Node) bool {
+			switch x := c.(type) {
+			case *ast.IfStmt:
+				if x.Init != nil {
+					walk(x.Init, g)
+				}
+				walk(x.Cond, g)
+				then, other := g, g
+				if name, neg, ok := isUUIDCall(x.Cond); ok {
+					if neg {
+						other = with(g, name)
+					} else {
+						then = with(g, name)
+					}
+				}
+				walk(x.Body, then)
+				if x.Else != nil {
+					walk(x.Else, other)
+				}
+				return false
+			case *ast.SwitchStmt:
+				if x.Tag != nil {
+					return true
+				}
+				if x.Init != nil {
+					walk(x.Init, g)
+				}
+				after := g
+				for _, s := range x.Body.List {
+					cc := s.(*ast.CaseClause)
+					here := after
+					for _, e := range cc.List {
+						walk(e, after)
+						if name, neg, ok := isUUIDCall(e); ok && !neg && len(cc.List) == 1 {
+							here = with(after, name)
+						}
+					}
+					for _, st := range cc.Body {
+						walk(st, here)
+					}
+					for _, e := range cc.List {
+						if name, neg, ok := isUUIDCall(e); ok && neg {
+							after = with(after, name)
+						}
+					}
+				}
+				return false
+			case *ast.CallExpr:
+				if len(g) > 0 {
+					out[x] = g
+				}
+			}
+			return true
+		})
+	}
+	walk(body, nil)
+	return out
+}
+
+// isUUIDCall: e is isUUID(x) or !isUUID(x) of a variable x.
+func isUUIDCall(e ast.Expr) (name string, neg, ok bool) {
+	if u, isNot := e.(*ast.UnaryExpr); isNot && u.Op == token.NOT {
+		e, neg = u.X, true
+	}
+	if p, isParen := e.(*ast.ParenExpr); isParen {
+		e = p.X
+	}
+	c, isCall := e.(*ast.CallExpr)
+	if !isCall || len(c.Args) != 1 {
+		return "", false, false
+	}
+	if f, isIdent := c.Fun.(*ast.Ident); !isIdent || f.Name != "isUUID" {
+		return "", false, false
+	}
+	arg, isIdent := c.Args[0].(*ast.Ident)
+	if !isIdent {
+		return "", false, false
+	}
+	return arg.Name, neg, true
 }
 
 // isCloudLocal: the argument is a local variable of cloudLocals.
@@ -464,7 +571,7 @@ func TestCloudWords_Detector(t *testing.T) {
 		{"took %d tries, state %d", []ast.Expr{x, x}, 0},
 		{"State %s", []ast.Expr{x}, 1},
 	} {
-		if got := bareCloudWords(c.format, c.args, nil); got != c.want {
+		if got := bareCloudWords(c.format, c.args, nil, nil); got != c.want {
 			t.Errorf("%q: %d bare, want %d", c.format, got, c.want)
 		}
 	}
@@ -503,8 +610,21 @@ func TestCloudWords_DetectorFollowsLocals(t *testing.T) {
 		`st := vm.Status; _ = fmt.Sprintf("it is %s now", st)`:                                          1,
 		`v := op.ResourceID; _ = fmt.Errorf("made %v", v)`:                                              1,
 		`p := cfg.ProjectID; _ = fmt.Sprintf("in %s", p)`:                                               0,
+		`id := plan.PlanID; _ = fmt.Sprintf("plan %s", id)`:                                             0,
 		`n := vm.Name; _ = fmt.Sprintf("VM %s", n)`:                                                     0,
 		`id := stringArg(args, "vm_id"); _ = fmt.Sprintf("VM %s", id)`:                                  0,
+		// A branch under isUUID: the id in the form of an id may stand bare
+		// in a command («Риск», 291-2, 314); the look of the value does not
+		// count, nor another check.
+		`id, _ := m["id"].(string); if isUUID(id) { _ = fmt.Sprintf("vm_id=%s", id) }`:                                                                 0,
+		`id, _ := m["id"].(string); _ = fmt.Sprintf("vm_id=%s", id)`:                                                                                   1,
+		`id, _ := m["id"].(string); if looksUUID(id) { _ = fmt.Sprintf("vm_id=%s", id) }`:                                                              1,
+		`id, _ := m["id"].(string); if !isUUID(id) { _ = fmt.Sprintf("VM %s", id) } else { _ = fmt.Sprintf("vm_id=%s", id) }`:                          1,
+		`id, _ := m["id"].(string); if !isUUID(id) { _ = 1 } else { _ = fmt.Sprintf("vm_id=%s", id) }`:                                                 0,
+		`id, _ := m["id"].(string); if !isUUID(id) { _ = fmt.Sprintf("vm_id=%s", id) }`:                                                                1,
+		`id, _ := m["id"].(string); switch { case !isUUID(id): _ = 1; case p: _ = fmt.Sprintf("vm_id=%s", id); default: _ = fmt.Sprintf("x %s", id) }`: 0,
+		`id, _ := m["id"].(string); switch { case !isUUID(id) && p: _ = 1; default: _ = fmt.Sprintf("x %s", id) }`:                                     1,
+		`id, _ := m["id"].(string); switch { case isUUID(id): _ = fmt.Sprintf("vm_id=%s", id); default: _ = fmt.Sprintf("x %s", id) }`:                 1,
 	} {
 		f, err := parser.ParseFile(token.NewFileSet(), "p.go", "package p\nfunc f() {"+src+"}", 0)
 		if err != nil {
@@ -515,7 +635,7 @@ func TestCloudWords_DetectorFollowsLocals(t *testing.T) {
 		ast.Inspect(body, func(n ast.Node) bool {
 			if call, ok := n.(*ast.CallExpr); ok {
 				if format, args, ok := formatCall(call); ok {
-					got += bareCloudWords(format, args, cloud)
+					got += bareCloudWords(format, args, cloud, uuidGuarded(body)[call])
 				}
 			}
 			return true
