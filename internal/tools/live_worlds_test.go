@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -13,10 +14,15 @@ import (
 // answer otherwise than the platform: «<answer id> (go <world>): …» → the
 // work item that makes the world follow it. The list only shrinks: a
 // departure not here fails the test, and so does a line no world departs by.
-// Empty: its deadline 1.8 is met, and a new line comes with a deadline of
-// its own and its plan line: a line lives at most two versions (release plan
-// 1.6, «храповики со сроком»; TestMisses_HaveADeadline).
-var liveWorldDrift = map[string]string{}
+// Its deadline 1.8 was met; the lines of the card of a backup came with
+// cloud-e2e 226 and close with the work item of B (3): Closes by 1.9. A line
+// lives at most two versions (release plan 1.6, «храповики со сроком»;
+// TestMisses_HaveADeadline).
+var liveWorldDrift = map[string]string{
+	"compute-backup-get (http restoreWorld): resource.resource_exists is sent by the world, not by the platform":                       "plan 1.9, line of «разработка B (3)» on backup_restore (cloud-e2e 226): the world and restore follow the live card",
+	"compute-backup-get (http restoreWorld): resource.resource_state.availability_zone.id is sent by the world, not by the platform":   "plan 1.9, line of «разработка B (3)» on backup_restore (cloud-e2e 226): the world and restore follow the live card",
+	"compute-backup-get (http restoreWorld): resource.resource_state.availability_zone.name is sent by the world, not by the platform": "plan 1.9, line of «разработка B (3)» on backup_restore (cloud-e2e 226): the world and restore follow the live card",
+}
 
 // Release plan 1.6, «Миры из живых ответов», step 2: the worlds of the
 // tools that answer through provision.CloudAPI keep to the live form of the
@@ -39,5 +45,29 @@ func TestPlatformAnswers_ToolsWorldsKeepTheLiveForm(t *testing.T) {
 			},
 		},
 	})
-	holdDrift(t, found, liveWorldDrift, func(string) bool { return true })
+	holdDrift(t, found, liveWorldDrift, func(k string) bool { return strings.Contains(k, " (go ") })
+}
+
+// The card of a backup the world of backup_restore answers keeps to the
+// live form (cloud-e2e 226: the live card names no zone of its disk, the
+// world named one as the specification has it, and restore refused live
+// while its tests passed — the class «worlds by the specification, not by
+// the live form», plan 1.9).
+func TestPlatformAnswers_BackupCardKeepsTheLiveForm(t *testing.T) {
+	var card platformAnswer
+	for _, a := range loadCatalogue(t) {
+		if a.ID == "compute-backup-get" {
+			card = a
+		}
+	}
+	if card.ID == "" {
+		t.Fatal("no line compute-backup-get in the catalogue")
+	}
+	kinds, strs, err := answerShape([]byte((&restoreWorld{}).backup()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	checkLiveForm(card, "compute-backup-get (http restoreWorld)", kinds, strs, found)
+	holdDrift(t, found, liveWorldDrift, func(k string) bool { return strings.HasPrefix(k, "compute-backup-get ") })
 }

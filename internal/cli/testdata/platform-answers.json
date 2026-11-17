@@ -129,5 +129,47 @@
       "subnet_ids.[]": "?",
       "version": "?"
     }
+  },
+  {
+    "id": "compute-backup-get",
+    "request": "GET https://compute.api.cloud.ru/api/v1/backups/{backup_id}",
+    "status": 200,
+    "source": "cloud-e2e run 226 (answers-live-opsevo), evo-internal runs/",
+    "recorded": "2026-11-17",
+    "paths": {
+      "created_at": "name",
+      "description": "null",
+      "id": "uuid",
+      "last_restore_time": "null",
+      "name": "name",
+      "project_id": "uuid",
+      "protection_plan": "null",
+      "resource.resource_id": "uuid",
+      "resource.resource_state.bootable": "bool",
+      "resource.resource_state.created_time": "name",
+      "resource.resource_state.description": "name",
+      "resource.resource_state.disk_type.id": "uuid",
+      "resource.resource_state.disk_type.name": "name",
+      "resource.resource_state.encrypted": "bool",
+      "resource.resource_state.hidden": "bool",
+      "resource.resource_state.id": "uuid",
+      "resource.resource_state.image": "null",
+      "resource.resource_state.limit_bw": "number",
+      "resource.resource_state.limit_lock": "bool",
+      "resource.resource_state.limit_rate": "number",
+      "resource.resource_state.modified_time": "name",
+      "resource.resource_state.name": "name",
+      "resource.resource_state.project_id": "uuid",
+      "resource.resource_state.readonly": "bool",
+      "resource.resource_state.serial_id": "name",
+      "resource.resource_state.shared": "bool",
+      "resource.resource_state.size": "number",
+      "resource.resource_type": "name",
+      "size": "number",
+      "state": "name",
+      "type": "name",
+      "updated_at": "?"
+    },
+    "skip": "the parity world has no backup card; the world of backup_restore (internal/tools, restoreWorld) answers it and is held against this line"
   }
 ]
