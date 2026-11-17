@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 	"unicode/utf8"
 
@@ -303,8 +304,13 @@ func sameProject(a, b string) bool { return a == "" || b == "" || a == b }
 const cutMark = "…[cut]"
 
 // fit is s cut to maxText bytes, on a rune, with cutMark; s itself when it
-// fits.
+// fits. A text that is not UTF-8 — an argument of the CLI may be one — is
+// written quoted, its bytes escaped: the JSON encoder would make each such
+// byte U+FFFD, and two names one («Риск», conclusion 331, 331-1).
 func fit(s string) string {
+	if !utf8.ValidString(s) {
+		s = strconv.Quote(s)
+	}
 	if len(s) <= maxText {
 		return s
 	}

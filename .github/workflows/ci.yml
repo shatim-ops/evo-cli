@@ -180,6 +180,13 @@ jobs:
         if: runner.os == 'Linux'
         run: .github/scripts/squash_delivery_test.sh
 
+      # Снимок чистого релиза (release_export.sh, D116, ТЗ
+      # docs/internal/briefs/cloudru-publish.md): только список включения,
+      # маркер внутреннего в документе — провал, один коммит без истории.
+      - name: снимок чистого релиза
+        if: runner.os == 'Linux'
+        run: .github/scripts/release_export_test.sh
+
       # Проба фильтров списков 1.8.2 в api-probe (list_filter_probe.sh):
       # вердикты same / ignored / diff и ни одного id в выводе, на заглушке curl.
       - name: проба фильтров списков в api-probe

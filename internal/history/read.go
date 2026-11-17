@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"time"
+	"unicode/utf8"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 )
@@ -80,13 +81,73 @@ func ReadAll(dir string, check Check) (Journal, error) {
 // read adds the lines of the file data.
 func (j *Journal) read(data []byte, check Check) {
 	for _, raw := range lines(data) {
-		var l Line
-		if len(raw) > maxLine || json.Unmarshal(raw, &l) != nil || !wellFormed(l) || (check != nil && !check(l)) {
+		l, ok := parse(raw)
+		if !ok || (check != nil && !check(l)) {
 			j.Skipped++
 			continue
 		}
 		j.Lines = append(j.Lines, l)
 	}
+}
+
+// parse is the line raw as a reader takes it, and whether it is one of
+// evo's form: not longer than a reader takes, valid UTF-8 — evo writes it
+// by the JSON encoder, which never writes another; decoded, a byte that is
+// not would become U+FFFD, and two resources of different ids one, a
+// broken line closing another's live one (Астра, #2260) — and wellFormed.
+func parse(raw []byte) (Line, bool) {
+	var l Line
+	if len(raw) > maxLine || !utf8.Valid(raw) || loneSurrogate(raw) || json.Unmarshal(raw, &l) != nil || !wellFormed(l) {
+		return Line{}, false
+	}
+	return l, true
+}
+
+// loneSurrogate tells a line that escapes half of a surrogate pair alone
+// (\ud800): ASCII on the line, but the decoder makes it U+FFFD, as it makes
+// a byte that is not UTF-8 — two ids would become one («Риск», conclusion
+// 331, У1). The JSON encoder of evo never writes one. A pair (\ud83d\ude00)
+// is a character, and an escaped backslash is skipped whole.
+func loneSurrogate(raw []byte) bool {
+	surrogate := func(i int) (rune, bool) {
+		if i+6 > len(raw) || raw[i] != '\\' || raw[i+1] != 'u' {
+			return 0, false
+		}
+		var r rune
+		for _, c := range raw[i+2 : i+6] {
+			switch {
+			case c >= '0' && c <= '9':
+				r = r<<4 | rune(c-'0')
+			case c >= 'a' && c <= 'f':
+				r = r<<4 | rune(c-'a'+10)
+			case c >= 'A' && c <= 'F':
+				r = r<<4 | rune(c-'A'+10)
+			default:
+				return 0, false
+			}
+		}
+		return r, true
+	}
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\\' {
+			continue
+		}
+		r, ok := surrogate(i)
+		switch {
+		case !ok:
+			i++ // \\, \", \n…: the next byte is the escape's own
+		case r >= 0xD800 && r <= 0xDBFF:
+			if low, ok := surrogate(i + 6); !ok || low < 0xDC00 || low > 0xDFFF {
+				return true
+			}
+			i += 11
+		case r >= 0xDC00 && r <= 0xDFFF:
+			return true
+		default:
+			i += 5
+		}
+	}
+	return false
 }
 
 // lines are the lines of data that are not blank, whatever their length:

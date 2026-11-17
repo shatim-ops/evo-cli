@@ -684,7 +684,7 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 		return (st == poolScalingUp || st == poolScalingDown) && want == count
 	}
 	if poolSettling[status] && !onItsWay(status, desired) {
-		last, timedOut, atLimit, werr := waitState(ctx, eng, poolSettleTimeout,
+		last, timedOut, atLimit, reads, werr := waitState(ctx, eng, poolSettleTimeout,
 			func(ctx context.Context) (string, bool, error) {
 				now, err := cli.GetNodePool(ctx, id)
 				switch {
@@ -706,6 +706,7 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 			return nil, werr
 		case atLimit:
 			ans := map[string]any{"status": "waiting", "nodepool_id": id, "name": name, "state": last}
+			reads.put(ans)
 			ans["next"] = fmt.Sprintf("Node pool %s is %s at the time limit of an MCP call; it cannot be scaled until its status settles. Call k8s_nodepool_scale again when it settles: it shows the preview and asks before it sends the request.", id, quoteCloud(last))
 			nextSameCall(ans, "k8s_nodepool_scale", args)
 			return answered(toJSON(ans), false), nil
