@@ -70,7 +70,7 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		}
 	case isDelete:
 		// The id the delete takes: the same createdRef wrote in the line
-		// of the create, so the two meet (history.Live).
+		// of the create, so a reader of the journal meets the two.
 		out.ResourceID = stringArg(args, d.arg)
 		// A delete that goes on — its status a doing («deleting»), or a
 		// next step to read — has not removed its resource yet.
