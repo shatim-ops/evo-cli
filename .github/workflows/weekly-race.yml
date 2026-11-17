@@ -57,7 +57,10 @@ jobs:
           go-version: "1.26.11"
           cache-dependency-path: go.sum
 
-      - run: go test -race -count=3 -shuffle=on ./...
+      # -timeout задан явно: умолчание go test — 10 минут на пакет, а
+      # internal/cli и internal/tools под -race трижды подряд идут дольше
+      # (15.11, run 43708220597: «test timed out after 10m0s» на трёх ОС).
+      - run: go test -race -count=3 -shuffle=on -timeout 60m ./...
         env:
           GORACE: atexit_sleep_ms=0
 
@@ -68,7 +71,7 @@ jobs:
       # (process-handoff.md, «CI не от diff») и заслонил бы такие тесты.
       - name: миры engine и tools ×20 (тик таймера Windows)
         if: runner.os == 'Windows'
-        run: go test -count=20 -shuffle=on ./internal/engine/ ./internal/tools/
+        run: go test -count=20 -shuffle=on -timeout 60m ./internal/engine/ ./internal/tools/
 
   # Сбои рантайма Go за неделю (#370, вариант 1): шаг повтора ci.yml
   # выполнялся — случай; 3 и больше за 7 дней — красный (issue, как у race):

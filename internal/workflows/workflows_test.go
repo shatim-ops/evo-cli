@@ -624,7 +624,7 @@ func TestWorkflows_ScriptTestsRun(t *testing.T) {
 // there.
 func TestWorkflows_WeeklyRace(t *testing.T) {
 	w := weeklyWorkflow(t, "weekly-race.yml")
-	if !runsStep(w, "go test -race -count=3 -shuffle=on ./...") {
+	if !runsStep(w, "go test -race -count=3 -shuffle=on -timeout 60m ./...") {
 		t.Error("weekly-race: no go test -race -count=3 -shuffle=on")
 	}
 	// A wait the test gives in milliseconds while it expects success after
@@ -632,7 +632,7 @@ func TestWorkflows_WeeklyRace(t *testing.T) {
 	// (#277, found on #283 by chance). The worlds of engine and tools run
 	// many times on Windows, without -race: the Go runtime under -race
 	// crashes there on its own (process-handoff.md) and would hide them.
-	if !runsStep(w, "go test -count=20 -shuffle=on ./internal/engine/ ./internal/tools/") {
+	if !runsStep(w, "go test -count=20 -shuffle=on -timeout 60m ./internal/engine/ ./internal/tools/") {
 		t.Error("weekly-race: the worlds of engine and tools do not run many times on Windows")
 	}
 }
@@ -1763,5 +1763,32 @@ func TestWorkflows_PublicTraceOfTexts(t *testing.T) {
 	}
 	if !runs {
 		t.Error("public-trace: no step runs TestPublicTrace_Text with -v (its warnings are printed only with it)")
+	}
+}
+
+// longGoTest is a go test of the packages whose run outlives the default
+// -timeout of 10m under -race or many counts: all of them, internal/cli,
+// internal/tools.
+var longGoTest = regexp.MustCompile(`\bgo test\b[^\n|;&]*(\./\.\.\.|\./internal/(cli|tools)/?)(\s|$)`)
+
+// A go test of the long packages in a workflow sets its -timeout: the
+// default of 10m per package killed internal/cli and internal/tools under
+// -race -count=3 on all three OSes of weekly-race (15.11, run
+// 43708220597) — #1537 had set it in ci.yml only. go test -list reads
+// names and runs nothing.
+func TestWorkflows_LongGoTestsSetTheirTimeout(t *testing.T) {
+	for name, w := range readWorkflows(t) {
+		for job, j := range w.Jobs {
+			for _, s := range j.Steps {
+				for _, line := range strings.Split(s.Run, "\n") {
+					if strings.HasPrefix(strings.TrimSpace(line), "#") || strings.Contains(line, "go test -list") {
+						continue
+					}
+					if longGoTest.MatchString(line) && !strings.Contains(line, "-timeout ") {
+						t.Errorf("%s, job %s: %q runs the long packages without -timeout: the default 10m kills them under -race or -count", name, job, strings.TrimSpace(line))
+					}
+				}
+			}
+		}
 	}
 }
