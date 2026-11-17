@@ -355,7 +355,7 @@ func (s *Registry) sgRuleCreated(ctx context.Context, eng *engine.Engine, group 
 				return true, nil
 			case sgRuleFailed(st) || engine.DeletingState(st):
 				return true, clierrors.New(clierrors.CodeAPIError,
-					i18n.Tf("the new rule of security group %s is in state %s after the create", "новое правило группы безопасности %s после создания в состоянии %s", quoteCloud(group.Name), st),
+					i18n.Tf("the new rule of security group %s is in state %s after the create", "новое правило группы безопасности %s после создания в состоянии %s", quoteCloud(group.Name), quoteCloud(st)),
 					i18n.T("Ask the person whether to remove it: sg_rule_delete takes the rule_id of this answer.", "Спросите человека, удалять ли его: sg_rule_delete принимает rule_id из этого ответа."))
 			}
 			return false, nil

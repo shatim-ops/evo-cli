@@ -1207,7 +1207,7 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 		if id == "" {
 			return ""
 		}
-		return i18n.Tf(" (id %s)", " (id %s)", id)
+		return i18n.Tf(" (id %s)", " (id %s)", quoteCloud(id))
 	}
 	switch {
 	case isCreate && matched:

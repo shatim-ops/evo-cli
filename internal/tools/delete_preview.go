@@ -131,8 +131,8 @@ func withStatus(execute func(context.Context) (string, bool), tool, status, id s
 				fmt.Sprintf("Cloud.ru отказал этому ключу в удалении (HTTP %d): ключ не принят либо у него или у роли его сервисного аккаунта нет права удалять ресурс (%s); ресурс остаётся, платный — тарифицируется. Попробуйте удалить ключом с этим правом.", code, decl.whRU))
 		case intent.DefiniteRefusal(code) && !notTheState[reason]:
 			m["hint"] = i18n.T(
-				fmt.Sprintf("Cloud.ru refused the delete of the %s in %s: it stays, and a billable one is still billed; the same call gets the same refusal while its state holds. What to do with it is the person's decision; the way is Cloud.ru support, with its id %s.", decl.what, quoteCloud(status), id),
-				fmt.Sprintf("Cloud.ru отклонил удаление: ресурс (%s) в состоянии %s остаётся, платный ресурс тарифицируется; тот же вызов получит тот же отказ, пока состояние не сменится. Что с ним делать, решает человек; путь — поддержка Cloud.ru с id ресурса %s.", decl.whRU, quoteCloud(status), id))
+				fmt.Sprintf("Cloud.ru refused the delete of the %s in %s: it stays, and a billable one is still billed; the same call gets the same refusal while its state holds. What to do with it is the person's decision; the way is Cloud.ru support, with its id %s.", decl.what, quoteCloud(status), quoteCloud(id)),
+				fmt.Sprintf("Cloud.ru отклонил удаление: ресурс (%s) в состоянии %s остаётся, платный ресурс тарифицируется; тот же вызов получит тот же отказ, пока состояние не сменится. Что с ним делать, решает человек; путь — поддержка Cloud.ru с id ресурса %s.", decl.whRU, quoteCloud(status), quoteCloud(id)))
 		case !notTheState[reason] || reason == clierrors.CodeAPIUnreachable:
 			m["hint"] = i18n.T(
 				fmt.Sprintf("The outcome of the delete is unknown: the request may have been taken. %s %s shows whether the %s is gone.", readEN, id, decl.what),
