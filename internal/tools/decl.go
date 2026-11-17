@@ -212,17 +212,17 @@ var decls = map[string]Decl{
 	"vm_console": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}, Untrusted: untrustedAnswer{fields: []string{"name", "where", "note"}}},
 	// The VM a power tool names in its preview and its answer, as the
 	// cloud names it.
-	"vm_start": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
+	"vm_start": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "state", "details"}}},
 	// vm_stop deletes nothing on a disk, but it takes the service down and
 	// may lose what the VM held in memory: a client asks the person every
 	// time (D99, §4.3).
-	"vm_stop": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
+	"vm_stop": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "state", "details"}}},
 	// vm_reboot takes the service down for the time of the reboot (§5.2).
-	"vm_reboot": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
+	"vm_reboot": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "state", "details"}}},
 	// vm_resize of a running VM: whether the guest OS restarts in it the
 	// probe does not see (Г-10), so the client asks the person every time
 	// (§6.5, В3: unknown is taken as a restart).
-	"vm_resize":            {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
+	"vm_resize":            {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "state", "details"}}},
 	"vm_list":              {Project: true, Untrusted: untrustedAnswer{fields: []string{"vms"}}},
 	"logs":                 {Group: "deploy", Untrusted: untrustedAnswer{fields: []string{"log"}, workload: true}},
 	"destroy":              {Group: "deploy", Destructive: true, Delete: deleteTarget{arg: "vm_id", what: "VM", whRU: "ВМ"}, IDArgs: []idArg{{name: "vm_id", why: whyListed}}},

@@ -1115,7 +1115,7 @@
     "id_args": [
       "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[preview name details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false}"
   },
   "vm_resize": {
     "group": "vm",
@@ -1129,7 +1129,7 @@
     "id_args": [
       "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[preview name details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false}"
   },
   "vm_start": {
     "group": "vm",
@@ -1142,7 +1142,7 @@
     "id_args": [
       "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[preview name details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false}"
   },
   "vm_stop": {
     "group": "vm",
@@ -1156,7 +1156,7 @@
     "id_args": [
       "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[preview name details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false}"
   },
   "vpc_create": {
     "project": true,
