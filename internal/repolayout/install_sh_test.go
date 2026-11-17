@@ -88,6 +88,10 @@ func TestInstallSh_CompletionFilesAndUninstall(t *testing.T) {
 	fakeRelease(t, rel)
 	// fish is found by its configuration directory; zsh is a fake whose
 	// $fpath holds ~/.zfunc (a directory of the home it may write).
+	// The fish file goes in with no fish binary on PATH: this pins the
+	// behaviour as it is, not as it should be — a completion for a shell
+	// that is not installed (#2038). The fix and this expectation change
+	// together, candidate 1.10 (release plan 1.9, Astra #2103).
 	if err := os.MkdirAll(filepath.Join(home, ".config", "fish"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -159,4 +163,46 @@ func keys(m map[string]string) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// zshrc_unblock keeps a <rc>.evo-backup that is already there: the copy it
+// makes before it rewrites rc goes to a name of its own, and only that copy
+// is removed after a good write. An existing copy may be the only saved
+// version of the person's settings, left by a failed run of install.sh or
+// made by hand (Astra #2103: a second install and --uninstall overwrote it
+// and then deleted it).
+func TestInstallSh_ZshrcUnblockKeepsAnExistingBackup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh is for Linux and macOS")
+	}
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no sh here")
+	}
+	src, err := os.ReadFile(filepath.Join("..", "..", "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The functions of install.sh without its last line, the call of main.
+	lines := strings.Split(strings.TrimRight(string(src), "\n"), "\n")
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "functions.sh"), strings.Join(lines[:len(lines)-1], "\n")+"\n", 0o644)
+	rc := filepath.Join(dir, "sample.zshrc")
+	saved := "# unique saved settings\n"
+	writeFile(t, rc+".evo-backup", saved, 0o600)
+	cmd := exec.Command("sh", "-c", `. "$1/functions.sh"
+printf '# current\n%s\nold evo block\n%s\n' "$ZSHRC_BEGIN" "$ZSHRC_END" >"$2"
+zshrc_unblock "$2"`, "probe", dir, rc)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("zshrc_unblock: %v\n%s", err, out)
+	}
+	if got, err := os.ReadFile(rc + ".evo-backup"); err != nil || string(got) != saved {
+		t.Errorf("the existing backup is %q, %v; want it kept as it was", got, err)
+	}
+	if got, _ := os.ReadFile(rc); string(got) != "# current\n" {
+		t.Errorf("rc after unblock: %q, want the block removed", got)
+	}
+	left, _ := filepath.Glob(rc + ".evo-backup?*")
+	if len(left) != 0 {
+		t.Errorf("unblock left its own copy after a good write: %v", left)
+	}
 }

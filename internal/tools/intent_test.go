@@ -88,7 +88,7 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 // MCP carries it once, doctor names it, and the note says where to look,
 // not what to delete (release plan 1.8, (и); «Риск», conclusion 46).
 func TestPending_ReadOnBothSurfaces(t *testing.T) {
-	r, dir := targetRegistry(t, &disksCloud{})
+	r, dir := targetRegistryWith(t, &disksCloud{}, noKey)
 	t.Chdir(dir)
 	if _, err := intent.Begin(intent.Dir(dir), intent.Intent{Tool: "disk_create", Name: "disk-1", ProjectID: "p", Surface: "cli", PID: 42}); err != nil {
 		t.Fatal(err)
@@ -103,13 +103,9 @@ func TestPending_ReadOnBothSurfaces(t *testing.T) {
 	if !strings.Contains(first, "pending_operations") || strings.Contains(second, "pending_operations") {
 		t.Errorf("the first MCP answer carries the intent once:\n%s\n%s", first, second)
 	}
-	// doctor's probes go to a local server: tests do not touch the network.
-	srv := httptest.NewServer(http.NotFoundHandler())
-	defer srv.Close()
-	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
-	t.Cleanup(func() { auth.IAMEndpoint, ComputeBaseURL = oldIAM, oldCompute })
-	auth.IAMEndpoint, ComputeBaseURL = srv.URL+"/token", srv.URL
-	text, _ := r.handlers["doctor"](context.Background(), map[string]any{})
+	// The world has no key (noKey): doctor's probes go to a local server,
+	// and tests do not touch the network.
+	text := doctorOnFake(t, r)
 	if !strings.Contains(text, "pending operation") || !strings.Contains(text, "disk-1") {
 		t.Errorf("doctor does not name the intent:\n%s", text)
 	}
@@ -184,7 +180,7 @@ func (c *disksCloud) ListDisks(context.Context, string) ([]map[string]any, error
 // so its record stays until the same delete settles it.
 func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 	cloud := &disksCloud{}
-	r, dir := targetRegistry(t, cloud)
+	r, dir := targetRegistryWith(t, cloud, noKey)
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
@@ -289,7 +285,7 @@ func TestPending_RecordTextIsUntrusted(t *testing.T) {
 // record of evo's form is neither read nor removed — and not hidden either:
 // doctor names it, a warning, so a planted one is seen.
 func TestDoctor_NamesAForeignRecord(t *testing.T) {
-	r, dir := targetRegistry(t, &disksCloud{})
+	r, dir := targetRegistryWith(t, &disksCloud{}, noKey)
 	if err := os.MkdirAll(intent.Dir(dir), 0o700); err != nil {
 		t.Fatal(err)
 	}

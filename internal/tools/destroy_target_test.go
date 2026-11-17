@@ -73,6 +73,18 @@ func (*targetCloud) ListSecurityGroups(context.Context, string) ([]*provision.Se
 
 func targetRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) {
 	t.Helper()
+	return targetRegistryWith(t, cloud, config.Config{ProjectID: "p", KeyID: "k", Secret: "s"})
+}
+
+// noKey is the configuration of a world doctor runs in: a project and no
+// access key. With a key doctor reads it in IAM and the Organization API,
+// real hosts whose base a test does not move (offnet, nightly 15.11, #2036:
+// four tests of doctor were its connections out of loopback).
+var noKey = config.Config{ProjectID: "p"}
+
+// targetRegistryWith is targetRegistry with the configuration cfg.
+func targetRegistryWith(t *testing.T, cloud provision.CloudAPI, cfg config.Config) (*Registry, string) {
+	t.Helper()
 	dir := t.TempDir()
 	sf := &state.File{Version: 1}
 	sf.UpsertDeployment(state.DeploymentRecord{ID: "0000a1a1-0000-4000-8000-000000000001", VMID: "0000a1a1-0000-4000-8000-000000000001", VMIP: "203.0.113.5", FloatingIPID: "fip-1", Status: "running"})
@@ -82,7 +94,7 @@ func targetRegistry(t *testing.T, cloud provision.CloudAPI) (*Registry, string) 
 	r := New(func(map[string]any) (*engine.Engine, error) {
 		var buf bytes.Buffer
 		return &engine.Engine{
-			Config:   config.Config{ProjectID: "p", KeyID: "k", Secret: "s"},
+			Config:   cfg,
 			Auth:     staticToken{},
 			Cloud:    cloud,
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),

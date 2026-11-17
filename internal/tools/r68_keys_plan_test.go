@@ -66,19 +66,16 @@ func TestDeployApply_UserKeysChangedSinceThePlan(t *testing.T) {
 			_, _ = f.WriteString(newAuthorizedKey(t, "unseen@example.test") + "\n")
 			f.Close()
 		}
-		// The world has no create of a VM: a call that reaches it went past
-		// the check, which is what the unchanged keys must do.
-		refused := func() (refused bool) {
-			defer func() {
-				if recover() != nil {
-					refused = false
-				}
-			}()
-			text, _ := r.handlers["deploy_apply"](context.Background(), map[string]any{"plan_id": plan.PlanID, "confirmed": true})
-			var a struct{ Reason string }
-			_ = json.Unmarshal([]byte(text), &a)
-			return a.Reason == clierrors.CodeConfirmationRequired && strings.Contains(text, "user_ssh_keys")
-		}()
+		// The world makes no VM (errNoCreate): a call that reaches the
+		// create went past the check, which is what the unchanged keys must
+		// do.
+		text, _ = r.handlers["deploy_apply"](context.Background(), map[string]any{"plan_id": plan.PlanID, "confirmed": true})
+		var a struct{ Reason string }
+		_ = json.Unmarshal([]byte(text), &a)
+		refused := a.Reason == clierrors.CodeConfirmationRequired && strings.Contains(text, "user_ssh_keys")
+		if !refused && !strings.Contains(text, errNoCreate.Error()) {
+			t.Errorf("keys changed %v: neither refused nor at the create:\n%s", changed, text)
+		}
 		if refused != changed {
 			t.Errorf("keys changed %v: refused before any write %v", changed, refused)
 		}
