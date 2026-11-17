@@ -420,9 +420,9 @@ func New(factory EngineFactory) *Registry {
 			if echoed := t.Decl.EchoedArgs; echoed != nil {
 				h = namedArgs(echoed, h)
 			}
-			if u := t.Decl.Untrusted; u.marked() {
-				h = markUntrusted(u, h)
-			}
+			// Every tool: the fields every answer marks (alwaysUntrusted),
+			// and those the tool declares (Decl.Untrusted).
+			h = markUntrusted(t.Decl.Untrusted, h)
 			if r.unchecked == nil {
 				r.unchecked = map[string]Handler{}
 			}
