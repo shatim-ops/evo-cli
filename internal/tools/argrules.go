@@ -144,9 +144,13 @@ func portsArg(arg string, v any) ([]int, error) {
 	return out, nil
 }
 
+// badPortsArg refuses an item of a list of ports. It names the item: a port
+// is no secret, and the caller needs to see which one is wrong — unlike a
+// refusal of a type, which names the type alone (ValueKind).
 func badPortsArg(arg string, e any) error {
+	b, _ := json.Marshal(e)
 	return clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("%s: %s is not a port number", "%s: %s — не номер порта", arg, describeValue(e)),
+		i18n.Tf("%s: %s %s is not a port number", "%s: %s %s — не номер порта", arg, ValueKind(e), b),
 		i18n.T("A port is a whole number 1-65535, e.g. [80, 443]; ranges (8000-8010) are not taken: list the ports.",
 			"Порт — целое число 1–65535, например [80, 443]; диапазоны (8000-8010) не принимаются: перечислите порты."))
 }

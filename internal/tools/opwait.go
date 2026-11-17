@@ -207,6 +207,33 @@ func nextStep(answer map[string]any, tool string, args map[string]any) {
 	answer["next_args"] = next
 }
 
+// waitReads is what a wait knows of its reads of the resource: when one
+// last saw it, and how many after that did not (a fault of the network, a
+// 5xx, a list that does not show it). A wait that ends at its limit names
+// the state it last read; this says how old that reading is (CLAUDE.md §6,
+// axis 2; plan 1.9, the line of #2216, cloud-e2e 228).
+type waitReads struct {
+	lastSeen time.Time // the last read that saw the resource; zero for none
+	failed   int       // the reads after it that did not
+}
+
+// put names in answer, the answer of a wait ended at its limit, the time of
+// the last read that saw the resource (last_read_at, none when no read
+// did) and the reads that failed after it (failed_reads).
+func (w waitReads) put(answer map[string]any) {
+	answer["failed_reads"] = w.failed
+	if !w.lastSeen.IsZero() {
+		answer["last_read_at"] = w.lastSeen.UTC().Format(time.RFC3339)
+	}
+}
+
+// readsPut is fields with w put (waitReads.put): the fields of an error at
+// the limit of a wait.
+func readsPut(w waitReads, fields map[string]any) map[string]any {
+	w.put(fields)
+	return fields
+}
+
 // waitState polls the state of a resource until done says the state ends
 // the wait, at the VM poll interval (Engine.Timings.VMPollInterval, 5 s by
 // default), for at most limit (or Timings.VMPollTimeout when shorter). read
@@ -221,11 +248,12 @@ func nextStep(answer map[string]any, tool string, args map[string]any) {
 // returns the last state read and how the wait ended: by done (err is done's), by its own limit (timedOut is how long it
 // waited) or by the budget of an MCP call (atLimit, D69) — the resource
 // goes on in the cloud, and the caller answers its state and the next
-// step, not an error. One loop for the waits on a state: a disk's, a VM's
-// (D99, П4 and П5).
+// step, not an error — and what it knows of its reads (reads): the last
+// state may be old, and an answer at the limit says so (waitReads.put).
+// One loop for the waits on a state: a disk's, a VM's (D99, П4 and П5).
 func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
 	read func(context.Context) (state string, seen bool, err error), waiting func(state string) string,
-	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, err error) {
+	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, reads waitReads, err error) {
 	pp, _ := progressOf(ctx)
 	every := 5 * time.Second
 	if eng.Timings.VMPollInterval > 0 {
@@ -246,9 +274,15 @@ func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
 		st, seen, err := read(ctx)
 		if err != nil {
 			// The resource is gone: nothing to wait for.
-			return last, 0, false, err
+			return last, 0, false, reads, err
+		}
+		if !seen {
+			reads.failed++
 		}
 		if seen {
+			// The time of the read goes into the answer (last_read_at): a
+			// reading of internal/clock.
+			reads.lastSeen, reads.failed = clock.Now(), 0
 			ok, err := done(st)
 			switch {
 			case ok:
@@ -261,18 +295,18 @@ func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
 			}
 			last = st
 			if ok {
-				return st, 0, false, err
+				return st, 0, false, reads, err
 			}
 		}
 		if !time.Now().Before(deadline) {
 			if capped {
-				return last, 0, true, nil
+				return last, 0, true, reads, nil
 			}
-			return last, timeout, false, nil
+			return last, timeout, false, reads, nil
 		}
 		select {
 		case <-ctx.Done():
-			return last, 0, false, ctx.Err()
+			return last, 0, false, reads, ctx.Err()
 		case <-time.After(min(every, time.Until(deadline))):
 		}
 	}
