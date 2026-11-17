@@ -452,7 +452,7 @@ var decls = map[string]Decl{
 	"cert_usage":       {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
 	"cert_versions":    {IDArgs: []idArg{{name: "certificate_id", kind: kindCert}}},
 	"cert_private_key": {Sensitive: true, IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}, {name: "version_id", why: whyInParent}}},
-	"cert_operation":   {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{whole: true}},
+	"cert_operation":   {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}, whole: true}},
 	// The keys of a bucket: whoever wrote an object named it (Astra, #1804).
 	"s3_ls": {Untrusted: untrustedAnswer{fields: []string{"objects"}}},
 	// An object of S3: anyone with write access to the bucket wrote it, and
