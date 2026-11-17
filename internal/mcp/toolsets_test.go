@@ -6,6 +6,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 	"strings"
 	"testing"
 )
@@ -27,8 +28,8 @@ func TestSetToolsets(t *testing.T) {
 	listed := map[string]bool{}
 	for _, tool := range got {
 		listed[tool.Name] = true
-		// agent_skill is served under any --toolsets (tools.AlwaysListed).
-		if g := s.groupOf(tool.Name); g != "deploy" && g != "vm" && g != "vpc" && tool.Name != "agent_skill" {
+		// A tool declared AlwaysListed is served under any --toolsets.
+		if g := s.groupOf(tool.Name); g != "deploy" && g != "vm" && g != "vpc" && !alwaysListed(s, tool.Name) {
 			t.Errorf("%s (group %s) is listed", tool.Name, g)
 		}
 	}
@@ -65,4 +66,11 @@ func TestSetToolsets(t *testing.T) {
 func (s *Server) groupOf(name string) string {
 	t, _ := s.reg.Lookup(name)
 	return t.Group
+}
+
+// alwaysListed tells a tool its declaration serves under any --toolsets
+// (tools.AlwaysListed): agent_skill, history.
+func alwaysListed(s *Server, name string) bool {
+	t, ok := s.reg.Lookup(name)
+	return ok && tools.AlwaysListed(t)
 }

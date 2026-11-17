@@ -32,6 +32,8 @@ var unnamedRefs = map[string]string{
 	"k8s_nodepool_get security_group_id": "the name is a read of the Compute API at every call, and an operation of a pool reads the card at every poll (operationReads); the card's note names list_security_groups",
 	"billing_consumption agreement_id":   "the billing API has no read of an agreement: agreement_id is only its filter (billing/swagger.yaml), so there is no name to read",
 	"billing_finops agreement_id":        "the billing API has no read of an agreement: agreement_id is only its filter (billing/swagger.yaml), so there is no name to read",
+	"history resource_id":                "the journal of changes names a resource as its call did, beside the id: history is local, no API call — a read of each name would be a call per line (D43)",
+	"history target":                     "the journal of changes names a resource as its call did — by id, when the call named it so: history is local, no API call (D43)",
 }
 
 // notRefs are the UUIDs of the human output that are no reference: "tool

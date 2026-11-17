@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
@@ -41,6 +42,9 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 	var res map[string]any
 	_ = json.Unmarshal([]byte(answer), &res)
 	out := history.Outcome{OperationID: stringArg(res, "operation_id"), JobID: stringArg(res, "job_id"), Kind: resourceKind(name)}
+	if arg := resourceParent(name); arg != "" && stringArg(args, arg) != "" {
+		out.Parent = arg + "=" + stringArg(args, arg)
+	}
 	status := answerStatus(answer)
 	_, isCreate := createdOf(name)
 	d, isDelete := deleteOf(name)
@@ -54,6 +58,20 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		details, _ := res["details"].(map[string]any)
 		return createdRef(name, args, details)
 	}
+	// What a refusal says the call made is in its answer only: a create
+	// named by its argument (secret_create's path) has the name whatever
+	// the cloud did, and a refusal that made nothing names none («Риск»,
+	// conclusion 300, finding 300-1).
+	madeByAnswer := func() string {
+		if !isCreate {
+			return ""
+		}
+		if id := createdID(name, res); id != "" {
+			return id
+		}
+		details, _ := res["details"].(map[string]any)
+		return createdID(name, details)
+	}
 	// A stack is told by its job: its steps go round the record of an
 	// intent (journalDepthKey), so the line of the job keeps what the
 	// stack made live — made while its job runs or is done, gone when it
@@ -65,7 +83,9 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 	if job == "" {
 		job = stringArg(args, "job_id")
 	}
-	if job != "" {
+	// Only a tool of the stacks is told by its job: another answer that
+	// names a job_id is not a stack's («Риск», 300-2).
+	if job != "" && groupOf(name) == "stack" {
 		out.Kind, out.ResourceID, out.JobID = "stack", job, job
 		out.Reason = answerReason(answer)
 		switch status {
@@ -76,14 +96,26 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		default:
 			out.Result = history.Unknown
 		}
-		if out.Reason != "" {
+		switch {
+		case out.Reason != "" && status == "" && (out.Reason == clierrors.CodeNotFound || out.Reason == clierrors.CodeUsage):
+			// The call was refused whole, with no job status: a job_id
+			// mistyped, a call refused before any step — nothing made
+			// («Риск», 300-1).
+			out.Result, out.ResourceID = history.Error, ""
+		case out.Reason != "":
 			out.Result = history.Unknown
 		}
 		return out
 	}
 	switch reason := answerReason(answer); {
+	case reason != "" && intent.OutcomeUnknown(reason, answerHTTPStatus(answer)):
+		// Cut after it sent — the network, a time limit, Ctrl-C: what it
+		// made may be there, named by its argument too («Риск», conclusion
+		// 311, У2). A call that sent no write at all is an error at its
+		// end (beginIntent), whatever this says.
+		out.Result, out.Reason, out.ResourceID = history.Unknown, reason, made()
 	case reason != "":
-		if id := made(); id != "" {
+		if id := madeByAnswer(); id != "" {
 			out.Result, out.Reason, out.ResourceID = history.Unknown, reason, id
 			break
 		}
@@ -95,7 +127,7 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		}
 	case isDelete:
 		// The id the delete takes: the same createdRef wrote in the line
-		// of the create, so a reader of the journal meets the two.
+		// of the create, so the two meet (history.Live).
 		out.ResourceID = stringArg(args, d.arg)
 		// A delete that goes on — its status a doing («deleting»), or a
 		// next step to read — has not removed its resource yet.
@@ -135,6 +167,21 @@ func resourceKind(tool string) string {
 	return ""
 }
 
+// resourceParent is the argument that names the resource the resource of
+// tool lives in: the parent its delete declares (a cluster, a bucket); ""
+// for a resource of a project.
+func resourceParent(tool string) string {
+	if d, ok := deleteOf(tool); ok {
+		return d.parent
+	}
+	if c, ok := createdOf(tool); ok && c.delete != "" {
+		if d, ok := deleteOf(c.delete); ok {
+			return d.parent
+		}
+	}
+	return ""
+}
+
 // settledOf is the line of a record that the answered call out of the
 // same tool settles (intent.Settle): what that call made or found is what
 // the cut one made — found, with its id; what it removed, removed; a
@@ -160,8 +207,17 @@ func settledOf(out history.Outcome) history.Outcome {
 // listed with no such id stays unknown: what was made is there, and live.
 func settledOutcome(in intent.Intent, listedID string) history.Outcome {
 	out := history.Outcome{Kind: resourceKind(in.Tool)}
+	// The record names the parent as its target, when the call named one.
+	if arg := resourceParent(in.Tool); arg != "" && strings.HasPrefix(in.Target, arg+"=") {
+		out.Parent = in.Target
+	}
 	if _, isDelete := deleteOf(in.Tool); isDelete {
+		// A delete in a parent names the parent as its target, and its
+		// resource by name; any other, the resource by its target.
 		_, id, _ := strings.Cut(in.Target, "=")
+		if out.Parent != "" {
+			id = in.Name
+		}
 		out.Result, out.ResourceID = history.Deleted, id
 		return out
 	}

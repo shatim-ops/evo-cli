@@ -43,6 +43,7 @@
 | `agent_skill` | `evo agent skill` | нет | — | Read the card of a tool group: its tools, where their ids come from, what deletes what a create made, what to wait with, and the group's notes. | Карточка группы инструментов для агента |
 | `whoami` | `evo whoami` | нет | — | Whom the tools work as: profile, masked access key ID, where the key and the project come from (profile, env, project file, flag), the project, the IAM token's … | Активный профиль и проверка его ключа |
 | `doctor` | `evo doctor` | нет | — | Check the setup the tools use: the configuration (profile, key and project sources, warnings), whether IAM and Compute APIs are reachable (http_status is what … | Проверить настройки, ключ доступа и связь с API |
+| `history` | `evo history` | нет | — | What evo changed in the cloud from this folder of state: the journal of changes (.evo/history/, a line for each end of a call that changes the cloud). | Что evo изменил в облаке из этой папки состояния (журнал изменений) |
 
 ## backup
 
