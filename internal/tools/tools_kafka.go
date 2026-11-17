@@ -128,22 +128,34 @@ func dbaasZone(ctx context.Context, eng *engine.Engine, ref string) (id, shown s
 		}
 		return z.ID, firstNonEmptyStr(z.Name, z.ID), nil
 	}
-	// A closed zone (enabled=false) takes no new resource: it is no
-	// default («Риск», conclusion 269).
-	allClosed := len(zones) > 0
-	for _, z := range zones {
-		allClosed = allClosed && z.Closed()
-	}
-	if allClosed {
-		return "", "", clierrors.New(clierrors.CodeUsage,
-			i18n.T("every availability zone is closed for new resources (enabled=false in the zone list)", "все зоны доступности закрыты для новых ресурсов (в списке зон enabled=false)"),
-			i18n.T("Pass 'zone' once a zone takes new resources: list_zones (evo vm zones) shows them.", "Передайте 'zone', когда зона снова примет новые ресурсы: их показывает list_zones (evo vm zones)."))
+	if err := everyZoneClosed(zones); err != nil {
+		return "", "", err
 	}
 	zones = engine.DefaultZoneFirst(provision.OpenZones(zones), engine.ZoneDBaaS)
 	if len(zones) == 0 || zones[0].ID == "" {
 		return "", "", errors.New(i18n.T("no availability zones listed: pass 'zone'", "список зон доступности пуст: передайте 'zone'"))
 	}
 	return zones[0].ID, zones[0].Name, nil
+}
+
+// everyZoneClosed refuses a DBaaS call that chooses its zone itself when
+// the list marks every zone closed (enabled=false): a closed zone takes no
+// new resource, so it is no default («Риск», conclusion 269). One point
+// for the reads of the specifications (dbaasZone) and the creates
+// (pickDBaaSSubnet): USAGE before any question (Astra #2112); nil when a
+// zone is open or the list is empty.
+func everyZoneClosed(zones []*provision.AvailabilityZone) error {
+	if len(zones) == 0 {
+		return nil
+	}
+	for _, z := range zones {
+		if !z.Closed() {
+			return nil
+		}
+	}
+	return clierrors.New(clierrors.CodeUsage,
+		i18n.T("every availability zone is closed for new resources (enabled=false in the zone list)", "все зоны доступности закрыты для новых ресурсов (в списке зон enabled=false)"),
+		i18n.T("Pass 'zone' once a zone takes new resources: list_zones (evo vm zones) shows them.", "Передайте 'zone', когда зона снова примет новые ресурсы: их показывает list_zones (evo vm zones)."))
 }
 
 // subnetMissingError is "no subnet of the project in this zone". The plan
@@ -241,6 +253,9 @@ func pickDBaaSSubnet(ctx context.Context, eng *engine.Engine, subnetArg string, 
 			i18n.Tf("no subnet of the project in zone %s", "в зоне %s нет подсети проекта", shown),
 			i18n.T("Pass subnet_id (list: list_subnets) or another zone (region); ", "Передайте subnet_id (список: list_subnets) или другую зону (region); ")+engine.NoSubnetAnywhere())}
 	default:
+		if err := everyZoneClosed(zones); err != nil {
+			return "", "", "", "", err
+		}
 		for _, z := range engine.DefaultZoneFirst(provision.OpenZones(zones), engine.ZoneDBaaS) {
 			if i := provision.PickSubnet(subs, z.ID, z.Name); i >= 0 && provision.SubnetInZone(subs[i], z.ID, z.Name) {
 				return subs[i].ID, subs[i].Name, z.ID, z.Name, nil
