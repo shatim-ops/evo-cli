@@ -56,7 +56,7 @@ evo, она не доказывает — прочитайте его до де�
 				fmt.Fprintln(cmd.OutOrStdout(), text)
 				return nil
 			}
-			return renderHistory(p, cmd.OutOrStdout(), text)
+			return renderHistory(p, cmd.OutOrStdout(), registryOf(cmd), text)
 		},
 	}
 	cmd.Flags().StringVar(&since, "since", "", i18n.T("lines from this date (2026-11-01) or time; default: the last 30 days",

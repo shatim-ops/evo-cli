@@ -59,11 +59,15 @@ type historyLine struct {
 // resource by id, whose project the call did not know (R-82) — neither:
 // the number of their calls is.
 func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (string, bool) {
-	eng, err := s.newEngine(nil)
-	if err != nil {
-		return failed(ctx, err, nil), true
+	// The journal is read where the records of intents are written: the
+	// declared directory of state (one point of decision).
+	root, ok := s.stateDir()
+	if !ok {
+		return failed(ctx, clierrors.New(clierrors.CodeConfigInvalid,
+			i18n.T("no directory of state is declared: there is no journal to read", "каталог состояния не задан: журнала для чтения нет"), ""), nil), true
 	}
 	since := clock.Now().AddDate(0, 0, -historyDays)
+	var err error
 	if v := stringArg(args, "since"); v != "" {
 		if since, err = time.Parse(time.RFC3339, v); err != nil {
 			if since, err = time.Parse(time.DateOnly, v); err != nil {
@@ -81,7 +85,7 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	}
 
 	var j history.Journal
-	for _, dir := range intent.Dirs(eng.StateDir) {
+	for _, dir := range intent.Dirs(root) {
 		part, err := history.ReadAll(history.DirOf(dir), s.historyCheck)
 		if err != nil {
 			return failed(ctx, err, nil), true
@@ -130,7 +134,7 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	live := history.Live(j.Lines)
 	// A record of an intent with no line: a call killed before its end
 	// wrote one. Its outcome is not known.
-	for _, in := range pendingIntents(eng.StateDir) {
+	for _, in := range pendingIntents(root) {
 		if !written[in.ID] {
 			live = append(live, history.Line{Time: in.StartedAt.UTC().Format(time.RFC3339), Tool: in.Tool, Surface: in.Surface,
 				ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target, Kind: resourceKind(in.Tool),
@@ -149,7 +153,7 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	}
 
 	ans := map[string]any{
-		"journal_of": filepath.Base(eng.StateDir),
+		"journal_of": filepath.Base(root),
 		"since":      since.UTC().Format(time.RFC3339),
 		"lines":      lines,
 		"live":       liveLines,

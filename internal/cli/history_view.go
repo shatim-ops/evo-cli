@@ -34,7 +34,7 @@ type historyEntry struct {
 // CLI is the tool's answer) — then the lines of the window and what is
 // live. The cells are sanitized by the table: a name is the cloud's or a
 // file's text.
-func renderHistory(p *output.Printer, w io.Writer, text string) error {
+func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text string) error {
 	var a struct {
 		Since     string         `json:"since"`
 		Lines     []historyEntry `json:"lines"`
@@ -75,7 +75,6 @@ func renderHistory(p *output.Printer, w io.Writer, text string) error {
 		fmt.Fprintln(w, i18n.T("Live — may still be in the cloud:", "Живое — может оставаться в облаке:"))
 		// The read that tells an outcome is named as the person runs it:
 		// the command, not the tool (D6).
-		reg := tools.New(nil)
 		rows := make([][]string, len(a.Live))
 		for i, e := range a.Live {
 			check := e.Check
