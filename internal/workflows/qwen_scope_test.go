@@ -8,6 +8,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -93,38 +94,55 @@ func qwenScript(t *testing.T) string {
 	return string(b)
 }
 
-// secretName is the name of a declaration of the code of secrets: a secret
-// tool, a filter of a secret, a redaction, a reveal in plaintext.
-var secretName = regexp.MustCompile(`(?i)secret|redact|sensitive`)
+// policyName is the name of a declaration of the code of secrets and of
+// the layer of intents: a secret tool, a filter of a secret, a redaction,
+// a reveal in plaintext, the record of a write that may be repeated (D92).
+var policyName = regexp.MustCompile(`(?i)secret|redact|sensitive|intent`)
 
-// secretCode names why a file is the code of secrets, by its code and not
-// its name: it declares a top-level secret*, *redact*, *sensitive* name; it
-// declares secret inputs (SecretFiles: in a literal); or it reads them
-// (x.SecretFiles). Empty — it is not.
-func secretCode(f *ast.File) string {
+// declaredPolicy names a top-level declaration of f whose name is
+// policyName's, and returns the unexported types it declares; "" — none.
+func declaredPolicy(f *ast.File) (why string, types []string) {
 	for _, d := range f.Decls {
 		switch x := d.(type) {
 		case *ast.FuncDecl:
-			if secretName.MatchString(x.Name.Name) {
-				return "declares " + x.Name.Name
+			if why == "" && policyName.MatchString(x.Name.Name) {
+				why = "declares " + x.Name.Name
 			}
 		case *ast.GenDecl:
 			for _, sp := range x.Specs {
 				switch y := sp.(type) {
 				case *ast.ValueSpec:
 					for _, n := range y.Names {
-						if secretName.MatchString(n.Name) {
-							return "declares " + n.Name
+						if why == "" && policyName.MatchString(n.Name) {
+							why = "declares " + n.Name
 						}
 					}
 				case *ast.TypeSpec:
-					if secretName.MatchString(y.Name.Name) {
-						return "declares " + y.Name.Name
+					// Only the layer's own types: an exported one
+					// (Tool, Handler) is the whole registry's.
+					if !ast.IsExported(y.Name.Name) {
+						types = append(types, y.Name.Name)
+					}
+					if why == "" && policyName.MatchString(y.Name.Name) {
+						why = "declares " + y.Name.Name
 					}
 				}
 			}
 		}
 	}
+	if why == "" {
+		types = nil
+	}
+	return why, types
+}
+
+// policyUse names why f is the code of secrets or of intents by what it
+// does: it writes or closes an intent record (intent.Begin, intent.Close),
+// declares secret inputs (SecretFiles: in a literal) or reads them
+// (x.SecretFiles), or declares a function with a type of the layer
+// (layerTypes) in its signature — a helper of the layer, like the targets
+// and the settling of intents. "" — none.
+func policyUse(f *ast.File, layerTypes map[string]bool) string {
 	why := ""
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch x := n.(type) {
@@ -136,60 +154,138 @@ func secretCode(f *ast.File) string {
 			if x.Sel.Name == "SecretFiles" {
 				why = "reads secret inputs (SecretFiles)"
 			}
+			if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "intent" && (x.Sel.Name == "Begin" || x.Sel.Name == "Close") {
+				why = "writes an intent record (intent." + x.Sel.Name + ")"
+			}
+		case *ast.FuncDecl:
+			ast.Inspect(x.Type, func(m ast.Node) bool {
+				if id, ok := m.(*ast.Ident); ok && layerTypes[id.Name] {
+					why = "declares " + x.Name.Name + " with " + id.Name + " of the layer"
+				}
+				return why == ""
+			})
 		}
 		return why == ""
 	})
 	return why
 }
 
-// A file of internal/tools or internal/mcp that declares or filters
-// secrets is in the scope of the review that comes by itself, found by its
-// code: the hand list of sensitiveCode did not see secret_writes.go, the
-// filter of the answers of secret writes (D105, D114; #2000), and Qwen did
-// not come to #2102 (plan 1.9, «Область ревью Qwen не видит новых файлов
-// секретов»).
-func TestWorkflows_QwenScopeFindsSecretCode(t *testing.T) {
+// policyCode names why each non-test file of dir is the code of secrets or
+// of intents: the package's name is policyName's; or, in a package that
+// holds the policy (internal/tools, internal/mcp), a declaration of such a
+// name; or what policyUse finds. Files that are not — not in the map.
+func policyCode(t *testing.T, root, dir string, holdsPolicy bool) map[string]string {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(dir), "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]*ast.File{}
+	for _, p := range paths {
+		if strings.HasSuffix(p, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), p, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[dir+"/"+filepath.Base(p)] = f
+	}
+	found := map[string]string{}
+	layerTypes := map[string]bool{}
+	for rel, f := range files {
+		if policyName.MatchString(f.Name.Name) {
+			found[rel] = "is package " + f.Name.Name
+			continue
+		}
+		if !holdsPolicy {
+			continue
+		}
+		if why, types := declaredPolicy(f); why != "" {
+			found[rel] = why
+			for _, ty := range types {
+				layerTypes[ty] = true
+			}
+		}
+	}
+	for rel, f := range files {
+		if _, ok := found[rel]; ok {
+			continue
+		}
+		lt := layerTypes
+		if !holdsPolicy {
+			lt = nil
+		}
+		if why := policyUse(f, lt); why != "" {
+			found[rel] = why
+		}
+	}
+	return found
+}
+
+// The code of secrets and of the layer of intents is in the scope of the
+// review that comes by itself, found by its code and not by a hand list:
+// sensitiveCode did not see secret_writes.go, the filter of the answers of
+// secret writes (D105, D114; #2000), and Qwen did not come to #2102; nor
+// intent.go, the layer of intents and the consent on a repeat (D92), and it
+// did not come to #2115 (plan 1.9, «Область ревью Qwen не видит новых
+// файлов секретов»).
+func TestWorkflows_QwenScopeFindsPolicyCode(t *testing.T) {
 	s := qwenScript(t)
 	root := filepath.Join("..", "..")
-	for _, dir := range []string{"internal/tools", "internal/mcp"} {
-		files, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(dir), "*.go"))
-		if err != nil || len(files) == 0 {
-			t.Fatalf("%s: no Go files (%v)", dir, err)
+	var dirs []string
+	err := filepath.WalkDir(filepath.Join(root, "internal"), func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		for _, path := range files {
-			if strings.HasSuffix(path, "_test.go") {
-				continue
-			}
-			f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
-			if err != nil {
-				t.Fatal(err)
-			}
-			rel := dir + "/" + filepath.Base(path)
-			if why := secretCode(f); why != "" && !strings.Contains(s, rel) {
+		if d.IsDir() {
+			rel, _ := filepath.Rel(root, path)
+			dirs = append(dirs, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, dir := range dirs {
+		holds := dir == "internal/tools" || dir == "internal/mcp"
+		for rel, why := range policyCode(t, root, dir, holds) {
+			n++
+			if !strings.Contains(s, rel) && !strings.Contains(s, dir+"/*") {
 				t.Errorf("qwen-review.sh: %s %s, but is not in the scope of the review", rel, why)
 			}
 		}
 	}
+	if n < 10 {
+		t.Errorf("found %d files of secrets and intents: the signs no longer see the code", n)
+	}
 }
 
-// secretCode tells the code of secrets from the rest: by a declaration, by
-// declaring and by reading secret inputs; a word in a comment or a string
-// does not count.
-func TestQwenScope_SecretCodeIsFoundByCode(t *testing.T) {
+// The signs tell the code of secrets and intents from the rest by code: a
+// declaration, secret inputs, the record of an intent, a helper with a type
+// of the layer; a word in a comment or a string does not count.
+func TestQwenScope_PolicyCodeIsFoundByCode(t *testing.T) {
 	cases := map[string]bool{
 		"package p\nfunc filterSecretAnswer() {}":                                      true,
 		"package p\nvar redactedKeys = 1":                                              true,
 		"package p\nvar specs = map[string]S{\"a\": {SecretFiles: map[string]bool{}}}": true,
 		"package p\nfunc f(t T) bool { return t.CLI.SecretFiles[\"k\"] }":              true,
-		"package p\n// secret in a comment\nfunc f() string { return \"secret\" }":     false,
+		"package p\nfunc f(in I) { intent.Close(in) }":                                 true,
+		"package p\nfunc settled() (outcome, error) { return 0, nil }":                 true,
+		"package p\n// secret in a comment\nfunc f() string { return \"intent\" }":     false,
 	}
 	for src, want := range cases {
 		f, err := parser.ParseFile(token.NewFileSet(), "p.go", src, parser.SkipObjectResolution)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := secretCode(f) != ""; got != want {
-			t.Errorf("secretCode(%q) = %v, want %v", src, got, want)
+		why, _ := declaredPolicy(f)
+		if why == "" {
+			why = policyUse(f, map[string]bool{"outcome": true})
+		}
+		if got := why != ""; got != want {
+			t.Errorf("%q: found %v, want %v", src, got, want)
 		}
 	}
 }

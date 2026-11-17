@@ -58,9 +58,10 @@ fi
 # прежде — #485, П1 (б)). Тесты этого кода (*_test.go) ревью сами не зовут.
 # Новый файл секретов или согласия — строка здесь
 # (TestWorkflows_QwenScopeCoversSensitiveCode); файл internal/tools или
-# internal/mcp, который объявляет или фильтрует секреты, тест находит по
-# коду сам (TestWorkflows_QwenScopeFindsSecretCode; #2102: secret_writes.go
-# был вне области, и Qwen не пришёл).
+# internal/mcp, который объявляет или фильтрует секреты, и код слоя
+# намерений тест находит по коду сам (TestWorkflows_QwenScopeFindsPolicyCode;
+# #2102: secret_writes.go, #2115: intent.go были вне области, и Qwen не
+# пришёл).
 # sensitive reads path names on stdin and says whether one of them is in
 # the scope of the review that comes by itself (sensitivePaths).
 sensitive() {
@@ -73,7 +74,9 @@ sensitive() {
       internal/auth/* | internal/confirm/* | internal/config/* | \
         internal/tools/gate.go | internal/tools/registry.go | internal/tools/decl.go | internal/tools/tools_secret.go | \
         internal/tools/secret_writes.go | internal/tools/effect.go | internal/tools/cli_spec.go | \
-        internal/tools/intent.go | internal/tools/tools_stack.go | \
+        internal/tools/intent.go | internal/tools/intent_targets.go | internal/tools/tools_stack.go | \
+        internal/tools/tools_auth.go | internal/intent/* | internal/secret/* | internal/login/flow.go | \
+        internal/cli/trees.go | \
         internal/tools/untrusted.go | internal/journal/journal.go | internal/mcp/http.go | \
         internal/mcp/http_policy.go | internal/mcp/http_redact.go | internal/mcp/http_kube.go) found=1 ;;
     esac
