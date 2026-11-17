@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -59,27 +58,46 @@ func certChainSummary(v string) string {
 	return i18n.Tf("%d certificate(s): %s", "сертификатов: %d; %s", len(certs), strings.Join(certs, "; "))
 }
 
-// templateSummary is the size, the lines and the SHA-256 of a template,
-// with its first line where it is a header that says what the template is
+// templateSummary is the size and the lines of a template, with its first
+// line where it is a header that says what the template is
 // (templateHeader). Any other line is text the author wrote, and a template
 // may carry a password or a token: the preview reaches a model and a log.
+// No hash either: a short secret in an otherwise known template is found
+// from it by a dictionary (risk conclusion 299).
 func templateSummary(v string) string {
-	s := textSummary(v)
-	if first, _, _ := strings.Cut(v, "\n"); templateHeader.MatchString(strings.TrimSuffix(first, "\r")) {
-		s += i18n.Tf(", first line %s", ", первая строка %s", quoteCloud(strings.TrimSuffix(first, "\r")))
+	s := sizeSummary(v)
+	first, _, _ := strings.Cut(v, "\n")
+	first = strings.TrimSuffix(first, "\r")
+	switch {
+	case templateHeaders[first]:
+		s += i18n.Tf(", first line %s", ", первая строка %s", quoteCloud(first))
+	case strings.HasPrefix(first, "#!"):
+		// An interpreter outside the list: its path and arguments are the
+		// author's text too (Астра, #2152).
+		s += i18n.T(", first line: an interpreter (#!)", ", первая строка: интерпретатор (#!)")
 	}
 	return s
 }
 
-// templateHeader is a first line of a cloud-init template that names its
-// kind: a header of cloud-init's own, the Jinja marker, or an interpreter
-// with no arguments.
-var templateHeader = regexp.MustCompile(`^(#cloud-config|#cloud-config-archive|#cloud-boothook|#include|#part-handler|## template: jinja|#!/[a-z0-9/._-]+|#!/usr/bin/env [a-z0-9._-]+)$`)
+// templateHeaders are the first lines of a cloud-init template the preview
+// names as they are: a header of cloud-init's own, the Jinja marker, or a
+// common interpreter with no arguments. A closed list: any other line is
+// the author's text.
+var templateHeaders = map[string]bool{
+	"#cloud-config": true, "#cloud-config-archive": true, "#cloud-boothook": true, "#include": true, "#part-handler": true,
+	"## template: jinja": true,
+	"#!/bin/bash":        true, "#!/bin/sh": true, "#!/usr/bin/env bash": true, "#!/usr/bin/env sh": true,
+	"#!/usr/bin/python3": true, "#!/usr/bin/env python3": true,
+}
 
 // textSummary is the size, the lines and the SHA-256 of a text.
 func textSummary(v string) string {
-	return i18n.Tf("%d bytes, %d lines, SHA-256 %x", "%d байт, строк: %d, SHA-256 %x",
-		len(v), strings.Count(strings.TrimRight(v, "\n"), "\n")+1, sha256.Sum256([]byte(v)))
+	return sizeSummary(v) + i18n.Tf(", SHA-256 %x", ", SHA-256 %x", sha256.Sum256([]byte(v)))
+}
+
+// sizeSummary is the size and the lines of a text.
+func sizeSummary(v string) string {
+	return i18n.Tf("%d bytes, %d lines", "%d байт, строк: %d", len(v), strings.Count(strings.TrimRight(v, "\n"), "\n")+1)
 }
 
 // namedArgs is the handler of a tool of Decl.EchoedArgs whose preview names

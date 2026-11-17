@@ -10,7 +10,7 @@ import (
 )
 
 // A cloud-init template may carry a password or a token: the preview of
-// evo image create names it by its size, lines, SHA-256 and a known header,
+// evo image create names it by its size, lines and a known header,
 // never by its text — in the human preview and in --json alike (the MCP
 // answer: TestImageCreatePreview_TemplateSecretNotShown in internal/tools).
 func TestImageCreatePreview_TemplateSecretNotShownInCLI(t *testing.T) {
@@ -30,7 +30,7 @@ func TestImageCreatePreview_TemplateSecretNotShownInCLI(t *testing.T) {
 			fake.reset()
 			newProcess()
 			_, out, errOut := runCLI(t, "", append(append([]string{}, extra...), line...)...)
-			if !strings.Contains(out+errOut, "SHA-256") {
+			if !strings.Contains(out+errOut, "bytes, ") && !strings.Contains(out+errOut, "байт, ") {
 				t.Fatalf("%v: no preview of the template: %s%s", extra, out, errOut)
 			}
 			if strings.Contains(out+errOut, secret) {

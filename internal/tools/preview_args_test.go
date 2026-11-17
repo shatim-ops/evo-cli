@@ -74,7 +74,7 @@ func TestSummarizedArgs(t *testing.T) {
 	}
 	tpl := "#cloud-config\nusers:\n  - name: {{ user }}\n"
 	got := templateSummary(tpl)
-	for _, want := range []string{fmt.Sprintf("%d bytes, 3 lines", len(tpl)), fmt.Sprintf("%x", sha256.Sum256([]byte(tpl))), `first line "#cloud-config"`} {
+	for _, want := range []string{fmt.Sprintf("%d bytes, 3 lines", len(tpl)), `first line "#cloud-config"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("templateSummary: %q, want %q in it", got, want)
 		}
