@@ -421,7 +421,7 @@ func recordJournal(t *testing.T, w parityWorld) (map[string]any, func()) {
 	// of parityArgs takes it in, whatever the day the test runs.
 	at := "2026-11-17T10:00:00Z"
 	for _, l := range []history.Line{
-		{Time: at, Tool: "disk_create", Surface: "cli", ProjectID: pvProject, Zone: pvZone, Name: "data", Kind: "disk",
+		{Time: at, Tool: "disk_create", Surface: "cli", ProjectID: pvProject, Zone: pvZone, Name: "jdisk", Kind: "disk",
 			ResourceID: "00000000-0000-4000-8000-0000000d1001", Outcome: history.Created, IntentID: "0000000000000a01"},
 		{Time: at, Tool: "vpc_create", Surface: "mcp", ProjectID: pvProject, Name: "net", Kind: "VPC",
 			ResourceID: "00000000-0000-4000-8000-0000000d1002", Outcome: history.Created, IntentID: "0000000000000a02"},
