@@ -263,8 +263,8 @@ func journalCheck(dir string) (DoctorCheck, bool) {
 			"%s: %d КБ с %s, живых строк — %d (создано и не удалено или итог неизвестен)", dir, (s.Bytes+1023)/1024, s.Oldest, s.Live)}
 	if s.OverCeiling {
 		c.Status = CheckWarn
-		c.Detail += i18n.T("; the live lines alone are over the ceiling of 64 MB: none is removed — what is gone from the cloud, read and close with history",
-			"; одни живые строки больше потолка 64 МБ: ни одна не удаляется — что ушло из облака, прочитайте и закройте через history")
+		c.Detail += i18n.T("; the live lines alone are over the ceiling of 64 MB: none is removed, and the journal grows — a line closes when evo deletes its resource",
+			"; одни живые строки больше потолка 64 МБ: ни одна не удаляется, и журнал растёт — строка закрывается, когда ресурс удалён через evo")
 	}
 	return c, true
 }
