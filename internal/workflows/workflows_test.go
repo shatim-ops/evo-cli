@@ -407,6 +407,54 @@ func TestWorkflows_CloudE2EWeekly(t *testing.T) {
 	}
 }
 
+// A live run a person starts does not wait for an unapproved weekly one
+// (owner's decision 17.11, the second poll of «1.9 — релиз (4)», item 4:
+// run 222 waited for approval from 16.11 and held the concurrency group
+// cloud-e2e). When a person requests a run of cloud-e2e, cloud-e2e-yield
+// cancels the runs of the bot that wait for approval, by the script the
+// weekly dispatch uses — nothing else: no key, no checkout of the head, no
+// other right than actions: write.
+func TestWorkflows_CloudE2EYieldsToAPerson(t *testing.T) {
+	w, ok := readWorkflows(t)["cloud-e2e-yield.yml"]
+	if !ok {
+		t.Fatal("no cloud-e2e-yield.yml: an unapproved weekly run holds the live runs of a person")
+	}
+	trig, _ := w.On["workflow_run"].(map[string]any)
+	if fmt.Sprint(trig["workflows"]) != "[cloud-e2e]" || fmt.Sprint(trig["types"]) != "[requested]" {
+		t.Errorf("cloud-e2e-yield: on workflow_run %v, want cloud-e2e requested", trig)
+	}
+	if len(w.On) != 1 {
+		t.Errorf("cloud-e2e-yield: triggers %v, want workflow_run alone", w.On)
+	}
+	if p, _ := w.Permissions.(map[string]any); len(p) != 0 {
+		t.Errorf("cloud-e2e-yield: workflow permissions %v, want {}", w.Permissions)
+	}
+	if len(w.Jobs) != 1 {
+		t.Fatalf("cloud-e2e-yield: jobs %d, want 1", len(w.Jobs))
+	}
+	for name, j := range w.Jobs {
+		if !strings.Contains(j.If, "triggering_actor.login != 'github-actions[bot]'") || !strings.Contains(j.If, "event == 'workflow_dispatch'") {
+			t.Errorf("cloud-e2e-yield: job %s runs for the bot too (if: %q)", name, j.If)
+		}
+		if p, _ := j.Permissions.(map[string]any); fmt.Sprint(p) != fmt.Sprint(map[string]any{"actions": "write", "contents": "read"}) {
+			t.Errorf("cloud-e2e-yield: job %s permissions %v, want actions: write and contents: read", name, j.Permissions)
+		}
+		if strings.Contains(fmt.Sprint(j.Env), "secrets.") {
+			t.Errorf("cloud-e2e-yield: job %s reads a secret", name)
+		}
+		runs := ""
+		for _, s := range j.Steps {
+			runs += s.Run + "\n"
+			if strings.Contains(fmt.Sprint(s.Env), "secrets.") || strings.Contains(fmt.Sprint(s.With), "ref") {
+				t.Errorf("cloud-e2e-yield: step %q reads a secret or checks out another ref", s.Name)
+			}
+		}
+		if strings.TrimSpace(runs) != `.github/scripts/weekly_stale.sh "$GITHUB_REPOSITORY"` {
+			t.Errorf("cloud-e2e-yield: job %s runs %q, want weekly_stale.sh alone", name, runs)
+		}
+	}
+}
+
 // The readonly job of cloud-e2e checks that every tariff_url of the previews
 // answers (TestLive_TariffPagesAnswer, network only there): a page Cloud.ru
 // moved would send the person to a 404 (review Qwen #170).
