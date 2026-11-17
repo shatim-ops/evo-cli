@@ -3891,6 +3891,14 @@ ev_vm() {
 			case "$st_got" in starting | stopping) true ;; *) false ;; esac &&
 			[ -z "$(j -r '.status? // empty')" ] && [ -n "$(j -r '.state? // empty')" ]; then
 			handed="evo перестал ждать и передал vm_get: $st_got, vm_get — $(j -r .state) через $((SECONDS - t0)) с"
+		# У предела вызова MCP evo отвечает ходом и тем же инструментом в
+		# next_tool («Call vm_start to go on: … sends no second command»);
+		# повтор, заставший ВМ в нужном состоянии, отвечает already_* того
+		# же действия (D26) — переход прошёл (прогон 229). Только у шага,
+		# чей итог — сам переход, и только после первого ответа ходом.
+		elif [ "$how" = mcp ] && [ "$rc" = 0 ] && case "$mc_first" in starting | stopping | rebooting | resizing | updating) true ;; *) false ;; esac &&
+			case "$want:$st_got" in started:already_running | stopped:already_stopped | resized:already_resized) true ;; *) false ;; esac; then
+			handed="evo продолжил тем же вызовом: первый ответ $mc_first, итог повтора $st_got через $((SECONDS - t0)) с"
 		else
 			want_st "$tool ($how)" "$want" || return 1
 		fi
