@@ -50,7 +50,7 @@ func runBreakInstall(t *testing.T, osRelease string, env map[string]string, stub
 	if err := os.WriteFile(script, []byte(InstallScript()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), scriptLimit)
 	t.Cleanup(cancel)
 	cmd := exec.CommandContext(ctx, sh, script, me.Username)
 	cmd.Env = append(os.Environ(), "EVO_ROOT="+root, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -66,6 +66,16 @@ func runBreakInstall(t *testing.T, osRelease string, env map[string]string, stub
 	}
 	return r
 }
+
+// scriptLimit bounds a run of the install script with stubs: a guard
+// against a hang, not a measure of the script — every stub answers at once.
+// wall-clock: a run is milliseconds on Linux, the whole package is 3.8 s
+// on the macOS runner of CI under -race (run 43648564459, 14.11); on the
+// owner's Mac one run took 2.2 s alone and more than 8 s under the full
+// go test ./... (Астра, full audit 14.11: 3 of 3 runs cut by the former
+// limit of 8 s after one to four steps). The stub of a cloud-init that
+// never ends (TestBreakR4_R4_18) sleeps longer than this.
+const scriptLimit = 60 * time.Second
 
 func breakStubs(cloudInit string) map[string]string {
 	s := map[string]string{}
@@ -267,13 +277,14 @@ func TestBreakR4_R4_18_CloudInitWaitIsBounded(t *testing.T) {
 	root, bin := t.TempDir(), t.TempDir()
 	body := breakStubs(`echo "cloud-init $*" >>"$EVO_ROOT/calls"
 case " $* " in
-*" status "*) sleep 30 ;;
+*" status "*) sleep 600 ;;
 esac
 `)
 	// Общая заглушка timeout предел не соблюдает (на macOS нет timeout(1)),
 	// а 300 с в тесте не ждать: здесь предел для cloud-init «истекает»
 	// сразу — код 124, как у настоящего timeout. Если скрипт зовёт
-	// cloud-init status без timeout, заглушка cloud-init висит 30 с.
+	// cloud-init status без timeout, заглушка cloud-init висит 600 с —
+	// дольше scriptLimit, и запуск обрывается пределом.
 	body["timeout"] = `echo "timeout $*" >>"$EVO_ROOT/calls"
 if [ "$2" = cloud-init ] && [ "$3" = status ]; then exit 124; fi
 shift; exec "$@"
@@ -293,13 +304,13 @@ shift; exec "$@"
 	if err := os.WriteFile(script, []byte(InstallScript()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), scriptLimit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, sh, script, me.Username)
 	cmd.Env = append(os.Environ(), "EVO_ROOT="+root, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() != nil {
-		t.Fatalf("cloud-init status --wait is not bounded (killed after 3s): %v\n%s", err, out)
+		t.Fatalf("cloud-init status --wait is not bounded (killed after %s): %v\n%s", scriptLimit, err, out)
 	}
 	if err != nil {
 		t.Fatalf("install failed after the cloud-init limit: %v\n%s", err, out)

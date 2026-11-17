@@ -172,7 +172,7 @@ func TestK8sAddonVersions_RussianTable(t *testing.T) {
 	if code != clerrors.ExitNotFound {
 		t.Fatalf("unknown addon: exit %d, want 4: %s", code, errOut)
 	}
-	assertHas(t, errOut, []string{`плагин "cert-manger" не найден`, "evo k8s addons <подстрока>", "Похожие: cert-manager."})
+	assertHas(t, errOut, []string{`плагин "cert-manger" не найден`, "evo k8s addons <подстрока>", `Похожие: "cert-manager".`})
 }
 
 func TestK8sAddAddon_ConfirmationAndConfigFile(t *testing.T) {

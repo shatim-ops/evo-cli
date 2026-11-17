@@ -347,8 +347,25 @@ func searchWord(ref string) string {
 // ShellQuote quotes s for a command line shown to a person, when it needs it.
 func ShellQuote(s string) string { return shellQuote(s) }
 
+// MetaFlags are the --meta flags of the image fields the person must fill,
+// each with the placeholder value: one place for the tool's answer and the
+// CLI card.
+func MetaFlags(fields []string, value string) string {
+	out := ""
+	for _, f := range fields {
+		out += " --meta " + shellQuote(f) + "=" + value
+	}
+	return out
+}
+
+// shellQuote leaves a word of plain characters as it is and single-quotes
+// any other: a name from the cloud is one word, never shell syntax.
 func shellQuote(s string) string {
-	if s != "" && !strings.ContainsAny(s, " \t'\"$`\\") {
+	plain := s != ""
+	for _, r := range s {
+		plain = plain && (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-_.,:/@%+=", r))
+	}
+	if plain {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"

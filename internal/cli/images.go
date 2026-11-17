@@ -254,10 +254,8 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 	meta := ""
 	if len(a.FieldsRequired) > 0 {
 		fmt.Fprintln(w, i18n.Tf("Needs values evo cannot make itself: %s — pass them with --meta field=value.",
-			"Нужны значения, которых evo сам не знает: %s — передайте их: --meta поле=значение.", strings.Join(a.FieldsRequired, ", ")))
-		for _, f := range a.FieldsRequired {
-			meta += " --meta " + f + i18n.T("=<value>", "=<значение>")
-		}
+			"Нужны значения, которых evo сам не знает: %s — передайте их: --meta поле=значение.", output.SanitizeCell(strings.Join(a.FieldsRequired, ", "))))
+		meta = output.SanitizeCell(images.MetaFlags(a.FieldsRequired, i18n.T("<value>", "<значение>")))
 	}
 
 	fmt.Fprintln(w)
@@ -267,7 +265,14 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 		return nil
 	}
 	fmt.Fprintln(w, i18n.T("Create a VM:", "Создать ВМ:"))
-	fmt.Fprintf(w, "  evo vm create %s --image %s%s\n", i18n.T("<vm-name>", "<имя-вм>"), images.ShellQuote(img.Name), meta)
+	// A name the terminal would not print as it is (a separator, a format
+	// or control character: output.SanitizeCell changes it) is no command
+	// to copy: the image goes by its UUID.
+	ref := img.Name
+	if output.SanitizeCell(ref) != ref {
+		ref = img.ID
+	}
+	fmt.Fprintf(w, "  evo vm create %s --image %s%s\n", i18n.T("<vm-name>", "<имя-вм>"), images.ShellQuote(ref), meta)
 	if img.MinCPU > 0 || img.MinRAM > 0 {
 		fmt.Fprintln(w, i18n.T("  the flavor must meet the minimum above: --flavor <name> (evo vm flavors)",
 			"  flavor — не меньше минимума выше: --flavor <имя> (evo vm flavors)"))

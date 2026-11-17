@@ -201,18 +201,26 @@ func (s *Registry) planSecretDelete(ctx context.Context, args map[string]any) (*
 	if _, err := cli.Get(ctx, path); err != nil {
 		return answered(s.deleteFailed("secret_delete", path, err)), nil
 	}
-	preview := map[string]any{"message": i18n.Tf("secret_delete PERMANENTLY deletes secret %q and all its versions.",
-		"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q и все его версии.", path)}
+	// confirmed=true authorizes deleting the secret AND all its versions,
+	// so force defaults to true — otherwise the API 400s with "cannot
+	// delete the secret with active versions" and the agent has to discover
+	// the force flag by trial (it did, during a live teardown). An explicit
+	// force:false is honored for a versions-must-be-empty delete. One value
+	// for the preview and the DELETE (Астра, full audit 14.11, finding 04).
+	// What force means is the specification's (Secret Manager, DELETE
+	// /v2/secret/{path}, parameter force): without it a secret that other
+	// resources use or that has active versions is not deleted.
+	force := true
+	if v, ok := args["force"].(bool); ok {
+		force = v
+	}
+	preview := map[string]any{"force": force, "message": i18n.Tf("secret_delete PERMANENTLY deletes secret %q and all its versions (force=true: even active ones, and even if other resources use the secret).",
+		"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q и все его версии (force=true: даже активные и даже если секрет используют другие ресурсы).", path)}
+	if !force {
+		preview["message"] = i18n.Tf("secret_delete PERMANENTLY deletes secret %q if it has no active versions and no resource uses it (force=false: otherwise the service refuses the delete, by its specification).",
+			"secret_delete БЕЗВОЗВРАТНО удаляет секрет %q, если у него нет активных версий и его не использует ни один ресурс (force=false: иначе сервис откажет в удалении — по его спецификации).", path)
+	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-		// confirmed=true already authorizes deleting the secret AND all its versions
-		// (see the confirmation message), so force defaults to true — otherwise the
-		// API 400s with "cannot delete the secret with active versions" and the agent
-		// has to discover the force flag by trial (it did, during a live teardown).
-		// An explicit force:false is still honored for a versions-must-be-empty delete.
-		force := true
-		if v, ok := args["force"].(bool); ok {
-			force = v
-		}
 		if err := cli.Delete(ctx, path, force); err != nil {
 			return s.deleteFailed("secret_delete", path, fmt.Errorf(i18n.T("delete secret: %w", "удаление секрета: %w"), err))
 		}

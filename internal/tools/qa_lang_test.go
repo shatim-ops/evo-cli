@@ -78,6 +78,29 @@ func englishPhrase(s string) string {
 // in Russian.
 var apiErrorEnglishLeft = map[string]bool{}
 
+// successEnglishLeft is what a success or an answer «under way» still says
+// in English in the Russian CLI: «tool field» → why it waits. The CLI's
+// table shows these fields as they are (release plan 1.9, «Язык CLI в
+// успешных ответах…»); the walk found them when it first read successes.
+// The list only shrinks: a line whose text speaks Russian fails the test.
+// Closes by 1.9 (owner's decision 14.11: the whole translation in 1.9,
+// line «Язык CLI: весь перевод — в 1.9»).
+var successEnglishLeft = map[string]string{
+	"ar_delete next":           "the next step of a delete with wait=false — translation in 1.9",
+	"backup_delete next":       "the next step of a delete with wait=false — translation in 1.9",
+	"ca_delete next":           "the next step of a delete with wait=false — translation in 1.9",
+	"dns_record_delete next":   "the next step of a delete with wait=false — translation in 1.9",
+	"dns_zone_delete next":     "the next step of a delete with wait=false — translation in 1.9",
+	"k8s_delete next":          "the next step of a delete with wait=false — translation in 1.9",
+	"k8s_nodepool_delete next": "the next step of a delete with wait=false — translation in 1.9",
+	"kafka_delete next":        "the next step of a delete with wait=false — translation in 1.9",
+	"lb_delete next":           "the next step of a delete with wait=false — translation in 1.9",
+	"pg_delete next":           "the next step of a delete with wait=false — translation in 1.9",
+	"redis_delete next":        "the next step of a delete with wait=false — translation in 1.9",
+	"tg_delete next":           "the next step of a delete with wait=false — translation in 1.9",
+	"vpc_delete next":          "the next step of a delete with wait=false — translation in 1.9",
+}
+
 // cloudSegment marks where an API_ERROR leaves evo's words for the
 // cloud's: the service and status the client names («dns API 500»,
 // «HTTP 500», «Organization API»), the transport's «API returned status»
@@ -250,6 +273,24 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 			msg, _ := m["error"].(string)
 			hint, _ := m["hint"].(string)
 			fields = map[string]string{"error": msg, "hint": hint}
+		case reason == "" && m["status"] != nil && m["error"] == nil:
+			// A success and an answer «under way» (release plan 1.9,
+			// «Язык CLI в успешных ответах…»): the CLI's table shows
+			// their notes as they are.
+			reason = fmt.Sprint("status ", m["status"])
+			fields = map[string]string{}
+			for _, f := range []string{"note", "next", "warning", "resource_status_note"} {
+				if v, ok := m[f].(string); ok {
+					// The caller's own words (a name it passed) are not
+					// evo's text: «Container Apps web отсутствует».
+					for _, a := range c.args {
+						if w, ok := a.(string); ok && w != "" {
+							v = strings.ReplaceAll(v, w, "")
+						}
+					}
+					fields[f] = v
+				}
+			}
 		case reason == clerrors.CodeAPIError:
 			// The cloud's own text is the cloud's; what evo puts
 			// before it is evo's (#319, D6).
@@ -269,6 +310,12 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 				what = "cyrillic"
 			}
 			if what == "" {
+				continue
+			}
+			if strings.HasPrefix(reason, "status ") && successEnglishLeft[c.tool+" "+field] != "" {
+				mu.Lock()
+				left[c.tool+" "+field] = true
+				mu.Unlock()
 				continue
 			}
 			if field == "error prefix" && apiErrorEnglishLeft[c.tool] {
@@ -337,6 +384,11 @@ func TestQA11_ToolErrorsSpeakCLILanguage(t *testing.T) {
 		for tool := range apiErrorEnglishLeft {
 			if !stillEnglish[tool] {
 				t.Errorf("apiErrorEnglishLeft names %s, whose API_ERROR speaks Russian: remove the line", tool)
+			}
+		}
+		for key := range successEnglishLeft {
+			if !stillEnglish[key] {
+				t.Errorf("successEnglishLeft names %q, which speaks Russian now: remove the line", key)
 			}
 		}
 	}()

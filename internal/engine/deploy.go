@@ -1990,8 +1990,8 @@ func (e *Engine) prepareDocker(ctx context.Context, ip, user, hostKey string) er
 			"затем повторите 'evo deploy'. \"Temporary failure in name resolution\" в выводе установки означает, что внутри ВМ нет DNS: "+
 			"это проблема сети зоны или подсети, а не compose-проекта; если повторится, разверните в другой зоне — удалять ли сначала эту ВМ (evo destroy), спросите человека.")
 	// What the output says outright comes first: an apt mirror that does
-	// not answer is the cloud's, not the project's (cloud-e2e 16.10.2026:
-	// "W: Failed to fetch https://repo.mng.sbercloud…" in ru.AZ-2).
+	// not answer is the cloud's, not the project's ("W: Failed to fetch"
+	// of the image's mirror).
 	if d := installDiagnosis(failOut + "\n" + lastOut); d != "" {
 		hint = d + "\n" + hint
 	}

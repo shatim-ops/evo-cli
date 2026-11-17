@@ -128,6 +128,38 @@ type Decl struct {
 	// NoCompletion are the arguments named as in valueRefs that name
 	// something else in the tool, with why.
 	NoCompletion map[string]string
+
+	// CLI: the command of the tool (cliSpecs, cli_spec.go) and RU: its
+	// Russian description and the Russian descriptions of its arguments
+	// (toolsRU, descriptions_ru.go). Their texts stay in their files — the
+	// sessions that write the texts of a group edit them — and the
+	// declaration carries them (declareTexts): the registry and every
+	// reader take them from the declaration, not from the maps.
+	CLI CLISpec
+	RU  toolRU
+}
+
+func init() { declareTexts() }
+
+// declareTexts puts the command and the Russian description of each tool
+// into its declaration. A tool with neither is not added.
+func declareTexts() {
+	for name, c := range cliSpecs {
+		d := decls[name]
+		d.CLI = c
+		decls[name] = d
+	}
+	for name, ru := range toolsRU {
+		d := decls[name]
+		d.RU = ru
+		decls[name] = d
+	}
+}
+
+// commandOf is the command of tool, and whether it has one.
+func commandOf(tool string) (CLISpec, bool) {
+	c := decls[tool].CLI
+	return c, c.Verb != "" || c.Group != ""
 }
 
 // deleteOf is what tool deletes, and whether it is a delete.
@@ -234,7 +266,7 @@ var decls = map[string]Decl{
 	// The zones and the flavors of a catalogue, as the platform names
 	// them: text evo did not write.
 	"k8s_options": {Project: true, Untrusted: untrustedAnswer{fields: []string{"flavors", "zones", "defaults"}}},
-	"k8s_plan":    {Project: true, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"cluster_sa_id": {list: "iam_service_accounts", field: "id"}}, NoCompletion: map[string]string{"flavor": "a control-plane flavor of k8s_options, not a VM flavor"}},
+	"k8s_plan":    {Project: true, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"cluster_sa_id": {list: "iam_service_accounts", field: "id"}}, NoCompletion: map[string]string{"flavor": "a control-plane flavor of k8s_options, not a VM flavor"}, Untrusted: untrustedAnswer{fields: []string{"flavor"}}},
 	"k8s_create":  {Project: true, Created: created{id: "cluster_id", list: "k8s_list", field: "clusters", delete: "k8s_delete"}, CreateName: createName{args: []string{"name"}, rule: "k8sNameRe: the mk8s specification"}, IDArgs: []idArg{{name: "subnet_id", why: whyListed}, {name: "cluster_sa_id", why: whyReference}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, Completes: map[string]completion{"cluster_sa_id": {list: "iam_service_accounts", field: "id"}}, NoCompletion: map[string]string{"flavor": "a control-plane flavor of k8s_options, not a VM flavor"}},
 	// The kubeconfig is the service's text as it gives it, comments and
 	// names included (Astra, #1803).
@@ -251,7 +283,7 @@ var decls = map[string]Decl{
 	"k8s_nodepools": {IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
 	// The name of a node pool and the labels and taints of its nodes:
 	// anyone with access to the project writes them.
-	"k8s_nodepool_get": {IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool}}, Untrusted: untrustedAnswer{fields: []string{"name", "cluster_name", "labels", "taints"}}},
+	"k8s_nodepool_get": {IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool}}, Untrusted: untrustedAnswer{fields: []string{"name", "cluster_name", "labels", "taints", "flavor"}}},
 	// A scale down deletes nodes with the data on their disks; the hint is
 	// the tool's, not the call's, so a scale up asks too (D99; conclusion
 	// 112 of «Риск»).
@@ -265,7 +297,7 @@ var decls = map[string]Decl{
 		creatingUnseen: "probe Г-12, question 16 of docs/internal/briefs/k8s-nodepools.md",
 		failedUnseen:   "no run has deleted a node pool in error: probe Г-12 (docs/internal/briefs/k8s-nodepools.md; FB19I-7)"}, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "target", "resource_status"}}},
 	"k8s_add_nodepool":   {Created: created{id: "nodepool_id", list: "k8s_nodepools", field: "node_pools", listArgs: []string{"cluster_id"}, delete: "k8s_nodepool_delete"}, CreateName: createName{args: []string{"name"}, what: "node pool", whRU: "группа узлов"}, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}, {name: "nodes_subnet_id", why: whyListed}, {name: "security_group_id", kind: kindSG}}, RefArgs: []nameRef{{"nodes_subnet_id", refSubnet}, {"security_group_id", refSecurityGroup}}, Completes: map[string]completion{"nodes_subnet_id": {list: "list_subnets", field: "id"}}, NoCompletion: map[string]string{"flavor": "a node flavor of k8s_options, not a VM flavor"}},
-	"k8s_addons":         {Project: true},
+	"k8s_addons":         {Project: true, Untrusted: untrustedAnswer{fields: []string{"addons"}}},
 	"k8s_addon_versions": {Project: true},
 	"k8s_add_addon":      {Project: true, Destructive: true, Created: created{none: "an addon of a cluster, known by its name; it goes with the cluster"}, Nameless: "the addon is named by the catalogue (k8s_addons)", IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}},
 	"k8s_kubectl":        {PartialConsent: kubectlNeedsConsent, Destructive: true, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}, Untrusted: untrustedAnswer{fields: []string{"output"}, workload: true}},
@@ -343,10 +375,14 @@ var decls = map[string]Decl{
 	"redis_create":     {Project: true, Created: created{id: "cluster_id", list: "redis_list", field: "clusters", delete: "redis_delete"}, CreateName: createName{args: []string{"name"}, what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, EchoedArgs: []echoedArg{{name: "description"}}, Completes: map[string]completion{"version_id": {list: "redis_versions", field: "id"}, "specification_id": {list: "redis_specs", field: "id"}}},
 	"redis_delete":     {Delete: deleteTarget{arg: "cluster_id", what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "cluster_id", kind: kindRedis, target: true}}, Untrusted: untrustedAnswer{fields: []string{"target"}}},
 	"redis_operation":  {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
-	"pg_databases":     {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}},
+	"pg_databases":     {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}, Untrusted: untrustedAnswer{fields: []string{"databases"}}},
 	"pg_db_create":     {Created: created{arg: "name", list: "pg_databases", field: "databases", listArgs: []string{"cluster_id"}, delete: "pg_db_delete"}, CreateName: createName{args: []string{"name"}, what: "database", whRU: "база данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}, EchoedArgs: []echoedArg{{name: "lc_collate"}, {name: "lc_ctype"}}},
 	"pg_db_delete":     {Delete: deleteTarget{arg: "name", parent: "cluster_id", what: "database", whRU: "база данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
-	"pg_users":         {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}},
+	"pg_users":         {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}, Untrusted: untrustedAnswer{fields: []string{"users"}}},
+	"pg_specs":         {Untrusted: untrustedAnswer{fields: []string{"specifications"}}},
+	"pg_versions":      {Untrusted: untrustedAnswer{fields: []string{"versions"}}},
+	"kafka_versions":   {Untrusted: untrustedAnswer{fields: []string{"versions"}}},
+	"redis_versions":   {Untrusted: untrustedAnswer{fields: []string{"versions"}}},
 	"pg_user_create":   {Created: created{arg: "name", list: "pg_users", field: "users", listArgs: []string{"cluster_id"}, delete: "pg_user_delete"}, CreateName: createName{args: []string{"name"}, what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
 	"pg_user_delete":   {Delete: deleteTarget{arg: "name", parent: "cluster_id", what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
 	"pg_backups":       {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}},
@@ -388,7 +424,7 @@ var decls = map[string]Decl{
 	"secret_value":      {Project: true, Sensitive: true},
 	// Secret Manager: the create carries projectId.
 	"secret_create":      {Project: true, Created: created{arg: "path", lost: "secret_id", list: "secret_list", field: "secrets", delete: "secret_delete"}, CreateName: createName{args: []string{"path"}, what: "secret", whRU: "секрет"}, IDArgs: []idArg{{name: "kms_key_id", why: whyReference}}, NoCompletion: map[string]string{"path": "the path of a new secret: an existing one is refused (D49)"}},
-	"secret_add_version": {Project: true, Nameless: "a version of a secret that is there"},
+	"secret_add_version": {Project: true, Nameless: "a version of a secret that is there", Untrusted: untrustedAnswer{fields: []string{"version"}}},
 	"secret_delete":      {Project: true, Delete: deleteTarget{arg: "path", what: "secret", whRU: "секрет"}},
 	"ar_list":            {Project: true},
 	// Artifact Registry: GET and DELETE /v1/registries/{id} take projectId
@@ -402,7 +438,7 @@ var decls = map[string]Decl{
 	// The project itself.
 	"billing_consumption": {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
 	"billing_finops":      {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
-	"metrics_history":     {Project: true},
+	"metrics_history":     {Project: true, Untrusted: untrustedAnswer{fields: []string{"series"}}},
 	"metrics_scrape":      {Project: true},
 	"audit_events":        {Project: true},
 	"cert_list":           {Project: true},

@@ -147,13 +147,23 @@ func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Pl
 			}
 			return lostCreate(ctx, "snat_create", list, i18n.T("SNAT gateway", "шлюз SNAT"), name, nil, "snat_list", fmt.Errorf(i18n.T("create SNAT gateway: %w", "создание шлюза SNAT: %w"), err))
 		}
-		return madeAnswer(ctx, eng, map[string]any{"nat_gateway": gw}, made{tool: "snat_create", list: "snat_list", field: "nat_gateway", idField: "nat_gateway_id",
-			what: "SNAT gateway", whatRU: "Шлюз SNAT", read: list,
-			note:      "SNAT gateway created — private-subnet nodes in this zone get outbound internet through it. It is billable; whether and when to delete it (snat_delete) — ask the person.",
-			noteRU:    "Шлюз SNAT создан — через него узлы приватных подсетей этой зоны выходят в интернет. Шлюз платный; удалять ли его и когда (snat_delete) — спросите человека.",
-			pending:   "The SNAT gateway is not made yet: private-subnet nodes in this zone have outbound internet only once it is. It is billable; whether and when to delete it (snat_delete) — ask the person.",
-			pendingRU: "Шлюз SNAT ещё не сделан: узлы приватных подсетей этой зоны получат исходящий доступ в интернет, только когда он будет сделан. Шлюз платный; удалять ли его и когда (snat_delete) — спросите человека."})
+		m := snatMadeNotes()
+		m.read = list
+		return madeAnswer(ctx, eng, map[string]any{"nat_gateway": gw}, m)
 	}}, nil
+}
+
+// snatMadeNotes is the create of snat_create as madeAnswer reads it, with
+// its notes by outcome; the caller sets its read.
+func snatMadeNotes() made {
+	return made{tool: "snat_create", list: "snat_list", field: "nat_gateway", idField: "nat_gateway_id",
+		what: "SNAT gateway", whatRU: "Шлюз SNAT",
+		note:      "SNAT gateway created — private-subnet nodes in this zone get outbound internet through it. It is billable; whether and when to delete it (snat_delete) — ask the person.",
+		noteRU:    "Шлюз SNAT создан — через него узлы приватных подсетей этой зоны выходят в интернет. Шлюз платный; удалять ли его и когда ('evo snat delete') — спросите человека.",
+		pending:   "The SNAT gateway is not made yet: private-subnet nodes in this zone have outbound internet only once it is. It is billable; whether and when to delete it (snat_delete) — ask the person.",
+		pendingRU: "Шлюз SNAT ещё не сделан: узлы приватных подсетей этой зоны получат исходящий доступ в интернет, только когда он будет сделан. Шлюз платный; удалять ли его и когда ('evo snat delete') — спросите человека.",
+		unknown:   "Whether the SNAT gateway is made, evo does not know: snat_list shows it. It is billable; whether and when to delete it (snat_delete) — ask the person.",
+		unknownRU: "Сделан ли шлюз SNAT, evo не знает: его показывает 'evo snat list'. Шлюз платный; удалять ли его и когда ('evo snat delete') — спросите человека."}
 }
 
 // planSnatDelete plans the delete of a SNAT gateway by id (gate.go).

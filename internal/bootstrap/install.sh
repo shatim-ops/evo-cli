@@ -7,11 +7,11 @@
 #
 # Ubuntu and Debian get Docker from Docker's apt repository, signed by the
 # key embedded below (fingerprint 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C
-# 0EBF CD88, checked by install_test.go). The image's apt mirror often does
-# not answer from a new VM (cloud-e2e 16-18.10.2026, register OPS-2: "W:
-# Failed to fetch https://repo.mng.sbercloud..."): then this install alone
-# goes to the distribution's official mirror over HTTPS. The image's own apt
-# sources are not changed, and apt checks the signatures of every source.
+# 0EBF CD88, checked by install_test.go). The image's apt mirror may not
+# answer from a new VM ("W: Failed to fetch" of the image's mirror): then
+# this install alone goes to the distribution's official mirror over
+# HTTPS. The image's own apt sources are not changed, and apt checks the
+# signatures of every source.
 # RPM-based distributions (CentOS, RHEL, Fedora, Rocky, AlmaLinux and those
 # like RHEL or Fedora) get Docker from get.docker.com, as before; any other
 # is refused (break r4, R4-17).
