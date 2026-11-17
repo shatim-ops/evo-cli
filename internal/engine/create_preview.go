@@ -788,16 +788,22 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 }
 
 // createSummary is the heading of the preview, phrased as for deploy.
+// The names in it — of the resource, its zone, its flavor — go through
+// PreviewText, as the lines of the preview do: the heading is printed as it
+// is, in the question and in «Confirmed: …» of --yes, and the zone and the
+// flavor are the cloud's words (#2035; the invariant
+// TestHumanOutput_CloudTextIsClean).
 func createSummary(p CreatePreview, zone string) string {
+	p.Name = PreviewText(p.Name)
 	inZone := ""
 	if zone != "" {
-		inZone = i18n.Tf(" in %s", " в зоне %s", zone)
+		inZone = i18n.Tf(" in %s", " в зоне %s", PreviewText(zone))
 	}
 	switch p.Resource {
 	case ResourceVM:
 		s := i18n.Tf("create VM %s", "создать ВМ %s", p.Name)
 		if p.VM != nil && p.VM.Flavor.Name != "" {
-			s += " (" + p.VM.Flavor.Name + ")"
+			s += " (" + PreviewText(p.VM.Flavor.Name) + ")"
 		}
 		return s + inZone
 	case ResourceDisk:

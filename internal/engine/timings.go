@@ -102,6 +102,10 @@ func (e *Engine) timings() Timings {
 	return e.Timings.withDefaults()
 }
 
+// ProgressInterval is how often a wait that sees no change says how long
+// it has waited (Timings.VMProgressInterval, 30 s by default).
+func (e *Engine) ProgressInterval() time.Duration { return e.timings().VMProgressInterval }
+
 // VMPollTimeout is how long a new VM is waited for to become active:
 // Timings.VMPollTimeout (CLOUDRU_TIMEOUT), else the default of every
 // surface (config.DefaultTimeout). deploy and provision both wait this long.

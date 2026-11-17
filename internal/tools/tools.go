@@ -1264,10 +1264,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "secret_delete",
-			Description: "Delete a secret by path AND all its versions. force defaults to true (a secret with active versions is deleted too); force=false lets the API refuse such a secret.",
+			Description: "Delete a secret by path AND all its versions. force defaults to true: a secret with active versions or one other resources use is deleted too (Secret Manager specification); force=false lets the API refuse such a secret. The preview names the force the delete goes with.",
 			InputSchema: objSchema(map[string]any{
 				"path":      strProp("Secret path (from secret_list). Required."),
-				"force":     boolPropTrue("Delete the secret even if it has active versions (default true)."),
+				"force":     boolPropTrue("Delete the secret even if it has active versions or other resources use it (default true)."),
 				"confirmed": confirmedProp(),
 			}, "path"),
 		},
