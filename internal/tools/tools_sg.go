@@ -284,7 +284,7 @@ func folderDeploymentInGroup(stateDir, groupID string) bool {
 // of an MCP call — the rule is still being deleted, and the read of the
 // group's rules is the next step.
 func (s *Registry) sgRuleDeleted(ctx context.Context, eng *engine.Engine, group *provision.SecurityGroup, ruleID string) (string, bool) {
-	last, timedOut, atLimit, err := waitState(ctx, eng, sgRuleGoneTimeout,
+	last, timedOut, atLimit, reads, err := waitState(ctx, eng, sgRuleGoneTimeout,
 		func(ctx context.Context) (string, bool, error) {
 			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
 			if err != nil {
@@ -317,6 +317,7 @@ func (s *Registry) sgRuleDeleted(ctx context.Context, eng *engine.Engine, group 
 		return errAnswer(err, ans), true
 	case atLimit || timedOut > 0:
 		ans["status"], ans["state"] = "deleting", last
+		reads.put(ans)
 		ans["next"] = fmt.Sprintf("Rule %s is still being deleted. list_security_groups with rules=true shows whether it is gone.", ruleID)
 		nextStep(ans, "list_security_groups", map[string]any{"rules": true})
 		return toJSON(ans), false
