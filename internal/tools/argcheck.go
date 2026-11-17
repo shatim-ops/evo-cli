@@ -80,7 +80,7 @@ func checkArgs(name string, schema map[string]any, args map[string]any) error {
 		typ, _ := p["type"].(string)
 		if v != nil && !scalarOfType(typ, v) {
 			return clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("%s must be %s, got %s", "%s должен быть %s, получено: %s", k, typeName(typ), describeValue(v)),
+				i18n.Tf("%s must be %s, got %s", "%s должен быть %s, получено: %s", k, typeName(typ), ValueKind(v)),
 				i18n.Tf("Pass %s as a JSON %s (see the tool's inputSchema).",
 					"Передайте %s как JSON %s (см. inputSchema инструмента).", k, typ))
 		}
@@ -150,7 +150,7 @@ func ruledList(k string, p map[string]any, v any) ([]any, error) {
 	list, ok := v.([]any)
 	if !ok {
 		return nil, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("%s must be a list, got %s", "%s должен быть списком, получено: %s", k, describeValue(v)),
+			i18n.Tf("%s must be a list, got %s", "%s должен быть списком, получено: %s", k, ValueKind(v)),
 			i18n.Tf("Pass %s as a JSON array of strings.", "Передайте %s как JSON-массив строк.", k))
 	}
 	if len(list) < min {
@@ -165,7 +165,7 @@ func ruledList(k string, p map[string]any, v any) ([]any, error) {
 		s, ok := it.(string)
 		if !ok {
 			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("%s must be a string, got %s", "%s должен быть строкой, получено: %s", name, describeValue(it)),
+				i18n.Tf("%s must be a string, got %s", "%s должен быть строкой, получено: %s", name, ValueKind(it)),
 				i18n.Tf("Pass %s as a JSON array of strings.", "Передайте %s как JSON-массив строк.", k))
 		}
 		if strings.TrimSpace(s) == "" {
@@ -416,13 +416,9 @@ func typeName(typ string) string {
 	return "a " + typ
 }
 
-// describeValue names the JSON type of v with the value, shortened.
-func describeValue(v any) string {
-	b, _ := json.Marshal(v)
-	s := string(b)
-	if len(s) > 40 {
-		s = s[:40] + "…"
-	}
+// ValueKind names the JSON type of v, never its value: an argument
+// may be a secret, and a refusal reaches a model and a log (Астра, #2241).
+func ValueKind(v any) string {
 	kind := i18n.T("a number", "число")
 	switch v.(type) {
 	case string:
@@ -434,7 +430,7 @@ func describeValue(v any) string {
 	case map[string]any:
 		kind = i18n.T("an object", "объект")
 	}
-	return kind + " " + s
+	return kind
 }
 
 // manifestFree are the parts of the manifest of stack_plan free by their
