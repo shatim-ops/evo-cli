@@ -148,3 +148,79 @@ func TestReadAll_ALineNotOfUTF8IsSkipped(t *testing.T) {
 		}
 	}
 }
+
+// The same through an escape of JSON: a lone surrogate (\ud800) is ASCII
+// on the line, and the decoder makes it U+FFFD — "k\ud800" and "k\udfff"
+// would become one. A U+FFFD a decoded line holds is taken only where the
+// line holds it as such («Риск», conclusion 331, У1).
+func TestReadAll_ALoneSurrogateIsNotAReplacement(t *testing.T) {
+	mk := func(outcome, id, intent string) string {
+		return `{"format":1,"time":"2026-11-17T10:00:00Z","tool":"disk_create","project_id":"p","kind":"disk","resource_id":"` + id + `","outcome":"` + outcome + `","intent_id":"` + intent + `"}`
+	}
+	for _, c := range []struct {
+		name, created string
+		live, skipped int
+	}{
+		{"both escapes", `k\ud800`, 0, 2},
+		{"a literal U+FFFD, an escape", "k�", 1, 1},
+		{"an escaped U+FFFD, an escape", `k�`, 1, 1},
+	} {
+		dir := filepath.Join(t.TempDir(), DirName)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		data := mk(Created, c.created, "0000000000000001") + "\n" + mk(Deleted, `k\udfff`, "0000000000000002") + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "2026-11-17.jsonl"), []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		j, err := ReadAll(dir, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if j.Skipped != c.skipped || len(Live(j.Lines)) != c.live {
+			t.Errorf("%s: skipped %d, live %d; want %d skipped, %d live: %+v", c.name, j.Skipped, len(Live(j.Lines)), c.skipped, c.live, j.Lines)
+		}
+	}
+}
+
+// loneSurrogate on its edges: a pair is a character; an escaped backslash
+// before «ud800» is text; a half at the end, or a low half alone, is not.
+func TestLoneSurrogate(t *testing.T) {
+	for raw, want := range map[string]bool{
+		`{"a":"😀"}`:        false,
+		`{"a":"\\ud800"}`:  false,
+		`{"a":"\\\ud800"}`: true,
+		`{"a":"k\ud800"}`:  true,
+		`{"a":"k\udfff"}`:  true,
+		`{"a":"\ud83dx"}`:  true,
+		`{"a":"\ud83dA"}`:  true,
+		`{"a":"A\n\"\\"}`:  false,
+		`{"a":"end\ud800`:  true,
+		`{"a":"��"}`:       false,
+	} {
+		if got := loneSurrogate([]byte(raw)); got != want {
+			t.Errorf("%s: %v, want %v", raw, got, want)
+		}
+	}
+}
+
+// A text not UTF-8 that a call gave (an argument of the CLI) is written
+// escaped, not as U+FFFD: two such names stay two in evo's own lines
+// («Риск», conclusion 331, 331-1).
+func TestAppend_ATextNotOfUTF8StaysItself(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	for i, id := range []string{"bad-\xff", "bad-\xfe"} {
+		l := line(Created)
+		l.ResourceID, l.IntentID = id, "000000000000000"+string(rune('1'+i))
+		if err := Append(dir, l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	j, err := ReadAll(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(j.Lines) != 2 || j.Lines[0].ResourceID == j.Lines[1].ResourceID || !utf8.ValidString(j.Lines[0].ResourceID) {
+		t.Errorf("read %+v; want two lines of two ids, each valid UTF-8", j.Lines)
+	}
+}
