@@ -146,12 +146,16 @@ func (p *Printer) StepDone(detail string) {
 	}
 }
 
-// Success prints a success message in green.
+// Success prints a success message in green, one line, cleaned as a step
+// line is: it may carry what the cloud sent, and it goes where the steps
+// go — the terminal, the "log" of an MCP answer, the progress of an MCP
+// call («Риск», conclusion 291-1).
 func (p *Printer) Success(msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
+	msg = sanitizeCell(msg)
 	if p.color {
 		fmt.Fprintf(p.out, "%s%s%s\n", colorGreen, msg, colorReset)
 	} else {
@@ -161,13 +165,16 @@ func (p *Printer) Success(msg string) {
 
 // Warning prints a warning message in yellow to the error writer; in JSON
 // mode as a {"warning": "..."} line, so that it is neither lost nor breaks
-// a parser reading stderr.
+// a parser reading stderr. As text it is one line, cleaned as a step line
+// is: a warning of deploy carries the cloud's text («Риск», conclusion
+// 291-1).
 func (p *Printer) Warning(msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		_ = json.NewEncoder(p.errOut).Encode(map[string]string{"warning": msg})
 		return
 	}
+	msg = sanitizeCell(msg)
 	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s%s%s\n", colorBold, colorYellow, warningPrefix(), msg, colorReset)
 	} else {

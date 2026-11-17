@@ -314,15 +314,18 @@ func columnStarts(line string) []int {
 	return starts
 }
 
-// Every step line — Step, StepDone, Progress — prints what the cloud sent
-// cleaned: the one point for the terminal, the "log" of an MCP answer and
-// the progress of an MCP call (Астра #2089, #2090).
+// Every line of a call's progress — Step, StepDone, Progress, Success,
+// Warning — prints what the cloud sent cleaned: the terminal, the "log" of
+// an MCP answer and the progress of an MCP call alike (Астра #2089, #2090;
+// «Риск», conclusion 291-1).
 func TestStepLines_PrintTheCloudsTextCleaned(t *testing.T) {
 	const dirty = "web\x1b[2J\rOVER\x00‮ X"
 	for name, print := range map[string]func(p *Printer){
 		"Step":     func(p *Printer) { p.Step(0, 0, dirty) },
 		"Step n/m": func(p *Printer) { p.Step(1, 2, dirty) },
 		"StepDone": func(p *Printer) { p.StepDone(dirty) },
+		"Success":  func(p *Printer) { p.Success(dirty) },
+		"Warning":  func(p *Printer) { p.Warning(dirty) },
 	} {
 		for _, mode := range []Mode{ModePlain, ModeText} {
 			var buf bytes.Buffer
