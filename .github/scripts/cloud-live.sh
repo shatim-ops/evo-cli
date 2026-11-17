@@ -9,7 +9,8 @@
 # Живые прогоны изменяющих инструментов evo на настоящем Cloud.ru, по одной
 # области за вызов: cloud-live.sh ОБЛАСТЬ. Области: disk, net, dns, s3,
 # secrets, ca, stack, mcp — их вызывает job live в cloud-e2e.yml после evo
-# configure; pgnet — job dbaas-pg (вход probes: access); sweep ПРЕФИКС [ОБЛАСТЬ] — удалить ресурсы с именами ПРЕФИКС*
+# configure; ops и opsevo — job live по словам входа probes; pgnet — job dbaas-pg (вход probes: access);
+# dbchange — job DBaaS; k8schange и k8sevo — job k8s-smoke; sweep ПРЕФИКС [ОБЛАСТЬ] — удалить ресурсы с именами ПРЕФИКС*
 # всех видов этого скрипта или только видов области (job cleanup, префикс
 # evo-e2e-; страховка job live).
 #
@@ -33,7 +34,7 @@
 # shellcheck disable=SC2015,SC2016,SC2329
 set -euo pipefail
 
-area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet, ops, dbchange, k8schange или sweep ПРЕФИКС}
+area=${1:?нужна область: disk, net, dns, s3, secrets, ca, stack, mcp, pgnet, ops, opsevo, dbchange, k8schange, k8sevo или sweep ПРЕФИКС}
 here=$(cd "$(dirname "$0")" && pwd)
 ZONE=${ZONE:-ru.AZ-2}
 IMAGE=${IMAGE:-ubuntu-22.04}
@@ -97,12 +98,27 @@ j() { jq "$@" "$tmp/r.json" 2>/dev/null || true; }
 # и текст — из {"error":…} в stderr; ответ без поля error (stack_destroy с
 # failed) там целиком, в .error.message.
 tc() {
-	local name=$1 httpst
+	local name=$1
 	shift
 	set +e
 	evo --yes tools call "$name" "$@" --json >"$tmp/r.json" 2>"$tmp/err"
 	rc=$?
 	set -e
+	tc_why
+}
+# cl КОМАНДА… — то же для команды CLI: evo --yes --json КОМАНДА (группа,
+# глагол, позиционный аргумент и флаги — по CLISpec); ответ, код, reason и
+# текст — как у tc (--json команды = JSON инструмента, D13).
+cl() {
+	set +e
+	evo --yes --json "$@" >"$tmp/r.json" 2>"$tmp/err"
+	rc=$?
+	set -e
+	tc_why
+}
+# tc_why — $reason и $why по ответу последнего вызова tc или cl.
+tc_why() {
+	local httpst
 	reason=$(jq -rR 'fromjson? | .error.reason? // empty' "$tmp/err" 2>/dev/null | head -1)
 	[ -n "$reason" ] || reason=$(j -r '.reason? // empty' | head -1)
 	[ -n "$reason" ] || reason=-
@@ -358,7 +374,8 @@ area_kinds() {
 	mcp) echo "vm fip" ;;
 	pgnet) echo "vm fip subnet" ;;
 	ops) echo "pplan backup vm fip disk subnet sg tag" ;;
-	dbchange | k8schange) echo "" ;; # ресурсов вне кластера не создают: кластер — у job
+	opsevo) echo "backup vm fip disk sg" ;;
+	dbchange | k8schange | k8sevo) echo "" ;; # ресурсов вне кластера не создают: кластер — у job
 	*) echo "${KINDS/route /}" ;;
 	esac
 }
@@ -3697,8 +3714,435 @@ area_k8schange() {
 	k_step "$g: удаление последней группы" DELETE "$purl" "" "$purl" pool gone || true
 }
 
+# --- Область opsevo: операции второго дня кодом evo (план 1.9, гейт rc.1, п. 7)
+# Пробы Г-10…Г-16 области ops шлют эти операции прямыми запросами; здесь
+# их проходит сам evo — каждая через CLI (команда evo по CLISpec) и через
+# MCP (evo mcp по stdio, сеанс на вызов, mcp_stdio.sh), повтор — через
+# другую поверхность и безопасен (already_*), после каждого шага — чтение
+# через evo. Вход probes: слово opsevo (job live); часть Kubernetes — слово
+# k8sevo, область k8sevo в job k8s-smoke, отдельным запуском. Ресурсы —
+# evo-e2e-opsevo-<прогон>-*, уборка — sweep области (area_kinds opsevo),
+# новых видов нет. Прямые запросы — только там, где у evo нет инструмента:
+# своя группа безопасности (создание; удаляет уборка) и flavor в карточке
+# ВМ (vm_get его не называет). Ссылку консоли не пишет никто (D110):
+# vm_console её не выдаёт, ответ в лог не идёт — только проверка, что в нём
+# нет ни одного адреса со схемой.
+# EV_WAIT — предел ожидания состояния после шага, секунд (до 10 мин: ответ
+# по MCP приходит в пределе вызова, переход может идти дольше); EV_PAUSE —
+# пауза между чтениями. Проверка на заглушках ставит 1 и 0. EV_BUDGET —
+# срок области от её начала, секунд: после него не шлётся ни шаг (op), ни
+# создание части (ev_can). Худший ход opsevo — срок, ожидания части,
+# начатой до него (до 25 мин), последнее ожидание шага (10) и уборка (до
+# 20) — в пределе job live; k8sevo — срок и последнее ожидание (K8S_WAIT)
+# — в пределе своего шага job k8s-smoke (TestWorkflows_OpsEvoArea).
+EV_WAIT=${EV_WAIT:-600}
+EV_PAUSE=${EV_PAUSE:-10}
+ev_deadline=''
+
+# evo_cmd ИНСТРУМЕНТ — «группа глагол позиционный_аргумент» команды CLI
+# инструмента (internal/tools/cli_spec.go); «-» — позиционного нет.
+evo_cmd() {
+	case "$1" in
+	vm_get | vm_console | vm_start | vm_stop | vm_reboot | vm_resize) echo "vm ${1#vm_} vm_id" ;;
+	sg_rule_create | sg_rule_delete) echo "vpc ${1//_/-} security_group" ;;
+	backup_list) echo "backup list -" ;;
+	backup_create) echo "backup create name" ;;
+	backup_restore | backup_delete) echo "backup ${1#backup_} backup_id" ;;
+	k8s_nodepool_scale | k8s_nodepool_delete) echo "k8s nodepool-${1#k8s_nodepool_} nodepool_id" ;;
+	*) return 1 ;;
+	esac
+}
+# mc ИНСТРУМЕНТ АРГУМЕНТЫ_JSON — вызов по MCP с confirmed: true и повторы
+# по next_tool с next_args, пока ответ — ход операции (…ing, и waiting), не
+# больше MCP_FOLLOW_MAX: так поступает агент (D69, H14). Итог — в
+# $tmp/r.json, status первого ответа — в $mc_first; $rc — 0 при isError
+# false; $reason и $why — как у tc.
+mc() {
+	local name=$1 args n=0 st nt
+	args=$(jq -c '. + {confirmed: true}' <<<"$2")
+	mc_first=''
+	while :; do
+		mcp_call "$name" "$args"
+		n=$((n + 1))
+		[ "$MCP_TOOK" -le "$MCP_LIMIT" ] || bad "MCP $name: предел вызова" "сеанс $MCP_TOOK с — дольше $MCP_LIMIT с (D69)"
+		st=$(j -r '.status? // empty')
+		[ -n "$mc_first" ] || mc_first=${st:--}
+		[ "$MCP_ISERR" = false ] || break
+		case "$st" in *ing) ;; *) break ;; esac
+		nt=$(j -r '.next_tool? // empty')
+		[ -n "$nt" ] && [ "$n" -lt "$MCP_FOLLOW_MAX" ] || break
+		name=$nt
+		args=$(j -c '.next_args? // {}')
+		sleep "${MCP_FOLLOW_SLEEP:-5}"
+	done
+	rc=0
+	[ "$MCP_ISERR" = false ] || rc=1
+	reason=$(j -r '.reason? // .error.reason? // empty' | head -1)
+	[ -n "$reason" ] || reason=-
+	why=$(j -r 'if (.error? | type) == "string" then .error else (.error.message? // empty) end' | tr '\n' ' ' | redact | cut -c1-300)
+	[ "$MCP_ISERR" = false ] || [ "$MCP_ISERR" = true ] || why="MCP: $MCP_ISERR"
+}
+# ev_can ПРОВЕРКА — срок области не вышел; вышел — строка и код 1.
+ev_can() {
+	[ -z "$ev_deadline" ] || [ "$(date +%s)" -lt "$ev_deadline" ] && return 0
+	gap "$1" "срок области ($EV_BUDGET с) вышел — не шлю"
+	return 1
+}
+# op cli|mcp ИНСТРУМЕНТ ПОЗИЦИОННЫЙ [ключ=значение…] — один шаг через
+# поверхность; итог — $st_got: status ответа (по MCP — итог повторов, а без
+# него — первого ответа). Число узлов (count) по MCP — числом, по схеме.
+op() {
+	local how=$1 tool=$2 pos=$3 g v p k kv json args=()
+	shift 3
+	read -r g v p <<<"$(evo_cmd "$tool")"
+	if [ -n "$ev_deadline" ] && [ "$(date +%s)" -ge "$ev_deadline" ]; then
+		rc=1 reason=BUDGET why="срок области ($EV_BUDGET с) вышел — шаг не шлю" st_got=-
+		: >"$tmp/r.json"
+		return 0
+	fi
+	if [ "$how" = cli ]; then
+		for kv in "$@"; do
+			k=${kv%%=*}
+			args+=("--${k//_/-}" "${kv#*=}")
+		done
+		[ "$p" = - ] || args=("$pos" ${args[@]+"${args[@]}"})
+		cl "$g" "$v" ${args[@]+"${args[@]}"}
+		st_got=$(j -r '.status? // "-"')
+	else
+		json=$(jq -nc --arg p "$p" --arg v "$pos" 'if $p == "-" then {} else {($p): $v} end')
+		for kv in "$@"; do
+			case "${kv%%=*}" in
+			count) json=$(jq -c --arg k "${kv%%=*}" --argjson v "${kv#*=}" '. + {($k): $v}' <<<"$json") ;;
+			*) json=$(jq -c --arg k "${kv%%=*}" --arg v "${kv#*=}" '. + {($k): $v}' <<<"$json") ;;
+			esac
+		done
+		mc "$tool" "$json"
+		st_got=$(j -r '.status? // empty')
+		[ -n "$st_got" ] || st_got=$mc_first
+	fi
+}
+# cov1 ИНСТРУМЕНТ — cov без повторов: инструмент проходит дважды (CLI и MCP).
+cov1() { case " ${covered[*]:-} " in *" $1 "*) ;; *) cov "$1" ;; esac; }
+# want_st ПРОВЕРКА ОЖИДАНИЕ — шаг без ошибки и с status из ОЖИДАНИЯ (через
+# |); иначе bad и код 1. Ответ already_* — повтор: в cov не идёт.
+want_st() {
+	[ "$rc" = 0 ] || { bad "$1" "код $rc, $reason: $why"; return 1; }
+	case "|$2|" in *"|$st_got|"*) ;; *) bad "$1" "status $st_got, ждали $2"; return 1 ;; esac
+	case "$st_got" in already_*) ;; *) cov1 "${1%% *}" ;; esac
+}
+# no_link — в ответе последнего вызова нет ни одной строки с адресом со
+# схемой (ссылки консоли, D110); ответ в лог не идёт ни в каком случае.
+no_link() { jq -e '[.. | strings | select(test("[A-Za-z][A-Za-z0-9+.-]*://"))] | length == 0' "$tmp/r.json" >/dev/null 2>&1; }
+
+area_opsevo() {
+	local zid
+	zid=$(zone_id)
+	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена в list_zones"; return 1; }
+	mkdir -p "$tmp/opsevo" && cd "$tmp/opsevo"
+	EV_BUDGET=${EV_BUDGET:-4800}
+	ev_deadline=$(($(date +%s) + EV_BUDGET))
+	local MCP_WORK=$tmp MCP_TOOLSETS='' MCP_SESSION_LIMIT=$((MCP_LIMIT + 30))
+	export MCP_WORK MCP_TOOLSETS MCP_SESSION_LIMIT
+	# Части независимы: провал одной не отменяет остальные.
+	ev_vm "$zid" || true
+	ev_sg "$zid" || true
+	ev_backup "$zid" || true
+}
+
+# ev_vm — ВМ без публичного адреса (provision), питание, flavor и консоль.
+# Питание: каждая команда — дважды подряд, первая меняет состояние, повтор
+# через другую поверхность отвечает already_* (перезагрузка — каждый раз
+# новая); второй круг — с поверхностями наоборот: каждая поверхность и
+# меняет, и повторяет.
+ev_vm() {
+	local zid=$1 vm f0=$FLAVOR up s how tool want state t0 st power=1
+	must provision provision --arg name="$prefix-vm" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true || return 1
+	vm=$(j -r '.vm_id // empty')
+	mask "$vm" "$(j -r '.vm_ip // empty')"
+	[ -n "$vm" ] || { bad provision "нет vm_id: $(j -r '.status // "-"')"; return 1; }
+	cov1 provision
+	# vm_in СОСТОЯНИЕ — vm_get видит ВМ в СОСТОЯНИИ (в $vst — что видит).
+	vm_in() { tc vm_get --arg vm_id="$vm"; vst=$(j -r '.state // "?"'); [ "$vst" = "$1" ]; }
+	if ! poll "$EV_WAIT" "$EV_PAUSE" vm_in running; then bad "provision без публичного адреса" "vm_get: $vst через $EV_WAIT с"; return 1; fi
+	if [ -z "$(j -r '.public_ip // empty')" ]; then ok "provision без публичного адреса" "vm_get: running, public_ip пуст"
+	else bad "provision без публичного адреса" "vm_get называет public_ip"; fi
+	# vm_step ПОВЕРХНОСТЬ ИНСТРУМЕНТ STATUS СОСТОЯНИЕ [ключ=значение…] — шаг
+	# и чтение vm_get после него, пока ВМ не в СОСТОЯНИИ (ответ по MCP мог
+	# прийти до конца перехода).
+	vm_step() {
+		local how=$1 tool=$2 want=$3 state=$4
+		shift 4
+		t0=$SECONDS
+		op "$how" "$tool" "$vm" "$@"
+		want_st "$tool ($how)" "$want" || return 1
+		st=$st_got
+		if poll "$EV_WAIT" "$EV_PAUSE" vm_in "$state"; then ok "$tool ($how)" "status $st; vm_get после: $vst, $((SECONDS - t0)) с"
+		else bad "$tool ($how): чтение после" "status $st, а vm_get: $vst через $((SECONDS - t0)) с"; return 1; fi
+	}
+	for s in \
+		"cli vm_stop stopped stopped" "mcp vm_stop already_stopped stopped" \
+		"mcp vm_start started running" "cli vm_start already_running running" \
+		"mcp vm_stop stopped stopped" "cli vm_stop already_stopped stopped" \
+		"cli vm_start started running" "mcp vm_start already_running running" \
+		"cli vm_reboot rebooted|reboot_accepted running" "mcp vm_reboot rebooted|reboot_accepted|rebooting running"; do
+		read -r how tool want state <<<"$s"
+		vm_step "$how" "$tool" "$want" "$state" || { power=0; break; }
+	done
+	# После провала ВМ не в том состоянии, которого ждут следующие шаги.
+	[ "$power" = 1 ] || { gap "vm_resize, vm_console" "шаг питания не прошёл — ВМ в неизвестном состоянии, дальше не меняю"; return 1; }
+
+	# Смена flavor: один шаг вверх в том же семействе (имя до первого
+	# дефиса), как у пробы Г-10, и возврат. Повтор каждой смены — через
+	# другую поверхность, already_resized: evo сверил flavor ВМ сам. flavor
+	# в карточке — прямым чтением: vm_get его не называет (19-07).
+	up=$(evo tools call list_flavors --arg zone="$ZONE" --arg gpu=false --arg spot=false --json 2>/dev/null |
+		jq -r --arg f "$f0" '(.flavors // []) as $all | ($all[] | select(.name == $f)) as $cur
+			| [$all[] | select((.name | split("-")[0]) == ($f | split("-")[0]) and ([.vcpus, .ram_gb] > [$cur.vcpus, $cur.ram_gb]))]
+			| sort_by(.vcpus, .ram_gb) | .[0].name // empty' 2>/dev/null) || up=
+	# card_flavor ЖДЁМ — flavor в карточке ВМ (прямое чтение) — ЖДЁМ.
+	card_flavor() {
+		local f
+		iam_fresh || { gap "vm_resize: flavor в карточке ($1)" "нет токена IAM (KEY_ID, SECRET)"; return 0; }
+		api GET "$C1/vms/$vm"
+		f=$(jq -r '.flavor.name? // empty' "$tmp/api.json" 2>/dev/null) || f=
+		if [ "$f" = "$1" ]; then ok "vm_resize: flavor в карточке" "$1"
+		else bad "vm_resize: flavor в карточке" "HTTP $code, flavor ${f:-не назван}, ждали $1"; fi
+	}
+	if [ -z "$up" ]; then
+		gap "vm_resize" "в list_flavors нет flavor на шаг выше $f0 в его семействе"
+	else
+		vm_step cli vm_resize resized running flavor="$up" && card_flavor "$up" &&
+			vm_step mcp vm_resize already_resized running flavor="$up"
+		# Возврат — и после провала шага вверх: ВМ не остаётся дороже.
+		vm_step mcp vm_resize 'resized|already_resized' running flavor="$f0" && card_flavor "$f0" &&
+			vm_step cli vm_resize already_resized running flavor="$f0"
+	fi
+
+	# Консоль: где её открывает человек; ссылки в ответе нет (D110).
+	for how in cli mcp; do
+		op "$how" vm_console "$vm"
+		if ! no_link; then
+			bad "vm_console ($how)" "в ответе есть адрес со схемой — ответ не пишу (D110)"
+		elif [ "$rc" = 0 ] && [ "$(j -r '.console_available')" = true ] && [ "$(j -r '.state // empty')" = running ]; then
+			ok "vm_console ($how)" "running, console_available, адреса со схемой в ответе нет"
+		else bad "vm_console ($how)" "код $rc, $reason; state $(j -r '.state // "-"'), console_available $(j -r '.console_available // "-"')"; fi
+	done
+}
+
+# ev_sg — своя группа безопасности (у evo нет её создания: прямой POST, как
+# у пробы Г-11; без интерфейсов — правило никого не открывает), правило
+# на тестовый адрес: создание через CLI и повтор через MCP (already_exists),
+# удаление через MCP и повтор через CLI (already_deleted, D26); после
+# каждого шага — правила группы через list_security_groups. Группу удаляет
+# уборка области (вид sg).
+ev_sg() {
+	local zid=$1 sg rule
+	ev_can "группа безопасности" || return 0
+	iam_fresh || { gap "группа безопасности" "нет токена IAM (KEY_ID, SECRET) — группу создать нечем"; return 0; }
+	[ -n "${PROJECT:-}" ] || { gap "группа безопасности" "нет PROJECT"; return 0; }
+	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
+		'{project_id: $p, name: $n, availability_zone_id: $z, description: "evo e2e opsevo"}')"
+	case "$code" in 2??) ;; *) bad "группа безопасности" "создание: HTTP $code: $(api_why)"; return 1 ;; esac
+	sg=$(jq -r '.id? // empty' "$tmp/api.json" 2>/dev/null) || sg=
+	[ -n "$sg" ] || sg=$(lst sg "$prefix-sg" | cut -f1 | head -1) || sg=
+	[ -n "$sg" ] || { bad "группа безопасности" "id не прочитан — остаток уберёт уборка области"; return 1; }
+	mask "$sg"
+	# Группа принимает правила не сразу (прогон 207): ждём её готовности.
+	ops_settle "$C1/security-groups/$sg" 120 || true
+	# rule_in — правило $rule есть в группе по list_security_groups.
+	rule_in() { evo tools call list_security_groups --arg rules=true --json 2>/dev/null | jq -e --arg g "$sg" --arg r "$rule" 'any(.security_groups[]? | select(.id == $g) | .rules[]?; .id == $r)' >/dev/null; }
+	rule_out() { evo tools call list_security_groups --arg rules=true --json 2>/dev/null | jq -e --arg g "$sg" --arg r "$rule" '(.security_groups | type) == "array" and any(.security_groups[]; .id == $g) and (any(.security_groups[] | select(.id == $g) | .rules[]?; .id == $r) | not)' >/dev/null; }
+	set -- direction=ingress protocol=tcp ports=18094 cidr=198.18.255.1/32 description="evo e2e opsevo"
+	op cli sg_rule_create "$sg" "$@"
+	want_st "sg_rule_create (cli)" 'created|creating' || return 1
+	rule=$(j -r '.rule_id // empty')
+	mask "$rule"
+	[ -n "$rule" ] || { bad "sg_rule_create (cli)" "нет rule_id в ответе"; return 1; }
+	if poll 120 "$EV_PAUSE" rule_in; then ok "sg_rule_create (cli)" "$st_got; правило в группе по list_security_groups"
+	else bad "sg_rule_create (cli): чтение после" "правила нет в группе за 2 мин"; return 1; fi
+	op mcp sg_rule_create "$sg" "$@"
+	want_st "sg_rule_create (mcp)" already_exists || return 1
+	if [ "$(j -r '.rule_id // empty')" = "$rule" ]; then ok "sg_rule_create (mcp)" "already_exists, то же правило"
+	else bad "sg_rule_create (mcp)" "already_exists, а rule_id другой"; fi
+	op mcp sg_rule_delete "$sg" rule_id="$rule"
+	want_st "sg_rule_delete (mcp)" 'deleted|deleting' || return 1
+	if poll 120 "$EV_PAUSE" rule_out; then ok "sg_rule_delete (mcp)" "$st_got; правила нет в группе"
+	else bad "sg_rule_delete (mcp): чтение после" "правило в группе через 2 мин"; return 1; fi
+	op cli sg_rule_delete "$sg" rule_id="$rule"
+	want_st "sg_rule_delete (cli)" already_deleted || return 1
+	ok "sg_rule_delete (cli)" "повтор — already_deleted (D26)"
+}
+
+# ev_backup — диск с файлом и его sha256, копия, восстановление в новый
+# диск и сверка. ВМ области без адреса, а файл пишется и читается по SSH:
+# для этого — вторая ВМ, с адресом (provision по умолчанию, как у области
+# disk); ВМ, диски, адрес и копия — с префиксом области, их убирает
+# уборка. Диск данных отключается перед копией (копия — снимок без записи
+# на него), восстановленный подключается к той же ВМ: на ВМ сверяется
+# sha256 файла. Копия: создание через CLI, повтор через MCP (already_exists),
+# список через CLI и MCP, восстановление через MCP, удаление через CLI и
+# повтор через MCP (already_deleted, D26).
+ev_backup() {
+	local zid=$1 fvm=$prefix-file ip user data bk rst sum0 sum1 t0 st
+	ev_can "копия диска с файлом" || return 0
+	must "provision ВМ для файла" provision --arg name="$fvm" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" || return 1
+	ip=$(j -r '.vm_ip // empty')
+	user=$(j -r '.ssh_user // "user1"')
+	mask "$(j -r '.vm_id // empty')" "$ip"
+	[ -n "$ip" ] || { bad "provision ВМ для файла" "нет vm_ip: $(j -r '.status // "-"')"; return 1; }
+	cov1 provision
+	ssh_vm() {
+		ssh -i .evo/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+			-o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=10 "$user@$ip" "$@" 2>"$tmp/ssh.err"
+	}
+	if ! poll "$EV_WAIT" 15 ssh_vm true; then bad "SSH к ВМ для файла" "не поднялся за $EV_WAIT с: $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200)"; return 1; fi
+	must "disk_create с файлом" disk_create --arg name="$prefix-data" --arg size_gb=10 --arg attach_to="$fvm" || return 1
+	data=$(j -r '.disk_id // .disk.id // empty')
+	mask "$data"
+	[ -n "$data" ] || { bad "disk_create с файлом" "нет id диска"; return 1; }
+	# disk_is ID ФИЛЬТР — jq -e по строке диска в disk_list.
+	disk_is() { evo tools call disk_list --json 2>/dev/null | jq -e --arg id "$1" "any(.disks[]? | select(.id == \$id); $2)" >/dev/null; }
+	# Подключён и устоялся: менять диск в переходном состоянии платформа
+	# не даёт (TestWorkflows_LiveDiskChangesFromASettledState).
+	local settled='((.attached_to // []) | length) > 0 and ((.state // "") | IN("", "attaching", "detaching", "extending", "creating") | not)'
+	poll 300 "$EV_PAUSE" disk_is "$data" "$settled" || { bad "disk_create с файлом" "диск не подключён за 5 мин"; return 1; }
+	cov1 disk_create
+	# Скрипт на ВМ: единственный диск без разделов, кроме корневого, —
+	# диск данных (на загрузочном — разделы). С аргументом write — файловая
+	# система и файл 8 МиБ случайных байт, без него — чтение только для
+	# чтения; в stdout — sha256 файла.
+	cat >"$tmp/file.sh" <<-'SH'
+		set -eu
+		src=$(findmnt -no SOURCE /)
+		root=$(lsblk -no PKNAME "$src" | head -1)
+		[ -n "$root" ] || root=$(basename "$src")
+		dev=''
+		for d in $(lsblk -dnpo NAME,TYPE | awk '$2 == "disk" {print $1}'); do
+			[ "$d" != "/dev/$root" ] && [ "$(lsblk -no NAME "$d" | wc -l)" = 1 ] || continue
+			[ -z "$dev" ] || { echo "дисков данных больше одного" >&2; exit 3; }
+			dev=$d
+		done
+		[ -n "$dev" ] || { echo "диска данных нет" >&2; exit 3; }
+		sudo mkdir -p /mnt/evo-e2e
+		if [ "${1:-}" = write ]; then
+			sudo mkfs.ext4 -q -F "$dev"
+			sudo mount "$dev" /mnt/evo-e2e
+			sudo dd if=/dev/urandom of=/mnt/evo-e2e/file.bin bs=1M count=8 status=none
+			sync
+		else
+			sudo mount -o ro "$dev" /mnt/evo-e2e
+		fi
+		sudo sha256sum /mnt/evo-e2e/file.bin | cut -c1-64
+		sudo umount /mnt/evo-e2e
+	SH
+	sum0=$(ssh_vm 'bash -s write' <"$tmp/file.sh") || sum0=
+	[ "${#sum0}" = 64 ] || { bad "файл на диске" "не записан: $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200)"; return 1; }
+	ok "файл на диске" "8 МиБ, sha256 записан"
+	must "disk_detach диска с файлом" disk_detach --arg disk_id="$data" --arg vm="$fvm" || return 1
+	poll 300 "$EV_PAUSE" disk_is "$data" '((.attached_to // []) | length) == 0 and .state == "available"' ||
+		{ bad "disk_detach диска с файлом" "не available за 5 мин"; return 1; }
+	cov1 disk_detach
+
+	# bk_list cli|mcp ФИЛЬТР — backup_list через поверхность прочитан, и
+	# jq -e ФИЛЬТР по нему ($id — копия $bk) истинен.
+	bk_list() {
+		op "$1" backup_list -
+		[ "$rc" = 0 ] && jq -e --arg id "$bk" "$2" "$tmp/r.json" >/dev/null 2>&1
+	}
+	op cli backup_create "$prefix-bk" disk_id="$data"
+	want_st "backup_create (cli)" created || return 1
+	bk=$(j -r '.backup_id // empty')
+	mask "$bk"
+	[ -n "$bk" ] || { bad "backup_create (cli)" "нет backup_id"; return 1; }
+	ok "backup_create (cli)" created
+	op mcp backup_create "$prefix-bk" disk_id="$data"
+	want_st "backup_create (mcp)" already_exists || return 1
+	if [ "$(j -r '.backup_id // empty')" = "$bk" ]; then ok "backup_create (mcp)" "already_exists, та же копия"
+	else bad "backup_create (mcp)" "already_exists, а backup_id другой"; fi
+	for how in cli mcp; do
+		if bk_list "$how" 'any(.backups[]?; .id == $id and .state == "created")'; then ok "backup_list ($how)" "копия в списке, created"
+		else bad "backup_list ($how)" "код $rc, $reason: копии нет в списке или не created"; fi
+	done
+	op mcp backup_restore "$bk" name="$prefix-rst"
+	want_st "backup_restore (mcp)" created || return 1
+	rst=$(j -r '.disk_id // empty')
+	mask "$rst"
+	[ -n "$rst" ] || { bad "backup_restore (mcp)" "нет disk_id нового диска"; return 1; }
+	if disk_is "$rst" '.state == "available"'; then ok "backup_restore (mcp)" "created; новый диск available в disk_list"
+	else bad "backup_restore (mcp): чтение после" "нового диска нет в disk_list или он не available"; return 1; fi
+	must "disk_attach восстановленного" disk_attach --arg disk_id="$rst" --arg vm="$fvm" || return 1
+	poll 300 "$EV_PAUSE" disk_is "$rst" "$settled" || { bad "disk_attach восстановленного" "не подключён за 5 мин"; return 1; }
+	cov1 disk_attach
+	sha_read() { sum1=$(ssh_vm 'bash -s' <"$tmp/file.sh") && [ "${#sum1}" = 64 ]; }
+	if ! poll 180 "$EV_PAUSE" sha_read; then bad "sha256 файла после восстановления" "не прочитан: $(tail -1 "$tmp/ssh.err" | redact | cut -c1-200)"
+	elif [ "$sum1" = "$sum0" ]; then ok "sha256 файла после восстановления" "совпал с записанным (19-07)"
+	else bad "sha256 файла после восстановления" "другой — восстановленный диск не тот, что записан (19-07)"; fi
+
+	# Удаление: сразу после восстановления платформа его отвергает
+	# (restore_in_progress) — тот же вызов до 10 мин.
+	t0=$SECONDS
+	bk_del() { op cli backup_delete "$bk"; [ "$rc" = 0 ]; }
+	poll 600 "${EV_PAUSE_DEL:-30}" bk_del || true
+	want_st "backup_delete (cli)" 'deleted|deleting' || return 1
+	st=$st_got
+	if poll "$EV_WAIT" "$EV_PAUSE" bk_list cli '(.backups | type) == "array" and (any(.backups[]; .id == $id) | not)'; then
+		ok "backup_delete (cli)" "$st; копии нет в backup_list, $((SECONDS - t0)) с"
+	else bad "backup_delete (cli): чтение после" "копия в backup_list через $((SECONDS - t0)) с"; return 1; fi
+	op mcp backup_delete "$bk"
+	want_st "backup_delete (mcp)" already_deleted || return 1
+	ok "backup_delete (mcp)" "повтор — already_deleted (D26)"
+}
+
+# --- Область k8sevo: группа узлов кодом evo (план 1.9, гейт rc.1, п. 7) ------
+# Job k8s-smoke со словом k8sevo, отдельным запуском от области opsevo и
+# пробы Г-12: единственная группа узлов кластера job — масштаб 1→2 через
+# CLI и повтор через MCP (already_scaled), 2→1 через MCP и повтор через
+# CLI, удаление через CLI, повтор через MCP после исчезновения
+# (already_deleted, D26); после шага — k8s_nodepool_get. Ресурсов вне
+# кластера область не создаёт: кластер удаляет job. K8S_WAIT — предел
+# ожидания шага, секунд (25 мин, как у пробы Г-12).
+area_k8sevo() {
+	local id=${K8S_CLUSTER_ID:-} np pst t0
+	[ -n "$id" ] || { bad k8sevo "нет K8S_CLUSTER_ID"; return 1; }
+	mask "$id"
+	EV_BUDGET=${EV_BUDGET:-3600}
+	ev_deadline=$(($(date +%s) + EV_BUDGET))
+	local MCP_WORK=$tmp MCP_TOOLSETS='' MCP_SESSION_LIMIT=$((MCP_LIMIT + 30))
+	export MCP_WORK MCP_TOOLSETS MCP_SESSION_LIMIT
+	np=$(evo tools call k8s_nodepools --arg cluster_id="$id" --json 2>/dev/null | jq -r '[.node_pools[]? | .id // empty] | if length == 1 then .[0] else empty end') || np=
+	[ -n "$np" ] || { bad k8sevo "в кластере не одна группа узлов (или список не прочитан)"; return 1; }
+	mask "$np"
+	# pool_is N — k8s_nodepool_get: группа работает и в ней N узлов (в $pst).
+	pool_is() {
+		tc k8s_nodepool_get --arg nodepool_id="$np"
+		pst="$(j -r '.status // "?"')/$(j -r '.desired // "?"')"
+		[ "$pst" = "OBJECT_STATUS_RUNNING/$1" ]
+	}
+	pool_is 1 || { bad k8sevo "группа до шагов: $pst, ждали OBJECT_STATUS_RUNNING/1"; return 1; }
+	# k_step ПОВЕРХНОСТЬ STATUS N — масштаб до N и чтение после.
+	k_step() {
+		t0=$SECONDS
+		op "$1" k8s_nodepool_scale "$np" count="$3"
+		want_st "k8s_nodepool_scale до $3 ($1)" "$2" || return 1
+		if poll "${K8S_WAIT:-1500}" "$PROBE_PAUSE" pool_is "$3"; then ok "k8s_nodepool_scale до $3 ($1)" "status $st_got; k8s_nodepool_get: $pst, $((SECONDS - t0)) с"
+		else bad "k8s_nodepool_scale до $3 ($1): чтение после" "status $st_got, а группа: $pst через $((SECONDS - t0)) с"; return 1; fi
+	}
+	k_step cli 'scaled|scaling' 2 && k_step mcp already_scaled 2 &&
+		k_step mcp 'scaled|scaling' 1 && k_step cli already_scaled 1 || return 1
+	# pool_gone — группы нет в прочитанном списке групп кластера.
+	pool_gone() { evo tools call k8s_nodepools --arg cluster_id="$id" --json 2>/dev/null | jq -e --arg n "$np" '(.node_pools | type) == "array" and (any(.node_pools[]; .id == $n) | not)' >/dev/null; }
+	t0=$SECONDS
+	op cli k8s_nodepool_delete "$np"
+	want_st "k8s_nodepool_delete (cli)" 'deleted|deleting' || return 1
+	if poll "${K8S_WAIT:-1500}" "$PROBE_PAUSE" pool_gone; then ok "k8s_nodepool_delete (cli)" "$st_got; группы нет, $((SECONDS - t0)) с"
+	else bad "k8s_nodepool_delete (cli): чтение после" "группа в k8s_nodepools через $((SECONDS - t0)) с"; return 1; fi
+	op mcp k8s_nodepool_delete "$np"
+	want_st "k8s_nodepool_delete (mcp)" already_deleted || return 1
+	ok "k8s_nodepool_delete (mcp)" "повтор — already_deleted (D26)"
+}
+
 case "$area" in
-disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops | dbchange | k8schange)
+disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops | opsevo | dbchange | k8schange | k8sevo)
 	echo "== $area: префикс $prefix"
 	{
 		echo
