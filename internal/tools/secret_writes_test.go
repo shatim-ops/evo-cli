@@ -80,3 +80,35 @@ func TestSecretWrites_EveryToolWithASecretInput(t *testing.T) {
 		}
 	}
 }
+
+// labels of a secret and of a certificate is a map the call itself set: it
+// goes out as a map of its scalar values, as in v1.8.2, not dropped as an
+// object with no set of its own (Astra 2067, #2079; «Риск»: not intended).
+// A value under a label that is an object or a list is dropped.
+func TestSecretWrites_LabelsAreAMapOfScalars(t *testing.T) {
+	for name, keys := range map[string]fieldSet{"secret": secretKeys, "certificate": certificateKeys} {
+		in := map[string]any{"id": "s1", "labels": map[string]any{
+			"env": "prod", "n": float64(2), "nested": map[string]any{"x": "y"}, "list": []any{"a"},
+		}}
+		got := publicFields(in, keys)
+		labels, ok := got["labels"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s: labels dropped: %v", name, got)
+		}
+		if labels["env"] != "prod" || labels["n"] != float64(2) {
+			t.Errorf("%s: labels lost a scalar: %v", name, labels)
+		}
+		if _, ok := labels["nested"]; ok {
+			t.Errorf("%s: an object under a label goes out: %v", name, labels)
+		}
+		if _, ok := labels["list"]; ok {
+			t.Errorf("%s: a list under a label goes out: %v", name, labels)
+		}
+		// labels that is a list is not a free map: only its scalar
+		// elements go out, an object in it does not («Риск» 285, У1).
+		got = publicFields(map[string]any{"id": "s1", "labels": []any{"a", map[string]any{"k": "X"}, []any{"b"}}}, keys)
+		if l, _ := got["labels"].([]any); len(l) != 1 || l[0] != "a" {
+			t.Errorf("%s: a list of labels keeps more than its scalars: %v", name, got["labels"])
+		}
+	}
+}
