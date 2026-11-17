@@ -54,15 +54,17 @@ func TestImageCreatePreview_TemplateSecretNotShown(t *testing.T) {
 // is, and only then.
 func TestTemplateSummary_KnownHeadersOnly(t *testing.T) {
 	for first, named := range map[string]bool{
-		"#cloud-config":          true,
-		"## template: jinja":     true,
-		"#cloud-boothook":        true,
-		"#!/bin/bash":            true,
-		"#!/usr/bin/env python3": true,
-		"#cloud-config ":         false,
-		"#!/bin/sh -x secret":    false,
-		"# password: secret":     false,
-		"#cloud-config secret":   false,
+		"#cloud-config":           true,
+		"## template: jinja":      true,
+		"#cloud-boothook":         true,
+		"#!/bin/bash":             true,
+		"#!/usr/bin/env python3":  true,
+		"#cloud-config ":          false,
+		"#!/bin/sh -x secret":     false,
+		"#!/opt/secret42/run":     false,
+		"#!/usr/bin/env secret42": false,
+		"# password: secret":      false,
+		"#cloud-config secret":    false,
 	} {
 		got := templateSummary(first + "\nbody\n")
 		if strings.Contains(got, first) != named {
@@ -89,5 +91,17 @@ func TestImageCreatePreview_NoTemplateHash(t *testing.T) {
 	}
 	if h := fmt.Sprintf("%x", sha256.Sum256([]byte(tpl))); strings.Contains(text, h) || strings.Contains(text, h[:16]) {
 		t.Errorf("the preview of image_create names the template's SHA-256: %s", text)
+	}
+}
+
+// A first line "#!" with an interpreter outside the closed list is named
+// by what it is, not by its text: a path is the author's text too (Астра,
+// #2152).
+func TestTemplateSummary_OtherInterpreterIsNamedWithoutText(t *testing.T) {
+	for _, first := range []string{"#!/opt/secret42/run", "#!/usr/bin/env secret42", "#!/bin/sh -x secret42"} {
+		got := templateSummary(first + "\nbody\n")
+		if strings.Contains(got, "secret42") || !strings.Contains(got, "interpreter") {
+			t.Errorf("templateSummary(%q): %q, want an interpreter named without its text", first, got)
+		}
 	}
 }
