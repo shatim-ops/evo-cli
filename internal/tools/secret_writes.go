@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -219,10 +220,8 @@ var secretTexts = map[string][]string{
 // that hold a secret (CLISpec.SecretFiles, secretTexts).
 func secretArgValues(tool string, args map[string]any) []string {
 	names := append([]string(nil), secretTexts[tool]...)
-	if spec, ok := cliSpecs[tool]; ok {
-		for k := range spec.SecretFiles {
-			names = append(names, k)
-		}
+	for k := range decls[tool].CLI.SecretFiles {
+		names = append(names, k)
 	}
 	var out []string
 	for _, k := range names {
@@ -231,6 +230,22 @@ func secretArgValues(tool string, args map[string]any) []string {
 		}
 	}
 	return out
+}
+
+// publicArgText reports whether p is in the value of an argument of the
+// call that is not secret: evo names those (a name, an id) in its own
+// words, and the text holding p there is not the secret's echo.
+func publicArgText(tool string, args map[string]any, p string) bool {
+	for k, v := range args {
+		s, _ := v.(string)
+		if s == "" || decls[tool].CLI.SecretFiles[k] || slices.Contains(secretTexts[tool], k) {
+			continue
+		}
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // secretMask stands in an answer for the value of a secret argument.
@@ -260,7 +275,7 @@ func withoutSecretArgs(tool string, args map[string]any, text string) string {
 	}
 	var pairs []string
 	for _, p := range parts {
-		if len(p) < secretMinMask {
+		if len(p) < secretMinMask || publicArgText(tool, args, p) {
 			continue
 		}
 		s := p

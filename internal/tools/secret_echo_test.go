@@ -37,6 +37,11 @@ func TestWithoutSecretArgs_MasksEveryFormOfTheValue(t *testing.T) {
 		withoutSecretArgs("image_create", map[string]any{"name": "x"}, answer) != answer {
 		t.Error("an answer of a call without a secret argument changed")
 	}
+	// A part of the secret that is the value of another argument of the
+	// call (a name, an id) is evo's own word there: it stays.
+	if got := withoutSecretArgs("pg_user_create", map[string]any{"password": "cluster-777", "cluster_id": "cluster-777"}, `{"message":"user in cluster-777"}`); !strings.Contains(got, "cluster-777") {
+		t.Errorf("the value of a public argument was masked: %s", got)
+	}
 	// SecretFiles too: the password of pg_user_create.
 	if got := withoutSecretArgs("pg_user_create", map[string]any{"password": "Sup3rSecret!"}, `{"error":"bad Sup3rSecret!"}`); strings.Contains(got, "Sup3rSecret") {
 		t.Errorf("a password of SecretFiles is in the answer: %s", got)
