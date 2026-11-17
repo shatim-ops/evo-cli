@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -205,4 +206,97 @@ func freeScalars(v any) any {
 	default:
 		return v
 	}
+}
+
+// secretTexts are string arguments that may hold a secret beside those of
+// CLISpec.SecretFiles: a cloud-init template carries passwords and keys.
+// evo shows them only as a summary (EchoedArgs), never as they are.
+var secretTexts = map[string][]string{
+	"image_create": {"user_data_template"},
+}
+
+// secretArgValues are the values of the arguments of the call of tool
+// that hold a secret (CLISpec.SecretFiles, secretTexts).
+func secretArgValues(tool string, args map[string]any) []string {
+	names := append([]string(nil), secretTexts[tool]...)
+	if spec, ok := cliSpecs[tool]; ok {
+		for k := range spec.SecretFiles {
+			names = append(names, k)
+		}
+	}
+	var out []string
+	for _, k := range names {
+		if v, _ := args[k].(string); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// secretMask stands in an answer for the value of a secret argument.
+const secretMask = "[the value of a secret argument]"
+
+// withoutSecretArgs is the answer text of a call of tool without the
+// values of its secret arguments: a service that echoes the body of the
+// request in its refusal does not bring a password of the call back to
+// the agent or the screen (Астра #2257). Each value is masked as it is,
+// line by line for a text of several lines, and in the forms JSON escaping
+// gives it inside the service's text (one level for each body it is
+// nested in). A value too short to mask without masking evo's own words
+// stays: a secret argument of a few characters is refused by its rules.
+func withoutSecretArgs(tool string, args map[string]any, text string) string {
+	values := secretArgValues(tool, args)
+	if len(values) == 0 {
+		return text
+	}
+	var parts []string
+	for _, v := range values {
+		parts = append(parts, v)
+		for _, line := range strings.Split(v, "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				parts = append(parts, line)
+			}
+		}
+	}
+	var pairs []string
+	for _, p := range parts {
+		if len(p) < secretMinMask {
+			continue
+		}
+		s := p
+		for level := 0; level < 4; level++ {
+			pairs = append(pairs, s, secretMask)
+			b, _ := json.Marshal(s)
+			s = string(b[1 : len(b)-1])
+		}
+	}
+	if len(pairs) == 0 {
+		return text
+	}
+	var m any
+	if json.Unmarshal([]byte(text), &m) != nil {
+		return strings.NewReplacer(pairs...).Replace(text)
+	}
+	r := strings.NewReplacer(pairs...)
+	return toJSON(maskStrings(m, r))
+}
+
+// secretMinMask is the shortest part of a secret masked in an answer.
+const secretMinMask = 6
+
+// maskStrings is v with every string in it passed through r.
+func maskStrings(v any, r *strings.Replacer) any {
+	switch x := v.(type) {
+	case string:
+		return r.Replace(x)
+	case map[string]any:
+		for k, e := range x {
+			x[k] = maskStrings(e, r)
+		}
+	case []any:
+		for i, e := range x {
+			x[i] = maskStrings(e, r)
+		}
+	}
+	return v
 }

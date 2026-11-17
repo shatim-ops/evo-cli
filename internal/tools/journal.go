@@ -23,6 +23,7 @@ func outer(name string, schema map[string]any, h Handler) Handler {
 		ctx = httpretry.TraceRequests(ctx)
 		text, isErr := h(ctx, args)
 		text = secretWriteAnswer(ctx, name, text, isErr)
+		text = withoutSecretArgs(name, args, text)
 		if isErr {
 			text = withRequestID(ctx, text)
 		}
