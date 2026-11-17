@@ -410,7 +410,11 @@ func recordJournal(t *testing.T, w parityWorld) (map[string]any, func()) {
 	t.Helper()
 	dir := history.DirOf(intent.Dir(w.dir))
 	// The calls the world made before write their own lines here: each
-	// surface reads these three only.
+	// surface reads these three only. The folder is the world's, under
+	// the test's temporary directory — never a journal of the machine.
+	if rel, err := filepath.Rel(os.TempDir(), dir); err != nil || strings.HasPrefix(rel, "..") {
+		t.Fatalf("the journal of the world %s is not under the temporary directory %s", dir, os.TempDir())
+	}
 	_ = os.RemoveAll(dir)
 	// A fixed time, the same for every surface the world answers: since
 	// of parityArgs takes it in, whatever the day the test runs.
