@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -95,7 +96,7 @@ func TestIntent_HeldWhileTheOperationGoesOn(t *testing.T) {
 	})
 	t.Run("a record of another key", func(t *testing.T) {
 		r, dir, in := start(t)
-		intent.Close(in)
+		intent.Close(in, history.Outcome{Result: history.Found})
 		in.Key = &state.Maker{ServiceAccountID: "sa-other", KeyID: "ot…er"}
 		if _, err := intent.Open(dir, in); err != nil {
 			t.Fatal(err)

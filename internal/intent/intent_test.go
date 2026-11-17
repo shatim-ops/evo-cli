@@ -5,6 +5,7 @@
 package intent
 
 import (
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -51,8 +52,8 @@ func TestPending_ARecordNotOfItsOwnFormIsNotReadAndRemovesNothing(t *testing.T) 
 		t.Errorf("records not of their own form were read: %+v", got)
 	}
 	// Even an intent handed in with such an id removes nothing.
-	Close(Intent{ID: "../state", Dir: dir})
-	Settle(dir, Intent{Tool: "vm_create", Name: "x"})
+	Close(Intent{ID: "../state", Dir: dir}, history.Outcome{Result: history.Found})
+	Settle(dir, Intent{Tool: "vm_create", Name: "x"}, history.Outcome{Result: history.Found})
 	if _, err := os.Stat(state); err != nil {
 		t.Fatalf("a record removed a file outside the intents: %v", err)
 	}
@@ -68,7 +69,7 @@ func TestPending_EvosRecordIsReadAndClosed(t *testing.T) {
 	if len(got) != 1 || !validID(got[0].ID) {
 		t.Fatalf("evo's record: %+v", got)
 	}
-	Close(got[0])
+	Close(got[0], history.Outcome{Result: history.Found})
 	if left := Pending(dir); len(left) != 0 {
 		t.Errorf("closed record still there: %+v", left)
 	}

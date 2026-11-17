@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/compose"
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -193,6 +194,14 @@ func TestDestroy_VMBusy422_ClearMessageRecordUnchanged(t *testing.T) {
 // (cloud-e2e, 15.10.2026).
 func TestDestroy_WaitsWhileVMNotDeletable(t *testing.T) {
 	eng, cloud, _ := destroyFixture(t, runningRecord())
+	// The way to success takes three deletes a millisecond apart: the bound
+	// of the wait is the fixture's 50 ms of wall clock, which a loaded runner
+	// spent before the third (macOS, #2155, job 134122735933: «cannot be
+	// deleted… its state could not be read» in 0.06 s). The bound is not
+	// what this test checks — the refusal at the bound is
+	// TestDestroy_RefusedDeleteFallsBackToTheStateTheWaitRead's — so it is
+	// far from the way.
+	eng.Timings.DeletableWaitTimeout = time.Minute
 	calls := 0
 	cloud.deleteVMFn = func(context.Context, string) error {
 		calls++

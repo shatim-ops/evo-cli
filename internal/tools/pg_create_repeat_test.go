@@ -140,11 +140,11 @@ func TestPgCreate_InterruptedRecordClosesByNameWithoutAnID(t *testing.T) {
 		}
 		here := intent.Intent{Tool: c.tool, Name: "app", Target: "cluster_id=" + cluster}
 		gone := intent.Intent{Tool: c.tool, Name: "gone", Target: "cluster_id=" + cluster}
-		found, settled := r.checkByList(context.Background(), here, "")
+		found, settled, _ := r.checkByList(context.Background(), here, "")
 		if !settled || strings.Contains(found, "(id ") {
 			t.Errorf("%s: a name in the list closes the record without an id: settled=%v %q", c.tool, settled, found)
 		}
-		if _, settled := r.checkByList(context.Background(), gone, ""); settled {
+		if _, settled, _ := r.checkByList(context.Background(), gone, ""); settled {
 			t.Errorf("%s: a name not in the list closed the record", c.tool)
 		}
 	}

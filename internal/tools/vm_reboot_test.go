@@ -259,7 +259,7 @@ func rebootWorldInADir(t *testing.T) (*Registry, *powerWorld, string) {
 			Cloud:    w,
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
 			StateDir: dir,
-			Timings:  engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 50 * time.Millisecond},
+			Timings:  engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: w.pollLimit(50 * time.Millisecond)},
 		}, nil
 	})
 	r.SetStateDir(dir)

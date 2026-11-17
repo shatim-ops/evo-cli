@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,7 +106,7 @@ func TestIntent_TheTargetIsReadOnceAndAFailedReadRefusesTheCall(t *testing.T) {
 		t.Errorf("a consented call by name listed the VMs %d times, want 1 (the layer and the plan share the read)\n%s", counted.lists, text)
 	}
 	for _, in := range intent.Pending(dir) {
-		intent.Close(in)
+		intent.Close(in, history.Outcome{Result: history.Found})
 	}
 	counted.lists, counted.fail = 0, errors.New("list VMs: status 503")
 	sent := w.powerCalls()
@@ -134,7 +135,7 @@ func TestIntent_TheNoteSaysTheSameArgumentsSettleTheRecord(t *testing.T) {
 		if strings.Contains(note, "settles") && !strings.Contains(note, "with the same arguments settles") {
 			t.Errorf("the note of %s promises that any call of the tool settles the record: %s", in.Tool, note)
 		}
-		intent.Close(rec)
+		intent.Close(rec, history.Outcome{Result: history.Found})
 	}
 }
 

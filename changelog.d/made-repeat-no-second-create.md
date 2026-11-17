@@ -5,10 +5,11 @@
   Касается `evo pg create`, `evo kafka create`, `evo redis create`,
   `evo k8s create`, `evo k8s add-nodepool`, `evo lb create`,
   `evo ar create`, `evo vpc create`, `evo tg create`,
-  `evo pg backup-create`, `evo vpc subnet-create`, `evo snat create` и MCP
-  `pg_create`, `kafka_create`, `redis_create`, `k8s_create`,
-  `k8s_add_nodepool`, `lb_create`, `ar_create`, `vpc_create`, `tg_create`,
-  `pg_backup_create`, `subnet_create`, `snat_create` — когда платформа
+  `evo pg backup-create`, `evo vpc subnet-create`, `evo snat create`,
+  `evo disk create`, `evo dns zone-create` и MCP `pg_create`,
+  `kafka_create`, `redis_create`, `k8s_create`, `k8s_add_nodepool`,
+  `lb_create`, `ar_create`, `vpc_create`, `tg_create`, `pg_backup_create`,
+  `subnet_create`, `snat_create`, `disk_create`, `dns_zone_create` — когда платформа
   приняла создание (ответ назвал id), список ещё не показывает ресурс и тот
   же вызов повторён тем же ключом в том же проекте. Было: повтор без
   согласия — вопрос о согласии (`confirmation_required`, в MCP
@@ -17,13 +18,22 @@
   с ним — ответ чтения, которое назвал первый ответ (`next_tool`; без него —
   список ресурса), код 0: `status` — из чтения, иначе `waiting`;
   `repeat_of` (`tool`, `id`, `started_at`); `next_tool` и `next_args`.
-  Полей ответа первого создания (например, `nat_gateway`) в нём нет. Если
+  Полей ответа первого создания (например, `nat_gateway`, у диска — `disk`
+  и `disk_state`) в нём нет. Если
   чтение не удалось — его отказ с тем же `repeat_of`. Когда список
-  показывает ресурс, повтор — обычный вызов (имя занято). Когда ресурса
-  нет, операция кончилась ошибкой или с первого создания прошло больше
-  2 часов, тот же вызов снова обычный: без согласия — вопрос о согласии,
-  с согласием — новый запрос создания. Вызов с другими аргументами — не
-  повтор. Что поменять: скрипт, который на повторе ждал
+  показывает ресурс, повтор — обычный вызов (имя занято). Тот же вызов
+  снова обычный — без согласия вопрос о согласии, с согласием новый запрос
+  создания, — когда: чтение не находит ресурс (`NOT_FOUND`; чтение операции,
+  которое её не находит, — только через 10 минут, до этого повтор отвечает
+  `waiting`); операция
+  кончилась ошибкой; чтение списка по id пусто, а с первого создания прошло
+  больше 10 минут (до этого пустой список считается запаздывающим, и повтор
+  отвечает `waiting`); с первого создания прошло больше 2 часов. Пустой
+  список не доказывает, что первого платного ресурса нет: повтор с
+  согласием (`--yes`) после этих 10 минут может создать второй. Граница
+  в 10 минут касается чтений списка по id (`disk_list`, `snat_list`,
+  `list_subnets` с `ids`). Вызов с другими
+  аргументами — не повтор. Что поменять: скрипт, который на повторе ждал
   вопрос или код 3, принимает код 0 с `repeat_of`, берёт следующий шаг
   целиком из `next_tool`/`next_args`, а id ресурса — из `repeat_of.id`.
 
@@ -32,7 +42,9 @@
 - **Повтор создания, пока идёт первое, не создаёт второй платный ресурс.**
   `pg_create`, `kafka_create`, `redis_create`, `k8s_create`,
   `k8s_add_nodepool`, `lb_create`, `ar_create`, `vpc_create`, `tg_create`,
-  `pg_backup_create`, `subnet_create` и `snat_create`: если платформа
+  `pg_backup_create`, `subnet_create`, `snat_create`, `disk_create` и
+  `dns_zone_create`: если
+  платформа
   приняла создание (ответ назвал id), а список ещё не показывает ресурс,
   тот же вызов, повторённый с согласием или без, больше не отправляет
   второй запрос создания. Он читает ход первой операции и отвечает им с
