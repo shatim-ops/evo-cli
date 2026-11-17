@@ -483,6 +483,9 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 
 // cutCallWarning is what the question says of the cut calls mine of tool
 // name, and the field that names them: the last one, how many there were —
+// cut, or answered with no word of what was done (a 2xx with no receipt,
+// D112): the record does not tell the two apart, and the words fit both
+// («Риск», conclusion 288, У3) —
 // each may have taken effect — and the read that shows the resource
 // (read_tool: a command of the CLI names its own command by it). It sends to the person, not to
 // «confirmed again»: the consent given was to one change («Риск»,
@@ -496,12 +499,12 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 		// A create: what is at stake is a second billed resource, and
 		// the list is where the first one shows — when it shows, which
 		// evo does not say of the platform (a hypothesis, no run).
-		return i18n.Tf("An earlier %s of %s, started %s, got no answer from the cloud: the request may have been accepted, and what it made may not be listed yet — %s does not show it now. Nothing was sent. A yes now makes a second billed resource of the name if the first request was taken: check %s again first, ask the person whether to send one more, and with their yes call %s with confirmed=true.",
-			"Предыдущий вызов %s для %s, начатый %s, не получил ответа облака: запрос мог быть принят, а созданное может ещё не быть в списке — %s сейчас его не показывает. Ничего не отправлено. «Да» сейчас создаст второй платный ресурс с этим именем, если первый запрос был принят: сначала проверьте %s ещё раз, спросите человека, отправлять ли ещё один, и с его «да» вызовите %s с confirmed=true.",
+		return i18n.Tf("An earlier %s of %s, started %s, got no answer that names what it made — it was cut, or the cloud's answer did not name it: the request may have been accepted, and what it made may not be listed yet — %s does not show it now. Nothing was sent. A yes now makes a second billed resource of the name if the first request was taken: check %s again first, ask the person whether to send one more, and with their yes call %s with confirmed=true.",
+			"Предыдущий вызов %s для %s, начатый %s, не получил ответа, который называет созданное, — он оборван или ответ облака его не назвал: запрос мог быть принят, а созданное может ещё не быть в списке — %s сейчас его не показывает. Ничего не отправлено. «Да» сейчас создаст второй платный ресурс с этим именем, если первый запрос был принят: сначала проверьте %s ещё раз, спросите человека, отправлять ли ещё один, и с его «да» вызовите %s с confirmed=true.",
 			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read, rule.read, name), interrupted
 	}
-	return i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
-			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
+	return i18n.Tf("An earlier %s of %s, started %s, was cut, or the cloud's answer did not name what was done: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
+			"Предыдущий вызов %s для %s, начатый %s, оборван или ответ облака не назвал сделанное: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
 			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read, name),
 		interrupted
 }

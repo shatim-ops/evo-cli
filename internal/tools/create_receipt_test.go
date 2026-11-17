@@ -149,8 +149,18 @@ func TestCreate_NoReceiptRepeatAsksAndSendsNothing(t *testing.T) {
 		if w.posts != 1 || !isErr || m["status"] != "confirmation_required" || m["interrupted"] == nil || !strings.Contains(msg, c.read) {
 			t.Errorf("%s: the repeat after an answer without a receipt sent %d create requests, want 1 and the question that names %s:\n%s", c.tool, w.posts, c.read, text)
 		}
+		// The cloud answered, with no receipt: the question does not say
+		// the call was cut before it did («Риск», conclusion 288, У3).
+		if strings.Contains(msg, "before the cloud answered") || !strings.Contains(msg, "did not name") {
+			t.Errorf("%s: the question says the call was cut, though the cloud answered it without a receipt: %s", c.tool, msg)
+		}
 		if strings.Contains(text, "s3cret-value") || strings.Contains(text, "Qwerty123456!") {
 			t.Errorf("%s: a secret value in the answer", c.tool)
+		}
+		// The question is asked once: the next call with consent is the
+		// person's yes to one more, and sends (У2).
+		if _, text, _ := callNamed(t, r, c.tool, c.args); w.posts != 2 {
+			t.Errorf("%s: the call with consent after the question sent %d create requests in all, want 2: %s", c.tool, w.posts, text)
 		}
 	}
 }
