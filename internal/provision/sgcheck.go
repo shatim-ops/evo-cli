@@ -46,10 +46,10 @@ func GroupRules(ctx context.Context, cloud CloudAPI, g *SecurityGroup) ([]SGRule
 func (g GroupGaps) Warnings(name string) []string {
 	var out []string
 	if g.NoSSH {
-		out = append(out, "security group "+name+" has no ingress rule for TCP 22: SSH to the VM will not come up; add an ingress TCP 22 rule or choose another group")
+		out = append(out, "security group "+strconv.Quote(name)+" has no ingress rule for TCP 22: SSH to the VM will not come up; add an ingress TCP 22 rule or choose another group")
 	}
 	if g.NoSystemEgress {
-		out = append(out, "security group "+name+" does not allow the VM's system egress (metadata service 169.254.169.254/32 and UDP 67 to the subnet gateway): the VM gets no IP by DHCP and cloud-init does not run; allow all egress or these two rules (Cloud.ru docs: security groups, limitations)")
+		out = append(out, "security group "+strconv.Quote(name)+" does not allow the VM's system egress (metadata service 169.254.169.254/32 and UDP 67 to the subnet gateway): the VM gets no IP by DHCP and cloud-init does not run; allow all egress or these two rules (Cloud.ru docs: security groups, limitations)")
 	}
 	return out
 }
