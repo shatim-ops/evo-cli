@@ -16,6 +16,18 @@ d=$FAKE_DATA
 q=.
 a=("$@")
 for ((i = 0; i < ${#a[@]}; i++)); do [ "${a[i]}" != --jq ] || q=${a[i + 1]}; done
+# GitHub отвечает не JSON на путь с байтами вне ASCII: заглушка — так же.
+if [ "$1" = api ] && LC_ALL=C grep -q '[^ -~]' <<<"$*"; then
+  for x in "$@"; do case $x in repos/*) if LC_ALL=C grep -q '[^ -~]' <<<"$x"; then echo "invalid character '<' looking for beginning of value" >&2; exit 1; fi ;; esac; done
+fi
+# gh api -X GET путь -f k=v: параметры — в запрос.
+if [ "$1" = api ] && [ "${2:-}" = -X ]; then
+  p=$4; shift 4; qs=
+  while [ $# -gt 0 ]; do
+    case $1 in -f) qs+="&$2"; shift 2 ;; *) break ;; esac
+  done
+  set -- api "$p?${qs#&}" "$@"
+fi
 case "$1 $2" in
   "label create") ;;
   "issue create") echo "https://example.invalid/o/r/issues/77" ;;

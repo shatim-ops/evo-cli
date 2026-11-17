@@ -43,11 +43,20 @@ live() {
 		grep -qv '^0$'
 }
 
+# issues STATE [SINCE] JQ — issue сторожа: метка — параметром -f, gh кодирует
+# её в адресе. Метка кириллицей прямо в пути запроса — ответ GitHub не JSON
+# («invalid character '<'»), и open падал на каждом прогоне (15–17.11:
+# cloud-e2e 220, 221, stand 3, 4 остались без issue).
+issues() {
+	local st=$1 since=$2 q=$3
+	gh api -X GET "repos/$GH_REPO/issues" -f labels="$LABEL" -f state="$st" -f per_page=100 \
+		${since:+-f since="$since"} --paginate --jq "$q"
+}
+
 # issue_of TITLE — номер issue сторожа с этим заголовком (с «— красный» или
 # без), открытого или закрытого; пусто — нет.
 issue_of() {
-	gh api "repos/$GH_REPO/issues?labels=$LABEL&state=all&per_page=100" --paginate \
-		--jq ".[] | select(.pull_request | not) | select(.title == \"$1\" or (.title | startswith(\"$1 — \"))) | .number" | head -n1
+	issues all "" ".[] | select(.pull_request | not) | select(.title == \"$1\" or (.title | startswith(\"$1 — \"))) | .number" | head -n1
 }
 
 case "${1:-}" in
@@ -98,8 +107,7 @@ check)
 			echo "::error::#$n открыт $age ч без отчёта: $t"
 			bad=1
 		fi
-	done < <(gh api "repos/$GH_REPO/issues?labels=$LABEL&state=open&per_page=100" --paginate \
-		--jq '.[] | select(.pull_request | not) | [.number, .created_at, .title] | @tsv')
+	done < <(issues open "" '.[] | select(.pull_request | not) | [.number, .created_at, .title] | @tsv')
 	# Закрытые после SINCE без ссылки на отчёт.
 	while IFS=$'\t' read -r n closed; do
 		[ -n "$n" ] || continue
@@ -108,8 +116,7 @@ check)
 			echo "::error::#$n закрыт без ссылки на отчёт в evo-internal"
 			bad=1
 		fi
-	done < <(gh api "repos/$GH_REPO/issues?labels=$LABEL&state=closed&since=$from&per_page=100" --paginate \
-		--jq '.[] | select(.pull_request | not) | [.number, .closed_at] | @tsv')
+	done < <(issues closed "$from" '.[] | select(.pull_request | not) | [.number, .closed_at] | @tsv')
 	# Живые прогоны после SINCE без issue.
 	for wf in $WORKFLOWS; do
 		while IFS=$'\t' read -r id num; do
