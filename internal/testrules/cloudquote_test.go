@@ -180,10 +180,11 @@ var unquotedCloudFlowSteps = map[string]int{
 // a deployment and its status and phase in the state of the folder, the
 // id and the status of a stack job (stack.newID), a JSON path of a
 // declaration, the image of the configuration, the HTTP status of evo's
-// own MCP server. Quoted as the cloud's, they would read as the cloud's
+// own MCP server, the id of a record of a call (intent, D46). Quoted as the cloud's, they would read as the cloud's
 // words (Астра #2237). A place here is a count of such values in it, not
 // a pass for the function: a value of the cloud in it is still counted.
 var evoOwnValues = map[string]int{
+	"internal/cli/history_view.go|historyEntry.call":           1,
 	"internal/cli/mcp.go|newMCPHealthcheckCmd":                 1,
 	"internal/config/config.go|pickImage":                      1,
 	"internal/engine/compose_path.go|composeRefusal":           1,
