@@ -125,9 +125,7 @@ func clipAround(s string, i int) string {
 // where and who closes it. The list only shrinks: a run whose output is
 // clean now fails the test. Closes by 1.9 (release plan 1.9, before
 // rc.1): the fix is «разработки»; «Процесс» does not change product code.
-var humanUncleanMisses = map[string]string{
-	"backup_restore (every optional argument)": "the line «Подтверждено: создать диск … в зоне <zone>» of the consent names the zone as the cloud sends it — «разработка»",
-}
+var humanUncleanMisses = map[string]string{}
 
 // humanLocalCommands are the local commands (localCommands): no tool, so
 // no case of the world above. Each says whether its human output can carry
