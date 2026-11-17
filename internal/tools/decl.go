@@ -232,7 +232,7 @@ var decls = map[string]Decl{
 	"image_list":           {Group: "image", Untrusted: untrustedAnswer{fields: []string{"images"}}},
 	"image_create":         {Project: true, Created: created{id: "image.id", lost: "image_id", list: "image_list", field: "images", delete: "image_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "disk_id", kind: kindDisk}}, EchoedArgs: []echoedArg{{name: "description"}, {name: "display_name"}, {name: "user_data_template", summary: templateSummary}}},
 	"fip_attach":           {Group: "vpc", IDArgs: []idArg{{name: "fip", why: whyListed, party: partyFloatingIP}, {name: "vm", why: whyListed, party: partyVM}}},
-	"image_get":            {RequiredOneOf: [][]string{{"image", "image_id"}}, IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}}},
+	"image_get":            {RequiredOneOf: [][]string{{"image", "image_id"}}, IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}}, Untrusted: untrustedAnswer{fields: []string{"image", "create"}}},
 	"image_delete":         {Delete: deleteTarget{arg: "image_id", what: "image", whRU: "образ"}, IDArgs: []idArg{{name: "image_id", kind: kindImage, target: true}}},
 	"deploy_plan":          {Group: "deploy", Project: true, IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "base_plan_id", why: whyLocal}}},
 	"deploy_apply":         {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the saved plan, checked by deploy_plan", IDArgs: []idArg{{name: "plan_id", why: whyLocal}, {name: "vm_id", why: whyContinued}}},
@@ -362,7 +362,7 @@ var decls = map[string]Decl{
 	// Managed PostgreSQL, Kafka, Redis.
 	"pg_get":           {RequiredOneOf: [][]string{{"id", "cluster_id"}}, IDArgs: []idArg{{name: "id", kind: kindPG}, {name: "cluster_id", kind: kindPG}}, Untrusted: untrustedAnswer{whole: true, own: []string{"access"}}},
 	"pg_create":        {Project: true, Created: created{id: "cluster_id", list: "pg_list", field: "clusters", delete: "pg_delete"}, CreateName: createName{args: []string{"name"}, what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, EchoedArgs: []echoedArg{{name: "description"}}, Completes: map[string]completion{"specification_id": {list: "pg_specs", field: "id"}}},
-	"pg_delete":        {RequiredOneOf: [][]string{{"id", "cluster_id"}}, Delete: deleteTarget{arg: "id", what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "id", kind: kindPG, target: true}, {name: "cluster_id", kind: kindPG, target: true}}},
+	"pg_delete":        {RequiredOneOf: [][]string{{"id", "cluster_id"}}, Delete: deleteTarget{arg: "id", what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "id", kind: kindPG, target: true}, {name: "cluster_id", kind: kindPG, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
 	"pg_operation":     {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
 	"kafka_list":       {Project: true, Untrusted: untrustedAnswer{fields: []string{"clusters"}}},
 	"kafka_get":        {IDArgs: []idArg{{name: "cluster_id", kind: kindKafka}}, Untrusted: untrustedAnswer{whole: true}},
