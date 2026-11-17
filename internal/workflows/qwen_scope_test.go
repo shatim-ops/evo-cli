@@ -52,8 +52,11 @@ var sensitiveCode = map[string]string{
 	"internal/mcp/http_redact.go":     "func redactSecrets(",
 	"internal/tools/tools_secret.go":  "",
 	"internal/tools/secret_writes.go": "func secretWriteAnswer(",
-	"internal/mcp/http_policy.go":     "",
-	"internal/mcp/http_kube.go":       "",
+	// A 2xx without a receipt is an unknown outcome: the intent stays
+	// open (D92) — not found by a sign of code, so by hand.
+	"internal/receipt/receipt.go": "func Decode(",
+	"internal/mcp/http_policy.go": "",
+	"internal/mcp/http_kube.go":   "",
 }
 
 // The scope of the review that comes by itself names the code of secrets
@@ -137,12 +140,15 @@ func declaredPolicy(f *ast.File) (why string, types []string) {
 }
 
 // policyUse names why f is the code of secrets or of intents by what it
-// does: it writes or closes an intent record (intent.Begin, intent.Close),
+// does: it uses the intent records (any intent.X: the record, its
+// directory, the refusal that closes it),
 // declares secret inputs (SecretFiles: in a literal) or reads them
-// (x.SecretFiles), or declares a function with a type of the layer
+// (x.SecretFiles), calls a function of the package whose name is
+// policyName's (policyCalls: the filter of secret answers called from the
+// journal of calls), or declares a function with a type of the layer
 // (layerTypes) in its signature — a helper of the layer, like the targets
 // and the settling of intents. "" — none.
-func policyUse(f *ast.File, layerTypes map[string]bool) string {
+func policyUse(f *ast.File, layerTypes, policyCalls map[string]bool) string {
 	why := ""
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch x := n.(type) {
@@ -154,8 +160,12 @@ func policyUse(f *ast.File, layerTypes map[string]bool) string {
 			if x.Sel.Name == "SecretFiles" {
 				why = "reads secret inputs (SecretFiles)"
 			}
-			if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "intent" && (x.Sel.Name == "Begin" || x.Sel.Name == "Close") {
-				why = "writes an intent record (intent." + x.Sel.Name + ")"
+			if pkg, ok := x.X.(*ast.Ident); ok && pkg.Name == "intent" {
+				why = "uses the intent records (intent." + x.Sel.Name + ")"
+			}
+		case *ast.CallExpr:
+			if id, ok := x.Fun.(*ast.Ident); ok && policyCalls[id.Name] {
+				why = "calls " + id.Name
 			}
 		case *ast.FuncDecl:
 			ast.Inspect(x.Type, func(m ast.Node) bool {
@@ -193,6 +203,14 @@ func policyCode(t *testing.T, root, dir string, holdsPolicy bool) map[string]str
 	}
 	found := map[string]string{}
 	layerTypes := map[string]bool{}
+	policyCalls := map[string]bool{}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil && policyName.MatchString(fd.Name.Name) {
+				policyCalls[fd.Name.Name] = true
+			}
+		}
+	}
 	for rel, f := range files {
 		if policyName.MatchString(f.Name.Name) {
 			found[rel] = "is package " + f.Name.Name
@@ -212,11 +230,11 @@ func policyCode(t *testing.T, root, dir string, holdsPolicy bool) map[string]str
 		if _, ok := found[rel]; ok {
 			continue
 		}
-		lt := layerTypes
+		lt, pc := layerTypes, policyCalls
 		if !holdsPolicy {
-			lt = nil
+			lt, pc = nil, nil
 		}
-		if why := policyUse(f, lt); why != "" {
+		if why := policyUse(f, lt, pc); why != "" {
 			found[rel] = why
 		}
 	}
@@ -282,7 +300,7 @@ func TestQwenScope_PolicyCodeIsFoundByCode(t *testing.T) {
 		}
 		why, _ := declaredPolicy(f)
 		if why == "" {
-			why = policyUse(f, map[string]bool{"outcome": true})
+			why = policyUse(f, map[string]bool{"outcome": true}, map[string]bool{"secretWriteAnswer": true})
 		}
 		if got := why != ""; got != want {
 			t.Errorf("%q: found %v, want %v", src, got, want)
