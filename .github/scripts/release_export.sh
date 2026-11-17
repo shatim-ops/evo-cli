@@ -82,7 +82,9 @@ check_paths
 markers='docs/internal|«Риск|«Риска»|Risk», conclusion|conclusion [0-9]|«Процесс|«разработк|— релиз|Астр(а|ы|е|у|ой)[ ,.)#]|evo-internal|(Р|р)ешени[^ ]{0,4} владельца|owner'"'"'s decision|release-plan|handoff/|RELEASING\.md|DECISIONS\.md|changelog\.d'
 # Текст документа проверяется после схлопывания пробелов и переводов строк
 # (маркер на двух строках), и только в UTF-8 без NUL: иначе байты маркера в
-# другой кодировке не совпадают (Астра #2309).
+# другой кодировке не совпадают (Астра #2309). Пробел — и неразрывный, и
+# другие пробелы Unicode; невидимые знаки (мягкий перенос, нулевой ширины)
+# удаляются («Риск», 342, У2).
 text_doc() {
 	case "$1" in
 	*.md | *.txt | *.html | *.htm | *.yaml | *.yml | *.json | *.sh | *.ps1 | *.toml | *.css | *.js | *.go | *.mod | *.sum | *.xml | *.svg) return 0 ;;
@@ -90,16 +92,30 @@ text_doc() {
 	esac
 	return 1
 }
+utf8_text() {
+	iconv -f UTF-8 -t UTF-8 "$1" >/dev/null 2>&1 && [ "$(tr -d '\000' <"$1" | wc -c)" = "$(wc -c <"$1")" ]
+}
+# Байты UTF-8: U+00A0, U+2000–U+200A, U+202F, U+205F, U+3000 — пробел;
+# U+00AD, U+200B–U+200D, U+2060, U+FEFF — удалить.
+sp="$(printf '\302\240')|$(printf '\342\200')[$(printf '\200-\212')]|$(printf '\342\200\257')|$(printf '\342\201\237')|$(printf '\343\200\200')"
+zw="$(printf '\302\255')|$(printf '\342\200')[$(printf '\213-\215')]|$(printf '\342\201\240')|$(printf '\357\273\277')"
+squash() {
+	LC_ALL=C sed -E "s/$zw//g; s/$sp/ /g" "$1" | tr -s ' \t\r\n' '    '
+}
 gofiles=0
 while IFS= read -r f; do
 	rel=${f#"$out"/}
-	text_doc "$rel" || continue
-	if ! iconv -f UTF-8 -t UTF-8 "$f" >/dev/null 2>&1 || [ "$(tr -d '\000' <"$f" | wc -c)" != "$(wc -c <"$f")" ]; then
+	if utf8_text "$f"; then
+		hit=$(squash "$f" | grep -m1 -oE "$markers" || true)
+	elif text_doc "$rel"; then
 		echo "::error::документ не в UTF-8 (или с NUL), маркеры не проверить: $rel"
 		bad=1
 		continue
+	else
+		# Не текст (картинка, архив): маркер ищется по байтам, как раньше;
+		# файл незнакомого типа не пропускается молча («Риск», 342, У1).
+		hit=$(grep -a -m1 -oE "$markers" "$f" || true)
 	fi
-	hit=$(tr -s ' \t\r\n' '    ' <"$f" | grep -m1 -oE "$markers" || true)
 	[ -n "$hit" ] || continue
 	case "$rel" in
 	*.go) gofiles=$((gofiles + 1)) ;;
@@ -124,6 +140,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 func main() {
@@ -147,21 +164,34 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", p, msg)
 			broken = true
 		}, 0)
+		// chain is the value of literals glued with +: "docs/" +
+		// "internal" is docs/internal («Риск», 342).
+		chain, glued := "", false
 		for {
 			pos, tok, lit := s.Scan()
 			if tok == token.EOF {
 				break
 			}
+			if tok == token.ADD && chain != "" {
+				glued = true
+				continue
+			}
 			if tok != token.STRING && tok != token.CHAR {
+				chain, glued = "", false
 				continue
 			}
 			// The value, not only the spelling: "docs\x2finternal" is
 			// docs/internal (Астра #2307).
 			text := lit
 			if v, err := strconv.Unquote(lit); err == nil {
-				text = lit + "\n" + v
+				if !glued {
+					chain = ""
+				}
+				chain += v
+				text = lit + "\n" + v + "\n" + chain
 			}
-			if m := re.FindString(text); m != "" {
+			glued = false
+			if m := re.FindString(spaced(text)); m != "" {
 				rel, _ := filepath.Rel(root, path)
 				fmt.Printf("%s:%d: %s\n", rel, fset.Position(pos).Line, m)
 				bad++
@@ -180,6 +210,22 @@ func main() {
 	if bad > 0 {
 		os.Exit(1)
 	}
+}
+
+// spaced reads every space of Unicode as one space and drops the marks of
+// no width, as the check of documents does («Риск», 342, У2).
+func spaced(s string) string {
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '\u00ad', '\u200b', '\u200c', '\u200d', '\u2060', '\ufeff':
+			return -1
+		}
+		if unicode.IsSpace(r) {
+			return ' '
+		}
+		return r
+	}, s)
+	return strings.Join(strings.Fields(s), " ")
 }
 GO
 rc=0

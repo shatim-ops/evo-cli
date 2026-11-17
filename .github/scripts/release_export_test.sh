@@ -121,6 +121,47 @@ for enc in cp1251 utf16 split; do
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
 
+# Файл незнакомого типа не пропускается молча: текст — как документ,
+# не текст — по байтам; неразрывный пробел, мягкий перенос и знаки нулевой
+# ширины не прячут маркер («Риск», 342, У1 и У2).
+nb=$(printf '\302\240')
+shy=$(printf '\302\255')
+zw=$(printf '\342\200\213')
+for c in "docs/note.tpl:см. docs/internal/x" "internal/a/skill.tmpl:по решению владельца" "docs/Makefile:see release-plan" \
+	"docs/bin.dat:$(printf '\377\376')docs/internal" "docs/guide.md:по решению${nb}владельца" \
+	"docs/guide.md:по реше${shy}нию владельца" "docs/guide.md:docs/inter${zw}nal" "docs/guide.md:Астра${nb}#2307"; do
+	file=${c%%:*}
+	printf '%s\n' "${c#*:}" >"$file"
+	git add "$file" && git -c user.name=t -c user.email=t@t commit -qm "odd $file"
+	for loc in C C.UTF-8 ""; do
+		rc=0
+		LC_ALL=$loc "$here/release_export.sh" HEAD "$tmp/s-odd-$RANDOM" >/dev/null 2>&1 || rc=$?
+		[ "$rc" = 1 ] || { echo "FAIL: «${c#*:}» в $file при LC_ALL=${loc:-по умолчанию} — код $rc, ждём 1"; fail=1; }
+	done
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+# Не текст без маркера и неразрывный пробел без маркера — не провал.
+printf '\377\376\000\001' >docs/logo.bin
+printf 'обычный%sтекст\n' "$nb" >>docs/guide.md
+git add docs/logo.bin && git -c user.name=t -c user.email=t@t commit -qam clean-odd
+"$here/release_export.sh" HEAD "$tmp/s-clean-odd" >/dev/null 2>&1 || { echo "FAIL: двоичный файл без маркера или неразрывный пробел — провал"; fail=1; }
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+
+# Строки Go, склеенные +, — одна строка («Риск», 342).
+for v in '"docs/" + "internal/x.md"' '"по решению" +\n\t\t"\\u00a0владельца"' '"docs/" + "inter" + "nal"'; do
+	printf "package a\n\n// A does nothing.\nfunc A() string { return $v }\n" >internal/a/a.go
+	git -c user.name=t -c user.email=t@t commit -qam goconcat
+	rc=0
+	"$here/release_export.sh" HEAD "$tmp/s-cat-$RANDOM" >/dev/null 2>&1 || rc=$?
+	[ "$rc" = 1 ] || { echo "FAIL: склейка строк Go $v — код $rc, ждём 1"; fail=1; }
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+# Склейка через вызов — две строки, не одна.
+printf 'package a\n\n// A does nothing.\nfunc A() string { return f("docs/") + "internal" }\n\nfunc f(s string) string { return s }\n' >internal/a/a.go
+git -c user.name=t -c user.email=t@t commit -qam gocall
+"$here/release_export.sh" HEAD "$tmp/s-call" >/dev/null 2>&1 || { echo "FAIL: строки по разные стороны вызова склеены"; fail=1; }
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+
 # Латинское Astra (Astra Linux) — не маркер.
 echo 'образ Astra Linux' >>docs/guide.md
 git -c user.name=t -c user.email=t@t commit -qam astra
