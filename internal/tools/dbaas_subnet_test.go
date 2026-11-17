@@ -88,3 +88,31 @@ func TestDbaasSubnet_MainSubnetOfTheProfilesZone(t *testing.T) {
 		}
 	}
 }
+
+// Every zone closed and none chosen (no subnet_id, no region): the create
+// path refuses USAGE before any question, as dbaasZone does for the reads
+// of the specifications — one point for all five tools («Миграция»
+// dbaas-closed-zone.md; Astra #2112: pg_create, kafka_create and
+// redis_create answered CONFIG_INVALID through the subnet).
+func TestDbaasSubnet_EveryZoneClosedIsUsage(t *testing.T) {
+	closed := false
+	zones := []*provision.AvailabilityZone{
+		{ID: raAZ1, Name: "ru.AZ-1", Enabled: &closed},
+		{ID: raAZ2, Name: "ru.AZ-2", Enabled: &closed},
+	}
+	subnets := []*provision.Subnet{
+		{ID: "sn-1", Name: "Default_ru.AZ-1", AvailabilityZoneID: raAZ1, VPCID: "vpc-1", Default: true},
+		{ID: "sn-2", Name: "Default_ru.AZ-2", AvailabilityZoneID: raAZ2, VPCID: "vpc-1", Default: true},
+	}
+	eng := &engine.Engine{Config: config.Config{ProjectID: dbaasProject}, Cloud: zoneCloud{zones: zones, subnets: subnets}}
+	_, _, _, _, subErr := dbaasSubnet(context.Background(), eng, "")
+	_, _, zoneErr := dbaasZone(context.Background(), eng, "")
+	for name, err := range map[string]error{"dbaasSubnet": subErr, "dbaasZone": zoneErr} {
+		if ce, ok := err.(*clierrors.CLIError); !ok || ce.Code != clierrors.CodeUsage {
+			t.Errorf("%s: %v, want USAGE", name, err)
+		}
+	}
+	if subErr != nil && zoneErr != nil && subErr.Error() != zoneErr.Error() {
+		t.Errorf("two refusals for one case: %q and %q", subErr, zoneErr)
+	}
+}
