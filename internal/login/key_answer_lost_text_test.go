@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -28,7 +29,7 @@ func TestLogin_KeyAnswerLostSaysOutcomeUnknown(t *testing.T) {
 	var out bytes.Buffer
 	cfg := worldConfig(w, &out, b.open)
 	cfg.Tell = func(line string) { fmt.Fprintln(&out, line) }
-	cfg.IntentDir = t.TempDir()
+	cfg.IntentDir = filepath.Join(t.TempDir(), "intents")
 	_, err := Login(context.Background(), cfg, Choice{}, &memStore{})
 	<-b.ended
 	var ce *clierrors.CLIError

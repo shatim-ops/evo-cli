@@ -1,0 +1,210 @@
+// SPDX-FileCopyrightText: 2026 ООО «Облачные технологии» (Cloud.ru)
+// SPDX-FileContributor: Тимур Шакирбеков
+// SPDX-License-Identifier: Apache-2.0
+
+package tools
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/history"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/intent"
+)
+
+// historyOf reads the lines of the journal of changes of the folder of
+// state dir, with the raw text of the files.
+func historyOf(t *testing.T, dir string) (lines []history.Line, raw string) {
+	t.Helper()
+	hdir := history.DirOf(intent.Dir(dir))
+	entries, _ := os.ReadDir(hdir)
+	var b strings.Builder
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(hdir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.Write(data)
+		sc := bufio.NewScanner(strings.NewReader(string(data)))
+		for sc.Scan() {
+			var l history.Line
+			if err := json.Unmarshal(sc.Bytes(), &l); err != nil {
+				t.Fatalf("not a line: %q", sc.Text())
+			}
+			lines = append(lines, l)
+		}
+	}
+	return lines, b.String()
+}
+
+// The journal of changes follows the calls through the gate (D43): a cut
+// create is a line unknown; the repeat that answers it is its own line
+// created, with the id of the answer, and the cut one gets a line found —
+// the last line of its intent; a call refused with nothing sent is a line
+// error. No value of an argument is in a line: the names of the record and
+// the ids of the answer only.
+func TestHistory_TheCallsOfTheGateAreLines(t *testing.T) {
+	r, dir := targetRegistry(t, &goneCloud{})
+	args := map[string]any{"name": "disk-1", "size": 10, "secret_hint": "s3cr3t-value", "confirmed": true}
+	tool, _ := r.Lookup("disk_create")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h := r.intended(tool, func(ctx context.Context, _ map[string]any) (string, bool) {
+		_ = httpretry.NoteWrite(ctx)
+		cancel()
+		return `{"reason":"INTERRUPTED"}`, true
+	})
+	h(ctx, args)
+	cut := intent.Pending(intent.Dir(dir))
+	if len(cut) != 1 {
+		t.Fatalf("a cut call left %d records", len(cut))
+	}
+
+	h = r.intended(tool, func(context.Context, map[string]any) (string, bool) { return `{"disk":{"id":"d-1"}}`, false })
+	h(context.Background(), args)
+
+	h = r.intended(tool, func(context.Context, map[string]any) (string, bool) {
+		return `{"error":"quota","reason":"QUOTA_EXCEEDED"}`, true
+	})
+	h(context.Background(), map[string]any{"name": "disk-2", "size": 10, "confirmed": true})
+
+	lines, raw := historyOf(t, dir)
+	if len(lines) != 4 {
+		t.Fatalf("%d lines, want 4 (unknown, created, found, error): %+v", len(lines), lines)
+	}
+	if l := lines[0]; l.IntentID != cut[0].ID || l.Outcome != history.Unknown || l.Tool != "disk_create" || l.Name != "disk-1" || l.ProjectID != "p" {
+		t.Errorf("the cut call: %+v", l)
+	}
+	if l := lines[1]; l.Outcome != history.Created || l.ResourceID != "d-1" || l.IntentID == cut[0].ID {
+		t.Errorf("the answered call: %+v; want its own line created d-1", l)
+	}
+	if l := lines[2]; l.IntentID != cut[0].ID || l.Outcome != history.Found || l.ResourceID != "d-1" {
+		t.Errorf("the cut call settled by the answer: %+v; want found d-1 of its intent", l)
+	}
+	if l := lines[3]; l.Outcome != history.Error || l.Reason != "QUOTA_EXCEEDED" || l.Name != "disk-2" {
+		t.Errorf("the refused call: %+v", l)
+	}
+	if strings.Contains(raw, "s3cr3t-value") || strings.Contains(raw, `"size"`) {
+		t.Errorf("a value of an argument in the journal:\n%s", raw)
+	}
+}
+
+// What an answer says for the journal: one reading for every point. A
+// line closes only on an outcome that is certain; in doubt it is live
+// («Риск», conclusion 300, У1–У5): an «already» of a create carries its id;
+// a refusal that names what the call made is unknown with that id; a
+// delete that goes on is unknown; a create with no id is unknown, not a
+// change.
+func TestHistoryOutcome_OneReadingOfAnAnswer(t *testing.T) {
+	for _, c := range []struct {
+		tool, answer string
+		args         map[string]any
+		want         history.Outcome
+	}{
+		{"disk_create", `{"disk":{"id":"d-1"},"operation_id":"op-1"}`, nil, history.Outcome{Result: history.Created, Kind: "disk", ResourceID: "d-1", OperationID: "op-1"}},
+		{"secret_create", `{"status":"created"}`, map[string]any{"path": "app/db"}, history.Outcome{Result: history.Created, Kind: "secret", ResourceID: "app/db"}},
+		{"disk_delete", `{"status":"deleted"}`, map[string]any{"disk_id": "d-1"}, history.Outcome{Result: history.Deleted, Kind: "disk", ResourceID: "d-1"}},
+		{"disk_delete", `{"status":"already_deleted"}`, map[string]any{"disk_id": "d-1"}, history.Outcome{Result: history.AlreadyDeleted, Kind: "disk", ResourceID: "d-1"}},
+		{"vm_start", `{"status":"already_running"}`, nil, history.Outcome{Result: history.Changed}},
+		{"vm_reboot", `{"status":"reboot_accepted"}`, nil, history.Outcome{Result: history.Changed}},
+		{"disk_create", `{"error":"x","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Error, Kind: "disk", Reason: "API_ERROR"}},
+		// У1: the create's «already» names the resource of the name.
+		{"disk_create", `{"status":"already_exists","disk":{"id":"d-1"}}`, nil, history.Outcome{Result: history.Found, Kind: "disk", ResourceID: "d-1"}},
+		// У2: a refusal that names what was made — a VM in an error state,
+		// billed — and a stack in part.
+		{"provision", `{"error":"x","reason":"API_ERROR","details":{"vm_id":"vm-1","floating_ip_id":"fip-1"}}`, nil, history.Outcome{Result: history.Unknown, Kind: "VM", Reason: "API_ERROR", ResourceID: "vm-1"}},
+		// У6: a stack is told by its job — its steps go round the record
+		// of an intent (journalDepthKey), so the line of the job is what
+		// keeps what the stack made live.
+		{"stack_apply", `{"status":"running","job_id":"j-1"}`, nil, history.Outcome{Result: history.Created, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_apply", `{"status":"done","job_id":"j-1"}`, nil, history.Outcome{Result: history.Created, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_apply", `{"status":"error","job_id":"j-1","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1", Reason: "API_ERROR"}},
+		{"stack_destroy", `{"status":"destroyed","job_id":"j-1"}`, nil, history.Outcome{Result: history.Deleted, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_destroy", `{"status":"already_destroyed","job_id":"j-1"}`, nil, history.Outcome{Result: history.Deleted, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_destroy", `{"status":"deleting","job_id":"j-1"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_destroy", `{"status":"destroy_failed","job_id":"j-1","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1", Reason: "API_ERROR"}},
+		// У3: a delete that goes on.
+		{"lb_delete", `{"status":"deleting","operation_id":"op-2","next_tool":"lb_operation"}`, map[string]any{"id": "lb-1"}, history.Outcome{Result: history.Unknown, Kind: "load balancer", ResourceID: "lb-1", OperationID: "op-2"}},
+		{"destroy", `{"status":"deleting"}`, map[string]any{"vm_id": "vm-1"}, history.Outcome{Result: history.Unknown, Kind: "VM", ResourceID: "vm-1"}},
+		// У5: a create whose answer names no id.
+		{"pg_create", `{"status":"creating","operation_id":"op-1"}`, nil, history.Outcome{Result: history.Unknown, Kind: "PostgreSQL cluster", OperationID: "op-1"}},
+	} {
+		if got := historyOutcome(c.tool, c.args, c.answer); got != c.want {
+			t.Errorf("%s %s:\n got %+v\nwant %+v", c.tool, c.answer, got, c.want)
+		}
+	}
+}
+
+// What a settled record says (У1): the cut call made what its repeat made
+// or found — found, with the id; with no id, unknown; a read of evo that
+// lists a create with no id leaves it unknown, not found.
+func TestHistory_ASettledRecordKeepsTheResource(t *testing.T) {
+	for _, c := range []struct {
+		in   history.Outcome
+		want string
+	}{
+		{history.Outcome{Result: history.Created, ResourceID: "d-1"}, history.Found},
+		{history.Outcome{Result: history.Found, ResourceID: "d-1"}, history.Found},
+		{history.Outcome{Result: history.Created}, history.Unknown},
+		{history.Outcome{Result: history.Unknown, ResourceID: "d-1"}, history.Unknown},
+		{history.Outcome{Result: history.Changed}, history.Changed},
+	} {
+		if got := settledOf(c.in).Result; got != c.want {
+			t.Errorf("settledOf(%+v) = %s, want %s", c.in, got, c.want)
+		}
+	}
+	if o := settledOutcome(intent.Intent{Tool: "disk_create", Name: "data"}, ""); o.Result != history.Unknown {
+		t.Errorf("a create listed with no id: %+v, want unknown", o)
+	}
+	if o := settledOutcome(intent.Intent{Tool: "disk_create", Name: "data"}, "d-1"); o.Result != history.Found || o.ResourceID != "d-1" || o.Kind != "disk" {
+		t.Errorf("a create listed with its id: %+v", o)
+	}
+	if o := settledOutcome(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-1"}, ""); o.Result != history.Deleted || o.ResourceID != "d-1" {
+		t.Errorf("a delete whose resource is gone: %+v", o)
+	}
+}
+
+// A stack of two steps through the gate (Астра, #2166; «Риск», conclusion
+// 300, У6): its steps go round the record of an intent, so the line of
+// stack_apply names the job — created, kind stack, its id — and the line
+// of stack_destroy closes it.
+func TestHistory_AStackIsToldByItsJob(t *testing.T) {
+	stackHome(t)
+	a := &faultAPI{made: []faultResource{{host: faultS3Host, path: "bucket", ID: "evo-bucket", Name: "evo-bucket", before: true}}}
+	r := faultAPIRegistry(t, a)
+	j := planJob(t, `{"name":"st","secrets":[{"path":"evo-s","value":"synthetic"}],"s3":[{"bucket":"evo-bucket","key":"site/k","content":"c"}]}`)
+	if out, failed := stackCall(t, r, "stack_apply", map[string]any{"job_id": j.ID, "confirmed": true}); failed || out["status"] != "done" {
+		t.Fatalf("apply: %v", out)
+	}
+	dir, _ := r.stateDir()
+	lines, raw := historyOf(t, dir)
+	var applied *history.Line
+	for i, l := range lines {
+		if l.Tool == "stack_apply" {
+			applied = &lines[i]
+		}
+	}
+	if applied == nil || applied.Outcome != history.Created || applied.Kind != "stack" || applied.ResourceID != j.ID {
+		t.Fatalf("the line of stack_apply: %+v; want created, kind stack, the job's id", applied)
+	}
+	if strings.Contains(raw, "synthetic") {
+		t.Errorf("the value of a secret in the journal:\n%s", raw)
+	}
+	if out, failed := stackCall(t, r, "stack_destroy", map[string]any{"job_id": j.ID, "confirmed": true}); failed {
+		t.Fatalf("destroy: %v", out)
+	}
+	lines, _ = historyOf(t, dir)
+	last := lines[len(lines)-1]
+	if last.Tool != "stack_destroy" || last.Outcome != history.Deleted || last.Kind != "stack" || last.ResourceID != j.ID {
+		t.Errorf("the line of stack_destroy: %+v; want deleted, kind stack, the job's id", last)
+	}
+}

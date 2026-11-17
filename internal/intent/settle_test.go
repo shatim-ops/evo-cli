@@ -5,6 +5,7 @@
 package intent
 
 import (
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"os"
 	"os/exec"
 	"testing"
@@ -67,18 +68,18 @@ func TestSettle_OnlyAnEarlierCallThatIsNotInFlight(t *testing.T) {
 				t.Fatal(err)
 			}
 			if c.in.Held {
-				Hold(rec)
+				Hold(rec, history.Outcome{Result: history.Found})
 			}
 			if c.ended {
-				End(rec)
+				End(rec, history.Outcome{Result: history.Found})
 			}
 			done, err := Open(dir, Intent{Tool: "disk_create", Name: "data", ProjectID: "p", Key: key, PID: os.Getpid(),
 				StartedAt: t0.Add(time.Minute), Canon: canon})
 			if err != nil {
 				t.Fatal(err)
 			}
-			Close(done)
-			Settle(dir, done)
+			Close(done, history.Outcome{Result: history.Found})
+			Settle(dir, done, history.Outcome{Result: history.Found})
 			if removed := len(Pending(dir)) == 0; removed != c.removed {
 				t.Errorf("removed %v, want %v: %+v", removed, c.removed, Pending(dir))
 			}
@@ -114,8 +115,8 @@ func TestSettle_TheSameArgumentsOnAnotherTargetAreAnotherCall(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			Close(done)
-			Settle(dir, done)
+			Close(done, history.Outcome{Result: history.Found})
+			Settle(dir, done, history.Outcome{Result: history.Found})
 			if removed := len(Pending(dir)) == 0; removed != c.removed {
 				t.Errorf("removed %v, want %v: %+v", removed, c.removed, Pending(dir))
 			}
@@ -153,8 +154,8 @@ func TestSettle_TheSameArgumentsOnOtherPartiesAreAnotherCall(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			Close(done)
-			Settle(dir, done)
+			Close(done, history.Outcome{Result: history.Found})
+			Settle(dir, done, history.Outcome{Result: history.Found})
 			if removed := len(Pending(dir)) == 0; removed != c.removed {
 				t.Errorf("removed %v, want %v: %+v", removed, c.removed, Pending(dir))
 			}

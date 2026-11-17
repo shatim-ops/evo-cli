@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"os"
 	"strings"
 	"testing"
@@ -75,7 +76,7 @@ func TestPendingNotes_ManyRecordsFoldAndDoctorShowsEvery(t *testing.T) {
 
 	// As many as the fold shows: no fold line.
 	for _, in := range intent.Pending(dir)[:3] {
-		intent.Close(in)
+		intent.Close(in, history.Outcome{Result: history.Found})
 	}
 	if notes := r.PendingNotes(root); len(notes) != foldPendingAfter || strings.Contains(strings.Join(notes, "\n"), "started before these") {
 		t.Errorf("%d records: %d lines\n%s", foldPendingAfter, len(notes), strings.Join(notes, "\n"))
