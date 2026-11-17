@@ -28,7 +28,7 @@ import (
 //     ids; one that ended removed its resource;
 //   - a create made the resource its declaration names (createdRef); a
 //     create whose answer names none is unknown, not a change;
-//   - a stack in part (partial) is unknown;
+//   - a stack is told by its job (the job_id of the answer);
 //   - any other answer is a change of a resource that is there.
 //
 // The kind of the resource goes with its id (resourceKind), so a reader
@@ -71,6 +71,33 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		details, _ := res["details"].(map[string]any)
 		return createdID(name, details)
 	}
+	// A stack is told by its job: its steps go round the record of an
+	// intent (journalDepthKey), so the line of the job keeps what the
+	// stack made live — made while its job runs or is done, gone when it
+	// is destroyed, unknown otherwise («Риск», conclusion 300, У6; Астра,
+	// #2166).
+	// The job is the answer's, or the call's: stack_destroy names it by
+	// its argument only.
+	job := stringArg(res, "job_id")
+	if job == "" {
+		job = stringArg(args, "job_id")
+	}
+	if job != "" {
+		out.Kind, out.ResourceID, out.JobID = "stack", job, job
+		out.Reason = answerReason(answer)
+		switch status {
+		case "running", "done":
+			out.Result = history.Created
+		case "destroyed", "already_destroyed":
+			out.Result = history.Deleted
+		default:
+			out.Result = history.Unknown
+		}
+		if out.Reason != "" {
+			out.Result = history.Unknown
+		}
+		return out
+	}
 	switch reason := answerReason(answer); {
 	case reason != "":
 		if id := madeByAnswer(); id != "" {
@@ -78,8 +105,6 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 			break
 		}
 		out.Result, out.Reason = history.Error, reason
-	case status == "partial":
-		out.Result = history.Unknown
 	case status == "already_deleted":
 		out.Result = history.AlreadyDeleted
 		if isDelete {

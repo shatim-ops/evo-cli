@@ -122,11 +122,19 @@ func TestHistoryOutcome_OneReadingOfAnAnswer(t *testing.T) {
 		// У2: a refusal that names what was made — a VM in an error state,
 		// billed — and a stack in part.
 		{"provision", `{"error":"x","reason":"API_ERROR","details":{"vm_id":"vm-1","floating_ip_id":"fip-1"}}`, nil, history.Outcome{Result: history.Unknown, Kind: "VM", Reason: "API_ERROR", ResourceID: "vm-1"}},
-		{"stack_apply", `{"status":"partial","job_id":"j-1"}`, nil, history.Outcome{Result: history.Unknown, JobID: "j-1"}},
-		{"stack_apply", `{"status":"running","job_id":"j-1"}`, nil, history.Outcome{Result: history.Changed, JobID: "j-1"}},
 		// 300-1: a create named by its argument, refused: no id from the
 		// argument — the refusal made nothing.
 		{"secret_create", `{"error":"x","reason":"USAGE"}`, map[string]any{"path": "app/db"}, history.Outcome{Result: history.Error, Kind: "secret", Reason: "USAGE"}},
+		// У6: a stack is told by its job — its steps go round the record
+		// of an intent (journalDepthKey), so the line of the job is what
+		// keeps what the stack made live.
+		{"stack_apply", `{"status":"running","job_id":"j-1"}`, nil, history.Outcome{Result: history.Created, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_apply", `{"status":"done","job_id":"j-1"}`, nil, history.Outcome{Result: history.Created, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_apply", `{"status":"error","job_id":"j-1","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1", Reason: "API_ERROR"}},
+		{"stack_destroy", `{"status":"destroyed","job_id":"j-1"}`, nil, history.Outcome{Result: history.Deleted, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_destroy", `{"status":"already_destroyed","job_id":"j-1"}`, nil, history.Outcome{Result: history.Deleted, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_destroy", `{"status":"deleting","job_id":"j-1"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
+		{"stack_destroy", `{"status":"destroy_failed","job_id":"j-1","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1", Reason: "API_ERROR"}},
 		// У3: a delete that goes on.
 		{"lb_delete", `{"status":"deleting","operation_id":"op-2","next_tool":"lb_operation"}`, map[string]any{"id": "lb-1"}, history.Outcome{Result: history.Unknown, Kind: "load balancer", ResourceID: "lb-1", OperationID: "op-2"}},
 		{"destroy", `{"status":"deleting"}`, map[string]any{"vm_id": "vm-1"}, history.Outcome{Result: history.Unknown, Kind: "VM", ResourceID: "vm-1"}},
@@ -197,5 +205,41 @@ func TestHistory_TheParentTellsTheResource(t *testing.T) {
 		if len(live) != 1 || live[0].IntentID != "b" {
 			t.Errorf("%s in two parents, deleted in one: live %+v, want the create in parent-B", c.create, live)
 		}
+	}
+}
+
+// A stack of two steps through the gate (Астра, #2166; «Риск», conclusion
+// 300, У6): its steps go round the record of an intent, so the line of
+// stack_apply names the job — created, kind stack, its id — and the line
+// of stack_destroy closes it.
+func TestHistory_AStackIsToldByItsJob(t *testing.T) {
+	stackHome(t)
+	a := &faultAPI{made: []faultResource{{host: faultS3Host, path: "bucket", ID: "evo-bucket", Name: "evo-bucket", before: true}}}
+	r := faultAPIRegistry(t, a)
+	j := planJob(t, `{"name":"st","secrets":[{"path":"evo-s","value":"synthetic"}],"s3":[{"bucket":"evo-bucket","key":"site/k","content":"c"}]}`)
+	if out, failed := stackCall(t, r, "stack_apply", map[string]any{"job_id": j.ID, "confirmed": true}); failed || out["status"] != "done" {
+		t.Fatalf("apply: %v", out)
+	}
+	dir, _ := r.stateDir()
+	lines, raw := historyOf(t, dir)
+	var applied *history.Line
+	for i, l := range lines {
+		if l.Tool == "stack_apply" {
+			applied = &lines[i]
+		}
+	}
+	if applied == nil || applied.Outcome != history.Created || applied.Kind != "stack" || applied.ResourceID != j.ID {
+		t.Fatalf("the line of stack_apply: %+v; want created, kind stack, the job's id", applied)
+	}
+	if strings.Contains(raw, "synthetic") {
+		t.Errorf("the value of a secret in the journal:\n%s", raw)
+	}
+	if out, failed := stackCall(t, r, "stack_destroy", map[string]any{"job_id": j.ID, "confirmed": true}); failed {
+		t.Fatalf("destroy: %v", out)
+	}
+	lines, _ = historyOf(t, dir)
+	last := lines[len(lines)-1]
+	if last.Tool != "stack_destroy" || last.Outcome != history.Deleted || last.Kind != "stack" || last.ResourceID != j.ID {
+		t.Errorf("the line of stack_destroy: %+v; want deleted, kind stack, the job's id", last)
 	}
 }
