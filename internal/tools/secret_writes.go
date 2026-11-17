@@ -19,7 +19,8 @@ type fieldSet map[string]fieldSet
 
 // anyKey in a set is any key of the object: the object is a free map of
 // what the call itself set (labels), shown as its scalar values only — a
-// value that is an object or a list stays in.
+// value that is an object or a list is dropped. A list under such a key
+// keeps its scalar elements only (freeScalars).
 const anyKey = "*"
 
 // scalarMap is the set of such a map.
@@ -151,21 +152,13 @@ func publicFields(obj map[string]any, keys fieldSet) map[string]any {
 }
 
 func publicValue(v any, keys fieldSet) (any, bool) {
+	if _, free := keys[anyKey]; free {
+		return freeScalars(v), true
+	}
 	switch x := v.(type) {
 	case map[string]any:
 		if keys == nil {
 			return nil, false
-		}
-		if _, free := keys[anyKey]; free {
-			out := make(map[string]any, len(x))
-			for k, e := range x {
-				switch e.(type) {
-				case map[string]any, []any:
-				default:
-					out[k] = e
-				}
-			}
-			return out, true
 		}
 		return publicFields(x, keys), true
 	case []any:
@@ -178,5 +171,38 @@ func publicValue(v any, keys fieldSet) (any, bool) {
 		return out, true
 	default:
 		return v, true
+	}
+}
+
+// freeScalars is v under a key of a free map (anyKey): a map keeps its
+// pairs whose value is a scalar, a list its scalar elements; an object or
+// a list inside either is dropped, at any depth.
+func freeScalars(v any) any {
+	scalar := func(e any) bool {
+		switch e.(type) {
+		case map[string]any, []any:
+			return false
+		}
+		return true
+	}
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			if scalar(e) {
+				out[k] = e
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(x))
+		for _, e := range x {
+			if scalar(e) {
+				out = append(out, e)
+			}
+		}
+		return out
+	default:
+		return v
 	}
 }

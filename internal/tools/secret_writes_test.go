@@ -104,5 +104,11 @@ func TestSecretWrites_LabelsAreAMapOfScalars(t *testing.T) {
 		if _, ok := labels["list"]; ok {
 			t.Errorf("%s: a list under a label goes out: %v", name, labels)
 		}
+		// labels that is a list is not a free map: only its scalar
+		// elements go out, an object in it does not («Риск» 285, У1).
+		got = publicFields(map[string]any{"id": "s1", "labels": []any{"a", map[string]any{"k": "X"}, []any{"b"}}}, keys)
+		if l, _ := got["labels"].([]any); len(l) != 1 || l[0] != "a" {
+			t.Errorf("%s: a list of labels keeps more than its scalars: %v", name, got["labels"])
+		}
 	}
 }
