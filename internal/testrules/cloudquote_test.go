@@ -56,20 +56,16 @@ var unquotedCloudSteps = map[string]int{
 // engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
-	"internal/engine/create_preview.go|ShowCreatePreview":           1,
-	"internal/engine/deploy.go|Engine.provisionVM":                  1,
-	"internal/tools/delete_preview.go|Registry.deletePlan":          1,
-	"internal/tools/made.go|madeAnswer":                             10,
-	"internal/tools/tools.go|destroyTargetPreview":                  1,
-	"internal/tools/tools_deploy.go|Registry.planReleaseFloatingIP": 2,
-	"internal/tools/tools_deploy.go|appliedPlan":                    4,
-	"internal/tools/tools_disk.go|Registry.planDiskCreate":          2,
-	"internal/tools/tools_disk.go|diskAttachedError":                4,
-	"internal/tools/tools_disk.go|diskCreated":                      5,
-	"internal/tools/tools_nlb.go|Registry.planLbCreate":             1,
-	"internal/tools/tools_nlb.go|Registry.planTgCreate":             2,
-	"internal/tools/tools_snat.go|Registry.planSnatCreate":          2,
-	"internal/tools/tools_stack.go|Registry.advance":                2,
+	"internal/engine/create_preview.go|ShowCreatePreview":  1,
+	"internal/engine/deploy.go|Engine.provisionVM":         1,
+	"internal/tools/delete_preview.go|Registry.deletePlan": 1,
+	"internal/tools/tools.go|destroyTargetPreview":         1,
+	"internal/tools/tools_disk.go|Registry.planDiskCreate": 2,
+	"internal/tools/tools_disk.go|diskAttachedError":       4,
+	"internal/tools/tools_disk.go|diskCreated":             5,
+	"internal/tools/tools_nlb.go|Registry.planLbCreate":    1,
+	"internal/tools/tools_nlb.go|Registry.planTgCreate":    2,
+	"internal/tools/tools_snat.go|Registry.planSnatCreate": 2,
 }
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only
