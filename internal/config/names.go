@@ -56,6 +56,11 @@ func SetWarnFunc(f func(msg string)) {
 	warnFunc = f
 }
 
+// Warn reports msg where the warnings of the configuration go (stderr, or
+// the CLI's printer), once per process: a failure that repeats on every
+// call of an MCP server is said once.
+func Warn(msg string) { warnOnce(msg) }
+
 // warnOnce reports msg once per process: the MCP server resolves paths on
 // every tool call.
 func warnOnce(msg string) {

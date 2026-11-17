@@ -6,10 +6,10 @@
   `evo k8s create`, `evo k8s add-nodepool`, `evo lb create`,
   `evo ar create`, `evo vpc create`, `evo tg create`,
   `evo pg backup-create`, `evo vpc subnet-create`, `evo snat create`,
-  `evo disk create` и MCP `pg_create`,
+  `evo disk create`, `evo dns zone-create` и MCP `pg_create`,
   `kafka_create`, `redis_create`, `k8s_create`, `k8s_add_nodepool`,
   `lb_create`, `ar_create`, `vpc_create`, `tg_create`, `pg_backup_create`,
-  `subnet_create`, `snat_create`, `disk_create` — когда платформа
+  `subnet_create`, `snat_create`, `disk_create`, `dns_zone_create` — когда платформа
   приняла создание (ответ назвал id), список ещё не показывает ресурс и тот
   же вызов повторён тем же ключом в том же проекте. Было: повтор без
   согласия — вопрос о согласии (`confirmation_required`, в MCP
@@ -23,7 +23,9 @@
   чтение не удалось — его отказ с тем же `repeat_of`. Когда список
   показывает ресурс, повтор — обычный вызов (имя занято). Тот же вызов
   снова обычный — без согласия вопрос о согласии, с согласием новый запрос
-  создания, — когда: чтение не находит ресурс (`NOT_FOUND`); операция
+  создания, — когда: чтение не находит ресурс (`NOT_FOUND`; чтение операции,
+  которое её не находит, — только через 10 минут, до этого повтор отвечает
+  `waiting`); операция
   кончилась ошибкой; чтение списка по id пусто, а с первого создания прошло
   больше 10 минут (до этого пустой список считается запаздывающим, и повтор
   отвечает `waiting`); с первого создания прошло больше 2 часов. Пустой
@@ -40,7 +42,8 @@
 - **Повтор создания, пока идёт первое, не создаёт второй платный ресурс.**
   `pg_create`, `kafka_create`, `redis_create`, `k8s_create`,
   `k8s_add_nodepool`, `lb_create`, `ar_create`, `vpc_create`, `tg_create`,
-  `pg_backup_create`, `subnet_create`, `snat_create` и `disk_create`: если
+  `pg_backup_create`, `subnet_create`, `snat_create`, `disk_create` и
+  `dns_zone_create`: если
   платформа
   приняла создание (ответ назвал id), а список ещё не показывает ресурс,
   тот же вызов, повторённый с согласием или без, больше не отправляет

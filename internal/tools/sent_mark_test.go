@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"os"
 	"strings"
 	"testing"
@@ -68,7 +69,7 @@ func TestIntent_ACallThatSentNoWriteLeavesNoRecord(t *testing.T) {
 			t.Errorf("%s: a cut call that sent a write: marked before it went %v, left %+v", tl.Name, marked, left)
 		}
 		for _, in := range intent.Pending(dir) {
-			intent.Close(in)
+			intent.Close(in, history.Outcome{Result: history.Found})
 		}
 	}
 	if reached < 40 {

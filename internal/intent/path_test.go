@@ -5,6 +5,7 @@
 package intent
 
 import (
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,9 +39,9 @@ func TestIntent_ReadIDDoesNotBuildADeletePath(t *testing.T) {
 		if in.ID+".json" != "0123456789abcdef.json" {
 			t.Errorf("Pending read the id %q from the content: it names a file that is not its own", in.ID)
 		}
-		Close(in)
+		Close(in, history.Outcome{Result: history.Found})
 	}
-	Settle(dir, Intent{Tool: "vm_create", Name: "web", ProjectID: "p"})
+	Settle(dir, Intent{Tool: "vm_create", Name: "web", ProjectID: "p"}, history.Outcome{Result: history.Found})
 	if _, err := os.Stat(victim); err != nil {
 		t.Fatalf("a planted intent removed %s outside the directory of intents: %v", victim, err)
 	}

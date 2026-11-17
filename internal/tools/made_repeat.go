@@ -109,12 +109,14 @@ func madeGoesOn(tool, answer string) (id, next string, nextArgs map[string]any, 
 // madeEnded tells a read of the step of a create that says nothing goes
 // on: the resource is not found by the read (NOT_FOUND), it or its
 // operation is in a state of error, its operation is done with an error,
-// or — past madeListGrace — a read by id
-// lists none of it. A read that fails otherwise tells nothing.
-func madeEnded(read string, isErr bool, age time.Duration) bool {
+// or — past madeListGrace — a read by id lists none of it, or the read of
+// the operation (op) does not find it. An operation not found sooner is
+// one the platform does not show yet, not a resource gone: it goes on, as
+// a list that lags («Риск», conclusion 310, У1). A read that fails
+// otherwise tells nothing.
+func madeEnded(read string, isErr bool, age time.Duration, op bool) bool {
 	if isErr {
-		reason := answerReason(read)
-		return reason == clierrors.CodeNotFound || reason == clierrors.CodeVMNotFound
+		return madeNotFound(read) && (!op || age > madeListGrace)
 	}
 	var m map[string]any
 	if json.Unmarshal([]byte(read), &m) != nil {
@@ -133,6 +135,12 @@ func madeEnded(read string, isErr bool, age time.Duration) bool {
 	}
 	count, counted := m["count"].(float64)
 	return counted && count == 0 && age > madeListGrace
+}
+
+// madeNotFound tells a refusal of a read that does not find what it reads.
+func madeNotFound(read string) bool {
+	reason := answerReason(read)
+	return reason == clierrors.CodeNotFound || reason == clierrors.CodeVMNotFound
 }
 
 // rememberMade keeps the create of the call of record rec when its answer
@@ -195,7 +203,7 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		forget()
 		return "", false, false
 	}
-	if _, listed := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID); listed {
+	if _, listed, _ := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID); listed {
 		forget()
 		return "", false, false
 	}
@@ -208,19 +216,28 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		// The read says the resource is not there, or its operation
 		// failed: nothing goes on, the file goes, and the call is planned
 		// as any other — a new create («Риск», conclusion 268, 1).
-		if madeEnded(read, readErr, clock.Since(mc.StartedAt)) {
+		if madeEnded(read, readErr, clock.Since(mc.StartedAt), strings.HasSuffix(mc.Next, "_operation")) {
 			forget()
 			return "", false, false
 		}
 		var m map[string]any
-		if json.Unmarshal([]byte(read), &m) == nil {
+		switch {
+		case readErr && madeNotFound(read):
+			// An operation the platform does not show yet (madeEnded):
+			// its NOT_FOUND would read as the resource gone — the answer
+			// is waiting, the read the next step («Риск», conclusion 310).
+			out["note"] = i18n.T("The platform does not show the operation yet; read it again in a minute.",
+				"Платформа ещё не показывает операцию; прочитайте её снова через минуту.")
+		case json.Unmarshal([]byte(read), &m) == nil:
 			out = m
 			if was, _ := m["message"].(string); was != "" {
 				said += " " + was
 			}
 			out["message"] = said
+			isErr = readErr
+		default:
+			isErr = readErr
 		}
-		isErr = readErr
 	}
 	if out["status"] == nil {
 		out["status"] = "waiting"
