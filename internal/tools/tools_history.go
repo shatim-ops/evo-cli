@@ -136,7 +136,7 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	// wrote one. Its outcome is not known.
 	for _, in := range pendingIntents(root) {
 		if !written[in.ID] {
-			live = append(live, history.Line{Time: in.StartedAt.UTC().Format(time.RFC3339), Tool: in.Tool, Surface: in.Surface,
+			live = append(live, history.Line{Time: in.StartedAt.UTC().Format(time.RFC3339), Tool: in.Tool, Surface: in.Surface, Key: in.Key,
 				ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target, Kind: resourceKind(in.Tool),
 				Outcome: history.Unknown, IntentID: in.ID})
 		}

@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/history"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // journalLines are the lines of the journal of changes beside the intents
@@ -59,13 +60,16 @@ func stopClock(t *testing.T) time.Time {
 // unknown — with what the answer said — HoldCut unknown, Settle found for
 // each record it removes, and the end of Begin removes the record or, on
 // an unknown outcome, keeps it. The line carries the record's names and
-// the answer's ids, the time of internal/clock, the folder of state.
+// the answer's ids, the time of internal/clock, the folder of state and the
+// key the call was sent with: a read that finds the resource gone closes a
+// line only with that key (У7).
 func TestJournal_EveryEndOfARecordIsALine(t *testing.T) {
 	stopClock(t)
 	root := t.TempDir()
 	dir := Dir(root)
+	key := &state.Maker{ServiceAccountID: "sa-1", KeyID: "k1…9"}
 	open := func(name string) Intent {
-		in, err := Open(dir, Intent{Tool: "pg_create", Name: name, ProjectID: "p", Zone: "ru-central-1", Surface: "cli", StartedAt: time.Now()})
+		in, err := Open(dir, Intent{Tool: "pg_create", Name: name, ProjectID: "p", Zone: "ru-central-1", Surface: "cli", Key: key, StartedAt: time.Now()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -96,8 +100,8 @@ func TestJournal_EveryEndOfARecordIsALine(t *testing.T) {
 			t.Errorf("line %d: %+v; want intent %s, %s, resource %q, reason %q", i, l, w.id, w.outcome, w.resource, w.reason)
 		}
 		if l.Time != "2026-11-17T12:00:00Z" || l.Tool != "pg_create" || l.ProjectID != "p" || l.Zone != "ru-central-1" ||
-			l.Surface != "cli" || filepath.Clean(l.StateDir) != filepath.Clean(root) {
-			t.Errorf("line %d: %+v; want the time of internal/clock and the record's names, the folder %s", i, l, root)
+			l.Surface != "cli" || filepath.Clean(l.StateDir) != filepath.Clean(root) || l.Key == nil || *l.Key != *key {
+			t.Errorf("line %d: %+v; want the time of internal/clock and the record's names, its key, the folder %s", i, l, root)
 		}
 	}
 	if got[0].OperationID != "op-1" {

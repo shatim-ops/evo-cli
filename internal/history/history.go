@@ -117,6 +117,11 @@ type Line struct {
 	// StateDir is the folder of the state the call went with; "" for
 	// the configuration's (evo login).
 	StateDir string `json:"state_dir,omitempty"`
+	// Key is the key the call was sent with, as the record of the intent
+	// keeps it: a read by id that finds the resource gone closes the line
+	// only with that key — another key may not see it (У7, R-82). Not in
+	// the answer of history.
+	Key *state.Maker `json:"key,omitempty"`
 }
 
 // DirName is the directory of the journal: beside intents/.
@@ -146,6 +151,11 @@ func Append(dir string, l Line) error {
 	// with a mark, not dropped with its line (311, У1).
 	for _, f := range []*string{&l.Tool, &l.Surface, &l.ProjectID, &l.Zone, &l.Name, &l.Target, &l.Kind, &l.Parent, &l.ResourceID, &l.Reason, &l.OperationID, &l.JobID, &l.StateDir} {
 		*f = fit(*f)
+	}
+	if l.Key != nil {
+		k := *l.Key
+		k.ServiceAccountID, k.KeyID = fit(k.ServiceAccountID), fit(k.KeyID)
+		l.Key = &k
 	}
 	at, err := time.Parse(time.RFC3339, l.Time)
 	if err != nil {
