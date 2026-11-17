@@ -18,6 +18,9 @@
 set -uo pipefail
 
 here=$(dirname "$0")
+# cliHalf — тесты internal/cli первой половины; при запуске проходов
+# выражение не раскрывается как маска файлов (set -f только там).
+cliHalf='^Test[A-OR]'
 logs=$(mktemp -d)
 trap 'rm -rf "$logs"' EXIT
 tools=$(go list ./internal/tools)
@@ -45,7 +48,31 @@ elif [ "${RUNNER_OS:-}" = Windows ]; then
 	rest=($(go list ./... | grep -vxF "$tools"))
 	passes=("${rest[*]}" "$tools")
 else
-	passes=(./...)
+	# internal/cli — две половины по именам тестов, параллельно с остальными
+	# пакетами (17.11, push-прогон 6283: пакет на macOS под -race — 474,
+	# 1049 и больше 1200 с в трёх прогонах утра, предел 20 минут; тесты
+	# пакета идут в одном процессе по очереди, и он один держал job, пока
+	# остальные ядра простаивали). Половина A — cliHalf, B — -skip того же
+	# выражения: ни один тест не выпадает (замер 17.11, Linux -race: A —
+	# 254 с, B — 319 с из 574). На Windows — проходы по очереди (#494).
+	cli=$(go list ./internal/cli)
+	# shellcheck disable=SC2207 # import paths have no spaces
+	rest=($(go list ./... | grep -vxF "$cli"))
+	passes=("${rest[*]}" "$cli -run $cliHalf" "$cli -skip $cliHalf")
+	together=1
+fi
+
+set -f
+# Проходы вместе: каждый в свой журнал, журналы — в вывод по порядку
+# после всех; код каждого — в файл рядом с журналом.
+if [ "${together:-}" = 1 ]; then
+	i=0
+	for pkgs in "${passes[@]}"; do
+		i=$((i + 1))
+		# shellcheck disable=SC2086 # the package list and the flag are split on purpose
+		{ "$@" $pkgs >"$logs/$i.log" 2>&1; echo $? >"$logs/$i.rc"; } &
+	done
+	wait
 fi
 
 # notes — строки, не массив: пустой массив под set -u в bash 3.2 (macOS)
@@ -54,9 +81,15 @@ red=0 retry="" i=0 notes=""
 for pkgs in "${passes[@]}"; do
 	i=$((i + 1))
 	log="$logs/$i.log"
-	# shellcheck disable=SC2086 # the package list is split on purpose
-	"$@" $pkgs 2>&1 | tee "$log"
-	[ "${PIPESTATUS[0]}" = 0 ] && continue
+	if [ "${together:-}" = 1 ]; then
+		cat "$log"
+		rc=$(cat "$logs/$i.rc")
+	else
+		# shellcheck disable=SC2086 # the package list is split on purpose
+		"$@" $pkgs 2>&1 | tee "$log"
+		rc=${PIPESTATUS[0]}
+	fi
+	[ "$rc" = 0 ] && continue
 	if grep -q -- '^--- FAIL' "$log" || ! sig=$(bash "$here/go_runtime_crash.sh" "$log"); then
 		red=1
 		continue
@@ -70,6 +103,8 @@ for pkgs in "${passes[@]}"; do
 	notes+="::warning::сбой рантайма Go (#370): ${sig%% |*} — повтор: $failed"$'\n'
 	retry="${retry:+$retry }$failed"
 done
+
+set +f
 
 # Время пакетов — в сводку прогона, по ОС (план 1.9, строка «CI», М3):
 # пять самых долгих и сигнал, когда пакет идёт дольше половины предела

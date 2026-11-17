@@ -22,13 +22,24 @@ d=$FAKE_DIR
 case "$1" in
 list)
 	[ "$2" = ./internal/tools ] && { echo github.com/shatim-ops/evo-cli/internal/tools; exit 0; }
+	[ "$2" = ./internal/cli ] && { echo github.com/shatim-ops/evo-cli/internal/cli; exit 0; }
 	printf '%s\n' github.com/shatim-ops/evo-cli/cmd/evo github.com/shatim-ops/evo-cli/internal/tools github.com/shatim-ops/evo-cli/internal/cli ;;
 test)
 	shift
 	echo "$*" >>"$d/calls"
 	n=$(wc -l <"$d/calls")
+	# Проходы Linux и macOS идут вместе, в любом порядке: ответ — по виду
+	# прохода (половина A internal/cli — -run, B — -skip, остальные
+	# пакеты — rest), а не по номеру вызова.
+	case " $* " in
+	*" -run "*) n=A ;;
+	*" -skip "*) n=B ;;
+	*) [ -f "$d/test.rest" ] && n=rest ;;
+	esac
 	if [ -f "$d/test.$n" ]; then cat "$d/test.$n"; exit "$(cat "$d/test.$n.rc")"; fi
-	echo "ok  	pkg	0.1s"
+	pkg=pkg
+	for a in "$@"; do case $a in github.com/*) pkg=$a; break ;; esac; done
+	echo "ok  	$pkg	0.1s"
 	;;
 esac
 FAKE
@@ -46,6 +57,11 @@ case_() {
 	calls=$(cat "$FAKE_DIR/calls" 2>/dev/null)
 	local want_calls
 	want_calls=$(printf '%s\n' "$@")
+	# Вместе — порядок вызовов не задан; на Windows — задан (#494).
+	if [ "$os" != Windows ]; then
+		calls=$(sort <<<"$calls")
+		want_calls=$(sort <<<"$want_calls")
+	fi
 	if [ "$rc" != "$want" ] || [ "$got" != "$retry" ] || [ "$calls" != "$want_calls" ]; then
 		printf 'FAIL %s: код %s (ждём %s), retry «%s» (ждём «%s»)\n  вызовы:\n%s\n  ждём:\n%s\n' \
 			"$name" "$rc" "$want" "$got" "$retry" "$calls" "$want_calls"
@@ -64,10 +80,13 @@ answer() { # N КОД; вывод — stdin
 flags="-race -count=1 -shuffle=off"
 rest="$flags $m/cmd/evo $m/internal/cli"
 alone="$flags $tools"
+# Linux и macOS: остальные пакеты и две половины internal/cli вместе.
+half='^Test[A-OR]'
+together=("$flags $m/cmd/evo $tools" "$flags $m/internal/cli -run $half" "$flags $m/internal/cli -skip $half")
 crash=$(printf 'runtime: marked free object in span\nfatal error: found pointer to free object\n\ngoroutine 5 [running]:\nruntime.bgsweep(0x0)\nFAIL\t%s\t21.3s\nFAIL\n' "$tools")
 
 fresh linux
-case_ linux Linux 0 "" "$flags ./..."
+case_ linux Linux 0 "" "${together[@]}"
 
 fresh windows
 case_ windows Windows 0 "" "$rest" "$alone"
@@ -78,7 +97,7 @@ case_ windows Windows 0 "" "$rest" "$alone"
 fresh windows-pr
 EVENT=pull_request case_ windows-pr Windows 0 "" "$flags ./internal/cli ./internal/config ./internal/intent ./internal/journal ./internal/engine" "$alone"
 fresh linux-pr
-EVENT=pull_request case_ linux-pr Linux 0 "" "$flags ./..."
+EVENT=pull_request case_ linux-pr Linux 0 "" "${together[@]}"
 
 # Сбой рантайма в internal/tools: код 0, tools — к повтору.
 fresh crash
@@ -87,8 +106,15 @@ case_ crash Windows 0 "$tools" "$rest" "$alone"
 
 # Сбой рантайма на Linux: тот же повтор.
 fresh crash-linux
-answer 1 1 <<<"$crash"
-case_ crash-linux Linux 0 "$tools" "$flags ./..."
+answer rest 1 <<<"$crash"
+case_ crash-linux Linux 0 "$tools" "${together[@]}"
+
+# Падение теста в половине B internal/cli: код 1, без повтора; вывод всех
+# проходов — в журнале по порядку.
+fresh half-fail
+answer B 1 <<<"$(printf -- '--- FAIL: TestZ (0.01s)\nFAIL\nFAIL\t%s/internal/cli\t1.0s\n' "$m")"
+case_ half-fail Linux 1 "" "${together[@]}"
+grep -q -- '--- FAIL: TestZ' "$FAKE_DIR/out" || { echo "FAIL half-fail: вывод половины B не в журнале"; fail=1; }
 
 # Падение теста — не сбой: код 1, без повтора.
 fresh test-fail
@@ -104,13 +130,13 @@ case_ crash-and-fail Windows 1 "" "$rest" "$alone"
 
 # Стек через internal/config — дефект продукта, не повтор (#370).
 fresh config-stack
-answer 1 1 <<<"$(printf 'fatal error: unexpected signal during runtime execution\n%s/internal/config.privateACL(...)\n\tD:/a/evo-cli/internal/config/private_windows.go:42\nFAIL\t%s/internal/config\t1.0s\n' "$m" "$m")"
-case_ config-stack Linux 1 "" "$flags ./..."
+answer rest 1 <<<"$(printf 'fatal error: unexpected signal during runtime execution\n%s/internal/config.privateACL(...)\n\tD:/a/evo-cli/internal/config/private_windows.go:42\nFAIL\t%s/internal/config\t1.0s\n' "$m" "$m")"
+case_ config-stack Linux 1 "" "${together[@]}"
 
 # Сбой без строки FAIL пакета: повторять нечего — код 1.
 fresh no-package
-answer 1 1 <<<"$(printf 'fatal error: found pointer to free object\nruntime.bgsweep(0x0)\n')"
-case_ no-package Linux 1 "" "$flags ./..."
+answer rest 1 <<<"$(printf 'fatal error: found pointer to free object\nruntime.bgsweep(0x0)\n')"
+case_ no-package Linux 1 "" "${together[@]}"
 
 # Время пакетов — в сводке прогона (план 1.9, строка «CI», М3): самые
 # долгие пакеты по ОС; пакет дольше половины предела -timeout — заметная
@@ -131,7 +157,7 @@ slow=$(printf 'ok  \t%s/internal/cli\t640.2s\nok  \t%s/cmd/evo\t3.1s\n?   \t%s/i
 # Пакет дольше половины предела (20m → сигнал от 600 с): строка и warning,
 # код 0; в таблице — по убыванию, без пакетов без тестов.
 fresh times-over
-answer 1 0 <<<"$slow"
+answer rest 0 <<<"$slow"
 times_ times-over macOS 0 -race -timeout 20m
 has times-over summary 'Время пакетов go test — macOS'
 has times-over summary 'предел пакета 1200 с, сигнал от 600 с'
@@ -144,7 +170,7 @@ hasnt times-over summary 'internal/x'
 
 # Все пакеты в пределах: таблица есть, сигнала нет. Предел в форме -timeout=30m.
 fresh times-under
-answer 1 0 <<<"$slow"
+answer rest 0 <<<"$slow"
 times_ times-under Linux 0 -race -timeout=30m
 has times-under summary 'предел пакета 1800 с, сигнал от 900 с'
 hasnt times-under summary 'больше половины'
@@ -152,7 +178,7 @@ hasnt times-under out '::warning::go test'
 
 # Предел не задан: таблица без порога и без сигнала.
 fresh times-no-limit
-answer 1 0 <<<"$slow"
+answer rest 0 <<<"$slow"
 times_ times-no-limit Linux 0 -race
 has times-no-limit summary 'Время пакетов go test — Linux'
 hasnt times-no-limit summary 'сигнал'
@@ -161,7 +187,7 @@ hasnt times-no-limit out '::warning::go test'
 # Предел задан, но в форме, которую скрипт не разбирает (составной):
 # сигнал не пропадает молча — warning называет флаг, таблица без порога.
 fresh times-odd-limit
-answer 1 0 <<<"$slow"
+answer rest 0 <<<"$slow"
 times_ times-odd-limit Linux 0 -race -timeout 1h30m
 has times-odd-limit out '^::warning::go test: предел -timeout «1h30m» не разобран'
 has times-odd-limit summary 'Время пакетов go test — Linux'
@@ -187,19 +213,21 @@ has times-cr out '^::warning::go test, Windows: internal/cli — 640 с'
 # Ни одной строки времени не разобрано: не тишина, а warning — пустая
 # сводка не должна читаться как «всё быстро».
 fresh times-none
-answer 1 0 <<<"PASS"
+answer rest 0 <<<"PASS"
+answer A 0 <<<"PASS"
+answer B 0 <<<"PASS"
 times_ times-none Linux 0 -race -timeout 20m
 has times-none out '^::warning::go test, Linux: время пакетов не разобрано'
 
 # Ровно половина предела — ещё не сигнал.
 fresh times-edge
-answer 1 0 <<<"$(printf 'ok  \t%s/internal/cli\t600.0s\n' "$m")"
+answer rest 0 <<<"$(printf 'ok  \t%s/internal/cli\t600.0s\n' "$m")"
 times_ times-edge Linux 0 -race -timeout 20m
 hasnt times-edge out '::warning::go test'
 
 # Упавший пакет тоже в таблице (FAIL с временем); код красный, как был.
 fresh times-fail
-answer 1 1 <<<"$(printf -- '--- FAIL: TestX (0.01s)\nFAIL\nFAIL\t%s/internal/cli\t700.0s\n' "$m")"
+answer rest 1 <<<"$(printf -- '--- FAIL: TestX (0.01s)\nFAIL\nFAIL\t%s/internal/cli\t700.0s\n' "$m")"
 times_ times-fail Linux 1 -race -timeout 20m
 has times-fail summary '^| internal/cli | 700 |'
 
