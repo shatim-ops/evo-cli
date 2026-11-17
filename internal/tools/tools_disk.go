@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -127,13 +128,35 @@ func (s *Registry) handleDiskList(ctx context.Context, args map[string]any) (str
 }
 
 // diskCardFacts are the fields of the card of a disk that disk_get shows
-// as the platform reports them: a field its answer does not carry is
-// absent from the answer and named in not_checked, its type never changed
-// by a value evo would imply («Риск», conclusion 333, Д3).
-var diskCardFacts = []string{"bootable", "encrypted", "readonly", "shared", "serial_id"}
+// as the platform reports them, each with the one type it has: a field
+// its answer does not carry, or carries with another type, is absent from
+// the answer and named in not_checked — its type never changed by what the
+// platform sent or evo would imply («Риск», conclusions 333, Д3, and 336,
+// У1).
+var diskCardFacts = []struct {
+	field, as string
+	ok        func(any) bool
+}{
+	{"size", "size_gb", isNumber},
+	{"bootable", "bootable", isBool},
+	{"encrypted", "encrypted", isBool},
+	{"readonly", "readonly", isBool},
+	{"shared", "shared", isBool},
+	{"serial_id", "serial_id", isString},
+}
+
+func isBool(v any) bool   { _, ok := v.(bool); return ok }
+func isString(v any) bool { _, ok := v.(string); return ok }
+func isNumber(v any) bool {
+	switch v.(type) {
+	case float64, json.Number:
+		return true
+	}
+	return false
+}
 
 // handleDiskGet answers the card of one disk by its id, by one read
-// (110-09).
+// (110-09). The id is the call's: the card's own id is not shown.
 func (s *Registry) handleDiskGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "disk_id")
 	if id == "" {
@@ -147,7 +170,7 @@ func (s *Registry) handleDiskGet(ctx context.Context, args map[string]any) (stri
 	if err != nil {
 		return errResult(err), true
 	}
-	out := map[string]any{"id": d["id"], "name": d["name"], "size_gb": d["size"], "state": d["state"]}
+	out := map[string]any{"id": id, "name": d["name"], "state": d["state"]}
 	if dt, ok := d["disk_type"].(map[string]any); ok {
 		out["disk_type"] = dt["name"]
 	}
@@ -156,13 +179,17 @@ func (s *Registry) handleDiskGet(ctx context.Context, args map[string]any) (stri
 	}
 	var missing []map[string]any
 	for _, f := range diskCardFacts {
-		v, ok := d[f]
-		if !ok || v == nil {
-			missing = append(missing, map[string]any{"check": f,
+		v, has := d[f.field]
+		switch {
+		case !has || v == nil:
+			missing = append(missing, map[string]any{"check": f.as,
 				"why": i18n.T("the answer of Cloud.ru does not carry it", "в ответе Cloud.ru этого поля нет")})
-			continue
+		case !f.ok(v):
+			missing = append(missing, map[string]any{"check": f.as,
+				"why": i18n.T("the answer of Cloud.ru carries it with another type", "в ответе Cloud.ru у этого поля другой тип")})
+		default:
+			out[f.as] = v
 		}
-		out[f] = v
 	}
 	vms := []map[string]any{}
 	if list, ok := d["vms"].([]any); ok {
