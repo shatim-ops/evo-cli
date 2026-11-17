@@ -98,24 +98,79 @@ func TestHistory_TheCallsOfTheGateAreLines(t *testing.T) {
 	}
 }
 
-// What an answer says for the journal: one reading for every point.
+// What an answer says for the journal: one reading for every point. A
+// line closes only on an outcome that is certain; in doubt it is live
+// («Риск», conclusion 300, У1–У5): an «already» of a create carries its id;
+// a refusal that names what the call made is unknown with that id; a
+// delete that goes on is unknown; a create with no id is unknown, not a
+// change.
 func TestHistoryOutcome_OneReadingOfAnAnswer(t *testing.T) {
 	for _, c := range []struct {
 		tool, answer string
 		args         map[string]any
 		want         history.Outcome
 	}{
-		{"disk_create", `{"disk":{"id":"d-1"},"operation_id":"op-1"}`, nil, history.Outcome{Result: history.Created, ResourceID: "d-1", OperationID: "op-1"}},
-		{"secret_create", `{"status":"created"}`, map[string]any{"path": "app/db"}, history.Outcome{Result: history.Created, ResourceID: "app/db"}},
-		{"disk_delete", `{"status":"deleted"}`, map[string]any{"disk_id": "d-1"}, history.Outcome{Result: history.Deleted, ResourceID: "d-1"}},
-		{"disk_delete", `{"status":"already_deleted"}`, map[string]any{"disk_id": "d-1"}, history.Outcome{Result: history.AlreadyDeleted, ResourceID: "d-1"}},
-		{"vm_start", `{"status":"already_running"}`, nil, history.Outcome{Result: history.Found}},
+		{"disk_create", `{"disk":{"id":"d-1"},"operation_id":"op-1"}`, nil, history.Outcome{Result: history.Created, Kind: "disk", ResourceID: "d-1", OperationID: "op-1"}},
+		{"secret_create", `{"status":"created"}`, map[string]any{"path": "app/db"}, history.Outcome{Result: history.Created, Kind: "secret", ResourceID: "app/db"}},
+		{"disk_delete", `{"status":"deleted"}`, map[string]any{"disk_id": "d-1"}, history.Outcome{Result: history.Deleted, Kind: "disk", ResourceID: "d-1"}},
+		{"disk_delete", `{"status":"already_deleted"}`, map[string]any{"disk_id": "d-1"}, history.Outcome{Result: history.AlreadyDeleted, Kind: "disk", ResourceID: "d-1"}},
+		{"vm_start", `{"status":"already_running"}`, nil, history.Outcome{Result: history.Changed}},
 		{"vm_reboot", `{"status":"reboot_accepted"}`, nil, history.Outcome{Result: history.Changed}},
+		{"disk_create", `{"error":"x","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Error, Kind: "disk", Reason: "API_ERROR"}},
+		// У1: the create's «already» names the resource of the name.
+		{"disk_create", `{"status":"already_exists","disk":{"id":"d-1"}}`, nil, history.Outcome{Result: history.Found, Kind: "disk", ResourceID: "d-1"}},
+		// У2: a refusal that names what was made — a VM in an error state,
+		// billed — and a stack in part.
+		{"provision", `{"error":"x","reason":"API_ERROR","details":{"vm_id":"vm-1","floating_ip_id":"fip-1"}}`, nil, history.Outcome{Result: history.Unknown, Kind: "VM", Reason: "API_ERROR", ResourceID: "vm-1"}},
+		{"stack_apply", `{"status":"partial","job_id":"j-1"}`, nil, history.Outcome{Result: history.Unknown, JobID: "j-1"}},
 		{"stack_apply", `{"status":"running","job_id":"j-1"}`, nil, history.Outcome{Result: history.Changed, JobID: "j-1"}},
-		{"disk_create", `{"error":"x","reason":"QUOTA_EXCEEDED"}`, nil, history.Outcome{Result: history.Error, Reason: "QUOTA_EXCEEDED"}},
+		// У3: a delete that goes on.
+		{"lb_delete", `{"status":"deleting","operation_id":"op-2","next_tool":"lb_operation"}`, map[string]any{"id": "lb-1"}, history.Outcome{Result: history.Unknown, Kind: "load balancer", ResourceID: "lb-1", OperationID: "op-2"}},
+		{"destroy", `{"status":"deleting"}`, map[string]any{"vm_id": "vm-1"}, history.Outcome{Result: history.Unknown, Kind: "VM", ResourceID: "vm-1"}},
+		// У5: a create whose answer names no id.
+		{"pg_create", `{"status":"creating","operation_id":"op-1"}`, nil, history.Outcome{Result: history.Unknown, Kind: "PostgreSQL cluster", OperationID: "op-1"}},
 	} {
 		if got := historyOutcome(c.tool, c.args, c.answer); got != c.want {
-			t.Errorf("%s %s: %+v, want %+v", c.tool, c.answer, got, c.want)
+			t.Errorf("%s %s:\n got %+v\nwant %+v", c.tool, c.answer, got, c.want)
 		}
+	}
+}
+
+// What a settled record says (У1): the cut call made what its repeat made
+// or found — found, with the id; with no id, unknown; a read of evo that
+// lists a create with no id leaves it unknown, not found.
+func TestHistory_ASettledRecordKeepsTheResource(t *testing.T) {
+	for _, c := range []struct {
+		in   history.Outcome
+		want string
+	}{
+		{history.Outcome{Result: history.Created, ResourceID: "d-1"}, history.Found},
+		{history.Outcome{Result: history.Found, ResourceID: "d-1"}, history.Found},
+		{history.Outcome{Result: history.Created}, history.Unknown},
+		{history.Outcome{Result: history.Unknown, ResourceID: "d-1"}, history.Unknown},
+		{history.Outcome{Result: history.Changed}, history.Changed},
+	} {
+		if got := settledOf(c.in).Result; got != c.want {
+			t.Errorf("settledOf(%+v) = %s, want %s", c.in, got, c.want)
+		}
+	}
+	if o := settledOutcome(intent.Intent{Tool: "disk_create", Name: "data"}, ""); o.Result != history.Unknown {
+		t.Errorf("a create listed with no id: %+v, want unknown", o)
+	}
+	if o := settledOutcome(intent.Intent{Tool: "disk_create", Name: "data"}, "d-1"); o.Result != history.Found || o.ResourceID != "d-1" || o.Kind != "disk" {
+		t.Errorf("a create listed with its id: %+v", o)
+	}
+	if o := settledOutcome(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-1"}, ""); o.Result != history.Deleted || o.ResourceID != "d-1" {
+		t.Errorf("a delete whose resource is gone: %+v", o)
+	}
+	// The cut create, then its repeat answered «already exists»: the
+	// resource is live (the probe of У1).
+	lines := []history.Line{
+		{Format: history.Format, Tool: "disk_create", IntentID: "a", Outcome: history.Unknown},
+		{Format: history.Format, Tool: "disk_create", IntentID: "b", Outcome: history.Found, Kind: "disk", ResourceID: "d-1"},
+		{Format: history.Format, Tool: "disk_create", IntentID: "a", Outcome: history.Found, Kind: "disk", ResourceID: "d-1"},
+	}
+	if live := history.Live(lines); len(live) == 0 {
+		t.Error("a create cut and found by its repeat is not live")
 	}
 }

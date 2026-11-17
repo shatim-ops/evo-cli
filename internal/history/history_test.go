@@ -150,3 +150,34 @@ func TestLive_AChangeDoesNotCloseACreate(t *testing.T) {
 		t.Errorf("live %v, want %v", got, want)
 	}
 }
+
+// Liveness is by the kind and the id in a project (У4): a secret app/db
+// created in A and one deleted in B are two resources — the first stays
+// live; a delete with no project — a call by id, whose project it did not
+// know — closes the resource of that kind and id in any project; a disk
+// and a VM of the same id are two resources too. A call whose last line is
+// found with no id stays live: where its resource is, is not known (У1).
+func TestLive_ByKindAndIDInAProject(t *testing.T) {
+	l := func(intent, project, kind, outcome, resource string) Line {
+		return Line{Format: Format, IntentID: intent, ProjectID: project, Kind: kind, Outcome: outcome, ResourceID: resource}
+	}
+	ids := func(lines []Line) (out []string) {
+		for _, x := range lines {
+			out = append(out, x.IntentID)
+		}
+		return out
+	}
+	lines := []Line{
+		l("a", "A", "secret", Created, "app/db"),
+		l("b", "B", "secret", Deleted, "app/db"), // another project: a remains
+		l("c", "A", "disk", Created, "id-1"),
+		l("d", "", "disk", Deleted, "id-1"),  // by id, no project: closes c
+		l("e", "A", "VM", Created, "id-2"),   //
+		l("f", "A", "disk", Deleted, "id-2"), // another kind: e remains
+		l("g", "A", "disk", Found, ""),       // found, nowhere: live
+	}
+	got := strings.Join(ids(Live(lines)), " ")
+	if got != "a e g" {
+		t.Errorf("live %q, want \"a e g\"", got)
+	}
+}

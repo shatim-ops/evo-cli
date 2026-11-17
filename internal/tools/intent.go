@@ -147,14 +147,14 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			}
 			intent.Hold(rec, out)
 			rec.Held = true
-			intent.Settle(dir, rec, out)
+			intent.Settle(dir, rec, settledOf(out))
 			return
 		}
 		// A create the platform took whose operation goes on: the same
 		// call again reads it (rememberMade, repeatOfMade).
 		r.rememberMade(rec, answer)
 		intent.Close(rec, out)
-		intent.Settle(dir, rec, out)
+		intent.Settle(dir, rec, settledOf(out))
 	}, nil
 }
 
@@ -468,8 +468,8 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 		// What the cut call made is listed: its outcome is read, the
 		// record closes, and nobody is asked about it.
 		if everySendIsAChange[name].made {
-			if _, listed := r.checkByList(ctx, in, in.ProjectID); listed {
-				intent.Close(in, history.Outcome{Result: history.Found})
+			if _, listed, id := r.checkByList(ctx, in, in.ProjectID); listed {
+				intent.Close(in, settledOutcome(in, id))
 				forgetPending(ctx)
 				continue
 			}
@@ -479,7 +479,8 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 		if settled := everySendIsAChange[name].settledBy; settled != nil {
 			switch o, err := settled(ctx, r, args); {
 			case err == nil && o == outcomeMade:
-				intent.Close(in, history.Outcome{Result: history.Found})
+				// The change is made on a resource that was there.
+				intent.Close(in, history.Outcome{Result: history.Changed})
 				forgetPending(ctx)
 				continue
 			case err == nil && o == outcomeGoesOn:
@@ -1109,7 +1110,7 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 // its outcome is now known (the record closes): a delete of a resource
 // addressed by id is checked by a read of that id (checkByID), any other
 // by the list of what it names (checkByList).
-func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool) {
+func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool, listedID string) {
 	if _, k, id, ok := deleteByID(in); ok {
 		return r.checkByID(ctx, in, k, id, eng.Maker())
 	}
@@ -1124,33 +1125,33 @@ func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engi
 // the resource, and a read that failed says nothing. A kind with no read
 // by id is never closed here — the same delete on it settles the record.
 // found is "" when doctor has nothing to add to the record's words.
-func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind, id string, cur *state.Maker) (found string, settled bool) {
+func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind, id string, cur *state.Maker) (found string, settled bool, gone string) {
 	what, tool := quoteCloud(id), quoteCloud(in.Tool)
 	if k.card == nil {
 		// Never closed here; the record's own words say why (pendingNote).
-		return "", false
+		return "", false, ""
 	}
 	if in.Key.Other(cur) {
 		// The record's own words say it (pendingNote).
-		return "", false
+		return "", false, ""
 	}
 	if in.Key == nil || cur == nil {
 		return i18n.Tf("not checked: the record or this run names no key, and another key may not see %s — run doctor with the key that sent the delete",
-			"не проверено: запись или этот запуск не называет ключ, а другой ключ может не видеть %s — запустите doctor с ключом, который отправил удаление", what), false
+			"не проверено: запись или этот запуск не называет ключ, а другой ключ может не видеть %s — запустите doctor с ключом, который отправил удаление", what), false, ""
 	}
 	m, err := k.card(ctx, &ownerCall{r: r, args: map[string]any{}}, id)
 	switch {
 	case err == nil:
 		status := firstNonEmptyStr(stringArg(m, "status"), stringArg(m, "state"))
 		return i18n.Tf("%s %s is still there (status %s): the delete did not take effect, or is still going — run doctor again, or the same %s",
-			"%s %s ещё есть (статус %s): удаление не прошло или ещё идёт — повторите doctor или тот же %s", k.what, what, quoteCloud(status), tool), false
+			"%s %s ещё есть (статус %s): удаление не прошло или ещё идёт — повторите doctor или тот же %s", k.what, what, quoteCloud(status), tool), false, ""
 	case notThere(err):
 		return i18n.Tf("the read of %s %s by id, with the key that sent the delete, answers that it is not there: the delete took effect; the record is closed",
-			"чтение ресурса «%s» %s по id ключом, который отправил удаление, отвечает, что его нет: удаление прошло; запись закрыта", k.what, what), true
+			"чтение ресурса «%s» %s по id ключом, который отправил удаление, отвечает, что его нет: удаление прошло; запись закрыта", k.what, what), true, ""
 	}
 	reason, _, _ := errReason(err, nil)
 	return i18n.Tf("could not read %s %s by id (%s): not checked — run doctor again",
-		"не удалось прочитать ресурс «%s» %s по id (%s): не проверено — повторите doctor", k.what, what, reason), false
+		"не удалось прочитать ресурс «%s» %s по id (%s): не проверено — повторите doctor", k.what, what, reason), false, ""
 }
 
 // checkByList reads the list of what in names (Decl.Created: list, field),
@@ -1160,12 +1161,12 @@ func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind
 // known, and the record closes. Anything else — not listed (yet), still
 // listed, a list that needs another argument or did not answer — keeps
 // the record; found tells what the list said, "" when it was not read.
-func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active string) (found string, settled bool) {
+func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active string) (found string, settled bool, listedID string) {
 	// The list is the active project's: an intent of another one is not
 	// read in it — a target of a delete there is «not listed» here
 	// whatever happened to it («Риск», conclusion 47; the lesson of L3).
 	if in.ProjectID != "" && active != "" && in.ProjectID != active {
-		return i18n.Tf("the record is of project %s, the active one is %s: check it there", "запись из проекта %s, активный — %s: проверьте в нём", quoteCloud(in.ProjectID), active), false
+		return i18n.Tf("the record is of project %s, the active one is %s: check it there", "запись из проекта %s, активный — %s: проверьте в нём", quoteCloud(in.ProjectID), active), false, ""
 	}
 	c, isCreate := createdOf(in.Tool)
 	_, targetID, isDelete := strings.Cut(in.Target, "=")
@@ -1184,7 +1185,7 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	parentArg, parentID, _ := strings.Cut(in.Target, "=")
 	inParent := isCreate && len(c.listArgs) == 1 && c.listArgs[0] == parentArg && parentID != ""
 	if c.list == "" || c.field == "" || (len(c.listArgs) > 0 && !inParent) || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
-		return "", false
+		return "", false, ""
 	}
 	listArgs := map[string]any{}
 	if inParent {
@@ -1196,7 +1197,7 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	text, isErr := h(ctx, listArgs)
 	var m map[string]any
 	if isErr || json.Unmarshal([]byte(text), &m) != nil {
-		return "", false
+		return "", false, ""
 	}
 	items, _ := m[c.field].([]any)
 	// found tells a match; listed is its id, which the lists of databases
@@ -1221,13 +1222,13 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	}
 	switch {
 	case isCreate && matched:
-		return i18n.Tf("%s lists %s%s: the create took effect; the record is closed", "%s показывает %s%s: создание прошло; запись закрыта", c.list, quoteCloud(in.Name), idPart(listed)), true
+		return i18n.Tf("%s lists %s%s: the create took effect; the record is closed", "%s показывает %s%s: создание прошло; запись закрыта", c.list, quoteCloud(in.Name), idPart(listed)), true, listed
 	case isCreate:
-		return i18n.Tf("%s has no %s yet: the cloud did not make it, or still makes it — run doctor again, or the same %s", "в %s пока нет %s: облако его не создало или ещё создаёт — повторите doctor или тот же %s", c.list, quoteCloud(in.Name), quoteCloud(in.Tool)), false
+		return i18n.Tf("%s has no %s yet: the cloud did not make it, or still makes it — run doctor again, or the same %s", "в %s пока нет %s: облако его не создало или ещё создаёт — повторите doctor или тот же %s", c.list, quoteCloud(in.Name), quoteCloud(in.Tool)), false, ""
 	case !matched:
-		return i18n.Tf("%s no longer lists %s: the delete took effect; the record is closed", "%s больше не показывает %s: удаление прошло; запись закрыта", c.list, quoteCloud(targetID)), true
+		return i18n.Tf("%s no longer lists %s: the delete took effect; the record is closed", "%s больше не показывает %s: удаление прошло; запись закрыта", c.list, quoteCloud(targetID)), true, ""
 	}
-	return i18n.Tf("%s still lists %s: the delete did not take effect (yet) — run doctor again, or the same %s", "%s ещё показывает %s: удаление не прошло (или идёт) — повторите doctor или тот же %s", c.list, quoteCloud(targetID), quoteCloud(in.Tool)), false
+	return i18n.Tf("%s still lists %s: the delete did not take effect (yet) — run doctor again, or the same %s", "%s ещё показывает %s: удаление не прошло (или идёт) — повторите doctor или тот же %s", c.list, quoteCloud(targetID), quoteCloud(in.Tool)), false, ""
 }
 
 // listToolOf is the read that names what tool may have made: <service>_list

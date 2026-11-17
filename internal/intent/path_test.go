@@ -41,7 +41,7 @@ func TestIntent_ReadIDDoesNotBuildADeletePath(t *testing.T) {
 		}
 		Close(in, history.Outcome{Result: history.Found})
 	}
-	Settle(dir, Intent{Tool: "vm_create", Name: "web", ProjectID: "p"}, history.Outcome{})
+	Settle(dir, Intent{Tool: "vm_create", Name: "web", ProjectID: "p"}, history.Outcome{Result: history.Found})
 	if _, err := os.Stat(victim); err != nil {
 		t.Fatalf("a planted intent removed %s outside the directory of intents: %v", victim, err)
 	}

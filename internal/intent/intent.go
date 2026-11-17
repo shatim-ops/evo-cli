@@ -431,7 +431,8 @@ func scan(dir string) (out []Intent, foreign []string) {
 // of its own view, not the outcome of the cut call (R-82, «Риск»,
 // conclusion 128). A record with a print and no key is of a call whose
 // key was not known: no repeat settles it. Each record removed gets the
-// line found, with what out says of the call that settled it.
+// line out: what the call that settled it says of the cut one — the
+// caller's to tell (found with the id it made, removed, unknown).
 func Settle(dir string, done Intent, out history.Outcome) (kept []Intent) {
 	if done.Name == "" && done.Target == "" {
 		return nil
@@ -460,7 +461,7 @@ func Settle(dir string, done Intent, out history.Outcome) (kept []Intent) {
 		if in.StartedAt.After(done.StartedAt) || in.Held || in.inFlight() || (in.Print != "" && in.Key == nil) {
 			continue
 		}
-		journal(in, history.Outcome{Result: history.Found, ResourceID: out.ResourceID, OperationID: out.OperationID, JobID: out.JobID})
+		journal(in, out)
 		remove(dir, in.ID)
 	}
 	return kept
@@ -489,7 +490,7 @@ func journal(in Intent, out history.Outcome) {
 	}
 	l := history.Line{Time: clock.Now().UTC().Format(time.RFC3339), Tool: in.Tool, Surface: surface,
 		ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target,
-		ResourceID: out.ResourceID, Outcome: out.Result, Reason: out.Reason, OperationID: out.OperationID,
+		Kind: out.Kind, ResourceID: out.ResourceID, Outcome: out.Result, Reason: out.Reason, OperationID: out.OperationID,
 		IntentID: in.ID, JobID: out.JobID, StateDir: stateDirOf(in.Dir)}
 	if err := appendLine(history.DirOf(in.Dir), l); err != nil {
 		config.Warn(i18n.Tf("the journal of changes in %s got no line of %s (%v); the call is as it answered",
