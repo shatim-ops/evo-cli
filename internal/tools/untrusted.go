@@ -82,29 +82,31 @@ func serviceText(err error) bool {
 // #2243–#2247). The marker covers evo's words in them too (docs/mcp.md).
 var alwaysUntrusted = []string{"error", "warnings", "failures", "failed", "preview", "hint"}
 
-// markUntrusted adds "_untrusted" to the answers of every tool: the fields
-// of alwaysUntrusted the answer has, those of u (Decl.Untrusted) it has,
-// and those the answer marks itself (an error's, errAnswer).
+// markAlways adds to "_untrusted" of every answer the fields of
+// alwaysUntrusted it has. It stands outside every policy of the call
+// (registry.go): what a policy reads from the marker — a secret write
+// hides an error whose text is the service's (untrustedError) — is the
+// marker of the tool and of errAnswer, not this one.
+func markAlways(next Handler) Handler {
+	return markUntrusted(untrustedAnswer{fields: alwaysUntrusted}, next)
+}
+
+// markUntrusted adds "_untrusted" to the answers of a tool that declares
+// them (Decl.Untrusted): the fields of u the answer has, beside those the
+// answer marks itself (an error's, errAnswer).
 func markUntrusted(u untrustedAnswer, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		text, isErr := next(ctx, args)
+		if u.whole && isErr {
+			return text, isErr
+		}
 		dec := json.NewDecoder(bytes.NewReader([]byte(text)))
 		dec.UseNumber()
 		var m map[string]any
 		if dec.Decode(&m) != nil {
 			return text, isErr
 		}
-		var has []string
-		// An error answer of a tool whose answer is the body of its
-		// service is evo's: only the fields every answer marks.
-		if !u.whole || !isErr {
-			has = u.in(m)
-		}
-		for _, f := range alwaysUntrusted {
-			if _, ok := m[f]; ok && !slices.Contains(has, f) {
-				has = append(has, f)
-			}
-		}
+		has := u.in(m)
 		if len(has) == 0 {
 			return text, isErr
 		}

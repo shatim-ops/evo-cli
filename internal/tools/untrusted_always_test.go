@@ -15,39 +15,29 @@ import (
 )
 
 // The fields every answer marks (alwaysUntrusted) are in "_untrusted"
-// whenever the answer has them, whatever the tool declares — an answer of
-// success and an error alike; a tool whose answer is its service's body
-// keeps its error otherwise evo's (owner's decision 17.11, #2254, option Б).
+// whenever the answer has them, an answer of success and an error alike,
+// beside what the tool and errAnswer mark (owner's decision 17.11, #2254,
+// option Б).
 func TestUntrusted_AlwaysFieldsMarkedByTheOnePoint(t *testing.T) {
-	answer := `{"status":"partial","error":"e","hint":"h","warnings":["w"],"failures":[{"x":1}],"failed":["a"],"preview":{"name":"n"},"note":"evo"}`
-	for _, c := range []struct {
-		name  string
-		u     untrustedAnswer
-		isErr bool
-		want  []string
-	}{
-		{"no declaration", untrustedAnswer{}, false, alwaysUntrusted},
-		{"no declaration, an error", untrustedAnswer{}, true, alwaysUntrusted},
-		{"declared fields", untrustedAnswer{fields: []string{"note"}}, false, append([]string{"note"}, alwaysUntrusted...)},
-		{"whole, an error", untrustedAnswer{whole: true}, true, alwaysUntrusted},
-	} {
-		h := markUntrusted(c.u, func(context.Context, map[string]any) (string, bool) { return answer, c.isErr })
-		text, _ := h(context.Background(), nil)
+	answer := `{"status":"partial","error":"e","hint":"h","warnings":["w"],"failures":[{"x":1}],"failed":["a"],"preview":{"name":"n"},"note":"evo","_untrusted":["note"]}`
+	for _, isErr := range []bool{false, true} {
+		h := markAlways(func(context.Context, map[string]any) (string, bool) { return answer, isErr })
+		text, gotErr := h(context.Background(), nil)
 		var m map[string]any
-		if err := json.Unmarshal([]byte(text), &m); err != nil {
+		if err := json.Unmarshal([]byte(text), &m); err != nil || gotErr != isErr {
 			t.Fatal(err)
 		}
 		got := stringList(m["_untrusted"])
-		for _, f := range c.want {
+		for _, f := range append([]string{"note"}, alwaysUntrusted...) {
 			if !slices.Contains(got, f) {
-				t.Errorf("%s: _untrusted %v lacks %s", c.name, got, f)
+				t.Errorf("isErr=%v: _untrusted %v lacks %s", isErr, got, f)
 			}
 		}
-		if c.name == "whole, an error" && slices.Contains(got, "status") {
-			t.Errorf("%s: an error of a whole answer marks its status: %v", c.name, got)
+		if slices.Contains(got, "status") {
+			t.Errorf("isErr=%v: a field not of the list is marked: %v", isErr, got)
 		}
 	}
-	plain := markUntrusted(untrustedAnswer{}, func(context.Context, map[string]any) (string, bool) { return `{"status":"ok"}`, false })
+	plain := markAlways(func(context.Context, map[string]any) (string, bool) { return `{"status":"ok"}`, false })
 	if text, _ := plain(context.Background(), nil); text != `{"status":"ok"}` {
 		t.Errorf("an answer with none of the fields changed: %s", text)
 	}

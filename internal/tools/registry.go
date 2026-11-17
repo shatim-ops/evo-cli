@@ -420,14 +420,16 @@ func New(factory EngineFactory) *Registry {
 			if echoed := t.Decl.EchoedArgs; echoed != nil {
 				h = namedArgs(echoed, h)
 			}
-			// Every tool: the fields every answer marks (alwaysUntrusted),
-			// and those the tool declares (Decl.Untrusted).
-			h = markUntrusted(t.Decl.Untrusted, h)
+			if u := t.Decl.Untrusted; u.marked() {
+				h = markUntrusted(u, h)
+			}
 			if r.unchecked == nil {
 				r.unchecked = map[string]Handler{}
 			}
 			r.unchecked[t.Name] = checkedCreateName(t.Name, r.intended(*t, h))
-			r.handlers[t.Name] = r.budgeted(t.Name, outer(t.Name, t.InputSchema, r.unchecked[t.Name]))
+			// Outermost: the fields every answer marks (markAlways), over
+			// the answer every surface shows.
+			r.handlers[t.Name] = markAlways(r.budgeted(t.Name, outer(t.Name, t.InputSchema, r.unchecked[t.Name])))
 		}
 		t.Handler = r.handlers[t.Name]
 	}
@@ -465,7 +467,7 @@ func (r *Registry) Wrap(name string, wrap func(next Handler) Handler) bool {
 	}
 	t, _ := r.Lookup(name)
 	r.unchecked[name] = wrap(next)
-	h := r.budgeted(name, outer(name, t.InputSchema, r.unchecked[name]))
+	h := markAlways(r.budgeted(name, outer(name, t.InputSchema, r.unchecked[name])))
 	r.handlers[name] = h
 	for i := range r.tools {
 		if r.tools[i].Name == name {
