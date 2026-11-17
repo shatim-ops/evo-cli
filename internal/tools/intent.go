@@ -233,6 +233,12 @@ type changeRule struct {
 	// that is taken — the question is asked only while the list does not
 	// show it («Риск», conclusion 179, У1).
 	made bool
+	// notBilled: what the tool makes has no price of its own — a database
+	// or a user of a cluster, which is billed. The question after a cut
+	// call names a second billed resource only of a billed one: a price
+	// is said where a tariff says it (CLAUDE.md §6, axis 4; «Риск»,
+	// conclusion 288, У4). The zero value is billed.
+	notBilled bool
 	// settledBy reads the resource and says what the record of a cut call
 	// of the tool means now: the change is made (the record closes, no
 	// question), it goes on (no question, the plan waits for it), or the
@@ -270,6 +276,14 @@ func paidCreate(tool, parent string, name func(args map[string]any) string) chan
 			}
 			return name(args), target, nil
 		}}
+}
+
+// unbilledCreate is paidCreate of a resource with no price of its own
+// (notBilled).
+func unbilledCreate(tool, parent string, name func(args map[string]any) string) changeRule {
+	rule := paidCreate(tool, parent, name)
+	rule.notBilled = true
+	return rule
 }
 
 // nameArg is the name of what a create makes when the call must give it.
@@ -326,6 +340,20 @@ var everySendIsAChange = map[string]changeRule{
 	"ar_create":        paidCreate("ar_create", "", nameArg),
 	"cert_import":      paidCreate("cert_import", "", nameArg),
 	"pg_backup_create": paidCreate("pg_backup_create", "cluster_id", nameArg),
+	// D112 (the owner's decision of 17.11, #1999): a create whose 2xx
+	// names nothing it made (receipt.ErrUnusable) has an unknown outcome,
+	// and no second create follows it — the same call again asks, as a
+	// repeat of D107 does: a database or a user of a cluster while its list
+	// does not show the name, a version of a secret always, for a second
+	// version is a second change (Астра, #2113).
+	"pg_db_create":   unbilledCreate("pg_db_create", "cluster_id", nameArg),
+	"pg_user_create": unbilledCreate("pg_user_create", "cluster_id", nameArg),
+	"secret_add_version": {read: "secret_get", target: func(_ context.Context, _ *Registry, args map[string]any) (string, string, error) {
+		if path := stringArg(args, "path"); path != "" {
+			return "", "path=" + path, nil
+		}
+		return "", "", nil
+	}},
 }
 
 // spelledArgs are the arguments that name the resource of the record in
@@ -469,6 +497,9 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 
 // cutCallWarning is what the question says of the cut calls mine of tool
 // name, and the field that names them: the last one, how many there were —
+// cut, or answered with no word of what was done (a 2xx with no receipt,
+// D112): the record does not tell the two apart, and the words fit both
+// («Риск», conclusion 288, У3) —
 // each may have taken effect — and the read that shows the resource
 // (read_tool: a command of the CLI names its own command by it). It sends to the person, not to
 // «confirmed again»: the consent given was to one change («Риск»,
@@ -479,15 +510,22 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 	rule := everySendIsAChange[name]
 	interrupted = map[string]any{"tool": name, "read_tool": rule.read, "started_at": last.StartedAt.UTC().Format(time.RFC3339), "calls": len(mine)}
 	if rule.made {
-		// A create: what is at stake is a second billed resource, and
-		// the list is where the first one shows — when it shows, which
-		// evo does not say of the platform (a hypothesis, no run).
-		return i18n.Tf("An earlier %s of %s, started %s, got no answer from the cloud: the request may have been accepted, and what it made may not be listed yet — %s does not show it now. Nothing was sent. A yes now makes a second billed resource of the name if the first request was taken: check %s again first, ask the person whether to send one more, and with their yes call %s with confirmed=true.",
-			"Предыдущий вызов %s для %s, начатый %s, не получил ответа облака: запрос мог быть принят, а созданное может ещё не быть в списке — %s сейчас его не показывает. Ничего не отправлено. «Да» сейчас создаст второй платный ресурс с этим именем, если первый запрос был принят: сначала проверьте %s ещё раз, спросите человека, отправлять ли ещё один, и с его «да» вызовите %s с confirmed=true.",
-			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read, rule.read, name), interrupted
+		// A create: what is at stake is a second resource — billed, unless
+		// the rule says it has no price of its own (notBilled) — and the
+		// list is where the first one shows — when it shows, which evo
+		// does not say of the platform (a hypothesis, no run).
+		stake := i18n.T("A yes now makes a second billed resource of the name if the first request was taken",
+			"«Да» сейчас создаст второй платный ресурс с этим именем, если первый запрос был принят")
+		if rule.notBilled {
+			stake = i18n.T("A yes now sends the create of the name a second time, though the first may have made it",
+				"«Да» сейчас отправит создание с этим именем ещё раз, хотя первое могло его сделать")
+		}
+		return i18n.Tf("An earlier %s of %s, started %s, got no answer that names what it made — it was cut, or the cloud's answer did not name it: the request may have been accepted, and what it made may not be listed yet — %s does not show it now. Nothing was sent. %s: check %s again first, ask the person whether to send one more, and with their yes call %s with confirmed=true.",
+			"Предыдущий вызов %s для %s, начатый %s, не получил ответа, который называет созданное, — он оборван или ответ облака его не назвал: запрос мог быть принят, а созданное может ещё не быть в списке — %s сейчас его не показывает. Ничего не отправлено. %s: сначала проверьте %s ещё раз, спросите человека, отправлять ли ещё один, и с его «да» вызовите %s с confirmed=true.",
+			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read, stake, rule.read, name), interrupted
 	}
-	return i18n.Tf("An earlier %s of %s, started %s, was cut before the cloud answered: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
-			"Предыдущий вызов %s для %s, начатый %s, оборван до ответа облака: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
+	return i18n.Tf("An earlier %s of %s, started %s, was cut, or the cloud's answer did not name what was done: its outcome is unknown, and it may have taken effect. A call now is one more change, not a repeat of that one, so nothing was sent. %s shows the resource now; ask the person whether to send one more, and with their yes call %s with confirmed=true.",
+			"Предыдущий вызов %s для %s, начатый %s, оборван или ответ облака не назвал сделанное: исход неизвестен, изменение могло произойти. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Ресурс сейчас показывает %s; спросите человека, отправлять ли ещё одно, и с его «да» вызовите %s с confirmed=true.",
 			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read, name),
 		interrupted
 }

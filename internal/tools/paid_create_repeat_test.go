@@ -219,7 +219,7 @@ var repeatNotAsked = map[string]string{
 	"dns_record_create": repeatMeasured, "snat_create": repeatMeasured, "vpc_route_create": repeatMeasured,
 	"ca_deploy": repeatOutside, "cert_issue_le": repeatOutside, "deploy": repeatOutside, "deploy_apply": repeatOutside,
 	"disk_create": repeatOutside, "dns_zone_create": repeatOutside, "image_create": repeatOutside, "k8s_add_addon": repeatOutside,
-	"pg_db_create": repeatOutside, "pg_user_create": repeatOutside, "provision": repeatOutside, "s3_bucket_create": repeatOutside,
+	"provision": repeatOutside, "s3_bucket_create": repeatOutside,
 	"s3_put": repeatOutside, "secret_create": repeatOutside, "subnet_create": repeatOutside,
 }
 

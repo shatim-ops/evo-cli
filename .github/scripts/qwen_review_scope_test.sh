@@ -39,8 +39,8 @@ run() { # ИМЯ заголовок пути ждём(review|skip) [COMMENT_ID]
   ! grep -q 'diff пустой' "$work/post" || got=review
   if [ "$got" = "$4" ]; then echo "ok   $1"; else echo "FAIL $1: $got, ждали $4"; fail=1; fi
 }
-run "продуктовый PR без секретов и согласия" "Tab (продукт, 1.5)" "internal/tools/completion.go" skip
-run "продуктовый PR: гейт согласия" "Гейт (продукт, 1.6)" "internal/tools/completion.go internal/tools/gate.go" review
+run "продуктовый PR без секретов и согласия" "Tab (продукт, 1.5)" "internal/tools/opanswer.go" skip
+run "продуктовый PR: гейт согласия" "Гейт (продукт, 1.6)" "internal/tools/opanswer.go internal/tools/gate.go" review
 run "продуктовый PR: маскирование HTTP" "H7 (продукт, 1.6)" "internal/mcp/http_redact.go" review
 run "продуктовый PR: объявления согласия" "Согласие (продукт, 1.6)" "internal/tools/registry.go" review
 run "продуктовый PR: токен HTTP" "H1 (продукт, 1.6)" "internal/mcp/http.go" review
@@ -50,21 +50,21 @@ run "только тесты кода согласия" "Инвариант (п�
 run "процесс, только тесты и документы" "Инвариант (процесс)" "internal/tools/x_test.go docs/a.md README.md" skip
 run "процесс, правит .github/" "CI (процесс)" ".github/workflows/ci.yml" review
 run "процесс, тест правил workflows" "Инвариант (процесс)" "internal/workflows/x_test.go" review
-run "команда /qwen review на любом PR" "Tab (продукт, 1.5)" "internal/tools/completion.go" review 123
+run "команда /qwen review на любом PR" "Tab (продукт, 1.5)" "internal/tools/opanswer.go" review 123
 # push в PR (synchronize): пути PR — FAKE_NAMES, пути push — FAKE_PUSHED.
 b=1111111111111111111111111111111111111111 a=2222222222222222222222222222222222222222
 ACTION=synchronize BEFORE=$b AFTER=$a FAKE_PUSHED=".github/workflows/ci.yml internal/vmstage/x_test.go" \
   run "push добавил в PR .github/" "Тест (процесс)" ".github/workflows/ci.yml internal/vmstage/x_test.go" review
 ACTION=synchronize BEFORE=$b AFTER=$a FAKE_PUSHED="internal/tools/x_test.go" \
   run "push в чувствительный PR без чувствительных путей" "CI (процесс)" ".github/workflows/ci.yml internal/tools/x_test.go" skip
-ACTION=synchronize BEFORE=$b AFTER=$a FAKE_PUSHED=".github/workflows/ci.yml internal/tools/completion.go" \
-  run "push — влитый main с правкой .github/, PR её не меняет" "Tab (продукт, 1.7)" "internal/tools/completion.go" skip
+ACTION=synchronize BEFORE=$b AFTER=$a FAKE_PUSHED=".github/workflows/ci.yml internal/tools/opanswer.go" \
+  run "push — влитый main с правкой .github/, PR её не меняет" "Tab (продукт, 1.7)" "internal/tools/opanswer.go" skip
 ACTION=synchronize BEFORE=$b AFTER=$a FAKE_PUSHED="internal/tools/gate.go" \
   run "push меняет код согласия" "Гейт (продукт, 1.7)" "internal/tools/gate.go" review
 ACTION=synchronize BEFORE=0000000000000000000000000000000000000000 AFTER=$a FAKE_PUSHED="" \
   run "push без прежнего SHA — по diff PR" "CI (процесс)" ".github/workflows/ci.yml" review
 ACTION=synchronize BEFORE=$b AFTER=$a FAKE_PUSHED="" FAKE_NO_BEFORE=1 \
-  run "прежний SHA не получен (force-push) — по diff PR" "Tab (продукт, 1.7)" "internal/tools/completion.go" skip
+  run "прежний SHA не получен (force-push) — по diff PR" "Tab (продукт, 1.7)" "internal/tools/opanswer.go" skip
 ACTION=synchronize BEFORE=$b AFTER=$a FAKE_PUSHED="" FAKE_NO_BEFORE=1 \
   run "прежний SHA не получен, PR чувствительный — по diff PR" "CI (процесс)" ".github/workflows/ci.yml" review
 exit "$fail"
