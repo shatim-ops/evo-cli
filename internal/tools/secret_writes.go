@@ -17,6 +17,14 @@ import (
 // holds. A key with no set keeps a scalar or a list of scalars only.
 type fieldSet map[string]fieldSet
 
+// anyKey in a set is any key of the object: the object is a free map of
+// what the call itself set (labels), shown as its scalar values only — a
+// value that is an object or a list stays in.
+const anyKey = "*"
+
+// scalarMap is the set of such a map.
+var scalarMap = fieldSet{anyKey: nil}
+
 // publicObject is what of the answer of a write with a secret input is
 // public: the object the service answered, under field, with keys.
 type publicObject struct {
@@ -42,7 +50,7 @@ var secretWrites = map[string]publicObject{
 var (
 	secretVersionKeys = fieldSet{"id": nil, "createdAt": nil, "state": nil}
 	secretKeys        = fieldSet{"id": nil, "path": nil, "name": nil, "description": nil, "projectId": nil, "folderId": nil,
-		"serviceInstanceId": nil, "kmsKeyId": nil, "labels": nil, "createdAt": nil, "primary": secretVersionKeys, "versions": secretVersionKeys}
+		"serviceInstanceId": nil, "kmsKeyId": nil, "labels": scalarMap, "createdAt": nil, "primary": secretVersionKeys, "versions": secretVersionKeys}
 	pgRoleKeys = fieldSet{"name": nil}
 	pgUserKeys = fieldSet{"id": nil, "name": nil, "cluster_id": nil, "status": nil, "created_at": nil,
 		"granted_roles": pgRoleKeys, "supported_roles": pgRoleKeys}
@@ -50,7 +58,7 @@ var (
 		"issuer": nil, "status": nil, "enabled": nil, "errorCode": nil, "privateKeyAlgorithm": nil, "createdAt": nil, "expiresAt": nil,
 		"serverCertificate": nil, "intermediateCertificate": nil}
 	certificateKeys = fieldSet{"id": nil, "name": nil, "description": nil, "type": nil, "status": nil, "errorCode": nil,
-		"projectId": nil, "serviceInstanceId": nil, "kmsKeyId": nil, "labels": nil, "createdAt": nil, "updatedAt": nil, "expiresAt": nil,
+		"projectId": nil, "serviceInstanceId": nil, "kmsKeyId": nil, "labels": scalarMap, "createdAt": nil, "updatedAt": nil, "expiresAt": nil,
 		"primary": certificateVersionKeys, "issueState": fieldSet{"current": certificateVersionKeys, "processing": certificateVersionKeys}}
 )
 
@@ -147,6 +155,17 @@ func publicValue(v any, keys fieldSet) (any, bool) {
 	case map[string]any:
 		if keys == nil {
 			return nil, false
+		}
+		if _, free := keys[anyKey]; free {
+			out := make(map[string]any, len(x))
+			for k, e := range x {
+				switch e.(type) {
+				case map[string]any, []any:
+				default:
+					out[k] = e
+				}
+			}
+			return out, true
 		}
 		return publicFields(x, keys), true
 	case []any:
