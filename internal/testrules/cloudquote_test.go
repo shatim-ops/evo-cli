@@ -576,13 +576,26 @@ type cloudFlow struct {
 	// (cloudResults); nil knows no function.
 	calls func(*ast.CallExpr) []bool
 	info  *types.Info
+	// ever: the variables given a value of the cloud anywhere in the body;
+	// captured: the names a function literal reads, inLit its depth. A
+	// literal captures the variable, not its value at the literal: called
+	// later, it reads what the variable holds then (Астра #2304).
+	ever     map[types.Object]bool
+	captured []*ast.Ident
+	inLit    int
 }
 
 // newCloudFlow walks body once.
 func newCloudFlow(body *ast.BlockStmt, info *types.Info, calls func(*ast.CallExpr) []bool) *cloudFlow {
 	f := &cloudFlow{held: map[types.Object]bool{}, declAt: map[types.Object]int{},
-		use: map[*ast.Ident]bool{}, guarded: map[*ast.Ident]bool{}, fields: map[types.Object]map[string]bool{}, calls: calls, info: info}
+		use: map[*ast.Ident]bool{}, guarded: map[*ast.Ident]bool{}, fields: map[types.Object]map[string]bool{}, calls: calls, info: info,
+		ever: map[types.Object]bool{}}
 	f.stmt(body, nil)
+	for _, id := range f.captured {
+		if o := f.obj(id); o != nil && f.ever[o] {
+			f.use[id] = true
+		}
+	}
 	return f
 }
 
@@ -997,9 +1010,14 @@ func (f *cloudFlow) expr(e ast.Expr, guards map[types.Object]bool) {
 	ast.Inspect(e, func(c ast.Node) bool {
 		switch c := c.(type) {
 		case *ast.FuncLit:
+			f.inLit++
 			f.stmt(c.Body, guards)
+			f.inLit--
 			return false
 		case *ast.Ident:
+			if f.inLit > 0 {
+				f.captured = append(f.captured, c)
+			}
 			if o := f.obj(c); o != nil {
 				f.use[c] = f.held[o]
 				f.guarded[c] = guards[o]
@@ -1031,6 +1049,9 @@ func (f *cloudFlow) assign(l ast.Expr, held bool, guards map[types.Object]bool) 
 		// A check of isUUID holds the value it checked, not the next one
 		// the name is given in the branch («Риск», 334, У2).
 		delete(guards, o)
+		if held {
+			f.ever[o] = true
+		}
 		if f.info.Defs[v] != nil {
 			// Declared here (a name := reuses one declared before).
 			f.declAt[o] = f.depth
@@ -1072,6 +1093,16 @@ func (f *cloudFlow) structFields(l, r ast.Expr) {
 	o := f.obj(id)
 	if u, isAddr := r.(*ast.UnaryExpr); isAddr && u.Op == token.AND {
 		r = u.X
+	}
+	if st, isDeref := r.(*ast.StarExpr); isDeref {
+		r = st.X
+	}
+	if src, isName := r.(*ast.Ident); isName {
+		// b := a: the copy holds the fields a holds (Астра #2305).
+		if from := f.obj(src); from != nil && f.fields[from] != nil {
+			f.fields[o] = maps.Clone(f.fields[from])
+			return
+		}
 	}
 	lit, ok := r.(*ast.CompositeLit)
 	if !ok {
@@ -1354,6 +1385,11 @@ func own() string { return "unknown" }
 		`return fmt.Sprintf("--vm-id %[2]s", "x", vm.ID)`,
 		`return fmt.Sprintf("vm %[2]s, then %s", "x", quoteCloud(vm.ID), vm.Status)`,
 		`v := vm.ID; if isUUID(v) { v = vm.Status; return fmt.Sprintf("vm_id=%s", v) }; return ""`,
+		// Астра #2304, #2305: a literal of a function that reads a variable
+		// given the cloud's value after it; a copy of a struct.
+		`v := "unknown"; f := func() string { return fmt.Sprintf("it is %s now", v) }; v = vm.Status; return f()`,
+		`a := struct{Text string}{Text: vm.Status}; b := a; return fmt.Sprintf("it is %s now", b.Text)`,
+		`a := &struct{Text string}{Text: vm.Status}; b := *a; return fmt.Sprintf("it is %s now", b.Text)`,
 	}
 	safe := []string{
 		`v := vm.Status; return fmt.Sprintf("it is %s now", quoteCloud(v))`,
@@ -1372,6 +1408,8 @@ func own() string { return "unknown" }
 		// A name or a key glued of an id is no text.
 		`return vm.ID + ".json"`,
 		`return fmt.Sprintf("--vm-id %[2]s, %[1]s", "x", quoteCloud(vm.ID))`,
+		`v := "unknown"; f := func() string { return fmt.Sprintf("it is %s now", v) }; v = "idle"; return f()`,
+		`a := struct{Text, Name string}{Text: vm.Status, Name: "x"}; b := a; return fmt.Sprintf("VM %s", b.Name)`,
 	}
 	count := func(body string) int {
 		src := "package p\n" + helper + "func probe(vm astraVM, vms []astraVM, cfg config) string {" + body + "}"
