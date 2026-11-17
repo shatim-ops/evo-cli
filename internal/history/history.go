@@ -210,6 +210,18 @@ func FileOf(dir string, at time.Time) string {
 // or an outcome a reader does not know is live: a newer evo wrote it, and
 // what it says is not this one's to drop.
 func Live(lines []Line) []Line {
+	live := liveMask(lines)
+	var out []Line
+	for i, l := range lines {
+		if live[i] {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// liveMask is Live by position: live[i] tells lines[i].
+func liveMask(lines []Line) []bool {
 	last := map[string]int{}
 	type held struct {
 		i       int
@@ -257,11 +269,9 @@ func Live(lines []Line) []Line {
 			live[h.i] = true
 		}
 	}
-	var out []Line
-	for i, l := range lines {
-		if live[i] {
-			out = append(out, l)
-		}
+	mask := make([]bool, len(lines))
+	for i := range lines {
+		mask[i] = live[i]
 	}
-	return out
+	return mask
 }

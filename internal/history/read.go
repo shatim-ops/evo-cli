@@ -41,15 +41,19 @@ const maxText = 512
 type Journal struct {
 	Lines   []Line
 	Skipped int
+	// seen are the lines read, as they are: one read twice is one.
+	seen map[string]bool
 }
 
 // Check is what a reader knows of a line beyond its form: the tool is of
 // the registry, the reason is a code of evo. nil checks the form only.
 type Check func(l Line) bool
 
-// ReadAll reads every file of a day in dir, oldest first. A file that is
-// not a regular one of evo's form — a link, a directory, another name —
-// is not read.
+// ReadAll reads the live lines of the files pruned (LiveName), then every
+// file of a day in dir, oldest first. A file that is not a regular one of
+// evo's form — a link, a directory, another name — is not read. A line
+// read twice — a pruning killed between keeping a live line and removing
+// its file — is one line.
 func ReadAll(dir string, check Check) (Journal, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -65,11 +69,14 @@ func ReadAll(dir string, check Check) (Journal, error) {
 		}
 	}
 	sort.Strings(names)
-	var j Journal
+	names = append([]string{LiveName}, names...)
+	j := Journal{seen: map[string]bool{}}
 	for _, name := range names {
 		data, err := config.ReadFileNoFollow(filepath.Join(dir, name))
 		if err != nil {
-			j.Skipped++
+			if !os.IsNotExist(err) {
+				j.Skipped++
+			}
 			continue
 		}
 		j.read(data, check)
@@ -82,9 +89,10 @@ func (j *Journal) read(data []byte, check Check) {
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 0, 4096), maxLine)
 	for sc.Scan() {
-		if len(bytes.TrimSpace(sc.Bytes())) == 0 {
+		if len(bytes.TrimSpace(sc.Bytes())) == 0 || j.seen[sc.Text()] {
 			continue
 		}
+		j.seen[sc.Text()] = true
 		var l Line
 		if json.Unmarshal(sc.Bytes(), &l) != nil || !wellFormed(l) || (check != nil && !check(l)) {
 			j.Skipped++
