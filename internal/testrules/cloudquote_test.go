@@ -38,37 +38,15 @@ const stepKey = "step: "
 // fixes are the development's, by this list. These are the errors and
 // refusals: Closes by 1.9 (owner's decision 14.11, before rc.1).
 var unquotedCloudWords = map[string]int{
-	"internal/deployplan/apply.go|ApplyWithTimeout":            1,
-	"internal/deployplan/apply.go|ForeignVMError.Error":        2,
-	"internal/engine/delete_wayout.go|DeleteWayOut":            2,
-	"internal/engine/delete_wayout.go|FailedDeleteNote":        1,
-	"internal/engine/deploy.go|Engine.awaitCreated":            1,
-	"internal/engine/deploy.go|Engine.provisionVM":             1,
-	"internal/engine/deploy.go|LostAddressError":               1,
-	"internal/engine/destroy.go|Engine.RefusedVMDelete":        1,
-	"internal/engine/foreign_vm.go|foreignDeployVM":            2,
-	"internal/tools/delete_outcome.go|deleteRefusal":           1,
-	"internal/tools/delete_preview.go|withStatus":              1,
-	"internal/tools/intent.go|Registry.checkByList":            1,
-	"internal/tools/made.go|madeAnswer":                        1, // #1865, after the list was made
-	"internal/tools/namecheck.go|lostCreate":                   2,
-	"internal/tools/namecheck.go|nameTakenResult":              1,
-	"internal/tools/own_vm.go|foreignVMResult":                 2,
-	"internal/tools/own_vm.go|recordedVMResult":                2,
-	"internal/tools/tools.go|Registry.provisionVM":             1,
-	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":  1,
-	"internal/tools/tools_disk.go|settledDisk":                 1,
-	"internal/tools/tools_disk.go|waitDiskAvailable":           1,
-	"internal/tools/tools_image.go|Registry.planFipAttach":     1,
-	"internal/tools/tools_sg.go|Registry.sgRuleDeleted":        1,
-	"internal/tools/tools_sg_create.go|Registry.sgRuleCreated": 1,
-	"internal/tools/tools_stack.go|Registry.advance":           1,
-	"internal/tools/tools_vm.go|Registry.finishVMPower":        1,
-	"internal/tools/tools_vm.go|Registry.finishVMResize":       1,
-	"internal/tools/tools_vm.go|Registry.planVMPower":          4,
-	"internal/tools/tools_vm.go|Registry.planVMResize":         3,
-	"internal/tools/tools_vm.go|Registry.vmPowerRefused":       1,
-	"internal/tools/tools_vm.go|Registry.vmResizeRefused":      1,
+	"internal/engine/deploy.go|Engine.awaitCreated":       1,
+	"internal/engine/deploy.go|Engine.provisionVM":        1,
+	"internal/engine/deploy.go|LostAddressError":          1,
+	"internal/tools/tools_vm.go|Registry.finishVMPower":   1,
+	"internal/tools/tools_vm.go|Registry.finishVMResize":  1,
+	"internal/tools/tools_vm.go|Registry.planVMPower":     4,
+	"internal/tools/tools_vm.go|Registry.planVMResize":    3,
+	"internal/tools/tools_vm.go|Registry.vmPowerRefused":  1,
+	"internal/tools/tools_vm.go|Registry.vmResizeRefused": 1,
 }
 
 // unquotedCloudSteps: the same for the text of a step of progress —
@@ -179,6 +157,18 @@ func unquotedIn(t *testing.T, path, rel string) map[string]int {
 				}
 			}
 			return true
+		})
+		// A text glued with + is a format too: "VM entered state " +
+		// cur.Status reached ApplyResult bare (risk conclusion 301-1, #2140).
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			b, ok := n.(*ast.BinaryExpr)
+			if !ok || b.Op != token.ADD {
+				return true
+			}
+			if c := bareInConcat(concatOperands(b)); c > 0 {
+				out[rel+"|"+name] += c
+			}
+			return false // the operands of a chain are counted once
 		})
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
@@ -312,14 +302,67 @@ func bareCloudWords(format string, args []ast.Expr) int {
 	return n
 }
 
-// quoted: the argument is quoteCloud(…).
+// concatOperands flattens a chain a + b + c into its operands.
+func concatOperands(e ast.Expr) []ast.Expr {
+	switch v := e.(type) {
+	case *ast.BinaryExpr:
+		if v.Op == token.ADD {
+			return append(concatOperands(v.X), concatOperands(v.Y)...)
+		}
+	case *ast.ParenExpr:
+		return concatOperands(v.X)
+	}
+	return []ast.Expr{e}
+}
+
+// bareInConcat counts the operands of a glued text that are a status, a
+// state or an id of the cloud and not quoteCloud(…): an operand right
+// after a literal that ends with a cloud word, or a field named Status or
+// State whatever comes before it. A chain with no string literal is no
+// text.
+func bareInConcat(ops []ast.Expr) int {
+	text := false
+	for _, op := range ops {
+		if _, ok := literal(op); ok {
+			text = true
+		}
+	}
+	if !text {
+		return 0
+	}
+	n := 0
+	for i, op := range ops {
+		if _, ok := literal(op); ok || quoted(op) {
+			continue
+		}
+		after := false
+		if i > 0 {
+			if prev, ok := literal(ops[i-1]); ok && cloudWordBefore.MatchString(prev) {
+				after = true
+			}
+		}
+		if sel, ok := op.(*ast.SelectorExpr); after || ok && (sel.Sel.Name == "Status" || sel.Sel.Name == "State") {
+			n++
+		}
+	}
+	return n
+}
+
+// quoted: the argument is quoteCloud(…), or strconv.Quote(…) where a
+// package has no quoteCloud — it escapes as %q does.
 func quoted(e ast.Expr) bool {
 	c, ok := e.(*ast.CallExpr)
 	if !ok {
 		return false
 	}
-	id, ok := c.Fun.(*ast.Ident)
-	return ok && id.Name == "quoteCloud"
+	switch f := c.Fun.(type) {
+	case *ast.Ident:
+		return f.Name == "quoteCloud"
+	case *ast.SelectorExpr:
+		pkg, ok := f.X.(*ast.Ident)
+		return ok && pkg.Name == "strconv" && f.Sel.Name == "Quote"
+	}
+	return false
 }
 
 // The detector itself: what counts as bare and what does not.
@@ -343,6 +386,28 @@ func TestCloudWords_Detector(t *testing.T) {
 	} {
 		if got := bareCloudWords(c.format, c.args); got != c.want {
 			t.Errorf("%q: %d bare, want %d", c.format, got, c.want)
+		}
+	}
+}
+
+// The detector of glued text: a value after a cloud word, a Status or State
+// field — bare; quoteCloud, a literal, a chain with no text — not.
+func TestCloudWords_DetectorOfConcat(t *testing.T) {
+	for src, want := range map[string]int{
+		`"VM entered state " + cur.Status + "; retry"`:                    1,
+		`"VM entered state " + quoteCloud(cur.Status) + "; retry"`:        0,
+		`"it is " + vm.Status + ": start it"`:                             1,
+		`"(id " + id + ", status " + st + ")"`:                            2,
+		`"VM " + name + " is ready"`:                                      0,
+		`a + b`:                                                           0,
+		`"disk " + quoteCloud(d.ID) + " in state " + quoteCloud(d.State)`: 0,
+	} {
+		e, err := parser.ParseExpr(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := bareInConcat(concatOperands(e)); got != want {
+			t.Errorf("%s: %d bare, want %d", src, got, want)
 		}
 	}
 }

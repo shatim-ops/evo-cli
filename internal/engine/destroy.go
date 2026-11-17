@@ -728,7 +728,7 @@ func (e *Engine) RefusedVMDelete(ctx context.Context, vmID, fip string, err erro
 			e.timings().DeletableWaitTimeout, vmID)
 	}
 	return clerrors.Wrap(clerrors.CodeAPIError,
-		i18n.Tf("VM %s cannot be deleted in state %s", "ВМ %s нельзя удалить в состоянии %s", vmID, status),
+		i18n.Tf("VM %s cannot be deleted in state %q", "ВМ %s нельзя удалить в состоянии %q", vmID, status),
 		hint+kept, err)
 }
 

