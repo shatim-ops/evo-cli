@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -31,6 +32,16 @@ const (
 type planCloud struct{ provision.CloudAPI }
 
 func (planCloud) SetToken(string) {}
+
+// errNoCreate is what the create of a VM answers in the world of a plan,
+// which makes none: an error, not the nil method of the embedded API —
+// a nil dereference recovered by a test is the trigger of the heap
+// corruption of the Go runtime on windows/amd64 (golang/go#81238, #2071).
+var errNoCreate = errors.New("the world of a plan makes no VM")
+
+func (planCloud) CreateVM(context.Context, provision.CreateVMRequest) (*provision.VM, error) {
+	return nil, errNoCreate
+}
 func (planCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
 	return []*provision.AvailabilityZone{{ID: planZoneAZ1, Name: "ru.AZ-1"}, {ID: planZoneAZ2, Name: "ru.AZ-2"}}, nil
 }

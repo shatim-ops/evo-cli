@@ -28,14 +28,10 @@ func TestInit_DanglingSymlinkIsAFileThatIsThere(t *testing.T) {
 	}
 	var out bytes.Buffer
 	e := &Engine{Printer: output.NewWithWriter(&out, output.ModeJSON, false)}
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Errorf("init went on past the link: %v", r)
-			}
-		}()
-		_ = e.Init(context.Background(), InitOptions{Path: path, NonInteractive: true})
-	}()
+	// An engine without a client: init that went on past the link panics,
+	// and the panic fails the test. No recover — a test does not go on past
+	// a recovered fault (testrules, TestRecoverInTestsRepanicsARuntimeFault).
+	_ = e.Init(context.Background(), InitOptions{Path: path, NonInteractive: true})
 	if _, err := os.Lstat(target); !os.IsNotExist(err) {
 		t.Errorf("init wrote the link's target: %v", err)
 	}

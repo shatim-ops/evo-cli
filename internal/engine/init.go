@@ -218,6 +218,28 @@ func DefaultZoneFirst(zones []*provision.AvailabilityZone, use ZoneUse) []*provi
 	return out
 }
 
+// DefaultZone is the default zone for a new resource of use: the first of
+// DefaultZoneFirst when it is declared for use or marked default by the
+// zone list, and takes new resources; nil when the list names none — a
+// refusal then names no zone rather than the first of the API's order.
+func DefaultZone(zones []*provision.AvailabilityZone, use ZoneUse) *provision.AvailabilityZone {
+	ordered := DefaultZoneFirst(zones, use)
+	if len(ordered) == 0 || ordered[0].Closed() {
+		return nil
+	}
+	z := ordered[0]
+	if name, ok := declaredZones[use]; ok {
+		if z.Name == name {
+			return z
+		}
+		return nil
+	}
+	if defaultZone(z) {
+		return z
+	}
+	return nil
+}
+
 // ZoneChoices are the zones offered for new VMs, best first — by evo init
 // and by evo configure, which ask for the zone the same way: the zones that
 // take new resources (a closed one is named in a warning), then in the

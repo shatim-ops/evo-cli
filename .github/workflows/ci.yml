@@ -218,6 +218,18 @@ jobs:
       # Число — умолчание × 2: запас на рост до правки самих тестов (план
       # 1.9, «CI: main красный на Windows… и предел macOS», М1 и М2). Это
       # не лечение: время пакета растёт как «инструменты × миры».
+      # Сбой кучи рантайма Go на windows/amd64 приходит не на каждом
+      # раннере (golang/go#81238: восстановление аппаратного исключения на
+      # части процессоров Xeon). Модель процессора — в лог и сводку, чтобы
+      # счёт сбоев за неделю можно было сверить с ней (решение владельца
+      # 17.11, #2071, вариант В).
+      - name: модель процессора раннера
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim()
+          Write-Output "CPU: $cpu"
+          "Процессор раннера Windows: $cpu" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
       - id: gotest
         name: go test
         shell: bash
