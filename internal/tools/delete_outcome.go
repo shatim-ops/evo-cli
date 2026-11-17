@@ -82,7 +82,7 @@ func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (str
 // the tool that shows its end.
 func deleting(fields map[string]any, w deleteWatch) (string, bool) {
 	fields["status"] = "deleting"
-	fields["next"] = fmt.Sprintf("%s %s shows when the delete ends", w.next, argsLine(w.nextArgs))
+	fields["next"] = i18n.Tf("%s %s shows when the delete ends", "%s %s покажет, когда удаление закончится", w.next, argsLine(w.nextArgs))
 	nextStep(fields, w.next, w.nextArgs)
 	return toJSON(fields), false
 }

@@ -1041,6 +1041,7 @@ var paramLabels = map[string]struct {
 	"region":                   {"region", "регион", false},
 	"attach_to":                {"attach to", "к ВМ", false},
 	"disk_id":                  {"disk", "диск", false},
+	"has_user_data_template":   {"cloud-init template", "шаблон cloud-init", false},
 	"description":              {"about", "описание", false},
 	"display_name":             {"display name", "отображаемое имя", false},
 	"intermediate_certificate": {"intermediate chain", "промежуточная цепочка", false},
