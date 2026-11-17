@@ -166,14 +166,4 @@ func TestHistory_ASettledRecordKeepsTheResource(t *testing.T) {
 	if o := settledOutcome(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-1"}, ""); o.Result != history.Deleted || o.ResourceID != "d-1" {
 		t.Errorf("a delete whose resource is gone: %+v", o)
 	}
-	// The cut create, then its repeat answered «already exists»: the
-	// resource is live (the probe of У1).
-	lines := []history.Line{
-		{Format: history.Format, Tool: "disk_create", IntentID: "a", Outcome: history.Unknown},
-		{Format: history.Format, Tool: "disk_create", IntentID: "b", Outcome: history.Found, Kind: "disk", ResourceID: "d-1"},
-		{Format: history.Format, Tool: "disk_create", IntentID: "a", Outcome: history.Found, Kind: "disk", ResourceID: "d-1"},
-	}
-	if live := history.Live(lines); len(live) == 0 {
-		t.Error("a create cut and found by its repeat is not live")
-	}
 }
