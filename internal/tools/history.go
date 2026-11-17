@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
@@ -82,7 +83,9 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 	if job == "" {
 		job = stringArg(args, "job_id")
 	}
-	if job != "" {
+	// Only a tool of the stacks is told by its job: another answer that
+	// names a job_id is not a stack's («Риск», 300-2).
+	if job != "" && groupOf(name) == "stack" {
 		out.Kind, out.ResourceID, out.JobID = "stack", job, job
 		out.Reason = answerReason(answer)
 		switch status {
@@ -93,7 +96,13 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		default:
 			out.Result = history.Unknown
 		}
-		if out.Reason != "" {
+		switch {
+		case out.Reason != "" && status == "" && (out.Reason == clierrors.CodeNotFound || out.Reason == clierrors.CodeUsage):
+			// The call was refused whole, with no job status: a job_id
+			// mistyped, a call refused before any step — nothing made
+			// («Риск», 300-1).
+			out.Result, out.ResourceID = history.Error, ""
+		case out.Reason != "":
 			out.Result = history.Unknown
 		}
 		return out

@@ -135,6 +135,11 @@ func TestHistoryOutcome_OneReadingOfAnAnswer(t *testing.T) {
 		{"stack_destroy", `{"status":"already_destroyed","job_id":"j-1"}`, nil, history.Outcome{Result: history.Deleted, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
 		{"stack_destroy", `{"status":"deleting","job_id":"j-1"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
 		{"stack_destroy", `{"status":"destroy_failed","job_id":"j-1","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1", Reason: "API_ERROR"}},
+		// 300-1: a call of a stack refused whole — a job_id mistyped —
+		// made nothing; 300-2: a job_id in the answer of a tool that is
+		// not a stack's tells no stack.
+		{"stack_apply", `{"error":"no such job","reason":"NOT_FOUND"}`, map[string]any{"job_id": "j-typo"}, history.Outcome{Result: history.Error, Kind: "stack", JobID: "j-typo", Reason: "NOT_FOUND"}},
+		{"disk_create", `{"disk":{"id":"d-1"},"job_id":"j-1"}`, nil, history.Outcome{Result: history.Created, Kind: "disk", ResourceID: "d-1", JobID: "j-1"}},
 		// У3: a delete that goes on.
 		{"lb_delete", `{"status":"deleting","operation_id":"op-2","next_tool":"lb_operation"}`, map[string]any{"id": "lb-1"}, history.Outcome{Result: history.Unknown, Kind: "load balancer", ResourceID: "lb-1", OperationID: "op-2"}},
 		{"destroy", `{"status":"deleting"}`, map[string]any{"vm_id": "vm-1"}, history.Outcome{Result: history.Unknown, Kind: "VM", ResourceID: "vm-1"}},
