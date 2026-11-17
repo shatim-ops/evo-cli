@@ -31,6 +31,11 @@ func TestAgentSetup_LoginLinkRuleIsExecutable(t *testing.T) {
 		// A person who cannot see the agent's terminal runs evo login
 		// themselves (282, У2).
 		"попроси человека самому выполнить `evo login --for agent`",
+		// Step 4 closes access by where the key came from: evo logout
+		// deletes only a key of evo login; a key of evo configure or of the
+		// console is deleted by the person in the console (Astra #2097).
+		"Ключ из `evo login --for agent`: `evo logout --profile agent`",
+		"Ключ из `evo configure` или личного кабинета: `evo logout` его не удаляет",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("docs/agent-setup.md does not say %q", want)
