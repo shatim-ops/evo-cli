@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -164,6 +165,30 @@ func TestDiskCreate_TheStateOfTheCloudIsQuoted(t *testing.T) {
 		for _, k := range []string{"error", "next", "hint"} {
 			if v, _ := m[k].(string); strings.Contains(v, "\n") || strings.Contains(v, "\x1b") {
 				t.Errorf("%s carries the state of the cloud as it is: %q", k, v)
+			}
+		}
+	}
+}
+
+// The cloud's state "unknown" is the cloud's: quoted in next, as any; a
+// disk with no state is evo's own word, not in quotes — the two read apart
+// (Астра #2176, as #2153).
+func TestDiskCreate_NoStateIsEvosWordTheCloudsUnknownIsQuoted(t *testing.T) {
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	for lang, w := range map[string]struct{ none, cloud string }{
+		i18n.EN: {"is in an unknown state", `is "unknown"`},
+		i18n.RU: {"в неизвестном состоянии", `— "unknown"`},
+	} {
+		i18n.SetLang(lang)
+		for st, want := range map[string]string{"": w.none, "unknown": w.cloud} {
+			c := &diskCardCloud{list: []string{st}}
+			res := map[string]any{"status": "created", "disk": map[string]any{"id": faultDisk, "status": st}}
+			text, _ := diskCreated(context.Background(), diskCardEngine(c), res, map[string]any{"id": faultDisk, "status": st}, "p")
+			var m map[string]any
+			_ = json.Unmarshal([]byte(text), &m)
+			next, _ := m["next"].(string)
+			if !strings.Contains(next, want) || (st == "" && strings.Contains(next, `"`)) {
+				t.Errorf("%s, state %q: next %q, want %q", lang, st, next, want)
 			}
 		}
 	}
