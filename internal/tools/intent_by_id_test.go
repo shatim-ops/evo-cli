@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -79,7 +80,7 @@ func TestDoctor_CutDeleteByIDIsCheckedByID(t *testing.T) {
 			}
 			if c.key != nil {
 				// The same record, as another key left it.
-				intent.Close(in)
+				intent.Close(in, history.Outcome{Result: history.Found})
 				in.Key = c.key
 				if _, err := intent.Begin(dir, in); err != nil {
 					t.Fatal(err)

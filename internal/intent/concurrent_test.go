@@ -5,6 +5,7 @@
 package intent
 
 import (
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"os"
 	"sync"
 	"testing"
@@ -38,7 +39,7 @@ func TestConcurrent_WriteMarkReadCloseInOneDirectory(t *testing.T) {
 					return
 				}
 				_ = Pending(dir) // a scan that reads every record
-				Close(in)
+				Close(in, history.Outcome{Result: history.Found})
 			}
 		}()
 	}
