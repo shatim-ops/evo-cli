@@ -26,6 +26,8 @@ func TestDecode(t *testing.T) {
 		{`null`, "name", false},
 		{`[]`, "name", false},
 		{`{"name":""}`, "name", false},
+		{`{"name":" "}`, "name", false},
+		{`{"version":{"id":"\t "}}`, "version.id", false},
 		{`{"name":7}`, "name", false},
 		{`{"version":{}}`, "version.id", false},
 		{`{"version":"v-1"}`, "version.id", false},

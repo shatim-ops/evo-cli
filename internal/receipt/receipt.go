@@ -28,7 +28,7 @@ var ErrUnusable = stderrors.New("no receipt")
 // (intent.OutcomeUnknown): the cloud may have made it.
 func Decode(data []byte, field string) (map[string]any, error) {
 	var out map[string]any
-	if json.Unmarshal(data, &out) != nil || out == nil || lookup(out, field) == "" {
+	if json.Unmarshal(data, &out) != nil || out == nil || strings.TrimSpace(lookup(out, field)) == "" {
 		return nil, clierrors.Wrap(clierrors.CodeAPIError,
 			i18n.Tf("the API took the create (2xx) but its answer names no %s: whether it was made is not known",
 				"API приняло создание (2xx), но его ответ не называет %s: создано ли, неизвестно", field),
@@ -37,7 +37,9 @@ func Decode(data []byte, field string) (map[string]any, error) {
 	return out, nil
 }
 
-// lookup is the string at the dotted path of m, "" when there is none.
+// lookup is the string at the dotted path of m; "" when there is none or
+// the value there is not a string (a number, null, an object): a receipt
+// names what was made by a string, as its specification gives it.
 func lookup(m map[string]any, path string) string {
 	keys := strings.Split(path, ".")
 	for _, k := range keys[:len(keys)-1] {
