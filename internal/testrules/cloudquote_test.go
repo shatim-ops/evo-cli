@@ -36,8 +36,8 @@ const stepKey = "step: "
 // list only shrinks (plan 1.9, «Инвариант quoteCloud: места для убывающего
 // списка», risk conclusions 232 and 235): a place fixed by quoteCloud
 // leaves it in the same PR, a new place fails the test. The errors and
-// refusals closed in 1.9 (owner's decision 14.11, before rc.1); the steps
-// close by 1.10.
+// refusals closed in 1.9 (owner's decision 14.11, before rc.1). Closes by
+// 1.10.
 var unquotedCloudSteps = map[string]int{
 	"internal/engine/deploy.go|Engine.settledBootFIP":   2,
 	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
