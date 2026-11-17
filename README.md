@@ -346,9 +346,7 @@ CI гоняет то же на Linux, macOS и Windows
 (`.github/workflows/ci.yml`). После изменения команд, флагов или инструментов
 обновите справку: `go test ./internal/cli -run 'TestCommandsDoc|TestToolsDoc|TestAgentSkillDoc|TestParityInventory' -update-docs`
 (`docs/commands.md`, `docs/tools.md`, правила для агента `docs/agent-skill.md` и инвентаризация паритета CLI ↔ MCP
-`docs/internal/cli-mcp-parity/inventory.md` генерируются, CI проверяет, что
-они актуальны).
-Внутренние планы и история проекта — `docs/internal/`.
+генерируются, CI проверяет, что они актуальны).
 
 ## Лицензия
 
