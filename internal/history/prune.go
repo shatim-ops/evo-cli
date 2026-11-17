@@ -6,7 +6,6 @@ package history
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -229,7 +228,10 @@ func rawLines(data []byte, check Check) []rawLine {
 	var out []rawLine
 	for _, raw := range lines(data) {
 		r := rawLine{text: string(raw)}
-		r.ok = len(raw) <= maxLine && json.Unmarshal(raw, &r.line) == nil && wellFormed(r.line) && (check == nil || check(r.line))
+		// One reading of a line for the reader and the pruning (parse,
+		// check): what history skips, the pruning keeps as it is.
+		r.line, r.ok = parse(raw)
+		r.ok = r.ok && (check == nil || check(r.line))
 		out = append(out, r)
 	}
 	return out

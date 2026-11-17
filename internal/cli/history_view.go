@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -26,7 +27,18 @@ type historyEntry struct {
 	Outcome    string `json:"outcome"`
 	Reason     string `json:"reason"`
 	Check      string `json:"check"`
+	ProjectID  string `json:"project_id"`
+	Zone       string `json:"zone"`
+	Surface    string `json:"surface"`
+	IntentID   string `json:"intent_id"`
 }
+
+// where is the project and the zone of e, as one cell.
+func (e historyEntry) where() string { return strings.TrimSpace(e.ProjectID + " " + e.Zone) }
+
+// call is the surface and the id of the record of the call of e, as one
+// cell: the lines of one call share the id.
+func (e historyEntry) call() string { return strings.TrimSpace(e.Surface + " " + e.IntentID) }
 
 // renderHistory shows the journal of changes (D43): the full path of the
 // journal — the person's own machine, which the answer names by the base
@@ -64,10 +76,10 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 	} else {
 		rows := make([][]string, len(a.Lines))
 		for i, e := range a.Lines {
-			rows[i] = []string{e.Time, e.Tool, what(e), e.ResourceID, e.Outcome, e.Reason}
+			rows[i] = []string{e.Time, e.Tool, what(e), e.ResourceID, e.Outcome, e.Reason, e.where(), e.call()}
 		}
 		p.Table([]string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID",
-			i18n.T("Outcome", "Итог"), i18n.T("Reason", "Код")}, rows)
+			i18n.T("Outcome", "Итог"), i18n.T("Reason", "Код"), i18n.T("Project · zone", "Проект · зона"), i18n.T("Call", "Вызов")}, rows)
 	}
 	fmt.Fprintln(w)
 	if len(a.Live) == 0 {
@@ -83,10 +95,10 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 			if t, ok := reg.Lookup(check); ok && toolCommandPath(t) != "" {
 				check = toolCommandPath(t)
 			}
-			rows[i] = []string{e.Time, e.Tool, what(e), e.ResourceID, e.Outcome, check}
+			rows[i] = []string{e.Time, e.Tool, what(e), e.ResourceID, e.Outcome, check, e.where(), e.call()}
 		}
 		p.Table([]string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID",
-			i18n.T("Outcome", "Итог"), i18n.T("Check with", "Проверить")}, rows)
+			i18n.T("Outcome", "Итог"), i18n.T("Check with", "Проверить"), i18n.T("Project · zone", "Проект · зона"), i18n.T("Call", "Вызов")}, rows)
 	}
 	if a.LiveCut {
 		fmt.Fprintln(w, i18n.T("Only the last live lines are shown, there are more: narrow it to a project with --project-id.",

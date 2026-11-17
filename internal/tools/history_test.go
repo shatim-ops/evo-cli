@@ -253,6 +253,58 @@ func TestHistory_AStackIsToldByItsJob(t *testing.T) {
 	}
 }
 
+// A create by name cut after it sent — the network, a time limit, Ctrl-C —
+// may have made its resource: the line is unknown, with the name of its
+// argument, and live; only a refusal that is certain is an error («Риск»,
+// conclusion 311, У2). Through the gate, end to end.
+func TestHistory_ACutCreateByNameStaysLive(t *testing.T) {
+	for _, reason := range []string{"API_UNREACHABLE", "INTERRUPTED", "API_ERROR"} {
+		r, dir := targetRegistry(t, &goneCloud{})
+		tool, _ := r.Lookup("secret_create")
+		h := r.intended(tool, func(ctx context.Context, _ map[string]any) (string, bool) {
+			_ = httpretry.NoteWrite(ctx)
+			return `{"error":"cut","reason":"` + reason + `"}`, true
+		})
+		h(context.Background(), map[string]any{"path": "app/db", "value": "s3cr3t-value", "confirmed": true})
+		lines, raw := historyOf(t, dir)
+		live := history.Live(lines)
+		if len(lines) != 1 || lines[0].Outcome != history.Unknown || lines[0].ResourceID != "app/db" || len(live) != 1 {
+			t.Errorf("%s: lines %+v, live %d; want unknown with the path, live", reason, lines, len(live))
+		}
+		if strings.Contains(raw, "s3cr3t-value") {
+			t.Errorf("%s: the value of the secret in the journal", reason)
+		}
+	}
+}
+
+// An earlier delete does not close a later create of the same resource
+// whatever the form of their times: a line whose time is not evo's form —
+// a fraction of a second — is skipped and counted, not ordered by its text
+// before or after the others (Астра, #2229).
+func TestHistory_ATimeNotOfEvosFormDoesNotReorder(t *testing.T) {
+	r, dir := targetRegistry(t, &goneCloud{})
+	hdir := history.DirOf(intent.Dir(dir))
+	if err := os.MkdirAll(hdir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lines := `{"format":1,"time":"2026-11-17T10:00:00Z","tool":"disk_delete","project_id":"p","kind":"disk","resource_id":"same","outcome":"deleted","intent_id":"0000000000000001"}` + "\n" +
+		`{"format":1,"time":"2026-11-17T10:00:00.5Z","tool":"disk_create","project_id":"p","kind":"disk","resource_id":"same","outcome":"created","intent_id":"0000000000000002"}` + "\n"
+	if err := os.WriteFile(filepath.Join(hdir, "2026-11-17.jsonl"), []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := r.handlers["history"](context.Background(), map[string]any{"since": "2026-01-01"})
+	var a struct {
+		Lines   []historyLine `json:"lines"`
+		Skipped int           `json:"skipped"`
+	}
+	if err := json.Unmarshal([]byte(text), &a); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Lines) != 1 || a.Lines[0].Outcome != history.Deleted || a.Skipped != 1 {
+		t.Errorf("lines %+v, skipped %d; want the delete, and the line of a fraction of a second skipped\n%s", a.Lines, a.Skipped, text)
+	}
+}
+
 // The journal is pruned after a call that changes the cloud, not on its
 // way (the ТЗ of the journal, §0, 9): an old file of a day goes, its live
 // line stays.
@@ -279,30 +331,6 @@ func TestHistory_ACallPrunesTheJournalAfterItsLine(t *testing.T) {
 	}
 	if len(ids) != 2 || !slices.Contains(ids, "d-old") || !slices.Contains(ids, "d-1") {
 		t.Errorf("the journal after the call: %v; want the live line of the old file and the call's", ids)
-	}
-}
-
-// A create by name cut after it sent — the network, a time limit, Ctrl-C —
-// may have made its resource: the line is unknown, with the name of its
-// argument, and live; only a refusal that is certain is an error («Риск»,
-// conclusion 311, У2). Through the gate, end to end.
-func TestHistory_ACutCreateByNameStaysLive(t *testing.T) {
-	for _, reason := range []string{"API_UNREACHABLE", "INTERRUPTED", "API_ERROR"} {
-		r, dir := targetRegistry(t, &goneCloud{})
-		tool, _ := r.Lookup("secret_create")
-		h := r.intended(tool, func(ctx context.Context, _ map[string]any) (string, bool) {
-			_ = httpretry.NoteWrite(ctx)
-			return `{"error":"cut","reason":"` + reason + `"}`, true
-		})
-		h(context.Background(), map[string]any{"path": "app/db", "value": "s3cr3t-value", "confirmed": true})
-		lines, raw := historyOf(t, dir)
-		live := history.Live(lines)
-		if len(lines) != 1 || lines[0].Outcome != history.Unknown || lines[0].ResourceID != "app/db" || len(live) != 1 {
-			t.Errorf("%s: lines %+v, live %d; want unknown with the path, live", reason, lines, len(live))
-		}
-		if strings.Contains(raw, "s3cr3t-value") {
-			t.Errorf("%s: the value of the secret in the journal", reason)
-		}
 	}
 }
 
