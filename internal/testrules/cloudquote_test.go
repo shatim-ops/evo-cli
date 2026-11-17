@@ -703,11 +703,14 @@ type pkgFiles struct {
 }
 
 // typeInfo resolves the names of the files of one package to their
-// declarations, the scopes of go/types without the packages they import:
+// declarations, and its constant expressions to their values (gate_test:
+// a key "confirmed" however it is spelt), the scopes of go/types without
+// the packages they import:
 // what a name of a function body denotes needs no import, and an import
 // that is not loaded leaves its names unknown, not wrong.
 func typeInfo(fset *token.FileSet, files []*ast.File) *types.Info {
-	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{},
+		Types: map[ast.Expr]types.TypeAndValue{}}
 	conf := types.Config{
 		Importer: importerFunc(func(path string) (*types.Package, error) {
 			return nil, fmt.Errorf("%s is not loaded", path)
