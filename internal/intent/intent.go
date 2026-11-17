@@ -490,7 +490,7 @@ func journal(in Intent, out history.Outcome) {
 	}
 	l := history.Line{Time: clock.Now().UTC().Format(time.RFC3339), Tool: in.Tool, Surface: surface,
 		ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target,
-		Kind: out.Kind, ResourceID: out.ResourceID, Outcome: out.Result, Reason: out.Reason, OperationID: out.OperationID,
+		Kind: out.Kind, Parent: out.Parent, ResourceID: out.ResourceID, Outcome: out.Result, Reason: out.Reason, OperationID: out.OperationID,
 		IntentID: in.ID, JobID: out.JobID, StateDir: stateDirOf(in.Dir)}
 	if err := appendLine(history.DirOf(in.Dir), l); err != nil {
 		config.Warn(i18n.Tf("the journal of changes in %s got no line of %s (%v); the call is as it answered",

@@ -14,10 +14,10 @@
 | Способ | Инструменты |
 |---|---|
 | дерево | все, кроме названных ниже |
-| движок | `agent_skill`, `deploy`, `doctor`, `list_images`, `logs`, `status`, `whoami` |
+| движок | `agent_skill`, `deploy`, `doctor`, `history`, `list_images`, `logs`, `status`, `whoami` |
 | tools call | — |
 
-«дерево» — своя команда, построенная из `CLISpec` инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `evo status`, `evo logs`, `evo list-images`, `evo whoami`, `evo agent skill`, `evo doctor`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`. Таких нет: временный список «без команды» из PR 1 опустошён (PR 3), у каждого инструмента — своя команда, и TestParity_CommandsAndTools не даёт добавить инструмент без неё. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в `engineCommands`.
+«дерево» — своя команда, построенная из `CLISpec` инструмента в реестре; «движок» — команда движка v1.0 (`evo deploy`, `evo status`, `evo logs`, `evo list-images`, `evo whoami`, `evo agent skill`, `evo doctor`, `evo history`) со своей справкой и флагами, которая вызывает инструмент через реестр (spec.md REQ-4; флаги сверяет TestParity_EngineCommands); «tools call» — доступен из CLI только как `evo tools call <имя>`. Таких нет: временный список «без команды» из PR 1 опустошён (PR 3), у каждого инструмента — своя команда, и TestParity_CommandsAndTools не даёт добавить инструмент без неё. Алиасы (`evo destroy`, `evo list-zones`, `evo project list`) — вторые команды тех же инструментов, с причиной в `engineCommands`.
 
 ### Русская справка инструментов
 
@@ -35,6 +35,7 @@
 | audit | `audit_events` | нет | дерево | `evo audit events` | да/да |
 | auth | `agent_skill` | нет | движок | `evo agent skill` | да/да |
 | auth | `doctor` | нет | движок | `evo doctor` | да/да |
+| auth | `history` | нет | движок | `evo history` | да/да |
 | auth | `whoami` | нет | движок | `evo whoami` | да/да |
 | backup | `backup_create` | да | дерево | `evo backup create` | да/да |
 | backup | `backup_delete` | да | дерево | `evo backup delete` | да/да |
@@ -210,6 +211,7 @@
 |---|---|---|---|---|---|---|
 | `evo deploy` | `deploy` | — | — | — | confirmed, project_id, region | — |
 | `evo doctor` | `doctor` | — | — | — | — | — |
+| `evo history` | `history` | — | — | — | project_id | — |
 | `evo list-images` | `list_images` | — | — | — | — | — |
 | `evo logs` | `logs` | — | — | — | — | — |
 | `evo status` | `status` | — | — | — | — | — |

@@ -262,6 +262,12 @@ type humanMiss struct{ path, value string }
 // its forms, or its engine.ParamLabel) is not on any line. A params entry {key, value} counts as the
 // value of its key. Form keys (previewForm) are skipped.
 func humanMisses(details any, human string) []humanMiss {
+	return valueMisses(details, human, previewForm)
+}
+
+// valueMisses are the values of v the human text does not show, as
+// humanMisses reads them, the keys of form skipped.
+func valueMisses(v any, human string, form map[string]string) []humanMiss {
 	flat := normKey(strings.Join(strings.Fields(human), ""))
 	var out []humanMiss
 	var walk func(v any, path string)
@@ -275,7 +281,7 @@ func humanMisses(details any, human string) []humanMiss {
 				}
 			}
 			for k, e := range x {
-				if _, form := previewForm[k]; form {
+				if _, skip := form[k]; skip {
 					continue
 				}
 				p := k
@@ -304,7 +310,7 @@ func humanMisses(details any, human string) []humanMiss {
 			}
 		}
 	}
-	walk(details, "")
+	walk(v, "")
 	return out
 }
 

@@ -285,7 +285,8 @@ var cliSpecs = map[string]CLISpec{
 
 	// The engine commands (spec REQ-4, REQ-11): commands of v1.0 that keep
 	// their help and flags and call these tools; internal/cli builds them
-	// by hand (engineCommands), the trees do not. evo list-images is the
+	// by hand (engineCommands), the trees do not. evo history (D43) is one
+	// too: a command at the root, as evo doctor, which a tree has none of. evo list-images is the
 	// command of list_images: hidden and deprecated (evo image list) until
 	// v2.0.
 	"deploy":      {Verb: "deploy"},
@@ -295,6 +296,7 @@ var cliSpecs = map[string]CLISpec{
 	"whoami":      {Verb: "whoami"},
 	"agent_skill": {Group: "agent", Verb: "skill"},
 	"doctor":      {Verb: "doctor"},
+	"history":     {Verb: "history"},
 	// The deploy wizard and the records: subcommands of the engine command
 	// evo deploy, which is a command with an action of its own and a group
 	// at once (spec.md R7): 'evo deploy' deploys, 'evo deploy plan' plans.
