@@ -38,6 +38,7 @@ type historyLine struct {
 	Name        string `json:"name,omitempty"`
 	Target      string `json:"target,omitempty"`
 	Kind        string `json:"kind,omitempty"`
+	Parent      string `json:"parent,omitempty"`
 	ResourceID  string `json:"resource_id,omitempty"`
 	Outcome     string `json:"outcome"`
 	Reason      string `json:"reason,omitempty"`
@@ -184,7 +185,7 @@ func (s *Registry) historyCheck(l history.Line) bool {
 // outcome not known.
 func (s *Registry) historyLineOf(l history.Line) historyLine {
 	out := historyLine{Time: l.Time, Tool: l.Tool, Surface: l.Surface, ProjectID: l.ProjectID, Zone: l.Zone, Name: l.Name,
-		Target: l.Target, Kind: l.Kind, ResourceID: l.ResourceID, Outcome: l.Outcome, Reason: l.Reason, OperationID: l.OperationID,
+		Target: l.Target, Kind: l.Kind, Parent: l.Parent, ResourceID: l.ResourceID, Outcome: l.Outcome, Reason: l.Reason, OperationID: l.OperationID,
 		IntentID: l.IntentID, JobID: l.JobID}
 	if l.Outcome == history.Unknown && l.Tool != "login" {
 		out.Check = s.listToolOf(l.Tool)

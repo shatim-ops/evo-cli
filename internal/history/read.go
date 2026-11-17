@@ -106,7 +106,7 @@ func wellFormed(l Line) bool {
 	if _, err := time.Parse(time.RFC3339, l.Time); err != nil {
 		return false
 	}
-	for _, s := range []string{l.Tool, l.Surface, l.ProjectID, l.Zone, l.Name, l.Target, l.Kind, l.ResourceID, l.Reason, l.OperationID, l.JobID, l.StateDir} {
+	for _, s := range []string{l.Tool, l.Surface, l.ProjectID, l.Zone, l.Name, l.Target, l.Kind, l.Parent, l.ResourceID, l.Reason, l.OperationID, l.JobID, l.StateDir} {
 		if len(s) > maxText || strings.ContainsAny(s, "\n\r") {
 			return false
 		}

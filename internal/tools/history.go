@@ -41,6 +41,9 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 	var res map[string]any
 	_ = json.Unmarshal([]byte(answer), &res)
 	out := history.Outcome{OperationID: stringArg(res, "operation_id"), JobID: stringArg(res, "job_id"), Kind: resourceKind(name)}
+	if arg := resourceParent(name); arg != "" && stringArg(args, arg) != "" {
+		out.Parent = arg + "=" + stringArg(args, arg)
+	}
 	status := answerStatus(answer)
 	_, isCreate := createdOf(name)
 	d, isDelete := deleteOf(name)
@@ -124,6 +127,21 @@ func resourceKind(tool string) string {
 	return ""
 }
 
+// resourceParent is the argument that names the resource the resource of
+// tool lives in: the parent its delete declares (a cluster, a bucket); ""
+// for a resource of a project.
+func resourceParent(tool string) string {
+	if d, ok := deleteOf(tool); ok {
+		return d.parent
+	}
+	if c, ok := createdOf(tool); ok && c.delete != "" {
+		if d, ok := deleteOf(c.delete); ok {
+			return d.parent
+		}
+	}
+	return ""
+}
+
 // settledOf is the line of a record that the answered call out of the
 // same tool settles (intent.Settle): what that call made or found is what
 // the cut one made — found, with its id; what it removed, removed; a
@@ -149,8 +167,17 @@ func settledOf(out history.Outcome) history.Outcome {
 // listed with no such id stays unknown: what was made is there, and live.
 func settledOutcome(in intent.Intent, listedID string) history.Outcome {
 	out := history.Outcome{Kind: resourceKind(in.Tool)}
+	// The record names the parent as its target, when the call named one.
+	if arg := resourceParent(in.Tool); arg != "" && strings.HasPrefix(in.Target, arg+"=") {
+		out.Parent = in.Target
+	}
 	if _, isDelete := deleteOf(in.Tool); isDelete {
+		// A delete in a parent names the parent as its target, and its
+		// resource by name; any other, the resource by its target.
 		_, id, _ := strings.Cut(in.Target, "=")
+		if out.Parent != "" {
+			id = in.Name
+		}
 		out.Result, out.ResourceID = history.Deleted, id
 		return out
 	}

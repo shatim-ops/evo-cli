@@ -74,7 +74,10 @@ type Outcome struct {
 	Result string
 	// Kind is the kind of the resource ("disk"): with ResourceID it tells
 	// one resource from another of the same id or name.
-	Kind        string
+	Kind string
+	// Parent is the resource the resource lives in, as «argument=id»
+	// ("cluster_id=…", "bucket=…"): a name is one in one parent only.
+	Parent      string
 	ResourceID  string
 	Reason      string
 	OperationID string
@@ -101,6 +104,7 @@ type Line struct {
 	Name        string `json:"name,omitempty"`
 	Target      string `json:"target,omitempty"`
 	Kind        string `json:"kind,omitempty"`
+	Parent      string `json:"parent,omitempty"`
 	ResourceID  string `json:"resource_id,omitempty"`
 	Outcome     string `json:"outcome"`
 	Reason      string `json:"reason,omitempty"`
@@ -180,8 +184,9 @@ func FileOf(dir string, at time.Time) string {
 //   - a call whose last line is unknown, or found with no id: what it did
 //     is not known, or not where;
 //   - a resource with a line created or found and no later line that says
-//     it is gone (deleted, already_deleted, not_found) of the same kind and
-//     id in the same project. A line with no project — a call on a
+//     it is gone (deleted, already_deleted, not_found) of the same kind,
+//     parent and id in the same project — a database of one cluster is
+//     not the database of the name in another (Астра, #2165). A line with no project — a call on a
 //     resource by its id, whose project the call did not know (R-82) —
 //     meets a line of any project of the same kind and id: an id names one
 //     resource; a name in two projects names two (У4).
@@ -208,7 +213,7 @@ func Live(lines []Line) []Line {
 		if l.ResourceID == "" {
 			continue
 		}
-		key := l.Kind + "\x00" + l.ResourceID
+		key := l.Kind + "\x00" + l.Parent + "\x00" + l.ResourceID
 		switch l.Outcome {
 		case Created, Found:
 			byResource[key] = append(byResource[key], held{i, l.ProjectID})

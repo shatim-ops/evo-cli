@@ -177,3 +177,25 @@ func TestHistory_ASettledRecordKeepsTheResource(t *testing.T) {
 		t.Error("a create cut and found by its repeat is not live")
 	}
 }
+
+// A resource of a parent is told by its parent too (Астра, #2165): a
+// database, a user and an object of the same name in two parents are two
+// resources, and the delete in one closes the create in that one only.
+func TestHistory_TheParentTellsTheResource(t *testing.T) {
+	for _, c := range []struct{ create, delete, parent, name string }{
+		{"pg_db_create", "pg_db_delete", "cluster_id", "name"},
+		{"pg_user_create", "pg_user_delete", "cluster_id", "name"},
+		{"s3_put", "s3_rm", "bucket", "key"},
+	} {
+		line := func(intentID, tool, parent string) history.Line {
+			out := historyOutcome(tool, map[string]any{c.parent: parent, c.name: "same-name"}, `{"status":"ok"}`)
+			return history.Line{Format: history.Format, IntentID: intentID, ProjectID: "p", Kind: out.Kind,
+				Parent: out.Parent, ResourceID: out.ResourceID, Outcome: out.Result}
+		}
+		lines := []history.Line{line("a", c.create, "parent-A"), line("b", c.create, "parent-B"), line("c", c.delete, "parent-A")}
+		live := history.Live(lines)
+		if len(live) != 1 || live[0].IntentID != "b" {
+			t.Errorf("%s in two parents, deleted in one: live %+v, want the create in parent-B", c.create, live)
+		}
+	}
+}
