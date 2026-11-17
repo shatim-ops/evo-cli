@@ -73,7 +73,6 @@ var noNextStep = map[string]string{
 	"cert_issue_le":     "issuing, no operation_id",
 	"cert_renew":        "renewing, no operation_id",
 	"dns_record_create": "creating, operation_id: next is dns_operation",
-	"dns_zone_create":   "creating, operation_id: next is dns_operation",
 	"image_create":      "building, no operation_id",
 	"vpc_route_create":  "creating, operation_id: next is vpc_operation",
 	"vpc_route_delete":  "deleting, operation_id: next is vpc_operation",

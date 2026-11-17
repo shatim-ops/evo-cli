@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -98,7 +99,9 @@ func TestUntrustedNames_OneLineInText(t *testing.T) {
 		name := tl.Name
 		// Every tool, its required arguments filled, without confirmed:
 		// reads answer, changes answer their preview.
-		checkHostileAnswer(t, r, name, requiredArgs(tl))
+		for _, args := range requiredCalls(tl) {
+			checkHostileAnswer(t, r, name, args)
+		}
 	}
 	vpcAPI := &oddAPI{status: http.StatusOK, body: hostileBody(hostileVPCs())}
 	rv := raRegistry(t, vpcAPI, cloud, nil)
@@ -110,10 +113,14 @@ func TestUntrustedNames_OneLineInText(t *testing.T) {
 }
 
 // hostileCalls are calls, in the world of hostileVPCs, that reach a text
-// naming a cloud resource only with an optional argument.
+// naming a cloud resource only with an optional argument or a value the
+// cloud does not have.
 var hostileCalls = map[string][]map[string]any{
 	"dns_zone_create": {{"domain": "corp.internal.", "type": "private"}},
 	"dns_zone_delete": {{"id": "00000000-0000-4000-8000-0000000000f1", "type": "private"}},
+	// A flavor not in the project: the hint names the flavors of the
+	// VM's zone («Риск», #2171).
+	"vm_resize": {{"vm_id": "00000000-0000-4000-8000-0000000000f1", "flavor": "no-such-flavor"}},
 }
 
 // checkHostileAnswer calls tool name with args in the hostile world: no
@@ -144,13 +151,33 @@ func checkHostileAnswer(t *testing.T, r *Registry, name string, args map[string]
 	}
 }
 
-// requiredArgs fills a tool's required arguments: an id for a string, 1
-// for a number. Enough to reach the read or the preview behind them.
+// requiredArgs fills a tool's required arguments: the first value of an
+// enum, a CIDR of format cidr, an id for a string, 1 for a number, and the first argument of each set of
+// Decl.RequiredOneOf. Enough to reach the read or the preview behind them:
+// without one of a set the call is refused (USAGE) before the cloud, and
+// the cloud's words are never seen («Риск», #2171).
 func requiredArgs(tl Tool) map[string]any {
-	args := map[string]any{}
+	return requiredCalls(tl)[0]
+}
+
+// requiredCalls are the calls of a tool with its required arguments
+// filled, one for each argument of each set of Decl.RequiredOneOf: each
+// one reaches its own path (vm_id reads the VM by its id, name finds it
+// in the list).
+func requiredCalls(tl Tool) []map[string]any {
 	props, _ := tl.InputSchema["properties"].(map[string]any)
-	for _, a := range schemaRequired(tl) {
+	fill := func(args map[string]any, a string) {
 		p, _ := props[a].(map[string]any)
+		if enum, _ := p["enum"].([]any); len(enum) > 0 {
+			// A value the schema takes: any other is refused before the
+			// cloud.
+			args[a] = enum[0]
+			return
+		}
+		if p["format"] == "cidr" {
+			args[a] = "10.0.0.0/24"
+			return
+		}
 		switch p["type"] {
 		case "integer", "number":
 			args[a] = 1
@@ -164,7 +191,23 @@ func requiredArgs(tl Tool) map[string]any {
 			args[a] = "00000000-0000-4000-8000-0000000000f1"
 		}
 	}
-	return args
+	base := map[string]any{}
+	for _, a := range schemaRequired(tl) {
+		fill(base, a)
+	}
+	calls := []map[string]any{base}
+	for _, set := range decls[tl.Name].RequiredOneOf {
+		var next []map[string]any
+		for _, c := range calls {
+			for _, a := range set {
+				args := maps.Clone(c)
+				fill(args, a)
+				next = append(next, args)
+			}
+		}
+		calls = next
+	}
+	return calls
 }
 
 // The answers of logs, ca_logs and k8s_kubectl carry text the workload
@@ -198,37 +241,6 @@ func TestUntrusted_FieldsMarked(t *testing.T) {
 	}
 }
 
-// namesUnmarked are the tools whose answer carries a name from the cloud —
-// in its data fields, as the cloud has it — with no "_untrusted" in the
-// answer. A name is text anyone with access to the project writes, and a
-// security group named with an instruction to the agent reached an agent
-// in a live run (27.10): quoteCloud keeps it out of evo's own words, the
-// marker would tell a client the data fields are data too. Marking names
-// is «разработка»'s, 1.4. The list only shrinks: a new tool that answers a
-// cloud name with no marker fails the test, and so does a line whose tool
-// is marked now or no longer answers the name. A delete is here for its
-// preview, which names the resource it would delete. metrics_scrape answers
-// the body of the cloud's answer as it is (exposition): workload text, like
-// a log, for Decl.Untrusted — reported to «разработка» with this list.
-// Closes by 1.9, before rc.1 (owner's decision 13.11, #1590, question 19,
-// (c); release plan 1.9, «Просроченные убывающие списки»): what stays is an
-// exception declared with a reason «Риск · 1.9» accepted.
-var namesUnmarked = map[string]bool{
-	"disk_list":            true,
-	"list_disk_types":      true,
-	"list_flavors":         true,
-	"list_floating_ips":    true,
-	"list_security_groups": true,
-	"list_subnets":         true,
-	"list_zones":           true,
-	"snat_delete":          true,
-	"snat_list":            true,
-	"subnet_delete":        true,
-	"vm_list":              true,
-	"vpc_delete":           true,
-	"vpc_get":              true,
-}
-
 // pg_get takes its cluster by id or cluster_id, neither required by the
 // schema, and the world of TestUntrustedNames_Marked calls it with neither:
 // its answer is a refusal there. Called with the id, it answers the
@@ -252,29 +264,45 @@ func TestUntrustedNames_PgGetMarksTheName(t *testing.T) {
 	}
 }
 
-// Every answer that carries hostileName says "_untrusted", outside
-// namesUnmarked (the world of TestUntrustedNames_OneLineInText: every list
-// and every read of every service names its one resource hostileName).
+// Every answer that carries hostileName says "_untrusted" (the world of
+// TestUntrustedNames_OneLineInText: every list and every read of every
+// service names its one resource hostileName). A name is text anyone with
+// access to the project writes, and a security group named with an
+// instruction to the agent reached an agent in a live run (27.10): the
+// marker tells a client the data fields are data. The list of exceptions
+// (namesUnmarked) closed in 1.9 (release plan 1.9, «Просроченные убывающие
+// списки»).
 func TestUntrustedNames_Marked(t *testing.T) {
 	faultToolsIsolate(t)
 	api := &oddAPI{status: http.StatusOK, body: hostileBody()}
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
 	cloud.SetToken("t")
 	r := raRegistry(t, api, cloud, nil)
-	carries := map[string]bool{}
 	for _, tl := range r.Tools() {
 		_, text, _ := callNamed(t, r, tl.Name, requiredArgs(tl))
-		if !strings.Contains(text, hostileMarker) || strings.Contains(text, `"_untrusted"`) {
-			continue
-		}
-		carries[tl.Name] = true
-		if !namesUnmarked[tl.Name] {
+		if strings.Contains(text, hostileMarker) && !strings.Contains(text, `"_untrusted"`) {
 			t.Errorf("%s answers a name from the cloud with no _untrusted in the answer", tl.Name)
 		}
 	}
-	for name := range namesUnmarked {
-		if !carries[name] {
-			t.Errorf("namesUnmarked names %s, whose answer is marked now or carries no cloud name: remove the line", name)
+}
+
+// The calls of the hostile worlds pass the argument check of the registry
+// (CheckArgs, the one check of CLI and MCP): a call it refuses ends in
+// USAGE before the cloud, and the tests that read the cloud's words in the
+// answer see none of them — a blind spot that holds a tool green without
+// looking at it (RequiredOneOf of 14 declarations: «Риск», #2171).
+func TestRequiredCalls_PassTheArgumentCheck(t *testing.T) {
+	r := New(nil)
+	n := 0
+	for _, tl := range r.Tools() {
+		for _, args := range requiredCalls(tl) {
+			n++
+			if err := CheckArgs(tl, args); err != nil {
+				t.Errorf("%s %v: refused before the cloud: %v", tl.Name, args, err)
+			}
 		}
+	}
+	if n <= len(r.Tools()) {
+		t.Errorf("%d calls for %d tools: RequiredOneOf gives none of its own", n, len(r.Tools()))
 	}
 }

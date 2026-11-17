@@ -261,6 +261,7 @@
   },
   "disk_list": {
     "project": true,
+    "untrusted": "{fields:[disks] whole:false own:[] workload:false}",
     "completes": {
       "type": "{list:list_disk_types field:name byName:false}"
     }
@@ -380,7 +381,8 @@
     "id_args": [
       "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
       "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}"
-    ]
+    ],
+    "untrusted": "{fields:[image create] whole:false own:[] workload:false}"
   },
   "image_list": {
     "group": "image",
@@ -638,14 +640,17 @@
     "group": "deploy"
   },
   "list_disk_types": {
-    "group": "disk"
+    "group": "disk",
+    "untrusted": "{fields:[disk_types] whole:false own:[] workload:false}"
   },
   "list_flavors": {
-    "group": "vm"
+    "group": "vm",
+    "untrusted": "{fields:[flavors] whole:false own:[] workload:false}"
   },
   "list_floating_ips": {
     "group": "vpc",
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[floating_ips] whole:false own:[] workload:false}"
   },
   "list_images": {
     "group": "image",
@@ -653,17 +658,20 @@
   },
   "list_security_groups": {
     "group": "vpc",
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[security_groups] whole:false own:[] workload:false}"
   },
   "list_subnets": {
     "group": "vpc",
     "project": true,
     "id_args": [
       "vpc_id why=\"a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with the items that list read; it reaches no API as an id\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[subnets] whole:false own:[] workload:false}"
   },
   "list_zones": {
-    "group": "vm"
+    "group": "vm",
+    "untrusted": "{fields:[zones] whole:false own:[] workload:false}"
   },
   "logs": {
     "group": "deploy",
@@ -761,7 +769,8 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}",
       "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
   },
   "pg_get": {
     "required_one_of": [
@@ -981,10 +990,12 @@
     "delete": "{arg:id parent: what:SNAT gateway whRU:SNAT-шлюз statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"SNAT gateway\" byName:false list:\"snat_list\" check:true project:true card:false}"
-    ]
+    ],
+    "untrusted": "{fields:[target message] whole:false own:[] workload:false}"
   },
   "snat_list": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[nat_gateways] whole:false own:[] workload:false}"
   },
   "stack_apply": {
     "id_args": [
@@ -1026,7 +1037,8 @@
     "delete": "{arg:subnet_id parent: what:subnet whRU:подсеть statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
       "subnet_id why=\"\" target=true ids=false kind={what:\"subnet\" byName:false list:\"list_subnets\" check:true project:true card:false}"
-    ]
+    ],
+    "untrusted": "{fields:[target message] whole:false own:[] workload:false}"
   },
   "tg_create": {
     "project": true,
@@ -1090,7 +1102,8 @@
     "untrusted": "{fields:[name interfaces security_groups checks exposure image] whole:false own:[] workload:false}"
   },
   "vm_list": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[vms] whole:false own:[] workload:false}"
   },
   "vm_reboot": {
     "group": "vm",
@@ -1159,12 +1172,14 @@
     "delete": "{arg:id parent: what:VPC whRU:VPC statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[target message] whole:false own:[] workload:false}"
   },
   "vpc_get": {
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "vpc_list": {
     "project": true
