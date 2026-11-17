@@ -59,7 +59,6 @@ var unquotedCloudLocals = map[string]int{
 	"internal/engine/deploy.go|Engine.provisionVM":                  1,
 	"internal/tools/delete_preview.go|Registry.deletePlan":          1,
 	"internal/tools/made.go|madeAnswer":                             10,
-	"internal/tools/opanswer.go|Registry.addResourceStatus":         1,
 	"internal/tools/tools.go|destroyTargetPreview":                  1,
 	"internal/tools/tools_backup.go|Registry.backupRestored":        1,
 	"internal/tools/tools_backup.go|Registry.planBackupCreate":      1,
