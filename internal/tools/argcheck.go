@@ -416,13 +416,9 @@ func typeName(typ string) string {
 	return "a " + typ
 }
 
-// describeValue names the JSON type of v with the value, shortened.
+// describeValue names the JSON type of v, never its value: an argument
+// may be a secret, and a refusal reaches a model and a log (Астра, #2241).
 func describeValue(v any) string {
-	b, _ := json.Marshal(v)
-	s := string(b)
-	if len(s) > 40 {
-		s = s[:40] + "…"
-	}
 	kind := i18n.T("a number", "число")
 	switch v.(type) {
 	case string:
@@ -434,7 +430,7 @@ func describeValue(v any) string {
 	case map[string]any:
 		kind = i18n.T("an object", "объект")
 	}
-	return kind + " " + s
+	return kind
 }
 
 // manifestFree are the parts of the manifest of stack_plan free by their
