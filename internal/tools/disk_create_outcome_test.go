@@ -97,6 +97,7 @@ type diskCardCloud struct {
 	n      int
 	card   map[string]any
 	cancel func()
+	id     string // the disk's id in the list; faultDisk when ""
 }
 
 func (c *diskCardCloud) ListDisks(context.Context, string) ([]map[string]any, error) {
@@ -105,7 +106,7 @@ func (c *diskCardCloud) ListDisks(context.Context, string) ([]map[string]any, er
 	}
 	st := c.list[min(c.n, len(c.list)-1)]
 	c.n++
-	return []map[string]any{{"id": faultDisk, "state": st}}, nil
+	return []map[string]any{{"id": firstNonEmptyStr(c.id, faultDisk), "state": st}}, nil
 }
 func (c *diskCardCloud) GetDisk(context.Context, string) (map[string]any, error) { return c.card, nil }
 
