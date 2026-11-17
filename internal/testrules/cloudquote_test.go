@@ -63,7 +63,6 @@ var unquotedCloudLocals = map[string]int{
 	"internal/tools/tools_backup.go|Registry.backupRestored":        1,
 	"internal/tools/tools_backup.go|Registry.planBackupCreate":      1,
 	"internal/tools/tools_backup.go|backupOfTheName":                1,
-	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":       3,
 	"internal/tools/tools_deploy.go|Registry.planReleaseFloatingIP": 2,
 	"internal/tools/tools_deploy.go|appliedPlan":                    4,
 	"internal/tools/tools_disk.go|Registry.planDiskCreate":          2,
@@ -338,8 +337,10 @@ func bareCloudWords(format string, args []ast.Expr, cloud map[string]bool) int {
 // the person gives them (as "--project-id %s" above).
 var cloudField = regexp.MustCompile(`(?i)^(id|status|state|phase|resource_?id|[a-z_]*_id|[a-z]*ID)$`)
 
-// configField: a field or a key of the configuration, not the cloud's.
-var configField = regexp.MustCompile(`(?i)^(project_?id|key_?id)$`)
+// configField: a field or a key that is not the cloud's — of the
+// configuration (the project, the key) or one evo gives itself (the id of
+// a plan of deploy_plan; C(7) on #2211).
+var configField = regexp.MustCompile(`(?i)^(project_?id|key_?id|plan_?id)$`)
 
 // cloudLocals are the local variables of a function body assigned a status,
 // a state or an id of the cloud: a field (x.Status, x.ResourceID) or a key
@@ -507,6 +508,7 @@ func TestCloudWords_DetectorFollowsLocals(t *testing.T) {
 		`st := vm.Status; _ = fmt.Sprintf("it is %s now", st)`:                                          1,
 		`v := op.ResourceID; _ = fmt.Errorf("made %v", v)`:                                              1,
 		`p := cfg.ProjectID; _ = fmt.Sprintf("in %s", p)`:                                               0,
+		`id := plan.PlanID; _ = fmt.Sprintf("plan %s", id)`:                                             0,
 		`n := vm.Name; _ = fmt.Sprintf("VM %s", n)`:                                                     0,
 		`id := stringArg(args, "vm_id"); _ = fmt.Sprintf("VM %s", id)`:                                  0,
 	} {
