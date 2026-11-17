@@ -88,6 +88,7 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 	cases, _, _ := jsonCases(t)
 	t.Setenv("COLUMNS", "200")
 	tools, seen, verified := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	seenIn := map[string]string{} // tool → its answer and human output, for a stale line
 	var bad []string
 	byClass := map[string]int{}
 	lang := i18n.Lang()
@@ -133,6 +134,12 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 			continue
 		}
 		human := out + errOut
+		// What a stale line of readUnnamed is checked against: when the
+		// line is not seen, the answer and the human output say why — the
+		// value gone from the answer (a probe of doctor cut by its time
+		// limit on a slow runner, C(7) on #2218), or its text found in the
+		// output (hypotheses, one run).
+		seenIn[c.tool.Name] = clipLong(jsonOut) + " | human: " + clipLong(human)
 		for _, miss := range valueMisses(answer, human, readForm) {
 			key := c.tool.Name + " " + miss.path
 			if shownAsWritten(miss.value, human) {
@@ -162,7 +169,8 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 		case verified[key] && !seen[key]:
 			bad = append(bad, key+": in readUnnamed, but the human output names its thing (namedBySibling): remove the line")
 		case !seen[key]:
-			bad = append(bad, key+": in readUnnamed, but the human output shows it, or the answer has it no more: remove the line")
+			tool, _, _ := strings.Cut(key, " ")
+			bad = append(bad, key+": in readUnnamed, but the human output shows it, or the answer has it no more: remove the line ("+seenIn[tool]+")")
 		}
 		switch d.class {
 		case unnamedAccess, unnamedPrice, unnamedWork, unnamedNoise:
@@ -178,6 +186,15 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 		sort.Strings(bad)
 		t.Fatal(strings.Join(bad, "\n"))
 	}
+}
+
+// clipLong is s on one line, cut to what a log of CI shows in full.
+func clipLong(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 4000 {
+		return s[:4000] + "…"
+	}
+	return s
 }
 
 // readVolatile reads as one what two calls of the same read differ in
