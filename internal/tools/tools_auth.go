@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
@@ -389,6 +390,11 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 				checks = append(checks, DoctorCheck{Name: "foreign intent record", Status: CheckWarn,
 					Detail: i18n.Tf("%s is not a record evo wrote: evo neither reads nor removes it — check where it came from (a cloned repository may bring it) and delete it yourself",
 						"%s — не запись evo: evo её не читает и не удаляет — проверьте, откуда она (её мог принести клонированный репозиторий), и удалите сами", quoteCloud(path))})
+			}
+			// The journal of changes beside the records: its size, its
+			// oldest day, what is live in it (the ТЗ of the journal, §0, 9).
+			if c, ok := journalCheck(history.DirOf(dir)); ok {
+				checks = append(checks, c)
 			}
 		}
 	}

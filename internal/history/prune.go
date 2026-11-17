@@ -273,3 +273,54 @@ func RetiredThrough(dir string) string {
 	}
 	return day
 }
+
+// Summary is what doctor says of a journal: its size, its oldest day, how
+// many lines are live, and whether the live ones alone are over the
+// ceiling.
+type Summary struct {
+	Bytes       int64
+	Oldest      string
+	Live        int
+	OverCeiling bool
+}
+
+// Describe reads the journal of dir for doctor; a journal that is not
+// there is an empty one.
+func Describe(dir string) (Summary, error) {
+	var s Summary
+	days, sizes, err := dayFiles(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return s, nil
+		}
+		return s, err
+	}
+	for _, n := range days {
+		s.Bytes += sizes[n]
+	}
+	if len(days) > 0 {
+		s.Oldest = strings.TrimSuffix(days[0], ".jsonl")
+	}
+	var all []rawLine
+	for _, name := range append([]string{LiveName}, days...) {
+		data, err := config.ReadFileNoFollow(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		if name == LiveName {
+			s.Bytes += int64(len(data))
+		}
+		all = append(all, rawLines(data)...)
+	}
+	var liveBytes int64
+	seen := map[string]bool{}
+	for i, live := range liveOfRaw(all) {
+		if live && !seen[all[i].text] {
+			seen[all[i].text] = true
+			s.Live++
+			liveBytes += int64(len(all[i].text) + 1)
+		}
+	}
+	s.OverCeiling = liveBytes > ceiling
+	return s, nil
+}

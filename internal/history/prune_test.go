@@ -172,3 +172,20 @@ func TestPrune_OnceADay(t *testing.T) {
 		t.Errorf("the next day's pruning retired %v, want the old file", p.Retired)
 	}
 }
+
+// Describe gives doctor the size, the oldest day and the live lines.
+func TestDescribe_SizeOldestLive(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	if s, err := Describe(dir); err != nil || s != (Summary{}) {
+		t.Errorf("no journal: %+v, %v; want an empty one", s, err)
+	}
+	writeDay(t, dir, "2026-11-10",
+		lineOf("9000000000000001", Created, "disk", "d-1", "2026-11-10T10:00:00Z"),
+		lineOf("9000000000000002", Created, "disk", "d-2", "2026-11-10T10:01:00Z"),
+		lineOf("9000000000000003", Deleted, "disk", "d-2", "2026-11-10T10:02:00Z"))
+	writeDay(t, dir, "2026-11-12", lineOf("9000000000000004", Unknown, "", "", "2026-11-12T10:00:00Z"))
+	s, err := Describe(dir)
+	if err != nil || s.Oldest != "2026-11-10" || s.Live != 2 || s.Bytes == 0 || s.OverCeiling {
+		t.Errorf("%+v, %v; want oldest 2026-11-10, 2 live, some bytes", s, err)
+	}
+}

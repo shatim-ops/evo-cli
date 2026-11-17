@@ -239,3 +239,26 @@ func pruneJournal(dir string) {
 			"журнал изменений %s не очищен (%v); очистка — в следующий раз", history.DirOf(dir), err))
 	}
 }
+
+// journalCheck is doctor's check of the journal of changes of dir: its
+// size, its oldest day and its live lines; a warning when the live lines
+// alone are over the ceiling — none is removed, and the journal grows. No
+// check for a journal that is not there.
+func journalCheck(dir string) (DoctorCheck, bool) {
+	s, err := history.Describe(dir)
+	if err != nil {
+		return DoctorCheck{Name: "journal of changes", Status: CheckWarn, Detail: CheckDetail(err)}, true
+	}
+	if s.Bytes == 0 {
+		return DoctorCheck{}, false
+	}
+	c := DoctorCheck{Name: "journal of changes", Status: CheckOK,
+		Detail: i18n.Tf("%s: %d KB since %s, %d live lines (made and not removed, or an outcome not known)",
+			"%s: %d КБ с %s, живых строк — %d (создано и не удалено или итог неизвестен)", dir, (s.Bytes+1023)/1024, s.Oldest, s.Live)}
+	if s.OverCeiling {
+		c.Status = CheckWarn
+		c.Detail += i18n.T("; the live lines alone are over the ceiling of 64 MB: none is removed — what is gone from the cloud, read and close with history",
+			"; одни живые строки больше потолка 64 МБ: ни одна не удаляется — что ушло из облака, прочитайте и закройте через history")
+	}
+	return c, true
+}
