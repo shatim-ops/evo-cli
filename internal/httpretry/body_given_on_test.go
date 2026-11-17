@@ -29,6 +29,10 @@ type shapedBody struct {
 	closed  *int
 }
 
+// errClose is the error the Close of every shapedBody answers: a caller
+// that gets its body given on gets that error too (Астра #2197).
+var errClose = io.ErrClosedPipe
+
 func (b *shapedBody) Read(p []byte) (int, error) {
 	if b.off < len(b.data) {
 		if len(p) > b.chunk {
@@ -51,7 +55,7 @@ func (b *shapedBody) Read(p []byte) (int, error) {
 
 func (b *shapedBody) Close() error {
 	*b.closed++
-	return nil
+	return errClose
 }
 
 // bodyShape is one input of the class: a size and the way the body ends.
@@ -105,7 +109,8 @@ func shapesAround(limit int) []bodyShape {
 
 // sameAsTheAPI checks that what the caller reads from got is what it
 // would read from the body the API gave: the bytes, the error the read
-// ends with (nil for a clean end), and one Close of that body.
+// ends with (nil for a clean end), and one Close of that body, with its
+// error.
 func sameAsTheAPI(t *testing.T, name string, s bodyShape, data []byte, got io.ReadCloser, closed *int) {
 	t.Helper()
 	wantBytes, wantErr := io.ReadAll(&shapedBody{data: data, chunk: 4096, err: s.err, ownRead: s.ownRead, closed: new(int)})
@@ -116,7 +121,9 @@ func sameAsTheAPI(t *testing.T, name string, s bodyShape, data []byte, got io.Re
 	if *closed != 0 {
 		t.Errorf("%s, %v: the body was closed %d times before its caller closed it", name, s, *closed)
 	}
-	got.Close()
+	if err := got.Close(); !errors.Is(err, errClose) {
+		t.Errorf("%s, %v: the caller's Close answered %v; the API's body answers %v", name, s, err, errClose)
+	}
 	if *closed != 1 {
 		t.Errorf("%s, %v: the caller's Close closed the API's body %d times, want 1", name, s, *closed)
 	}
@@ -178,42 +185,72 @@ func TestBodyGivenOn_IsTheAPIs(t *testing.T) {
 		}
 	})
 
-	// The layers together, as a client gets them: the form recorded, then
-	// the 404 read for its writer.
-	t.Run("transport", func(t *testing.T) {
-		t.Setenv(EnvRecordAnswers, filepath.Join(t.TempDir(), "answers.jsonl"))
-		for _, status := range []int{200, 404} {
-			for _, limit := range []int{maxServiceBody, maxRecordedBody + 1} {
-				for _, s := range shapesAround(limit) {
-					data := serviceBody(s.size)
-					if status == 404 && s.size < maxServiceBody && !serviceNotFound(data) {
-						continue
-					}
-					closed := new(int)
-					rt := rtFunc(func(r *http.Request) (*http.Response, error) {
-						return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {"application/json"}},
-							Body: &shapedBody{data: data, chunk: 32 << 10, err: s.err, ownRead: s.ownRead, closed: closed}, Request: r}, nil
-					})
-					resp, err := (&Transport{Base: rt}).RoundTrip(httptestRequest())
-					if err != nil {
-						t.Fatalf("transport %d, %v: %v", status, s, err)
-					}
-					if resp.StatusCode != status {
-						t.Errorf("transport %d, %v: status %d", status, s, resp.StatusCode)
-						resp.Body.Close()
-						continue
-					}
-					sameAsTheAPI(t, fmt.Sprintf("transport %d", status), s, data, resp.Body, closed)
+	// The layers together, as the clients get them: Transport (compute,
+	// the services), UserAgent (the SDKs), Transport over UserAgent; the
+	// forms recorded or not (Астра #2197: a read of UserAgent with the
+	// recording off was not held).
+	layers := map[string]func(http.RoundTripper) http.RoundTripper{
+		"Transport":           func(rt http.RoundTripper) http.RoundTripper { return &Transport{Base: rt} },
+		"UserAgent":           UserAgent,
+		"Transport+UserAgent": func(rt http.RoundTripper) http.RoundTripper { return &Transport{Base: UserAgent(rt)} },
+	}
+	for _, record := range []bool{false, true} {
+		for layer, wrap := range layers {
+			t.Run(fmt.Sprintf("%s, recording %v", layer, record), func(t *testing.T) {
+				if record {
+					t.Setenv(EnvRecordAnswers, filepath.Join(t.TempDir(), "answers.jsonl"))
+				} else {
+					t.Setenv(EnvRecordAnswers, "")
 				}
-			}
+				for _, status := range []int{200, 404} {
+					for _, limit := range []int{maxServiceBody, maxRecordedBody + 1} {
+						for _, s := range shapesAround(limit) {
+							data := serviceBody(s.size)
+							if status == 404 && s.size < maxServiceBody && !serviceNotFound(data) {
+								continue
+							}
+							closed := new(int)
+							rt := rtFunc(func(r *http.Request) (*http.Response, error) {
+								return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {"application/json"}},
+									Body: &shapedBody{data: data, chunk: 32 << 10, err: s.err, ownRead: s.ownRead, closed: closed}, Request: r}, nil
+							})
+							resp, err := wrap(rt).RoundTrip(httptestRequest())
+							if err != nil {
+								t.Fatalf("%d, %v: %v", status, s, err)
+							}
+							if resp.StatusCode != status {
+								t.Errorf("%d, %v: status %d", status, s, resp.StatusCode)
+								resp.Body.Close()
+								continue
+							}
+							sameAsTheAPI(t, fmt.Sprintf("%s %d", layer, status), s, data, resp.Body, closed)
+						}
+					}
+				}
+			})
 		}
-	})
+	}
 }
 
-// The branch that replaces a 404 the service did not write (D63) gives
-// its own answer whatever the body was, and closes the API's body: the
-// caller's Close has nothing of it to close.
+// The branches that replace an answer — an HTML page for a 2xx, a 404
+// the service did not write (D63) — give their own answer whatever the
+// body was, and close the API's body: the caller's Close has nothing of
+// it to close (Астра #2197: the HTML branch was not held).
 func TestBodyGivenOn_ReplacedClosesTheAPIs(t *testing.T) {
+	for _, s := range []bodyShape{{20, nil, false}, {20, io.ErrUnexpectedEOF, false}, {20, errCut, true}} {
+		closed := new(int)
+		resp := &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/html; charset=utf-8"}},
+			Body: &shapedBody{data: []byte("<html>gateway</html>"), chunk: 4096, err: s.err, ownRead: s.ownRead, closed: closed}}
+		got := HTMLAsBadGateway(resp)
+		b, err := io.ReadAll(got.Body)
+		got.Body.Close()
+		if got.StatusCode != http.StatusBadGateway || err != nil || !strings.Contains(string(b), "HTML page") {
+			t.Errorf("html, %v: status %d, %q, %v; want the 502 of an HTML page", s, got.StatusCode, b, err)
+		}
+		if *closed != 1 {
+			t.Errorf("html, %v: the API's body was closed %d times, want 1", s, *closed)
+		}
+	}
 	for _, form := range []string{"", "404 page not found", `{"code":5,"message":"Not Found"}`} {
 		for _, s := range []bodyShape{{len(form), nil, false}, {len(form), io.ErrUnexpectedEOF, false}, {len(form), errCut, true}} {
 			closed := new(int)
