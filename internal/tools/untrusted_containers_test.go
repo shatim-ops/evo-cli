@@ -47,6 +47,13 @@ func unmarkedContainers(m map[string]any) []string {
 	return out
 }
 
+// containerBudget is the budget of a call in the worlds of
+// TestUntrustedContainers_MarkedInEveryAnswer.
+// wall-clock: the test reads only the marks of whatever answer a call gave
+// — cut short by the budget or not — never how far it got; the budget only
+// keeps waits for an operation short.
+const containerBudget = 100 * time.Millisecond
+
 // containerWorld is a world a tool answers in: the cloud's answers, and
 // whether the call carries the consent.
 type containerWorld struct {
@@ -89,10 +96,7 @@ func TestUntrustedContainers_MarkedInEveryAnswer(t *testing.T) {
 		cloud.SetToken("t")
 		cloud.Backoff = 1
 		r := raRegistry(t, w.api, cloud, nil)
-		// wall-clock: the test reads only the marks of whatever answer a
-		// call gave — cut short by the budget or not — never how far it
-		// got; the budget only keeps waits for an operation short.
-		r.SetCallBudget(100 * time.Millisecond)
+		r.SetCallBudget(containerBudget)
 		for _, tl := range r.Tools() {
 			for _, args := range requiredCalls(tl) {
 				args = maps.Clone(args)
