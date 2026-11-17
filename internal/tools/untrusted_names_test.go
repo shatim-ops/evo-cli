@@ -257,8 +257,10 @@ func TestUntrustedNames_Marked(t *testing.T) {
 // it comes from: "_untrusted" names it (Астра #2175: subnet_delete,
 // snat_delete and vpc_delete marked target and message, not
 // resource_status; ar_delete, kafka_delete and redis_delete did the same).
-// Every delete, in a world where every resource is being created or
-// deleted; the status is spelled unlike evo's own words ("deleting"), with
+// The VM's state in the answers of vm_start, vm_stop, vm_reboot and
+// vm_resize is the same («Риск», conclusion 309-1). Every write, in a world
+// where every resource is being created or deleted, or is running or
+// stopped; the status is spelled unlike evo's own words ("deleting"), with
 // the prefix of a service that writes one, so a field equal to it is the
 // cloud's. A read answers the resource as the cloud has it, and its
 // declaration says which of its fields it marks: not this test's question.
@@ -271,7 +273,7 @@ func TestUntrustedNames_CopiedStatusMarked(t *testing.T) {
 		}
 	}
 	for _, prefix := range prefixes {
-		for _, st := range []string{"Creating", "Deleting"} {
+		for _, st := range []string{"Creating", "Deleting", "running", "stopped"} {
 			status := st
 			if prefix != "" {
 				status = prefix + strings.ToUpper(st)
@@ -281,10 +283,14 @@ func TestUntrustedNames_CopiedStatusMarked(t *testing.T) {
 			cloud.SetToken("t")
 			r := raRegistry(t, api, cloud, nil)
 			for _, tl := range r.Tools() {
-				if decls[tl.Name].Delete.arg == "" {
+				if !tl.Mutating {
 					continue
 				}
-				m, text, _ := callNamed(t, r, tl.Name, requiredArgs(tl))
+				args := requiredArgs(tl)
+				for _, one := range tl.Decl.RequiredOneOf {
+					args[one[0]] = "00000000-0000-4000-8000-0000000000f1"
+				}
+				m, text, _ := callNamed(t, r, tl.Name, args)
 				u, marked := m["_untrusted"].([]any)
 				if !marked {
 					continue
