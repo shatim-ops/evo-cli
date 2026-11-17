@@ -313,6 +313,14 @@ func TestMadeAnswer_TheCommandCarriesOnlyAnIdOfTheFormOfAnId(t *testing.T) {
 			if !strings.Contains(said, c.want) || strings.Contains(said, c.not) {
 				t.Errorf("id %q, state %q: want %q and no %q in:\n%s", c.id, st, c.want, c.not, said)
 			}
+			// The next step is a command too: it carries the id only when
+			// the id has the form of an id (У2).
+			if _, named := out["next_tool"]; named != isUUID(c.id) && out["error"] == nil {
+				t.Errorf("id %q, state %q: next_tool %v, next_args %v", c.id, st, out["next_tool"], out["next_args"])
+			}
+			if _, args := out["next_args"]; args && !isUUID(c.id) {
+				t.Errorf("id %q, state %q: next_args %v carry an id not of the form of an id", c.id, st, out["next_args"])
+			}
 		}
 	}
 }

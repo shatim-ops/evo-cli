@@ -117,7 +117,7 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		res[m.field] = mergedItem(res[m.field], item)
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("%s %s: Cloud.ru did not finish making it, state %s", "%s %s: Cloud.ru не завершил создание, состояние — %s", i18n.T(m.what, m.whatRU), quoteCloud(id), quoteCloud(last)),
-			madeShows(m, id)+" "+i18n.Tf("Whether to delete it (%s) — ask the person.",
+			madeShowsText(m, id)+" "+i18n.Tf("Whether to delete it (%s) — ask the person.",
 				"Удалять ли (%s) — спросите человека.", decls[m.tool].Created.delete)), res), true
 	}
 	res["status"] = "creating"
@@ -151,8 +151,11 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		res["next"] = i18n.Tf("%s %s is %s: evo does not know this state as made or being made.",
 			"%s %s — %s: evo не знает, сделан ли ресурс в этом состоянии.", i18n.T(m.what, m.whatRU), quoteCloud(id), word)
 	}
-	res["next"] = res["next"].(string) + " " + madeShows(m, id)
-	nextStep(res, m.list, map[string]any{"ids": []any{id}})
+	shows, command := madeShows(m, id)
+	res["next"] = res["next"].(string) + " " + shows
+	if command {
+		nextStep(res, m.list, map[string]any{"ids": []any{id}})
+	}
 	if stderrors.Is(err, context.Canceled) {
 		return errAnswer(fmt.Errorf("%s: %w", i18n.Tf("%s %s: the wait was cancelled, the platform goes on making it",
 			"%s %s: ожидание прервано, платформа продолжает создание", i18n.T(m.what, m.whatRU), quoteCloud(id)), err), res), true
@@ -228,14 +231,23 @@ func mergedItem(was any, read map[string]any) map[string]any {
 	return out
 }
 
-// madeShows names the list that shows the state of the resource id. The
-// command is copied as it is, so the id goes into it only when it has the
-// form of an id (isUUID); any other id is named in the prose, quoted, and
-// no command carries it («Риск», conclusion 327, У1; as vmLeftNote).
-func madeShows(m made, id string) string {
+// madeShows names the list that shows the state of the resource id, and
+// whether a command carries the id. The command — in the text and as
+// next_tool with next_args — is copied as it is, so the id goes into it
+// only when it has the form of an id (isUUID); any other id is named in
+// the prose, quoted, and no command carries it, in the text or as the next
+// step («Риск», conclusion 327, У1 and У2; as vmLeftNote).
+func madeShows(m made, id string) (string, bool) {
 	if isUUID(id) {
-		return i18n.Tf("%s ids=[%s] shows its state.", "Состояние показывает %s ids=[%s].", m.list, id)
+		return i18n.Tf("%s ids=[%s] shows its state.", "Состояние показывает %s ids=[%s].", m.list, id), true
 	}
 	return i18n.Tf("%s shows its state; the id %s is not of the form of an id, so no command is named with it.",
-		"Состояние показывает %s; id %s не той формы, поэтому команда с ним не названа.", m.list, quoteCloud(id))
+		"Состояние показывает %s; id %s не той формы, поэтому команда с ним не названа.", m.list, quoteCloud(id)), false
+}
+
+// madeShowsText is the text of madeShows alone: a refusal names no next
+// step.
+func madeShowsText(m made, id string) string {
+	s, _ := madeShows(m, id)
+	return s
 }
