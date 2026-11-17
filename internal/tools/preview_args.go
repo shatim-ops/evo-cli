@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -59,14 +60,21 @@ func certChainSummary(v string) string {
 }
 
 // templateSummary is the size, the lines and the SHA-256 of a template,
-// with its first line where it says what it is (#cloud-config, #!).
+// with its first line where it is a header that says what the template is
+// (templateHeader). Any other line is text the author wrote, and a template
+// may carry a password or a token: the preview reaches a model and a log.
 func templateSummary(v string) string {
 	s := textSummary(v)
-	if first, _, _ := strings.Cut(v, "\n"); strings.HasPrefix(first, "#") {
-		s += i18n.Tf(", first line %s", ", первая строка %s", quoteCloud(strings.TrimRight(first, "\r")))
+	if first, _, _ := strings.Cut(v, "\n"); templateHeader.MatchString(strings.TrimSuffix(first, "\r")) {
+		s += i18n.Tf(", first line %s", ", первая строка %s", quoteCloud(strings.TrimSuffix(first, "\r")))
 	}
 	return s
 }
+
+// templateHeader is a first line of a cloud-init template that names its
+// kind: a header of cloud-init's own, the Jinja marker, or an interpreter
+// with no arguments.
+var templateHeader = regexp.MustCompile(`^(#cloud-config|#cloud-config-archive|#cloud-boothook|#include|#part-handler|## template: jinja|#!/[a-z0-9/._-]+|#!/usr/bin/env [a-z0-9._-]+)$`)
 
 // textSummary is the size, the lines and the SHA-256 of a text.
 func textSummary(v string) string {
