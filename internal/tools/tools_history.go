@@ -37,6 +37,7 @@ type historyLine struct {
 	Zone        string `json:"zone,omitempty"`
 	Name        string `json:"name,omitempty"`
 	Target      string `json:"target,omitempty"`
+	Kind        string `json:"kind,omitempty"`
 	ResourceID  string `json:"resource_id,omitempty"`
 	Outcome     string `json:"outcome"`
 	Reason      string `json:"reason,omitempty"`
@@ -131,7 +132,8 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	for _, in := range pendingIntents(eng.StateDir) {
 		if !written[in.ID] {
 			live = append(live, history.Line{Time: in.StartedAt.UTC().Format(time.RFC3339), Tool: in.Tool, Surface: in.Surface,
-				ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target, Outcome: history.Unknown, IntentID: in.ID})
+				ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target, Kind: resourceKind(in.Tool),
+				Outcome: history.Unknown, IntentID: in.ID})
 		}
 	}
 	liveLines := []historyLine{}
@@ -182,7 +184,7 @@ func (s *Registry) historyCheck(l history.Line) bool {
 // outcome not known.
 func (s *Registry) historyLineOf(l history.Line) historyLine {
 	out := historyLine{Time: l.Time, Tool: l.Tool, Surface: l.Surface, ProjectID: l.ProjectID, Zone: l.Zone, Name: l.Name,
-		Target: l.Target, ResourceID: l.ResourceID, Outcome: l.Outcome, Reason: l.Reason, OperationID: l.OperationID,
+		Target: l.Target, Kind: l.Kind, ResourceID: l.ResourceID, Outcome: l.Outcome, Reason: l.Reason, OperationID: l.OperationID,
 		IntentID: l.IntentID, JobID: l.JobID}
 	if l.Outcome == history.Unknown && l.Tool != "login" {
 		out.Check = s.listToolOf(l.Tool)
