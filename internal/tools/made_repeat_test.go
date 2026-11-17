@@ -150,6 +150,54 @@ func TestSnatCreate_ARepeatAfterWaitingSendsNoSecondCreate(t *testing.T) {
 var finding01 = map[string]bool{"pg_create": true, "kafka_create": true, "redis_create": true, "k8s_create": true, "k8s_add_nodepool": true,
 	"lb_create": true, "ar_create": true, "vpc_create": true, "tg_create": true, "pg_backup_create": true}
 
+// madeRepeatCreates are the creates whose repeat, while the answer of the
+// first goes on (madeGoesOn), reads its step instead of asking the consent
+// again: the list the «Миграция» of D113 names
+// (changelog.d/made-repeat-no-second-create.md). A create of the matrix
+// whose answer goes on and is not here fails the test — the «Миграция»
+// would miss it (Астра, #2075: disk_create, dns_zone_create) — and one here
+// whose answer no longer goes on fails it too.
+var madeRepeatCreates = map[string]bool{"pg_create": true, "kafka_create": true, "redis_create": true, "k8s_create": true,
+	"k8s_add_nodepool": true, "lb_create": true, "ar_create": true, "vpc_create": true, "tg_create": true, "pg_backup_create": true,
+	"subnet_create": true, "snat_create": true, "disk_create": true}
+
+// madeRepeatPending are the creates whose answer goes on, not yet in the
+// «Миграция» of D113, with the line of the plan that brings them there.
+var madeRepeatPending = map[string]string{
+	"dns_zone_create": "its repeat reads dns_zones with no visibility — the private zones for a public one; the fix and its «Миграция» are C(7)'s, the line of the release plan #2145",
+}
+
+// madeRepeatOwnWorld are the creates of the matrix the world of a paid
+// create does not run, with why; their repeats are their own tests'.
+var madeRepeatOwnWorld = map[string]string{
+	"provision":    "the VM's create goes through the engine; its repeat after a lost answer — TestPaidCreate_*, provision's own",
+	"deploy_apply": "a plan applied by id; its repeat is the plan's (deploy_apply tests)",
+}
+
+func TestCreate_EveryCreateWhoseAnswerGoesOnIsInTheMigration(t *testing.T) {
+	for _, c := range faultMatrixCases {
+		if rule, changes := everySendIsAChange[c.tool]; changes && !rule.made {
+			continue // read before it is sent, not repeated by its answer
+		}
+		if _, isCreate := createdOf(c.tool); !isCreate || madeRepeatOwnWorld[c.tool] != "" {
+			continue
+		}
+		t.Run(c.tool, func(t *testing.T) {
+			_, r, _, _, _ := paidCreateWorld(t, c, 1000)
+			first, _ := r.handlers[c.tool](context.Background(), maps.Clone(c.args))
+			_, _, _, goesOn := madeGoesOn(c.tool, first)
+			// subnet_create's answer in this world is created at once: its
+			// waiting answer is TestSubnetCreate_*'s.
+			switch {
+			case goesOn && !madeRepeatCreates[c.tool] && madeRepeatPending[c.tool] == "":
+				t.Errorf("the answer goes on, so a repeat reads it with no question: add %s to madeRepeatCreates and to the «Миграция» of D113\n%.400s", c.tool, first)
+			case !goesOn && (madeRepeatCreates[c.tool] || madeRepeatPending[c.tool] != "") && c.tool != "subnet_create":
+				t.Errorf("in madeRepeatCreates, but the answer does not go on: %.400s", first)
+			}
+		})
+	}
+}
+
 func TestCreate_ARepeatWhileItsOperationGoesOnSendsNoSecondCreate(t *testing.T) {
 	ran := map[string]bool{}
 	for _, c := range faultMatrixCases {
@@ -290,6 +338,62 @@ func TestMadeEnded(t *testing.T) {
 	} {
 		if got := madeEnded(c.read, c.isErr, c.age); got != c.want {
 			t.Errorf("madeEnded(%s, %v, %v) = %v, want %v", c.read, c.isErr, c.age, got, c.want)
+		}
+	}
+}
+
+// dnsWaitAPI is Evolution DNS with a public zone taken and not listed yet:
+// a POST of a zone is taken (an operation that goes on, the zone's id) and
+// counted; the private zones list another zone of the project.
+type dnsWaitAPI struct {
+	mu    sync.Mutex
+	posts int
+	calls []string
+}
+
+func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
+	rec := httptest.NewRecorder()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.calls = append(a.calls, r.Method+" "+r.URL.Path)
+	switch {
+	case r.URL.Path == "/v1/publicZones" && r.Method == http.MethodPost:
+		a.posts++
+		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":false}`)
+	case r.URL.Path == "/v1/publicZones":
+		_, _ = io.WriteString(rec, `{"zones":[]}`)
+	case r.URL.Path == "/v1/privateZones":
+		_, _ = io.WriteString(rec, `{"zones":[{"id":"00000000-0000-4000-8000-0000000000f9","name":"other","domain":"other.example."}]}`)
+	case strings.HasPrefix(r.URL.Path, "/v1/operations/"):
+		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":false}`)
+	default:
+		http.Error(rec, `{"message":"not found"}`, 404)
+	}
+	return rec.Result(), nil
+}
+
+// «Риск», conclusion 302, У1 (dns_zone_create in madeRepeatPending, the
+// line #2145): dns_zone_create's repeat, while the zone is
+// taken and not listed, reads the list of zones its answer names
+// (dns_zones, with no argument: the private ones — the line of the release
+// plan «повтор dns_zone_create для публичной зоны», C(7)) and answers
+// waiting with repeat_of: no second POST, with consent or without. The
+// list holds another zone of the project, so it is not empty and the wait
+// goes on (until madeMaxAge), not past madeListGrace.
+func TestDNSZoneCreate_ARepeatWhileTheZoneIsNotListedSendsNoSecondCreate(t *testing.T) {
+	api := &dnsWaitAPI{}
+	r := waitingRegistry(t, api)
+	args := map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}
+	m, text, _ := callNamed(t, r, "dns_zone_create", args)
+	if m["zone_id"] != "00000000-0000-4000-8000-0000000000f1" || api.posts != 1 {
+		t.Fatalf("the first call: %d POSTs, %s\n%v", api.posts, text, api.calls)
+	}
+	for _, confirmed := range []bool{false, true} {
+		args["confirmed"] = confirmed
+		m, text, _ = callNamed(t, r, "dns_zone_create", args)
+		rep, _ := m["repeat_of"].(map[string]any)
+		if api.posts != 1 || rep["id"] != "00000000-0000-4000-8000-0000000000f1" || m["status"] != "waiting" {
+			t.Errorf("confirmed=%v: %d POSTs, %s", confirmed, api.posts, text)
 		}
 	}
 }
