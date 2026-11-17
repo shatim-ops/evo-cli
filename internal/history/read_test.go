@@ -7,6 +7,7 @@ package history
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -110,5 +111,58 @@ func TestAppend_WhatEvoWritesEvoReads(t *testing.T) {
 	}
 	if cut := j.Lines[2].Name; !strings.HasSuffix(cut, cutMark) || len(cut) > maxText || !utf8.ValidString(cut) {
 		t.Errorf("a name longer than a reader takes: %d bytes, valid %v; want cut to %d, on a rune, with the mark", len(cut), utf8.ValidString(cut), maxText)
+	}
+}
+
+// A time with an offset is written in UTC: a reader takes UTC only, and
+// what evo writes evo reads («Риск», conclusion 311, 311-6).
+func TestAppend_ATimeWithAnOffsetIsWrittenInUTC(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	l := line(Created)
+	l.Time = "2026-11-17T15:00:00+03:00"
+	if err := Append(dir, l); err != nil {
+		t.Fatal(err)
+	}
+	j, err := ReadAll(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(j.Lines) != 1 || j.Lines[0].Time != "2026-11-17T12:00:00Z" {
+		t.Errorf("read %+v, skipped %d; want the line, at 2026-11-17T12:00:00Z", j.Lines, j.Skipped)
+	}
+}
+
+// Every text of a line is cut by the writer, not only the name: a field the
+// writer leaves long is a line the reader skips («Риск», conclusion 311,
+// 311-5). The fields are found by reflection, so a new one is in the test.
+func TestAppend_EveryTextIsCut(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	l := line(Created)
+	v := reflect.ValueOf(&l).Elem()
+	long := strings.Repeat("я", maxText)
+	var cut []string
+	for i := 0; i < v.NumField(); i++ {
+		switch name := v.Type().Field(i).Name; name {
+		case "Time", "Outcome", "IntentID":
+			// Of a form, not a text: checked, never cut.
+		default:
+			if v.Field(i).Kind() == reflect.String {
+				v.Field(i).SetString(long)
+				cut = append(cut, name)
+			}
+		}
+	}
+	if err := Append(dir, l); err != nil {
+		t.Fatal(err)
+	}
+	j, err := ReadAll(dir, nil)
+	if err != nil || len(j.Lines) != 1 {
+		t.Fatalf("read %d lines, skipped %d, %v; want the line, its texts cut", len(j.Lines), j.Skipped, err)
+	}
+	got := reflect.ValueOf(j.Lines[0])
+	for _, name := range cut {
+		if s := got.FieldByName(name).String(); !strings.HasSuffix(s, cutMark) || len(s) > maxText {
+			t.Errorf("%s: %d bytes; want cut to %d with the mark", name, len(s), maxText)
+		}
 	}
 }

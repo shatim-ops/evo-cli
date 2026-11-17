@@ -151,6 +151,9 @@ func Append(dir string, l Line) error {
 	if err != nil {
 		return err
 	}
+	// A reader takes UTC only: a time with an offset is written in UTC
+	// (311-6).
+	l.Time = at.UTC().Format(time.RFC3339Nano)
 	if fi, err := os.Lstat(dir); err == nil && !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory of evo", dir)
 	}
