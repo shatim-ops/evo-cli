@@ -89,6 +89,9 @@ func TestUntrustedContainers_MarkedInEveryAnswer(t *testing.T) {
 		cloud.SetToken("t")
 		cloud.Backoff = 1
 		r := raRegistry(t, w.api, cloud, nil)
+		// wall-clock: the test reads only the marks of whatever answer a
+		// call gave — cut short by the budget or not — never how far it
+		// got; the budget only keeps waits for an operation short.
 		r.SetCallBudget(100 * time.Millisecond)
 		for _, tl := range r.Tools() {
 			for _, args := range requiredCalls(tl) {
