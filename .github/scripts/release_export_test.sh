@@ -2,7 +2,7 @@
 # Проверка release_export.sh (job ci) на временном репозитории: в снимок
 # идёт только список включения, без тестов, testdata, docs/internal и
 # RELEASING; маркер внутреннего в документе — провал, в комментарии Go —
-# отчёт (провал при EXPORT_STRICT_GO=1); снимок — один коммит без истории.
+# только отчёт; снимок — один коммит без истории.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
@@ -50,14 +50,11 @@ case "$log" in *"docs/guide.md"*) ;; *) echo "FAIL: файл с маркером
 [ ! -d "$tmp/s2/.git" ] || { echo "FAIL: снимок с маркером закоммичен"; fail=1; }
 git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 
-# Маркер в комментарии Go — отчёт; со строгим режимом — провал.
+# Маркер в комментарии Go — только отчёт.
 printf 'package a\n\n// A follows «Риск», conclusion 1.\nfunc A() {}\n' >internal/a/a.go
 git -c user.name=t -c user.email=t@t commit -qam gocomment
-log=$("$here/release_export.sh" HEAD "$tmp/s3" 2>&1) || { echo "FAIL: маркер в Go без строгого режима — провал: $log"; fail=1; }
+log=$("$here/release_export.sh" HEAD "$tmp/s3" 2>&1) || { echo "FAIL: маркер в комментарии Go — провал: $log"; fail=1; }
 case "$log" in *"файлов Go с маркерами внутреннего в комментариях: 1"*) ;; *) echo "FAIL: отчёт о Go: $log"; fail=1 ;; esac
-rc=0
-EXPORT_STRICT_GO=1 "$here/release_export.sh" HEAD "$tmp/s4" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 1 ] || { echo "FAIL: строгий режим — код $rc, ждём 1"; fail=1; }
 
 # Латинское Astra (Astra Linux) — не маркер.
 echo 'образ Astra Linux' >>docs/guide.md

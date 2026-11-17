@@ -15,9 +15,8 @@
 #   - маркер внутреннего (docs/internal, роли, заключения «Риска», Астра,
 #     решения владельца, evo-internal, handoff/) в файле не на Go — провал
 #     (код 1);
-#   - тот же маркер в файле Go — число файлов в отчёте; при
-#     EXPORT_STRICT_GO=1 — провал (комментарии кода уже публичны в
-#     evo-cli; выбор — «релиза» и «Риска», ТЗ п. 1);
+#   - тот же маркер в файле Go — только число файлов в отчёте: комментарии
+#     кода уже публичны в evo-cli (решение «релиза» 17.11, ТЗ п. 1);
 #   - go build ./... и go vet ./... на снимке.
 # КАТАЛОГ не существует или пуст. Код 2 — ошибка вызова.
 set -euo pipefail
@@ -66,10 +65,7 @@ gofiles=0
 while IFS= read -r f; do
 	rel=${f#"$out"/}
 	case "$rel" in
-	*.go)
-		gofiles=$((gofiles + 1))
-		if [ "${EXPORT_STRICT_GO:-}" = 1 ]; then echo "::error::маркер внутреннего в $rel"; bad=1; fi
-		;;
+	*.go) gofiles=$((gofiles + 1)) ;;
 	*) echo "::error::маркер внутреннего в $rel: $(grep -m1 -oE "$markers" "$f")"; bad=1 ;;
 	esac
 done < <(grep -rlE "$markers" "$out" --exclude-dir=.git || true)
