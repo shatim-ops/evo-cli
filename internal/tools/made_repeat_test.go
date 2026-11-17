@@ -335,3 +335,58 @@ func TestMadeEnded(t *testing.T) {
 		}
 	}
 }
+
+// dnsWaitAPI is Evolution DNS with a public zone taken and not listed yet:
+// a POST of a zone is taken (an operation that goes on, the zone's id) and
+// counted; the private zones list another zone of the project.
+type dnsWaitAPI struct {
+	mu    sync.Mutex
+	posts int
+	calls []string
+}
+
+func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
+	rec := httptest.NewRecorder()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.calls = append(a.calls, r.Method+" "+r.URL.Path)
+	switch {
+	case r.URL.Path == "/v1/publicZones" && r.Method == http.MethodPost:
+		a.posts++
+		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":false}`)
+	case r.URL.Path == "/v1/publicZones":
+		_, _ = io.WriteString(rec, `{"zones":[]}`)
+	case r.URL.Path == "/v1/privateZones":
+		_, _ = io.WriteString(rec, `{"zones":[{"id":"00000000-0000-4000-8000-0000000000f9","name":"other","domain":"other.example."}]}`)
+	case strings.HasPrefix(r.URL.Path, "/v1/operations/"):
+		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":false}`)
+	default:
+		http.Error(rec, `{"message":"not found"}`, 404)
+	}
+	return rec.Result(), nil
+}
+
+// «Риск», conclusion 302, У1: dns_zone_create's repeat, while the zone is
+// taken and not listed, reads the list of zones its answer names
+// (dns_zones, with no argument: the private ones — the line of the release
+// plan «повтор dns_zone_create для публичной зоны», C(7)) and answers
+// waiting with repeat_of: no second POST, with consent or without. The
+// list holds another zone of the project, so it is not empty and the wait
+// goes on (until madeMaxAge), not past madeListGrace.
+func TestDNSZoneCreate_ARepeatWhileTheZoneIsNotListedSendsNoSecondCreate(t *testing.T) {
+	api := &dnsWaitAPI{}
+	r := waitingRegistry(t, api)
+	args := map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}
+	m, text, _ := callNamed(t, r, "dns_zone_create", args)
+	if m["zone_id"] != "00000000-0000-4000-8000-0000000000f1" || api.posts != 1 {
+		t.Fatalf("the first call: %d POSTs, %s\n%v", api.posts, text, api.calls)
+	}
+	for _, confirmed := range []bool{false, true} {
+		args["confirmed"] = confirmed
+		m, text, _ = callNamed(t, r, "dns_zone_create", args)
+		rep, _ := m["repeat_of"].(map[string]any)
+		if api.posts != 1 || rep["id"] != "00000000-0000-4000-8000-0000000000f1" || m["status"] != "waiting" {
+			t.Errorf("confirmed=%v: %d POSTs, %s", confirmed, api.posts, text)
+		}
+	}
+}
