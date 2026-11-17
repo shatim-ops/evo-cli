@@ -14,7 +14,7 @@
     "id_args": [
       "id why=\"the request carries the project (projectId in the query), and the API looks the resource up in that project\" target=false ids=false"
     ],
-    "untrusted": "{fields:[target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
   },
   "ar_get": {
     "project": true,
@@ -564,7 +564,7 @@
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Kafka cluster\" byName:false list:\"kafka_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[target] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false}"
   },
   "kafka_get": {
     "id_args": [
@@ -859,7 +859,7 @@
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Redis cluster\" byName:false list:\"redis_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[target] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false}"
   },
   "redis_get": {
     "id_args": [
@@ -989,7 +989,7 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"SNAT gateway\" byName:false list:\"snat_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
   },
   "snat_list": {
     "project": true,
@@ -1036,7 +1036,7 @@
     "id_args": [
       "subnet_id why=\"\" target=true ids=false kind={what:\"subnet\" byName:false list:\"list_subnets\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
   },
   "tg_create": {
     "project": true,
@@ -1171,7 +1171,7 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
   },
   "vpc_get": {
     "id_args": [
