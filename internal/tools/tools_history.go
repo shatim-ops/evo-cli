@@ -158,11 +158,11 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 				visible = append(visible, i)
 			}
 		}
-		checked, results = s.checkLive(ctx, history.DirOf(intent.Dir(root)), live, visible, eng.Maker(), callerOf(ctx) != nil)
+		checked, results = s.checkLive(ctx, live, visible, eng.Maker())
 	}
 	liveLines := []historyLine{}
 	for i, l := range live {
-		if shown(l) && results[i] != checkClosed {
+		if shown(l) {
 			hl := s.historyLineOf(l)
 			hl.CheckResult = results[i]
 			liveLines = append(liveLines, hl)
@@ -200,13 +200,15 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	}
 	if checked != nil {
 		ans["checked"] = checked
-		closed := []historyLine{}
+		would := []historyLine{}
 		for i, l := range live {
-			if results[i] == checkClosed {
-				closed = append(closed, s.historyLineOf(l))
+			if results[i] == checkNotSeen {
+				would = append(would, s.historyLineOf(l))
 			}
 		}
-		ans["closed"] = closed
+		ans["would_close"] = would
+		ans["check_note"] = i18n.T("would_close: a read by id, with the key that sent the call, answers «not found»: the resource was removed, or this key no longer sees it — the platform does not tell which. history writes nothing: the lines stay live in the journal. check_result tells why a live line was not read.",
+			"would_close — чтение по id ключом, которым отправлен вызов, отвечает «не найдено»: ресурс удалён или этот ключ его больше не видит, — какое из двух, платформа не говорит. history ничего не пишет: в журнале строки остаются живыми. check_result — почему живая строка не прочитана.")
 	}
 	return toJSON(ans), false
 }
@@ -235,16 +237,23 @@ func (s *Registry) historyLineOf(l history.Line) historyLine {
 
 // historyCheckMax is the most reads one history with check sends: a
 // journal of many live lines is checked over several calls, not in one
-// burst of reads.
+// burst of reads. Only a line that passed every local condition spends it,
+// the oldest first («Риск», conclusion 315).
 const historyCheckMax = 50
 
-// What history with check found of a live line (check_result).
+// What history with check found of a live line (check_result). check only
+// says: history is a read and writes nothing, the journal included
+// («Риск», conclusion 315, У4).
 const (
-	// checkClosed: gone; the line is closed (not in the answer's live).
-	checkClosed = "closed"
+	// checkNotSeen: the read by id, with the key that sent the call,
+	// answers «not found» — the resource was removed, or this key no
+	// longer sees it; which, the platform does not tell (У3). The line is
+	// in would_close.
+	checkNotSeen = "not_seen"
 	// checkThere: the read by id finds the resource.
 	checkThere = "there"
-	// checkReadFailed: the read did not answer «there» or «not there».
+	// checkReadFailed: the read answered neither «there» nor «not found»
+	// (403, 401, 429, 5xx, a cut): not checked.
 	checkReadFailed = "read_failed"
 	// checkOtherKey: the call was sent with another key, which may see
 	// what this one does not (R-82).
@@ -254,72 +263,84 @@ const (
 	// checkNoRead: the kind has no read by id.
 	checkNoRead = "no_read_by_id"
 	// checkNotByID: the line has no id from the cloud — an outcome not
-	// known, whose id may be the name of the call's argument.
+	// known, whose id may be the name of the call's argument (У2 of 311).
 	checkNotByID = "not_by_id"
+	// checkNoProject: the line names no project — a call by id (R-82).
+	checkNoProject = "no_project"
+	// checkInParent: the resource lives in a parent, which a read by its
+	// id does not take (У5).
+	checkInParent = "in_parent"
+	// checkTooNew: the line is younger than madeListGrace: a read may not
+	// show a resource just made yet (У1).
+	checkTooNew = "too_new"
+	// checkLater: a later live line names the same resource; that one is
+	// read (У2).
+	checkLater = "later_line"
 	// checkOverBudget: not read in this call (historyCheckMax).
 	checkOverBudget = "over_budget"
-	// checkNotWritten: gone, but the line not_found was not written; the
-	// line stays live.
-	checkNotWritten = "gone_not_written"
 )
 
-// historyChecked counts what history with check did.
+// historyChecked counts what history with check did: the reads sent, the
+// lines it would close, and the lines not read, by why.
 type historyChecked struct {
-	Read       int `json:"read"`
-	Closed     int `json:"closed"`
-	NotChecked int `json:"not_checked"`
+	Read       int            `json:"read"`
+	WouldClose int            `json:"would_close"`
+	NotChecked map[string]int `json:"not_checked,omitempty"`
 }
 
-// checkLive reads by id each live line of the indexes visible that names a
-// resource by its id from the cloud (created, found), with the rule of
-// doctor (readByID) and the key cur of this run, and closes a line the
-// read finds gone: a line not_found of the same resource is written to the
-// journal dir — a resource removed in the console or from another machine
-// is no longer live (the ТЗ of the journal, У7). The cloud is only read.
-// results tells each index what was found.
-func (s *Registry) checkLive(ctx context.Context, dir string, live []history.Line, visible []int, cur *state.Maker, cli bool) (*historyChecked, map[int]string) {
-	out := &historyChecked{}
+// checkLive reads by id each live line of the indexes visible (oldest
+// first) that names a resource of a project by its id from the cloud
+// (created, found), with the rule of doctor (readByID) and the key cur of
+// this run, and tells what it found (the ТЗ of the journal, У7; «Риск»,
+// conclusion 315). It writes nothing: a line the read does not see is
+// would_close. The cloud is only read.
+func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible []int, cur *state.Maker) (*historyChecked, map[int]string) {
+	out := &historyChecked{NotChecked: map[string]int{}}
 	results := map[int]string{}
+	resource := func(l history.Line) string { return l.Kind + "\x00" + l.Parent + "\x00" + l.ResourceID }
+	latest := map[string]int{}
+	for _, i := range visible {
+		latest[resource(live[i])] = i
+	}
+	fresh := clock.Now().Add(-madeListGrace)
 	for _, i := range visible {
 		l := live[i]
-		if (l.Outcome != history.Created && l.Outcome != history.Found) || l.ResourceID == "" {
-			results[i] = checkNotByID
-			out.NotChecked++
-			continue
-		}
+		at, _ := time.Parse(time.RFC3339, l.Time)
 		k := cardOf(l.Tool)
-		if skip := readSkipOf(k, l.Key, cur); skip != readSent {
-			results[i] = map[readSkip]string{readNoCard: checkNoRead, readOtherKey: checkOtherKey, readNoKey: checkNoKey}[skip]
-			out.NotChecked++
-			continue
+		why := ""
+		switch {
+		case (l.Outcome != history.Created && l.Outcome != history.Found) || l.ResourceID == "":
+			why = checkNotByID
+		case l.ProjectID == "":
+			why = checkNoProject
+		case l.Parent != "":
+			why = checkInParent
+		case latest[resource(l)] != i:
+			why = checkLater
+		case at.After(fresh):
+			why = checkTooNew
+		default:
+			why = map[readSkip]string{readNoCard: checkNoRead, readOtherKey: checkOtherKey, readNoKey: checkNoKey}[readSkipOf(k, l.Key, cur)]
 		}
-		if out.Read == historyCheckMax {
-			results[i] = checkOverBudget
-			out.NotChecked++
+		if why == "" && out.Read == historyCheckMax {
+			why = checkOverBudget
+		}
+		if why != "" {
+			results[i] = why
+			out.NotChecked[why]++
 			continue
 		}
 		out.Read++
-		_, gone, _, err := s.readByID(ctx, k, l.ResourceID, l.Key, cur)
+		_, notSeen, _, err := s.readByID(ctx, k, l.ResourceID, l.Key, cur)
 		switch {
-		case gone:
-			surface := "mcp"
-			if cli {
-				surface = "cli"
-			}
-			nf := history.Line{Time: clock.Now().UTC().Format(time.RFC3339), Tool: "history", Surface: surface, ProjectID: l.ProjectID,
-				Zone: l.Zone, Name: l.Name, Kind: l.Kind, Parent: l.Parent, ResourceID: l.ResourceID, Outcome: history.NotFound,
-				IntentID: l.IntentID, Key: cur}
-			if err := history.Append(dir, nf); err != nil {
-				results[i] = checkNotWritten
-				out.NotChecked++
-				continue
-			}
-			results[i] = checkClosed
-			out.Closed++
+		case notSeen:
+			results[i] = checkNotSeen
+			out.WouldClose++
 		case err == nil:
 			results[i] = checkThere
 		default:
 			results[i] = checkReadFailed
+			out.NotChecked[checkReadFailed]++
 		}
 	}
 	return out, results

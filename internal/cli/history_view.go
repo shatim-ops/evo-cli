@@ -46,11 +46,12 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 		LiveCut   bool           `json:"live_truncated"`
 		Retired   string         `json:"retired_through"`
 		Note      string         `json:"note"`
-		Closed    []historyEntry `json:"closed"`
+		Would     []historyEntry `json:"would_close"`
+		CheckNote string         `json:"check_note"`
 		Checked   *struct {
-			Read       int `json:"read"`
-			Closed     int `json:"closed"`
-			NotChecked int `json:"not_checked"`
+			Read       int            `json:"read"`
+			WouldClose int            `json:"would_close"`
+			NotChecked map[string]int `json:"not_checked"`
 		} `json:"checked"`
 	}
 	if err := json.Unmarshal([]byte(text), &a); err != nil {
@@ -104,15 +105,22 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 	}
 	if a.Checked != nil {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, i18n.Tf("Checked: %d read by id, %d gone and closed, %d not read.",
-			"Проверено: прочитано по id %d, исчезло и закрыто %d, не прочитано %d.", a.Checked.Read, a.Checked.Closed, a.Checked.NotChecked))
-		if len(a.Closed) > 0 {
-			rows := make([][]string, len(a.Closed))
-			for i, e := range a.Closed {
+		notRead := 0
+		for _, n := range a.Checked.NotChecked {
+			notRead += n
+		}
+		fmt.Fprintln(w, i18n.Tf("Checked: %d read by id, %d not seen by this key, %d not read.",
+			"Проверено: прочитано по id %d, этот ключ не видит %d, не прочитано %d.", a.Checked.Read, a.Checked.WouldClose, notRead))
+		if len(a.Would) > 0 {
+			rows := make([][]string, len(a.Would))
+			for i, e := range a.Would {
 				rows[i] = []string{e.Time, e.Tool, what(e), e.ResourceID}
 			}
-			fmt.Fprintln(w, i18n.T("Gone — closed with a line not_found:", "Исчезло — закрыто строкой not_found:"))
+			fmt.Fprintln(w, i18n.T("Not seen by this key now — removed, or no longer seen by it:", "Этот ключ сейчас не видит — удалено или больше не видно ему:"))
 			p.Table([]string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID"}, rows)
+		}
+		if a.CheckNote != "" {
+			fmt.Fprintln(w, a.CheckNote)
 		}
 	}
 	if a.LiveCut {

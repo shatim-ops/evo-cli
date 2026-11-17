@@ -7,90 +7,103 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
-// history with check reads each live line it can by id (readByID, the rule
-// of doctor) and closes the line of a resource the read says is gone,
-// with a line not_found of the same resource (the ТЗ of the journal, У7):
-// a resource removed in the console is no longer live. Only «not there»,
-// answered to the key that sent the call, closes; any other answer keeps
-// the line live and says why. A line whose id is a name (an outcome not
-// known of a create by name) is not read by id. The cloud is only read.
-func TestHistory_CheckClosesWhatAReadByIDFindsGone(t *testing.T) {
+// checkAt fixes the clock of history with check at noon of 17.11.
+func checkAt(t *testing.T) {
+	t.Helper()
+	old := clock.Now
+	clock.Now = func() time.Time { return time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { clock.Now = old })
+}
+
+// history with check reads by id each live line it can (readByID, the rule
+// of doctor) and says what it found; it writes nothing, the journal
+// included («Риск», conclusion 315, У4). Only «not found», answered to
+// the key that sent the call, puts a line in would_close — said as «this
+// key does not see it now», not «gone» (У3); any other answer, and a line
+// it does not read — no id from the cloud, no project, in a parent, too
+// new, superseded by a later line, another key or none, a kind with no
+// read by id — keeps check_result with why (У1, У2, У5). The cloud is only
+// read.
+func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
+	checkAt(t)
 	this := &state.Maker{KeyID: config.MaskKeyID("k")} // the key of the fake's engine
 	other := &state.Maker{ServiceAccountID: "sa-other", KeyID: "ot…er"}
+	old := "2026-11-17T10:00:00Z"
 	for _, c := range []struct {
-		name, tool, id, outcome string
-		key                     *state.Maker
-		status                  int
-		closed                  bool
-		says                    string
+		name, tool, id, outcome, project, parent, at string
+		key                                          *state.Maker
+		status                                       int
+		says                                         string
+		reads                                        int
 	}{
-		{name: "gone, the same key", tool: "pg_create", id: resGone, outcome: history.Created, key: this, closed: true},
-		{name: "found by a repeat, gone", tool: "lb_create", id: resGone, outcome: history.Found, key: this, closed: true},
-		{name: "still there", tool: "pg_create", id: resForeign, outcome: history.Created, key: this, says: checkThere},
-		{name: "the read is refused", tool: "lb_create", id: resGone, outcome: history.Created, key: this, status: http.StatusForbidden, says: checkReadFailed},
-		{name: "the read is throttled", tool: "vpc_create", id: resGone, outcome: history.Created, key: this, status: http.StatusTooManyRequests, says: checkReadFailed},
+		{name: "not seen, the same key", tool: "pg_create", id: resGone, outcome: history.Created, key: this, says: checkNotSeen, reads: 1},
+		{name: "found by a repeat, not seen", tool: "lb_create", id: resGone, outcome: history.Found, key: this, says: checkNotSeen, reads: 1},
+		{name: "still there", tool: "pg_create", id: resForeign, outcome: history.Created, key: this, says: checkThere, reads: 1},
+		{name: "the read is refused", tool: "lb_create", id: resGone, outcome: history.Created, key: this, status: http.StatusForbidden, says: checkReadFailed, reads: 1},
+		{name: "the read is throttled", tool: "vpc_create", id: resGone, outcome: history.Created, key: this, status: http.StatusTooManyRequests, says: checkReadFailed, reads: 1},
+		{name: "the API fails", tool: "k8s_create", id: resGone, outcome: history.Created, key: this, status: http.StatusBadGateway, says: checkReadFailed, reads: 1},
 		{name: "another key", tool: "cert_import", id: resGone, outcome: history.Created, key: other, says: checkOtherKey},
 		{name: "a line with no key", tool: "pg_create", id: resGone, outcome: history.Created, says: checkNoKey},
 		{name: "a kind with no read by id", tool: "disk_create", id: resGone, outcome: history.Created, key: this, says: checkNoRead},
 		{name: "an outcome not known: the id may be a name", tool: "pg_create", id: resGone, outcome: history.Unknown, key: this, says: checkNotByID},
+		{name: "a line with no project", tool: "pg_create", id: resGone, outcome: history.Created, project: "-", key: this, says: checkNoProject},
+		{name: "a resource in a parent", tool: "k8s_add_nodepool", id: resGone, outcome: history.Created, parent: "cluster_id=" + resForeign, key: this, says: checkInParent},
+		{name: "made just now", tool: "pg_create", id: resGone, outcome: history.Created, at: "2026-11-17T11:55:00Z", key: this, says: checkTooNew},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := &ownerFake{goneStatus: c.status}
 			r := ownerRegistry(t, f, false, ownProject)
 			eng, _ := r.newEngine(nil)
 			hdir := history.DirOf(intent.Dir(eng.StateDir))
-			line := history.Line{Time: "2026-11-17T10:00:00Z", Tool: c.tool, ProjectID: ownProject, Kind: resourceKind(c.tool),
+			project, at := ownProject, old
+			if c.project == "-" {
+				project = ""
+			}
+			if c.at != "" {
+				at = c.at
+			}
+			line := history.Line{Time: at, Tool: c.tool, ProjectID: project, Kind: resourceKind(c.tool), Parent: c.parent,
 				ResourceID: c.id, Outcome: c.outcome, IntentID: "a000000000000001", Key: c.key}
 			if err := history.Append(hdir, line); err != nil {
 				t.Fatal(err)
 			}
+			before, _ := history.ReadAll(hdir, nil)
 			text, isErr := r.handlers["history"](context.Background(), map[string]any{"check": true, "since": "2026-11-01"})
 			if isErr {
 				t.Fatal(text)
 			}
 			var a struct {
-				Live    []historyLine `json:"live"`
-				Closed  []historyLine `json:"closed"`
-				Checked struct {
+				Live       []historyLine `json:"live"`
+				WouldClose []historyLine `json:"would_close"`
+				Checked    struct {
 					Read       int `json:"read"`
-					Closed     int `json:"closed"`
-					NotChecked int `json:"not_checked"`
+					WouldClose int `json:"would_close"`
 				} `json:"checked"`
 			}
 			if err := json.Unmarshal([]byte(text), &a); err != nil {
 				t.Fatal(err)
 			}
-			j, _ := history.ReadAll(hdir, nil)
-			notFound := 0
-			for _, l := range j.Lines {
-				if l.Outcome == history.NotFound && l.ResourceID == c.id && l.Kind == line.Kind && l.ProjectID == ownProject {
-					notFound++
-				}
+			if len(a.Live) != 1 || a.Live[0].CheckResult != c.says || a.Checked.Read != c.reads {
+				t.Errorf("live %+v, %d reads; want the line live with check_result %q, %d reads\n%s", a.Live, a.Checked.Read, c.says, c.reads, text)
 			}
-			if c.closed {
-				if len(a.Live) != 0 || len(a.Closed) != 1 || notFound != 1 || len(history.Live(j.Lines)) != 0 {
-					t.Errorf("live %+v, closed %+v, not_found lines %d; want the line closed, with one line not_found\n%s", a.Live, a.Closed, notFound, text)
-				}
-				// A second check reads nothing: the line is no longer live.
-				before := len(f.log())
-				_, _ = r.handlers["history"](context.Background(), map[string]any{"check": true, "since": "2026-11-01"})
-				if len(f.log()) != before {
-					t.Errorf("a second check read %v again", f.log()[before:])
-				}
-			} else {
-				if len(a.Live) != 1 || a.Live[0].CheckResult != c.says || notFound != 0 {
-					t.Errorf("live %+v, not_found lines %d; want the line live with check_result %q\n%s", a.Live, notFound, c.says, text)
-				}
+			if wants := c.says == checkNotSeen; (len(a.WouldClose) == 1) != wants || (a.Checked.WouldClose == 1) != wants {
+				t.Errorf("would_close %+v; want it %v\n%s", a.WouldClose, wants, text)
+			}
+			if after, _ := history.ReadAll(hdir, nil); len(after.Lines) != len(before.Lines) {
+				t.Errorf("history with check wrote to the journal: %d lines, were %d", len(after.Lines), len(before.Lines))
 			}
 			for _, q := range f.log() {
 				if !strings.HasPrefix(q, "GET ") {
@@ -98,6 +111,53 @@ func TestHistory_CheckClosesWhatAReadByIDFindsGone(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A resource of two live lines — made, then found by a repeat — is read
+// once, by its later line; the earlier says later_line (У2). The reads stop
+// at historyCheckMax; only lines that passed every local condition count,
+// and the rest are over_budget.
+func TestHistory_CheckReadsTheLaterLineAndKeepsItsBudget(t *testing.T) {
+	checkAt(t)
+	f := &ownerFake{}
+	r := ownerRegistry(t, f, false, ownProject)
+	eng, _ := r.newEngine(nil)
+	hdir := history.DirOf(intent.Dir(eng.StateDir))
+	key := &state.Maker{KeyID: config.MaskKeyID("k")}
+	add := func(intentID, tool, outcome, id string) {
+		t.Helper()
+		l := history.Line{Time: "2026-11-17T09:00:00Z", Tool: tool, ProjectID: ownProject, Kind: resourceKind(tool),
+			ResourceID: id, Outcome: outcome, IntentID: intentID, Key: key}
+		if err := history.Append(hdir, l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("c000000000000001", "pg_create", history.Created, resForeign)
+	add("c000000000000002", "pg_create", history.Found, resForeign)
+	// Lines it does not read spend no budget: a kind with no read by id.
+	for i := 0; i < 3; i++ {
+		add(fmt.Sprintf("d00000000000000%d", i), "disk_create", history.Created, fmt.Sprintf("00000000-0000-4000-8000-0000000d000%d", i))
+	}
+	for i := 0; i < historyCheckMax+2; i++ {
+		add(fmt.Sprintf("e0000000000000%02x", i), "pg_create", history.Created, fmt.Sprintf("00000000-0000-4000-8000-0000000e00%02x", i))
+	}
+	text, _ := r.handlers["history"](context.Background(), map[string]any{"check": true, "since": "2026-11-01"})
+	var a struct {
+		Live    []historyLine `json:"live"`
+		Checked struct {
+			Read       int            `json:"read"`
+			NotChecked map[string]int `json:"not_checked"`
+		} `json:"checked"`
+	}
+	if err := json.Unmarshal([]byte(text), &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.Live[0].CheckResult != checkLater || a.Live[1].CheckResult != checkThere {
+		t.Errorf("the two lines of one resource: %q, %q; want later_line, then there", a.Live[0].CheckResult, a.Live[1].CheckResult)
+	}
+	if a.Checked.Read != historyCheckMax || a.Checked.NotChecked[checkOverBudget] != 3 || a.Checked.NotChecked[checkNoRead] != 3 {
+		t.Errorf("checked %+v; want %d reads, 3 over the budget, 3 with no read by id", a.Checked, historyCheckMax)
 	}
 }
 
@@ -123,6 +183,7 @@ func TestHistory_WithoutCheckReadsNoCloud(t *testing.T) {
 // lines it shows: a line of another project, or with no project, is not
 // read and not closed.
 func TestHistory_CheckOnABoundServerReadsOnlyWhatItShows(t *testing.T) {
+	checkAt(t)
 	f := &ownerFake{}
 	r := ownerRegistry(t, f, true, ownProject)
 	eng, err := r.newEngine(map[string]any{"ProjectID": ownProject})
@@ -144,9 +205,5 @@ func TestHistory_CheckOnABoundServerReadsOnlyWhatItShows(t *testing.T) {
 	}
 	if q := f.log(); len(q) != 0 {
 		t.Errorf("check on a bound server read lines it does not show: %v\n%s", q, text)
-	}
-	j, _ := history.ReadAll(hdir, nil)
-	if len(history.Live(j.Lines)) != 2 {
-		t.Errorf("a line it does not show was closed: %+v", j.Lines)
 	}
 }
