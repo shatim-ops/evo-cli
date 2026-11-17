@@ -153,6 +153,32 @@ has g12nok8s "probes: «g12» — проба джоба k8s-smoke, а он не 
 fresh g12pod
 run g12pod 1 K8S_SMOKE=true K8S_POD_CHART=true PROBES=g12
 has g12pod "probes: «g12» и k8s_pod_chart в одном запуске не идут — худший ход job k8s-smoke вплотную к пределу 300 мин"
+# Операции второго дня кодом evo (гейт rc.1, п. 7): opsevo — своя область
+# job live, одна; не с основным e2e, os_smoke и пробами области ops (пик
+# ВМ); k8sevo — в job k8s-smoke, отдельным от opsevo запуском и без g12
+# (та же группа узлов).
+fresh opsevo
+run opsevo 0 PROBES=opsevo
+fresh opsevocore
+run opsevocore 1 E2E_CORE=true PROBES=opsevo
+has opsevocore "probes: «opsevo» — область opsevo в одном запуске с основным e2e (e2e_core)"
+fresh opsevoos
+run opsevoos 1 OS_SMOKE=true PROBES=opsevo
+has opsevoos "probes: «opsevo» — область opsevo в одном запуске с os_smoke"
+fresh opsevoops
+run opsevoops 1 PROBES='opsevo g11'
+has opsevoops "probes: «opsevo» и «g11» — области opsevo и ops в одном запуске складывают пик ВМ"
+fresh k8sevo
+run k8sevo 0 K8S_SMOKE=true PROBES=k8sevo
+fresh k8sevonok8s
+run k8sevonok8s 1 PROBES=k8sevo
+has k8sevonok8s "probes: «k8sevo» — область джоба k8s-smoke, а он не идёт (k8s_smoke)"
+fresh k8sevog12
+run k8sevog12 1 K8S_SMOKE=true PROBES='k8sevo g12'
+has k8sevog12 "probes: «k8sevo» и «g12» в одном запуске не идут"
+fresh k8sevoopsevo
+run k8sevoopsevo 1 K8S_SMOKE=true PROBES='opsevo k8sevo'
+has k8sevoopsevo "probes: «opsevo» и «k8sevo» — разными запусками"
 fresh g14nokafka
 run g14nokafka 1 DBAAS_SMOKE=true DBAAS_SERVICES=pg PROBES=g14
 has g14nokafka "probes: «g14» — проба джоба dbaas-kafka, а он не идёт (dbaas_smoke и kafka в dbaas_services)"

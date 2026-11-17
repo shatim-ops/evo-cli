@@ -109,12 +109,16 @@ func NewWithWriters(out, errOut io.Writer, mode Mode, color bool) *Printer {
 }
 
 // Step prints a step indicator: "==> [1/5] Message...". A command of one
-// step (total 0) has no counter: "==> Message...".
+// step (total 0) has no counter: "==> Message...". The message may carry
+// what the cloud sent (a state, a name): it is printed cleaned, as
+// StepDone and Progress print theirs — the step lines go to the terminal,
+// to the "log" of an MCP answer and to the progress of an MCP call alike.
 func (p *Printer) Step(n, total int, msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
+	msg = sanitizeCell(msg)
 	prefix := fmt.Sprintf("==> [%d/%d] %s", n, total, msg)
 	if total == 0 {
 		prefix = "==> " + msg
@@ -128,7 +132,7 @@ func (p *Printer) Step(n, total int, msg string) {
 
 // StepDone prints step completion: "    detail". The detail is one line
 // that may name what the cloud sent (a VM's name): it is printed cleaned
-// (sanitizeCell), the one point for every step of every command.
+// (sanitizeCell), as Step and Progress print theirs.
 func (p *Printer) StepDone(detail string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
@@ -142,12 +146,16 @@ func (p *Printer) StepDone(detail string) {
 	}
 }
 
-// Success prints a success message in green.
+// Success prints a success message in green, one line, cleaned as a step
+// line is: it may carry what the cloud sent, and it goes where the steps
+// go — the terminal, the "log" of an MCP answer, the progress of an MCP
+// call («Риск», conclusion 291-1).
 func (p *Printer) Success(msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
+	msg = sanitizeCell(msg)
 	if p.color {
 		fmt.Fprintf(p.out, "%s%s%s\n", colorGreen, msg, colorReset)
 	} else {
@@ -157,13 +165,16 @@ func (p *Printer) Success(msg string) {
 
 // Warning prints a warning message in yellow to the error writer; in JSON
 // mode as a {"warning": "..."} line, so that it is neither lost nor breaks
-// a parser reading stderr.
+// a parser reading stderr. As text it is one line, cleaned as a step line
+// is: a warning of deploy carries the cloud's text («Риск», conclusion
+// 291-1).
 func (p *Printer) Warning(msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		_ = json.NewEncoder(p.errOut).Encode(map[string]string{"warning": msg})
 		return
 	}
+	msg = sanitizeCell(msg)
 	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s%s%s\n", colorBold, colorYellow, warningPrefix(), msg, colorReset)
 	} else {
@@ -171,10 +182,13 @@ func (p *Printer) Warning(msg string) {
 	}
 }
 
-// Errorf prints an error message in red.
+// Errorf prints an error message in red. An error may quote what the
+// cloud sent («Риск», conclusion 291-2): each of its lines is cleaned as a
+// step line is; the line breaks stay — an error lists the matches of an
+// ambiguous name one per line.
 func (p *Printer) Errorf(msg string, args ...any) {
 	p.ProgressDone()
-	formatted := fmt.Sprintf(msg, args...)
+	formatted := sanitizeLines(fmt.Sprintf(msg, args...))
 	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s%s%s\n", colorBold, colorRed, errorPrefix(), formatted, colorReset)
 	} else {
@@ -182,12 +196,15 @@ func (p *Printer) Errorf(msg string, args ...any) {
 	}
 }
 
-// Hint prints a hint/suggestion in dim text.
+// Hint prints a hint/suggestion in dim text, one line, cleaned as a step
+// line is: a hint may name what the cloud sent, and it goes where the
+// steps go («Риск», conclusion 291-2).
 func (p *Printer) Hint(msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
+	msg = sanitizeCell(msg)
 	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s\n", colorDim, msg, colorReset)
 	} else {
@@ -230,6 +247,24 @@ func sanitizeRow(row []string) []string {
 // SanitizeCell is sanitizeCell for text printed outside a table (a card
 // line with a name from the cloud).
 func SanitizeCell(s string) string { return sanitizeCell(s) }
+
+// sanitizeLines is sanitizeCell for each line of s: the line breaks of a
+// text of several lines stay, everything else is cleaned as a cell is. A
+// line after the first always starts indented — a service's refusal quoted
+// in an error may carry real line breaks, and its lines never start where
+// evo's own «Error:» or «Hint:» do («Риск», conclusion 298, У1); a line
+// already indented (the matches of an ambiguous name) stays as it is.
+func sanitizeLines(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		l = sanitizeCell(l)
+		if i > 0 && l != "" && !strings.HasPrefix(l, " ") {
+			l = "  " + l
+		}
+		lines[i] = l
+	}
+	return strings.Join(lines, "\n")
+}
 
 // sanitizeCell makes a table cell safe for a terminal. Cells carry names
 // and descriptions from the cloud: an escape sequence could repaint or

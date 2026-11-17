@@ -85,21 +85,7 @@ var apiErrorEnglishLeft = map[string]bool{}
 // The list only shrinks: a line whose text speaks Russian fails the test.
 // Closes by 1.9 (owner's decision 14.11: the whole translation in 1.9,
 // line «Язык CLI: весь перевод — в 1.9»).
-var successEnglishLeft = map[string]string{
-	"ar_delete next":           "the next step of a delete with wait=false — translation in 1.9",
-	"backup_delete next":       "the next step of a delete with wait=false — translation in 1.9",
-	"ca_delete next":           "the next step of a delete with wait=false — translation in 1.9",
-	"dns_record_delete next":   "the next step of a delete with wait=false — translation in 1.9",
-	"dns_zone_delete next":     "the next step of a delete with wait=false — translation in 1.9",
-	"k8s_delete next":          "the next step of a delete with wait=false — translation in 1.9",
-	"k8s_nodepool_delete next": "the next step of a delete with wait=false — translation in 1.9",
-	"kafka_delete next":        "the next step of a delete with wait=false — translation in 1.9",
-	"lb_delete next":           "the next step of a delete with wait=false — translation in 1.9",
-	"pg_delete next":           "the next step of a delete with wait=false — translation in 1.9",
-	"redis_delete next":        "the next step of a delete with wait=false — translation in 1.9",
-	"tg_delete next":           "the next step of a delete with wait=false — translation in 1.9",
-	"vpc_delete next":          "the next step of a delete with wait=false — translation in 1.9",
-}
+var successEnglishLeft = map[string]string{}
 
 // cloudSegment marks where an API_ERROR leaves evo's words for the
 // cloud's: the service and status the client names («dns API 500»,
