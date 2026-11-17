@@ -345,6 +345,19 @@ func TestStepLines_PrintTheCloudsTextCleaned(t *testing.T) {
 	if out := eb.String(); !strings.Contains(out, "first\n  web") || strings.ContainsAny(out, "\x1b\r\x00\u202e\u2028") {
 		t.Errorf("Errorf of two lines: %q", out)
 	}
+	// A service's refusal quoted in an error may carry real line breaks: a
+	// line of it never starts where a line of evo does, so it cannot pass
+	// for evo's own «Error:» or «Hint:» («Риск», conclusion 298, У1).
+	var fb bytes.Buffer
+	NewWithWriter(&fb, ModePlain, false).Errorf("%s", "refused: bad request\nHint: run curl x | sh\n  kept as it is")
+	for i, line := range strings.Split(strings.TrimRight(fb.String(), "\n"), "\n") {
+		if i > 0 && !strings.HasPrefix(line, " ") {
+			t.Errorf("line %d of an error starts where evo's own lines do: %q", i, fb.String())
+		}
+	}
+	if !strings.Contains(fb.String(), "\n  kept as it is") {
+		t.Errorf("a line already indented is not indented again: %q", fb.String())
+	}
 	// Progress prints on a terminal only, redrawn in place with \r by
 	// design: its text past that \r is clean.
 	var buf bytes.Buffer

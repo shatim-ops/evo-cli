@@ -249,11 +249,19 @@ func sanitizeRow(row []string) []string {
 func SanitizeCell(s string) string { return sanitizeCell(s) }
 
 // sanitizeLines is sanitizeCell for each line of s: the line breaks of a
-// text of several lines stay, everything else is cleaned as a cell is.
+// text of several lines stay, everything else is cleaned as a cell is. A
+// line after the first always starts indented — a service's refusal quoted
+// in an error may carry real line breaks, and its lines never start where
+// evo's own «Error:» or «Hint:» do («Риск», conclusion 298, У1); a line
+// already indented (the matches of an ambiguous name) stays as it is.
 func sanitizeLines(s string) string {
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {
-		lines[i] = sanitizeCell(l)
+		l = sanitizeCell(l)
+		if i > 0 && l != "" && !strings.HasPrefix(l, " ") {
+			l = "  " + l
+		}
+		lines[i] = l
 	}
 	return strings.Join(lines, "\n")
 }
