@@ -251,3 +251,29 @@ func TestAddResourceStatus_AResourceWithNoStateIsSaid(t *testing.T) {
 		}
 	}
 }
+
+// The read of an operation that goes on, whose resource the reads do not
+// find: the create may be on its way — the note says only what the read
+// proved, not that the resource is deleted («Риск», conclusion 310,
+// finding 310-1: the answer of a create's repeat, D113, said «it is
+// deleted»). Once the operation is done, a resource deleted is one of the
+// ways it may be.
+func TestOperationRead_NotFoundWhileItGoesOnIsNotDeleted(t *testing.T) {
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	notFound := func(context.Context, map[string]any) (string, bool) {
+		return `{"error":"not found","reason":"NOT_FOUND"}`, true
+	}
+	s := &Registry{handlers: map[string]Handler{"pg_get": notFound}}
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		for _, done := range []bool{false, true} {
+			op := map[string]any{"resource_id": "cluster-1", "done": done}
+			s.addResourceStatus(context.Background(), "pg_operation", op)
+			low := strings.ToLower(fmt.Sprint(op["resource_status_note"]))
+			deleted := strings.Contains(low, "delet") || strings.Contains(low, "удал")
+			if op["resource_status"] != "not_found" || deleted == !done {
+				t.Errorf("%s, done=%v: %v; want not_found, and «deleted» only once the operation is done", lang, done, op)
+			}
+		}
+	}
+}

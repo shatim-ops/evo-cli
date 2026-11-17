@@ -396,6 +396,15 @@ func (s *Registry) addResourceStatus(ctx context.Context, tool string, m map[str
 		reads = append(reads, r.tool)
 	}
 	m["resource_status"] = "not_found"
+	// While the operation goes on, a resource not found may be one on its
+	// way (a create, a repeat of it, D113): the note says what the read
+	// proved, not that it is deleted («Риск», conclusion 310, 310-1).
+	if done, _ := m["done"].(bool); !done {
+		m["resource_status_note"] = i18n.Tf("%s does not find %s yet: while the operation goes on, its resource may not be shown; the read of the operation says when it ends",
+			"%s пока не находит %s: пока операция идёт, её ресурс может быть ещё не виден; чтение операции скажет, когда она кончится",
+			strings.Join(reads, ", "), id)
+		return
+	}
 	m["resource_status_note"] = i18n.Tf("%s does not find %s: it is deleted, or the operation is of a resource %s does not read (a route, a backup)",
 		"%s не находит %s: ресурс удалён или операция — над ресурсом, который %s не читает (маршрут, резервная копия)",
 		strings.Join(reads, ", "), id, strings.Join(reads, ", "))
