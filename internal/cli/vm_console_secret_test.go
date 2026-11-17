@@ -381,9 +381,27 @@ func consoleLeaks(text string, fields []string) []string {
 	return out
 }
 
-// consoleInFiles walks every file under root and reports each that holds
-// a mark.
-func consoleInFiles(root string, fields []string) (bad []string, files int) {
+// consoleScan walks every file under root and reports each that holds a
+// mark. The record of the answers and the journal only grow, and the walk
+// follows every call of the test (some 2000): of those it reads what came
+// since its last walk, with a margin longer than any form of a mark, not
+// the whole file again — read whole each time, the two files of hundreds
+// of KB made the walks the most of the test's two minutes and pushed
+// internal/cli past its limit on macOS (17.11, push run 6283). Any other
+// file — rewritten, not grown — is read whole every time.
+type consoleScan struct{ read map[string]int64 }
+
+// consoleAppendOnly are the files that only grow, by name.
+var consoleAppendOnly = map[string]bool{"answers.jsonl": true, "journal.jsonl": true}
+
+// consoleMargin is read again before what a file grew by: a mark cut at
+// the end of the last walk is read whole.
+const consoleMargin = 4096
+
+func (c *consoleScan) in(root string, fields []string) (bad []string, files int) {
+	if c.read == nil {
+		c.read = map[string]int64{}
+	}
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -393,7 +411,12 @@ func consoleInFiles(root string, fields []string) (bad []string, files int) {
 		if err != nil {
 			return err
 		}
-		if l := consoleLeaks(string(b), fields); len(l) > 0 {
+		from := int64(0)
+		if last, ok := c.read[p]; ok && consoleAppendOnly[d.Name()] && int64(len(b)) >= last {
+			from = max(0, last-consoleMargin)
+		}
+		c.read[p] = int64(len(b))
+		if l := consoleLeaks(string(b[from:]), fields); len(l) > 0 {
 			rel, _ := filepath.Rel(root, p)
 			bad = append(bad, fmt.Sprintf("file %s holds %v", rel, l))
 		}
@@ -440,6 +463,7 @@ func TestSecrets_VMConsoleFieldsLeaveNoSurface(t *testing.T) {
 	t.Cleanup(func() { toolEngine = prev })
 
 	cases, _, bad := jsonCases(t)
+	var scan consoleScan
 	reached := map[string]bool{}
 	walked := 0
 	run := func(c jsonCase, mode string) {
@@ -454,7 +478,7 @@ func TestSecrets_VMConsoleFieldsLeaveNoSurface(t *testing.T) {
 			}
 		}
 		files := func(after string) {
-			b, n := consoleInFiles(w.dir, fields)
+			b, n := scan.in(w.dir, fields)
 			walked = n
 			for _, x := range b {
 				bad = append(bad, name+", after "+after+": "+x)
@@ -567,7 +591,7 @@ func TestSecrets_VMConsoleFieldsLeaveNoSurface(t *testing.T) {
 	if code, out, errOut := runCLI(t, "", "diag", "export", "--out", "journal-copy.jsonl"); code != 0 {
 		t.Errorf("diag export: exit %d: %s%s", code, out, errOut)
 	}
-	b, n := consoleInFiles(w.dir, fields)
+	b, n := scan.in(w.dir, fields)
 	bad = append(bad, b...)
 
 	// The walk saw what it walks.
@@ -618,4 +642,57 @@ func (c createOfUnknownShape) RoundTrip(r *http.Request) (*http.Response, error)
 		return answerWith(http.StatusCreated, c.world.body()), nil
 	}
 	return c.base.RoundTrip(r)
+}
+
+// consoleScan reads of a file that only grows what came since its last
+// walk, and still finds a mark written later, one cut by the last walk,
+// and one in a file rewritten instead of grown.
+func TestConsoleScan_FindsWhatCameSinceTheLastWalk(t *testing.T) {
+	dir := t.TempDir()
+	fields := []string{"url"}
+	mark := consoleMark("url")
+	journal := filepath.Join(dir, "journal.jsonl")
+	state := filepath.Join(dir, "state.json")
+	write := func(p, text string, add bool) {
+		t.Helper()
+		flag := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+		if add {
+			flag = os.O_CREATE | os.O_WRONLY | os.O_APPEND
+		}
+		f, err := os.OpenFile(p, flag, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.WriteString(text); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+	}
+	var scan consoleScan
+	write(journal, strings.Repeat("x", 3*consoleMargin), false)
+	write(state, `{"a":"clean"}`, false)
+	if bad, _ := scan.in(dir, fields); len(bad) != 0 {
+		t.Fatalf("clean files: %v", bad)
+	}
+	// Cut by the last walk: half of the mark before it.
+	write(journal, mark[:len(mark)/2], true)
+	if bad, _ := scan.in(dir, fields); len(bad) != 0 {
+		t.Fatalf("half a mark: %v", bad)
+	}
+	write(journal, mark[len(mark)/2:]+"\n", true)
+	if bad, _ := scan.in(dir, fields); len(bad) != 1 {
+		t.Errorf("a mark cut by the last walk is not found: %v", bad)
+	}
+	// Rewritten at the same size: read whole.
+	write(state, `{"a":"`+mark[:5]+`"}`, false)
+	scan.in(dir, fields)
+	write(state, `{"a":"`+mark+`"}`, false)
+	bad, _ := scan.in(dir, fields)
+	found := false
+	for _, b := range bad {
+		found = found || strings.Contains(b, "state.json")
+	}
+	if !found {
+		t.Errorf("a mark in a rewritten file is not found: %v", bad)
+	}
 }
