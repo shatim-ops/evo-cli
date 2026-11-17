@@ -1103,7 +1103,7 @@ func (s *Registry) vmResizeRefused(ctx context.Context, eng *engine.Engine, vm *
 	}
 	fields["details"] = details
 	return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-		i18n.Tf("the platform refused to change the flavor of VM %s to %s in state %s", "платформа отказала в смене конфигурации ВМ %s на %s в состоянии %s", vm.ID, target.Name, quoteCloud(now.State)),
+		i18n.Tf("the platform refused to change the flavor of VM %s to %s in state %s", "платформа отказала в смене конфигурации ВМ %s на %s в состоянии %s", vm.ID, quoteCloud(target.Name), quoteCloud(now.State)),
 		hint, cause), fields), true
 }
 
