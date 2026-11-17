@@ -1589,6 +1589,23 @@ grep -q '^provision yes=1' "$FAKE_DIR/evo-calls" || { echo "FAIL: opsevo: provis
 # id — только под маской.
 if grep -v '::add-mask::' "$tmp/out" | grep -qE 'vmid1|sgid1|ruleid1|bkid1|diskid[12]'; then echo "FAIL: opsevo: id в строке лога"; grep -v '::add-mask::' "$tmp/out" | grep -E 'vmid1|sgid1|ruleid1|bkid1|diskid[12]' | sed 's/^/  | /'; fail=1; fi
 
+# vm_start по MCP дольше предела evo (прогон 228): повторы по next_tool
+# отвечают starting, у предела evo передаёт шаг vm_get, ВМ ещё starting —
+# честный ход, не провал. Строка называет передачу и состояние при ней;
+# шаг ждёт running чтением.
+opsevo_world
+answers vm_start '{"status":"starting","next_tool":"vm_start","next_args":{"vm_id":"vmid1"}}' \
+	'{"status":"starting","next_tool":"vm_get","next_args":{"vm_id":"vmid1"}}' \
+	'{"status":"already_running"}' '{"status":"started"}' '{"status":"already_running"}'
+answers vm_get "$(vmget running)" "$(vmget stopped)" "$(vmget stopped)" "$(vmget starting)" "$(vmget running)" "$(vmget running)" \
+	"$(vmget stopped)" "$(vmget stopped)" "$(vmget running)"
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+want "opsevo, vm_start у предела evo: код" "$rc" 0
+grep -q 'vm_start (mcp) *ok *status starting; vm_get после: running, .*evo перестал ждать и передал vm_get: starting, vm_get — starting через' "$tmp/out" ||
+	{ echo "FAIL: opsevo: передача vm_get у предела не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+grep -q 'vm_resize (cli) *ok' "$tmp/out" || { echo "FAIL: opsevo: после передачи vm_get шаги питания и vm_resize не шли"; fail=1; }
+
 # Ссылка консоли в ответе (D110): провал, ответ и ссылка в лог не идут.
 # sha256 восстановленного файла другой — провал. Повтор удаления правила
 # ответил не already_deleted (D26) — провал.
