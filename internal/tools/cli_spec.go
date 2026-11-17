@@ -113,6 +113,7 @@ var cliSpecs = map[string]CLISpec{
 	"disk_attach":     {Group: "disk", Verb: "attach", Args: []string{"disk_id"}},
 	"disk_detach":     {Group: "disk", Verb: "detach", Args: []string{"disk_id"}},
 	"disk_resize":     {Group: "disk", Verb: "resize", Args: []string{"disk_id"}},
+	"disk_get":        {Group: "disk", Verb: "get", Args: []string{"disk_id"}},
 	"disk_delete":     {Group: "disk", Verb: "delete", Args: []string{"disk_id"}},
 
 	// vpc

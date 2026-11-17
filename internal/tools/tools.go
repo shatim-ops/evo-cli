@@ -618,6 +618,13 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
+			Name:        "disk_get",
+			Description: "Live card of one disk by disk_id, by one read: name, size_gb, state, disk_type, zone, bootable, encrypted, readonly, shared, serial_id as the platform reports them, and attached_vms (id, name, primary, state). A field the platform's answer does not carry is absent and named in not_checked: no value of it is implied. Read-only.",
+			InputSchema: objSchema(map[string]any{
+				"disk_id": uuidProp("Disk UUID (from disk_list)."),
+			}, "disk_id"),
+		},
+		{
 			Name:        "disk_create",
 			Description: "Create a block-storage disk. Pass attach_to=<VM name/uuid> to create it in that VM's zone and (with confirmed) attach it in one step — disks must be in the SAME zone as the VM. NB: attaching adds a NEW block device; it does NOT grow the VM's existing filesystem (you then partition/format/mount it on the VM). Resizing the boot disk in place is NOT available via this API (console-only).",
 			InputSchema: objSchema(map[string]any{
@@ -1596,6 +1603,7 @@ func (s *Registry) registerTools() {
 		"backup_restore":       s.gated("backup_restore", s.planBackupRestore),
 		"backup_delete":        s.gated("backup_delete", s.planBackupDelete),
 		"disk_list":            s.handleDiskList,
+		"disk_get":             s.handleDiskGet,
 		"disk_create":          s.gated("disk_create", s.planDiskCreate),
 		"disk_attach":          s.gated("disk_attach", s.planDiskAttach),
 		"disk_detach":          s.gated("disk_detach", s.planDiskDetach),

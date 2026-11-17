@@ -281,6 +281,7 @@ var listSpecs = withSets(map[string]listSpec{
 	// lists: no filter, with why.
 	"list_zones":       {rows: "zones", none: "a catalogue of a few zones"},
 	"list_disk_types":  {rows: "disk_types", none: "a catalogue of a few types"},
+	"disk_get":         {rows: "attached_vms", none: "the VMs one disk is attached to: one, or a few of a shared disk"},
 	"list":             {none: "the records of this directory, read from the local state: a few"},
 	"list_images":      {none: "deprecated (v2.0): image_list searches the catalogue"},
 	"marketplace_list": {none: "a search of the catalogue by its own query and kind, not a list of the project"},

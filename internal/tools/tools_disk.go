@@ -126,6 +126,59 @@ func (s *Registry) handleDiskList(ctx context.Context, args map[string]any) (str
 	return toJSON(map[string]any{"disks": out}), false
 }
 
+// diskCardFacts are the fields of the card of a disk that disk_get shows
+// as the platform reports them: a field its answer does not carry is
+// absent from the answer and named in not_checked, its type never changed
+// by a value evo would imply («Риск», conclusion 333, Д3).
+var diskCardFacts = []string{"bootable", "encrypted", "readonly", "shared", "serial_id"}
+
+// handleDiskGet answers the card of one disk by its id, by one read
+// (110-09).
+func (s *Registry) handleDiskGet(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "disk_id")
+	if id == "" {
+		return usageT("'disk_id' is required", "нужен 'disk_id'"), true
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	d, err := eng.Cloud.GetDisk(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	out := map[string]any{"id": d["id"], "name": d["name"], "size_gb": d["size"], "state": d["state"]}
+	if dt, ok := d["disk_type"].(map[string]any); ok {
+		out["disk_type"] = dt["name"]
+	}
+	if az, ok := d["availability_zone"].(map[string]any); ok {
+		out["zone"] = az["name"]
+	}
+	var missing []map[string]any
+	for _, f := range diskCardFacts {
+		v, ok := d[f]
+		if !ok || v == nil {
+			missing = append(missing, map[string]any{"check": f,
+				"why": i18n.T("the answer of Cloud.ru does not carry it", "в ответе Cloud.ru этого поля нет")})
+			continue
+		}
+		out[f] = v
+	}
+	vms := []map[string]any{}
+	if list, ok := d["vms"].([]any); ok {
+		for _, x := range list {
+			if vm, ok := x.(map[string]any); ok {
+				vms = append(vms, map[string]any{"id": vm["id"], "name": vm["name"], "primary": vm["primary"], "state": vm["state"]})
+			}
+		}
+	}
+	out["attached_vms"] = vms
+	if len(missing) > 0 {
+		out["not_checked"] = missing
+	}
+	return toJSON(out), false
+}
+
 // planDiskCreate plans the create of a disk. If attach_to (a VM) is given, the disk is
 // created in that VM's zone and (with confirmed) attached to it — the ergonomic
 // "add a disk to my VM" path. Mutation: requires confirmed=true.

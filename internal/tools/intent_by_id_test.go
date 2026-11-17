@@ -55,7 +55,11 @@ func TestDoctor_CutDeleteByIDIsCheckedByID(t *testing.T) {
 		{name: "the API fails", tool: "k8s_delete", arg: "cluster_id", id: resGone, status: http.StatusBadGateway, says: "could not read"},
 		{name: "not there, another key", tool: "cert_delete", arg: "id", id: resGone,
 			key: &state.Maker{ServiceAccountID: "sa-other", KeyID: "ot…er"}, says: "sent with another key"},
-		{name: "a kind with no read by id", tool: "disk_delete", arg: "disk_id", id: resGone, says: "no read by id"},
+		{name: "a kind with no read by id", tool: "redis_delete", arg: "cluster_id", id: resGone, says: "no read by id"},
+		// A disk has its read by id since disk_get (110-09): a cut
+		// disk_delete is checked by it.
+		{name: "a disk not there, the same key", tool: "disk_delete", arg: "disk_id", id: resGone, closed: true, says: "the delete took effect"},
+		{name: "a disk of another project is still there", tool: "disk_delete", arg: "disk_id", id: resForeign, says: "is still there"},
 		{name: "a kind with no read by id, of another project", tool: "kafka_delete", arg: "cluster_id", id: resForeign, says: "no read by id"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

@@ -114,6 +114,7 @@ var untrustedMarkerOnly = map[string]string{
 	"secret_get":           "the whole answer: the secret's metadata as its service has it, not the output of a workload",
 	"sg_rule_delete":       "security_group, rule, still_allowed_by, still_allowed_from_groups, vms: the name of the group, the descriptions of its rules and the names of the VMs under it in the preview and the answer, not the output of a workload",
 	"disk_list":            "disks: the project's disks as Compute has them, names included, not the output of a workload",
+	"disk_get":             "name, state, disk_type, zone, serial_id, attached_vms: the disk as Compute has it, names included, not the output of a workload",
 	"list_disk_types":      "disk_types: the names of the disk types as Compute has them, not the output of a workload",
 	"list_flavors":         "flavors: the names of the flavors as Compute has them, not the output of a workload",
 	"list_floating_ips":    "floating_ips: the project's floating IPs as Compute has them, names included, not the output of a workload",
