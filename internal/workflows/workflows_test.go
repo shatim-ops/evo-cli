@@ -22,6 +22,8 @@ import (
 )
 
 type workflow struct {
+	// RunName: the name of a run (run-name), an expression.
+	RunName     string         `yaml:"run-name"`
 	On          map[string]any `yaml:"on"`
 	Permissions any            `yaml:"permissions"`
 	Concurrency struct {
@@ -415,49 +417,70 @@ func TestWorkflows_CloudE2EWeekly(t *testing.T) {
 // weekly dispatch uses — nothing else: no key, no checkout of the head, no
 // other right than actions: write.
 func TestWorkflows_CloudE2EYieldsToAPerson(t *testing.T) {
-	w, ok := readWorkflows(t)["cloud-e2e-yield.yml"]
+	all := readWorkflows(t)
+	w, ok := all["cloud-e2e-yield.yml"]
 	if !ok {
 		t.Fatal("no cloud-e2e-yield.yml: an unapproved weekly run holds the live runs of a person")
 	}
 	trig, _ := w.On["workflow_run"].(map[string]any)
-	if fmt.Sprint(trig["workflows"]) != "[cloud-e2e]" || fmt.Sprint(trig["types"]) != "[requested]" {
-		t.Errorf("cloud-e2e-yield: on workflow_run %v, want cloud-e2e requested", trig)
+	if fmt.Sprint(trig) != "map[types:[requested] workflows:[cloud-e2e]]" || len(w.On) != 1 {
+		t.Errorf("cloud-e2e-yield: on %v, want workflow_run of cloud-e2e, requested, alone", w.On)
 	}
-	if len(w.On) != 1 {
-		t.Errorf("cloud-e2e-yield: triggers %v, want workflow_run alone", w.On)
+	// --weekly-only knows the weekly set by the name of its run, and only
+	// it: the cleanup, a run of a person and a run of an old name are kept
+	// («Риск», conclusion 307, У1; Астра #2189).
+	const weeklyName = `${{ inputs.cleanup_only && 'cloud-e2e (cleanup_only)' || (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]') && 'cloud-e2e (weekly)' || 'cloud-e2e' }}`
+	if got := all["cloud-e2e.yml"].RunName; got != weeklyName {
+		t.Errorf("cloud-e2e: run-name %q, want %q", got, weeklyName)
 	}
-	// --keep-cleanup knows the cleanup by the name of its run.
-	if !strings.Contains(readFile(t, ".github/workflows/cloud-e2e.yml"), "run-name: ${{ inputs.cleanup_only && 'cloud-e2e (cleanup_only)' || 'cloud-e2e' }}") ||
-		!strings.Contains(readFile(t, ".github/scripts/weekly_stale.sh"), `.display_title != "cloud-e2e (cleanup_only)"`) {
-		t.Error("cloud-e2e-yield: the cleanup is not told by the name of its run (run-name of cloud-e2e.yml and weekly_stale.sh --keep-cleanup)")
+	if !strings.Contains(readFile(t, ".github/scripts/weekly_stale.sh"), `--weekly-only) keep=' | select(.display_title == "cloud-e2e (weekly)")' ;;`) {
+		t.Error("cloud-e2e-yield: weekly_stale.sh --weekly-only does not keep to the run named «cloud-e2e (weekly)»")
 	}
-	if p, _ := w.Permissions.(map[string]any); len(p) != 0 {
+	// Rights, given nowhere but to the job, and no more than it needs: a
+	// string (write-all) is not {} either.
+	if p, isMap := w.Permissions.(map[string]any); !isMap || len(p) != 0 {
 		t.Errorf("cloud-e2e-yield: workflow permissions %v, want {}", w.Permissions)
+	}
+	if len(w.Env) != 0 {
+		t.Errorf("cloud-e2e-yield: workflow env %v, want none", w.Env)
+	}
+	// No secret anywhere in the file: workflow, job and step env, with.
+	var raw any
+	if err := yaml.Unmarshal([]byte(readFile(t, ".github/workflows/cloud-e2e-yield.yml")), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if s := fmt.Sprint(raw); strings.Contains(s, "secrets.") || strings.Contains(s, "secrets[") {
+		t.Error("cloud-e2e-yield reads a secret")
 	}
 	if len(w.Jobs) != 1 {
 		t.Fatalf("cloud-e2e-yield: jobs %d, want 1", len(w.Jobs))
 	}
+	const onlyAPerson = "github.event.workflow_run.triggering_actor.login != 'github-actions[bot]' && github.event.workflow_run.event == 'workflow_dispatch'"
 	for name, j := range w.Jobs {
-		if !strings.Contains(j.If, "triggering_actor.login != 'github-actions[bot]'") || !strings.Contains(j.If, "event == 'workflow_dispatch'") {
-			t.Errorf("cloud-e2e-yield: job %s runs for the bot too (if: %q)", name, j.If)
+		// The condition as it is, not words in it: an «||» or a «true ||»
+		// lets the bot through (Астра #2190).
+		if j.If != onlyAPerson {
+			t.Errorf("cloud-e2e-yield: job %s if %q, want %q", name, j.If, onlyAPerson)
 		}
-		if p, _ := j.Permissions.(map[string]any); fmt.Sprint(p) != fmt.Sprint(map[string]any{"actions": "write", "contents": "read"}) {
+		if p, isMap := j.Permissions.(map[string]any); !isMap || fmt.Sprint(p) != "map[actions:write contents:read]" {
 			t.Errorf("cloud-e2e-yield: job %s permissions %v, want actions: write and contents: read", name, j.Permissions)
 		}
-		if strings.Contains(fmt.Sprint(j.Env), "secrets.") {
-			t.Errorf("cloud-e2e-yield: job %s reads a secret", name)
+		if len(j.Env) != 0 {
+			t.Errorf("cloud-e2e-yield: job %s env %v, want none", name, j.Env)
 		}
-		runs := ""
-		for _, s := range j.Steps {
-			runs += s.Run + "\n"
-			if strings.Contains(fmt.Sprint(s.Env), "secrets.") || strings.Contains(fmt.Sprint(s.With), "ref") {
-				t.Errorf("cloud-e2e-yield: step %q reads a secret or checks out another ref", s.Name)
-			}
+		if len(j.Steps) != 2 {
+			t.Fatalf("cloud-e2e-yield: job %s has %d steps, want checkout and the script", name, len(j.Steps))
 		}
-		// The cleanup waits in a group of its own and holds no run of a
-		// person: it is kept («Риск», conclusion 307, У1).
-		if strings.TrimSpace(runs) != `.github/scripts/weekly_stale.sh "$GITHUB_REPOSITORY" --keep-cleanup` {
-			t.Errorf("cloud-e2e-yield: job %s runs %q, want weekly_stale.sh --keep-cleanup alone", name, runs)
+		// The checkout of this repository at the commit of the event: no
+		// other repository, ref or token.
+		co := j.Steps[0]
+		if !strings.HasPrefix(co.Uses, "actions/checkout@") || fmt.Sprint(co.With) != "map[persist-credentials:false]" || co.Run != "" || len(co.Env) != 0 {
+			t.Errorf("cloud-e2e-yield: job %s step 1 is %q with %v, want actions/checkout with persist-credentials: false alone", name, co.Uses, co.With)
+		}
+		run := j.Steps[1]
+		if strings.TrimSpace(run.Run) != `.github/scripts/weekly_stale.sh "$GITHUB_REPOSITORY" --weekly-only` || run.Uses != "" || len(run.With) != 0 ||
+			fmt.Sprint(run.Env) != "map[GH_TOKEN:${{ github.token }}]" {
+			t.Errorf("cloud-e2e-yield: job %s step 2 runs %q with env %v, want weekly_stale.sh --weekly-only with GH_TOKEN alone", name, run.Run, run.Env)
 		}
 	}
 }
