@@ -116,12 +116,18 @@ func TestHistoryOutcome_OneReadingOfAnAnswer(t *testing.T) {
 		{"disk_delete", `{"status":"already_deleted"}`, map[string]any{"disk_id": "d-1"}, history.Outcome{Result: history.AlreadyDeleted, Kind: "disk", ResourceID: "d-1"}},
 		{"vm_start", `{"status":"already_running"}`, nil, history.Outcome{Result: history.Changed}},
 		{"vm_reboot", `{"status":"reboot_accepted"}`, nil, history.Outcome{Result: history.Changed}},
-		{"disk_create", `{"error":"x","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Error, Kind: "disk", Reason: "API_ERROR"}},
+		// API_ERROR is an outcome not known (D92): the line stays live.
+		{"disk_create", `{"error":"x","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Unknown, Kind: "disk", Reason: "API_ERROR"}},
+		// A refusal that is certain: nothing made.
+		{"disk_create", `{"error":"x","reason":"USAGE"}`, nil, history.Outcome{Result: history.Error, Kind: "disk", Reason: "USAGE"}},
 		// У1: the create's «already» names the resource of the name.
 		{"disk_create", `{"status":"already_exists","disk":{"id":"d-1"}}`, nil, history.Outcome{Result: history.Found, Kind: "disk", ResourceID: "d-1"}},
 		// У2: a refusal that names what was made — a VM in an error state,
 		// billed — and a stack in part.
 		{"provision", `{"error":"x","reason":"API_ERROR","details":{"vm_id":"vm-1","floating_ip_id":"fip-1"}}`, nil, history.Outcome{Result: history.Unknown, Kind: "VM", Reason: "API_ERROR", ResourceID: "vm-1"}},
+		// 300-1: a create named by its argument, refused: no id from the
+		// argument — the refusal made nothing.
+		{"secret_create", `{"error":"x","reason":"USAGE"}`, map[string]any{"path": "app/db"}, history.Outcome{Result: history.Error, Kind: "secret", Reason: "USAGE"}},
 		// У6: a stack is told by its job — its steps go round the record
 		// of an intent (journalDepthKey), so the line of the job is what
 		// keeps what the stack made live.
@@ -132,6 +138,11 @@ func TestHistoryOutcome_OneReadingOfAnAnswer(t *testing.T) {
 		{"stack_destroy", `{"status":"already_destroyed","job_id":"j-1"}`, nil, history.Outcome{Result: history.Deleted, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
 		{"stack_destroy", `{"status":"deleting","job_id":"j-1"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1"}},
 		{"stack_destroy", `{"status":"destroy_failed","job_id":"j-1","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Unknown, Kind: "stack", ResourceID: "j-1", JobID: "j-1", Reason: "API_ERROR"}},
+		// 300-1: a call of a stack refused whole — a job_id mistyped —
+		// made nothing; 300-2: a job_id in the answer of a tool that is
+		// not a stack's tells no stack.
+		{"stack_apply", `{"error":"no such job","reason":"NOT_FOUND"}`, map[string]any{"job_id": "j-typo"}, history.Outcome{Result: history.Error, Kind: "stack", JobID: "j-typo", Reason: "NOT_FOUND"}},
+		{"disk_create", `{"disk":{"id":"d-1"},"job_id":"j-1"}`, nil, history.Outcome{Result: history.Created, Kind: "disk", ResourceID: "d-1", JobID: "j-1"}},
 		// У3: a delete that goes on.
 		{"lb_delete", `{"status":"deleting","operation_id":"op-2","next_tool":"lb_operation"}`, map[string]any{"id": "lb-1"}, history.Outcome{Result: history.Unknown, Kind: "load balancer", ResourceID: "lb-1", OperationID: "op-2"}},
 		{"destroy", `{"status":"deleting"}`, map[string]any{"vm_id": "vm-1"}, history.Outcome{Result: history.Unknown, Kind: "VM", ResourceID: "vm-1"}},
@@ -171,6 +182,38 @@ func TestHistory_ASettledRecordKeepsTheResource(t *testing.T) {
 	if o := settledOutcome(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-1"}, ""); o.Result != history.Deleted || o.ResourceID != "d-1" {
 		t.Errorf("a delete whose resource is gone: %+v", o)
 	}
+	// The cut create, then its repeat answered «already exists»: the
+	// resource is live (the probe of У1).
+	lines := []history.Line{
+		{Format: history.Format, Tool: "disk_create", IntentID: "a", Outcome: history.Unknown},
+		{Format: history.Format, Tool: "disk_create", IntentID: "b", Outcome: history.Found, Kind: "disk", ResourceID: "d-1"},
+		{Format: history.Format, Tool: "disk_create", IntentID: "a", Outcome: history.Found, Kind: "disk", ResourceID: "d-1"},
+	}
+	if live := history.Live(lines); len(live) == 0 {
+		t.Error("a create cut and found by its repeat is not live")
+	}
+}
+
+// A resource of a parent is told by its parent too (Астра, #2165): a
+// database, a user and an object of the same name in two parents are two
+// resources, and the delete in one closes the create in that one only.
+func TestHistory_TheParentTellsTheResource(t *testing.T) {
+	for _, c := range []struct{ create, delete, parent, name string }{
+		{"pg_db_create", "pg_db_delete", "cluster_id", "name"},
+		{"pg_user_create", "pg_user_delete", "cluster_id", "name"},
+		{"s3_put", "s3_rm", "bucket", "key"},
+	} {
+		line := func(intentID, tool, parent string) history.Line {
+			out := historyOutcome(tool, map[string]any{c.parent: parent, c.name: "same-name"}, `{"status":"ok"}`)
+			return history.Line{Format: history.Format, IntentID: intentID, ProjectID: "p", Kind: out.Kind,
+				Parent: out.Parent, ResourceID: out.ResourceID, Outcome: out.Result}
+		}
+		lines := []history.Line{line("a", c.create, "parent-A"), line("b", c.create, "parent-B"), line("c", c.delete, "parent-A")}
+		live := history.Live(lines)
+		if len(live) != 1 || live[0].IntentID != "b" {
+			t.Errorf("%s in two parents, deleted in one: live %+v, want the create in parent-B", c.create, live)
+		}
+	}
 }
 
 // A stack of two steps through the gate (Астра, #2166; «Риск», conclusion
@@ -206,5 +249,29 @@ func TestHistory_AStackIsToldByItsJob(t *testing.T) {
 	last := lines[len(lines)-1]
 	if last.Tool != "stack_destroy" || last.Outcome != history.Deleted || last.Kind != "stack" || last.ResourceID != j.ID {
 		t.Errorf("the line of stack_destroy: %+v; want deleted, kind stack, the job's id", last)
+	}
+}
+
+// A create by name cut after it sent — the network, a time limit, Ctrl-C —
+// may have made its resource: the line is unknown, with the name of its
+// argument, and live; only a refusal that is certain is an error («Риск»,
+// conclusion 311, У2). Through the gate, end to end.
+func TestHistory_ACutCreateByNameStaysLive(t *testing.T) {
+	for _, reason := range []string{"API_UNREACHABLE", "INTERRUPTED", "API_ERROR"} {
+		r, dir := targetRegistry(t, &goneCloud{})
+		tool, _ := r.Lookup("secret_create")
+		h := r.intended(tool, func(ctx context.Context, _ map[string]any) (string, bool) {
+			_ = httpretry.NoteWrite(ctx)
+			return `{"error":"cut","reason":"` + reason + `"}`, true
+		})
+		h(context.Background(), map[string]any{"path": "app/db", "value": "s3cr3t-value", "confirmed": true})
+		lines, raw := historyOf(t, dir)
+		live := history.Live(lines)
+		if len(lines) != 1 || lines[0].Outcome != history.Unknown || lines[0].ResourceID != "app/db" || len(live) != 1 {
+			t.Errorf("%s: lines %+v, live %d; want unknown with the path, live", reason, lines, len(live))
+		}
+		if strings.Contains(raw, "s3cr3t-value") {
+			t.Errorf("%s: the value of the secret in the journal", reason)
+		}
 	}
 }

@@ -22,6 +22,8 @@ import (
 )
 
 type workflow struct {
+	// RunName: the name of a run (run-name), an expression.
+	RunName     string         `yaml:"run-name"`
 	On          map[string]any `yaml:"on"`
 	Permissions any            `yaml:"permissions"`
 	Concurrency struct {
@@ -403,6 +405,82 @@ func TestWorkflows_CloudE2EWeekly(t *testing.T) {
 	} {
 		if !strings.Contains(runs, want) {
 			t.Errorf("cloud-e2e-weekly: no %q", want)
+		}
+	}
+}
+
+// A live run a person starts does not wait for an unapproved weekly one
+// (owner's decision 17.11, the second poll of «1.9 — релиз (4)», item 4:
+// run 222 waited for approval from 16.11 and held the concurrency group
+// cloud-e2e). When a person requests a run of cloud-e2e, cloud-e2e-yield
+// cancels the runs of the bot that wait for approval, by the script the
+// weekly dispatch uses — nothing else: no key, no checkout of the head, no
+// other right than actions: write.
+func TestWorkflows_CloudE2EYieldsToAPerson(t *testing.T) {
+	all := readWorkflows(t)
+	w, ok := all["cloud-e2e-yield.yml"]
+	if !ok {
+		t.Fatal("no cloud-e2e-yield.yml: an unapproved weekly run holds the live runs of a person")
+	}
+	trig, _ := w.On["workflow_run"].(map[string]any)
+	if fmt.Sprint(trig) != "map[types:[requested] workflows:[cloud-e2e]]" || len(w.On) != 1 {
+		t.Errorf("cloud-e2e-yield: on %v, want workflow_run of cloud-e2e, requested, alone", w.On)
+	}
+	// --weekly-only knows the weekly set by the name of its run, and only
+	// it: the cleanup, a run of a person and a run of an old name are kept
+	// («Риск», conclusion 307, У1; Астра #2189).
+	const weeklyName = `${{ inputs.cleanup_only && 'cloud-e2e (cleanup_only)' || (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]') && 'cloud-e2e (weekly)' || 'cloud-e2e' }}`
+	if got := all["cloud-e2e.yml"].RunName; got != weeklyName {
+		t.Errorf("cloud-e2e: run-name %q, want %q", got, weeklyName)
+	}
+	if !strings.Contains(readFile(t, ".github/scripts/weekly_stale.sh"), `--weekly-only) keep=' | select(.display_title == "cloud-e2e (weekly)")' ;;`) {
+		t.Error("cloud-e2e-yield: weekly_stale.sh --weekly-only does not keep to the run named «cloud-e2e (weekly)»")
+	}
+	// Rights, given nowhere but to the job, and no more than it needs: a
+	// string (write-all) is not {} either.
+	if p, isMap := w.Permissions.(map[string]any); !isMap || len(p) != 0 {
+		t.Errorf("cloud-e2e-yield: workflow permissions %v, want {}", w.Permissions)
+	}
+	if len(w.Env) != 0 {
+		t.Errorf("cloud-e2e-yield: workflow env %v, want none", w.Env)
+	}
+	// No secret anywhere in the file: workflow, job and step env, with.
+	var raw any
+	if err := yaml.Unmarshal([]byte(readFile(t, ".github/workflows/cloud-e2e-yield.yml")), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if s := fmt.Sprint(raw); strings.Contains(s, "secrets.") || strings.Contains(s, "secrets[") {
+		t.Error("cloud-e2e-yield reads a secret")
+	}
+	if len(w.Jobs) != 1 {
+		t.Fatalf("cloud-e2e-yield: jobs %d, want 1", len(w.Jobs))
+	}
+	const onlyAPerson = "github.event.workflow_run.triggering_actor.login != 'github-actions[bot]' && github.event.workflow_run.event == 'workflow_dispatch'"
+	for name, j := range w.Jobs {
+		// The condition as it is, not words in it: an «||» or a «true ||»
+		// lets the bot through (Астра #2190).
+		if j.If != onlyAPerson {
+			t.Errorf("cloud-e2e-yield: job %s if %q, want %q", name, j.If, onlyAPerson)
+		}
+		if p, isMap := j.Permissions.(map[string]any); !isMap || fmt.Sprint(p) != "map[actions:write contents:read]" {
+			t.Errorf("cloud-e2e-yield: job %s permissions %v, want actions: write and contents: read", name, j.Permissions)
+		}
+		if len(j.Env) != 0 {
+			t.Errorf("cloud-e2e-yield: job %s env %v, want none", name, j.Env)
+		}
+		if len(j.Steps) != 2 {
+			t.Fatalf("cloud-e2e-yield: job %s has %d steps, want checkout and the script", name, len(j.Steps))
+		}
+		// The checkout of this repository at the commit of the event: no
+		// other repository, ref or token.
+		co := j.Steps[0]
+		if !strings.HasPrefix(co.Uses, "actions/checkout@") || fmt.Sprint(co.With) != "map[persist-credentials:false]" || co.Run != "" || len(co.Env) != 0 {
+			t.Errorf("cloud-e2e-yield: job %s step 1 is %q with %v, want actions/checkout with persist-credentials: false alone", name, co.Uses, co.With)
+		}
+		run := j.Steps[1]
+		if strings.TrimSpace(run.Run) != `.github/scripts/weekly_stale.sh "$GITHUB_REPOSITORY" --weekly-only` || run.Uses != "" || len(run.With) != 0 ||
+			fmt.Sprint(run.Env) != "map[GH_TOKEN:${{ github.token }}]" {
+			t.Errorf("cloud-e2e-yield: job %s step 2 runs %q with env %v, want weekly_stale.sh --weekly-only with GH_TOKEN alone", name, run.Run, run.Env)
 		}
 	}
 }
@@ -1819,4 +1897,14 @@ func TestWorkflows_WindowsTestNamesTheProcessor(t *testing.T) {
 		}
 	}
 	t.Error("ci: no step before gotest names the processor of the Windows runner")
+}
+
+// readFile reads a file of the repository by its path from the root.
+func readFile(t *testing.T, rel string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

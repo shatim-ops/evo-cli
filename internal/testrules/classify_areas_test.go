@@ -33,6 +33,7 @@ var toolFilesWithoutArea = map[string]string{
 	"internal/tools/tools_audit.go":       "a read of the audit log",
 	"internal/tools/tools_auth.go":        "whoami and agent_skill: reads with no cloud object",
 	"internal/tools/tools_billing.go":     "reads of the billing",
+	"internal/tools/tools_history.go":     "history: a read of the local journal of changes, no cloud object",
 	"internal/tools/tools_marketplace.go": "reads of the marketplace",
 	"internal/tools/tools_monitoring.go":  "reads of the monitoring",
 }
