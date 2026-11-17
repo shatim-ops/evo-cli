@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -111,5 +112,29 @@ func TestAppend_ALinkIsRefused(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(target); len(b) != 0 {
 		t.Errorf("the target of the link got %q", b)
+	}
+}
+
+// A write cut short leaves a line with no end (Астра, #2167): the next
+// line goes after a line break of its own, so it is read whole, and the
+// torn bytes stay as they are — a line a reader skips, not one that eats
+// the next.
+func TestAppend_AfterATornTailTheLineIsWhole(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := FileOf(dir, time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC))
+	if err := os.WriteFile(path, []byte(`{"format":1`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Append(dir, line(Created)); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	var l Line
+	if len(lines) != 2 || lines[0] != `{"format":1` || json.Unmarshal([]byte(lines[1]), &l) != nil || l.Outcome != Created {
+		t.Errorf("after a torn tail: %q; want the torn bytes on their line, then the new line whole", data)
 	}
 }

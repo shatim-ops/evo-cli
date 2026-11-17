@@ -156,11 +156,25 @@ func Append(dir string, l Line) error {
 		return err
 	}
 	defer unlock()
-	f, err := config.OpenNoFollow(FileOf(dir, at), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := config.OpenNoFollow(FileOf(dir, at), os.O_APPEND|os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(append(data, '\n')); err != nil {
+	// A write cut short — a kill, a full disk — leaves a line with no
+	// end: the new line starts on a line of its own, so it is read whole,
+	// and the torn bytes stay a line a reader skips (Астра, #2167).
+	line := append(data, '\n')
+	if fi, err := f.Stat(); err == nil && fi.Size() > 0 {
+		last := make([]byte, 1)
+		if _, err := f.ReadAt(last, fi.Size()-1); err != nil {
+			f.Close()
+			return err
+		}
+		if last[0] != '\n' {
+			line = append([]byte{'\n'}, line...)
+		}
+	}
+	if _, err := f.Write(line); err != nil {
 		f.Close()
 		return err
 	}
