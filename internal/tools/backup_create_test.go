@@ -48,6 +48,9 @@ type createWorld struct {
 	unlisted bool
 	// failReads: the first reads of the new backup are answered 503.
 	failReads int
+	// failAfter: the reads of the new backup after the first failAfter
+	// are answered 503; 0 for none.
+	failAfter int
 }
 
 func (w *createWorld) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -85,6 +88,10 @@ func (w *createWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/backups/"+bcNew:
 		if w.failReads > 0 {
 			w.failReads--
+			rec.WriteHeader(http.StatusServiceUnavailable)
+			return rec.Result(), nil
+		}
+		if w.failAfter > 0 && w.reads >= w.failAfter {
 			rec.WriteHeader(http.StatusServiceUnavailable)
 			return rec.Result(), nil
 		}
@@ -408,5 +415,23 @@ func TestBackupCreate_AnnounceInJSON(t *testing.T) {
 	announce(ctx, "backup x ("+bcNew+") is being made")
 	if !strings.Contains(errOut.String(), `"progress"`) || !strings.Contains(errOut.String(), bcNew) || out.Len() != 0 {
 		t.Errorf("want a progress line with the id on stderr: out %q, err %q", out.String(), errOut.String())
+	}
+}
+
+// A backup still being made at the limit of the wait names when evo last
+// read it and how many reads failed after it, as every wait at its limit
+// does (waitReads, #2216): a «creating» read once and then never again is
+// not a fresh one (#2338; Астра #2317, as #2337).
+func TestBackupCreate_AtTheLimitSaysTheReadsThatFailed(t *testing.T) {
+	was := backupWaitLimit
+	backupWaitLimit = 50 * time.Millisecond // wall-clock: a fraction of the production wait, the world answers at once
+	t.Cleanup(func() { backupWaitLimit = was })
+	w := &createWorld{readyAfter: 1000, failAfter: 1}
+	m, text, isErr := callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"disk_id": bcDisk, "name": "before-change", "confirmed": true})
+	if isErr || m["status"] != "creating" {
+		t.Fatalf("want creating at the limit: %s", text)
+	}
+	if m["last_read_at"] == nil || m["failed_reads"] == nil || m["failed_reads"].(float64) < 1 {
+		t.Errorf("the answer at the limit does not say when evo read last and how many reads failed: %s", text)
 	}
 }
