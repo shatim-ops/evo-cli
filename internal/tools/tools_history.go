@@ -207,8 +207,8 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 			}
 		}
 		ans["would_close"] = would
-		ans["check_note"] = i18n.T("would_close: a read by id, with the key that sent the call, answers «not found»: the resource was removed, or this key no longer sees it — the platform does not tell which. history writes nothing: the lines stay live in the journal. check_result tells why a live line was not read.",
-			"would_close — чтение по id ключом, которым отправлен вызов, отвечает «не найдено»: ресурс удалён или этот ключ его больше не видит, — какое из двух, платформа не говорит. history ничего не пишет: в журнале строки остаются живыми. check_result — почему живая строка не прочитана.")
+		ans["check_note"] = i18n.T("would_close: a read by id, with the key that sent the call, answers «not found»: the resource was removed, or this key no longer sees it — the platform does not tell which. history writes nothing and closes nothing: the lines stay live in the journal until evo deletes the resource. check_result tells why a live line was not read.",
+			"would_close — чтение по id ключом, которым отправлен вызов, отвечает «не найдено»: ресурс удалён или этот ключ его больше не видит, — какое из двух, платформа не говорит. history ничего не пишет и не закрывает: в журнале строки остаются живыми, пока ресурс не удалён через evo. check_result — почему живая строка не прочитана.")
 	}
 	return toJSON(ans), false
 }
