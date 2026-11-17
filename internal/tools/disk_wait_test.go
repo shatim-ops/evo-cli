@@ -76,7 +76,7 @@ func (c *dirtyDiskCloud) ListDisks(context.Context, string) ([]map[string]any, e
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.polls++
-	state := "creating\x1b[2J\rOVER\x00‮"
+	state := "creating\x1b[2J\rOVER\x00\u202e"
 	if c.polls > 2 {
 		state = "available"
 	}
@@ -96,7 +96,7 @@ func TestDiskWait_TheStateItSaysIsCleaned(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "OVER") || strings.ContainsAny(joined, "\x1b\r\x00‮") {
+	if !strings.Contains(joined, "OVER") || strings.ContainsAny(joined, "\x1b\r\x00\u202e") {
 		t.Errorf("the state goes out as the cloud sent it: %q", joined)
 	}
 }

@@ -86,7 +86,7 @@ func TestWaits_SayTheStateOfTheResource(t *testing.T) {
 // dirtyState is a state as the cloud may send it: an escape sequence that
 // clears the screen, a carriage return, an OSC 8 link, NUL and a bidi
 // override (Астра #2090).
-const dirtyState = "creating\x1b[2J\rOVER\x1b]8;;https://example.com\aLINK\x1b]8;;\a\x00‮"
+const dirtyState = "creating\x1b[2J\rOVER\x1b]8;;https://example.com\aLINK\x1b]8;;\a\x00\u202e"
 
 // stepLineDirty names what a terminal must not get in out: a control
 // character other than a line break, or a format character.
@@ -95,7 +95,7 @@ func stepLineDirty(out string) string {
 		if r == '\n' {
 			continue
 		}
-		if r < 0x20 || r == 0x7f || r == '‮' || r == ' ' || r == ' ' {
+		if r < 0x20 || r == 0x7f || r == '\u202e' || r == '\u2028' || r == '\u2029' {
 			return string(r)
 		}
 	}
