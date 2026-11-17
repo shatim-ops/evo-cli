@@ -438,7 +438,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 				return answered(toJSON(ans), false), nil
 			case timedOut > 0:
 				return nil, clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("VM %s is in state %s: it cannot be changed until the state settles", "ВМ %s в состоянии %s: менять её можно, когда состояние устоится", vm.ID, last),
+					i18n.Tf("VM %s is in state %s: it cannot be changed until the state settles", "ВМ %s в состоянии %s: менять её можно, когда состояние устоится", vm.ID, quoteCloud(last)),
 					i18n.T("Repeat the call when vm_get shows the VM running or stopped.", "Повторите вызов, когда vm_get покажет ВМ в running или stopped."))
 			}
 			state = last
@@ -458,7 +458,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			// the action starts is the step — with a preview and a
 			// question of its own (§5.1: a reboot is not a way to start).
 			err := clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, state, i18n.T(act.verb[0], act.verb[1])),
+				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, quoteCloud(state), i18n.T(act.verb[0], act.verb[1])),
 				i18n.Tf("It has to be %s first.", "Сначала она должна быть в %s.", act.from))
 			fields := map[string]any{"vm_id": vm.ID, "state": state}
 			if first := vmToolTo(act.from); first != "" {
@@ -467,7 +467,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			return answered(errAnswer(err, fields), true), nil
 		case vmNothingToChange[state]:
 			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, state, i18n.T(act.verb[0], act.verb[1])),
+				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, quoteCloud(state), i18n.T(act.verb[0], act.verb[1])),
 				i18n.T("vm_get shows the VM; what to do with it is the person's decision.", "ВМ показывает vm_get; что с ней делать — решает человек."))
 		}
 		// What the write sends and what it changes: the command, and the
@@ -499,7 +499,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			// Not refused: whether the platform takes the command in this
 			// state is not known (conclusion 111, the question of error).
 			preview["warning"] = i18n.Tf("the VM is in state %s, not %s: whether the platform accepts %s is unknown",
-				"ВМ в состоянии %s, а не %s: примет ли платформа %s — неизвестно", state, act.from, i18n.T(act.noun[0], act.noun[1]))
+				"ВМ в состоянии %s, а не %s: примет ли платформа %s — неизвестно", quoteCloud(state), act.from, i18n.T(act.noun[0], act.noun[1]))
 		}
 		return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 			if err := eng.Cloud.SetVMPower(ctx, vm.ID, act.command); err != nil {
@@ -564,7 +564,7 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 		details["platform_code"] = code
 	}
 	return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-		i18n.Tf("the platform refused %s of VM %s in state %s", "платформа отказала: %s ВМ %s в состоянии %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, now.State), hint, cause),
+		i18n.Tf("the platform refused %s of VM %s in state %s", "платформа отказала: %s ВМ %s в состоянии %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, quoteCloud(now.State)), hint, cause),
 		map[string]any{"vm_id": vm.ID, "state": now.State, "details": details}), true
 }
 
@@ -663,7 +663,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 				i18n.T("What to do with the VM is the person's decision; vm_get shows it.", "Что делать с ВМ — решает человек; её показывает vm_get."))
 		}
 		return true, clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("VM %s is in state %s after %s, not %s", "ВМ %s: состояние %s после команды «%s», а не %s", vm.ID, st, i18n.T(act.noun[0], act.noun[1]), act.to),
+			i18n.Tf("VM %s is in state %s after %s, not %s", "ВМ %s: состояние %s после команды «%s», а не %s", vm.ID, quoteCloud(st), i18n.T(act.noun[0], act.noun[1]), act.to),
 			i18n.T("vm_get shows the VM.", "ВМ показывает vm_get."))
 	})
 	elapsed := int(clock.Since(started).Seconds())
@@ -851,7 +851,7 @@ func (s *Registry) planVMResize() Planner {
 				return answered(toJSON(ans), false), nil
 			case timedOut > 0:
 				return nil, clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("VM %s is in state %s: its flavor can be changed when the state settles", "ВМ %s в состоянии %s: менять её конфигурацию можно, когда состояние устоится", vm.ID, last.State),
+					i18n.Tf("VM %s is in state %s: its flavor can be changed when the state settles", "ВМ %s в состоянии %s: менять её конфигурацию можно, когда состояние устоится", vm.ID, quoteCloud(last.State)),
 					i18n.T("Repeat the call when vm_get shows the VM running or stopped.", "Повторите вызов, когда vm_get покажет ВМ в running или stopped."))
 			}
 			vm = last
@@ -868,7 +868,7 @@ func (s *Registry) planVMResize() Planner {
 			return answered(toJSON(vmResizeAnswer(vm, "already_resized")), false), nil
 		case vmNothingToChange[vm.State]:
 			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to resize", "ВМ %s в состоянии %s: менять конфигурацию нечего", vm.ID, vm.State),
+				i18n.Tf("VM %s is in state %s: there is nothing to resize", "ВМ %s в состоянии %s: менять конфигурацию нечего", vm.ID, quoteCloud(vm.State)),
 				i18n.T("vm_get shows the VM; what to do with it is the person's decision.", "ВМ показывает vm_get; что с ней делать — решает человек."))
 		}
 		// A known limit of the pair: the flavor is not given in the zone of
@@ -888,7 +888,7 @@ func (s *Registry) planVMResize() Planner {
 			// Not refused: whether the platform takes the change in this
 			// state is not known (conclusion 111, the question of error).
 			preview["warning"] = i18n.Tf("the VM is in state %s, not running or stopped: whether the platform accepts the change is unknown",
-				"ВМ в состоянии %s, а не running или stopped: примет ли платформа смену конфигурации — неизвестно", vm.State)
+				"ВМ в состоянии %s, а не running или stopped: примет ли платформа смену конфигурации — неизвестно", quoteCloud(vm.State))
 		}
 		planned := vm.State
 		return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
@@ -1103,7 +1103,7 @@ func (s *Registry) vmResizeRefused(ctx context.Context, eng *engine.Engine, vm *
 	}
 	fields["details"] = details
 	return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-		i18n.Tf("the platform refused to change the flavor of VM %s to %s in state %s", "платформа отказала в смене конфигурации ВМ %s на %s в состоянии %s", vm.ID, target.Name, now.State),
+		i18n.Tf("the platform refused to change the flavor of VM %s to %s in state %s", "платформа отказала в смене конфигурации ВМ %s на %s в состоянии %s", vm.ID, target.Name, quoteCloud(now.State)),
 		hint, cause), fields), true
 }
 
@@ -1162,7 +1162,7 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 				i18n.T("What to do with the VM is the person's decision; vm_get shows it.", "Что делать с ВМ — решает человек; её показывает vm_get."))
 		}
 		return true, clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("VM %s is in state %s after the change of flavor", "ВМ %s: состояние %s после смены конфигурации", vm.ID, d.State),
+			i18n.Tf("VM %s is in state %s after the change of flavor", "ВМ %s: состояние %s после смены конфигурации", vm.ID, quoteCloud(d.State)),
 			i18n.T("vm_get shows the VM.", "ВМ показывает vm_get."))
 	})
 	elapsed := int(clock.Since(started).Seconds())

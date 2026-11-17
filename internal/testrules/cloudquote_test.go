@@ -30,28 +30,14 @@ var formatVerb = regexp.MustCompile(`%[-+# 0]*(\*|\d+)?(\.(\*|\d+))?[a-zA-Z%]`)
 // stepKey marks a key of got that is a step of progress, not an error.
 const stepKey = "step: "
 
-// unquotedCloudWords are the places that still print a status, a state or
-// an id of the cloud bare in a text of evo: "file|function" → how many.
-// The list only shrinks (plan 1.9, «Инвариант quoteCloud: места для
-// убывающего списка», risk conclusions 232 and 235): a place fixed by
-// quoteCloud leaves it in the same PR, a new place fails the test. Its
-// fixes are the development's, by this list. These are the errors and
-// refusals: Closes by 1.9 (owner's decision 14.11, before rc.1).
-var unquotedCloudWords = map[string]int{
-	"internal/engine/deploy.go|Engine.awaitCreated":       1,
-	"internal/engine/deploy.go|Engine.provisionVM":        1,
-	"internal/engine/deploy.go|LostAddressError":          1,
-	"internal/tools/tools_vm.go|Registry.finishVMPower":   1,
-	"internal/tools/tools_vm.go|Registry.finishVMResize":  1,
-	"internal/tools/tools_vm.go|Registry.planVMPower":     4,
-	"internal/tools/tools_vm.go|Registry.planVMResize":    3,
-	"internal/tools/tools_vm.go|Registry.vmPowerRefused":  1,
-	"internal/tools/tools_vm.go|Registry.vmResizeRefused": 1,
-}
-
-// unquotedCloudSteps: the same for the text of a step of progress —
-// Printer.StepDone and Printer.Warning (owner's decision 14.11: the steps
-// later than the errors). The list only shrinks. Closes by 1.10.
+// unquotedCloudSteps are the places that still print a status, a state or
+// an id of the cloud bare in the text of a step of progress —
+// Printer.StepDone and Printer.Warning: "file|function" → how many. The
+// list only shrinks (plan 1.9, «Инвариант quoteCloud: места для убывающего
+// списка», risk conclusions 232 and 235): a place fixed by quoteCloud
+// leaves it in the same PR, a new place fails the test. The errors and
+// refusals closed in 1.9 (owner's decision 14.11, before rc.1); the steps
+// close by 1.10.
 var unquotedCloudSteps = map[string]int{
 	"internal/engine/deploy.go|Engine.settledBootFIP":   2,
 	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
@@ -98,9 +84,6 @@ func TestCloudWords_QuotedInEvoText(t *testing.T) {
 		}
 	}
 	allowed := map[string]int{}
-	for k, n := range unquotedCloudWords {
-		allowed[k] = n
-	}
 	for k, n := range unquotedCloudSteps {
 		allowed[stepKey+k] = n
 	}
@@ -111,11 +94,7 @@ func TestCloudWords_QuotedInEvoText(t *testing.T) {
 	}
 	for k, n := range allowed {
 		if got[k] < n {
-			list := "unquotedCloudWords"
-			if strings.HasPrefix(k, stepKey) {
-				list = "unquotedCloudSteps"
-			}
-			t.Errorf("%s lists %d for %s, and %d are left — lower the line (the list only shrinks)", list, n, strings.TrimPrefix(k, stepKey), got[k])
+			t.Errorf("unquotedCloudSteps lists %d for %s, and %d are left — lower the line (the list only shrinks)", n, strings.TrimPrefix(k, stepKey), got[k])
 		}
 	}
 }

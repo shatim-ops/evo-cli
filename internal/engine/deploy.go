@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -1094,7 +1095,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				// The record says the VM failed: so does the answer, whenever
 				// the bound comes (FB171-4).
 				return rec, e.writeDecided(statePath, stateFile, clerrors.New(clerrors.CodeVMProvisionFailed,
-					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", vm.ID, updated.Status),
+					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", vm.ID, strconv.Quote(updated.Status)),
 					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru.")))
 			}
 		case <-ctx.Done():
@@ -1392,7 +1393,7 @@ func LostAddressError(lost *floatingip.LostError, vmID, vmState string) error {
 	}
 	return clerrors.Wrap(code,
 		i18n.Tf("VM %s is created (state %s) and billed, but reserving its floating IP %s got no answer from the cloud (%v): the request may have been accepted, and the address billed. No second address was requested",
-			"ВМ %s создана (состояние %s) и тарифицируется, но резервирование её floating IP %s не получило ответа облака (%v): запрос мог быть принят, а адрес — тарифицироваться. Второй адрес не запрашивался", vmID, statusText(vmState), lost.Name, lost.Err),
+			"ВМ %s создана (состояние %s) и тарифицируется, но резервирование её floating IP %s не получило ответа облака (%v): запрос мог быть принят, а адрес — тарифицироваться. Второй адрес не запрашивался", vmID, strconv.Quote(statusText(vmState)), lost.Name, lost.Err),
 		i18n.Tf("Check list_floating_ips for the name %s and the VM with vm_get %s, then repeat the same call: it takes that address if the list shows it free or on this VM; if the list does not show it, the call asks first — whether to reserve another address is the person's to answer.",
 			"Проверьте 'evo vpc fips' по имени %s и ВМ — 'evo vm get %s', затем повторите ту же команду: она возьмёт этот адрес, если список показывает его свободным или на этой ВМ; если списка с ним нет, команда сначала спросит — резервировать ли другой адрес, решает человек.", lost.Name, vmID),
 		lost)
@@ -1690,7 +1691,7 @@ func (e *Engine) awaitCreated(ctx context.Context, rec *state.DeploymentRecord, 
 				stateFile.UpsertDeployment(*rec)
 				// As in provisionVM (FB171-4).
 				return e.writeDecided(statePath, stateFile, clerrors.New(clerrors.CodeVMProvisionFailed,
-					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", rec.VMID, vm.Status),
+					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", rec.VMID, strconv.Quote(vm.Status)),
 					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru.")))
 			}
 		}
