@@ -1606,6 +1606,18 @@ grep -q 'vm_start (mcp) *ok *status starting; vm_get после: running, .*evo 
 	{ echo "FAIL: opsevo: передача vm_get у предела не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 grep -q 'vm_resize (cli) *ok' "$tmp/out" || { echo "FAIL: opsevo: после передачи vm_get шаги питания и vm_resize не шли"; fail=1; }
 
+# Повтор (ждут already_stopped) ответил словом хода и передал vm_get: не
+# принимается — шаг провален, охвата нет («Риск», 317, У1).
+opsevo_world
+answers vm_stop '{"status":"stopped"}' '{"status":"stopping","next_tool":"vm_get","next_args":{"vm_id":"vmid1"}}' \
+	'{"status":"stopped"}' '{"status":"already_stopped"}'
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+[ "$rc" != 0 ] || { echo "FAIL: opsevo: повтор со словом хода прошёл"; fail=1; }
+grep -q 'vm_stop (mcp) *FAIL *status stopping, ждали already_stopped' "$tmp/out" ||
+	{ echo "FAIL: opsevo: повтор со словом хода не назван провалом"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if grep -q 'evo перестал ждать' "$tmp/out"; then echo "FAIL: opsevo: передача vm_get принята у повтора"; fail=1; fi
+
 # Ссылка консоли в ответе (D110): провал, ответ и ссылка в лог не идут.
 # sha256 восстановленного файла другой — провал. Повтор удаления правила
 # ответил не already_deleted (D26) — провал.
