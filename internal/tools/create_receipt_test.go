@@ -105,3 +105,52 @@ func TestCreate_NoReceiptIsNoSuccess(t *testing.T) {
 		}
 	}
 }
+
+// D112 promises no second create after an answer without a receipt: the
+// outcome is unknown, so the same call again — with the consent of the
+// first, its record kept — does not send a second request. It asks, as a
+// repeat of D107 does (confirmation_required with interrupted): a
+// database or a user while the list does not show its name, a version of
+// a secret always — a second version is a second change (Астра, #2113).
+// The question sends to the read, not to the repeat.
+func TestCreate_NoReceiptRepeatAsksAndSendsNothing(t *testing.T) {
+	const cluster = "00000000-0000-4000-8000-0000000000e1"
+	for _, c := range []struct {
+		tool, read string
+		args       map[string]any
+	}{
+		{"pg_db_create", "pg_databases", map[string]any{"cluster_id": cluster, "name": "app", "owner": "app", "confirmed": true}},
+		{"pg_user_create", "pg_users", map[string]any{"cluster_id": cluster, "name": "app", "password": "Qwerty123456!", "confirmed": true}},
+		{"secret_add_version", "secret_get", map[string]any{"path": "app/db", "value": "s3cret-value", "confirmed": true}},
+	} {
+		w := &receiptWorld{receipt: `{}`}
+		var r *Registry
+		if c.tool == "secret_add_version" {
+			r = apiFakeRegistry(t, &apiFake{own: func(rw http.ResponseWriter, req *http.Request) bool {
+				if req.URL.Host != "secretmanager.api.cloud.ru" {
+					return false
+				}
+				resp, _ := w.RoundTrip(req)
+				body, _ := io.ReadAll(resp.Body)
+				_, _ = rw.Write(body)
+				return true
+			}})
+		} else {
+			r = dbaasRegistry(t, &fakeDbaas{}, "")
+			bare := httpretry.DefaultBase
+			httpretry.DefaultBase = w
+			t.Cleanup(func() { httpretry.DefaultBase = bare })
+		}
+		if m, text, isErr := callNamed(t, r, c.tool, c.args); !isErr || m["reason"] != clierrors.CodeAPIError || w.posts != 1 {
+			t.Fatalf("%s: the first call — want API_ERROR and one create request (%d): %s", c.tool, w.posts, text)
+		}
+		m, text, isErr := callNamed(t, r, c.tool, c.args)
+		msg, _ := m["message"].(string)
+		if w.posts != 1 || !isErr || m["status"] != "confirmation_required" || m["interrupted"] == nil || !strings.Contains(msg, c.read) {
+			t.Errorf("%s: the repeat after an answer without a receipt sent %d create requests, want 1 and the question that names %s:\n%s", c.tool, w.posts, c.read, text)
+		}
+		if strings.Contains(text, "s3cret-value") || strings.Contains(text, "Qwerty123456!") {
+			t.Errorf("%s: a secret value in the answer", c.tool)
+		}
+	}
+}

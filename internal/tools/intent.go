@@ -326,6 +326,20 @@ var everySendIsAChange = map[string]changeRule{
 	"ar_create":        paidCreate("ar_create", "", nameArg),
 	"cert_import":      paidCreate("cert_import", "", nameArg),
 	"pg_backup_create": paidCreate("pg_backup_create", "cluster_id", nameArg),
+	// D112 (the owner's decision of 17.11, #1999): a create whose 2xx
+	// names nothing it made (receipt.ErrUnusable) has an unknown outcome,
+	// and no second create follows it — the same call again asks, as a
+	// repeat of D107 does: a database or a user of a cluster while its list
+	// does not show the name, a version of a secret always, for a second
+	// version is a second change (Астра, #2113).
+	"pg_db_create":   paidCreate("pg_db_create", "cluster_id", nameArg),
+	"pg_user_create": paidCreate("pg_user_create", "cluster_id", nameArg),
+	"secret_add_version": {read: "secret_get", target: func(_ context.Context, _ *Registry, args map[string]any) (string, string, error) {
+		if path := stringArg(args, "path"); path != "" {
+			return "", "path=" + path, nil
+		}
+		return "", "", nil
+	}},
 }
 
 // spelledArgs are the arguments that name the resource of the record in
