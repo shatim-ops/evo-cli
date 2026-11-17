@@ -21,9 +21,12 @@
   `--attach-to` (до 5 минут; в MCP — в пределах вызова). Дождался —
   `status: created`, как раньше. Не дождался — `status: creating`,
   `disk_id`, `disk_state` и `next_tool: disk_list` с
-  `next_args: {ids: [<id>]}`. Диск в ошибочном состоянии — `API_ERROR`,
-  код 5, с `disk_id`. Прерванное ожидание (Ctrl-C, отмена вызова MCP) —
-  `INTERRUPTED` (D69) с `disk_id`, `disk_state` и тем же следующим шагом;
-  диск в облаке продолжает создаваться. Что поменять: скрипт, который сверял
-  `status == "created"`, принимает также `creating` и в этом случае
-  опрашивает `evo disk list --ids <id>`.
+  `next_args: {ids: [<id>]}`. Состояние диска неизвестно (ответ создания
+  его не назвал, а список диск ещё не показывает) — `status: waiting`,
+  `disk_state: unknown`, `disk_id` и тот же следующий шаг. Диск в
+  ошибочном состоянии — `API_ERROR`, код 5, с `disk_id`. Прерванное
+  ожидание (Ctrl-C, отмена вызова MCP) — `INTERRUPTED` (D69) с `disk_id`,
+  `disk_state` и тем же следующим шагом; диск в облаке продолжает
+  создаваться. Что поменять: скрипт, который сверял `status == "created"`,
+  принимает также `creating` и `waiting` и в этих случаях опрашивает
+  `evo disk list --ids <id>`.
