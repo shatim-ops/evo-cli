@@ -59,12 +59,14 @@ func certChainSummary(v string) string {
 	return i18n.Tf("%d certificate(s): %s", "сертификатов: %d; %s", len(certs), strings.Join(certs, "; "))
 }
 
-// templateSummary is the size, the lines and the SHA-256 of a template,
-// with its first line where it is a header that says what the template is
+// templateSummary is the size and the lines of a template, with its first
+// line where it is a header that says what the template is
 // (templateHeader). Any other line is text the author wrote, and a template
 // may carry a password or a token: the preview reaches a model and a log.
+// No hash either: a short secret in an otherwise known template is found
+// from it by a dictionary (risk conclusion 299).
 func templateSummary(v string) string {
-	s := textSummary(v)
+	s := sizeSummary(v)
 	if first, _, _ := strings.Cut(v, "\n"); templateHeader.MatchString(strings.TrimSuffix(first, "\r")) {
 		s += i18n.Tf(", first line %s", ", первая строка %s", quoteCloud(strings.TrimSuffix(first, "\r")))
 	}
@@ -78,8 +80,12 @@ var templateHeader = regexp.MustCompile(`^(#cloud-config|#cloud-config-archive|#
 
 // textSummary is the size, the lines and the SHA-256 of a text.
 func textSummary(v string) string {
-	return i18n.Tf("%d bytes, %d lines, SHA-256 %x", "%d байт, строк: %d, SHA-256 %x",
-		len(v), strings.Count(strings.TrimRight(v, "\n"), "\n")+1, sha256.Sum256([]byte(v)))
+	return sizeSummary(v) + i18n.Tf(", SHA-256 %x", ", SHA-256 %x", sha256.Sum256([]byte(v)))
+}
+
+// sizeSummary is the size and the lines of a text.
+func sizeSummary(v string) string {
+	return i18n.Tf("%d bytes, %d lines", "%d байт, строк: %d", len(v), strings.Count(strings.TrimRight(v, "\n"), "\n")+1)
 }
 
 // namedArgs is the handler of a tool of Decl.EchoedArgs whose preview names
