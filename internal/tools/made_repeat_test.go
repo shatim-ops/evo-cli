@@ -159,7 +159,13 @@ var finding01 = map[string]bool{"pg_create": true, "kafka_create": true, "redis_
 // whose answer no longer goes on fails it too.
 var madeRepeatCreates = map[string]bool{"pg_create": true, "kafka_create": true, "redis_create": true, "k8s_create": true,
 	"k8s_add_nodepool": true, "lb_create": true, "ar_create": true, "vpc_create": true, "tg_create": true, "pg_backup_create": true,
-	"subnet_create": true, "snat_create": true, "disk_create": true, "dns_zone_create": true}
+	"subnet_create": true, "snat_create": true, "disk_create": true}
+
+// madeRepeatPending are the creates whose answer goes on, not yet in the
+// «Миграция» of D113, with the line of the plan that brings them there.
+var madeRepeatPending = map[string]string{
+	"dns_zone_create": "its repeat reads dns_zones with no visibility — the private zones for a public one; the fix and its «Миграция» are C(7)'s, the line of the release plan #2145",
+}
 
 // madeRepeatOwnWorld are the creates of the matrix the world of a paid
 // create does not run, with why; their repeats are their own tests'.
@@ -183,9 +189,9 @@ func TestCreate_EveryCreateWhoseAnswerGoesOnIsInTheMigration(t *testing.T) {
 			// subnet_create's answer in this world is created at once: its
 			// waiting answer is TestSubnetCreate_*'s.
 			switch {
-			case goesOn && !madeRepeatCreates[c.tool]:
+			case goesOn && !madeRepeatCreates[c.tool] && madeRepeatPending[c.tool] == "":
 				t.Errorf("the answer goes on, so a repeat reads it with no question: add %s to madeRepeatCreates and to the «Миграция» of D113\n%.400s", c.tool, first)
-			case !goesOn && madeRepeatCreates[c.tool] && c.tool != "subnet_create":
+			case !goesOn && (madeRepeatCreates[c.tool] || madeRepeatPending[c.tool] != "") && c.tool != "subnet_create":
 				t.Errorf("in madeRepeatCreates, but the answer does not go on: %.400s", first)
 			}
 		})
@@ -366,7 +372,8 @@ func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	return rec.Result(), nil
 }
 
-// «Риск», conclusion 302, У1: dns_zone_create's repeat, while the zone is
+// «Риск», conclusion 302, У1 (dns_zone_create in madeRepeatPending, the
+// line #2145): dns_zone_create's repeat, while the zone is
 // taken and not listed, reads the list of zones its answer names
 // (dns_zones, with no argument: the private ones — the line of the release
 // plan «повтор dns_zone_create для публичной зоны», C(7)) and answers
