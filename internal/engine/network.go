@@ -92,7 +92,7 @@ func (e *Engine) resolveNetwork(ctx context.Context, projectID, zoneRef string) 
 		n.SubnetID, n.SubnetName = subnets[sn].ID, subnets[sn].Name
 		gateway = subnets[sn].DefaultGateway
 		if subnets[sn].NoDNS() {
-			e.Printer.Warning(subnetNoDNSWarning(subnets[sn].Name))
+			e.Printer.Warning(provision.SubnetNoDNSWarning(subnets[sn].Name))
 		}
 	} else {
 		if zoneRef == "" {
@@ -247,22 +247,12 @@ func (e *Engine) warnGroupRules(ctx context.Context, g *provision.SecurityGroup,
 	}
 	gaps := provision.CheckVMGroupRules(rules, gateway)
 	if gaps.NoSSH {
-		e.Printer.Warning(groupNoSSHWarning(g.Name) + i18n.T(" (security_group in .evo.yaml); without SSH deploy cannot install Docker",
+		e.Printer.Warning(provision.GroupNoSSHWarning(g.Name) + i18n.T(" (security_group in .evo.yaml); without SSH deploy cannot install Docker",
 			" (security_group в .evo.yaml); без SSH deploy не установит Docker"))
 	}
 	if gaps.NoSystemEgress {
-		e.Printer.Warning(groupNoEgressWarning(g.Name))
+		e.Printer.Warning(provision.GroupNoEgressWarning(g.Name))
 	}
-}
-
-func groupNoSSHWarning(name string) string {
-	return i18n.Tf("security group %s has no ingress rule for TCP 22: SSH to the VM will not come up. Add an ingress TCP 22 rule in the Cloud.ru console or choose another group",
-		"в группе безопасности %s нет входящего правила для TCP 22: SSH к ВМ не поднимется. Добавьте входящее правило TCP 22 в консоли Cloud.ru или выберите другую группу", strconv.Quote(name))
-}
-
-func groupNoEgressWarning(name string) string {
-	return i18n.Tf("security group %s does not allow the VM's system egress (the metadata service 169.254.169.254/32 and UDP 67 to the subnet gateway): the VM gets no IP by DHCP and cloud-init does not run. Allow all egress, or these two rules (Cloud.ru docs, security groups, limitations)",
-		"группа безопасности %s не разрешает исходящий системный трафик ВМ (сервис метаданных 169.254.169.254/32 и UDP 67 до шлюза подсети): ВМ не получит IP по DHCP, cloud-init не запустится. Разрешите весь исходящий трафик или эти два правила (документация Cloud.ru, «Группы безопасности», ограничения)", strconv.Quote(name))
 }
 
 // NetworkCheck is what the preview of a VM found wrong with the network
@@ -354,13 +344,13 @@ func (c *NetworkCheck) lines() []string {
 	}
 	var out []string
 	if c.SubnetNoDNS {
-		out = append(out, subnetNoDNSWarning(c.Subnet))
+		out = append(out, provision.SubnetNoDNSWarning(c.Subnet))
 	}
 	if c.NoSSHIngress {
-		out = append(out, groupNoSSHWarning(c.SecurityGroup))
+		out = append(out, provision.GroupNoSSHWarning(c.SecurityGroup))
 	}
 	if c.NoSystemEgress {
-		out = append(out, groupNoEgressWarning(c.SecurityGroup))
+		out = append(out, provision.GroupNoEgressWarning(c.SecurityGroup))
 	}
 	return out
 }
@@ -380,15 +370,6 @@ func zoneGroups(sgs []*provision.SecurityGroup, zoneID, zoneName string) []strin
 // inZone: the zone by ID, else by a name containing the zone name.
 func inZone(itemZoneID, name, zoneID, zoneName string) bool {
 	return (itemZoneID != "" && itemZoneID == zoneID) || (zoneName != "" && strings.Contains(name, zoneName))
-}
-
-// subnetNoDNSWarning: a subnet without DNS servers leaves the VM unable to
-// resolve names (docs, troubleshooting «Temporary failure in name
-// resolution»): apt, Docker and image pulls fail. A warning, not a refusal:
-// the user may resolve names otherwise.
-func subnetNoDNSWarning(name string) string {
-	return i18n.Tf("subnet %s has no DNS servers: the VM will not resolve names — Docker and images will not download. Add a DNS server to the subnet in the Cloud.ru console",
-		"в подсети %s не указаны DNS-серверы: ВМ не будет разрешать имена — Docker и образы не скачаются. Добавьте DNS-сервер в настройках подсети в консоли Cloud.ru", strconv.Quote(name))
 }
 
 func zoneText(name, id string) string {
