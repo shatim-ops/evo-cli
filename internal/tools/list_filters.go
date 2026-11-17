@@ -919,7 +919,9 @@ func (r *Registry) listed(ctx context.Context, f listFilter, ref string) (id, na
 	for _, row := range rows {
 		item, _ := row.(map[string]any)
 		e := entry{stringOf(item["id"]), stringOf(item["name"])}
-		known = append(known, firstNonEmptyStr(e.name, e.id))
+		// A name or id of the cloud in evo's hint is quoted, one line, as
+		// the other cloud words of these refusals (quoteCloud).
+		known = append(known, quoteCloud(firstNonEmptyStr(e.name, e.id)))
 		if (e.id != "" && strings.EqualFold(e.id, ref)) || (e.name != "" && strings.EqualFold(e.name, ref)) {
 			found = append(found, e)
 		}
@@ -938,7 +940,7 @@ func (r *Registry) listed(ctx context.Context, f listFilter, ref string) (id, na
 	}
 	ids := make([]string, len(found))
 	for i, e := range found {
-		ids[i] = e.id
+		ids[i] = quoteCloud(e.id)
 	}
 	return "", "", "", clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("filter %s: %d entries of %s are named %s: %s", "фильтр %s: в %s имя %[4]s носят %[2]d: %[5]s", f.arg, len(found), f.ref, quoteCloud(ref), strings.Join(ids, ", ")),
