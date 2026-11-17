@@ -27,7 +27,12 @@ import (
 var cloudWordBefore = regexp.MustCompile(`(?i)(^|[^-\w])(status|state|id):? $`)
 
 // formatVerb: a verb of a format string, %% excluded.
-var formatVerb = regexp.MustCompile(`%[-+# 0]*(\*|\d+)?(\.(\*|\d+))?[a-zA-Z%]`)
+var formatVerb = regexp.MustCompile(`%[-+# 0]*(\[\d+\])?(\*|\d+)?(\.(\[\d+\])?(\*|\d+))?(\[\d+\])?[a-zA-Z%]`)
+
+// verbIndex is the explicit index of the argument of a verb: %[2]s prints
+// the second argument, and the verbs after it go on from the third
+// («Риск», 334, У1: --vm-id %[2]s, destroy vm_id=%[3]s).
+var verbIndex = regexp.MustCompile(`\[(\d+)\][a-zA-Z]$`)
 
 // stepKey marks a key of got that is a step of progress, not an error.
 const stepKey = "step: "
@@ -143,7 +148,7 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/tools_disk.go|Registry.listedVM":              1,
 	"internal/tools/tools_disk.go|diskAtLimit.Error":              1,
 	"internal/tools/tools_dns.go|Registry.dnsZoneLinked":          1,
-	"internal/tools/tools_k8s.go|Registry.planK8sCreate":          1,
+	"internal/tools/tools_k8s.go|Registry.planK8sCreate":          3,
 	"internal/tools/tools_k8s.go|Registry.planK8sNodePoolScale":   2,
 	"internal/tools/tools_kafka.go|Registry.planKafkaCreate":      1,
 	"internal/tools/tools_pg.go|Registry.planPgCreate":            1,
@@ -490,8 +495,12 @@ func bareCloudWords(format string, args []ast.Expr, f *cloudFlow) int {
 			return n
 		}
 		v := verb[len(verb)-1]
+		if m := verbIndex.FindStringSubmatch(verb); m != nil {
+			i, _ := strconv.Atoi(m[1])
+			arg = i - 1
+		}
 		var a ast.Expr
-		if arg < len(args) {
+		if arg >= 0 && arg < len(args) {
 			a = args[arg]
 		}
 		fromCloud := a != nil && !isConcat(a) && f != nil && f.cloud(a)
@@ -535,6 +544,14 @@ func cloudSource(e ast.Expr) bool {
 	return false
 }
 
+// Known blind spots of cloudFlow («Риск», 334): a value passed into a
+// function that builds the text (the text is counted where it is built
+// only if that function is in the same file's walk of the format call), a
+// text grown with +=, a strings.Builder, a format kept in a variable (no
+// literal to read the verbs from), a field deeper than x.f. The worlds of
+// hostile cloud data (TestUntrustedNames_OneLineInText) hold these at run
+// time.
+//
 // cloudFlow follows a status, a state or an id of the cloud through a
 // function body, by declaration (the object the parser resolves a name
 // to: a shadowing name is another variable) and in the order of the code
@@ -1011,6 +1028,9 @@ func (f *cloudFlow) assign(l ast.Expr, held bool, guards map[types.Object]bool) 
 		if o == nil {
 			return
 		}
+		// A check of isUUID holds the value it checked, not the next one
+		// the name is given in the branch («Риск», 334, У2).
+		delete(guards, o)
 		if f.info.Defs[v] != nil {
 			// Declared here (a name := reuses one declared before).
 			f.declAt[o] = f.depth
@@ -1329,6 +1349,11 @@ func own() string { return "unknown" }
 		`v := "unknown"; if vm.Status != "" { v = vm.Status }; return fmt.Sprintf("it is %s now", v)`,
 		`v := vm.ID; if looksUUID(v) { return fmt.Sprintf("vm_id=%s", v) }; return ""`,
 		`v := strings.TrimSpace(vm.Status); return fmt.Sprintf("it is %s now", v)`,
+		// «Риск», 334: an explicit index of an argument (У1), a check of
+		// isUUID over a value the branch gives the name next (У2).
+		`return fmt.Sprintf("--vm-id %[2]s", "x", vm.ID)`,
+		`return fmt.Sprintf("vm %[2]s, then %s", "x", quoteCloud(vm.ID), vm.Status)`,
+		`v := vm.ID; if isUUID(v) { v = vm.Status; return fmt.Sprintf("vm_id=%s", v) }; return ""`,
 	}
 	safe := []string{
 		`v := vm.Status; return fmt.Sprintf("it is %s now", quoteCloud(v))`,
@@ -1346,6 +1371,7 @@ func own() string { return "unknown" }
 		`v := vm.Status; _ = v; { v := "unknown"; return fmt.Sprintf("it is %s now", v) }`,
 		// A name or a key glued of an id is no text.
 		`return vm.ID + ".json"`,
+		`return fmt.Sprintf("--vm-id %[2]s, %[1]s", "x", quoteCloud(vm.ID))`,
 	}
 	count := func(body string) int {
 		src := "package p\n" + helper + "func probe(vm astraVM, vms []astraVM, cfg config) string {" + body + "}"
