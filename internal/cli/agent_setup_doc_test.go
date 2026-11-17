@@ -25,6 +25,12 @@ func TestAgentSetup_LoginLinkRuleIsExecutable(t *testing.T) {
 	for _, want := range []string{
 		"не пересказывай, не отправляй и не открывай",
 		"человек открывает её сам из терминала на этой же машине",
+		// The failure step shows evo's error, not its output with the link
+		// («Риск», conclusion 282, У1).
+		"ошибку и подсказку, которые напечатал evo, — без ссылки входа",
+		// A person who cannot see the agent's terminal runs evo login
+		// themselves (282, У2).
+		"попроси человека самому выполнить `evo login --for agent`",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("docs/agent-setup.md does not say %q", want)
