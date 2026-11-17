@@ -25,3 +25,31 @@ func TestToolsCall_TypeRefusalDoesNotEchoTheValue(t *testing.T) {
 		}
 	}
 }
+
+// A pair of --arg the CLI cannot read — no "=", no name, a value that is
+// not of the argument's type — is refused by its argument (or its place)
+// alone, not by its text: the text may be a secret (Астра, #2256).
+func TestToolsCall_BadArgPairDoesNotEchoTheValue(t *testing.T) {
+	const secret = "s3cr3t-93718244560173"
+	for _, c := range []struct {
+		tool string
+		pair string
+	}{
+		{"secret_create", secret},
+		{"secret_create", "=" + secret},
+		{"disk_create", "size_gb=" + secret},
+		{"open_ports", "ports=[" + secret},
+		{"stack_destroy", "wait=" + secret},
+	} {
+		for _, extra := range [][]string{nil, {"--json"}, {"--dry-run", "--json"}} {
+			args := append([]string{"tools", "call", c.tool, "--arg", c.pair}, extra...)
+			out, errOut, code := execCLI(t, args...)
+			if code == 0 {
+				t.Fatalf("%s %q %v: want a refusal: %s%s", c.tool, c.pair, extra, out, errOut)
+			}
+			if strings.Contains(out+errOut, secret) || strings.Contains(out+errOut, "s3cr3t") {
+				t.Errorf("%s %q %v: the refusal echoes the value: %s%s", c.tool, c.pair, extra, out, errOut)
+			}
+		}
+	}
+}

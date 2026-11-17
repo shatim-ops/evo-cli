@@ -497,10 +497,12 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 			return nil, unknownArgError(t, name)
 		}
 	}
-	for _, pair := range pairs {
+	for i, pair := range pairs {
 		name, value, ok := strings.Cut(pair, "=")
 		if !ok || name == "" {
-			return nil, clerrors.New(clerrors.CodeUsage, i18n.Tf("--arg %q: want name=value", "--arg %q: нужно имя=значение", pair), "")
+			// The pair is named by its place, not its text: the text may be
+			// a value, and a value may be a secret (Астра, #2256).
+			return nil, clerrors.New(clerrors.CodeUsage, i18n.Tf("--arg number %d: want name=value", "--arg номер %d: нужно имя=значение", i+1), "")
 		}
 		p, known := params[name]
 		if !known {
@@ -590,27 +592,27 @@ func coerceArg(p param, value string) (any, error) {
 			}
 		}
 		if err != nil {
-			return nil, fmt.Errorf(i18n.T("%q is not an integer", "%q — не целое число"), value)
+			return nil, stderrors.New(i18n.T("the value is not an integer", "значение — не целое число"))
 		}
 		return float64(n), nil
 	case "number":
 		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		// NaN and ±Inf parse, but JSON cannot carry them.
 		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
-			return nil, fmt.Errorf(i18n.T("%q is not a number", "%q — не число"), value)
+			return nil, stderrors.New(i18n.T("the value is not a number", "значение — не число"))
 		}
 		return f, nil
 	case "boolean":
 		b, err := strconv.ParseBool(strings.TrimSpace(value))
 		if err != nil {
-			return nil, fmt.Errorf(i18n.T("%q is not true or false", "%q — не true и не false"), value)
+			return nil, stderrors.New(i18n.T("the value is not true or false", "значение — не true и не false"))
 		}
 		return b, nil
 	case "array":
 		if strings.HasPrefix(strings.TrimSpace(value), "[") {
 			var a []any
 			if err := json.Unmarshal([]byte(value), &a); err != nil {
-				return nil, fmt.Errorf(i18n.T("not a JSON array: %v", "не массив JSON: %v"), err)
+				return nil, stderrors.New(i18n.T("the value is not a JSON array", "значение — не массив JSON"))
 			}
 			if err := checkItems(p, a); err != nil {
 				return nil, err
@@ -669,8 +671,7 @@ func checkItems(p param, items []any) error {
 		_, isObject := v.(map[string]any)
 		_, isArray := v.([]any)
 		if p.ItemType == "object" && !isObject || p.ItemType == "array" && !isArray {
-			b, _ := json.Marshal(v)
-			return fmt.Errorf(i18n.T("%s must be a JSON %s, got %s", "%s должен быть JSON %s, получено: %s"), name, p.ItemType, summary(string(b), 40))
+			return fmt.Errorf(i18n.T("%s must be a JSON %s, got %s", "%s должен быть JSON %s, получено: %s"), name, p.ItemType, tools.ValueKind(v))
 		}
 		item := tools.Tool{Name: p.Name, InputSchema: map[string]any{"type": "object",
 			"properties": map[string]any{name: map[string]any{"type": p.ItemType}}}}
