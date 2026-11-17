@@ -195,3 +195,26 @@ func TestDescribe_SizeOldestLive(t *testing.T) {
 		t.Errorf("%+v, %v; want oldest 2026-11-10, 2 live, some bytes", s, err)
 	}
 }
+
+// Today's file never goes over the ceiling, though it is the only one and
+// all its lines are closed: a call writes its line to it now («Риск»,
+// conclusion 324, 324-1).
+func TestPrune_TodaysFileNeverGoes(t *testing.T) {
+	was := ceiling
+	t.Cleanup(func() { ceiling = was })
+	dir := filepath.Join(t.TempDir(), DirName)
+	writeDay(t, dir, "2026-11-17",
+		lineOf("f100000000000001", Created, "disk", "d-1", "2026-11-17T10:00:00Z"),
+		lineOf("f100000000000002", Deleted, "disk", "d-1", "2026-11-17T10:01:00Z"))
+	ceiling = 10
+	p, err := Prune(dir, pruneNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Retired) != 0 {
+		t.Errorf("retired %v; want today's file kept", p.Retired)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "2026-11-17.jsonl")); err != nil {
+		t.Errorf("today's file is gone: %v", err)
+	}
+}
