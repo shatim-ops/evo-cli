@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/history"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -225,4 +228,14 @@ func settledOutcome(in intent.Intent, listedID string) history.Outcome {
 	}
 	out.Result, out.ResourceID = history.Found, id
 	return out
+}
+
+// pruneJournal keeps the journal of changes beside the records of dir in
+// its bounds (history.Prune); a pruning that fails is said once, and the
+// call answers as it would.
+func pruneJournal(dir string) {
+	if _, err := history.Prune(history.DirOf(dir), clock.Now()); err != nil {
+		config.Warn(i18n.Tf("the journal of changes in %s was not pruned (%v); it is pruned the next time",
+			"журнал изменений %s не очищен (%v); очистка — в следующий раз", history.DirOf(dir), err))
+	}
 }

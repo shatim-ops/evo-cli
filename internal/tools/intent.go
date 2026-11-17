@@ -99,6 +99,10 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// Whatever the end does to the record, the call reads the
 		// directory anew after it.
 		defer forgetPending(ctx)
+		// The journal of changes is kept in its bounds after the line is
+		// written and the record ended: not on the way of the change, once
+		// a day, with a limit of time (history.Prune).
+		defer pruneJournal(dir)
 		// The parties the mark of its first write named (markSent): the
 		// record keeps them, and its settling compares them. A call that
 		// wrote nothing — the resource as it asks already (already_attached,
