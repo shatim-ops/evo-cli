@@ -76,7 +76,7 @@ func TestUntrusted_EveryFieldWithTextOfTheCloudIsNamed(t *testing.T) {
 		m, text, _ := callNamed(t, r, tl.Name, requiredArgs(tl))
 		list, ok := m["_untrusted"].([]any)
 		if !ok {
-			continue // no marker at all: TestUntrustedNames_Marked and namesUnmarked
+			continue // no marker at all: TestUntrustedNames_Marked
 		}
 		named := map[string]bool{}
 		for _, f := range list {
