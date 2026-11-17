@@ -198,37 +198,6 @@ func TestUntrusted_FieldsMarked(t *testing.T) {
 	}
 }
 
-// namesUnmarked are the tools whose answer carries a name from the cloud —
-// in its data fields, as the cloud has it — with no "_untrusted" in the
-// answer. A name is text anyone with access to the project writes, and a
-// security group named with an instruction to the agent reached an agent
-// in a live run (27.10): quoteCloud keeps it out of evo's own words, the
-// marker would tell a client the data fields are data too. Marking names
-// is «разработка»'s, 1.4. The list only shrinks: a new tool that answers a
-// cloud name with no marker fails the test, and so does a line whose tool
-// is marked now or no longer answers the name. A delete is here for its
-// preview, which names the resource it would delete. metrics_scrape answers
-// the body of the cloud's answer as it is (exposition): workload text, like
-// a log, for Decl.Untrusted — reported to «разработка» with this list.
-// Closes by 1.9, before rc.1 (owner's decision 13.11, #1590, question 19,
-// (c); release plan 1.9, «Просроченные убывающие списки»): what stays is an
-// exception declared with a reason «Риск · 1.9» accepted.
-var namesUnmarked = map[string]bool{
-	"disk_list":            true,
-	"list_disk_types":      true,
-	"list_flavors":         true,
-	"list_floating_ips":    true,
-	"list_security_groups": true,
-	"list_subnets":         true,
-	"list_zones":           true,
-	"snat_delete":          true,
-	"snat_list":            true,
-	"subnet_delete":        true,
-	"vm_list":              true,
-	"vpc_delete":           true,
-	"vpc_get":              true,
-}
-
 // pg_get takes its cluster by id or cluster_id, neither required by the
 // schema, and the world of TestUntrustedNames_Marked calls it with neither:
 // its answer is a refusal there. Called with the id, it answers the
@@ -252,29 +221,24 @@ func TestUntrustedNames_PgGetMarksTheName(t *testing.T) {
 	}
 }
 
-// Every answer that carries hostileName says "_untrusted", outside
-// namesUnmarked (the world of TestUntrustedNames_OneLineInText: every list
-// and every read of every service names its one resource hostileName).
+// Every answer that carries hostileName says "_untrusted" (the world of
+// TestUntrustedNames_OneLineInText: every list and every read of every
+// service names its one resource hostileName). A name is text anyone with
+// access to the project writes, and a security group named with an
+// instruction to the agent reached an agent in a live run (27.10): the
+// marker tells a client the data fields are data. The list of exceptions
+// (namesUnmarked) closed in 1.9 (release plan 1.9, «Просроченные убывающие
+// списки»).
 func TestUntrustedNames_Marked(t *testing.T) {
 	faultToolsIsolate(t)
 	api := &oddAPI{status: http.StatusOK, body: hostileBody()}
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
 	cloud.SetToken("t")
 	r := raRegistry(t, api, cloud, nil)
-	carries := map[string]bool{}
 	for _, tl := range r.Tools() {
 		_, text, _ := callNamed(t, r, tl.Name, requiredArgs(tl))
-		if !strings.Contains(text, hostileMarker) || strings.Contains(text, `"_untrusted"`) {
-			continue
-		}
-		carries[tl.Name] = true
-		if !namesUnmarked[tl.Name] {
+		if strings.Contains(text, hostileMarker) && !strings.Contains(text, `"_untrusted"`) {
 			t.Errorf("%s answers a name from the cloud with no _untrusted in the answer", tl.Name)
-		}
-	}
-	for name := range namesUnmarked {
-		if !carries[name] {
-			t.Errorf("namesUnmarked names %s, whose answer is marked now or carries no cloud name: remove the line", name)
 		}
 	}
 }
