@@ -117,7 +117,7 @@ func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Pl
 	}
 	if id, ok := gatewayInZone(existing, zoneID); ok {
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("zone %s already has SNAT gateway %s: the zone's router takes one, and Cloud.ru refuses a second", "в зоне %s уже есть шлюз SNAT %s: у маршрутизатора зоны он один, второй Cloud.ru не создаст", firstNonEmptyStr(zoneName, zoneID), id),
+			i18n.Tf("zone %s already has SNAT gateway %s: the zone's router takes one, and Cloud.ru refuses a second", "в зоне %s уже есть шлюз SNAT %s: у маршрутизатора зоны он один, второй Cloud.ru не создаст", firstNonEmptyStr(zoneName, zoneID), quoteCloud(id)),
 			i18n.Tf("Use it (snat_get id=%s) — VMs of the zone go out through it — or delete it first.", "Используйте его (snat_get id=%s) — ВМ зоны выходят через него, — или сначала удалите.", id)),
 			map[string]any{"existing_id": id}), true), nil
 	}

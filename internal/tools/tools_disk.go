@@ -255,7 +255,7 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 		partial := func(err error) (string, bool) {
 			res["status"] = "partial"
 			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-				fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, diskID, attachTo, err),
+				fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, quoteCloud(diskID), attachTo, err),
 				fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.", diskID, attachTo), err), res), true
 		}
 		if diskID == "" {
@@ -793,7 +793,7 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 			res["status"] = "failed"
 			res["disk_id"] = id
 			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-				i18n.Tf("Cloud.ru did not make disk %s: %v", "Cloud.ru не создал диск %s: %v", id, err),
+				i18n.Tf("Cloud.ru did not make disk %s: %v", "Cloud.ru не создал диск %s: %v", quoteCloud(id), err),
 				i18n.Tf("disk_list ids=[%s] shows it; whether to delete it (disk_delete) — ask the person.",
 					"Диск показывает disk_list ids=[%s]; удалять ли его (disk_delete) — спросите человека.", id), err), res), true
 		case err != nil:
@@ -832,12 +832,12 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 			word = i18n.T("in an unknown state", "в неизвестном состоянии")
 		}
 		res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list ids=[%s] shows its state.",
-			"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list ids=[%s].", id, word, id)
+			"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list ids=[%s].", quoteCloud(id), word, id)
 		nextStep(res, "disk_list", map[string]any{"ids": []any{id}})
 	}
 	if cancelled {
 		return errAnswer(fmt.Errorf("%s: %w", i18n.Tf("disk %s: the wait was cancelled, the platform goes on making it",
-			"диск %s: ожидание прервано, платформа продолжает создание", id), context.Canceled), res), true
+			"диск %s: ожидание прервано, платформа продолжает создание", quoteCloud(id)), context.Canceled), res), true
 	}
 	return toJSON(res), false
 }

@@ -39,9 +39,7 @@ const stepKey = "step: "
 // refusals closed in 1.9 (owner's decision 14.11, before rc.1). Closes by
 // 1.10.
 var unquotedCloudSteps = map[string]int{
-	"internal/engine/deploy.go|Engine.settledBootFIP":   2,
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
-	"internal/tools/tools.go|Registry.provisionVM":      2,
+	"internal/tools/tools.go|Registry.provisionVM": 2,
 }
 
 // A value that came from the cloud — a status, a state, an id — goes into

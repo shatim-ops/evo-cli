@@ -187,7 +187,7 @@ func TestDiskCreate_NoStateIsEvosWordTheCloudsUnknownIsQuoted(t *testing.T) {
 			var m map[string]any
 			_ = json.Unmarshal([]byte(text), &m)
 			next, _ := m["next"].(string)
-			if !strings.Contains(next, want) || (st == "" && strings.Contains(next, `"`)) {
+			if !strings.Contains(next, want) || (st == "" && strings.Contains(next, `"unknown"`)) {
 				t.Errorf("%s, state %q: next %q, want %q", lang, st, next, want)
 			}
 		}
