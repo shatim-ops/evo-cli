@@ -84,6 +84,7 @@ var cliSpecs = map[string]CLISpec{
 	// vm
 	"vm_list":      {Group: "vm", Verb: "list", Columns: []string{"id", "name", "state", "zone", "created_time"}},
 	"vm_get":       {Group: "vm", Verb: "get", Args: []string{"vm_id|name"}, Render: "vm-card"},
+	"vm_console":   {Group: "vm", Verb: "console", Args: []string{"vm_id|name"}},
 	"vm_start":     {Group: "vm", Verb: "start", Args: []string{"vm_id|name"}},
 	"vm_stop":      {Group: "vm", Verb: "stop", Args: []string{"vm_id|name"}},
 	"vm_reboot":    {Group: "vm", Verb: "reboot", Args: []string{"vm_id|name"}},
@@ -317,7 +318,7 @@ var cliSpecs = map[string]CLISpec{
 // what a Russian text of the CLI names where the English one names the
 // tool (D6, #1834). A tool with no command is named as it is.
 func cliCommand(tool string) string {
-	spec, ok := cliSpecs[tool]
+	spec, ok := commandOf(tool)
 	if !ok {
 		return tool
 	}

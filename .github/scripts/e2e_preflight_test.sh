@@ -31,13 +31,13 @@ fresh() {
 	fake_evo_answer org_quotas 0 0 "$quotas"
 }
 # run ИМЯ КОД [ПЕРЕМЕННАЯ=ЗНАЧЕНИЕ …] — прогон с входами по умолчанию
-# (зона ru.AZ-2, все дорогие джобы выключены) и заменами.
+# (зона ru.AZ-2, все дорогие джобы, основной e2e тоже, выключены) и заменами.
 run() {
 	local name=$1 want=$2 rc
 	shift 2
 	set +e
 	env PATH="$work/bin:$PATH" RUN=r7a1 PROJECT=p ZONE=ru.AZ-2 K8S_ZONE= PG_ZONE= KAFKA_ZONE= REDIS_ZONE= \
-		OS_SMOKE=false K8S_SMOKE=false DBAAS_SMOKE=false DBAAS_SERVICES='pg kafka redis' REDIS_SA=false \
+		E2E_CORE=false OS_SMOKE=false K8S_SMOKE=false DBAAS_SMOKE=false DBAAS_SERVICES='pg kafka redis' REDIS_SA=false \
 		GITHUB_STEP_SUMMARY="$FAKE_DIR/summary" RUNNER_TEMP="$FAKE_DIR" "$@" "$here/e2e-preflight.sh" >"$FAKE_DIR/out" 2>&1
 	rc=$?
 	set -e
@@ -108,6 +108,22 @@ has nonames "probes: «g17nonames» — слово пробы g17"
 fresh g16long
 run g16long 1 PROBES='g16 g18'
 has g16long "probes: «g16» идёт до 115 мин при пределе job 150 — запускайте её отдельно от g10 и g18"
+# Живые запуски не складываются: пробы области ops — без основного e2e и
+# без os_smoke (пик ВМ сверх расчёта квот); пробы других job — можно.
+fresh stackcore
+run stackcore 1 E2E_CORE=true PROBES='g10 console'
+has stackcore "probes: «g10 console» — пробы области ops в одном запуске с основным e2e (e2e_core)"
+fresh stackunset
+run stackunset 1 E2E_CORE= PROBES=g11
+has stackunset "в одном запуске с основным e2e (e2e_core)"
+fresh stackos
+run stackos 1 OS_SMOKE=true PROBES=g16
+has stackos "probes: «g16» — пробы области ops в одном запуске с os_smoke"
+hasnt stackos "e2e_core"
+fresh stackk8s
+run stackk8s 0 E2E_CORE=true K8S_SMOKE=true PROBES=g12
+fresh stackalone
+run stackalone 0 PROBES='g10 g20 console'
 # Пробы изменения кластера — в job своего сервиса.
 fresh dbchange
 run dbchange 0 DBAAS_SMOKE=true DBAAS_SERVICES='pg kafka redis' PROBES='g13 g14 g15'

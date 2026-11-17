@@ -27,7 +27,9 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-// Client wraps a minio S3 client.
+// Client wraps a minio S3 client. Each method that takes a ctx is one
+// operation (httpretry.Operation): minio makes its request anew for each
+// attempt, and the attempts share one X-Request-Id.
 type Client struct {
 	mc     *minio.Client
 	region string
@@ -91,6 +93,7 @@ type Bucket struct {
 
 // ListBuckets lists all buckets.
 func (c *Client) ListBuckets(ctx context.Context) ([]Bucket, error) {
+	ctx = httpretry.Operation(ctx)
 	bs, err := c.mc.ListBuckets(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("list buckets: %w", "список бакетов: %w"), err)
@@ -111,6 +114,7 @@ type Object struct {
 
 // ListObjects lists up to maxKeys objects under prefix.
 func (c *Client) ListObjects(ctx context.Context, bucket, prefix string, maxKeys int) ([]Object, error) {
+	ctx = httpretry.Operation(ctx)
 	if maxKeys <= 0 {
 		maxKeys = 1000
 	}
@@ -145,6 +149,7 @@ func (e *TooLargeError) Error() string {
 // no limit). A larger object is a *TooLargeError, read no further than
 // the limit: an object can be up to 5 TB (docs, Object Storage limits).
 func (c *Client) GetObject(ctx context.Context, bucket, key string, limit int64) ([]byte, error) {
+	ctx = httpretry.Operation(ctx)
 	obj, err := c.mc.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, notFound(fmt.Errorf(i18n.T("get object: %w", "чтение объекта: %w"), err), bucket, key)
@@ -212,6 +217,7 @@ func notFound(err error, bucket, key string) error {
 
 // PutObject uploads bytes to bucket/key.
 func (c *Client) PutObject(ctx context.Context, bucket, key string, data []byte, contentType string) (int64, error) {
+	ctx = httpretry.Operation(ctx)
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
@@ -224,6 +230,7 @@ func (c *Client) PutObject(ctx context.Context, bucket, key string, data []byte,
 
 // RemoveObject deletes bucket/key.
 func (c *Client) RemoveObject(ctx context.Context, bucket, key string) error {
+	ctx = httpretry.Operation(ctx)
 	if err := c.mc.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf(i18n.T("remove object: %w", "удаление объекта: %w"), err)
 	}
@@ -246,6 +253,7 @@ func AccessDenied(err error) bool {
 // another account with public read as well, so it does not tell
 // («Риск», conclusion 130).
 func (c *Client) MakeBucket(ctx context.Context, bucket, region string) (existed bool, err error) {
+	ctx = httpretry.Operation(ctx)
 	if region == "" {
 		region = c.region
 	}
@@ -267,6 +275,7 @@ func (c *Client) MakeBucket(ctx context.Context, bucket, region string) (existed
 
 // RemoveBucket deletes an EMPTY bucket.
 func (c *Client) RemoveBucket(ctx context.Context, bucket string) error {
+	ctx = httpretry.Operation(ctx)
 	if err := c.mc.RemoveBucket(ctx, bucket); err != nil {
 		return fmt.Errorf(i18n.T("remove bucket: %w", "удаление бакета: %w"), err)
 	}

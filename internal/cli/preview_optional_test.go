@@ -168,7 +168,8 @@ func TestPreview_NamesEveryOptionalArgument(t *testing.T) {
 		// The preview alone: an argument is not named by being given.
 		named := namedValues(preview, nil)
 		for _, wr := range writes {
-			for path, value := range writeBody(wr) {
+			for _, sv := range writeSent(wr) {
+				path, value := sv.path, sv.value
 				last := normKey(path[strings.LastIndex(path, ".")+1:])
 				for _, a := range set {
 					if normKey(a) != last || fmt.Sprint(full[a]) != value || named[last][value] {

@@ -402,7 +402,8 @@
     "project": true
   },
   "k8s_addons": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[addons] whole:false own:[] workload:false}"
   },
   "k8s_apply": {
     "destructive": true,
@@ -480,7 +481,7 @@
     "id_args": [
       "nodepool_id why=\"\" target=false ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[name cluster_name labels taints] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[name cluster_name labels taints flavor] whole:false own:[] workload:false}"
   },
   "k8s_nodepool_scale": {
     "destructive": true,
@@ -513,6 +514,7 @@
     "ref_args": [
       "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
     ],
+    "untrusted": "{fields:[flavor] whole:false own:[] workload:false}",
     "completes": {
       "cluster_sa_id": "{list:iam_service_accounts field:id byName:false}"
     },
@@ -571,6 +573,9 @@
     "completes": {
       "version_id": "{list:kafka_versions field:id byName:false}"
     }
+  },
+  "kafka_versions": {
+    "untrusted": "{fields:[versions] whole:false own:[] workload:false}"
   },
   "lb_create": {
     "project": true,
@@ -650,7 +655,8 @@
     "group": "image"
   },
   "metrics_history": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[series] whole:false own:[] workload:false}"
   },
   "metrics_scrape": {
     "project": true
@@ -704,7 +710,8 @@
   "pg_databases": {
     "id_args": [
       "cluster_id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[databases] whole:false own:[] workload:false}"
   },
   "pg_db_create": {
     "created": "{id: lost: arg:name none: list:pg_databases field:databases listArgs:[cluster_id] delete:pg_db_delete}",
@@ -759,6 +766,9 @@
     ],
     "untrusted": "{fields:[error] whole:false own:[] workload:false}"
   },
+  "pg_specs": {
+    "untrusted": "{fields:[specifications] whole:false own:[] workload:false}"
+  },
   "pg_user_create": {
     "created": "{id: lost: arg:name none: list:pg_users field:users listArgs:[cluster_id] delete:pg_user_delete}",
     "create_name": "{args:[name] rule: what:database user whRU:пользователь базы данных}",
@@ -775,7 +785,11 @@
   "pg_users": {
     "id_args": [
       "cluster_id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[users] whole:false own:[] workload:false}"
+  },
+  "pg_versions": {
+    "untrusted": "{fields:[versions] whole:false own:[] workload:false}"
   },
   "provision": {
     "group": "vm",
@@ -845,6 +859,9 @@
       "version_id": "{list:redis_versions field:id byName:false}"
     }
   },
+  "redis_versions": {
+    "untrusted": "{fields:[versions] whole:false own:[] workload:false}"
+  },
   "release_floating_ip": {
     "group": "vpc",
     "required_one_of": [
@@ -883,7 +900,8 @@
   },
   "secret_add_version": {
     "project": true,
-    "nameless": "a version of a secret that is there"
+    "nameless": "a version of a secret that is there",
+    "untrusted": "{fields:[version] whole:false own:[] workload:false}"
   },
   "secret_create": {
     "project": true,
@@ -1021,6 +1039,19 @@
     "id_args": [
       "vpc_id why=\"a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with the items that list read; it reaches no API as an id\" target=false ids=false"
     ]
+  },
+  "vm_console": {
+    "group": "vm",
+    "required_one_of": [
+      [
+        "vm_id",
+        "name"
+      ]
+    ],
+    "id_args": [
+      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+    ],
+    "untrusted": "{fields:[name where note] whole:false own:[] workload:false}"
   },
   "vm_get": {
     "group": "vm",

@@ -102,6 +102,35 @@ func lastJSONError(t *testing.T, stderr string) jsonErr {
 	return got.Error
 }
 
+// personError runs args twice: with --json for the exit code and the
+// reason — the machine's answer, English whatever the language (D6,
+// owner's decision 14.11) — and without it for the message and the hint
+// a person reads, in the language of the CLI. That --json is the tool's
+// English is TestParity_ErrorReasonEqualsTool's.
+func personError(t *testing.T, args ...string) (int, jsonErr) {
+	t.Helper()
+	code, _, stderr := runCLI(t, "", append([]string{"--json"}, args...)...)
+	e := lastJSONError(t, stderr)
+	personCode, _, stderr := runCLI(t, "", args...)
+	if personCode != code {
+		t.Errorf("%v: exit %d without --json, %d with it", args, personCode, code)
+	}
+	e.Message, e.Hint = personText(stderr)
+	return code, e
+}
+
+// personText is the message and the hint of the error a run without
+// --json printed: the text of its last error line and the lines after it.
+func personText(stderr string) (message, hint string) {
+	lines := strings.Split(strings.TrimRight(stderr, "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if m, ok := strings.CutPrefix(lines[i], i18n.T("Error: ", "Ошибка: ")); ok {
+			return m, strings.Join(lines[i+1:], "\n")
+		}
+	}
+	return "", ""
+}
+
 func ru(t *testing.T) {
 	t.Helper()
 	old := i18n.Lang()
@@ -153,8 +182,7 @@ func TestNewcomer_KeyWithoutProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := len(rt.requests())
-	code, _, stderr := runCLI(t, "", "--json", "deploy", "--dry-run")
-	e := lastJSONError(t, stderr)
+	code, e := personError(t, "deploy", "--dry-run")
 	want := clerrors.ProjectRequired()
 	if code != clerrors.ExitAuth || e.Reason != clerrors.CodeConfigInvalid || e.Message != want.Message || e.Hint != want.Hint {
 		t.Errorf("deploy without a project: exit %d, %+v", code, e)
@@ -171,8 +199,7 @@ func TestNewcomer_IAMRejectsKey(t *testing.T) {
 	for _, st := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		newcomer(t, &newcomerRT{iamStatus: st})
 		saveProfile(t, "default", newcomerProject)
-		code, _, stderr := runCLI(t, "", "--json", "whoami")
-		e := lastJSONError(t, stderr)
+		code, e := personError(t, "whoami")
 		if code != clerrors.ExitAuth || e.Reason != clerrors.CodeAuthFailed ||
 			!strings.HasPrefix(e.Hint, "Повтор тем же ключом не поможет. Новый ключ — evo login") || !strings.Contains(e.Hint, "ключ мог быть удалён или истечь") ||
 			// 403: and the account to check (findings ledger 1.8, № 54).
@@ -206,8 +233,7 @@ func TestNewcomer_ServiceRejectsToken(t *testing.T) {
 	} {
 		newcomer(t, &newcomerRT{status: tt.status})
 		saveProfile(t, "default", newcomerProject)
-		code, _, stderr := runCLI(t, "", append([]string{"--json"}, tt.args...)...)
-		e := lastJSONError(t, stderr)
+		code, e := personError(t, tt.args...)
 		if code != tt.exit || e.Reason != tt.reason || e.Hint != tt.hint {
 			t.Errorf("%d %v: exit %d, %+v", tt.status, tt.args, code, e)
 		}
@@ -229,15 +255,15 @@ func TestNewcomer_UntrustedCertificate(t *testing.T) {
 		rt := &newcomerRT{err: x509.UnknownAuthorityError{}}
 		newcomer(t, rt)
 		saveProfile(t, "default", newcomerProject)
-		code, _, stderr := runCLI(t, "", append([]string{"--json"}, args...)...)
-		e := lastJSONError(t, stderr)
+		code, e := personError(t, args...)
 		if code != clerrors.ExitGeneral || e.Reason != clerrors.CodeAPIUnreachable ||
 			!strings.HasPrefix(e.Hint, "Сертификат TLS у ") || !strings.Contains(e.Hint, "SSL_CERT_FILE") {
 			t.Errorf("%v: exit %d, %+v", args, code, e)
 		}
-		// Not retried: the certificate stays untrusted.
-		if reqs := rt.requests(); len(reqs) != 1 {
-			t.Errorf("%v: %d requests, want 1: %v", args, len(reqs), reqs)
+		// Not retried: the certificate stays untrusted — one request a
+		// run, with --json and without (personError).
+		if reqs := rt.requests(); len(reqs) != 2 {
+			t.Errorf("%v: %d requests, want 2: %v", args, len(reqs), reqs)
 		}
 	}
 }
@@ -248,8 +274,7 @@ func TestNewcomer_InitKeepsCodeOutOfTheMessage(t *testing.T) {
 	ru(t)
 	newcomer(t, &newcomerRT{status: http.StatusUnauthorized})
 	saveProfile(t, "default", newcomerProject)
-	code, _, stderr := runCLI(t, "", "--json", "init", "--non-interactive")
-	e := lastJSONError(t, stderr)
+	code, e := personError(t, "init", "--non-interactive")
 	if code != clerrors.ExitAuth || e.Reason != clerrors.CodeAuthExpired || e.Message != "список зон: API Cloud.ru отклонил токен (401)" {
 		t.Errorf("exit %d, %+v", code, e)
 	}
@@ -265,20 +290,23 @@ func TestNewcomer_ConfigDirIsAFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(config.EnvConfigDir, file)
-	code, _, stderr := runCLI(t, "", "--json", "whoami")
-	e := lastJSONError(t, stderr)
+	code, e := personError(t, "whoami")
 	if code != clerrors.ExitAuth || e.Reason != clerrors.CodeConfigInvalid ||
 		e.Message != file+" — файл, а не каталог" || !strings.HasPrefix(e.Hint, "CLOUDRU_CONFIG_DIR задаёт каталог профилей") {
 		t.Errorf("exit %d, %+v", code, e)
 	}
 	// A directory under the file: the file is named, not the directory.
 	t.Setenv(config.EnvConfigDir, filepath.Join(file, "evo"))
-	if _, _, stderr := runCLI(t, "", "--json", "whoami"); lastJSONError(t, stderr).Message != file+" — файл, а не каталог" {
-		t.Errorf("nested: %s", stderr)
+	if _, e := personError(t, "whoami"); e.Message != file+" — файл, а не каталог" {
+		t.Errorf("nested: %+v", e)
 	}
 	t.Setenv(config.EnvConfigDir, file)
-	_, stdout, _ := runCLI(t, "", "--json", "doctor")
-	if strings.Contains(stdout, "not a directory") || !strings.Contains(stdout, "файл, а не каталог") {
-		t.Errorf("doctor: %s", stdout)
+	// The person's doctor says it in Russian; doctor --json, in English.
+	_, stdout, stderr := runCLI(t, "", "doctor")
+	if strings.Contains(stdout+stderr, "not a directory") || !strings.Contains(stdout+stderr, "файл, а не каталог") {
+		t.Errorf("doctor: %s%s", stdout, stderr)
+	}
+	if _, stdout, _ := runCLI(t, "", "--json", "doctor"); !strings.Contains(stdout, "is a file, not a directory") {
+		t.Errorf("doctor --json: %s", stdout)
 	}
 }

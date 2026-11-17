@@ -103,12 +103,24 @@ func findAddon(ctx context.Context, cli *mk8s.Client, name string) (mk8s.Addon, 
 			return a, nil
 		}
 	}
+	return mk8s.Addon{}, addonNotFound(all, name)
+}
+
+// addonNotFound is the NOT_FOUND of an addon name the catalogue all does
+// not have, with the similar names it has. They are the catalogue's words:
+// each is quoted (quoteCloud) before they are joined (Астра, the full
+// audit of 14.11, finding 09).
+func addonNotFound(all []mk8s.Addon, name string) error {
 	hint := i18n.T("List the addons: evo k8s addons <substring> (MCP: k8s_addons query=…).",
 		"Список плагинов: evo k8s addons <подстрока> (MCP: k8s_addons query=…).")
 	if similar := similarAddons(all, name); len(similar) > 0 {
-		hint += i18n.Tf(" Similar: %s.", " Похожие: %s.", strings.Join(similar, ", "))
+		quoted := make([]string, len(similar))
+		for i, n := range similar {
+			quoted[i] = quoteCloud(n)
+		}
+		hint += i18n.Tf(" Similar: %s.", " Похожие: %s.", strings.Join(quoted, ", "))
 	}
-	return mk8s.Addon{}, clierrors.New(clierrors.CodeNotFound,
+	return clierrors.New(clierrors.CodeNotFound,
 		i18n.Tf("addon %q not found in the Managed Kubernetes catalogue", "плагин %q не найден в каталоге Managed Kubernetes", name), hint)
 }
 
@@ -196,6 +208,13 @@ func (s *Registry) handleK8sAddonVersions(ctx context.Context, args map[string]a
 			"args": map[string]any{"name": addon.Name, "version": latest.AppVersion}}
 	} else {
 		out["note"] = "No installable release (all END_OF_LIFE or INACTIVE)."
+	}
+	// The name the catalogue words is its text (Астра, the full audit of
+	// 14.11, finding 05) — marked here, not by Decl.Untrusted, whose
+	// marker decodes the answer again and sorts the keys of the schema the
+	// person reads.
+	if addon.DisplayName != "" {
+		cloudText(out, "display_name")
 	}
 	return toJSON(out), false
 }
@@ -341,16 +360,17 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 			if rel.AddonVersion != same[0].AddonVersion {
 				return nil, clierrors.New(clierrors.CodeUsage,
 					i18n.Tf("addon version %s cannot be pinned: the API installs by app version (%s) and picks the addon version itself",
-						"версию плагина %s закрепить нельзя: API ставит по версии приложения (%s) и сам выбирает версию плагина", rel.AddonVersion, rel.AppVersion),
-					i18n.Tf("Give the app version: --version %s.", "Укажите версию приложения: --version %s.", rel.AppVersion))
+						"версию плагина %s закрепить нельзя: API ставит по версии приложения (%s) и сам выбирает версию плагина", quoteCloud(rel.AddonVersion), quoteCloud(rel.AppVersion)),
+					i18n.Tf("Give the app version: --version %s.", "Укажите версию приложения: --version %s.", quoteCloud(rel.AppVersion)))
 			}
 			p.warnings = append(p.warnings, i18n.Tf("app version %s has %d addon versions; the server picks one (expected %s)",
-				"у версии приложения %s версий плагина: %d; сервер выберет одну (ожидается %s)", rel.AppVersion, len(same), same[0].AddonVersion))
+				"у версии приложения %s версий плагина: %d; сервер выберет одну (ожидается %s)", quoteCloud(rel.AppVersion), len(same), quoteCloud(same[0].AddonVersion)))
 		}
 		p.release, p.requested = rel, true
 		switch m := mk8s.NormalizeMode(rel.Mode); m {
 		case mk8s.ModeEndOfLife, mk8s.ModeInactive, mk8s.ModeEndOfSupport:
-			p.warnings = append(p.warnings, i18n.Tf("version %s is %s", "версия %s в режиме %s", rel.AppVersion, m))
+			// The mode is one evo names; the version is the catalogue's word.
+			p.warnings = append(p.warnings, i18n.Tf("version %s is %s", "версия %s в режиме %s", quoteCloud(rel.AppVersion), m))
 		}
 	} else {
 		rel, ok := mk8s.LatestRelease(rels)
@@ -361,7 +381,13 @@ func planAddon(ctx context.Context, cli *mk8s.Client, clusterID, name, version s
 		}
 		p.release = rel
 		if m := mk8s.NormalizeMode(rel.Mode); m != mk8s.ModeActive {
-			p.warnings = append(p.warnings, i18n.Tf("no ACTIVE release; picked %s (%s)", "выпуска ACTIVE нет; выбран %s (%s)", rel.AppVersion, firstNonEmptyStr(m, i18n.T("no mode", "режим не указан"))))
+			// The version and a mode evo does not know are the catalogue's
+			// words: quoted (Астра, #1942).
+			mode := i18n.T("no mode", "режим не указан")
+			if m != "" {
+				mode = quoteCloud(m)
+			}
+			p.warnings = append(p.warnings, i18n.Tf("no ACTIVE release; picked %s (%s)", "выпуска ACTIVE нет; выбран %s (%s)", quoteCloud(rel.AppVersion), mode))
 		}
 	}
 
@@ -574,9 +600,14 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 			}
 			return errResult(err), true
 		}
+		// The namespace is the catalogue's word: the note names its field,
+		// not its value, and stays evo's text; the field is marked
+		// (Астра, #1925; «Риск», conclusion 247, the remainder 1 —
+		// k8s_kubectl splits args by spaces, so a quoted value would not
+		// run).
 		check := "get pods -A"
 		if r.AddonNamespace != "" {
-			check = "get pods -n " + r.AddonNamespace
+			check = "get pods -n <namespace>"
 		}
 		out := map[string]any{
 			"status": "installing", "cluster_id": clusterID, "addon": plan.addon.Name,
@@ -593,9 +624,7 @@ func (s *Registry) planK8sAddAddon(ctx context.Context, args map[string]any) (*P
 		}
 		if r.AddonNamespace != "" {
 			out["namespace"] = r.AddonNamespace
-			// The catalogue's word, in the field and in the note's command
-			// (Астра, #1925).
-			cloudText(out, "namespace", "note")
+			cloudText(out, "namespace")
 		}
 		if res.OperationID != "" {
 			out["operation_id"] = res.OperationID

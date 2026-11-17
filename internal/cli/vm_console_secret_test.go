@@ -49,6 +49,7 @@ import (
 // not here fails TestSecrets_VMConsoleFieldsLeaveNoSurface, and so does a
 // tool here that no longer reaches one.
 var vmPathTools = map[string]bool{
+	"vm_console":    true,
 	"backup_create": true,
 	"deploy":        true,
 	"deploy_apply":  true,
@@ -156,14 +157,21 @@ func (c *consoleWorld) consoleObject() map[string]any {
 }
 
 // refusalForms are the shapes a body evo puts into an error unparsed may
-// give the console fields: JSON as a service gives it, and JSON escaped
-// into a string. A form evo does not hide yet comes with the change that
-// hides it, as its failing test (#1945, #1946: deeper escaping, escaped
-// whitespace before the colon; text outside JSON).
+// give the console fields: JSON as a service gives it; JSON escaped into a
+// string up to past the depth a hider might stop at (#1945); a JSON key
+// followed by escaped whitespace before its colon (#1946); field=value and
+// field: value outside JSON (release plan, «Процесс · 1.9 (5)»).
 var refusalForms = map[string]func(c *consoleWorld) []byte{
-	"json":            func(c *consoleWorld) []byte { return c.refusalJSON() },
-	"escaped once":    func(c *consoleWorld) []byte { return c.escaped(1) },
-	"escaped 7 times": func(c *consoleWorld) []byte { return c.escaped(7) },
+	"json":                      func(c *consoleWorld) []byte { return c.refusalJSON() },
+	"escaped once":              func(c *consoleWorld) []byte { return c.escaped(1) },
+	"escaped 7 times":           func(c *consoleWorld) []byte { return c.escaped(7) },
+	"escaped 8 times":           func(c *consoleWorld) []byte { return c.escaped(8) },
+	"escaped 9 times":           func(c *consoleWorld) []byte { return c.escaped(9) },
+	"escaped LF before colon":   func(c *consoleWorld) []byte { return c.spacedKeys("\n") },
+	"escaped CR before colon":   func(c *consoleWorld) []byte { return c.spacedKeys("\r") },
+	"escaped TAB before colon":  func(c *consoleWorld) []byte { return c.spacedKeys("\t") },
+	"field=value outside JSON":  func(c *consoleWorld) []byte { return c.plain("=") },
+	"field: value outside JSON": func(c *consoleWorld) []byte { return c.plain(": ") },
 }
 
 // refusalJSON is the refusal as a service of the platform could give it:
@@ -184,6 +192,26 @@ func (c *consoleWorld) escaped(depth int) []byte {
 		s = `{"nested":` + string(b) + `}`
 	}
 	return []byte(s)
+}
+
+// spacedKeys is a JSON object of the fields, each key followed by space
+// (a whitespace character) before its colon, escaped once into a string.
+func (c *consoleWorld) spacedKeys(space string) []byte {
+	var kv []string
+	for _, f := range c.fields {
+		kv = append(kv, `"`+f+`"`+space+`:"`+consoleMark(f)+`"`)
+	}
+	b, _ := json.Marshal(map[string]string{"message": "{" + strings.Join(kv, ",") + `,"detail":"keep"}`})
+	return b
+}
+
+// plain is the fields as text, field<sep>value.
+func (c *consoleWorld) plain(sep string) []byte {
+	var kv []string
+	for _, f := range c.fields {
+		kv = append(kv, f+sep+consoleMark(f))
+	}
+	return []byte("refused: " + strings.Join(kv, " "))
 }
 
 // formNames are the keys of refusalForms, sorted.

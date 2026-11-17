@@ -59,6 +59,18 @@ var toolsRU = map[string]toolRU{
 		Long: "Все ВМ проекта по данным облака, а не по локальным записям развёртываний: id, имя, состояние, " +
 			"зона доступности и время создания. Только чтение. IP-адреса и интерфейсы одной ВМ — 'evo vm get <ВМ>'.",
 	},
+	"vm_console": {
+		Short: "Где человек открывает консоль ВМ и доступна ли она сейчас",
+		Long: "Где человек открывает консоль ВМ, по UUID или имени: состояние, serial_ready и console_available " +
+			"(true только у запущенной ВМ — это условие, а не обещание, что консоль откроется). Консоль открывается в " +
+			"личном кабинете Cloud.ru после входа человека; evo её не открывает, ссылку на неё не выдаёт и к ВМ не " +
+			"подключается. Две ВМ с одним именем — отказ с обоими id. Остановленная ВМ — чьё-то решение: запуск — " +
+			"'evo vm start', он платный, решает человек. Только чтение.",
+		Args: map[string]string{
+			"name":  "Имя ВМ (вместо vm_id); две ВМ с этим именем — отказ с обоими id",
+			"vm_id": "UUID ВМ (из 'evo vm list'). Нужен vm_id или name",
+		},
+	},
 	"vm_get": {
 		Short: "ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы",
 		Long: "Сведения о ВМ из облака по UUID или имени: внутренний IP (private_ip), внешний или floating IP (public_ip), " +
@@ -1062,7 +1074,7 @@ var toolsRU = map[string]toolRU{
 			"обслуживает, — балансировщик L4 TCP работает без TLS.",
 		Args: map[string]string{
 			"common_name": "Часть common name (CN) для отбора (необязательно)",
-			"dns_name":    "Одно из DNS-имён сертификата, например shkrbkv.ru (необязательно)",
+			"dns_name":    "Одно из DNS-имён сертификата, например example.com (необязательно)",
 			"name":        "Имя сертификата или его часть (необязательно)",
 			"state":       "CERTIFICATE_STATE_ACTIVE или CERTIFICATE_STATE_EXPIRED (необязательно)",
 			"type": "CERTIFICATE_TYPE_IMPORTED, CERTIFICATE_TYPE_SELF_SIGNED или CERTIFICATE_TYPE_LETS_ENCRYPT " +
@@ -1080,7 +1092,7 @@ var toolsRU = map[string]toolRU{
 	"cert_issue_le": {
 		Short: "Выпустить бесплатный сертификат Let's Encrypt (асинхронно)",
 		Long: "Выпустить бесплатный TLS-сертификат Let's Encrypt для одного или нескольких доменов. Так включают " +
-			"HTTPS на сайте (например, shkrbkv.ru). Сертификат ставится в приложение: балансировщик (evo lb create) — " +
+			"HTTPS на сайте (например, example.com). Сертификат ставится в приложение: балансировщик (evo lb create) — " +
 			"L4 TCP и TLS не завершает, поэтому HTTPS завершается на ВМ (веб-сервер вроде Caddy или nginx держит " +
 			"сертификат или выпускает свой). Зоны " +
 			"доменов должны быть заранее делегированы в Evolution DNS, иначе — ошибка ERROR_CODE_NOT_DELEGATED. " +
@@ -1088,7 +1100,7 @@ var toolsRU = map[string]toolRU{
 			"done=true).",
 		Args: map[string]string{
 			"description": "Описание (необязательно)",
-			"dns_names":   "Домены для CN и SAN, например shkrbkv.ru и www.shkrbkv.ru (обязательный)",
+			"dns_names":   "Домены для CN и SAN, например example.com и www.example.com (обязательный)",
 			"name":        "Отображаемое имя сертификата (обязательный)",
 		},
 	},

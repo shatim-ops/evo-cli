@@ -147,11 +147,13 @@
 С `--json` — один объект JSON в stderr, stdout остаётся для данных:
 
 ```json
-{"error":{"code":2,"reason":"AUTH_FAILED","message":"IAM отклонил ключ доступа (статус 401)","hint":"Повтор тем же ключом не поможет. Новый ключ — evo login (вход через браузер, нужен человек) или evo configure. Ключ берётся из CLOUDRU_KEY_ID / CLOUDRU_SECRET, если они заданы, иначе из профиля: если он должен работать, проверьте там Key ID и секрет — ключ мог быть удалён или истечь, а сервисный аккаунт выключен."}}
+{"error":{"code":2,"reason":"AUTH_FAILED","message":"IAM rejected the credentials (status 401)","hint":"Retrying with the same key will not help. For a new key: evo login (a sign-in in the browser, a person is needed) or evo configure. The key comes from CLOUDRU_KEY_ID / CLOUDRU_SECRET when they are set, else from the profile: if it should work, check the key ID and secret there — the key may have been deleted or expired, or the service account disabled."}}
 ```
 
-Сообщения и подсказки — на языке CLI (по умолчанию русский, `EVO_LANG=en` —
-английский), ключи JSON и коды — всегда английские.
+Текстом сообщения и подсказки — на языке CLI (по умолчанию русский,
+`EVO_LANG=en` — английский). С `--json` весь ответ — английский, как ответ
+инструмента MCP: сообщение, подсказка, поля ответа и предупреждения; ключи
+JSON и коды — английские всегда.
 
 Предупреждения (устаревшая переменная, права `credentials.yaml`, порты, которые
 не удалось открыть) с `--json` — тоже строки JSON в stderr, перед ошибкой:
@@ -180,7 +182,12 @@ create VM: API_ERROR: …`). Опирайтесь на `code` и `reason`, а н
 `NOT_FOUND`, `API_RATE_LIMITED`, ключ, отклонённый сервисом) и обрыв без
 ответа (`API_UNREACHABLE`) называют в конце сообщения id запроса, на котором
 вызов упал: `… (X-Request-Id 3f2a…)`. Если сервис ответил своим id — оба:
-`(X-Request-Id 3f2a…, в ответе 9c1e…)`. Эти id называйте поддержке Cloud.ru:
+`(X-Request-Id 3f2a…, в ответе 9c1e…)`. id ответа не называется, если он
+совпадает со значением из запроса или содержит его (заголовок, строка или
+тело, JSON — по декодированным значениям; значение короче 8 знаков не в
+счёт) или если тело запроса нельзя проверить целиком
+(больше 64 КиБ или потоковое, например загрузка в S3): так в текст ошибки
+не попадает секрет, который сервис вернул эхом. Эти id называйте поддержке Cloud.ru:
 по ним она находит запрос. Одинаково в CLI и MCP; у ошибки без запроса к
 облаку (отказ в аргументах, превью) id нет.
 

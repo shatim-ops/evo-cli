@@ -6,12 +6,14 @@ package provision
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // consoleCard is a card of a VM whose console fields carry markers: plain,
@@ -97,7 +99,14 @@ func TestHideConsole(t *testing.T) {
 		{`{"vnc_url":"wss://cut`, `{"vnc_url":"hidden"`},
 		{`{"vnc_url":`, `{"vnc_url":"hidden"`},
 		{`{"vnc_u`, `{"vnc_u`},
-		{`not json: vnc_url=wss://a`, `not json: vnc_url=wss://a`},
+		// Text outside JSON: field=value and field: value («Процесс · 1.9
+		// (5)», TestSecrets_VMConsoleFieldsOutsideJSON).
+		{`not json: vnc_url=wss://a`, `not json: vnc_url=hidden`},
+		{`refused: vnc_url=wss://a?t=1&u=2 remote_console_url=https://b state=x`, `refused: vnc_url=hidden remote_console_url=hidden state=x`},
+		{`VNC_WS: 'wss://a b'`, `VNC_WS: hidden`},
+		{`remote_console_ws = "wss://a", x`, `remote_console_ws = hidden, x`},
+		// A key in single quotes (a Python dict in a message; «Риск», 244).
+		{`{'vnc_url': 'wss://a', 'x': 1}`, `{'vnc_url': hidden, 'x': 1}`},
 		{`{"remote_console_protocol":"vnc","vnc_url":"a"}`, `{"remote_console_protocol":"hidden","vnc_url":"hidden"}`},
 		// «Риск», conclusion 244, residuals 1 and 4: a key in another case;
 		// an object whose strings hold a bracket and a comma.
@@ -108,5 +117,71 @@ func TestHideConsole(t *testing.T) {
 		if got := hideConsole([]byte(c.in)); got != c.want {
 			t.Errorf("hideConsole(%s) = %s, want %s", c.in, got, c.want)
 		}
+	}
+}
+
+// Астра #1946: JSON escaped into a string may put an escaped LF, CR or TAB
+// between a key and its colon; the value is hidden there too.
+func TestHideConsole_EscapedWhitespaceBeforeTheColon(t *testing.T) {
+	for _, ws := range []string{`\n`, `\r`, `\t`, `\n \t`} {
+		body := `{"message":"{\"vnc_url\"` + ws + `:` + ws + `\"MARK\",\"detail\":\"KEEP\"}"}`
+		got := hideConsole([]byte(body))
+		if strings.Contains(got, "MARK") || !strings.Contains(got, "KEEP") {
+			t.Errorf("%q: %s", ws, got)
+		}
+	}
+}
+
+// Fail-closed (release plan 1.9, Астра #1945, #1946): a body that still
+// names a console field whose value evo could not hide — an escape deeper
+// than it reads, a name in \u escapes, the name in free text — does not go
+// out at all; the error says why. A body whose every console field is
+// hidden goes out as before.
+func TestHideConsole_FailsClosed(t *testing.T) {
+	deep := `{"vnc_url":"MARK","detail":"KEEP"}`
+	for d := 0; d < 8; d++ {
+		b, _ := json.Marshal(deep)
+		deep = `{"nested":` + string(b) + `}`
+	}
+	for name, body := range map[string]string{
+		"depth 8":        deep,
+		"name in \\u":    `{"\u0076nc_url":"MARK"}`,
+		"name in text":   `{"message":"bad vnc_url MARK given"}`,
+		"upper, in text": `refused: VNC_URL MARK`,
+		// «Риск», conclusion 248, У1: \u of the name escaped twice and three
+		// times.
+		"\\u at depth 2":  `{"m":"{\\\"vnc\\u005furl\\\":\\\"MARK\\\"}"}`,
+		"\\u at depth 3":  `{"m":"{\\\\\\\"vnc\\\\u005furl\\\\\\\":\\\\\\\"MARK\\\\\\\"}"}`,
+		"escaped unicode": `{"m":"{\"remote_console\u005furl\":\"MARK\"}"}`,
+	} {
+		got := hideConsole([]byte(body))
+		if strings.Contains(got, "MARK") {
+			t.Errorf("%s: the value goes out: %s", name, got)
+		}
+		if got != consoleBodyWithheld() {
+			t.Errorf("%s: want the whole body withheld, got %s", name, got)
+		}
+	}
+	// Depth 7 is read and hidden in place: the rest of the body stays.
+	seven := `{"vnc_url":"MARK","detail":"KEEP"}`
+	for d := 0; d < 7; d++ {
+		b, _ := json.Marshal(seven)
+		seven = `{"nested":` + string(b) + `}`
+	}
+	if got := hideConsole([]byte(seven)); strings.Contains(got, "MARK") || !strings.Contains(got, "KEEP") {
+		t.Errorf("depth 7: %s", got)
+	}
+}
+
+// A body of backslashes up to the bound is read in linear time: hideConsole
+// runs on every refusal.
+func TestHideConsole_LongRunOfBackslashes(t *testing.T) {
+	body := []byte(`{"m":"` + strings.Repeat(`\`, maxErrorBody) + `"}`)
+	done := make(chan struct{})
+	go func() { hideConsole(body); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second): // wall-clock: a guard against a quadratic read, far above a linear one
+		t.Fatal("hideConsole of 64 KiB of backslashes did not end in 5 s")
 	}
 }

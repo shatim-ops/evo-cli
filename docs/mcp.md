@@ -272,9 +272,9 @@ cannot be blank`), — оценка по встроенной таблице т�
 сходятся; `unknown` — не сошлись, тогда известны только итоги, а
 `compute_monthly_rub`, `disk_monthly_rub` и `floating_ip_monthly_rub` равны 0.
 
-**Лицензия образа в цену не входит** ни в одном источнике: API отвечает
-`image` = 0 и `mkp_image` = 0 за любой образ, в том числе Astra Linux KES
-(проба 16.10.2026). Как оплачивается лицензия продукта маркетплейса —
+**Лицензия образа в цену не входит** ни в одном источнике: цена — оценка
+по ответу API расчёта цены Cloud.ru, ставки — на странице тарифа. Как
+оплачивается лицензия продукта маркетплейса —
 открытый вопрос к Cloud.ru; покажите человеку `license_note` и условия из
 карточки продукта.
 
@@ -447,7 +447,7 @@ evo mcp --http 127.0.0.1:8080 --read-only    # HTTP
 
 - Инструменты, которым согласие нужно при каждом вызове, — все изменяющие,
   `secret_value` и `cert_private_key` — в `tools/list` не попадают:
-  остаётся около 90 инструментов (~65 КБ). Вызов такого инструмента по имени —
+  остаётся около 100 инструментов (~65 КБ). Вызов такого инструмента по имени —
   ошибка `USAGE` до превью и до облака: `deploy is refused:
   this server runs with --read-only, and the call needs the user's consent
   (confirmed=true), as it changes the cloud or reveals a secret; a read-only
@@ -561,7 +561,7 @@ evo mcp --http 127.0.0.1:8080 --auth bearer --read-only --toolsets vm,vpc,disk,i
 сессии. У клиентов есть и предел числа: VS Code с GitHub Copilot принимает не
 больше 128 инструментов в одном запросе чата и сверх этого отвечает ошибкой
 ([документация VS Code](https://code.visualstudio.com/docs/copilot/agents/agent-tools)).
-Оставьте группы задачи: `vm,vpc,disk,image` — 17 инструментов на чтение, ~14 КБ.
+Оставьте группы задачи: `vm,vpc,disk,image` — 18 инструментов на чтение, ~14 КБ.
 
 **Тайм-аут вызова.** Часть инструментов ждёт внутри вызова: `*_operation` с
 `wait_seconds` (до 45 с), `stack_status` (до 20 с за вызов), `k8s_kubectl`
@@ -768,8 +768,8 @@ not available to the project») до резервирования floating IP и
   (Ubuntu, Debian, CentOS, Rocky, Alma, Fedora, openSUSE, Astra, Alt/Альт,
   RED OS/РЕД ОС, SberLinux, ROSA/РОСА, Windows), иначе `vm-app`
   (`nginx-ubuntu-22.04` — `vm-app`).
-- `billable` — только у плагинов (флаг каталога). У образа его нет: расчёт
-  цены API отдаёт 0 за любой образ, лицензия в нём не отражена.
+- `billable` — только у плагинов (флаг каталога). У образа его нет:
+  лицензия образа в цене evo не отражена.
 - `available_in_project` — только у образов: `true`/`false`, если каталог
   сверен с тем, каким его видит проект; без проекта или при ошибке такой
   сверки поля нет (и есть `warnings`). Недоступные проекту и не готовые ни в

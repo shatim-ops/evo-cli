@@ -115,13 +115,16 @@ func TestPgUserCreate_RefusedForAUserThatExistsSaysSo(t *testing.T) {
 			t.Errorf("%d: reason %v, status %v — changed from the refusal alone (%v, %v): %s", refusal.status, m["reason"], m["status"], plain["reason"], plain["status"], text)
 		}
 		// The name made between the read and the create: the platform's
-		// refusal, read as «already exists», with its text.
+		// refusal, read as «already exists» — by evo's hint, not the
+		// platform's text: the call carried a password, and a refusal of a
+		// write with a secret shows no text of the service (secretWrites;
+		// Астра, full audit of 14.11, finding 02).
 		raced, racedText := call(&pgUsersWorld{status: refusal.status, body: refusal.body, users: `{"name":"other"}`, made: `{"name":"app"}`})
 		if h, _ := raced["hint"].(string); raced["reason"] != plain["reason"] || !strings.Contains(h, "already exists") {
 			t.Errorf("%d, the user made after the read: want the refusal read as «already exists»: %s", refusal.status, racedText)
 		}
-		if msg, _ := raced["error"].(string); !strings.Contains(msg, strings.TrimSuffix(strings.SplitAfter(refusal.body, `"message":"`)[1], `"}`)) {
-			t.Errorf("%d: the answer lost the platform's text: %s", refusal.status, racedText)
+		if msg, _ := raced["error"].(string); strings.Contains(msg, strings.TrimSuffix(strings.SplitAfter(refusal.body, `"message":"`)[1], `"}`)) {
+			t.Errorf("%d: the answer shows the platform's text of a write with a password: %s", refusal.status, racedText)
 		}
 		for _, next := range []string{"next_tool", "next"} {
 			if m[next] != nil {

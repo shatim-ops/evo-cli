@@ -444,14 +444,14 @@ class ConsoleFields(unittest.TestCase):
             f.write("package provision\n\n// consoleFields …\nvar consoleFields = []string{" +
                     ", ".join('"%s"' % x for x in fields) + "}\n")
 
-    def run_check(self):
+    def run_check(self, *extra, fields="no-fields.json"):
         with open(os.path.join(self.dir, "specs", "compute", "api.yaml"), "w") as f:
             f.write(self.spec)
         cp = os.path.join(self.dir, "contract.json")
         with open(cp, "w") as f:
             json.dump({"services": [{"name": "compute", "spec": "compute/api.yaml", "requests": self.requests}]}, f)
         argv = ["api-contract-check.py", "--specs", os.path.join(self.dir, "specs"), "--contract", cp, "--root", self.dir,
-                "--fields", os.path.join(self.dir, "no-fields.json"), "--states", os.path.join(self.dir, "no-states.json")]
+                "--fields", os.path.join(self.dir, fields), "--states", os.path.join(self.dir, "no-states.json"), *extra]
         out, err = io.StringIO(), io.StringIO()
         old = sys.argv
         sys.argv = argv
@@ -496,6 +496,24 @@ class ConsoleFields(unittest.TestCase):
             rc, lines = self.run_check()
             self.assertEqual(rc, 1, files)
             self.assertTrue(any("console-fields-missing" in l for l in lines), (files, lines))
+
+    def test_baseline_keeps_no_console_field(self):
+        # The baseline without the console fields: they are not new (the
+        # list declares them), and an update does not write them (#1860).
+        fp = os.path.join(self.dir, "fields.json")
+        with open(fp, "w") as f:
+            json.dump({"requests": {"compute GET /api/v1/vms/{vm_id}": ["id", "is_serial_ready", "name"],
+                                    "compute GET /api/v1/vms": ["items[].id"],
+                                    "compute GET /v1/console-logs": ["console_text"]}}, f)
+        rc, _ = self.run_check(fields="fields.json")
+        self.assertEqual(rc, 0)
+        self.run_check("--update-fields", fields="fields.json")
+        with open(fp) as f:
+            text = f.read()
+        for name in ("vnc_url", "remote_console_url"):
+            self.assertNotIn(name, text)
+        self.assertIn("is_serial_ready", text)
+        self.assertIn("console_text", text)
 
     def test_no_vm_path_asks_nothing(self):
         shutil.rmtree(os.path.join(self.dir, "internal", "provision"))

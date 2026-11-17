@@ -9,6 +9,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -177,8 +180,8 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 		_, writes := call(true)
 		named := namedValues(preview, c.args)
 		for _, wr := range writes {
-			body := writeBody(wr)
-			for path, value := range body {
+			for _, sv := range writeSent(wr) {
+				path, value := sv.path, sv.value
 				key := c.tool.Name + " " + path
 				last := path[strings.LastIndex(path, ".")+1:]
 				if d, ok := bodyUnnamed[key]; ok && d.class == unnamedSecret {
@@ -250,20 +253,37 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 	}
 }
 
-// writeBody is the JSON body of a write recorded by jsonFake ("METHOD
-// url body") as leaf paths (arrays without an index) and values; nil for a
-// body that is not a JSON object.
-func writeBody(write string) map[string]string {
-	i := strings.Index(write, " {")
-	if i < 0 {
+// sent is one value a write sends the cloud: a leaf of its JSON body
+// (arrays without an index) or a parameter of its URL, under "query."
+// and its name.
+type sent struct{ path, value string }
+
+// writeSent is what a write recorded by jsonFake ("METHOD url body")
+// sends: every leaf of the body and every value of every URL parameter,
+// a repeated one as many times as it goes (Астра, full audit 14.11,
+// finding 08: the body alone did not see force=true of a DELETE, and the
+// preview that did not name it passed).
+func writeSent(write string) []sent {
+	var out []sent
+	method, rest, _ := strings.Cut(write, " ")
+	target, body, _ := strings.Cut(rest, " ")
+	if method == "" || target == "" {
 		return nil
+	}
+	if u, err := url.Parse("//" + target); err == nil {
+		q := u.Query()
+		for _, k := range slices.Sorted(maps.Keys(q)) {
+			for _, v := range q[k] {
+				out = append(out, sent{"query." + k, v})
+			}
+		}
 	}
 	var v any
-	if json.Unmarshal([]byte(write[i+1:]), &v) != nil {
-		return nil
+	if json.Unmarshal([]byte(body), &v) == nil {
+		if _, ok := v.(map[string]any); ok {
+			leaves(v, "", func(path, value string) { out = append(out, sent{path, value}) })
+		}
 	}
-	out := map[string]string{}
-	leaves(v, "", func(path, value string) { out[path] = value })
 	return out
 }
 

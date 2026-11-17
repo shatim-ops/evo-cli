@@ -156,7 +156,7 @@ func renderAddonVersions(p *output.Printer, w io.Writer, text string) error {
 			continue
 		}
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, i18n.Tf("Settings schema of %s:", "Схема настроек %s:", r.Version))
+		fmt.Fprintln(w, i18n.Tf("Settings schema of %s:", "Схема настроек %s:", output.SanitizeCell(r.Version)))
 		var s string
 		if json.Unmarshal(r.Schema, &s) == nil {
 			// Not JSON in the catalogue: the string as is, line by line.

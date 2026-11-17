@@ -124,6 +124,15 @@ func run(args []string) int {
 	}()
 
 	commandStarted = false
+	if jsonRequested(args) {
+		// --json is the machine's answer, as the JSON of a tool over MCP:
+		// English whatever the language of the person (D6). One point for
+		// the whole run: the answer, its error, its warnings, and what
+		// cobra says before a command starts.
+		prev := i18n.Lang()
+		i18n.SetLang(i18n.EN)
+		defer i18n.SetLang(prev)
+	}
 	// The global flags live for this run: a later engine built without a
 	// run (tests, the parity worlds) must not read its --profile,
 	// --project-id or --region.
@@ -341,7 +350,8 @@ func newRootCmd() *cobra.Command {
 			})
 			if v := os.Getenv("EVO_LANG"); i18n.Unsupported(v) {
 				printWarnings(output.New(flagJSON, flagNoColor), []string{
-					fmt.Sprintf("EVO_LANG=%q не поддерживается (en или ru): вывод на русском", v)})
+					i18n.Tf("EVO_LANG=%q is not supported (en or ru): the output for a person is in Russian",
+						"EVO_LANG=%q не поддерживается (en или ru): вывод на русском", v)})
 			}
 			// What a cut call of an earlier run may have left in the cloud
 			// (release plan 1.8, (и)): every command of this directory says
@@ -778,9 +788,10 @@ func newInitCmd() *cobra.Command {
 The availability zone and the boot image are listed from the Cloud.ru API
 (credentials required). On a terminal you choose from a numbered list.
 Zones where the project has a subnet come first (deploy cannot plug a VM in
-elsewhere; a new project has one only in ru.AZ-1): ru.AZ-2 if it has one (on
-15.10.2026 ru.AZ-1 failed to create VMs), else the zone of the project's
-main subnet. With --non-interactive or without a terminal the first zone and
+elsewhere): among them the zone the zone list marks default (evo vm zones),
+else the zone of the project's main subnet. Zones may differ in
+availability: if VMs are not created in one, choose another. With
+--non-interactive or without a terminal the first zone and
 the newest plain Ubuntu (else Debian) image are taken, and the choice is
 printed. --image takes the image by name (any case) or UUID
 instead: a name is written to .evo.yaml as the catalogue spells it (image:),
@@ -789,10 +800,10 @@ RED OS images are refused (create a plain VM from them: evo vm create).`, `Со�
 
 Зона доступности и загрузочный образ берутся из API Cloud.ru (нужен ключ
 доступа). На терминале их выбирают из нумерованного списка. Первыми идут
-зоны, где у проекта есть подсеть (в другую deploy ВМ не подключит; в новом
-проекте подсеть есть только в ru.AZ-1): ru.AZ-2, если подсеть есть в ней
-(15.10.2026 в ru.AZ-1 ВМ не создавались), иначе зона основной подсети
-проекта. С --non-interactive или без терминала берутся первая зона и самый
+зоны, где у проекта есть подсеть (в другую deploy ВМ не подключит): из них
+зона, которую список зон отмечает основной (evo vm zones), иначе зона
+основной подсети проекта. Зоны могут отличаться по доступности: если ВМ в
+одной не создаются, выберите другую. С --non-interactive или без терминала берутся первая зона и самый
 новый обычный образ Ubuntu (если его нет — Debian), выбор печатается. --image задаёт образ по имени (регистр не важен) или UUID: имя
 пишется в .evo.yaml так, как в каталоге (image:), UUID — как image_id:.
 deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и РЕД ОС
@@ -811,8 +822,8 @@ deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и Р
 		},
 	}
 
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Take the first zone (ru.AZ-2 if the project has a subnet there) and the preferred image without asking",
-		"Без вопросов взять первую зону (ru.AZ-2, если в ней есть подсеть проекта) и предпочтительный образ"))
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, i18n.T("Take the first zone (the default zone of the zone list, if the project has a subnet there) and the preferred image without asking",
+		"Без вопросов взять первую зону (основную зону списка зон, если в ней есть подсеть проекта) и предпочтительный образ"))
 	cmd.Flags().StringVar(&image, "image", "", i18n.T("Boot image by name or UUID (evo image list) instead of the newest Ubuntu",
 		"Загрузочный образ по имени или UUID (evo image list) вместо самого нового Ubuntu"))
 

@@ -17,6 +17,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // goingOnReads records the reads goingOn makes: the deadline of each and
@@ -192,5 +193,61 @@ func TestGoingOn_TheServiceStateIsMarked(t *testing.T) {
 	gone.goingOn(context.Background(), nf, "pg_operation", "op-1", "cluster-1", nil)
 	if nf["_untrusted"] != nil {
 		t.Errorf("not_found marked as the service's text: %v", nf)
+	}
+}
+
+// A create whose answer was lost and which the list finds by name copies
+// the state the list gives into the answer: the service's word, marked
+// "_untrusted" (Астра, #1952) — the same point, cloudText, as goingOn.
+func TestLostCreate_TheListedStateIsMarked(t *testing.T) {
+	const probe = "PROBE\n\x1b[31m"
+	list := func(context.Context) ([]map[string]any, error) {
+		return []map[string]any{{"id": "cluster-1", "name": "db", "status": probe}}, nil
+	}
+	text, isErr := lostCreate(context.Background(), "pg_create", list, "PostgreSQL cluster", "db", nil, "pg_get id", errors.New("connection reset"))
+	var m map[string]any
+	if isErr || json.Unmarshal([]byte(text), &m) != nil {
+		t.Fatalf("lostCreate: %s", text)
+	}
+	u, _ := m["_untrusted"].([]any)
+	if m["resource_status"] != probe || !slices.Contains(u, any("resource_status")) {
+		t.Errorf("resource_status %q, _untrusted %v: want the listed state, marked: %s", m["resource_status"], m["_untrusted"], text)
+	}
+}
+
+// The read of an operation that finds its resource with no state says so
+// — never silence (Астра, #1953). A resource whose service gives it a
+// state: resource_status_error with the note. One whose service gives it
+// none (a VPC, a DNS record): the note, and no error.
+func TestAddResourceStatus_AResourceWithNoStateIsSaid(t *testing.T) {
+	stateless := func(context.Context, map[string]any) (string, bool) { return `{"id":"r-1","name":"x"}`, false }
+	s := &Registry{handlers: map[string]Handler{"pg_get": stateless, "vpc_get": stateless}}
+	pg := map[string]any{"resource_id": "r-1"}
+	s.addResourceStatus(context.Background(), "pg_operation", pg)
+	if pg["resource_status_error"] != clierrors.CodeAPIError || pg["resource_status_note"] == nil || pg["resource_status"] != nil {
+		t.Errorf("pg_operation, a cluster with no state: %v; want resource_status_error %s and the note", pg, clierrors.CodeAPIError)
+	}
+	vpc := map[string]any{"resource_id": "r-1"}
+	s.addResourceStatus(context.Background(), "vpc_operation", vpc)
+	if vpc["resource_status_error"] != nil || vpc["resource_status_note"] == nil || vpc["resource_status"] != nil {
+		t.Errorf("vpc_operation, a VPC (no state in its service): %v; want the note and no error", vpc)
+	}
+	// In Russian, the reason is Russian too: the note is evo's text of the
+	// CLI («Риск», conclusion 255).
+	i18n.SetLang(i18n.RU)
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	ru := map[string]any{"resource_id": "r-1"}
+	s.addResourceStatus(context.Background(), "vpc_operation", ru)
+	if note, _ := ru["resource_status_note"].(string); strings.Contains(note, "specification") || !strings.Contains(note, "спецификац") {
+		t.Errorf("vpc_operation in Russian: the reason of the note is not Russian: %q", note)
+	}
+	// Every read that declares its resource stateless says why, in both
+	// languages.
+	for op, reads := range operationReads {
+		for _, r := range reads {
+			if (r.noState != "") != (r.noStateRU != "") || r.noState != "" && len(r.noState) < 20 {
+				t.Errorf("%s: %s declares no state with no reason in each language: %q, %q", op, r.tool, r.noState, r.noStateRU)
+			}
+		}
 	}
 }

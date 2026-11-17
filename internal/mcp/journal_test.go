@@ -43,12 +43,22 @@ func TestJournal_OneRecordPerCallInEveryMode(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer f.Close()
+			// Only this test's calls count: each passes one argument no
+			// tool has. A call another test of the package left running
+			// (a vm_list the TestCancel_* tests hold until it is
+			// cancelled) may end now and write its record into this
+			// journal — the path is read from the environment at the
+			// write (main red 14.11, #1996: «vm_list: 2 records»).
 			got := map[string]int{}
 			sc := bufio.NewScanner(f)
 			for sc.Scan() {
 				var r journal.Record
 				if err := json.Unmarshal(sc.Bytes(), &r); err != nil {
 					t.Fatal(err)
+				}
+				if r.UnknownArgs != 1 {
+					t.Logf("a record of no call of this test: %s", sc.Bytes())
+					continue
 				}
 				got[r.Tool]++
 			}

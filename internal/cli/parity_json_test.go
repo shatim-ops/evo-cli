@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -338,7 +339,14 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 	}
 	reset()
 	newProcess()
+	// The command runs in Russian, the CLI's default, and the tool in the
+	// language of the test (English, as evo mcp): --json is the machine's
+	// answer, English whatever the language of the person (D6, owner's
+	// decision 14.11).
+	lang := i18n.Lang()
+	i18n.SetLang(i18n.RU)
 	r.code, r.out, r.errOut = runCLI(t, c.stdin, append([]string{"--json", "--yes"}, line...)...)
+	i18n.SetLang(lang)
 	r.cliWrites = takeWrites()
 	done()
 	forgetRun(w)
@@ -592,6 +600,10 @@ func TestParity_ErrorReasonEqualsTool(t *testing.T) {
 			case r.code != clerrors.ExitCode(clerrors.New(reason, "", "")) || env.Code != r.code:
 				bad = append(bad, fmt.Sprintf("exit %d (envelope %d), but %s exits %d (docs/exit-codes.md): %s",
 					r.code, env.Code, reason, clerrors.ExitCode(clerrors.New(reason, "", "")), what))
+			case cyrillic.MatchString(env.Message+env.Hint) && !cyrillic.MatchString(r.text):
+				// The command runs in Russian (runJSONCase): its --json
+				// error is English, as the tool's (D6).
+				bad = append(bad, fmt.Sprintf("the --json error is not English: %q %q: %s", env.Message, env.Hint, what))
 			case parseObject(r.text)["access_denied"] == true && env.Details["access_denied"] != true:
 				// A refusal of rights says so on both surfaces (A10).
 				bad = append(bad, "access_denied of the tool is not in the envelope's details: "+what)
@@ -640,6 +652,8 @@ func s3BadRequest(r *http.Request) (*http.Response, error) {
 type cliError struct {
 	Code    int            `json:"code"`
 	Reason  string         `json:"reason"`
+	Message string         `json:"message"`
+	Hint    string         `json:"hint"`
 	Details map[string]any `json:"details"`
 }
 

@@ -51,6 +51,7 @@ var parityArgs = map[string]map[string]any{
 	"list":         {},
 	"logs":         {"tail": float64(100)},
 	"vm_get":       {"vm_id": parityVM},
+	"vm_console":   {"vm_id": parityVM},
 	"vm_start":     {"vm_id": parityStoppedVM},
 	"vm_stop":      {"vm_id": parityRunningVM},
 	"vm_reboot":    {"vm_id": parityRunningVM},
@@ -441,6 +442,10 @@ type parityRT struct {
 	// not remove. A delete with wait=false reads nothing after it: the test
 	// starts the next call with newCall.
 	gone map[string]bool
+	// after changes every answer before the client reads it when set
+	// (TestHumanOutput_CloudTextIsClean: the cloud's text carries the
+	// characters a terminal must not get).
+	after func(*http.Response) *http.Response
 }
 
 // newCall forgets what the last call deleted (gone).
@@ -460,6 +465,14 @@ func (p *parityRT) takeWrites() []string {
 }
 
 func (p *parityRT) RoundTrip(r *http.Request) (*http.Response, error) {
+	resp, err := p.answer(r)
+	if err == nil && resp != nil && p.after != nil {
+		resp = p.after(resp)
+	}
+	return resp, err
+}
+
+func (p *parityRT) answer(r *http.Request) (*http.Response, error) {
 	// The resources whose delete is read until they are gone (goneWatch):
 	// an app of Container Apps, a backup of Compute. After their DELETE the
 	// next read is a 404, as the platform's.

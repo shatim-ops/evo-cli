@@ -212,6 +212,7 @@
   - [evo verify](#evo-verify)
   - [evo version](#evo-version)
   - [evo vm](#evo-vm)
+    - [evo vm console](#evo-vm-console)
     - [evo vm create](#evo-vm-create)
     - [evo vm delete](#evo-vm-delete)
     - [evo vm flavors](#evo-vm-flavors)
@@ -1938,7 +1939,7 @@ evo cert import <name> [flags]
 ```text
 Выпустить бесплатный сертификат Let's Encrypt (асинхронно).
 
-Выпустить бесплатный TLS-сертификат Let's Encrypt для одного или нескольких доменов. Так включают HTTPS на сайте (например, shkrbkv.ru). Сертификат ставится в приложение: балансировщик (evo lb create) — L4 TCP и TLS не завершает, поэтому HTTPS завершается на ВМ (веб-сервер вроде Caddy или nginx держит сертификат или выпускает свой). Зоны доменов должны быть заранее делегированы в Evolution DNS, иначе — ошибка ERROR_CODE_NOT_DELEGATED. Операция асинхронная: ответ содержит id операции, ход — 'evo cert operation <operation-id>' (до done=true).
+Выпустить бесплатный TLS-сертификат Let's Encrypt для одного или нескольких доменов. Так включают HTTPS на сайте (например, example.com). Сертификат ставится в приложение: балансировщик (evo lb create) — L4 TCP и TLS не завершает, поэтому HTTPS завершается на ВМ (веб-сервер вроде Caddy или nginx держит сертификат или выпускает свой). Зоны доменов должны быть заранее делегированы в Evolution DNS, иначе — ошибка ERROR_CODE_NOT_DELEGATED. Операция асинхронная: ответ содержит id операции, ход — 'evo cert operation <operation-id>' (до done=true).
 
 Вызывает инструмент cert_issue_le (подробнее: 'evo tools describe cert_issue_le').
 
@@ -1960,7 +1961,7 @@ evo cert issue-le <name> [flags]
 
 ```
       --description string      Описание (необязательно)
-      --dns-names stringArray   Домены для CN и SAN, например shkrbkv.ru и www.shkrbkv.ru (обязательный) (флаг повторяется или значения через запятую)
+      --dns-names stringArray   Домены для CN и SAN, например example.com и www.example.com (обязательный) (флаг повторяется или значения через запятую)
   -h, --help                    Справка по issue-le
 ```
 
@@ -2013,7 +2014,7 @@ evo cert list [flags]
 
 ```
       --common-name string   Часть common name (CN) для отбора (необязательно)
-      --dns-name string      Одно из DNS-имён сертификата, например shkrbkv.ru (необязательно)
+      --dns-name string      Одно из DNS-имён сертификата, например example.com (необязательно)
   -h, --help                 Справка по list
       --name string          Имя сертификата или его часть (необязательно)
       --state string         CERTIFICATE_STATE_ACTIVE или CERTIFICATE_STATE_EXPIRED (необязательно)
@@ -4459,10 +4460,10 @@ evo image list [query] [flags]
 
 Зона доступности и загрузочный образ берутся из API Cloud.ru (нужен ключ
 доступа). На терминале их выбирают из нумерованного списка. Первыми идут
-зоны, где у проекта есть подсеть (в другую deploy ВМ не подключит; в новом
-проекте подсеть есть только в ru.AZ-1): ru.AZ-2, если подсеть есть в ней
-(15.10.2026 в ru.AZ-1 ВМ не создавались), иначе зона основной подсети
-проекта. С --non-interactive или без терминала берутся первая зона и самый
+зоны, где у проекта есть подсеть (в другую deploy ВМ не подключит): из них
+зона, которую список зон отмечает основной (evo vm zones), иначе зона
+основной подсети проекта. Зоны могут отличаться по доступности: если ВМ в
+одной не создаются, выберите другую. С --non-interactive или без терминала берутся первая зона и самый
 новый обычный образ Ubuntu (если его нет — Debian), выбор печатается. --image задаёт образ по имени (регистр не важен) или UUID: имя
 пишется в .evo.yaml так, как в каталоге (image:), UUID — как image_id:.
 deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и РЕД ОС
@@ -4486,7 +4487,7 @@ evo init [flags]
 ```
   -h, --help              Справка по init
       --image string      Загрузочный образ по имени или UUID (evo image list) вместо самого нового Ubuntu
-      --non-interactive   Без вопросов взять первую зону (ru.AZ-2, если в ней есть подсеть проекта) и предпочтительный образ
+      --non-interactive   Без вопросов взять первую зону (основную зону списка зон, если в ней есть подсеть проекта) и предпочтительный образ
 ```
 
 ### Options inherited from parent commands
@@ -9756,6 +9757,7 @@ evo vm [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo vm console](#evo-vm-console)	 - Где человек открывает консоль ВМ и доступна ли она сейчас
 * [evo vm create](#evo-vm-create)	 - Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip)
 * [evo vm delete](#evo-vm-delete)	 - Удалить ВМ и все данные на ней (безвозвратно)
 * [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц
@@ -9766,6 +9768,47 @@ evo vm [flags]
 * [evo vm start](#evo-vm-start)	 - Запустить остановленную ВМ и дождаться состояния running
 * [evo vm stop](#evo-vm-stop)	 - Остановить работающую ВМ и дождаться состояния stopped
 * [evo vm zones](#evo-vm-zones)	 - Зоны доступности (UUID и имя)
+
+## evo vm console
+
+Где человек открывает консоль ВМ и доступна ли она сейчас
+
+### Synopsis
+
+```text
+Где человек открывает консоль ВМ и доступна ли она сейчас.
+
+Где человек открывает консоль ВМ, по UUID или имени: состояние, serial_ready и console_available (true только у запущенной ВМ — это условие, а не обещание, что консоль откроется). Консоль открывается в личном кабинете Cloud.ru после входа человека; evo её не открывает, ссылку на неё не выдаёт и к ВМ не подключается. Две ВМ с одним именем — отказ с обоими id. Остановленная ВМ — чьё-то решение: запуск — 'evo vm start', он платный, решает человек. Только чтение.
+
+Вызывает инструмент vm_console (подробнее: 'evo tools describe vm_console').
+```
+
+```
+evo vm console <vm-id|name> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по console
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vm](#evo-vm)	 - Виртуальные машины
 
 ## evo vm create
 

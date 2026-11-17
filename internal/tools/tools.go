@@ -110,6 +110,14 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_console",
+			Description: "Where a human opens the console of one VM, by vm_id or name: state, serial_ready and console_available (true only while the VM is running; a condition, not a promise that the console opens). The console opens in the Cloud.ru web console after the person signs in; evo does not open it, hand out a console link or connect to the VM, and an agent has no use for the page. A stopped VM is someone's decision: starting it is vm_start, charged, and the person's call.",
+			InputSchema: objSchema(map[string]any{
+				"vm_id": uuidProp("VM UUID (from vm_list). vm_id or name is required."),
+				"name":  strProp("VM name (alternative to vm_id); two VMs of the name are refused with both ids."),
+			}),
+		},
+		{
 			Name:        "vm_start",
 			Description: "Start a stopped VM (power_on) and wait until it is running. The preview names the VM and its state. Already running: already_running, no question. Starting: waited for, no second command. A repeat that must send the command asks again. At the time limit of an MCP call the answer is status starting with next_tool: call it to go on waiting. A running VM is charged for its flavor.",
 			InputSchema: objSchema(map[string]any{
@@ -1352,7 +1360,7 @@ func (s *Registry) registerTools() {
 			Description: "List TLS certificates in the project; filter by name, dns_name, common_name, type, state. TLS ends on the VM or app that serves the site — the load balancer is L4 TCP without TLS. Read-only.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Name or part of the certificate name (optional)."),
-				"dns_name":    strProp("One of the certificate's DNS names, e.g. shkrbkv.ru (optional)."),
+				"dns_name":    strProp("One of the certificate's DNS names, e.g. example.com (optional)."),
 				"common_name": strProp("Partial common-name (CN) filter (optional)."),
 				"type":        strProp("CERTIFICATE_TYPE_IMPORTED | CERTIFICATE_TYPE_SELF_SIGNED | CERTIFICATE_TYPE_LETS_ENCRYPT (optional)."),
 				"state":       strProp("CERTIFICATE_STATE_ACTIVE | CERTIFICATE_STATE_EXPIRED (optional)."),
@@ -1368,7 +1376,7 @@ func (s *Registry) registerTools() {
 			Description: "Issue a FREE Let's Encrypt TLS certificate for one or more domains (async). The certificate goes to the application: lb_create is L4 TCP and terminates no TLS, so HTTPS ends on the VM (its web server holds the certificate, or issues its own). The domains MUST have delegated zones in Evolution DNS first (else ERROR_CODE_NOT_DELEGATED). Returns an operation id — poll cert_operation until done=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":        strProp("Display name for the certificate. Required."),
-				"dns_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Domains for CN/SAN, e.g. [\"shkrbkv.ru\",\"www.shkrbkv.ru\"]. Required."},
+				"dns_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Domains for CN/SAN, e.g. [\"example.com\",\"www.example.com\"]. Required."},
 				"description": strProp("Optional description."),
 				"confirmed":   confirmedProp(),
 			}, "name", "dns_names"),
@@ -1522,6 +1530,7 @@ func (s *Registry) registerTools() {
 		"status":               s.handleStatus,
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
+		"vm_console":           s.handleVMConsole,
 		"vm_start":             s.gated("vm_start", s.planVMPower("vm_start")),
 		"vm_stop":              s.gated("vm_stop", s.planVMPower("vm_stop")),
 		"vm_reboot":            s.gated("vm_reboot", s.planVMPower("vm_reboot")),

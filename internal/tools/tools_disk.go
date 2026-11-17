@@ -34,8 +34,9 @@ func looksUUID(s string) bool {
 // operations (D99) are strict from their first release; whether the
 // released tools change their answer the same way is the owner's
 // decision, open — until then theirs stays, and this list is the one
-// place the difference lives.
-var strictVMRef = map[string]bool{"vm_start": true, "vm_stop": true, "vm_reboot": true, "vm_resize": true}
+// place the difference lives. vm_console is strict from its first release
+// too (brief vm-console.md, §2, У5).
+var strictVMRef = map[string]bool{"vm_start": true, "vm_stop": true, "vm_reboot": true, "vm_resize": true, "vm_console": true}
 
 // resolveVM finds a VM by id or name, as the released tools do.
 func (s *Registry) resolveVM(ctx context.Context, ref, projectID string) (*provision.VM, error) {
@@ -217,7 +218,7 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 	// The preview is built for the question only: its price is a request
 	// a consented call does not make.
 	preview := func(ctx context.Context) (map[string]any, error) {
-		preview, err := s.completePreview(ctx, eng, diskCreatePreview(eng, req, attachTo, stringArg(args, "zone")))
+		preview, err := s.completePreview(ctx, eng, diskCreatePreview(eng, req, attachTo, vmID, stringArg(args, "zone")))
 		if err != nil {
 			return nil, err
 		}
@@ -226,7 +227,7 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 				"disk_create создаёт платный диск."),
 			"will_create": map[string]any{
 				"name": name, "size_gb": sizeGB, "disk_type": firstNonEmptyStr(req.DiskTypeName, req.DiskTypeID),
-				"zone_id": zoneID, "attach_to": attachTo,
+				"zone_id": zoneID, "attach_to": attachTo, "attach_to_vm_id": vmID,
 			},
 			"preview": preview,
 		}, nil
@@ -748,8 +749,10 @@ func diskAttachedError(diskID string, disk map[string]any) ([]map[string]any, er
 }
 
 // diskCreatePreview is the preview of disk_create: the disk as resolved,
-// the zone (by name when the call gave one) and its price.
-func diskCreatePreview(eng *engine.Engine, req provision.CreateDiskReq, attachTo, zoneArg string) engine.CreatePreview {
+// the zone (by name when the call gave one), the VM it is attached to — as
+// the call named it and by the id the name resolved to: two VMs may share
+// a name (§6, axis 4) — and its price.
+func diskCreatePreview(eng *engine.Engine, req provision.CreateDiskReq, attachTo, attachToVMID, zoneArg string) engine.CreatePreview {
 	zone := &deployplan.RefSpec{ID: req.AvailabilityZoneID}
 	if zoneArg != "" && !looksUUID(zoneArg) {
 		zone.Name = zoneArg
@@ -758,6 +761,7 @@ func diskCreatePreview(eng *engine.Engine, req provision.CreateDiskReq, attachTo
 		ProjectID: req.ProjectID, ProjectFrom: eng.Config.ProjectOrigin, Zone: zone,
 		Disk: &deployplan.DiskSpec{SizeGB: req.Size, Type: firstNonEmptyStr(req.DiskTypeName, req.DiskTypeID), TypeID: req.DiskTypeID}}
 	p.Add("attach_to", attachTo)
+	p.Add("attach_to_vm_id", attachToVMID)
 	p.Price()
 	return p
 }
