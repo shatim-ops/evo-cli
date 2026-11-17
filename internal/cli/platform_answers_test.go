@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -100,4 +101,43 @@ func TestPlatformAnswers_GoWorldsKeepTheLiveForm(t *testing.T) {
 	}
 	found := goWorldsFound(t, goWorlds)
 	holdDrift(t, found, worldDrift, func(k string) bool { return strings.Contains(k, " (go ") })
+}
+
+// The catalogue of live answers is in a public repository: it holds forms
+// alone — the paths of a body made of field names and [] and the kind of
+// each, never a value, an id or a name of a resource (plan 1.9, «миры по
+// спецификации, а не по живой форме»; .github/scripts/live_forms_import.py
+// carries a run's forms in by the same rule). Hosts, UUIDs and addresses
+// anywhere in the file are the public trace's (internal/repolayout).
+func TestPlatformAnswers_FormsOnly(t *testing.T) {
+	kinds := map[string]bool{"uuid": true, "name": true, "number": true, "bool": true, "null": true, "object": true, "array": true, "?": true}
+	segment := regexp.MustCompile(`^(\[\]|[A-Za-z_@][A-Za-z0-9_@-]*)$`)
+	request := regexp.MustCompile(`^(GET|POST|PUT|PATCH|DELETE) https://[a-z0-9-]+\.api\.cloud\.ru/[A-Za-z0-9_./{}?=&-]*$`)
+	for _, a := range loadCatalogue(t) {
+		if !request.MatchString(a.Request) {
+			t.Errorf("%s: request %q is no template of an API", a.ID, a.Request)
+		}
+		for _, list := range [][]string{keysOf(a.Paths), a.Open} {
+			for _, p := range list {
+				for _, s := range strings.Split(p, ".") {
+					if !segment.MatchString(s) {
+						t.Errorf("%s: path %q has %q, which is no field name", a.ID, p, s)
+					}
+				}
+			}
+		}
+		for p, k := range a.Paths {
+			if !kinds[k] {
+				t.Errorf("%s: path %q has %q — a kind, not a value, goes there", a.ID, p, k)
+			}
+		}
+	}
+}
+
+func keysOf(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

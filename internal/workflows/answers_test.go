@@ -139,6 +139,11 @@ func TestWorkflows_RawAnswersNeverLeaveTheJob(t *testing.T) {
 	if !runsStep(ws["ci.yml"], ".github/scripts/answers_catalogue_test.sh") {
 		t.Error("ci: answers_catalogue.py is not tested (answers_catalogue_test.sh)")
 	}
+	// The forms a run carries into the catalogue of live answers pass the
+	// same filter (plan 1.9, «миры по спецификации, а не по живой форме»).
+	if !runsStep(ws["ci.yml"], ".github/scripts/live_forms_import_test.sh") {
+		t.Error("ci: live_forms_import.py is not tested (live_forms_import_test.sh)")
+	}
 }
 
 // evoCall: a command line that runs evo (not a word of a comment or a path),

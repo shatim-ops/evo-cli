@@ -338,6 +338,9 @@ jobs:
       - name: answers_catalogue.py на образце записи
         if: runner.os == 'Linux'
         run: timeout 60 .github/scripts/answers_catalogue_test.sh
+      - name: live_forms_import.py на образце каталога форм
+        if: runner.os == 'Linux'
+        run: timeout 60 .github/scripts/live_forms_import_test.sh
 
       # Пробы графика 1.9 (область ops cloud-live.sh) на поддельном evo и
       # заглушке curl: порядок запросов, отказ платформы, уборка своего вида;
