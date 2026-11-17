@@ -234,9 +234,9 @@ func TestEverySendIsAChange_ToolNamesItsResource(t *testing.T) {
 			t.Errorf("%s is in everySendIsAChange, and its intent names no resource when it is called by %v: a cut call of it is found by no later call — name the resource (Decl.IDArgs, or the argument name)", tool, bad)
 		}
 	}
-	// The rule tells the two apart: a tool addressed by an id or a name,
+	// The rule tells the two apart: a tool addressed by an id, a name or a path,
 	// in each of its spellings, and one whose intent names nothing.
-	for tool, wantBad := range map[string]bool{"vm_start": false, "cert_renew": false, "secret_add_version": true} {
+	for tool, wantBad := range map[string]bool{"vm_start": false, "cert_renew": false, "secret_add_version": false, "secret_delete": true} {
 		tl, _ := r.Lookup(tool)
 		if got := len(unnamedBy(tl)) > 0; got != wantBad {
 			t.Errorf("%s: unnamed %v (%v), want %v", tool, got, unnamedBy(tl), wantBad)

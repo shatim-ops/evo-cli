@@ -546,7 +546,8 @@ func (s *Registry) planPgDbCreate(ctx context.Context, args map[string]any) (*Pl
 		return p, nil
 	}
 	preview := map[string]any{"message": i18n.Tf("pg_db_create creates database %q (owner %q) in cluster %s.",
-		"pg_db_create создаёт базу данных %q (владелец %q) в кластере %s.", name, owner, cid)}
+		"pg_db_create создаёт базу данных %q (владелец %q) в кластере %s.", name, owner, cid),
+		"name": name, "owner": owner, "cluster_id": cid}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		cli, err := s.pgClient(ctx)
 		if err != nil {
@@ -641,7 +642,8 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 		return p, nil
 	}
 	preview := map[string]any{"message": i18n.Tf("pg_user_create creates user %q in cluster %s.",
-		"pg_user_create создаёт пользователя %q в кластере %s.", name, cid)}
+		"pg_user_create создаёт пользователя %q в кластере %s.", name, cid),
+		"name": name, "cluster_id": cid}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		cli, err := s.pgClient(ctx)
 		if err != nil {
