@@ -2,7 +2,8 @@
 
 - **Удаление ресурса, который ещё создаётся или уже удаляется, помечает
   состояние из облака как недоверенное.** Ответы `subnet_delete`,
-  `snat_delete`, `vpc_delete`, `ar_delete`, `kafka_delete` и `redis_delete`
+  `snat_delete`, `vpc_delete`, `ar_delete`, `kafka_delete`, `redis_delete`,
+  `release_floating_ip` и `sg_rule_delete`
   в этих состояниях несут поле `resource_status` — копию состояния, которое
   прочитано у облака. Теперь оно названо в `_untrusted` рядом с `target`,
   как у `lb_delete` и `tg_delete`. То же — в выводе `--json` этих команд.
