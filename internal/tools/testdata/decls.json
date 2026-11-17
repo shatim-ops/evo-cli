@@ -13,16 +13,19 @@
     "delete": "{arg:id parent: what:artifact registry whRU:реестр артефактов statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
       "id why=\"the request carries the project (projectId in the query), and the API looks the resource up in that project\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[target message] whole:false own:[] workload:false}"
   },
   "ar_get": {
     "project": true,
     "id_args": [
       "id why=\"the request carries the project (projectId in the query), and the API looks the resource up in that project\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "ar_list": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[registries] whole:false own:[] workload:false}"
   },
   "ar_operation": {
     "id_args": [
@@ -103,10 +106,12 @@
     }
   },
   "ca_get": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "ca_list": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[containers] whole:false own:[] workload:false}"
   },
   "ca_logs": {
     "project": true,
@@ -129,7 +134,8 @@
   "cert_get": {
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "cert_import": {
     "project": true,
@@ -149,13 +155,14 @@
     ]
   },
   "cert_list": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[certificates] whole:false own:[] workload:false}"
   },
   "cert_operation": {
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error] whole:true own:[details elapsed_note elapsed_sec hint next_args next_tool note still_running] workload:false}"
   },
   "cert_private_key": {
     "sensitive": true,
@@ -172,7 +179,8 @@
   "cert_usage": {
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "cert_versions": {
     "id_args": [
@@ -290,12 +298,14 @@
   "dns_record_get": {
     "id_args": [
       "record_id why=\"\" target=false ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:false}"
-    ]
+    ],
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "dns_records": {
     "id_args": [
       "zone_id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
-    ]
+    ],
+    "untrusted": "{fields:[records] whole:false own:[] workload:false}"
   },
   "dns_zone_create": {
     "project": true,
@@ -317,10 +327,12 @@
   "dns_zone_get": {
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
-    ]
+    ],
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "dns_zones": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[zones] whole:false own:[] workload:false}"
   },
   "doctor": {
     "group": "auth"
@@ -369,6 +381,10 @@
       "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
       "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}"
     ]
+  },
+  "image_list": {
+    "group": "image",
+    "untrusted": "{fields:[images] whole:false own:[] workload:false}"
   },
   "k8s_add_addon": {
     "project": true,
@@ -598,12 +614,13 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"load balancer\" byName:false list:\"lb_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[resource_status] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
   },
   "lb_get": {
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"load balancer\" byName:false list:\"lb_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "lb_list": {
     "project": true,
@@ -631,7 +648,8 @@
     "project": true
   },
   "list_images": {
-    "group": "image"
+    "group": "image",
+    "untrusted": "{fields:[images] whole:false own:[] workload:false}"
   },
   "list_security_groups": {
     "group": "vpc",
@@ -652,14 +670,16 @@
     "untrusted": "{fields:[log] whole:false own:[] workload:true}"
   },
   "marketplace_list": {
-    "group": "image"
+    "group": "image",
+    "untrusted": "{fields:[items] whole:false own:[] workload:false}"
   },
   "metrics_history": {
     "project": true,
     "untrusted": "{fields:[series] whole:false own:[] workload:false}"
   },
   "metrics_scrape": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[exposition] whole:false own:[] workload:false}"
   },
   "open_ports": {
     "group": "deploy",
@@ -919,10 +939,12 @@
     "delete": "{arg:path parent: what:secret whRU:секрет statePrefix: creatingUnseen: failedUnseen:}"
   },
   "secret_get": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "secret_list": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[secrets] whole:false own:[] workload:false}"
   },
   "secret_value": {
     "project": true,
@@ -1027,12 +1049,13 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"target group\" byName:false list:\"tg_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[resource_status] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
   },
   "tg_get": {
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"target group\" byName:false list:\"tg_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[] whole:true own:[] workload:false}"
   },
   "tg_list": {
     "project": true,
