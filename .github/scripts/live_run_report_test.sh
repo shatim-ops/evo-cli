@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Проверка live_run_report.sh на заглушке gh: живой прогон заводит issue
 # (красный — в заголовке), повтор попытки дописывает его, прогон без
-# начатых job вне preflight и live-plan — без issue; check краснеет на
+# начатых job вне preflight, live-plan и readonly — без issue; check краснеет на
 # прогоне без issue, на issue без ссылки на отчёт и на открытом дольше
 # суток, зелёный — когда всё разобрано.
 set -euo pipefail
@@ -59,6 +59,7 @@ jobs() { local id=$1; shift; printf '{"jobs":[%s]}' "$(IFS=,; echo "$*")" >"$D/j
 jobs 1 "$(job preflight '[{"n":1}]')" "$(job 'live (ops)' '[{"n":1}]')"
 jobs 2 "$(job preflight '[{"n":1}]')" "$(job live-plan '[{"n":1}]')" "$(job cleanup '[]')"
 jobs 3 "$(job probe '[{"n":1}]')"
+jobs 4 "$(job readonly '[{"n":1}]')"
 fail=0
 ok() { echo "ok   $1"; }
 bad() { echo "FAIL $1"; fail=1; }
@@ -72,6 +73,8 @@ RUN_ID=1 RUN_NUMBER=218 RUN_URL=u WORKFLOW=cloud-e2e CONCLUSION=failure run open
 if grep -q "issue create --title Разбор живого прогона cloud-e2e 218 — красный (failure) " "$FAKE_CALLS"; then ok "красный исход — в заголовке"; else bad "красный исход — в заголовке: $(cat "$FAKE_CALLS")"; fi
 RUN_ID=2 RUN_NUMBER=220 RUN_URL=u WORKFLOW=cloud-e2e CONCLUSION=cancelled run open
 if [ "$rc" = 0 ] && ! grep -q "issue create" "$FAKE_CALLS"; then ok "только preflight и live-plan — без issue"; else bad "только preflight и live-plan — без issue: $(cat "$FAKE_CALLS")"; fi
+RUN_ID=4 RUN_NUMBER=221 RUN_URL=u WORKFLOW=cloud-e2e CONCLUSION=success run open
+if [ "$rc" = 0 ] && ! grep -q "issue create" "$FAKE_CALLS"; then ok "ночное чтение (только readonly) — без issue"; else bad "ночное чтение — без issue: $(cat "$FAKE_CALLS")"; fi
 echo '[{"number":5,"title":"Разбор живого прогона api-probe 54","state":"open","created_at":"2026-11-15T10:00:00Z","closed_at":null}]' >"$D/issues.json"
 RUN_ID=3 RUN_NUMBER=54 RUN_URL=u WORKFLOW=api-probe CONCLUSION=failure RUN_ATTEMPT=2 run open
 if ! grep -q "issue create" "$FAKE_CALLS" && grep -q "issue comment 5 --body Попытка 2: failure" "$FAKE_CALLS" && grep -q "issue edit 5 --title Разбор живого прогона api-probe 54 — красный (failure)" "$FAKE_CALLS"; then ok "повтор попытки — комментарий и заголовок"; else bad "повтор попытки: $(cat "$FAKE_CALLS")"; fi

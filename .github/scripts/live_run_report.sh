@@ -25,10 +25,12 @@ set -euo pipefail
 LABEL=разбор-прогона
 WORKFLOWS="cloud-e2e api-probe cloud-readonly-os stand"
 # Job, которые облака не меняют и до одобрения идут сами: preflight читает
-# ключом только на чтение (на main), live-plan облака не трогает. Прогон,
-# где начались только они (weekly_stale.sh отменил неодобренный), — не
-# живой: отчёта не нужно.
-NOT_LIVE="preflight live-plan"
+# ключом только на чтение (на main), live-plan облака не трогает, readonly
+# читает ключом наблюдателя (окружение cloud-readonly) — ночной прогон
+# cloud-e2e состоит только из него. Прогон, где начались только они
+# (ночное чтение; weekly_stale.sh отменил неодобренный), — не живой:
+# отчёта не нужно (cloud-e2e 220, 221 — ночные чтения; «релиз» 17.11).
+NOT_LIVE="preflight live-plan readonly"
 REPORT_RE='evo-internal(/pull/[0-9]+|#[0-9]+|/blob/[^ )]*/runs/)'
 : "${GH_REPO:?}"
 
