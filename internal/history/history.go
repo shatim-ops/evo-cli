@@ -152,6 +152,11 @@ func Append(dir string, l Line) error {
 	if err != nil {
 		return err
 	}
+	// A reader takes evo's form of a time only — UTC, whole seconds, as
+	// clock gives it: one width, so the order of the text is the order of
+	// the times (Астра, #2229). Lines of one second keep the order they
+	// are written in.
+	l.Time = at.UTC().Format(time.RFC3339)
 	if fi, err := os.Lstat(dir); err == nil && !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory of evo", dir)
 	}
