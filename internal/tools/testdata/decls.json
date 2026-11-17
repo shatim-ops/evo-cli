@@ -381,7 +381,8 @@
     "id_args": [
       "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
       "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}"
-    ]
+    ],
+    "untrusted": "{fields:[image create] whole:false own:[] workload:false}"
   },
   "image_list": {
     "group": "image",
@@ -768,7 +769,8 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}",
       "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
   },
   "pg_get": {
     "required_one_of": [

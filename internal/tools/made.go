@@ -116,7 +116,7 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		res["status"] = "failed"
 		res[m.field] = mergedItem(res[m.field], item)
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("%s %s: Cloud.ru did not finish making it, state %s", "%s %s: Cloud.ru не завершил создание, состояние — %s", i18n.T(m.what, m.whatRU), id, quoteCloud(word)),
+			i18n.Tf("%s %s: Cloud.ru did not finish making it, state %s", "%s %s: Cloud.ru не завершил создание, состояние — %s", i18n.T(m.what, m.whatRU), id, quoteCloud(last)),
 			i18n.Tf("%s ids=[%s] shows it; whether to delete it (%s) — ask the person.",
 				"Состояние показывает %s ids=[%s]; удалять ли (%s) — спросите человека.", m.list, id, decls[m.tool].Created.delete)), res), true
 	}

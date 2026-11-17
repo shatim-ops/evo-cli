@@ -307,6 +307,11 @@ func TestVMResize_RefusalNamesTheCauseAndAStoppedVMIsTold(t *testing.T) {
 		if !isErr || m["reason"] != clerrors.CodeAPIError || d["cause"] != c.cause || d["platform_code"] != c.code || m["flavor_name"] != "low-1-1" {
 			t.Errorf("%s/%s: %s", c.state, c.code, text)
 		}
+		// The flavor and the state are the cloud's words: in quotes, on
+		// one line of evo's text («Риск», conclusion 309-2).
+		if msg, _ := m["error"].(string); !strings.Contains(msg, `to "low-2-4" in state "`+c.state+`"`) {
+			t.Errorf("%s/%s: the flavor or the state is not quoted: %q", c.state, c.code, msg)
+		}
 		next, _ := m["next_args"].(map[string]any)
 		if c.state == "stopped" {
 			if m["next_tool"] != "vm_start" || next["vm_id"] != w.id || next["confirmed"] != nil || !strings.Contains(text, "stopped") {
