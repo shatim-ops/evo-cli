@@ -3873,15 +3873,29 @@ ev_vm() {
 	# vm_step ПОВЕРХНОСТЬ ИНСТРУМЕНТ STATUS СОСТОЯНИЕ [ключ=значение…] — шаг
 	# и чтение vm_get после него, пока ВМ не в СОСТОЯНИИ (ответ по MCP мог
 	# прийти до конца перехода).
+	#
+	# По MCP шаг идёт повторами по next_tool (mc). Перестав ждать у своего
+	# предела (vmPowerTimeout от начала перехода), evo передаёт шаг vm_get —
+	# честный ход (ось 2), не провал: строка называет, когда и в каком
+	# состоянии ВМ была при передаче (это различает долгий переход
+	# платформы и ожидание, которое не видело состояния; прогон 228), и
+	# дальше ждёт состояния чтением, как агент.
 	vm_step() {
-		local how=$1 tool=$2 want=$3 state=$4
+		local how=$1 tool=$2 want=$3 state=$4 handed=''
 		shift 4
 		t0=$SECONDS
 		op "$how" "$tool" "$vm" "$@"
-		want_st "$tool ($how)" "$want" || return 1
+		if [ "$how" = mcp ] && [ "$rc" = 0 ] && case "$st_got" in starting | stopping) true ;; *) false ;; esac &&
+			[ -z "$(j -r '.status? // empty')" ] && [ -n "$(j -r '.state? // empty')" ]; then
+			handed="evo перестал ждать и передал vm_get: $st_got, vm_get — $(j -r .state) через $((SECONDS - t0)) с"
+		else
+			want_st "$tool ($how)" "$want" || return 1
+		fi
 		st=$st_got
-		if poll "$EV_WAIT" "$EV_PAUSE" vm_in "$state"; then ok "$tool ($how)" "status $st; vm_get после: $vst, $((SECONDS - t0)) с"
-		else bad "$tool ($how): чтение после" "status $st, а vm_get: $vst через $((SECONDS - t0)) с"; return 1; fi
+		if poll "$EV_WAIT" "$EV_PAUSE" vm_in "$state"; then
+			[ -z "$handed" ] || cov1 "$tool"
+			ok "$tool ($how)" "status $st; vm_get после: $vst, $((SECONDS - t0)) с${handed:+; $handed}"
+		else bad "$tool ($how): чтение после" "status $st, а vm_get: $vst через $((SECONDS - t0)) с${handed:+; $handed}"; return 1; fi
 	}
 	for s in \
 		"cli vm_stop stopped stopped" "mcp vm_stop already_stopped stopped" \
