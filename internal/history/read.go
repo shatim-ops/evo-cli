@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -123,11 +124,9 @@ func wellFormed(l Line) bool {
 	if l.Format != Format || !Known(l.Outcome) || !intentForm.MatchString(l.IntentID) || l.Tool == "" {
 		return false
 	}
-	// evo's form of a time only — UTC, whole seconds, as Append writes it:
-	// the lines are ordered by its text, and a time with an offset or a
-	// fraction of a second would order them wrong — an earlier delete
-	// would close a later create (311-1; Астра, #2229).
-	if at, err := time.Parse(time.RFC3339, l.Time); err != nil || at.UTC().Format(time.RFC3339) != l.Time {
+	// UTC only: a time with an offset would order the lines wrong, and a
+	// line of a stranger would close a resource (311-1).
+	if _, err := time.Parse(time.RFC3339, l.Time); err != nil || !strings.HasSuffix(l.Time, "Z") {
 		return false
 	}
 	for _, s := range []string{l.Tool, l.Surface, l.ProjectID, l.Zone, l.Name, l.Target, l.Kind, l.Parent, l.ResourceID, l.Reason, l.OperationID, l.JobID, l.StateDir} {

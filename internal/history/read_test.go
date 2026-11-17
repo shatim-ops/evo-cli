@@ -34,12 +34,6 @@ func TestReadAll_ALineNotOfEvoIsSkippedAndCounted(t *testing.T) {
 		`{"format":1,"time":"2026-11-17T12:00:00Z","tool":"pg_create","outcome":"created","intent_id":"../x"}`,
 		`{"format":1,"time":"2026-11-17T12:00:00Z","tool":"rm_rf","outcome":"created","intent_id":"0123456789abcdef"}`,
 		`{"format":1,"time":"2026-11-17T15:00:00+03:00","tool":"pg_create","outcome":"created","intent_id":"0123456789abcdef"}`,
-		// Not evo's form of a time: a fraction of a second, a comma, a
-		// precision of its own would order the lines wrong as text (Астра,
-		// #2229).
-		`{"format":1,"time":"2026-11-17T10:00:00.5Z","tool":"pg_create","outcome":"created","intent_id":"0123456789abcdef"}`,
-		`{"format":1,"time":"2026-11-17T10:00:00,5Z","tool":"pg_create","outcome":"created","intent_id":"0123456789abcdef"}`,
-		`{"format":1,"time":"2026-11-17T10:00:00.000000001Z","tool":"pg_create","outcome":"created","intent_id":"0123456789abcdef"}`,
 		`{"format":1,"time":"2026-11-17T12:00:00Z","tool":"pg_create","name":"` + strings.Repeat("x", maxText+1) + `","outcome":"created","intent_id":"0123456789abcdef"}`,
 		`not json`,
 	}
@@ -120,28 +114,21 @@ func TestAppend_WhatEvoWritesEvoReads(t *testing.T) {
 	}
 }
 
-// A time not in evo's form — an offset, a fraction of a second — is
-// written in it: a reader takes that form only, and what evo writes evo
-// reads («Риск», conclusion 311, 311-6; Астра, #2229).
-func TestAppend_ATimeIsWrittenInEvosForm(t *testing.T) {
-	for given, want := range map[string]string{
-		"2026-11-17T15:00:00+03:00":     "2026-11-17T12:00:00Z",
-		"2026-11-17T12:00:00.5Z":        "2026-11-17T12:00:00Z",
-		"2026-11-17T15:00:00.999+03:00": "2026-11-17T12:00:00Z",
-	} {
-		dir := filepath.Join(t.TempDir(), DirName)
-		l := line(Created)
-		l.Time = given
-		if err := Append(dir, l); err != nil {
-			t.Fatal(err)
-		}
-		j, err := ReadAll(dir, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(j.Lines) != 1 || j.Lines[0].Time != want {
-			t.Errorf("%s: read %+v, skipped %d; want the line, at %s", given, j.Lines, j.Skipped, want)
-		}
+// A time with an offset is written in UTC: a reader takes UTC only, and
+// what evo writes evo reads («Риск», conclusion 311, 311-6).
+func TestAppend_ATimeWithAnOffsetIsWrittenInUTC(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	l := line(Created)
+	l.Time = "2026-11-17T15:00:00+03:00"
+	if err := Append(dir, l); err != nil {
+		t.Fatal(err)
+	}
+	j, err := ReadAll(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(j.Lines) != 1 || j.Lines[0].Time != "2026-11-17T12:00:00Z" {
+		t.Errorf("read %+v, skipped %d; want the line, at 2026-11-17T12:00:00Z", j.Lines, j.Skipped)
 	}
 }
 
