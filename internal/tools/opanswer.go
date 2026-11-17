@@ -57,7 +57,14 @@ func (s *Registry) operation(ctx context.Context, tool string, args map[string]a
 		if err != nil {
 			return nil, err
 		}
-		return opToMap(op), nil
+		m := opToMap(op)
+		// The fields the tool declares evo's own (Decl.Untrusted.own) are
+		// written by evo below; a service's key of the same name is not
+		// passed on as evo's word («Риск» 293, У1).
+		for _, k := range decls[tool].Untrusted.own {
+			delete(m, k)
+		}
+		return m, nil
 	}
 	var m map[string]any
 	var err error
