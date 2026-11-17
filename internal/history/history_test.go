@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -111,5 +112,72 @@ func TestAppend_ALinkIsRefused(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(target); len(b) != 0 {
 		t.Errorf("the target of the link got %q", b)
+	}
+}
+
+// What is live: a resource created and not removed — a change of it does
+// not close it («Риск», the condition on the code of D43) — and a call
+// whose last line is unknown; a line of another form is kept.
+func TestLive_AChangeDoesNotCloseACreate(t *testing.T) {
+	l := func(intent, outcome, resource string) Line {
+		return Line{Format: Format, Time: "2026-11-17T12:00:00Z", Tool: "x", IntentID: intent, Outcome: outcome, ResourceID: resource}
+	}
+	ids := func(lines []Line) (out []string) {
+		for _, x := range lines {
+			out = append(out, x.IntentID+":"+x.Outcome+":"+x.ResourceID)
+		}
+		return out
+	}
+	lines := []Line{
+		l("a", Created, "vm-1"),
+		l("b", Changed, "vm-1"),                      // a reboot of it
+		l("c", Changed, ""),                          // a resize, no id
+		l("d", Created, "vm-2"),                      //
+		l("e", Deleted, "vm-2"),                      // removed
+		l("f", Unknown, ""),                          // cut, named by name only
+		l("g", Unknown, ""),                          // cut ...
+		l("g", Found, "disk-1"),                      // ... and found later
+		l("h", Error, ""),                            // refused
+		l("i", Created, "vm-3"),                      //
+		l("j", AlreadyDeleted, "vm-3"),               // gone before its delete
+		l("k", Created, "vm-4"),                      //
+		l("l", NotFound, "vm-4"),                     // a read found it gone
+		{Format: 2, IntentID: "m", Outcome: "moved"}, // a newer evo
+	}
+	got := ids(Live(lines))
+	want := []string{"a:created:vm-1", "f:unknown:", "g:found:disk-1", "m:moved:"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("live %v, want %v", got, want)
+	}
+}
+
+// Liveness is by the kind and the id in a project (У4): a secret app/db
+// created in A and one deleted in B are two resources — the first stays
+// live; a delete with no project — a call by id, whose project it did not
+// know — closes the resource of that kind and id in any project; a disk
+// and a VM of the same id are two resources too. A call whose last line is
+// found with no id stays live: where its resource is, is not known (У1).
+func TestLive_ByKindAndIDInAProject(t *testing.T) {
+	l := func(intent, project, kind, outcome, resource string) Line {
+		return Line{Format: Format, IntentID: intent, ProjectID: project, Kind: kind, Outcome: outcome, ResourceID: resource}
+	}
+	ids := func(lines []Line) (out []string) {
+		for _, x := range lines {
+			out = append(out, x.IntentID)
+		}
+		return out
+	}
+	lines := []Line{
+		l("a", "A", "secret", Created, "app/db"),
+		l("b", "B", "secret", Deleted, "app/db"), // another project: a remains
+		l("c", "A", "disk", Created, "id-1"),
+		l("d", "", "disk", Deleted, "id-1"),  // by id, no project: closes c
+		l("e", "A", "VM", Created, "id-2"),   //
+		l("f", "A", "disk", Deleted, "id-2"), // another kind: e remains
+		l("g", "A", "disk", Found, ""),       // found, nowhere: live
+	}
+	got := strings.Join(ids(Live(lines)), " ")
+	if got != "a e g" {
+		t.Errorf("live %q, want \"a e g\"", got)
 	}
 }
