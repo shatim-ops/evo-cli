@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
@@ -109,19 +110,24 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		if rec.Parties == nil {
 			rec.Parties = r.partiesOf(ctx, name, args)
 		}
+		out := historyOutcome(name, args, answer)
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			// No write went out — every client of evo counts its writes,
 			// and so do kubectl, helm and ssh (httpretry.NoteWrite): the
 			// call changed nothing, whatever cut it («Риск», conclusion
 			// 187, У2).
 			if n, counted := httpretry.Writes(ctx); counted && n == 0 {
-				intent.Close(rec)
+				out.Result = history.Error
+				if out.Reason == "" {
+					out.Reason = clierrors.ReasonInterrupted
+				}
+				intent.Close(rec, out)
 				return
 			}
 			// The call returned, the record stays: a later call of the
 			// same may settle it (intent.Settle).
 			rec.Sent = rec.Sent || callSent(ctx)
-			intent.End(rec)
+			intent.End(rec, out)
 			return
 		}
 		// The call ended and the operation goes on: its answer names the
@@ -139,16 +145,16 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			if _, _, byID := intentTarget(rec); byID && stringArg(next, "project_id") == "" {
 				rec.ProjectID = ""
 			}
-			intent.Hold(rec)
+			intent.Hold(rec, out)
 			rec.Held = true
-			intent.Settle(dir, rec)
+			intent.Settle(dir, rec, out)
 			return
 		}
 		// A create the platform took whose operation goes on: the same
 		// call again reads it (rememberMade, repeatOfMade).
 		r.rememberMade(rec, answer)
-		intent.Close(rec)
-		intent.Settle(dir, rec)
+		intent.Close(rec, out)
+		intent.Settle(dir, rec, out)
 	}, nil
 }
 
@@ -463,7 +469,7 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 		// record closes, and nobody is asked about it.
 		if everySendIsAChange[name].made {
 			if _, listed := r.checkByList(ctx, in, in.ProjectID); listed {
-				intent.Close(in)
+				intent.Close(in, history.Outcome{Result: history.Found})
 				forgetPending(ctx)
 				continue
 			}
@@ -473,7 +479,7 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 		if settled := everySendIsAChange[name].settledBy; settled != nil {
 			switch o, err := settled(ctx, r, args); {
 			case err == nil && o == outcomeMade:
-				intent.Close(in)
+				intent.Close(in, history.Outcome{Result: history.Found})
 				forgetPending(ctx)
 				continue
 			case err == nil && o == outcomeGoesOn:
@@ -579,7 +585,9 @@ func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
 		return
 	}
 	for _, in := range mine {
-		intent.Close(in)
+		// The person is asked; what the cut call did is still not
+		// known: its line stays unknown — live for the journal.
+		intent.Close(in, history.Outcome{Result: history.Unknown})
 	}
 	forgetPending(ctx)
 }
@@ -595,7 +603,8 @@ func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
 func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any, interrupted any) {
 	r.addressAnswered(args, interrupted)
 	for _, in := range r.cutCalls(ctx, name, args) {
-		intent.Close(in)
+		// Answered, not known: the line stays unknown (closeAsked).
+		intent.Close(in, history.Outcome{Result: history.Unknown})
 	}
 	forgetPending(ctx)
 }
@@ -682,9 +691,10 @@ func (r *Registry) settleHeld(ctx context.Context, name string, args map[string]
 		return
 	}
 	cur := r.maker()
+	out := historyOutcome(name, args, answer)
 	for _, in := range held {
 		if !in.Key.Other(cur) {
-			intent.Close(in)
+			intent.Close(in, out)
 			forgetPending(ctx)
 		}
 	}

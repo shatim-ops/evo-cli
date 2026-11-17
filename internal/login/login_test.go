@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"io"
 	"net/http"
 	"net/url"
@@ -223,7 +224,7 @@ func login(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previ
 	st := &memStore{prev: prev, saveErr: saveErr}
 	cfg := worldConfig(w, &out, b.open)
 	cfg.Tell = func(line string) { fmt.Fprintln(&out, line) }
-	cfg.IntentDir = t.TempDir()
+	cfg.IntentDir = filepath.Join(t.TempDir(), "intents")
 	res, err := Login(context.Background(), cfg, ch, st)
 	r.saved, r.auds = st.saved, st.auds
 	r.res, r.err, r.out = res, err, out.String()
@@ -239,6 +240,30 @@ func login(t *testing.T, w *loginworld.World, b *browser, ch Choice, prev *Previ
 		t.Errorf("the login answered and left an intent: %+v", left)
 	case unknown && len(left) != 1:
 		t.Errorf("the login says the key may be in the cloud, and left %d intents, want 1: %+v", len(left), left)
+	}
+	// Every login that wrote its intent ends it with one line of the
+	// journal of changes (D43, the ТЗ of the journal, §0, 5): created,
+	// error — undone — or unknown, as its intent is; no secret in it.
+	lines, raw := journalOf(t, cfg.IntentDir)
+	want := history.Created
+	switch {
+	case keyOutcomeUnknownSaid(err):
+		want = history.Unknown
+	case err != nil:
+		want = history.Error
+	}
+	// A login refused before its intent (the token, the projects) wrote
+	// none, and no line.
+	if (len(lines) != 0 || err == nil) && (len(lines) != 1 || lines[0].Tool != "login" || lines[0].Outcome != want) {
+		t.Errorf("the journal of the login: %+v; want one line %s", lines, want)
+	}
+	if res.KeyID != "" && strings.Contains(raw, res.KeyID) {
+		t.Errorf("the Key ID of the new key in the journal: %s", raw)
+	}
+	for _, sv := range st.saved {
+		if sv.Secret != "" && strings.Contains(raw, sv.Secret) {
+			t.Errorf("the secret of the key in the journal: %s", raw)
+		}
 	}
 	// Nothing of the person's or the key's secrets in the answer, the
 	// terminal or the pages (contract, invariant 4); the secret of the new

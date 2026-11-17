@@ -30,8 +30,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -205,8 +207,9 @@ func MarkSent(in Intent) error {
 // HoldCut keeps the record in of a cut call whose change goes on as the
 // operation evo goes on with (Held), marked as the cut send it is
 // (CutSend at at): the call that waits for it opens no record of its own,
-// and the trace of the cut send outlives the wait.
+// and the trace of the cut send outlives the wait. Its line: unknown.
 func HoldCut(in Intent, at time.Time) {
+	journal(in, history.Outcome{Result: history.Unknown})
 	in.Held, in.CutSend = true, at
 	_ = write(in)
 }
@@ -220,7 +223,10 @@ func MarkCutSend(in Intent, at time.Time) {
 
 // End marks the record in as a call that returned with its outcome not
 // known: the record stays, and a later call of the same may settle it.
-func End(in Intent) {
+// Its line is unknown, with what out says of the answer (its code).
+func End(in Intent, out history.Outcome) {
+	out.Result = history.Unknown
+	journal(in, out)
 	in.Ended = true
 	_ = write(in)
 }
@@ -250,16 +256,23 @@ func Dirs(root string) []string {
 	return out
 }
 
-// Begin writes in before the call goes out and returns the end of it: done
-// removes the file; the caller does not call it when the outcome is not
-// known (the call was cut). An error means nothing was written: the
-// caller refuses the call before it goes out.
-func Begin(dir string, in Intent) (done func(), err error) {
+// Begin writes in before the call goes out and returns the end of it:
+// done writes the line of out and removes the file — or keeps it, when
+// out is unknown (the answer was lost): the next run names it. An error
+// means nothing was written: the caller refuses the call before it goes
+// out.
+func Begin(dir string, in Intent) (done func(out history.Outcome), err error) {
 	rec, err := Open(dir, in)
 	if err != nil {
 		return nil, err
 	}
-	return func() { Close(rec) }, nil
+	return func(out history.Outcome) {
+		if out.Result == history.Unknown {
+			End(rec, out)
+			return
+		}
+		Close(rec, out)
+	}, nil
 }
 
 // Open writes in as Begin does and returns the record written, with its
@@ -305,8 +318,11 @@ func write(in Intent) error {
 // caller names it now: by the resource its next step names — a call that
 // named a VM by name goes on by its id. A record that cannot be rewritten
 // stays as it was written — a cut call, which is what the next run then
-// says of it.
-func Hold(in Intent) {
+// says of it. Its line is unknown — the operation has not ended — with
+// what out says of the answer: the resource, the operation.
+func Hold(in Intent, out history.Outcome) {
+	out.Result = history.Unknown
+	journal(in, out)
 	in.Held = true
 	_ = write(in)
 }
@@ -346,6 +362,8 @@ func recordPath(dir, id string) string {
 // A record of a call that sent nothing and will not (Counts, not Sent,
 // not in flight, not ended) is removed, not returned: the request did
 // not go out, so there is nothing to look for. Its age does not matter.
+// It has no line in the journal: nothing was changed, and no end of it
+// was written (a call killed before its first write).
 func Pending(dir string) []Intent {
 	all, _ := scan(dir)
 	var out []Intent
@@ -412,8 +430,9 @@ func scan(dir string) (out []Intent, foreign []string) {
 // done may not see what that key changed — its «already deleted» is a 404
 // of its own view, not the outcome of the cut call (R-82, «Риск»,
 // conclusion 128). A record with a print and no key is of a call whose
-// key was not known: no repeat settles it.
-func Settle(dir string, done Intent) (kept []Intent) {
+// key was not known: no repeat settles it. Each record removed gets the
+// line found, with what out says of the call that settled it.
+func Settle(dir string, done Intent, out history.Outcome) (kept []Intent) {
 	if done.Name == "" && done.Target == "" {
 		return nil
 	}
@@ -441,13 +460,56 @@ func Settle(dir string, done Intent) (kept []Intent) {
 		if in.StartedAt.After(done.StartedAt) || in.Held || in.inFlight() || (in.Print != "" && in.Key == nil) {
 			continue
 		}
+		journal(in, history.Outcome{Result: history.Found, ResourceID: out.ResourceID, OperationID: out.OperationID, JobID: out.JobID})
 		remove(dir, in.ID)
 	}
 	return kept
 }
 
-// Close removes the intent in: what the call did is now known.
-func Close(in Intent) { remove(in.Dir, in.ID) }
+// Close removes the intent in: what the call did is now known, and out
+// says it — the line of the journal is written first.
+func Close(in Intent, out history.Outcome) {
+	journal(in, out)
+	remove(in.Dir, in.ID)
+}
+
+// journal writes the line of what is known now of the record in, before
+// the record changes: a process killed between the two leaves the line
+// and the record, not neither («Риск», conclusion 296, У4). A line that
+// cannot be written is said once on stderr, and the record changes as it
+// would: a journal that fails leaves no intent hanging. A record not of
+// evo's form (its id) has no line: it is no record of a call.
+func journal(in Intent, out history.Outcome) {
+	if !validID(in.ID) || in.Dir == "" {
+		return
+	}
+	surface := in.Surface
+	if surface == "" {
+		surface = "mcp"
+	}
+	l := history.Line{Time: clock.Now().UTC().Format(time.RFC3339), Tool: in.Tool, Surface: surface,
+		ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target,
+		ResourceID: out.ResourceID, Outcome: out.Result, Reason: out.Reason, OperationID: out.OperationID,
+		IntentID: in.ID, JobID: out.JobID, StateDir: stateDirOf(in.Dir)}
+	if err := appendLine(history.DirOf(in.Dir), l); err != nil {
+		config.Warn(i18n.Tf("the journal of changes in %s got no line of %s (%v); the call is as it answered",
+			"в журнал изменений %s не записана строка %s (%v); вызов — как он ответил", history.DirOf(in.Dir), in.Tool, err))
+	}
+}
+
+// appendLine writes a line of the journal; tests see the order of a line
+// and its record through it.
+var appendLine = history.Append
+
+// stateDirOf is the folder of state of the records of dir: the root of
+// its data directory; "" for the configuration's (evo login).
+func stateDirOf(dir string) string {
+	data := filepath.Dir(dir)
+	if c := config.Dir(); c != "" && filepath.Clean(c) == filepath.Clean(data) {
+		return ""
+	}
+	return filepath.Dir(data)
+}
 
 // remove removes the record id of dir; an id not of evo's form removes
 // nothing.

@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"os"
 	"strings"
 	"testing"
@@ -189,7 +190,7 @@ func TestIntent_TheQuestionAfterACutCallDoesNotLookAtThePrint(t *testing.T) {
 			t.Errorf("%s with other arguments after its cut call: sent %d\n%s", tool, sent, text)
 		}
 		for _, in := range intent.Pending(dir) {
-			intent.Close(in)
+			intent.Close(in, history.Outcome{Result: history.Found})
 		}
 	}
 	if asked == 0 {

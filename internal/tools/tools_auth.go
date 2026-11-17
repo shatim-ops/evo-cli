@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
@@ -359,7 +360,7 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		for _, in := range pendingIntents(eng.StateDir) {
 			found, settled := s.checkPending(ctx, in, eng)
 			if settled {
-				intent.Close(in)
+				intent.Close(in, history.Outcome{Result: history.Found})
 				checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckOK, Detail: found})
 				continue
 			}
