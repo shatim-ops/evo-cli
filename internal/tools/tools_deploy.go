@@ -796,7 +796,7 @@ func (s *Registry) handleListSecurityGroups(ctx context.Context, args map[string
 		if withRules {
 			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, g.ID)
 			if err != nil {
-				return errResult(fmt.Errorf(i18n.T("rules of security group %s: %w", "правила группы безопасности %s: %w"), g.Name, err)), true
+				return errResult(fmt.Errorf(i18n.T("rules of security group %s: %w", "правила группы безопасности %s: %w"), quoteCloud(g.Name), err)), true
 			}
 			if rules == nil {
 				rules = []*provision.SGRule{}

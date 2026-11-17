@@ -926,7 +926,7 @@ func unknownFlavor(want string, flavors []*provision.Flavor, vm *provision.VMDet
 			names = append(names, "…")
 			break
 		}
-		names = append(names, f.Name)
+		names = append(names, quoteCloud(f.Name))
 	}
 	return clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("flavor %q not found in the project", "flavor %q в проекте не найден", want),
