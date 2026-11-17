@@ -5,7 +5,6 @@
 package engine
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -66,9 +65,9 @@ func deployNameHint() string {
 // its id (existing_id); nothing is created.
 func foreignDeployVM(vm *provision.VM) error {
 	return &clerrors.CLIError{Code: clerrors.CodeUsage,
-		Message: i18n.Tf("a VM named %q already exists (id %q, status %q), and this folder's evo did not create it (its state does not record it); nothing was created",
-			"ВМ с именем %q уже есть (id %q, статус %q), и её создал не evo этой папки (в её state её нет); ничего не создано",
-			vm.Name, vm.ID, cmp.Or(vm.Status, "unknown")),
+		Message: i18n.Tf("a VM named %q already exists (id %q, %s), and this folder's evo did not create it (its state does not record it); nothing was created",
+			"ВМ с именем %q уже есть (id %q, %s), и её создал не evo этой папки (в её state её нет); ничего не создано",
+			vm.Name, vm.ID, provision.VMStatusPhrase(vm.Status)),
 		Hint:    deployNameHint(),
 		Details: map[string]any{"existing_id": vm.ID}}
 }

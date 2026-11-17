@@ -607,7 +607,8 @@ type ForeignVMError struct {
 }
 
 func (e *ForeignVMError) Error() string {
-	return fmt.Sprintf("a VM named %q already exists (id %q, status %q), and this folder's evo did not create it (its state does not record it); nothing was created", e.Name, e.ID, e.Status)
+	return i18n.Tf("a VM named %q already exists (id %q, %s), and this folder's evo did not create it (its state does not record it); nothing was created",
+		"ВМ с именем %q уже есть (id %q, %s), и её создал не evo этой папки (в её state её нет); ничего не создано", e.Name, e.ID, provision.VMStatusPhrase(e.Status))
 }
 
 // findVMByName looks the plan's VM up in its project. GET /vms without a
