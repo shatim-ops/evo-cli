@@ -44,6 +44,10 @@ type powerWorld struct {
 	// flavorBack, when set, is the flavor the VM is left with at that read:
 	// a change of flavor the platform did not make (vm_resize).
 	flavorBack string
+	// waitedOut: the world leaves the VM in a state evo does not wait for
+	// (it falls back), so evo waits to its bound, and the bound is what the
+	// test checks — pollLimit keeps it short.
+	waitedOut bool
 
 	mu    sync.Mutex
 	reads int
@@ -140,11 +144,29 @@ func vmStartWorldWaiting(t *testing.T, state string, ownLimit time.Duration) (*R
 			Auth:     staticToken{},
 			Cloud:    w,
 			Printer:  output.NewWithWriter(&buf, output.ModeText, false),
-			Timings:  engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: ownLimit},
+			Timings:  engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: w.pollLimit(ownLimit)},
 		}, nil
 	})
 	r.SetStateDir(dir)
 	return r, w
+}
+
+// pollLimit is the bound of evo's own wait in a world: where the world ends
+// the transition itself (stepAfter > 0) the way to it is reads, not time, so
+// the bound is far from it — 50 ms of wall clock let a loaded runner end the
+// wait before the sixth read (main 6879b99, run 44110117780:
+// TestVMReboot_FailuresAreNotAReboot «still rebooting»); where it never ends
+// it (stepAfter 0), or ends it in a state evo does not wait for (waitedOut),
+// the bound is what the test waits out, kept short. 0 keeps
+// the limits of production. It is read when the call is made, after the test
+// set stepAfter.
+func (w *powerWorld) pollLimit(ownLimit time.Duration) time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if ownLimit > 0 && w.stepAfter > 0 && !w.waitedOut {
+		return time.Minute
+	}
+	return ownLimit
 }
 
 // A stopped VM: the preview names what will be done and to what, and
@@ -441,7 +463,7 @@ func TestVMStart_NameOfTwoVMsIsRefusedWithBothIDs(t *testing.T) {
 // again on the consent already given («Риск», conclusion 123, К2).
 func TestVMStart_StartThatFallsBackIsAnErrorWithNoNextStep(t *testing.T) {
 	r, w := vmStartWorld(t, "stopped")
-	w.stepAfter, w.stepTo = 3, []string{"stopped"}
+	w.stepAfter, w.stepTo, w.waitedOut = 3, []string{"stopped"}, true
 	m, text, isErr := callNamed(t, r, "vm_start", map[string]any{"name": "web", "confirmed": true})
 	if !isErr || m["reason"] != clerrors.CodeAPIError || m["state"] != "stopped" {
 		t.Fatalf("vm_start whose VM fell back to stopped: %s", text)
