@@ -22,8 +22,7 @@ func outer(name string, schema map[string]any, h Handler) Handler {
 	return journaled(name, schema, checkedArgs(name, schema, func(ctx context.Context, args map[string]any) (string, bool) {
 		ctx = httpretry.TraceRequests(ctx)
 		text, isErr := h(ctx, args)
-		text = secretWriteAnswer(ctx, name, text, isErr)
-		text = withoutSecretArgs(name, args, text)
+		text = secretWriteAnswer(ctx, name, args, text, isErr)
 		if isErr {
 			text = withRequestID(ctx, text)
 		}

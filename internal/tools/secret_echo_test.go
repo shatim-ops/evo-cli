@@ -5,45 +5,31 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 )
 
-// The value of a secret argument does not come back in an answer, as it
-// is, line by line, or in the forms JSON escaping gives it inside a
-// service's text nested in a body; evo's own words and short values stay
-// (Астра #2257).
-func TestWithoutSecretArgs_MasksEveryFormOfTheValue(t *testing.T) {
-	tpl := "#cloud-config\npassword: \"P@ss\\word42\""
-	body, _ := json.Marshal(map[string]any{"user_data_template": tpl})
-	nested, _ := json.Marshal(map[string]any{"message": "invalid request body: " + string(body)})
-	answer := toJSON(map[string]any{
-		"error": "create image: API returned status 400: " + string(nested),
-		"hint":  "the template as sent: " + tpl,
-		"next":  "image_list shows the images",
-	})
-	got := withoutSecretArgs("image_create", map[string]any{"user_data_template": tpl}, answer)
-	for _, leak := range []string{"P@ss", "word42"} {
-		if strings.Contains(got, leak) {
-			t.Errorf("the secret %q is in the answer: %s", leak, got)
-		}
+// A call of image_create that carries a template is refused by class, as a
+// secret write is: the service's text, which may echo the template in any
+// form, is not shown; the fields of the answer that are evo's stay as they
+// are. A call without a template keeps the service's text (Астра #2257;
+// «Риск», conclusion 328).
+func TestSecretWriteAnswer_ImageCreateWithATemplate(t *testing.T) {
+	refusal := toJSON(map[string]any{"status": "error", "reason": "API_ERROR", apiStatusField: 400,
+		"error": "create image: invalid body: password: P@ss12345", "hint": "evo's hint", "_untrusted": []string{"error"}})
+	got := secretWriteAnswer(context.Background(), "image_create", map[string]any{"user_data_template": "#cloud-config\npassword: P@ss12345"}, refusal, true)
+	var m map[string]any
+	_ = json.Unmarshal([]byte(got), &m)
+	if strings.Contains(got, "P@ss") || m["reason"] != "API_ERROR" || m["status"] != "error" || m["hint"] != "evo's hint" {
+		t.Errorf("a refusal of a call with a template: %s", got)
 	}
-	if !strings.Contains(got, secretMask) || !strings.Contains(got, "image_list shows the images") {
-		t.Errorf("the mask or evo's words are gone: %s", got)
+	if plain := secretWriteAnswer(context.Background(), "image_create", map[string]any{"name": "img"}, refusal, true); plain != refusal {
+		t.Errorf("a call without a template lost the service's text: %s", plain)
 	}
-	// A tool without a secret argument, a call without the value: as it is.
-	if withoutSecretArgs("image_list", map[string]any{"user_data_template": tpl}, answer) != answer ||
-		withoutSecretArgs("image_create", map[string]any{"name": "x"}, answer) != answer {
-		t.Error("an answer of a call without a secret argument changed")
-	}
-	// A part of the secret that is the value of another argument of the
-	// call (a name, an id) is evo's own word there: it stays.
-	if got := withoutSecretArgs("pg_user_create", map[string]any{"password": "cluster-777", "cluster_id": "cluster-777"}, `{"message":"user in cluster-777"}`); !strings.Contains(got, "cluster-777") {
-		t.Errorf("the value of a public argument was masked: %s", got)
-	}
-	// SecretFiles too: the password of pg_user_create.
-	if got := withoutSecretArgs("pg_user_create", map[string]any{"password": "Sup3rSecret!"}, `{"error":"bad Sup3rSecret!"}`); strings.Contains(got, "Sup3rSecret") {
-		t.Errorf("a password of SecretFiles is in the answer: %s", got)
+	ok := toJSON(map[string]any{"status": "building", "image": map[string]any{"id": "i-1"}})
+	if got := secretWriteAnswer(context.Background(), "image_create", map[string]any{"user_data_template": "x"}, ok, false); got != ok {
+		t.Errorf("a success changed: %s", got)
 	}
 }

@@ -54,6 +54,23 @@ func TestSecretArgs_NotEchoedInTheCloudsError(t *testing.T) {
 		_, out, errOut := runCLI(t, "", append([]string{"tools", "call", "image_create", "--args-json", string(raw), "--yes"}, extra...)...)
 		check("cli "+strings.Join(extra, " "), out+errOut)
 	}
+	// A service that echoes the template in the image it answers: the
+	// success goes out without it (secretTexts).
+	w.rt.extra = func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/images" {
+			echoes++
+			body, _ := io.ReadAll(r.Body)
+			var sent map[string]any
+			_ = json.Unmarshal(body, &sent)
+			sent["id"] = parityVM
+			reply, _ := json.Marshal(sent)
+			return httpFault(200, string(reply))(r)
+		}
+		return original(r)
+	}
+	forgetRun(w)
+	args["confirmed"] = true
+	check("mcp stdio, a success", string(stdioRaw(t, srv.stdio, "image_create", args)))
 	if echoes < 4 {
 		t.Fatalf("the service echoed %d requests, want one per surface (4): the world did not reach the write", echoes)
 	}
