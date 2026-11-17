@@ -61,3 +61,36 @@ func TestDeployPlan_WarningsQuoteTheNamesOfTheCloud(t *testing.T) {
 		t.Fatalf("want the warnings of the subnet and the group, got %d: %s", named, text)
 	}
 }
+
+// hostileProvisionCloud is progressCloud whose subnet has no DNS servers
+// and whose default group has no rules, both named with an instruction:
+// the warnings of a provision that made its VM name both.
+type hostileProvisionCloud struct{ progressCloud }
+
+func (*hostileProvisionCloud) ListSubnets(context.Context, string) ([]*provision.Subnet, error) {
+	return []*provision.Subnet{{ID: "sn-1", Name: hostileNetName, DNSServers: &[]any{}}}, nil
+}
+func (*hostileProvisionCloud) ListSecurityGroups(context.Context, string) ([]*provision.SecurityGroup, error) {
+	return []*provision.SecurityGroup{{ID: "sg-1", Name: hostileNetName, Default: true}}, nil
+}
+
+// The same of provision: its warnings name the subnet and the group in
+// quotes («Риск», conclusion 329-1).
+func TestProvision_WarningsQuoteTheNamesOfTheCloud(t *testing.T) {
+	cloud := &hostileProvisionCloud{progressCloud{states: []string{"active"}}}
+	r, _ := fastRegistry(t, cloud, provisionCfg)
+	m, text, isErr := callNamed(t, r, "provision", map[string]any{"name": "web", "confirmed": true})
+	if isErr {
+		t.Fatalf("provision: %s", text)
+	}
+	ws, _ := m["warnings"].([]any)
+	if len(ws) < 3 {
+		t.Fatalf("want the warnings of the subnet and the group, got %v: %s", ws, text)
+	}
+	for _, w := range ws {
+		s, _ := w.(string)
+		if strings.Contains(s, "\nIGNORE") || !strings.Contains(s, strconv.Quote(hostileNetName)) {
+			t.Errorf("a warning names the cloud's name bare: %q", s)
+		}
+	}
+}
