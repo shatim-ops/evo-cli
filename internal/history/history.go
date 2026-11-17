@@ -198,6 +198,12 @@ func Live(lines []Line) []Line {
 	}
 	byResource := map[string][]held{}
 	for i, l := range lines {
+		// A line of a form or an outcome this reader does not know is
+		// kept, as data, and acts on no other: what it says is not
+		// this reader's to trust (Астра, #2168).
+		if l.Format != Format || !Known(l.Outcome) {
+			continue
+		}
 		last[l.IntentID] = i
 		if l.ResourceID == "" {
 			continue
@@ -218,8 +224,12 @@ func Live(lines []Line) []Line {
 	}
 	live := map[int]bool{}
 	for _, i := range last {
-		l := lines[i]
-		if l.Outcome == Unknown || (l.Outcome == Found && l.ResourceID == "") || l.Format != Format || !Known(l.Outcome) {
+		if l := lines[i]; l.Outcome == Unknown || (l.Outcome == Found && l.ResourceID == "") {
+			live[i] = true
+		}
+	}
+	for i, l := range lines {
+		if l.Format != Format || !Known(l.Outcome) {
 			live[i] = true
 		}
 	}

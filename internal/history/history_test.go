@@ -181,3 +181,22 @@ func TestLive_ByKindAndIDInAProject(t *testing.T) {
 		t.Errorf("live %q, want \"a e g\"", got)
 	}
 }
+
+// A line of a form this reader does not know is kept and acts on no other
+// (Астра, #2168): its deleted, already_deleted or not_found closes no
+// resource, and its line of an intent does not end that intent.
+func TestLive_AnUnknownFormClosesNothing(t *testing.T) {
+	for _, outcome := range []string{Deleted, AlreadyDeleted, NotFound} {
+		created := Line{Format: Format, IntentID: "a", Kind: "disk", ResourceID: "d-1", Outcome: Created}
+		foreign := Line{Format: Format + 1, IntentID: "b", Kind: "disk", ResourceID: "d-1", Outcome: outcome}
+		if got := Live([]Line{created, foreign}); len(got) != 2 {
+			t.Errorf("%s of another form: live %d, want 2 — it closed the resource it does not own", outcome, len(got))
+		}
+	}
+	// The same intent: an unknown line does not end it.
+	cut := Line{Format: Format, IntentID: "c", Outcome: Unknown}
+	later := Line{Format: Format + 1, IntentID: "c", Outcome: Deleted}
+	if got := Live([]Line{cut, later}); len(got) != 2 {
+		t.Errorf("an unknown line of the same intent: live %d, want 2", len(got))
+	}
+}
