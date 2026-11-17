@@ -1391,9 +1391,15 @@ func LostAddressError(lost *floatingip.LostError, vmID, vmState string) error {
 				"Проверьте 'evo vpc fips' по имени %s и повторите ту же команду: она возьмёт этот адрес, если список показывает его ни к чему не привязанным; если списка с ним нет, команда сначала спросит — резервировать ли другой адрес, решает человек.", lost.Name),
 			lost)
 	}
+	// The state is the cloud's word, in quotes; none reported is evo's
+	// own words, not a value to quote (Астра #2199).
+	state := i18n.T("its state not reported", "состояние не сообщается")
+	if vmState != "" {
+		state = i18n.Tf("state %s", "состояние %s", strconv.Quote(vmState))
+	}
 	return clerrors.Wrap(code,
-		i18n.Tf("VM %s is created (state %s) and billed, but reserving its floating IP %s got no answer from the cloud (%v): the request may have been accepted, and the address billed. No second address was requested",
-			"ВМ %s создана (состояние %s) и тарифицируется, но резервирование её floating IP %s не получило ответа облака (%v): запрос мог быть принят, а адрес — тарифицироваться. Второй адрес не запрашивался", vmID, strconv.Quote(statusText(vmState)), lost.Name, lost.Err),
+		i18n.Tf("VM %s is created (%s) and billed, but reserving its floating IP %s got no answer from the cloud (%v): the request may have been accepted, and the address billed. No second address was requested",
+			"ВМ %s создана (%s) и тарифицируется, но резервирование её floating IP %s не получило ответа облака (%v): запрос мог быть принят, а адрес — тарифицироваться. Второй адрес не запрашивался", vmID, state, lost.Name, lost.Err),
 		i18n.Tf("Check list_floating_ips for the name %s and the VM with vm_get %s, then repeat the same call: it takes that address if the list shows it free or on this VM; if the list does not show it, the call asks first — whether to reserve another address is the person's to answer.",
 			"Проверьте 'evo vpc fips' по имени %s и ВМ — 'evo vm get %s', затем повторите ту же команду: она возьмёт этот адрес, если список показывает его свободным или на этой ВМ; если списка с ним нет, команда сначала спросит — резервировать ли другой адрес, решает человек.", lost.Name, vmID),
 		lost)
