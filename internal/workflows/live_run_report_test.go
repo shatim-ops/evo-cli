@@ -68,8 +68,8 @@ func TestWorkflows_LiveRunsGetAReport(t *testing.T) {
 }
 
 // notLiveWithAWriteKey are the jobs of NOT_LIVE that may run with the key
-// of cloud-e2e, with the reason they still change nothing. The list only
-// shrinks.
+// of cloud-e2e, with the reason they still change nothing: a standing
+// exception, not a debt — a new line is a decision with its reason.
 var notLiveWithAWriteKey = map[string]string{
 	"preflight": "on a branch it runs in cloud-e2e after the owner's click and only reads (e2e-preflight.sh); on main — cloud-readonly",
 }
