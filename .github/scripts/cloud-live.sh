@@ -3896,8 +3896,10 @@ ev_vm() {
 		# повтор, заставший ВМ в нужном состоянии, отвечает already_* того
 		# же действия (D26) — переход прошёл (прогон 229). Только у шага,
 		# чей итог — сам переход, и только после первого ответа ходом.
-		elif [ "$how" = mcp ] && [ "$rc" = 0 ] && case "$mc_first" in starting | stopping | rebooting | resizing | updating) true ;; *) false ;; esac &&
-			case "$want:$st_got" in started:already_running | stopped:already_stopped | resized:already_resized) true ;; *) false ;; esac; then
+		# Слово хода — того же действия, что итог («Риск», 338, У1): старт
+		# после stopping — не продолжение старта.
+		elif [ "$how" = mcp ] && [ "$rc" = 0 ] &&
+			case "$want:$mc_first:$st_got" in started:starting:already_running | stopped:stopping:already_stopped | resized:resizing:already_resized | resized:updating:already_resized) true ;; *) false ;; esac; then
 			handed="evo продолжил тем же вызовом: первый ответ $mc_first, итог повтора $st_got через $((SECONDS - t0)) с"
 		else
 			want_st "$tool ($how)" "$want" || return 1

@@ -1630,6 +1630,16 @@ grep -q 'vm_start (mcp) *FAIL *status already_running, ждали started' "$tmp
 	{ echo "FAIL: opsevo: already_running без хода не назван провалом"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 if grep -q 'evo продолжил' "$tmp/out"; then echo "FAIL: opsevo: продолжение принято без хода"; fail=1; fi
 
+# Ход другого действия (stopping) и already_running у старта — не
+# продолжение старта: провал («Риск», 338, У1).
+opsevo_world
+answers vm_start '{"status":"stopping","next_tool":"vm_start","next_args":{"vm_id":"vmid1"}}' \
+	'{"status":"already_running"}' '{"status":"already_running"}' '{"status":"started"}' '{"status":"already_running"}'
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+[ "$rc" != 0 ] || { echo "FAIL: opsevo: ход другого действия принят как продолжение старта"; fail=1; }
+if grep -q 'evo продолжил' "$tmp/out"; then echo "FAIL: opsevo: продолжение принято после stopping"; fail=1; fi
+
 # Повтор (ждут already_stopped) ответил словом хода и передал vm_get: не
 # принимается — шаг провален, охвата нет («Риск», 317, У1).
 opsevo_world
