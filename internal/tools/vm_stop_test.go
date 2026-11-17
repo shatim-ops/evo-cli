@@ -175,7 +175,7 @@ func TestVMStop_NextStepDoesNotWriteAndAFallBackAsksAgain(t *testing.T) {
 // step, as a start's (conclusion 123, К2).
 func TestVMStop_StopThatFallsBackIsAnError(t *testing.T) {
 	r, w := vmStartWorld(t, "running")
-	w.stepAfter, w.stepTo = 3, []string{"running"}
+	w.stepAfter, w.stepTo, w.waitedOut = 3, []string{"running"}, true
 	m, text, isErr := callNamed(t, r, "vm_stop", map[string]any{"name": "web", "confirmed": true})
 	if !isErr || m["reason"] != clerrors.CodeAPIError || m["state"] != "running" || m["next_tool"] != nil {
 		t.Fatalf("vm_stop whose VM fell back to running: %s", text)

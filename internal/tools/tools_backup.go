@@ -737,8 +737,22 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 			map[string]any{"backup_id": id, "resource_type": kind}), true), nil
 	}
 	src, _ := r["resource_state"].(map[string]any)
-	zone, _ := src["availability_zone"].(map[string]any)
-	zoneID, _ := zone["id"].(string)
+	zoneID := backupZone(src)
+	if zoneID == "" {
+		// The card of the platform names no zone (cloud-e2e 226, opsevo):
+		// the list names it, in the backup's item.
+		all, err := api.ListBackups(ctx, pid)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range all {
+			if itemID, _ := item["id"].(string); itemID == id {
+				res, _ := item["resource"].(map[string]any)
+				st, _ := res["resource_state"].(map[string]any)
+				zoneID = backupZone(st)
+			}
+		}
+	}
 	sizeGB := int(numberOf(src["size"]))
 	// The disk the question names is read from the card: without its size
 	// or zone, the question would name a disk of 0 GB in no zone
@@ -789,8 +803,7 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 	preview := func(ctx context.Context) (map[string]any, error) {
 		req := provision.CreateDiskReq{Name: name, Size: sizeGB, AvailabilityZoneID: zoneID, ProjectID: pid,
 			DiskTypeID: cfg.DiskTypeID, DiskTypeName: cfg.DiskTypeName}
-		zoneName, _ := zone["name"].(string)
-		dp := diskCreatePreview(eng, req, "", "", zoneName)
+		dp := diskCreatePreview(eng, req, "", "", backupZoneName(ctx, eng, src, zoneID))
 		// What the disk is made of, and what stays as it is: in the lines
 		// the person reads, not in the details only.
 		dp.Add("backup_id", id)
@@ -1012,4 +1025,41 @@ func (s *Registry) restoreGoesOn(ctx context.Context, eng *engine.Engine, args m
 		i18n.T("disk_list shows the project's disks. Whether to restore again is the person's decision: ask the person.",
 			"Диски проекта показывает evo disk list. Восстанавливать ли снова — решает человек: спросите человека.")),
 		map[string]any{"backup_id": id, "name": name}), true
+}
+
+// backupZone is the zone of the disk of a backup in its resource_state, in
+// either form the platform gives: an object availability_zone, as the
+// specification has it, or the flat availability_zone_id, as the list of
+// the backups has it (cloud-e2e 226, opsevo: the card gave neither, the
+// list the flat one); "" when it names none.
+func backupZone(state map[string]any) string {
+	if zone, ok := state["availability_zone"].(map[string]any); ok {
+		if id, _ := zone["id"].(string); id != "" {
+			return id
+		}
+	}
+	id, _ := state["availability_zone_id"].(string)
+	return id
+}
+
+// backupZoneName is the name of the zone zoneID of a backup's disk: the
+// card's, when it names one, else the catalogue's — the flat id of the
+// list names none (cloud-e2e 226). "" when neither tells it: the preview
+// names the zone by its id.
+func backupZoneName(ctx context.Context, eng *engine.Engine, state map[string]any, zoneID string) string {
+	if zone, ok := state["availability_zone"].(map[string]any); ok {
+		if name, _ := zone["name"].(string); name != "" {
+			return name
+		}
+	}
+	zones, err := eng.Cloud.ListAvailabilityZones(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, z := range zones {
+		if z.ID == zoneID {
+			return z.Name
+		}
+	}
+	return ""
 }
