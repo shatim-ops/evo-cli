@@ -94,6 +94,7 @@
     - [evo dns zone-get](#evo-dns-zone-get)
     - [evo dns zones](#evo-dns-zones)
   - [evo doctor](#evo-doctor)
+  - [evo history](#evo-history)
   - [evo iam](#evo-iam)
     - [evo iam service-accounts](#evo-iam-service-accounts)
   - [evo image](#evo-image)
@@ -296,6 +297,7 @@ Object Storage, секреты; развёртывание compose-проект�
 * [evo disk](#evo-disk)	 - Диски
 * [evo dns](#evo-dns)	 - Evolution DNS: зоны и записи
 * [evo doctor](#evo-doctor)	 - Проверить настройки, ключ доступа и связь с API
+* [evo history](#evo-history)	 - Что evo изменил в облаке из этой папки (журнал изменений)
 * [evo iam](#evo-iam)	 - IAM: сервисные аккаунты
 * [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
 * [evo init](#evo-init)	 - Создать .evo.yaml с зоной и образом из API Cloud.ru
@@ -4109,6 +4111,51 @@ evo doctor [flags]
       --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+
+## evo history
+
+Что evo изменил в облаке из этой папки (журнал изменений)
+
+### Synopsis
+
+```text
+Прочитать журнал изменений этой папки состояния (.evo/history/): строку на
+каждое окончание вызова, который изменил облако, — что он создал или удалил
+и что о нём неизвестно, — и что может оставаться в облаке: создано и не
+удалено или с неизвестным итогом, с командой, которая это прочитает.
+Локально, без обращения к API.
+
+Строка называет ресурс так, как его назвал вызов: что ресурс есть и что он
+evo, она не доказывает — прочитайте его до действий с ним.
+```
+
+```
+evo history [flags]
+```
+
+### Options
+
+```
+  -h, --help                Справка по history
+      --project-id string   только строки этого проекта
+      --since string        строки с этой даты (2026-11-01) или времени; по умолчанию — последние 30 дней
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json             Вывод в формате JSON
+      --no-color         Без цвета
+      --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose          Подробный журнал
+  -y, --yes              Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
 
 ### SEE ALSO

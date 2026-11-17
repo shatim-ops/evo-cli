@@ -1,0 +1,41 @@
+name: cloud-e2e-yield
+
+# Ручной живой запуск cloud-e2e не ждёт неодобренный недельный (решение
+# владельца 17.11, второй опрос «1.9 — релиза (4)», п. 4: прогон 222 ждал
+# одобрения с 16.11 и держал группу concurrency «cloud-e2e», живые запуски
+# владельца стояли в очереди до следующего понедельника). Когда человек
+# запрашивает прогон cloud-e2e, прогоны cloud-e2e-weekly
+# (github-actions[bot]), которые ждут одобрения окружения, отменяются тем
+# же weekly_stale.sh, что и перед новым недельным запуском, — только
+# недельный набор, опознанный по имени прогона (--weekly-only): уборка в
+# своей группе очереди и ручной запуск не держит («Риск», 307, У1), прогон
+# со старым или неизвестным именем не опознан (Астра #2189). Прогоны людей
+# и одобренные не трогаются: статус перечитывается перед отменой (Астра
+# #2188). Облака и ключей здесь нет.
+
+on:
+  workflow_run:
+    workflows: [cloud-e2e]
+    types: [requested]
+
+permissions: {}
+
+jobs:
+  yield:
+    # Только запуск человека: недельный набор и ночное чтение (бот) не
+    # отменяют друг друга.
+    if: github.event.workflow_run.triggering_actor.login != 'github-actions[bot]' && github.event.workflow_run.event == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Отменить неодобренные прогоны бота; checkout weekly_stale.sh.
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Отмена неодобренных недельных прогонов
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/weekly_stale.sh "$GITHUB_REPOSITORY" --weekly-only

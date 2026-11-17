@@ -115,6 +115,92 @@ func TestAppend_ALinkIsRefused(t *testing.T) {
 	}
 }
 
+// What is live: a resource created and not removed — a change of it does
+// not close it («Риск», the condition on the code of D43) — and a call
+// whose last line is unknown; a line of another form is kept.
+func TestLive_AChangeDoesNotCloseACreate(t *testing.T) {
+	l := func(intent, outcome, resource string) Line {
+		return Line{Format: Format, Time: "2026-11-17T12:00:00Z", Tool: "x", IntentID: intent, Outcome: outcome, ResourceID: resource}
+	}
+	ids := func(lines []Line) (out []string) {
+		for _, x := range lines {
+			out = append(out, x.IntentID+":"+x.Outcome+":"+x.ResourceID)
+		}
+		return out
+	}
+	lines := []Line{
+		l("a", Created, "vm-1"),
+		l("b", Changed, "vm-1"),                      // a reboot of it
+		l("c", Changed, ""),                          // a resize, no id
+		l("d", Created, "vm-2"),                      //
+		l("e", Deleted, "vm-2"),                      // removed
+		l("f", Unknown, ""),                          // cut, named by name only
+		l("g", Unknown, ""),                          // cut ...
+		l("g", Found, "disk-1"),                      // ... and found later
+		l("h", Error, ""),                            // refused
+		l("i", Created, "vm-3"),                      //
+		l("j", AlreadyDeleted, "vm-3"),               // gone before its delete
+		l("k", Created, "vm-4"),                      //
+		l("l", NotFound, "vm-4"),                     // a read found it gone
+		{Format: 2, IntentID: "m", Outcome: "moved"}, // a newer evo
+	}
+	got := ids(Live(lines))
+	want := []string{"a:created:vm-1", "f:unknown:", "g:found:disk-1", "m:moved:"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("live %v, want %v", got, want)
+	}
+}
+
+// Liveness is by the kind and the id in a project (У4): a secret app/db
+// created in A and one deleted in B are two resources — the first stays
+// live; a delete with no project — a call by id, whose project it did not
+// know — closes the resource of that kind and id in any project; a disk
+// and a VM of the same id are two resources too. A call whose last line is
+// found with no id stays live: where its resource is, is not known (У1).
+func TestLive_ByKindAndIDInAProject(t *testing.T) {
+	l := func(intent, project, kind, outcome, resource string) Line {
+		return Line{Format: Format, IntentID: intent, ProjectID: project, Kind: kind, Outcome: outcome, ResourceID: resource}
+	}
+	ids := func(lines []Line) (out []string) {
+		for _, x := range lines {
+			out = append(out, x.IntentID)
+		}
+		return out
+	}
+	lines := []Line{
+		l("a", "A", "secret", Created, "app/db"),
+		l("b", "B", "secret", Deleted, "app/db"), // another project: a remains
+		l("c", "A", "disk", Created, "id-1"),
+		l("d", "", "disk", Deleted, "id-1"),  // by id, no project: closes c
+		l("e", "A", "VM", Created, "id-2"),   //
+		l("f", "A", "disk", Deleted, "id-2"), // another kind: e remains
+		l("g", "A", "disk", Found, ""),       // found, nowhere: live
+	}
+	got := strings.Join(ids(Live(lines)), " ")
+	if got != "a e g" {
+		t.Errorf("live %q, want \"a e g\"", got)
+	}
+}
+
+// A line of a form this reader does not know is kept and acts on no other
+// (Астра, #2168): its deleted, already_deleted or not_found closes no
+// resource, and its line of an intent does not end that intent.
+func TestLive_AnUnknownFormClosesNothing(t *testing.T) {
+	for _, outcome := range []string{Deleted, AlreadyDeleted, NotFound} {
+		created := Line{Format: Format, IntentID: "a", Kind: "disk", ResourceID: "d-1", Outcome: Created}
+		foreign := Line{Format: Format + 1, IntentID: "b", Kind: "disk", ResourceID: "d-1", Outcome: outcome}
+		if got := Live([]Line{created, foreign}); len(got) != 2 {
+			t.Errorf("%s of another form: live %d, want 2 — it closed the resource it does not own", outcome, len(got))
+		}
+	}
+	// The same intent: an unknown line does not end it.
+	cut := Line{Format: Format, IntentID: "c", Outcome: Unknown}
+	later := Line{Format: Format + 1, IntentID: "c", Outcome: Deleted}
+	if got := Live([]Line{cut, later}); len(got) != 2 {
+		t.Errorf("an unknown line of the same intent: live %d, want 2", len(got))
+	}
+}
+
 // A write cut short leaves a line with no end (Астра, #2167): the next
 // line goes after a line break of its own, so it is read whole, and the
 // torn bytes stay as they are — a line a reader skips, not one that eats
@@ -136,5 +222,19 @@ func TestAppend_AfterATornTailTheLineIsWhole(t *testing.T) {
 	var l Line
 	if len(lines) != 2 || lines[0] != `{"format":1` || json.Unmarshal([]byte(lines[1]), &l) != nil || l.Outcome != Created {
 		t.Errorf("after a torn tail: %q; want the torn bytes on their line, then the new line whole", data)
+	}
+}
+
+// An outcome not known of a call on a resource is known once a later line
+// says the resource is gone (311-3): the unknown line is no longer live.
+func TestLive_AnUnknownIsClosedByALaterGone(t *testing.T) {
+	cut := Line{Format: Format, IntentID: "a", Kind: "disk", ResourceID: "d-1", Outcome: Unknown, ProjectID: "p"}
+	gone := Line{Format: Format, IntentID: "b", Kind: "disk", ResourceID: "d-1", Outcome: Deleted}
+	if got := Live([]Line{cut, gone}); len(got) != 0 {
+		t.Errorf("an unknown cut call on d-1, then d-1 deleted: live %+v, want none", got)
+	}
+	// Gone before the cut call: the call's outcome is still not known.
+	if got := Live([]Line{gone, cut}); len(got) != 1 {
+		t.Errorf("d-1 deleted, then a cut call on d-1: live %d, want the cut call", len(got))
 	}
 }

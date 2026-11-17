@@ -345,6 +345,14 @@
       "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ]
   },
+  "history": {
+    "group": "auth",
+    "always_listed": "what evo changed is the inventory of every group: the cleanup of any group reads it, whichever groups the server serves",
+    "id_args": [
+      "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
+    ],
+    "untrusted": "{fields:[lines live] whole:false own:[] workload:true}"
+  },
   "iam_service_accounts": {
     "group": "iam",
     "project": true,
