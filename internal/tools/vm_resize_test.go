@@ -192,7 +192,7 @@ func TestVMResize_SameFlavorIDGuards(t *testing.T) {
 		t.Errorf("a VM in updating to the target: %s %v", text, w.callLog())
 	}
 
-	r, w, dir := vmResizeWorld(t, "running")
+	_, w, dir := vmResizeWorld(t, "running")
 	nameless := &namelessFlavorCard{powerWorld: w}
 	r = New(func(map[string]any) (*engine.Engine, error) {
 		return &engine.Engine{StateDir: dir, Config: config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
