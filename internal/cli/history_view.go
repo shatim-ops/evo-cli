@@ -26,6 +26,7 @@ type historyEntry struct {
 	Outcome    string `json:"outcome"`
 	Reason     string `json:"reason"`
 	Check      string `json:"check"`
+	Result     string `json:"check_result"`
 }
 
 // renderHistory shows the journal of changes (D43): the full path of the
@@ -45,6 +46,12 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 		LiveCut   bool           `json:"live_truncated"`
 		Retired   string         `json:"retired_through"`
 		Note      string         `json:"note"`
+		Closed    []historyEntry `json:"closed"`
+		Checked   *struct {
+			Read       int `json:"read"`
+			Closed     int `json:"closed"`
+			NotChecked int `json:"not_checked"`
+		} `json:"checked"`
 	}
 	if err := json.Unmarshal([]byte(text), &a); err != nil {
 		return err
@@ -84,9 +91,29 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 				check = toolCommandPath(t)
 			}
 			rows[i] = []string{e.Time, e.Tool, what(e), e.ResourceID, e.Outcome, check}
+			if a.Checked != nil {
+				rows[i] = append(rows[i], e.Result)
+			}
 		}
-		p.Table([]string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID",
-			i18n.T("Outcome", "Итог"), i18n.T("Check with", "Проверить")}, rows)
+		head := []string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID",
+			i18n.T("Outcome", "Итог"), i18n.T("Check with", "Проверить")}
+		if a.Checked != nil {
+			head = append(head, i18n.T("Read by id", "Чтение по id"))
+		}
+		p.Table(head, rows)
+	}
+	if a.Checked != nil {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, i18n.Tf("Checked: %d read by id, %d gone and closed, %d not read.",
+			"Проверено: прочитано по id %d, исчезло и закрыто %d, не прочитано %d.", a.Checked.Read, a.Checked.Closed, a.Checked.NotChecked))
+		if len(a.Closed) > 0 {
+			rows := make([][]string, len(a.Closed))
+			for i, e := range a.Closed {
+				rows[i] = []string{e.Time, e.Tool, what(e), e.ResourceID}
+			}
+			fmt.Fprintln(w, i18n.T("Gone — closed with a line not_found:", "Исчезло — закрыто строкой not_found:"))
+			p.Table([]string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID"}, rows)
+		}
 	}
 	if a.LiveCut {
 		fmt.Fprintln(w, i18n.T("Only the last live lines are shown, there are more: narrow it to a project with --project-id.",

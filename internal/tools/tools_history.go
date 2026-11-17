@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // The bounds of an answer of history (the ТЗ of the journal, §0, 6): the
@@ -46,6 +47,9 @@ type historyLine struct {
 	IntentID    string `json:"intent_id"`
 	JobID       string `json:"job_id,omitempty"`
 	Check       string `json:"check,omitempty"`
+	// CheckResult is what history with check found of a live line it did
+	// not close (checkThere and the rest).
+	CheckResult string `json:"check_result,omitempty"`
 }
 
 // handleHistory reads the journal of changes of the folder of state (D43):
@@ -141,10 +145,27 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 				Outcome: history.Unknown, IntentID: in.ID})
 		}
 	}
+	var checked *historyChecked
+	results := map[int]string{}
+	if boolArg(args, "check", false) {
+		eng, err := s.engineOfCall(args)
+		if err != nil {
+			return failed(ctx, err, nil), true
+		}
+		var visible []int
+		for i, l := range live {
+			if shown(l) {
+				visible = append(visible, i)
+			}
+		}
+		checked, results = s.checkLive(ctx, history.DirOf(intent.Dir(root)), live, visible, eng.Maker(), callerOf(ctx) != nil)
+	}
 	liveLines := []historyLine{}
-	for _, l := range live {
-		if shown(l) {
-			liveLines = append(liveLines, s.historyLineOf(l))
+	for i, l := range live {
+		if shown(l) && results[i] != checkClosed {
+			hl := s.historyLineOf(l)
+			hl.CheckResult = results[i]
+			liveLines = append(liveLines, hl)
 		}
 	}
 	liveTruncated := len(liveLines) > historyMax
@@ -177,6 +198,16 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	if len(hidden) > 0 {
 		ans["hidden_without_project"] = len(hidden)
 	}
+	if checked != nil {
+		ans["checked"] = checked
+		closed := []historyLine{}
+		for i, l := range live {
+			if results[i] == checkClosed {
+				closed = append(closed, s.historyLineOf(l))
+			}
+		}
+		ans["closed"] = closed
+	}
 	return toJSON(ans), false
 }
 
@@ -200,4 +231,116 @@ func (s *Registry) historyLineOf(l history.Line) historyLine {
 		out.Check = s.listToolOf(l.Tool)
 	}
 	return out
+}
+
+// historyCheckMax is the most reads one history with check sends: a
+// journal of many live lines is checked over several calls, not in one
+// burst of reads.
+const historyCheckMax = 50
+
+// What history with check found of a live line (check_result).
+const (
+	// checkClosed: gone; the line is closed (not in the answer's live).
+	checkClosed = "closed"
+	// checkThere: the read by id finds the resource.
+	checkThere = "there"
+	// checkReadFailed: the read did not answer «there» or «not there».
+	checkReadFailed = "read_failed"
+	// checkOtherKey: the call was sent with another key, which may see
+	// what this one does not (R-82).
+	checkOtherKey = "other_key"
+	// checkNoKey: the line or this run names no key.
+	checkNoKey = "no_key"
+	// checkNoRead: the kind has no read by id.
+	checkNoRead = "no_read_by_id"
+	// checkNotByID: the line has no id from the cloud — an outcome not
+	// known, whose id may be the name of the call's argument.
+	checkNotByID = "not_by_id"
+	// checkOverBudget: not read in this call (historyCheckMax).
+	checkOverBudget = "over_budget"
+	// checkNotWritten: gone, but the line not_found was not written; the
+	// line stays live.
+	checkNotWritten = "gone_not_written"
+)
+
+// historyChecked counts what history with check did.
+type historyChecked struct {
+	Read       int `json:"read"`
+	Closed     int `json:"closed"`
+	NotChecked int `json:"not_checked"`
+}
+
+// checkLive reads by id each live line of the indexes visible that names a
+// resource by its id from the cloud (created, found), with the rule of
+// doctor (readByID) and the key cur of this run, and closes a line the
+// read finds gone: a line not_found of the same resource is written to the
+// journal dir — a resource removed in the console or from another machine
+// is no longer live (the ТЗ of the journal, У7). The cloud is only read.
+// results tells each index what was found.
+func (s *Registry) checkLive(ctx context.Context, dir string, live []history.Line, visible []int, cur *state.Maker, cli bool) (*historyChecked, map[int]string) {
+	out := &historyChecked{}
+	results := map[int]string{}
+	for _, i := range visible {
+		l := live[i]
+		if (l.Outcome != history.Created && l.Outcome != history.Found) || l.ResourceID == "" {
+			results[i] = checkNotByID
+			out.NotChecked++
+			continue
+		}
+		k := cardOf(l.Tool)
+		if skip := readSkipOf(k, l.Key, cur); skip != readSent {
+			results[i] = map[readSkip]string{readNoCard: checkNoRead, readOtherKey: checkOtherKey, readNoKey: checkNoKey}[skip]
+			out.NotChecked++
+			continue
+		}
+		if out.Read == historyCheckMax {
+			results[i] = checkOverBudget
+			out.NotChecked++
+			continue
+		}
+		out.Read++
+		_, gone, _, err := s.readByID(ctx, k, l.ResourceID, l.Key, cur)
+		switch {
+		case gone:
+			surface := "mcp"
+			if cli {
+				surface = "cli"
+			}
+			nf := history.Line{Time: clock.Now().UTC().Format(time.RFC3339), Tool: "history", Surface: surface, ProjectID: l.ProjectID,
+				Zone: l.Zone, Name: l.Name, Kind: l.Kind, Parent: l.Parent, ResourceID: l.ResourceID, Outcome: history.NotFound,
+				IntentID: l.IntentID, Key: cur}
+			if err := history.Append(dir, nf); err != nil {
+				results[i] = checkNotWritten
+				out.NotChecked++
+				continue
+			}
+			results[i] = checkClosed
+			out.Closed++
+		case err == nil:
+			results[i] = checkThere
+		default:
+			results[i] = checkReadFailed
+		}
+	}
+	return out, results
+}
+
+// cardOf is the kind of the resource tool makes or removes, as its delete
+// addresses it by id: its read by id tells whether the resource is there
+// (readByID). nil when the delete names none.
+func cardOf(tool string) *ownerKind {
+	del := tool
+	if c, ok := createdOf(tool); ok && c.delete != "" {
+		del = c.delete
+	}
+	d, ok := deleteOf(del)
+	if !ok {
+		return nil
+	}
+	for _, a := range decls[del].IDArgs {
+		if a.name == d.arg {
+			return a.kind
+		}
+	}
+	return nil
 }

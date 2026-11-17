@@ -131,6 +131,10 @@ func namesUnserved(r *Registry, served func(string) bool, lines []string) bool {
 // fact without which a call is wrong or dangerous is the tool's description
 // instead; a recipe of a task is neither.
 var cardNotes = map[string][]string{
+	"auth": {
+		"`history` outcomes: created, deleted, already_deleted, changed, error, unknown, found, not_found. `retired_through`, when set, is the last day pruned (90 days, 64 MB): of it and before only what is live is kept.",
+		"`history` with `check`: `check_result` of a live line it did not close — `there` (the read by id finds it), `read_failed`, `other_key` (sent with another key, which may see what this one does not: check with that key), `no_key`, `no_read_by_id` (read it with the tool of `check`), `not_by_id` (an outcome not known: its id may be a name — read by the name), `over_budget` (call again).",
+	},
 	"ca": {
 		"A Container App's `name` is an RFC 1123 label: lowercase letters, digits and '-', 1-63 characters.",
 	},

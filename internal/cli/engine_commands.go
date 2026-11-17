@@ -75,7 +75,7 @@ var engineCommands = []engineCommand{
 		Flags:   map[string]string{"group": "group"},
 		CLIOnly: map[string]string{"read-only": "правила скилла для сервера --read-only: текст без --group — правила для агента с терминалом, у инструмента его нет (заключение «Риска» 160)"}},
 	{Path: "evo doctor", Tool: "doctor"},
-	{Path: "evo history", Tool: "history", Flags: map[string]string{"since": "since", "project-id": "project_id"}},
+	{Path: "evo history", Tool: "history", Flags: map[string]string{"since": "since", "project-id": "project_id", "check": "check"}},
 }
 
 // engineToolAt is the tool of the engine command at path, "" if none.
