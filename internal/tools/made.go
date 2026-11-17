@@ -73,7 +73,7 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 	// one listed and then gone is not in the state it was in (Астра
 	// #1922).
 	listed := false
-	last, _, _, err := waitState(ctx, eng, madeLimit,
+	last, _, _, _, err := waitState(ctx, eng, madeLimit,
 		func(ctx context.Context) (string, bool, error) {
 			items, err := m.read(ctx)
 			if err != nil {
