@@ -97,9 +97,9 @@ func TestCheckedArgs_ScalarTypes(t *testing.T) {
 	}{
 		{map[string]any{"confirmed": "true"}, "confirmed must be a boolean (true or false), got a string"},
 		{map[string]any{"size_gb": "20"}, "size_gb must be an integer, got a string"},
-		{map[string]any{"size_gb": 2.5}, "size_gb must be an integer, got a number 2.5"},
-		{map[string]any{"name": float64(7)}, "name must be a string, got a number 7"},
-		{map[string]any{"ratio": true}, "ratio must be a number, got a boolean true"},
+		{map[string]any{"size_gb": 2.5}, "size_gb must be an integer, got a number"},
+		{map[string]any{"name": float64(7)}, "name must be a string, got a number"},
+		{map[string]any{"ratio": true}, "ratio must be a number, got a boolean"},
 	} {
 		got = nil
 		text, isErr := h(context.Background(), tc.args)
