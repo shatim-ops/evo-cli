@@ -34,9 +34,10 @@ const (
 // value and the line goes; a line whose value the preview names now, or
 // that is not sent any more, fails the test. Secret lines stay: the value
 // must not reach the preview.
-// Closes by 1.9, before rc.1 (owner's decision 13.11, #1590, question 19,
-// (c); release plan 1.9, «Просроченные убывающие списки»): what stays is an
-// exception declared with a reason «Риск · 1.9» accepted.
+// Closes by 1.10 (owner's decision 17.11, poll of «1.9 — релиз (4)», plan
+// line of #2171: out of the conditions of rc.1; before — 1.9, owner's
+// decision 13.11, #1590, question 19, (c)): what stays is an exception
+// declared with a reason «Риск» accepted.
 var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"deploy availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},

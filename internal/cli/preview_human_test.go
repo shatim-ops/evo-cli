@@ -41,9 +41,10 @@ var previewForm = map[string]string{
 // list only shrinks: the human preview shows the value and the line goes
 // (С2; the line of CLI in 1.6 builds the lines from the details in one
 // function, D). A line the human preview shows now fails the test.
-// Closes by 1.9, before rc.1 (owner's decision 13.11, #1590, question 19,
-// (c); release plan 1.9, «Просроченные убывающие списки»): what stays is an
-// exception declared with a reason «Риск · 1.9» accepted.
+// Closes by 1.10 (owner's decision 17.11, poll of «1.9 — релиз (4)», plan
+// line of #2171: out of the conditions of rc.1; before — 1.9, owner's
+// decision 13.11, #1590, question 19, (c)): what stays is an exception
+// declared with a reason «Риск» accepted.
 var humanUnnamed = map[string]struct{ class, why string }{
 	"deploy cost.hourly_rub":                    {unnamedPrice, "почасовая цена; человеку — месячная"},
 	"deploy preview.cost.hourly_rub":            {unnamedPrice, "почасовая цена; человеку — месячная"},
