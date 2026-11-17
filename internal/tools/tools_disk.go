@@ -815,7 +815,8 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		}
 	}
 	if !strings.EqualFold(st, "available") {
-		if st == "" {
+		known := st != ""
+		if !known {
 			st = "unknown"
 		}
 		res["status"] = "creating"
@@ -824,9 +825,11 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		}
 		res["disk_id"] = id
 		res["disk_state"] = st
-		word := st
-		if st != "unknown" {
-			word = quoteCloud(st)
+		// The cloud's state is quoted, "unknown" too; none is evo's own
+		// word, not in quotes, so the two read apart (Астра #2176).
+		word := quoteCloud(st)
+		if !known {
+			word = i18n.T("in an unknown state", "в неизвестном состоянии")
 		}
 		res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list ids=[%s] shows its state.",
 			"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list ids=[%s].", id, word, id)

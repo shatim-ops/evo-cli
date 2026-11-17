@@ -66,14 +66,16 @@ type rawLine struct {
 // ceiling — today's never. What is live in a file that goes is kept in
 // LiveName first: a resource made and not removed, an outcome not known,
 // and any line this reader cannot read or does not know (a newer evo wrote
-// it: not this one's to drop). The live lines are written whole to a temp
+// it: not this one's to drop) — checked by check as the reader checks it
+// (ReadAll), so a line history skips closes nothing here either (Астра,
+// #2297). The live lines are written whole to a temp
 // file and renamed, then the files go: a kill between the two leaves a
 // line twice, which a reader reads once (ReadAll), never none.
 //
 // It runs at most once a day (a mark in the directory), under the lock of
 // the journal and a limit of time: what does not fit goes on next time. A
 // directory that is not there is nothing to prune.
-func Prune(dir string, now time.Time) (Pruned, error) {
+func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	var p Pruned
 	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
 		return p, nil
@@ -104,7 +106,7 @@ func Prune(dir string, now time.Time) (Pruned, error) {
 			return p, err
 		}
 		start := len(all)
-		all = append(all, rawLines(data)...)
+		all = append(all, rawLines(data, check)...)
 		from[name] = [2]int{start, len(all)}
 		if time.Now().After(deadline) { // wall-clock: the limit of one pruning
 			return p, nil
@@ -223,11 +225,11 @@ func dayFiles(dir string) ([]string, map[string]int64, error) {
 // makes of it; an empty line is none. A line too long for a reader is one
 // line it does not read — kept — and the lines after it are read as
 // ReadAll reads them (lines).
-func rawLines(data []byte) []rawLine {
+func rawLines(data []byte, check Check) []rawLine {
 	var out []rawLine
 	for _, raw := range lines(data) {
 		r := rawLine{text: string(raw)}
-		r.ok = len(raw) <= maxLine && json.Unmarshal(raw, &r.line) == nil && wellFormed(r.line)
+		r.ok = len(raw) <= maxLine && json.Unmarshal(raw, &r.line) == nil && wellFormed(r.line) && (check == nil || check(r.line))
 		out = append(out, r)
 	}
 	return out
@@ -280,9 +282,9 @@ type Summary struct {
 	OverCeiling bool
 }
 
-// Describe reads the journal of dir for doctor; a journal that is not
-// there is an empty one.
-func Describe(dir string) (Summary, error) {
+// Describe reads the journal of dir for doctor, its lines checked by check
+// as Prune checks them; a journal that is not there is an empty one.
+func Describe(dir string, check Check) (Summary, error) {
 	var s Summary
 	days, sizes, err := dayFiles(dir)
 	if err != nil {
@@ -306,7 +308,7 @@ func Describe(dir string) (Summary, error) {
 		if name == LiveName {
 			s.Bytes += int64(len(data))
 		}
-		all = append(all, rawLines(data)...)
+		all = append(all, rawLines(data, check)...)
 	}
 	var liveBytes int64
 	seen := map[string]bool{}

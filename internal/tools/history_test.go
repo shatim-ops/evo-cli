@@ -305,3 +305,36 @@ func TestHistory_ACutCreateByNameStaysLive(t *testing.T) {
 		}
 	}
 }
+
+// The pruning after a call checks each line as history does (historyCheck):
+// a delete of a tool the registry does not know, or with a reason not of
+// evo, closes nothing — the create it would close stays live, and both are
+// kept (Астра, #2297).
+func TestHistory_TheCallsPruningChecksLinesAsHistoryDoes(t *testing.T) {
+	for _, mode := range []string{"tool", "reason"} {
+		r, dir := targetRegistry(t, &goneCloud{})
+		hdir := history.DirOf(intent.Dir(dir))
+		if err := os.MkdirAll(hdir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		made := `{"format":1,"time":"2020-01-01T10:00:00Z","tool":"disk_create","kind":"disk","resource_id":"still-live","outcome":"created","intent_id":"a000000000000001"}`
+		odd := `{"format":1,"time":"2020-01-01T11:00:00Z","tool":"future_delete","kind":"disk","resource_id":"still-live","outcome":"deleted","intent_id":"a000000000000002"}`
+		if mode == "reason" {
+			odd = `{"format":1,"time":"2020-01-01T11:00:00Z","tool":"disk_delete","kind":"disk","resource_id":"still-live","outcome":"deleted","reason":"FUTURE_REASON","intent_id":"a000000000000002"}`
+		}
+		if err := os.WriteFile(filepath.Join(hdir, "2020-01-01.jsonl"), []byte(made+"\n"+odd+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		tool, _ := r.Lookup("disk_create")
+		h := r.intended(tool, func(context.Context, map[string]any) (string, bool) { return `{"disk":{"id":"d-1"}}`, false })
+		h(context.Background(), map[string]any{"name": "disk-1", "size": 10, "confirmed": true})
+		j, _ := history.ReadAll(hdir, r.historyCheck)
+		var live []string
+		for _, l := range history.Live(j.Lines) {
+			live = append(live, l.ResourceID)
+		}
+		if !slices.Contains(live, "still-live") {
+			t.Errorf("%s: live after the call's pruning %v; want still-live kept", mode, live)
+		}
+	}
+}

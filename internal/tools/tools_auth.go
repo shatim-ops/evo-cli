@@ -393,7 +393,7 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 			}
 			// The journal of changes beside the records: its size, its
 			// oldest day, what is live in it (the ТЗ of the journal, §0, 9).
-			if c, ok := journalCheck(history.DirOf(dir)); ok {
+			if c, ok := s.journalCheck(history.DirOf(dir)); ok {
 				checks = append(checks, c)
 			}
 		}

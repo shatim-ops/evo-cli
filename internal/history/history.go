@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 	"unicode/utf8"
 
@@ -249,7 +250,21 @@ func liveMask(lines []Line) []bool {
 	held := map[string][]mark{} // created or found, not gone yet
 	gone := map[string][]mark{} // deleted, already_deleted, not_found
 	key := func(l Line) string { return l.Kind + "\x00" + l.Parent + "\x00" + l.ResourceID }
-	for i, l := range lines {
+	// The lines are taken in the order of their times, whatever the order
+	// of the caller's: history and the pruning find the same live, a clock
+	// turned back included — a delete written later with an earlier time
+	// is earlier (Астра, #2296). Lines of one time keep their order.
+	order := make([]int, len(lines))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return lines[order[a]].Time < lines[order[b]].Time })
+	rank := make([]int, len(lines))
+	for r, i := range order {
+		rank[i] = r
+	}
+	for _, i := range order {
+		l := lines[i]
 		// A line of a form or an outcome this reader does not know is
 		// kept, as data, and acts on no other: what it says is not
 		// this reader's to trust (Астра, #2168).
@@ -279,7 +294,7 @@ func liveMask(lines []Line) []bool {
 	// not known of a call on it is known now (311-3).
 	goneAfter := func(l Line, at int) bool {
 		for _, g := range gone[key(l)] {
-			if g.i > at && sameProject(g.project, l.ProjectID) {
+			if rank[g.i] > rank[at] && sameProject(g.project, l.ProjectID) {
 				return true
 			}
 		}

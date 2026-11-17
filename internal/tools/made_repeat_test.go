@@ -159,13 +159,11 @@ var finding01 = map[string]bool{"pg_create": true, "kafka_create": true, "redis_
 // whose answer no longer goes on fails it too.
 var madeRepeatCreates = map[string]bool{"pg_create": true, "kafka_create": true, "redis_create": true, "k8s_create": true,
 	"k8s_add_nodepool": true, "lb_create": true, "ar_create": true, "vpc_create": true, "tg_create": true, "pg_backup_create": true,
-	"subnet_create": true, "snat_create": true, "disk_create": true}
+	"subnet_create": true, "snat_create": true, "disk_create": true, "dns_zone_create": true}
 
 // madeRepeatPending are the creates whose answer goes on, not yet in the
 // «Миграция» of D113, with the line of the plan that brings them there.
-var madeRepeatPending = map[string]string{
-	"dns_zone_create": "its repeat reads dns_zones with no visibility — the private zones for a public one; the fix and its «Миграция» are C(7)'s, the line of the release plan #2145",
-}
+var madeRepeatPending = map[string]string{}
 
 // madeRepeatOwnWorld are the creates of the matrix the world of a paid
 // create does not run, with why; their repeats are their own tests'.
@@ -320,24 +318,29 @@ func TestMadeEnded(t *testing.T) {
 		isErr bool
 		age   time.Duration
 		want  bool
+		op    bool // the read is of an operation
 	}{
-		{`{"reason":"NOT_FOUND","error":"x"}`, true, 0, true},
-		{`{"reason":"API_UNREACHABLE","error":"x"}`, true, time.Hour, false},
-		{`{"status":"error_creating"}`, false, 0, true},
-		{`{"state":"ERROR"}`, false, 0, true},
-		{`{"status":"failed"}`, false, 0, true},
-		{`{"status":"creating"}`, false, time.Hour, false},
-		{`{"count":0,"subnets":[]}`, false, madeListGrace / 2, false},
-		{`{"count":0,"subnets":[]}`, false, madeListGrace * 2, true},
-		{`{"count":1,"subnets":[{}]}`, false, time.Hour, false},
+		{`{"reason":"NOT_FOUND","error":"x"}`, true, 0, true, false},
+		// An operation not found yet is not a resource gone: within
+		// madeListGrace it goes on («Риск», conclusion 310, У1).
+		{`{"reason":"NOT_FOUND","error":"x"}`, true, 0, false, true},
+		{`{"reason":"NOT_FOUND","error":"x"}`, true, madeListGrace * 2, true, true},
+		{`{"reason":"API_UNREACHABLE","error":"x"}`, true, time.Hour, false, false},
+		{`{"status":"error_creating"}`, false, 0, true, false},
+		{`{"state":"ERROR"}`, false, 0, true, false},
+		{`{"status":"failed"}`, false, 0, true, false},
+		{`{"status":"creating"}`, false, time.Hour, false, false},
+		{`{"count":0,"subnets":[]}`, false, madeListGrace / 2, false, false},
+		{`{"count":0,"subnets":[]}`, false, madeListGrace * 2, true, false},
+		{`{"count":1,"subnets":[{}]}`, false, time.Hour, false, false},
 		// The read of an operation: ended with an error, done, going on.
-		{`{"id":"op-1","done":true,"error":{"code":13,"message":"x"}}`, false, 0, true},
-		{`{"id":"op-1","done":true,"error":"x"}`, false, 0, true},
-		{`{"id":"op-1","done":true,"resource_status":"ACTIVE"}`, false, 0, false},
-		{`{"id":"op-1","done":false}`, false, time.Hour, false},
+		{`{"id":"op-1","done":true,"error":{"code":13,"message":"x"}}`, false, 0, true, false},
+		{`{"id":"op-1","done":true,"error":"x"}`, false, 0, true, false},
+		{`{"id":"op-1","done":true,"resource_status":"ACTIVE"}`, false, 0, false, false},
+		{`{"id":"op-1","done":false}`, false, time.Hour, false, false},
 	} {
-		if got := madeEnded(c.read, c.isErr, c.age); got != c.want {
-			t.Errorf("madeEnded(%s, %v, %v) = %v, want %v", c.read, c.isErr, c.age, got, c.want)
+		if got := madeEnded(c.read, c.isErr, c.age, c.op); got != c.want {
+			t.Errorf("madeEnded(%s, %v, %v, op %v) = %v, want %v", c.read, c.isErr, c.age, c.op, got, c.want)
 		}
 	}
 }
@@ -372,14 +375,13 @@ func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	return rec.Result(), nil
 }
 
-// «Риск», conclusion 302, У1 (dns_zone_create in madeRepeatPending, the
-// line #2145): dns_zone_create's repeat, while the zone is
-// taken and not listed, reads the list of zones its answer names
-// (dns_zones, with no argument: the private ones — the line of the release
-// plan «повтор dns_zone_create для публичной зоны», C(7)) and answers
-// waiting with repeat_of: no second POST, with consent or without. The
-// list holds another zone of the project, so it is not empty and the wait
-// goes on (until madeMaxAge), not past madeListGrace.
+// «Риск», conclusion 302, У1 (the line #2145): dns_zone_create's repeat,
+// while the zone is taken and not listed, reads the step its answer names —
+// the operation (dns_operation) — and answers waiting with repeat_of: no
+// second POST, with consent or without. (A, #2146, took the read for
+// dns_zones with no argument, the private zones only; dns_zones reads both
+// visibilities — handleDnsZones — and the step is the operation now, C(7).
+// Both visibilities: TestDNSZoneCreate_RepeatReadsItsOperationInBothVisibilities.)
 func TestDNSZoneCreate_ARepeatWhileTheZoneIsNotListedSendsNoSecondCreate(t *testing.T) {
 	api := &dnsWaitAPI{}
 	r := waitingRegistry(t, api)

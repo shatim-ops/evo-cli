@@ -259,6 +259,10 @@ func (s *Registry) planDnsZoneCreate(ctx context.Context, args map[string]any) (
 		if op.ResourceID != "" {
 			out["zone_id"] = op.ResourceID
 		}
+		// The machine's next step is the read of the operation (§6, axis
+		// 2), as the deletes of DNS name it (#2025): a repeat of this call
+		// reads it and sends no second create (D113).
+		nextStep(out, "dns_operation", map[string]any{"operation_id": op.ID})
 		return toJSON(out), false
 	}}, nil
 }

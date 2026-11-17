@@ -268,3 +268,14 @@ func TestSnatCreate_RussianNotesNameCommands(t *testing.T) {
 		t.Errorf("the note of an unknown state does not name the list command: %q", m.unknownRU)
 	}
 }
+
+// The refusal of a resource the platform failed to make quotes its state
+// once: "error_creating", not "\"error_creating\"" (a double quote of #2140,
+// found at its own review).
+func TestMadeAnswer_TheFailedStateIsQuotedOnce(t *testing.T) {
+	out := madeRun(t, []string{"error_creating"}, subnetMade)
+	msg, _ := out["error"].(string)
+	if !strings.Contains(msg, `state "error_creating"`) || strings.Contains(msg, `\"`) {
+		t.Errorf("error %q: want the state quoted once", msg)
+	}
+}
