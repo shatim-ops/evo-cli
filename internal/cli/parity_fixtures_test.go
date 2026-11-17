@@ -242,6 +242,7 @@ var parityArgs = map[string]map[string]any{
 	"whoami":      {},
 	"agent_skill": {"group": "pg"},
 	"doctor":      {},
+	"history":     {},
 }
 
 // paritySetup prepares what a preview reads from disk; it returns the
