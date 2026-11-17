@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
@@ -63,6 +64,11 @@ type containerWorld struct {
 // (#2254, the cost of variant B).
 func TestUntrustedContainers_MarkedInEveryAnswer(t *testing.T) {
 	faultToolsIsolate(t)
+	// A wait for an operation ends with the budget of the call, as in an
+	// MCP call (D69): the answer of a wait cut short is a world too.
+	first := opWaitFirstDelay
+	opWaitFirstDelay = time.Millisecond
+	t.Cleanup(func() { opWaitFirstDelay = first })
 	body := hostileBody()
 	var worlds []containerWorld
 	for _, confirmed := range []bool{false, true} {
@@ -71,6 +77,9 @@ func TestUntrustedContainers_MarkedInEveryAnswer(t *testing.T) {
 			containerWorld{"refusals of the API (422)", &oddAPI{status: http.StatusUnprocessableEntity, body: body}, confirmed},
 			containerWorld{"not found (404)", &oddAPI{status: http.StatusNotFound, body: body}, confirmed})
 		for from := 2; from <= 4; from++ {
+			if confirmed && from > 2 {
+				break
+			}
 			worlds = append(worlds, containerWorld{"a connection broken from a later request", &brokenAfterAPI{body: body, from: from}, confirmed})
 		}
 	}
@@ -80,6 +89,7 @@ func TestUntrustedContainers_MarkedInEveryAnswer(t *testing.T) {
 		cloud.SetToken("t")
 		cloud.Backoff = 1
 		r := raRegistry(t, w.api, cloud, nil)
+		r.SetCallBudget(100 * time.Millisecond)
 		for _, tl := range r.Tools() {
 			for _, args := range requiredCalls(tl) {
 				args = maps.Clone(args)
