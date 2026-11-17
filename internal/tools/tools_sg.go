@@ -306,7 +306,7 @@ func (s *Registry) sgRuleDeleted(ctx context.Context, eng *engine.Engine, group 
 				return true, nil
 			case "error", "error_deleting":
 				return true, clierrors.New(clierrors.CodeAPIError,
-					i18n.Tf("rule %s is in state %s after the delete", "правило %s после удаления в состоянии %s", ruleID, st),
+					i18n.Tf("rule %s is in state %s after the delete", "правило %s после удаления в состоянии %s", ruleID, quoteCloud(st)),
 					i18n.T("list_security_groups with rules=true shows it.", "Его показывает list_security_groups с rules=true."))
 			}
 			return false, nil

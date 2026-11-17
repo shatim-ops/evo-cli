@@ -7,6 +7,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -75,7 +76,9 @@ var optionalUnnamed = map[string]string{}
 // optionalSummarized are the optional arguments the preview names by a
 // summary under their own key, not by the text sent (tools.echoedArg.summary:
 // a PEM chain, a cloud-init template are too long for a line of the
-// question): the summary carries the SHA-256 of what goes.
+// question): the summary carries the SHA-256 of what goes, or, for a
+// template that may carry a secret, its size and lines alone (risk
+// conclusion 299: a hash of a short secret is found by a dictionary).
 var optionalSummarized = map[string]bool{
 	"cert_import intermediate_certificate": true,
 	"image_create user_data_template":      true,
@@ -212,15 +215,19 @@ func TestPreview_NamesEveryOptionalArgument(t *testing.T) {
 	w.rt.takeUnknown()
 }
 
-// summarized: a value of the key is a summary with a SHA-256.
+// summarized: a value of the key is a summary — with a SHA-256, or of
+// the size and the lines.
 func summarized(values map[string]bool) bool {
 	for v := range values {
-		if strings.Contains(v, "SHA-256 ") {
+		if strings.Contains(v, "SHA-256 ") || sizeLines.MatchString(v) {
 			return true
 		}
 	}
 	return false
 }
+
+// sizeLines is the summary of a text by its size and lines.
+var sizeLines = regexp.MustCompile(`^\d+ bytes, \d+ lines`)
 
 // fullOptionalArgs is base with every optional argument of tl set, and the
 // names of those set; used records the lines of optionalArgs and

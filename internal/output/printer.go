@@ -182,10 +182,13 @@ func (p *Printer) Warning(msg string) {
 	}
 }
 
-// Errorf prints an error message in red.
+// Errorf prints an error message in red. An error may quote what the
+// cloud sent («Риск», conclusion 291-2): each of its lines is cleaned as a
+// step line is; the line breaks stay — an error lists the matches of an
+// ambiguous name one per line.
 func (p *Printer) Errorf(msg string, args ...any) {
 	p.ProgressDone()
-	formatted := fmt.Sprintf(msg, args...)
+	formatted := sanitizeLines(fmt.Sprintf(msg, args...))
 	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s%s%s\n", colorBold, colorRed, errorPrefix(), formatted, colorReset)
 	} else {
@@ -193,12 +196,15 @@ func (p *Printer) Errorf(msg string, args ...any) {
 	}
 }
 
-// Hint prints a hint/suggestion in dim text.
+// Hint prints a hint/suggestion in dim text, one line, cleaned as a step
+// line is: a hint may name what the cloud sent, and it goes where the
+// steps go («Риск», conclusion 291-2).
 func (p *Printer) Hint(msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
+	msg = sanitizeCell(msg)
 	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s\n", colorDim, msg, colorReset)
 	} else {
@@ -241,6 +247,24 @@ func sanitizeRow(row []string) []string {
 // SanitizeCell is sanitizeCell for text printed outside a table (a card
 // line with a name from the cloud).
 func SanitizeCell(s string) string { return sanitizeCell(s) }
+
+// sanitizeLines is sanitizeCell for each line of s: the line breaks of a
+// text of several lines stay, everything else is cleaned as a cell is. A
+// line after the first always starts indented — a service's refusal quoted
+// in an error may carry real line breaks, and its lines never start where
+// evo's own «Error:» or «Hint:» do («Риск», conclusion 298, У1); a line
+// already indented (the matches of an ambiguous name) stays as it is.
+func sanitizeLines(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		l = sanitizeCell(l)
+		if i > 0 && l != "" && !strings.HasPrefix(l, " ") {
+			l = "  " + l
+		}
+		lines[i] = l
+	}
+	return strings.Join(lines, "\n")
+}
 
 // sanitizeCell makes a table cell safe for a terminal. Cells carry names
 // and descriptions from the cloud: an escape sequence could repaint or

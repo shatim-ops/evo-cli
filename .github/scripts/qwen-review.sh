@@ -78,7 +78,7 @@ sensitive() {
         internal/tools/history.go | internal/history/* | internal/tools/tools_history.go | internal/cli/history_view.go | \
         internal/tools/tools_auth.go | internal/intent/* | internal/secret/* | internal/login/flow.go | \
         internal/cli/trees.go | internal/cli/login.go | internal/floatingip/floatingip.go | internal/receipt/receipt.go | \
-        internal/tools/made_repeat.go | internal/tools/errreason.go | internal/tools/delete_preview.go | \
+        internal/tools/preview_args.go | internal/tools/made_repeat.go | internal/tools/errreason.go | internal/tools/delete_preview.go | \
         internal/tools/tools_backup.go | internal/tools/journal.go | internal/tools/card.go | internal/tools/completion.go | \
         internal/tools/untrusted.go | internal/journal/journal.go | internal/mcp/http.go | \
         internal/mcp/http_policy.go | internal/mcp/http_redact.go | internal/mcp/http_kube.go) found=1 ;;
