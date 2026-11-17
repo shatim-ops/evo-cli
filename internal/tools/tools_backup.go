@@ -527,7 +527,7 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 		}
 		// The id before the wait: Ctrl-C in the tenth minute leaves no billed
 		// backup without its id on the screen (conclusion 164, У6).
-		announce(ctx, i18n.Tf("backup %s (%s) is being made", "копия %s (%s) делается", name, id))
+		announce(ctx, i18n.Tf("backup %s (%s) is being made", "копия %s (%s) делается", name, quoteCloud(id)))
 		return s.backupCreated(ctx, eng, api, args, id, b)
 	}}, nil
 }
@@ -560,7 +560,7 @@ func backupOfTheName(b map[string]any) (string, bool) {
 		return toJSON(ans), false
 	case "deleting":
 		return errAnswer(clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("a backup of the source named %s is being deleted (%s): no new backup was made", "копия ресурса с именем %s удаляется (%s): новая копия не сделана", quoteCloud(fmt.Sprint(b["name"])), id),
+			i18n.Tf("a backup of the source named %s is being deleted (%s): no new backup was made", "копия ресурса с именем %s удаляется (%s): новая копия не сделана", quoteCloud(fmt.Sprint(b["name"])), quoteCloud(id)),
 			i18n.T("Wait until backup_get answers it is gone, or take another name.", "Дождитесь, пока backup_get ответит, что её нет, или возьмите другое имя.")),
 			map[string]any{"backup_id": id, "state": st}), true
 	}
@@ -886,7 +886,7 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 		if len(found) == 1 && !announced {
 			announced = true
 			did, _ := found[0]["id"].(string)
-			announce(ctx, i18n.Tf("disk %s (%s) is being restored", "диск %s (%s) восстанавливается", name, did))
+			announce(ctx, i18n.Tf("disk %s (%s) is being restored", "диск %s (%s) восстанавливается", name, quoteCloud(did)))
 		}
 		return len(found) > 1 || st == "available" || strings.HasPrefix(st, "error"), nil
 	}

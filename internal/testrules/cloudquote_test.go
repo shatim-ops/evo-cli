@@ -60,9 +60,6 @@ var unquotedCloudLocals = map[string]int{
 	"internal/tools/delete_preview.go|Registry.deletePlan":          1,
 	"internal/tools/made.go|madeAnswer":                             10,
 	"internal/tools/tools.go|destroyTargetPreview":                  1,
-	"internal/tools/tools_backup.go|Registry.backupRestored":        1,
-	"internal/tools/tools_backup.go|Registry.planBackupCreate":      1,
-	"internal/tools/tools_backup.go|backupOfTheName":                1,
 	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":       3,
 	"internal/tools/tools_deploy.go|Registry.planReleaseFloatingIP": 2,
 	"internal/tools/tools_deploy.go|appliedPlan":                    4,
@@ -71,7 +68,6 @@ var unquotedCloudLocals = map[string]int{
 	"internal/tools/tools_disk.go|diskCreated":                      5,
 	"internal/tools/tools_nlb.go|Registry.planLbCreate":             1,
 	"internal/tools/tools_nlb.go|Registry.planTgCreate":             2,
-	"internal/tools/tools_pg.go|Registry.planPgCreate":              1,
 	"internal/tools/tools_snat.go|Registry.planSnatCreate":          2,
 	"internal/tools/tools_stack.go|Registry.advance":                2,
 }
