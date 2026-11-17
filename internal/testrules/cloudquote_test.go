@@ -48,23 +48,19 @@ var unquotedCloudSteps = map[string]int{
 // (cloudLocals; «Риск», conclusion 312-2): errors and texts here,
 // steps of progress in unquotedCloudLocalSteps. The list only shrinks: a
 // place fixed by quoteCloud leaves it in the same PR. Its fixes are the
-// development's, by this list: A — tools_disk, tools_nlb, tools_snat,
-// engine/deploy.go, engine/destroy.go; B — tools_backup, tools_pg;
+// development's, by this list (A's — tools_disk, tools_nlb, tools_snat,
+// engine/deploy.go, engine/destroy.go — are closed): B — tools_backup, tools_pg;
 // C — tools_deploy, made.go, tools_stack, opanswer.go,
 // engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
-	"internal/engine/create_preview.go|ShowCreatePreview":           1,
-	"internal/tools/delete_preview.go|Registry.deletePlan":          1,
-	"internal/tools/made.go|madeAnswer":                             10,
-	"internal/tools/tools.go|destroyTargetPreview":                  1,
-	"internal/tools/tools_backup.go|Registry.backupRestored":        1,
-	"internal/tools/tools_backup.go|Registry.planBackupCreate":      1,
-	"internal/tools/tools_backup.go|backupOfTheName":                1,
-	"internal/tools/tools_deploy.go|Registry.planReleaseFloatingIP": 2,
-	"internal/tools/tools_deploy.go|appliedPlan":                    4,
-	"internal/tools/tools_pg.go|Registry.planPgCreate":              1,
-	"internal/tools/tools_stack.go|Registry.advance":                2,
+	"internal/engine/create_preview.go|ShowCreatePreview":      1,
+	"internal/tools/delete_preview.go|Registry.deletePlan":     1,
+	"internal/tools/tools.go|destroyTargetPreview":             1,
+	"internal/tools/tools_backup.go|Registry.backupRestored":   1,
+	"internal/tools/tools_backup.go|Registry.planBackupCreate": 1,
+	"internal/tools/tools_backup.go|backupOfTheName":           1,
+	"internal/tools/tools_pg.go|Registry.planPgCreate":         1,
 }
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only
