@@ -182,10 +182,11 @@ func (p *Printer) Warning(msg string) {
 	}
 }
 
-// Errorf prints an error message in red.
+// Errorf prints an error message in red, one line, cleaned as a step line
+// is: an error may quote what the cloud sent («Риск», conclusion 291-2).
 func (p *Printer) Errorf(msg string, args ...any) {
 	p.ProgressDone()
-	formatted := fmt.Sprintf(msg, args...)
+	formatted := sanitizeCell(fmt.Sprintf(msg, args...))
 	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s%s%s\n", colorBold, colorRed, errorPrefix(), formatted, colorReset)
 	} else {
@@ -193,12 +194,15 @@ func (p *Printer) Errorf(msg string, args ...any) {
 	}
 }
 
-// Hint prints a hint/suggestion in dim text.
+// Hint prints a hint/suggestion in dim text, one line, cleaned as a step
+// line is: a hint may name what the cloud sent, and it goes where the
+// steps go («Риск», conclusion 291-2).
 func (p *Printer) Hint(msg string) {
 	p.ProgressDone()
 	if p.mode == ModeJSON {
 		return
 	}
+	msg = sanitizeCell(msg)
 	if p.errColor {
 		fmt.Fprintf(p.errOut, "%s%s%s\n", colorDim, msg, colorReset)
 	} else {
