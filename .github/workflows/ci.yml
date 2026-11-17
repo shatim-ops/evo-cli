@@ -650,7 +650,7 @@ jobs:
         run: |
           log="$RUNNER_TEMP/connect.log"
           rc=0
-          strace -f --seccomp-bpf --decode-pids=comm -e trace=connect -o "$log" go test -count=1 ./... || rc=$?
+          strace -f --seccomp-bpf --decode-pids=comm -e trace=connect -o "$log" go test -count=1 -timeout 20m ./... || rc=$?
           # A failed test is the test job's; this job judges the trace.
           [ "$rc" = 0 ] || echo "::warning::go test под strace: код $rc — журнал соединений разобран всё равно"
           .github/scripts/offnet.sh "$log"

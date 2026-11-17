@@ -790,7 +790,7 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 		req := provision.CreateDiskReq{Name: name, Size: sizeGB, AvailabilityZoneID: zoneID, ProjectID: pid,
 			DiskTypeID: cfg.DiskTypeID, DiskTypeName: cfg.DiskTypeName}
 		zoneName, _ := zone["name"].(string)
-		dp := diskCreatePreview(eng, req, "", zoneName)
+		dp := diskCreatePreview(eng, req, "", "", zoneName)
 		// What the disk is made of, and what stays as it is: in the lines
 		// the person reads, not in the details only.
 		dp.Add("backup_id", id)

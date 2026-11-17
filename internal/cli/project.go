@@ -74,9 +74,12 @@ list projects for the key, the UUID is saved as given.`,
 			if err != nil {
 				return err
 			}
-			shown := id
+			// The id and the name come from the cloud's project list: the
+			// lines for the person print them sanitized, like the menus of
+			// configure.
+			shown := output.SanitizeCell(id)
 			if label != "" {
-				shown += " (" + label + ")"
+				shown += " (" + output.SanitizeCell(label) + ")"
 			}
 			if dryRunWrite(cmd.Context(), confirm.Preview{Action: "project use",
 				Summary: i18n.Tf("set the project of profile %s: %s", "задать проект профиля %s: %s", name, shown)}) {

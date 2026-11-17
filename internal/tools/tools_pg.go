@@ -565,6 +565,8 @@ func (s *Registry) planPgDbCreate(ctx context.Context, args map[string]any) (*Pl
 		}
 		db, err := cli.CreateDatabase(ctx, cid, body)
 		if err != nil {
+			err = noReceipt(err, i18n.Tf("The database may have been made: pg_databases cluster_id=%s shows it — read it before any repeat.",
+				"База могла быть создана: её покажет evo pg databases %s — прочитайте до любого повтора.", cid))
 			err = fmt.Errorf(i18n.T("create database: %w", "создание базы: %w"), err)
 			return errResult(pgCreateOfExisting(ctx, pgDatabase, name, databases, err)), true
 		}
@@ -652,6 +654,8 @@ func (s *Registry) planPgUserCreate(ctx context.Context, args map[string]any) (*
 		body := map[string]any{"cluster_id": cid, "name": name, "password": password}
 		u, err := cli.CreateUser(ctx, cid, body)
 		if err != nil {
+			err = noReceipt(err, i18n.Tf("The user may have been made: pg_users cluster_id=%s shows it — read it before any repeat.",
+				"Пользователь мог быть создан: его покажет evo pg users %s — прочитайте до любого повтора.", cid))
 			err = fmt.Errorf(i18n.T("create user: %w", "создание пользователя: %w"), err)
 			return errResult(pgCreateOfExisting(ctx, pgUser, name, users, err)), true
 		}

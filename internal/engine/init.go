@@ -175,39 +175,45 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 	return nil
 }
 
-// preferredZone is the zone Kafka and Redis take when none is given
-// (kafka_specs, redis_specs and their creates): offered first because on
-// 15.10.2026 ru.AZ-1 failed three cloud-e2e runs in a row and ru.AZ-2
-// passed. evo init no longer takes it (agent run C2, Ц-7: one idea of «the
-// default zone» with the platform, DefaultZoneFirst); whether the
-// products of DBaaS take DefaultZoneFirst too is the release's question.
-const preferredZone = "ru.AZ-2"
-
-// PreferredZoneFirst moves preferredZone to the front, keeping the order of
-// the rest; zones without it are returned as they are.
-func PreferredZoneFirst(zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
-	for i, z := range zones {
-		if z.Name == preferredZone {
-			out := make([]*provision.AvailabilityZone, 0, len(zones))
-			out = append(out, z)
-			out = append(out, zones[:i]...)
-			return append(out, zones[i+1:]...)
-		}
-	}
-	return zones
-}
-
 // defaultZone reports the zone the zone list marks default, while it takes
 // new resources: a closed zone is no default for a new VM (ru.AZ-1 on
 // 29.10, OPS-19).
 func defaultZone(z *provision.AvailabilityZone) bool { return z.Default && !z.Closed() }
 
-// DefaultZoneFirst moves the zone the zone list marks default (defaultZone)
-// to the front, keeping the order of the rest; a list without one is
-// returned in the API's order. The one idea of «the default zone» evo
-// has, with evo vm zones (agent run C2, Ц-7). The input is not changed.
-func DefaultZoneFirst(zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
+// ZoneUse is what a new resource is, for the zone it takes by default.
+type ZoneUse int
+
+const (
+	// ZoneVM: a VM, and what evo init and evo configure offer.
+	ZoneVM ZoneUse = iota
+	// ZoneDBaaS: a cluster of PostgreSQL, Kafka or Redis.
+	ZoneDBaaS
+)
+
+// declaredZones are the zones a use takes first in place of the zone
+// list's default, declared beside the rule so the default zone has one
+// place (release plan 1.9, «Зона по умолчанию у Kafka и Redis…»; «Риск»,
+// conclusion 254). The DBaaS creates keep ru.AZ-2, the zone they took
+// before the rule had one place: where a paid cluster goes by default is
+// the owner's to change (#2008).
+var declaredZones = map[ZoneUse]string{ZoneDBaaS: "ru.AZ-2"}
+
+// DefaultZoneFirst orders zones for a new resource of use, the default
+// first, keeping the order of the rest; the input is not changed. The
+// default is the zone use declares (declaredZones), when the list has it;
+// else the zone the zone list marks default (defaultZone) — the idea of
+// «the default zone» of evo vm zones (agent run C2, Ц-7); a list with
+// neither stays in the API's order.
+func DefaultZoneFirst(zones []*provision.AvailabilityZone, use ZoneUse) []*provision.AvailabilityZone {
 	out := append([]*provision.AvailabilityZone(nil), zones...)
+	if name, ok := declaredZones[use]; ok {
+		for i, z := range out {
+			if z.Name == name {
+				return append(append([]*provision.AvailabilityZone{z}, out[:i]...), out[i+1:]...)
+			}
+		}
+		return out
+	}
 	sort.SliceStable(out, func(i, j int) bool { return defaultZone(out[i]) && !defaultZone(out[j]) })
 	return out
 }
@@ -242,7 +248,7 @@ func (e *Engine) ZoneChoices(ctx context.Context, zones []*provision.Availabilit
 // Without a project or the subnet list the default zone goes first.
 func (e *Engine) initZones(ctx context.Context, zones []*provision.AvailabilityZone) []*provision.AvailabilityZone {
 	marked := defaultZone
-	zones = DefaultZoneFirst(zones)
+	zones = DefaultZoneFirst(zones, ZoneVM)
 	if e.Config.ProjectID == "" {
 		return zones
 	}

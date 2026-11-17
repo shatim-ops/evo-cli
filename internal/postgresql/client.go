@@ -24,6 +24,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
+	"github.com/shatim-ops/evo-cli/internal/receipt"
 )
 
 const defaultBaseURL = "https://postgresql.api.cloud.ru"
@@ -262,9 +263,8 @@ func (c *Client) CreateDatabase(ctx context.Context, clusterID string, body map[
 	if status < 200 || status >= 300 {
 		return nil, apiError(status, data)
 	}
-	var out map[string]any
-	_ = json.Unmarshal(data, &out)
-	return out, nil
+	// The receipt names the database (Database.name, required).
+	return receipt.Decode(data, "name")
 }
 
 func (c *Client) DeleteDatabase(ctx context.Context, clusterID, name string) error {
@@ -292,9 +292,8 @@ func (c *Client) CreateUser(ctx context.Context, clusterID string, body map[stri
 	if status < 200 || status >= 300 {
 		return nil, apiError(status, data)
 	}
-	var out map[string]any
-	_ = json.Unmarshal(data, &out)
-	return out, nil
+	// The receipt names the user (User.name, required).
+	return receipt.Decode(data, "name")
 }
 
 func (c *Client) DeleteUser(ctx context.Context, clusterID, name string) error {

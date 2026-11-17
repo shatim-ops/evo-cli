@@ -296,7 +296,9 @@ func (s *Registry) planFipAttach(ctx context.Context, args map[string]any) (*Pla
 		Preview: map[string]any{
 			"message": i18n.T("fip_attach gives the VM a public address.",
 				"fip_attach даёт ВМ публичный адрес."),
-			"will_attach": map[string]any{"fip": fipRef, "vm": vmRef},
+			// The VM by the id its name resolved to too: two VMs may share a
+			// name (§6, axis 4).
+			"will_attach": map[string]any{"fip": fipRef, "vm": vmRef, "vm_id": vmID},
 		},
 		Execute: func(ctx context.Context) (string, bool) {
 			res, err := eng.Cloud.AttachFloatingIP(ctx, fipID, pid, ifaceID, name)
