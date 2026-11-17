@@ -84,7 +84,7 @@ func TestSecretWrites_EveryToolWithASecretInput(t *testing.T) {
 // labels of a secret and of a certificate is a map the call itself set: it
 // goes out as a map of its scalar values, as in v1.8.2, not dropped as an
 // object with no set of its own (Astra 2067, #2079; «Риск»: not intended).
-// A value under a label that is an object or a list stays in.
+// A value under a label that is an object or a list is dropped.
 func TestSecretWrites_LabelsAreAMapOfScalars(t *testing.T) {
 	for name, keys := range map[string]fieldSet{"secret": secretKeys, "certificate": certificateKeys} {
 		in := map[string]any{"id": "s1", "labels": map[string]any{
