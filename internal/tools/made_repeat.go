@@ -152,6 +152,9 @@ func (r *Registry) rememberMade(rec intent.Intent, answer string) {
 	if !ok || !rooted || rec.Key == nil {
 		return
 	}
+	// The consent of this call is not kept: a later call gives its own,
+	// or none (A19-1).
+	nextArgs = withoutConsent(nextArgs)
 	mc := madeCall{Tool: rec.Tool, Name: rec.Name, Target: rec.Target, ProjectID: rec.ProjectID, Key: rec.Key,
 		ID: id, Next: next, NextArgs: nextArgs, StartedAt: clock.Now()}
 	b, err := json.Marshal(mc)
@@ -189,7 +192,10 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	file := filepath.Join(MadeDir(root), madeKey(name, r.canonArgs(name, args), resource, target))
 	b, err := config.ReadFileNoFollow(file)
 	var mc madeCall
-	if err != nil || json.Unmarshal(b, &mc) != nil || mc.Key == nil {
+	// A file is evo's own only when it names the key that wrote it: an
+	// empty key — what a cloned directory of the state, or anyone who
+	// writes in it, may bring — is not «unknown», it is not read (A19-1).
+	if err != nil || json.Unmarshal(b, &mc) != nil || mc.Key == nil || (mc.Key.ServiceAccountID == "" && mc.Key.KeyID == "") {
 		return "", false, false
 	}
 	eng, _ := r.engineOfCall(args)
@@ -211,8 +217,19 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		"Предыдущий вызов %s для %s принят платформой как %s, его исход ещё неизвестен: второе создание не отправлено; ниже — его ход.",
 		name, quoteCloud(resource), mc.ID)
 	out := map[string]any{"message": said}
-	if t, found := r.Lookup(mc.Next); found && t.Handler != nil {
-		read, readErr := t.Handler(ctx, maps.Clone(mc.NextArgs))
+	// The step runs only as a read: the call that repeats has not
+	// consented to anything, whatever the file holds. A step that changes
+	// the resource (disk_attach of disk_create with attach_to) is named,
+	// with no consent, for the caller to take (A19-1, #2418).
+	step := withoutConsent(mc.NextArgs)
+	t, found := r.Lookup(mc.Next)
+	reads := found && t.Handler != nil && !t.Mutating && !NeedsConsent(t, step)
+	if found && !reads {
+		out["message"] = said + " " + i18n.Tf("Its next step, %s, changes the resource: it was not run; call it with confirmed=true to go on.",
+			"Его следующий шаг, %s, меняет ресурс: он не выполнен; чтобы продолжить, вызовите его с confirmed=true.", mc.Next)
+	}
+	if reads {
+		read, readErr := t.Handler(ctx, maps.Clone(step))
 		// The read says the resource is not there, or its operation
 		// failed: nothing goes on, the file goes, and the call is planned
 		// as any other — a new create («Риск», conclusion 268, 1).
@@ -243,6 +260,6 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		out["status"] = "waiting"
 	}
 	out["repeat_of"] = map[string]any{"tool": name, "id": mc.ID, "started_at": mc.StartedAt.UTC().Format(time.RFC3339)}
-	nextStep(out, mc.Next, maps.Clone(mc.NextArgs))
+	nextStep(out, mc.Next, step)
 	return toJSON(out), isErr, true
 }
