@@ -262,6 +262,19 @@ func (r *Registry) journalCheck(dir string) (DoctorCheck, bool) {
 	c := DoctorCheck{Name: "journal of changes", Status: CheckOK,
 		Detail: i18n.Tf("%s: %d KB since %s, %d live lines (made and not removed, or an outcome not known)",
 			"%s: %d КБ с %s, живых строк — %d (создано и не удалено или итог неизвестен)", dir, (s.Bytes+1023)/1024, s.Oldest, s.Live)}
+	if len(s.Deferred) > 0 {
+		// A pruning put off is said, with the files in the way and what
+		// they hold: the journal grows, and the person and the agent know
+		// why. No file is to be removed while it holds a live line — a
+		// resource made and not removed («Риск» to 324-3).
+		c.Status, c.Files = CheckWarn, s.Deferred
+		var files []string
+		for _, f := range s.Deferred {
+			files = append(files, i18n.Tf("%s: %d lines evo did not write, %d live", "%s: строк не от evo — %d, живых — %d", f.Name, f.NotEvos, f.Live))
+		}
+		c.Detail += i18n.Tf("; the pruning is put off: lines evo did not write would change what history finds live if it went on — nothing is removed and the journal grows; it tries again each day while they are there (%s). history shows what is live. A file with live lines is not to be moved or removed: a live line is a resource made and not removed, or an outcome not known",
+			"; очистка отложена: строки, которых evo не писал, изменили бы то, что history находит живым, — ничего не удаляется, и журнал растёт; очистка пробует снова каждый день, пока они есть (%s). Живое показывает history. Файл с живыми строками не переносить и не удалять: живая строка — ресурс, созданный и не удалённый, или неизвестный итог", strings.Join(files, "; "))
+	}
 	if s.OverCeiling {
 		c.Status = CheckWarn
 		c.Detail += i18n.T("; the live lines alone are over the ceiling of 64 MB: none is removed, and the journal grows — a line closes when evo deletes its resource",

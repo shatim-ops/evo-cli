@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -363,6 +364,44 @@ func TestHistory_TheCallsPruningChecksLinesAsHistoryDoes(t *testing.T) {
 		}
 		if !slices.Contains(live, "still-live") {
 			t.Errorf("%s: live after the call's pruning %v; want still-live kept", mode, live)
+		}
+	}
+}
+
+// doctor says a pruning of the journal was put off and names the files in
+// the way, in its detail and in a field of their own — a pruning left undone
+// in silence is a journal that grows with no one told why («Риск» to 324-3).
+func TestDoctor_SaysAPruningPutOffAndTheFilesInTheWay(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), history.DirName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A delete in LiveName, which evo never writes there, closes a create
+	// of a file of a day that goes (TestPrune_LeftUndoneNamesTheFileInTheWay).
+	write("2026-07-01.jsonl", `{"format":1,"time":"2026-07-01T10:00:00Z","tool":"disk_create","kind":"disk","resource_id":"d-1","outcome":"created","intent_id":"a000000000000001"}`)
+	write(history.LiveName, `{"format":1,"time":"2026-07-15T10:00:00Z","tool":"disk_delete","kind":"disk","resource_id":"d-1","outcome":"deleted","intent_id":"a000000000000002"}`)
+	write("retired", "2026-08-01")
+	r := New(nil)
+	if p, err := history.Prune(dir, time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC), r.historyCheck); err != nil || len(p.Deferred) == 0 {
+		t.Fatalf("pruned %+v, %v; want it put off", p, err)
+	}
+	c, ok := r.journalCheck(dir)
+	data, _ := json.Marshal(c)
+	want := []history.DeferredFile{{Name: history.LiveName, NotEvos: 1}}
+	if !ok || c.Status != CheckWarn || !strings.Contains(c.Detail, history.LiveName) || !slices.Equal(c.Files, want) {
+		t.Errorf("doctor: %s; want a warning naming %s, in detail and in files with its counts", data, history.LiveName)
+	}
+	// No advice to remove a file: an agent with a terminal would run it,
+	// and a file of the journal may hold live lines («Риск» to 324-3).
+	for _, word := range []string{"remove it", "delete", "move a file", "rm "} {
+		if strings.Contains(strings.ToLower(c.Detail), word) {
+			t.Errorf("doctor advises %q: %s", word, c.Detail)
 		}
 	}
 }
