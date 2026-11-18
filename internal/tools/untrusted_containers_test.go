@@ -245,6 +245,11 @@ func TestUntrustedContainers_ProgressLinesAreEvos(t *testing.T) {
 				strings.HasPrefix(line, "==>") && strings.Contains(line, hostileMarker) {
 				t.Errorf("a line of the workload is a line of evo's progress (a stage of evo, or a line of its own): %q", part)
 			}
+			// The workload's line is shown in quotes, whole on its line
+			// («Риск», conclusion 344, У1).
+			if strings.Contains(part, hostileMarker) && !strings.Contains(part, `"`+hostileMarker+`"`) {
+				t.Errorf("a line of the workload is not in quotes: %q", part)
+			}
 		}
 	}
 	if !reached {
