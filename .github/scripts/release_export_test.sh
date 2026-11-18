@@ -33,7 +33,9 @@ git tag v0.1.0
 # Чистая ревизия: снимок, состав, один коммит без родителя.
 out=$tmp/snap
 log=$("$here/release_export.sh" v0.1.0 "$out" 2>&1) || { echo "FAIL: чистая ревизия: $log"; fail=1; }
-got=$(cd "$out" && find . -type f -not -path './.git/*' | sort | tr '\n' ' ')
+# Порядок состава — байтовый, при любой локали теста (Астра #2389: sort
+# в en_US.UTF-8 ставит ./LICENSE после ./internal).
+got=$(cd "$out" && find . -type f -not -path './.git/*' | LC_ALL=C sort | tr '\n' ' ')
 want="./LICENSE ./README.md ./cmd/x/main.go ./docs/guide.md ./go.mod ./internal/a/a.go "
 [ "$got" = "$want" ] || { echo "FAIL: состав «${got}», ждём «${want}»"; fail=1; }
 [ "$(git -C "$out" rev-list --count HEAD 2>/dev/null)" = 1 ] || { echo "FAIL: в снимке не один коммит"; fail=1; }
