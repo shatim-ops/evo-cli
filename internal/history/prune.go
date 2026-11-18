@@ -58,6 +58,10 @@ type rawLine struct {
 	text string
 	line Line
 	ok   bool
+	// stray: a line read whole that does not stand in its file (ofFile).
+	// It is not taken and not live: it goes with its file, never to
+	// LiveName, where its day is no more known.
+	stray bool
 }
 
 // Prune keeps the journal of dir in its bounds: a file of a day older than
@@ -67,7 +71,8 @@ type rawLine struct {
 // and any line this reader cannot read or does not know (a newer evo wrote
 // it: not this one's to drop) — checked by check as the reader checks it
 // (ReadAll), so a line history skips closes nothing here either (Астра,
-// #2297). The live lines are written whole to a temp
+// #2297). A line of another day in the file of a day (ofFile) is not live:
+// it goes with its file. The live lines are written whole to a temp
 // file and renamed, then the files go: a kill between the two leaves a
 // line twice, which a reader reads once (ReadAll), never none.
 //
@@ -105,7 +110,7 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 			return p, err
 		}
 		start := len(all)
-		all = append(all, rawLines(data, check)...)
+		all = append(all, rawLines(name, data, check)...)
 		from[name] = [2]int{start, len(all)}
 		if time.Now().After(deadline) { // wall-clock: the limit of one pruning
 			return p, nil
@@ -220,25 +225,27 @@ func dayFiles(dir string) ([]string, map[string]int64, error) {
 	return names, sizes, nil
 }
 
-// rawLines are the lines of data as they are, each with what a reader
+// rawLines are the lines of the file name, data, each with what a reader
 // makes of it; an empty line is none. A line too long for a reader is one
 // line it does not read — kept — and the lines after it are read as
 // ReadAll reads them (lines).
-func rawLines(data []byte, check Check) []rawLine {
+func rawLines(name string, data []byte, check Check) []rawLine {
 	var out []rawLine
 	for _, raw := range lines(data) {
 		r := rawLine{text: string(raw)}
 		// One reading of a line for the reader and the pruning (parse,
-		// check): what history skips, the pruning keeps as it is.
+		// fileCheck): what history skips, the pruning keeps as it is — but
+		// a line of another day, which no evo writes there.
 		r.line, r.ok = parse(raw)
-		r.ok = r.ok && (check == nil || check(r.line))
+		r.stray = r.ok && !ofFile(name, r.line)
+		r.ok = r.ok && fileCheck(name, check)(r.line)
 		out = append(out, r)
 	}
 	return out
 }
 
 // liveOfRaw is the live mask of raw lines: Live of the lines a reader
-// reads, and every line it does not — kept, never dropped.
+// reads, and every line it does not — kept, never dropped — but a stray one.
 func liveOfRaw(all []rawLine) []bool {
 	// Each line once, where the reader first meets it (readOrder): a copy
 	// of a line is the line, and is as live as it is.
@@ -253,7 +260,7 @@ func liveOfRaw(all []rawLine) []bool {
 	mask := liveMask(lines)
 	live := make([]bool, len(all))
 	for i, r := range all {
-		live[i] = !r.ok || mask[first[r.text]]
+		live[i] = (!r.ok && !r.stray) || (r.ok && mask[first[r.text]])
 	}
 	return live
 }
@@ -309,7 +316,7 @@ func Describe(dir string, check Check) (Summary, error) {
 		if name == LiveName {
 			s.Bytes += int64(len(data))
 		}
-		all = append(all, rawLines(data, check)...)
+		all = append(all, rawLines(name, data, check)...)
 	}
 	var liveBytes int64
 	seen := map[string]bool{}

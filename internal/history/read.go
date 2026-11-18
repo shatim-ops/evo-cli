@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -80,7 +81,7 @@ func ReadAll(dir string, check Check) (Journal, error) {
 			}
 			continue
 		}
-		j.read(data, check)
+		j.read(data, fileCheck(name, check))
 	}
 	return j, nil
 }
@@ -94,6 +95,24 @@ func ReadAll(dir string, check Check) (Journal, error) {
 // holds lines of retired days only, older than every file kept.
 func readOrder(days []string) []string {
 	return append(append([]string(nil), days...), LiveName)
+}
+
+// ofFile says whether the line l may stand in the file name: a line of the
+// file of a day is of that day — Append writes a line to the file of the day
+// of its time — and a line of another day there is not evo's («Риск»,
+// conclusion 324, 324-3: a line of another day reordered what is live).
+// LiveName holds the lines of many days: any may stand there.
+func ofFile(name string, l Line) bool {
+	return name == LiveName || strings.HasPrefix(l.Time, strings.TrimSuffix(name, ".jsonl")+"T")
+}
+
+// fileCheck is check for the lines of the file name: a line not of its file
+// (ofFile) is not taken, as a line check refuses. The reader and the pruning
+// take the lines of a file by it alike.
+func fileCheck(name string, check Check) Check {
+	return func(l Line) bool {
+		return ofFile(name, l) && (check == nil || check(l))
+	}
 }
 
 // read adds the lines of the file data.

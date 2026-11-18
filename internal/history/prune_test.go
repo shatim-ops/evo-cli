@@ -411,3 +411,33 @@ func TestPrune_KeepsWhatHistoryFindsLive(t *testing.T) {
 		}
 	}
 }
+
+// A line in the file of a day not its own is not evo's — Append writes a
+// line to the file of the day of its time — and is not taken: the reader
+// skips and counts it, it closes nothing, and the pruning does not move it
+// to LiveName — where its day is no more known — but lets it go with its
+// file («Риск», conclusion 324, 324-3: a line of another day reordered what
+// is live).
+func TestPrune_ALineInTheFileOfAnotherDayIsNotTaken(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	made := lineOf("d100000000000001", Created, "disk", "d-1", "2026-07-01T10:00:00Z")
+	stray := lineOf("d100000000000002", Deleted, "disk", "d-1", "2026-11-17T10:00:00Z") // a time of another day
+	writeDay(t, dir, "2026-07-01", made, stray)
+	j, err := ReadAll(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.Skipped != 1 || len(Live(j.Lines)) != 1 {
+		t.Fatalf("read: skipped %d, live %d; want the stray line skipped, the create live", j.Skipped, len(Live(j.Lines)))
+	}
+	if _, err := Prune(dir, pruneNow, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, LiveName))
+	if !strings.Contains(string(data), made) || strings.Contains(string(data), stray) {
+		t.Errorf("%s: %q; want the create kept, the stray line gone with its file", LiveName, data)
+	}
+	if j, _ := ReadAll(dir, nil); len(Live(j.Lines)) != 1 {
+		t.Errorf("after pruning live %+v; want the create", Live(j.Lines))
+	}
+}
