@@ -886,8 +886,8 @@ func TFlagFor() string {
 func TFlagTTL() string {
 	return i18n.T("Key validity: 7d, 30d or 90d (30d by default)", "Срок ключа: 7d, 30d или 90d (по умолчанию 30d)")
 }
-func EFor(forWhom string) string {
-	return i18n.Tf("--for %q: allowed values are me and agent", "--for %q: допустимо me или agent", forWhom)
+func EFor() string {
+	return i18n.T("--for: allowed values are me and agent", "--for: допустимо me или agent")
 }
 
 // EProject: --project is no ID and no name of a project.
@@ -928,7 +928,7 @@ func TEnvKeyWins() string {
 		"Заданы CLOUDRU_KEY_ID и CLOUDRU_SECRET: они важнее профиля, и после входа команды продолжат работать с ключом из переменных, а не с новым.")
 }
 
-func ETTL(ttl string) string {
-	return i18n.Tf("--key-ttl %q: allowed values are 7d, 30d and 90d", "--key-ttl %q: допустимо 7d, 30d или 90d", ttl)
+func ETTL() string {
+	return i18n.T("--key-ttl: allowed values are 7d, 30d and 90d", "--key-ttl: допустимо 7d, 30d или 90d")
 }
 func ETTLHint() string { return tForeverInConsole() + "." }
