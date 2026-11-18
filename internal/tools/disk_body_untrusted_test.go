@@ -79,3 +79,43 @@ func TestDisk_StateOfTheCloudAtTheLimit(t *testing.T) {
 		t.Errorf("a known state no longer is the status: %v", m["status"])
 	}
 }
+
+// The id of the disk a create answers with is the cloud's, whatever form it
+// has: disk_id and the arguments of the read that goes on (next_args) are
+// marked — on the way that waits and on the way that attaches (Астра
+// #2499). A disk_id a person gave (disk_attach, disk_detach) is not.
+func TestDiskCreate_IDOfTheCloudMarked(t *testing.T) {
+	faultToolsIsolate(t)
+	const vm = "00000000-0000-4000-8000-0000000000f1"
+	for name, c := range map[string]struct {
+		body   []byte
+		args   map[string]any
+		fields []string
+	}{
+		"waiting": {hostileBodyIn("creating", "creating", map[string]any{"id": "disk-" + hostileMarker, "vms": []any{}}),
+			map[string]any{"name": "data", "size_gb": 10, "zone": vm, "confirmed": true}, []string{"disk_id", "next_args"}},
+		"attached": {hostileBodyIn("available", "available", map[string]any{"id": "disk-" + hostileMarker, "vms": []any{map[string]any{"id": vm}}}),
+			map[string]any{"name": "data", "size_gb": 10, "zone": vm, "attach_to": vm, "confirmed": true}, []string{"disk_id"}},
+	} {
+		api := &oddAPI{status: http.StatusOK, body: c.body}
+		cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
+		cloud.SetToken("t")
+		cloud.Backoff = 1
+		r := raRegistry(t, api, cloud, nil)
+		r.SetCallBudget(containerBudget)
+		_, text, _ := callNamed(t, r, "disk_create", c.args)
+		var m map[string]any
+		if json.Unmarshal([]byte(text), &m) != nil {
+			t.Fatalf("%s: %s", name, text)
+		}
+		list, _ := m["_untrusted"].([]any)
+		for _, f := range c.fields {
+			b, _ := json.Marshal(m[f])
+			if !strings.Contains(string(b), hostileMarker) {
+				t.Errorf("%s: the world no longer reaches %s: %.400s", name, f, text)
+			} else if !slices.Contains(list, any(f)) {
+				t.Errorf("%s: %s carries the id of the cloud, \"_untrusted\" %v does not name it", name, f, list)
+			}
+		}
+	}
+}
