@@ -243,10 +243,11 @@ var decls = map[string]Decl{
 	"subnet_delete":        {Group: "vpc", Delete: deleteTarget{arg: "subnet_id", what: "subnet", whRU: "подсеть"}, IDArgs: []idArg{{name: "subnet_id", kind: kindSubnet, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
 	"list_security_groups": {Group: "vpc", Project: true, Untrusted: untrustedAnswer{fields: []string{"security_groups"}}},
 	"list_floating_ips":    {Group: "vpc", Project: true, Untrusted: untrustedAnswer{fields: []string{"floating_ips"}}},
-	// The names of the source groups of a port only groups let in: not
-	// named by the caller, unlike the group of the call.
-	"open_ports":  {Group: "deploy", IDArgs: []idArg{{name: "security_group", why: whyListed, party: partyGroup}}, Untrusted: untrustedAnswer{fields: []string{"open_only_to_groups", "vms"}}},
-	"close_ports": {Group: "deploy", Delete: deleteTarget{arg: "ports", parent: "security_group", what: "port rule", whRU: "правило порта"}, IDArgs: []idArg{{name: "security_group", why: whyListed}}},
+	// The names of the source groups of a port only groups let in, and
+	// the name of the group of the call: the caller names it by its id,
+	// the answer by the name the cloud has (A19-4, #2425).
+	"open_ports":  {Group: "deploy", IDArgs: []idArg{{name: "security_group", why: whyListed, party: partyGroup}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "open_only_to_groups", "vms"}}},
+	"close_ports": {Group: "deploy", Delete: deleteTarget{arg: "ports", parent: "security_group", what: "port rule", whRU: "правило порта"}, IDArgs: []idArg{{name: "security_group", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"security_group"}}},
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.
