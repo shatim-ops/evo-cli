@@ -6,10 +6,12 @@ package mcp
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
+	"unicode"
 )
 
 // The log of the HTTP server never holds a token: the server's own, nor
@@ -67,11 +69,17 @@ func TestHTTP_LogHoldsNoToken(t *testing.T) {
 }
 
 // tokenForms are the forms a line could carry a token in: as it is, in
-// another case, in Base64, and any 12 characters of it in a row.
+// another case, in Base64 and in hex (of the token and of its header), and
+// any 8 characters of it in a row with a letter among them — a part of the
+// token, not a run of digits a time or a port could hold («Риск», 367).
 func tokenForms(s string) []string {
-	forms := []string{s, strings.ToLower(s), strings.ToUpper(s), base64.StdEncoding.EncodeToString([]byte(s))}
-	for i := 0; i+12 <= len(s); i++ {
-		forms = append(forms, s[i:i+12])
+	forms := []string{s, strings.ToLower(s), strings.ToUpper(s),
+		base64.StdEncoding.EncodeToString([]byte(s)),
+		hex.EncodeToString([]byte(s)), hex.EncodeToString([]byte("Bearer " + s))}
+	for i := 0; i+8 <= len(s); i++ {
+		if w := s[i : i+8]; strings.IndexFunc(w, unicode.IsLetter) >= 0 {
+			forms = append(forms, w)
+		}
 	}
 	return forms
 }
