@@ -165,6 +165,21 @@ func (r *Registry) rememberMade(rec intent.Intent, answer string) {
 	_ = config.WriteFileAtomic(filepath.Join(dir, madeKey(rec.Tool, rec.Canon, rec.Name, rec.Target)), b, 0o600)
 }
 
+// madeStepReads tells that step, a read, is one the repeat of create runs
+// from a file of made/: a read of the resource create makes — its declared
+// list, or a read of the same group that names a resource by its id and
+// holds no secret (an operation, a card). A file of the key of the call
+// still names any tool: one that reads another thing — the journal, a file
+// of the machine, a kubeconfig — is named, not run, and its answer does not
+// stand for the repeat's (A19-42, #2470).
+func (r *Registry) madeStepReads(create string, step Tool) bool {
+	if c, ok := createdOf(create); ok && step.Name == c.list {
+		return true
+	}
+	ct, ok := r.Lookup(create)
+	return ok && step.Group == ct.Group && !step.Decl.Sensitive && len(step.Decl.IDArgs) > 0
+}
+
 // madeByKey tells that the key cur wrote the file of made/ whose key is m:
 // a field both name — the account, else the Key ID — is the same. A file
 // whose key names nothing cur knows too — empty, or another account the
@@ -239,12 +254,17 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	// with no consent, for the caller to take (A19-1, #2418).
 	step := withoutConsent(mc.NextArgs)
 	t, found := r.Lookup(mc.Next)
-	reads := found && t.Handler != nil && !t.Mutating && !NeedsConsent(t, step)
-	if found && !reads {
+	writes := found && (t.Mutating || NeedsConsent(t, step))
+	reads := found && t.Handler != nil && !writes && r.madeStepReads(name, t)
+	switch {
+	case writes:
 		// No consent is told here: the step asks for it with its own
 		// preview («Риск», conclusion 379).
 		out["message"] = said + " " + i18n.Tf("Its next step, %s, needs its own consent: it was not run.",
 			"Его следующему шагу, %s, нужно своё согласие: он не выполнен.", mc.Next)
+	case found && !reads:
+		out["message"] = said + " " + i18n.Tf("Its next step, %s, does not read this resource: it was not run.",
+			"Его следующий шаг, %s, не читает этот ресурс: он не выполнен.", mc.Next)
 	}
 	if reads {
 		read, readErr := t.Handler(ctx, maps.Clone(step))

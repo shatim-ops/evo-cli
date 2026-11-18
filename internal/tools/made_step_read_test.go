@@ -198,3 +198,44 @@ func TestMadeRepeat_NoCreateRunsAWriteStepWithoutConsent(t *testing.T) {
 		t.Errorf("%d creates read a file of made/, %d expected: the world no longer reaches them", len(read), madeStepWriters)
 	}
 }
+
+// A file of made/ of the key of the call runs as its step only a read of
+// the resource the create makes — its list, or a read of the same group
+// that names a resource by its id and holds no secret: any other read the
+// file names (history, deploy_plan with a path of the machine) is named,
+// not run, and its answer does not stand for the repeat's (A19-42, #2470).
+func TestMadeRepeat_AStepOfAnotherKindIsNotRun(t *testing.T) {
+	for _, next := range []struct {
+		tool string
+		args string
+		// field is a field only the answer of the step has.
+		field string
+	}{{"history", `{}`, "journal_of"}, {"deploy_plan", `{"compose_file":"/etc/passwd"}`, "services"}} {
+		w := (&restoreWorld{}).stateIn(t)
+		r := restoreRegistry(t, w)
+		args := map[string]any{"backup_id": brBackup, "name": "restored"}
+		resource, target, err := r.resourceOf(context.Background(), "backup_restore", args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		eng, _ := r.engineOfCall(args)
+		project := projectOfCall(eng, intent.Intent{Tool: "backup_restore", Name: resource, Target: target}, args)
+		key, _ := json.Marshal(eng.Maker())
+		body := `{"key":` + string(key) + `,"id":"x","project_id":"` + project + `","started_at":"` + clock.Now().UTC().Format(time.RFC3339) +
+			`","next":"` + next.tool + `","next_args":` + next.args + `}`
+		dir := MadeDir(w.dir)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, madeKey("backup_restore", r.canonArgs("backup_restore", args), resource, target)), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m, text, _ := callNamed(t, r, "backup_restore", args)
+		if _, read := m["repeat_of"]; !read {
+			t.Fatalf("%s: the world no longer reads the file of made/: %s", next.tool, text)
+		}
+		if _, ran := m[next.field]; ran || m["status"] != "waiting" {
+			t.Errorf("%s: the repeat ran a step that reads another thing than the resource (status %v): %.400s", next.tool, m["status"], text)
+		}
+	}
+}
