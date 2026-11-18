@@ -491,7 +491,7 @@ func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any)
 		return nil, usageErr("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required", "нужны 'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) и 'value' или 'values'")
 	}
 	if !slices.Contains(dnsRecordTypes, rtype) {
-		return nil, usageErr("record_type %q is not one of %s", "record_type %q не входит в список: %s", stringArg(args, "record_type"), strings.Join(dnsRecordTypes, ", "))
+		return nil, usageErr("record_type: the value is not one of %s", "record_type: значение не входит в список: %s", strings.Join(dnsRecordTypes, ", "))
 	}
 	ttl := pgInt(args, "ttl", 300)
 	cli, err := s.dnsClient(ctx)

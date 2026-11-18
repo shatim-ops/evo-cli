@@ -63,7 +63,7 @@
     "id_args": [
       "backup_id why=\"\" target=false ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[name description tags resource_name source protection_plan] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name description tags resource_name source protection_plan] whole:false own:[] workload:false deep:false}"
   },
   "backup_list": {
     "project": true,
@@ -216,7 +216,7 @@
     "nameless": "the VM is named by the saved plan, checked by deploy_plan",
     "id_args": [
       "plan_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false",
-      "vm_id why=\"the VM the next step of a call goes on with (continuedVM, D102): the call only reads it by id, to refuse when it is gone; what the call writes lands in its own project, as without the argument\" target=false ids=false"
+      "vm_id why=\"the VM the next step of a call goes on with (continuedVM): the call only reads it by id, to refuse when it is gone; what the call writes lands in its own project, as without the argument\" target=false ids=false"
     ]
   },
   "deploy_plan": {
@@ -274,7 +274,8 @@
   "disk_resize": {
     "id_args": [
       "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
-    ]
+    ],
+    "untrusted": "{fields:[disk] whole:false own:[] workload:false deep:false}"
   },
   "dns_operation": {
     "id_args": [
@@ -512,7 +513,7 @@
     "id_args": [
       "nodepool_id why=\"\" target=false ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[name cluster_name labels taints flavor] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name cluster_name labels taints flavor] whole:false own:[] workload:false deep:false}"
   },
   "k8s_nodepool_scale": {
     "destructive": true,
@@ -839,7 +840,7 @@
     "created": "{id:vm_id lost: arg: none: list:vm_list field:vms listArgs:[] delete:destroy}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
-      "vm_id why=\"the VM the next step of a call goes on with (continuedVM, D102): the call only reads it by id, to refuse when it is gone; what the call writes lands in its own project, as without the argument\" target=false ids=false",
+      "vm_id why=\"the VM the next step of a call goes on with (continuedVM): the call only reads it by id, to refuse when it is gone; what the call writes lands in its own project, as without the argument\" target=false ids=false",
       "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
       "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
       "subnet_id why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
@@ -954,7 +955,7 @@
       "kms_key_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false"
     ],
     "no_completion": {
-      "path": "the path of a new secret: an existing one is refused (D49)"
+      "path": "the path of a new secret: an existing one is refused"
     }
   },
   "secret_delete": {
@@ -1068,7 +1069,8 @@
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
       "targets why=\"\" target=false ids=true kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
       "interface_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[targets] whole:false own:[] workload:false deep:false}"
   },
   "tg_delete": {
     "delete": "{arg:id parent: what:target group whRU:группа целей statePrefix:TARGET_GROUP_STATUS_ creatingUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9) failedUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9)}",
@@ -1113,7 +1115,7 @@
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[name interfaces security_groups checks exposure image] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name interfaces security_groups checks not_checked exposure image] whole:false own:[] workload:false deep:false}"
   },
   "vm_list": {
     "project": true,

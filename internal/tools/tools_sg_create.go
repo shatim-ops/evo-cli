@@ -82,7 +82,7 @@ func sgRuleArgs(args map[string]any) (sgRuleCall, error) {
 	ports, ok := sgrules.Ports(stringArg(args, "ports"))
 	if !ok {
 		return sgRuleCall{}, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("ports %q is neither a port nor a range of ports within 1-65535", "ports %q — не порт и не диапазон портов в пределах 1-65535", stringArg(args, "ports")),
+			i18n.T("ports: the value is neither a port nor a range of ports within 1-65535", "ports: значение — не порт и не диапазон портов в пределах 1-65535"),
 			i18n.T("Pass one port (443) or a range (8000:8100).", "Укажите один порт (443) или диапазон (8000:8100)."))
 	}
 	source, sourceArg, err := oneOfArgs(args, clierrors.New(clierrors.CodeUsage,

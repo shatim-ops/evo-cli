@@ -264,7 +264,7 @@ func redisShape(args map[string]any) (rtype string, shards, replicas int, err er
 	case redisStandalone:
 		defReplicas = 0
 	default:
-		return "", 0, 0, fmt.Errorf(i18n.T("type %q is not one of %s, %s", "type %q не входит в список: %s, %s"), stringArg(args, "type"), redisMasterReplica, redisStandalone)
+		return "", 0, 0, fmt.Errorf(i18n.T("type: the value is not one of %s, %s", "type: значение не входит в список: %s, %s"), redisMasterReplica, redisStandalone)
 	}
 	shards = pgInt(args, "shards", 1)
 	if shards < 1 || shards > 8 {
