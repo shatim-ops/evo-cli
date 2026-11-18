@@ -202,6 +202,51 @@ git -c user.name=t -c user.email=t@t commit -qam gocall
 "$here/release_export.sh" HEAD "$tmp/s-call" >/dev/null 2>&1 || { echo "FAIL: строки по разные стороны вызова склеены"; fail=1; }
 git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 
+# CHANGELOG снимка — без внутренних ссылок разработки (решение владельца
+# 18.11, #2380): решения, аудиты Fable, прогоны Grok, коды их находок.
+# Часть скобки без ссылки остаётся, скобка без остатка уходит, отступ
+# строки — тоже остаётся.
+cat >CHANGELOG.md <<'MD'
+## 9.9.9
+
+- **Отказ до вопроса** (DECISIONS D47). Было: код 5.
+- **Список инструментов** (`a`, `b`: `x`; аудит Fable 1.6, FB160-4; DECISIONS D79).
+- **Мелкие находки полного аудита Fable 1.6** (FB160-2, -3).
+- **Мелочи прогона Grok на 1.6.0** (агентный прогон Grok на 1.6.0, F9).
+- **Ответ** как `whoami` по D88, — проверка
+  (D94) — в обоих путях; повтор по `next_args` D76 (DECISIONS D40;
+  исправление: живой прогон Grok на 1.3.0, G130-15). Конец.
+- Согласно D47 отказ до вопроса; запись (исправление: прогон G13-31).
+MD
+cat >"$tmp/changelog.want" <<'MD'
+## 9.9.9
+
+- **Отказ до вопроса**. Было: код 5.
+- **Список инструментов** (`a`, `b`: `x`).
+- **Мелкие находки полного аудита 1.6**.
+- **Мелочи прогона на 1.6.0**.
+- **Ответ** как `whoami`, — проверка
+   — в обоих путях; повтор по `next_args`. Конец.
+- отказ до вопроса; запись.
+MD
+git add CHANGELOG.md && git -c user.name=t -c user.email=t@t commit -qm changelog
+rc=0
+log=$("$here/release_export.sh" HEAD "$tmp/s-changelog" 2>&1) || rc=$?
+[ "$rc" = 0 ] || { echo "FAIL: CHANGELOG со ссылками разработки — код $rc: $log"; fail=1; }
+diff -u "$tmp/changelog.want" "$tmp/s-changelog/CHANGELOG.md" >"$tmp/changelog.diff" ||
+	{ echo "FAIL: CHANGELOG снимка не тот:"; sed 's/^/  | /' "$tmp/changelog.diff"; fail=1; }
+git -C "$tmp/s-changelog" show HEAD:CHANGELOG.md | grep -qE 'DECISIONS|Fable|Grok|D[0-9]' &&
+	{ echo "FAIL: в коммите снимка осталась ссылка разработки"; fail=1; }
+# Ссылка, которую правило не вычищает (код находки вне скобок), — провал
+# снимка с названной строкой, а не молчаливая публикация.
+printf -- '- находка FB150-2 закрыта.\n' >>CHANGELOG.md
+git -c user.name=t -c user.email=t@t commit -qam changelog-left
+rc=0
+log=$("$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: невычищенная ссылка в CHANGELOG — код $rc, ждём 1"; fail=1; }
+case "$log" in *"внутренняя ссылка в CHANGELOG.md:"*"FB150-2"*) ;; *) echo "FAIL: невычищенная ссылка не названа: $log"; fail=1 ;; esac
+git rm -q CHANGELOG.md && git -c user.name=t -c user.email=t@t commit -qm no-changelog
+
 # Латинское Astra (Astra Linux) — не маркер.
 echo 'образ Astra Linux' >>docs/guide.md
 git -c user.name=t -c user.email=t@t commit -qam astra

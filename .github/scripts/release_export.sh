@@ -23,6 +23,10 @@
 #   (окончание падежа — [^ ]{0,8}: до четырёх букв кириллицы, поиск — по
 #   байтам при LC_ALL=C, Астра #2364): совпадают при любой локали, LC_ALL=C
 #   тоже («Риск», 335, У1).
+#   - CHANGELOG.md снимка — без ссылок разработки (DECISIONS, номера D,
+#     Fable, Grok, коды их находок): часть скобки со ссылкой уходит, слова
+#     ссылки вне скобок — тоже; осталась ссылка — провал (решение владельца
+#     18.11, #2380). В evo-cli CHANGELOG не меняется.
 #   - go build ./... и go vet ./... на снимке.
 # Ограничения («Риск», 342): зелёный итог — «названных маркеров нет», а не
 # «снимок чист»; маркер, разбитый разметкой Markdown (цитата, выделение:
@@ -122,6 +126,34 @@ func main() {
 		}
 		return
 	}
+	// scan -changelog FILE: the internal references of the development
+	// out of the change log, the file rewritten (owner's decision 18.11,
+	// #2380); scan -changelog-left FILE prints the lines that still hold one.
+	if os.Args[1] == "-changelog" || os.Args[1] == "-changelog-left" {
+		b, err := os.ReadFile(os.Args[2])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		if os.Args[1] == "-changelog-left" {
+			left := 0
+			for i, line := range strings.Split(string(b), "\n") {
+				if internalRef.MatchString(line) {
+					fmt.Printf("CHANGELOG.md:%d: %s\n", i+1, internalRef.FindString(line))
+					left++
+				}
+			}
+			if left > 0 {
+				os.Exit(1)
+			}
+			return
+		}
+		if err := os.WriteFile(os.Args[2], []byte(publicChangelog(string(b))), 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		return
+	}
 	re := regexp.MustCompile(os.Args[2])
 	root := os.Args[1]
 	bad := 0
@@ -205,11 +237,73 @@ func spaced(s string) string {
 	}, s)
 	return strings.Join(strings.Fields(s), " ")
 }
+
+// internalRef is a reference of the development a reader of a release
+// cannot follow: the decisions (DECISIONS, D47), the audits of Fable and
+// the runs of Grok, the codes of their findings (FB150-2, G130-15).
+var internalRef = regexp.MustCompile(`DECISIONS|Fable|Grok|(^|[^\pL\pN_])(D[0-9]{1,3}|FB[0-9]+(-[0-9]+)?|G1[0-9]{2}-[0-9]+|G13-[0-9]+)([^\pL\pN_]|$)`)
+
+// group is a parenthesis with no parenthesis inside, over lines too, with
+// the character before its spaces: at the start of a line there is none,
+// and the indent stays.
+var group = regexp.MustCompile(`([^\s]?)([ \t]*)\(([^()]*)\)`)
+
+// bareRef is a reference outside a parenthesis, with the space before it
+// and the preposition that takes it ("по D88", "по правилу D73",
+// "согласно D47").
+var bareRef = regexp.MustCompile(`[ \t]?\b(DECISIONS|Fable|Grok)\b|[ \t]?((?i)по правилу |по |в |согласно |из )?\bD[0-9]{1,3}\b`)
+
+// publicChangelog is the change log a reader of a release reads: of a
+// parenthesis, the parts (split by ";") with no internal reference — none
+// left, no parenthesis; then the words of the references left in the text
+// ("the audit of Fable 1.6" — "the audit of 1.6").
+func publicChangelog(s string) string {
+	s = group.ReplaceAllStringFunc(s, func(g string) string {
+		m := group.FindStringSubmatch(g)
+		before, lead, inner := m[1], m[2], m[3]
+		parts := strings.Split(inner, ";")
+		var keep []string
+		for _, part := range parts {
+			if !internalRef.MatchString(part) {
+				keep = append(keep, strings.TrimSpace(part))
+			}
+		}
+		switch {
+		case len(keep) == len(parts):
+			return g
+		case len(keep) > 0:
+			return before + lead + "(" + strings.Join(keep, "; ") + ")"
+		case before == "":
+			return lead // the start of a line: the indent stays
+		}
+		return before
+	})
+	return bareRef.ReplaceAllString(s, "")
+}
 GO
 rc=0
 # Бинарь, а не go run: go run сводит код программы к 1, а ошибка чтения
 # (2) — не то же, что маркер (1).
 (cd "$scan" && go build -o scan scan.go) || { echo "release_export: сканер строк Go не собрался" >&2; exit 2; }
+
+# CHANGELOG.md — без внутренних ссылок разработки: решения (DECISIONS, D47),
+# аудиты Fable, прогоны Grok и коды их находок; в evo-cli они остаются
+# (решение владельца 18.11, #2380). Осталась ссылка — провал.
+if [ -f "$out/CHANGELOG.md" ]; then
+	rc=0
+	"$scan/scan" -changelog "$out/CHANGELOG.md" || rc=$?
+	[ "$rc" = 0 ] || { echo "::error::CHANGELOG.md не очищен (код $rc)"; bad=1; }
+	rc=0
+	left=$("$scan/scan" -changelog-left "$out/CHANGELOG.md") || rc=$?
+	case "$rc" in
+	0) ;;
+	1)
+		while IFS= read -r l; do echo "::error::внутренняя ссылка в $l"; done <<<"$left"
+		bad=1
+		;;
+	*) echo "::error::CHANGELOG.md не проверен (код $rc)"; bad=1 ;;
+	esac
+fi
 
 # Маркеры внутреннего.
 # Астра — внешняя проверка, кириллицей; латинское Astra — это Astra Linux.

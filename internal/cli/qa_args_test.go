@@ -41,7 +41,9 @@ func TestBuildToolArgs_JSONIsCheckedAgainstSchema(t *testing.T) {
 	}{
 		{disk, `{"name":"d","size_gb":"50"}`, "size_gb"},
 		{disk, `{"name":"d","size_gb":50.5}`, "size_gb"},
-		{disk, `{"name":"d","size_gb":50,"atach_to":"web"}`, "atach_to"},
+		// An unknown key is counted, not named (Астра, #2386); the hint
+		// names what the tool takes.
+		{disk, `{"name":"d","size_gb":50,"atach_to":"web"}`, "1 argument(s) of the JSON"},
 		{disk, `{"name":7,"size_gb":50}`, "name"},
 		{ports, `{"security_group":"sg","ports":[80,"x"]}`, "ports"},
 	}

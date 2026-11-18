@@ -61,3 +61,28 @@ func TestToolsCall_BadArgPairDoesNotEchoTheValue(t *testing.T) {
 		}
 	}
 }
+
+// --args-json the CLI cannot decode, or that names arguments the tool does
+// not take, is refused without its text: a number out of range is quoted
+// by encoding/json (Астра, #2384), a key may be a value in the wrong place
+// (Астра, #2386).
+func TestToolsCall_JSONRefusalDoesNotRepeatTheArguments(t *testing.T) {
+	const digits = "27183650904512"
+	big := "1" + strings.Repeat("0", 323) + digits
+	for _, js := range []string{
+		`{"path":"synthetic","value":` + digits + `e999}`,
+		`{"path":"synthetic","value":` + big + `}`,
+		`{"path":"synthetic","s3cr3tKey` + digits + `":"x"}`,
+	} {
+		for _, extra := range [][]string{nil, {"--json"}, {"--dry-run", "--json"}} {
+			args := append([]string{"tools", "call", "secret_create", "--args-json", js}, extra...)
+			out, errOut, code := execCLI(t, args...)
+			if code == 0 {
+				t.Fatalf("%v: want a refusal: %s%s", extra, out, errOut)
+			}
+			if strings.Contains(out+errOut, digits) || strings.Contains(out+errOut, "s3cr3t") {
+				t.Errorf("%s %v: the refusal repeats the arguments: %s%s", js[:30], extra, out, errOut)
+			}
+		}
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -74,6 +75,14 @@ func TestIntent_UnknownOutcomeKeptThenClosedByAKnownOne(t *testing.T) {
 // is API_ERROR, as a 5xx's is; the status of the answer (http_status,
 // errAnswer) parts them. Every tool that takes consent, on a cloud that
 // answers 400, 403, 409 or 422 to everything: no record is left.
+// refusalCallLimit bounds a call of TestIntent_RefusalOfThePlatformClosesTheRecord:
+// the world refuses at once, the limit only stops a hang. A call cut by
+// its deadline after the send keeps its record — the outcome is unknown —
+// and that is right for a cut, wrong for this test: contractCallLimit
+// (400 ms) cut ca_stop on a loaded macOS runner (#2396, package 820 s).
+// wall-clock: a guard against a hang, no answer depends on it.
+const refusalCallLimit = 30 * time.Second
+
 func TestIntent_RefusalOfThePlatformClosesTheRecord(t *testing.T) {
 	rt := &contractRT{}
 	reg := contractReg(t, rt)
@@ -90,7 +99,7 @@ func TestIntent_RefusalOfThePlatformClosesTheRecord(t *testing.T) {
 			args["confirmed"] = true
 			rt.kind = kind
 			rt.take()
-			text, _, _ := contractCall(tl, args, contractCallLimit)
+			text, _, _ := contractCall(tl, args, refusalCallLimit)
 			// The status is the record's: no answer carries it (CMP-7).
 			if strings.Contains(text, apiStatusField) {
 				t.Errorf("%s, the cloud answers %s: the answer carries %s: %.300s", tl.Name, kind, apiStatusField, text)
@@ -109,6 +118,59 @@ func TestIntent_RefusalOfThePlatformClosesTheRecord(t *testing.T) {
 	if seen == 0 {
 		t.Fatal("no tool that takes consent was called")
 	}
+}
+
+// refusedWritesReached is how many calls of the test below reach a write
+// the cloud refuses (33 on 18.11; the rest stop at a refused read before
+// the write): a world that reaches fewer checks less.
+const refusedWritesReached = 30
+
+// A refusal of the platform (4xx) ends the work of the call, counted in
+// requests, not in time («Риск», 376): the refused write is not sent again,
+// and after it at most one read goes out — the check of what the cloud
+// holds (409: the resource is there). Every tool that takes consent, on a
+// cloud that answers 400, 403, 409 or 422 to everything.
+func TestIntent_RefusalOfThePlatformEndsTheRequests(t *testing.T) {
+	rt := &contractRT{}
+	reg := contractReg(t, rt)
+	eng, _ := reg.newEngine(nil)
+	t.Chdir(eng.StateDir)
+	reached := 0
+	for _, kind := range []string{"400", "403", "409", "422"} {
+		for _, tl := range reg.Tools() {
+			if !tl.Mutating || contractHTTPSkip[tl.Name] {
+				continue
+			}
+			args := contractArgs(tl)
+			args["confirmed"] = true
+			rt.kind = kind
+			rt.take()
+			_, _, _ = contractCall(tl, args, refusalCallLimit)
+			reqs := rt.take()
+			refused := -1
+			for i, q := range reqs {
+				if contractWrites([]string{q}) == 1 {
+					refused = i
+					break
+				}
+			}
+			if refused < 0 {
+				continue
+			}
+			reached++
+			after := reqs[refused+1:]
+			if w := contractWrites(after); w != 0 {
+				t.Errorf("%s, the cloud refuses with %s: %d more writes after the refused one: %v", tl.Name, kind, w, reqs)
+			}
+			if len(after) > 1 {
+				t.Errorf("%s, the cloud refuses with %s: %d requests after the refused write, one read at most: %v", tl.Name, kind, len(after), reqs)
+			}
+		}
+	}
+	if reached < refusedWritesReached {
+		t.Errorf("%d calls reached a refused write, %d expected: the world no longer reaches the writes", reached, refusedWritesReached)
+	}
+	t.Logf("calls that reached a refused write: %d", reached)
 }
 
 // vm_reboot, after a refusal of the platform: the next call with the
