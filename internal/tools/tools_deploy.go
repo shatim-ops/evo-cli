@@ -1195,7 +1195,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	// Both refusals come before the consent: the call cannot go through
 	// whatever the person answers (A6, D31).
 	if onNAT {
-		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway and is released with it (snat_delete) — whether to delete the gateway, ask the person; not released", fipIP, quoteCloud(fipID))
+		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway and is released with it (snat_delete) — whether to delete the gateway, ask the person; not released", quoteCloud(fipIP), quoteCloud(fipID))
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("It goes with its SNAT gateway: whether to delete the gateway (snat_delete) — ask the person.", "Он освободится вместе с SNAT-шлюзом: удалять ли шлюз (snat_delete) — спросите человека.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil

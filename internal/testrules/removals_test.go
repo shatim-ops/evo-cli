@@ -31,6 +31,7 @@ var removals = map[string]directWrite{
 	"internal/config/profile.go\tDeleteProfile":            {1, "the token cache of a profile whose name, read from the file, is checked by ValidateProfileName before the path"},
 	"internal/config/profile.go\tWriteFileAtomic":          {1, "the temporary file os.CreateTemp made in this call"},
 	"internal/tools/made_repeat.go\tRegistry.repeatOfMade": {1, "the file madeKey names: a hash evo makes of the call, no name read"},
+	"internal/tools/made_repeat.go\tforgetMadeOf":          {1, "a file of made/ whose name has the form madeKey makes (madeName), not a symlink: no path read from a file"},
 	"internal/deployplan/store.go\tDelete":                 {1, "the plan id is checked by validPlanID (the form newPlanID makes) before the join"},
 	"internal/intent/intent.go\tremove":                    {1, "Close and Settle: the id is a record file's name, checked against begin's form (recordPath); never the content's"},
 	"internal/history/prune.go\tPrune":                     {2, "a file of a day of the journal: a name of the directory's listing that matches evo's form (fileForm, a date), never a line's content; the mark of a pruning put off (deferredName), a constant"},
