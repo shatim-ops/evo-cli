@@ -116,9 +116,14 @@ func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Pl
 		return answered(nameTakenResult(i18n.T("SNAT gateway", "шлюз SNAT"), name, id, st, "snat_list")), nil
 	}
 	if id, ok := gatewayInZone(existing, zoneID); ok {
+		// The id in a command only in the form of an id (291-2, 314).
+		hint := i18n.T("Use it (snat_list shows it) — VMs of the zone go out through it — or delete it first.", "Используйте его (его показывает snat_list) — ВМ зоны выходят через него, — или сначала удалите.")
+		if isUUID(id) {
+			hint = i18n.Tf("Use it (snat_get id=%s) — VMs of the zone go out through it — or delete it first.", "Используйте его (snat_get id=%s) — ВМ зоны выходят через него, — или сначала удалите.", id)
+		}
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("zone %s already has SNAT gateway %s: the zone's router takes one, and Cloud.ru refuses a second", "в зоне %s уже есть шлюз SNAT %s: у маршрутизатора зоны он один, второй Cloud.ru не создаст", firstNonEmptyStr(zoneName, zoneID), id),
-			i18n.Tf("Use it (snat_get id=%s) — VMs of the zone go out through it — or delete it first.", "Используйте его (snat_get id=%s) — ВМ зоны выходят через него, — или сначала удалите.", id)),
+			i18n.Tf("zone %s already has SNAT gateway %s: the zone's router takes one, and Cloud.ru refuses a second", "в зоне %s уже есть шлюз SNAT %s: у маршрутизатора зоны он один, второй Cloud.ru не создаст", quoteCloud(firstNonEmptyStr(zoneName, zoneID)), quoteCloud(id)),
+			hint),
 			map[string]any{"existing_id": id}), true), nil
 	}
 

@@ -254,9 +254,15 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 		res["disk_id"] = diskID
 		partial := func(err error) (string, bool) {
 			res["status"] = "partial"
+			// A command names the id only in the form of an id; another is
+			// said in quotes, with no command («Риск», 291-2, 314).
+			hint := "Attach it with disk_attach once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person."
+			if isUUID(diskID) {
+				hint = fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.", diskID, attachTo)
+			}
 			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-				fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, diskID, attachTo, err),
-				fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.", diskID, attachTo), err), res), true
+				fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, quoteCloud(diskID), attachTo, err),
+				hint, err), res), true
 		}
 		if diskID == "" {
 			return partial(fmt.Errorf("the create response has no disk id"))
@@ -328,7 +334,7 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 // so a wait is not silent (CLAUDE.md §6, axis 2).
 func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string, limit time.Duration,
 	waiting string, done func(state string) (bool, error)) (last string, timedOut time.Duration, err error) {
-	last, timedOut, atLimit, err := waitState(ctx, eng, limit,
+	last, timedOut, atLimit, reads, err := waitState(ctx, eng, limit,
 		func(ctx context.Context) (string, bool, error) {
 			disks, err := eng.Cloud.ListDisks(ctx, projectID)
 			if err != nil {
@@ -344,7 +350,7 @@ func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string,
 		},
 		func(st string) string { return fmt.Sprintf(waiting, diskID, st) }, done)
 	if atLimit {
-		return last, 0, &diskAtLimit{state: last}
+		return last, 0, &diskAtLimit{state: last, reads: reads}
 	}
 	return last, timedOut, err
 }
@@ -357,7 +363,10 @@ func (e *diskFailed) Error() string { return "the disk is in state " + quoteClou
 // diskAtLimit ends a wait for a disk at the limit of an MCP call (D69):
 // the disk goes on in the cloud, the answer says its state and the step
 // that goes on from there.
-type diskAtLimit struct{ state string }
+type diskAtLimit struct {
+	state string
+	reads waitReads
+}
 
 func (e *diskAtLimit) Error() string {
 	return fmt.Sprintf("the disk is %s at the time limit of the call", e.state)
@@ -373,6 +382,7 @@ func diskAtLimitAnswer(lim *diskAtLimit, diskID, why, tool string, nextArgs map[
 	if lim.state == "" || lim.state == "unknown" {
 		answer["status"] = "waiting"
 	}
+	lim.reads.put(answer)
 	nextStep(answer, tool, nextArgs)
 	return answer
 }
@@ -526,25 +536,41 @@ func anotherVMsDisk(tool, diskID, vmID string, disk map[string]any) (string, boo
 	if len(vms) == 0 {
 		return "", false
 	}
-	var ids []string
+	var ids, labels []string
 	for _, v := range vms {
 		if v["id"] == vmID {
 			return "", false
 		}
-		ids = append(ids, v["id"].(string))
+		id := v["id"].(string)
+		ids = append(ids, id)
+		labels = append(labels, quoteCloud(id))
 	}
-	on := strings.Join(ids, ", ")
+	// The ids of the card are the cloud's: in quotes in the text, and a
+	// command only with an id of the form of an id («Риск», 291-2, 314;
+	// Астра #2323).
+	on, other := strings.Join(labels, ", "), ids[0]
 	var err error
-	if tool == "disk_attach" {
+	switch {
+	case tool == "disk_attach" && isUUID(other):
 		err = clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("disk %s is attached to VM %s: Cloud.ru attaches a disk to one VM at a time; nothing was attached", "диск %s подключён к ВМ %s: Cloud.ru подключает диск только к одной ВМ; ничего не подключено", diskID, on),
 			i18n.Tf("To move it, detach it from that VM first (disk_detach disk_id=%s vm=%s) — whether that VM can lose it, ask the person.",
-				"Чтобы перенести диск, сначала отключите его от той ВМ (disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, ids[0]))
-	} else {
+				"Чтобы перенести диск, сначала отключите его от той ВМ (disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, other))
+	case tool == "disk_attach":
 		err = clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("disk %s is attached to VM %s, not to %s; nothing was detached", "диск %s подключён к ВМ %s, а не к %s; ничего не отключено", diskID, on, vmID),
+			i18n.Tf("disk %s is attached to VM %s: Cloud.ru attaches a disk to one VM at a time; nothing was attached", "диск %s подключён к ВМ %s: Cloud.ru подключает диск только к одной ВМ; ничего не подключено", diskID, on),
+			i18n.T("To move it, detach it from that VM first; evo vm list shows the VM — whether that VM can lose it, ask the person.",
+				"Чтобы перенести диск, сначала отключите его от той ВМ; ВМ показывает evo vm list — может ли та ВМ остаться без него, спросите человека."))
+	case isUUID(other):
+		err = clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("disk %s is attached to VM %s, not to %s; nothing was detached", "диск %s подключён к ВМ %s, а не к %s; ничего не отключено", diskID, on, quoteCloud(vmID)),
 			i18n.Tf("The disk is on another VM (disk_detach disk_id=%s vm=%s detaches it there) — whether that VM can lose it, ask the person.",
-				"Диск стоит на другой ВМ (отключить его там — disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, ids[0]))
+				"Диск стоит на другой ВМ (отключить его там — disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, other))
+	default:
+		err = clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("disk %s is attached to VM %s, not to %s; nothing was detached", "диск %s подключён к ВМ %s, а не к %s; ничего не отключено", diskID, on, quoteCloud(vmID)),
+			i18n.T("The disk is on another VM; evo vm list shows it — whether that VM can lose it, ask the person.",
+				"Диск стоит на другой ВМ; её показывает evo vm list — может ли та ВМ остаться без него, спросите человека."))
 	}
 	return errAnswer(err, map[string]any{"attached_vms": vms}), true
 }
@@ -731,10 +757,19 @@ func diskAttachedError(diskID string, disk map[string]any) ([]map[string]any, er
 		id, name, primary := vm["id"].(string), vm["name"].(string), vm["primary"].(bool)
 		label := quoteCloud(firstNonEmptyStr(name, id))
 		names = append(names, label)
-		if primary {
+		// A command names the VM's id only in the form of an id; another
+		// VM is named in quotes, with no command («Риск», 291-2, 314).
+		switch {
+		case !isUUID(id) && primary:
+			ways = append(ways, i18n.Tf("It is the boot disk of VM %s: it goes with the VM — whether to delete the VM, ask the person; evo vm list shows it.",
+				"Это загрузочный диск ВМ %s: он уходит вместе с ВМ — удалять ли ВМ, спросите человека; ВМ показывает evo vm list.", label))
+		case !isUUID(id):
+			ways = append(ways, i18n.Tf("Detach it from VM %s, then delete it; evo vm list shows the VM.",
+				"Отключите его от ВМ %s, затем удалите; ВМ показывает evo vm list.", label))
+		case primary:
 			ways = append(ways, i18n.Tf("It is the boot disk of VM %s: it goes with the VM (destroy vm_id=%s, 'evo vm delete %s') — whether to delete the VM, ask the person.",
 				"Это загрузочный диск ВМ %s: он уходит вместе с ВМ (destroy vm_id=%s, 'evo vm delete %s') — удалять ли ВМ, спросите человека.", label, id, id))
-		} else {
+		default:
 			ways = append(ways, i18n.Tf("Detach it from VM %s with disk_detach disk_id=%s vm=%s ('evo disk detach %s --vm %s'), then delete it.",
 				"Отключите его от ВМ %s — disk_detach disk_id=%s vm=%s ('evo disk detach %s --vm %s'), затем удалите.", label, diskID, id, diskID, id))
 		}
@@ -789,13 +824,20 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		switch {
 		case errors.As(err, &lim):
 			st = lim.state
+			lim.reads.put(res)
 		case errors.As(err, &failed):
 			res["status"] = "failed"
 			res["disk_id"] = id
+			// The id in a command only in the form of an id (291-2, 314).
+			hint := i18n.T("disk_list shows it; whether to delete it (disk_delete) — ask the person.",
+				"Диск показывает disk_list; удалять ли его (disk_delete) — спросите человека.")
+			if isUUID(id) {
+				hint = i18n.Tf("disk_list ids=[%s] shows it; whether to delete it (disk_delete) — ask the person.",
+					"Диск показывает disk_list ids=[%s]; удалять ли его (disk_delete) — спросите человека.", id)
+			}
 			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-				i18n.Tf("Cloud.ru did not make disk %s: %v", "Cloud.ru не создал диск %s: %v", id, err),
-				i18n.Tf("disk_list ids=[%s] shows it; whether to delete it (disk_delete) — ask the person.",
-					"Диск показывает disk_list ids=[%s]; удалять ли его (disk_delete) — спросите человека.", id), err), res), true
+				i18n.Tf("Cloud.ru did not make disk %s: %v", "Cloud.ru не создал диск %s: %v", quoteCloud(id), err),
+				hint, err), res), true
 		case err != nil:
 			// Not available by the end of the wait: still being made.
 			cancelled = errors.Is(err, context.Canceled)
@@ -831,13 +873,18 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		if !known {
 			word = i18n.T("in an unknown state", "в неизвестном состоянии")
 		}
-		res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list ids=[%s] shows its state.",
-			"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list ids=[%s].", id, word, id)
+		// The id in a command only in the form of an id (291-2, 314).
+		res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list shows its state.",
+			"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list.", quoteCloud(id), word)
+		if isUUID(id) {
+			res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list ids=[%s] shows its state.",
+				"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list ids=[%s].", quoteCloud(id), word, id)
+		}
 		nextStep(res, "disk_list", map[string]any{"ids": []any{id}})
 	}
 	if cancelled {
 		return errAnswer(fmt.Errorf("%s: %w", i18n.Tf("disk %s: the wait was cancelled, the platform goes on making it",
-			"диск %s: ожидание прервано, платформа продолжает создание", id), context.Canceled), res), true
+			"диск %s: ожидание прервано, платформа продолжает создание", quoteCloud(id)), context.Canceled), res), true
 	}
 	return toJSON(res), false
 }

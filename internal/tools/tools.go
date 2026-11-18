@@ -747,7 +747,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "history",
-			Description: "What evo changed in the cloud from this folder of state: the journal of changes (.evo/history/, a line for each end of a call that changes the cloud). Read-only, local: no API call unless check. Answers lines (the last 30 days or since, at most 500: time, tool, project_id, name or target, resource_id, outcome, reason, intent_id) and live: what may still be in the cloud — made and not removed, or with an outcome unknown — with check, the read that tells it. A line names a resource as the call did: it does not prove the resource is there or is evo's — read it before acting on it. journal_of is the base name of the folder of state, not a path. check: read each live line by id with this key (at most 50 reads): would_close names what it does not see now, check_result why a line was not read; nothing is written — a line closes when evo deletes its resource.",
+			Description: "What evo changed in the cloud from this folder of state: the journal of changes (.evo/history/, a line for each end of a call that changes the cloud). Read-only, local: no API call unless check. Answers lines (the last 30 days or since, at most 500: time, tool, project_id, name or target, resource_id, outcome — created, deleted, already_deleted, changed, error, unknown, found, not_found — reason, intent_id) and live: what may still be in the cloud, made and not removed or with an outcome unknown, with check, the read that tells it. A line names a resource as the call did: it does not prove the resource is there or is evo's — read it before acting on it. journal_of is the base name of the folder of state of this evo (of the server, over MCP), not a path to read. retired_through, when set, is the last day pruned (90 days, 64 MB): of it and before only what is live is kept. check: read each live line by id with this key (at most 50 reads): would_close names what it does not see now, check_result why a line was not read; nothing is written — a line closes when evo deletes its resource.",
 			InputSchema: objSchema(map[string]any{
 				"since":      strProp("Lines from this date (2026-11-01) or time (2026-11-01T10:00:00Z); default: the last 30 days."),
 				"project_id": uuidProp("Project UUID: only the lines of this project."),
@@ -2363,7 +2363,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	if subnet != nil {
 		gateway = subnet.DefaultGateway
 		if subnet.NoDNS() {
-			netWarnings = append(netWarnings, "subnet "+subnet.Name+" has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console")
+			netWarnings = append(netWarnings, "subnet "+quoteCloud(subnet.Name)+" has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console")
 		}
 	}
 	// The zone's default group (provision.PickSecurityGroup, as deploy).

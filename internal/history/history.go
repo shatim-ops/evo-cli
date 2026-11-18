@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"time"
 	"unicode/utf8"
 
@@ -162,9 +163,11 @@ func Append(dir string, l Line) error {
 	if err != nil {
 		return err
 	}
-	// A reader takes UTC only: a time with an offset is written in UTC
-	// (311-6).
-	l.Time = at.UTC().Format(time.RFC3339Nano)
+	// A reader takes evo's form of a time only — UTC, whole seconds, as
+	// clock gives it: one width, so the order of the text is the order of
+	// the times (Астра, #2229). Lines of one second keep the order they
+	// are written in.
+	l.Time = at.UTC().Format(time.RFC3339)
 	if fi, err := os.Lstat(dir); err == nil && !fi.IsDir() {
 		return fmt.Errorf("%s is not a directory of evo", dir)
 	}
@@ -336,8 +339,13 @@ func sameProject(a, b string) bool { return a == "" || b == "" || a == b }
 const cutMark = "…[cut]"
 
 // fit is s cut to maxText bytes, on a rune, with cutMark; s itself when it
-// fits.
+// fits. A text that is not UTF-8 — an argument of the CLI may be one — is
+// written quoted, its bytes escaped: the JSON encoder would make each such
+// byte U+FFFD, and two names one («Риск», conclusion 331, 331-1).
 func fit(s string) string {
+	if !utf8.ValidString(s) {
+		s = strconv.Quote(s)
+	}
 	if len(s) <= maxText {
 		return s
 	}

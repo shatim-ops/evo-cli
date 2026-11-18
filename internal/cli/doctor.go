@@ -40,7 +40,7 @@ connectivity checks failed.`, `Проверить окружение: файлы
 
 Код выхода 2 — сломаны настройки или ключ, 1 — не прошли только проверки
 связи.`),
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := &tools.Caller{Verbose: flagVerbose, Doctor: doctorLocal}
 			text, err := callEngineTool(cmd, "doctor", map[string]any{}, c)

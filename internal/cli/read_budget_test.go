@@ -34,6 +34,8 @@ var answerBudget = map[string]listBudget{
 	"disk_list disks":                      {1, 140}, // 112
 	"dns_zones zones":                      {1, 220}, // 172
 	"doctor checks":                        {7, 120}, // 94
+	"history lines":                        {3, 330}, // 264
+	"history live":                         {1, 360}, // 284
 	"image_get fields":                     {2, 170}, // 131
 	"image_list images":                    {1, 110}, // 84
 	"k8s_addon_versions releases":          {2, 240}, // 190
@@ -233,4 +235,6 @@ func budgetVolatile(s string) string {
 	return testDir.ReplaceAllString(humanVolatile(s), "<dir>")
 }
 
-var testDir = regexp.MustCompile(`[^"\s]*?Test\w+?\d+(/|\\\\)+\d{3}`)
+// The parts of the path are split by / or by \ — doubled in JSON, single
+// in the human output on Windows.
+var testDir = regexp.MustCompile(`[^"\s]*?Test\w+?\d+(/|\\+)+\d{3}`)

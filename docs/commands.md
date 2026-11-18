@@ -265,6 +265,10 @@ Object Storage, секреты; развёртывание compose-проект�
 Добро пожаловать в Cloud.ru
 ```
 
+```
+evo [flags]
+```
+
 ### Options
 
 ```

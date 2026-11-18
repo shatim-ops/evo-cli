@@ -371,7 +371,8 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 // stamp is a time of the call (expires_at of a plan); fipName is a name of
 // a floating IP, which provision.BootFIPName ends with the time of the call;
 // planName is the minute deployplan.Resolve names a VM by when the plan
-// names none; latency is how long a probe of doctor took; deployKey is the
+// names none; latency is how long a probe of doctor took; failedReads is
+// how many reads a wait at its limit made; deployKey is the
 // fingerprint of the agent's deploy key, which each world makes anew. The
 // TTL of the token is not masked: the world's clock is stopped
 // (stoppedClock).
@@ -381,6 +382,9 @@ var (
 	fipName  = regexp.MustCompile(`fip-[0-9a-z.-]+`)
 	planName = regexp.MustCompile(`-\d{8}-\d{4}\b`)
 	latency  = regexp.MustCompile(`reachable \(\d+(\.\d)?m?s\)`)
+	// failedReads: the reads of a wait that ended at its limit — how many
+	// fit in it depends on the clock of the call (waitReads).
+	failedReads = regexp.MustCompile(`"failed_reads": \d+`)
 	// deployKey: the preview of deploy_apply (FB180-7); its comment is
 	// quoted, and the quotes escaped once more inside a JSON string.
 	deployKey = regexp.MustCompile(`SHA256:[A-Za-z0-9+/]+(( \\?"[^"\\]*\\?")? \((the agent's deploy key of evo|ключ развёртывания evo для агента)\))`)
@@ -401,6 +405,7 @@ func sameVolatile(s string) string {
 	s = stamp.ReplaceAllString(s, "<time>")
 	s = planName.ReplaceAllString(s, "-<minute>")
 	s = deployKey.ReplaceAllString(s, "SHA256:<deploy key>$1")
+	s = failedReads.ReplaceAllString(s, `"failed_reads": "<n>"`)
 	return latency.ReplaceAllString(s, "reachable (<latency>)")
 }
 

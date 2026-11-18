@@ -212,17 +212,17 @@ var decls = map[string]Decl{
 	"vm_console": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}, Untrusted: untrustedAnswer{fields: []string{"name", "where", "note"}}},
 	// The VM a power tool names in its preview and its answer, as the
 	// cloud names it.
-	"vm_start": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
+	"vm_start": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "state", "details"}}},
 	// vm_stop deletes nothing on a disk, but it takes the service down and
 	// may lose what the VM held in memory: a client asks the person every
 	// time (D99, §4.3).
-	"vm_stop": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
+	"vm_stop": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "state", "details"}}},
 	// vm_reboot takes the service down for the time of the reboot (§5.2).
-	"vm_reboot": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
+	"vm_reboot": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "state", "details"}}},
 	// vm_resize of a running VM: whether the guest OS restarts in it the
 	// probe does not see (Г-10), so the client asks the person every time
 	// (§6.5, В3: unknown is taken as a restart).
-	"vm_resize":            {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
+	"vm_resize":            {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, Destructive: true, IDArgs: []idArg{{name: "vm_id", kind: kindVM, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "state", "details"}}},
 	"vm_list":              {Project: true, Untrusted: untrustedAnswer{fields: []string{"vms"}}},
 	"logs":                 {Group: "deploy", Untrusted: untrustedAnswer{fields: []string{"log"}, workload: true}},
 	"destroy":              {Group: "deploy", Destructive: true, Delete: deleteTarget{arg: "vm_id", what: "VM", whRU: "ВМ"}, IDArgs: []idArg{{name: "vm_id", why: whyListed}}},
@@ -240,7 +240,7 @@ var decls = map[string]Decl{
 	"list_disk_types":      {Group: "disk", Untrusted: untrustedAnswer{fields: []string{"disk_types"}}},
 	"list_subnets":         {Group: "vpc", Project: true, IDArgs: []idArg{{name: "vpc_id", why: whyFilter}}, Untrusted: untrustedAnswer{fields: []string{"subnets"}}},
 	"subnet_create":        {Group: "vpc", Project: true, Created: created{id: "subnet_id", list: "list_subnets", field: "subnets", delete: "subnet_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vpc_id", kind: kindVPC}, {name: "availability_zone_id", why: whyCatalogue}}},
-	"subnet_delete":        {Group: "vpc", Delete: deleteTarget{arg: "subnet_id", what: "subnet", whRU: "подсеть"}, IDArgs: []idArg{{name: "subnet_id", kind: kindSubnet, target: true}}, Untrusted: untrustedAnswer{fields: []string{"target", "message"}}},
+	"subnet_delete":        {Group: "vpc", Delete: deleteTarget{arg: "subnet_id", what: "subnet", whRU: "подсеть"}, IDArgs: []idArg{{name: "subnet_id", kind: kindSubnet, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
 	"list_security_groups": {Group: "vpc", Project: true, Untrusted: untrustedAnswer{fields: []string{"security_groups"}}},
 	"list_floating_ips":    {Group: "vpc", Project: true, Untrusted: untrustedAnswer{fields: []string{"floating_ips"}}},
 	// The names of the source groups of a port only groups let in: not
@@ -251,7 +251,7 @@ var decls = map[string]Decl{
 	// preview and in the answer: anyone with access to the project writes
 	// them.
 	"sg_rule_create": {Group: "vpc", Created: created{id: "rule_id", delete: "sg_rule_delete"}, Nameless: "a rule has no name: it is known by its fields, and the same rule there answers already_exists", IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "remote_group", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "rule", "preview"}}},
-	"sg_rule_delete": {Group: "vpc", Delete: deleteTarget{arg: "rule_id", parent: "security_group", what: "security group rule", whRU: "правило группы безопасности"}, IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}}},
+	"sg_rule_delete": {Group: "vpc", Delete: deleteTarget{arg: "rule_id", parent: "security_group", what: "security group rule", whRU: "правило группы безопасности"}, IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "resource_status", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}}},
 	// The clusters of a list by their names: anyone with access to the
 	// project names a cluster (release plan 1.9, «Просроченные убывающие
 	// списки»).
@@ -280,7 +280,7 @@ var decls = map[string]Decl{
 		statePrefix: "OBJECT_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe}, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target"}}},
 	// The error of an operation, as Managed Kubernetes words it: the
 	// service's text, with the names of the project's resources in it.
-	"k8s_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
+	"k8s_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"k8s_nodepools": {IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
 	// The name of a node pool and the labels and taints of its nodes:
 	// anyone with access to the project writes them.
@@ -355,28 +355,28 @@ var decls = map[string]Decl{
 	"whoami":              {Group: "auth", Untrusted: untrustedAnswer{fields: []string{"roles"}}},
 	"doctor":              {Group: "auth"},
 	"history":             {Group: "auth", AlwaysListed: "what evo changed is the inventory of every group: the cleanup of any group reads it, whichever groups the server serves", IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}, Untrusted: untrustedAnswer{fields: []string{"lines", "live", "would_close"}, workload: true}},
-	"release_floating_ip": {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}},
+	"release_floating_ip": {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status"}}},
 	"snat_list":           {Project: true, Untrusted: untrustedAnswer{fields: []string{"nat_gateways"}}},
 	"snat_create":         {Project: true, Created: created{id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "availability_zone_id", why: whyCatalogue}}},
-	"snat_delete":         {Delete: deleteTarget{arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"}, IDArgs: []idArg{{name: "id", kind: kindNAT, target: true}}, Untrusted: untrustedAnswer{fields: []string{"target", "message"}}},
+	"snat_delete":         {Delete: deleteTarget{arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"}, IDArgs: []idArg{{name: "id", kind: kindNAT, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
 	"pg_list":             {Project: true, Untrusted: untrustedAnswer{fields: []string{"clusters"}}},
 	// Managed PostgreSQL, Kafka, Redis.
 	"pg_get":           {RequiredOneOf: [][]string{{"id", "cluster_id"}}, IDArgs: []idArg{{name: "id", kind: kindPG}, {name: "cluster_id", kind: kindPG}}, Untrusted: untrustedAnswer{whole: true, own: []string{"access"}}},
 	"pg_create":        {Project: true, Created: created{id: "cluster_id", list: "pg_list", field: "clusters", delete: "pg_delete"}, CreateName: createName{args: []string{"name"}, what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, EchoedArgs: []echoedArg{{name: "description"}}, Completes: map[string]completion{"specification_id": {list: "pg_specs", field: "id"}}},
 	"pg_delete":        {RequiredOneOf: [][]string{{"id", "cluster_id"}}, Delete: deleteTarget{arg: "id", what: "PostgreSQL cluster", whRU: "кластер PostgreSQL"}, IDArgs: []idArg{{name: "id", kind: kindPG, target: true}, {name: "cluster_id", kind: kindPG, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
-	"pg_operation":     {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
+	"pg_operation":     {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"kafka_list":       {Project: true, Untrusted: untrustedAnswer{fields: []string{"clusters"}}},
 	"kafka_get":        {IDArgs: []idArg{{name: "cluster_id", kind: kindKafka}}, Untrusted: untrustedAnswer{whole: true}},
 	"kafka_specs":      {IDArgs: []idArg{{name: "version_id", why: whyCatalogue}}, Untrusted: untrustedAnswer{fields: []string{"availability_zone", "specifications"}}, Completes: map[string]completion{"version_id": {list: "kafka_versions", field: "id"}}},
 	"kafka_create":     {Project: true, Created: created{id: "cluster_id", list: "kafka_list", field: "clusters", delete: "kafka_delete"}, CreateName: createName{args: []string{"name"}, what: "Kafka cluster", whRU: "кластер Kafka"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, EchoedArgs: []echoedArg{{name: "description"}}, Completes: map[string]completion{"version_id": {list: "kafka_versions", field: "id"}, "specification_id": {list: "kafka_specs", field: "id"}}},
-	"kafka_delete":     {Delete: deleteTarget{arg: "cluster_id", what: "Kafka cluster", whRU: "кластер Kafka"}, IDArgs: []idArg{{name: "cluster_id", kind: kindKafka, target: true}}, Untrusted: untrustedAnswer{fields: []string{"target"}}},
-	"kafka_operation":  {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
+	"kafka_delete":     {Delete: deleteTarget{arg: "cluster_id", what: "Kafka cluster", whRU: "кластер Kafka"}, IDArgs: []idArg{{name: "cluster_id", kind: kindKafka, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target"}}},
+	"kafka_operation":  {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"redis_list":       {Project: true, Untrusted: untrustedAnswer{fields: []string{"clusters"}}},
 	"redis_get":        {IDArgs: []idArg{{name: "cluster_id", kind: kindRedis}}, Untrusted: untrustedAnswer{whole: true}},
 	"redis_specs":      {IDArgs: []idArg{{name: "version_id", why: whyCatalogue}}, Untrusted: untrustedAnswer{fields: []string{"availability_zone", "specifications"}}, Completes: map[string]completion{"version_id": {list: "redis_versions", field: "id"}}},
 	"redis_create":     {Project: true, Created: created{id: "cluster_id", list: "redis_list", field: "clusters", delete: "redis_delete"}, CreateName: createName{args: []string{"name"}, what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "specification_id", why: whyCatalogue}, {name: "version_id", why: whyCatalogue}, {name: "subnet_id", kind: kindSubnet}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}, EchoedArgs: []echoedArg{{name: "description"}}, Completes: map[string]completion{"version_id": {list: "redis_versions", field: "id"}, "specification_id": {list: "redis_specs", field: "id"}}},
-	"redis_delete":     {Delete: deleteTarget{arg: "cluster_id", what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "cluster_id", kind: kindRedis, target: true}}, Untrusted: untrustedAnswer{fields: []string{"target"}}},
-	"redis_operation":  {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
+	"redis_delete":     {Delete: deleteTarget{arg: "cluster_id", what: "Redis cluster", whRU: "кластер Redis"}, IDArgs: []idArg{{name: "cluster_id", kind: kindRedis, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target"}}},
+	"redis_operation":  {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"pg_databases":     {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}, Untrusted: untrustedAnswer{fields: []string{"databases"}}},
 	"pg_db_create":     {Created: created{arg: "name", list: "pg_databases", field: "databases", listArgs: []string{"cluster_id"}, delete: "pg_db_delete"}, CreateName: createName{args: []string{"name"}, what: "database", whRU: "база данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}, EchoedArgs: []echoedArg{{name: "lc_collate"}, {name: "lc_ctype"}}},
 	"pg_db_delete":     {Delete: deleteTarget{arg: "name", parent: "cluster_id", what: "database", whRU: "база данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
@@ -392,7 +392,7 @@ var decls = map[string]Decl{
 	"lb_list":          {Project: true, IDArgs: []idArg{{name: "vpc_id", why: whyFilter}}},
 	// Network Load Balancer.
 	"lb_get":       {IDArgs: []idArg{{name: "id", kind: kindNLB}}, Untrusted: untrustedAnswer{whole: true}},
-	"lb_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
+	"lb_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"tg_list":      {Project: true, IDArgs: []idArg{{name: "vpc_id", why: whyFilter}}},
 	"tg_get":       {IDArgs: []idArg{{name: "id", kind: kindTG}}, Untrusted: untrustedAnswer{whole: true}},
 	"tg_create":    {Project: true, RequiredOneOf: [][]string{{"vm_id", "targets"}}, Created: created{id: "tg_id", list: "tg_list", field: "target_groups", delete: "tg_delete"}, CreateName: createName{args: []string{"name"}, what: "target group", whRU: "целевая группа"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "targets", kind: kindVM, ids: targetIDs}, {name: "interface_id", why: whyInParent}}},
@@ -405,8 +405,8 @@ var decls = map[string]Decl{
 	// VPC.
 	"vpc_get":       {IDArgs: []idArg{{name: "id", kind: kindVPC}}, Untrusted: untrustedAnswer{whole: true}},
 	"vpc_create":    {Project: true, Created: created{id: "vpc_id", list: "vpc_list", field: "vpcs", delete: "vpc_delete"}, CreateName: createName{args: []string{"name"}, what: "VPC", whRU: "VPC"}, EchoedArgs: []echoedArg{{name: "description"}}},
-	"vpc_delete":    {Delete: deleteTarget{arg: "id", what: "VPC", whRU: "VPC"}, IDArgs: []idArg{{name: "id", kind: kindVPC, target: true}}, Untrusted: untrustedAnswer{fields: []string{"target", "message"}}},
-	"vpc_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
+	"vpc_delete":    {Delete: deleteTarget{arg: "id", what: "VPC", whRU: "VPC"}, IDArgs: []idArg{{name: "id", kind: kindVPC, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
+	"vpc_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"vpc_routes":    {IDArgs: []idArg{{name: "vpc_id", kind: kindVPC}}},
 	"vpc_route_create": {Project: true, RequiredOneOf: [][]string{{"next_hop_vip_id", "next_hop_vm_id", "next_hop_magic_router_id"}}, Created: created{id: "route_id", list: "vpc_routes", field: "routes", listArgs: []string{"vpc_id"}, delete: "vpc_route_delete"}, Nameless: "a route is known by its destination, named by no argument", IDArgs: []idArg{{name: "vpc_id", kind: kindVPC, target: true}, {name: "next_hop_vm_id", kind: kindVM}, {name: "next_hop_interface_id", why: whyInParent},
 		{name: "next_hop_vip_id", why: whyReference}, {name: "next_hop_magic_router_id", why: whyReference}}, EchoedArgs: []echoedArg{{name: "description"}}},
@@ -416,7 +416,7 @@ var decls = map[string]Decl{
 	// DNS.
 	"dns_zone_create":   {Project: true, Created: created{id: "zone_id", list: "dns_zones", field: "zones", delete: "dns_zone_delete"}, CreateName: createName{args: []string{"name", "domain"}, what: "DNS zone", whRU: "DNS-зона"}, IDArgs: []idArg{{name: "vpc_id", kind: kindVPC}}, EchoedArgs: []echoedArg{{name: "description"}}},
 	"dns_zone_delete":   {Delete: deleteTarget{arg: "id", what: "DNS zone", whRU: "DNS-зона"}, IDArgs: []idArg{{name: "id", kind: kindDNSZone, target: true}}},
-	"dns_operation":     {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
+	"dns_operation":     {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"dns_records":       {IDArgs: []idArg{{name: "zone_id", kind: kindDNSZone}}, Untrusted: untrustedAnswer{fields: []string{"records"}}},
 	"dns_record_get":    {IDArgs: []idArg{{name: "record_id", kind: kindDNSRecord}}, Untrusted: untrustedAnswer{whole: true}},
 	"dns_record_create": {RequiredOneOf: [][]string{{"value", "values"}}, Created: created{id: "record_id", list: "dns_records", field: "records", listArgs: []string{"zone_id"}, delete: "dns_record_delete"}, CreateName: createName{args: []string{"name"}, what: "DNS record", whRU: "DNS-запись"}, IDArgs: []idArg{{name: "zone_id", kind: kindDNSZone, target: true}}},
@@ -433,10 +433,10 @@ var decls = map[string]Decl{
 	// (required by ar/openapi.yaml); the operations do not.
 	"ar_get":    {Project: true, IDArgs: []idArg{{name: "id", why: whyInProject}}, Untrusted: untrustedAnswer{whole: true}},
 	"ar_create": {Project: true, Created: created{id: "registry_id", list: "ar_list", field: "registries", delete: "ar_delete"}, CreateName: createName{args: []string{"name"}, what: "registry", whRU: "реестр"}},
-	"ar_delete": {Project: true, Delete: deleteTarget{arg: "id", what: "artifact registry", whRU: "реестр артефактов"}, IDArgs: []idArg{{name: "id", why: whyInProject}}, Untrusted: untrustedAnswer{fields: []string{"target", "message"}}},
+	"ar_delete": {Project: true, Delete: deleteTarget{arg: "id", what: "artifact registry", whRU: "реестр артефактов"}, IDArgs: []idArg{{name: "id", why: whyInProject}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
 	// The error of an operation is the service's text, with the names of
 	// the project's resources in it (R-83): every *_operation marks it.
-	"ar_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}}},
+	"ar_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	// The project itself.
 	"billing_consumption": {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
 	"billing_finops":      {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
@@ -482,4 +482,11 @@ var decls = map[string]Decl{
 // opOwnFields are the fields evo adds to an operation it passes on whole
 // (cert_operation): its time, its hint and details for a quota, the step
 // that waits on — evo's words, not the service's («Риск» 293-1).
+// opReadUntrusted is what the read of an operation answers from the
+// cloud: its error as the service words it, the id it names its resource
+// by (resource_id or resourceId, as the service spells it) — «Риск»,
+// conclusion 312, 312-2 — and the id of the operation itself, as the
+// service sent it, not the operation_id of the call (Астра, #2336).
+var opReadUntrusted = untrustedAnswer{fields: []string{"error", "id", "resource_id", "resourceId"}}
+
 var opOwnFields = []string{"details", "elapsed_note", "elapsed_sec", "hint", "next_args", "next_tool", "note", "still_running"}

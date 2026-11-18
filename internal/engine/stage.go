@@ -151,8 +151,11 @@ func (e *Engine) runStage(ctx context.Context, name, input, script string, limit
 			return st, err
 		}
 		st.LogTail = terminalTail(st.LogTail)
+		// The last line of the stage's output is the workload's, not
+		// evo's: never a stage of evo ("==> …") nor a line it starts —
+		// named by its stage, in quotes (Астра #2275).
 		if l := lastLines(st.LogTail, 1); l != "" && l != shown {
-			e.Printer.Step(0, 0, clipLine(l))
+			e.Printer.StepDone(fmt.Sprintf("%s: %q", name, clipLine(l)))
 			shown = l
 		}
 		switch st.State {
