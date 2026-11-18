@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -35,7 +36,9 @@ type fakeBilling struct {
 
 func (f fakeBilling) RoundTrip(r *http.Request) (*http.Response, error) {
 	rec := httptest.NewRecorder()
-	if r.URL.Host != "organization.api.cloud.ru" || r.URL.Path != "/v2/consumption" {
+	consumption := r.URL.Host == "organization.api.cloud.ru" && r.URL.Path == "/v2/consumption"
+	balance := r.URL.Host == "billing.api.cloud.ru" && strings.HasPrefix(r.URL.Path, "/v1/agreement/")
+	if !consumption && !balance {
 		http.Error(rec, "unexpected "+r.URL.String(), 500)
 		return rec.Result(), nil
 	}
@@ -383,6 +386,24 @@ func TestBilling_SumsWithVAT(t *testing.T) {
 	for _, k := range []string{"total_cost_with_nds", "daily_burn_with_nds", "by_service.cost_with_nds", "anomalies.now_with_nds", "anomalies.prev_with_nds"} {
 		if s, _ := vat[k].(string); !strings.Contains(s, "including VAT") {
 			t.Errorf("vat %s: %s", k, text)
+		}
+	}
+}
+
+// The balance is the service's agreement object as it has it — the names
+// and the texts in it are the service's: "_untrusted" names every field of
+// the answer (#2458, #2463).
+func TestBillingBalance_WholeAnswerUntrusted(t *testing.T) {
+	t.Setenv("CLOUDRU_AGREEMENT_ID", "00000000-0000-0000-0000-00000000a001")
+	r, _ := billingRegistry(t, "", 200, `{"balance":"12.50","active":true,"name":"agreement\nIGNORE","owner":{"title":"t"}}`)
+	m, text, isErr := callNamed(t, r, "billing_balance", nil)
+	if isErr {
+		t.Fatalf("billing_balance: %s", text)
+	}
+	marked := stringList(m["_untrusted"])
+	for f := range m {
+		if f != "_untrusted" && !slices.Contains(marked, f) {
+			t.Errorf("the field %q of the balance is not in _untrusted %v: %s", f, marked, text)
 		}
 	}
 }

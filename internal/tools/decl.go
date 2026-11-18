@@ -442,6 +442,8 @@ var decls = map[string]Decl{
 	// the project's resources in it (R-83): every *_operation marks it.
 	"ar_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	// The project itself.
+	// The agreement object as the billing service has it (#2463).
+	"billing_balance":     {Untrusted: untrustedAnswer{whole: true}},
 	"billing_consumption": {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
 	"billing_finops":      {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
 	"metrics_history":     {Project: true, Untrusted: untrustedAnswer{fields: []string{"series"}}},

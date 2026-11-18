@@ -80,6 +80,9 @@
     ],
     "untrusted": "{fields:[preview will_create disk name] whole:false own:[] workload:false deep:false}"
   },
+  "billing_balance": {
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
+  },
   "billing_consumption": {
     "id_args": [
       "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
