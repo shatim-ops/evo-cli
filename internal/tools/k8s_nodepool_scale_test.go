@@ -429,6 +429,12 @@ func TestK8sNodePoolScale_Preview(t *testing.T) {
 	if warn, _ := m["warning"].(string); m["status"] != "confirmation_required" || !strings.Contains(warn, "unknown") {
 		t.Errorf("fewer nodes for a pool in error: want the preview with the outcome unknown (П4): %s", text)
 	}
+	// No nodes left of a pool in error: both are said, the one does not
+	// replace the other (A19-26, #2435).
+	m, text, _ = scale(t, broken, 0, false)
+	if warn, _ := m["warning"].(string); !strings.Contains(warn, "no nodes") || !strings.Contains(warn, "unknown") {
+		t.Errorf("no nodes of a pool in error: want both warnings: %s", text)
+	}
 }
 
 // The body of the request is the count and nothing else: the
