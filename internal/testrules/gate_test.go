@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -253,23 +254,29 @@ func isConfirmed(e ast.Expr, info *types.Info, foreign map[string]bool) bool {
 var tagName = regexp.MustCompile(`(\w+):"([^",]*)`)
 
 // fieldConfirmed: a decoder fills the field from the key confirmed — a key
-// of its tag names it so, or no key renames it and the field is named so.
-// encoding/json matches a key to a name with no regard to case, so
-// Confirmed, CONFIRMED and json:"Confirmed" read the key too («Риск», 348).
+// of its tag names it so, or the field is named so and its json key does
+// not rename it. encoding/json matches a key to a name with no regard to
+// case, so Confirmed, CONFIRMED and json:"Confirmed" read the key too
+// («Риск», 348); only the json key renames a field for encoding/json, the
+// keys of other packages (validate, yaml, doc) do not («Риск», 350).
 func fieldConfirmed(fl *ast.Field) bool {
-	renamed := false
+	var tag reflect.StructTag
 	if fl.Tag != nil {
-		if s, err := strconv.Unquote(fl.Tag.Value); err == nil {
-			for _, m := range tagName.FindAllStringSubmatch(s, -1) {
-				if strings.EqualFold(m[2], "confirmed") {
-					return true
-				}
-				renamed = renamed || m[2] != ""
+		s, err := strconv.Unquote(fl.Tag.Value)
+		if err != nil {
+			return false
+		}
+		tag = reflect.StructTag(s)
+		for _, m := range tagName.FindAllStringSubmatch(s, -1) {
+			if strings.EqualFold(m[2], "confirmed") {
+				return true
 			}
 		}
 	}
-	if renamed {
-		return false
+	if j, ok := tag.Lookup("json"); ok {
+		if name, _, _ := strings.Cut(j, ","); name != "" {
+			return false // renamed, or "-": not decoded
+		}
 	}
 	for _, name := range fl.Names {
 		if strings.EqualFold(name.Name, "confirmed") {
@@ -311,6 +318,12 @@ func TestConfirmedReadForms(t *testing.T) {
 		"type args struct { OK bool `json:\"Confirmed\"` }":         1,
 		"type args struct { Confirmed bool `json:\"ok\"` }":         0,
 		"func f(confirmed bool) bool { return confirmed }":          0,
+		// Риск 350: a key of another package renames nothing for json.
+		"type args struct { Confirmed bool `validate:\"required\"` }":         1,
+		"type args struct { Confirmed bool `yaml:\"c\"` }":                    1,
+		"type args struct { Confirmed bool `json:\",omitempty\" doc:\"x\"` }": 1,
+		"type args struct { Confirmed bool `json:\"\" doc:\"x\"` }":           1,
+		"type args struct { Confirmed bool `json:\"-\"` }":                    0,
 	} {
 		fset := token.NewFileSet()
 		f, err := parser.ParseFile(fset, "x.go", "package x\nfunc g(map[string]any, string) {}\n"+src, 0)
