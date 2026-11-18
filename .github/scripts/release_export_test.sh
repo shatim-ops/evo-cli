@@ -35,7 +35,7 @@ out=$tmp/snap
 log=$("$here/release_export.sh" v0.1.0 "$out" 2>&1) || { echo "FAIL: чистая ревизия: $log"; fail=1; }
 got=$(cd "$out" && find . -type f -not -path './.git/*' | sort | tr '\n' ' ')
 want="./LICENSE ./README.md ./cmd/x/main.go ./docs/guide.md ./go.mod ./internal/a/a.go "
-[ "$got" = "$want" ] || { echo "FAIL: состав «$got», ждём «$want»"; fail=1; }
+[ "$got" = "$want" ] || { echo "FAIL: состав «${got}», ждём «${want}»"; fail=1; }
 [ "$(git -C "$out" rev-list --count HEAD 2>/dev/null)" = 1 ] || { echo "FAIL: в снимке не один коммит"; fail=1; }
 [ "$(git -C "$out" log -1 --format=%s 2>/dev/null)" = "evo v0.1.0" ] || { echo "FAIL: тема коммита"; fail=1; }
 case "$log" in *"исходный SHA $(git rev-parse v0.1.0)"*) ;; *) echo "FAIL: исходный SHA не назван: $log"; fail=1 ;; esac
@@ -72,19 +72,95 @@ for text in 'Решение владельца 17.11' 'по решению вл�
 	git -c user.name=t -c user.email=t@t commit -qam marker
 	rc=0
 	LC_ALL=C LANG=C "$here/release_export.sh" HEAD "$tmp/s-$RANDOM" >/dev/null 2>&1 || rc=$?
-	[ "$rc" = 1 ] || { echo "FAIL: «$text» при LC_ALL=C — код $rc, ждём 1"; fail=1; }
+	[ "$rc" = 1 ] || { echo "FAIL: «${text}» при LC_ALL=C — код $rc, ждём 1"; fail=1; }
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
 
-# Файл Go, который сканер не прочёл (битая ссылка), — провал «строки Go не
-# проверены», а не «чисто» («Риск», 337).
-ln -s nowhere.go internal/a/broken.go
-git add internal/a/broken.go && git -c user.name=t -c user.email=t@t commit -qm broken-link
+# Ссылка в снимке — отказ до любого удаления: rm через ссылку docs удалил бы
+# файлы вне снимка (Астра #2311).
+mkdir -p "$tmp/outside/internal" && echo keep >"$tmp/outside/RELEASING.md"
+git rm -q -r docs && ln -s "$tmp/outside" docs
+git add docs && git -c user.name=t -c user.email=t@t commit -qm docs-link
 rc=0
 log=$("$here/release_export.sh" HEAD "$tmp/s-link" 2>&1) || rc=$?
-[ "$rc" = 1 ] || { echo "FAIL: непрочитанный файл Go — код $rc, ждём 1"; fail=1; }
+[ "$rc" = 1 ] || { echo "FAIL: ссылка в снимке — код $rc, ждём 1"; fail=1; }
+case "$log" in *"символическая ссылка в снимке: docs"*) ;; *) echo "FAIL: ссылка не названа: $log"; fail=1 ;; esac
+[ -e "$tmp/outside/RELEASING.md" ] && [ -d "$tmp/outside/internal" ] || { echo "FAIL: удалены файлы вне снимка через ссылку"; fail=1; }
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+
+# Файл Go, который сканер не прочёл до конца, — провал «строки Go не
+# проверены» до сборки, а не «чисто» («Риск», 337).
+printf 'package a\n\nvar s = "unterminated\n' >internal/a/broken.go
+git add internal/a/broken.go && git -c user.name=t -c user.email=t@t commit -qm broken-go
+rc=0
+log=$("$here/release_export.sh" HEAD "$tmp/s-broken" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: неразобранный файл Go — код $rc, ждём 1"; fail=1; }
 case "$log" in *"строки Go не проверены"*"снимок не чист"*) ;; *) echo "FAIL: ошибка сканера не провалила снимок до сборки: $log"; fail=1 ;; esac
-git rm -q internal/a/broken.go && git -c user.name=t -c user.email=t@t commit -qm no-link
+git rm -q internal/a/broken.go && git -c user.name=t -c user.email=t@t commit -qm no-broken
+
+# Строка Go с маркером через escape — по значению (Астра #2307).
+printf 'package a\n\n// A does nothing.\nfunc A() string { return "docs\\x2finternal/x.md" }\n' >internal/a/a.go
+git -c user.name=t -c user.email=t@t commit -qam goescape
+rc=0
+log=$("$here/release_export.sh" HEAD "$tmp/s-esc" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: маркер в строке Go через escape — код $rc, ждём 1"; fail=1; }
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+
+# Документ не в UTF-8 (CP1251, UTF-16) и маркер на двух строках — провал
+# (Астра #2309).
+for enc in cp1251 utf16 split; do
+	case "$enc" in
+	cp1251) printf 'по \xf0\xe5\xf8\xe5\xed\xe8\xfe \xe2\xeb\xe0\xe4\xe5\xeb\xfc\xf6\xe0\n' >docs/guide.md ;;
+	utf16) printf '\xff\xfed\x00o\x00c\x00s\x00/\x00i\x00n\x00t\x00e\x00r\x00n\x00a\x00l\x00' >docs/guide.md ;;
+	split) printf 'по решению\nвладельца\n' >docs/guide.md ;;
+	esac
+	git -c user.name=t -c user.email=t@t commit -qam "enc-$enc"
+	rc=0
+	"$here/release_export.sh" HEAD "$tmp/s-$enc" >/dev/null 2>&1 || rc=$?
+	[ "$rc" = 1 ] || { echo "FAIL: документ $enc — код $rc, ждём 1"; fail=1; }
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+
+# Файл незнакомого типа не пропускается молча: текст — как документ,
+# не текст — по байтам; неразрывный пробел, мягкий перенос и знаки нулевой
+# ширины не прячут маркер («Риск», 342, У1 и У2).
+nb=$(printf '\302\240')
+shy=$(printf '\302\255')
+zw=$(printf '\342\200\213')
+for c in "docs/note.tpl:см. docs/internal/x" "internal/a/skill.tmpl:по решению владельца" "docs/Makefile:see release-plan" \
+	"docs/bin.dat:$(printf '\377\376')docs/internal" "docs/guide.md:по решению${nb}владельца" \
+	"docs/guide.md:по реше${shy}нию владельца" "docs/guide.md:docs/inter${zw}nal" "docs/guide.md:Астра${nb}#2307"; do
+	file=${c%%:*}
+	printf '%s\n' "${c#*:}" >"$file"
+	git add "$file" && git -c user.name=t -c user.email=t@t commit -qm "odd $file"
+	for loc in C C.UTF-8 ""; do
+		rc=0
+		LC_ALL=$loc "$here/release_export.sh" HEAD "$tmp/s-odd-$RANDOM" >/dev/null 2>&1 || rc=$?
+		[ "$rc" = 1 ] || { echo "FAIL: «${c#*:}» в $file при LC_ALL=${loc:-по умолчанию} — код $rc, ждём 1"; fail=1; }
+	done
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+# Не текст без маркера и неразрывный пробел без маркера — не провал.
+printf '\377\376\000\001' >docs/logo.bin
+printf 'обычный%sтекст\n' "$nb" >>docs/guide.md
+git add docs/logo.bin && git -c user.name=t -c user.email=t@t commit -qam clean-odd
+"$here/release_export.sh" HEAD "$tmp/s-clean-odd" >/dev/null 2>&1 || { echo "FAIL: двоичный файл без маркера или неразрывный пробел — провал"; fail=1; }
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+
+# Строки Go, склеенные +, — одна строка («Риск», 342).
+for v in '"docs/" + "internal/x.md"' '"по решению" +\n\t\t"\\u00a0владельца"' '"docs/" + "inter" + "nal"'; do
+	printf 'package a\n\n// A does nothing.\nfunc A() string { return %b }\n' "$v" >internal/a/a.go
+	git -c user.name=t -c user.email=t@t commit -qam goconcat
+	rc=0
+	"$here/release_export.sh" HEAD "$tmp/s-cat-$RANDOM" >/dev/null 2>&1 || rc=$?
+	[ "$rc" = 1 ] || { echo "FAIL: склейка строк Go $v — код $rc, ждём 1"; fail=1; }
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+# Склейка через вызов — две строки, не одна.
+printf 'package a\n\n// A does nothing.\nfunc A() string { return f("docs/") + "internal" }\n\nfunc f(s string) string { return s }\n' >internal/a/a.go
+git -c user.name=t -c user.email=t@t commit -qam gocall
+"$here/release_export.sh" HEAD "$tmp/s-call" >/dev/null 2>&1 || { echo "FAIL: строки по разные стороны вызова склеены"; fail=1; }
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 
 # Латинское Astra (Astra Linux) — не маркер.
 echo 'образ Astra Linux' >>docs/guide.md
@@ -98,12 +174,22 @@ rc=0
 "$here/release_export.sh" HEAD "$tmp/s6" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 1 ] && [ ! -d "$tmp/s6/.git" ] || { echo "FAIL: несобираемый снимок — код $rc"; fail=1; }
 
+# Единственный пакет main: go build ./... положил бы бинарь x в корень
+# снимка, и он ушёл бы в коммит (Астра #2310).
+git rm -q -r internal && printf 'package main\n\nfunc main() {}\n' >cmd/x/main.go
+git -c user.name=t -c user.email=t@t commit -qam onemain
+"$here/release_export.sh" HEAD "$tmp/s-main" >/dev/null 2>&1 || { echo "FAIL: снимок с одним пакетом main не создан"; fail=1; }
+if [ -e "$tmp/s-main/x" ] || git -C "$tmp/s-main" ls-files 2>/dev/null | grep -qvE '^(README.md|LICENSE|go.mod|cmd/x/main.go|docs/guide.md)$'; then
+	echo "FAIL: в снимке лишний файл после сборки: $(git -C "$tmp/s-main" ls-files 2>/dev/null | tr '\n' ' ')"
+	fail=1
+fi
+
 # Ошибки вызова: нет ревизии, каталог не пуст, нет аргументов — код 2.
 for args in "nope $tmp/s7" "HEAD $out" ""; do
 	rc=0
 	# shellcheck disable=SC2086
 	"$here/release_export.sh" $args >/dev/null 2>&1 || rc=$?
-	[ "$rc" = 2 ] || { echo "FAIL: вызов «$args» — код $rc, ждём 2"; fail=1; }
+	[ "$rc" = 2 ] || { echo "FAIL: вызов «${args}» — код $rc, ждём 2"; fail=1; }
 done
 [ "$fail" = 0 ] && echo "release_export: ok"
 exit "$fail"

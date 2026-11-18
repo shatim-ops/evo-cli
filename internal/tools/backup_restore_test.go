@@ -51,6 +51,9 @@ type restoreWorld struct {
 	// list is the list of the project's backups the world answers; none
 	// when empty.
 	list string
+	// failDisksAfter: the lists of disks after the first failDisksAfter
+	// are answered 503; 0 for none.
+	failDisksAfter, diskReads int
 	// dir is the directory of the state of every call on the world: the
 	// records of the calls (D92) live there, as evo\'s beside its state.
 	dir string
@@ -73,6 +76,13 @@ func (w *restoreWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		_, _ = rec.WriteString(list)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/disks":
+		if w.failDisksAfter > 0 && w.restores > 0 && w.diskReads >= w.failDisksAfter {
+			rec.WriteHeader(http.StatusServiceUnavailable)
+			break
+		}
+		if w.restores > 0 {
+			w.diskReads++
+		}
 		items := append([]map[string]any{}, w.disks...)
 		b, _ := json.Marshal(map[string]any{"items": items, "total": len(items)})
 		_, _ = rec.Write(b)
@@ -509,6 +519,20 @@ func TestBackupRestore_TheZoneOfTheLiveForm(t *testing.T) {
 	w := &restoreWorld{card: live, list: `{"items":[{"id":"` + brBackup + `","resource":{"resource_state":{"size":10}}}],"total":1}`}
 	if m, text, isErr := backupRestore(t, w, nil); !isErr || m["reason"] != "USAGE" || w.restores != 0 {
 		t.Errorf("no zone anywhere: want USAGE before the question: %s", text)
+	}
+}
+
+// A restored disk still being made at the limit of the wait names when evo
+// last read it and how many reads failed after it (waitReads, #2216; #2338,
+// as #2337).
+func TestBackupRestore_AtTheLimitSaysTheReadsThatFailed(t *testing.T) {
+	w := (&restoreWorld{made: "creating", failDisksAfter: 1}).stateIn(t)
+	m, text, isErr := backupRestore(t, w, map[string]any{"confirmed": true})
+	if isErr || m["status"] != "restoring" {
+		t.Fatalf("want restoring at the limit: %s", text)
+	}
+	if m["last_read_at"] == nil || m["failed_reads"] == nil || m["failed_reads"].(float64) < 1 {
+		t.Errorf("the answer at the limit does not say when evo read last and how many reads failed: %s", text)
 	}
 }
 

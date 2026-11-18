@@ -35,7 +35,10 @@ func hostileBodyIn(status, state string, extra ...map[string]any) []byte {
 	item := map[string]any{"id": "00000000-0000-4000-8000-0000000000f1", "name": hostileName, "status": status, "state": state}
 	items := []any{item}
 	// The resource itself, for a GET by id (a delete's preview reads it).
-	body := map[string]any{"id": item["id"], "name": hostileName, "status": status}
+	// An operation names its resource by an id the cloud gives (resourceId,
+	// resource_id): text of the cloud too («Риск», 312-2).
+	body := map[string]any{"id": item["id"], "name": hostileName, "status": status,
+		"resourceId": hostileName, "resource_id": hostileName}
 	if state != "running" {
 		body["state"] = state
 	}
