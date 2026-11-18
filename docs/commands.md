@@ -7658,7 +7658,7 @@ evo project list [flags]
 ```
 
 ```
-evo project use <UUID|имя> [flags]
+evo project use <UUID|name> [flags]
 ```
 
 ### Examples
