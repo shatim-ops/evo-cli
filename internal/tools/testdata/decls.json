@@ -78,7 +78,7 @@
     "id_args": [
       "backup_id why=\"\" target=true ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[preview will_create disk name] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[preview will_create disk name state] whole:false own:[] workload:false deep:false}"
   },
   "billing_balance": {
     "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
