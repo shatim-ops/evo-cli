@@ -67,4 +67,51 @@ func checkRuleRefusals(t *testing.T) {
 	if checked < 90 {
 		t.Fatalf("only %d refusals checked: the walk lost the schema rules", checked)
 	}
+	checkNumberRefusals(t)
+}
+
+// A number the bounds of the schema refuse — minimum, maximum, the range
+// of an int32 — is refused by its argument and the bound, never by the
+// number: a secret given where a size goes reached stderr, the --json
+// envelope and the answer over MCP before consent (Астра #2576; the
+// owner's rule of #2459: a refusal of form does not repeat the value).
+// Every integer and number argument of every tool and every integer item
+// of a list, both signs.
+func checkNumberRefusals(t *testing.T) {
+	const digits = "27183650904512"
+	checked := 0
+	for _, tl := range New(nil).Tools() {
+		props, _ := tl.InputSchema["properties"].(map[string]any)
+		for name, p := range props {
+			pm, _ := p.(map[string]any)
+			for _, n := range []float64{27183650904512, -27183650904512} {
+				var v any
+				switch {
+				case pm["type"] == "integer" || pm["type"] == "number":
+					v = n
+				case pm["type"] == "array":
+					if items, _ := pm["items"].(map[string]any); items["type"] == "integer" {
+						v = []any{float64(1), n}
+					}
+				}
+				if v == nil {
+					continue
+				}
+				err := CheckArgs(tl, map[string]any{name: v})
+				if err == nil {
+					continue
+				}
+				checked++
+				if strings.Contains(err.Error(), digits) {
+					t.Errorf("%s %s = %v: the refusal echoes the number: %v", tl.Name, name, v, err)
+				}
+				if !strings.Contains(err.Error(), name) {
+					t.Errorf("%s %s = %v: the refusal does not name the argument: %v", tl.Name, name, v, err)
+				}
+			}
+		}
+	}
+	if checked < 100 {
+		t.Fatalf("only %d number refusals checked: the walk lost the bounds", checked)
+	}
 }
