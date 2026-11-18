@@ -658,7 +658,9 @@ func coerceArg(p param, value string) (any, error) {
 	case "object":
 		var m map[string]any
 		if err := json.Unmarshal([]byte(value), &m); err != nil {
-			return nil, fmt.Errorf(i18n.T("not a JSON object: %v", "не объект JSON: %v"), err)
+			// The kind and place of the error, not the decoder's text: it
+			// quotes the value (release audit rc.1, A19-28).
+			return nil, stderrors.New(tools.JSONProblem(err))
 		}
 		return m, nil
 	}

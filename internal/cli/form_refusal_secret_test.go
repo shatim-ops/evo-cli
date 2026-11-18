@@ -43,3 +43,19 @@ func TestFormRefusals_DoNotRepeatTheValue(t *testing.T) {
 		}
 	}
 }
+
+// An object given to --arg that is not JSON is refused by the kind and
+// place of the error, as --args-json (#2437), not by the decoder's text,
+// which quotes a character of the value (release audit rc.1, A19-28).
+func TestArgObject_JSONRefusalIsTheOnePoint(t *testing.T) {
+	setupCLI(t)
+	for _, extra := range [][]string{nil, {"--json"}} {
+		newProcess()
+		args := append(append([]string{}, extra...), "tools", "call", "k8s_add_addon",
+			"--arg", "cluster_id=00000000-0000-4000-8000-000000000001", "--arg", `config={"a":Q}`)
+		code, out, errOut := runCLI(t, "", args...)
+		if code == 0 || strings.Contains(out+errOut, "invalid character") || strings.Contains(out+errOut, "'Q'") {
+			t.Errorf("%v: want the kind and place of the error, not the decoder's text: %s%s", extra, out, errOut)
+		}
+	}
+}
