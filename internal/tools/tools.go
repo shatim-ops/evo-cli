@@ -3505,12 +3505,14 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 	if !target.CreatedAt.IsZero() {
 		tgt["created_at"] = target.CreatedAt
 	}
+	// The name and the zone are the cloud's: quoted on one line in evo's
+	// words, as the target beside them is marked (#2427, #2463).
 	label := target.ID
 	if target.Name != "" {
-		label = target.Name + " (" + target.ID + ")"
+		label = quoteCloud(target.Name) + " (" + target.ID + ")"
 	}
 	if z := vmZone(target); z != "" {
-		label += i18n.T(" in zone ", " в зоне ") + z
+		label += i18n.T(" in zone ", " в зоне ") + quoteCloud(z)
 	}
 	msg := i18n.Tf("destroy permanently deletes VM %s and all data on its disks (irreversible). "+
 		"Get the user's approval, then call again with confirmed=true.",
