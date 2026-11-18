@@ -355,7 +355,9 @@ func schemaParams(t tools.Tool) []param {
 func lookupTool(reg *tools.Registry, name string) (tools.Tool, error) {
 	t, ok := reg.Lookup(name)
 	if !ok {
-		return tools.Tool{}, clerrors.New(clerrors.CodeUsage, i18n.Tf("unknown tool %q", "неизвестный инструмент %q", name),
+		// The name is not repeated: it may be anything typed, a secret in
+		// the wrong place included (#2353).
+		return tools.Tool{}, clerrors.New(clerrors.CodeUsage, i18n.T("unknown tool", "неизвестный инструмент"),
 			i18n.T("Run 'evo tools list' to see the tools.", "Список инструментов: 'evo tools list'."))
 	}
 	return t, nil

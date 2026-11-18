@@ -60,13 +60,9 @@ var unquotedCloudSteps = map[string]int{
 // engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
-	"internal/engine/create_preview.go|ShowCreatePreview":      1,
-	"internal/tools/delete_preview.go|Registry.deletePlan":     1,
-	"internal/tools/tools.go|destroyTargetPreview":             1,
-	"internal/tools/tools_backup.go|Registry.backupRestored":   1,
-	"internal/tools/tools_backup.go|Registry.planBackupCreate": 1,
-	"internal/tools/tools_backup.go|backupOfTheName":           1,
-	"internal/tools/tools_pg.go|Registry.planPgCreate":         1,
+	"internal/engine/create_preview.go|ShowCreatePreview":  1,
+	"internal/tools/delete_preview.go|Registry.deletePlan": 1,
+	"internal/tools/tools.go|destroyTargetPreview":         1,
 }
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only

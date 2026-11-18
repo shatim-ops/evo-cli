@@ -72,8 +72,10 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 		if since, err = time.Parse(time.RFC3339, v); err != nil {
 			if since, err = time.Parse(time.DateOnly, v); err != nil {
 				return failed(ctx, clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("since %q is not a time: give a date (2026-11-01) or a time (2026-11-01T10:00:00Z)",
-						"since %q — не время: укажите дату (2026-11-01) или время (2026-11-01T10:00:00Z)", v), ""), nil), true
+					// The value is not repeated: it may be anything typed,
+					// a secret included (#2353).
+					i18n.T("since is not a time: give a date (2026-11-01) or a time (2026-11-01T10:00:00Z)",
+						"since — не время: укажите дату (2026-11-01) или время (2026-11-01T10:00:00Z)"), ""), nil), true
 			}
 		}
 	}
@@ -168,6 +170,11 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	}
 	if j.Skipped > 0 {
 		ans["skipped"] = j.Skipped
+	}
+	// The lines of that day and before were pruned by age or size: what
+	// is live of them is kept, the rest is gone (history.Prune).
+	if day := history.RetiredThrough(history.DirOf(intent.Dir(root))); day != "" {
+		ans["retired_through"] = day
 	}
 	if len(hidden) > 0 {
 		ans["hidden_without_project"] = len(hidden)
