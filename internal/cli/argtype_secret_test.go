@@ -26,9 +26,11 @@ func TestToolsCall_TypeRefusalDoesNotEchoTheValue(t *testing.T) {
 	}
 }
 
-// A pair of --arg the CLI cannot read — no "=", no name, a value that is
-// not of the argument's type — is refused by its argument (or its place)
-// alone, not by its text: the text may be a secret (Астра, #2256).
+// A pair of --arg the CLI cannot read — no "=", no name, a name the tool
+// does not take, a value that is not of the argument's type — is refused
+// by its argument (or its place) alone, not by its text: the text may be a
+// secret (Астра, #2256), and so may what stands before an "=" in it — a
+// value in Base64 ends with one (Астра, #2316).
 func TestToolsCall_BadArgPairDoesNotEchoTheValue(t *testing.T) {
 	const secret = "s3cr3t-93718244560173"
 	for _, c := range []struct {
@@ -37,6 +39,12 @@ func TestToolsCall_BadArgPairDoesNotEchoTheValue(t *testing.T) {
 	}{
 		{"secret_create", secret},
 		{"secret_create", "=" + secret},
+		{"secret_create", "value:" + secret + "="},
+		{"secret_create", "value:" + secret + "=="},
+		{"secret_add_version", "value:" + secret + "="},
+		{"pg_user_create", "password:" + secret + "="},
+		{"image_create", "user_data_template:" + secret + "="},
+		{"secret_create", secret + "=x"},
 		{"disk_create", "size_gb=" + secret},
 		{"open_ports", "ports=[" + secret},
 		{"stack_destroy", "wait=" + secret},
