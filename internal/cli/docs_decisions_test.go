@@ -147,3 +147,129 @@ func TestDocs_DecisionReserves(t *testing.T) {
 		}
 	}
 }
+
+var (
+	migrationSection = regexp.MustCompile(`(?ms)^### Миграция\n(.*?)(?:^##+ |\z)`)
+	migrationItem    = regexp.MustCompile(`(?m)^- `)
+	itemTitle        = regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	decisionRowAny   = regexp.MustCompile(`(?m)^\| D(\d{1,3})\b[^|]*\|.*$`)
+	stableHeading    = regexp.MustCompile(`(?m)^## \[\d+\.\d+\.\d+\]`)
+	breakingWord     = regexp.MustCompile(`(?i)ломающ`)
+)
+
+// breakingDecisions are the numbers whose rows (any of them: D6, «D6
+// (пересмотр)») say the change is breaking — «ломающее», not «не ломающее».
+func breakingDecisions(table string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range decisionRowAny.FindAllStringSubmatch(table, -1) {
+		row := strings.ToLower(m[0])
+		for _, at := range breakingWord.FindAllStringIndex(row, -1) {
+			if !strings.HasSuffix(row[:at[0]], "не ") {
+				out[m[1]] = true
+			}
+		}
+	}
+	return out
+}
+
+// migrationItems are the items of the «Миграция» sections of text, each
+// with its title (the first bold run, or its start).
+func migrationItems(text string) map[string]string {
+	out := map[string]string{}
+	for _, sec := range migrationSection.FindAllStringSubmatch(text, -1) {
+		for _, item := range migrationItem.Split(sec[1], -1)[1:] {
+			title := item
+			if m := itemTitle.FindStringSubmatch(item); m != nil {
+				title = m[1]
+			}
+			out[title] = item
+		}
+	}
+	return out
+}
+
+// migrationsWithoutBreakingDecision are the items of «Миграция» known to
+// cite no decision marked breaking, title → what is missing; each is a
+// line to «релиз» (#2472, 1–2). Only shrinks. Closes by 1.9, before the
+// stable tag (#2472).
+var migrationsWithoutBreakingDecision = map[string]string{
+	"Базы данных без зоны при всех закрытых зонах — `USAGE` до вопроса": "no decision recorded (#2008)",
+	"Целый аргумент вне 32 бит отвергается до обращения к облаку":       "D36 does not record the 32-bit bound as breaking",
+	"`--json` CLI отвечает по-английски, как JSON инструмента MCP":      "no row of D6 is marked breaking",
+}
+
+// A breaking change of the coming version — an item of «Миграция» in a
+// fragment of changelog.d or in a section of CHANGELOG.md above the last
+// stable release — cites a decision whose row says it is breaking: the
+// table of breaking changes of docs/RELEASING.md and the audit before the
+// tag read the decisions, and a migration without one is a break nobody
+// decided (audit of 1.9 rc.1, A19-17; #2472).
+func TestDocs_MigrationCitesABreakingDecision(t *testing.T) {
+	root := filepath.Join("..", "..")
+	table, err := os.ReadFile(filepath.Join(root, "docs", "internal", "standalone", "DECISIONS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	breaking := breakingDecisions(string(table))
+	if len(breaking) == 0 {
+		t.Fatal("DECISIONS.md: no row marked breaking")
+	}
+	changelog, err := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	coming := string(changelog)
+	if at := stableHeading.FindStringIndex(coming); at != nil {
+		coming = coming[:at[0]]
+	}
+	sources := map[string]string{"CHANGELOG.md": coming}
+	fragments, err := filepath.Glob(filepath.Join(root, "changelog.d", "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fragments {
+		if filepath.Base(f) == "README.md" {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sources["changelog.d/"+filepath.Base(f)] = string(b)
+	}
+	found := map[string]bool{}
+	for src, text := range sources {
+		for title, item := range migrationItems(text) {
+			ok := false
+			for _, m := range decisionRef.FindAllStringSubmatch(item, -1) {
+				ok = ok || breaking[m[1]]
+			}
+			if ok {
+				continue
+			}
+			found[title] = true
+			if migrationsWithoutBreakingDecision[title] == "" {
+				t.Errorf("%s: «Миграция» %q cites no decision marked breaking (DECISIONS.md, «ломающее») — write the decision, or cite it", src, title)
+			}
+		}
+	}
+	for title := range migrationsWithoutBreakingDecision {
+		if !found[title] {
+			t.Errorf("migrationsWithoutBreakingDecision names %q, which cites a breaking decision now or is gone: remove the line (the list only shrinks)", title)
+		}
+	}
+
+	for _, c := range []struct {
+		name, table string
+		want        bool
+	}{
+		{"breaking", "| D90 | x | y; ломающее, «Миграция» |\n", true},
+		{"not breaking", "| D90 | x | y. Не ломающее: код тот же |\n", false},
+		{"both", "| D96 | x | не ломающее для CLI; ломающее для MCP |\n", true},
+		{"a refinement row", "| D6 (уточнение 14.11) | x | Ломающее по RELEASING |\n", true},
+	} {
+		if got := breakingDecisions(c.table)[decisionRowAny.FindStringSubmatch(c.table)[1]]; got != c.want {
+			t.Errorf("%s: breaking %v, want %v", c.name, got, c.want)
+		}
+	}
+}

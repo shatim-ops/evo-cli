@@ -91,8 +91,9 @@ type Caller struct {
 // journal knows the consent the engine's gate got (consented, FB140-1).
 func (c *Caller) ask(ctx context.Context, answer string, human *confirm.Preview) (bool, error) {
 	// The answer the gate shows (--json, --dry-run) is the one MCP gives:
-	// marked as every answer is (markAlways).
-	ok, err := c.Gate(ctx, withUntrusted(alwaysMarked, answer), human)
+	// marked as every answer is (markAlways) and as the tool's are
+	// (markerOf).
+	ok, err := c.Gate(ctx, withUntrusted(alwaysMarked, withUntrusted(markerOf(ctx), answer)), human)
 	if ok && err == nil {
 		c.answeredYes = true
 		if c.consent != nil && !c.DryRun {
