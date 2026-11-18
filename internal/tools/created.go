@@ -35,6 +35,10 @@ type created struct {
 	// takes too.
 	list, field string
 	listArgs    []string
+	// read is the tool that reads by its id what the create makes, when
+	// its answer names that read as its next step: beside the list and an
+	// operation, the one step a file of made/ may run (A19-42, #2470).
+	read string
 	// delete is the tool that deletes it (Decl.Delete); "" for none.
 	delete string
 }

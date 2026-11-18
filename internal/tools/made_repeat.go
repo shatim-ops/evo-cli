@@ -12,6 +12,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -166,18 +167,22 @@ func (r *Registry) rememberMade(rec intent.Intent, answer string) {
 }
 
 // madeStepReads tells that step, a read, is one the repeat of create runs
-// from a file of made/: a read of the resource create makes — its declared
-// list, or a read of the same group that names a resource by its id and
-// holds no secret (an operation, a card). A file of the key of the call
-// still names any tool: one that reads another thing — the journal, a file
-// of the machine, a kubeconfig — is named, not run, and its answer does not
-// stand for the repeat's (A19-42, #2470).
+// from a file of made/: a closed list per create — its declared list, its
+// declared read by id (created.read), or an operation of its group — and
+// none that holds a secret or does something besides (Sensitive,
+// SideEffects: k8s_kubeconfig mints a token). A file of the key of the
+// call still names any tool: another is named, not run, and its answer
+// does not stand for the repeat's (A19-42, #2470; «Риск», 393).
 func (r *Registry) madeStepReads(create string, step Tool) bool {
-	if c, ok := createdOf(create); ok && step.Name == c.list {
+	c, ok := createdOf(create)
+	if !ok || step.Decl.Sensitive || step.Decl.SideEffects != "" {
+		return false
+	}
+	if step.Name == c.list || step.Name == c.read {
 		return true
 	}
 	ct, ok := r.Lookup(create)
-	return ok && step.Group == ct.Group && !step.Decl.Sensitive && len(step.Decl.IDArgs) > 0
+	return ok && step.Group == ct.Group && slices.ContainsFunc(step.Decl.IDArgs, func(a idArg) bool { return a.kind == kindOperation })
 }
 
 // madeByKey tells that the key cur wrote the file of made/ whose key is m:

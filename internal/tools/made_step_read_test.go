@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -236,6 +237,76 @@ func TestMadeRepeat_AStepOfAnotherKindIsNotRun(t *testing.T) {
 		}
 		if _, ran := m[next.field]; ran || m["status"] != "waiting" {
 			t.Errorf("%s: the repeat ran a step that reads another thing than the resource (status %v): %.400s", next.tool, m["status"], text)
+		}
+	}
+}
+
+// madeSteps is what a file of made/ may run as the step of each create: a
+// snapshot of madeStepReads over the registry (18.11; «Риск», 393). A new
+// create, or a new read of a group, changes it on purpose — or fails here.
+var madeSteps = map[string][]string{
+	"ar_create":         {"ar_list", "ar_operation"},
+	"backup_create":     {"backup_get", "backup_list"},
+	"backup_restore":    {"disk_list"},
+	"ca_deploy":         {"ca_list"},
+	"cert_import":       {"cert_list", "cert_operation"},
+	"cert_issue_le":     {"cert_list", "cert_operation"},
+	"deploy":            nil,
+	"deploy_apply":      nil,
+	"disk_create":       {"disk_list"},
+	"dns_record_create": {"dns_operation", "dns_records"},
+	"dns_zone_create":   {"dns_operation", "dns_zones"},
+	"image_create":      {"image_list"},
+	"k8s_add_addon":     {"k8s_operation"},
+	"k8s_add_nodepool":  {"k8s_nodepools", "k8s_operation"},
+	"k8s_create":        {"k8s_list", "k8s_operation"},
+	"kafka_create":      {"kafka_list", "kafka_operation"},
+	"lb_create":         {"lb_list", "lb_operation"},
+	"pg_backup_create":  {"pg_backups", "pg_operation"},
+	"pg_create":         {"pg_list", "pg_operation"},
+	"pg_db_create":      {"pg_databases", "pg_operation"},
+	"pg_user_create":    {"pg_operation", "pg_users"},
+	"provision":         {"vm_list"},
+	"redis_create":      {"redis_list", "redis_operation"},
+	"s3_bucket_create":  nil,
+	"s3_put":            nil,
+	"secret_create":     {"secret_list"},
+	"sg_rule_create":    {"list_security_groups", "vpc_operation"},
+	"snat_create":       {"snat_list"},
+	"subnet_create":     {"list_subnets", "vpc_operation"},
+	"tg_create":         {"lb_operation", "tg_list"},
+	"vpc_create":        {"vpc_list", "vpc_operation"},
+	"vpc_route_create":  {"vpc_operation", "vpc_routes"},
+}
+
+// The steps a file of made/ runs are a closed list per create, over the
+// whole registry: none holds a secret or does something besides
+// (k8s_kubeconfig, deploy_plan, vm_console are none of them; A19-42,
+// «Риск», 393).
+func TestMadeRepeat_StepsAreAClosedListPerCreate(t *testing.T) {
+	r := New(nil)
+	got := map[string][]string{}
+	for name := range allCreated() {
+		var steps []string
+		for _, st := range r.Tools() {
+			if !st.Mutating && r.madeStepReads(name, st) {
+				if st.Decl.Sensitive || st.Decl.SideEffects != "" {
+					t.Errorf("%s: %s may run from a file of made/ and holds a secret or does something besides", name, st.Name)
+				}
+				steps = append(steps, st.Name)
+			}
+		}
+		slices.Sort(steps)
+		got[name] = steps
+	}
+	for name, steps := range got {
+		if !slices.Equal(steps, madeSteps[name]) {
+			t.Errorf("%s: a file of made/ may run %v, the snapshot says %v", name, steps, madeSteps[name])
+		}
+	}
+	for name := range madeSteps {
+		if _, ok := got[name]; !ok {
+			t.Errorf("%s: in the snapshot, not a create of the registry", name)
 		}
 	}
 }
