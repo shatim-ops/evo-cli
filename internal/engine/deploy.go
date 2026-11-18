@@ -774,7 +774,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 	sshUser := filled.Login
 	if sshUser == "" {
 		return state.DeploymentRecord{}, clerrors.New(clerrors.CodeConfigInvalid,
-			i18n.Tf("image %s declares no login user", "в образе %s не задан пользователь для входа", imageID),
+			i18n.Tf("image %s declares no login user", "в образе %s не задан пользователь для входа", strconv.Quote(imageID)),
 			i18n.T("Choose a Linux image whose metadata has a 'name' field (evo image list), e.g. Ubuntu-24.04.",
 				"Выберите образ Linux, в метаданных которого есть поле 'name' (evo image list), например Ubuntu-24.04."))
 	}
@@ -1441,12 +1441,12 @@ func (e *Engine) settledBootFIP(ctx context.Context, fip *provision.FloatingIP, 
 	case fip.Available():
 	case strings.HasPrefix(fip.State, "error"):
 		e.Printer.Warning(i18n.Tf("floating IP %s could not be created (state %s); the VM gets a public IP after boot",
-			"floating IP %s не создался (состояние %s); внешний IP ВМ получит после загрузки", fip.IPAddress, fip.State))
+			"floating IP %s не создался (состояние %s); внешний IP ВМ получит после загрузки", fip.IPAddress, strconv.Quote(fip.State)))
 		_ = e.releaseBootFIP(fip, projectID) // the warning is printed
 		return nil
 	default:
 		e.Printer.Warning(i18n.Tf("floating IP %s is not ready yet (state %s); the VM is created without it and gets it after boot, which can make the first boot slow",
-			"floating IP %s ещё не готов (состояние %s); ВМ создаётся без него и получит его после загрузки, из-за этого первая загрузка может затянуться", fip.IPAddress, fip.State))
+			"floating IP %s ещё не готов (состояние %s); ВМ создаётся без него и получит его после загрузки, из-за этого первая загрузка может затянуться", fip.IPAddress, strconv.Quote(fip.State)))
 	}
 	return fip
 }
