@@ -200,7 +200,10 @@ var decls = map[string]Decl{
 	// lines of a failure (#558).
 	"deploy": {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the project (.evo.yaml, the directory), checked by provision.ValidName", IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "project_id", why: whyProjectArg}}, Untrusted: untrustedAnswer{fields: []string{"log", "output", "ports_open_only_to_groups", "phase_state", "vm_ip", "vm_name", "upload", "vm", "security_group", "subnet_id", "existing_id", "vm_state"}, workload: true}},
 	"provision": {Group: "vm", Project: true, Created: created{id: "vm_id", list: "vm_list", field: "vms", delete: "destroy"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", why: whyContinued}, {name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "subnet_id", why: whyListed},
-		{name: "project_id", why: whyProjectArg}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+		{name: "project_id", why: whyProjectArg}}, RefArgs: []nameRef{{"subnet_id", refSubnet}},
+		// The VM the cloud made: its address, the ssh command with it,
+		// the names of its flavor and zone (#2477).
+		Untrusted: untrustedAnswer{fields: []string{"vm_ip", "ssh", "flavor_name", "region_name"}}},
 	"status": {Group: "deploy", Untrusted: untrustedAnswer{fields: []string{"id", "vm_ip", "vm_name", "floating_ip_id", "zone_name", "flavor_name", "vm_flavor", "region", "ssh_user", "ssh_host_key_fingerprint",
 		"security_group_id", "security_group_name", "opened_rules", "cloud_state", "cloud_error", "other_active_vm_ids"}}},
 	"list": {Group: "deploy"},
@@ -330,7 +333,7 @@ var decls = map[string]Decl{
 	// and the answer.
 	"backup_restore": {Created: created{id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "disk", "name", "state"}}},
 	"disk_list":      {Project: true, Completes: map[string]completion{"type": {list: "list_disk_types", field: "name"}}, Untrusted: untrustedAnswer{fields: []string{"disks"}}},
-	"disk_create":    {Project: true, Created: created{id: "disk.id", lost: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "attach_to", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"disk", "attach", "disk_state"}}},
+	"disk_create":    {Project: true, Created: created{id: "disk.id", lost: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "attach_to", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"disk", "attach", "disk_state", "next_args"}}},
 	// The disk and the VM the preview of disk_attach and disk_detach names,
 	// as the cloud names them.
 	"disk_attach": {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed, party: partyVM}}, Untrusted: untrustedAnswer{fields: []string{"will_attach", "attached_vms", "result", "disk_state"}}},
@@ -360,7 +363,7 @@ var decls = map[string]Decl{
 	"whoami":              {Group: "auth", Untrusted: untrustedAnswer{fields: []string{"roles"}}},
 	"doctor":              {Group: "auth"},
 	"history":             {Group: "auth", AlwaysListed: "what evo changed is the inventory of every group: the cleanup of any group reads it, whichever groups the server serves", IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}, Untrusted: untrustedAnswer{fields: []string{"lines", "live", "would_close"}, workload: true}},
-	"release_floating_ip": {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status"}}},
+	"release_floating_ip": {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "id", "ip_address"}}},
 	"snat_list":           {Project: true, Untrusted: untrustedAnswer{fields: []string{"nat_gateways"}}},
 	"snat_create":         {Project: true, Created: created{id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "availability_zone_id", why: whyCatalogue}}},
 	"snat_delete":         {Delete: deleteTarget{arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"}, IDArgs: []idArg{{name: "id", kind: kindNAT, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},

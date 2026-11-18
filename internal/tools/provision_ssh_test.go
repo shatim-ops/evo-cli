@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -93,7 +94,7 @@ func TestProvision_DeployKeySSHPasswordStateDir(t *testing.T) {
 	if res["state_dir"] != filepath.Join(dir, ".evo") {
 		t.Errorf("state_dir = %v, want %s", res["state_dir"], filepath.Join(dir, ".evo"))
 	}
-	want := "VM vm-made is active at 203.0.113.9. SSH: " + ssh +
+	want := `VM "vm-made" is active at "203.0.113.9". SSH: ` + ssh +
 		" The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
 	if res["message"] != want {
 		t.Errorf("message:\n got %v\nwant %s", res["message"], want)
@@ -131,7 +132,7 @@ func TestProvision_CallerValuesNotEchoed(t *testing.T) {
 	if _, ok := res["ssh"]; ok {
 		t.Errorf("ssh with the deploy key for a VM without it: %v", res["ssh"])
 	}
-	if res["message"] != "VM vm-made is active at 203.0.113.9. SSH: ssh user1@203.0.113.9" {
+	if res["message"] != `VM "vm-made" is active at "203.0.113.9". SSH: ssh user1@203.0.113.9` {
 		t.Errorf("message: %v", res["message"])
 	}
 	if !strings.Contains(seen, ". SSH: ssh user1@203.0.113.9\n") {
@@ -287,3 +288,28 @@ type sshNoAnswer struct{}
 func (sshNoAnswer) Error() string   { return "i/o timeout" }
 func (sshNoAnswer) Timeout() bool   { return true }
 func (sshNoAnswer) Temporary() bool { return true }
+
+// What provision answers of the VM it made is the cloud's: its address, the
+// ssh command with it, the names of its flavor and zone are in
+// "_untrusted"; the message names the VM's id and address in quotes (#2477).
+func TestProvision_TheVMsValuesAreMarked(t *testing.T) {
+	dir := t.TempDir()
+	cloud := &progressCloud{states: []string{"active"}, fields: keyImageFields}
+	text, isErr, _ := provisionRunIn(t, context.Background(), dir, cloud, true, output.ModePlain, time.Minute, nil)
+	if isErr {
+		t.Fatalf("answer: %s", text)
+	}
+	res := answerOf(t, text)
+	marked, _ := res["_untrusted"].([]any)
+	for _, f := range []string{"vm_ip", "ssh", "flavor_name", "region_name"} {
+		if _, has := res[f]; has && !slices.Contains(marked, any(f)) {
+			t.Errorf("%s carries the cloud's value outside _untrusted %v", f, marked)
+		}
+	}
+	if res["vm_ip"] == nil || res["ssh"] == nil {
+		t.Fatalf("the world did not reach vm_ip and ssh: %s", text)
+	}
+	if msg, _ := res["message"].(string); !strings.Contains(msg, `VM "vm-made" is active at "203.0.113.9"`) {
+		t.Errorf("the message names the VM's id and address bare: %s", msg)
+	}
+}
