@@ -425,3 +425,35 @@ func TestDoctor_SaysAPruningThatDidNotFit(t *testing.T) {
 		t.Errorf("doctor: %+v; want a warning that the pruning did not fit", c)
 	}
 }
+
+// The mark of the days pruned gone, the lines of live.jsonl are not read —
+// evo's own among them: doctor says they are not read, not that evo did not
+// write them, gives them a field of their own, and says live.jsonl is never
+// to be removed («Риск», conclusion 358, У4).
+func TestDoctor_SaysLinesOfLiveNotReadAreNotAnothers(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), history.DirName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The pruned created line of evo in live.jsonl, the mark gone.
+	write(history.LiveName, `{"format":1,"time":"2026-06-01T10:00:00Z","tool":"disk_create","kind":"disk","resource_id":"d-1","outcome":"created","intent_id":"a000000000000001"}`)
+	write("2026-07-01.jsonl", `{"format":1,"time":"2026-07-01T10:00:00Z","tool":"disk_delete","kind":"disk","resource_id":"d-0","outcome":"deleted","intent_id":"a000000000000002"}`)
+	r := New(nil)
+	if p, err := history.Prune(dir, time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC), r.historyCheck); err != nil || len(p.Deferred) == 0 {
+		t.Fatalf("pruned %+v, %v; want it put off", p, err)
+	}
+	c, _ := r.journalCheck(dir)
+	data, _ := json.Marshal(c)
+	if want := []history.DeferredFile{{Name: history.LiveName, Unread: 1}}; !slices.Equal(c.Files, want) || strings.Contains(string(data), "lines_not_evos") {
+		t.Errorf("doctor: %s; want %+v, no count of lines evo did not write", data, want)
+	}
+	if !strings.Contains(c.Detail, "lines not read") || !strings.Contains(c.Detail, "is not to be moved or removed whatever the counts") {
+		t.Errorf("doctor: %s; want the lines of %s said not read, and it never to be removed", c.Detail, history.LiveName)
+	}
+}
