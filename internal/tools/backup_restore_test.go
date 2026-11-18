@@ -529,7 +529,13 @@ func TestBackupRestore_TheZoneOfTheLiveForm(t *testing.T) {
 // as #2337).
 func TestBackupRestore_AtTheLimitSaysTheReadsThatFailed(t *testing.T) {
 	w := (&restoreWorld{made: "creating", failDisksAfter: 1}).stateIn(t)
-	m, text, isErr := backupRestore(t, w, map[string]any{"confirmed": true})
+	// The world fails every read after the first: the wait has to last for
+	// a second read. 50 ms of restoreRegistry held one read on a loaded
+	// macOS runner, and failed_reads was 0 (#2565, job 135033700195).
+	// restoreRegistry sets 50 ms and gives the production wait back.
+	r := restoreRegistry(t, w)
+	backupRestoreWait = time.Second // wall-clock: a window for a few reads of a world that answers at once
+	m, text, isErr := callNamed(t, r, "backup_restore", map[string]any{"backup_id": brBackup, "name": "restored", "confirmed": true})
 	if isErr || m["status"] != "restoring" {
 		t.Fatalf("want restoring at the limit: %s", text)
 	}
