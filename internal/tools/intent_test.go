@@ -90,7 +90,10 @@ func TestGate_IntentOfAConsentedCall(t *testing.T) {
 func TestPending_ReadOnBothSurfaces(t *testing.T) {
 	r, dir := targetRegistryWith(t, &disksCloud{}, noKey)
 	t.Chdir(dir)
-	if _, err := intent.Begin(intent.Dir(dir), intent.Intent{Tool: "disk_create", Name: "disk-1", ProjectID: "p", Surface: "cli", PID: 42}); err != nil {
+	// Ended: a call that returned with its outcome unknown, whatever
+	// process has the pid now — a live one would be a call going on
+	// (intent.InFlight; «Риск», conclusion 401, У4).
+	if _, err := intent.Begin(intent.Dir(dir), intent.Intent{Tool: "disk_create", Name: "disk-1", ProjectID: "p", Surface: "cli", PID: 42, Ended: true}); err != nil {
 		t.Fatal(err)
 	}
 	notes := r.PendingNotes(dir)
