@@ -846,7 +846,8 @@
     ],
     "ref_args": [
       "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
-    ]
+    ],
+    "untrusted": "{fields:[vm_ip ssh flavor_name region_name] whole:false own:[] workload:false deep:false}"
   },
   "redis_create": {
     "project": true,

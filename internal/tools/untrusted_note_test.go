@@ -32,6 +32,7 @@ var untrustedMarkerOnly = map[string]string{
 	"ca_stop":              "app_status: the status of the app as the API words it in the question, not the output of a workload",
 	"disk_delete":          "attached_vms: the names of VMs in a refusal (D59), not the output of a workload",
 	"disk_attach":          "will_attach, result, disk_state: the names of the disk and the VM in the preview, and the attachment and the state of the disk as Compute answered them, not the output of a workload",
+	"provision":            "vm_ip, ssh, flavor_name, region_name: the address of the VM, the ssh command with it and the names of its flavor and zone as the cloud reads them, not the output of a workload",
 	"disk_create":          "disk, attach, disk_state: the disk, the attachment and the state of the disk as Compute answered them, not the output of a workload",
 	"disk_detach":          "will_detach, result: the names of the disk and the VM in the preview, and the detachment as Compute answered it, not the output of a workload",
 	"vm_start":             "preview, name, details: the name of the VM in the preview and the answer and the platform's code of a refusal, not the output of a workload",

@@ -12,6 +12,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"maps"
+	"net"
 	"regexp"
 	"slices"
 	"sort"
@@ -2688,7 +2689,11 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					engine.ShowOpenedPorts(pp, res, &ports, firstNonEmptyStr(sgName, sgIDs[0]))
 				}
 				if serr := saveState(vm.ID, "running", publicIP); serr != nil {
-					return errAnswer(fmt.Errorf("VM %s is active at %s and billed.%s", vm.ID, firstNonEmptyStr(publicIP, "no public address"), notInState(vm.ID, serr)),
+					addr := "no public address"
+					if publicIP != "" {
+						addr = cloudWord(publicIP, net.ParseIP(publicIP) != nil)
+					}
+					return errAnswer(fmt.Errorf("VM %s is active at %s and billed.%s", cloudWord(vm.ID, isUUID(vm.ID)), addr, notInState(vm.ID, serr)),
 						map[string]any{"vm_id": vm.ID, "vm_ip": publicIP}), true
 				}
 
@@ -2702,10 +2707,16 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				if deployKey {
 					sshCmd, sshWarning = deployKeySSH(eng.StateDir, sshUser, publicIP, "")
 				}
-				msg := i18n.Tf("VM %s is active at %s. SSH: %s%s", "ВМ %s работает по адресу %s. SSH: %s%s", vm.ID, publicIP, sshCmd, sshWarning)
+				// The id and the address are the cloud's: in evo's text as
+				// they are only in their form, else quoted — and no command
+				// is made of an address that is not one (#2477).
+				msg := i18n.Tf("VM %s is active at %s. SSH: %s%s", "ВМ %s работает по адресу %s. SSH: %s%s", cloudWord(vm.ID, isUUID(vm.ID)), publicIP, sshCmd, sshWarning)
+				if net.ParseIP(publicIP) == nil {
+					msg = i18n.Tf("VM %s is active at %s.", "ВМ %s работает по адресу %s.", cloudWord(vm.ID, isUUID(vm.ID)), quoteCloud(publicIP))
+				}
 				if noPublicIP {
 					msg = i18n.Tf("VM %s is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC.",
-						"ВМ %s работает в приватной сети: публичного IP нет, тип интерфейса regular. Её можно сделать целью балансировщика; доступ — только из VPC.", vm.ID)
+						"ВМ %s работает в приватной сети: публичного IP нет, тип интерфейса regular. Её можно сделать целью балансировщика; доступ — только из VPC.", cloudWord(vm.ID, isUUID(vm.ID)))
 				}
 				res := map[string]any{
 					"status":   "ok",

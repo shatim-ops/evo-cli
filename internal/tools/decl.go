@@ -200,7 +200,10 @@ var decls = map[string]Decl{
 	// lines of a failure (#558).
 	"deploy": {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the project (.evo.yaml, the directory), checked by provision.ValidName", IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "project_id", why: whyProjectArg}}, Untrusted: untrustedAnswer{fields: []string{"log", "output", "ports_open_only_to_groups"}, workload: true}},
 	"provision": {Group: "vm", Project: true, Created: created{id: "vm_id", list: "vm_list", field: "vms", delete: "destroy"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", why: whyContinued}, {name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "subnet_id", why: whyListed},
-		{name: "project_id", why: whyProjectArg}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
+		{name: "project_id", why: whyProjectArg}}, RefArgs: []nameRef{{"subnet_id", refSubnet}},
+		// The address of the VM, the ssh command with it and the names of
+		// its flavor and zone are read from the cloud (#2477).
+		Untrusted: untrustedAnswer{fields: []string{"vm_ip", "ssh", "flavor_name", "region_name"}}},
 	"status": {Group: "deploy"},
 	"list":   {Group: "deploy"},
 	// Compute.

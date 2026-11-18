@@ -22,6 +22,15 @@ import (
 // 1.2.1, П9; TestUntrustedNames_OneLineInText).
 func quoteCloud(s string) string { return strconv.Quote(s) }
 
+// cloudWord is a value of the cloud in evo's text: as it is when it has
+// its form (ok: an id, an address), else quoted (quoteCloud).
+func cloudWord(s string, ok bool) string {
+	if ok {
+		return s
+	}
+	return quoteCloud(s)
+}
+
 // untrustedAnswer declares what of a tool's answer evo did not write.
 // Fields are the answer fields with that text: the answer lists those it
 // has in "_untrusted" — a marker for a client that reads it: the text is

@@ -93,7 +93,7 @@ func TestProvision_DeployKeySSHPasswordStateDir(t *testing.T) {
 	if res["state_dir"] != filepath.Join(dir, ".evo") {
 		t.Errorf("state_dir = %v, want %s", res["state_dir"], filepath.Join(dir, ".evo"))
 	}
-	want := "VM vm-made is active at 203.0.113.9. SSH: " + ssh +
+	want := "VM \"vm-made\" is active at 203.0.113.9. SSH: " + ssh +
 		" The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
 	if res["message"] != want {
 		t.Errorf("message:\n got %v\nwant %s", res["message"], want)
@@ -131,7 +131,7 @@ func TestProvision_CallerValuesNotEchoed(t *testing.T) {
 	if _, ok := res["ssh"]; ok {
 		t.Errorf("ssh with the deploy key for a VM without it: %v", res["ssh"])
 	}
-	if res["message"] != "VM vm-made is active at 203.0.113.9. SSH: ssh user1@203.0.113.9" {
+	if res["message"] != "VM \"vm-made\" is active at 203.0.113.9. SSH: ssh user1@203.0.113.9" {
 		t.Errorf("message: %v", res["message"])
 	}
 	if !strings.Contains(seen, ". SSH: ssh user1@203.0.113.9\n") {
@@ -159,7 +159,7 @@ func TestProvision_PrivateVMPassword(t *testing.T) {
 	if pw == "" || res["password"] != pw {
 		t.Errorf("password = %v, the VM got %q", res["password"], pw)
 	}
-	want := "VM vm-made is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC." +
+	want := "VM \"vm-made\" is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC." +
 		" The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
 	if res["message"] != want {
 		t.Errorf("message:\n got %v\nwant %s", res["message"], want)
