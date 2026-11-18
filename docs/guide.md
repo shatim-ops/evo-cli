@@ -600,7 +600,7 @@ ROSA/РОСА, Windows), иначе `vm-app`: `AstraLinuxSmolensk1.8.3KES` — �
 Kubernetes, групп узлов и расширения диска evo не знает: превью говорит, что
 ресурс платный, почему цены нет, и даёт ссылку на публичный тариф Cloud.ru
 (`цена: цена неизвестна, ресурс платный: цены Managed Kubernetes нет до
-калькулятора (D17); тариф https://cloud.ru/documents/tariffs/evolution/…`; в
+калькулятора; тариф https://cloud.ru/documents/tariffs/evolution/…`; в
 ответе MCP — `preview.tariff_url`). Бакет при создании ничего не стоит:
 `цена: при создании 0 ₽; оплата по использованию — хранение, операции и
 исходящий трафик бакета: тариф …` — так считает тариф Object Storage.
