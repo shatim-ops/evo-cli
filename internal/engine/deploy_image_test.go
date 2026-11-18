@@ -188,3 +188,29 @@ func asCLI(err error, target **clerrors.CLIError) bool {
 	*target = ce
 	return true
 }
+
+// A VM request carries a secret when evo made a password or the caller gave
+// a value of a field (.evo.yaml image_metadata): the cloud's refusal is then
+// shown by its class (secretsent). evo's own key and login carry none.
+func TestDeploy_SecretMetadataWhenAValueMayBeASecret(t *testing.T) {
+	cloud := catalogForDeploy()
+	eng, dir := newTestEngine(t, cloud, newMockDeployer())
+	eng.Config.ImageID = imgUbuntu
+	if err := eng.Deploy(context.Background(), newDeployOpts(t, dir)); err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+	if cloud.createReq.SecretMetadata {
+		t.Errorf("evo's key and login marked as a secret: %v", cloud.createReq.ImageMetadata)
+	}
+
+	cloud = catalogForDeploy()
+	eng, dir = newTestEngine(t, cloud, newMockDeployer())
+	eng.Config.ImageID = imgProd
+	eng.Config.ImageMetadata = map[string]string{"admin_email": "ops@example.test"}
+	if err := eng.Deploy(context.Background(), newDeployOpts(t, dir)); err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+	if !cloud.createReq.SecretMetadata {
+		t.Errorf("a value of .evo.yaml not marked as a possible secret: %v", cloud.createReq.ImageMetadata)
+	}
+}

@@ -718,7 +718,7 @@ func (s *Server) handleToolCall(ctx context.Context, req *rpcRequest) *rpcRespon
 	}
 	if len(req.Params) > 0 {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			return s.fail(req, codeInvalidParams, "invalid tool call params: "+err.Error())
+			return s.fail(req, codeInvalidParams, "invalid tool call params: "+tools.JSONProblem(err))
 		}
 	}
 	if p.Arguments == nil {

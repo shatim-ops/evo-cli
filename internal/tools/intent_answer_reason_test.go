@@ -120,6 +120,59 @@ func TestIntent_RefusalOfThePlatformClosesTheRecord(t *testing.T) {
 	}
 }
 
+// refusedWritesReached is how many calls of the test below reach a write
+// the cloud refuses (33 on 18.11; the rest stop at a refused read before
+// the write): a world that reaches fewer checks less.
+const refusedWritesReached = 30
+
+// A refusal of the platform (4xx) ends the work of the call, counted in
+// requests, not in time («Риск», 376): the refused write is not sent again,
+// and after it at most one read goes out — the check of what the cloud
+// holds (409: the resource is there). Every tool that takes consent, on a
+// cloud that answers 400, 403, 409 or 422 to everything.
+func TestIntent_RefusalOfThePlatformEndsTheRequests(t *testing.T) {
+	rt := &contractRT{}
+	reg := contractReg(t, rt)
+	eng, _ := reg.newEngine(nil)
+	t.Chdir(eng.StateDir)
+	reached := 0
+	for _, kind := range []string{"400", "403", "409", "422"} {
+		for _, tl := range reg.Tools() {
+			if !tl.Mutating || contractHTTPSkip[tl.Name] {
+				continue
+			}
+			args := contractArgs(tl)
+			args["confirmed"] = true
+			rt.kind = kind
+			rt.take()
+			_, _, _ = contractCall(tl, args, refusalCallLimit)
+			reqs := rt.take()
+			refused := -1
+			for i, q := range reqs {
+				if contractWrites([]string{q}) == 1 {
+					refused = i
+					break
+				}
+			}
+			if refused < 0 {
+				continue
+			}
+			reached++
+			after := reqs[refused+1:]
+			if w := contractWrites(after); w != 0 {
+				t.Errorf("%s, the cloud refuses with %s: %d more writes after the refused one: %v", tl.Name, kind, w, reqs)
+			}
+			if len(after) > 1 {
+				t.Errorf("%s, the cloud refuses with %s: %d requests after the refused write, one read at most: %v", tl.Name, kind, len(after), reqs)
+			}
+		}
+	}
+	if reached < refusedWritesReached {
+		t.Errorf("%d calls reached a refused write, %d expected: the world no longer reaches the writes", reached, refusedWritesReached)
+	}
+	t.Logf("calls that reached a refused write: %d", reached)
+}
+
 // vm_reboot, after a refusal of the platform: the next call with the
 // consent is not answered «the earlier call was cut, the change may have
 // happened» — the platform said no, and the record closed (conclusion 170,

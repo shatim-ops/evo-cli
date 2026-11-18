@@ -20,6 +20,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/secretsent"
 )
 
 const (
@@ -93,6 +94,13 @@ func (a *CloudRuAdapter) getToken(ctx context.Context) string {
 // CreateVM creates a new virtual machine via POST /api/v1.1/vms.
 // The API expects a JSON array of VM specs and returns an array of created VMs.
 func (a *CloudRuAdapter) CreateVM(ctx context.Context, req CreateVMRequest) (*VM, error) {
+	// Metadata that carries a password or a value the caller gave: a
+	// refusal that echoes the request shows by its class only (secretsent).
+	// evo's public key, login and hostname alone leave the platform's
+	// words as they are («Риск» to #2419).
+	if req.SecretMetadata {
+		secretsent.Mark(ctx)
+	}
 	body, err := json.Marshal([]CreateVMRequest{req})
 	if err != nil {
 		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to marshal create request", "не удалось сформировать запрос на создание ВМ"), hintCheckRequest(), err)
