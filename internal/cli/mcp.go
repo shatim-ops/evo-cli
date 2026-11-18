@@ -14,6 +14,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -526,8 +527,8 @@ func healthTarget(u *neturl.URL) string {
 // healthHidden is an error of a healthcheck's request whose text says none
 // of the secrets of the address u: the error of net/http may carry an
 // address of its own — a Location of a redirect that did not parse — and
-// the server may copy the query of the request, or the password it got,
-// into it (Астра, #2381 reopened). The error it wraps stays in the chain:
+// the server may copy the query of the request, or the user and the
+// password it got, into it (Астра, #2381 reopened). The error it wraps stays in the chain:
 // the messages of the network read its kind.
 type healthHidden struct {
 	err error
@@ -537,13 +538,20 @@ type healthHidden struct {
 func (h healthHidden) Error() string {
 	text := h.err.Error()
 	var secrets []string
-	if pw, ok := h.u.User.Password(); ok {
-		secrets = append(secrets, pw)
+	if h.u.User != nil {
+		// A token may stand for the user as well as for the password.
+		secrets = append(secrets, h.u.User.Username())
+		if pw, ok := h.u.User.Password(); ok {
+			secrets = append(secrets, pw)
+		}
 	}
 	secrets = append(secrets, h.u.RawQuery, h.u.Fragment, h.u.RawFragment)
 	for _, vs := range h.u.Query() {
 		secrets = append(secrets, vs...)
 	}
+	// The longest first: a value that holds another is hidden whole, and
+	// the order does not follow the map's (the query values).
+	slices.SortFunc(secrets, func(a, b string) int { return len(b) - len(a) })
 	for _, s := range secrets {
 		if s != "" {
 			text = strings.ReplaceAll(text, s, "<hidden>")
