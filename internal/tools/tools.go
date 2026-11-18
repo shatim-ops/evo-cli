@@ -2705,7 +2705,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				msg := i18n.Tf("VM %s is active at %s. SSH: %s%s", "ВМ %s работает по адресу %s. SSH: %s%s", quoteCloud(vm.ID), quoteCloud(publicIP), sshCmd, sshWarning)
 				if noPublicIP {
 					msg = i18n.Tf("VM %s is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC.",
-						"ВМ %s работает в приватной сети: публичного IP нет, тип интерфейса regular. Её можно сделать целью балансировщика; доступ — только из VPC.", vm.ID)
+						"ВМ %s работает в приватной сети: публичного IP нет, тип интерфейса regular. Её можно сделать целью балансировщика; доступ — только из VPC.", quoteCloud(vm.ID))
 				}
 				res := map[string]any{
 					"status":   "ok",

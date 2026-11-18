@@ -113,7 +113,7 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/tools.go|Registry.handleDestroy":              2,
 	"internal/tools/tools.go|Registry.planDestroyTargeted":        3,
 	"internal/tools/tools.go|Registry.planProvision":              2,
-	"internal/tools/tools.go|Registry.provisionVM":                11,
+	"internal/tools/tools.go|Registry.provisionVM":                10,
 	"internal/tools/tools.go|destroyDeleting":                     3,
 	"internal/tools/tools.go|destroyTargetPreview":                5,
 	"internal/tools/tools.go|destroyUnconfirmed":                  6,

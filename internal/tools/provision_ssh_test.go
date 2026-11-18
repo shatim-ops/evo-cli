@@ -160,7 +160,7 @@ func TestProvision_PrivateVMPassword(t *testing.T) {
 	if pw == "" || res["password"] != pw {
 		t.Errorf("password = %v, the VM got %q", res["password"], pw)
 	}
-	want := "VM vm-made is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC." +
+	want := `VM "vm-made" is active (private — no public IP` + ", interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC." +
 		" The VM password is in this answer only (password): give it to the user now, evo keeps it nowhere."
 	if res["message"] != want {
 		t.Errorf("message:\n got %v\nwant %s", res["message"], want)
