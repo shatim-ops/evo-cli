@@ -27,7 +27,12 @@ import (
 var cloudWordBefore = regexp.MustCompile(`(?i)(^|[^-\w])(status|state|id):? $`)
 
 // formatVerb: a verb of a format string, %% excluded.
-var formatVerb = regexp.MustCompile(`%[-+# 0]*(\*|\d+)?(\.(\*|\d+))?[a-zA-Z%]`)
+var formatVerb = regexp.MustCompile(`%[-+# 0]*(\[\d+\])?(\*|\d+)?(\.(\[\d+\])?(\*|\d+))?(\[\d+\])?[a-zA-Z%]`)
+
+// verbIndex is the explicit index of the argument of a verb: %[2]s prints
+// the second argument, and the verbs after it go on from the third
+// («Риск», 334, У1: --vm-id %[2]s, destroy vm_id=%[3]s).
+var verbIndex = regexp.MustCompile(`\[(\d+)\][a-zA-Z]$`)
 
 // stepKey marks a key of got that is a step of progress, not an error.
 const stepKey = "step: "
@@ -41,9 +46,7 @@ const stepKey = "step: "
 // refusals closed in 1.9 (owner's decision 14.11, before rc.1). Closes by
 // 1.10.
 var unquotedCloudSteps = map[string]int{
-	"internal/engine/deploy.go|Engine.settledBootFIP":   2,
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
-	"internal/tools/tools.go|Registry.provisionVM":      2,
+	"internal/tools/tools.go|Registry.provisionVM": 2,
 }
 
 // unquotedCloudLocals are the places the detector found when it learned to
@@ -51,33 +54,24 @@ var unquotedCloudSteps = map[string]int{
 // (cloudLocals; «Риск», conclusion 312-2): errors and texts here,
 // steps of progress in unquotedCloudLocalSteps. The list only shrinks: a
 // place fixed by quoteCloud leaves it in the same PR. Its fixes are the
-// development's, by this list: A — tools_disk, tools_nlb, tools_snat,
-// engine/deploy.go, engine/destroy.go; B — tools_backup, tools_pg;
+// development's, by this list (A's — tools_disk, tools_nlb, tools_snat,
+// engine/deploy.go, engine/destroy.go — are closed): B — tools_backup, tools_pg;
 // C — tools_deploy, made.go, tools_stack, opanswer.go,
 // engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
 	"internal/engine/create_preview.go|ShowCreatePreview":      1,
-	"internal/engine/deploy.go|Engine.provisionVM":             1,
 	"internal/tools/delete_preview.go|Registry.deletePlan":     1,
 	"internal/tools/tools.go|destroyTargetPreview":             1,
 	"internal/tools/tools_backup.go|Registry.backupRestored":   1,
 	"internal/tools/tools_backup.go|Registry.planBackupCreate": 1,
 	"internal/tools/tools_backup.go|backupOfTheName":           1,
-	"internal/tools/tools_disk.go|Registry.planDiskCreate":     2,
-	"internal/tools/tools_disk.go|diskAttachedError":           4,
-	"internal/tools/tools_disk.go|diskCreated":                 5,
-	"internal/tools/tools_nlb.go|Registry.planLbCreate":        1,
-	"internal/tools/tools_nlb.go|Registry.planTgCreate":        2,
 	"internal/tools/tools_pg.go|Registry.planPgCreate":         1,
-	"internal/tools/tools_snat.go|Registry.planSnatCreate":     2,
 }
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only
 // shrinks. Closes by 1.9 (owner's decision 17.11).
-var unquotedCloudLocalSteps = map[string]int{
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
-}
+var unquotedCloudLocalSteps = map[string]int{}
 
 // unquotedCloudFlows are the places the detector found when it learned
 // to follow a value of the cloud by its declaration and in the order of
@@ -135,18 +129,18 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/tools_ca.go|caStartStopAnswer":                1,
 	"internal/tools/tools_certmanager.go|certNameTaken":           1,
 	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":     10,
-	"internal/tools/tools_deploy.go|appliedPlan":                  3,
+	"internal/tools/tools_deploy.go|appliedPlan":                  2,
 	"internal/tools/tools_disk.go|Registry.listedVM":              1,
 	"internal/tools/tools_disk.go|diskAtLimit.Error":              1,
 	"internal/tools/tools_dns.go|Registry.dnsZoneLinked":          1,
-	"internal/tools/tools_k8s.go|Registry.planK8sCreate":          1,
+	"internal/tools/tools_k8s.go|Registry.planK8sCreate":          3,
 	"internal/tools/tools_k8s.go|Registry.planK8sNodePoolScale":   2,
 	"internal/tools/tools_kafka.go|Registry.planKafkaCreate":      1,
 	"internal/tools/tools_pg.go|Registry.planPgCreate":            1,
 	"internal/tools/tools_redis.go|Registry.planRedisCreate":      1,
 	"internal/tools/tools_sg.go|Registry.planSGRuleDelete":        2,
 	"internal/tools/tools_sg_create.go|Registry.planSGRuleCreate": 2,
-	"internal/tools/tools_stack.go|Registry.advance":              3,
+	"internal/tools/tools_stack.go|Registry.advance":              5,
 	"internal/tools/tools_stack.go|Registry.stepRead":             1,
 	"internal/tools/tools_stack.go|stepMissing":                   1,
 	"internal/tools/tools_subnet.go|Registry.planSubnetCreate":    1,
@@ -177,7 +171,10 @@ var unquotedCloudFlowSteps = map[string]int{
 // id and the status of a stack job (stack.newID), a JSON path of a
 // declaration, the image of the configuration, the HTTP status of evo's
 // own MCP server, the id of a record of a call (intent, D46). Quoted as the cloud's, they would read as the cloud's
-// words (Астра #2237). A place here is a count of such values in it, not
+// words (Астра #2237). And a text evo built from a value of the cloud by
+// the rule of #2253 — the id under isUUID as it is, for a command, else in
+// quotes (madeShows): glued into another text, it is counted again, and
+// quotes would break the command («Риск», 340). A place here is a count of such values in it, not
 // a pass for the function: a value of the cloud in it is still counted.
 var evoOwnValues = map[string]int{
 	"internal/cli/history_view.go|historyEntry.call":           1,
@@ -194,6 +191,7 @@ var evoOwnValues = map[string]int{
 	"internal/sgrules/sgrules.go|Close":                        1,
 	"internal/stack/store.go|jobNotFoundError.Error":           1,
 	"internal/tools/card.go|cardDoes":                          1,
+	"internal/tools/made.go|madeAnswer":                        1,
 	"internal/tools/tools.go|deployInProgress":                 1,
 	"internal/tools/tools_stack.go|Registry.appliableJob":      1,
 	"internal/tools/tools_stack.go|Registry.checkJobProject":   1,
@@ -486,8 +484,12 @@ func bareCloudWords(format string, args []ast.Expr, f *cloudFlow) int {
 			return n
 		}
 		v := verb[len(verb)-1]
+		if m := verbIndex.FindStringSubmatch(verb); m != nil {
+			i, _ := strconv.Atoi(m[1])
+			arg = i - 1
+		}
 		var a ast.Expr
-		if arg < len(args) {
+		if arg >= 0 && arg < len(args) {
 			a = args[arg]
 		}
 		fromCloud := a != nil && !isConcat(a) && f != nil && f.cloud(a)
@@ -531,6 +533,14 @@ func cloudSource(e ast.Expr) bool {
 	return false
 }
 
+// Known blind spots of cloudFlow («Риск», 334): a value passed into a
+// function that builds the text (the text is counted where it is built
+// only if that function is in the same file's walk of the format call), a
+// text grown with +=, a strings.Builder, a format kept in a variable (no
+// literal to read the verbs from), a field deeper than x.f. The worlds of
+// hostile cloud data (TestUntrustedNames_OneLineInText) hold these at run
+// time.
+//
 // cloudFlow follows a status, a state or an id of the cloud through a
 // function body, by declaration (the object the parser resolves a name
 // to: a shadowing name is another variable) and in the order of the code
@@ -555,13 +565,26 @@ type cloudFlow struct {
 	// (cloudResults); nil knows no function.
 	calls func(*ast.CallExpr) []bool
 	info  *types.Info
+	// ever: the variables given a value of the cloud anywhere in the body;
+	// captured: the names a function literal reads, inLit its depth. A
+	// literal captures the variable, not its value at the literal: called
+	// later, it reads what the variable holds then (Астра #2304).
+	ever     map[types.Object]bool
+	captured []*ast.Ident
+	inLit    int
 }
 
 // newCloudFlow walks body once.
 func newCloudFlow(body *ast.BlockStmt, info *types.Info, calls func(*ast.CallExpr) []bool) *cloudFlow {
 	f := &cloudFlow{held: map[types.Object]bool{}, declAt: map[types.Object]int{},
-		use: map[*ast.Ident]bool{}, guarded: map[*ast.Ident]bool{}, fields: map[types.Object]map[string]bool{}, calls: calls, info: info}
+		use: map[*ast.Ident]bool{}, guarded: map[*ast.Ident]bool{}, fields: map[types.Object]map[string]bool{}, calls: calls, info: info,
+		ever: map[types.Object]bool{}}
 	f.stmt(body, nil)
+	for _, id := range f.captured {
+		if o := f.obj(id); o != nil && f.ever[o] {
+			f.use[id] = true
+		}
+	}
 	return f
 }
 
@@ -700,11 +723,14 @@ type pkgFiles struct {
 }
 
 // typeInfo resolves the names of the files of one package to their
-// declarations, the scopes of go/types without the packages they import:
+// declarations, and its constant expressions to their values (gate_test:
+// a key "confirmed" however it is spelt), the scopes of go/types without
+// the packages they import:
 // what a name of a function body denotes needs no import, and an import
 // that is not loaded leaves its names unknown, not wrong.
 func typeInfo(fset *token.FileSet, files []*ast.File) *types.Info {
-	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{},
+		Types: map[ast.Expr]types.TypeAndValue{}}
 	conf := types.Config{
 		Importer: importerFunc(func(path string) (*types.Package, error) {
 			return nil, fmt.Errorf("%s is not loaded", path)
@@ -973,9 +999,14 @@ func (f *cloudFlow) expr(e ast.Expr, guards map[types.Object]bool) {
 	ast.Inspect(e, func(c ast.Node) bool {
 		switch c := c.(type) {
 		case *ast.FuncLit:
+			f.inLit++
 			f.stmt(c.Body, guards)
+			f.inLit--
 			return false
 		case *ast.Ident:
+			if f.inLit > 0 {
+				f.captured = append(f.captured, c)
+			}
 			if o := f.obj(c); o != nil {
 				f.use[c] = f.held[o]
 				f.guarded[c] = guards[o]
@@ -1003,6 +1034,12 @@ func (f *cloudFlow) assign(l ast.Expr, held bool, guards map[types.Object]bool) 
 		o := f.obj(v)
 		if o == nil {
 			return
+		}
+		// A check of isUUID holds the value it checked, not the next one
+		// the name is given in the branch («Риск», 334, У2).
+		delete(guards, o)
+		if held {
+			f.ever[o] = true
 		}
 		if f.info.Defs[v] != nil {
 			// Declared here (a name := reuses one declared before).
@@ -1045,6 +1082,16 @@ func (f *cloudFlow) structFields(l, r ast.Expr) {
 	o := f.obj(id)
 	if u, isAddr := r.(*ast.UnaryExpr); isAddr && u.Op == token.AND {
 		r = u.X
+	}
+	if st, isDeref := r.(*ast.StarExpr); isDeref {
+		r = st.X
+	}
+	if src, isName := r.(*ast.Ident); isName {
+		// b := a: the copy holds the fields a holds (Астра #2305).
+		if from := f.obj(src); from != nil && f.fields[from] != nil {
+			f.fields[o] = maps.Clone(f.fields[from])
+			return
+		}
 	}
 	lit, ok := r.(*ast.CompositeLit)
 	if !ok {
@@ -1322,6 +1369,16 @@ func own() string { return "unknown" }
 		`v := "unknown"; if vm.Status != "" { v = vm.Status }; return fmt.Sprintf("it is %s now", v)`,
 		`v := vm.ID; if looksUUID(v) { return fmt.Sprintf("vm_id=%s", v) }; return ""`,
 		`v := strings.TrimSpace(vm.Status); return fmt.Sprintf("it is %s now", v)`,
+		// «Риск», 334: an explicit index of an argument (У1), a check of
+		// isUUID over a value the branch gives the name next (У2).
+		`return fmt.Sprintf("--vm-id %[2]s", "x", vm.ID)`,
+		`return fmt.Sprintf("vm %[2]s, then %s", "x", quoteCloud(vm.ID), vm.Status)`,
+		`v := vm.ID; if isUUID(v) { v = vm.Status; return fmt.Sprintf("vm_id=%s", v) }; return ""`,
+		// Астра #2304, #2305: a literal of a function that reads a variable
+		// given the cloud's value after it; a copy of a struct.
+		`v := "unknown"; f := func() string { return fmt.Sprintf("it is %s now", v) }; v = vm.Status; return f()`,
+		`a := struct{Text string}{Text: vm.Status}; b := a; return fmt.Sprintf("it is %s now", b.Text)`,
+		`a := &struct{Text string}{Text: vm.Status}; b := *a; return fmt.Sprintf("it is %s now", b.Text)`,
 	}
 	safe := []string{
 		`v := vm.Status; return fmt.Sprintf("it is %s now", quoteCloud(v))`,
@@ -1339,6 +1396,9 @@ func own() string { return "unknown" }
 		`v := vm.Status; _ = v; { v := "unknown"; return fmt.Sprintf("it is %s now", v) }`,
 		// A name or a key glued of an id is no text.
 		`return vm.ID + ".json"`,
+		`return fmt.Sprintf("--vm-id %[2]s, %[1]s", "x", quoteCloud(vm.ID))`,
+		`v := "unknown"; f := func() string { return fmt.Sprintf("it is %s now", v) }; v = "idle"; return f()`,
+		`a := struct{Text, Name string}{Text: vm.Status, Name: "x"}; b := a; return fmt.Sprintf("VM %s", b.Name)`,
 	}
 	count := func(body string) int {
 		src := "package p\n" + helper + "func probe(vm astraVM, vms []astraVM, cfg config) string {" + body + "}"
