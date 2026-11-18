@@ -169,7 +169,7 @@
 | `k8s_add_addon` | `evo k8s add-addon` | удаляет | `cluster_id`, `name` | Install a Managed Kubernetes addon release into a cluster. | Установить плагин в кластер (асинхронно; версия по умолчанию — последняя активная) |
 | `k8s_kubectl` | `evo k8s kubectl` | удаляет | `cluster_id`, `args` | Run any kubectl command on a cluster (the token is embedded). | Команда kubectl в кластере (изменяющие — с подтверждением) |
 | `k8s_apply` | `evo k8s apply` | удаляет | `cluster_id`, `manifest` | Apply a Kubernetes manifest (YAML/JSON, may be multi-document) to a cluster, like `kubectl apply -f -`. | Применить манифест Kubernetes (как kubectl apply -f -) |
-| `k8s_helm` | `evo k8s helm` | удаляет | `cluster_id`, `action` | Helm on a cluster: install/upgrade/uninstall require confirmed=true after the user approves. | Helm в кластере: install, upgrade, uninstall, list, status |
+| `k8s_helm` | `evo k8s helm` | удаляет | `cluster_id`, `action` | Helm on a cluster: install/upgrade/uninstall need confirmed=true after the user approves. | Helm в кластере: install, upgrade, uninstall, list, status |
 
 ## kafka
 
