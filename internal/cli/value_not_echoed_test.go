@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-// evo help <topic> and evo mcp --http <address> do not repeat what was
-// typed: a secret in the wrong place (#2353). help still prints the usage
-// and exits 0, as cobra's did.
+// evo help <topic>, evo mcp --http <address> and evo tools call|describe
+// <tool> do not repeat what was typed: a secret in the wrong place (#2353).
+// help still prints the usage and exits 0, as cobra's did.
 func TestHelpAndMCP_DoNotRepeatTheValue(t *testing.T) {
 	setupCLI(t)
 	const secret = "s3cr3tCLI27183650904512"
@@ -23,6 +23,9 @@ func TestHelpAndMCP_DoNotRepeatTheValue(t *testing.T) {
 		{[]string{"help", "vm", secret}, 0},
 		{[]string{"mcp", "--http", secret}, 1},
 		{[]string{"--json", "mcp", "--http", secret}, 1},
+		{[]string{"tools", "call", secret}, 1},
+		{[]string{"--json", "tools", "call", secret}, 1},
+		{[]string{"tools", "describe", secret}, 1},
 	} {
 		newProcess()
 		code, out, errOut := runCLI(t, "", c.args...)
