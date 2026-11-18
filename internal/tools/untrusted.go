@@ -115,8 +115,11 @@ func serviceText(err error) bool {
 // option Б: one point, not a declaration per tool; closes #2177,
 // #2243–#2247). The marker covers evo's words in them too (docs/mcp.md).
 // operation_id is the id the cloud gave the operation of a write: its
-// text, whatever form it has (#2358).
-var alwaysUntrusted = []string{"error", "warning", "warnings", "failures", "failed", "preview", "hint", "operation_id"}
+// text, whatever form it has (#2358). So is the id of a resource a write
+// answers with: the registry, VPC, DNS zone and record, route, backup or
+// VM the service named («Риск», 357; #2378).
+var alwaysUntrusted = []string{"error", "warning", "warnings", "failures", "failed", "preview", "hint", "operation_id",
+	"registry_id", "vpc_id", "zone_id", "record_id", "route_id", "backup_id", "vm_id"}
 
 // markAlways adds to "_untrusted" of every answer the fields of
 // alwaysUntrusted it has. It stands outside every policy of the call
