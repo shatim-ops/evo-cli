@@ -241,8 +241,10 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	t, found := r.Lookup(mc.Next)
 	reads := found && t.Handler != nil && !t.Mutating && !NeedsConsent(t, step)
 	if found && !reads {
-		out["message"] = said + " " + i18n.Tf("Its next step, %s, changes the resource: it was not run; call it with confirmed=true to go on.",
-			"Его следующий шаг, %s, меняет ресурс: он не выполнен; чтобы продолжить, вызовите его с confirmed=true.", mc.Next)
+		// No consent is told here: the step asks for it with its own
+		// preview («Риск», conclusion 379).
+		out["message"] = said + " " + i18n.Tf("Its next step, %s, needs its own consent: it was not run.",
+			"Его следующему шагу, %s, нужно своё согласие: он не выполнен.", mc.Next)
 	}
 	if reads {
 		read, readErr := t.Handler(ctx, maps.Clone(step))

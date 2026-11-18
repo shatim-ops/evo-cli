@@ -111,12 +111,23 @@ func TestMadeRepeat_APlantedFileWritesNothing(t *testing.T) {
 		if next, _ := m["next_args"].(map[string]any); c.own && next["confirmed"] != nil {
 			t.Errorf("%s: the step named carries the consent of the file: %v", c.name, next)
 		}
+		// The step that writes is not run at all — not even to its own
+		// preview, which would answer confirmation_required: the repeat
+		// waits. Its message tells no consent to give: the step asks for
+		// it itself («Риск», conclusion 379).
+		if c.own && m["status"] != "waiting" {
+			t.Errorf("%s: the repeat ran the step that writes (status %v): %s", c.name, m["status"], text)
+		}
+		if msg, _ := m["message"].(string); c.own && strings.Contains(msg, "confirmed") {
+			t.Errorf("%s: the message of the repeat tells the consent to give: %q", c.name, msg)
+		}
 	}
 }
 
-// madeStepWriters is how many creates the world below reaches with a file
-// of made/ read (18.11): a world that reaches fewer checks less.
-const madeStepWriters = 30
+// madeStepWriters is how many pairs of a create and a step the world below
+// reaches with a file of made/ read (18.11): a world that reaches fewer
+// checks less.
+const madeStepWriters = 60
 
 // The class (A19-1, #2418; «Риск»): for every create, a file of made/ of
 // the key of the call whose step is a write with confirmed true — the
@@ -144,30 +155,42 @@ func TestMadeRepeat_NoCreateRunsAWriteStepWithoutConsent(t *testing.T) {
 				continue
 			}
 			project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
-			step := maps.Clone(args)
-			step["confirmed"] = true
 			key, _ := json.Marshal(eng.Maker())
-			body, _ := json.Marshal(map[string]any{"tool": name, "project_id": project, "id": "x", "next": name, "next_args": step,
-				"started_at": clock.Now().UTC(), "key": json.RawMessage(key)})
-			if err := os.MkdirAll(dir, 0o700); err != nil {
-				t.Fatal(err)
-			}
-			file := filepath.Join(dir, madeKey(name, r.canonArgs(name, args), resource, target))
-			if err := os.WriteFile(file, body, 0o600); err != nil {
-				t.Fatal(err)
-			}
-			before := len(a.callLog())
-			m, text, _ := callNamed(t, r, name, maps.Clone(args))
-			for _, op := range a.callLog()[before:] {
-				if !strings.HasPrefix(op, "GET ") {
-					t.Errorf("%s: a call without consent wrote with a file of made/: %s\n%.300s", name, op, text)
-					break
+			// Two steps that take consent: the create itself, a write; and
+			// secret_value, a read that reveals a secret — each with the
+			// consent the file claims.
+			for _, next := range []struct {
+				tool string
+				args map[string]any
+			}{{name, maps.Clone(args)}, {"secret_value", map[string]any{"path": "app/db"}}} {
+				next.args["confirmed"] = true
+				body, _ := json.Marshal(map[string]any{"tool": name, "project_id": project, "id": "x", "next": next.tool, "next_args": next.args,
+					"started_at": clock.Now().UTC(), "key": json.RawMessage(key)})
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
 				}
+				file := filepath.Join(dir, madeKey(name, r.canonArgs(name, args), resource, target))
+				if err := os.WriteFile(file, body, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				before := len(a.callLog())
+				m, text, _ := callNamed(t, r, name, maps.Clone(args))
+				for _, op := range a.callLog()[before:] {
+					if !strings.HasPrefix(op, "GET ") || strings.Contains(op, "secretmanager") {
+						t.Errorf("%s, step %s: a call without consent ran it with a file of made/: %s\n%.300s", name, next.tool, op, text)
+						break
+					}
+				}
+				if _, has := m["repeat_of"]; has {
+					read[name+" "+next.tool] = true
+					// Not run at all — not even to the step's own
+					// preview: the repeat waits («Риск», conclusion 379).
+					if m["status"] != "waiting" {
+						t.Errorf("%s, step %s: the repeat ran the step (status %v)", name, next.tool, m["status"])
+					}
+				}
+				_ = os.Remove(file)
 			}
-			if _, has := m["repeat_of"]; has {
-				read[name] = true
-			}
-			_ = os.Remove(file)
 		}
 	}
 	t.Logf("creates whose file of made/ was read: %d", len(read))
