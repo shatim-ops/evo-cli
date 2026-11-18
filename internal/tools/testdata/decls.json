@@ -237,7 +237,7 @@
       "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
       "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
-    "untrusted": "{fields:[will_attach attached_vms] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[will_attach attached_vms result] whole:false own:[] workload:false deep:false}"
   },
   "disk_create": {
     "project": true,
@@ -245,7 +245,8 @@
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "attach_to why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[disk attach] whole:false own:[] workload:false deep:false}"
   },
   "disk_delete": {
     "delete": "{arg:disk_id parent: what:disk whRU:диск statePrefix: creatingUnseen: failedUnseen:}",
@@ -259,7 +260,7 @@
       "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
       "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
-    "untrusted": "{fields:[will_detach attached_vms] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[will_detach attached_vms result] whole:false own:[] workload:false deep:false}"
   },
   "disk_list": {
     "project": true,
