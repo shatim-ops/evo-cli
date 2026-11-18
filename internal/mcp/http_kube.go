@@ -71,7 +71,8 @@ func kubectlCheck(fields []string, allowSecrets bool, w wording) error {
 	// value, kubectl does: in "-n get cp …" it reads "get" as the namespace
 	// and runs cp (security audit 19.10, SEC-1).
 	if len(fields) > 0 && strings.HasPrefix(fields[0], "-") {
-		return fmt.Errorf("k8s_kubectl %s: put the kubectl command first, flags after it (got %q first)", w.where, fields[0])
+		// The word is not repeated: it may be a flag with a secret value.
+		return fmt.Errorf("k8s_kubectl %s: put the kubectl command first, flags after it (word 1 is a flag)", w.where)
 	}
 	verb := ""
 	var resources, outputs []string

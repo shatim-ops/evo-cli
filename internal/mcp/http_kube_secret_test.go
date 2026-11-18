@@ -15,12 +15,16 @@ func TestKubectlCheck_NamesTheFlagNotItsValue(t *testing.T) {
 	const secret = "s3cr3tHTTP27183650904512"
 	for _, w := range []wording{httpWording, readOnlyWording} {
 		for _, f := range []string{"--" + secret + "file=x", "--" + secret + "-dir=x", "--" + secret + "_file", "--" + secret + "_file=x", "--" + secret + "file", "--token=" + secret, "--password=" + secret, "--client-key=" + secret, "--edit=" + secret, "--v=" + secret, "-v" + secret} {
-			err := kubectlCheck([]string{"get", "pods", f}, false, w)
-			if err == nil {
-				t.Fatalf("%s: want a refusal", f)
-			}
-			if strings.Contains(strings.ToLower(err.Error()), "s3cr3t") {
-				t.Errorf("%s: the refusal repeats the value: %v", f, err)
+			// After the command, and before it, where the refusal is
+			// "put the command first".
+			for _, fields := range [][]string{{"get", "pods", f}, {f, "get", "pods"}} {
+				err := kubectlCheck(fields, false, w)
+				if err == nil {
+					t.Fatalf("%v: want a refusal", fields)
+				}
+				if strings.Contains(strings.ToLower(err.Error()), "s3cr3t") {
+					t.Errorf("%v: the refusal repeats the value: %v", fields, err)
+				}
 			}
 		}
 		// A flag of the closed list is still named, its value is not.
