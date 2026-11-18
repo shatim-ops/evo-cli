@@ -165,11 +165,13 @@ func sleepShowing(ctx context.Context, d time.Duration, wait *engine.WaitLine) e
 }
 
 // opState is the state an operation reports (status, state or phase), as
-// the wait line shows it.
+// the wait line shows it: a state of the cloud quoted on one line — a line
+// of progress has no marker — and evo's own done=… as it is (A19-12,
+// #2432).
 func opState(m map[string]any) string {
 	for _, k := range []string{"status", "state", "phase"} {
 		if v, ok := m[k].(string); ok && v != "" {
-			return v
+			return quoteCloud(v)
 		}
 	}
 	if b, ok := m["done"].(bool); ok {
