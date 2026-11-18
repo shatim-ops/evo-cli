@@ -4,9 +4,9 @@
   - Было, со значением целиком: `configure --project-id` («ID проекта "…" — не UUID»), `configure s3 --tenant-id`,
     недопустимое имя профиля (`--profile`, `CLOUDRU_PROFILE`), `tools list --group` и карточка группы,
     `agent setup --client`, неверный порт (`vm create --port`, `deploy`), предупреждение о неподдерживаемом
-    `EVO_LANG`.
+    `EVO_LANG`, элемент `dns_servers` у `subnet_create` (`evo vpc subnet-create --dns-servers`), в CLI и MCP.
   - Стало: аргумент и правило — «ID проекта — не UUID», «неизвестная группа» со списком групп, «неверный порт
-    (элемент N списка)» и т. п.
+    (элемент N списка)», «dns_servers[N]: значение — не адрес IPv4» и т. п.
   - Пути `--value-file` и `--args-file` в отказе «файл не прочитан» по-прежнему называются: это имя файла
     человека, как имя ненайденного ресурса.
   - `reason` и коды выхода не меняются.

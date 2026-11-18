@@ -29,8 +29,11 @@ func handlerArgValue(p map[string]any) any {
 	case "object":
 		return map[string]any{}
 	}
-	if p["format"] == "uuid" {
+	switch p["format"] {
+	case "uuid":
 		return qaID1
+	case "cidr":
+		return "10.10.0.0/24"
 	}
 	return "x"
 }
@@ -65,14 +68,21 @@ func TestHandlers_FormRefusalDoesNotEchoTheValue(t *testing.T) {
 			sort.Strings(names)
 			for _, k := range names {
 				pm, _ := props[k].(map[string]any)
-				if pm["type"] != "string" {
+				// A string, or a list of strings: the marker as an item
+				// (subnet_create dns_servers, Астра, #2484).
+				var v any = marker
+				switch items, _ := pm["items"].(map[string]any); {
+				case pm["type"] == "string":
+				case pm["type"] == "array" && items["type"] == "string":
+					v = []any{marker}
+				default:
 					continue
 				}
 				args := map[string]any{}
 				for a, v := range base {
 					args[a] = v
 				}
-				args[k] = marker
+				args[k] = v
 				if CheckArgs(tl, args) != nil {
 					continue // the schema's refusal: TestCheckArgs_RuleRefusalDoesNotEchoTheValue
 				}

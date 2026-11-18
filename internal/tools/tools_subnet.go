@@ -129,9 +129,11 @@ func subnetItems(subnets []*provision.Subnet) []map[string]any {
 // subnetDNS is the dns_servers of subnet_create: IPv4 addresses.
 func subnetDNS(args map[string]any) ([]string, error) {
 	out := stringSliceArg(args, "dns_servers")
-	for _, v := range out {
+	for i, v := range out {
 		if a, err := netip.ParseAddr(v); err != nil || !a.Is4() {
-			return nil, usageErr("dns_servers: %q is not an IPv4 address", "dns_servers: %q — не адрес IPv4", v)
+			// The item by its place, not its text (#2484; the owner's rule
+			// of #2459: the form, without the value).
+			return nil, usageErr("dns_servers[%d]: the value is not an IPv4 address", "dns_servers[%d]: значение — не адрес IPv4", i)
 		}
 	}
 	return out, nil
