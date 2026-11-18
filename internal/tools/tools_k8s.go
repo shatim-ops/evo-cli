@@ -790,9 +790,14 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 	}
 	if status != poolRunning {
 		// Not refused: whether the platform takes the request in this
-		// status is not known (П4).
-		preview["warning"] = i18n.Tf("the pool is in status %s, not running: whether the platform accepts the scale is unknown",
+		// status is not known (П4). Said beside a warning already there
+		// (no nodes left), not in its place (A19-26, #2435).
+		warn := i18n.Tf("the pool is in status %s, not running: whether the platform accepts the scale is unknown",
 			"группа в состоянии %s, а не работает: примет ли платформа изменение — неизвестно", quoteCloud(status))
+		if was, _ := preview["warning"].(string); was != "" {
+			warn = was + "; " + warn
+		}
+		preview["warning"] = warn
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := cli.ScaleNodePool(ctx, id, count)
