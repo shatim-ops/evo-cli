@@ -531,9 +531,13 @@ func newMCPHealthcheckCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
 			defer cancel()
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-			if err != nil {
-				// The parse error repeats the address, its password too.
-				return errors.New(i18n.T("healthcheck: the address is not a URL", "проверка состояния: адрес — не URL"))
+			// The parse error repeats the address, its password too; an
+			// address with no scheme of HTTP or no host turns the value
+			// into the scheme or the path of the request, which its error
+			// repeats as well: refused before the request («Риск», 368).
+			if err != nil || (req.URL.Scheme != "http" && req.URL.Scheme != "https") || req.URL.Host == "" {
+				return errors.New(i18n.T("healthcheck: the address is not a URL of http or https with a host",
+					"проверка состояния: адрес — не URL http или https с хостом"))
 			}
 			target := healthTarget(req.URL)
 			resp, err := (&http.Client{Transport: httpretry.DefaultBase}).Do(req)
