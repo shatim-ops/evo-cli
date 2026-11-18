@@ -653,3 +653,40 @@ func TestPrune_ALineWrittenMeanwhileWaitsForNoPruning(t *testing.T) {
 		t.Errorf("live %v; want the two creates", live)
 	}
 }
+
+// A line written while the pruning holds the lock — after any of its
+// writes — waits for the lock (lockWait: the lock is held for the writes
+// only), and is kept: written, read live, not removed by the pruning («Риск»
+// to 324-3: a line written at every step of a pruning).
+func TestPrune_ALineWrittenUnderTheLockIsKept(t *testing.T) {
+	for step := 1; step <= 4; step++ {
+		dir := filepath.Join(t.TempDir(), DirName)
+		writeDay(t, dir, "2026-06-01", lineOf("a000000000000001", Created, "disk", "d-1", "2026-06-01T10:00:00Z"))
+		writeDay(t, dir, "2026-07-01", lineOf("a000000000000002", Unknown, "disk", "", "2026-07-01T10:00:00Z"))
+		writeDay(t, dir, "2026-11-17", lineOf("a000000000000003", Created, "disk", "d-3", "2026-11-17T09:00:00Z"))
+		made := Line{Time: "2026-11-17T11:00:00Z", Tool: "disk_create", Kind: "disk", ResourceID: "d-4", Outcome: Created, IntentID: "a000000000000004"}
+		done := make(chan error, 1)
+		writes := step
+		killed = func() bool {
+			if writes--; writes == 0 {
+				go func() { done <- Append(dir, made) }()
+			}
+			return false
+		}
+		_, err := Prune(dir, pruneNow, nil)
+		killed = func() bool { return false }
+		if err != nil {
+			t.Fatal(err)
+		}
+		if writes > 0 { // fewer writes than step: the line is written after
+			go func() { done <- Append(dir, made) }()
+		}
+		if err := <-done; err != nil {
+			t.Fatalf("after write %d: the line was not written: %v", step, err)
+		}
+		live := liveTexts(t, dir, nil)
+		if len(live) != 4 || !strings.Contains(strings.Join(live, "\n"), `"resource_id":"d-4"`) {
+			t.Errorf("after write %d: live %v; want the three and the line written", step, live)
+		}
+	}
+}
