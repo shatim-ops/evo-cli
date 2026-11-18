@@ -403,8 +403,8 @@ func newRootCmd() *cobra.Command {
 			})
 			if v := os.Getenv("EVO_LANG"); i18n.Unsupported(v) {
 				printWarnings(output.New(flagJSON, flagNoColor), []string{
-					i18n.Tf("EVO_LANG=%q is not supported (en or ru): the output for a person is in Russian",
-						"EVO_LANG=%q не поддерживается (en или ru): вывод на русском", v)})
+					i18n.T("the value of EVO_LANG is not supported (en or ru): the output for a person is in Russian",
+						"значение EVO_LANG не поддерживается (en или ru): вывод на русском")})
 			}
 			// What a cut call of an earlier run may have left in the cloud
 			// (release plan 1.8, (и)): every command of this directory says
