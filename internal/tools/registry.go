@@ -423,6 +423,9 @@ func New(factory EngineFactory) *Registry {
 			if u := t.Decl.Untrusted; u.marked() {
 				h = markUntrusted(u, h)
 			}
+			if passed := t.Decl.PassedSecrets; passed != nil {
+				h = hidePassed(passed, h)
+			}
 			if r.unchecked == nil {
 				r.unchecked = map[string]Handler{}
 			}

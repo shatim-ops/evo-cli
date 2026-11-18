@@ -111,6 +111,12 @@ type Decl struct {
 	// it (release plan 1.7, «Недоверенный вывод без маркера»: two lists had
 	// drifted apart).
 	Untrusted untrustedAnswer
+	// PassedSecrets are the values of the call's arguments that evo passes
+	// on to a program and that are credentials (secretkey): every one of
+	// them is hidden wherever the answer quotes it (hidePassed). k8s_helm:
+	// a value of set or values under a key of a secret, the password of an
+	// address under any key (helmPassedSecrets, #2465).
+	PassedSecrets func(args map[string]any) []string
 	// EchoedArgs are the optional arguments a create sends as the call
 	// gives them and its preview names as they are (CLAUDE.md §6, axis 4:
 	// the preview names everything evo sends; release plan 1.6, «Превью
@@ -308,7 +314,7 @@ var decls = map[string]Decl{
 	// kubectl apply prints what the cluster answers: admission webhooks
 	// and warnings a workload of the cluster writes.
 	"k8s_apply":   {Destructive: true, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}, Untrusted: untrustedAnswer{fields: []string{"output"}, workload: true}},
-	"k8s_helm":    {PartialConsent: helmNeedsConsent, Destructive: true, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}, Untrusted: untrustedAnswer{fields: []string{"output"}, workload: true}},
+	"k8s_helm":    {PartialConsent: helmNeedsConsent, PassedSecrets: helmPassedSecrets, Destructive: true, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}, Untrusted: untrustedAnswer{fields: []string{"output"}, workload: true}},
 	"backup_list": {Project: true, IDArgs: []idArg{{name: "resource_id", why: whyFilter}}, Untrusted: untrustedAnswer{fields: []string{"backups"}}},
 	// A backup and its source, as anyone with access to the project names
 	// them (docs/internal/briefs/backups.md).

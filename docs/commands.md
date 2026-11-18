@@ -5013,7 +5013,7 @@ Helm в кластере: install, upgrade, uninstall, list, status
 ```text
 Helm в кластере: install, upgrade, uninstall, list, status.
 
-Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. Каждый вызов запускает helm заново: повторный install или upgrade обновляет тот же релиз (helm upgrade --install --wait), а не создаёт второй, и без --version может перевести его на более новый чарт. Изменяющие действия — с подтверждением. Узлам нужен выход в интернет, чтобы скачать образы чарта ('evo snat create'); размер группы узлов подбирайте под чарт.
+Helm в кластере: действие <action> — install, upgrade, uninstall, list или status. Каждый вызов запускает helm заново: повторный install или upgrade обновляет тот же релиз (helm upgrade --install --wait), а не создаёт второй, и без --version может перевести его на более новый чарт. Изменяющие действия — с подтверждением. Узлам нужен выход в интернет, чтобы скачать образы чарта ('evo snat create'); размер группы узлов подбирайте под чарт. Значение --set или --values под ключом секрета (password, token и т. п.) и пароль в адресе скрываются там, где их цитирует helm; секрет под другим ключом — нет.
 
 Вызывает инструмент k8s_helm (подробнее: 'evo tools describe k8s_helm').
 

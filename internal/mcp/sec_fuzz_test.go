@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/secretkey"
 )
 
 // redactSecrets never panics, keeps a JSON result JSON, and leaves no value
@@ -88,9 +90,9 @@ func FuzzRedactSecrets(f *testing.F) {
 				// A name/value pair named as a credential key, its
 				// fields in any case (B12-2): the value is masked as one.
 				for f, n := range t2 {
-					if name, ok := n.(string); ok && slices.Contains(pairNames, normKey(f)) && secretKey(name) {
+					if name, ok := n.(string); ok && slices.Contains(pairNames, secretkey.Norm(f)) && secretKey(name) {
 						for k, y := range t2 {
-							if normKey(k) == pairValue {
+							if secretkey.Norm(k) == pairValue {
 								allMasked(name, y)
 							}
 						}

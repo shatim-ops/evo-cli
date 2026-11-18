@@ -18,13 +18,15 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/secretkey"
 )
 
 // secretKey reports whether a string under key k is masked in any tool's
 // result: the key holds a root and no exception for every tool applies (as
 // redactValue decides for a tool without exceptions of its own).
 func secretKey(k string) bool {
-	return hasRoot(k) && !nonSecret("", k, nil)
+	return secretkey.HasRoot(k) && !secretkey.Excepted("", k, nil)
 }
 
 // restrictionsFor expands HTTPRestrictions into "ID tool" for one setup:
