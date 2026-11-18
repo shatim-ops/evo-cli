@@ -352,7 +352,7 @@
     "id_args": [
       "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
     ],
-    "untrusted": "{fields:[lines live] whole:false own:[] workload:true deep:false}"
+    "untrusted": "{fields:[lines live would_close] whole:false own:[] workload:true deep:false}"
   },
   "iam_service_accounts": {
     "group": "iam",

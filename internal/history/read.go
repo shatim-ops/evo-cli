@@ -242,7 +242,11 @@ func wellFormed(l Line) bool {
 	if at, err := time.Parse(time.RFC3339, l.Time); err != nil || at.UTC().Format(time.RFC3339) != l.Time {
 		return false
 	}
-	for _, s := range []string{l.Tool, l.Surface, l.ProjectID, l.Zone, l.Name, l.Target, l.Kind, l.Parent, l.ResourceID, l.Reason, l.OperationID, l.JobID, l.StateDir} {
+	texts := []string{l.Tool, l.Surface, l.ProjectID, l.Zone, l.Name, l.Target, l.Kind, l.Parent, l.ResourceID, l.Reason, l.OperationID, l.JobID, l.StateDir}
+	if l.Key != nil {
+		texts = append(texts, l.Key.ServiceAccountID, l.Key.KeyID)
+	}
+	for _, s := range texts {
 		if len(s) > maxText {
 			return false
 		}
