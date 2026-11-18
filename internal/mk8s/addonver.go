@@ -342,5 +342,5 @@ func ResolveModeValue(m string) (string, error) {
 			return "RESOLVE_CONFLICTS_MODE_" + m, nil
 		}
 	}
-	return "", fmt.Errorf(i18n.T("resolve_mode must be one of %s, got %q", "resolve_mode должен быть одним из: %s, передано %q"), strings.Join(ResolveModes, ", "), m)
+	return "", fmt.Errorf(i18n.T("resolve_mode: the value is not one of %s", "resolve_mode: значение не входит в список: %s"), strings.Join(ResolveModes, ", "))
 }

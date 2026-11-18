@@ -15,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // caClient builds an authenticated Container Apps client.
@@ -98,7 +99,7 @@ func caDeployReq(args map[string]any) (containerapp.CreateContainerReq, error) {
 	}
 	if !caNameRe.MatchString(name) {
 		return containerapp.CreateContainerReq{}, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("name %q is not an RFC 1123 label", "имя %q не по RFC 1123", name),
+			i18n.Tf("name is not an RFC 1123 label: %s", "name не по RFC 1123: %s", provision.NameFault(name, 63)),
 			i18n.T("Lowercase letters, digits and '-', 1-63 characters, starting and ending with a letter or digit, e.g. my-app.", "Строчные латинские буквы, цифры и '-', 1–63 символа, в начале и в конце — буква или цифра, например my-app."))
 	}
 	cpu := firstNonEmptyStr(stringArg(args, "cpu"), "0.1")

@@ -60,9 +60,10 @@ func ProvenanceOf(kind, id string, made time.Time, madeErr error, sf *state.File
 	unknown := func(note string) Provenance { return Provenance{CreatedByEvo: ProvenanceUnknown, Note: note} }
 	idOf, recorded := recordedID[kind]
 	switch {
+	// The journal of created resources: D43, 1.8.
 	case !recorded:
-		return unknown(i18n.T("evo does not record this kind of resource until the journal (D43, 1.8): whether evo made it is unknown",
-			"evo не записывает такие ресурсы до журнала (D43, 1.8): создан ли он evo — неизвестно"))
+		return unknown(i18n.T("evo does not record this kind of resource until the journal of evo 1.8: whether evo made it is unknown",
+			"evo не записывает такие ресурсы до журнала evo 1.8: создан ли он evo — неизвестно"))
 	case readErr != nil:
 		return unknown(i18n.Tf("this folder's state could not be read (%s): evo cannot tell who made it",
 			"state этой папки не прочитан (%s): кто создал ресурс, evo сказать не может", clerrors.Reason(readErr)))

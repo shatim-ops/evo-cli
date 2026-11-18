@@ -43,8 +43,8 @@ func TestStackErrorsSpeakCLILanguage(t *testing.T) {
 		},
 	}
 	want := map[string]string{
-		"lock, bad id":       `invalid job_id "bad" (want stk-<10 hex digits>, as stack_plan returns)`,
-		"load, bad id":       `invalid job_id "bad" (want stk-<10 hex digits>, as stack_plan returns)`,
+		"lock, bad id":       `invalid job_id (want stk-<10 hex digits>, as stack_plan returns)`,
+		"load, bad id":       `invalid job_id (want stk-<10 hex digits>, as stack_plan returns)`,
 		"missing dependency": `step "dns" depends on "nlb", which this stack does not have (nlb.target must name a step such as "vm"; dns without an explicit target needs nlb)`,
 		"cycle":              "dependency cycle: a → b → a",
 	}

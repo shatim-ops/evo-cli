@@ -22,8 +22,13 @@ import (
 // code are the refusal's.
 func TestQuotaCause_InJSONAtThePathTheDocsName(t *testing.T) {
 	// The docs a script is written from name the path (read before the
-	// world moves the directory).
-	for _, doc := range []string{"docs/exit-codes.md", "docs/troubleshooting.md", "changelog.d/quota-cause.md"} {
+	// world moves the directory). The CHANGELOG entry lives in its
+	// fragment until the release folds it into CHANGELOG.md.
+	entry := "changelog.d/quota-cause.md"
+	if _, err := os.Stat(filepath.Join("..", "..", entry)); err != nil {
+		entry = "CHANGELOG.md"
+	}
+	for _, doc := range []string{"docs/exit-codes.md", "docs/troubleshooting.md", entry} {
 		b, err := os.ReadFile(filepath.Join("..", "..", doc))
 		if err != nil {
 			t.Fatal(err)
