@@ -113,7 +113,6 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/intent.go|Registry.checkByID":                 1,
 	"internal/tools/intent_targets.go|groupTarget":                1,
 	"internal/tools/intent_targets.go|vmTarget":                   1,
-	"internal/tools/made.go|madeAnswer":                           1,
 	"internal/tools/made_repeat.go|Registry.repeatOfMade":         1,
 	"internal/tools/provision_adopt.go|creatingVM":                1,
 	"internal/tools/tools.go|Registry.handleDestroy":              2,
