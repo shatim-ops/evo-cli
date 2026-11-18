@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -74,6 +75,14 @@ func TestIntent_UnknownOutcomeKeptThenClosedByAKnownOne(t *testing.T) {
 // is API_ERROR, as a 5xx's is; the status of the answer (http_status,
 // errAnswer) parts them. Every tool that takes consent, on a cloud that
 // answers 400, 403, 409 or 422 to everything: no record is left.
+// refusalCallLimit bounds a call of TestIntent_RefusalOfThePlatformClosesTheRecord:
+// the world refuses at once, the limit only stops a hang. A call cut by
+// its deadline after the send keeps its record — the outcome is unknown —
+// and that is right for a cut, wrong for this test: contractCallLimit
+// (400 ms) cut ca_stop on a loaded macOS runner (#2396, package 820 s).
+// wall-clock: a guard against a hang, no answer depends on it.
+const refusalCallLimit = 30 * time.Second
+
 func TestIntent_RefusalOfThePlatformClosesTheRecord(t *testing.T) {
 	rt := &contractRT{}
 	reg := contractReg(t, rt)
@@ -90,7 +99,7 @@ func TestIntent_RefusalOfThePlatformClosesTheRecord(t *testing.T) {
 			args["confirmed"] = true
 			rt.kind = kind
 			rt.take()
-			text, _, _ := contractCall(tl, args, contractCallLimit)
+			text, _, _ := contractCall(tl, args, refusalCallLimit)
 			// The status is the record's: no answer carries it (CMP-7).
 			if strings.Contains(text, apiStatusField) {
 				t.Errorf("%s, the cloud answers %s: the answer carries %s: %.300s", tl.Name, kind, apiStatusField, text)
