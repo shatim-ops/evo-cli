@@ -360,7 +360,7 @@ func (s *Registry) registerTools() {
 				"security_group": strProp("Security group: name or UUID (list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to close."},
 				"protocol":       enumProp("Protocol: tcp (default) or udp.", "tcp", "udp"),
-				"cidr":           cidrProp("Source CIDR of the rules (default 0.0.0.0/0)."),
+				"cidr":           cidrProp(portsCidrDesc),
 				"allow_cut_ssh":  boolProp("true to delete the last rule letting SSH in: the person decides, not the model."),
 				"confirmed":      confirmedProp(),
 			}, "security_group", "ports"),
@@ -3842,7 +3842,7 @@ func uuidProp(desc string) map[string]any {
 
 // portsCidrDesc is the cidr of the tools that open the ports of a VM
 // (provision, deploy, deploy_plan; P5).
-const portsCidrDesc = "Source CIDR of the port rules (default 0.0.0.0/0)."
+const portsCidrDesc = "Rules' source (default 0.0.0.0/0)."
 
 func cidrProp(desc string) map[string]any {
 	p := strProp(desc)
