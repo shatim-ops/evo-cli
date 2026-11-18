@@ -21,11 +21,18 @@ func TestCheckArgs_RuleRefusalDoesNotEchoTheValue(t *testing.T) {
 		props, _ := tl.InputSchema["properties"].(map[string]any)
 		for name, p := range props {
 			pm, _ := p.(map[string]any)
-			_, enum := pm["enum"]
-			if pm["type"] != "string" || (pm["format"] != "uuid" && pm["format"] != "cidr" && !enum) {
+			// A list of such strings is checked by the rules of its
+			// items (ar list --statuses, backup list --states).
+			rule, v := pm, any(secret)
+			if pm["type"] == "array" {
+				rule, _ = pm["items"].(map[string]any)
+				v = []any{"x", secret}
+			}
+			_, enum := rule["enum"]
+			if rule["type"] != "string" || (rule["format"] != "uuid" && rule["format"] != "cidr" && !enum) {
 				continue
 			}
-			err := CheckArgs(tl, map[string]any{name: secret})
+			err := CheckArgs(tl, map[string]any{name: v})
 			if err == nil {
 				continue
 			}
@@ -33,6 +40,16 @@ func TestCheckArgs_RuleRefusalDoesNotEchoTheValue(t *testing.T) {
 			if strings.Contains(strings.ToLower(err.Error()), "s3cr3t") {
 				t.Errorf("%s %s: the refusal echoes the value: %v", tl.Name, name, err)
 			}
+		}
+	}
+	// A filter of a list by several states checks each value by the same
+	// rule in the handler, before the list is read (enumValue).
+	r := New(nil)
+	for _, c := range []struct{ tool, arg string }{{"ar_list", "statuses"}, {"backup_list", "states"}} {
+		_, text, isErr := callNamed(t, r, c.tool, map[string]any{c.arg: []any{secret}})
+		checked++
+		if !isErr || !strings.Contains(text, c.arg) || strings.Contains(strings.ToLower(text), "s3cr3t") {
+			t.Errorf("%s %s: want a refusal naming the argument, not the value: %s", c.tool, c.arg, text)
 		}
 	}
 	if checked < 90 {
