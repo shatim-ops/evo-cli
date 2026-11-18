@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -75,6 +76,18 @@ func TestReleaseFloatingIP_RefusedBeforeConsent(t *testing.T) {
 		m, text, isErr := callNamed(t, r, "release_floating_ip", args)
 		if !isErr || m["status"] != "refused" || m["reason"] != clerrors.CodeUsage || !strings.Contains(text, "snat_delete") {
 			t.Errorf("SNAT address %v: %s", args, text)
+		}
+		// The address and the id are the cloud's when the call named the
+		// other: evo's message quotes them, the fields are marked (A19-30,
+		// #2435).
+		if msg, _ := m["message"].(string); !strings.Contains(msg, `"203.0.113.9"`) {
+			t.Errorf("SNAT address %v: the message names the address bare: %s", args, msg)
+		}
+		marked, _ := m["_untrusted"].([]any)
+		for _, f := range []string{"id", "ip_address"} {
+			if !slices.Contains(marked, any(f)) {
+				t.Errorf("SNAT address %v: %s outside _untrusted %v", args, f, marked)
+			}
 		}
 	}
 	used := &inUseFIPCloud{}

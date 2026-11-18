@@ -124,8 +124,8 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 	}
 	words := fmt.Sprintf("%s %s %s %s", rule.Direction, rule.IPProtocol, rule.PortRange, sgRuleSource(rule))
 	p := s.deletePlan("sg_rule_delete",
-		fmt.Sprintf("sg_rule_delete deletes rule %%s (%s) of security group %s.", words, quoteCloud(group.Name)),
-		fmt.Sprintf("sg_rule_delete удаляет правило %%s (%s) группы безопасности %s.", words, quoteCloud(group.Name)),
+		fmt.Sprintf("sg_rule_delete deletes rule %%s (%s) of security group %s.", quoteCloud(words), quoteCloud(group.Name)),
+		fmt.Sprintf("sg_rule_delete удаляет правило %%s (%s) группы безопасности %s.", quoteCloud(words), quoteCloud(group.Name)),
 		ruleID, func() (map[string]any, error) { return map[string]any{"state": rule.State}, nil },
 		func(ctx context.Context) (string, bool) {
 			if err := eng.Cloud.DeleteSecurityGroupRule(ctx, group.ID, ruleID); err != nil {
@@ -141,7 +141,7 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 		// deletes a rule in this state is not verified — said, as for the
 		// other error states (the brief, §4: «the outcome is unknown»).
 		p.Preview["warning"] = i18n.Tf("it is in %s: whether Cloud.ru deletes a rule in this state is not verified; list_security_groups with rules=true shows whether it is gone",
-			"оно в состоянии %s: удалит ли Cloud.ru правило в этом состоянии — не проверено; есть ли оно ещё, показывает list_security_groups с rules=true", rule.State)
+			"оно в состоянии %s: удалит ли Cloud.ru правило в этом состоянии — не проверено; есть ли оно ещё, показывает list_security_groups с rules=true", quoteCloud(rule.State))
 	}
 	p.Preview["rule"] = sgRuleFields(rule)
 	p.Preview["security_group"] = map[string]any{"id": group.ID, "name": group.Name, "default": group.Default}
