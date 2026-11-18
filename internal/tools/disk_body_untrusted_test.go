@@ -59,3 +59,23 @@ func TestDisk_BodyOfTheCloudMarked(t *testing.T) {
 		}
 	}
 }
+
+// A disk whose state is not one of Compute's (diskStates) at the limit of
+// a call: the state is the cloud's text — disk_state is marked, and status,
+// evo's word, does not carry it («Риск», conclusion 390, beside #2427).
+func TestDisk_StateOfTheCloudAtTheLimit(t *testing.T) {
+	lim := &diskAtLimit{state: hostileName}
+	m := diskAtLimitAnswer(lim, "00000000-0000-4000-8000-000000000501", "", "disk_create", nil)
+	if m["status"] == hostileName {
+		t.Errorf("status carries the state of the cloud: %v", m["status"])
+	}
+	for _, tool := range []string{"disk_create", "disk_attach"} {
+		if !slices.Contains(decls[tool].Untrusted.in(m), "disk_state") {
+			t.Errorf("%s: disk_state is the state of the cloud, the declaration does not mark it", tool)
+		}
+	}
+	// A state of Compute stays the status, as it was.
+	if m := diskAtLimitAnswer(&diskAtLimit{state: "creating"}, "d", "", "disk_create", nil); m["status"] != "creating" {
+		t.Errorf("a known state no longer is the status: %v", m["status"])
+	}
+}
