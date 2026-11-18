@@ -44,7 +44,11 @@ func faultPlan() *deployplan.Plan {
 func faultToolsIsolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("CLOUDRU_CONFIG_DIR", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
+	// The home on every OS: USERPROFILE is the home of Windows
+	// (os.UserHomeDir), and a stack job a call plans goes there (#2458).
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	for _, k := range []string{
 		"CLOUDRU_KEY_ID", "CLOUDRU_SECRET", "CLOUDRU_KEY_SECRET", "CLOUDRU_PROJECT_ID",
