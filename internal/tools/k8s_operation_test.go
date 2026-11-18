@@ -82,9 +82,10 @@ func TestK8sOperation_AnswersTheOperationAndItsResource(t *testing.T) {
 	}
 	// The error, the id of the resource and its state are the service's
 	// text, not evo's: the answer marks them (Астра, #1925: the state too;
-	// «Риск», 312-2: the id).
-	if u, _ := m["_untrusted"].([]any); len(u) != 3 || !slices.Contains(u, any("error")) || !slices.Contains(u, any("resourceId")) || !slices.Contains(u, any("resource_status")) {
-		t.Errorf("a failed operation: _untrusted %v, want error, resourceId and resource_status: %s", m["_untrusted"], text)
+	// «Риск», 312-2: the id); the hint as every answer's is
+	// (alwaysUntrusted, #2254).
+	if u, _ := m["_untrusted"].([]any); len(u) != 4 || !slices.Contains(u, any("error")) || !slices.Contains(u, any("resourceId")) || !slices.Contains(u, any("resource_status")) || !slices.Contains(u, any("hint")) {
+		t.Errorf("a failed operation: _untrusted %v, want error, resourceId, resource_status and hint: %s", m["_untrusted"], text)
 	}
 	if _, text, isErr = callNamed(t, r, "k8s_operation", map[string]any{"operation_id": "op-none"}); !isErr || !strings.Contains(text, "NOT_FOUND") {
 		t.Errorf("an operation that is not there: want NOT_FOUND: %s", text)

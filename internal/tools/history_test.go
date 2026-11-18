@@ -275,3 +275,31 @@ func TestHistory_ACutCreateByNameStaysLive(t *testing.T) {
 		}
 	}
 }
+
+// An earlier delete does not close a later create of the same resource
+// whatever the form of their times: a line whose time is not evo's form —
+// a fraction of a second — is skipped and counted, not ordered by its text
+// before or after the others (Астра, #2229).
+func TestHistory_ATimeNotOfEvosFormDoesNotReorder(t *testing.T) {
+	r, dir := targetRegistry(t, &goneCloud{})
+	hdir := history.DirOf(intent.Dir(dir))
+	if err := os.MkdirAll(hdir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lines := `{"format":1,"time":"2026-11-17T10:00:00Z","tool":"disk_delete","project_id":"p","kind":"disk","resource_id":"same","outcome":"deleted","intent_id":"0000000000000001"}` + "\n" +
+		`{"format":1,"time":"2026-11-17T10:00:00.5Z","tool":"disk_create","project_id":"p","kind":"disk","resource_id":"same","outcome":"created","intent_id":"0000000000000002"}` + "\n"
+	if err := os.WriteFile(filepath.Join(hdir, "2026-11-17.jsonl"), []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := r.handlers["history"](context.Background(), map[string]any{"since": "2026-01-01"})
+	var a struct {
+		Lines   []historyLine `json:"lines"`
+		Skipped int           `json:"skipped"`
+	}
+	if err := json.Unmarshal([]byte(text), &a); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Lines) != 1 || a.Lines[0].Outcome != history.Deleted || a.Skipped != 1 {
+		t.Errorf("lines %+v, skipped %d; want the delete, and the line of a fraction of a second skipped\n%s", a.Lines, a.Skipped, text)
+	}
+}

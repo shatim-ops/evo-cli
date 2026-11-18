@@ -547,7 +547,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					if id != "" {
 						f, _ := stepFinder(st)
 						// A taken name, as a create refuses one (D28).
-						failStep(job, st, clierrors.CodeUsage, fmt.Sprintf("%s: %q is already taken by an existing resource (%s) — rename it in the manifest, or remove the existing one", st.Key, f.name, id))
+						failStep(job, st, clierrors.CodeUsage, fmt.Sprintf("%s: %q is already taken by an existing resource (%s) — rename it in the manifest, or remove the existing one", st.Key, f.name, quoteCloud(id)))
 						return
 					}
 				}
@@ -585,7 +585,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// stack_destroy and stop — a retry would create another.
 					if id := createdID(st.Tool, res); id != "" {
 						st.ResourceID = id
-						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s kept for stack_destroy)", st.Key, err.Error(), id))
+						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s kept for stack_destroy)", st.Key, err.Error(), quoteCloud(id)))
 						return
 					}
 					// The tool refused a name a resource already has
