@@ -130,6 +130,12 @@ func secretWriteAnswer(ctx context.Context, tool string, args map[string]any, te
 			out[k] = v
 		}
 	}
+	// The cause evo names by the code of the refusal (a quota, a state) is
+	// evo's word: it stays, what the platform wrote beside it does not
+	// («Риск» to #2419).
+	if d, _ := m["details"].(map[string]any); d != nil && d["cause"] != nil {
+		out["details"] = map[string]any{"cause": d["cause"]}
+	}
 	if c := callerOf(ctx); c != nil && c.Err != nil {
 		hint, _ := out["hint"].(string)
 		c.Err = clierrors.New(reason, msg, hint)

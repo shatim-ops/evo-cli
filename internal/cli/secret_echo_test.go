@@ -76,22 +76,31 @@ func TestSecretArgs_NotEchoedInTheCloudsError(t *testing.T) {
 	}
 }
 
+// platformWords are the words of a refusal of the platform that a call
+// with no secret in it shows as they are.
+const platformWords = "PLATFORM-WORDS-2419"
+
 // A call that sends the cloud a value that may be a secret — the env of an
-// app, the metadata of a VM's image (a password evo makes, one the person
-// gives, the SSH key) — does not carry it into evo's answer when the
-// service echoes the body of the request in its refusal: over MCP (stdio,
-// HTTP) and in the CLI, human and --json (аудит 1.9 rc.1, A19-2, #2419; the
-// class of #2257). Not a list of arguments: the client that sends such a
-// value marks the call.
+// app, a password or any value the caller gave in the metadata of a VM's
+// image — does not carry it into evo's answer when the service echoes the
+// body of the request in its refusal: over MCP (stdio, HTTP) and in the
+// CLI, human and --json (the cause evo names by the code of a refusal stays:
+// TestSecretWriteAnswer_ACallThatSentASecret). A VM whose metadata holds only evo's public key, login
+// and hostname keeps the platform's words (аудит 1.9 rc.1, A19-2, #2419;
+// the class of #2257; «Риск»: a refusal of the most frequent paid tool
+// keeps what tells the agent what to do next). Not a list of arguments:
+// the client that sends such a value marks the call.
 func TestSecretValues_NotEchoedInTheCloudsError(t *testing.T) {
 	for _, c := range []struct {
-		tool, path string
-		args       map[string]any
+		name, tool, path string
+		args             map[string]any
+		secret           bool
 	}{
-		{"ca_deploy", "/v2/containers", map[string]any{"name": "app", "image": "nginx:1.27", "env": map[string]any{"DB_PASSWORD": secretMarker}}},
-		{"provision", "/api/v1.1/vms", map[string]any{"name": "app", "image_metadata": map[string]any{"public_key": secretMarker}}},
+		{"the env of an app", "ca_deploy", "/v2/containers", map[string]any{"name": "app", "image": "nginx:1.27", "env": map[string]any{"DB_PASSWORD": secretMarker}}, true},
+		{"a value the caller gave", "provision", "/api/v1.1/vms", map[string]any{"name": "app", "image_metadata": map[string]any{"public_key": secretMarker}}, true},
+		{"evo's key and login only", "provision", "/api/v1.1/vms", map[string]any{"name": "app"}, false},
 	} {
-		t.Run(c.tool, func(t *testing.T) {
+		t.Run(c.name, func(t *testing.T) {
 			w, _ := withJSONWorld(t)
 			srv := parityServers(t)
 			original := w.rt.extra
@@ -100,15 +109,18 @@ func TestSecretValues_NotEchoedInTheCloudsError(t *testing.T) {
 				if r.Method == http.MethodPost && r.URL.Path == c.path {
 					echoes++
 					body, _ := io.ReadAll(r.Body)
-					reply, _ := json.Marshal(map[string]string{"message": "invalid request body: " + string(body)})
+					reply, _ := json.Marshal(map[string]string{"code": "vm_quota_exceeded", "message": platformWords + ": no room for: " + string(body)})
 					return httpFault(400, string(reply))(r)
 				}
 				return original(r)
 			}
 			check := func(where, text string) {
 				t.Helper()
-				if strings.Contains(text, secretMarker) {
+				if c.secret && strings.Contains(text, secretMarker) {
 					t.Errorf("%s: the value sent is in the answer: %s", where, text)
+				}
+				if !c.secret && !strings.Contains(text, platformWords) {
+					t.Errorf("%s: the platform's words are lost with no secret sent: %s", where, text)
 				}
 			}
 			args := map[string]any{"confirmed": true}
