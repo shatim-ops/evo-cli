@@ -375,6 +375,9 @@ type dnsWaitAPI struct {
 	done bool
 	// listFails: the lists of zones answer 500.
 	listFails bool
+	// listed: the public list shows the zone of the create, and its
+	// delete is taken and done.
+	listed bool
 }
 
 func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -388,6 +391,12 @@ func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":false}`)
 	case a.listFails && r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "Zones"):
 		http.Error(rec, `{"message":"internal"}`, http.StatusInternalServerError)
+	case a.listed && r.URL.Path == "/v1/publicZones":
+		_, _ = io.WriteString(rec, `{"zones":[{"id":"00000000-0000-4000-8000-0000000000f1","name":"evo-z","domain":"example.com."}]}`)
+	case a.listed && r.Method == http.MethodDelete && r.URL.Path == "/v1/publicZones/00000000-0000-4000-8000-0000000000f1":
+		_, _ = io.WriteString(rec, `{"id":"op-del","done":true}`)
+	case r.URL.Path == "/v1/operations/op-del":
+		_, _ = io.WriteString(rec, `{"id":"op-del","done":true}`)
 	case r.URL.Path == "/v1/publicZones":
 		_, _ = io.WriteString(rec, `{"zones":[]}`)
 	case r.URL.Path == "/v1/privateZones":
@@ -457,8 +466,9 @@ func TestDNSZoneCreate_ARepeatAfterADoneOperationOfAGoneZone(t *testing.T) {
 	}
 }
 
-// A delete of a resource evo answers gone takes the file of its create
-// going on away: the repeat of the create is planned as any call (A19-8).
+// A delete the platform took and finished takes the file of the create
+// going on away at once: the repeat of the create is planned as any call
+// (A19-8).
 func TestMade_ADeleteOfTheResourceTakesItsFileAway(t *testing.T) {
 	api := &dnsWaitAPI{}
 	r := waitingRegistry(t, api)
@@ -467,12 +477,51 @@ func TestMade_ADeleteOfTheResourceTakesItsFileAway(t *testing.T) {
 	if n := madeFiles(t, r); n != 1 {
 		t.Fatalf("no file of the create going on: %d", n)
 	}
+	api.mu.Lock()
+	api.listed = true
+	api.mu.Unlock()
 	m, text, _ := callNamed(t, r, "dns_zone_delete", map[string]any{"id": "00000000-0000-4000-8000-0000000000f1", "confirmed": true})
-	if st := m["status"]; st != "deleted" && st != "already_deleted" {
+	if m["status"] != "deleted" {
 		t.Fatalf("the delete: %s", text)
 	}
 	if n := madeFiles(t, r); n != 0 {
 		t.Errorf("the file of the create of a deleted zone stays: %d", n)
+	}
+}
+
+// A delete that answers already_deleted — a read found nothing — within
+// madeListGrace of the create is no word that the resource is gone: the
+// list lags, and the platform may still be making it. The file stays, and
+// the same create with consent sends no second POST — a second paid create
+// (A19-47; «Риск» on main 714cf7c8). Past the grace the empty read is an
+// answer, and the delete takes the file away.
+func TestMade_ARepeatAfterAlreadyDeletedInTheGraceSendsNoSecondCreate(t *testing.T) {
+	api := &dnsWaitAPI{}
+	r := waitingRegistry(t, api)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	clock.Now = func() time.Time { return now }
+	t.Cleanup(func() { clock.Now = time.Now })
+	args := map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}
+	del := map[string]any{"id": "00000000-0000-4000-8000-0000000000f1", "confirmed": true}
+	callNamed(t, r, "dns_zone_create", args)
+	if api.posts != 1 || madeFiles(t, r) != 1 {
+		t.Fatalf("the first call: %d POSTs, %d files", api.posts, madeFiles(t, r))
+	}
+	if m, text, _ := callNamed(t, r, "dns_zone_delete", del); m["status"] != "already_deleted" {
+		t.Fatalf("the world no longer answers the delete already_deleted: %s", text)
+	}
+	if n := madeFiles(t, r); n != 1 {
+		t.Errorf("already_deleted within the grace took the file of the create away: %d files", n)
+	}
+	now = now.Add(time.Minute)
+	m, text, _ := callNamed(t, r, "dns_zone_create", args)
+	if api.posts != 1 || m["repeat_of"] == nil {
+		t.Errorf("the repeat after already_deleted within the grace: %d POSTs, want 1 and repeat_of: %s", api.posts, text)
+	}
+	now = now.Add(madeListGrace)
+	callNamed(t, r, "dns_zone_delete", del)
+	if n := madeFiles(t, r); n != 0 {
+		t.Errorf("already_deleted past the grace keeps the file: %d files", n)
 	}
 }
 

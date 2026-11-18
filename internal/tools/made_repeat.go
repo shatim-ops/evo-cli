@@ -329,11 +329,17 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 // forgetMadeOf takes away the files of creates going on whose resource the
 // delete tool name, called with args, answered gone: the repeat of such a
 // create would wait on what is no more (A19-8, #2428). A file names its
-// resource by the id the platform gave (madeCall.ID).
+// resource by the id the platform gave (madeCall.ID). «deleted» is the
+// platform's word that it took the delete: the file goes at once.
+// «already_deleted» is a read that found nothing, and within madeListGrace
+// of the create that is the list's lag as much as a resource gone — the
+// file stays, or the repeat of the create would send a second, paid one
+// (A19-47; madeGone keeps the same bound for the repeat's own read).
 func forgetMadeOf(root, name string, args map[string]any, answer string) {
 	d := decls[name].Delete
 	id := stringArg(args, d.arg)
-	if st := answerStatus(answer); d.arg == "" || id == "" || (st != "deleted" && st != "already_deleted") {
+	st := answerStatus(answer)
+	if d.arg == "" || id == "" || (st != "deleted" && st != "already_deleted") {
 		return
 	}
 	dir := MadeDir(root)
@@ -350,8 +356,12 @@ func forgetMadeOf(root, name string, args map[string]any, answer string) {
 		file := filepath.Join(dir, e.Name())
 		b, err := config.ReadFileNoFollow(file)
 		var mc madeCall
-		if err == nil && json.Unmarshal(b, &mc) == nil && mc.ID == id {
-			_ = os.Remove(file)
+		if err != nil || json.Unmarshal(b, &mc) != nil || mc.ID != id {
+			continue
 		}
+		if st == "already_deleted" && clock.Now().Sub(mc.StartedAt) <= madeListGrace {
+			continue
+		}
+		_ = os.Remove(file)
 	}
 }
