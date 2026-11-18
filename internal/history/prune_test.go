@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -187,7 +188,7 @@ func TestPrune_OnceADay(t *testing.T) {
 // Describe gives doctor the size, the oldest day and the live lines.
 func TestDescribe_SizeOldestLive(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), DirName)
-	if s, err := Describe(dir, nil); err != nil || s != (Summary{}) {
+	if s, err := Describe(dir, nil); err != nil || !reflect.DeepEqual(s, Summary{}) {
 		t.Errorf("no journal: %+v, %v; want an empty one", s, err)
 	}
 	writeDay(t, dir, "2026-11-10",
@@ -569,5 +570,47 @@ func TestPrune_ALineInLiveOfADayNotRetiredIsNotTaken(t *testing.T) {
 	}
 	if strays, _ := os.ReadFile(filepath.Join(dir, StrayName)); !strings.Contains(string(strays), closer+"\n") {
 		t.Errorf("%s: %q; want the delete kept", StrayName, strays)
+	}
+}
+
+// A pruning that would change what the reader finds live in a state a
+// kill leaves — a delete in LiveName, which evo never writes there, closes
+// a create of a file that goes after LiveName is written anew — is left
+// undone: nothing is removed, the file in the way is named (Deferred,
+// Describe) and the pruning tries again the next day; one that goes on
+// clears the name («Риск» to 324-3: a pruning put off is said).
+func TestPrune_LeftUndoneNamesTheFileInTheWay(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	made := lineOf("a000000000000001", Created, "disk", "d-1", "2026-07-01T10:00:00Z")
+	writeDay(t, dir, "2026-07-01", made)
+	closer := lineOf("a000000000000002", Deleted, "disk", "d-1", "2026-07-15T10:00:00Z")
+	if err := os.WriteFile(filepath.Join(dir, LiveName), []byte(closer+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, retiredName), []byte("2026-08-01\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := liveTexts(t, dir, nil)
+	p, err := Prune(dir, pruneNow, nil)
+	if err != nil || len(p.Retired) != 0 || strings.Join(p.Deferred, ",") != LiveName {
+		t.Fatalf("pruned %+v, %v; want nothing retired and %s named", p, err, LiveName)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "2026-07-01.jsonl")); err != nil {
+		t.Errorf("the file of the day is gone: %v", err)
+	}
+	if after := liveTexts(t, dir, nil); strings.Join(after, "\n") != strings.Join(before, "\n") {
+		t.Errorf("live before %v, after %v", before, after)
+	}
+	if s, err := Describe(dir, nil); err != nil || strings.Join(s.Deferred, ",") != LiveName {
+		t.Errorf("Describe: %+v, %v; want %s named", s, err, LiveName)
+	}
+	// The next day, the file in the way gone: the pruning goes on, and the
+	// name is cleared.
+	if err := os.Remove(filepath.Join(dir, LiveName)); err != nil {
+		t.Fatal(err)
+	}
+	p, err = Prune(dir, pruneNow.AddDate(0, 0, 1), nil)
+	if err != nil || len(p.Retired) != 1 || len(p.Deferred) != 0 || len(DeferredFiles(dir)) != 0 {
+		t.Errorf("the next day: %+v, %v, named %v; want the file retired and no name", p, err, DeferredFiles(dir))
 	}
 }

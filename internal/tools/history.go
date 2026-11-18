@@ -262,6 +262,13 @@ func (r *Registry) journalCheck(dir string) (DoctorCheck, bool) {
 	c := DoctorCheck{Name: "journal of changes", Status: CheckOK,
 		Detail: i18n.Tf("%s: %d KB since %s, %d live lines (made and not removed, or an outcome not known)",
 			"%s: %d КБ с %s, живых строк — %d (создано и не удалено или итог неизвестен)", dir, (s.Bytes+1023)/1024, s.Oldest, s.Live)}
+	if len(s.Deferred) > 0 {
+		// A pruning put off is said, with the files in the way: the journal
+		// grows, and the person and the agent know why («Риск» to 324-3).
+		c.Status, c.Files = CheckWarn, s.Deferred
+		c.Detail += i18n.Tf("; the pruning is put off: lines evo does not write (in %s) would change what history finds live if it went on — nothing is removed and the journal grows; it tries again the next day. A line there is not evo's: move a file you do not need out of %s",
+			"; очистка отложена: строки, которых evo не пишет (в %s), изменили бы то, что history находит живым, — ничего не удаляется, и журнал растёт; очистка попробует снова на следующий день. Такая строка не от evo: ненужный файл уберите из %s", strings.Join(s.Deferred, ", "), dir)
+	}
 	if s.OverCeiling {
 		c.Status = CheckWarn
 		c.Detail += i18n.T("; the live lines alone are over the ceiling of 64 MB: none is removed, and the journal grows — a line closes when evo deletes its resource",
