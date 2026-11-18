@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -584,5 +585,20 @@ func TestBackupRestore_NoTypeIsThePlatformsAndNotPriced(t *testing.T) {
 	m, text, _ = backupRestore(t, &restoreWorld{card: noTypeCard}, map[string]any{"disk_type": "SSD"})
 	if p, _ := m["preview"].(map[string]any); p["cost"] == nil {
 		t.Errorf("a type asked for: want its price: %s", text)
+	}
+}
+
+// A backup not created yet is refused before the question with its state as
+// the cloud gave it: "_untrusted" names it (#2458, #2463).
+func TestBackupRestore_StateOfANotCreatedBackupUntrusted(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		w := &restoreWorld{state: "creating"}
+		m, text, isErr := backupRestore(t, w, map[string]any{"confirmed": confirmed})
+		if !isErr || m["state"] != "creating" || w.restores != 0 {
+			t.Fatalf("want the refusal with the state and nothing sent: %s", text)
+		}
+		if !slices.Contains(stringList(m["_untrusted"]), "state") {
+			t.Errorf("the state of the cloud is not in _untrusted: %s", text)
+		}
 	}
 }

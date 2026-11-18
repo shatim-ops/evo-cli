@@ -5,7 +5,7 @@
      CI сверяет файл с бинарём (TestCommandsDoc). -->
 
 То же самое печатает `evo <команда> --help`; с `EVO_LANG=en` справка
-английская (решение D6, пересмотр). Заголовки разделов (Synopsis, Options)
+английская. Заголовки разделов (Synopsis, Options)
 ставит генератор cobra/doc. Описания команд, флагов и инструментов
 (`evo tools describe`) — русские; в MCP описания инструментов английские: их читает
 агент. Почти каждая команда — команда инструмента MCP с тем же действием
@@ -7658,7 +7658,7 @@ evo project list [flags]
 ```
 
 ```
-evo project use <UUID|имя> [flags]
+evo project use <UUID|name> [flags]
 ```
 
 ### Examples
