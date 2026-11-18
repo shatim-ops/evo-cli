@@ -72,7 +72,7 @@ CLI: их пишет 'evo agent setup --read-only --skill'.
 		Example: `  evo agent skill
   evo agent skill --read-only > AGENTS.md
   evo agent skill --group pg`,
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			text := agentSkill(cmd.Root(), readOnly)
 			if cmd.Flags().Changed("group") {
@@ -131,7 +131,7 @@ func newAgentSetupCmd() *cobra.Command {
   evo agent setup --client claude-code --skill
   evo agent setup --client gigaagent
   evo agent setup --client vscode --http http://127.0.0.1:8080/mcp`,
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			o.readOnlySet = cmd.Flags().Changed("read-only")
 			return runAgentSetup(cmd, o)

@@ -583,7 +583,10 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	i := provision.PickSubnet(inVPC, zone.ID, zone.Name)
 	if i < 0 {
 		return none, "", "", nil, clierrors.New(clierrors.CodeConfigInvalid,
-			i18n.Tf("no subnet of VPC %s in zone %s for the balancer; nothing was created", "в зоне %s нет подсети VPC %s для балансировщика; ничего не создано", vpcID, firstNonEmptyStr(zone.Name, zone.ID)),
+			// The name of the zone is the catalogue's (Астра #2324); the
+			// Russian text names the zone first.
+			i18n.Tf("no subnet of VPC %[1]s in zone %[2]s for the balancer; nothing was created", "в зоне %[2]s нет подсети VPC %[1]s для балансировщика; ничего не создано",
+				quoteCloud(vpcID), quoteCloud(firstNonEmptyStr(zone.Name, zone.ID))),
 			i18n.T("Pass subnet_id (list: list_subnets) of a subnet in that zone and VPC, or another zone; ",
 				"Передайте subnet_id (список: list_subnets) подсети этой зоны и VPC или другую зону; ")+engine.NoSubnetAnywhere())
 	}

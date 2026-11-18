@@ -63,7 +63,7 @@ func newLoginCmd() *cobra.Command {
 		Use:   "login",
 		Short: login.TLoginShort(),
 		Long:  login.TLoginLong(),
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if flagYes {
 				return login.RefuseYes()
@@ -334,7 +334,7 @@ func newLogoutCmd() *cobra.Command {
 		Use:   "logout",
 		Short: login.TLogoutShort(),
 		Long:  login.TLogoutLong(),
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			name, _ := config.ProfileName(flagProfile)
 			_, creds, found, err := config.LoadProfile(name)

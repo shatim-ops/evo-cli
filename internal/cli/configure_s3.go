@@ -37,7 +37,7 @@ Object Storage принимает тот же ключ — access_key <tenant_id
 secret_key — Key Secret. tenant ID — в консоли: «Хранение данных → Object
 Storage → Параметры работы с API». Аккаунту нужна роль Object Storage
 (s3e.viewer для чтения, s3e.editor для записи). Проверка: evo s3 buckets.`),
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runConfigureS3(tenant, output.New(flagJSON, flagNoColor))
 		},
