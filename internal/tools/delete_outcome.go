@@ -82,7 +82,11 @@ func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (str
 // the tool that shows its end.
 func deleting(fields map[string]any, w deleteWatch) (string, bool) {
 	fields["status"] = "deleting"
-	fields["next"] = i18n.Tf("%s %s shows when the delete ends", "%s %s покажет, когда удаление закончится", w.next, argsLine(w.nextArgs))
+	if line, ok := argsLine(w.nextArgs); ok {
+		fields["next"] = i18n.Tf("%s %s shows when the delete ends", "%s %s покажет, когда удаление закончится", w.next, line)
+	} else {
+		fields["next"] = i18n.Tf("%s with next_args shows when the delete ends", "%s с next_args покажет, когда удаление закончится", w.next)
+	}
 	nextStep(fields, w.next, w.nextArgs)
 	return toJSON(fields), false
 }
@@ -122,12 +126,20 @@ func deleteRefusal(w deleteWatch, msg, code any) error {
 }
 
 // argsLine is args as a call's text: key=value, in the order of the keys.
-func argsLine(args map[string]any) string {
+// A value is the cloud's — the id of an operation — and goes into evo's
+// text only in the form of one word (plainField); for any other, ok is
+// false and the value stays in next_args, a field "_untrusted" names
+// (#2392; «Риск», 362).
+func argsLine(args map[string]any) (line string, ok bool) {
 	parts := make([]string, 0, len(args))
 	for _, k := range slices.Sorted(maps.Keys(args)) {
-		parts = append(parts, fmt.Sprintf("%s=%v", k, args[k]))
+		v := fmt.Sprint(args[k])
+		if !plainField.MatchString(v) {
+			return "", false
+		}
+		parts = append(parts, k+"="+v)
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(parts, " "), true
 }
 
 // opWatch is a deleteWatch whose operation is read by get and later by the
