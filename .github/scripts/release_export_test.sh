@@ -224,6 +224,9 @@ cat >CHANGELOG.md <<'MD'
 - **Флаг** (`already_open`; REL12-3) (R4-2; B12-6, QA-3) . Конец.
 - Строки плана (план 1.5, С4).
 - Превью: `цены Managed Kubernetes нет до калькулятора (D17)`.
+- **Квитанция** (D112, решение владельца 17.11, #1999). Было: успех.
+- **Зона** (решение владельца по #2008). Было: выбор.
+- Ещё пять (`changelog.d/x.md`). Для остальных — нет.
 MD
 cat >"$tmp/changelog.want" <<'MD'
 ## 9.9.9
@@ -242,6 +245,9 @@ cat >"$tmp/changelog.want" <<'MD'
 - **Флаг** (`already_open`). Конец.
 - Строки плана.
 - Превью: `цены Managed Kubernetes нет до калькулятора (D17)`.
+- **Квитанция**. Было: успех.
+- **Зона**. Было: выбор.
+- Ещё пять. Для остальных — нет.
 MD
 git add CHANGELOG.md && git -c user.name=t -c user.email=t@t commit -qm changelog
 rc=0
@@ -250,8 +256,18 @@ log=$("$here/release_export.sh" HEAD "$tmp/s-changelog" 2>&1) || rc=$?
 diff -u "$tmp/changelog.want" "$tmp/s-changelog/CHANGELOG.md" >"$tmp/changelog.diff" ||
 	{ echo "FAIL: CHANGELOG снимка не тот:"; sed 's/^/  | /' "$tmp/changelog.diff"; fail=1; }
 # shellcheck disable=SC2016 # обратные кавычки — фрагмент кода Markdown, не подстановка
-git -C "$tmp/s-changelog" show HEAD:CHANGELOG.md | sed 's/`[^`]*`//g' | grep -qE 'DECISIONS|Fable|Grok|D[0-9]|REL12|R4-|B12|QA-|план 1' &&
+git -C "$tmp/s-changelog" show HEAD:CHANGELOG.md | sed 's/`[^`]*`//g' | grep -qE 'DECISIONS|Fable|Grok|D[0-9]|REL12|R4-|B12|QA-|план 1|владельца|changelog\.d' &&
 	{ echo "FAIL: в коммите снимка осталась ссылка разработки"; fail=1; }
+# «Решение владельца» вне скобок не вычищается — провал с названной
+# строкой (#2512), а не молчаливая публикация.
+printf -- '- по решению владельца 17.11 так.\n' >>CHANGELOG.md
+git -c user.name=t -c user.email=t@t commit -qam changelog-owner
+rc=0
+log=$("$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: «решение владельца» вне скобок — код $rc, ждём 1"; fail=1; }
+case "$log" in *"внутренняя ссылка в CHANGELOG.md:"*"владельца"*) ;; *) echo "FAIL: «решение владельца» вне скобок не названо: $log"; fail=1 ;; esac
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+
 # Ссылка внутри фрагмента кода — не тихая правка цитаты, а провал с
 # названной строкой («Риск», 380); цитата вывода evo из quotedOutput — нет.
 # shellcheck disable=SC2016 # обратные кавычки — фрагмент кода Markdown
