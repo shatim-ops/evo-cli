@@ -336,8 +336,8 @@ func TestPrune_AReaderAndThePruningReadTheSameLines(t *testing.T) {
 // another format.
 func TestPrune_KeepsWhatHistoryFindsLive(t *testing.T) {
 	check := func(l Line) bool { return l.Tool != "future_delete" }
-	was := ceiling
-	t.Cleanup(func() { ceiling = was })
+	was, wasKilled := ceiling, killed
+	t.Cleanup(func() { ceiling, killed = was, wasKilled })
 	days := []string{"2026-06-01", "2026-07-01", "2026-08-01", "2026-11-10", "2026-11-17"}
 	outcomes := []string{Created, Created, Deleted, AlreadyDeleted, Found, Unknown, NotFound, Error}
 	for seed := int64(1); seed <= 1000; seed++ {
@@ -405,8 +405,21 @@ func TestPrune_KeepsWhatHistoryFindsLive(t *testing.T) {
 		}
 		before := liveTexts(t, dir, check)
 		// A pruning, then one a hundred days later that retires every file
-		// of a day: what is live and what the reader does not take stay.
+		// of a day, each killed after a write of its own once in two seeds
+		// and run again: what is live and what the reader does not take
+		// stay, between the two and after.
 		for _, now := range []time.Time{pruneNow, pruneNow.AddDate(0, 0, 100)} {
+			if rng.Intn(2) == 0 {
+				writes := rng.Intn(4) + 1
+				killed = func() bool { writes--; return writes == 0 }
+				if _, err := Prune(dir, now, check); err != nil {
+					t.Fatalf("seed %d: %v", seed, err)
+				}
+				killed = func() bool { return false }
+				if after := liveTexts(t, dir, check); strings.Join(after, "\n") != strings.Join(before, "\n") {
+					t.Fatalf("seed %d, killed pruning %s: live before %v\nafter %v", seed, now.Format(time.DateOnly), before, after)
+				}
+			}
 			if _, err := Prune(dir, now, check); err != nil {
 				t.Fatalf("seed %d: %v", seed, err)
 			}

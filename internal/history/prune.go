@@ -29,6 +29,10 @@ const (
 // ceiling is Ceiling; tests lower it.
 var ceiling int64 = Ceiling
 
+// killed says whether a pruning is killed after the write it has just made:
+// never; tests kill it there, as a kill of evo would.
+var killed = func() bool { return false }
+
 const (
 	// LiveName is the file the live lines of the files retired go to:
 	// read always, whatever their age.
@@ -212,39 +216,67 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 		}
 	}
 
-	// What the reader finds live is what it found before: the journal as
-	// the pruning leaves it is read before it is written. A journal it
-	// would change — lines evo does not write, where a line it keeps is
-	// closed by one it drops (Астра, #2347) — is left as it is: the
-	// pruning keeps what it cannot show it keeps.
-	var after []rawLine
-	for _, n := range days {
-		if r := from[n]; !retire[n] {
-			after = append(after, all[r[0]:r[1]]...)
+	// What the reader finds live is what it found before, in every state
+	// the pruning leaves the journal in — a kill after any of its writes,
+	// and its end: each is read before the first write. A journal it would
+	// change — lines evo does not write, where a line it keeps is closed by
+	// one it drops (Астра, #2346, #2347) — is left as it is: the pruning
+	// keeps what it cannot show it keeps.
+	newLive, newStray := kept.Bytes(), strays.Bytes()
+	state := func(gone int, live []rawLine) []rawLine {
+		var s []rawLine
+		for _, n := range days {
+			if r := from[n]; !retire[n] || gone == 0 {
+				s = append(s, all[r[0]:r[1]]...)
+			} else {
+				gone--
+			}
+		}
+		s = append(s, live...)
+		return append(s, rawLines(StrayName, through, newStray, check)...)
+	}
+	oldLive := all[from[LiveName][0]:from[LiveName][1]]
+	states := [][]rawLine{
+		state(0, oldLive), // the stray lines written
+		state(0, rawLines(LiveName, retired, newLive, check)), // LiveName
+	}
+	for gone := 0; gone <= len(retire); gone++ { // the mark, then each file
+		states = append(states, state(gone, rawLines(LiveName, through, newLive, check)))
+	}
+	for _, st := range states {
+		if !sameLive(all, live, st, liveOfRaw(st)) {
+			p.Retired, p.Live = nil, 0
+			return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
 		}
 	}
-	after = append(after, rawLines(LiveName, through, kept.Bytes(), check)...)
-	after = append(after, rawLines(StrayName, through, strays.Bytes(), check)...)
-	if !sameLive(all, live, after, liveOfRaw(after)) {
-		p.Retired, p.Live = nil, 0
-		return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
-	}
 
-	// The mark first: the lines LiveName is given are of the days it names
-	// (ofFile), whatever a kill leaves after it.
-	if through != retired {
-		if err := config.WriteFileAtomic(filepath.Join(dir, retiredName), []byte(through+"\n"), 0o600); err != nil {
+	// The order a kill leaves the journal read as before in: the stray
+	// lines first — a line kept apart and where it stood is taken in
+	// neither; then LiveName — a line of a day after the mark is taken in
+	// the file of its day, there still; then the mark — the lines of
+	// LiveName before it are its own; then the files, oldest first.
+	if newStrays {
+		if err := config.WriteFileAtomic(filepath.Join(dir, StrayName), strays.Bytes(), 0o600); err != nil {
 			return p, err
+		}
+		if killed() {
+			return p, nil
 		}
 	}
 	if len(retire) > 0 || from[LiveName] != [2]int{} {
 		if err := config.WriteFileAtomic(filepath.Join(dir, LiveName), kept.Bytes(), 0o600); err != nil {
 			return p, err
 		}
+		if killed() {
+			return p, nil
+		}
 	}
-	if newStrays {
-		if err := config.WriteFileAtomic(filepath.Join(dir, StrayName), strays.Bytes(), 0o600); err != nil {
+	if through != retired {
+		if err := config.WriteFileAtomic(filepath.Join(dir, retiredName), []byte(through+"\n"), 0o600); err != nil {
 			return p, err
+		}
+		if killed() {
+			return p, nil
 		}
 	}
 	for _, n := range days {
@@ -255,6 +287,9 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 			return p, err
 		}
 		p.Retired = append(p.Retired, n)
+		if killed() {
+			return p, nil
+		}
 	}
 	return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
 }
