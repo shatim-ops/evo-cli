@@ -178,6 +178,10 @@ func (s *Registry) planImageCreate(ctx context.Context, args map[string]any) (*P
 			}
 			return lostCreate(ctx, "image_create", list, i18n.T("image", "образ"), name, nil, "image_get id", fmt.Errorf(i18n.T("create image: %w", "создание образа: %w"), err))
 		}
+		// The template is the call's, a secret it may carry: the image the
+		// service answers goes out without it, as image_get shows it
+		// (secretTexts).
+		delete(img, "user_data_template")
 		return toJSON(map[string]any{
 			"status": "building",
 			"image":  img,

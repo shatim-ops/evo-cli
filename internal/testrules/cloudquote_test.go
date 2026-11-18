@@ -46,9 +46,7 @@ const stepKey = "step: "
 // refusals closed in 1.9 (owner's decision 14.11, before rc.1). Closes by
 // 1.10.
 var unquotedCloudSteps = map[string]int{
-	"internal/engine/deploy.go|Engine.settledBootFIP":   2,
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
-	"internal/tools/tools.go|Registry.provisionVM":      2,
+	"internal/tools/tools.go|Registry.provisionVM": 2,
 }
 
 // unquotedCloudLocals are the places the detector found when it learned to
@@ -56,33 +54,24 @@ var unquotedCloudSteps = map[string]int{
 // (cloudLocals; «Риск», conclusion 312-2): errors and texts here,
 // steps of progress in unquotedCloudLocalSteps. The list only shrinks: a
 // place fixed by quoteCloud leaves it in the same PR. Its fixes are the
-// development's, by this list: A — tools_disk, tools_nlb, tools_snat,
-// engine/deploy.go, engine/destroy.go; B — tools_backup, tools_pg;
+// development's, by this list (A's — tools_disk, tools_nlb, tools_snat,
+// engine/deploy.go, engine/destroy.go — are closed): B — tools_backup, tools_pg;
 // C — tools_deploy, made.go, tools_stack, opanswer.go,
 // engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
 	"internal/engine/create_preview.go|ShowCreatePreview":      1,
-	"internal/engine/deploy.go|Engine.provisionVM":             1,
 	"internal/tools/delete_preview.go|Registry.deletePlan":     1,
 	"internal/tools/tools.go|destroyTargetPreview":             1,
 	"internal/tools/tools_backup.go|Registry.backupRestored":   1,
 	"internal/tools/tools_backup.go|Registry.planBackupCreate": 1,
 	"internal/tools/tools_backup.go|backupOfTheName":           1,
-	"internal/tools/tools_disk.go|Registry.planDiskCreate":     2,
-	"internal/tools/tools_disk.go|diskAttachedError":           4,
-	"internal/tools/tools_disk.go|diskCreated":                 5,
-	"internal/tools/tools_nlb.go|Registry.planLbCreate":        1,
-	"internal/tools/tools_nlb.go|Registry.planTgCreate":        2,
 	"internal/tools/tools_pg.go|Registry.planPgCreate":         1,
-	"internal/tools/tools_snat.go|Registry.planSnatCreate":     2,
 }
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only
 // shrinks. Closes by 1.9 (owner's decision 17.11).
-var unquotedCloudLocalSteps = map[string]int{
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
-}
+var unquotedCloudLocalSteps = map[string]int{}
 
 // unquotedCloudFlows are the places the detector found when it learned
 // to follow a value of the cloud by its declaration and in the order of
@@ -183,7 +172,10 @@ var unquotedCloudFlowSteps = map[string]int{
 // id and the status of a stack job (stack.newID), a JSON path of a
 // declaration, the image of the configuration, the HTTP status of evo's
 // own MCP server, the id of a record of a call (intent, D46). Quoted as the cloud's, they would read as the cloud's
-// words (Астра #2237). A place here is a count of such values in it, not
+// words (Астра #2237). And a text evo built from a value of the cloud by
+// the rule of #2253 — the id under isUUID as it is, for a command, else in
+// quotes (madeShows): glued into another text, it is counted again, and
+// quotes would break the command («Риск», 340). A place here is a count of such values in it, not
 // a pass for the function: a value of the cloud in it is still counted.
 var evoOwnValues = map[string]int{
 	"internal/cli/history_view.go|historyEntry.call":           1,
@@ -200,6 +192,7 @@ var evoOwnValues = map[string]int{
 	"internal/sgrules/sgrules.go|Close":                        1,
 	"internal/stack/store.go|jobNotFoundError.Error":           1,
 	"internal/tools/card.go|cardDoes":                          1,
+	"internal/tools/made.go|madeAnswer":                        1,
 	"internal/tools/tools.go|deployInProgress":                 1,
 	"internal/tools/tools_stack.go|Registry.appliableJob":      1,
 	"internal/tools/tools_stack.go|Registry.checkJobProject":   1,
