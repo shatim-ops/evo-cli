@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -379,7 +380,10 @@ func diskAtLimitAnswer(lim *diskAtLimit, diskID, why, tool string, nextArgs map[
 	answer := map[string]any{"status": lim.state, "disk_id": diskID, "disk_state": lim.state,
 		"next": i18n.Tf("Disk %s is %s at the time limit of an MCP call; %s Call %s to go on: it waits for the disk again.",
 			"Диск %s — %s к пределу времени вызова; %s Чтобы продолжить, повторите %s: команда снова дождётся диска.", diskID, quoteCloud(lim.state), why, i18n.T(tool, cliCommand(tool)))}
-	if lim.state == "" || lim.state == "unknown" {
+	// The status is evo's word: a state of Compute's own, else waiting —
+	// a state the list does not know is the cloud's text, and stays in
+	// disk_state, which the marker names («Риск», conclusion 390).
+	if !slices.Contains(diskStates, lim.state) {
 		answer["status"] = "waiting"
 	}
 	lim.reads.put(answer)
