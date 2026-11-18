@@ -406,10 +406,24 @@ func (r *Registry) resourceOf(ctx context.Context, name string, args map[string]
 
 // cutCalls are the records of this caller's own cut calls of the tool name
 // on the resource the call names, for a tool of everySendIsAChange: the
-// same tool, the same resource, the same key, not held. A record of
-// another key is not this caller's cut call, and a held one is an
-// operation going on.
+// same tool, the same resource, the same key, not held, returned. A record
+// of another key is not this caller's cut call, a held one is an
+// operation going on, and one whose call has not returned is a call going
+// on (callsGoingOn).
 func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]any) []intent.Intent {
+	return r.callsOn(ctx, name, args, false)
+}
+
+// callsGoingOn are the records of this caller's own calls of the tool name
+// on the resource the call names that have not returned (InFlight): the
+// same as cutCalls, by the rule of intent.Settle — their outcome is not
+// read and their records are not closed here (A19-9, #2429).
+func (r *Registry) callsGoingOn(ctx context.Context, name string, args map[string]any) []intent.Intent {
+	return r.callsOn(ctx, name, args, true)
+}
+
+// callsOn is cutCalls, or callsGoingOn when inFlight.
+func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any, inFlight bool) []intent.Intent {
 	if everySendIsAChange[name].read == "" {
 		return nil
 	}
@@ -430,6 +444,12 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
 		// call whose change was seen going on, HoldCut).
 		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil {
+			continue
+		}
+		// A call that has not returned is going on, not cut: its record
+		// is not this call's to read the outcome of or to close — the
+		// rule of intent.Settle (A19-9, #2429; FB19I-34).
+		if in.InFlight() != inFlight {
 			continue
 		}
 		ofTool = append(ofTool, in)
@@ -467,6 +487,10 @@ func (r *Registry) cutCalls(ctx context.Context, name string, args map[string]an
 	var mine []intent.Intent
 	for _, in := range cut {
 		if cur == nil || in.Key.Other(cur) {
+			continue
+		}
+		if inFlight {
+			mine = append(mine, in)
 			continue
 		}
 		// What the cut call made is listed: its outcome is read, the
@@ -557,6 +581,9 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 // a read of it failed, it refuses — leaves the question as it is, with no
 // preview: nothing is sent either way.
 func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[string]any, plan func(context.Context) (string, bool)) (string, bool) {
+	if going := r.callsGoingOn(ctx, name, args); len(going) > 0 {
+		return goingOnAnswer(name, going), true
+	}
 	mine := r.cutCalls(ctx, name, args)
 	if len(mine) == 0 {
 		return "", false
@@ -575,6 +602,24 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 	out["message"], out["interrupted"] = message, interrupted
 	r.closeAsked(ctx, mine)
 	return toJSON(out), true
+}
+
+// goingOnAnswer answers a consented call of a tool of everySendIsAChange
+// that finds its own earlier call on the resource not returned yet: a
+// client that timed out sends the same call again while the first goes
+// on, and a send now would be a second change on one consent («Риск»,
+// conclusion 138). Nothing is sent, and the record stays the earlier
+// call's: once it returns, its outcome is its own (A19-9, #2429).
+func goingOnAnswer(name string, going []intent.Intent) string {
+	last := going[len(going)-1]
+	what := firstNonEmptyStr(last.Name, last.Target)
+	rule := everySendIsAChange[name]
+	// The reason is that of every question (the CLI exits 3 on it): the
+	// cloud was not called («Риск», conclusion 401, У3).
+	return toJSON(map[string]any{"status": "confirmation_required", "reason": clierrors.CodeConfirmationRequired, "going_on": map[string]any{"calls": len(going), "read": rule.read},
+		"message": i18n.Tf("An earlier %s of %s, started %s, has not returned yet: it is going on. A call now would be one more change, not a repeat of that one, so nothing was sent. Once it returns, %s shows the resource; whether to send one more is the person's decision.",
+			"Предыдущий вызов %s для %s, начатый %s, ещё не вернулся: он идёт. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Когда он вернётся, ресурс покажет %s; отправлять ли ещё одно — решение человека.",
+			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read)})
 }
 
 // closeAsked closes the records mine of the cut calls a question has just
@@ -1045,6 +1090,14 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 		name = quoteCloud(name)
 	}
 	tool := quoteCloud(in.Tool)
+	// A call that has not returned: no outcome to tell yet — the same
+	// rule as the answer that sends nothing beside it (goingOnAnswer;
+	// «Риск», conclusion 401, У2).
+	if in.InFlight() {
+		return i18n.Tf("%s %s%s, started %s (%s, pid %d): the call has not returned yet, it is going on",
+			"%s %s%s, начат %s (%s, pid %d): вызов ещё не вернулся, он идёт",
+			tool, name, where, started, quoteCloud(in.Surface), in.PID)
+	}
 	head := i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown",
 		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен",
 		tool, name, where, started, quoteCloud(in.Surface), in.PID)

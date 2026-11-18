@@ -207,7 +207,7 @@ func TestVMCreate_ImageRefusals(t *testing.T) {
 			"--meta opensearch_host=<значение>",
 		}},
 		{"плохой порт", []string{"--image", "OpensearchDashboards", "--port", "80/sctp"}, clerrors.ExitGeneral, []string{
-			"неверный порт \"80/sctp\"",
+			"неверный порт (элемент 1 списка)",
 		}},
 	}
 	for _, tc := range cases {

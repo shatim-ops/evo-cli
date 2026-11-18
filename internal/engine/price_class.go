@@ -157,6 +157,8 @@ func unpricedNote(p CreatePreview) string {
 		return i18n.T("the cost has no part of it", "в цене нет его доли")
 	case p.Resource == ResourceVM:
 		return i18n.T("the flavor size is unknown", "размер flavor неизвестен")
+	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.Type == "":
+		return i18n.T("the disk type is chosen by the platform", "тип диска выберет платформа")
 	}
 	return i18n.T("its size is unknown", "его размер неизвестен")
 }

@@ -78,7 +78,7 @@ func newLoginCmd() *cobra.Command {
 			}
 			// --for '' is no audience: not the default one (#1095).
 			if cmd.Flags().Changed("for") && forWhom == "" {
-				return clerrors.New(clerrors.CodeUsage, login.EFor(forWhom), "")
+				return clerrors.New(clerrors.CodeUsage, login.EFor(), "")
 			}
 			choice, err := loginChoice(project, forWhom, ttl)
 			if err != nil {
@@ -306,7 +306,7 @@ func loginChoice(project, forWhom, ttl string) (login.Choice, error) {
 		return c, clerrors.New(clerrors.CodeUsage, login.EProject(), "")
 	}
 	if forWhom != "" && c.For != login.ForMe && c.For != login.ForAgent {
-		return c, clerrors.New(clerrors.CodeUsage, login.EFor(forWhom), "")
+		return c, clerrors.New(clerrors.CodeUsage, login.EFor(), "")
 	}
 	if ttl != "" {
 		// The term is «7d», «30d» or «90d»: «7» alone is refused, as the
@@ -321,7 +321,7 @@ func loginChoice(project, forWhom, ttl string) (login.Choice, error) {
 			}
 		}
 		if !ok {
-			return c, clerrors.New(clerrors.CodeUsage, login.ETTL(ttl),
+			return c, clerrors.New(clerrors.CodeUsage, login.ETTL(),
 				login.ETTLHint())
 		}
 		c.Days = n
