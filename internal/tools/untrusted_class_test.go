@@ -78,7 +78,7 @@ func classLeaks(m map[string]any) []string {
 }
 
 // markIn reports whether v holds cloudMark at any depth, and whether it
-// holds it bare — after a real newline, the value as the cloud gave it.
+// holds it bare — anywhere but at the end of a value quoteCloud quoted.
 func markIn(v any) (has, bare bool) {
 	switch x := v.(type) {
 	case map[string]any:
@@ -92,7 +92,12 @@ func markIn(v any) (has, bare bool) {
 			has, bare = has || h, bare || b
 		}
 	case string:
-		return strings.Contains(x, cloudMark), strings.Contains(x, "\n"+cloudMark)
+		has = strings.Contains(x, cloudMark)
+		// Quoted, the value ends `\n` + cloudMark + `"` in evo's text
+		// (quoteCloud): any other occurrence is the value bare, whatever
+		// stands before it — a newline, a space a mutant put there
+		// («Риск», 371).
+		return has, strings.Count(x, cloudMark) != strings.Count(x, `\n`+cloudMark+`"`)
 	}
 	return has, bare
 }
