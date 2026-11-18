@@ -7,6 +7,8 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# Каталог снимка каждого случая — свой, новый и пустой (mktemp -d): имя
+# из $RANDOM дважды за прогон давало «каталог не пуст», код 2 (CI #2406).
 fail=0
 repo=$tmp/repo
 mkdir -p "$repo"/cmd/x "$repo"/internal/a/testdata "$repo"/docs/internal "$repo"/changelog.d "$repo"/.github/workflows
@@ -73,7 +75,7 @@ for text in 'Решение владельца 17.11' 'по решению вл�
 	echo "$text" >>docs/guide.md
 	git -c user.name=t -c user.email=t@t commit -qam marker
 	rc=0
-	LC_ALL=C LANG=C "$here/release_export.sh" HEAD "$tmp/s-$RANDOM" >/dev/null 2>&1 || rc=$?
+	LC_ALL=C LANG=C "$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" >/dev/null 2>&1 || rc=$?
 	[ "$rc" = 1 ] || { echo "FAIL: «${text}» при LC_ALL=C — код $rc, ждём 1"; fail=1; }
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
@@ -137,7 +139,7 @@ for c in "docs/note.tpl:см. docs/internal/x" "internal/a/skill.tmpl:по ре�
 	git add "$file" && git -c user.name=t -c user.email=t@t commit -qm "odd $file"
 	for loc in C C.UTF-8 ""; do
 		rc=0
-		LC_ALL=$loc "$here/release_export.sh" HEAD "$tmp/s-odd-$RANDOM" >/dev/null 2>&1 || rc=$?
+		LC_ALL=$loc "$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" >/dev/null 2>&1 || rc=$?
 		[ "$rc" = 1 ] || { echo "FAIL: «${c#*:}» в $file при LC_ALL=${loc:-по умолчанию} — код $rc, ждём 1"; fail=1; }
 	done
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
@@ -166,7 +168,7 @@ for text in 'по решениями владельца' 'решениях вл�
 	echo "$text" >>docs/guide.md
 	git -c user.name=t -c user.email=t@t commit -qam ending
 	rc=0
-	LC_ALL=C "$here/release_export.sh" HEAD "$tmp/s-end-$RANDOM" >/dev/null 2>&1 || rc=$?
+	LC_ALL=C "$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" >/dev/null 2>&1 || rc=$?
 	[ "$rc" = 1 ] || { echo "FAIL: «${text}» при LC_ALL=C — код $rc, ждём 1"; fail=1; }
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
@@ -190,7 +192,7 @@ for v in '"docs/" + "internal/x.md"' '"по решению" +\n\t\t"\\u00a0вл�
 	printf 'package a\n\n// A does nothing.\nfunc A() string { return %b }\n' "$v" >internal/a/a.go
 	git -c user.name=t -c user.email=t@t commit -qam goconcat
 	rc=0
-	"$here/release_export.sh" HEAD "$tmp/s-cat-$RANDOM" >/dev/null 2>&1 || rc=$?
+	"$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" >/dev/null 2>&1 || rc=$?
 	[ "$rc" = 1 ] || { echo "FAIL: склейка строк Go $v — код $rc, ждём 1"; fail=1; }
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
