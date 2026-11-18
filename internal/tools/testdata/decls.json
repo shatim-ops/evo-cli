@@ -1035,7 +1035,7 @@
   },
   "status": {
     "group": "deploy",
-    "untrusted": "{fields:[vm_ip vm_name floating_ip_id zone_name flavor_name ssh_host_key_fingerprint security_group_id security_group_name opened_rules cloud_state cloud_error other_active_vm_ids] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[vm_ip vm_name floating_ip_id zone_name flavor_name vm_flavor region ssh_user ssh_host_key_fingerprint security_group_id security_group_name opened_rules cloud_state cloud_error other_active_vm_ids] whole:false own:[] workload:false deep:false}"
   },
   "subnet_create": {
     "group": "vpc",

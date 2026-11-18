@@ -27,7 +27,10 @@ func TestUntrusted_ToolsOfTheDirectoryMarkCloudValues(t *testing.T) {
 		// quotes, on one line (quoteCloud).
 		quoted []string
 	}{
-		{name: "status", tool: "status", record: true, fields: []string{"vm_ip", "vm_name", "zone_name", "cloud_state"}},
+		// vm_flavor is the flavor evo picked from the catalogue, region the
+		// zone's UUID a read gave, ssh_user the login of the image's
+		// metadata («Риск», 391).
+		{name: "status", tool: "status", record: true, fields: []string{"vm_ip", "vm_name", "zone_name", "cloud_state", "vm_flavor", "region", "ssh_user"}},
 		{name: "deploy, a new VM", tool: "deploy", fields: []string{"vm", "security_group", "subnet_id"}},
 		{name: "deploy, an update", tool: "deploy", record: true, fields: []string{"vm_ip", "vm_name", "upload"}, quoted: []string{`"evo-web"`}},
 		{name: "deploy_apply", tool: "deploy_apply", args: map[string]any{"confirmed": true}, fields: []string{"public_ip", "floating_ip_id", "ssh", "note"}},

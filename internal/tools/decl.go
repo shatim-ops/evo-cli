@@ -201,7 +201,7 @@ var decls = map[string]Decl{
 	"deploy": {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the project (.evo.yaml, the directory), checked by provision.ValidName", IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "project_id", why: whyProjectArg}}, Untrusted: untrustedAnswer{fields: []string{"log", "output", "ports_open_only_to_groups", "phase_state", "vm_ip", "vm_name", "upload", "vm", "security_group", "subnet_id", "existing_id", "vm_state"}, workload: true}},
 	"provision": {Group: "vm", Project: true, Created: created{id: "vm_id", list: "vm_list", field: "vms", delete: "destroy"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", why: whyContinued}, {name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "subnet_id", why: whyListed},
 		{name: "project_id", why: whyProjectArg}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
-	"status": {Group: "deploy", Untrusted: untrustedAnswer{fields: []string{"vm_ip", "vm_name", "floating_ip_id", "zone_name", "flavor_name", "ssh_host_key_fingerprint",
+	"status": {Group: "deploy", Untrusted: untrustedAnswer{fields: []string{"vm_ip", "vm_name", "floating_ip_id", "zone_name", "flavor_name", "vm_flavor", "region", "ssh_user", "ssh_host_key_fingerprint",
 		"security_group_id", "security_group_name", "opened_rules", "cloud_state", "cloud_error", "other_active_vm_ids"}}},
 	"list": {Group: "deploy"},
 	// Compute.
