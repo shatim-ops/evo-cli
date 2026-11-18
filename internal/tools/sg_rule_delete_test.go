@@ -157,6 +157,11 @@ func TestSGRuleDelete_AsksWithAPreviewAndDeletesOnce(t *testing.T) {
 	if rule["id"] != sgRuleWeb || rule["direction"] != "ingress" || rule["protocol"] != "tcp" || rule["port_range"] != "443:443" || rule["source"] != "0.0.0.0/0" {
 		t.Errorf("the preview does not name the rule whole: %s", text)
 	}
+	// The rule's fields are the cloud's: evo's message names them in
+	// quotes, on one line (A19-30, #2435).
+	if msg, _ := m["message"].(string); !strings.Contains(msg, `("ingress tcp 443:443 0.0.0.0/0")`) {
+		t.Errorf("the message names the rule's fields bare: %s", msg)
+	}
 	group, _ := m["security_group"].(map[string]any)
 	if group["id"] != sgZoneGroup || group["name"] != "SSH-access_ru.AZ-1" || m["shared"] != true {
 		t.Errorf("the preview does not name the group and that it is shared: %s", text)

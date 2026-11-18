@@ -739,7 +739,11 @@ func TestPrune_OneThatDoesNotFitTriesTheNextDay(t *testing.T) {
 	writeDay(t, dir, "2026-11-17", lineOf("a000000000000002", Created, "disk", "d-2", "2026-11-17T09:00:00Z"))
 	was := pruneLimit
 	t.Cleanup(func() { pruneLimit = was })
-	pruneLimit = 0
+	// A limit already past, not zero: the deadline is checked with a strict
+	// After, and on Windows two reads of the clock can return the same
+	// instant — a limit of zero then «fits» and the pruning goes on whole
+	// (main red, #2531).
+	pruneLimit = -time.Second
 	if p, err := Prune(dir, pruneNow, nil); err != nil || !p.Unfinished || len(p.Retired) != 0 {
 		t.Fatalf("pruned %+v, %v; want it unfinished", p, err)
 	}

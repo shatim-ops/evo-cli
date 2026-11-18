@@ -12,6 +12,8 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -58,6 +60,9 @@ const madeListGrace = 10 * time.Minute
 // a part of the intents' directory, so whatever clears the intents clears
 // it too; the reader of the intents skips it (intent.Pending reads *.json).
 func MadeDir(root string) string { return filepath.Join(intent.Dir(root), "made") }
+
+// madeName is the form of a name madeKey makes.
+var madeName = regexp.MustCompile(`^[0-9a-f]{24}\.json$`)
 
 // madeKey is the file of the call of tool with the canonical arguments
 // canon (canonArgs) on the resource name, target: the same call, the same
@@ -109,12 +114,16 @@ func madeGoesOn(tool, answer string) (id, next string, nextArgs map[string]any, 
 // madeEnded tells a read of the step of a create that says nothing goes
 // on: the resource is not found by the read (NOT_FOUND), it or its
 // operation is in a state of error, its operation is done with an error,
-// or — past madeListGrace — a read by id lists none of it, or the read of
-// the operation (op) does not find it. An operation not found sooner is
+// or — past madeListGrace — a read by id lists none of it, the read of
+// the operation (op) does not find it, or the operation is done and the
+// list before the step was read (listRead) and does not show it: made,
+// then gone (A19-8, #2428). A list that did not answer tells nothing of
+// the resource: the file stays («Риск», conclusion 405, У1). An
+// operation not found sooner is
 // one the platform does not show yet, not a resource gone: it goes on, as
 // a list that lags («Риск», conclusion 310, У1). A read that fails
 // otherwise tells nothing.
-func madeEnded(read string, isErr bool, age time.Duration, op bool) bool {
+func madeEnded(read string, isErr bool, age time.Duration, op, listRead bool) bool {
 	if isErr {
 		return madeNotFound(read) && (!op || age > madeListGrace)
 	}
@@ -127,9 +136,10 @@ func madeEnded(read string, isErr bool, age time.Duration, op bool) bool {
 			return true
 		}
 	}
-	// The read of an operation (*_operation): done with an error.
+	// The read of an operation (*_operation): done with an error; done
+	// with none past the grace of a list that lags.
 	if done, _ := m["done"].(bool); done {
-		if _, _, failed := opFailure(m["error"]); failed {
+		if _, _, failed := opFailure(m["error"]); failed || (op && listRead && age > madeListGrace) {
 			return true
 		}
 	}
@@ -163,6 +173,25 @@ func (r *Registry) rememberMade(rec intent.Intent, answer string) {
 		return
 	}
 	_ = config.WriteFileAtomic(filepath.Join(dir, madeKey(rec.Tool, rec.Canon, rec.Name, rec.Target)), b, 0o600)
+}
+
+// madeStepReads tells that step, a read, is one the repeat of create runs
+// from a file of made/: a closed list per create — its declared list, its
+// declared read by id (created.read), or an operation of its group — and
+// none that holds a secret or does something besides (Sensitive,
+// SideEffects: k8s_kubeconfig mints a token). A file of the key of the
+// call still names any tool: another is named, not run, and its answer
+// does not stand for the repeat's (A19-42, #2470; «Риск», 393).
+func (r *Registry) madeStepReads(create string, step Tool) bool {
+	c, ok := createdOf(create)
+	if !ok || step.Decl.Sensitive || step.Decl.SideEffects != "" {
+		return false
+	}
+	if step.Name == c.list || step.Name == c.read {
+		return true
+	}
+	ct, ok := r.Lookup(create)
+	return ok && step.Group == ct.Group && slices.ContainsFunc(step.Decl.IDArgs, func(a idArg) bool { return a.kind == kindOperation })
 }
 
 // madeByKey tells that the key cur wrote the file of made/ whose key is m:
@@ -225,7 +254,8 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		forget()
 		return "", false, false
 	}
-	if _, listed, _ := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID); listed {
+	listSaid, listed, _ := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID)
+	if listed {
 		forget()
 		return "", false, false
 	}
@@ -239,19 +269,26 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	// with no consent, for the caller to take (A19-1, #2418).
 	step := withoutConsent(mc.NextArgs)
 	t, found := r.Lookup(mc.Next)
-	reads := found && t.Handler != nil && !t.Mutating && !NeedsConsent(t, step)
-	if found && !reads {
+	writes := found && (t.Mutating || NeedsConsent(t, step))
+	reads := found && t.Handler != nil && !writes && r.madeStepReads(name, t)
+	switch {
+	case writes:
 		// No consent is told here: the step asks for it with its own
 		// preview («Риск», conclusion 379).
 		out["message"] = said + " " + i18n.Tf("Its next step, %s, needs its own consent: it was not run.",
 			"Его следующему шагу, %s, нужно своё согласие: он не выполнен.", mc.Next)
+	case found && !reads:
+		out["message"] = said + " " + i18n.Tf("Its next step, %s, does not read this resource: it was not run.",
+			"Его следующий шаг, %s, не читает этот ресурс: он не выполнен.", mc.Next)
 	}
 	if reads {
 		read, readErr := t.Handler(ctx, maps.Clone(step))
 		// The read says the resource is not there, or its operation
 		// failed: nothing goes on, the file goes, and the call is planned
 		// as any other — a new create («Риск», conclusion 268, 1).
-		if madeEnded(read, readErr, clock.Since(mc.StartedAt), strings.HasSuffix(mc.Next, "_operation")) {
+		// listSaid: the list answered (checkByList says "" of a list not
+		// read).
+		if madeEnded(read, readErr, clock.Since(mc.StartedAt), strings.HasSuffix(mc.Next, "_operation"), listSaid != "") {
 			forget()
 			return "", false, false
 		}
@@ -265,6 +302,13 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 				"Платформа ещё не показывает операцию; прочитайте её снова через минуту.")
 		case json.Unmarshal([]byte(read), &m) == nil:
 			out = m
+			if done, _ := m["done"].(bool); done {
+				// Done with no error (madeEnded): the outcome is known,
+				// the list does not show it yet — or it is gone.
+				said = i18n.Tf("An earlier %s of %s was taken by the platform as %s, and its operation is done; the list does not show it yet: no second create was sent. The list may lag for up to %d minutes: read it again; if it is still not there after that, it may have been deleted — whether to create it anew is the person's decision.",
+					"Предыдущий вызов %s для %s принят платформой как %s, и его операция завершена; список его пока не показывает: второе создание не отправлено. Список может отставать до %d минут: прочитайте его снова; если его там и после этого нет, он, возможно, удалён — создавать ли заново, решает человек.",
+					name, quoteCloud(resource), quoteCloud(mc.ID), int(madeListGrace/time.Minute))
+			}
 			if was, _ := m["message"].(string); was != "" {
 				said += " " + was
 			}
@@ -280,4 +324,34 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	out["repeat_of"] = map[string]any{"tool": name, "id": mc.ID, "started_at": mc.StartedAt.UTC().Format(time.RFC3339)}
 	nextStep(out, mc.Next, step)
 	return toJSON(out), isErr, true
+}
+
+// forgetMadeOf takes away the files of creates going on whose resource the
+// delete tool name, called with args, answered gone: the repeat of such a
+// create would wait on what is no more (A19-8, #2428). A file names its
+// resource by the id the platform gave (madeCall.ID).
+func forgetMadeOf(root, name string, args map[string]any, answer string) {
+	d := decls[name].Delete
+	id := stringArg(args, d.arg)
+	if st := answerStatus(answer); d.arg == "" || id == "" || (st != "deleted" && st != "already_deleted") {
+		return
+	}
+	dir := MadeDir(root)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		// Only a name of the form madeKey makes: the directory is read, and
+		// what it lists is not a path to remove (FB180-1).
+		if !madeName.MatchString(e.Name()) {
+			continue
+		}
+		file := filepath.Join(dir, e.Name())
+		b, err := config.ReadFileNoFollow(file)
+		var mc madeCall
+		if err == nil && json.Unmarshal(b, &mc) == nil && mc.ID == id {
+			_ = os.Remove(file)
+		}
+	}
 }

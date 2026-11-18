@@ -198,7 +198,7 @@ func TestAudit_DestroyPreviewNamesTarget(t *testing.T) {
 		if f, _ := m["floating_ip"].(string); strings.Contains(f, "released:") && !strings.Contains(f, "will be released:") {
 			t.Errorf("%v: preview uses past tense: %q", args, f)
 		}
-		if msg, _ := m["message"].(string); !strings.Contains(msg, "web (0000a1a1-0000-4000-8000-000000000001) in zone ru.AZ-2") {
+		if msg, _ := m["message"].(string); !strings.Contains(msg, `"web" (0000a1a1-0000-4000-8000-000000000001) in zone "ru.AZ-2"`) {
 			t.Errorf("%v: message = %q", args, msg)
 		}
 		if m["project_id"] != "p" || !strings.Contains(text, "release_ip=true") {
