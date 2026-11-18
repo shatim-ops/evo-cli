@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // The bounds of an answer of history (the ТЗ of the journal, §0, 6): the
@@ -46,6 +47,9 @@ type historyLine struct {
 	IntentID    string `json:"intent_id"`
 	JobID       string `json:"job_id,omitempty"`
 	Check       string `json:"check,omitempty"`
+	// CheckResult is what history with check found of a live line it did
+	// not close (checkThere and the rest).
+	CheckResult string `json:"check_result,omitempty"`
 }
 
 // handleHistory reads the journal of changes of the folder of state (D43):
@@ -72,8 +76,10 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 		if since, err = time.Parse(time.RFC3339, v); err != nil {
 			if since, err = time.Parse(time.DateOnly, v); err != nil {
 				return failed(ctx, clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("since %q is not a time: give a date (2026-11-01) or a time (2026-11-01T10:00:00Z)",
-						"since %q — не время: укажите дату (2026-11-01) или время (2026-11-01T10:00:00Z)", v), ""), nil), true
+					// The value is not repeated: it may be anything typed,
+					// a secret included (#2353).
+					i18n.T("since is not a time: give a date (2026-11-01) or a time (2026-11-01T10:00:00Z)",
+						"since — не время: укажите дату (2026-11-01) или время (2026-11-01T10:00:00Z)"), ""), nil), true
 			}
 		}
 	}
@@ -136,15 +142,32 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	// wrote one. Its outcome is not known.
 	for _, in := range pendingIntents(root) {
 		if !written[in.ID] {
-			live = append(live, history.Line{Time: in.StartedAt.UTC().Format(time.RFC3339), Tool: in.Tool, Surface: in.Surface,
+			live = append(live, history.Line{Time: in.StartedAt.UTC().Format(time.RFC3339), Tool: in.Tool, Surface: in.Surface, Key: in.Key,
 				ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target, Kind: resourceKind(in.Tool),
 				Outcome: history.Unknown, IntentID: in.ID})
 		}
 	}
+	var checked *historyChecked
+	results := map[int]string{}
+	if boolArg(args, "check", false) {
+		eng, err := s.engineOfCall(args)
+		if err != nil {
+			return failed(ctx, err, nil), true
+		}
+		var visible []int
+		for i, l := range live {
+			if shown(l) {
+				visible = append(visible, i)
+			}
+		}
+		checked, results = s.checkLive(ctx, live, visible, eng.Maker())
+	}
 	liveLines := []historyLine{}
-	for _, l := range live {
+	for i, l := range live {
 		if shown(l) {
-			liveLines = append(liveLines, s.historyLineOf(l))
+			hl := s.historyLineOf(l)
+			hl.CheckResult = results[i]
+			liveLines = append(liveLines, hl)
 		}
 	}
 	liveTruncated := len(liveLines) > historyMax
@@ -169,8 +192,25 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	if j.Skipped > 0 {
 		ans["skipped"] = j.Skipped
 	}
+	// The lines of that day and before were pruned by age or size: what
+	// is live of them is kept, the rest is gone (history.Prune).
+	if day := history.RetiredThrough(history.DirOf(intent.Dir(root))); day != "" {
+		ans["retired_through"] = day
+	}
 	if len(hidden) > 0 {
 		ans["hidden_without_project"] = len(hidden)
+	}
+	if checked != nil {
+		ans["checked"] = checked
+		would := []historyLine{}
+		for i, l := range live {
+			if results[i] == checkNotSeen {
+				would = append(would, s.historyLineOf(l))
+			}
+		}
+		ans["would_close"] = would
+		ans["check_note"] = i18n.T("would_close: a read by id, with the key that sent the call, answers «not found»: the resource was removed, or this key no longer sees it — the platform does not tell which. history writes nothing and closes nothing: the lines stay live in the journal until evo deletes the resource. check_result tells why a live line was not read.",
+			"would_close — чтение по id ключом, которым отправлен вызов, отвечает «не найдено»: ресурс удалён или этот ключ его больше не видит, — какое из двух, платформа не говорит. history ничего не пишет и не закрывает: в журнале строки остаются живыми, пока ресурс не удалён через evo. check_result — почему живая строка не прочитана.")
 	}
 	return toJSON(ans), false
 }
@@ -195,4 +235,135 @@ func (s *Registry) historyLineOf(l history.Line) historyLine {
 		out.Check = s.listToolOf(l.Tool)
 	}
 	return out
+}
+
+// historyCheckMax is the most reads one history with check sends: a
+// journal of many live lines is checked over several calls, not in one
+// burst of reads. Only a line that passed every local condition spends it,
+// the oldest first («Риск», conclusion 315).
+const historyCheckMax = 50
+
+// What history with check found of a live line (check_result). check only
+// says: history is a read and writes nothing, the journal included
+// («Риск», conclusion 315, У4).
+const (
+	// checkNotSeen: the read by id, with the key that sent the call,
+	// answers «not found» — the resource was removed, or this key no
+	// longer sees it; which, the platform does not tell (У3). The line is
+	// in would_close.
+	checkNotSeen = "not_seen"
+	// checkThere: the read by id finds the resource.
+	checkThere = "there"
+	// checkReadFailed: the read answered neither «there» nor «not found»
+	// (403, 401, 429, 5xx, a cut): not checked.
+	checkReadFailed = "read_failed"
+	// checkOtherKey: the call was sent with another key, which may see
+	// what this one does not (R-82).
+	checkOtherKey = "other_key"
+	// checkNoKey: the line or this run names no key.
+	checkNoKey = "no_key"
+	// checkNoRead: the kind has no read by id.
+	checkNoRead = "no_read_by_id"
+	// checkNotByID: the line has no id from the cloud — an outcome not
+	// known, whose id may be the name of the call's argument (У2 of 311).
+	checkNotByID = "not_by_id"
+	// checkNoProject: the line names no project — a call by id (R-82).
+	checkNoProject = "no_project"
+	// checkInParent: the resource lives in a parent, which a read by its
+	// id does not take (У5).
+	checkInParent = "in_parent"
+	// checkTooNew: the line is younger than madeListGrace: a read may not
+	// show a resource just made yet (У1).
+	checkTooNew = "too_new"
+	// checkLater: a later live line names the same resource; that one is
+	// read (У2).
+	checkLater = "later_line"
+	// checkOverBudget: not read in this call (historyCheckMax).
+	checkOverBudget = "over_budget"
+)
+
+// historyChecked counts what history with check did: the reads sent, the
+// lines it would close, and the lines not read, by why.
+type historyChecked struct {
+	Read       int            `json:"read"`
+	WouldClose int            `json:"would_close"`
+	NotChecked map[string]int `json:"not_checked,omitempty"`
+}
+
+// checkLive reads by id each live line of the indexes visible (oldest
+// first) that names a resource of a project by its id from the cloud
+// (created, found), with the rule of doctor (readByID) and the key cur of
+// this run, and tells what it found (the ТЗ of the journal, У7; «Риск»,
+// conclusion 315). It writes nothing: a line the read does not see is
+// would_close. The cloud is only read.
+func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible []int, cur *state.Maker) (*historyChecked, map[int]string) {
+	out := &historyChecked{NotChecked: map[string]int{}}
+	results := map[int]string{}
+	resource := func(l history.Line) string { return l.Kind + "\x00" + l.Parent + "\x00" + l.ResourceID }
+	latest := map[string]int{}
+	for _, i := range visible {
+		latest[resource(live[i])] = i
+	}
+	fresh := clock.Now().Add(-madeListGrace)
+	for _, i := range visible {
+		l := live[i]
+		at, _ := time.Parse(time.RFC3339, l.Time)
+		k := cardOf(l.Tool)
+		why := ""
+		switch {
+		case (l.Outcome != history.Created && l.Outcome != history.Found) || l.ResourceID == "":
+			why = checkNotByID
+		case l.ProjectID == "":
+			why = checkNoProject
+		case l.Parent != "":
+			why = checkInParent
+		case latest[resource(l)] != i:
+			why = checkLater
+		case at.After(fresh):
+			why = checkTooNew
+		default:
+			why = map[readSkip]string{readNoCard: checkNoRead, readOtherKey: checkOtherKey, readNoKey: checkNoKey}[readSkipOf(k, l.Key, cur)]
+		}
+		if why == "" && out.Read == historyCheckMax {
+			why = checkOverBudget
+		}
+		if why != "" {
+			results[i] = why
+			out.NotChecked[why]++
+			continue
+		}
+		out.Read++
+		_, notSeen, _, err := s.readByID(ctx, k, l.ResourceID, l.Key, cur)
+		switch {
+		case notSeen:
+			results[i] = checkNotSeen
+			out.WouldClose++
+		case err == nil:
+			results[i] = checkThere
+		default:
+			results[i] = checkReadFailed
+			out.NotChecked[checkReadFailed]++
+		}
+	}
+	return out, results
+}
+
+// cardOf is the kind of the resource tool makes or removes, as its delete
+// addresses it by id: its read by id tells whether the resource is there
+// (readByID). nil when the delete names none.
+func cardOf(tool string) *ownerKind {
+	del := tool
+	if c, ok := createdOf(tool); ok && c.delete != "" {
+		del = c.delete
+	}
+	d, ok := deleteOf(del)
+	if !ok {
+		return nil
+	}
+	for _, a := range decls[del].IDArgs {
+		if a.name == d.arg {
+			return a.kind
+		}
+	}
+	return nil
 }

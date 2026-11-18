@@ -163,10 +163,15 @@ func (s *Registry) planK8sKubectl(_ context.Context, args map[string]any) (*Plan
 	if err := kubetools.CheckConnectionFlags(fields); err != nil {
 		return answered(usageResult(err), true), nil
 	}
-	preview := map[string]any{
-		"message": i18n.Tf("kubectl %q changes the cluster. (Read-only verbs run without confirmation.)",
-			"kubectl %q меняет кластер. (Команды чтения выполняются без подтверждения.)", verb),
+	// The verb is named only when it is kubectl's own: the first word may
+	// be anything the caller typed, a secret included (#2353).
+	msg := i18n.T("This kubectl command changes the cluster. (Read-only verbs run without confirmation.)",
+		"Эта команда kubectl меняет кластер. (Команды чтения выполняются без подтверждения.)")
+	if kubetools.Verbs[verb] {
+		msg = i18n.Tf("kubectl %q changes the cluster. (Read-only verbs run without confirmation.)",
+			"kubectl %q меняет кластер. (Команды чтения выполняются без подтверждения.)", verb)
 	}
+	preview := map[string]any{"message": msg}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		kc, err := s.kubeconfigForCluster(ctx, clusterID)
 		if err != nil {

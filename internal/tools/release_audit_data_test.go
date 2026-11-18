@@ -227,6 +227,11 @@ func TestPgCreate_TakenNameAndInstances(t *testing.T) {
 		if !c.ok && m["reason"] != "USAGE" {
 			t.Errorf("%s instances=%d: reason %v", c.spec, c.instances, m["reason"])
 		}
+		// The mode of the specification is the cloud's: quoted («Риск»,
+		// conclusion 330, 330-1).
+		if c.spec == "std" && !c.ok && !strings.Contains(text, `(\"STANDARD\")`) {
+			t.Errorf("%s instances=%d: the mode of the specification is not quoted: %s", c.spec, c.instances, text)
+		}
 	}
 	if m, text, _ := callNamed(t, r, "pg_create", map[string]any{"name": "new", "instances": 0}); m["reason"] != "USAGE" {
 		t.Errorf("instances=0: %s", text)

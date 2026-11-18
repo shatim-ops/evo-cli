@@ -71,7 +71,8 @@ func kubectlCheck(fields []string, allowSecrets bool, w wording) error {
 	// value, kubectl does: in "-n get cp …" it reads "get" as the namespace
 	// and runs cp (security audit 19.10, SEC-1).
 	if len(fields) > 0 && strings.HasPrefix(fields[0], "-") {
-		return fmt.Errorf("k8s_kubectl %s: put the kubectl command first, flags after it (got %q first)", w.where, fields[0])
+		// The word is not repeated: it may be a flag with a secret value.
+		return fmt.Errorf("k8s_kubectl %s: put the kubectl command first, flags after it (word 1 is a flag)", w.where)
 	}
 	verb := ""
 	var resources, outputs []string
@@ -107,15 +108,22 @@ func kubectlCheck(fields []string, allowSecrets bool, w wording) error {
 				continue // logs -f is --follow, not a file
 			}
 			if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
-				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, f)
+				// A name of the closed list is named; one refused by its
+				// shape ("…file", "…-dir") is any text typed, so the flag
+				// is named by its place (Астра, #2369).
+				flag := fl.Label()
+				if !kubectlHTTPDeniedFlags[name] {
+					flag = fmt.Sprintf("in word %d", i+1)
+				}
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, flag)
 			}
 			if name == "edit" {
 				// create --edit opens the object in an editor on the host
 				// before creating it (REL-5).
-				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it runs an editor on the MCP server's host", w.where, f)
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it runs an editor on the MCP server's host", w.where, fl.Label())
 			}
 			if kubectlHTTPVerbosityFlags[name] {
-				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: at higher verbosity kubectl logs API responses, Secret data included, into the output", w.where, f)
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: at higher verbosity kubectl logs API responses, Secret data included, into the output", w.where, fl.Label())
 			}
 			switch name {
 			case "o", "output":

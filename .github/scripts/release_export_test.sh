@@ -7,6 +7,8 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# Каталог снимка каждого случая — свой, новый и пустой (mktemp -d): имя
+# из $RANDOM дважды за прогон давало «каталог не пуст», код 2 (CI #2406).
 fail=0
 repo=$tmp/repo
 mkdir -p "$repo"/cmd/x "$repo"/internal/a/testdata "$repo"/docs/internal "$repo"/changelog.d "$repo"/.github/workflows
@@ -33,7 +35,9 @@ git tag v0.1.0
 # Чистая ревизия: снимок, состав, один коммит без родителя.
 out=$tmp/snap
 log=$("$here/release_export.sh" v0.1.0 "$out" 2>&1) || { echo "FAIL: чистая ревизия: $log"; fail=1; }
-got=$(cd "$out" && find . -type f -not -path './.git/*' | sort | tr '\n' ' ')
+# Порядок состава — байтовый, при любой локали теста (Астра #2389: sort
+# в en_US.UTF-8 ставит ./LICENSE после ./internal).
+got=$(cd "$out" && find . -type f -not -path './.git/*' | LC_ALL=C sort | tr '\n' ' ')
 want="./LICENSE ./README.md ./cmd/x/main.go ./docs/guide.md ./go.mod ./internal/a/a.go "
 [ "$got" = "$want" ] || { echo "FAIL: состав «${got}», ждём «${want}»"; fail=1; }
 [ "$(git -C "$out" rev-list --count HEAD 2>/dev/null)" = 1 ] || { echo "FAIL: в снимке не один коммит"; fail=1; }
@@ -71,7 +75,7 @@ for text in 'Решение владельца 17.11' 'по решению вл�
 	echo "$text" >>docs/guide.md
 	git -c user.name=t -c user.email=t@t commit -qam marker
 	rc=0
-	LC_ALL=C LANG=C "$here/release_export.sh" HEAD "$tmp/s-$RANDOM" >/dev/null 2>&1 || rc=$?
+	LC_ALL=C LANG=C "$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" >/dev/null 2>&1 || rc=$?
 	[ "$rc" = 1 ] || { echo "FAIL: «${text}» при LC_ALL=C — код $rc, ждём 1"; fail=1; }
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
@@ -135,11 +139,47 @@ for c in "docs/note.tpl:см. docs/internal/x" "internal/a/skill.tmpl:по ре�
 	git add "$file" && git -c user.name=t -c user.email=t@t commit -qm "odd $file"
 	for loc in C C.UTF-8 ""; do
 		rc=0
-		LC_ALL=$loc "$here/release_export.sh" HEAD "$tmp/s-odd-$RANDOM" >/dev/null 2>&1 || rc=$?
+		LC_ALL=$loc "$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" >/dev/null 2>&1 || rc=$?
 		[ "$rc" = 1 ] || { echo "FAIL: «${c#*:}» в $file при LC_ALL=${loc:-по умолчанию} — код $rc, ждём 1"; fail=1; }
 	done
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
+# Корректный UTF-8 с буквой на границе буфера iconv macOS (1023, 4095,
+# 8191 байт ASCII перед «я») — не провал: кодировку проверяет помощник на Go,
+# одинаково на всех системах (Астра #2365).
+for n in 1023 4095 8191; do
+	{ head -c "$n" /dev/zero | tr '\0' a; printf 'я\n'; } >docs/edge.md
+	git add docs/edge.md && git -c user.name=t -c user.email=t@t commit -qm "edge $n"
+	rc=0
+	log=$("$here/release_export.sh" HEAD "$tmp/s-edge-$n" 2>&1) || rc=$?
+	[ "$rc" = 0 ] || { echo "FAIL: корректный UTF-8 ($n байт перед «я») — код $rc: $log"; fail=1; }
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+# Документ с NUL — провал: маркер за NUL grep может не увидеть.
+printf 'guide\000docs/internal\n' >docs/guide.md
+git -c user.name=t -c user.email=t@t commit -qam nul
+rc=0
+log=$("$here/release_export.sh" HEAD "$tmp/s-nul" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: документ с NUL — код $rc, ждём 1"; fail=1; }
+case "$log" in *"не в UTF-8 (или с NUL)"*"docs/guide.md"*) ;; *) echo "FAIL: документ с NUL не назван: $log"; fail=1 ;; esac
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+# Окончание в три-четыре буквы при поиске по байтам (LC_ALL=C) — маркер.
+for text in 'по решениями владельца' 'решениях владельца'; do
+	echo "$text" >>docs/guide.md
+	git -c user.name=t -c user.email=t@t commit -qam ending
+	rc=0
+	LC_ALL=C "$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" >/dev/null 2>&1 || rc=$?
+	[ "$rc" = 1 ] || { echo "FAIL: «${text}» при LC_ALL=C — код $rc, ждём 1"; fail=1; }
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+# Ошибка поиска маркера — провал, а не «маркеров нет» (Астра #2364).
+mkdir -p "$tmp/badgrep"
+printf '#!/bin/sh\nexit 2\n' >"$tmp/badgrep/grep" && chmod +x "$tmp/badgrep/grep"
+rc=0
+log=$(PATH="$tmp/badgrep:$PATH" "$here/release_export.sh" HEAD "$tmp/s-badgrep" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: grep с ошибкой — код $rc, ждём 1"; fail=1; }
+case "$log" in *"поиск маркера не выполнен"*) ;; *) echo "FAIL: ошибка grep не названа: $log"; fail=1 ;; esac
+
 # Не текст без маркера и неразрывный пробел без маркера — не провал.
 printf '\377\376\000\001' >docs/logo.bin
 printf 'обычный%sтекст\n' "$nb" >>docs/guide.md
@@ -152,7 +192,7 @@ for v in '"docs/" + "internal/x.md"' '"по решению" +\n\t\t"\\u00a0вл�
 	printf 'package a\n\n// A does nothing.\nfunc A() string { return %b }\n' "$v" >internal/a/a.go
 	git -c user.name=t -c user.email=t@t commit -qam goconcat
 	rc=0
-	"$here/release_export.sh" HEAD "$tmp/s-cat-$RANDOM" >/dev/null 2>&1 || rc=$?
+	"$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" >/dev/null 2>&1 || rc=$?
 	[ "$rc" = 1 ] || { echo "FAIL: склейка строк Go $v — код $rc, ждём 1"; fail=1; }
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
@@ -161,6 +201,51 @@ printf 'package a\n\n// A does nothing.\nfunc A() string { return f("docs/") + "
 git -c user.name=t -c user.email=t@t commit -qam gocall
 "$here/release_export.sh" HEAD "$tmp/s-call" >/dev/null 2>&1 || { echo "FAIL: строки по разные стороны вызова склеены"; fail=1; }
 git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+
+# CHANGELOG снимка — без внутренних ссылок разработки (решение владельца
+# 18.11, #2380): решения, аудиты Fable, прогоны Grok, коды их находок.
+# Часть скобки без ссылки остаётся, скобка без остатка уходит, отступ
+# строки — тоже остаётся.
+cat >CHANGELOG.md <<'MD'
+## 9.9.9
+
+- **Отказ до вопроса** (DECISIONS D47). Было: код 5.
+- **Список инструментов** (`a`, `b`: `x`; аудит Fable 1.6, FB160-4; DECISIONS D79).
+- **Мелкие находки полного аудита Fable 1.6** (FB160-2, -3).
+- **Мелочи прогона Grok на 1.6.0** (агентный прогон Grok на 1.6.0, F9).
+- **Ответ** как `whoami` по D88, — проверка
+  (D94) — в обоих путях; повтор по `next_args` D76 (DECISIONS D40;
+  исправление: живой прогон Grok на 1.3.0, G130-15). Конец.
+- Согласно D47 отказ до вопроса; запись (исправление: прогон G13-31).
+MD
+cat >"$tmp/changelog.want" <<'MD'
+## 9.9.9
+
+- **Отказ до вопроса**. Было: код 5.
+- **Список инструментов** (`a`, `b`: `x`).
+- **Мелкие находки полного аудита 1.6**.
+- **Мелочи прогона на 1.6.0**.
+- **Ответ** как `whoami`, — проверка
+   — в обоих путях; повтор по `next_args`. Конец.
+- отказ до вопроса; запись.
+MD
+git add CHANGELOG.md && git -c user.name=t -c user.email=t@t commit -qm changelog
+rc=0
+log=$("$here/release_export.sh" HEAD "$tmp/s-changelog" 2>&1) || rc=$?
+[ "$rc" = 0 ] || { echo "FAIL: CHANGELOG со ссылками разработки — код $rc: $log"; fail=1; }
+diff -u "$tmp/changelog.want" "$tmp/s-changelog/CHANGELOG.md" >"$tmp/changelog.diff" ||
+	{ echo "FAIL: CHANGELOG снимка не тот:"; sed 's/^/  | /' "$tmp/changelog.diff"; fail=1; }
+git -C "$tmp/s-changelog" show HEAD:CHANGELOG.md | grep -qE 'DECISIONS|Fable|Grok|D[0-9]' &&
+	{ echo "FAIL: в коммите снимка осталась ссылка разработки"; fail=1; }
+# Ссылка, которую правило не вычищает (код находки вне скобок), — провал
+# снимка с названной строкой, а не молчаливая публикация.
+printf -- '- находка FB150-2 закрыта.\n' >>CHANGELOG.md
+git -c user.name=t -c user.email=t@t commit -qam changelog-left
+rc=0
+log=$("$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: невычищенная ссылка в CHANGELOG — код $rc, ждём 1"; fail=1; }
+case "$log" in *"внутренняя ссылка в CHANGELOG.md:"*"FB150-2"*) ;; *) echo "FAIL: невычищенная ссылка не названа: $log"; fail=1 ;; esac
+git rm -q CHANGELOG.md && git -c user.name=t -c user.email=t@t commit -qm no-changelog
 
 # Латинское Astra (Astra Linux) — не маркер.
 echo 'образ Astra Linux' >>docs/guide.md

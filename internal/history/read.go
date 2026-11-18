@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -42,15 +43,23 @@ const maxLine = 64 << 10
 type Journal struct {
 	Lines   []Line
 	Skipped int
+	// taken are the lines taken, as they are: one met twice is one.
+	// skipped are the lines not taken, counted once each. A line not taken
+	// where it stands — another day's in the file of a day — shadows no
+	// copy of it that may be taken where that stands.
+	taken, skipped map[string]bool
 }
 
 // Check is what a reader knows of a line beyond its form: the tool is of
 // the registry, the reason is a code of evo. nil checks the form only.
 type Check func(l Line) bool
 
-// ReadAll reads every file of a day in dir, oldest first. A file that is
-// not a regular one of evo's form — a link, a directory, another name —
-// is not read.
+// ReadAll reads every file of a day in dir, oldest first, then the live
+// lines of the files pruned (LiveName) and the lines that stood in a file
+// not their day's (StrayName), which it skips. A file that is not a regular one of
+// evo's form — a link, a directory, another name — is not read. A line
+// read twice — a pruning killed between keeping a live line and removing
+// its file — is one line.
 func ReadAll(dir string, check Check) (Journal, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -66,26 +75,79 @@ func ReadAll(dir string, check Check) (Journal, error) {
 		}
 	}
 	sort.Strings(names)
-	var j Journal
+	names = readOrder(names)
+	j := Journal{taken: map[string]bool{}, skipped: map[string]bool{}}
+	retired := RetiredThrough(dir)
 	for _, name := range names {
 		data, err := config.ReadFileNoFollow(filepath.Join(dir, name))
 		if err != nil {
-			j.Skipped++
+			if !os.IsNotExist(err) {
+				j.Skipped++
+			}
 			continue
 		}
-		j.read(data, check)
+		j.read(data, fileCheck(name, retired, check))
 	}
 	return j, nil
+}
+
+// readOrder is the order a reader and the pruning read the files of a
+// journal in: the days, oldest first, then LiveName, then StrayName. A line
+// is taken once, where it is first met and may be taken (taken, liveOfRaw):
+// a copy where it may not — another day's in the file of a day — shadows
+// none. A copy LiveName
+// holds after a pruning killed before it removed the file of its day is met
+// in that file first — lines of one second keep the order they were written
+// in, whatever file holds them («Риск», conclusion 324 revised). LiveName
+// holds lines of retired days only, older than every file kept.
+func readOrder(days []string) []string {
+	return append(append([]string(nil), days...), LiveName, StrayName)
+}
+
+// ofFile says whether the line l may stand in the file name of a journal
+// whose files are retired through the day retired (RetiredThrough): a line
+// of the file of a day is of that day — Append writes a line to the file of
+// the day of its time — and a line of another day there is not evo's
+// («Риск», conclusion 324, 324-3: a line of another day reordered what is
+// live; Астра, #2346, #2347). LiveName holds the lines of the days retired
+// — a pruning marks the day before it writes them — and a line of a day
+// after is not evo's there either: it would close a line of a file kept.
+// StrayName holds the lines that stood where they may not: none stands
+// there.
+func ofFile(name, retired string, l Line) bool {
+	switch name {
+	case LiveName:
+		return retired != "" && l.Time[:len(time.DateOnly)] <= retired
+	case StrayName:
+		return false
+	}
+	return strings.HasPrefix(l.Time, strings.TrimSuffix(name, ".jsonl")+"T")
+}
+
+// fileCheck is check for the lines of the file name: a line not of its file
+// (ofFile) is not taken, as a line check refuses. The reader and the pruning
+// take the lines of a file by it alike.
+func fileCheck(name, retired string, check Check) Check {
+	return func(l Line) bool {
+		return ofFile(name, retired, l) && (check == nil || check(l))
+	}
 }
 
 // read adds the lines of the file data.
 func (j *Journal) read(data []byte, check Check) {
 	for _, raw := range lines(data) {
-		l, ok := parse(raw)
-		if !ok || (check != nil && !check(l)) {
-			j.Skipped++
+		if j.taken[string(raw)] {
 			continue
 		}
+		l, ok := parse(raw)
+		if !ok || (check != nil && !check(l)) {
+			if !j.skipped[string(raw)] {
+				j.skipped[string(raw)] = true
+				j.Skipped++
+			}
+			continue
+		}
+		j.taken[string(raw)] = true
 		j.Lines = append(j.Lines, l)
 	}
 }
@@ -180,7 +242,11 @@ func wellFormed(l Line) bool {
 	if at, err := time.Parse(time.RFC3339, l.Time); err != nil || at.UTC().Format(time.RFC3339) != l.Time {
 		return false
 	}
-	for _, s := range []string{l.Tool, l.Surface, l.ProjectID, l.Zone, l.Name, l.Target, l.Kind, l.Parent, l.ResourceID, l.Reason, l.OperationID, l.JobID, l.StateDir} {
+	texts := []string{l.Tool, l.Surface, l.ProjectID, l.Zone, l.Name, l.Target, l.Kind, l.Parent, l.ResourceID, l.Reason, l.OperationID, l.JobID, l.StateDir}
+	if l.Key != nil {
+		texts = append(texts, l.Key.ServiceAccountID, l.Key.KeyID)
+	}
+	for _, s := range texts {
 		if len(s) > maxText {
 			return false
 		}

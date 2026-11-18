@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -118,6 +119,11 @@ type Line struct {
 	// StateDir is the folder of the state the call went with; "" for
 	// the configuration's (evo login).
 	StateDir string `json:"state_dir,omitempty"`
+	// Key is the key the call was sent with, as the record of the intent
+	// keeps it: a read by id that finds the resource gone closes the line
+	// only with that key — another key may not see it (У7, R-82). Not in
+	// the answer of history.
+	Key *state.Maker `json:"key,omitempty"`
 }
 
 // DirName is the directory of the journal: beside intents/.
@@ -147,6 +153,11 @@ func Append(dir string, l Line) error {
 	// with a mark, not dropped with its line (311, У1).
 	for _, f := range []*string{&l.Tool, &l.Surface, &l.ProjectID, &l.Zone, &l.Name, &l.Target, &l.Kind, &l.Parent, &l.ResourceID, &l.Reason, &l.OperationID, &l.JobID, &l.StateDir} {
 		*f = fit(*f)
+	}
+	if l.Key != nil {
+		k := *l.Key
+		k.ServiceAccountID, k.KeyID = fit(k.ServiceAccountID), fit(k.KeyID)
+		l.Key = &k
 	}
 	at, err := time.Parse(time.RFC3339, l.Time)
 	if err != nil {
@@ -222,6 +233,18 @@ func FileOf(dir string, at time.Time) string {
 // or an outcome a reader does not know is live: a newer evo wrote it, and
 // what it says is not this one's to drop.
 func Live(lines []Line) []Line {
+	live := liveMask(lines)
+	var out []Line
+	for i, l := range lines {
+		if live[i] {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// liveMask is Live by position: live[i] tells lines[i].
+func liveMask(lines []Line) []bool {
 	last := map[string]int{}
 	type mark struct {
 		i       int
@@ -230,7 +253,21 @@ func Live(lines []Line) []Line {
 	held := map[string][]mark{} // created or found, not gone yet
 	gone := map[string][]mark{} // deleted, already_deleted, not_found
 	key := func(l Line) string { return l.Kind + "\x00" + l.Parent + "\x00" + l.ResourceID }
-	for i, l := range lines {
+	// The lines are taken in the order of their times, whatever the order
+	// of the caller's: history and the pruning find the same live, a clock
+	// turned back included — a delete written later with an earlier time
+	// is earlier (Астра, #2296). Lines of one time keep their order.
+	order := make([]int, len(lines))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return lines[order[a]].Time < lines[order[b]].Time })
+	rank := make([]int, len(lines))
+	for r, i := range order {
+		rank[i] = r
+	}
+	for _, i := range order {
+		l := lines[i]
 		// A line of a form or an outcome this reader does not know is
 		// kept, as data, and acts on no other: what it says is not
 		// this reader's to trust (Астра, #2168).
@@ -260,7 +297,7 @@ func Live(lines []Line) []Line {
 	// not known of a call on it is known now (311-3).
 	goneAfter := func(l Line, at int) bool {
 		for _, g := range gone[key(l)] {
-			if g.i > at && sameProject(g.project, l.ProjectID) {
+			if rank[g.i] > rank[at] && sameProject(g.project, l.ProjectID) {
 				return true
 			}
 		}
@@ -285,13 +322,11 @@ func Live(lines []Line) []Line {
 			live[h.i] = true
 		}
 	}
-	var out []Line
-	for i, l := range lines {
-		if live[i] {
-			out = append(out, l)
-		}
+	mask := make([]bool, len(lines))
+	for i := range lines {
+		mask[i] = live[i]
 	}
-	return out
+	return mask
 }
 
 // sameProject tells two lines of one project: the same one, or a line

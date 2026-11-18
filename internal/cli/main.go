@@ -291,6 +291,35 @@ func asGroup(cmd *cobra.Command) *cobra.Command {
 	return cmd
 }
 
+// helpTopicsUnechoed makes "evo help <topic>" answer a topic that is no
+// command without repeating it: cobra's help printed «Unknown help topic
+// [`<topic>`]», and the word may be a secret typed in the wrong place
+// (#2353). As cobra's, it prints the usage and exits 0.
+func helpTopicsUnechoed(root *cobra.Command) {
+	root.InitDefaultHelpCmd()
+	for _, c := range root.Commands() {
+		if c.Name() != "help" {
+			continue
+		}
+		c.Run = nil
+		c.RunE = func(c *cobra.Command, args []string) error {
+			target, rest, err := c.Root().Find(args)
+			if target == nil || err != nil || len(rest) > 0 {
+				// The place of the first word that is no command.
+				place := len(args) - len(rest) + 1
+				if target == nil || err != nil {
+					place = 1
+				}
+				c.Println(i18n.Tf("Unknown help topic (argument %d).", "Неизвестная тема справки (аргумент %d).", place))
+				return c.Root().Usage()
+			}
+			target.InitDefaultHelpFlag()
+			target.InitDefaultVersionFlag()
+			return target.Help()
+		}
+	}
+}
+
 // unknownSubcommand is the Args of a command with subcommands: an argument
 // that is none of them is "unknown command", with the subcommands it may
 // have meant. The argument is not repeated: it may be a secret given in
@@ -418,6 +447,7 @@ func newRootCmd() *cobra.Command {
 	applyExamples(cmd)
 	groupCommands(cmd)
 	localizeHelp(cmd)
+	helpTopicsUnechoed(cmd)
 	// cobra adds completion on Execute, as a command without a run: it
 	// answered "completion tcsh" with its help and exit 0. As a group it
 	// refuses an unknown shell (USAGE, exit 1) (release audit, L-13).

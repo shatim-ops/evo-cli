@@ -144,7 +144,7 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTPHandler) serveMCP(w http.ResponseWriter, r *http.Request) {
 	if !h.authorized(r) {
-		h.logf(slog.LevelWarn, "unauthorized request", "method", r.Method, "remote", r.RemoteAddr)
+		h.logf(slog.LevelWarn, "unauthorized request", "method", logMethod(r.Method), "remote", r.RemoteAddr)
 		w.Header().Set("WWW-Authenticate", `Bearer realm="evo"`)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -162,7 +162,9 @@ func (h *HTTPHandler) serveMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if v := r.Header.Get(headerProtocol); v != "" && !supportedProtocol(v) {
-		http.Error(w, "unsupported "+headerProtocol+": "+v, http.StatusBadRequest)
+		// The value is the client's: the refusal names what the server
+		// speaks instead (Астра #2385).
+		http.Error(w, "unsupported "+headerProtocol+"; supported: "+strings.Join(supportedProtocolVersions, ", "), http.StatusBadRequest)
 		return
 	}
 
@@ -505,12 +507,34 @@ func (h *HTTPHandler) dispatch(ctx context.Context, scope string, req *rpcReques
 			status = "cancelled: " + context.Cause(ctx).Error()
 		}
 		h.opts.Logger.Info("tool call",
-			"tool", p.Name,
+			"tool", h.logTool(p.Name),
 			"status", status,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
 	}
 	return resp, false
+}
+
+// logTool is the tool of a call as the log names it: a name of the
+// registry, or "unknown" — the name is the client's text otherwise, and
+// the log is not its place (Астра #2382).
+func (h *HTTPHandler) logTool(name string) string {
+	if _, ok := h.srv.reg.Lookup(name); ok {
+		return name
+	}
+	return "unknown"
+}
+
+// logMethod is the HTTP method of a request as the log names it: one of
+// HTTP's own, or "other" — any other is the client's text, logged before
+// authentication too (Астра #2382).
+func logMethod(m string) string {
+	switch m {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodConnect, http.MethodOptions, http.MethodTrace:
+		return m
+	}
+	return "other"
 }
 
 // callStatus is "ok", "error" (tool-level, isError) or "rpc_error".
