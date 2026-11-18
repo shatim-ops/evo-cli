@@ -217,6 +217,13 @@ cat >CHANGELOG.md <<'MD'
   (D94) — в обоих путях; повтор по `next_args` D76 (DECISIONS D40;
   исправление: живой прогон Grok на 1.3.0, G130-15). Конец.
 - Согласно D47 отказ до вопроса; запись (исправление: прогон G13-31).
+- **Ожидание** у `wait` (`provision`, `deploy_apply` и удаления D74) — шаг.
+- **Шаг** (`next_args` ответа `deploying`, D82; аудит Fable 1.6). Конец.
+- **Согласие** (было: после согласия, D28). Конец.
+- (D12). Было: код 4.
+- **Флаг** (`already_open`; REL12-3) (R4-2; B12-6, QA-3) . Конец.
+- Строки плана (план 1.5, С4).
+- Превью: `цены Managed Kubernetes нет до калькулятора (D17)`.
 MD
 cat >"$tmp/changelog.want" <<'MD'
 ## 9.9.9
@@ -226,8 +233,15 @@ cat >"$tmp/changelog.want" <<'MD'
 - **Мелкие находки полного аудита 1.6**.
 - **Мелочи прогона на 1.6.0**.
 - **Ответ** как `whoami`, — проверка
-   — в обоих путях; повтор по `next_args`. Конец.
+  — в обоих путях; повтор по `next_args`. Конец.
 - отказ до вопроса; запись.
+- **Ожидание** у `wait` (`provision`, `deploy_apply` и удаления) — шаг.
+- **Шаг** (`next_args` ответа `deploying`). Конец.
+- **Согласие** (было: после согласия). Конец.
+- Было: код 4.
+- **Флаг** (`already_open`). Конец.
+- Строки плана.
+- Превью: `цены Managed Kubernetes нет до калькулятора (D17)`.
 MD
 git add CHANGELOG.md && git -c user.name=t -c user.email=t@t commit -qm changelog
 rc=0
@@ -235,16 +249,18 @@ log=$("$here/release_export.sh" HEAD "$tmp/s-changelog" 2>&1) || rc=$?
 [ "$rc" = 0 ] || { echo "FAIL: CHANGELOG со ссылками разработки — код $rc: $log"; fail=1; }
 diff -u "$tmp/changelog.want" "$tmp/s-changelog/CHANGELOG.md" >"$tmp/changelog.diff" ||
 	{ echo "FAIL: CHANGELOG снимка не тот:"; sed 's/^/  | /' "$tmp/changelog.diff"; fail=1; }
-git -C "$tmp/s-changelog" show HEAD:CHANGELOG.md | grep -qE 'DECISIONS|Fable|Grok|D[0-9]' &&
+# shellcheck disable=SC2016 # обратные кавычки — фрагмент кода Markdown, не подстановка
+git -C "$tmp/s-changelog" show HEAD:CHANGELOG.md | sed 's/`[^`]*`//g' | grep -qE 'DECISIONS|Fable|Grok|D[0-9]|REL12|R4-|B12|QA-|план 1' &&
 	{ echo "FAIL: в коммите снимка осталась ссылка разработки"; fail=1; }
-# Ссылка, которую правило не вычищает (код находки вне скобок), — провал
-# снимка с названной строкой, а не молчаливая публикация.
-printf -- '- находка FB150-2 закрыта.\n' >>CHANGELOG.md
-git -c user.name=t -c user.email=t@t commit -qam changelog-left
+# Ссылка внутри фрагмента кода — не тихая правка цитаты, а провал с
+# названной строкой («Риск», 380); цитата вывода evo из quotedOutput — нет.
+# shellcheck disable=SC2016 # обратные кавычки — фрагмент кода Markdown
+printf -- '- вывод `решение D55` в коде.\n' >>CHANGELOG.md
+git -c user.name=t -c user.email=t@t commit -qam changelog-code
 rc=0
 log=$("$here/release_export.sh" HEAD "$(mktemp -d "$tmp/s-XXXXXX")" 2>&1) || rc=$?
-[ "$rc" = 1 ] || { echo "FAIL: невычищенная ссылка в CHANGELOG — код $rc, ждём 1"; fail=1; }
-case "$log" in *"внутренняя ссылка в CHANGELOG.md:"*"FB150-2"*) ;; *) echo "FAIL: невычищенная ссылка не названа: $log"; fail=1 ;; esac
+[ "$rc" = 1 ] || { echo "FAIL: ссылка во фрагменте кода — код $rc, ждём 1"; fail=1; }
+case "$log" in *"внутренняя ссылка в CHANGELOG.md:"*"D55"*) ;; *) echo "FAIL: ссылка во фрагменте кода не названа: $log"; fail=1 ;; esac
 git rm -q CHANGELOG.md && git -c user.name=t -c user.email=t@t commit -qm no-changelog
 
 # Латинское Astra (Astra Linux) — не маркер.
