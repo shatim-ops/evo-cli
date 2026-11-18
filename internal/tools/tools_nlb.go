@@ -538,7 +538,8 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 			if zone == nil {
 				zone, from = z, "target group"
 			}
-			if n := firstNonEmptyStr(z.Name, z.ID); !slices.Contains(tzones, n) {
+			// The zones are the cloud's: quoted (Астра #2350).
+			if n := quoteCloud(firstNonEmptyStr(z.Name, z.ID)); !slices.Contains(tzones, n) {
 				tzones = append(tzones, n)
 			}
 		}
@@ -564,12 +565,12 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 		// without the field (Grok review of PR #89, the class of L-26).
 		if subnet.VPCID != "" && vpcID != "" && subnet.VPCID != vpcID {
 			return none, "", "", nil, clierrors.New(clierrors.CodeConfigInvalid,
-				i18n.Tf("subnet %s is not in VPC %s of the balancer; nothing was created", "подсеть %s не в VPC %s балансировщика; ничего не создано", subnetID, vpcID),
+				i18n.Tf("subnet %s is not in VPC %s of the balancer; nothing was created", "подсеть %s не в VPC %s балансировщика; ничего не создано", subnetID, quoteCloud(vpcID)),
 				i18n.T("Pass a subnet of that VPC (list_subnets), or omit subnet_id.", "Передайте подсеть этой VPC (list_subnets) или не указывайте subnet_id."))
 		}
 		if from != "subnet_id" && !provision.SubnetInZone(subnet, zone.ID, zone.Name) {
 			return none, "", "", nil, clierrors.New(clierrors.CodeConfigInvalid,
-				i18n.Tf("subnet %s is not in zone %s; nothing was created", "подсеть %s не в зоне %s; ничего не создано", subnetID, firstNonEmptyStr(zone.Name, zone.ID)),
+				i18n.Tf("subnet %s is not in zone %s; nothing was created", "подсеть %s не в зоне %s; ничего не создано", subnetID, quoteCloud(firstNonEmptyStr(zone.Name, zone.ID))),
 				i18n.T("Pass a subnet of that zone (list_subnets), or omit subnet_id.", "Передайте подсеть этой зоны (list_subnets) или не указывайте subnet_id."))
 		}
 		return *zone, subnetID, subnet.Name, warnings, nil
@@ -583,7 +584,10 @@ func lbZoneAndSubnet(ctx context.Context, eng *engine.Engine, args, tg map[strin
 	i := provision.PickSubnet(inVPC, zone.ID, zone.Name)
 	if i < 0 {
 		return none, "", "", nil, clierrors.New(clierrors.CodeConfigInvalid,
-			i18n.Tf("no subnet of VPC %s in zone %s for the balancer; nothing was created", "в зоне %s нет подсети VPC %s для балансировщика; ничего не создано", vpcID, firstNonEmptyStr(zone.Name, zone.ID)),
+			// The name of the zone is the catalogue's (Астра #2324); the
+			// Russian text names the zone first.
+			i18n.Tf("no subnet of VPC %[1]s in zone %[2]s for the balancer; nothing was created", "в зоне %[2]s нет подсети VPC %[1]s для балансировщика; ничего не создано",
+				quoteCloud(vpcID), quoteCloud(firstNonEmptyStr(zone.Name, zone.ID))),
 			i18n.T("Pass subnet_id (list: list_subnets) of a subnet in that zone and VPC, or another zone; ",
 				"Передайте subnet_id (список: list_subnets) подсети этой зоны и VPC или другую зону; ")+engine.NoSubnetAnywhere())
 	}

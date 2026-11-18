@@ -118,6 +118,9 @@ func declName(d ast.Decl) string {
 			if v, ok := s.(*ast.ValueSpec); ok && len(v.Names) > 0 {
 				return v.Names[0].Name
 			}
+			if ts, ok := s.(*ast.TypeSpec); ok {
+				return ts.Name.Name
+			}
 		}
 	}
 	return "?"
