@@ -200,14 +200,14 @@ func TestVMCreate_ImageRefusals(t *testing.T) {
 			"служебный флаг состояния",
 		}},
 		{"плохая пара", []string{"--image", "OpensearchDashboards", "--meta", "opensearch_host"}, clerrors.ExitGeneral, []string{
-			"--meta \"opensearch_host\": нужно поле=значение",
+			"--meta номер 1: нужно поле=значение",
 		}},
 		{"не заполнено обязательное", []string{"--image", "OpensearchDashboards"}, clerrors.ExitGeneral, []string{
 			"образу нужны значения, которые evo не заполнит сам: opensearch: opensearch_host",
 			"--meta opensearch_host=<значение>",
 		}},
 		{"плохой порт", []string{"--image", "OpensearchDashboards", "--port", "80/sctp"}, clerrors.ExitGeneral, []string{
-			"неверный порт \"80/sctp\"",
+			"неверный порт (элемент 1 списка)",
 		}},
 	}
 	for _, tc := range cases {

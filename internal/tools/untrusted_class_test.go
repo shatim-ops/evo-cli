@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -103,35 +105,56 @@ func markIn(v any) (has, bare bool) {
 }
 
 // untrustedClassPending are the places known to carry a value of the cloud
-// as evo's, "tool: field" → the finding; each is a line to the owner of
-// the tool. Only shrinks: a line no longer found fails the test. Closes by
-// 1.9, before the tag (#2393).
-var untrustedClassPending = map[string]string{
-	"ar_delete: next":           "id of the operation in a command, bare (#2253)",
-	"dns_record_delete: next":   "id of the operation in a command, bare (#2253)",
-	"kafka_delete: next":        "id of the operation in a command, bare (#2253)",
-	"lb_delete: next":           "id of the operation in a command, bare (#2253)",
-	"pg_delete: next":           "id of the operation in a command, bare (#2253)",
-	"redis_delete: next":        "id of the operation in a command, bare (#2253)",
-	"tg_delete: next":           "id of the operation in a command, bare (#2253)",
-	"vpc_delete: next":          "id of the operation in a command, bare (#2253)",
-	"backup_get: id":            "id of the resource, not in _untrusted",
-	"k8s_nodepool_get: id":      "id of the resource, not in _untrusted",
-	"vm_get: id":                "id of the resource, not in _untrusted",
-	"vm_get: not_checked":       "id of a security group in check, not in _untrusted",
-	"k8s_nodepools: node_pools": "ids and names of the pools, not in _untrusted",
-	"tg_create: targets":        "interface_id of a target, not in _untrusted",
-	"tg_create: tg_id":          "id of the group as the cloud gave it, not in _untrusted",
-	"cert_import: certificate":  "the certificate the cloud answered, not in _untrusted",
-	"cert_renew: operation":     "the operation the cloud answered, not in _untrusted",
-	"disk_resize: disk":         "the disk the cloud answered, not in _untrusted",
-	"pg_db_create: database":    "the database the cloud answered, not in _untrusted",
-	"pg_user_create: user":      "the user the cloud answered, not in _untrusted",
+// as evo's, "tool: field" ("tool: *" — every field of its answer) → the
+// finding; each is a line to the owner of the tool. Only shrinks: a line
+// no longer found fails the test. Closes by 1.9, before the tag (#2393).
+var untrustedClassPending = map[string]string{}
+
+// classWorldArgs are the arguments a tool needs beyond its required ones
+// to reach the cloud: a rule needs its source, helm status its release,
+// destroy a VM when there is no deployment in the folder (#2434).
+var classWorldArgs = map[string]map[string]any{
+	"sg_rule_create": {"cidr": "0.0.0.0/0"},
+	"k8s_helm":       {"release": "web"},
+	"destroy":        {"vm_id": "00000000-0000-4000-8000-0000000000f1"},
+}
+
+// classLocal are the tools whose answer is evo's own, of the folder or of
+// the registry, with no request to the cloud by design.
+var classLocal = map[string]string{
+	"agent_skill": "the cards of the groups, from the registry",
+	"list":        "the deployments of the local state",
+	"stack_plan":  "the plan of a manifest, a job on disk",
+}
+
+// classUnreachedPending are the tools the world of the class does not yet
+// bring to the cloud: each needs what an earlier call leaves in the folder
+// (a deployment, a plan, a job of a stack, a compose file). Only shrinks.
+// Closes by 1.9, before the tag (#2434).
+var classUnreachedPending = map[string]string{
+	"deploy":        "a compose file in the folder",
+	"deploy_apply":  "a plan of deploy_plan",
+	"logs":          "a deployment of the folder",
+	"status":        "a deployment of the folder",
+	"stack_apply":   "a job of stack_plan",
+	"stack_destroy": "a job of stack_plan",
+	"stack_status":  "a job of stack_plan",
+}
+
+// countingRT counts the requests of the world.
+type countingRT struct {
+	http.RoundTripper
+	n atomic.Int64
+}
+
+func (c *countingRT) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.n.Add(1)
+	return c.RoundTripper.RoundTrip(r)
 }
 
 // untrustedClassAnswers is how many answers the world brings to the check
-// (560 on 18.11): a world that reaches fewer checks less.
-const untrustedClassAnswers = 500
+// (1496 on 18.11, two worlds): a world that reaches fewer checks less.
+const untrustedClassAnswers = 1200
 
 // Any value of the cloud in an answer of any tool is either in a field
 // "_untrusted" names, or in evo's own text quoted (#2253) — the class, not
@@ -140,7 +163,9 @@ const untrustedClassAnswers = 500
 // one by one). The world gives every string of every body of the cloud —
 // ids, names, messages, addresses — a raw newline and cloudMark; every
 // tool is called with its required arguments, before and after the
-// consent, in a success and in a refusal of the API.
+// consent, in a success and in a refusal of the API. A second world keeps
+// the ids as the call gave them and names the zone by its UUID, so a write
+// finds what it acts on and answers its success (#2427).
 func TestUntrustedClass_CloudValueMarkedOrQuoted(t *testing.T) {
 	faultToolsIsolate(t)
 	first := opWaitFirstDelay
@@ -150,43 +175,99 @@ func TestUntrustedClass_CloudValueMarkedOrQuoted(t *testing.T) {
 	if err := json.Unmarshal(hostileBody(hostileNested()), &base); err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(hostileEverywhere(base, ""))
+	hostile := hostileEverywhere(base, "")
+	worlds := []struct {
+		name string
+		body []byte
+		zone string
+	}{
+		{"every value hostile", mustJSON(t, hostile), "ru.AZ-1"},
+		{"ids as given", mustJSON(t, keepIDs(hostile, "")), "00000000-0000-4000-8000-0000000000f1"},
+	}
 	found := map[string]bool{}
+	reached := map[string]bool{}
 	answers := 0
-	for _, status := range []int{http.StatusOK, http.StatusUnprocessableEntity} {
-		api := &oddAPI{status: status, body: body}
-		cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
-		cloud.SetToken("t")
-		cloud.Backoff = 1
-		r := raRegistry(t, api, cloud, nil)
-		r.SetCallBudget(containerBudget)
-		for _, tl := range r.Tools() {
-			for _, call := range requiredCalls(tl) {
-				for _, confirmed := range []bool{false, true} {
-					if confirmed && !tl.Mutating {
-						continue
-					}
-					args := maps.Clone(call)
-					if confirmed {
-						args["confirmed"] = true
-					}
-					_, text, _ := callNamed(t, r, tl.Name, args)
-					var m map[string]any
-					if json.Unmarshal([]byte(text), &m) != nil {
-						continue
-					}
-					answers++
-					for _, f := range classLeaks(m) {
-						key := tl.Name + ": " + f
-						if !found[key] && untrustedClassPending[key] == "" {
-							b, _ := json.Marshal(m[f])
-							t.Errorf("%s (HTTP %d, confirmed %v): the field %q carries a value of the cloud outside \"_untrusted\" %v — name it in Decl.Untrusted, or quote it in evo's text (quoteCloud)\n%.300s",
-								tl.Name, status, confirmed, f, m["_untrusted"], b)
+	// The world a person has set up: a zone and an image, the keys of
+	// Object Storage, the billing agreement — without them a tool refuses
+	// before the cloud, and the check reads its refusal (#2434).
+	t.Setenv("CLOUDRU_AGREEMENT_ID", "00000000-0000-4000-8000-0000000000a1")
+	for _, w := range worlds {
+		world := func(c *config.Config) {
+			c.Region = w.zone
+			c.Image = "ubuntu-22.04"
+			c.S3 = config.S3Config{Endpoint: "https://s3.example.invalid", AccessKey: "a", SecretKey: "s", Region: "ru-central-1"}
+		}
+		for _, status := range []int{http.StatusOK, http.StatusUnprocessableEntity} {
+			api := &countingRT{RoundTripper: &oddAPI{status: status, body: w.body}}
+			cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
+			cloud.SetToken("t")
+			cloud.Backoff = 1
+			r := raRegistry(t, api, cloud, world)
+			r.SetCallBudget(containerBudget)
+			for _, tl := range r.Tools() {
+				_, consent := schemaProps(tl)["confirmed"]
+				for _, call := range requiredCalls(tl) {
+					maps.Copy(call, classWorldArgs[tl.Name])
+					for _, confirmed := range []bool{false, true} {
+						if confirmed && !consent {
+							continue
 						}
-						found[key] = true
+						args := maps.Clone(call)
+						if confirmed {
+							args["confirmed"] = true
+						}
+						sent := api.n.Load()
+						_, text, _ := callNamed(t, r, tl.Name, args)
+						texts := []string{text}
+						if confirmed {
+							// The repeat answers from the record of the first
+							// call (repeat_of, made/): the same check.
+							_, again, _ := callNamed(t, r, tl.Name, maps.Clone(args))
+							texts = append(texts, again)
+						}
+						for i, text := range texts {
+							// A request, or a value of the cloud a cache of an
+							// earlier call answers with: the cloud is reached.
+							if api.n.Load() > sent || strings.Contains(text, cloudMark) {
+								reached[tl.Name] = true
+							}
+							var m map[string]any
+							if json.Unmarshal([]byte(text), &m) != nil {
+								continue
+							}
+							answers++
+							for _, f := range classLeaks(m) {
+								key := tl.Name + ": " + f
+								if untrustedClassPending[key] == "" && untrustedClassPending[tl.Name+": *"] != "" {
+									// The whole answer is a known place.
+									key = tl.Name + ": *"
+								}
+								if !found[key] && untrustedClassPending[key] == "" {
+									b, _ := json.Marshal(m[f])
+									t.Errorf("%s (%s, HTTP %d, confirmed %v, repeat %v): the field %q carries a value of the cloud outside \"_untrusted\" %v — name it in Decl.Untrusted, or quote it in evo's text (quoteCloud)\n%.300s",
+										tl.Name, w.name, status, confirmed, i > 0, f, m["_untrusted"], b)
+								}
+								found[key] = true
+							}
+						}
 					}
 				}
 			}
+		}
+	}
+	for _, tl := range raRegistry(t, nil, nil, nil).Tools() {
+		_, local := classLocal[tl.Name]
+		_, pending := classUnreachedPending[tl.Name]
+		switch {
+		case reached[tl.Name] && (local || pending):
+			t.Errorf("%s reaches the cloud now: remove its line of classLocal or classUnreachedPending", tl.Name)
+		case !reached[tl.Name] && !local && !pending:
+			t.Errorf("%s sent no request to the cloud in any call of the world: the check read its refusals only — give it the arguments it acts on (requiredCalls, classWorldArgs)", tl.Name)
+		}
+	}
+	for name := range classLocal {
+		if _, ok := decls[name]; !ok {
+			t.Errorf("classLocal names %s, no tool of the registry", name)
 		}
 	}
 	for key := range untrustedClassPending {
@@ -198,4 +279,39 @@ func TestUntrustedClass_CloudValueMarkedOrQuoted(t *testing.T) {
 		t.Errorf("%d answers read, %d expected: the world no longer reaches the tools", answers, untrustedClassAnswers)
 	}
 	t.Logf("answers read: %d; known places: %d", answers, len(untrustedClassPending))
+}
+
+// keepIDs is v with the ids (id, *_id, *Id) as the call gave them: a
+// world where the id of the cloud is not the id of the call ends every
+// write in a lookup that finds nothing, and the success of a write — the
+// body of the resource it answers — is never read (#2427, A19-6).
+func keepIDs(v any, key string) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := map[string]any{}
+		for k, e := range x {
+			out[k] = keepIDs(e, k)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = keepIDs(e, key)
+		}
+		return out
+	case string:
+		if l := strings.ToLower(key); l == "id" || strings.HasSuffix(l, "_id") || strings.HasSuffix(key, "Id") {
+			return strings.TrimSuffix(x, "\n"+cloudMark)
+		}
+	}
+	return v
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

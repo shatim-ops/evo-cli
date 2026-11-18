@@ -253,7 +253,7 @@ func (r *Registry) handleAgentSkill(ctx context.Context, args map[string]any) (s
 	card, ok := groupCard(group, callerOf(ctx) != nil, r.served, r.projectBound)
 	if !ok {
 		return errResult(clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("unknown group %q", "неизвестная группа %q", group),
+			i18n.T("unknown group", "неизвестная группа"),
 			i18n.Tf("Groups: %s.", "Группы: %s.", strings.Join(Groups(), ", ")))), true
 	}
 	return toJSON(map[string]any{"group": group, "skill": card}), false

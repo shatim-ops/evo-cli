@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -64,7 +63,8 @@ func TestCreateNames_EveryCreateDeclared(t *testing.T) {
 // cloud, confirmed or not, by every create: "web " passed by a taken "web"
 // and made a second resource (Cursor 1.2.3; lb_create, ar_create and the
 // others had no rule). So is one with a control character or longer than
-// 255 characters (D30). The name is quoted in the refusal.
+// 255 characters (D30). The refusal says what is wrong with the name, not
+// the name: a value in the wrong place may be a secret (#2459).
 func TestCreateNames_SpacesRefusedBeforeTheCloud(t *testing.T) {
 	var reqs atomic.Int64
 	f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
@@ -81,7 +81,11 @@ func TestCreateNames_SpacesRefusedBeforeTheCloud(t *testing.T) {
 	for _, name := range names {
 		tl, _ := r.Lookup(name)
 		for _, arg := range decls[name].CreateName.args {
-			for _, bad := range []string{"web ", " web", "  ", "we\x00b", "web\n", strings.Repeat("w", 256)} {
+			for _, c := range []struct{ bad, why string }{
+				{"web ", "starts or ends with a space"}, {" web", "starts or ends with a space"}, {"  ", "it is empty"},
+				{"we\x00b", "control character"}, {"web\n", "starts or ends with a space"}, {strings.Repeat("w", 256), "longer than"},
+			} {
+				bad := c.bad
 				for _, confirmed := range []bool{false, true} {
 					args := contractArgs(tl)
 					if name == "k8s_create" {
@@ -92,8 +96,8 @@ func TestCreateNames_SpacesRefusedBeforeTheCloud(t *testing.T) {
 					before := reqs.Load()
 					m, text, isErr := callNamed(t, r, name, args)
 					msg, _ := m["error"].(string)
-					if !isErr || m["reason"] != "USAGE" || !strings.Contains(msg, strconv.Quote(bad)) {
-						t.Errorf("%s %s=%q confirmed=%v: want USAGE naming the name: %.300s", name, arg, bad, confirmed, text)
+					if !isErr || m["reason"] != "USAGE" || !strings.Contains(msg, c.why) || strings.Contains(text, "wwwwwwwwww") || strings.Contains(text, "web") {
+						t.Errorf("%s %s=%q confirmed=%v: want USAGE that says %q and not the name: %.300s", name, arg, bad, confirmed, c.why, text)
 					}
 					if n := reqs.Load() - before; n != 0 {
 						t.Errorf("%s %s=%q: %d requests before the refusal", name, arg, bad, n)

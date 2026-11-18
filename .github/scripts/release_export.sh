@@ -136,14 +136,11 @@ func main() {
 			os.Exit(2)
 		}
 		if os.Args[1] == "-changelog-left" {
-			left := 0
-			for i, line := range strings.Split(string(b), "\n") {
-				if internalRef.MatchString(line) {
-					fmt.Printf("CHANGELOG.md:%d: %s\n", i+1, internalRef.FindString(line))
-					left++
-				}
+			left := changelogLeft(string(b))
+			for _, l := range left {
+				fmt.Println(l)
 			}
-			if left > 0 {
+			if len(left) > 0 {
 				os.Exit(1)
 			}
 			return
@@ -240,45 +237,192 @@ func spaced(s string) string {
 
 // internalRef is a reference of the development a reader of a release
 // cannot follow: the decisions (DECISIONS, D47), the audits of Fable and
-// the runs of Grok, the codes of their findings (FB150-2, G130-15).
-var internalRef = regexp.MustCompile(`DECISIONS|Fable|Grok|(^|[^\pL\pN_])(D[0-9]{1,3}|FB[0-9]+(-[0-9]+)?|G1[0-9]{2}-[0-9]+|G13-[0-9]+)([^\pL\pN_]|$)`)
+// the runs of Grok, the codes of their findings and of the other checks
+// (FB150-2, FB19I-8, G130-15, REL12-3, R4-2, R3A-1, B12-6, QA-3, CUR122-2),
+// the lines of a plan
+// ("план 1.5, С4"), the owner's decisions ("решение владельца 17.11") and
+// the fragments of changelog.d by their path (#2512).
+var internalRef = regexp.MustCompile(`DECISIONS|Fable|Grok|[Рр]ешени\pL{0,8} владельца|`+"`"+`changelog\.d/[^`+"`"+`]*`+"`"+`|план [0-9]+\.[0-9]+, С[0-9]+|(^|[^\pL\pN_])(D[0-9]{1,3}|FB[0-9]+[A-Z]?(-[0-9]+)?|G1[0-9]{2}-[0-9]+|G13-[0-9]+|REL[0-9]+-[0-9]+|R[0-9]+[A-Z]?-[0-9]+|B[0-9]+-[0-9]+|QA-[0-9]+|CUR[0-9]+-[0-9]+)([^\pL\pN_]|$)`)
 
 // group is a parenthesis with no parenthesis inside, over lines too, with
 // the character before its spaces: at the start of a line there is none,
 // and the indent stays.
 var group = regexp.MustCompile(`([^\s]?)([ \t]*)\(([^()]*)\)`)
 
-// bareRef is a reference outside a parenthesis, with the space before it
-// and the preposition that takes it ("по D88", "по правилу D73",
-// "согласно D47").
-var bareRef = regexp.MustCompile(`[ \t]?\b(DECISIONS|Fable|Grok)\b|[ \t]?((?i)по правилу |по |в |согласно |из )?\bD[0-9]{1,3}\b`)
+// refWords are the words of a reference with what takes it: the space
+// before, the preposition ("по D88", "по правилу D73", "согласно D47"),
+// the codes that follow ("FB160-2, -3").
+const refWords = `((?i)по правилу |по |в |согласно |из )?(DECISIONS|Fable|Grok|план [0-9]+\.[0-9]+, С[0-9]+|\b(D[0-9]{1,3}|FB[0-9]+[A-Z]?(-[0-9]+)?(,[ \t]*-[0-9]+)*|G1[0-9]{2}-[0-9]+|G13-[0-9]+|REL[0-9]+-[0-9]+|R[0-9]+[A-Z]?-[0-9]+|B[0-9]+-[0-9]+|QA-[0-9]+|CUR[0-9]+-[0-9]+)\b)`
+
+// bareRef is a reference outside a parenthesis; partRef, one in a part
+// of a parenthesis, with the comma before it ("после согласия, D28").
+var (
+	bareRef = regexp.MustCompile(`[ \t]?` + refWords)
+	partRef = regexp.MustCompile(`([ \t]*,)?[ \t]*` + refWords)
+)
+
+// codeSpan is a fragment of code: a name, a command, evo's words as it
+// prints them. The cleaning leaves it as it is; a reference inside one is
+// a named failure of the snapshot (changelogLeft), not a quiet edit
+// («Риск», 380).
+var codeSpan = regexp.MustCompile("`[^`\n]*`")
+
+// doneMark is the mark of a parenthesis publicChangelog has done.
+var doneMark = regexp.MustCompile("\uE003([0-9]+)\uE004")
+
+// fragmentPath is a fragment of code that names a fragment of changelog.d.
+var fragmentPath = regexp.MustCompile("^`changelog\\.d/[^`]*`$")
+
+// quotedOutput are the fragments of code that quote evo's own output with
+// a reference in it: the change log quotes evo as it prints, and the
+// quote stays until evo stops printing the reference.
+var quotedOutput = map[string]bool{
+	"`цены Managed Kubernetes нет до калькулятора (D17)`": true,
+}
+
+// userText is what a part of a parenthesis carries for the reader beyond
+// the reference: a fragment of code, or what was before ("было") and
+// what is now ("стало"). Such a part loses its reference, not its text.
+var userText = regexp.MustCompile("\uE000|(?i)было|стало")
+
+// strayStart and strayAfter are the punctuation a removed reference
+// leaves alone: at the start of a line ("  . Было:") or after a space
+// ("(`a`) .").
+var (
+	strayStart = regexp.MustCompile(`(?m)^([ \t]*(?:[-*][ \t]+)?)[.,;][ \t]*`)
+	strayAfter = regexp.MustCompile(`([^\s])[ \t]+([.,;])([\s]|$)`)
+)
+
+// gone is the place of a parenthesis that went: at the start of a line
+// (after the indent or the dash of an item) it takes the punctuation
+// after it ("(D12). Было" — "Было"); in the text, the spaces before it
+// ("слово (D1) дальше" — "слово дальше", "слово (D1)." — "слово.").
+const gone = "\uE002"
+
+var (
+	goneStart = regexp.MustCompile(`(?m)^([ \t]*(?:[-*][ \t]+)?)` + gone + `[ \t]*[.,;]?[ \t]*`)
+	goneText  = regexp.MustCompile(`[ \t]*` + gone)
+)
+
+func closeGone(s string) string {
+	return goneText.ReplaceAllString(goneStart.ReplaceAllString(s, "$1"), "")
+}
+
+// hideCode puts a mark for every fragment of code of s, so no rule of the
+// cleaning sees inside one; show puts them back.
+func hideCode(s string) (string, func(string) string) {
+	var spans []string
+	s = codeSpan.ReplaceAllStringFunc(s, func(c string) string {
+		if fragmentPath.MatchString(c) {
+			// A path of changelog.d is a reference of the development, not
+			// code: it goes as one (#2512).
+			return c
+		}
+		spans = append(spans, c)
+		return "\uE000" + strconv.Itoa(len(spans)-1) + "\uE001"
+	})
+	mark := regexp.MustCompile("\uE000([0-9]+)\uE001")
+	return s, func(s string) string {
+		return mark.ReplaceAllStringFunc(s, func(m string) string {
+			i, _ := strconv.Atoi(m[len("\uE000") : len(m)-len("\uE001")])
+			return spans[i]
+		})
+	}
+}
 
 // publicChangelog is the change log a reader of a release reads: of a
-// parenthesis, the parts (split by ";") with no internal reference — none
-// left, no parenthesis; then the words of the references left in the text
-// ("the audit of Fable 1.6" — "the audit of 1.6").
+// parenthesis, the parts (split by ";") with no internal reference stay; a
+// part with one and text for the reader (userText) loses the reference; a
+// part with nothing else goes — none left, no parenthesis; then the
+// references left in the text ("the audit of Fable 1.6" — "the audit of
+// 1.6"). Fragments of code are not touched.
 func publicChangelog(s string) string {
-	s = group.ReplaceAllStringFunc(s, func(g string) string {
-		m := group.FindStringSubmatch(g)
-		before, lead, inner := m[1], m[2], m[3]
-		parts := strings.Split(inner, ";")
-		var keep []string
-		for _, part := range parts {
-			if !internalRef.MatchString(part) {
-				keep = append(keep, strings.TrimSpace(part))
+	s, show := hideCode(s)
+	changed := false
+	// From the innermost parenthesis out: one done goes under a mark, so
+	// the one around it is a group in the next pass ("(класс D100; …
+	// FB19I-26 (б))" — the outer one had a parenthesis inside and was
+	// never a group).
+	var done []string
+	keepGroup := func(t string) string {
+		done = append(done, t)
+		return "\uE003" + strconv.Itoa(len(done)-1) + "\uE004"
+	}
+	for {
+		next := group.ReplaceAllStringFunc(s, func(g string) string {
+			m := group.FindStringSubmatch(g)
+			before, lead, inner := m[1], m[2], m[3]
+			parts := strings.Split(inner, ";")
+			var keep []string
+			for _, part := range parts {
+				switch {
+				case !internalRef.MatchString(part):
+					keep = append(keep, strings.TrimSpace(part))
+				case userText.MatchString(part):
+					keep = append(keep, strings.TrimSpace(partRef.ReplaceAllString(part, "")))
+				}
 			}
+			switch {
+			case len(keep) == len(parts) && strings.Join(keep, ";") == strings.Join(trimmed(parts), ";"):
+				return before + lead + keepGroup("("+inner+")")
+			case len(keep) > 0:
+				changed = true
+				return before + lead + keepGroup("("+strings.Join(keep, "; ")+")")
+			}
+			changed = true
+			// gone marks the place: the start of a line keeps its indent,
+			// and what follows decides the spaces (closeGone).
+			if before == "" {
+				return lead + gone
+			}
+			return before + lead + gone
+		})
+		if next == s {
+			break
 		}
-		switch {
-		case len(keep) == len(parts):
-			return g
-		case len(keep) > 0:
-			return before + lead + "(" + strings.Join(keep, "; ") + ")"
-		case before == "":
-			return lead // the start of a line: the indent stays
+		s = next
+	}
+	for doneMark.MatchString(s) {
+		s = doneMark.ReplaceAllStringFunc(s, func(m string) string {
+			i, _ := strconv.Atoi(m[len("\uE003") : len(m)-len("\uE004")])
+			return done[i]
+		})
+	}
+	s = closeGone(s)
+	if c := bareRef.ReplaceAllString(s, ""); c != s {
+		s, changed = c, true
+	}
+	if changed {
+		s = strayStart.ReplaceAllString(s, "$1")
+		s = strayAfter.ReplaceAllString(s, "$1$2$3")
+	}
+	return show(s)
+}
+
+func trimmed(parts []string) []string {
+	out := make([]string, len(parts))
+	for i, p := range parts {
+		out[i] = strings.TrimSpace(p)
+	}
+	return out
+}
+
+// changelogLeft are the lines of s that still hold an internal reference,
+// a fragment of code of quotedOutput aside.
+func changelogLeft(s string) []string {
+	var out []string
+	for i, line := range strings.Split(s, "\n") {
+		line = codeSpan.ReplaceAllStringFunc(line, func(c string) string {
+			if quotedOutput[c] {
+				return ""
+			}
+			return c
+		})
+		if internalRef.MatchString(line) {
+			out = append(out, fmt.Sprintf("CHANGELOG.md:%d: %s", i+1, internalRef.FindString(line)))
 		}
-		return before
-	})
-	return bareRef.ReplaceAllString(s, "")
+	}
+	return out
 }
 GO
 rc=0

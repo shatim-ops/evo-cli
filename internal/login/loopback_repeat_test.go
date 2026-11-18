@@ -26,8 +26,10 @@ import (
 // the words of Linux and macOS and of Windows (WSAECONNREFUSED «actively
 // refused», WSAECONNRESET «forcibly closed»: main, windows-latest, 10.11),
 // and of Go when the loopback closes the connection while the answer is
-// read («use of closed network connection»: #1666, ubuntu-latest, 13.11).
-var closedConn = regexp.MustCompile(`connection refused|connection reset|EOF|actively refused|forcibly closed|use of closed network connection`)
+// read («use of closed network connection»: #1666, ubuntu-latest, 13.11)
+// or while the request is written («broken pipe»: #2588, ubuntu-latest,
+// 18.11).
+var closedConn = regexp.MustCompile(`connection refused|connection reset|EOF|actively refused|forcibly closed|use of closed network connection|broken pipe`)
 
 // Every form a closed loopback has been seen in on a runner is one
 // closedConn knows: a form it does not know fails the repeat test as a
@@ -40,6 +42,7 @@ func TestLoopback_ClosedConnKnowsTheSeenForms(t *testing.T) {
 		"No connection could be made because the target machine actively refused it.",
 		"An existing connection was forcibly closed by the remote host.",
 		"Post \"http://127.0.0.1:1/cancel\": read tcp 127.0.0.1:2->127.0.0.1:1: use of closed network connection",
+		"Get \"http://127.0.0.1:1/callback\": write tcp 127.0.0.1:2->127.0.0.1:1: write: broken pipe",
 	} {
 		if !closedConn.MatchString(e) {
 			t.Errorf("closedConn does not know %q", e)

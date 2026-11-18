@@ -195,11 +195,23 @@ func requiredCalls(tl Tool) []map[string]any {
 		case "boolean":
 			args[a] = false
 		case "array":
-			args[a] = []any{}
+			// A list the tool can act on: an empty one is refused before
+			// the cloud (#2434).
+			items, _ := p["items"].(map[string]any)
+			switch {
+			case items["type"] == "integer" || items["type"] == "number":
+				args[a] = []any{80}
+			case strings.Contains(a, "port"):
+				args[a] = []any{"80"}
+			case strings.Contains(a, "dns"):
+				args[a] = []any{"web.example.invalid"}
+			default:
+				args[a] = []any{"web"}
+			}
 		case "object":
-			args[a] = map[string]any{}
+			args[a] = map[string]any{"name": "web"}
 		default:
-			args[a] = "00000000-0000-4000-8000-0000000000f1"
+			args[a] = meaningfulString(a)
 		}
 	}
 	base := map[string]any{}
@@ -219,6 +231,29 @@ func requiredCalls(tl Tool) []map[string]any {
 		calls = next
 	}
 	return calls
+}
+
+// meaningfulString is a value of the string argument a the tool takes and
+// sends on: a name the cloud accepts, a port, a date, an id of evo's form.
+// A UUID for all of them was refused before the cloud by 37 of 175 tools,
+// and the invariants over requiredCalls checked their refusals, not the
+// answers of the cloud (#2434, A19-14).
+func meaningfulString(a string) string {
+	switch {
+	case a == "job_id":
+		return "stk-0123456789"
+	case a == "plan_id":
+		return "plan-0123456789ab"
+	case a == "action":
+		return "status"
+	case a == "ports" || a == "port":
+		return "80"
+	case a == "start" || a == "end" || a == "from" || a == "to" || strings.HasSuffix(a, "_date"):
+		return "2026-11-01"
+	case a == "name" || strings.HasSuffix(a, "_name"):
+		return "web"
+	}
+	return "00000000-0000-4000-8000-0000000000f1"
 }
 
 // The answers of logs, ca_logs and k8s_kubectl carry text the workload
@@ -298,6 +333,12 @@ func TestUntrustedNames_Marked(t *testing.T) {
 	}
 }
 
+// copiedStatusPending are the fields, "tool: field", that carry the
+// cloud's status unmarked, found once the calls of requiredCalls reached
+// the cloud (#2434); each is a line to the owner of the tool. Only
+// shrinks. Closes by 1.9, before the tag (#2434).
+var copiedStatusPending = map[string]string{}
+
 // A field evo copies from the cloud's read to the top of a marked answer —
 // resource_status of a delete of a resource being created or deleted
 // (passingRefusal, alreadyDeleting) — is data from the cloud as the read
@@ -319,6 +360,7 @@ func TestUntrustedNames_CopiedStatusMarked(t *testing.T) {
 			prefixes = append(prefixes, p)
 		}
 	}
+	found := map[string]bool{}
 	for _, prefix := range prefixes {
 		for _, st := range []string{"Creating", "Deleting", "running", "stopped"} {
 			status := st
@@ -340,11 +382,20 @@ func TestUntrustedNames_CopiedStatusMarked(t *testing.T) {
 					u, _ := m["_untrusted"].([]any)
 					for f, v := range m {
 						if v == status && !slices.Contains(u, any(f)) {
-							t.Errorf("%s (%s): %s carries the cloud's status, not in _untrusted %v: %s", tl.Name, status, f, u, text)
+							key := tl.Name + ": " + f
+							if copiedStatusPending[key] == "" {
+								t.Errorf("%s (%s): %s carries the cloud's status, not in _untrusted %v: %s", tl.Name, status, f, u, text)
+							}
+							found[key] = true
 						}
 					}
 				}
 			}
+		}
+	}
+	for key := range copiedStatusPending {
+		if !found[key] {
+			t.Errorf("copiedStatusPending names %s, which carries no unmarked status now: remove the line (the list only shrinks)", key)
 		}
 	}
 }

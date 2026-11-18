@@ -78,22 +78,23 @@ var priceClasses = map[string]priceDecl{
 		zeroRU: "хранение, операции и исходящий трафик бакета"},
 	ResourceDiskResize: {why: "evo does not price the growth of a disk",
 		whyRU: "evo не считает цену увеличения диска"},
-	ResourceK8sCluster: {why: "no price of Managed Kubernetes before the calculator (D17)",
-		whyRU: "цены Managed Kubernetes нет до калькулятора (D17)"},
-	ResourceK8sNodePool: {why: "no price of Managed Kubernetes before the calculator (D17)",
-		whyRU: "цены Managed Kubernetes нет до калькулятора (D17)"},
+	// No price before the calculator: D17.
+	ResourceK8sCluster: {why: "no price of Managed Kubernetes before the calculator",
+		whyRU: "цены Managed Kubernetes нет до калькулятора"},
+	ResourceK8sNodePool: {why: "no price of Managed Kubernetes before the calculator",
+		whyRU: "цены Managed Kubernetes нет до калькулятора"},
 	ResourceK8sAddon: {why: "the addon runs on the cluster's nodes, billed by their tariff",
 		whyRU: "плагин работает на узлах кластера, они оплачиваются по своему тарифу"},
 	ResourceARRegistry: {why: "evo has no price of Artifact Registry",
 		whyRU: "у evo нет цены Artifact Registry"},
 	ResourceCAApp: {why: "evo has no price of Container Apps",
 		whyRU: "у evo нет цены Container Apps"},
-	ResourceKafka: {why: "no price of Managed Kafka before the calculator (D17)",
-		whyRU: "цены Managed Kafka нет до калькулятора (D17)"},
+	ResourceKafka: {why: "no price of Managed Kafka before the calculator",
+		whyRU: "цены Managed Kafka нет до калькулятора"},
 	ResourceLB: {why: "evo has no price of a load balancer",
 		whyRU: "у evo нет цены балансировщика"},
-	ResourceRedis: {why: "no price of Managed Redis before the calculator (D17)",
-		whyRU: "цены Managed Redis нет до калькулятора (D17)"},
+	ResourceRedis: {why: "no price of Managed Redis before the calculator",
+		whyRU: "цены Managed Redis нет до калькулятора"},
 	ResourceSNAT: {why: "evo has no price of a SNAT gateway",
 		whyRU: "у evo нет цены шлюза SNAT"},
 	ResourceDNSZone: {why: "evo has no price of Evolution DNS",
@@ -156,6 +157,8 @@ func unpricedNote(p CreatePreview) string {
 		return i18n.T("the cost has no part of it", "в цене нет его доли")
 	case p.Resource == ResourceVM:
 		return i18n.T("the flavor size is unknown", "размер flavor неизвестен")
+	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.Type == "":
+		return i18n.T("the disk type is chosen by the platform", "тип диска выберет платформа")
 	}
 	return i18n.T("its size is unknown", "его размер неизвестен")
 }

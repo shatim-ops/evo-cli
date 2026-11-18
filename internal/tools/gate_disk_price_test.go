@@ -21,7 +21,9 @@ import (
 // every consented create.
 func TestDiskCreate_PreviewReadsAreForTheQuestionOnly(t *testing.T) {
 	args := func(confirmed bool) map[string]any {
-		a := map[string]any{"name": "data", "size_gb": 10, "zone": "ru.AZ-1"}
+		// A type the call names: the preview prices it (a disk of no
+		// known type has no price to read, #2430).
+		a := map[string]any{"name": "data", "size_gb": 10, "zone": "ru.AZ-1", "disk_type": "SSD"}
 		if confirmed {
 			a["confirmed"] = true
 		}

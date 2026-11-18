@@ -784,6 +784,11 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 	if dt := stringArg(args, "disk_type"); dt != "" {
 		typeFrom, typeName = "argument", dt
 	}
+	if typeName == "" {
+		// Neither the backup nor the call names it: the platform picks the
+		// type, and the preview says so (A19-10, #2430).
+		typeFrom = "platform"
+	}
 	// The type — the argument's or the backup's — is one the project has:
 	// a type gone from the catalogue since the backup was made is refused
 	// after the consent, so it is refused here, before the question (axis

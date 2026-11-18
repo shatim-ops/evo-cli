@@ -63,9 +63,14 @@ func TestDoctor_CutDeleteByIDIsCheckedByID(t *testing.T) {
 			r := ownerRegistry(t, f, false, ownProject)
 			eng, _ := r.newEngine(nil)
 			dir := intent.Dir(eng.StateDir)
-			// The call was cut after it went out: its end never ran.
+			// The call was cut after it went out: its end never ran, and
+			// its process is gone — the record is no call in flight here
+			// (intent.InFlight), as a run of doctor after it finds it.
 			if _, err := r.beginIntent(context.Background(), c.tool, map[string]any{c.arg: c.id, "confirmed": true}); err != nil {
 				t.Fatal(err)
+			}
+			for _, in := range intent.Pending(dir) {
+				intent.End(in, history.Outcome{})
 			}
 			left := intent.Pending(dir)
 			if len(left) != 1 {

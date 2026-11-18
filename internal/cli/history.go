@@ -46,7 +46,9 @@ evo, она не доказывает — прочитайте его до де�
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targs := map[string]any{}
-			if since != "" {
+			// Given empty, it is the tool's to refuse (A19-33): not read as
+			// not given.
+			if cmd.Flags().Changed("since") {
 				targs["since"] = since
 			}
 			if project != "" {
