@@ -58,9 +58,10 @@ type DoctorCheck struct {
 	// (only with Caller.Verbose): the API root answers 404, which reads as
 	// an error to a person, while it proves the host is reachable.
 	HTTPStatus int `json:"http_status,omitempty"`
-	// Files are the files of a check named by their names, apart from its
-	// detail: the files of the journal of changes a pruning was put off for.
-	Files []string `json:"files,omitempty"`
+	// Files are the files a check names, apart from its detail: the files
+	// of the journal of changes a pruning was put off for, each with how
+	// many of its lines evo did not write and how many are live.
+	Files []history.DeferredFile `json:"files,omitempty"`
 	// Auth marks a failure of the configuration or the credentials:
 	// doctor then fails with CONFIG_INVALID (exit code 2).
 	Auth bool `json:"-"`

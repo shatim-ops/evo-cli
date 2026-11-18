@@ -393,7 +393,15 @@ func TestDoctor_SaysAPruningPutOffAndTheFilesInTheWay(t *testing.T) {
 	}
 	c, ok := r.journalCheck(dir)
 	data, _ := json.Marshal(c)
-	if !ok || c.Status != CheckWarn || !strings.Contains(c.Detail, history.LiveName) || !slices.Equal(c.Files, []string{history.LiveName}) {
-		t.Errorf("doctor: %s; want a warning naming %s, in detail and in files", data, history.LiveName)
+	want := []history.DeferredFile{{Name: history.LiveName, NotEvos: 1}}
+	if !ok || c.Status != CheckWarn || !strings.Contains(c.Detail, history.LiveName) || !slices.Equal(c.Files, want) {
+		t.Errorf("doctor: %s; want a warning naming %s, in detail and in files with its counts", data, history.LiveName)
+	}
+	// No advice to remove a file: an agent with a terminal would run it,
+	// and a file of the journal may hold live lines («Риск» to 324-3).
+	for _, word := range []string{"remove it", "delete", "move a file", "rm "} {
+		if strings.Contains(strings.ToLower(c.Detail), word) {
+			t.Errorf("doctor advises %q: %s", word, c.Detail)
+		}
 	}
 }

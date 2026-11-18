@@ -6,6 +6,7 @@ package history
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -52,12 +53,23 @@ const (
 	// lines of that day and before are kept only if live.
 	retiredName = "retired"
 	// deferredName names, one a line, the files that hold lines evo does
-	// not write where a pruning was left undone (Pruned.Deferred): doctor
+	// not write where a pruning was left undone (Pruned.Deferred), each
+	// with how many such lines and how many live ones it holds: doctor
 	// says so; the next pruning that goes on removes it.
 	deferredName = "deferred"
 	// pruneLimit bounds a pruning: what does not fit goes on next time.
 	pruneLimit = 2 * time.Second
 )
+
+// DeferredFile is a file a pruning was left undone for: its name, how many
+// of its lines evo does not write (NotEvos) and how many are live (Live) —
+// a resource made and not removed, an outcome not known: the file is not
+// one to remove while any is.
+type DeferredFile struct {
+	Name    string `json:"name"`
+	NotEvos int    `json:"lines_not_evos"`
+	Live    int    `json:"live_lines"`
+}
 
 // Pruned is what a pruning did and what the journal is after it.
 type Pruned struct {
@@ -68,11 +80,11 @@ type Pruned struct {
 	// OverCeiling: the live lines alone are more than the ceiling — none
 	// is removed; doctor and history say so.
 	OverCeiling bool
-	// Deferred are the files whose lines evo does not write — a line of
-	// another day, a line in LiveName not live — when the pruning was left
-	// undone: going on would change what the reader finds live. Doctor
-	// names them; the pruning tries again the next day.
-	Deferred []string
+	// Deferred are the files that hold lines evo does not write — a line
+	// of another day, a line in LiveName not live — when the pruning was
+	// left undone: going on would change what the reader finds live.
+	// Doctor names them; the pruning tries again the next day.
+	Deferred []DeferredFile
 }
 
 // rawLine is a line of a file as it is, and what a reader makes of it.
@@ -285,16 +297,23 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	}
 	if deferred {
 		p.Retired, p.Live = nil, 0
+		var mark strings.Builder
 		for _, name := range readOrder(days) {
-			r := from[name]
+			f, r := DeferredFile{Name: name}, from[name]
 			for i := r[0]; i < r[1]; i++ {
-				if all[i].stray || name == LiveName && all[i].ok && !live[i] {
-					p.Deferred = append(p.Deferred, name)
-					break
+				switch {
+				case all[i].stray || name == LiveName && all[i].ok && !live[i]:
+					f.NotEvos++
+				case all[i].ok && live[i]:
+					f.Live++
 				}
 			}
+			if f.NotEvos > 0 {
+				p.Deferred = append(p.Deferred, f)
+				fmt.Fprintf(&mark, "%s\t%d\t%d\n", f.Name, f.NotEvos, f.Live)
+			}
 		}
-		if err := config.WriteFileAtomic(filepath.Join(dir, deferredName), []byte(strings.Join(p.Deferred, "\n")+"\n"), 0o600); err != nil {
+		if err := config.WriteFileAtomic(filepath.Join(dir, deferredName), []byte(mark.String()), 0o600); err != nil {
 			return p, err
 		}
 		return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
@@ -367,19 +386,26 @@ func changed(dir string, days []string, retired string, read map[string]os.FileI
 }
 
 // DeferredFiles are the files a pruning left undone named (Pruned.Deferred):
-// names of the journal's own form only, never what a file holds.
-func DeferredFiles(dir string) []string {
+// names of the journal's own form and counts only, never what a file holds.
+func DeferredFiles(dir string) []DeferredFile {
 	data, err := config.ReadFileNoFollow(filepath.Join(dir, deferredName))
 	if err != nil {
 		return nil
 	}
-	var names []string
-	for _, n := range strings.Split(string(data), "\n") {
-		if fileForm.MatchString(n) || n == LiveName || n == StrayName {
-			names = append(names, n)
+	var files []DeferredFile
+	for _, l := range strings.Split(string(data), "\n") {
+		var f DeferredFile
+		parts := strings.Split(l, "\t")
+		if len(parts) != 3 || !fileForm.MatchString(parts[0]) && parts[0] != LiveName && parts[0] != StrayName {
+			continue
 		}
+		f.Name = parts[0]
+		if _, err := fmt.Sscanf(parts[1]+" "+parts[2], "%d %d", &f.NotEvos, &f.Live); err != nil {
+			continue
+		}
+		files = append(files, f)
 	}
-	return names
+	return files
 }
 
 // dayFiles are the files of days of dir, oldest first, with their sizes:
@@ -498,7 +524,7 @@ type Summary struct {
 	OverCeiling bool
 	// Deferred: the files the last pruning was left undone for
 	// (Pruned.Deferred).
-	Deferred []string
+	Deferred []DeferredFile
 }
 
 // Describe reads the journal of dir for doctor, its lines checked by check

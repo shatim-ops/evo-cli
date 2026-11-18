@@ -586,7 +586,8 @@ func TestPrune_LeftUndoneNamesTheFileInTheWay(t *testing.T) {
 	made := lineOf("a000000000000001", Created, "disk", "d-1", "2026-07-01T10:00:00Z")
 	writeDay(t, dir, "2026-07-01", made)
 	closer := lineOf("a000000000000002", Deleted, "disk", "d-1", "2026-07-15T10:00:00Z")
-	if err := os.WriteFile(filepath.Join(dir, LiveName), []byte(closer+"\n"), 0o600); err != nil {
+	unknown := lineOf("a000000000000003", Unknown, "disk", "", "2026-07-20T10:00:00Z") // live: a file not to remove
+	if err := os.WriteFile(filepath.Join(dir, LiveName), []byte(closer+"\n"+unknown+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, retiredName), []byte("2026-08-01\n"), 0o600); err != nil {
@@ -594,8 +595,8 @@ func TestPrune_LeftUndoneNamesTheFileInTheWay(t *testing.T) {
 	}
 	before := liveTexts(t, dir, nil)
 	p, err := Prune(dir, pruneNow, nil)
-	if err != nil || len(p.Retired) != 0 || strings.Join(p.Deferred, ",") != LiveName {
-		t.Fatalf("pruned %+v, %v; want nothing retired and %s named", p, err, LiveName)
+	if want := []DeferredFile{{Name: LiveName, NotEvos: 1, Live: 1}}; err != nil || len(p.Retired) != 0 || !reflect.DeepEqual(p.Deferred, want) {
+		t.Fatalf("pruned %+v, %v; want nothing retired and %+v named", p, err, want)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "2026-07-01.jsonl")); err != nil {
 		t.Errorf("the file of the day is gone: %v", err)
@@ -603,8 +604,8 @@ func TestPrune_LeftUndoneNamesTheFileInTheWay(t *testing.T) {
 	if after := liveTexts(t, dir, nil); strings.Join(after, "\n") != strings.Join(before, "\n") {
 		t.Errorf("live before %v, after %v", before, after)
 	}
-	if s, err := Describe(dir, nil); err != nil || strings.Join(s.Deferred, ",") != LiveName {
-		t.Errorf("Describe: %+v, %v; want %s named", s, err, LiveName)
+	if s, err := Describe(dir, nil); err != nil || !reflect.DeepEqual(s.Deferred, p.Deferred) {
+		t.Errorf("Describe: %+v, %v; want %+v named", s, err, p.Deferred)
 	}
 	// The next day, the file in the way gone: the pruning goes on, and the
 	// name is cleared.
