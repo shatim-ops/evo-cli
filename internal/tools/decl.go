@@ -259,7 +259,7 @@ var decls = map[string]Decl{
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.
-	"sg_rule_create": {Group: "vpc", Created: created{id: "rule_id", delete: "sg_rule_delete"}, Nameless: "a rule has no name: it is known by its fields, and the same rule there answers already_exists", IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "remote_group", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "rule", "preview"}}},
+	"sg_rule_create": {Group: "vpc", Created: created{id: "rule_id", delete: "sg_rule_delete", read: "list_security_groups"}, Nameless: "a rule has no name: it is known by its fields, and the same rule there answers already_exists", IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "remote_group", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "rule", "preview"}}},
 	"sg_rule_delete": {Group: "vpc", Delete: deleteTarget{arg: "rule_id", parent: "security_group", what: "security group rule", whRU: "правило группы безопасности"}, IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "resource_status", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}}},
 	// The clusters of a list by their names: anyone with access to the
 	// project names a cluster (release plan 1.9, «Просроченные убывающие
@@ -324,7 +324,7 @@ var decls = map[string]Decl{
 	"backup_get": {IDArgs: []idArg{{name: "backup_id", kind: kindBackup}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "description", "tags", "resource_name", "source", "protection_plan"}}},
 	// The names of the backup and of its source, in the preview and the
 	// answer (the audit of #1544, С1).
-	"backup_create": {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}, Created: created{id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "disk_id", kind: kindDisk}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "backup", "name"}}},
+	"backup_create": {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}, Created: created{id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete", read: "backup_get"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "disk_id", kind: kindDisk}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "backup", "name"}}},
 	// A backup's states are lower case (BackupState): the rule of a state
 	// under way, of a state being created and of a final one is the same.
 	// The names of the backup, its source and the backups that depend on

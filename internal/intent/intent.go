@@ -28,6 +28,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
@@ -124,7 +125,7 @@ type Intent struct {
 	Print string `json:"print,omitempty"`
 	// Ended tells a call that returned with the record kept: its outcome
 	// is not known, and it is no longer in flight. A record without it
-	// whose process lives is a call that has not returned (inFlight).
+	// whose process lives is a call that has not returned (InFlight).
 	Ended bool `json:"ended,omitempty"`
 	// Sent tells a call whose first write went out: it is marked right
 	// before that write is sent (MarkSent), so a process killed after it
@@ -185,12 +186,45 @@ func (in Intent) SameCall(canon []byte) bool {
 	return in.Print != "" && canon != nil && in.Print == printOf(in.ID, canon)
 }
 
-// inFlight tells a record of a call that may not have returned yet: it
+// InFlight tells a record of a call that may not have returned yet: it
 // has not said it ended, and its process lives — this one, or another
 // (two agents of one server, two terminals). In doubt it is in flight:
-// its record is not another call's to remove.
-func (in Intent) inFlight() bool {
-	return !in.Ended && !in.Held && (in.PID == os.Getpid() || processAlive(in.PID))
+// its record is not another call's to remove. A record of this pid is in
+// flight only while this process holds it open (openHere): one of the
+// same pid it does not hold was left by a process before it — a server in
+// a container killed and started again — and that call does not return
+// («Риск», conclusion 401, У1).
+func (in Intent) InFlight() bool {
+	switch {
+	case in.Ended || in.Held:
+		return false
+	case in.PID == os.Getpid():
+		return openedHere(in.ID)
+	}
+	return processAlive(in.PID)
+}
+
+// openHere are the ids of the records this process opened (Open) whose
+// call has not ended them (End, Hold, Close).
+var openHere = struct {
+	sync.Mutex
+	ids map[string]bool
+}{ids: map[string]bool{}}
+
+func holdOpen(id string, open bool) {
+	openHere.Lock()
+	defer openHere.Unlock()
+	if open {
+		openHere.ids[id] = true
+	} else {
+		delete(openHere.ids, id)
+	}
+}
+
+func openedHere(id string) bool {
+	openHere.Lock()
+	defer openHere.Unlock()
+	return openHere.ids[id]
 }
 
 // MarkSent marks the record in as a call whose write goes out (Sent). An
@@ -225,6 +259,7 @@ func MarkCutSend(in Intent, at time.Time) {
 // known: the record stays, and a later call of the same may settle it.
 // Its line is unknown, with what out says of the answer (its code).
 func End(in Intent, out history.Outcome) {
+	defer holdOpen(in.ID, false)
 	out.Result = history.Unknown
 	journal(in, out)
 	in.Ended = true
@@ -298,6 +333,9 @@ func Open(dir string, in Intent) (Intent, error) {
 	if err := write(in); err != nil {
 		return Intent{}, notWritten(dir, err)
 	}
+	if in.PID == os.Getpid() {
+		holdOpen(in.ID, true)
+	}
 	return in, nil
 }
 
@@ -321,6 +359,7 @@ func write(in Intent) error {
 // says of it. Its line is unknown — the operation has not ended — with
 // what out says of the answer: the resource, the operation.
 func Hold(in Intent, out history.Outcome) {
+	defer holdOpen(in.ID, false)
 	out.Result = history.Unknown
 	journal(in, out)
 	in.Held = true
@@ -368,7 +407,7 @@ func Pending(dir string) []Intent {
 	all, _ := scan(dir)
 	var out []Intent
 	for _, in := range all {
-		if in.Counts && !in.Sent && !in.Ended && !in.Held && in.Machine != "" && in.Machine == thisMachine() && !in.inFlight() {
+		if in.Counts && !in.Sent && !in.Ended && !in.Held && in.Machine != "" && in.Machine == thisMachine() && !in.InFlight() {
 			remove(dir, in.ID)
 			continue
 		}
@@ -458,7 +497,7 @@ func Settle(dir string, done Intent, out history.Outcome) (kept []Intent) {
 			kept = append(kept, in)
 			continue
 		}
-		if in.StartedAt.After(done.StartedAt) || in.Held || in.inFlight() || (in.Print != "" && in.Key == nil) {
+		if in.StartedAt.After(done.StartedAt) || in.Held || in.InFlight() || (in.Print != "" && in.Key == nil) {
 			continue
 		}
 		journal(in, out)
@@ -470,6 +509,7 @@ func Settle(dir string, done Intent, out history.Outcome) (kept []Intent) {
 // Close removes the intent in: what the call did is now known, and out
 // says it — the line of the journal is written first.
 func Close(in Intent, out history.Outcome) {
+	defer holdOpen(in.ID, false)
 	journal(in, out)
 	remove(in.Dir, in.ID)
 }

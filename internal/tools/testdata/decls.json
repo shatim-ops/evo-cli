@@ -5,7 +5,7 @@
   },
   "ar_create": {
     "project": true,
-    "created": "{id:registry_id lost: arg: none: list:ar_list field:registries listArgs:[] delete:ar_delete}",
+    "created": "{id:registry_id lost: arg: none: list:ar_list field:registries listArgs:[] read: delete:ar_delete}",
     "create_name": "{args:[name] rule: what:registry whRU:реестр}"
   },
   "ar_delete": {
@@ -44,7 +44,7 @@
         "disk_id"
       ]
     ],
-    "created": "{id:backup_id lost: arg: none: list:backup_list field:backups listArgs:[] delete:backup_delete}",
+    "created": "{id:backup_id lost: arg: none: list:backup_list field:backups listArgs:[] read:backup_get delete:backup_delete}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
@@ -73,7 +73,7 @@
     "untrusted": "{fields:[backups] whole:false own:[] workload:false deep:false}"
   },
   "backup_restore": {
-    "created": "{id:disk_id lost: arg: none: list:disk_list field:disks listArgs:[] delete:disk_delete}",
+    "created": "{id:disk_id lost: arg: none: list:disk_list field:disks listArgs:[] read: delete:disk_delete}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "backup_id why=\"\" target=true ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
@@ -99,7 +99,7 @@
   },
   "ca_deploy": {
     "project": true,
-    "created": "{id: lost:id arg:name none: list:ca_list field:containers listArgs:[] delete:ca_delete}",
+    "created": "{id: lost:id arg:name none: list:ca_list field:containers listArgs:[] read: delete:ca_delete}",
     "create_name": "{args:[name] rule:caNameRe: an RFC 1123 label what: whRU:}",
     "id_args": [
       "image why=\"a container image reference (registry/name:tag) the app pulls, not a Cloud.ru resource id\" target=false ids=false"
@@ -142,7 +142,7 @@
   },
   "cert_import": {
     "project": true,
-    "created": "{id:certificate.id lost:certificate_id arg: none: list:cert_list field:certificates listArgs:[] delete:cert_delete}",
+    "created": "{id:certificate.id lost:certificate_id arg: none: list:cert_list field:certificates listArgs:[] read: delete:cert_delete}",
     "create_name": "{args:[name] rule: what:certificate whRU:сертификат}",
     "echoed_args": [
       "description",
@@ -151,7 +151,7 @@
   },
   "cert_issue_le": {
     "project": true,
-    "created": "{id:certificate_id lost: arg: none: list:cert_list field:certificates listArgs:[] delete:cert_delete}",
+    "created": "{id:certificate_id lost: arg: none: list:cert_list field:certificates listArgs:[] read: delete:cert_delete}",
     "create_name": "{args:[name] rule: what:certificate whRU:сертификат}",
     "echoed_args": [
       "description"
@@ -201,7 +201,7 @@
   },
   "deploy": {
     "group": "deploy",
-    "created": "{id:vm_id lost: arg: none: list: field: listArgs:[] delete:destroy}",
+    "created": "{id:vm_id lost: arg: none: list: field: listArgs:[] read: delete:destroy}",
     "nameless": "the VM is named by the project (.evo.yaml, the directory), checked by provision.ValidName",
     "id_args": [
       "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
@@ -212,7 +212,7 @@
   },
   "deploy_apply": {
     "group": "deploy",
-    "created": "{id:vm_id lost: arg: none: list: field: listArgs:[] delete:destroy}",
+    "created": "{id:vm_id lost: arg: none: list: field: listArgs:[] read: delete:destroy}",
     "nameless": "the VM is named by the saved plan, checked by deploy_plan",
     "id_args": [
       "plan_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false",
@@ -245,7 +245,7 @@
   },
   "disk_create": {
     "project": true,
-    "created": "{id:disk.id lost:disk_id arg: none: list:disk_list field:disks listArgs:[] delete:disk_delete}",
+    "created": "{id:disk.id lost:disk_id arg: none: list:disk_list field:disks listArgs:[] read: delete:disk_delete}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "attach_to why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
@@ -292,7 +292,7 @@
         "values"
       ]
     ],
-    "created": "{id:record_id lost: arg: none: list:dns_records field:records listArgs:[zone_id] delete:dns_record_delete}",
+    "created": "{id:record_id lost: arg: none: list:dns_records field:records listArgs:[zone_id] read: delete:dns_record_delete}",
     "create_name": "{args:[name] rule: what:DNS record whRU:DNS-запись}",
     "id_args": [
       "zone_id why=\"\" target=true ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
@@ -318,7 +318,7 @@
   },
   "dns_zone_create": {
     "project": true,
-    "created": "{id:zone_id lost: arg: none: list:dns_zones field:zones listArgs:[] delete:dns_zone_delete}",
+    "created": "{id:zone_id lost: arg: none: list:dns_zones field:zones listArgs:[] read: delete:dns_zone_delete}",
     "create_name": "{args:[name domain] rule: what:DNS zone whRU:DNS-зона}",
     "id_args": [
       "vpc_id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
@@ -370,7 +370,7 @@
   },
   "image_create": {
     "project": true,
-    "created": "{id:image.id lost:image_id arg: none: list:image_list field:images listArgs:[] delete:image_delete}",
+    "created": "{id:image.id lost:image_id arg: none: list:image_list field:images listArgs:[] read: delete:image_delete}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
@@ -407,14 +407,14 @@
   "k8s_add_addon": {
     "project": true,
     "destructive": true,
-    "created": "{id: lost: arg: none:an addon of a cluster, known by its name; it goes with the cluster list: field: listArgs:[] delete:}",
+    "created": "{id: lost: arg: none:an addon of a cluster, known by its name; it goes with the cluster list: field: listArgs:[] read: delete:}",
     "nameless": "the addon is named by the catalogue (k8s_addons)",
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
     ]
   },
   "k8s_add_nodepool": {
-    "created": "{id:nodepool_id lost: arg: none: list:k8s_nodepools field:node_pools listArgs:[cluster_id] delete:k8s_nodepool_delete}",
+    "created": "{id:nodepool_id lost: arg: none: list:k8s_nodepools field:node_pools listArgs:[cluster_id] read: delete:k8s_nodepool_delete}",
     "create_name": "{args:[name] rule: what:node pool whRU:группа узлов}",
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}",
@@ -448,7 +448,7 @@
   },
   "k8s_create": {
     "project": true,
-    "created": "{id:cluster_id lost: arg: none: list:k8s_list field:clusters listArgs:[] delete:k8s_delete}",
+    "created": "{id:cluster_id lost: arg: none: list:k8s_list field:clusters listArgs:[] read: delete:k8s_delete}",
     "create_name": "{args:[name] rule:k8sNameRe: the mk8s specification what: whRU:}",
     "id_args": [
       "subnet_id why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
@@ -558,7 +558,7 @@
   },
   "kafka_create": {
     "project": true,
-    "created": "{id:cluster_id lost: arg: none: list:kafka_list field:clusters listArgs:[] delete:kafka_delete}",
+    "created": "{id:cluster_id lost: arg: none: list:kafka_list field:clusters listArgs:[] read: delete:kafka_delete}",
     "create_name": "{args:[name] rule: what:Kafka cluster whRU:кластер Kafka}",
     "id_args": [
       "specification_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false",
@@ -613,7 +613,7 @@
   },
   "lb_create": {
     "project": true,
-    "created": "{id:lb_id lost: arg: none: list:lb_list field:load_balancers listArgs:[] delete:lb_delete}",
+    "created": "{id:lb_id lost: arg: none: list:lb_list field:load_balancers listArgs:[] read: delete:lb_delete}",
     "create_name": "{args:[name] rule: what:load balancer whRU:балансировщик}",
     "id_args": [
       "target_group_id why=\"\" target=false ids=false kind={what:\"target group\" byName:false list:\"tg_list\" check:true project:true card:true}",
@@ -722,7 +722,7 @@
     ]
   },
   "pg_backup_create": {
-    "created": "{id:backup_id lost: arg: none: list:pg_backups field:backups listArgs:[cluster_id] delete:}",
+    "created": "{id:backup_id lost: arg: none: list:pg_backups field:backups listArgs:[cluster_id] read: delete:}",
     "create_name": "{args:[name] rule: what:backup whRU:резервная копия}",
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
@@ -735,7 +735,7 @@
   },
   "pg_create": {
     "project": true,
-    "created": "{id:cluster_id lost: arg: none: list:pg_list field:clusters listArgs:[] delete:pg_delete}",
+    "created": "{id:cluster_id lost: arg: none: list:pg_list field:clusters listArgs:[] read: delete:pg_delete}",
     "create_name": "{args:[name] rule: what:PostgreSQL cluster whRU:кластер PostgreSQL}",
     "id_args": [
       "specification_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false",
@@ -758,7 +758,7 @@
     "untrusted": "{fields:[databases] whole:false own:[] workload:false deep:false}"
   },
   "pg_db_create": {
-    "created": "{id: lost: arg:name none: list:pg_databases field:databases listArgs:[cluster_id] delete:pg_db_delete}",
+    "created": "{id: lost: arg:name none: list:pg_databases field:databases listArgs:[cluster_id] read: delete:pg_db_delete}",
     "create_name": "{args:[name] rule: what:database whRU:база данных}",
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
@@ -815,7 +815,7 @@
     "untrusted": "{fields:[specifications] whole:false own:[] workload:false deep:false}"
   },
   "pg_user_create": {
-    "created": "{id: lost: arg:name none: list:pg_users field:users listArgs:[cluster_id] delete:pg_user_delete}",
+    "created": "{id: lost: arg:name none: list:pg_users field:users listArgs:[cluster_id] read: delete:pg_user_delete}",
     "create_name": "{args:[name] rule: what:database user whRU:пользователь базы данных}",
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
@@ -839,7 +839,7 @@
   "provision": {
     "group": "vm",
     "project": true,
-    "created": "{id:vm_id lost: arg: none: list:vm_list field:vms listArgs:[] delete:destroy}",
+    "created": "{id:vm_id lost: arg: none: list:vm_list field:vms listArgs:[] read: delete:destroy}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "vm_id why=\"the VM the next step of a call goes on with (continuedVM): the call only reads it by id, to refuse when it is gone; what the call writes lands in its own project, as without the argument\" target=false ids=false",
@@ -854,7 +854,7 @@
   },
   "redis_create": {
     "project": true,
-    "created": "{id:cluster_id lost: arg: none: list:redis_list field:clusters listArgs:[] delete:redis_delete}",
+    "created": "{id:cluster_id lost: arg: none: list:redis_list field:clusters listArgs:[] read: delete:redis_delete}",
     "create_name": "{args:[name] rule: what:Redis cluster whRU:кластер Redis}",
     "id_args": [
       "specification_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false",
@@ -923,7 +923,7 @@
     "untrusted": "{fields:[resource_status] whole:false own:[] workload:false deep:false}"
   },
   "s3_bucket_create": {
-    "created": "{id: lost: arg:bucket none: list: field: listArgs:[] delete:s3_bucket_delete}",
+    "created": "{id: lost: arg:bucket none: list: field: listArgs:[] read: delete:s3_bucket_delete}",
     "create_name": "{args:[bucket] rule:bucketNameRe and the S3 client's rule what: whRU:}"
   },
   "s3_bucket_delete": {
@@ -937,7 +937,7 @@
   },
   "s3_put": {
     "destructive": true,
-    "created": "{id: lost: arg:key none: list: field: listArgs:[] delete:s3_rm}",
+    "created": "{id: lost: arg:key none: list: field: listArgs:[] read: delete:s3_rm}",
     "nameless": "an object key may hold spaces anywhere: S3 takes any UTF-8"
   },
   "s3_rm": {
@@ -951,7 +951,7 @@
   },
   "secret_create": {
     "project": true,
-    "created": "{id: lost:secret_id arg:path none: list:secret_list field:secrets listArgs:[] delete:secret_delete}",
+    "created": "{id: lost:secret_id arg:path none: list:secret_list field:secrets listArgs:[] read: delete:secret_delete}",
     "create_name": "{args:[path] rule: what:secret whRU:секрет}",
     "id_args": [
       "kms_key_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false"
@@ -978,7 +978,7 @@
   },
   "sg_rule_create": {
     "group": "vpc",
-    "created": "{id:rule_id lost: arg: none: list: field: listArgs:[] delete:sg_rule_delete}",
+    "created": "{id:rule_id lost: arg: none: list: field: listArgs:[] read:list_security_groups delete:sg_rule_delete}",
     "nameless": "a rule has no name: it is known by its fields, and the same rule there answers already_exists",
     "id_args": [
       "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
@@ -997,7 +997,7 @@
   },
   "snat_create": {
     "project": true,
-    "created": "{id:nat_gateway.id lost:nat_gateway_id arg: none: list:snat_list field:nat_gateways listArgs:[] delete:snat_delete}",
+    "created": "{id:nat_gateway.id lost:nat_gateway_id arg: none: list:snat_list field:nat_gateways listArgs:[] read: delete:snat_delete}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "availability_zone_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false"
@@ -1044,7 +1044,7 @@
   "subnet_create": {
     "group": "vpc",
     "project": true,
-    "created": "{id:subnet_id lost: arg: none: list:list_subnets field:subnets listArgs:[] delete:subnet_delete}",
+    "created": "{id:subnet_id lost: arg: none: list:list_subnets field:subnets listArgs:[] read: delete:subnet_delete}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "vpc_id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}",
@@ -1067,7 +1067,7 @@
         "targets"
       ]
     ],
-    "created": "{id:tg_id lost: arg: none: list:tg_list field:target_groups listArgs:[] delete:tg_delete}",
+    "created": "{id:tg_id lost: arg: none: list:tg_list field:target_groups listArgs:[] read: delete:tg_delete}",
     "create_name": "{args:[name] rule: what:target group whRU:целевая группа}",
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
@@ -1182,7 +1182,7 @@
   },
   "vpc_create": {
     "project": true,
-    "created": "{id:vpc_id lost: arg: none: list:vpc_list field:vpcs listArgs:[] delete:vpc_delete}",
+    "created": "{id:vpc_id lost: arg: none: list:vpc_list field:vpcs listArgs:[] read: delete:vpc_delete}",
     "create_name": "{args:[name] rule: what:VPC whRU:VPC}",
     "echoed_args": [
       "description"
@@ -1219,7 +1219,7 @@
         "next_hop_magic_router_id"
       ]
     ],
-    "created": "{id:route_id lost: arg: none: list:vpc_routes field:routes listArgs:[vpc_id] delete:vpc_route_delete}",
+    "created": "{id:route_id lost: arg: none: list:vpc_routes field:routes listArgs:[vpc_id] read: delete:vpc_route_delete}",
     "nameless": "a route is known by its destination, named by no argument",
     "id_args": [
       "vpc_id why=\"\" target=true ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}",
