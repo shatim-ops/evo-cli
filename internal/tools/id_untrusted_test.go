@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -17,14 +18,13 @@ import (
 )
 
 // The id of a resource in the answer of a write is what the cloud answered
-// with, as operation_id is: "_untrusted" names the field whenever it has
-// the cloud's text in it («Риск», 357; #2378).
+// with, as operation_id is: "_untrusted" names every "*_id" field of the
+// answer whenever it has the cloud's text in it («Риск», 357; #2378).
 func TestResourceID_MarkedInTheAnswerOfAWrite(t *testing.T) {
 	faultToolsIsolate(t)
 	first := opWaitFirstDelay
 	opWaitFirstDelay = time.Millisecond
 	t.Cleanup(func() { opWaitFirstDelay = first })
-	fields := []string{"registry_id", "vpc_id", "zone_id", "record_id", "route_id", "backup_id", "vm_id"}
 	body := hostileBody(map[string]any{"id": hostileName, "operation_id": hostileName, "operationId": hostileName})
 	seen, bad := map[string]bool{}, map[string]bool{}
 	for _, status := range []int{http.StatusOK, http.StatusAccepted} {
@@ -62,9 +62,10 @@ func TestResourceID_MarkedInTheAnswerOfAWrite(t *testing.T) {
 						}
 					}
 				}
-				for _, f := range fields {
-					v, has := m[f]
-					if !has {
+				// Any id of the answer, not only those a write has today: a
+				// cluster_id a create starts to answer with is checked too.
+				for f, v := range m {
+					if !strings.HasSuffix(f, "_id") {
 						continue
 					}
 					b, _ := json.Marshal(v)
@@ -92,5 +93,40 @@ func TestResourceID_MarkedInTheAnswerOfAWrite(t *testing.T) {
 	}
 	if !slices.ContainsFunc(slices.Collect(maps.Keys(seen)), func(k string) bool { return strings.HasPrefix(k, "cert_private_key.") }) {
 		t.Errorf("cert_private_key: the world no longer reaches its answer")
+	}
+}
+
+// certAfterIssue is the certificate service around a Let's Encrypt issue:
+// no certificate of the name before it, one with the cloud's id after.
+type certAfterIssue struct{ issued bool }
+
+func (a *certAfterIssue) RoundTrip(req *http.Request) (*http.Response, error) {
+	rec := httptest.NewRecorder()
+	switch {
+	case req.Method == http.MethodPost:
+		a.issued = true
+		_, _ = rec.WriteString(`{"id":"00000000-0000-4000-8000-0000000000f2"}`)
+	case a.issued:
+		b, _ := json.Marshal(map[string]any{"certificates": []any{map[string]any{"id": hostileName, "name": "web"}}})
+		_, _ = rec.Write(b)
+	default:
+		_, _ = rec.WriteString(`{"certificates":[]}`)
+	}
+	return rec.Result(), nil
+}
+
+// cert_issue_le names the certificate by the id the list of the service
+// gives it after the issue: the cloud's text, marked (Qwen review of
+// #2390).
+func TestResourceID_CertificateIDOfAnIssueMarked(t *testing.T) {
+	faultToolsIsolate(t)
+	r := raRegistry(t, &certAfterIssue{}, nil, nil)
+	_, text, _ := callNamed(t, r, "cert_issue_le", map[string]any{"name": "web", "dns_names": []any{"web.example.com"}, "confirmed": true})
+	var m map[string]any
+	if err := json.Unmarshal([]byte(text), &m); err != nil || m["certificate_id"] != hostileName {
+		t.Fatalf("the world no longer reaches the certificate_id of an issue: %s", text)
+	}
+	if list, _ := m["_untrusted"].([]any); !slices.Contains(list, any("certificate_id")) {
+		t.Errorf("certificate_id is the cloud's, and \"_untrusted\" %v does not name it: %s", list, text)
 	}
 }
