@@ -117,6 +117,14 @@ var untrustedClassPending = map[string]string{
 	// Found once the calls reached the cloud (#2434).
 	"billing_balance: *":       "the answer of the balance API as it came, no _untrusted (#2434)",
 	"cert_issue_le: operation": "the operation the cloud answered, not in _untrusted (#2434)",
+	// Found once a write reached its success: the world with the ids as
+	// the call gave them (#2427).
+	"destroy: message":          "the name of the VM the cloud gave, bare in evo's text (#2427)",
+	"destroy: name":             "the name of the VM the cloud gave, not in _untrusted (#2427)",
+	"destroy: target":           "the VM the cloud answered, not in _untrusted (#2427)",
+	"image_create: image":       "the image the cloud answered, not in _untrusted (#2427)",
+	"image_create: will_create": "the preview names the image as the cloud gave it, not in _untrusted (#2427)",
+	"snat_create: nat_gateway":  "the gateway the cloud answered, not in _untrusted (#2427)",
 }
 
 // classWorldArgs are the arguments a tool needs beyond its required ones
@@ -162,8 +170,8 @@ func (c *countingRT) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // untrustedClassAnswers is how many answers the world brings to the check
-// (560 on 18.11): a world that reaches fewer checks less.
-const untrustedClassAnswers = 500
+// (1496 on 18.11, two worlds): a world that reaches fewer checks less.
+const untrustedClassAnswers = 1200
 
 // Any value of the cloud in an answer of any tool is either in a field
 // "_untrusted" names, or in evo's own text quoted (#2253) — the class, not
@@ -172,7 +180,9 @@ const untrustedClassAnswers = 500
 // one by one). The world gives every string of every body of the cloud —
 // ids, names, messages, addresses — a raw newline and cloudMark; every
 // tool is called with its required arguments, before and after the
-// consent, in a success and in a refusal of the API.
+// consent, in a success and in a refusal of the API. A second world keeps
+// the ids as the call gave them and names the zone by its UUID, so a write
+// finds what it acts on and answers its success (#2427).
 func TestUntrustedClass_CloudValueMarkedOrQuoted(t *testing.T) {
 	faultToolsIsolate(t)
 	first := opWaitFirstDelay
@@ -182,7 +192,15 @@ func TestUntrustedClass_CloudValueMarkedOrQuoted(t *testing.T) {
 	if err := json.Unmarshal(hostileBody(hostileNested()), &base); err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(hostileEverywhere(base, ""))
+	hostile := hostileEverywhere(base, "")
+	worlds := []struct {
+		name string
+		body []byte
+		zone string
+	}{
+		{"every value hostile", mustJSON(t, hostile), "ru.AZ-1"},
+		{"ids as given", mustJSON(t, keepIDs(hostile, "")), "00000000-0000-4000-8000-0000000000f1"},
+	}
 	found := map[string]bool{}
 	reached := map[string]bool{}
 	answers := 0
@@ -190,62 +208,64 @@ func TestUntrustedClass_CloudValueMarkedOrQuoted(t *testing.T) {
 	// Object Storage, the billing agreement — without them a tool refuses
 	// before the cloud, and the check reads its refusal (#2434).
 	t.Setenv("CLOUDRU_AGREEMENT_ID", "00000000-0000-4000-8000-0000000000a1")
-	world := func(c *config.Config) {
-		c.Region = "ru.AZ-1"
-		c.Image = "ubuntu-22.04"
-		c.S3 = config.S3Config{Endpoint: "https://s3.example.invalid", AccessKey: "a", SecretKey: "s", Region: "ru-central-1"}
-	}
-	for _, status := range []int{http.StatusOK, http.StatusUnprocessableEntity} {
-		api := &countingRT{RoundTripper: &oddAPI{status: status, body: body}}
-		cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
-		cloud.SetToken("t")
-		cloud.Backoff = 1
-		r := raRegistry(t, api, cloud, world)
-		r.SetCallBudget(containerBudget)
-		for _, tl := range r.Tools() {
-			_, consent := schemaProps(tl)["confirmed"]
-			for _, call := range requiredCalls(tl) {
-				maps.Copy(call, classWorldArgs[tl.Name])
-				for _, confirmed := range []bool{false, true} {
-					if confirmed && !consent {
-						continue
-					}
-					args := maps.Clone(call)
-					if confirmed {
-						args["confirmed"] = true
-					}
-					sent := api.n.Load()
-					_, text, _ := callNamed(t, r, tl.Name, args)
-					texts := []string{text}
-					if confirmed {
-						// The repeat answers from the record of the first
-						// call (repeat_of, made/): the same check.
-						_, again, _ := callNamed(t, r, tl.Name, maps.Clone(args))
-						texts = append(texts, again)
-					}
-					for i, text := range texts {
-						// A request, or a value of the cloud a cache of an
-						// earlier call answers with: the cloud is reached.
-						if api.n.Load() > sent || strings.Contains(text, cloudMark) {
-							reached[tl.Name] = true
-						}
-						var m map[string]any
-						if json.Unmarshal([]byte(text), &m) != nil {
+	for _, w := range worlds {
+		world := func(c *config.Config) {
+			c.Region = w.zone
+			c.Image = "ubuntu-22.04"
+			c.S3 = config.S3Config{Endpoint: "https://s3.example.invalid", AccessKey: "a", SecretKey: "s", Region: "ru-central-1"}
+		}
+		for _, status := range []int{http.StatusOK, http.StatusUnprocessableEntity} {
+			api := &countingRT{RoundTripper: &oddAPI{status: status, body: w.body}}
+			cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
+			cloud.SetToken("t")
+			cloud.Backoff = 1
+			r := raRegistry(t, api, cloud, world)
+			r.SetCallBudget(containerBudget)
+			for _, tl := range r.Tools() {
+				_, consent := schemaProps(tl)["confirmed"]
+				for _, call := range requiredCalls(tl) {
+					maps.Copy(call, classWorldArgs[tl.Name])
+					for _, confirmed := range []bool{false, true} {
+						if confirmed && !consent {
 							continue
 						}
-						answers++
-						for _, f := range classLeaks(m) {
-							key := tl.Name + ": " + f
-							if untrustedClassPending[key] == "" && untrustedClassPending[tl.Name+": *"] != "" {
-								// The whole answer is a known place.
-								key = tl.Name + ": *"
+						args := maps.Clone(call)
+						if confirmed {
+							args["confirmed"] = true
+						}
+						sent := api.n.Load()
+						_, text, _ := callNamed(t, r, tl.Name, args)
+						texts := []string{text}
+						if confirmed {
+							// The repeat answers from the record of the first
+							// call (repeat_of, made/): the same check.
+							_, again, _ := callNamed(t, r, tl.Name, maps.Clone(args))
+							texts = append(texts, again)
+						}
+						for i, text := range texts {
+							// A request, or a value of the cloud a cache of an
+							// earlier call answers with: the cloud is reached.
+							if api.n.Load() > sent || strings.Contains(text, cloudMark) {
+								reached[tl.Name] = true
 							}
-							if !found[key] && untrustedClassPending[key] == "" {
-								b, _ := json.Marshal(m[f])
-								t.Errorf("%s (HTTP %d, confirmed %v, repeat %v): the field %q carries a value of the cloud outside \"_untrusted\" %v — name it in Decl.Untrusted, or quote it in evo's text (quoteCloud)\n%.300s",
-									tl.Name, status, confirmed, i > 0, f, m["_untrusted"], b)
+							var m map[string]any
+							if json.Unmarshal([]byte(text), &m) != nil {
+								continue
 							}
-							found[key] = true
+							answers++
+							for _, f := range classLeaks(m) {
+								key := tl.Name + ": " + f
+								if untrustedClassPending[key] == "" && untrustedClassPending[tl.Name+": *"] != "" {
+									// The whole answer is a known place.
+									key = tl.Name + ": *"
+								}
+								if !found[key] && untrustedClassPending[key] == "" {
+									b, _ := json.Marshal(m[f])
+									t.Errorf("%s (%s, HTTP %d, confirmed %v, repeat %v): the field %q carries a value of the cloud outside \"_untrusted\" %v — name it in Decl.Untrusted, or quote it in evo's text (quoteCloud)\n%.300s",
+										tl.Name, w.name, status, confirmed, i > 0, f, m["_untrusted"], b)
+								}
+								found[key] = true
+							}
 						}
 					}
 				}
@@ -276,4 +296,39 @@ func TestUntrustedClass_CloudValueMarkedOrQuoted(t *testing.T) {
 		t.Errorf("%d answers read, %d expected: the world no longer reaches the tools", answers, untrustedClassAnswers)
 	}
 	t.Logf("answers read: %d; known places: %d", answers, len(untrustedClassPending))
+}
+
+// keepIDs is v with the ids (id, *_id, *Id) as the call gave them: a
+// world where the id of the cloud is not the id of the call ends every
+// write in a lookup that finds nothing, and the success of a write — the
+// body of the resource it answers — is never read (#2427, A19-6).
+func keepIDs(v any, key string) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := map[string]any{}
+		for k, e := range x {
+			out[k] = keepIDs(e, k)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = keepIDs(e, key)
+		}
+		return out
+	case string:
+		if l := strings.ToLower(key); l == "id" || strings.HasSuffix(l, "_id") || strings.HasSuffix(key, "Id") {
+			return strings.TrimSuffix(x, "\n"+cloudMark)
+		}
+	}
+	return v
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
