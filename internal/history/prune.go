@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -32,6 +33,10 @@ var ceiling int64 = Ceiling
 // killed says whether a pruning is killed after the write it has just made:
 // never; tests kill it there, as a kill of evo would.
 var killed = func() bool { return false }
+
+// planned is called when a pruning has read the journal and checked its
+// states, before it takes the lock to write: tests write a line there.
+var planned = func() {}
 
 const (
 	// LiveName is the file the live lines of the files retired go to:
@@ -93,33 +98,43 @@ type rawLine struct {
 // file and renamed, then the files go: a kill between the two leaves a
 // line twice, which a reader reads once (ReadAll), never none.
 //
-// It runs at most once a day (a mark in the directory), under the lock of
-// the journal and a limit of time: what does not fit goes on next time. A
-// directory that is not there is nothing to prune.
+// It runs at most once a day (a mark in the directory) and within a limit
+// of time: what does not fit goes on next time. It reads the journal and
+// checks every state a kill can leave without the lock of the journal, and
+// takes it for its writes only — a line written meanwhile waits for no
+// pruning, and puts the writes off to the next call (changed). A directory
+// that is not there is nothing to prune.
 func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	var p Pruned
 	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
 		return p, nil
 	}
-	unlock, err := state.FileLock(filepath.Join(dir, DirName+".lock"), lockWait)
-	if err != nil {
-		return p, err
-	}
-	defer unlock()
 	today := now.UTC().Format(time.DateOnly)
-	if mark, err := config.ReadFileNoFollow(filepath.Join(dir, prunedName)); err == nil && strings.TrimSpace(string(mark)) == today {
+	prunedToday := func() bool {
+		mark, err := config.ReadFileNoFollow(filepath.Join(dir, prunedName))
+		return err == nil && strings.TrimSpace(string(mark)) == today
+	}
+	if prunedToday() {
 		return p, nil
 	}
 	deadline := time.Now().Add(pruneLimit) // wall-clock: the limit of one pruning, not a value of an answer
 
+	// The journal is read and every state checked without its lock: a line
+	// written meanwhile waits for no pruning (lockWait). The lock is taken
+	// for the writes only, and they are made only if nothing the pruning
+	// read has changed since (changed); else it goes on the next time.
 	days, sizes, err := dayFiles(dir)
 	if err != nil {
 		return p, err
 	}
 	retired := RetiredThrough(dir)
+	read := map[string]os.FileInfo{} // the files read, as they were
 	var all []rawLine
 	from := map[string][2]int{} // file → its lines in all
 	for _, name := range readOrder(days) {
+		if fi, err := os.Lstat(filepath.Join(dir, name)); err == nil {
+			read[name] = fi
+		}
 		data, err := config.ReadFileNoFollow(filepath.Join(dir, name))
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -232,7 +247,7 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	// one it drops (Астра, #2346, #2347) — is left as it is: the pruning
 	// keeps what it cannot show it keeps.
 	newLive, newStray := kept.Bytes(), strays.Bytes()
-	state := func(gone int, live []rawLine) []rawLine {
+	leftIn := func(gone int, live []rawLine) []rawLine {
 		var s []rawLine
 		for _, n := range days {
 			if r := from[n]; !retire[n] || gone == 0 {
@@ -246,29 +261,43 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	}
 	oldLive := all[from[LiveName][0]:from[LiveName][1]]
 	states := [][]rawLine{
-		state(0, oldLive), // the stray lines written
-		state(0, rawLines(LiveName, retired, newLive, check)), // LiveName
+		leftIn(0, oldLive), // the stray lines written
+		leftIn(0, rawLines(LiveName, retired, newLive, check)), // LiveName
 	}
 	for gone := 0; gone <= len(retire); gone++ { // the mark, then each file
-		states = append(states, state(gone, rawLines(LiveName, through, newLive, check)))
+		states = append(states, leftIn(gone, rawLines(LiveName, through, newLive, check)))
 	}
+	deferred := false
 	for _, st := range states {
-		if !sameLive(all, live, st, liveOfRaw(st)) {
-			p.Retired, p.Live = nil, 0
-			for _, name := range readOrder(days) {
-				r := from[name]
-				for i := r[0]; i < r[1]; i++ {
-					if all[i].stray || name == LiveName && all[i].ok && !live[i] {
-						p.Deferred = append(p.Deferred, name)
-						break
-					}
+		if deferred = !sameLive(all, live, st, liveOfRaw(st)); deferred {
+			break
+		}
+	}
+
+	planned()
+	unlock, err := state.FileLock(filepath.Join(dir, DirName+".lock"), lockWait)
+	if err != nil {
+		return p, err
+	}
+	defer unlock()
+	if prunedToday() || changed(dir, days, retired, read) {
+		return Pruned{}, nil
+	}
+	if deferred {
+		p.Retired, p.Live = nil, 0
+		for _, name := range readOrder(days) {
+			r := from[name]
+			for i := r[0]; i < r[1]; i++ {
+				if all[i].stray || name == LiveName && all[i].ok && !live[i] {
+					p.Deferred = append(p.Deferred, name)
+					break
 				}
 			}
-			if err := config.WriteFileAtomic(filepath.Join(dir, deferredName), []byte(strings.Join(p.Deferred, "\n")+"\n"), 0o600); err != nil {
-				return p, err
-			}
-			return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
 		}
+		if err := config.WriteFileAtomic(filepath.Join(dir, deferredName), []byte(strings.Join(p.Deferred, "\n")+"\n"), 0o600); err != nil {
+			return p, err
+		}
+		return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
 	}
 
 	// The order a kill leaves the journal read as before in: the stray
@@ -316,6 +345,25 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 		return p, err
 	}
 	return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
+}
+
+// changed says whether the journal of dir is not what a pruning read: its
+// files of days, the files it read — the same file, size and time — or the
+// day of its mark. Lines written meanwhile are a change too: the pruning
+// goes on the next time.
+func changed(dir string, days []string, retired string, read map[string]os.FileInfo) bool {
+	now, _, err := dayFiles(dir)
+	if err != nil || !slices.Equal(now, days) || RetiredThrough(dir) != retired {
+		return true
+	}
+	for _, name := range readOrder(days) {
+		fi, err := os.Lstat(filepath.Join(dir, name))
+		was, ok := read[name]
+		if (err == nil) != ok || ok && (!os.SameFile(fi, was) || fi.Size() != was.Size() || !fi.ModTime().Equal(was.ModTime())) {
+			return true
+		}
+	}
+	return false
 }
 
 // DeferredFiles are the files a pruning left undone named (Pruned.Deferred):

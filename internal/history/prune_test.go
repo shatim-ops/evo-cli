@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 var pruneNow = time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
@@ -612,5 +614,41 @@ func TestPrune_LeftUndoneNamesTheFileInTheWay(t *testing.T) {
 	p, err = Prune(dir, pruneNow.AddDate(0, 0, 1), nil)
 	if err != nil || len(p.Retired) != 1 || len(p.Deferred) != 0 || len(DeferredFiles(dir)) != 0 {
 		t.Errorf("the next day: %+v, %v, named %v; want the file retired and no name", p, err, DeferredFiles(dir))
+	}
+}
+
+// A pruning reads the journal and checks its states without the lock: a
+// line written meanwhile does not wait for it. Its writes go only if the
+// journal is as it read it: a line written meanwhile puts them off to the
+// next call, which prunes («Риск» to 324-3: a line of a create is not lost
+// to the lock of a pruning).
+func TestPrune_ALineWrittenMeanwhileWaitsForNoPruning(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	writeDay(t, dir, "2026-07-01", lineOf("a000000000000001", Deleted, "disk", "d-1", "2026-07-01T10:00:00Z"))
+	writeDay(t, dir, "2026-11-17", lineOf("a000000000000002", Created, "disk", "d-2", "2026-11-17T09:00:00Z"))
+	t.Cleanup(func() { planned = func() {} })
+	made := Line{Time: "2026-11-17T10:00:00Z", Tool: "disk_create", Kind: "disk", ResourceID: "d-3", Outcome: Created, IntentID: "a000000000000003"}
+	planned = func() {
+		unlock, err := state.FileLock(filepath.Join(dir, DirName+".lock"), time.Millisecond)
+		if err != nil {
+			t.Fatalf("the lock is held while the pruning reads: %v", err)
+		}
+		unlock()
+		if err := Append(dir, made); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p, err := Prune(dir, pruneNow, nil); err != nil || len(p.Retired) != 0 {
+		t.Fatalf("pruned %+v, %v; want nothing written: a line came meanwhile", p, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "2026-07-01.jsonl")); err != nil {
+		t.Fatalf("the file of the day is gone: %v", err)
+	}
+	planned = func() {}
+	if p, err := Prune(dir, pruneNow, nil); err != nil || len(p.Retired) != 1 {
+		t.Errorf("the next call: %+v, %v; want the old file retired", p, err)
+	}
+	if live := liveTexts(t, dir, nil); len(live) != 2 {
+		t.Errorf("live %v; want the two creates", live)
 	}
 }
