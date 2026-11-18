@@ -107,16 +107,9 @@ func markIn(v any) (has, bare bool) {
 // the tool. Only shrinks: a line no longer found fails the test. Closes by
 // 1.9, before the tag (#2393).
 var untrustedClassPending = map[string]string{
-	"backup_get: id":            "id of the resource, not in _untrusted",
-	"k8s_nodepool_get: id":      "id of the resource, not in _untrusted",
-	"vm_get: id":                "id of the resource, not in _untrusted",
-	"vm_get: not_checked":       "id of a security group in check, not in _untrusted",
 	"k8s_nodepools: node_pools": "ids and names of the pools, not in _untrusted",
-	"tg_create: targets":        "interface_id of a target, not in _untrusted",
-	"tg_create: tg_id":          "id of the group as the cloud gave it, not in _untrusted",
 	"cert_import: certificate":  "the certificate the cloud answered, not in _untrusted",
 	"cert_renew: operation":     "the operation the cloud answered, not in _untrusted",
-	"disk_resize: disk":         "the disk the cloud answered, not in _untrusted",
 	"pg_db_create: database":    "the database the cloud answered, not in _untrusted",
 	"pg_user_create: user":      "the user the cloud answered, not in _untrusted",
 }
