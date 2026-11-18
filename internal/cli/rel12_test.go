@@ -39,7 +39,7 @@ func TestRel12_MCPFlagErrorsEnglish(t *testing.T) {
 		t.Errorf("mcp --help: exit %d, want the help in Russian:\n%s%s", code, stdout, stderr)
 	}
 	i18n.SetLang(i18n.RU)
-	if _, _, stderr := runCLI(t, "", "vm", "list", "--bogus"); !hasCyrillic(stderr) || !strings.Contains(stderr, "--bogus") {
+	if _, _, stderr := runCLI(t, "", "vm", "list", "--bogus"); !hasCyrillic(stderr) || !strings.Contains(stderr, "аргумент 3") {
 		t.Errorf("vm list --bogus: want a Russian error:\n%s", stderr)
 	}
 }
