@@ -129,24 +129,25 @@ func run(args []string) int {
 	}()
 
 	commandStarted = false
+	// --json is the machine's answer, as the JSON of a tool over MCP, and
+	// evo mcp answers in English (docs/auth.md): English whatever the
+	// language of the person (D6). One point for the whole run, chosen
+	// before anything is printed: the rename notice of the legacy alias and
+	// the warning of the migration of the settings (Астра, #2440, #2443),
+	// cobra's refusal of the flags of evo mcp before runMCP (release audit,
+	// REL-12), the answer and its error. The tree speaks the language it is
+	// built in (help, usage), so it is built after the choice; --json is
+	// known from the arguments, evo mcp only from the tree, which is then
+	// built again. The server keeps English for as long as it serves; a
+	// --json run gives the language back.
+	if jsonRequested(args) {
+		defer i18n.SetLang(i18n.Lang())
+		i18n.SetLang(i18n.EN)
+	}
 	rootCmd := newRootCmd()
 	rootCmd.SetArgs(args)
-	if english := jsonRequested(args); english || mcpCommand(rootCmd, args) {
-		// --json is the machine's answer, as the JSON of a tool over MCP,
-		// and evo mcp answers in English (docs/auth.md): English whatever
-		// the language of the person (D6). One point for the whole run,
-		// chosen before anything is printed: the rename notice of the
-		// legacy alias and the warning of the migration of the settings
-		// (Астра, #2440, #2443), cobra's refusal of the flags of evo mcp
-		// before runMCP (release audit, REL-12), the answer and its error.
-		// The server keeps English for as long as it serves; a --json run
-		// gives the language back.
-		if english {
-			defer i18n.SetLang(i18n.Lang())
-		}
+	if i18n.Lang() != i18n.EN && mcpCommand(rootCmd, args) {
 		i18n.SetLang(i18n.EN)
-		// The tree speaks the language it was built in (help, usage):
-		// built again in English.
 		rootCmd = newRootCmd()
 		rootCmd.SetArgs(args)
 	}
