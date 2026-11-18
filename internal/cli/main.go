@@ -179,7 +179,7 @@ func run(args []string) int {
 		}
 	}
 	if !commandStarted {
-		err = usageError(cmd, err)
+		err = usageError(cmd, flagError(err, args))
 	}
 	// cobra stops at the first bad flag or command, and k8s kubectl passes
 	// what follows the cluster id to kubectl, refusing a --json there
@@ -208,7 +208,7 @@ func mcpCommand(root *cobra.Command, args []string) bool {
 	return true
 }
 
-// leadingUnknownFlag returns the error pflag gives for the first flag
+// leadingUnknownFlag returns the refusal (flagError's wording) of the first flag
 // before the command name that the root does not know, or nil. Cobra finds
 // the command with the root's flags stripped, and a flag it does not know is
 // taken to have a value: the next argument, the command name, went with it.
@@ -228,7 +228,7 @@ func leadingUnknownFlag(root *cobra.Command, args []string) error {
 				f = persistent.Lookup(name)
 			}
 			if f == nil {
-				return fmt.Errorf("unknown flag: --%s", name)
+				return unknownFlagError(i + 1)
 			}
 			if !inline && f.NoOptDefVal == "" {
 				i++ // its value
@@ -242,7 +242,7 @@ func leadingUnknownFlag(root *cobra.Command, args []string) error {
 				f = persistent.ShorthandLookup(a[j : j+1])
 			}
 			if f == nil {
-				return fmt.Errorf("unknown shorthand flag: %q in %s", a[j], a)
+				return unknownShorthandError(a[j:j+1], i+1)
 			}
 			if f.NoOptDefVal == "" {
 				if j == len(a)-1 {

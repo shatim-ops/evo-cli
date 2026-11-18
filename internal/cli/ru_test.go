@@ -273,10 +273,6 @@ func lastLine(s string) string {
 func TestRussian_UsageErrors(t *testing.T) {
 	russian(t)
 	for in, want := range map[string]string{
-		"unknown flag: --nosuch":            "неизвестный флаг: --nosuch",
-		"unknown shorthand flag: 'q' in -q": "неизвестный флаг: -q в -q",
-		"flag needs an argument: --tail":    "флагу --tail нужно значение",
-		`invalid argument "x" for "-n, --tail" flag: strconv.ParseInt: parsing "x": invalid syntax`: `недопустимое значение "x" флага "-n, --tail": нужно число`,
 		"accepts 1 arg(s), received 0": "нужно аргументов: 1, передано: 0",
 		"something else":               "something else",
 	} {
