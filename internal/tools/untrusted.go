@@ -135,16 +135,29 @@ func markAlways(next Handler) Handler {
 	return markUntrusted(alwaysMarked, next)
 }
 
+type markerKey struct{}
+
+// markerOf is the marker of the tool whose call ctx carries: its own
+// (Decl.Untrusted), else alwaysMarked, which every call has (markAlways).
+func markerOf(ctx context.Context) untrustedAnswer {
+	if u, ok := ctx.Value(markerKey{}).(untrustedAnswer); ok {
+		return u
+	}
+	return alwaysMarked
+}
+
 // alwaysMarked is the marker of alwaysUntrusted: markAlways, and the answer
 // a CLI command shows at its gate (Caller.ask), so the two are one.
 var alwaysMarked = untrustedAnswer{fields: alwaysUntrusted, deep: true}
 
 // markUntrusted adds "_untrusted" to the answers of a tool that declares
 // them (Decl.Untrusted): the fields of u the answer has, beside those the
-// answer marks itself (an error's, errAnswer).
+// answer marks itself (an error's, errAnswer). The call carries u
+// (markerOf): the answer a CLI command shows at its gate is marked the
+// same (Caller.ask).
 func markUntrusted(u untrustedAnswer, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
-		text, isErr := next(ctx, args)
+		text, isErr := next(context.WithValue(ctx, markerKey{}, u), args)
 		if u.whole && isErr {
 			return text, isErr
 		}

@@ -123,7 +123,7 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/tools_ca.go|Registry.planCaStartStop":         1,
 	"internal/tools/tools_ca.go|caStartStopAnswer":                1,
 	"internal/tools/tools_certmanager.go|certNameTaken":           1,
-	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":     10,
+	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":     9,
 	"internal/tools/tools_deploy.go|appliedPlan":                  2,
 	"internal/tools/tools_disk.go|Registry.listedVM":              1,
 	"internal/tools/tools_disk.go|diskAtLimit.Error":              1,

@@ -208,7 +208,7 @@
       "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
       "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
     ],
-    "untrusted": "{fields:[log output ports_open_only_to_groups] whole:false own:[] workload:true deep:false}"
+    "untrusted": "{fields:[log output ports_open_only_to_groups phase_state vm_ip vm_name upload vm security_group subnet_id existing_id vm_state] whole:false own:[] workload:true deep:false}"
   },
   "deploy_apply": {
     "group": "deploy",
@@ -217,7 +217,8 @@
     "id_args": [
       "plan_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false",
       "vm_id why=\"the VM the next step of a call goes on with (continuedVM): the call only reads it by id, to refuse when it is gone; what the call writes lands in its own project, as without the argument\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[vm_status public_ip floating_ip_id ssh note existing_id] whole:false own:[] workload:false deep:false}"
   },
   "deploy_plan": {
     "group": "deploy",
@@ -240,7 +241,7 @@
       "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
       "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
-    "untrusted": "{fields:[will_attach attached_vms] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[will_attach attached_vms result disk_state] whole:false own:[] workload:false deep:false}"
   },
   "disk_create": {
     "project": true,
@@ -248,7 +249,8 @@
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
       "attach_to why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[disk attach disk_state] whole:false own:[] workload:false deep:false}"
   },
   "disk_delete": {
     "delete": "{arg:disk_id parent: what:disk whRU:диск statePrefix: creatingUnseen: failedUnseen:}",
@@ -262,7 +264,7 @@
       "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
       "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
-    "untrusted": "{fields:[will_detach attached_vms] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[will_detach attached_vms result] whole:false own:[] workload:false deep:false}"
   },
   "disk_list": {
     "project": true,
@@ -1016,26 +1018,28 @@
     "id_args": [
       "job_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
     ],
-    "untrusted": "{fields:[preview error details] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[preview error details outputs] whole:false own:[] workload:false deep:false}"
   },
   "stack_destroy": {
     "destructive": true,
     "id_args": [
       "job_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[resources] whole:false own:[] workload:false deep:false}"
   },
   "stack_plan": {
-    "untrusted": "{fields:[unknown_fields error] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[unknown_fields error vm s3] whole:false own:[] workload:false deep:false}"
   },
   "stack_status": {
     "side_effects": "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it",
     "id_args": [
       "job_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
     ],
-    "untrusted": "{fields:[error details] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error details outputs] whole:false own:[] workload:false deep:false}"
   },
   "status": {
-    "group": "deploy"
+    "group": "deploy",
+    "untrusted": "{fields:[vm_ip vm_name floating_ip_id zone_name flavor_name vm_flavor region ssh_user ssh_host_key_fingerprint security_group_id security_group_name opened_rules cloud_state cloud_error other_active_vm_ids] whole:false own:[] workload:false deep:false}"
   },
   "subnet_create": {
     "group": "vpc",
