@@ -603,7 +603,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "backup_restore",
-			Description: "Restore a disk's backup into a new disk (billable); the backup and the disk it was made of are not changed. The preview names the new disk's size, type and zone (from the backup unless disk_type is given) and its price; a backup that names no type gets the platform's, priced by no one: pass disk_type for a price. The name must be free among the project's disks. A VM's backup is not restored by evo yet.",
+			Description: "Restore a disk's backup into a new disk (billable); the backup and the disk it was made of are not changed. The preview names the new disk's size, type and zone (from the backup unless disk_type is given) and its price; a backup that names no type gets the platform's, its price unknown (billable): pass disk_type for a price. The name must be free among the project's disks. A VM's backup is not restored by evo yet.",
 			InputSchema: objSchema(map[string]any{
 				"backup_id":   uuidProp("Backup UUID (from backup_list); a disk's, created."),
 				"name":        strProp("Name of the new disk."),

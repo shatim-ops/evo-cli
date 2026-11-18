@@ -570,8 +570,8 @@ func TestBackupRestore_NoTypeIsThePlatformsAndNotPriced(t *testing.T) {
 	if m["status"] != "confirmation_required" || will["disk_type_from"] != "platform" || w.restores != 0 {
 		t.Fatalf("want the question saying the platform picks the type: %s", text)
 	}
-	if p["cost"] != nil {
-		t.Errorf("a price for a type evo does not know: %v", p["cost"])
+	if p["cost"] != nil || p["tariff_url"] == nil {
+		t.Errorf("a price for a type evo does not know, or no tariff to read: %v, %v", p["cost"], p["tariff_url"])
 	}
 	classes, _ := p["price_classes"].([]any)
 	if len(classes) != 1 {
