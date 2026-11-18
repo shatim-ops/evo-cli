@@ -72,8 +72,9 @@ var engineCommands = []engineCommand{
 		Alias: "алиас evo org projects; до v2.0 ответ Organization API с ошибкой — пометка, а не ошибка, как с v1.0"},
 	{Path: "evo whoami", Tool: "whoami"},
 	{Path: "evo agent skill", Tool: "agent_skill",
-		Flags:   map[string]string{"group": "group"},
-		CLIOnly: map[string]string{"read-only": "правила скилла для сервера --read-only: текст без --group — правила для агента с терминалом, у инструмента его нет (заключение «Риска» 160)"}},
+		Flags: map[string]string{"group": "group"},
+		// «Риск», conclusion 160.
+		CLIOnly: map[string]string{"read-only": "правила скилла для сервера --read-only: текст без --group — правила для агента с терминалом, у инструмента его нет"}},
 	{Path: "evo doctor", Tool: "doctor"},
 	{Path: "evo history", Tool: "history", Flags: map[string]string{"since": "since", "project-id": "project_id"}},
 }
