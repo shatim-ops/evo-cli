@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -355,6 +357,11 @@ func TestMadeEnded(t *testing.T) {
 	if madeEnded(`{"id":"op-1","done":true}`, false, madeListGrace*2, true, false) {
 		t.Error("a done operation ends the create though the list was not read")
 	}
+	// done of a step that is no operation: no word of the resource
+	// («Риск», 405, У3).
+	if madeEnded(`{"id":"x","done":true}`, false, madeListGrace*2, false, true) {
+		t.Error("done of a step that is no operation ends the create")
+	}
 }
 
 // dnsWaitAPI is Evolution DNS with a public zone taken and not listed yet:
@@ -486,5 +493,54 @@ func TestDNSZoneCreate_ARepeatWhoseListFailsSendsNoSecondCreate(t *testing.T) {
 	now = now.Add(madeListGrace * 2)
 	if _, text, _ := callNamed(t, r, "dns_zone_create", args); api.posts != 1 || madeFiles(t, r) != 1 {
 		t.Errorf("the list failed past the grace: %d POSTs, %d files, %s", api.posts, madeFiles(t, r), text)
+	}
+}
+
+// forgetMadeOf takes away only the file of the resource a delete answered
+// gone: not on a delete that failed, not the files of other ids, and no
+// file whose name is not of the form madeKey makes («Риск», conclusion
+// 405, У3).
+func TestMade_ForgetTakesOnlyTheFileOfTheDeletedResource(t *testing.T) {
+	const gone, other = "00000000-0000-4000-8000-0000000000f1", "00000000-0000-4000-8000-0000000000f2"
+	for _, c := range []struct {
+		name, answer string
+		left         []string
+	}{
+		{"deleted", `{"status":"deleted"}`, []string{"odd", "other"}},
+		{"already deleted", `{"status":"already_deleted"}`, []string{"odd", "other"}},
+		{"the delete failed", `{"status":"error","reason":"API_ERROR","error":"x"}`, []string{"gone", "odd", "other"}},
+		{"the delete goes on", `{"status":"deleting"}`, []string{"gone", "odd", "other"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := MadeDir(root)
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			files := map[string]string{
+				"gone":  madeKey("dns_zone_create", nil, "a", ""),
+				"other": madeKey("dns_zone_create", nil, "b", ""),
+				// Of the id deleted, but not a name madeKey makes.
+				"odd": "zone.json",
+			}
+			ids := map[string]string{"gone": gone, "other": other, "odd": gone}
+			for k, f := range files {
+				b, _ := json.Marshal(madeCall{Tool: "dns_zone_create", ID: ids[k], Next: "dns_operation"})
+				if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			forgetMadeOf(root, "dns_zone_delete", map[string]any{"id": gone, "confirmed": true}, c.answer)
+			var left []string
+			for k, f := range files {
+				if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+					left = append(left, k)
+				}
+			}
+			slices.Sort(left)
+			if !slices.Equal(left, c.left) {
+				t.Errorf("files left %v, want %v", left, c.left)
+			}
+		})
 	}
 }
