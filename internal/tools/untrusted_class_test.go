@@ -107,14 +107,6 @@ func markIn(v any) (has, bare bool) {
 // the tool. Only shrinks: a line no longer found fails the test. Closes by
 // 1.9, before the tag (#2393).
 var untrustedClassPending = map[string]string{
-	"ar_delete: next":           "id of the operation in a command, bare (#2253)",
-	"dns_record_delete: next":   "id of the operation in a command, bare (#2253)",
-	"kafka_delete: next":        "id of the operation in a command, bare (#2253)",
-	"lb_delete: next":           "id of the operation in a command, bare (#2253)",
-	"pg_delete: next":           "id of the operation in a command, bare (#2253)",
-	"redis_delete: next":        "id of the operation in a command, bare (#2253)",
-	"tg_delete: next":           "id of the operation in a command, bare (#2253)",
-	"vpc_delete: next":          "id of the operation in a command, bare (#2253)",
 	"k8s_nodepools: node_pools": "ids and names of the pools, not in _untrusted",
 	"cert_import: certificate":  "the certificate the cloud answered, not in _untrusted",
 	"cert_renew: operation":     "the operation the cloud answered, not in _untrusted",
