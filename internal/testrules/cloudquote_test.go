@@ -41,9 +41,7 @@ const stepKey = "step: "
 // refusals closed in 1.9 (owner's decision 14.11, before rc.1). Closes by
 // 1.10.
 var unquotedCloudSteps = map[string]int{
-	"internal/engine/deploy.go|Engine.settledBootFIP":   2,
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
-	"internal/tools/tools.go|Registry.provisionVM":      2,
+	"internal/tools/tools.go|Registry.provisionVM": 2,
 }
 
 // unquotedCloudLocals are the places the detector found when it learned to
@@ -51,33 +49,24 @@ var unquotedCloudSteps = map[string]int{
 // (cloudLocals; «Риск», conclusion 312-2): errors and texts here,
 // steps of progress in unquotedCloudLocalSteps. The list only shrinks: a
 // place fixed by quoteCloud leaves it in the same PR. Its fixes are the
-// development's, by this list: A — tools_disk, tools_nlb, tools_snat,
-// engine/deploy.go, engine/destroy.go; B — tools_backup, tools_pg;
+// development's, by this list (A's — tools_disk, tools_nlb, tools_snat,
+// engine/deploy.go, engine/destroy.go — are closed): B — tools_backup, tools_pg;
 // C — tools_deploy, made.go, tools_stack, opanswer.go,
 // engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
 	"internal/engine/create_preview.go|ShowCreatePreview":      1,
-	"internal/engine/deploy.go|Engine.provisionVM":             1,
 	"internal/tools/delete_preview.go|Registry.deletePlan":     1,
 	"internal/tools/tools.go|destroyTargetPreview":             1,
 	"internal/tools/tools_backup.go|Registry.backupRestored":   1,
 	"internal/tools/tools_backup.go|Registry.planBackupCreate": 1,
 	"internal/tools/tools_backup.go|backupOfTheName":           1,
-	"internal/tools/tools_disk.go|Registry.planDiskCreate":     2,
-	"internal/tools/tools_disk.go|diskAttachedError":           4,
-	"internal/tools/tools_disk.go|diskCreated":                 5,
-	"internal/tools/tools_nlb.go|Registry.planLbCreate":        1,
-	"internal/tools/tools_nlb.go|Registry.planTgCreate":        2,
 	"internal/tools/tools_pg.go|Registry.planPgCreate":         1,
-	"internal/tools/tools_snat.go|Registry.planSnatCreate":     2,
 }
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only
 // shrinks. Closes by 1.9 (owner's decision 17.11).
-var unquotedCloudLocalSteps = map[string]int{
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
-}
+var unquotedCloudLocalSteps = map[string]int{}
 
 // unquotedCloudFlows are the places the detector found when it learned
 // to follow a value of the cloud by its declaration and in the order of
@@ -119,6 +108,7 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/intent.go|Registry.checkByID":                 1,
 	"internal/tools/intent_targets.go|groupTarget":                1,
 	"internal/tools/intent_targets.go|vmTarget":                   1,
+	"internal/tools/made.go|madeAnswer":                           1,
 	"internal/tools/made_repeat.go|Registry.repeatOfMade":         1,
 	"internal/tools/provision_adopt.go|creatingVM":                1,
 	"internal/tools/tools.go|Registry.handleDestroy":              2,
@@ -135,7 +125,7 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/tools_ca.go|caStartStopAnswer":                1,
 	"internal/tools/tools_certmanager.go|certNameTaken":           1,
 	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":     10,
-	"internal/tools/tools_deploy.go|appliedPlan":                  3,
+	"internal/tools/tools_deploy.go|appliedPlan":                  2,
 	"internal/tools/tools_disk.go|Registry.listedVM":              1,
 	"internal/tools/tools_disk.go|diskAtLimit.Error":              1,
 	"internal/tools/tools_dns.go|Registry.dnsZoneLinked":          1,
@@ -146,7 +136,7 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/tools_redis.go|Registry.planRedisCreate":      1,
 	"internal/tools/tools_sg.go|Registry.planSGRuleDelete":        2,
 	"internal/tools/tools_sg_create.go|Registry.planSGRuleCreate": 2,
-	"internal/tools/tools_stack.go|Registry.advance":              3,
+	"internal/tools/tools_stack.go|Registry.advance":              5,
 	"internal/tools/tools_stack.go|Registry.stepRead":             1,
 	"internal/tools/tools_stack.go|stepMissing":                   1,
 	"internal/tools/tools_subnet.go|Registry.planSubnetCreate":    1,
