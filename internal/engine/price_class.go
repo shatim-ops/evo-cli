@@ -78,6 +78,7 @@ var priceClasses = map[string]priceDecl{
 		zeroRU: "хранение, операции и исходящий трафик бакета"},
 	ResourceDiskResize: {why: "evo does not price the growth of a disk",
 		whyRU: "evo не считает цену увеличения диска"},
+	// No price before the calculator: D17.
 	ResourceK8sCluster: {why: "no price of Managed Kubernetes before the calculator",
 		whyRU: "цены Managed Kubernetes нет до калькулятора"},
 	ResourceK8sNodePool: {why: "no price of Managed Kubernetes before the calculator",
