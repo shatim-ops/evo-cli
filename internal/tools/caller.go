@@ -90,7 +90,9 @@ type Caller struct {
 // ask is Gate, noting a yes: the tools call it, never Gate itself, so the
 // journal knows the consent the engine's gate got (consented, FB140-1).
 func (c *Caller) ask(ctx context.Context, answer string, human *confirm.Preview) (bool, error) {
-	ok, err := c.Gate(ctx, answer, human)
+	// The answer the gate shows (--json, --dry-run) is the one MCP gives:
+	// marked as every answer is (markAlways).
+	ok, err := c.Gate(ctx, withUntrusted(alwaysMarked, answer), human)
 	if ok && err == nil {
 		c.answeredYes = true
 		if c.consent != nil && !c.DryRun {
