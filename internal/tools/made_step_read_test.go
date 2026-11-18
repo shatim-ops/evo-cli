@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,5 +111,67 @@ func TestMadeRepeat_APlantedFileWritesNothing(t *testing.T) {
 		if next, _ := m["next_args"].(map[string]any); c.own && next["confirmed"] != nil {
 			t.Errorf("%s: the step named carries the consent of the file: %v", c.name, next)
 		}
+	}
+}
+
+// madeStepWriters is how many creates the world below reaches with a file
+// of made/ read (18.11): a world that reaches fewer checks less.
+const madeStepWriters = 30
+
+// The class (A19-1, #2418; «Риск»): for every create, a file of made/ of
+// the key of the call whose step is a write with confirmed true — the
+// create itself — sends no write for a call without consent. The CLI's
+// --dry-run and a run without --yes call the same handler without
+// consent (invokeTool), so this holds for them too.
+func TestMadeRepeat_NoCreateRunsAWriteStepWithoutConsent(t *testing.T) {
+	a := &faultAPI{}
+	r := budgetAPIRegistry(t, a)
+	root, _ := r.stateDir()
+	dir := MadeDir(root)
+	read := map[string]bool{}
+	for name := range allCreated() {
+		tl, ok := r.Lookup(name)
+		if !ok {
+			continue
+		}
+		for _, args := range requiredCalls(tl) {
+			resource, target, err := r.resourceOf(context.Background(), name, args)
+			if err != nil || (resource == "" && target == "") {
+				continue
+			}
+			eng, _ := r.engineOfCall(args)
+			if eng == nil {
+				continue
+			}
+			project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
+			step := maps.Clone(args)
+			step["confirmed"] = true
+			key, _ := json.Marshal(eng.Maker())
+			body, _ := json.Marshal(map[string]any{"tool": name, "project_id": project, "id": "x", "next": name, "next_args": step,
+				"started_at": clock.Now().UTC(), "key": json.RawMessage(key)})
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			file := filepath.Join(dir, madeKey(name, r.canonArgs(name, args), resource, target))
+			if err := os.WriteFile(file, body, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			before := len(a.callLog())
+			m, text, _ := callNamed(t, r, name, maps.Clone(args))
+			for _, op := range a.callLog()[before:] {
+				if !strings.HasPrefix(op, "GET ") {
+					t.Errorf("%s: a call without consent wrote with a file of made/: %s\n%.300s", name, op, text)
+					break
+				}
+			}
+			if _, has := m["repeat_of"]; has {
+				read[name] = true
+			}
+			_ = os.Remove(file)
+		}
+	}
+	t.Logf("creates whose file of made/ was read: %d", len(read))
+	if len(read) < madeStepWriters {
+		t.Errorf("%d creates read a file of made/, %d expected: the world no longer reaches them", len(read), madeStepWriters)
 	}
 }
