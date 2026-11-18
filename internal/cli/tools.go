@@ -494,7 +494,7 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 			continue
 		}
 		if _, known := params[name]; !known {
-			return nil, unknownArgError(t, name)
+			return nil, unknownArgError(t, i18n.Tf("%s has no argument %q", "у %s нет аргумента %q", t.Name, name))
 		}
 	}
 	for i, pair := range pairs {
@@ -506,7 +506,11 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 		}
 		p, known := params[name]
 		if !known {
-			return nil, unknownArgError(t, name)
+			// What stands before the first "=" is a name only when the
+			// tool takes it: else it may be part of a value (a secret in
+			// Base64 ends with "="), so the pair is named by its place
+			// (Астра, #2316).
+			return nil, unknownArgError(t, i18n.Tf("%s has no argument named by --arg number %d", "у %s нет аргумента, названного в --arg номер %d", t.Name, i+1))
 		}
 		v, err := coerceArg(p, value)
 		if err != nil {
@@ -565,7 +569,10 @@ func mergeJSONArgs(dst map[string]any, data []byte, from string) error {
 	return nil
 }
 
-func unknownArgError(t tools.Tool, name string) error {
+// unknownArgError refuses an argument the tool does not take: msg names it
+// (a key of JSON by its name, a pair of --arg by its place), the hint lists
+// the arguments the tool takes.
+func unknownArgError(t tools.Tool, msg string) error {
 	var names []string
 	for _, p := range schemaParams(t) {
 		names = append(names, p.Name)
@@ -574,7 +581,7 @@ func unknownArgError(t tools.Tool, name string) error {
 	if len(names) > 0 {
 		takes = strings.Join(names, ", ")
 	}
-	return clerrors.New(clerrors.CodeUsage, i18n.Tf("%s has no argument %q", "у %s нет аргумента %q", t.Name, name),
+	return clerrors.New(clerrors.CodeUsage, msg,
 		i18n.Tf("%s takes: %s. See 'evo tools describe %s'.", "Аргументы %s: %s. Подробнее: 'evo tools describe %s'.", t.Name, takes, t.Name))
 }
 
