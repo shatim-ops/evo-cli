@@ -289,7 +289,7 @@ var decls = map[string]Decl{
 	"k8s_nodepools": {IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
 	// The name of a node pool and the labels and taints of its nodes:
 	// anyone with access to the project writes them.
-	"k8s_nodepool_get": {IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "cluster_name", "labels", "taints", "flavor"}}},
+	"k8s_nodepool_get": {IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "cluster_name", "labels", "taints", "flavor", "version", "zone"}}},
 	// A scale down deletes nodes with the data on their disks; the hint is
 	// the tool's, not the call's, so a scale up asks too (D99; conclusion
 	// 112 of «Риск»).
@@ -317,7 +317,7 @@ var decls = map[string]Decl{
 	// A backup and its source, as anyone with access to the project names
 	// them (docs/internal/briefs/backups.md).
 	// The plan of a backup by its name too (FB19I-21).
-	"backup_get": {IDArgs: []idArg{{name: "backup_id", kind: kindBackup}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "description", "tags", "resource_name", "source", "protection_plan"}}},
+	"backup_get": {IDArgs: []idArg{{name: "backup_id", kind: kindBackup}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "description", "tags", "resource_name", "source", "protection_plan", "created_at", "type"}}},
 	// The names of the backup and of its source, in the preview and the
 	// answer (the audit of #1544, С1).
 	"backup_create": {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}, Created: created{id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete", read: "backup_get"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "disk_id", kind: kindDisk}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "backup", "name"}}},
@@ -328,7 +328,7 @@ var decls = map[string]Decl{
 	"backup_delete": {Delete: deleteTarget{arg: "backup_id", what: "backup", whRU: "резервная копия",
 		// Probe Г-16: docs/internal/briefs/backups.md.
 		creatingUnseen: "no run has deleted a backup still being created: the third run of probe Г-16",
-		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"will_delete", "target", "resource_status"}}},
+		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"will_delete", "target", "resource_status", "details"}}},
 	// The names of the backup, its disk and the new disk, in the preview
 	// and the answer.
 	"backup_restore": {Created: created{id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "disk", "name", "state"}}},
@@ -453,7 +453,7 @@ var decls = map[string]Decl{
 	"billing_finops":      {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
 	"metrics_history":     {Project: true, Untrusted: untrustedAnswer{fields: []string{"series"}}},
 	"metrics_scrape":      {Project: true, Untrusted: untrustedAnswer{fields: []string{"exposition"}}},
-	"audit_events":        {Project: true},
+	"audit_events":        {Project: true, Untrusted: untrustedAnswer{fields: []string{"next_page_token"}}},
 	"cert_list":           {Project: true, Untrusted: untrustedAnswer{fields: []string{"certificates"}}},
 	// Certificate Manager.
 	"cert_get":      {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
@@ -498,7 +498,10 @@ var decls = map[string]Decl{
 // cloud: its error as the service words it, the id it names its resource
 // by (resource_id or resourceId, as the service spells it) — «Риск»,
 // conclusion 312, 312-2 — and the id of the operation itself, as the
-// service sent it, not the operation_id of the call (Астра, #2336).
-var opReadUntrusted = untrustedAnswer{fields: []string{"error", "id", "resource_id", "resourceId"}}
+// service sent it, not the operation_id of the call (Астра, #2336) — and
+// its times, as the service spells them: the service's text too (release
+// audit rc.1, A19-31).
+var opReadUntrusted = untrustedAnswer{fields: []string{"error", "id", "resource_id", "resourceId",
+	"createdAt", "created_at", "updatedAt", "updated_at"}}
 
 var opOwnFields = []string{"details", "elapsed_note", "elapsed_sec", "hint", "next_args", "next_tool", "note", "still_running"}

@@ -761,6 +761,7 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 	}
 	poolClusterName(ctx, cli, card, will)
 	preview := map[string]any{"preview": will}
+	var warnings []string
 	switch {
 	case count > desired:
 		add := count - desired
@@ -784,15 +785,19 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 		preview["message"] = i18n.Tf("k8s_nodepool_scale deletes %d node(s) of node pool %s: %d → %d. The nodes are deleted with the data on their disks, and their pods are evicted; which nodes go, the platform chooses.",
 			"k8s_nodepool_scale удаляет узлы группы %[2]s: %[1]d шт., было %[3]d, станет %[4]d. Узлы удаляются вместе с данными на их дисках, поды на них вытесняются; какие узлы уйдут, выбирает платформа.", desired-count, label, desired, count)
 		if count == 0 {
-			preview["warning"] = i18n.T("the pool is left with no nodes: its pods have nowhere to run; the pool itself stays",
-				"в группе не останется узлов: её подам негде работать; сама группа остаётся")
+			warnings = append(warnings, i18n.T("the pool is left with no nodes: its pods have nowhere to run; the pool itself stays",
+				"в группе не останется узлов: её подам негде работать; сама группа остаётся"))
 		}
 	}
 	if status != poolRunning {
 		// Not refused: whether the platform takes the request in this
 		// status is not known (П4).
-		preview["warning"] = i18n.Tf("the pool is in status %s, not running: whether the platform accepts the scale is unknown",
-			"группа в состоянии %s, а не работает: примет ли платформа изменение — неизвестно", quoteCloud(status))
+		warnings = append(warnings, i18n.Tf("the pool is in status %s, not running: whether the platform accepts the scale is unknown",
+			"группа в состоянии %s, а не работает: примет ли платформа изменение — неизвестно", quoteCloud(status)))
+	}
+	// Each is said, the one not in the place of the other (A19-26, #2435).
+	if len(warnings) > 0 {
+		preview["warning"] = strings.Join(warnings, "; ")
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := cli.ScaleNodePool(ctx, id, count)

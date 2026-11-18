@@ -133,9 +133,10 @@ func TestWhoami_RolesOfTheKeyOnTheProject(t *testing.T) {
 	}
 	// A role's name is the cloud's: anyone who may create a custom role
 	// names it (process audit 1.2.1, П9); the term of the key may carry
-	// the text of IAM too (A19-12, #2432).
-	if u, _ := m["_untrusted"].([]any); !slices.Equal(u, []any{"roles", "key_term_note"}) {
-		t.Errorf("_untrusted %v, want [roles key_term_note]", m["_untrusted"])
+	// the text of IAM too (A19-12, #2432). project_id is marked by the one
+	// point of every answer (alwaysUntrusted, A19-31).
+	if u, _ := m["_untrusted"].([]any); len(u) != 3 || !slices.Contains(u, any("roles")) || !slices.Contains(u, any("key_term_note")) || !slices.Contains(u, any("project_id")) {
+		t.Errorf("_untrusted %v, want [key_term_note project_id roles]", m["_untrusted"])
 	}
 }
 

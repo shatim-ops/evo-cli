@@ -31,10 +31,11 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error id resource_id resourceId createdAt created_at updatedAt updated_at] whole:false own:[] workload:false deep:false}"
   },
   "audit_events": {
-    "project": true
+    "project": true,
+    "untrusted": "{fields:[next_page_token] whole:false own:[] workload:false deep:false}"
   },
   "backup_create": {
     "project": true,
@@ -57,13 +58,13 @@
     "id_args": [
       "backup_id why=\"\" target=true ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[will_delete target resource_status] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[will_delete target resource_status details] whole:false own:[] workload:false deep:false}"
   },
   "backup_get": {
     "id_args": [
       "backup_id why=\"\" target=false ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[id name description tags resource_name source protection_plan] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name description tags resource_name source protection_plan created_at type] whole:false own:[] workload:false deep:false}"
   },
   "backup_list": {
     "project": true,
@@ -283,7 +284,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error id resource_id resourceId createdAt created_at updatedAt updated_at] whole:false own:[] workload:false deep:false}"
   },
   "dns_record_create": {
     "required_one_of": [
@@ -516,7 +517,7 @@
     "id_args": [
       "nodepool_id why=\"\" target=false ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[id name cluster_name labels taints flavor] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name cluster_name labels taints flavor version zone] whole:false own:[] workload:false deep:false}"
   },
   "k8s_nodepool_scale": {
     "destructive": true,
@@ -534,7 +535,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error id resource_id resourceId createdAt created_at updatedAt updated_at] whole:false own:[] workload:false deep:false}"
   },
   "k8s_options": {
     "project": true,
@@ -598,7 +599,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error id resource_id resourceId createdAt created_at updatedAt updated_at] whole:false own:[] workload:false deep:false}"
   },
   "kafka_specs": {
     "id_args": [
@@ -651,7 +652,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error id resource_id resourceId createdAt created_at updatedAt updated_at] whole:false own:[] workload:false deep:false}"
   },
   "list": {
     "group": "deploy"
@@ -810,7 +811,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error id resource_id resourceId createdAt created_at updatedAt updated_at] whole:false own:[] workload:false deep:false}"
   },
   "pg_specs": {
     "untrusted": "{fields:[specifications] whole:false own:[] workload:false deep:false}"
@@ -895,7 +896,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error id resource_id resourceId createdAt created_at updatedAt updated_at] whole:false own:[] workload:false deep:false}"
   },
   "redis_specs": {
     "id_args": [
@@ -1210,7 +1211,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error id resource_id resourceId createdAt created_at updatedAt updated_at] whole:false own:[] workload:false deep:false}"
   },
   "vpc_route_create": {
     "project": true,

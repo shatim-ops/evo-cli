@@ -84,9 +84,10 @@ func TestK8sOperation_AnswersTheOperationAndItsResource(t *testing.T) {
 	// resource's state are the service's text, not evo's: the answer marks
 	// them (Астра, #1925: the state too; «Риск», 312-2: the resource's id;
 	// Астра, #2336: the operation's id); the hint as every answer's is
-	// (alwaysUntrusted, #2254).
-	if u, _ := m["_untrusted"].([]any); len(u) != 5 || !slices.Contains(u, any("error")) || !slices.Contains(u, any("id")) || !slices.Contains(u, any("resourceId")) || !slices.Contains(u, any("resource_status")) || !slices.Contains(u, any("hint")) {
-		t.Errorf("a failed operation: _untrusted %v, want error, id, resourceId, resource_status and hint: %s", m["_untrusted"], text)
+	// (alwaysUntrusted, #2254); its times as the service spells them
+	// (release audit rc.1, A19-31).
+	if u, _ := m["_untrusted"].([]any); len(u) != 7 || !slices.Contains(u, any("createdAt")) || !slices.Contains(u, any("updatedAt")) || !slices.Contains(u, any("error")) || !slices.Contains(u, any("id")) || !slices.Contains(u, any("resourceId")) || !slices.Contains(u, any("resource_status")) || !slices.Contains(u, any("hint")) {
+		t.Errorf("a failed operation: _untrusted %v, want error, id, resourceId, resource_status, hint, createdAt and updatedAt: %s", m["_untrusted"], text)
 	}
 	if _, text, isErr = callNamed(t, r, "k8s_operation", map[string]any{"operation_id": "op-none"}); !isErr || !strings.Contains(text, "NOT_FOUND") {
 		t.Errorf("an operation that is not there: want NOT_FOUND: %s", text)

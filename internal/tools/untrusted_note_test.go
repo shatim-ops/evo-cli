@@ -28,6 +28,7 @@ var untrustedNoteOnly = map[string]string{}
 // description has no note, with why: the note speaks of the output of a
 // workload, and the field is not one.
 var untrustedMarkerOnly = map[string]string{
+	"audit_events":         "next_page_token: the page token as the audit API gave it, not the output of a workload (A19-31)",
 	"ca_start":             "app_status: the status of the app as the API words it in the question, not the output of a workload",
 	"ca_stop":              "app_status: the status of the app as the API words it in the question, not the output of a workload",
 	"disk_delete":          "attached_vms: the names of VMs in a refusal (D59), not the output of a workload",

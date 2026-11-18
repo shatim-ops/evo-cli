@@ -155,8 +155,10 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			return
 		}
 		// A create the platform took whose operation goes on: the same
-		// call again reads it (rememberMade, repeatOfMade).
+		// call again reads it (rememberMade, repeatOfMade); a delete that
+		// answers its resource gone ends it (forgetMadeOf).
 		r.rememberMade(rec, answer)
+		forgetMadeOf(root, name, args, answer)
 		intent.Close(rec, out)
 		intent.Settle(dir, rec, settledOf(out))
 	}, nil

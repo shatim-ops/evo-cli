@@ -269,6 +269,11 @@ func TestBackupDelete_NotReadyReadsTheBackup(t *testing.T) {
 		if !isErr || m["status"] == "deleting" || m["reason"] != "API_ERROR" || details["state"] != st || m["next_tool"] != "backup_get" {
 			t.Errorf("not ready in %s: want an error naming the state and backup_get, not deleting: %s", st, text)
 		}
+		// The state is the cloud's: details carries it marked (A19-32,
+		// #2435).
+		if marked, _ := m["_untrusted"].([]any); !slices.Contains(marked, any("details")) {
+			t.Errorf("not ready in %s: details carries the cloud's state outside _untrusted %v", st, marked)
+		}
 	}
 }
 
