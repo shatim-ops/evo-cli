@@ -199,19 +199,22 @@ func ruledList(k string, p map[string]any, v any) ([]any, error) {
 // spaces stays the handler's "which argument" error.
 func ruleArg(k string, p map[string]any, v any) error {
 	if n, ok := numberValue(v); ok {
-		shown := strconv.FormatFloat(n, 'f', -1, 64)
+		// The refusals name the argument and the bound, not the number: a
+		// secret given where a size goes would reach the output, a model
+		// and a log before consent (Астра #2576; the owner's rule of
+		// #2459).
 		if min, ok := p["minimum"].(int); ok && n < float64(min) {
-			return ruleErr(k, p, i18n.Tf("%s %s is below the minimum %d", "%s %s меньше минимума %d", k, shown, min))
+			return ruleErr(k, p, i18n.Tf("%s is below the minimum %d", "%s меньше минимума %d", k, min))
 		}
 		if max, ok := p["maximum"].(int); ok && n > float64(max) {
-			return ruleErr(k, p, i18n.Tf("%s %s is above the maximum %d", "%s %s больше максимума %d", k, shown, max))
+			return ruleErr(k, p, i18n.Tf("%s is above the maximum %d", "%s больше максимума %d", k, max))
 		}
 		// An integer of no narrower rule still has the range of the
 		// cloud's own: one outside it reached a handler as a number of
 		// no meaning (1e30 as a negative int) and went on to the cloud.
 		if p["type"] == "integer" && (n < math.MinInt32 || n > math.MaxInt32) {
-			return ruleErr(k, p, i18n.Tf("%s %s is out of range: an integer is between %d and %d",
-				"%s %s вне диапазона: целое число — от %d до %d", k, shown, math.MinInt32, math.MaxInt32))
+			return ruleErr(k, p, i18n.Tf("%s is out of range: an integer is between %d and %d",
+				"%s вне диапазона: целое число — от %d до %d", k, math.MinInt32, math.MaxInt32))
 		}
 	}
 	// The integers of a list, by the rule of its items.

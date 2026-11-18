@@ -60,7 +60,7 @@ func TestQA14_DeployNegativeDiskSize(t *testing.T) {
 	fc := setupCLI(t)
 	code, stdout, stderr := runCLI(t, "", "--json", "deploy", "--disk-size", "-5", "--yes")
 	c, reason, msg := cliJSONError(t, stderr)
-	if code != clerrors.ExitGeneral || c != code || reason != clerrors.CodeUsage || !strings.Contains(msg, "-5") {
+	if code != clerrors.ExitGeneral || c != code || reason != clerrors.CodeUsage || !strings.Contains(msg, "disk_size is below the minimum") || strings.Contains(msg, "-5") {
 		t.Errorf("exit %d, error %d %s %q; stdout %q", code, c, reason, msg, stdout)
 	}
 	if n := fc.iamCalls.Load(); n != 0 {
