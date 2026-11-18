@@ -372,7 +372,7 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
   `hint`, `warning`, `warnings`, `failures`, `failed`, `preview` и
   `operation_id` (id операции записи, как его дало облако), а также id
   ресурса из ответа записи — `registry_id`, `vpc_id`, `zone_id`,
-  `record_id`, `route_id`, `backup_id`, `vm_id`, `certificate_id`, — и
+  `record_id`, `route_id`, `backup_id`, `vm_id`, `certificate_id`, `tg_id`, — и
   `repeat_of` (id, который облако дало прошлому вызову того же создания),
   если они в ответе есть,
   и поле, внутри которого одно из них лежит на любой глубине

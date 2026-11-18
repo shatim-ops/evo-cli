@@ -270,7 +270,8 @@
   "disk_resize": {
     "id_args": [
       "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
-    ]
+    ],
+    "untrusted": "{fields:[disk] whole:false own:[] workload:false deep:false}"
   },
   "dns_operation": {
     "id_args": [
@@ -1064,7 +1065,8 @@
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
       "targets why=\"\" target=false ids=true kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
       "interface_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[targets] whole:false own:[] workload:false deep:false}"
   },
   "tg_delete": {
     "delete": "{arg:id parent: what:target group whRU:группа целей statePrefix:TARGET_GROUP_STATUS_ creatingUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9) failedUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9)}",
@@ -1109,7 +1111,7 @@
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[id name interfaces security_groups checks exposure image] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name interfaces security_groups checks not_checked exposure image] whole:false own:[] workload:false deep:false}"
   },
   "vm_list": {
     "project": true,
