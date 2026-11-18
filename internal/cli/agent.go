@@ -402,7 +402,7 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 	if !ok {
 		msg := i18n.T("--client is required", "нужен --client")
 		if o.client != "" {
-			msg = i18n.Tf("unknown client %q", "неизвестный клиент %q", o.client)
+			msg = i18n.T("unknown client", "неизвестный клиент")
 		}
 		return clerrors.New(clerrors.CodeUsage, msg,
 			i18n.Tf("Clients: %s. Another one: --client cursor --print json gives the common mcpServers form.",

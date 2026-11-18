@@ -145,7 +145,7 @@ func newToolsListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p := cmdPrinter(cmd)
 			if group != "" && !knownGroup(group) {
-				return clerrors.New(clerrors.CodeUsage, i18n.Tf("unknown group %q", "неизвестная группа %q", group),
+				return clerrors.New(clerrors.CodeUsage, i18n.T("unknown group", "неизвестная группа"),
 					i18n.T("Groups: ", "Группы: ")+strings.Join(tools.Groups(), ", "))
 			}
 			var list []toolInfo

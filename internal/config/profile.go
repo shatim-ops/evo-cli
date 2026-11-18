@@ -280,7 +280,7 @@ var profileNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
 func ValidateProfileName(name string) error {
 	if !profileNameRe.MatchString(name) {
 		return clerrors.New(clerrors.CodeConfigInvalid,
-			i18n.Tf("invalid profile name %q", "недопустимое имя профиля %q", name),
+			i18n.T("invalid profile name", "недопустимое имя профиля"),
 			i18n.T("Use letters, digits, '-', '_' and '.', up to 64 characters",
 				"Допустимы латинские буквы, цифры, '-', '_' и '.', не длиннее 64 символов"))
 	}

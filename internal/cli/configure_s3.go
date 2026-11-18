@@ -52,7 +52,7 @@ Storage → Параметры работы с API». Аккаунту нужн�
 func runConfigureS3(tenant string, printer *output.Printer) error {
 	if tenant == "" || strings.ContainsAny(tenant, " \t\r\n:.") {
 		return clerrors.New(clerrors.CodeUsage,
-			i18n.Tf("tenant ID %q: one word, without spaces, ':' or '.'", "tenant ID %q: одно слово, без пробелов, ':' и '.'", tenant),
+			i18n.T("tenant ID: one word, without spaces, ':' or '.'", "tenant ID: одно слово, без пробелов, ':' и '.'"),
 			i18n.T("Pass --tenant-id from the console: Storage, Object Storage, API settings.",
 				"Передайте --tenant-id из консоли: «Хранение данных → Object Storage → Параметры работы с API»."))
 	}
