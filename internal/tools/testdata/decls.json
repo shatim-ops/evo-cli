@@ -14,24 +14,24 @@
     "id_args": [
       "id why=\"the request carries the project (projectId in the query), and the API looks the resource up in that project\" target=false ids=false"
     ],
-    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false deep:false}"
   },
   "ar_get": {
     "project": true,
     "id_args": [
       "id why=\"the request carries the project (projectId in the query), and the API looks the resource up in that project\" target=false ids=false"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "ar_list": {
     "project": true,
-    "untrusted": "{fields:[registries] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[registries] whole:false own:[] workload:false deep:false}"
   },
   "ar_operation": {
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "audit_events": {
     "project": true
@@ -50,27 +50,27 @@
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
       "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[preview will_create backup name] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview will_create backup name] whole:false own:[] workload:false deep:false}"
   },
   "backup_delete": {
     "delete": "{arg:backup_id parent: what:backup whRU:резервная копия statePrefix: creatingUnseen:no run has deleted a backup still being created: the third run of probe Г-16 (docs/internal/briefs/backups.md) failedUnseen:no run has deleted a backup in error: the third run of probe Г-16 (docs/internal/briefs/backups.md)}",
     "id_args": [
       "backup_id why=\"\" target=true ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[will_delete target resource_status] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[will_delete target resource_status] whole:false own:[] workload:false deep:false}"
   },
   "backup_get": {
     "id_args": [
       "backup_id why=\"\" target=false ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[name description tags resource_name source protection_plan] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[name description tags resource_name source protection_plan] whole:false own:[] workload:false deep:false}"
   },
   "backup_list": {
     "project": true,
     "id_args": [
       "resource_id why=\"a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with the items that list read; it reaches no API as an id\" target=false ids=false"
     ],
-    "untrusted": "{fields:[backups] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[backups] whole:false own:[] workload:false deep:false}"
   },
   "backup_restore": {
     "created": "{id:disk_id lost: arg: none: list:disk_list field:disks listArgs:[] delete:disk_delete}",
@@ -78,7 +78,7 @@
     "id_args": [
       "backup_id why=\"\" target=true ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[preview will_create disk name] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview will_create disk name] whole:false own:[] workload:false deep:false}"
   },
   "billing_consumption": {
     "id_args": [
@@ -107,23 +107,23 @@
   },
   "ca_get": {
     "project": true,
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "ca_list": {
     "project": true,
-    "untrusted": "{fields:[containers] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[containers] whole:false own:[] workload:false deep:false}"
   },
   "ca_logs": {
     "project": true,
-    "untrusted": "{fields:[logs] whole:false own:[] workload:true}"
+    "untrusted": "{fields:[logs] whole:false own:[] workload:true deep:false}"
   },
   "ca_start": {
     "project": true,
-    "untrusted": "{fields:[app_status] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[app_status] whole:false own:[] workload:false deep:false}"
   },
   "ca_stop": {
     "project": true,
-    "untrusted": "{fields:[app_status] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[app_status] whole:false own:[] workload:false deep:false}"
   },
   "cert_delete": {
     "delete": "{arg:id parent: what:certificate whRU:сертификат statePrefix: creatingUnseen: failedUnseen:}",
@@ -135,7 +135,7 @@
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "cert_import": {
     "project": true,
@@ -156,13 +156,13 @@
   },
   "cert_list": {
     "project": true,
-    "untrusted": "{fields:[certificates] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[certificates] whole:false own:[] workload:false deep:false}"
   },
   "cert_operation": {
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:true own:[details elapsed_note elapsed_sec hint next_args next_tool note still_running] workload:false}"
+    "untrusted": "{fields:[error] whole:true own:[details elapsed_note elapsed_sec hint next_args next_tool note still_running] workload:false deep:false}"
   },
   "cert_private_key": {
     "sensitive": true,
@@ -180,7 +180,7 @@
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"certificate\" byName:false list:\"cert_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "cert_versions": {
     "id_args": [
@@ -203,7 +203,7 @@
       "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
       "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
     ],
-    "untrusted": "{fields:[log output ports_open_only_to_groups] whole:false own:[] workload:true}"
+    "untrusted": "{fields:[log output ports_open_only_to_groups] whole:false own:[] workload:true deep:false}"
   },
   "deploy_apply": {
     "group": "deploy",
@@ -235,7 +235,7 @@
       "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
       "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
-    "untrusted": "{fields:[will_attach attached_vms] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[will_attach attached_vms] whole:false own:[] workload:false deep:false}"
   },
   "disk_create": {
     "project": true,
@@ -250,18 +250,18 @@
     "id_args": [
       "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[attached_vms] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[attached_vms] whole:false own:[] workload:false deep:false}"
   },
   "disk_detach": {
     "id_args": [
       "disk_id why=\"\" target=true ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:false}",
       "vm why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
-    "untrusted": "{fields:[will_detach attached_vms] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[will_detach attached_vms] whole:false own:[] workload:false deep:false}"
   },
   "disk_list": {
     "project": true,
-    "untrusted": "{fields:[disks] whole:false own:[] workload:false}",
+    "untrusted": "{fields:[disks] whole:false own:[] workload:false deep:false}",
     "completes": {
       "type": "{list:list_disk_types field:name byName:false}"
     }
@@ -275,7 +275,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "dns_record_create": {
     "required_one_of": [
@@ -300,13 +300,13 @@
     "id_args": [
       "record_id why=\"\" target=false ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "dns_records": {
     "id_args": [
       "zone_id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[records] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[records] whole:false own:[] workload:false deep:false}"
   },
   "dns_zone_create": {
     "project": true,
@@ -329,11 +329,11 @@
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "dns_zones": {
     "project": true,
-    "untrusted": "{fields:[zones] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[zones] whole:false own:[] workload:false deep:false}"
   },
   "doctor": {
     "group": "auth"
@@ -351,7 +351,7 @@
     "id_args": [
       "project_id why=\"the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); org_quotas and iam_service_accounts are the documented reads of other projects\" target=false ids=false"
     ],
-    "untrusted": "{fields:[lines live] whole:false own:[] workload:true}"
+    "untrusted": "{fields:[lines live] whole:false own:[] workload:true deep:false}"
   },
   "iam_service_accounts": {
     "group": "iam",
@@ -390,11 +390,11 @@
       "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
       "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[image create] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[image create] whole:false own:[] workload:false deep:false}"
   },
   "image_list": {
     "group": "image",
-    "untrusted": "{fields:[images] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[images] whole:false own:[] workload:false deep:false}"
   },
   "k8s_add_addon": {
     "project": true,
@@ -429,14 +429,14 @@
   },
   "k8s_addons": {
     "project": true,
-    "untrusted": "{fields:[addons] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[addons] whole:false own:[] workload:false deep:false}"
   },
   "k8s_apply": {
     "destructive": true,
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[output] whole:false own:[] workload:true}"
+    "untrusted": "{fields:[output] whole:false own:[] workload:true deep:false}"
   },
   "k8s_create": {
     "project": true,
@@ -461,13 +461,13 @@
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false deep:false}"
   },
   "k8s_get": {
     "id_args": [
       "cluster_id why=\"\" target=false ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "k8s_helm": {
     "destructive": true,
@@ -475,14 +475,14 @@
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[output] whole:false own:[] workload:true}"
+    "untrusted": "{fields:[output] whole:false own:[] workload:true deep:false}"
   },
   "k8s_kubeconfig": {
     "side_effects": "returns a kubeconfig; mints a token of the cluster",
     "id_args": [
       "cluster_id why=\"\" target=false ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[kubeconfig] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[kubeconfig] whole:false own:[] workload:false deep:false}"
   },
   "k8s_kubectl": {
     "destructive": true,
@@ -490,31 +490,31 @@
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[output] whole:false own:[] workload:true}"
+    "untrusted": "{fields:[output] whole:false own:[] workload:true deep:false}"
   },
   "k8s_list": {
     "project": true,
-    "untrusted": "{fields:[clusters] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[clusters] whole:false own:[] workload:false deep:false}"
   },
   "k8s_nodepool_delete": {
     "delete": "{arg:nodepool_id parent: what:node pool whRU:группа узлов statePrefix:OBJECT_STATUS_ creatingUnseen:probe Г-12, question 16 of docs/internal/briefs/k8s-nodepools.md failedUnseen:no run has deleted a node pool in error: probe Г-12 (docs/internal/briefs/k8s-nodepools.md; FB19I-7)}",
     "id_args": [
       "nodepool_id why=\"\" target=true ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[preview target resource_status] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview target resource_status] whole:false own:[] workload:false deep:false}"
   },
   "k8s_nodepool_get": {
     "id_args": [
       "nodepool_id why=\"\" target=false ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[name cluster_name labels taints flavor] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[name cluster_name labels taints flavor] whole:false own:[] workload:false deep:false}"
   },
   "k8s_nodepool_scale": {
     "destructive": true,
     "id_args": [
       "nodepool_id why=\"\" target=true ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[preview name details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview name details] whole:false own:[] workload:false deep:false}"
   },
   "k8s_nodepools": {
     "id_args": [
@@ -525,11 +525,11 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "k8s_options": {
     "project": true,
-    "untrusted": "{fields:[flavors zones defaults] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[flavors zones defaults] whole:false own:[] workload:false deep:false}"
   },
   "k8s_plan": {
     "project": true,
@@ -540,7 +540,7 @@
     "ref_args": [
       "{arg:subnet_id kind:{en:subnet ru:подсеть list:list_subnets}}"
     ],
-    "untrusted": "{fields:[flavor] whole:false own:[] workload:false}",
+    "untrusted": "{fields:[flavor] whole:false own:[] workload:false deep:false}",
     "completes": {
       "cluster_sa_id": "{list:iam_service_accounts field:id byName:false}"
     },
@@ -573,35 +573,35 @@
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Kafka cluster\" byName:false list:\"kafka_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false deep:false}"
   },
   "kafka_get": {
     "id_args": [
       "cluster_id why=\"\" target=false ids=false kind={what:\"Kafka cluster\" byName:false list:\"kafka_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "kafka_list": {
     "project": true,
-    "untrusted": "{fields:[clusters] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[clusters] whole:false own:[] workload:false deep:false}"
   },
   "kafka_operation": {
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "kafka_specs": {
     "id_args": [
       "version_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false"
     ],
-    "untrusted": "{fields:[availability_zone specifications] whole:false own:[] workload:false}",
+    "untrusted": "{fields:[availability_zone specifications] whole:false own:[] workload:false deep:false}",
     "completes": {
       "version_id": "{list:kafka_versions field:id byName:false}"
     }
   },
   "kafka_versions": {
-    "untrusted": "{fields:[versions] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[versions] whole:false own:[] workload:false deep:false}"
   },
   "lb_create": {
     "project": true,
@@ -624,13 +624,13 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"load balancer\" byName:false list:\"lb_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false deep:false}"
   },
   "lb_get": {
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"load balancer\" byName:false list:\"lb_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "lb_list": {
     "project": true,
@@ -642,32 +642,32 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "list": {
     "group": "deploy"
   },
   "list_disk_types": {
     "group": "disk",
-    "untrusted": "{fields:[disk_types] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[disk_types] whole:false own:[] workload:false deep:false}"
   },
   "list_flavors": {
     "group": "vm",
-    "untrusted": "{fields:[flavors] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[flavors] whole:false own:[] workload:false deep:false}"
   },
   "list_floating_ips": {
     "group": "vpc",
     "project": true,
-    "untrusted": "{fields:[floating_ips] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[floating_ips] whole:false own:[] workload:false deep:false}"
   },
   "list_images": {
     "group": "image",
-    "untrusted": "{fields:[images] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[images] whole:false own:[] workload:false deep:false}"
   },
   "list_security_groups": {
     "group": "vpc",
     "project": true,
-    "untrusted": "{fields:[security_groups] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[security_groups] whole:false own:[] workload:false deep:false}"
   },
   "list_subnets": {
     "group": "vpc",
@@ -675,34 +675,34 @@
     "id_args": [
       "vpc_id why=\"a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with the items that list read; it reaches no API as an id\" target=false ids=false"
     ],
-    "untrusted": "{fields:[subnets] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[subnets] whole:false own:[] workload:false deep:false}"
   },
   "list_zones": {
     "group": "vm",
-    "untrusted": "{fields:[zones] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[zones] whole:false own:[] workload:false deep:false}"
   },
   "logs": {
     "group": "deploy",
-    "untrusted": "{fields:[log] whole:false own:[] workload:true}"
+    "untrusted": "{fields:[log] whole:false own:[] workload:true deep:false}"
   },
   "marketplace_list": {
     "group": "image",
-    "untrusted": "{fields:[items] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[items] whole:false own:[] workload:false deep:false}"
   },
   "metrics_history": {
     "project": true,
-    "untrusted": "{fields:[series] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[series] whole:false own:[] workload:false deep:false}"
   },
   "metrics_scrape": {
     "project": true,
-    "untrusted": "{fields:[exposition] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[exposition] whole:false own:[] workload:false deep:false}"
   },
   "open_ports": {
     "group": "deploy",
     "id_args": [
       "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
-    "untrusted": "{fields:[open_only_to_groups vms] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[open_only_to_groups vms] whole:false own:[] workload:false deep:false}"
   },
   "org_projects": {
     "group": "org"
@@ -747,7 +747,7 @@
     "id_args": [
       "cluster_id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[databases] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[databases] whole:false own:[] workload:false deep:false}"
   },
   "pg_db_create": {
     "created": "{id: lost: arg:name none: list:pg_databases field:databases listArgs:[cluster_id] delete:pg_db_delete}",
@@ -778,7 +778,7 @@
       "id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}",
       "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false deep:false}"
   },
   "pg_get": {
     "required_one_of": [
@@ -791,20 +791,20 @@
       "id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}",
       "cluster_id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[] whole:true own:[access] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[access] workload:false deep:false}"
   },
   "pg_list": {
     "project": true,
-    "untrusted": "{fields:[clusters] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[clusters] whole:false own:[] workload:false deep:false}"
   },
   "pg_operation": {
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "pg_specs": {
-    "untrusted": "{fields:[specifications] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[specifications] whole:false own:[] workload:false deep:false}"
   },
   "pg_user_create": {
     "created": "{id: lost: arg:name none: list:pg_users field:users listArgs:[cluster_id] delete:pg_user_delete}",
@@ -823,10 +823,10 @@
     "id_args": [
       "cluster_id why=\"\" target=false ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[users] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[users] whole:false own:[] workload:false deep:false}"
   },
   "pg_versions": {
-    "untrusted": "{fields:[versions] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[versions] whole:false own:[] workload:false deep:false}"
   },
   "provision": {
     "group": "vm",
@@ -869,35 +869,35 @@
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"Redis cluster\" byName:false list:\"redis_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false deep:false}"
   },
   "redis_get": {
     "id_args": [
       "cluster_id why=\"\" target=false ids=false kind={what:\"Redis cluster\" byName:false list:\"redis_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "redis_list": {
     "project": true,
-    "untrusted": "{fields:[clusters] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[clusters] whole:false own:[] workload:false deep:false}"
   },
   "redis_operation": {
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "redis_specs": {
     "id_args": [
       "version_id why=\"an entry of a catalogue shared by every project (zone, specification, version), not a project's resource\" target=false ids=false"
     ],
-    "untrusted": "{fields:[availability_zone specifications] whole:false own:[] workload:false}",
+    "untrusted": "{fields:[availability_zone specifications] whole:false own:[] workload:false deep:false}",
     "completes": {
       "version_id": "{list:redis_versions field:id byName:false}"
     }
   },
   "redis_versions": {
-    "untrusted": "{fields:[versions] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[versions] whole:false own:[] workload:false deep:false}"
   },
   "release_floating_ip": {
     "group": "vpc",
@@ -912,7 +912,7 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"floating IP\" byName:false list:\"list_floating_ips\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[resource_status] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status] whole:false own:[] workload:false deep:false}"
   },
   "s3_bucket_create": {
     "created": "{id: lost: arg:bucket none: list: field: listArgs:[] delete:s3_bucket_delete}",
@@ -922,10 +922,10 @@
     "delete": "{arg:bucket parent: what:bucket whRU:бакет statePrefix: creatingUnseen: failedUnseen:}"
   },
   "s3_get": {
-    "untrusted": "{fields:[content content_base64 key] whole:false own:[] workload:true}"
+    "untrusted": "{fields:[content content_base64 key] whole:false own:[] workload:true deep:false}"
   },
   "s3_ls": {
-    "untrusted": "{fields:[objects] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[objects] whole:false own:[] workload:false deep:false}"
   },
   "s3_put": {
     "destructive": true,
@@ -939,7 +939,7 @@
   "secret_add_version": {
     "project": true,
     "nameless": "a version of a secret that is there",
-    "untrusted": "{fields:[version] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[version] whole:false own:[] workload:false deep:false}"
   },
   "secret_create": {
     "project": true,
@@ -958,11 +958,11 @@
   },
   "secret_get": {
     "project": true,
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "secret_list": {
     "project": true,
-    "untrusted": "{fields:[secrets] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[secrets] whole:false own:[] workload:false deep:false}"
   },
   "secret_value": {
     "project": true,
@@ -976,7 +976,7 @@
       "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
       "remote_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
-    "untrusted": "{fields:[security_group rule preview] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[security_group rule preview] whole:false own:[] workload:false deep:false}"
   },
   "sg_rule_delete": {
     "group": "vpc",
@@ -985,7 +985,7 @@
       "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false",
       "rule_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false"
     ],
-    "untrusted": "{fields:[security_group resource_status rule still_allowed_by still_allowed_from_groups vms] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[security_group resource_status rule still_allowed_by still_allowed_from_groups vms] whole:false own:[] workload:false deep:false}"
   },
   "snat_create": {
     "project": true,
@@ -1000,17 +1000,17 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"SNAT gateway\" byName:false list:\"snat_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false deep:false}"
   },
   "snat_list": {
     "project": true,
-    "untrusted": "{fields:[nat_gateways] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[nat_gateways] whole:false own:[] workload:false deep:false}"
   },
   "stack_apply": {
     "id_args": [
       "job_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
     ],
-    "untrusted": "{fields:[preview error details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview error details] whole:false own:[] workload:false deep:false}"
   },
   "stack_destroy": {
     "destructive": true,
@@ -1019,14 +1019,14 @@
     ]
   },
   "stack_plan": {
-    "untrusted": "{fields:[unknown_fields error] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[unknown_fields error] whole:false own:[] workload:false deep:false}"
   },
   "stack_status": {
     "side_effects": "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it",
     "id_args": [
       "job_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
     ],
-    "untrusted": "{fields:[error details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error details] whole:false own:[] workload:false deep:false}"
   },
   "status": {
     "group": "deploy"
@@ -1047,7 +1047,7 @@
     "id_args": [
       "subnet_id why=\"\" target=true ids=false kind={what:\"subnet\" byName:false list:\"list_subnets\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false deep:false}"
   },
   "tg_create": {
     "project": true,
@@ -1070,13 +1070,13 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"target group\" byName:false list:\"tg_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false deep:false}"
   },
   "tg_get": {
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"target group\" byName:false list:\"tg_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "tg_list": {
     "project": true,
@@ -1095,7 +1095,7 @@
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[name where note] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[name where note] whole:false own:[] workload:false deep:false}"
   },
   "vm_get": {
     "group": "vm",
@@ -1108,11 +1108,11 @@
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[name interfaces security_groups checks exposure image] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[name interfaces security_groups checks exposure image] whole:false own:[] workload:false deep:false}"
   },
   "vm_list": {
     "project": true,
-    "untrusted": "{fields:[vms] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[vms] whole:false own:[] workload:false deep:false}"
   },
   "vm_reboot": {
     "group": "vm",
@@ -1126,7 +1126,7 @@
     "id_args": [
       "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false deep:false}"
   },
   "vm_resize": {
     "group": "vm",
@@ -1140,7 +1140,7 @@
     "id_args": [
       "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false deep:false}"
   },
   "vm_start": {
     "group": "vm",
@@ -1153,7 +1153,7 @@
     "id_args": [
       "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false deep:false}"
   },
   "vm_stop": {
     "group": "vm",
@@ -1167,7 +1167,7 @@
     "id_args": [
       "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false deep:false}"
   },
   "vpc_create": {
     "project": true,
@@ -1182,13 +1182,13 @@
     "id_args": [
       "id why=\"\" target=true ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[resource_status target message] whole:false own:[] workload:false deep:false}"
   },
   "vpc_get": {
     "id_args": [
       "id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "vpc_list": {
     "project": true
@@ -1197,7 +1197,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[error id resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "vpc_route_create": {
     "project": true,
@@ -1235,6 +1235,6 @@
   },
   "whoami": {
     "group": "auth",
-    "untrusted": "{fields:[roles] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[roles] whole:false own:[] workload:false deep:false}"
   }
 }
