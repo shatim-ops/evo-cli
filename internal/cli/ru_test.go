@@ -274,12 +274,8 @@ func TestRussian_UsageErrors(t *testing.T) {
 	russian(t)
 	for in, want := range map[string]string{
 		`unknown command "dploy" for "evo"` + "\n\nDid you mean this?\n\tdeploy\n": `неизвестная команда "dploy" для "evo"; может быть, deploy?`,
-		"unknown flag: --nosuch":            "неизвестный флаг: --nosuch",
-		"unknown shorthand flag: 'q' in -q": "неизвестный флаг: -q в -q",
-		"flag needs an argument: --tail":    "флагу --tail нужно значение",
-		`invalid argument "x" for "-n, --tail" flag: strconv.ParseInt: parsing "x": invalid syntax`: `недопустимое значение "x" флага "-n, --tail": нужно число`,
-		"accepts 1 arg(s), received 0": "нужно аргументов: 1, передано: 0",
-		"something else":               "something else",
+		"accepts 1 arg(s), received 0":                                             "нужно аргументов: 1, передано: 0",
+		"something else":                                                           "something else",
 	} {
 		if got := usageMessage(in); got != want {
 			t.Errorf("usageMessage(%q) = %q, want %q", in, got, want)

@@ -73,22 +73,25 @@ func TestQA14_DeployNegativeDiskSize(t *testing.T) {
 // value and dropped the command name with it).
 func TestQA17_UnknownFlagBeforeCommand(t *testing.T) {
 	setupCLI(t)
+	// An unknown flag is named by its place, a shorthand by its letter: the
+	// text where a flag's name goes may be a secret (#2343).
 	for _, tc := range []struct {
 		args []string
-		flag string
+		want string // in the message, besides "unknown"
+		not  string // not in it
 	}{
-		{[]string{"--bogus", "vm", "list"}, "--bogus"},
-		{[]string{"--json", "--bogus", "vm", "list"}, "--bogus"},
-		{[]string{"--profile", "p", "--bogus", "disk", "delete", "X"}, "--bogus"},
+		{[]string{"--bogus", "vm", "list"}, "(argument 2)", "bogus"},
+		{[]string{"--json", "--bogus", "vm", "list"}, "(argument 3)", "bogus"},
+		{[]string{"--profile", "p", "--bogus", "disk", "delete", "X"}, "(argument 4)", "bogus"},
 		// --non-interactive is a flag of deploy and init only.
-		{[]string{"--non-interactive", "disk", "delete", "X"}, "--non-interactive"},
-		{[]string{"-z", "vm", "list"}, "-z"},
-		{[]string{"-yz", "vm", "list"}, "'z'"},
+		{[]string{"--non-interactive", "disk", "delete", "X"}, "(argument 2)", "non-interactive"},
+		{[]string{"-z", "vm", "list"}, "-z (argument 2)", "command"},
+		{[]string{"-yz", "vm", "list"}, "-z (argument 2)", "command"},
 	} {
 		code, _, stderr := runCLI(t, "", append([]string{"--json"}, tc.args...)...)
 		c, reason, msg := cliJSONError(t, stderr)
 		if code != clerrors.ExitGeneral || c != code || reason != clerrors.CodeUsage ||
-			!strings.Contains(msg, "unknown") || !strings.Contains(msg, strings.Trim(tc.flag, "'")) || strings.Contains(msg, "command") {
+			!strings.Contains(msg, "unknown") || !strings.Contains(msg, tc.want) || strings.Contains(msg, tc.not) || strings.Contains(msg, "command") {
 			t.Errorf("%v: exit %d, %s %q", tc.args, code, reason, msg)
 		}
 	}
@@ -109,13 +112,13 @@ func TestLeadingUnknownFlag(t *testing.T) {
 	}{
 		{[]string{"vm", "list", "--bogus"}, ""}, // after the command: cobra names it itself
 		{[]string{"--profile", "--bogus", "vm"}, ""},
-		{[]string{"--profile=p", "--bogus", "vm"}, "unknown flag: --bogus"},
+		{[]string{"--profile=p", "--bogus", "vm"}, "unknown flag (argument 2)"},
 		{[]string{"--json", "-y", "--dry-run", "--project-id", "x", "--region=z", "vm"}, ""},
 		{[]string{"-h", "vm"}, ""},
 		{[]string{"--version"}, ""},
 		{[]string{"--", "--bogus"}, ""},
-		{[]string{"--bogus=1", "vm"}, "unknown flag: --bogus"},
-		{[]string{"-q", "vm"}, "unknown shorthand flag: 'q' in -q"},
+		{[]string{"--bogus=1", "vm"}, "unknown flag (argument 1)"},
+		{[]string{"-q", "vm"}, "unknown shorthand flag -q (argument 1)"},
 	} {
 		err := leadingUnknownFlag(root, tc.args)
 		got := ""
