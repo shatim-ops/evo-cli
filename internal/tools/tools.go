@@ -30,6 +30,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
+	"github.com/shatim-ops/evo-cli/internal/mk8s"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
@@ -530,7 +531,7 @@ func (s *Registry) registerTools() {
 				"name":         strProp("Addon name (k8s_addons)."),
 				"version":      strProp("App version from k8s_addon_versions; an addon_version only if the newest of its app version. Default: newest ACTIVE."),
 				"config":       map[string]any{"type": "object", "description": "Configuration per the release's schema (k8s_addon_versions full=true), a JSON object or a string of one. Default: the addon's last configuration in the cluster, else its defaults."},
-				"resolve_mode": strProp("Objects of the addon already in the cluster: NONE (default) keeps them, the install may then fail; OVERWRITE replaces them."),
+				"resolve_mode": enumProp("Addon objects in the cluster: NONE (default) keeps them, install may fail; OVERWRITE replaces them.", mk8s.ResolveModes...),
 				"confirmed":    confirmedProp(),
 			}, "cluster_id", "name"),
 		},

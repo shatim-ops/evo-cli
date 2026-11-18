@@ -191,7 +191,7 @@ func CheckBucketName(bucket string) error {
 		return nil
 	}
 	return clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("bucket name %q is not a valid S3 bucket name", "имя бакета %q не подходит для S3", bucket),
+		i18n.T("the bucket name is not a valid S3 bucket name", "имя бакета не подходит для S3"),
 		i18n.T("The buckets of these keys are listed by s3_buckets; a name has no '/' or '\\'.",
 			"Бакеты этих ключей — в выводе s3_buckets; в имени нет '/' и '\\'."))
 }

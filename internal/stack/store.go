@@ -490,8 +490,8 @@ var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[
 // step pending and create it twice. It waits up to maxWait.
 func LockJob(id string, maxWait time.Duration) (unlock func(), err error) {
 	if !jobIDRe.MatchString(id) {
-		return nil, fmt.Errorf(i18n.T("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)",
-			"неверный job_id %q (нужен stk-<10 шестнадцатеричных цифр>, как его возвращает stack_plan)"), id)
+		return nil, errors.New(i18n.T("invalid job_id (want stk-<10 hex digits>, as stack_plan returns)",
+			"неверный job_id (нужен stk-<10 шестнадцатеричных цифр>, как его возвращает stack_plan)"))
 	}
 	dir, err := jobsDir()
 	if err != nil {
@@ -511,8 +511,8 @@ func LockJob(id string, maxWait time.Duration) (unlock func(), err error) {
 // LoadJob reads a job from disk.
 func LoadJob(id string) (*Job, error) {
 	if !jobIDRe.MatchString(id) {
-		return nil, fmt.Errorf(i18n.T("invalid job_id %q (want stk-<10 hex digits>, as stack_plan returns)",
-			"неверный job_id %q (нужен stk-<10 шестнадцатеричных цифр>, как его возвращает stack_plan)"), id)
+		return nil, errors.New(i18n.T("invalid job_id (want stk-<10 hex digits>, as stack_plan returns)",
+			"неверный job_id (нужен stk-<10 шестнадцатеричных цифр>, как его возвращает stack_plan)"))
 	}
 	dir, err := jobsDir()
 	if err != nil {
