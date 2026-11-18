@@ -105,7 +105,7 @@ func markIn(v any) (has, bare bool) {
 // untrustedClassPending are the places known to carry a value of the cloud
 // as evo's, "tool: field" → the finding; each is a line to the owner of
 // the tool. Only shrinks: a line no longer found fails the test. Closes by
-// the tag 1.9 (#2393).
+// 1.9, before the tag (#2393).
 var untrustedClassPending = map[string]string{
 	"ar_delete: next":           "id of the operation in a command, bare (#2253)",
 	"dns_record_delete: next":   "id of the operation in a command, bare (#2253)",
