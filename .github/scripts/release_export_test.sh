@@ -149,7 +149,7 @@ git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 
 # Строки Go, склеенные +, — одна строка («Риск», 342).
 for v in '"docs/" + "internal/x.md"' '"по решению" +\n\t\t"\\u00a0владельца"' '"docs/" + "inter" + "nal"'; do
-	printf "package a\n\n// A does nothing.\nfunc A() string { return $v }\n" >internal/a/a.go
+	printf 'package a\n\n// A does nothing.\nfunc A() string { return %b }\n' "$v" >internal/a/a.go
 	git -c user.name=t -c user.email=t@t commit -qam goconcat
 	rc=0
 	"$here/release_export.sh" HEAD "$tmp/s-cat-$RANDOM" >/dev/null 2>&1 || rc=$?
