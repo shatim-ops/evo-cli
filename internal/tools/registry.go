@@ -397,6 +397,7 @@ func New(factory EngineFactory) *Registry {
 		spec, isList := listSpecs[t.Name]
 		spec.declare(t)
 		noEmptyValue(t, scopeArgs...)
+		noEmptyValue(t, t.Decl.Place...)
 		noEmptyValue(t, spec.own...)
 		if h := r.handlers[t.Name]; h != nil {
 			// Innermost: every policy of the call stands over the list
