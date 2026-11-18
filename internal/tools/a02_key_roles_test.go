@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -127,9 +128,10 @@ func TestWhoami_RolesOfTheKeyOnTheProject(t *testing.T) {
 		t.Errorf("roles_note with the roles known: %v", m["roles_note"])
 	}
 	// A role's name is the cloud's: anyone who may create a custom role
-	// names it (process audit 1.2.1, П9).
-	if u, _ := m["_untrusted"].([]any); len(u) != 1 || u[0] != "roles" {
-		t.Errorf("_untrusted %v, want [roles]", m["_untrusted"])
+	// names it (process audit 1.2.1, П9). project_id is marked by the one
+	// point of every answer (alwaysUntrusted, A19-31).
+	if u, _ := m["_untrusted"].([]any); len(u) != 2 || !slices.Contains(u, any("roles")) || !slices.Contains(u, any("project_id")) {
+		t.Errorf("_untrusted %v, want [project_id roles]", m["_untrusted"])
 	}
 }
 

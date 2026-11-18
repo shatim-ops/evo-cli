@@ -122,10 +122,12 @@ func serviceText(err error) bool {
 // the object a write or a read answers as the service gave it: its node
 // pools, its certificate, its operation, its database, its user (#2406,
 // #2463). repeat_of names the id the cloud gave an earlier call of the same
-// create.
+// create. project_id is the project of a resource as the service names it
+// in a delete's preview or a create's answer; marked wherever it stands,
+// the profile's own too, by the one point (release audit rc.1, A19-31).
 var alwaysUntrusted = []string{"error", "warning", "warnings", "failures", "failed", "preview", "hint", "operation_id",
 	"registry_id", "vpc_id", "zone_id", "record_id", "route_id", "backup_id", "vm_id", "certificate_id", "tg_id", "repeat_of",
-	"node_pools", "certificate", "operation", "database", "user", "disk_id"}
+	"node_pools", "certificate", "operation", "database", "user", "disk_id", "project_id"}
 
 // markAlways adds to "_untrusted" of every answer the fields of
 // alwaysUntrusted it has. It stands outside every policy of the call
