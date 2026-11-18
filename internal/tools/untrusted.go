@@ -114,7 +114,9 @@ func serviceText(err error) bool {
 // project gave, beside evo's own words (owner's decision 17.11, #2254,
 // option Б: one point, not a declaration per tool; closes #2177,
 // #2243–#2247). The marker covers evo's words in them too (docs/mcp.md).
-var alwaysUntrusted = []string{"error", "warning", "warnings", "failures", "failed", "preview", "hint"}
+// operation_id is the id the cloud gave the operation of a write: its
+// text, whatever form it has (#2358).
+var alwaysUntrusted = []string{"error", "warning", "warnings", "failures", "failed", "preview", "hint", "operation_id"}
 
 // markAlways adds to "_untrusted" of every answer the fields of
 // alwaysUntrusted it has. It stands outside every policy of the call
