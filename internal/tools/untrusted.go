@@ -118,9 +118,12 @@ func serviceText(err error) bool {
 // text, whatever form it has (#2358). So is the id of a resource a write
 // answers with: the registry, VPC, DNS zone and record, route, backup, VM,
 // certificate or target group the service named («Риск», 357; #2378). repeat_of names
-// the id the cloud gave an earlier call of the same create.
+// the id the cloud gave an earlier call of the same create. project_id is
+// the project of a resource as the service names it: a delete's preview, a
+// create's answer (release audit rc.1, A19-31).
 var alwaysUntrusted = []string{"error", "warning", "warnings", "failures", "failed", "preview", "hint", "operation_id",
-	"registry_id", "vpc_id", "zone_id", "record_id", "route_id", "backup_id", "vm_id", "certificate_id", "tg_id", "repeat_of"}
+	"registry_id", "vpc_id", "zone_id", "record_id", "route_id", "backup_id", "vm_id", "certificate_id", "tg_id", "repeat_of",
+	"project_id"}
 
 // markAlways adds to "_untrusted" of every answer the fields of
 // alwaysUntrusted it has. It stands outside every policy of the call
