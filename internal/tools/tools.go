@@ -555,7 +555,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_helm",
-			Description: "Helm on a cluster: install/upgrade/uninstall require confirmed=true after the user approves. Every call runs helm again: a repeated install/upgrade upgrades the same release, not a second one; over MCP: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart. A value of set or values under a key that names a secret (password, token, …) and the password of an address are hidden where helm quotes them; a secret under another key is not.",
+			Description: "Helm on a cluster: install/upgrade/uninstall require confirmed=true after the user approves. A repeated install/upgrade upgrades the same release; over MCP: status deploying, then action=status. In helm's output evo hides set/values under a secret key (password, token…) and an address's password, not other keys.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),
