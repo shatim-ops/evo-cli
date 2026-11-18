@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,9 +15,9 @@ import (
 	"net/http"
 	neturl "net/url"
 	"os"
-	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -524,43 +525,46 @@ func healthTarget(u *neturl.URL) string {
 	return (&neturl.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}).String()
 }
 
-// healthHidden is an error of a healthcheck's request whose text says none
-// of the secrets of the address u: the error of net/http may carry an
-// address of its own — a Location of a redirect that did not parse — and
-// the server may copy the query of the request, or the user and the
-// password it got, into it (Астра, #2381 reopened). The error it wraps stays in the chain:
-// the messages of the network read its kind.
-type healthHidden struct {
-	err error
-	u   *neturl.URL
+// healthFailure is the error of a healthcheck's request: the class of the
+// failure and the address probed (healthTarget), never the text of the
+// error of net/http. That text may carry an address of its own — a
+// Location of a redirect that did not parse — into which the server may
+// copy the user, the password and the query of the request, encoded or
+// reordered; no list of replacements holds every form of them (Астра
+// #2381, #2511; «Риск», the condition of #2511). The error it wraps stays
+// in the chain: what reads the kind of a failure of the network reads it.
+type healthFailure struct {
+	err    error
+	target string
 }
 
-func (h healthHidden) Error() string {
-	text := h.err.Error()
-	var secrets []string
-	if h.u.User != nil {
-		// A token may stand for the user as well as for the password.
-		secrets = append(secrets, h.u.User.Username())
-		if pw, ok := h.u.User.Password(); ok {
-			secrets = append(secrets, pw)
-		}
-	}
-	secrets = append(secrets, h.u.RawQuery, h.u.Fragment, h.u.RawFragment)
-	for _, vs := range h.u.Query() {
-		secrets = append(secrets, vs...)
-	}
-	// The longest first: a value that holds another is hidden whole, and
-	// the order does not follow the map's (the query values).
-	slices.SortFunc(secrets, func(a, b string) int { return len(b) - len(a) })
-	for _, s := range secrets {
-		if s != "" {
-			text = strings.ReplaceAll(text, s, "<hidden>")
-		}
-	}
-	return text
+func (h healthFailure) Error() string {
+	return i18n.Tf("%s: %s", "%s: %s", h.target, healthClass(h.err))
 }
 
-func (h healthHidden) Unwrap() error { return h.err }
+func (h healthFailure) Unwrap() error { return h.err }
+
+// healthClass names the class of the failure of a request: words of evo,
+// none of the text of the error.
+func healthClass(err error) string {
+	var dns *net.DNSError
+	var cert *tls.CertificateVerificationError
+	var timeout interface{ Timeout() bool }
+	switch {
+	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout()):
+		return i18n.T("no answer in time", "нет ответа за отведённое время")
+	case errors.As(err, &dns):
+		return i18n.T("the host does not resolve", "имя хоста не разрешается")
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return i18n.T("connection refused", "в соединении отказано")
+	case errors.As(err, &cert):
+		return i18n.T("the TLS certificate is not trusted", "сертификат TLS не доверенный")
+	case strings.Contains(err.Error(), "Location header"):
+		// The one class read from the text: net/http gives no type for it.
+		return i18n.T("the address of a redirect does not parse", "адрес перенаправления не разбирается")
+	}
+	return i18n.T("the request failed", "запрос не выполнен")
+}
 
 func newMCPHealthcheckCmd() *cobra.Command {
 	var url string
@@ -590,14 +594,7 @@ func newMCPHealthcheckCmd() *cobra.Command {
 			target := healthTarget(req.URL)
 			resp, err := (&http.Client{Transport: httpretry.DefaultBase}).Do(req)
 			if err != nil {
-				var ue *neturl.Error
-				if errors.As(err, &ue) {
-					// *url.Error names the address with its query; the
-					// messages of the network read its host, so it stays,
-					// with the address the answer names.
-					err = &neturl.Error{Op: ue.Op, URL: target, Err: healthHidden{ue.Err, req.URL}}
-				}
-				return fmt.Errorf(i18n.T("healthcheck: %w", "проверка состояния: %w"), err)
+				return fmt.Errorf(i18n.T("healthcheck: %w", "проверка состояния: %w"), healthFailure{err, target})
 			}
 			defer resp.Body.Close()
 			_, _ = io.Copy(io.Discard, resp.Body)
