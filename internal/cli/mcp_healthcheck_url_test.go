@@ -90,3 +90,33 @@ func TestMCPHealthcheck_URLSecretsNotEchoed(t *testing.T) {
 		})
 	}
 }
+
+// A server that answers with a redirect whose Location does not parse
+// puts the Location into the error of net/http whole — the query of the
+// request with it, when the server copies it there. The error of the
+// healthcheck says neither the password nor the query of the address, on
+// a real HTTP client (Астра, #2381 reopened).
+func TestMCPHealthcheck_RedirectErrorHidesTheAddressSecrets(t *testing.T) {
+	const pw, tok = "s3cr3tPw2381r", "t0ken2381r"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "http://127.0.0.1:bad/healthz?"+r.URL.RawQuery+"#"+pw)
+		w.WriteHeader(http.StatusFound)
+	}))
+	t.Cleanup(srv.Close)
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = http.DefaultTransport
+	t.Cleanup(func() { httpretry.DefaultBase = old })
+	t.Setenv("MCP_HEALTHCHECK_URL", "")
+	addr := strings.Replace(srv.URL, "http://", "http://user:"+pw+"@", 1) + "/redirect?token=" + tok
+	for _, args := range [][]string{{"mcp", "healthcheck", "--url", addr}, {"--json", "mcp", "healthcheck", "--url", addr}} {
+		out, errOut, code := execCLI(t, args...)
+		if code == 0 {
+			t.Fatalf("%v: a redirect that does not parse answers healthy: %s", args, out)
+		}
+		for _, secret := range []string{pw, tok} {
+			if strings.Contains(out+errOut, secret) {
+				t.Errorf("%v: the error repeats %q of the address:\n%s%s", args, secret, out, errOut)
+			}
+		}
+	}
+}
