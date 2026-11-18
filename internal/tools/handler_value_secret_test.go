@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"testing"
@@ -98,6 +99,29 @@ func TestHandlers_FormRefusalDoesNotEchoTheValue(t *testing.T) {
 		}
 		if usage < 5 {
 			t.Fatalf("%s: only %d refusals of a handler: the walk lost the tools", lang, usage)
+		}
+	}
+}
+
+// agent_skill refuses an unknown group by the rule and the list of groups,
+// not by the value: by the enum of the schema, which the handler checks
+// first, and by handleAgentSkill's own refusal behind it, reached here by
+// a call of it alone (the owner's rule of #2459; «Риск», 402, У2).
+func TestAgentSkill_UnknownGroupIsNotRepeated(t *testing.T) {
+	const secret = "s3cr3t-group-27182818"
+	r := New(nil)
+	tl, ok := r.Lookup("agent_skill")
+	if !ok {
+		t.Fatal("no tool agent_skill")
+	}
+	args := map[string]any{"group": secret}
+	for name, call := range map[string]func() (string, bool){
+		"the handler":      func() (string, bool) { return tl.Handler(context.Background(), args) },
+		"handleAgentSkill": func() (string, bool) { return r.handleAgentSkill(context.Background(), args) },
+	} {
+		text, isErr := call()
+		if !isErr || strings.Contains(text, "s3cr3t") || !strings.Contains(text, "vm") {
+			t.Errorf("%s: want the refusal by the rule and the list of groups, without the value: %v %s", name, isErr, text)
 		}
 	}
 }

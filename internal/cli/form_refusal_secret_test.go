@@ -11,9 +11,11 @@ import (
 
 // The refusals evo words itself of a value of the wrong form, or of one
 // outside a closed list, do not repeat it: a project ID that is no UUID,
-// a tenant ID, a profile name, a group of tools, a client of evo agent
-// setup, a port, EVO_LANG (release audit rc.1, A19-11, #2431; the owner's
-// rule of #2459: the form, without the value).
+// a tenant ID, a profile name, a group of tools (tools list, agent skill,
+// agent_skill), a client, --http, --scope and --print of evo agent setup,
+// --for and --key-ttl of evo login, a port, EVO_LANG (release audit rc.1,
+// A19-11, #2431; the owner's rule of #2459: the form, without the value;
+// «Риск», 402).
 func TestFormRefusals_DoNotRepeatTheValue(t *testing.T) {
 	const secret = "s3cr3t-form-31415926535897"
 	for _, c := range []struct {
@@ -28,6 +30,14 @@ func TestFormRefusals_DoNotRepeatTheValue(t *testing.T) {
 		{nil, []string{"agent", "setup", "--client", secret}},
 		{nil, []string{"tools", "call", "open_ports", "--arg", "security_group=web", "--arg", "ports=" + secret}},
 		{map[string]string{"EVO_LANG": secret}, []string{"version"}},
+		// A URL of another scheme may hold a password in its userinfo.
+		{nil, []string{"agent", "setup", "--client", "claude-code", "--http", "ftp://u:" + secret + "@host/mcp", "--print", "json"}},
+		{nil, []string{"agent", "setup", "--client", "claude-code", "--scope", secret}},
+		{nil, []string{"agent", "setup", "--client", "claude-code", "--print", secret}},
+		{nil, []string{"login", "--for", secret}},
+		{nil, []string{"login", "--key-ttl", secret}},
+		{nil, []string{"agent", "skill", "--group", secret}},
+		{nil, []string{"tools", "call", "agent_skill", "--arg", "group=" + secret}},
 	} {
 		for _, extra := range [][]string{nil, {"--json"}} {
 			setupCLI(t)

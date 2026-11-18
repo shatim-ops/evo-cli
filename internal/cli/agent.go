@@ -305,7 +305,7 @@ func (o agentSetupOptions) server(c agentClient) (agentServer, error) {
 	}
 	if u, err := url.Parse(o.httpURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return agentServer{}, clerrors.New(clerrors.CodeUsage,
-			i18n.Tf("--http %q is not an http(s) URL", "--http %q — не адрес http(s)", o.httpURL),
+			i18n.T("--http is not an http(s) URL", "--http — не адрес http(s)"),
 			i18n.T("Give the MCP endpoint of the server, e.g. --http http://127.0.0.1:8080/mcp",
 				"Укажите адрес MCP сервера, например --http http://127.0.0.1:8080/mcp"))
 	}
@@ -366,7 +366,7 @@ func (c agentClient) scopeFor(scope string) (agentScope, error) {
 		want = c.defaultScope()
 	}
 	if want != scopeProject && want != scopeUser {
-		return "", clerrors.New(clerrors.CodeUsage, i18n.Tf("--scope %q: project or user", "--scope %q: project или user", scope), "")
+		return "", clerrors.New(clerrors.CodeUsage, i18n.T("--scope: project or user", "--scope: project или user"), "")
 	}
 	switch {
 	case slices.Contains(have, want):
@@ -519,7 +519,7 @@ func runAgentSetup(cmd *cobra.Command, o agentSetupOptions) error {
 // printAgentEntry prints the client's entry in format and writes nothing.
 func printAgentEntry(cmd *cobra.Command, printer *output.Printer, c agentClient, srv agentServer, format string) error {
 	if format != string(formatJSON) && format != string(formatTOML) {
-		return clerrors.New(clerrors.CodeUsage, i18n.Tf("--print %q: json or toml", "--print %q: json или toml", format), "")
+		return clerrors.New(clerrors.CodeUsage, i18n.T("--print: json or toml", "--print: json или toml"), "")
 	}
 	entry, placeholder := c.entry(srv.spec)
 	doc := c.render(configFormat(format), entry)

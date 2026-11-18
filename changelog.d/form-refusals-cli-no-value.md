@@ -4,7 +4,9 @@
   - Было, со значением целиком: `configure --project-id` («ID проекта "…" — не UUID»), `configure s3 --tenant-id`,
     недопустимое имя профиля (`--profile`, `CLOUDRU_PROFILE`), `tools list --group` и карточка группы,
     `agent setup --client`, неверный порт (`vm create --port`, `deploy`), предупреждение о неподдерживаемом
-    `EVO_LANG`, элемент `dns_servers` у `subnet_create` (`evo vpc subnet-create --dns-servers`), в CLI и MCP.
+    `EVO_LANG`, элемент `dns_servers` у `subnet_create` (`evo vpc subnet-create --dns-servers`), в CLI и MCP;
+    `agent setup --http` (адрес не http(s) — с паролем в userinfo тоже), `--scope`, `--print`; `login --for`,
+    `--key-ttl`.
   - Стало: аргумент и правило — «ID проекта — не UUID», «неизвестная группа» со списком групп, «неверный порт
     (элемент N списка)», «dns_servers[N]: значение — не адрес IPv4» и т. п.
   - Объект `--arg <имя>={…}`, который не JSON, — вид и место ошибки, как у `--args-json` («не JSON (байт N)»); раньше
