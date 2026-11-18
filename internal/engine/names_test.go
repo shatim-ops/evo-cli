@@ -164,7 +164,7 @@ func TestDeployDestroy_PortAlreadyOpenIsSaid(t *testing.T) {
 	if err := eng.Deploy(context.Background(), opts); err != nil {
 		t.Fatalf("Deploy: %v", err)
 	}
-	if !strings.Contains(buf.String(), "port 443 is already open in group SSH-access_ru-moscow-1 — no rule created, destroy will not touch it") {
+	if !strings.Contains(buf.String(), "port 443 is already open in group \"SSH-access_ru-moscow-1\" — no rule created, destroy will not touch it") {
 		t.Errorf("deploy output:\n%s", buf.String())
 	}
 	rec := readActive(t, dir)

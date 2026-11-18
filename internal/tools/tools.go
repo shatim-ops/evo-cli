@@ -67,7 +67,7 @@ func (s *Registry) registerTools() {
 			Name: "provision",
 			Description: "Provision a bare VM (docker-compose: use 'deploy'). Public floating IP unless no_public_ip. " +
 				"evo fills the image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata. " +
-				"Refused before anything is created: no image or region ('missing' names it), an image the project cannot use, a mandatory field not given. " +
+				"Refused before any create: no image or region ('missing' names it), an image the project cannot use, a required field not given. " +
 				"Returns ssh, password (generated; this answer only), state_dir (key, state).",
 			InputSchema: objSchema(map[string]any{
 				"name":       strProp("VM name."),
@@ -82,7 +82,7 @@ func (s *Registry) registerTools() {
 					"description": "Inbound ports to open from cidr, e.g. [\"80\", \"53/udp\"] (tcp by default), in the zone's shared security group; destroy deletes the rules evo created."},
 				"cidr":         cidrProp(portsCidrDesc),
 				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10 or the image's min_disk).")),
-				"subnet_id":    strProp("Subnet UUID or name (default: the zone's)."),
+				"subnet_id":    strProp("Subnet UUID or name (default: zone's)."),
 				"no_public_ip": boolProp("Private VM, no floating IP."),
 				"confirmed":    confirmedProp(),
 				"wait":         boolProp(waitDesc),
@@ -815,7 +815,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster. Refuses a taken name. Default subnet: the main subnet of the profile's zone. No public access: the API has no such parameter.",
+			Description: "Create a Managed PostgreSQL cluster. Refuses a taken name. No subnet_id: the main subnet of the profile's zone. No public access (no API parameter).",
 			InputSchema: objSchema(map[string]any{
 				"name":                  strProp("Cluster name."),
 				"version":               strProp("Version. Default: latest."),
@@ -930,7 +930,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Refuses a taken name. All hosts go to the subnet's zone (default: the configured zone's main subnet, else another zone's). MASTER_REPLICA (default): a master and two replicas, three billed hosts per shard; STANDALONE: one host.",
+			Description: "Create a Managed Redis cluster. Refuses a taken name. All hosts go to the subnet's zone (default: the zone's main subnet, else another zone's). MASTER_REPLICA (default): a master and two replicas, three billed hosts per shard; STANDALONE: one host.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name."),
 				"version_id":       strProp("Version UUID. Default: latest."),
