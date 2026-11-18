@@ -270,10 +270,18 @@ func (r *Registry) journalCheck(dir string) (DoctorCheck, bool) {
 		c.Status, c.Files = CheckWarn, s.Deferred
 		var files []string
 		for _, f := range s.Deferred {
+			if f.Name == history.LiveName {
+				// Lines of LiveName not read are evo's own when the mark of
+				// the days pruned is gone: they are not said to be another's,
+				// and LiveName is never to be removed («Риск», 358, У4).
+				files = append(files, i18n.Tf("%s: %d lines not read — the mark of the days pruned is gone or older than them; %d lines evo did not write, %d live; %s is not to be moved or removed whatever the counts",
+					"%s: строк не читается — %d: метки вычищенных дней нет или она старше их; строк не от evo — %d, живых — %d; %s не переносить и не удалять ни при каком счёте", f.Name, f.Unread, f.NotEvos, f.Live, f.Name))
+				continue
+			}
 			files = append(files, i18n.Tf("%s: %d lines evo did not write, %d live", "%s: строк не от evo — %d, живых — %d", f.Name, f.NotEvos, f.Live))
 		}
-		c.Detail += i18n.Tf("; the pruning is put off: lines evo did not write would change what history finds live if it went on — nothing is removed and the journal grows; it tries again each day while they are there (%s). history shows what is live. A file with live lines is not to be moved or removed: a live line is a resource made and not removed, or an outcome not known",
-			"; очистка отложена: строки, которых evo не писал, изменили бы то, что history находит живым, — ничего не удаляется, и журнал растёт; очистка пробует снова каждый день, пока они есть (%s). Живое показывает history. Файл с живыми строками не переносить и не удалять: живая строка — ресурс, созданный и не удалённый, или неизвестный итог", strings.Join(files, "; "))
+		c.Detail += i18n.Tf("; the pruning is put off: going on would change what history finds live — nothing is removed and the journal grows; it tries again each day (%s). history shows what is live. A file with live lines is not to be moved or removed: a live line is a resource made and not removed, or an outcome not known",
+			"; очистка отложена: продолжение изменило бы то, что history находит живым, — ничего не удаляется, и журнал растёт; очистка пробует снова каждый день (%s). Живое показывает history. Файл с живыми строками не переносить и не удалять: живая строка — ресурс, созданный и не удалённый, или неизвестный итог", strings.Join(files, "; "))
 	}
 	if s.Unfinished {
 		// A pruning that did not fit its limit of time is said: the journal

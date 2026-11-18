@@ -54,7 +54,7 @@ const (
 	retiredName = "retired"
 	// deferredName names, one a line, the files that hold lines evo does
 	// not write where a pruning was left undone (Pruned.Deferred), each
-	// with how many such lines and how many live ones it holds: doctor
+	// with its counts (DeferredFile): doctor
 	// says so; the next pruning that goes on removes it.
 	deferredName = "deferred"
 	// unfinishedName marks the day a pruning did not fit its limit of
@@ -73,12 +73,15 @@ const (
 var pruneLimit = 10 * time.Second
 
 // DeferredFile is a file a pruning was left undone for: its name, how many
-// of its lines evo does not write (NotEvos) and how many are live (Live) —
-// a resource made and not removed, an outcome not known: the file is not
-// one to remove while any is.
+// of its lines evo does not write (NotEvos), how many lines of LiveName are
+// not read — of days after the mark, or with the mark gone: evo's own may
+// be among them («Риск», conclusion 358, У4) — and how many are live
+// (Live): a resource made and not removed, an outcome not known. The file
+// is not one to remove while any is, and LiveName never.
 type DeferredFile struct {
 	Name    string `json:"name"`
-	NotEvos int    `json:"lines_not_evos"`
+	NotEvos int    `json:"lines_not_evos,omitempty"`
+	Unread  int    `json:"lines_not_read,omitempty"`
 	Live    int    `json:"live_lines"`
 }
 
@@ -359,15 +362,17 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 			f, r := DeferredFile{Name: name}, from[name]
 			for i := r[0]; i < r[1]; i++ {
 				switch {
+				case all[i].stray && name == LiveName:
+					f.Unread++
 				case all[i].stray || name == LiveName && all[i].ok && !live[i]:
 					f.NotEvos++
 				case all[i].ok && live[i]:
 					f.Live++
 				}
 			}
-			if f.NotEvos > 0 {
+			if f.NotEvos > 0 || f.Unread > 0 {
 				p.Deferred = append(p.Deferred, f)
-				fmt.Fprintf(&mark, "%s\t%d\t%d\n", f.Name, f.NotEvos, f.Live)
+				fmt.Fprintf(&mark, "%s\t%d\t%d\t%d\n", f.Name, f.NotEvos, f.Unread, f.Live)
 			}
 		}
 		if err := config.WriteFileAtomic(filepath.Join(dir, deferredName), []byte(mark.String()), 0o600); err != nil {
@@ -471,11 +476,11 @@ func DeferredFiles(dir string) []DeferredFile {
 	for _, l := range strings.Split(string(data), "\n") {
 		var f DeferredFile
 		parts := strings.Split(l, "\t")
-		if len(parts) != 3 || !fileForm.MatchString(parts[0]) && parts[0] != LiveName && parts[0] != StrayName {
+		if len(parts) != 4 || !fileForm.MatchString(parts[0]) && parts[0] != LiveName && parts[0] != StrayName {
 			continue
 		}
 		f.Name = parts[0]
-		if _, err := fmt.Sscanf(parts[1]+" "+parts[2], "%d %d", &f.NotEvos, &f.Live); err != nil {
+		if _, err := fmt.Sscanf(strings.Join(parts[1:], " "), "%d %d %d", &f.NotEvos, &f.Unread, &f.Live); err != nil {
 			continue
 		}
 		files = append(files, f)

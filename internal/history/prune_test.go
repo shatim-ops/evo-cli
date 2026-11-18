@@ -566,7 +566,7 @@ func TestPrune_ALineInLiveOfADayNotRetiredIsNotTaken(t *testing.T) {
 		t.Fatalf("live %v; want the unknown, the delete of another day not taken", before)
 	}
 	p, err := Prune(dir, pruneNow, nil)
-	if want := []DeferredFile{{Name: LiveName, NotEvos: 1}}; err != nil || len(p.Retired) != 0 || !reflect.DeepEqual(p.Deferred, want) {
+	if want := []DeferredFile{{Name: LiveName, Unread: 1}}; err != nil || len(p.Retired) != 0 || !reflect.DeepEqual(p.Deferred, want) {
 		t.Fatalf("pruned %+v, %v; want it put off with %+v", p, err, want)
 	}
 	if after := liveTexts(t, dir, nil); strings.Join(after, "\n") != strings.Join(before, "\n") {
@@ -716,7 +716,7 @@ func TestPrune_AMarkGoneMovesNoLiveLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, err := Prune(dir, pruneNow.AddDate(0, 0, 1), nil)
-	if want := []DeferredFile{{Name: LiveName, NotEvos: 1}}; err != nil || !reflect.DeepEqual(p.Deferred, want) {
+	if want := []DeferredFile{{Name: LiveName, Unread: 1}}; err != nil || !reflect.DeepEqual(p.Deferred, want) {
 		t.Errorf("the mark gone: %+v, %v; want it put off with %+v", p, err, want)
 	}
 	if strays, _ := os.ReadFile(filepath.Join(dir, StrayName)); len(strays) != 0 {
