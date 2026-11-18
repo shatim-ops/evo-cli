@@ -412,6 +412,7 @@ type diskCloud struct {
 	stuck     string // the state the disk stays in, when set
 	attachErr error
 	attached  bool
+	madeID    string // the id the create answers; the UUID of d1 when ""
 }
 
 func (*diskCloud) SetToken(string) {}
@@ -421,8 +422,11 @@ func (c *diskCloud) GetDisk(_ context.Context, id string) (map[string]any, error
 func (*diskCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
 	return []*provision.VM{{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "web", Region: "z"}}, nil
 }
-func (*diskCloud) CreateDisk(context.Context, provision.CreateDiskReq) (map[string]any, error) {
-	return map[string]any{"id": "00000000-0000-4000-8000-0000000000d1", "name": "data", "state": "creating"}, nil
+func (c *diskCloud) CreateDisk(context.Context, provision.CreateDiskReq) (map[string]any, error) {
+	return map[string]any{"id": c.made(), "name": "data", "state": "creating"}, nil
+}
+func (c *diskCloud) made() string {
+	return firstNonEmptyStr(c.madeID, "00000000-0000-4000-8000-0000000000d1")
 }
 func (c *diskCloud) state() string {
 	if c.stuck != "" {
@@ -435,7 +439,7 @@ func (c *diskCloud) state() string {
 }
 func (c *diskCloud) ListDisks(context.Context, string) ([]map[string]any, error) {
 	c.lists++
-	return []map[string]any{{"id": "00000000-0000-4000-8000-0000000000d0", "state": "available"}, {"id": "00000000-0000-4000-8000-0000000000d1", "state": c.state()}}, nil
+	return []map[string]any{{"id": "00000000-0000-4000-8000-0000000000d0", "state": "available"}, {"id": c.made(), "state": c.state()}}, nil
 }
 func (c *diskCloud) AttachDisk(context.Context, string, string, string) (map[string]any, error) {
 	if c.attachErr != nil {
