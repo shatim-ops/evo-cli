@@ -266,8 +266,9 @@ func TestUntrustedNames_PgGetMarksTheName(t *testing.T) {
 	if u, _ := m["_untrusted"].([]any); !slices.Contains(u, any("name")) || slices.Contains(u, any("access")) {
 		t.Errorf("pg_get: _untrusted %v, want the cluster's fields with name and without access, evo's: %s", m["_untrusted"], text)
 	}
-	// A refusal is evo's answer: nothing in it is marked.
-	if _, text, isErr := callNamed(t, r, "pg_get", nil); !isErr || strings.Contains(text, "_untrusted") {
+	// A refusal is evo's answer: only the fields every answer marks
+	// (alwaysUntrusted, #2254), not the cluster's.
+	if m, text, isErr := callNamed(t, r, "pg_get", nil); !isErr || slices.ContainsFunc(stringList(m["_untrusted"]), func(f string) bool { return !slices.Contains(alwaysUntrusted, f) }) {
 		t.Errorf("pg_get without an id: %s", text)
 	}
 }

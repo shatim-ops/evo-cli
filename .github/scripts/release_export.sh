@@ -65,7 +65,7 @@ done < <(find "$out" -type f -not -path "$out/.git/*")
 
 # Маркеры внутреннего.
 # Астра — внешняя проверка, кириллицей; латинское Astra — это Astra Linux.
-markers='docs/internal|«Риск|«Риска»|Risk», conclusion|conclusion [0-9]|«Процесс|«разработк|— релиз|Астр(а|ы|е|у|ой)[ ,.)#]|evo-internal|решени[^ ]{0,4} владельца|owner'"'"'s decision|release-plan|handoff/|RELEASING\.md|DECISIONS\.md|changelog\.d'
+markers='docs/internal|«Риск|«Риска»|Risk», conclusion|conclusion [0-9]|«Процесс|«разработк|— релиз|Астр(а|ы|е|у|ой)[ ,.)#]|evo-internal|(Р|р)ешени[^ ]{0,4} владельца|owner'"'"'s decision|release-plan|handoff/|RELEASING\.md|DECISIONS\.md|changelog\.d'
 gofiles=0
 while IFS= read -r f; do
 	rel=${f#"$out"/}
@@ -97,7 +97,7 @@ func main() {
 	re := regexp.MustCompile(os.Args[2])
 	root := os.Args[1]
 	bad := 0
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
 			return err
 		}
@@ -121,15 +121,32 @@ func main() {
 		}
 		return nil
 	})
+	if walkErr != nil {
+		// A file not read is a file not checked: not «clean» («Риск», 335).
+		fmt.Fprintln(os.Stderr, walkErr)
+		os.Exit(2)
+	}
 	if bad > 0 {
 		os.Exit(1)
 	}
 }
 GO
-if ! found=$(cd "$scan" && go run scan.go "$out" "$markers"); then
+rc=0
+# Бинарь, а не go run: go run сводит код программы к 1, а ошибка чтения
+# (2) — не то же, что маркер (1).
+(cd "$scan" && go build -o scan scan.go) || { echo "release_export: сканер строк Go не собрался" >&2; exit 2; }
+found=$("$scan/scan" "$out" "$markers") || rc=$?
+case "$rc" in
+0) ;;
+1)
 	while IFS= read -r l; do echo "::error::маркер внутреннего в строке Go $l"; done <<<"$found"
 	bad=1
-fi
+	;;
+*)
+	echo "::error::строки Go не проверены (сканер, код $rc)"
+	bad=1
+	;;
+esac
 echo "файлов Go с маркерами внутреннего в комментариях: $gofiles"
 [ "$bad" = 0 ] || { echo "release_export: снимок не чист — не коммичу" >&2; exit 1; }
 

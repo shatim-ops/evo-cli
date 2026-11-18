@@ -238,12 +238,12 @@ func (s *Registry) planTgCreate(ctx context.Context, args map[string]any) (*Plan
 		vmid, _ := sp["id"].(string)
 		det, e := eng.Cloud.GetVMDetail(ctx, vmid)
 		if e != nil {
-			return nil, fmt.Errorf(i18n.T("resolve interface for vm %s: %w", "разрешение интерфейса ВМ %s: %w"), vmid, e)
+			return nil, fmt.Errorf(i18n.T("resolve interface for vm %s: %w", "разрешение интерфейса ВМ %s: %w"), quoteCloud(vmid), e)
 		}
 		if ifid, _ := sp["interface_id"].(string); ifid == "" {
 			ni := pickVMInterface(det)
 			if ni == nil {
-				return nil, fmt.Errorf(i18n.T("vm %s has no usable network interface (NLB targets need a private VPC-subnet VM — provision with no_public_ip)", "у ВМ %s нет подходящего сетевого интерфейса (цель балансировщика — ВМ в подсети VPC без публичного IP: provision с no_public_ip)"), vmid)
+				return nil, fmt.Errorf(i18n.T("vm %s has no usable network interface (NLB targets need a private VPC-subnet VM — provision with no_public_ip)", "у ВМ %s нет подходящего сетевого интерфейса (цель балансировщика — ВМ в подсети VPC без публичного IP: provision с no_public_ip)"), quoteCloud(vmid))
 			}
 			specs[i]["interface_id"] = ni.ID
 			if ni.Type != "" {
@@ -355,7 +355,7 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		// The balancer shares its target group's VPC (release audit
 		// re-run, N-01).
 		return nil, clierrors.New(clierrors.CodeConfigInvalid,
-			i18n.Tf("target group %s is in VPC %s, not in vpc_id %s; nothing was created", "целевая группа %s в VPC %s, а не в vpc_id %s; ничего не создано", tgID, tgVPC, vpcID),
+			i18n.Tf("target group %s is in VPC %s, not in vpc_id %s; nothing was created", "целевая группа %s в VPC %s, а не в vpc_id %s; ничего не создано", tgID, quoteCloud(tgVPC), vpcID),
 			i18n.T("Omit vpc_id (the balancer takes its target group's VPC) or pass a target group of that VPC.", "Не указывайте vpc_id (балансировщик возьмёт VPC целевой группы) или передайте целевую группу этой VPC."))
 	}
 	if vpcID == "" {
