@@ -140,6 +140,42 @@ for c in "docs/note.tpl:см. docs/internal/x" "internal/a/skill.tmpl:по ре�
 	done
 	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
 done
+# Корректный UTF-8 с буквой на границе буфера iconv macOS (1023, 4095,
+# 8191 байт ASCII перед «я») — не провал: кодировку проверяет помощник на Go,
+# одинаково на всех системах (Астра #2365).
+for n in 1023 4095 8191; do
+	{ head -c "$n" /dev/zero | tr '\0' a; printf 'я\n'; } >docs/edge.md
+	git add docs/edge.md && git -c user.name=t -c user.email=t@t commit -qm "edge $n"
+	rc=0
+	log=$("$here/release_export.sh" HEAD "$tmp/s-edge-$n" 2>&1) || rc=$?
+	[ "$rc" = 0 ] || { echo "FAIL: корректный UTF-8 ($n байт перед «я») — код $rc: $log"; fail=1; }
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+# Документ с NUL — провал: маркер за NUL grep может не увидеть.
+printf 'guide\000docs/internal\n' >docs/guide.md
+git -c user.name=t -c user.email=t@t commit -qam nul
+rc=0
+log=$("$here/release_export.sh" HEAD "$tmp/s-nul" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: документ с NUL — код $rc, ждём 1"; fail=1; }
+case "$log" in *"не в UTF-8 (или с NUL)"*"docs/guide.md"*) ;; *) echo "FAIL: документ с NUL не назван: $log"; fail=1 ;; esac
+git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+# Окончание в три-четыре буквы при поиске по байтам (LC_ALL=C) — маркер.
+for text in 'по решениями владельца' 'решениях владельца'; do
+	echo "$text" >>docs/guide.md
+	git -c user.name=t -c user.email=t@t commit -qam ending
+	rc=0
+	LC_ALL=C "$here/release_export.sh" HEAD "$tmp/s-end-$RANDOM" >/dev/null 2>&1 || rc=$?
+	[ "$rc" = 1 ] || { echo "FAIL: «${text}» при LC_ALL=C — код $rc, ждём 1"; fail=1; }
+	git -c user.name=t -c user.email=t@t revert --no-edit HEAD >/dev/null
+done
+# Ошибка поиска маркера — провал, а не «маркеров нет» (Астра #2364).
+mkdir -p "$tmp/badgrep"
+printf '#!/bin/sh\nexit 2\n' >"$tmp/badgrep/grep" && chmod +x "$tmp/badgrep/grep"
+rc=0
+log=$(PATH="$tmp/badgrep:$PATH" "$here/release_export.sh" HEAD "$tmp/s-badgrep" 2>&1) || rc=$?
+[ "$rc" = 1 ] || { echo "FAIL: grep с ошибкой — код $rc, ждём 1"; fail=1; }
+case "$log" in *"поиск маркера не выполнен"*) ;; *) echo "FAIL: ошибка grep не названа: $log"; fail=1 ;; esac
+
 # Не текст без маркера и неразрывный пробел без маркера — не провал.
 printf '\377\376\000\001' >docs/logo.bin
 printf 'обычный%sтекст\n' "$nb" >>docs/guide.md
