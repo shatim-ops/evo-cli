@@ -311,11 +311,12 @@ func TestOpWait_ProgressLine(t *testing.T) {
 		got := seen.String()
 		switch mode {
 		case output.ModeText:
-			if !strings.HasPrefix(got, "\r    waiting for the operation… 0s (RUNNING)") || !regexp.MustCompile(`\r {20,}\r$`).MatchString(got) {
+			// The state is the cloud's: quoted (A19-12, #2432).
+			if !strings.HasPrefix(got, "\r    waiting for the operation… 0s (\"RUNNING\")") || !regexp.MustCompile(`\r {20,}\r$`).MatchString(got) {
 				t.Errorf("terminal: %q", got)
 			}
 		default:
-			if got != "    waiting for the operation… 0s (RUNNING)\n" {
+			if got != "    waiting for the operation… 0s (\"RUNNING\")\n" {
 				t.Errorf("no terminal: %q", got)
 			}
 		}

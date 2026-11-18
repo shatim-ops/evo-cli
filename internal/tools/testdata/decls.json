@@ -345,7 +345,8 @@
     "untrusted": "{fields:[zones] whole:false own:[] workload:false deep:false}"
   },
   "doctor": {
-    "group": "auth"
+    "group": "auth",
+    "untrusted": "{fields:[checks] whole:false own:[] workload:false deep:false}"
   },
   "fip_attach": {
     "group": "vpc",
@@ -399,7 +400,7 @@
       "image why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}",
       "image_id why=\"\" target=false ids=false kind={what:\"image\" byName:false list:\"image_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[image create] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[image create fields fields_required zone_states zones_ready] whole:false own:[] workload:false deep:false}"
   },
   "image_list": {
     "group": "image",
@@ -1248,6 +1249,6 @@
   },
   "whoami": {
     "group": "auth",
-    "untrusted": "{fields:[roles] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[roles roles_note key_term_note] whole:false own:[] workload:false deep:false}"
   }
 }
