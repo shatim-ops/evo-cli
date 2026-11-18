@@ -105,8 +105,14 @@ func kubectlCheck(fields []string, allowSecrets bool, w wording) error {
 			if fl.Follows(verb) {
 				continue // logs -f is --follow, not a file
 			}
-			if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
+			if kubectlHTTPDeniedFlags[name] {
 				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, fl.Label())
+			}
+			if strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
+				// Refused by its form, the name may be any word typed, a
+				// secret included: its place is named, not the name
+				// (Астра #2369).
+				return fmt.Errorf("k8s_kubectl %s: the flag in argument %d is not allowed: a flag with \"file\" in its name or ending in -dir reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, i+1)
 			}
 			if name == "edit" {
 				// create --edit opens the object in an editor on the host

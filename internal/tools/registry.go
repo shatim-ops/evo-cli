@@ -541,14 +541,16 @@ func ParseToolsets(groups []string) ([]string, error) {
 	}
 	var want []string
 	seen := map[string]bool{}
-	for _, g := range groups {
+	for i, g := range groups {
 		g = strings.ToLower(strings.TrimSpace(g))
 		switch {
 		case g == "", seen[g]:
 		case g == "all":
 			return nil, nil
 		case !known[g]:
-			return nil, fmt.Errorf("unknown toolset %q; known: all, %s", g, strings.Join(Groups(), ", "))
+			// The group is named by its place, not repeated: it may be any
+			// word typed, a secret included (Астра #2371).
+			return nil, fmt.Errorf("unknown toolset (item %d of the list); known: all, %s", i+1, strings.Join(Groups(), ", "))
 		default:
 			seen[g] = true
 			want = append(want, g)

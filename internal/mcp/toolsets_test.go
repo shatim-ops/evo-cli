@@ -58,7 +58,8 @@ func TestSetToolsets(t *testing.T) {
 			t.Errorf("SetToolsets(%q): %d tools, %v; want all %d", reset, len(s.ListTools()), err, all)
 		}
 	}
-	if err := s.SetToolsets([]string{"vm", "nosuch"}); err == nil || !strings.Contains(err.Error(), "nosuch") {
+	// The unknown group is named by its place, not repeated (Астра #2371).
+	if err := s.SetToolsets([]string{"vm", "nosuch"}); err == nil || strings.Contains(err.Error(), "nosuch") || !strings.Contains(err.Error(), "item 2") {
 		t.Errorf("unknown toolset: %v", err)
 	}
 }

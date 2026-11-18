@@ -484,8 +484,10 @@ func httpAuthToken(addr, mode, envToken string) (string, error) {
 		// reaches it, and the warning says it.
 		if len(envToken) < minBearerTokenLen && !mcp.LoopbackHost(host) {
 			return "", clerrors.New(clerrors.CodeConfigInvalid,
-				i18n.Tf("%s is shorter than %d characters: the HTTP server on %s does not start with it",
-					"%s короче %d символов: HTTP-сервер на %s с ним не запускается", envBearerToken, minBearerTokenLen, addr),
+				// The address is not repeated: it may be anything typed, a
+				// secret included (Астра #2370).
+				i18n.Tf("%s is shorter than %d characters: the HTTP server on an address that is not loopback does not start with it",
+					"%s короче %d символов: HTTP-сервер на адресе, который не loopback, с ним не запускается", envBearerToken, minBearerTokenLen),
 				i18n.Tf("Set %s to a long random string (e.g. openssl rand -hex 32), or listen on a loopback address (--http 127.0.0.1:8080)",
 					"Задайте в %s длинную случайную строку (например, openssl rand -hex 32) или слушайте адрес loopback (--http 127.0.0.1:8080)", envBearerToken))
 		}
@@ -493,15 +495,15 @@ func httpAuthToken(addr, mode, envToken string) (string, error) {
 	case authNone:
 		if !mcp.LoopbackHost(host) { // an empty host (":8080") is every interface
 			return "", clerrors.New(clerrors.CodeUsage,
-				i18n.Tf("--auth none is only allowed on a loopback address, not %q",
-					"--auth none допускается только на адресе loopback, а не на %q", addr),
+				i18n.T("--auth none is only allowed on a loopback address, and the --http address is not one",
+					"--auth none допускается только на адресе loopback, а адрес --http не такой"),
 				i18n.T("Use --http 127.0.0.1:PORT for a local server, or --auth bearer with ",
 					"Для локального сервера — --http 127.0.0.1:ПОРТ, иначе --auth bearer с ")+envBearerToken)
 		}
 		return "", nil
 	default:
 		return "", clerrors.New(clerrors.CodeUsage,
-			i18n.Tf("unknown --auth %q", "неизвестное значение --auth %q", mode),
+			i18n.T("unknown --auth mode", "неизвестный режим --auth"),
 			i18n.T("Use --auth bearer or --auth none", "Допустимо --auth bearer или --auth none"))
 	}
 }
