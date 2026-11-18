@@ -112,7 +112,7 @@ func newConfigureCmd() *cobra.Command {
 		Use:   "configure",
 		Short: i18n.T("Set up credentials, the default project and zone for a profile", "Ключ доступа, проект и зона по умолчанию для профиля"),
 		Long:  i18n.T(configureHelp, configureHelpRU),
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
 			con := newConsole(os.Stdin, printer.ErrWriter(), !opts.secretStdin && stdinIsTerminal())
@@ -677,7 +677,7 @@ func newConfigureListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: i18n.T("List stored profiles", "Сохранённые профили"),
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
 			profiles, err := config.Profiles()

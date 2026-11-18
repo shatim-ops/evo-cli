@@ -38,7 +38,7 @@ is there or is evo's — read it before you act on it.`, `Прочитать ж�
 
 Строка называет ресурс так, как его назвал вызов: что ресурс есть и что он
 evo, она не доказывает — прочитайте его до действий с ним.`),
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			targs := map[string]any{}
 			if since != "" {
