@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -337,6 +338,12 @@ func TestMadeEnded(t *testing.T) {
 		{`{"id":"op-1","done":true,"error":{"code":13,"message":"x"}}`, false, 0, true, false},
 		{`{"id":"op-1","done":true,"error":"x"}`, false, 0, true, false},
 		{`{"id":"op-1","done":true,"resource_status":"ACTIVE"}`, false, 0, false, false},
+		// Done with no error and the resource not listed (the repeat
+		// read the list first): within madeListGrace the list may lag;
+		// past it the resource is gone (A19-8, #2428).
+		{`{"id":"op-1","done":true}`, false, madeListGrace / 2, false, true},
+		{`{"id":"op-1","done":true}`, false, madeListGrace * 2, true, true},
+		{`{"id":"op-1","done":false}`, false, madeListGrace * 2, false, true},
 		{`{"id":"op-1","done":false}`, false, time.Hour, false, false},
 	} {
 		if got := madeEnded(c.read, c.isErr, c.age, c.op); got != c.want {
@@ -352,6 +359,8 @@ type dnsWaitAPI struct {
 	mu    sync.Mutex
 	posts int
 	calls []string
+	// done: the operation of the create is done with no error.
+	done bool
 }
 
 func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -368,7 +377,7 @@ func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Path == "/v1/privateZones":
 		_, _ = io.WriteString(rec, `{"zones":[{"id":"00000000-0000-4000-8000-0000000000f9","name":"other","domain":"other.example."}]}`)
 	case strings.HasPrefix(r.URL.Path, "/v1/operations/"):
-		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":false}`)
+		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":`+strconv.FormatBool(a.done)+`}`)
 	default:
 		http.Error(rec, `{"message":"not found"}`, 404)
 	}
@@ -397,5 +406,53 @@ func TestDNSZoneCreate_ARepeatWhileTheZoneIsNotListedSendsNoSecondCreate(t *test
 		if api.posts != 1 || rep["id"] != "00000000-0000-4000-8000-0000000000f1" || m["status"] != "waiting" {
 			t.Errorf("confirmed=%v: %d POSTs, %s", confirmed, api.posts, text)
 		}
+	}
+}
+
+// A create whose operation is done with no error and whose resource is
+// not listed — deleted after it was made: within madeListGrace the repeat
+// says the operation is done and the list does not show it yet, not «its
+// outcome is not known»; past it the file goes, and the same call creates
+// anew — not «waiting» for two hours (A19-8, #2428). A delete of the
+// resource takes its file away at once.
+func TestDNSZoneCreate_ARepeatAfterADoneOperationOfAGoneZone(t *testing.T) {
+	api := &dnsWaitAPI{done: true}
+	r := waitingRegistry(t, api)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	clock.Now = func() time.Time { return now }
+	t.Cleanup(func() { clock.Now = time.Now })
+	args := map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}
+	callNamed(t, r, "dns_zone_create", args)
+	if api.posts != 1 {
+		t.Fatalf("the first call: %d POSTs", api.posts)
+	}
+	now = now.Add(madeListGrace / 2)
+	m, text, _ := callNamed(t, r, "dns_zone_create", args)
+	msg, _ := m["message"].(string)
+	if m["repeat_of"] == nil || api.posts != 1 || strings.Contains(msg, "not known") || !strings.Contains(msg, "done") {
+		t.Fatalf("within the grace: %d POSTs, want the repeat that says the operation is done: %s", api.posts, text)
+	}
+	now = now.Add(madeListGrace)
+	if m, text, _ := callNamed(t, r, "dns_zone_create", args); m["repeat_of"] != nil || api.posts != 2 {
+		t.Errorf("past the grace, done and not listed: %d POSTs, want a new create: %s", api.posts, text)
+	}
+}
+
+// A delete of a resource evo answers gone takes the file of its create
+// going on away: the repeat of the create is planned as any call (A19-8).
+func TestMade_ADeleteOfTheResourceTakesItsFileAway(t *testing.T) {
+	api := &dnsWaitAPI{}
+	r := waitingRegistry(t, api)
+	args := map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}
+	callNamed(t, r, "dns_zone_create", args)
+	if n := madeFiles(t, r); n != 1 {
+		t.Fatalf("no file of the create going on: %d", n)
+	}
+	m, text, _ := callNamed(t, r, "dns_zone_delete", map[string]any{"id": "00000000-0000-4000-8000-0000000000f1", "confirmed": true})
+	if st := m["status"]; st != "deleted" && st != "already_deleted" {
+		t.Fatalf("the delete: %s", text)
+	}
+	if n := madeFiles(t, r); n != 0 {
+		t.Errorf("the file of the create of a deleted zone stays: %d", n)
 	}
 }
