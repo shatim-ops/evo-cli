@@ -501,7 +501,9 @@ func httpAuthToken(addr, mode, envToken string) (string, error) {
 		return "", nil
 	default:
 		return "", clerrors.New(clerrors.CodeUsage,
-			i18n.Tf("unknown --auth %q", "неизвестное значение --auth %q", mode),
+			// The value is not repeated: a token typed into --auth by
+			// mistake would be printed (Астра, #2370).
+			i18n.T("unknown --auth value", "неизвестное значение --auth"),
 			i18n.T("Use --auth bearer or --auth none", "Допустимо --auth bearer или --auth none"))
 	}
 }

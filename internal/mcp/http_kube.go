@@ -106,7 +106,14 @@ func kubectlCheck(fields []string, allowSecrets bool, w wording) error {
 				continue // logs -f is --follow, not a file
 			}
 			if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
-				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, fl.Label())
+				// A name of the closed list is named; one refused by its
+				// shape ("…file", "…-dir") is any text typed, so the flag
+				// is named by its place (Астра, #2369).
+				flag := fl.Label()
+				if !kubectlHTTPDeniedFlags[name] {
+					flag = fmt.Sprintf("in word %d", i+1)
+				}
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, flag)
 			}
 			if name == "edit" {
 				// create --edit opens the object in an editor on the host

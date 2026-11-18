@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// evo help <topic>, evo mcp --http <address> and evo tools call|describe
-// <tool> do not repeat what was typed: a secret in the wrong place (#2353).
+// evo help <topic>, evo mcp --http|--auth|--toolsets and evo tools
+// call|describe <tool> do not repeat what was typed, in any case: a secret in the wrong place (#2353).
 // help still prints the usage and exits 0, as cobra's did.
 func TestHelpAndMCP_DoNotRepeatTheValue(t *testing.T) {
 	setupCLI(t)
@@ -23,6 +23,11 @@ func TestHelpAndMCP_DoNotRepeatTheValue(t *testing.T) {
 		{[]string{"help", "vm", secret}, 0},
 		{[]string{"mcp", "--http", secret}, 1},
 		{[]string{"--json", "mcp", "--http", secret}, 1},
+		{[]string{"mcp", "--http", ":8080", "--auth", secret}, 1},
+		{[]string{"--json", "--dry-run", "mcp", "--http", ":8080", "--auth", secret}, 1},
+		{[]string{"mcp", "--toolsets", secret}, 1},
+		{[]string{"mcp", "--toolsets", "vm," + strings.ToUpper(secret)}, 1},
+		{[]string{"--json", "--dry-run", "mcp", "--toolsets", secret}, 1},
 		{[]string{"tools", "call", secret}, 1},
 		{[]string{"--json", "tools", "call", secret}, 1},
 		{[]string{"tools", "describe", secret}, 1},
@@ -32,7 +37,7 @@ func TestHelpAndMCP_DoNotRepeatTheValue(t *testing.T) {
 		if code != c.code {
 			t.Errorf("%v: exit %d, want %d: %s%s", c.args, code, c.code, out, errOut)
 		}
-		if strings.Contains(out+errOut, "s3cr3t") {
+		if strings.Contains(strings.ToLower(out+errOut), "s3cr3t") {
 			t.Errorf("%v: repeats the value: %s%s", c.args, out, errOut)
 		}
 	}

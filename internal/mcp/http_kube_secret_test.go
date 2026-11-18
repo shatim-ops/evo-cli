@@ -14,7 +14,7 @@ import (
 func TestKubectlCheck_NamesTheFlagNotItsValue(t *testing.T) {
 	const secret = "s3cr3tHTTP27183650904512"
 	for _, w := range []wording{httpWording, readOnlyWording} {
-		for _, f := range []string{"--token=" + secret, "--password=" + secret, "--client-key=" + secret, "--edit=" + secret, "--v=" + secret, "-v" + secret} {
+		for _, f := range []string{"--" + secret + "file=x", "--" + secret + "-dir=x", "--" + secret + "_file", "--token=" + secret, "--password=" + secret, "--client-key=" + secret, "--edit=" + secret, "--v=" + secret, "-v" + secret} {
 			err := kubectlCheck([]string{"get", "pods", f}, false, w)
 			if err == nil {
 				t.Fatalf("%s: want a refusal", f)
