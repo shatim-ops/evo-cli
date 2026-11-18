@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -34,9 +36,40 @@ func ValidName(kind, name string) error {
 		return nil
 	}
 	return clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("%s name %q is not accepted by Cloud.ru", "Cloud.ru не примет имя %s %q", kind, name),
+		i18n.Tf("the %s name is not accepted by Cloud.ru: %s", "Cloud.ru не примет имя %s: %s", kind, NameFault(name, MaxNameLen)),
 		i18n.Tf("Use 1-%d characters: a Latin letter first, then Latin letters, digits, '.', '-', '_'.",
 			"Допустимо 1–%d символов: первая — латинская буква, дальше латинские буквы, цифры, '.', '-', '_'.", MaxNameLen))
+}
+
+// NameDefect is what is wrong with name whatever the rule of its resource:
+// empty once trimmed, a space or a line break at an end, a control
+// character, longer than max characters — in words, never the name
+// itself: a value given in the wrong place may be a secret (#2459; the
+// owner's rule: the form, without the value). What a person cannot see is
+// named, so the refusal still points at it. ok is false for a name with
+// none of these.
+func NameDefect(name string, max int) (why string, ok bool) {
+	trimmed := strings.TrimSpace(name)
+	switch {
+	case trimmed == "":
+		return i18n.T("it is empty", "оно пустое"), true
+	case trimmed != name:
+		return i18n.T("it starts or ends with a space", "в начале или в конце пробел"), true
+	case strings.ContainsFunc(name, unicode.IsControl):
+		return i18n.T("it has a control character", "в нём управляющий символ"), true
+	case utf8.RuneCountInString(name) > max:
+		return i18n.Tf("it is longer than %d characters", "оно длиннее %d символов", max), true
+	}
+	return "", false
+}
+
+// NameFault is NameDefect, or, for a name a stricter rule of its resource
+// refuses, that it has a character or a form the rule does not take.
+func NameFault(name string, max int) string {
+	if why, ok := NameDefect(name, max); ok {
+		return why
+	}
+	return i18n.T("it has a character or a form the rule does not take", "в нём символ или форма, которых правило не допускает")
 }
 
 // FitName is base+suffix within MaxNameLen: a long base is cut and gets a

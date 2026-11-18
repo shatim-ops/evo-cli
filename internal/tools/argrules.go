@@ -11,11 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/s3"
 )
 
@@ -162,7 +161,7 @@ func dateArg(key, v string) (time.Time, error) {
 	t, err := time.Parse("2006-01-02", v)
 	if err != nil {
 		return time.Time{}, clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("%s %q is not a date YYYY-MM-DD", "%s %q — не дата ГГГГ-ММ-ДД", key, v),
+			i18n.Tf("%s: the value is not a date YYYY-MM-DD", "%s: значение — не дата ГГГГ-ММ-ДД", key),
 			i18n.T("Pass a calendar date, e.g. 2026-07-01.", "Передайте календарную дату, например 2026-07-01."))
 	}
 	return t, nil
@@ -196,21 +195,12 @@ const maxPlainNameLen = 255
 // Secret Manager give no rule for the name (QA-15); a stricter one would
 // be made up.
 func plainName(kind, arg, name string) error {
-	why := ""
-	switch {
-	case strings.TrimSpace(name) == "":
-		why = i18n.T("it is empty", "оно пустое")
-	case strings.TrimSpace(name) != name:
-		why = i18n.T("it starts or ends with a space", "в начале или в конце пробел")
-	case strings.IndexFunc(name, unicode.IsControl) >= 0:
-		why = i18n.T("it has a control character", "в нём управляющий символ")
-	case utf8.RuneCountInString(name) > maxPlainNameLen:
-		why = i18n.Tf("it is longer than %d characters", "оно длиннее %d символов", maxPlainNameLen)
-	default:
+	why, bad := provision.NameDefect(name, maxPlainNameLen)
+	if !bad {
 		return nil
 	}
 	return clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("%s %s %q: %s", "%s %s %q: %s", kind, arg, name, why),
+		i18n.Tf("%s %s: %s", "%s %s: %s", kind, arg, why),
 		i18n.T("Pass a name without leading or trailing spaces and control characters.",
 			"Передайте имя без пробелов по краям и управляющих символов."))
 }
@@ -227,7 +217,7 @@ func k8sClusterName(name string) error {
 		return nil
 	}
 	return clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("cluster name %q is not accepted by Managed Kubernetes", "имя кластера %q Managed Kubernetes не примет", name),
+		i18n.Tf("the cluster name is not accepted by Managed Kubernetes: %s", "имя кластера Managed Kubernetes не примет: %s", provision.NameFault(name, 60)),
 		i18n.T("3-60 characters: letters, digits, '-' and '_'.", "3–60 символов: буквы, цифры, '-' и '_'."))
 }
 
@@ -245,7 +235,7 @@ func bucketName(name string) error {
 		return nil
 	}
 	return clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("bucket name %q is not accepted", "имя бакета %q не подходит", name),
+		i18n.Tf("the bucket name is not accepted: %s", "имя бакета не подходит: %s", provision.NameFault(name, 63)),
 		i18n.T("3-63 characters: lowercase Latin letters, digits, '.' and '-'; no '..', not an IP address.",
 			"3–63 символа: строчные латинские буквы, цифры, '.' и '-'; без '..', не IP-адрес."))
 }

@@ -91,9 +91,10 @@ var HTTPRestrictions = []Restriction{
 	{ID: "H13",
 		Where: "internal/mcp/http.go", Symbol: "withNotifier(ctx, notify)",
 		Summary: "the progress of a long call (notifications/progress) goes on the SSE stream of its tools/call only: a client that takes the answer as plain JSON gets none"},
+	// H14: D69.
 	{ID: "H14", StdioToo: true,
 		Where: "internal/mcp/server.go", Symbol: "SetCallBudget(tools.MCPCallBudget)",
-		Summary: "a call waits for the cloud at most ~45 s (MCPCallBudget, D69): what is not done by then answers with its state so far and the next step (status creating, next, next_tool, next_args), wait_seconds takes at most 45; wait=true lifts it; the CLI waits as before"},
+		Summary: "a call waits for the cloud at most ~45 s (MCPCallBudget): what is not done by then answers with its state so far and the next step (status creating, next, next_tool, next_args), wait_seconds takes at most 45; wait=true lifts it; the CLI waits as before"},
 	{ID: "H15", StdioToo: true,
 		Where: "internal/tools/tools.go", Symbol: "recordedTarget(eng.StateDir)",
 		Summary: "destroy confirmed without vm_id or name, with a deployment recorded in the server's folder, deletes nothing: USAGE with the recorded vm_id; the preview names the target as before; evo destroy in a terminal is as before"},
