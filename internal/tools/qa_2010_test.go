@@ -203,10 +203,10 @@ func TestQA5_BillingDates(t *testing.T) {
 	var cases []usageCase
 	for _, bad := range []string{"2026-13-45", "yesterday", "2026-07-01T00:00:00Z", "2026-7-1"} {
 		cases = append(cases,
-			usageCase{"billing_consumption", map[string]any{"start": bad}, bad},
-			usageCase{"billing_consumption", map[string]any{"start": "2026-07-01", "end": bad}, bad},
-			usageCase{"billing_finops", map[string]any{"start": bad, "end": "2026-07-10"}, bad},
-			usageCase{"billing_finops", map[string]any{"end": bad}, bad})
+			usageCase{"billing_consumption", map[string]any{"start": bad}, "start: the value is not a date"},
+			usageCase{"billing_consumption", map[string]any{"start": "2026-07-01", "end": bad}, "end: the value is not a date"},
+			usageCase{"billing_finops", map[string]any{"start": bad, "end": "2026-07-10"}, "start: the value is not a date"},
+			usageCase{"billing_finops", map[string]any{"end": bad}, "end: the value is not a date"})
 	}
 	cases = append(cases,
 		usageCase{"billing_consumption", map[string]any{"start": "2026-07-10", "end": "2026-07-01"}, "2026-07-01"},
@@ -260,11 +260,11 @@ func TestQA7_BoundsBeforePreview(t *testing.T) {
 		{"pg_create", map[string]any{"name": "db "}, "space"},
 		{"secret_create", map[string]any{"path": "folder/", "value": "v"}, "empty"},
 		{"secret_create", map[string]any{"path": "a\nb", "value": "v"}, "control"},
-		{"s3_bucket_create", map[string]any{"bucket": "My_Bucket"}, "My_Bucket"},
-		{"s3_bucket_create", map[string]any{"bucket": "ab"}, `"ab"`},
-		{"k8s_plan", map[string]any{"name": "k1"}, `"k1"`},
-		{"k8s_create", map[string]any{"name": "my cluster"}, "my cluster"},
-		{"k8s_plan", map[string]any{"product": "web app"}, "k8s-web app"},
+		{"s3_bucket_create", map[string]any{"bucket": "My_Bucket"}, "the bucket name is not accepted: it has a character"},
+		{"s3_bucket_create", map[string]any{"bucket": "ab"}, "the bucket name is not accepted"},
+		{"k8s_plan", map[string]any{"name": "k1"}, "the cluster name is not accepted"},
+		{"k8s_create", map[string]any{"name": "my cluster"}, "the cluster name is not accepted"},
+		{"k8s_plan", map[string]any{"product": "web app"}, "the cluster name is not accepted"},
 	})
 }
 
