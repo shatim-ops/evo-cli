@@ -262,7 +262,7 @@ func TestEngineCommands_DeployGroupR7(t *testing.T) {
 		newProcess()
 		code, _, stderr := runCLI(t, "", "--json", "deploy", typo)
 		c, reason, msg := cliJSONError(t, stderr)
-		if code != 1 || c != 1 || reason != "USAGE" || !strings.Contains(msg, `unknown command "`+typo+`" for "evo deploy"`) {
+		if code != 1 || c != 1 || reason != "USAGE" || !strings.Contains(msg, `unknown command (argument 1) for "evo deploy"`) || strings.Contains(msg, `"`+typo+`"`) {
 			t.Errorf("evo deploy %s: exit %d, %s", typo, code, stderr)
 		}
 	}

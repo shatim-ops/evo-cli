@@ -192,7 +192,6 @@ var usageErrorsRU = []struct {
 	re *regexp.Regexp
 	ru string
 }{
-	{regexp.MustCompile(`^unknown command (".*") for (".*")$`), "неизвестная команда $1 для $2"},
 	{regexp.MustCompile(`^accepts (\d+) arg\(s\), received (\d+)$`), "нужно аргументов: $1, передано: $2"},
 	{regexp.MustCompile(`^accepts at most (\d+) arg\(s\), received (\d+)$`), "можно не больше аргументов: $1, передано: $2"},
 	{regexp.MustCompile(`^requires at least (\d+) arg\(s\), only received (\d+)$`), "нужно хотя бы аргументов: $1, передано: $2"},
@@ -200,27 +199,18 @@ var usageErrorsRU = []struct {
 	{regexp.MustCompile(`^required flag\(s\) (.*) not set$`), "не заданы обязательные флаги: $1"},
 }
 
-// usageMessage translates a cobra parsing error. cobra's suggestion
-// ("\n\nDid you mean this?\n\tdeploy\n") becomes "; может быть, deploy?".
+// usageMessage translates a parsing error of cobra. An unknown command
+// (unknownSubcommand) and a refused flag (flagError) are evo's own refusals,
+// already in the language of the run.
 func usageMessage(msg string) string {
 	if i18n.Lang() != i18n.RU {
 		return msg
 	}
-	head, suggest, _ := strings.Cut(msg, "\n\nDid you mean this?\n")
 	for _, e := range usageErrorsRU {
-		if e.re.MatchString(head) {
-			head = e.re.ReplaceAllString(head, e.ru)
+		if e.re.MatchString(msg) {
+			msg = e.re.ReplaceAllString(msg, e.ru)
 			break
 		}
 	}
-	var names []string
-	for _, l := range strings.Split(suggest, "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			names = append(names, l)
-		}
-	}
-	if len(names) > 0 {
-		head += "; может быть, " + strings.Join(names, ", ") + "?"
-	}
-	return head
+	return msg
 }

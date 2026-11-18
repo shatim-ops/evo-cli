@@ -14,7 +14,6 @@ import (
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -358,18 +357,19 @@ func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 		Long:        long,
 		Annotations: map[string]string{toolAnnotation: t.Name},
 		Args: func(cmd *cobra.Command, args []string) error {
-			if maxArgs == 0 && len(args) > 0 {
-				return fmt.Errorf(i18n.T("%s takes no arguments, got %q", "%s не принимает аргументов, передано %q"), cmd.CommandPath(), args[0])
+			if maxArgs == 0 {
+				return noArgs(cmd, args)
 			}
 			if len(args) < minArgs || (maxArgs >= 0 && len(args) > maxArgs) {
 				msg := fmt.Sprintf(i18n.T("%s: want %s, got %d argument(s)", "%s: нужно %s, передано аргументов: %d"),
 					cmd.CommandPath(), strings.Join(use[1:], " "), len(args))
 				if maxArgs >= 0 && len(args) > maxArgs {
 					// A value whose flag was left out reads as one more
-					// argument: name them (dogfood 1.2.0, a zone after the
-					// name without --region).
-					msg += i18n.Tf("; extra arguments: %s — a flag left out?", "; лишние аргументы: %s — пропущен флаг?",
-						extraArgs(args[maxArgs:]))
+					// argument (dogfood 1.2.0, a zone after the name
+					// without --region): counted, not repeated — it may
+					// be a secret (#2334).
+					msg += i18n.Tf("; extra arguments: %d — a flag left out?", "; лишних аргументов: %d — пропущен флаг?",
+						len(args)-maxArgs)
 				}
 				return stderrors.New(msg)
 			}
@@ -866,17 +866,6 @@ func readArgFile(cmd *cobra.Command, path string) ([]byte, error) {
 
 // extraArgs lists the arguments a command does not take, quoted, a long
 // one cut short.
-func extraArgs(args []string) string {
-	out := make([]string, len(args))
-	for i, a := range args {
-		if r := []rune(a); len(r) > 24 {
-			a = string(r[:23]) + "…"
-		}
-		out[i] = strconv.Quote(a)
-	}
-	return strings.Join(out, ", ")
-}
-
 func helpHint(cmd *cobra.Command) string {
 	return i18n.Tf("Run '%s --help'.", "Справка: '%s --help'.", cmd.CommandPath())
 }

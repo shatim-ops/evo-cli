@@ -257,13 +257,14 @@ func TestToolError_UsageHintNamesTheCaller(t *testing.T) {
 	}
 }
 
-// Значение без флага — лишний аргумент: ошибка называет лишние аргументы
-// и спрашивает, не пропущен ли флаг.
-func TestTreeArgs_ExtraArgumentsNamed(t *testing.T) {
+// Значение без флага — лишний аргумент: ошибка считает лишние аргументы
+// и спрашивает, не пропущен ли флаг. Сами аргументы не повторяет: среди
+// них может быть секрет (#2334).
+func TestTreeArgs_ExtraArgumentsCounted(t *testing.T) {
 	russian(t)
 	_, errOut, code := execCLI(t, "vm", "create", "my-vm", "UUID:", "00000000-0000-4000-8000-0000000000a1-long-value")
-	want := `evo vm create: нужно <name>, передано аргументов: 3; лишние аргументы: "UUID:", "00000000-0000-4000-8000…" — пропущен флаг?`
-	if code != clerrors.ExitGeneral || !strings.Contains(errOut, want) {
+	want := `evo vm create: нужно <name>, передано аргументов: 3; лишних аргументов: 2 — пропущен флаг?`
+	if code != clerrors.ExitGeneral || !strings.Contains(errOut, want) || strings.Contains(errOut, "UUID:") {
 		t.Errorf("exit %d:\n%s\nwant %s", code, errOut, want)
 	}
 }

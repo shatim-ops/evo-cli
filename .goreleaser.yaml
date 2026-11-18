@@ -4,7 +4,6 @@
 # Локальная проверка без публикации и подписи (без syft — и без SBOM):
 #   goreleaser check
 #   goreleaser release --snapshot --clean --skip=sign,sbom
-# Как выпускать релиз — docs/RELEASING.md.
 version: 2
 
 project_name: evo
@@ -62,7 +61,7 @@ archives:
       - CHANGELOG.md
       # README ссылается на docs/*.md — в распакованном архиве они должны
       # быть рядом (и те, на которые ссылаются они сами: rename.md).
-      # Внутренние документы (docs/internal, RELEASING) — нет.
+      # Документы процесса разработки — нет.
       - docs/agent-skill.md
       - docs/auth.md
       - docs/commands.md
@@ -86,7 +85,7 @@ sboms:
 
 # Keyless: сертификат выдаёт Fulcio на OIDC-токен GitHub Actions, запись
 # ложится в Rekor. Ключей хранить не нужно; проверка — по identity workflow
-# (команда в docs/RELEASING.md). Бандл .sigstore.json содержит подпись,
+# (команда в docs/install.md). Бандл .sigstore.json содержит подпись,
 # сертификат и доказательство включения в журнал.
 signs:
   - id: checksum
@@ -122,7 +121,7 @@ release:
   # v1.0.0-rc.1 и подобные помечаются как pre-release.
   prerelease: auto
   # Анонс выпуска — над списком коммитов, из файла в репозитории
-  # docs/release-notes/<тег>.md (решение владельца 11.11): известные
+  # docs/release-notes/<тег>.md: известные
   # ограничения и миграцию пишет релиз до тега, а не руками на GitHub.
   # readFile отдаёт пустую строку, если файла нет: выпуск без анонса идёт,
   # как раньше, и --snapshot без файла не падает (TestRelease_HeaderFromFile).

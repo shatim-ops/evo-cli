@@ -35,7 +35,7 @@ func TestRussian_RootHelp(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Коды выхода:\n  0    успех",
-		"Использование:\n  evo [команда]",
+		"Использование:\n  evo [флаги]\n  evo [команда]",
 		"Evolution Compute, Evolution Disk:",
 		"Сценарии: compose-проект, стек:",
 		"  deploy      Развернуть docker-compose проект на ВМ Cloud.ru\n",
@@ -273,9 +273,8 @@ func lastLine(s string) string {
 func TestRussian_UsageErrors(t *testing.T) {
 	russian(t)
 	for in, want := range map[string]string{
-		`unknown command "dploy" for "evo"` + "\n\nDid you mean this?\n\tdeploy\n": `неизвестная команда "dploy" для "evo"; может быть, deploy?`,
-		"accepts 1 arg(s), received 0":                                             "нужно аргументов: 1, передано: 0",
-		"something else":                                                           "something else",
+		"accepts 1 arg(s), received 0": "нужно аргументов: 1, передано: 0",
+		"something else":               "something else",
 	} {
 		if got := usageMessage(in); got != want {
 			t.Errorf("usageMessage(%q) = %q, want %q", in, got, want)
