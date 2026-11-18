@@ -249,8 +249,9 @@ var internalRef = regexp.MustCompile(`DECISIONS|Fable|Grok|(^|[^\pL\pN_])(D[0-9]
 var group = regexp.MustCompile(`([^\s]?)([ \t]*)\(([^()]*)\)`)
 
 // bareRef is a reference outside a parenthesis, with the space before it
-// and the preposition that takes it ("по D88", "по правилу D73").
-var bareRef = regexp.MustCompile(`[ \t]?\b(DECISIONS|Fable|Grok)\b|[ \t]?(по правилу |по |в )?\bD[0-9]{1,3}\b`)
+// and the preposition that takes it ("по D88", "по правилу D73",
+// "согласно D47").
+var bareRef = regexp.MustCompile(`[ \t]?\b(DECISIONS|Fable|Grok)\b|[ \t]?((?i)по правилу |по |в |согласно |из )?\bD[0-9]{1,3}\b`)
 
 // publicChangelog is the change log a reader of a release reads: of a
 // parenthesis, the parts (split by ";") with no internal reference — none

@@ -216,6 +216,7 @@ cat >CHANGELOG.md <<'MD'
 - **Ответ** как `whoami` по D88, — проверка
   (D94) — в обоих путях; повтор по `next_args` D76 (DECISIONS D40;
   исправление: живой прогон Grok на 1.3.0, G130-15). Конец.
+- Согласно D47 отказ до вопроса; запись (исправление: прогон G13-31).
 MD
 cat >"$tmp/changelog.want" <<'MD'
 ## 9.9.9
@@ -226,6 +227,7 @@ cat >"$tmp/changelog.want" <<'MD'
 - **Мелочи прогона на 1.6.0**.
 - **Ответ** как `whoami`, — проверка
    — в обоих путях; повтор по `next_args`. Конец.
+- отказ до вопроса; запись.
 MD
 git add CHANGELOG.md && git -c user.name=t -c user.email=t@t commit -qm changelog
 rc=0
