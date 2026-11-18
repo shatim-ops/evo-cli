@@ -461,9 +461,12 @@ func bearerTokenWarning(token string) string {
 func httpAuthToken(addr, mode, envToken string) (string, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return "", clerrors.Wrap(clerrors.CodeUsage, i18n.Tf("invalid --http address %q", "недопустимый адрес --http %q", addr),
+		// Neither the address nor the parser's error (which quotes it) is
+		// repeated: the value may be anything typed, a secret included
+		// (#2353).
+		return "", clerrors.New(clerrors.CodeUsage, i18n.T("invalid --http address", "недопустимый адрес --http"),
 			i18n.T("Use HOST:PORT or :PORT, e.g. --http :8080 or --http 127.0.0.1:8080",
-				"Укажите ХОСТ:ПОРТ или :ПОРТ, например --http :8080 или --http 127.0.0.1:8080"), err)
+				"Укажите ХОСТ:ПОРТ или :ПОРТ, например --http :8080 или --http 127.0.0.1:8080"))
 	}
 	switch mode {
 	case authBearer:

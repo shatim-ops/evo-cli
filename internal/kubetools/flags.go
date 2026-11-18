@@ -22,6 +22,16 @@ type Flag struct {
 	HasVal    bool
 }
 
+// Label names the flag as kubectl does, without its value: the value may
+// be a secret (--token=…, --password=…) and a refusal does not repeat it
+// (#2353).
+func (fl Flag) Label() string {
+	if len(fl.Name) == 1 {
+		return "-" + fl.Name
+	}
+	return "--" + fl.Name
+}
+
 // Follows reports whether the flag is -f of logs (log): --follow there, as
 // logs has no --filename; elsewhere -f names a file or a URL.
 func (fl Flag) Follows(verb string) bool {
@@ -80,12 +90,28 @@ func CheckConnectionFlags(fields []string) error {
 		}
 		for _, fl := range ParseFlags(f) {
 			if fl.Name == "kuberc" {
-				return fmt.Errorf("kubectl flag %s is not allowed: evo runs kubectl with KUBERC=off, so that a preferences file (aliases, flag defaults) cannot change its commands", f)
+				return fmt.Errorf("kubectl flag %s is not allowed: evo runs kubectl with KUBERC=off, so that a preferences file (aliases, flag defaults) cannot change its commands", fl.Label())
 			}
 			if connectionFlags[fl.Name] {
-				return fmt.Errorf("kubectl flag %s is not allowed: it replaces the cluster or credentials of the kubeconfig evo writes (the cluster's token would go elsewhere); the cluster is chosen by cluster_id", f)
+				return fmt.Errorf("kubectl flag %s is not allowed: it replaces the cluster or credentials of the kubeconfig evo writes (the cluster's token would go elsewhere); the cluster is chosen by cluster_id", fl.Label())
 			}
 		}
 	}
 	return nil
+}
+
+// Verbs are kubectl's own commands: a word of a command line that is one
+// of them may be named back; any other word may be a value, a secret
+// included (#2353).
+var Verbs = map[string]bool{
+	"get": true, "describe": true, "logs": true, "log": true, "top": true,
+	"version": true, "api-resources": true, "api-versions": true, "explain": true,
+	"events": true, "cluster-info": true, "config": true, "auth": true,
+	"rollout": true, "diff": true, "wait": true,
+	"create": true, "expose": true, "run": true, "set": true, "delete": true,
+	"scale": true, "autoscale": true, "certificate": true, "cordon": true,
+	"uncordon": true, "drain": true, "taint": true, "exec": true, "debug": true,
+	"apply": true, "patch": true, "replace": true, "label": true, "annotate": true,
+	"edit": true, "cp": true, "port-forward": true, "proxy": true, "attach": true,
+	"kustomize": true, "completion": true, "plugin": true,
 }

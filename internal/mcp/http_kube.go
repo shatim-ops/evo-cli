@@ -106,15 +106,15 @@ func kubectlCheck(fields []string, allowSecrets bool, w wording) error {
 				continue // logs -f is --follow, not a file
 			}
 			if kubectlHTTPDeniedFlags[name] || strings.Contains(name, "file") || strings.HasSuffix(name, "-dir") {
-				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, f)
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it reaches the MCP server's own files or credentials (use k8s_apply for manifests)", w.where, fl.Label())
 			}
 			if name == "edit" {
 				// create --edit opens the object in an editor on the host
 				// before creating it (REL-5).
-				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it runs an editor on the MCP server's host", w.where, f)
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: it runs an editor on the MCP server's host", w.where, fl.Label())
 			}
 			if kubectlHTTPVerbosityFlags[name] {
-				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: at higher verbosity kubectl logs API responses, Secret data included, into the output", w.where, f)
+				return fmt.Errorf("k8s_kubectl %s: flag %s is not allowed: at higher verbosity kubectl logs API responses, Secret data included, into the output", w.where, fl.Label())
 			}
 			switch name {
 			case "o", "output":
