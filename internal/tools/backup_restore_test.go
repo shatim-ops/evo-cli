@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -549,5 +550,20 @@ func TestBackupRestore_AVMBackupsRefusalNamesNoDocumentOfDevelopment(t *testing.
 	_, text, isErr := backupRestore(t, &restoreWorld{kind: "virtual_machine"}, map[string]any{"confirmed": true})
 	if !isErr || strings.Contains(text, "docs/") {
 		t.Errorf("a VM's backup: want a refusal naming no document: %s", text)
+	}
+}
+
+// A backup not created yet is refused before the question with its state as
+// the cloud gave it: "_untrusted" names it (#2458, #2463).
+func TestBackupRestore_StateOfANotCreatedBackupUntrusted(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		w := &restoreWorld{state: "creating"}
+		m, text, isErr := backupRestore(t, w, map[string]any{"confirmed": confirmed})
+		if !isErr || m["state"] != "creating" || w.restores != 0 {
+			t.Fatalf("want the refusal with the state and nothing sent: %s", text)
+		}
+		if !slices.Contains(stringList(m["_untrusted"]), "state") {
+			t.Errorf("the state of the cloud is not in _untrusted: %s", text)
+		}
 	}
 }
