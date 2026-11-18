@@ -7,14 +7,26 @@ package tools
 import (
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // A string the static rules of the schema refuse (D36: format uuid or
 // cidr, an enum) is refused by its argument and the rule, never by its
 // text: a secret given where an id goes would reach the output, a model
 // and a log before consent (#2437, Qwen). Every such argument of every
-// tool, through CheckArgs, the one point.
+// tool, through CheckArgs, the one point; in either language («Риск»,
+// conclusion 378: a mutant that put the value in the Russian text only
+// lived).
 func TestCheckArgs_RuleRefusalDoesNotEchoTheValue(t *testing.T) {
+	t.Cleanup(func() { i18n.SetLang(i18n.EN) })
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		t.Run(lang, checkRuleRefusals)
+	}
+}
+
+func checkRuleRefusals(t *testing.T) {
 	const secret = "s3cr3t-rule-61803398874989"
 	checked := 0
 	for _, tl := range New(nil).Tools() {

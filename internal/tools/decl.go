@@ -430,7 +430,8 @@ var decls = map[string]Decl{
 	"secret_get":        {Project: true, Untrusted: untrustedAnswer{whole: true}},
 	"secret_value":      {Project: true, Sensitive: true},
 	// Secret Manager: the create carries projectId.
-	"secret_create":      {Project: true, Created: created{arg: "path", lost: "secret_id", list: "secret_list", field: "secrets", delete: "secret_delete"}, CreateName: createName{args: []string{"path"}, what: "secret", whRU: "секрет"}, IDArgs: []idArg{{name: "kms_key_id", why: whyReference}}, NoCompletion: map[string]string{"path": "the path of a new secret: an existing one is refused (D49)"}},
+	// An existing path is refused: D49.
+	"secret_create":      {Project: true, Created: created{arg: "path", lost: "secret_id", list: "secret_list", field: "secrets", delete: "secret_delete"}, CreateName: createName{args: []string{"path"}, what: "secret", whRU: "секрет"}, IDArgs: []idArg{{name: "kms_key_id", why: whyReference}}, NoCompletion: map[string]string{"path": "the path of a new secret: an existing one is refused"}},
 	"secret_add_version": {Project: true, Nameless: "a version of a secret that is there", Untrusted: untrustedAnswer{fields: []string{"version"}}},
 	"secret_delete":      {Project: true, Delete: deleteTarget{arg: "path", what: "secret", whRU: "секрет"}},
 	"ar_list":            {Project: true, Untrusted: untrustedAnswer{fields: []string{"registries"}}},
