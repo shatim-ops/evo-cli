@@ -235,4 +235,6 @@ func budgetVolatile(s string) string {
 	return testDir.ReplaceAllString(humanVolatile(s), "<dir>")
 }
 
-var testDir = regexp.MustCompile(`[^"\s]*?Test\w+?\d+(/|\\\\)+\d{3}`)
+// The parts of the path are split by / or by \ — doubled in JSON, single
+// in the human output on Windows.
+var testDir = regexp.MustCompile(`[^"\s]*?Test\w+?\d+(/|\\+)+\d{3}`)

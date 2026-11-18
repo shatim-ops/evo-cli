@@ -191,7 +191,6 @@ var usageErrorsRU = []struct {
 	re *regexp.Regexp
 	ru string
 }{
-	{regexp.MustCompile(`^unknown command (".*") for (".*")$`), "неизвестная команда $1 для $2"},
 	{regexp.MustCompile(`^unknown flag: (\S+)$`), "неизвестный флаг: $1"},
 	{regexp.MustCompile(`^unknown shorthand flag: '(.)' in (\S+)$`), "неизвестный флаг: -$1 в $2"},
 	{regexp.MustCompile(`^flag needs an argument: '(.)' in (\S+)$`), "флагу -$1 нужно значение ($2)"},
@@ -210,29 +209,19 @@ var (
 	parseBoolRE   = regexp.MustCompile(`strconv\.ParseBool: parsing ".*": invalid syntax`)
 )
 
-// usageMessage translates a cobra parsing error. cobra's suggestion
-// ("\n\nDid you mean this?\n\tdeploy\n") becomes "; может быть, deploy?".
+// usageMessage translates a parsing error of cobra or pflag. An unknown
+// command is evo's own refusal (unknownSubcommand), already in the language
+// of the run.
 func usageMessage(msg string) string {
 	if i18n.Lang() != i18n.RU {
 		return msg
 	}
-	head, suggest, _ := strings.Cut(msg, "\n\nDid you mean this?\n")
 	for _, e := range usageErrorsRU {
-		if e.re.MatchString(head) {
-			head = e.re.ReplaceAllString(head, e.ru)
+		if e.re.MatchString(msg) {
+			msg = e.re.ReplaceAllString(msg, e.ru)
 			break
 		}
 	}
-	head = parseNumberRE.ReplaceAllString(head, "нужно число")
-	head = parseBoolRE.ReplaceAllString(head, "нужно true или false")
-	var names []string
-	for _, l := range strings.Split(suggest, "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			names = append(names, l)
-		}
-	}
-	if len(names) > 0 {
-		head += "; может быть, " + strings.Join(names, ", ") + "?"
-	}
-	return head
+	msg = parseNumberRE.ReplaceAllString(msg, "нужно число")
+	return parseBoolRE.ReplaceAllString(msg, "нужно true или false")
 }

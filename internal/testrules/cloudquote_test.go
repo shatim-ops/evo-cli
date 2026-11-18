@@ -9,6 +9,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io/fs"
 	"maps"
 	"os"
@@ -26,7 +27,12 @@ import (
 var cloudWordBefore = regexp.MustCompile(`(?i)(^|[^-\w])(status|state|id):? $`)
 
 // formatVerb: a verb of a format string, %% excluded.
-var formatVerb = regexp.MustCompile(`%[-+# 0]*(\*|\d+)?(\.(\*|\d+))?[a-zA-Z%]`)
+var formatVerb = regexp.MustCompile(`%[-+# 0]*(\[\d+\])?(\*|\d+)?(\.(\[\d+\])?(\*|\d+))?(\[\d+\])?[a-zA-Z%]`)
+
+// verbIndex is the explicit index of the argument of a verb: %[2]s prints
+// the second argument, and the verbs after it go on from the third
+// («Риск», 334, У1: --vm-id %[2]s, destroy vm_id=%[3]s).
+var verbIndex = regexp.MustCompile(`\[(\d+)\][a-zA-Z]$`)
 
 // stepKey marks a key of got that is a step of progress, not an error.
 const stepKey = "step: "
@@ -40,9 +46,7 @@ const stepKey = "step: "
 // refusals closed in 1.9 (owner's decision 14.11, before rc.1). Closes by
 // 1.10.
 var unquotedCloudSteps = map[string]int{
-	"internal/engine/deploy.go|Engine.settledBootFIP":   2,
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
-	"internal/tools/tools.go|Registry.provisionVM":      2,
+	"internal/tools/tools.go|Registry.provisionVM": 2,
 }
 
 // unquotedCloudLocals are the places the detector found when it learned to
@@ -50,28 +54,145 @@ var unquotedCloudSteps = map[string]int{
 // (cloudLocals; «Риск», conclusion 312-2): errors and texts here,
 // steps of progress in unquotedCloudLocalSteps. The list only shrinks: a
 // place fixed by quoteCloud leaves it in the same PR. Its fixes are the
-// development's, by this list: A — tools_disk, tools_nlb, tools_snat,
-// engine/deploy.go, engine/destroy.go; B — tools_backup, tools_pg;
+// development's, by this list (A's — tools_disk, tools_nlb, tools_snat,
+// engine/deploy.go, engine/destroy.go — are closed): B — tools_backup, tools_pg;
 // C — tools_deploy, made.go, tools_stack, opanswer.go,
 // engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
 	"internal/engine/create_preview.go|ShowCreatePreview":  1,
-	"internal/engine/deploy.go|Engine.provisionVM":         1,
 	"internal/tools/delete_preview.go|Registry.deletePlan": 1,
 	"internal/tools/tools.go|destroyTargetPreview":         1,
-	"internal/tools/tools_disk.go|Registry.planDiskCreate": 2,
-	"internal/tools/tools_disk.go|diskAttachedError":       4,
-	"internal/tools/tools_disk.go|diskCreated":             5,
-	"internal/tools/tools_nlb.go|Registry.planLbCreate":    1,
-	"internal/tools/tools_nlb.go|Registry.planTgCreate":    2,
-	"internal/tools/tools_snat.go|Registry.planSnatCreate": 2,
 }
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only
 // shrinks. Closes by 1.9 (owner's decision 17.11).
-var unquotedCloudLocalSteps = map[string]int{
-	"internal/engine/destroy.go|Engine.waitAndDeleteVM": 1,
+var unquotedCloudLocalSteps = map[string]int{}
+
+// unquotedCloudFlows are the places the detector found when it learned
+// to follow a value of the cloud by its declaration and in the order of
+// the code, into a field of a literal, out of a helper that returns it,
+// and into the texts fmt.Sprint, strings.Join, errors.New and + build
+// (Астра #2236, #2237; cloudFlow): errors and texts here, steps of
+// progress in unquotedCloudFlowSteps. The list only shrinks: a place
+// fixed by quoteCloud leaves it in the same PR. Closes by 1.10 (owner's
+// decision 17.11: the places of the detector made before the tag 1.9
+// close in 1.10).
+var unquotedCloudFlows = map[string]int{
+	"internal/billing/client.go|Client.consumptionError":          1,
+	"internal/cli/configure.go|chooseProject":                     1,
+	"internal/cli/project.go|resolveProjectArg":                   1,
+	"internal/deployplan/apply.go|ApplyWithTimeout":               2,
+	"internal/deployplan/apply.go|finishApply":                    1,
+	"internal/engine/create_preview.go|ShowCreatePreview":         1,
+	"internal/engine/create_preview.go|flavorNotFound":            1,
+	"internal/engine/deploy.go|Engine.Deploy":                     1,
+	"internal/engine/deploy.go|Engine.awaitCreated":               5,
+	"internal/engine/deploy.go|Engine.provisionVM":                12,
+	"internal/engine/deploy.go|Engine.settledBootFIP":             1,
+	"internal/engine/deploy.go|Engine.waitBootFIP":                1,
+	"internal/engine/deploy.go|Engine.waitVMGone":                 1,
+	"internal/engine/destroy.go|Engine.Destroy":                   1,
+	"internal/engine/init.go|Engine.Init":                         2,
+	"internal/engine/maker.go|Engine.NotVisibleToThisKey":         1,
+	"internal/engine/maker.go|makerName":                          1,
+	"internal/engine/own_record.go|AdoptedVM":                     2,
+	"internal/engine/own_record.go|uncheckedRecord":               1,
+	"internal/engine/preview.go|refText":                          1,
+	"internal/engine/preview.go|rulePreview":                      3,
+	"internal/engine/vm_stopped.go|Engine.vmStopped":              3,
+	"internal/engine/vm_stopped.go|inTransit":                     2,
+	"internal/mk8s/addons.go|Client.CreateClusterAddon":           1,
+	"internal/sgrules/labels.go|CloseLabeled":                     1,
+	"internal/stack/store.go|FindResourcefulJobs":                 1,
+	"internal/tools/delete_outcome.go|deleteRefusal":              3,
+	"internal/tools/intent.go|Registry.checkByID":                 1,
+	"internal/tools/intent_targets.go|groupTarget":                1,
+	"internal/tools/intent_targets.go|vmTarget":                   1,
+	"internal/tools/made_repeat.go|Registry.repeatOfMade":         1,
+	"internal/tools/provision_adopt.go|creatingVM":                1,
+	"internal/tools/tools.go|Registry.handleDestroy":              2,
+	"internal/tools/tools.go|Registry.planDestroyTargeted":        3,
+	"internal/tools/tools.go|Registry.planProvision":              2,
+	"internal/tools/tools.go|Registry.provisionVM":                12,
+	"internal/tools/tools.go|destroyDeleting":                     3,
+	"internal/tools/tools.go|destroyTargetPreview":                5,
+	"internal/tools/tools.go|destroyUnconfirmed":                  6,
+	"internal/tools/tools.go|fipLeftAnswer":                       1,
+	"internal/tools/tools_backup.go|Registry.planBackupCreate":    2,
+	"internal/tools/tools_backup.go|Registry.planBackupRestore":   1,
+	"internal/tools/tools_ca.go|Registry.planCaStartStop":         1,
+	"internal/tools/tools_ca.go|caStartStopAnswer":                1,
+	"internal/tools/tools_certmanager.go|certNameTaken":           1,
+	"internal/tools/tools_deploy.go|Registry.applyDeployPlan":     10,
+	"internal/tools/tools_deploy.go|appliedPlan":                  2,
+	"internal/tools/tools_disk.go|Registry.listedVM":              1,
+	"internal/tools/tools_disk.go|diskAtLimit.Error":              1,
+	"internal/tools/tools_dns.go|Registry.dnsZoneLinked":          1,
+	"internal/tools/tools_k8s.go|Registry.planK8sCreate":          3,
+	"internal/tools/tools_k8s.go|Registry.planK8sNodePoolScale":   2,
+	"internal/tools/tools_kafka.go|Registry.planKafkaCreate":      1,
+	"internal/tools/tools_pg.go|Registry.planPgCreate":            1,
+	"internal/tools/tools_redis.go|Registry.planRedisCreate":      1,
+	"internal/tools/tools_sg.go|Registry.planSGRuleDelete":        2,
+	"internal/tools/tools_sg_create.go|Registry.planSGRuleCreate": 2,
+	"internal/tools/tools_stack.go|Registry.advance":              5,
+	"internal/tools/tools_stack.go|Registry.stepRead":             1,
+	"internal/tools/tools_stack.go|stepMissing":                   1,
+	"internal/tools/tools_subnet.go|Registry.planSubnetCreate":    1,
+	"internal/tools/tools_vm.go|Registry.finishVMPower":           9,
+	"internal/tools/tools_vm.go|Registry.finishVMResize":          10,
+	"internal/tools/tools_vm.go|Registry.planVMPower":             5,
+	"internal/tools/tools_vm.go|Registry.planVMResize":            5,
+	"internal/tools/tools_vm.go|Registry.vmPowerRefused":          1,
+	"internal/tools/tools_vm.go|Registry.vmResizeRefused":         1,
+	"internal/tools/tools_vm.go|Registry.waitVM":                  1,
+	"internal/tools/tools_vm.go|Registry.waitVMDetail":            1,
+	"internal/tools/tools_vm_diagnose.go|vmDiagnosis":             5,
+	"internal/tools/tools_vm_diagnose.go|vmGroupsOnRows":          1,
+	"internal/tools/tools_vpc.go|Registry.planVpcCreate":          1,
+}
+
+// unquotedCloudFlowSteps are the steps of progress of unquotedCloudFlows.
+// The list only shrinks. Closes by 1.10.
+var unquotedCloudFlowSteps = map[string]int{
+	"internal/engine/deploy.go|Engine.recoverFloatingIP": 1,
+	"internal/engine/deploy.go|Engine.releaseBootFIP":    1,
+	"internal/engine/init.go|Engine.Init":                2,
+}
+
+// evoOwnValues are the values the detector takes for the cloud's by the
+// name of their field, and that are evo's own or the person's: the id of
+// a deployment and its status and phase in the state of the folder, the
+// id and the status of a stack job (stack.newID), a JSON path of a
+// declaration, the image of the configuration, the HTTP status of evo's
+// own MCP server, the id of a record of a call (intent, D46). Quoted as the cloud's, they would read as the cloud's
+// words (Астра #2237). And a text evo built from a value of the cloud by
+// the rule of #2253 — the id under isUUID as it is, for a command, else in
+// quotes (madeShows): glued into another text, it is counted again, and
+// quotes would break the command («Риск», 340). A place here is a count of such values in it, not
+// a pass for the function: a value of the cloud in it is still counted.
+var evoOwnValues = map[string]int{
+	"internal/cli/history_view.go|historyEntry.call":           1,
+	"internal/cli/mcp.go|newMCPHealthcheckCmd":                 1,
+	"internal/config/config.go|pickImage":                      1,
+	"internal/engine/compose_path.go|composeRefusal":           1,
+	"internal/engine/compose_path.go|composeUnknown":           1,
+	"internal/engine/deploy.go|Engine.Deploy":                  2,
+	"internal/engine/deploy.go|sshUserOf":                      1,
+	"internal/engine/preview.go|redeployPreview":               1,
+	"internal/engine/provenance.go|ProvenanceOf":               2,
+	"internal/engine/stage.go|InProgress.Error":                1,
+	"internal/engine/unfinished.go|deployUnfinished":           2,
+	"internal/sgrules/sgrules.go|Close":                        1,
+	"internal/stack/store.go|jobNotFoundError.Error":           1,
+	"internal/tools/card.go|cardDoes":                          1,
+	"internal/tools/made.go|madeAnswer":                        1,
+	"internal/tools/tools.go|deployInProgress":                 1,
+	"internal/tools/tools_stack.go|Registry.appliableJob":      1,
+	"internal/tools/tools_stack.go|Registry.checkJobProject":   1,
+	"internal/tools/tools_stack.go|Registry.handleStackPlan":   1,
+	"internal/tools/tools_stack.go|Registry.handleStackStatus": 1,
 }
 
 // A value that came from the cloud — a status, a state, an id — goes into
@@ -81,25 +202,54 @@ var unquotedCloudLocalSteps = map[string]int{
 // #1762, #1763; risk conclusions 232, 235). The check is on the format
 // literal of i18n.Tf, i18n.T inside fmt, fmt.Errorf, fmt.Sprintf and
 // fmt.Fprintf: a %s or %v right after "status", "state" or "id" must be %q
-// or have quoteCloud(…) as its argument.
+// or have quoteCloud(…) as its argument; so must a %s or %v of a value of
+// the cloud whatever words come before it, and a value of the cloud in a
+// text fmt.Sprint, strings.Join, errors.New or + builds (cloudFlow).
 func TestCloudWords_QuotedInEvoText(t *testing.T) {
 	got := map[string]int{}
 	root := filepath.Join("..", "..", "internal")
+	// The files of each package, parsed in one set of positions and
+	// resolved together: a helper of one file returns to another.
+	fset := token.NewFileSet()
+	var pkgs []pkgFiles
+	rels := map[*ast.File]string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return err
+		}
+		entries, err := os.ReadDir(path)
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
+		var files []*ast.File
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			f, err := parser.ParseFile(fset, filepath.Join(path, name), nil, 0)
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(filepath.Join("..", ".."), filepath.Join(path, name))
+			rels[f] = filepath.ToSlash(rel)
+			files = append(files, f)
 		}
-		rel, _ := filepath.Rel(filepath.Join("..", ".."), path)
-		for k, n := range unquotedIn(t, path, filepath.ToSlash(rel)) {
-			got[k] += n
+		if len(files) > 0 {
+			pkgs = append(pkgs, pkgFiles{files[0].Name.Name, files, typeInfo(fset, files)})
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	results := cloudResults(pkgs)
+	for _, p := range pkgs {
+		for _, f := range p.files {
+			for k, n := range unquotedIn(f, rels[f], p.info, results.of(p.name, p.info)) {
+				got[k] += n
+			}
+		}
 	}
 	if os.Getenv("CLOUDQUOTE_PRINT") != "" {
 		keys := slices.Sorted(func(yield func(string) bool) {
@@ -123,6 +273,15 @@ func TestCloudWords_QuotedInEvoText(t *testing.T) {
 	for k, n := range unquotedCloudLocalSteps {
 		allowed[stepKey+k] += n
 	}
+	for k, n := range unquotedCloudFlows {
+		allowed[k] += n
+	}
+	for k, n := range unquotedCloudFlowSteps {
+		allowed[stepKey+k] += n
+	}
+	for k, n := range evoOwnValues {
+		allowed[k] += n
+	}
 	for k, n := range got {
 		if n > allowed[k] {
 			t.Errorf("%s: %d status, state or id of the cloud printed bare (%d allowed) — wrap the value in quoteCloud or print it with %%q", k, n, allowed[k])
@@ -130,9 +289,9 @@ func TestCloudWords_QuotedInEvoText(t *testing.T) {
 	}
 	for k, n := range allowed {
 		if got[k] < n {
-			list := "unquotedCloudLocals"
+			list := "unquotedCloudLocals, unquotedCloudFlows and evoOwnValues"
 			if strings.HasPrefix(k, stepKey) {
-				list = "unquotedCloudSteps and unquotedCloudLocalSteps"
+				list = "unquotedCloudSteps, unquotedCloudLocalSteps and unquotedCloudFlowSteps"
 			}
 			t.Errorf("%s lists %d for %s, and %d are left — lower the line (the list only shrinks)", list, n, strings.TrimPrefix(k, stepKey), got[k])
 		}
@@ -140,13 +299,7 @@ func TestCloudWords_QuotedInEvoText(t *testing.T) {
 }
 
 // unquotedIn counts, per "file|function", the bare cloud words of a file.
-func unquotedIn(t *testing.T, path, rel string) map[string]int {
-	t.Helper()
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+func unquotedIn(f *ast.File, rel string, info *types.Info, calls func(*ast.CallExpr) []bool) map[string]int {
 	out := map[string]int{}
 	for _, decl := range f.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -177,35 +330,13 @@ func unquotedIn(t *testing.T, path, rel string) map[string]int {
 			}
 			return true
 		})
-		// A text glued with + is a format too: "VM entered state " +
-		// cur.Status reached ApplyResult bare (risk conclusion 301-1, #2140).
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			b, ok := n.(*ast.BinaryExpr)
-			if !ok || b.Op != token.ADD {
-				return true
+		k := rel + "|" + name
+		bareIn(fn.Body, info, calls, func(at ast.Node, n int) {
+			if call, isCall := at.(*ast.CallExpr); isCall && step[call] {
+				out[stepKey+k] += n
+			} else {
+				out[k] += n
 			}
-			if c := bareInConcat(concatOperands(b)); c > 0 {
-				out[rel+"|"+name] += c
-			}
-			return false // the operands of a chain are counted once
-		})
-		cloud := cloudLocals(fn.Body)
-		guards := uuidGuarded(fn.Body)
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			format, args, ok := formatCall(call)
-			if !ok {
-				return true
-			}
-			k := rel + "|" + name
-			if step[call] {
-				k = stepKey + k
-			}
-			out[k] += bareCloudWords(format, args, cloud, guards[call])
-			return true
 		})
 	}
 	for k, n := range out {
@@ -214,6 +345,37 @@ func unquotedIn(t *testing.T, path, rel string) map[string]int {
 		}
 	}
 	return out
+}
+
+// bareIn counts the bare values of the cloud in a function body: in a
+// text glued with + (at is the chain), in a format call and in the other calls
+// that build a text (textSinks).
+func bareIn(body *ast.BlockStmt, info *types.Info, calls func(*ast.CallExpr) []bool, count func(at ast.Node, n int)) {
+	flow := newCloudFlow(body, info, calls)
+	// A text glued with + is a format too: "VM entered state " +
+	// cur.Status reached ApplyResult bare (risk conclusion 301-1, #2140).
+	ast.Inspect(body, func(n ast.Node) bool {
+		b, ok := n.(*ast.BinaryExpr)
+		if !ok || b.Op != token.ADD {
+			return true
+		}
+		if c := bareInConcat(concatOperands(b), flow); c > 0 {
+			count(b, c)
+		}
+		return false // the operands of a chain are counted once
+	})
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if format, args, ok := formatCall(call); ok {
+			count(call, bareCloudWords(format, args, flow))
+		} else {
+			count(call, textSinks(call, flow))
+		}
+		return true
+	})
 }
 
 func recvName(e ast.Expr) string {
@@ -299,16 +461,13 @@ func literal(e ast.Expr) (string, bool) {
 	return "", false
 }
 
-// bareCloudWords counts the %s and %v of a format that are not quoteCloud(…)
-// and either follow a cloud word or print a local variable that holds a
-// status, a state or an id the cloud gave (cloudLocals): the words before
-// the verb do not tell what a variable holds («does not find %s» with the
-// resource id of the operation, «Риск», 312-2).
-//
-// A variable checked by isUUID in the branch the call is in (uuidGuarded)
-// is an id in the form of an id — it may stand bare in a command a person
-// copies («Риск», 291-2, 314).
-func bareCloudWords(format string, args []ast.Expr, cloud, guarded map[string]bool) int {
+// bareCloudWords counts the %s and %v of a format that are not
+// quoteCloud(…) and either follow a cloud word or print a value that holds
+// a status, a state or an id the cloud gave (f, cloudFlow): the
+// words before the verb do not tell what a value holds («does not find %s»
+// with the resource id of the operation, «Риск», 312-2; Астра #2236). A
+// nil f judges by the words alone.
+func bareCloudWords(format string, args []ast.Expr, f *cloudFlow) int {
 	n, arg := 0, 0
 	for _, loc := range formatVerb.FindAllStringIndex(format, -1) {
 		verb := format[loc[0]:loc[1]]
@@ -321,8 +480,18 @@ func bareCloudWords(format string, args []ast.Expr, cloud, guarded map[string]bo
 			return n
 		}
 		v := verb[len(verb)-1]
-		if (v == 's' || v == 'v') && (arg >= len(args) || !quoted(args[arg]) && !isCloudLocal(args[arg], guarded)) &&
-			(cloudWordBefore.MatchString(format[:loc[0]]) || arg < len(args) && isCloudLocal(args[arg], cloud)) {
+		if m := verbIndex.FindStringSubmatch(verb); m != nil {
+			i, _ := strconv.Atoi(m[1])
+			arg = i - 1
+		}
+		var a ast.Expr
+		if arg >= 0 && arg < len(args) {
+			a = args[arg]
+		}
+		fromCloud := a != nil && !isConcat(a) && f != nil && f.cloud(a)
+		switch {
+		case (v == 's' || v == 'v') && (a == nil || !quoted(a)) &&
+			(fromCloud || cloudWordBefore.MatchString(format[:loc[0]]) && (a == nil || f == nil || !f.isGuarded(a))):
 			n++
 		}
 		arg++
@@ -340,28 +509,9 @@ var cloudField = regexp.MustCompile(`(?i)^(id|status|state|phase|resource_?id|[a
 // a plan of deploy_plan; C(7) on #2211).
 var configField = regexp.MustCompile(`(?i)^(project_?id|key_?id|plan_?id)$`)
 
-// cloudLocals are the local variables of a function body assigned a status,
-// a state or an id of the cloud: a field (x.Status, x.ResourceID) or a key
-// of an answer (m["resource_id"], m["status"].(string)) — the variable keeps
-// what the cloud wrote, whatever its name.
-func cloudLocals(body *ast.BlockStmt) map[string]bool {
-	out := map[string]bool{}
-	ast.Inspect(body, func(n ast.Node) bool {
-		a, ok := n.(*ast.AssignStmt)
-		if !ok || len(a.Rhs) == 0 {
-			return true
-		}
-		// v := src, and v, ok := src.(T) / m[k]
-		if id, ok := a.Lhs[0].(*ast.Ident); ok && cloudSource(a.Rhs[0]) {
-			out[id.Name] = true
-		}
-		return true
-	})
-	return out
-}
-
 // cloudSource: an expression that reads a status, a state or an id of an
-// answer of the cloud.
+// answer of the cloud: a field (x.Status, x.ResourceID) or a key of an
+// answer (m["resource_id"], m["status"].(string)).
 func cloudSource(e ast.Expr) bool {
 	switch v := e.(type) {
 	case *ast.ParenExpr:
@@ -379,86 +529,625 @@ func cloudSource(e ast.Expr) bool {
 	return false
 }
 
-// uuidGuarded: for each call of a function body, the variables the
-// branch it is in has checked with isUUID — the one check of the form of
-// an id (as vmLeftNote; «Риск», 314): the body of «if isUUID(x)», the
-// «else» of «if !isUUID(x)», the case «case isUUID(x):» of a switch with
-// no tag, and the cases after «case !isUUID(x):» in it (that case took
-// every x that is no id). Only a branch under the call counts, not the
-// look of the value.
-func uuidGuarded(body *ast.BlockStmt) map[*ast.CallExpr]map[string]bool {
-	out := map[*ast.CallExpr]map[string]bool{}
-	with := func(g map[string]bool, name string) map[string]bool {
-		c := maps.Clone(g)
-		if c == nil {
-			c = map[string]bool{}
+// Known blind spots of cloudFlow («Риск», 334): a value passed into a
+// function that builds the text (the text is counted where it is built
+// only if that function is in the same file's walk of the format call), a
+// text grown with +=, a strings.Builder, a format kept in a variable (no
+// literal to read the verbs from), a field deeper than x.f. The worlds of
+// hostile cloud data (TestUntrustedNames_OneLineInText) hold these at run
+// time.
+//
+// cloudFlow follows a status, a state or an id of the cloud through a
+// function body, by declaration (the object the parser resolves a name
+// to: a shadowing name is another variable) and in the order of the code
+// (Астра #2236, #2237). A variable holds the cloud's value from an
+// assignment of one: a field or a key of an answer, another such variable,
+// a field or an element of one, a literal that holds one, a function
+// literal that returns one, one changed in form (carries). An assignment of evo's
+// own value in the block of the declaration ends it; in an inner block it
+// does not (the branch may not run). Every use of a name records what it
+// held there; the sinks read the record.
+type cloudFlow struct {
+	held    map[types.Object]bool
+	declAt  map[types.Object]int
+	use     map[*ast.Ident]bool
+	guarded map[*ast.Ident]bool
+	// fields: the fields of a struct variable made by a literal that hold
+	// a value of the cloud (v := T{Text: vm.Status}; v.Text); the other
+	// fields of it hold evo's own.
+	fields map[types.Object]map[string]bool
+	depth  int
+	// calls: what each result of a call of a function of internal holds
+	// (cloudResults); nil knows no function.
+	calls func(*ast.CallExpr) []bool
+	info  *types.Info
+	// ever: the variables given a value of the cloud anywhere in the body;
+	// captured: the names a function literal reads, inLit its depth. A
+	// literal captures the variable, not its value at the literal: called
+	// later, it reads what the variable holds then (Астра #2304).
+	ever     map[types.Object]bool
+	captured []*ast.Ident
+	inLit    int
+}
+
+// newCloudFlow walks body once.
+func newCloudFlow(body *ast.BlockStmt, info *types.Info, calls func(*ast.CallExpr) []bool) *cloudFlow {
+	f := &cloudFlow{held: map[types.Object]bool{}, declAt: map[types.Object]int{},
+		use: map[*ast.Ident]bool{}, guarded: map[*ast.Ident]bool{}, fields: map[types.Object]map[string]bool{}, calls: calls, info: info,
+		ever: map[types.Object]bool{}}
+	f.stmt(body, nil)
+	for _, id := range f.captured {
+		if o := f.obj(id); o != nil && f.ever[o] {
+			f.use[id] = true
 		}
-		c[name] = true
-		return c
 	}
-	var walk func(n ast.Node, g map[string]bool)
-	walk = func(n ast.Node, g map[string]bool) {
-		ast.Inspect(n, func(c ast.Node) bool {
-			switch x := c.(type) {
-			case *ast.IfStmt:
-				if x.Init != nil {
-					walk(x.Init, g)
+	return f
+}
+
+// obj: the variable a name denotes, by the scopes of go/types; nil for
+// no variable.
+func (f *cloudFlow) obj(id *ast.Ident) types.Object {
+	if v, ok := f.info.ObjectOf(id).(*types.Var); ok {
+		return v
+	}
+	return nil
+}
+
+// cloud reports whether e holds a value of the cloud at its place in the
+// code, not checked by isUUID there.
+func (f *cloudFlow) cloud(e ast.Expr) bool {
+	return f.from(e) && !f.isGuarded(e)
+}
+
+func (f *cloudFlow) isGuarded(e ast.Expr) bool {
+	id, ok := e.(*ast.Ident)
+	return ok && f.guarded[id]
+}
+
+// from: e holds a value of the cloud.
+func (f *cloudFlow) from(e ast.Expr) bool {
+	switch v := e.(type) {
+	case nil:
+		return false
+	case *ast.Ident:
+		return f.use[v]
+	case *ast.ParenExpr:
+		return f.from(v.X)
+	case *ast.StarExpr:
+		return f.from(v.X)
+	case *ast.UnaryExpr:
+		return f.from(v.X)
+	case *ast.SelectorExpr:
+		if x, ok := v.X.(*ast.Ident); ok && f.obj(x) != nil && f.fields[f.obj(x)][v.Sel.Name] {
+			return true
+		}
+		return cloudSource(v) || f.from(v.X)
+	case *ast.IndexExpr:
+		return cloudSource(v) || f.from(v.X)
+	case *ast.TypeAssertExpr:
+		return cloudSource(v) || f.from(v.X)
+	case *ast.SliceExpr:
+		return f.from(v.X)
+	case *ast.CompositeLit:
+		for _, el := range v.Elts {
+			if kv, ok := el.(*ast.KeyValueExpr); ok {
+				if _, isField := kv.Key.(*ast.Ident); isField {
+					// A field of a struct: the struct as a whole is not
+					// the cloud's (fields).
+					continue
 				}
-				walk(x.Cond, g)
-				then, other := g, g
-				if name, neg, ok := isUUIDCall(x.Cond); ok {
-					if neg {
-						other = with(g, name)
-					} else {
-						then = with(g, name)
+				el = kv.Value
+			}
+			if f.from(el) {
+				return true
+			}
+		}
+	case *ast.CallExpr:
+		if quoted(v) {
+			return false
+		}
+		if res := f.results(v); len(res) > 0 {
+			return res[0]
+		}
+		if lit, ok := v.Fun.(*ast.FuncLit); ok {
+			held := false
+			ast.Inspect(lit.Body, func(n ast.Node) bool {
+				if r, ok := n.(*ast.ReturnStmt); ok {
+					for _, x := range r.Results {
+						held = held || f.from(x)
 					}
 				}
-				walk(x.Body, then)
-				if x.Else != nil {
-					walk(x.Else, other)
-				}
-				return false
-			case *ast.SwitchStmt:
-				if x.Tag != nil {
+				_, nested := n.(*ast.FuncLit)
+				return !nested
+			})
+			return held
+		}
+		// A text or an error built of the value carries it on.
+		if carries(v) {
+			for _, a := range v.Args {
+				if f.from(a) {
 					return true
 				}
-				if x.Init != nil {
-					walk(x.Init, g)
+			}
+		}
+	}
+	return false
+}
+
+// results: what each result of the call holds, by the summary of the
+// function it calls.
+func (f *cloudFlow) results(c *ast.CallExpr) []bool {
+	if f.calls == nil {
+		return nil
+	}
+	return f.calls(c)
+}
+
+// cloudCalls is, by "package.Function" and ".Method", what each result of
+// a function of internal returns: a value of the cloud or not. A method is
+// known by its name alone, whatever its type: a getter of an id of the
+// cloud on one type marks the name on all.
+type cloudCalls map[string][]bool
+
+// of: the summary of a call made in package pkg — a function of pkg by its
+// name, pkg2.F by its package, x.M by the method.
+func (r cloudCalls) of(pkg string, info *types.Info) func(*ast.CallExpr) []bool {
+	return func(c *ast.CallExpr) []bool {
+		switch fn := c.Fun.(type) {
+		case *ast.Ident:
+			if _, isFunc := info.ObjectOf(fn).(*types.Func); isFunc {
+				return r[pkg+"."+fn.Name]
+			}
+		case *ast.SelectorExpr:
+			if x, ok := fn.X.(*ast.Ident); ok {
+				if p, isPkg := info.ObjectOf(x).(*types.PkgName); isPkg {
+					return r[p.Imported().Name()+"."+fn.Sel.Name]
 				}
-				after := g
-				for _, s := range x.Body.List {
-					cc := s.(*ast.CaseClause)
-					here := after
-					for _, e := range cc.List {
-						walk(e, after)
-						if name, neg, ok := isUUIDCall(e); ok && !neg && len(cc.List) == 1 {
-							here = with(after, name)
+			}
+			return r["."+fn.Sel.Name]
+		}
+		return nil
+	}
+}
+
+// pkgFiles are the files of a package of internal, with the scopes of
+// their names (typeInfo).
+type pkgFiles struct {
+	name  string
+	files []*ast.File
+	info  *types.Info
+}
+
+// typeInfo resolves the names of the files of one package to their
+// declarations, and its constant expressions to their values (gate_test:
+// a key "confirmed" however it is spelt), the scopes of go/types without
+// the packages they import:
+// what a name of a function body denotes needs no import, and an import
+// that is not loaded leaves its names unknown, not wrong.
+func typeInfo(fset *token.FileSet, files []*ast.File) *types.Info {
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{},
+		Types: map[ast.Expr]types.TypeAndValue{}}
+	conf := types.Config{
+		Importer: importerFunc(func(path string) (*types.Package, error) {
+			return nil, fmt.Errorf("%s is not loaded", path)
+		}),
+		Error: func(error) {},
+	}
+	_, _ = conf.Check(files[0].Name.Name, fset, files, info)
+	return info
+}
+
+type importerFunc func(path string) (*types.Package, error)
+
+func (f importerFunc) Import(path string) (*types.Package, error) { return f(path) }
+
+// cloudResults sums up the functions of files: a result is the cloud's
+// when a return of the function gives a value of the cloud there (an id
+// a helper picks from a list, Астра #2236). The sums feed each other, so
+// they are walked again until they hold.
+func cloudResults(pkgs []pkgFiles) cloudCalls {
+	r := cloudCalls{}
+	for round := 0; round < 10; round++ {
+		changed := false
+		for _, file := range filesOf(pkgs) {
+			calls := r.of(file.pkg.name, file.pkg.info)
+			for _, decl := range file.ast.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Body == nil || fn.Type.Results == nil {
+					continue
+				}
+				n := 0
+				for _, fld := range fn.Type.Results.List {
+					n += max(1, len(fld.Names))
+				}
+				key := file.pkg.name + "." + fn.Name.Name
+				if fn.Recv != nil {
+					key = "." + fn.Name.Name
+				}
+				res := slices.Clone(r[key])
+				if len(res) < n {
+					res = append(res, make([]bool, n-len(res))...)
+				}
+				flow := newCloudFlow(fn.Body, file.pkg.info, calls)
+				ast.Inspect(fn.Body, func(nd ast.Node) bool {
+					switch v := nd.(type) {
+					case *ast.FuncLit:
+						return false
+					case *ast.ReturnStmt:
+						if len(v.Results) == n {
+							for i, e := range v.Results {
+								if i < len(res) && !res[i] && flow.from(e) {
+									res[i], changed = true, true
+								}
+							}
+						} else if len(v.Results) == 1 {
+							if c, isCall := v.Results[0].(*ast.CallExpr); isCall {
+								for i, h := range flow.results(c) {
+									if i < len(res) && h && !res[i] {
+										res[i], changed = true, true
+									}
+								}
+							}
 						}
 					}
-					for _, st := range cc.Body {
-						walk(st, here)
-					}
-					for _, e := range cc.List {
-						if name, neg, ok := isUUIDCall(e); ok && neg {
-							after = with(after, name)
-						}
-					}
-				}
+					return true
+				})
+				r[key] = res
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return r
+}
+
+type pkgFile struct {
+	pkg *pkgFiles
+	ast *ast.File
+}
+
+func filesOf(pkgs []pkgFiles) []pkgFile {
+	var out []pkgFile
+	for i := range pkgs {
+		for _, f := range pkgs[i].files {
+			out = append(out, pkgFile{&pkgs[i], f})
+		}
+	}
+	return out
+}
+
+// carries: a call whose result is its argument changed in form, not a
+// text of evo built of it — string(…), fmt.Sprint(…) of no literal, the
+// functions of strings but Join. A text built with words of evo
+// (fmt.Sprintf, fmt.Errorf, errors.New, strings.Join, +) is counted where
+// it is built (bareIn) and carries nothing on: one bare value is one
+// place, wherever its text goes then.
+func carries(c *ast.CallExpr) bool {
+	switch fn := c.Fun.(type) {
+	case *ast.Ident:
+		return fn.Name == "string"
+	case *ast.SelectorExpr:
+		pkg, ok := fn.X.(*ast.Ident)
+		if !ok {
+			return false
+		}
+		switch pkg.Name {
+		case "strings":
+			return fn.Sel.Name != "Join"
+		case "fmt":
+			if fn.Sel.Name != "Sprint" {
 				return false
-			case *ast.CallExpr:
-				if len(g) > 0 {
-					out[x] = g
+			}
+			for _, a := range c.Args {
+				if _, ok := literal(a); ok {
+					return false
 				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// stmt walks n in the order of the code; guards are the variables the
+// branch has checked with isUUID — the one check of the form of an id (as
+// vmLeftNote; «Риск», 291-2, 314): the body of «if isUUID(x)», the «else»
+// of «if !isUUID(x)», «case isUUID(x):» of a switch with no tag, and the
+// cases after «case !isUUID(x):» in it.
+func (f *cloudFlow) stmt(n ast.Node, guards map[types.Object]bool) {
+	if n == nil {
+		return
+	}
+	with := func(name *ast.Ident) map[types.Object]bool {
+		c := maps.Clone(guards)
+		if c == nil {
+			c = map[types.Object]bool{}
+		}
+		if o := f.obj(name); o != nil {
+			c[o] = true
+		}
+		return c
+	}
+	switch x := n.(type) {
+	case *ast.BlockStmt:
+		f.depth++
+		for _, s := range x.List {
+			f.stmt(s, guards)
+		}
+		f.depth--
+	case *ast.AssignStmt:
+		for _, r := range x.Rhs {
+			f.expr(r, guards)
+		}
+		for i, l := range x.Lhs {
+			held := false
+			switch {
+			case len(x.Rhs) == len(x.Lhs):
+				held = f.from(x.Rhs[i])
+			case len(x.Rhs) == 1:
+				// id, ok := g(…): each result as g returns it; v, ok :=
+				// m[k].(T): the value is the first.
+				if c, isCall := x.Rhs[0].(*ast.CallExpr); isCall {
+					res := f.results(c)
+					held = i < len(res) && res[i]
+				} else {
+					held = i == 0 && f.from(x.Rhs[0])
+				}
+			}
+			f.assign(l, held, guards)
+			if len(x.Rhs) == len(x.Lhs) {
+				f.structFields(l, x.Rhs[i])
+			}
+		}
+	case *ast.DeclStmt:
+		g, ok := x.Decl.(*ast.GenDecl)
+		if !ok {
+			return
+		}
+		for _, sp := range g.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, v := range vs.Values {
+				f.expr(v, guards)
+			}
+			for i, name := range vs.Names {
+				held := i < len(vs.Values) && f.from(vs.Values[i])
+				f.assign(name, held, guards)
+				if i < len(vs.Values) {
+					f.structFields(name, vs.Values[i])
+				}
+			}
+		}
+	case *ast.RangeStmt:
+		f.expr(x.X, guards)
+		held := f.from(x.X)
+		if x.Value != nil {
+			f.assign(x.Value, held, guards)
+		}
+		f.stmt(x.Body, guards)
+	case *ast.IfStmt:
+		f.stmt(x.Init, guards)
+		f.expr(x.Cond, guards)
+		then, other := guards, guards
+		if name, neg, ok := isUUIDCall(x.Cond); ok {
+			if neg {
+				other = with(name)
+			} else {
+				then = with(name)
+			}
+		}
+		f.stmt(x.Body, then)
+		f.stmt(x.Else, other)
+	case *ast.SwitchStmt:
+		f.stmt(x.Init, guards)
+		f.expr(x.Tag, guards)
+		after := guards
+		for _, s := range x.Body.List {
+			cc := s.(*ast.CaseClause)
+			here := after
+			for _, e := range cc.List {
+				f.expr(e, after)
+				if name, neg, ok := isUUIDCall(e); ok && !neg && len(cc.List) == 1 && x.Tag == nil {
+					here = with(name)
+				}
+			}
+			f.depth++
+			for _, st := range cc.Body {
+				f.stmt(st, here)
+			}
+			f.depth--
+			for _, e := range cc.List {
+				if name, neg, ok := isUUIDCall(e); ok && neg && x.Tag == nil {
+					after = with(name)
+				}
+			}
+		}
+	case ast.Stmt:
+		// Any other statement: its expressions and inner statements, in
+		// order.
+		ast.Inspect(x, func(c ast.Node) bool {
+			if c == x {
+				return true
+			}
+			switch c := c.(type) {
+			case ast.Stmt:
+				f.stmt(c, guards)
+				return false
+			case ast.Expr:
+				f.expr(c, guards)
+				return false
 			}
 			return true
 		})
 	}
-	walk(body, nil)
-	return out
+}
+
+// expr records the uses of names in e at this place; a function literal's
+// body is walked where it stands (its captured names hold what they hold
+// there).
+func (f *cloudFlow) expr(e ast.Expr, guards map[types.Object]bool) {
+	if e == nil {
+		return
+	}
+	ast.Inspect(e, func(c ast.Node) bool {
+		switch c := c.(type) {
+		case *ast.FuncLit:
+			f.inLit++
+			f.stmt(c.Body, guards)
+			f.inLit--
+			return false
+		case *ast.Ident:
+			if f.inLit > 0 {
+				f.captured = append(f.captured, c)
+			}
+			if o := f.obj(c); o != nil {
+				f.use[c] = f.held[o]
+				f.guarded[c] = guards[o]
+			}
+		case *ast.SelectorExpr:
+			// The selector's name is no variable.
+			f.expr(c.X, guards)
+			return false
+		case *ast.KeyValueExpr:
+			if _, isName := c.Key.(*ast.Ident); isName {
+				f.expr(c.Value, guards)
+				return false
+			}
+		}
+		return true
+	})
+}
+
+// assign records that l holds the cloud's value or not: a name — by its
+// declaration (a value of evo's own ends it in the block of the
+// declaration only); x.f = v — the field f of x; x[i] = v — x.
+func (f *cloudFlow) assign(l ast.Expr, held bool, guards map[types.Object]bool) {
+	switch v := l.(type) {
+	case *ast.Ident:
+		o := f.obj(v)
+		if o == nil {
+			return
+		}
+		// A check of isUUID holds the value it checked, not the next one
+		// the name is given in the branch («Риск», 334, У2).
+		delete(guards, o)
+		if held {
+			f.ever[o] = true
+		}
+		if f.info.Defs[v] != nil {
+			// Declared here (a name := reuses one declared before).
+			f.declAt[o] = f.depth
+			f.held[o] = held
+			return
+		}
+		if at, ok := f.declAt[o]; ok && at == f.depth {
+			f.held[o] = held
+		} else {
+			f.held[o] = f.held[o] || held
+		}
+	case *ast.SelectorExpr:
+		// x.f = v: the field f of x holds it; a deeper chain is not
+		// followed.
+		f.expr(l, guards)
+		if x, ok := v.X.(*ast.Ident); ok && f.obj(x) != nil && held {
+			o := f.obj(x)
+			if f.fields[o] == nil {
+				f.fields[o] = map[string]bool{}
+			}
+			f.fields[o][v.Sel.Name] = true
+		}
+	case *ast.IndexExpr:
+		// x[i] = v: an element of the list or the map x holds it.
+		f.expr(l, guards)
+		if x, ok := v.X.(*ast.Ident); ok && f.obj(x) != nil && held {
+			f.held[f.obj(x)] = true
+		}
+	}
+}
+
+// structFields records the fields of a struct literal assigned to a
+// variable that hold a value of the cloud.
+func (f *cloudFlow) structFields(l, r ast.Expr) {
+	id, ok := l.(*ast.Ident)
+	if !ok || f.obj(id) == nil {
+		return
+	}
+	o := f.obj(id)
+	if u, isAddr := r.(*ast.UnaryExpr); isAddr && u.Op == token.AND {
+		r = u.X
+	}
+	if st, isDeref := r.(*ast.StarExpr); isDeref {
+		r = st.X
+	}
+	if src, isName := r.(*ast.Ident); isName {
+		// b := a: the copy holds the fields a holds (Астра #2305).
+		if from := f.obj(src); from != nil && f.fields[from] != nil {
+			f.fields[o] = maps.Clone(f.fields[from])
+			return
+		}
+	}
+	lit, ok := r.(*ast.CompositeLit)
+	if !ok {
+		delete(f.fields, o)
+		return
+	}
+	held := map[string]bool{}
+	for _, el := range lit.Elts {
+		if kv, ok := el.(*ast.KeyValueExpr); ok {
+			if k, isField := kv.Key.(*ast.Ident); isField && f.from(kv.Value) {
+				held[k.Name] = true
+			}
+		}
+	}
+	f.fields[o] = held
+}
+
+// textSinks counts the other ways a text of evo is built of the cloud's
+// value: fmt.Sprint* with a literal among its arguments, strings.Join of a
+// list that holds one, errors.New of one.
+func textSinks(call *ast.CallExpr, f *cloudFlow) int {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return 0
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return 0
+	}
+	n := 0
+	switch pkg.Name + "." + sel.Sel.Name {
+	case "fmt.Sprint", "fmt.Sprintln", "fmt.Fprint", "fmt.Fprintln":
+		text := false
+		for _, a := range call.Args {
+			if _, ok := literal(a); ok {
+				text = true
+			}
+		}
+		if !text {
+			return 0
+		}
+		for _, a := range call.Args {
+			if !quoted(a) && !isConcat(a) && f.cloud(a) {
+				n++
+			}
+		}
+	case "strings.Join":
+		if len(call.Args) == 2 && f.cloud(call.Args[0]) {
+			n++
+		}
+	case "errors.New":
+		if len(call.Args) == 1 && !isConcat(call.Args[0]) && f.cloud(call.Args[0]) {
+			n++
+		}
+	}
+	return n
 }
 
 // isUUIDCall: e is isUUID(x) or !isUUID(x) of a variable x.
-func isUUIDCall(e ast.Expr) (name string, neg, ok bool) {
+func isUUIDCall(e ast.Expr) (name *ast.Ident, neg, ok bool) {
 	if u, isNot := e.(*ast.UnaryExpr); isNot && u.Op == token.NOT {
 		e, neg = u.X, true
 	}
@@ -467,22 +1156,22 @@ func isUUIDCall(e ast.Expr) (name string, neg, ok bool) {
 	}
 	c, isCall := e.(*ast.CallExpr)
 	if !isCall || len(c.Args) != 1 {
-		return "", false, false
+		return nil, false, false
 	}
 	if f, isIdent := c.Fun.(*ast.Ident); !isIdent || f.Name != "isUUID" {
-		return "", false, false
+		return nil, false, false
 	}
 	arg, isIdent := c.Args[0].(*ast.Ident)
 	if !isIdent {
-		return "", false, false
+		return nil, false, false
 	}
-	return arg.Name, neg, true
+	return arg, neg, true
 }
 
-// isCloudLocal: the argument is a local variable of cloudLocals.
-func isCloudLocal(e ast.Expr, cloud map[string]bool) bool {
-	id, ok := e.(*ast.Ident)
-	return ok && cloud[id.Name]
+// isConcat: e is a text glued with +, counted by bareInConcat itself.
+func isConcat(e ast.Expr) bool {
+	b, ok := e.(*ast.BinaryExpr)
+	return ok && b.Op == token.ADD
 }
 
 // concatOperands flattens a chain a + b + c into its operands.
@@ -500,13 +1189,14 @@ func concatOperands(e ast.Expr) []ast.Expr {
 
 // bareInConcat counts the operands of a glued text that are a status, a
 // state or an id of the cloud and not quoteCloud(…): an operand right
-// after a literal that ends with a cloud word, or a field named Status or
-// State whatever comes before it. A chain with no string literal is no
-// text.
-func bareInConcat(ops []ast.Expr) int {
+// after a literal that ends with a cloud word, a field named Status or
+// State whatever comes before it, or a value of the cloud (f). A
+// chain with no literal of words — no space, colon, equals sign or
+// bracket — is no text but a name or a key (id + ".json").
+func bareInConcat(ops []ast.Expr, f *cloudFlow) int {
 	text := false
 	for _, op := range ops {
-		if _, ok := literal(op); ok {
+		if lit, ok := literal(op); ok && strings.ContainsAny(lit, " :=(") {
 			text = true
 		}
 	}
@@ -524,7 +1214,8 @@ func bareInConcat(ops []ast.Expr) int {
 				after = true
 			}
 		}
-		if sel, ok := op.(*ast.SelectorExpr); after || ok && (sel.Sel.Name == "Status" || sel.Sel.Name == "State") {
+		sel, isSel := op.(*ast.SelectorExpr)
+		if after || isSel && (sel.Sel.Name == "Status" || sel.Sel.Name == "State") || f != nil && f.cloud(op) {
 			n++
 		}
 	}
@@ -567,7 +1258,7 @@ func TestCloudWords_Detector(t *testing.T) {
 		{"took %d tries, state %d", []ast.Expr{x, x}, 0},
 		{"State %s", []ast.Expr{x}, 1},
 	} {
-		if got := bareCloudWords(c.format, c.args, nil, nil); got != c.want {
+		if got := bareCloudWords(c.format, c.args, nil); got != c.want {
 			t.Errorf("%q: %d bare, want %d", c.format, got, c.want)
 		}
 	}
@@ -589,7 +1280,7 @@ func TestCloudWords_DetectorOfConcat(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := bareInConcat(concatOperands(e)); got != want {
+		if got := bareInConcat(concatOperands(e), nil); got != want {
 			t.Errorf("%s: %d bare, want %d", src, got, want)
 		}
 	}
@@ -622,22 +1313,114 @@ func TestCloudWords_DetectorFollowsLocals(t *testing.T) {
 		`id, _ := m["id"].(string); switch { case !isUUID(id) && p: _ = 1; default: _ = fmt.Sprintf("x %s", id) }`:                                     1,
 		`id, _ := m["id"].(string); switch { case isUUID(id): _ = fmt.Sprintf("vm_id=%s", id); default: _ = fmt.Sprintf("x %s", id) }`:                 1,
 	} {
-		f, err := parser.ParseFile(token.NewFileSet(), "p.go", "package p\nfunc f() {"+src+"}", 0)
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, "p.go", "package p\nfunc f() {"+src+"}", 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		body := f.Decls[0].(*ast.FuncDecl).Body
-		cloud, got := cloudLocals(body), 0
-		ast.Inspect(body, func(n ast.Node) bool {
-			if call, ok := n.(*ast.CallExpr); ok {
-				if format, args, ok := formatCall(call); ok {
-					got += bareCloudWords(format, args, cloud, uuidGuarded(body)[call])
-				}
-			}
-			return true
-		})
+		got := 0
+		bareIn(body, typeInfo(fset, []*ast.File{f}), nil, func(_ ast.Node, n int) { got += n })
 		if got != want {
 			t.Errorf("%s: %d bare, want %d", src, got, want)
+		}
+	}
+}
+
+// The detector follows a value of the cloud by its declaration and in the
+// order of the code, through the ways Астра #2236 carried it past the
+// detector of 1.9 (each a text with a real newline of the cloud in it),
+// and stops where evo's own word takes its place (Астра #2237).
+func TestCloudWords_DetectorFollowsFlows(t *testing.T) {
+	const helper = `func pick(vms []astraVM) (string, bool) { for _, vm := range vms { return vm.ID, true }; return "", false }
+func own() string { return "unknown" }
+`
+	unsafe := []string{
+		`v := vm.Status; return fmt.Sprintf("it is %s now", v)`,
+		`a := vm.Status; b := a; return fmt.Sprintf("it is %s now", b)`,
+		`v := struct{Text string}{Text: vm.Status}; return fmt.Sprintf("it is %s now", v.Text)`,
+		`v := []string{vm.Status}; return strings.Join(v, ", ")`,
+		`v := vm.Status; return fmt.Sprint("it is ", v)`,
+		`return fmt.Sprintf("it is %v now", vm.Status)`,
+		`v := vm.Status; return fmt.Sprintf("it is %v now", v)`,
+		`v := func() string { return vm.Status }(); return fmt.Sprintf("it is %s now", v)`,
+		`v := vm.Status; f := func() string { return fmt.Sprintf("it is %s now", v) }; return f()`,
+		`m := map[string]any{"status": vm.Status}; v := m["status"].(string); return fmt.Sprintf("it is %s now", v)`,
+		`m := map[string]any{"status": vm.Status}; return fmt.Sprintf("it is %s now", m["status"].(string))`,
+		`v := vm.Status; return i18n.Tf("it is %s now", "сейчас это %s", v)`,
+		`return i18n.Tf("it is %s now", "сейчас это %s", vm.Status)`,
+		`v := vm.Status; err := errors.New(v); return fmt.Errorf("read failed: %w", err).Error()`,
+		`v := vm.Status; err := fmt.Errorf("it is %s now", v); return fmt.Errorf("read failed: %w", err).Error()`,
+		`var v = vm.Status; return fmt.Sprintf("it is %s now", v)`,
+		`_, v := 0, vm.Status; return fmt.Sprintf("it is %s now", v)`,
+		`v := vm.Status; return "it is " + v`,
+		// Beyond #2236: a helper that picks an id of the cloud from a list
+		// (the gateway of a zone, snat_create), an element of a range, a
+		// field set after the literal, an id under another check than
+		// isUUID, a value kept in a branch.
+		`id, ok := pick(vms); if ok { return fmt.Sprintf("use it (snat_get id=%s)", id) }; return ""`,
+		`for _, x := range vms { return fmt.Sprintf("VM %s", x.ID) }; return ""`,
+		`for _, s := range []string{vm.Status} { return fmt.Sprintf("it is %s now", s) }; return ""`,
+		`var r struct{ Text string }; r.Text = vm.Status; return fmt.Sprintf("it is %s now", r.Text)`,
+		`v := "unknown"; if vm.Status != "" { v = vm.Status }; return fmt.Sprintf("it is %s now", v)`,
+		`v := vm.ID; if looksUUID(v) { return fmt.Sprintf("vm_id=%s", v) }; return ""`,
+		`v := strings.TrimSpace(vm.Status); return fmt.Sprintf("it is %s now", v)`,
+		// «Риск», 334: an explicit index of an argument (У1), a check of
+		// isUUID over a value the branch gives the name next (У2).
+		`return fmt.Sprintf("--vm-id %[2]s", "x", vm.ID)`,
+		`return fmt.Sprintf("vm %[2]s, then %s", "x", quoteCloud(vm.ID), vm.Status)`,
+		`v := vm.ID; if isUUID(v) { v = vm.Status; return fmt.Sprintf("vm_id=%s", v) }; return ""`,
+		// Астра #2304, #2305: a literal of a function that reads a variable
+		// given the cloud's value after it; a copy of a struct.
+		`v := "unknown"; f := func() string { return fmt.Sprintf("it is %s now", v) }; v = vm.Status; return f()`,
+		`a := struct{Text string}{Text: vm.Status}; b := a; return fmt.Sprintf("it is %s now", b.Text)`,
+		`a := &struct{Text string}{Text: vm.Status}; b := *a; return fmt.Sprintf("it is %s now", b.Text)`,
+	}
+	safe := []string{
+		`v := vm.Status; return fmt.Sprintf("it is %s now", quoteCloud(v))`,
+		`v := vm.Status; return fmt.Sprintf("it is %q now", v)`,
+		`return fmt.Sprintf("it is %s now", quoteCloud(vm.Status))`,
+		`v := vm.Status; return fmt.Sprintf("it took %d tries", len(v))`,
+		`p := cfg.ProjectID; return fmt.Sprintf("in %s", p)`,
+		`v := struct{Text, Name string}{Text: vm.Status, Name: "x"}; return fmt.Sprintf("VM %s", v.Name)`,
+		`v := own(); return fmt.Sprintf("it is %s now", v)`,
+		`v := vm.ID; if isUUID(v) { return fmt.Sprintf("vm_id=%s", v) }; return ""`,
+		`id := strings.Join([]string{quoteCloud(vm.ID)}, ", "); return fmt.Sprintf("ids %s", id)`,
+		// Астра #2237: evo's own word over the cloud's, and a name that
+		// shadows it.
+		`v := vm.Status; v = "unknown"; return fmt.Sprintf("it is %s now", v)`,
+		`v := vm.Status; _ = v; { v := "unknown"; return fmt.Sprintf("it is %s now", v) }`,
+		// A name or a key glued of an id is no text.
+		`return vm.ID + ".json"`,
+		`return fmt.Sprintf("--vm-id %[2]s, %[1]s", "x", quoteCloud(vm.ID))`,
+		`v := "unknown"; f := func() string { return fmt.Sprintf("it is %s now", v) }; v = "idle"; return f()`,
+		`a := struct{Text, Name string}{Text: vm.Status, Name: "x"}; b := a; return fmt.Sprintf("VM %s", b.Name)`,
+	}
+	count := func(body string) int {
+		src := "package p\n" + helper + "func probe(vm astraVM, vms []astraVM, cfg config) string {" + body + "}"
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, "p.go", src, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", body, err)
+		}
+		pkgs := []pkgFiles{{"p", []*ast.File{f}, typeInfo(fset, []*ast.File{f})}}
+		results := cloudResults(pkgs)
+		got := 0
+		for _, d := range f.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Name.Name == "probe" {
+				bareIn(fn.Body, pkgs[0].info, results.of("p", pkgs[0].info), func(_ ast.Node, n int) { got += n })
+			}
+		}
+		return got
+	}
+	for _, body := range unsafe {
+		if count(body) == 0 {
+			t.Errorf("a value of the cloud reaches the text bare, and the detector does not see it:\n%s", body)
+		}
+	}
+	for _, body := range safe {
+		if n := count(body); n != 0 {
+			t.Errorf("the detector counts %d bare in a text with no bare value of the cloud:\n%s", n, body)
 		}
 	}
 }

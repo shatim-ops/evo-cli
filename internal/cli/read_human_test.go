@@ -88,6 +88,7 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 	cases, _, _ := jsonCases(t)
 	t.Setenv("COLUMNS", "200")
 	tools, seen, verified := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	seenIn := map[string]string{} // tool → its answer and human output, for a stale line
 	var bad []string
 	byClass := map[string]int{}
 	lang := i18n.Lang()
@@ -133,6 +134,12 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 			continue
 		}
 		human := out + errOut
+		// What a stale line of readUnnamed is checked against: when the
+		// line is not seen, the answer and the human output say why — the
+		// value gone from the answer (a probe of doctor cut by its time
+		// limit on a slow runner, C(7) on #2218), or its text found in the
+		// output (hypotheses, one run).
+		seenIn[c.tool.Name] = clipLong(jsonOut) + " | human: " + clipLong(human)
 		for _, miss := range valueMisses(answer, human, readForm) {
 			key := c.tool.Name + " " + miss.path
 			if shownAsWritten(miss.value, human) {
@@ -162,7 +169,8 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 		case verified[key] && !seen[key]:
 			bad = append(bad, key+": in readUnnamed, but the human output names its thing (namedBySibling): remove the line")
 		case !seen[key]:
-			bad = append(bad, key+": in readUnnamed, but the human output shows it, or the answer has it no more: remove the line")
+			tool, _, _ := strings.Cut(key, " ")
+			bad = append(bad, key+": in readUnnamed, but the human output shows it, or the answer has it no more: remove the line ("+seenIn[tool]+")")
 		}
 		switch d.class {
 		case unnamedAccess, unnamedPrice, unnamedWork, unnamedNoise:
@@ -180,13 +188,49 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 	}
 }
 
+// A value is never «shown» by the digits of a temporary directory of the
+// test.
+func TestRead_VolatileHidesTheTestDir(t *testing.T) {
+	human := readVolatile("warn config dir /tmp/TestRead_HumanShowsEveryValue3020022521/001 has mode 0755")
+	if shownAsWritten("200", human) {
+		t.Errorf("200 read as shown in %q", human)
+	}
+	if !shownAsWritten("0755", human) {
+		t.Errorf("the rest of the line is lost: %q", human)
+	}
+	// On Windows the answer holds the path in JSON (\\ between the parts)
+	// and the human output as it is (\): both read as the same <dir>.
+	path := `C:\Users\RUNNER~1\AppData\Local\Temp\TestRead_HumanShowsEveryValue3020022521\001\helm.bat`
+	inJSON, _ := json.Marshal(path)
+	var answer string
+	if err := json.Unmarshal([]byte(readVolatile(string(inJSON))), &answer); err != nil {
+		t.Fatal(err)
+	}
+	if got := readVolatile(path); got != answer || !strings.HasPrefix(got, "<dir>") {
+		t.Errorf("the human output reads as %q, the answer as %q: the same path", got, answer)
+	}
+}
+
+// clipLong is s on one line, cut to what a log of CI shows in full.
+func clipLong(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 4000 {
+		return s[:4000] + "…"
+	}
+	return s
+}
+
 // readVolatile reads as one what two calls of the same read differ in
 // (humanVolatile: the plan, the stack job, a time of the call, how long a
 // probe of doctor took), and a time the way the human output writes it
 // (2026-01-01 01:00:00 UTC) as a time of the JSON: a time is shown when the
 // output has a time in its place, whatever its form.
 func readVolatile(s string) string {
-	return humanTime.ReplaceAllString(humanVolatile(s), "<time>")
+	// A temporary directory of the test (testDir): the human output of
+	// doctor names its files, and its random digits held 200 on 1 run in
+	// 12 — the http_status of a probe read as shown (C(7) on #2218, A(7) on
+	// #2262).
+	return testDir.ReplaceAllString(humanTime.ReplaceAllString(humanVolatile(s), "<time>"), "<dir>")
 }
 
 var humanTime = regexp.MustCompile(`\d{4}-\d\d-\d\d \d\d:\d\d(:\d\d)?( UTC)?`)

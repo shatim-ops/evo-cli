@@ -594,6 +594,10 @@ func (s *Registry) backupCreated(ctx context.Context, eng *engine.Engine, api pr
 	created := map[string]any{"backup_id": id}
 	ans := map[string]any{"backup_id": id, "created": created}
 	state, _ := b["state"].(string)
+	// The reads of the wait, when evo waited: an answer at its limit names
+	// when evo last read the backup and how many reads failed after it
+	// (waitReads, #2216; #2338).
+	var reads *waitReads
 	if boolArg(args, "wait", true) && state != "created" {
 		read := func(ctx context.Context) (string, bool, error) {
 			cur, err := api.GetBackup(ctx, id)
@@ -613,8 +617,10 @@ func (s *Registry) backupCreated(ctx context.Context, eng *engine.Engine, api pr
 			return i18n.Tf("backup %s: %s", "копия %s: %s", id, quoteCloud(st))
 		}
 		done := func(st string) (bool, error) { return st != "creating" && st != "updating", nil }
-		last, _, _, _, err := waitState(ctx, eng, backupWaitLimit, read, waiting, done)
+		last, _, _, r, err := waitState(ctx, eng, backupWaitLimit, read, waiting, done)
+		reads = &r
 		if err != nil {
+			reads.put(ans)
 			return errAnswer(err, ans), true
 		}
 		state = last
@@ -632,6 +638,9 @@ func (s *Registry) backupCreated(ctx context.Context, eng *engine.Engine, api pr
 	default:
 		ans["status"] = "creating"
 		ans["state"] = state
+		if reads != nil {
+			reads.put(ans)
+		}
 		ans["next"] = i18n.T("The backup is still being made: backup_get shows when it is created.", "Копия ещё делается: backup_get покажет, когда она будет готова.")
 		nextStep(ans, "backup_get", map[string]any{"backup_id": id})
 	}
@@ -894,7 +903,7 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 	if !wait {
 		limit = 0
 	}
-	last, _, _, _, werr := waitState(ctx, eng, limit, read, waiting, done)
+	last, _, _, reads, werr := waitState(ctx, eng, limit, read, waiting, done)
 	ans := map[string]any{"backup_id": backupID, "name": name}
 	if len(before) > 0 {
 		ids := make([]any, 0, len(before))
@@ -919,6 +928,7 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 		if len(found) == 1 {
 			ans["disk_id"] = found[0]["id"]
 		}
+		reads.put(ans)
 		ans["warning"] = i18n.Tf("the restore was sent: a disk %q may be made and be billed; disk_list shows it by name. The same call again sends no second restore: it asks the person first",
 			"восстановление отправлено: диск %q может появиться и оплачиваться; disk_list покажет его по имени. Тот же вызов ещё раз второе восстановление не отправит: сначала спросит человека", name)
 		return errAnswer(werr, ans), true
@@ -939,6 +949,11 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 			"ответ на восстановление не пришёл: диск %q может ещё появиться и оплачиваться; disk_list покажет его по имени. Тот же вызов ещё раз второе восстановление не отправит: сначала спросит человека", name)}), true
 	case len(found) == 0:
 		ans["status"] = "restoring"
+		if wait {
+			// When evo last read the disks and how many reads failed
+			// after it (waitReads, #2216; #2338).
+			reads.put(ans)
+		}
 		ans["note"] = i18n.Tf("The platform took the restore; the disk %s is not listed yet. The same call again sends nothing: it answers the disk's id once it is listed, or that it is not yet.",
 			"Платформа приняла восстановление; диска %s в списке ещё нет. Тот же вызов ещё раз ничего не отправит: ответит id диска, когда он появится в списке, или что его ещё нет.", quoteCloud(name))
 		nextSameCall(ans, "backup_restore", args)
@@ -968,6 +983,9 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 				"Диск в ошибке хранится и тарифицируется. Удалять ли его — решает человек: спросите человека; с его «да» его удалит evo disk delete.")), ans), true
 	default:
 		ans["status"], ans["state"] = "restoring", last
+		if wait {
+			reads.put(ans)
+		}
 		nextSameCall(ans, "backup_restore", args)
 	}
 	return toJSON(ans), false
