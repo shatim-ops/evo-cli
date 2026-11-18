@@ -209,8 +209,12 @@ func confirmedReads(decl ast.Decl, info *types.Info, foreign map[string]bool) []
 	})
 	var out []token.Pos
 	ast.Inspect(decl, func(n ast.Node) bool {
-		if fl, ok := n.(*ast.Field); ok && fl.Tag != nil && tagsConfirmed(fl.Tag) {
-			out = append(out, fl.Tag.Pos())
+		if st, ok := n.(*ast.StructType); ok {
+			for _, fl := range st.Fields.List {
+				if fieldConfirmed(fl) {
+					out = append(out, fl.Pos())
+				}
+			}
 		}
 		e, ok := n.(ast.Expr)
 		if !ok || !isConfirmed(e, info, foreign) {
@@ -248,15 +252,27 @@ func isConfirmed(e ast.Expr, info *types.Info, foreign map[string]bool) bool {
 // json:"confirmed,omitempty" → confirmed.
 var tagName = regexp.MustCompile(`(\w+):"([^",]*)`)
 
-// tagsConfirmed: a key of the tag names the field confirmed — whatever
-// decodes by that key (json, yaml, mapstructure) reads the consent.
-func tagsConfirmed(tag *ast.BasicLit) bool {
-	s, err := strconv.Unquote(tag.Value)
-	if err != nil {
+// fieldConfirmed: a decoder fills the field from the key confirmed — a key
+// of its tag names it so, or no key renames it and the field is named so.
+// encoding/json matches a key to a name with no regard to case, so
+// Confirmed, CONFIRMED and json:"Confirmed" read the key too («Риск», 348).
+func fieldConfirmed(fl *ast.Field) bool {
+	renamed := false
+	if fl.Tag != nil {
+		if s, err := strconv.Unquote(fl.Tag.Value); err == nil {
+			for _, m := range tagName.FindAllStringSubmatch(s, -1) {
+				if strings.EqualFold(m[2], "confirmed") {
+					return true
+				}
+				renamed = renamed || m[2] != ""
+			}
+		}
+	}
+	if renamed {
 		return false
 	}
-	for _, m := range tagName.FindAllStringSubmatch(s, -1) {
-		if m[2] == "confirmed" {
+	for _, name := range fl.Names {
+		if strings.EqualFold(name.Name, "confirmed") {
 			return true
 		}
 	}
@@ -288,6 +304,13 @@ func TestConfirmedReadForms(t *testing.T) {
 		"type args struct { OK bool `mapstructure:\"confirmed\"` }":                                         1,
 		"func f() any { return struct{ OK bool `json:\"confirmed\"` }{} }":                                  1,
 		"type args struct { By string `json:\"confirmed_by\"`; OK bool `json:\"-\"`; C bool `json:\"c\"` }": 0,
+		// Риск 348: encoding/json matches the key to the name with no
+		// regard to case; a tag with no name leaves the field's own.
+		"type args struct { Confirmed bool }":                       1,
+		"type args struct { CONFIRMED bool `json:\",omitempty\"` }": 1,
+		"type args struct { OK bool `json:\"Confirmed\"` }":         1,
+		"type args struct { Confirmed bool `json:\"ok\"` }":         0,
+		"func f(confirmed bool) bool { return confirmed }":          0,
 	} {
 		fset := token.NewFileSet()
 		f, err := parser.ParseFile(fset, "x.go", "package x\nfunc g(map[string]any, string) {}\n"+src, 0)
