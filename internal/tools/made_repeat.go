@@ -152,6 +152,9 @@ func (r *Registry) rememberMade(rec intent.Intent, answer string) {
 	if !ok || !rooted || rec.Key == nil {
 		return
 	}
+	// The consent of this call is not kept: a later call gives its own,
+	// or none (A19-1).
+	nextArgs = withoutConsent(nextArgs)
 	mc := madeCall{Tool: rec.Tool, Name: rec.Name, Target: rec.Target, ProjectID: rec.ProjectID, Key: rec.Key,
 		ID: id, Next: next, NextArgs: nextArgs, StartedAt: clock.Now()}
 	b, err := json.Marshal(mc)
@@ -160,6 +163,25 @@ func (r *Registry) rememberMade(rec intent.Intent, answer string) {
 		return
 	}
 	_ = config.WriteFileAtomic(filepath.Join(dir, madeKey(rec.Tool, rec.Canon, rec.Name, rec.Target)), b, 0o600)
+}
+
+// madeByKey tells that the key cur wrote the file of made/ whose key is m:
+// a field both name — the account, else the Key ID — is the same. A file
+// whose key names nothing cur knows too — empty, or another account the
+// key of the call does not name — is not evo's own: what a cloned
+// directory of the state, or anyone who writes in it, may bring. Unlike
+// Maker.Other, «unknown» is not «the same» here: the file names a step to
+// run (A19-1, #2418).
+func madeByKey(m, cur *state.Maker) bool {
+	switch {
+	case m == nil || cur == nil:
+		return false
+	case m.ServiceAccountID != "" && cur.ServiceAccountID != "":
+		return m.ServiceAccountID == cur.ServiceAccountID
+	case m.KeyID != "" && cur.KeyID != "":
+		return m.KeyID == cur.KeyID
+	}
+	return false
 }
 
 // repeatOfMade answers a call of tool name whose same call before was
@@ -193,7 +215,7 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		return "", false, false
 	}
 	eng, _ := r.engineOfCall(args)
-	if eng == nil || mc.Key.Other(eng.Maker()) ||
+	if eng == nil || !madeByKey(mc.Key, eng.Maker()) ||
 		mc.ProjectID != projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args) {
 		return "", false, false
 	}
@@ -209,10 +231,23 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	}
 	said := i18n.Tf("An earlier %s of %s was taken by the platform as %s and its outcome is not known yet: no second create was sent; this is its progress.",
 		"Предыдущий вызов %s для %s принят платформой как %s, его исход ещё неизвестен: второе создание не отправлено; ниже — его ход.",
-		name, quoteCloud(resource), mc.ID)
+		name, quoteCloud(resource), quoteCloud(mc.ID))
 	out := map[string]any{"message": said}
-	if t, found := r.Lookup(mc.Next); found && t.Handler != nil {
-		read, readErr := t.Handler(ctx, maps.Clone(mc.NextArgs))
+	// The step runs only as a read: the call that repeats has not
+	// consented to anything, whatever the file holds. A step that changes
+	// the resource (disk_attach of disk_create with attach_to) is named,
+	// with no consent, for the caller to take (A19-1, #2418).
+	step := withoutConsent(mc.NextArgs)
+	t, found := r.Lookup(mc.Next)
+	reads := found && t.Handler != nil && !t.Mutating && !NeedsConsent(t, step)
+	if found && !reads {
+		// No consent is told here: the step asks for it with its own
+		// preview («Риск», conclusion 379).
+		out["message"] = said + " " + i18n.Tf("Its next step, %s, needs its own consent: it was not run.",
+			"Его следующему шагу, %s, нужно своё согласие: он не выполнен.", mc.Next)
+	}
+	if reads {
+		read, readErr := t.Handler(ctx, maps.Clone(step))
 		// The read says the resource is not there, or its operation
 		// failed: nothing goes on, the file goes, and the call is planned
 		// as any other — a new create («Риск», conclusion 268, 1).
@@ -243,6 +278,6 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		out["status"] = "waiting"
 	}
 	out["repeat_of"] = map[string]any{"tool": name, "id": mc.ID, "started_at": mc.StartedAt.UTC().Format(time.RFC3339)}
-	nextStep(out, mc.Next, maps.Clone(mc.NextArgs))
+	nextStep(out, mc.Next, step)
 	return toJSON(out), isErr, true
 }

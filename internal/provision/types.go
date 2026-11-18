@@ -122,6 +122,11 @@ type CreateVMRequest struct {
 	Disks              []DiskReq         `json:"disks"`
 	ImageMetadata      map[string]string `json:"image_metadata,omitempty"`
 	Interfaces         []InterfaceReq    `json:"interfaces,omitempty"`
+	// SecretMetadata: ImageMetadata carries a value that may be a secret —
+	// a password, evo's or the caller's, or any value the caller gave —
+	// not only evo's public key, login and hostname (images.SendsSecret).
+	// CreateVM marks the call so (secretsent). Never sent.
+	SecretMetadata bool `json:"-"`
 }
 
 // DiskReq describes a disk to attach to a new VM (VmCreateNewDiskItem).

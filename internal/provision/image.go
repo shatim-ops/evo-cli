@@ -10,8 +10,10 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/secretsent"
 )
 
 // CreateImageReq creates a VM image from an existing boot disk
@@ -77,6 +79,12 @@ type ImageAZTarget struct {
 // "created", so poll GetImage afterwards — building runs at roughly 0.7 GB per
 // minute.
 func (a *CloudRuAdapter) CreateImage(ctx context.Context, req CreateImageReq) (map[string]any, error) {
+	// A cloud-init template carries passwords and keys, and a default of a
+	// field may be one: a refusal that echoes the request shows by its
+	// class only (secretsent; Астра #2257; «Риск», conclusion 382).
+	if req.UserDataTemplate != "" || slices.ContainsFunc(req.ImageMetadata, func(f ImageMetadataInput) bool { return f.DefaultValue != "" }) {
+		secretsent.Mark(ctx)
+	}
 	if req.DiskID == "" {
 		return nil, errors.New(i18n.T("disk_id is required", "нужен disk_id"))
 	}

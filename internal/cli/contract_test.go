@@ -148,7 +148,7 @@ func TestContract_ArgForms(t *testing.T) {
 	withEmptyCloud(t)
 	code, _, errOut := runCLI(t, "", "--json", "dns", "zone-create", "example.com", "--type", "internal")
 	env, ok := errorEnvelope(errOut)
-	if code != clerrors.ExitGeneral || !ok || env.Reason != "USAGE" || !strings.Contains(errOut, `type \"internal\" is not one of public, private`) {
+	if code != clerrors.ExitGeneral || !ok || env.Reason != "USAGE" || !strings.Contains(errOut, "type: the value is not one of public, private") || strings.Contains(errOut, "internal") {
 		t.Errorf("evo dns zone-create --type internal: exit %d %s", code, errOut)
 	}
 }

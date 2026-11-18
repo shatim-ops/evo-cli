@@ -487,6 +487,7 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 	}
 	// A misspelt name in JSON is refused as one of --arg is; its types are
 	// checked below, by the tool's own check.
+	unknown := 0
 	for name, v := range args {
 		if name == "confirmed" {
 			continue // refused below with a hint
@@ -496,8 +497,13 @@ func buildToolArgs(t tools.Tool, file, rawJSON string, pairs []string) (map[stri
 			continue
 		}
 		if _, known := params[name]; !known {
-			return nil, unknownArgError(t, i18n.Tf("%s has no argument %q", "у %s нет аргумента %q", t.Name, name))
+			unknown++
 		}
+	}
+	if unknown > 0 {
+		// Counted, not named: a key of the JSON may be a value typed in
+		// the wrong place, as a pair of --arg may (Астра, #2386).
+		return nil, unknownArgError(t, i18n.Tf("%s does not take %d argument(s) of the JSON", "%s не принимает аргументов JSON: %d", t.Name, unknown))
 	}
 	for i, pair := range pairs {
 		name, value, ok := strings.Cut(pair, "=")
@@ -563,7 +569,7 @@ func describeHint(tool string) string {
 func mergeJSONArgs(dst map[string]any, data []byte, from string) error {
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
-		return clerrors.New(clerrors.CodeUsage, i18n.Tf("%s: not a JSON object: %v", "%s: не объект JSON: %v", from, err), "")
+		return clerrors.New(clerrors.CodeUsage, from+": "+tools.JSONProblem(err), "")
 	}
 	for k, v := range m {
 		dst[k] = v

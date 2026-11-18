@@ -13,6 +13,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/journal"
+	"github.com/shatim-ops/evo-cli/internal/secretsent"
 )
 
 // outer is the outermost layer of a tool's handler, in New and in Wrap
@@ -20,7 +21,7 @@ import (
 // the check refuses is recorded too (D46).
 func outer(name string, schema map[string]any, h Handler) Handler {
 	return journaled(name, schema, checkedArgs(name, schema, func(ctx context.Context, args map[string]any) (string, bool) {
-		ctx = httpretry.TraceRequests(ctx)
+		ctx = secretsent.Watch(httpretry.TraceRequests(ctx))
 		text, isErr := h(ctx, args)
 		text = secretWriteAnswer(ctx, name, args, text, isErr)
 		if isErr {
