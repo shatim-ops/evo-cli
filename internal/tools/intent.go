@@ -614,7 +614,9 @@ func goingOnAnswer(name string, going []intent.Intent) string {
 	last := going[len(going)-1]
 	what := firstNonEmptyStr(last.Name, last.Target)
 	rule := everySendIsAChange[name]
-	return toJSON(map[string]any{"status": "confirmation_required", "going_on": map[string]any{"calls": len(going), "read": rule.read},
+	// The reason is that of every question (the CLI exits 3 on it): the
+	// cloud was not called («Риск», conclusion 401, У3).
+	return toJSON(map[string]any{"status": "confirmation_required", "reason": clierrors.CodeConfirmationRequired, "going_on": map[string]any{"calls": len(going), "read": rule.read},
 		"message": i18n.Tf("An earlier %s of %s, started %s, has not returned yet: it is going on. A call now would be one more change, not a repeat of that one, so nothing was sent. Once it returns, %s shows the resource; whether to send one more is the person's decision.",
 			"Предыдущий вызов %s для %s, начатый %s, ещё не вернулся: он идёт. Вызов сейчас — ещё одно изменение, а не повтор того, поэтому ничего не отправлено. Когда он вернётся, ресурс покажет %s; отправлять ли ещё одно — решение человека.",
 			name, quoteCloud(what), last.StartedAt.Local().Format("02.01.2006 15:04"), rule.read)})
@@ -1088,6 +1090,14 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 		name = quoteCloud(name)
 	}
 	tool := quoteCloud(in.Tool)
+	// A call that has not returned: no outcome to tell yet — the same
+	// rule as the answer that sends nothing beside it (goingOnAnswer;
+	// «Риск», conclusion 401, У2).
+	if in.InFlight() {
+		return i18n.Tf("%s %s%s, started %s (%s, pid %d): the call has not returned yet, it is going on",
+			"%s %s%s, начат %s (%s, pid %d): вызов ещё не вернулся, он идёт",
+			tool, name, where, started, quoteCloud(in.Surface), in.PID)
+	}
 	head := i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown",
 		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен",
 		tool, name, where, started, quoteCloud(in.Surface), in.PID)

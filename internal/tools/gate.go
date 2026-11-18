@@ -8,7 +8,9 @@ import (
 	"context"
 	"maps"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // The gate of consent is one function of the registry (owner's decision
@@ -192,7 +194,19 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 				return errResult(err), true
 			}
 		}
+		// A handler that panics does not return: the server recovers it,
+		// and the record would read as a call still going on (InFlight)
+		// for the life of the server. It ends with its outcome unknown
+		// («Риск», conclusion 401, У1).
+		returned := false
+		defer func() {
+			if !returned {
+				end(toJSON(map[string]any{"status": "error", "reason": clierrors.ReasonInterrupted,
+					"error": i18n.T("the call stopped before it returned", "вызов остановился, не вернувшись")}))
+			}
+		}()
 		text, isErr := next(ctx, args)
+		returned = true
 		// The mark of the first write could not be written: nothing went
 		// out, and the call says that, not the handler's error of a request
 		// that never left.
