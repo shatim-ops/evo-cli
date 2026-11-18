@@ -279,12 +279,16 @@ func TestAppend_EveryTextIsCut(t *testing.T) {
 			}
 		}
 	}
+	l.Key = &state.Maker{ServiceAccountID: long, KeyID: long}
 	if err := Append(dir, l); err != nil {
 		t.Fatal(err)
 	}
 	j, err := ReadAll(dir, nil)
 	if err != nil || len(j.Lines) != 1 {
 		t.Fatalf("read %d lines, skipped %d, %v; want the line, its texts cut", len(j.Lines), j.Skipped, err)
+	}
+	if k := j.Lines[0].Key; k == nil || len(k.ServiceAccountID) > maxText || len(k.KeyID) > maxText {
+		t.Errorf("the key of the line: %+v; want its texts cut to %d", k, maxText)
 	}
 	got := reflect.ValueOf(j.Lines[0])
 	for _, name := range cut {
