@@ -73,7 +73,7 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 	// one listed and then gone is not in the state it was in (Астра
 	// #1922).
 	listed := false
-	last, _, _, _, err := waitState(ctx, eng, madeLimit,
+	last, _, _, reads, err := waitState(ctx, eng, madeLimit,
 		func(ctx context.Context) (string, bool, error) {
 			items, err := m.read(ctx)
 			if err != nil {
@@ -124,6 +124,9 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 	if !listed || kind == stateOther {
 		res["status"] = "waiting"
 	}
+	// The state may be old: when evo last read the resource and how many
+	// reads failed after it (#2216; Астра #2317).
+	reads.put(res)
 	res[m.field+"_state"] = last
 	if listed {
 		// The state is the cloud's text; evo's own «unknown» is not

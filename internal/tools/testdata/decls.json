@@ -31,7 +31,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "audit_events": {
     "project": true
@@ -275,7 +275,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "dns_record_create": {
     "required_one_of": [
@@ -525,7 +525,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "k8s_options": {
     "project": true,
@@ -589,7 +589,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "kafka_specs": {
     "id_args": [
@@ -642,7 +642,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "list": {
     "group": "deploy"
@@ -801,7 +801,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "pg_specs": {
     "untrusted": "{fields:[specifications] whole:false own:[] workload:false deep:false}"
@@ -885,7 +885,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "redis_specs": {
     "id_args": [
@@ -1197,7 +1197,7 @@
     "id_args": [
       "operation_id why=\"\" target=false ids=false kind={what:\"operation\" byName:false list:\"\" check:true project:false card:false}"
     ],
-    "untrusted": "{fields:[error] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[error resource_id resourceId] whole:false own:[] workload:false deep:false}"
   },
   "vpc_route_create": {
     "project": true,
