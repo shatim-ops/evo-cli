@@ -76,8 +76,10 @@ func TestRun_EveryCommandRejectsStrayArguments(t *testing.T) {
 			t.Errorf("%v: exit %d, want 1\nstdout: %.200s\nstderr: %.200s", args, code, stdout, stderr)
 			continue
 		}
-		if !strings.Contains(stderr, "qa-stray-arg") {
-			t.Errorf("%v: the stray argument is not named: %q", args, stderr)
+		// Named by its place or count, not its text: it may be a secret
+		// given in the wrong place (#2334).
+		if strings.Contains(stderr, "qa-stray-arg") || !strings.Contains(stderr, "argument") {
+			t.Errorf("%v: want the stray argument counted, not named: %q", args, stderr)
 		}
 	}
 }
@@ -97,7 +99,7 @@ func TestRun_EveryCommandHelp(t *testing.T) {
 func TestRun_UnknownSubcommandSuggests(t *testing.T) {
 	setupCLI(t)
 	code, _, stderr := runCLI(t, "", "vm", "lst")
-	if code != clerrors.ExitGeneral || !strings.Contains(stderr, `unknown command "lst"`) || !strings.Contains(stderr, "list") {
+	if code != clerrors.ExitGeneral || !strings.Contains(stderr, `unknown command (argument 1)`) || !strings.Contains(stderr, "list") {
 		t.Errorf("exit %d, stderr %q", code, stderr)
 	}
 	// Без аргументов группа по-прежнему показывает справку.
@@ -111,7 +113,7 @@ func TestRun_UnknownSubcommandSuggests(t *testing.T) {
 func TestRun_CompletionUnknownShell(t *testing.T) {
 	setupCLI(t)
 	code, stdout, stderr := runCLI(t, "", "completion", "tcsh")
-	if code != clerrors.ExitGeneral || !strings.Contains(stderr, `unknown command "tcsh"`) || stdout != "" {
+	if code != clerrors.ExitGeneral || !strings.Contains(stderr, `unknown command (argument 1)`) || strings.Contains(stderr, "tcsh") || stdout != "" {
 		t.Errorf("completion tcsh: exit %d, stdout %.100q, stderr %q", code, stdout, stderr)
 	}
 	if code, stdout, _ := runCLI(t, "", "completion", "bash"); code != 0 || !strings.Contains(stdout, "bash completion") {

@@ -19,7 +19,7 @@ import (
 // beside what the tool and errAnswer mark (owner's decision 17.11, #2254,
 // option Б).
 func TestUntrusted_AlwaysFieldsMarkedByTheOnePoint(t *testing.T) {
-	answer := `{"status":"partial","error":"e","hint":"h","warnings":["w"],"failures":[{"x":1}],"failed":["a"],"preview":{"name":"n"},"note":"evo","_untrusted":["note"]}`
+	answer := `{"status":"partial","error":"e","hint":"h","warning":"w1","operation_id":"op","warnings":["w"],"failures":[{"x":1}],"failed":["a"],"preview":{"name":"n"},"note":"evo","_untrusted":["note"]}`
 	for _, isErr := range []bool{false, true} {
 		h := markAlways(func(context.Context, map[string]any) (string, bool) { return answer, isErr })
 		text, gotErr := h(context.Background(), nil)
