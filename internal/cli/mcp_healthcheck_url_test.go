@@ -226,3 +226,86 @@ func TestMCPHealthcheck_FailureClasses(t *testing.T) {
 		}
 	}
 }
+
+// statusWorld answers every request with a status whose reason phrase the
+// server filled with the address it was asked: the user, the password and
+// the query of the request, as a server may.
+type statusWorld struct{ code int }
+
+func (s statusWorld) RoundTrip(req *http.Request) (*http.Response, error) {
+	u, p, _ := req.BasicAuth()
+	rec := httptest.NewRecorder()
+	rec.WriteHeader(s.code)
+	resp := rec.Result()
+	resp.Status = fmt.Sprintf("%d %s:%s %s", s.code, u, p, req.URL.RawQuery)
+	return resp, nil
+}
+
+// An answer other than 200 is named by its code alone: the reason phrase
+// is the server's text, and a server may put the token of the query, the
+// user or the password of the address there; the healthcheck printed it
+// whole into stderr and the --json envelope (Астра, #2381 reopened on the
+// rc.2 candidate).
+func TestMCPHealthcheck_StatusIsTheCodeNotTheTextOfTheServer(t *testing.T) {
+	const user, pw, tok = "us3r2381s", "s3cr3tPw2381s", "t0ken2381s"
+	t.Setenv("MCP_HEALTHCHECK_URL", "")
+	old := httpretry.DefaultBase
+	t.Cleanup(func() { httpretry.DefaultBase = old })
+	for _, code := range []int{http.StatusServiceUnavailable, http.StatusNotFound, http.StatusFound} {
+		httpretry.DefaultBase = statusWorld{code}
+		addr := "http://" + user + ":" + pw + "@127.0.0.1:18080/healthz?token=" + tok
+		for _, args := range [][]string{{"mcp", "healthcheck", "--url", addr}, {"--json", "mcp", "healthcheck", "--url", addr}} {
+			out, errOut, exit := execCLI(t, args...)
+			if exit == 0 {
+				t.Fatalf("%d %v: answers healthy: %s", code, args, out)
+			}
+			for _, secret := range []string{user, pw, tok} {
+				if strings.Contains(out+errOut, secret) {
+					t.Errorf("%d %v: the error repeats %q the server put in its status:\n%s%s", code, args, secret, out, errOut)
+				}
+			}
+			if !strings.Contains(out+errOut, fmt.Sprint(code)) || !strings.Contains(out+errOut, "127.0.0.1:18080/healthz") {
+				t.Errorf("%d %v: the error no longer names the code and the address probed:\n%s%s", code, args, out, errOut)
+			}
+		}
+	}
+}
+
+// The same on a real HTTP client: a local server writes its status line by
+// hand, the query and the userinfo of the request in the reason phrase, as
+// Астра's probe did (#2381, the comment on the rc.2 candidate).
+func TestMCPHealthcheck_StatusOfARealServerIsTheCodeOnly(t *testing.T) {
+	const user, pw, tok = "us3r2381h", "s3cr3tPw2381h", "t0ken2381h"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, _ := r.BasicAuth()
+		conn, buf, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Errorf("hijack: %v", err)
+			return
+		}
+		defer conn.Close()
+		fmt.Fprintf(buf, "HTTP/1.1 503 %s %s:%s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", r.URL.RawQuery, u, p)
+		_ = buf.Flush()
+	}))
+	t.Cleanup(srv.Close)
+	old := httpretry.DefaultBase
+	httpretry.DefaultBase = http.DefaultTransport
+	t.Cleanup(func() { httpretry.DefaultBase = old })
+	t.Setenv("MCP_HEALTHCHECK_URL", "")
+	host := strings.TrimPrefix(srv.URL, "http://")
+	addr := "http://" + user + ":" + pw + "@" + host + "/status?token=" + tok
+	for _, args := range [][]string{{"mcp", "healthcheck", "--url", addr}, {"--json", "mcp", "healthcheck", "--url", addr}} {
+		out, errOut, code := execCLI(t, args...)
+		if code == 0 {
+			t.Fatalf("%v: a 503 answers healthy: %s", args, out)
+		}
+		for _, secret := range []string{user, pw, tok} {
+			if strings.Contains(out+errOut, secret) {
+				t.Errorf("%v: the error repeats %q of the reason phrase:\n%s%s", args, secret, out, errOut)
+			}
+		}
+		if !strings.Contains(out+errOut, "HTTP 503") || !strings.Contains(out+errOut, host+"/status") {
+			t.Errorf("%v: the error no longer names the code and the address probed:\n%s%s", args, out, errOut)
+		}
+	}
+}

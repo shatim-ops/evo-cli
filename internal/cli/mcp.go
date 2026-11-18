@@ -598,8 +598,11 @@ func newMCPHealthcheckCmd() *cobra.Command {
 			}
 			defer resp.Body.Close()
 			_, _ = io.Copy(io.Discard, resp.Body)
+			// The code alone: the reason phrase is the server's text, which
+			// may repeat the user, the password or the query of the
+			// request (Астра, #2381 reopened).
 			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf(i18n.T("healthcheck: %s answered %s", "healthcheck: %s ответил %s"), target, resp.Status)
+				return fmt.Errorf(i18n.T("healthcheck: %s answered HTTP %d", "проверка состояния: %s ответил HTTP %d"), target, resp.StatusCode)
 			}
 			if flagJSON {
 				return output.NewWithWriter(cmd.OutOrStdout(), output.ModeJSON, false).JSON(map[string]string{"status": "ok", "url": target})
