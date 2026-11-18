@@ -238,10 +238,11 @@ func spaced(s string) string {
 // internalRef is a reference of the development a reader of a release
 // cannot follow: the decisions (DECISIONS, D47), the audits of Fable and
 // the runs of Grok, the codes of their findings and of the other checks
-// (FB150-2, G130-15, REL12-3, R4-2, B12-6, QA-3), the lines of a plan
+// (FB150-2, FB19I-8, G130-15, REL12-3, R4-2, R3A-1, B12-6, QA-3, CUR122-2),
+// the lines of a plan
 // ("план 1.5, С4"), the owner's decisions ("решение владельца 17.11") and
 // the fragments of changelog.d by their path (#2512).
-var internalRef = regexp.MustCompile(`DECISIONS|Fable|Grok|[Рр]ешени\pL{0,8} владельца|`+"`"+`changelog\.d/[^`+"`"+`]*`+"`"+`|план [0-9]+\.[0-9]+, С[0-9]+|(^|[^\pL\pN_])(D[0-9]{1,3}|FB[0-9]+(-[0-9]+)?|G1[0-9]{2}-[0-9]+|G13-[0-9]+|REL[0-9]+-[0-9]+|R[0-9]+-[0-9]+|B[0-9]+-[0-9]+|QA-[0-9]+)([^\pL\pN_]|$)`)
+var internalRef = regexp.MustCompile(`DECISIONS|Fable|Grok|[Рр]ешени\pL{0,8} владельца|`+"`"+`changelog\.d/[^`+"`"+`]*`+"`"+`|план [0-9]+\.[0-9]+, С[0-9]+|(^|[^\pL\pN_])(D[0-9]{1,3}|FB[0-9]+[A-Z]?(-[0-9]+)?|G1[0-9]{2}-[0-9]+|G13-[0-9]+|REL[0-9]+-[0-9]+|R[0-9]+[A-Z]?-[0-9]+|B[0-9]+-[0-9]+|QA-[0-9]+|CUR[0-9]+-[0-9]+)([^\pL\pN_]|$)`)
 
 // group is a parenthesis with no parenthesis inside, over lines too, with
 // the character before its spaces: at the start of a line there is none,
@@ -251,7 +252,7 @@ var group = regexp.MustCompile(`([^\s]?)([ \t]*)\(([^()]*)\)`)
 // refWords are the words of a reference with what takes it: the space
 // before, the preposition ("по D88", "по правилу D73", "согласно D47"),
 // the codes that follow ("FB160-2, -3").
-const refWords = `((?i)по правилу |по |в |согласно |из )?(DECISIONS|Fable|Grok|план [0-9]+\.[0-9]+, С[0-9]+|\b(D[0-9]{1,3}|FB[0-9]+(-[0-9]+)?(,[ \t]*-[0-9]+)*|G1[0-9]{2}-[0-9]+|G13-[0-9]+|REL[0-9]+-[0-9]+|R[0-9]+-[0-9]+|B[0-9]+-[0-9]+|QA-[0-9]+)\b)`
+const refWords = `((?i)по правилу |по |в |согласно |из )?(DECISIONS|Fable|Grok|план [0-9]+\.[0-9]+, С[0-9]+|\b(D[0-9]{1,3}|FB[0-9]+[A-Z]?(-[0-9]+)?(,[ \t]*-[0-9]+)*|G1[0-9]{2}-[0-9]+|G13-[0-9]+|REL[0-9]+-[0-9]+|R[0-9]+[A-Z]?-[0-9]+|B[0-9]+-[0-9]+|QA-[0-9]+|CUR[0-9]+-[0-9]+)\b)`
 
 // bareRef is a reference outside a parenthesis; partRef, one in a part
 // of a parenthesis, with the comma before it ("после согласия, D28").
@@ -265,6 +266,9 @@ var (
 // a named failure of the snapshot (changelogLeft), not a quiet edit
 // («Риск», 380).
 var codeSpan = regexp.MustCompile("`[^`\n]*`")
+
+// doneMark is the mark of a parenthesis publicChangelog has done.
+var doneMark = regexp.MustCompile("\uE003([0-9]+)\uE004")
 
 // fragmentPath is a fragment of code that names a fragment of changelog.d.
 var fragmentPath = regexp.MustCompile("^`changelog\\.d/[^`]*`$")
@@ -335,34 +339,55 @@ func hideCode(s string) (string, func(string) string) {
 func publicChangelog(s string) string {
 	s, show := hideCode(s)
 	changed := false
-	s = group.ReplaceAllStringFunc(s, func(g string) string {
-		m := group.FindStringSubmatch(g)
-		before, lead, inner := m[1], m[2], m[3]
-		parts := strings.Split(inner, ";")
-		var keep []string
-		for _, part := range parts {
-			switch {
-			case !internalRef.MatchString(part):
-				keep = append(keep, strings.TrimSpace(part))
-			case userText.MatchString(part):
-				keep = append(keep, strings.TrimSpace(partRef.ReplaceAllString(part, "")))
+	// From the innermost parenthesis out: one done goes under a mark, so
+	// the one around it is a group in the next pass ("(класс D100; …
+	// FB19I-26 (б))" — the outer one had a parenthesis inside and was
+	// never a group).
+	var done []string
+	keepGroup := func(t string) string {
+		done = append(done, t)
+		return "\uE003" + strconv.Itoa(len(done)-1) + "\uE004"
+	}
+	for {
+		next := group.ReplaceAllStringFunc(s, func(g string) string {
+			m := group.FindStringSubmatch(g)
+			before, lead, inner := m[1], m[2], m[3]
+			parts := strings.Split(inner, ";")
+			var keep []string
+			for _, part := range parts {
+				switch {
+				case !internalRef.MatchString(part):
+					keep = append(keep, strings.TrimSpace(part))
+				case userText.MatchString(part):
+					keep = append(keep, strings.TrimSpace(partRef.ReplaceAllString(part, "")))
+				}
 			}
-		}
-		switch {
-		case len(keep) == len(parts) && strings.Join(keep, ";") == strings.Join(trimmed(parts), ";"):
-			return g
-		case len(keep) > 0:
+			switch {
+			case len(keep) == len(parts) && strings.Join(keep, ";") == strings.Join(trimmed(parts), ";"):
+				return before + lead + keepGroup("("+inner+")")
+			case len(keep) > 0:
+				changed = true
+				return before + lead + keepGroup("("+strings.Join(keep, "; ")+")")
+			}
 			changed = true
-			return before + lead + "(" + strings.Join(keep, "; ") + ")"
+			// gone marks the place: the start of a line keeps its indent,
+			// and what follows decides the spaces (closeGone).
+			if before == "" {
+				return lead + gone
+			}
+			return before + lead + gone
+		})
+		if next == s {
+			break
 		}
-		changed = true
-		// gone marks the place: the start of a line keeps its indent, and
-		// what follows decides the spaces (closeGone).
-		if before == "" {
-			return lead + gone
-		}
-		return before + lead + gone
-	})
+		s = next
+	}
+	for doneMark.MatchString(s) {
+		s = doneMark.ReplaceAllStringFunc(s, func(m string) string {
+			i, _ := strconv.Atoi(m[len("\uE003") : len(m)-len("\uE004")])
+			return done[i]
+		})
+	}
 	s = closeGone(s)
 	if c := bareRef.ReplaceAllString(s, ""); c != s {
 		s, changed = c, true

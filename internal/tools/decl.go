@@ -201,7 +201,7 @@ var decls = map[string]Decl{
 	"deploy": {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the project (.evo.yaml, the directory), checked by provision.ValidName", IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "project_id", why: whyProjectArg}}, Untrusted: untrustedAnswer{fields: []string{"log", "output", "ports_open_only_to_groups", "phase_state", "vm_ip", "vm_name", "upload", "vm", "security_group", "subnet_id", "existing_id", "vm_state"}, workload: true}},
 	"provision": {Group: "vm", Project: true, Created: created{id: "vm_id", list: "vm_list", field: "vms", delete: "destroy"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", why: whyContinued}, {name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}, {name: "subnet_id", why: whyListed},
 		{name: "project_id", why: whyProjectArg}}, RefArgs: []nameRef{{"subnet_id", refSubnet}}},
-	"status": {Group: "deploy", Untrusted: untrustedAnswer{fields: []string{"vm_ip", "vm_name", "floating_ip_id", "zone_name", "flavor_name", "vm_flavor", "region", "ssh_user", "ssh_host_key_fingerprint",
+	"status": {Group: "deploy", Untrusted: untrustedAnswer{fields: []string{"id", "vm_ip", "vm_name", "floating_ip_id", "zone_name", "flavor_name", "vm_flavor", "region", "ssh_user", "ssh_host_key_fingerprint",
 		"security_group_id", "security_group_name", "opened_rules", "cloud_state", "cloud_error", "other_active_vm_ids"}}},
 	"list": {Group: "deploy"},
 	// Compute.
@@ -252,7 +252,7 @@ var decls = map[string]Decl{
 	// The name of the group and the descriptions of its rules, in the
 	// preview and in the answer: anyone with access to the project writes
 	// them.
-	"sg_rule_create": {Group: "vpc", Created: created{id: "rule_id", delete: "sg_rule_delete"}, Nameless: "a rule has no name: it is known by its fields, and the same rule there answers already_exists", IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "remote_group", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "rule", "preview"}}},
+	"sg_rule_create": {Group: "vpc", Created: created{id: "rule_id", delete: "sg_rule_delete", read: "list_security_groups"}, Nameless: "a rule has no name: it is known by its fields, and the same rule there answers already_exists", IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "remote_group", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "rule", "preview"}}},
 	"sg_rule_delete": {Group: "vpc", Delete: deleteTarget{arg: "rule_id", parent: "security_group", what: "security group rule", whRU: "правило группы безопасности"}, IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "resource_status", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}}},
 	// The clusters of a list by their names: anyone with access to the
 	// project names a cluster (release plan 1.9, «Просроченные убывающие
@@ -317,7 +317,7 @@ var decls = map[string]Decl{
 	"backup_get": {IDArgs: []idArg{{name: "backup_id", kind: kindBackup}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "description", "tags", "resource_name", "source", "protection_plan"}}},
 	// The names of the backup and of its source, in the preview and the
 	// answer (the audit of #1544, С1).
-	"backup_create": {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}, Created: created{id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "disk_id", kind: kindDisk}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "backup", "name"}}},
+	"backup_create": {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}, Created: created{id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete", read: "backup_get"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "disk_id", kind: kindDisk}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "backup", "name"}}},
 	// A backup's states are lower case (BackupState): the rule of a state
 	// under way, of a state being created and of a final one is the same.
 	// The names of the backup, its source and the backups that depend on
@@ -328,7 +328,7 @@ var decls = map[string]Decl{
 		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"will_delete", "target", "resource_status", "details"}}},
 	// The names of the backup, its disk and the new disk, in the preview
 	// and the answer.
-	"backup_restore": {Created: created{id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "disk", "name"}}},
+	"backup_restore": {Created: created{id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "disk", "name", "state"}}},
 	"disk_list":      {Project: true, Completes: map[string]completion{"type": {list: "list_disk_types", field: "name"}}, Untrusted: untrustedAnswer{fields: []string{"disks"}}},
 	"disk_create":    {Project: true, Created: created{id: "disk.id", lost: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "attach_to", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"disk", "attach", "disk_state"}}},
 	// The disk and the VM the preview of disk_attach and disk_detach names,
@@ -444,6 +444,8 @@ var decls = map[string]Decl{
 	// the project's resources in it (R-83): every *_operation marks it.
 	"ar_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	// The project itself.
+	// The agreement object as the billing service has it (#2463).
+	"billing_balance":     {Untrusted: untrustedAnswer{whole: true}},
 	"billing_consumption": {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
 	"billing_finops":      {IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}},
 	"metrics_history":     {Project: true, Untrusted: untrustedAnswer{fields: []string{"series"}}},

@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"testing"
@@ -29,8 +30,11 @@ func handlerArgValue(p map[string]any) any {
 	case "object":
 		return map[string]any{}
 	}
-	if p["format"] == "uuid" {
+	switch p["format"] {
+	case "uuid":
 		return qaID1
+	case "cidr":
+		return "10.10.0.0/24"
 	}
 	return "x"
 }
@@ -65,14 +69,21 @@ func TestHandlers_FormRefusalDoesNotEchoTheValue(t *testing.T) {
 			sort.Strings(names)
 			for _, k := range names {
 				pm, _ := props[k].(map[string]any)
-				if pm["type"] != "string" {
+				// A string, or a list of strings: the marker as an item
+				// (subnet_create dns_servers, Астра, #2484).
+				var v any = marker
+				switch items, _ := pm["items"].(map[string]any); {
+				case pm["type"] == "string":
+				case pm["type"] == "array" && items["type"] == "string":
+					v = []any{marker}
+				default:
 					continue
 				}
 				args := map[string]any{}
 				for a, v := range base {
 					args[a] = v
 				}
-				args[k] = marker
+				args[k] = v
 				if CheckArgs(tl, args) != nil {
 					continue // the schema's refusal: TestCheckArgs_RuleRefusalDoesNotEchoTheValue
 				}
@@ -88,6 +99,29 @@ func TestHandlers_FormRefusalDoesNotEchoTheValue(t *testing.T) {
 		}
 		if usage < 5 {
 			t.Fatalf("%s: only %d refusals of a handler: the walk lost the tools", lang, usage)
+		}
+	}
+}
+
+// agent_skill refuses an unknown group by the rule and the list of groups,
+// not by the value: by the enum of the schema, which the handler checks
+// first, and by handleAgentSkill's own refusal behind it, reached here by
+// a call of it alone (the owner's rule of #2459; «Риск», 402, У2).
+func TestAgentSkill_UnknownGroupIsNotRepeated(t *testing.T) {
+	const secret = "s3cr3t-group-27182818"
+	r := New(nil)
+	tl, ok := r.Lookup("agent_skill")
+	if !ok {
+		t.Fatal("no tool agent_skill")
+	}
+	args := map[string]any{"group": secret}
+	for name, call := range map[string]func() (string, bool){
+		"the handler":      func() (string, bool) { return tl.Handler(context.Background(), args) },
+		"handleAgentSkill": func() (string, bool) { return r.handleAgentSkill(context.Background(), args) },
+	} {
+		text, isErr := call()
+		if !isErr || strings.Contains(text, "s3cr3t") || !strings.Contains(text, "vm") {
+			t.Errorf("%s: want the refusal by the rule and the list of groups, without the value: %v %s", name, isErr, text)
 		}
 	}
 }
