@@ -239,8 +239,9 @@ func spaced(s string) string {
 // cannot follow: the decisions (DECISIONS, D47), the audits of Fable and
 // the runs of Grok, the codes of their findings and of the other checks
 // (FB150-2, G130-15, REL12-3, R4-2, B12-6, QA-3), the lines of a plan
-// ("план 1.5, С4").
-var internalRef = regexp.MustCompile(`DECISIONS|Fable|Grok|план [0-9]+\.[0-9]+, С[0-9]+|(^|[^\pL\pN_])(D[0-9]{1,3}|FB[0-9]+(-[0-9]+)?|G1[0-9]{2}-[0-9]+|G13-[0-9]+|REL[0-9]+-[0-9]+|R[0-9]+-[0-9]+|B[0-9]+-[0-9]+|QA-[0-9]+)([^\pL\pN_]|$)`)
+// ("план 1.5, С4"), the owner's decisions ("решение владельца 17.11") and
+// the fragments of changelog.d by their path (#2512).
+var internalRef = regexp.MustCompile(`DECISIONS|Fable|Grok|[Рр]ешени\pL{0,8} владельца|`+"`"+`changelog\.d/[^`+"`"+`]*`+"`"+`|план [0-9]+\.[0-9]+, С[0-9]+|(^|[^\pL\pN_])(D[0-9]{1,3}|FB[0-9]+(-[0-9]+)?|G1[0-9]{2}-[0-9]+|G13-[0-9]+|REL[0-9]+-[0-9]+|R[0-9]+-[0-9]+|B[0-9]+-[0-9]+|QA-[0-9]+)([^\pL\pN_]|$)`)
 
 // group is a parenthesis with no parenthesis inside, over lines too, with
 // the character before its spaces: at the start of a line there is none,
@@ -264,6 +265,9 @@ var (
 // a named failure of the snapshot (changelogLeft), not a quiet edit
 // («Риск», 380).
 var codeSpan = regexp.MustCompile("`[^`\n]*`")
+
+// fragmentPath is a fragment of code that names a fragment of changelog.d.
+var fragmentPath = regexp.MustCompile("^`changelog\\.d/[^`]*`$")
 
 // quotedOutput are the fragments of code that quote evo's own output with
 // a reference in it: the change log quotes evo as it prints, and the
@@ -305,6 +309,11 @@ func closeGone(s string) string {
 func hideCode(s string) (string, func(string) string) {
 	var spans []string
 	s = codeSpan.ReplaceAllStringFunc(s, func(c string) string {
+		if fragmentPath.MatchString(c) {
+			// A path of changelog.d is a reference of the development, not
+			// code: it goes as one (#2512).
+			return c
+		}
 		spans = append(spans, c)
 		return "\uE000" + strconv.Itoa(len(spans)-1) + "\uE001"
 	})
