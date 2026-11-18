@@ -6,7 +6,7 @@ package tools
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -48,7 +48,7 @@ func parseSince(arg string) (time.Duration, error) {
 	if n, err := strconv.Atoi(arg); err == nil && n > 0 {
 		return time.Duration(n) * time.Minute, nil
 	}
-	return 0, fmt.Errorf(i18n.T("since %q is not a duration: use 30m, 1h, 6h, 1d or a number of minutes", "since %q — не длительность: укажите 30m, 1h, 6h, 1d или число минут"), arg)
+	return 0, errors.New(i18n.T("since: the value is not a duration: use 30m, 1h, 6h, 1d or a number of minutes", "since: значение — не длительность: укажите 30m, 1h, 6h, 1d или число минут"))
 }
 
 // metricsMaxWindow is the longest window export_metrics answers: since=48h
