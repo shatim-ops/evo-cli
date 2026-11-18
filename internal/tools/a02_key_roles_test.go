@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -37,6 +38,7 @@ const rolesProject = "00000000-0000-4000-8000-0000000000a1"
 // else of the cloud.
 type rolesWorld struct {
 	status  int    // answer to the permissions instead of the list
+	refusal string // the body of that answer; "" — a message of the world
 	perms   string // the permissions answered (JSON array)
 	keys    string // the access keys of sa-1 answered (JSON array; "" — 403)
 	mu      sync.Mutex
@@ -54,6 +56,9 @@ func (w *rolesWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 		w.asked = append(w.asked, r.URL.Query().Get("filter"))
 		w.mu.Unlock()
 		if w.status != 0 {
+			if w.refusal != "" {
+				return answer(w.status, w.refusal)
+			}
 			return answer(w.status, `{"message":"refused by the world"}`)
 		}
 		return answer(200, `{"permissions":`+w.perms+`}`)
@@ -127,9 +132,10 @@ func TestWhoami_RolesOfTheKeyOnTheProject(t *testing.T) {
 		t.Errorf("roles_note with the roles known: %v", m["roles_note"])
 	}
 	// A role's name is the cloud's: anyone who may create a custom role
-	// names it (process audit 1.2.1, П9).
-	if u, _ := m["_untrusted"].([]any); len(u) != 1 || u[0] != "roles" {
-		t.Errorf("_untrusted %v, want [roles]", m["_untrusted"])
+	// names it (process audit 1.2.1, П9); the term of the key may carry
+	// the text of IAM too (A19-12, #2432).
+	if u, _ := m["_untrusted"].([]any); !slices.Equal(u, []any{"roles", "key_term_note"}) {
+		t.Errorf("_untrusted %v, want [roles key_term_note]", m["_untrusted"])
 	}
 }
 

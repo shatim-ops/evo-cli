@@ -445,7 +445,7 @@ func ShowOpenedPorts(p *output.Printer, res sgrules.OpenResult, rec *state.Deplo
 	for _, g := range res.OnlyFromGroups {
 		p.Warning(i18n.Tf("port %s is NOT open to the source of this deploy: in group %s a rule lets it in only from security group %s — no rule created; to open it, the person adds the rule (evo vpc sg-rule-create)",
 			"порт %s НЕ открыт для источника этого deploy: в группе %s правило пускает его только из группы безопасности %s — правило не создавалось; чтобы открыть, правило добавляет человек (evo vpc sg-rule-create)",
-			g.Port, group, quoted(g.Groups)))
+			g.Port, strconv.Quote(group), quoted(g.Groups)))
 	}
 	if len(res.Failed) > 0 {
 		p.Warning(i18n.Tf("Could not open ports %s — open them in the security group in the Cloud.ru console",
@@ -468,13 +468,16 @@ func quoted(names []string) string {
 }
 
 // alreadyOpenText is the deploy line about ports another rule opens.
+// The name of the group is the cloud's: quoted on one line, as quoted
+// names the groups beside it (a line of progress has no marker; A19-12,
+// #2432).
 func alreadyOpenText(labels []string, group string) string {
 	if len(labels) == 1 {
 		return i18n.Tf("port %s is already open in group %s — no rule created, destroy will not touch it",
-			"порт %s уже открыт в группе %s — правило не создавалось, destroy его не тронет", labels[0], group)
+			"порт %s уже открыт в группе %s — правило не создавалось, destroy его не тронет", labels[0], strconv.Quote(group))
 	}
 	return i18n.Tf("ports %s are already open in group %s — no rules created, destroy will not touch them",
-		"порты %s уже открыты в группе %s — правила не создавались, destroy их не тронет", strings.Join(labels, ","), group)
+		"порты %s уже открыты в группе %s — правила не создавались, destroy их не тронет", strings.Join(labels, ","), strconv.Quote(group))
 }
 
 // flavorAPIName turns the flavor picked by sizing (an ID) or given by the
