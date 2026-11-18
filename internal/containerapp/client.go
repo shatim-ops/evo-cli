@@ -21,6 +21,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
+	"github.com/shatim-ops/evo-cli/internal/secretsent"
 )
 
 const defaultBaseURL = "https://containers.api.cloud.ru"
@@ -151,6 +152,18 @@ type CreateContainerReq struct {
 	Template      Template       `json:"template"`
 }
 
+// carriesEnv reports whether req sends a value of an env variable.
+func (req CreateContainerReq) carriesEnv() bool {
+	for _, c := range req.Template.Containers {
+		for _, e := range c.Env {
+			if e.Value != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // --- Operations ---
 
 // List returns the project's containers, every page (containers/openapi.yaml:
@@ -201,6 +214,11 @@ func (c *Client) Get(ctx context.Context, name string) (map[string]any, error) {
 }
 
 func (c *Client) Create(ctx context.Context, req CreateContainerReq) (*Operation, error) {
+	// The env of an app carries its passwords and tokens: a refusal that
+	// echoes the request shows by its class only (secretsent).
+	if req.carriesEnv() {
+		secretsent.Mark(ctx)
+	}
 	if req.ProjectID == "" {
 		req.ProjectID = c.projectID
 	}

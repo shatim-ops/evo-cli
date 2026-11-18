@@ -10,6 +10,7 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/secretsent"
 )
 
 // fieldSet are the keys of an object a surface may show; a key's own set,
@@ -85,13 +86,15 @@ func untrustedError(m map[string]any) bool {
 	return false
 }
 
-// secretWriteAnswer is the answer of tool, a write with a secret input,
-// as a surface shows it (outer): a refusal that may carry the service's
-// text by its class and status, the CLI's error alike; a success with the
-// public fields of its object. Any other tool's answer is as it is.
+// secretWriteAnswer is the answer of tool, a write with a secret input or
+// a call that sent the cloud a value that may be a secret (secretsent), as
+// a surface shows it (outer): a refusal that may carry the service's text
+// by its class and status, the CLI's error alike; a success of a secret
+// write with the public fields of its object. Any other answer is as it
+// is.
 func secretWriteAnswer(ctx context.Context, tool string, args map[string]any, text string, isErr bool) string {
 	o, ok := secretWrites[tool]
-	if !ok && !(isErr && carriesSecretText(tool, args)) {
+	if !ok && !(isErr && secretsent.Sent(ctx)) {
 		return text
 	}
 	var m map[string]any
@@ -205,24 +208,4 @@ func freeScalars(v any) any {
 	default:
 		return v
 	}
-}
-
-// secretTexts are string arguments that may hold a secret beside those of
-// CLISpec.SecretFiles: a cloud-init template carries passwords and keys.
-// evo shows them only as a summary (EchoedArgs), never as they are; a call
-// that carries one is refused by class, as a secret write is
-// (secretWriteAnswer; Астра #2257, «Риск», conclusion 328).
-var secretTexts = map[string][]string{
-	"image_create": {"user_data_template"},
-}
-
-// carriesSecretText reports whether the call of tool carries a value in an
-// argument of secretTexts.
-func carriesSecretText(tool string, args map[string]any) bool {
-	for _, k := range secretTexts[tool] {
-		if v, _ := args[k].(string); v != "" {
-			return true
-		}
-	}
-	return false
 }
