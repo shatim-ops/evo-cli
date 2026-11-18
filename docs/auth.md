@@ -159,7 +159,7 @@ $ evo login --for agent
 (`key_id` и `access_key_id`): удалить такой ключ evo не может — если он ещё
 виден в личном кабинете, удалите его там. Ключ, отозванный в личном
 кабинете, `evo whoami` и `evo doctor` не принимают, даже пока токен из
-кеша ещё жив: `AUTH_FAILED`, код 2 (D88, D94).
+кеша ещё жив: `AUTH_FAILED`, код 2.
 
 ```console
 $ evo logout --profile agent
