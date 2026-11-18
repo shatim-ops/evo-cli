@@ -35,7 +35,7 @@ func newProjectCmd() *cobra.Command {
 
 func newProjectUseCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "use <UUID|имя>",
+		Use:   "use <UUID|name>",
 		Short: i18n.T("Make a project the default of the profile", "Сделать проект проектом профиля по умолчанию"),
 		Long: i18n.T(`Write the project into the active profile: commands then work in it
 unless --project-id, CLOUDRU_PROJECT_ID or ./.evo.yaml say otherwise.
