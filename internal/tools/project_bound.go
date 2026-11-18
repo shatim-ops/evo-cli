@@ -92,7 +92,7 @@ const (
 		"the items that list read; it reaches no API as an id"
 	whyInProject = "the request carries the project (projectId in the query), and the API looks the resource up in that project"
 	whyInParent  = "a part of the resource the call's other id argument names (checked): the API addresses it inside that resource"
-	whyContinued = "the VM the next step of a call goes on with (continuedVM, D102): the call only reads it by id, to refuse when it is gone; " +
+	whyContinued = "the VM the next step of a call goes on with (continuedVM): the call only reads it by id, to refuse when it is gone; " +
 		"what the call writes lands in its own project, as without the argument"
 	whyContainerImage = "a container image reference (registry/name:tag) the app pulls, not a Cloud.ru resource id"
 	whyReference      = "a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; " +
