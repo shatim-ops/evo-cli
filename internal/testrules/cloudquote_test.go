@@ -173,7 +173,6 @@ var unquotedCloudFlowSteps = map[string]int{
 // a pass for the function: a value of the cloud in it is still counted.
 var evoOwnValues = map[string]int{
 	"internal/cli/history_view.go|historyEntry.call":           1,
-	"internal/cli/mcp.go|newMCPHealthcheckCmd":                 1,
 	"internal/config/config.go|pickImage":                      1,
 	"internal/engine/compose_path.go|composeRefusal":           1,
 	"internal/engine/compose_path.go|composeUnknown":           1,
