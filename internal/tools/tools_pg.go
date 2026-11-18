@@ -361,7 +361,7 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 	}
 	specID, _ := spec["id"].(string)
 	if maxHosts := pgMaxHosts(spec); maxHosts > 0 && instances > maxHosts {
-		return answered(usageResult(fmt.Errorf("instances %d: specification %s (%v) takes 1-%d nodes", instances, specID, firstNonNil(spec["deployment_mode"], spec["display_name"]), maxHosts)), true), nil
+		return answered(usageResult(fmt.Errorf("instances %d: specification %s (%s) takes 1-%d nodes", instances, quoteCloud(specID), quoteCloud(fmt.Sprint(firstNonNil(spec["deployment_mode"], spec["display_name"]))), maxHosts)), true), nil
 	}
 
 	storageGB, err := specStorage(args, "storage_gb", spec, 50)

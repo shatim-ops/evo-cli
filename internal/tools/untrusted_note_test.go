@@ -99,6 +99,7 @@ var untrustedMarkerOnly = map[string]string{
 	"cert_list":            "certificates: the names of the project's certificates, not the output of a workload",
 	"cert_get":             "the whole answer: the certificate as its service has it, not the output of a workload",
 	"cert_usage":           "the whole answer: where the certificate is used, as its service has it, not the output of a workload",
+	"cert_private_key":     "the whole answer but key_format: the key version as its service has it, not the output of a workload",
 	"dns_zones":            "zones: the names of the project's DNS zones, not the output of a workload",
 	"dns_zone_get":         "the whole answer: the DNS zone as its service has it, not the output of a workload",
 	"dns_records":          "records: the names and values of a zone's records, not the output of a workload",
