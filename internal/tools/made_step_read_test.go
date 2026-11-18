@@ -71,9 +71,11 @@ func TestMadeRepeat_AStepThatWritesIsNotRunWithoutConsent(t *testing.T) {
 func TestMadeRepeat_APlantedFileWritesNothing(t *testing.T) {
 	for _, c := range []struct {
 		name string
-		// own: the file names the key of the call; else an empty key.
+		// own: the file names the key of the call; else key, a key that
+		// names no field the key of the call knows too.
 		own bool
-	}{{"empty key", false}, {"the key of the call", true}} {
+		key string
+	}{{"empty key", false, `{}`}, {"an account the key of the call does not name", false, `{"service_account_id":"sa-other"}`}, {"the key of the call", true, ""}} {
 		w := (&restoreWorld{}).stateIn(t)
 		r := restoreRegistry(t, w)
 		args := map[string]any{"backup_id": brBackup, "name": "restored"}
@@ -83,7 +85,7 @@ func TestMadeRepeat_APlantedFileWritesNothing(t *testing.T) {
 		}
 		eng, _ := r.engineOfCall(args)
 		project := projectOfCall(eng, intent.Intent{Tool: "backup_restore", Name: resource, Target: target}, args)
-		key := []byte(`{}`)
+		key := []byte(c.key)
 		if c.own {
 			key, _ = json.Marshal(eng.Maker())
 		}

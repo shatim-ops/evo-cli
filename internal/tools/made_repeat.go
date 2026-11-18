@@ -165,6 +165,25 @@ func (r *Registry) rememberMade(rec intent.Intent, answer string) {
 	_ = config.WriteFileAtomic(filepath.Join(dir, madeKey(rec.Tool, rec.Canon, rec.Name, rec.Target)), b, 0o600)
 }
 
+// madeByKey tells that the key cur wrote the file of made/ whose key is m:
+// a field both name — the account, else the Key ID — is the same. A file
+// whose key names nothing cur knows too — empty, or another account the
+// key of the call does not name — is not evo's own: what a cloned
+// directory of the state, or anyone who writes in it, may bring. Unlike
+// Maker.Other, «unknown» is not «the same» here: the file names a step to
+// run (A19-1, #2418).
+func madeByKey(m, cur *state.Maker) bool {
+	switch {
+	case m == nil || cur == nil:
+		return false
+	case m.ServiceAccountID != "" && cur.ServiceAccountID != "":
+		return m.ServiceAccountID == cur.ServiceAccountID
+	case m.KeyID != "" && cur.KeyID != "":
+		return m.KeyID == cur.KeyID
+	}
+	return false
+}
+
 // repeatOfMade answers a call of tool name whose same call before was
 // taken by the platform and goes on (rememberMade): it reads the step of
 // that operation and sends no second create — the consent given was to one
@@ -192,14 +211,11 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	file := filepath.Join(MadeDir(root), madeKey(name, r.canonArgs(name, args), resource, target))
 	b, err := config.ReadFileNoFollow(file)
 	var mc madeCall
-	// A file is evo's own only when it names the key that wrote it: an
-	// empty key — what a cloned directory of the state, or anyone who
-	// writes in it, may bring — is not «unknown», it is not read (A19-1).
-	if err != nil || json.Unmarshal(b, &mc) != nil || mc.Key == nil || (mc.Key.ServiceAccountID == "" && mc.Key.KeyID == "") {
+	if err != nil || json.Unmarshal(b, &mc) != nil || mc.Key == nil {
 		return "", false, false
 	}
 	eng, _ := r.engineOfCall(args)
-	if eng == nil || mc.Key.Other(eng.Maker()) ||
+	if eng == nil || !madeByKey(mc.Key, eng.Maker()) ||
 		mc.ProjectID != projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args) {
 		return "", false, false
 	}
