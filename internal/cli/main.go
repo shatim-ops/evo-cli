@@ -81,16 +81,21 @@ var commandStarted bool
 // the same program until v2.0.
 func Main(buildVersion, buildCommit, buildDate string) {
 	setBuildIdentity(buildVersion, buildCommit, buildDate)
-	if isLegacyAlias(os.Args[0]) {
-		printAliasNotice(os.Stderr, os.Args[1:])
-	}
+	legacyAliasRun = isLegacyAlias(os.Args[0])
 	os.Exit(run(os.Args[1:]))
 }
+
+// legacyAliasRun is set when the binary runs under its legacy name: run
+// prints the rename notice once it knows the language of the surface.
+var legacyAliasRun bool
 
 // aliasNotice is printed when the binary runs under its legacy name: the
 // release archives ship a copy named after the legacy alias until
 // v2.0, so scripts and MCP configs written for the old name keep working.
-const aliasNotice = config.LegacyAppName + " переименован в " + config.AppName + ", alias будет удалён в v2.0"
+func aliasNotice() string {
+	return i18n.Tf("%s is renamed %s; the alias works until v2.0", "%s переименован в %s, alias работает до v2.0",
+		config.LegacyAppName, config.AppName)
+}
 
 // isLegacyAlias reports whether argv0 is the legacy alias binary:
 // cloudru-vm (legacy name), or cloudru-vm.exe on Windows.
@@ -106,10 +111,10 @@ func isLegacyAlias(argv0 string) bool {
 // stderr; with --json as {"warning": ...}, so stderr stays parseable.
 func printAliasNotice(w io.Writer, args []string) {
 	if jsonRequested(args) {
-		_ = json.NewEncoder(w).Encode(map[string]string{"warning": aliasNotice})
+		_ = json.NewEncoder(w).Encode(map[string]string{"warning": aliasNotice()})
 		return
 	}
-	fmt.Fprintln(w, aliasNotice)
+	fmt.Fprintln(w, aliasNotice())
 }
 
 // run executes the CLI and returns the process exit code.
@@ -124,14 +129,30 @@ func run(args []string) int {
 	}()
 
 	commandStarted = false
+	// --json is the machine's answer, as the JSON of a tool over MCP, and
+	// evo mcp answers in English (docs/auth.md): English whatever the
+	// language of the person (D6). One point for the whole run, chosen
+	// before anything is printed: the rename notice of the legacy alias and
+	// the warning of the migration of the settings (Астра, #2440, #2443),
+	// cobra's refusal of the flags of evo mcp before runMCP (release audit,
+	// REL-12), the answer and its error. The tree speaks the language it is
+	// built in (help, usage), so it is built after the choice; --json is
+	// known from the arguments, evo mcp only from the tree, which is then
+	// built again. The server keeps English for as long as it serves; a
+	// --json run gives the language back.
 	if jsonRequested(args) {
-		// --json is the machine's answer, as the JSON of a tool over MCP:
-		// English whatever the language of the person (D6). One point for
-		// the whole run: the answer, its error, its warnings, and what
-		// cobra says before a command starts.
-		prev := i18n.Lang()
+		defer i18n.SetLang(i18n.Lang())
 		i18n.SetLang(i18n.EN)
-		defer i18n.SetLang(prev)
+	}
+	rootCmd := newRootCmd()
+	rootCmd.SetArgs(args)
+	if i18n.Lang() != i18n.EN && mcpCommand(rootCmd, args) {
+		i18n.SetLang(i18n.EN)
+		rootCmd = newRootCmd()
+		rootCmd.SetArgs(args)
+	}
+	if legacyAliasRun {
+		printAliasNotice(os.Stderr, args)
 	}
 	// The global flags live for this run: a later engine built without a
 	// run (tests, the parity worlds) must not read its --profile,
@@ -151,14 +172,6 @@ func run(args []string) int {
 		output.New(jsonRequested(args), true).Warning(msg)
 	}
 	journal.Begin(journal.SurfaceCLI, currentVersion().Version)
-	rootCmd := newRootCmd()
-	rootCmd.SetArgs(args)
-	if mcpCommand(rootCmd, args) {
-		// evo mcp answers in English (docs/auth.md), and cobra parses its
-		// flags before runMCP sets the language: "--auth" without a value
-		// was refused in the CLI's language (release audit, REL-12).
-		i18n.SetLang(i18n.EN)
-	}
 	cmd, err := rootCmd.ExecuteContextC(ctx)
 	if err == nil {
 		return clerrors.ExitOK

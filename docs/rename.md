@@ -5,7 +5,7 @@
 
 | Было | Стало | До v2.0 |
 |---|---|---|
-| бинарь `cloudru-vm` | `evo` | в архиве релиза и в `install.sh` есть alias `cloudru-vm` — тот же бинарь; печатает в stderr «cloudru-vm переименован в evo, alias будет удалён в v2.0» и работает как `evo` |
+| бинарь `cloudru-vm` | `evo` | в архиве релиза и в `install.sh` есть alias `cloudru-vm` — тот же бинарь; печатает в stderr «cloudru-vm переименован в evo, alias работает до v2.0» (с `--json` и у `evo mcp` — по-английски: «cloudru-vm is renamed evo; the alias works until v2.0») и работает как `evo` |
 | сборка из исходников `go build ./cmd/cloudru-vm` | `go build ./cmd/evo` | `./cmd/cloudru-vm` собирает тот же код (`internal/cli`): скрипты вида `go build -o bin/cloudru-vm ./cmd/cloudru-vm` продолжают работать, бинарь ведёт себя как alias |
 | профили в `<каталог конфигурации>/cloudru-vm/` | `<каталог конфигурации>/evo/` | при первом запуске `evo` копирует `config.yaml` и `credentials.yaml` (права `0600`, каталог `0700`, на Windows — свой ACL); старый каталог не трогается, кэш токена не копируется — токен выписывается заново |
 | `./.cloudru-vm.yaml` | `./.evo.yaml` | старый файл читается с предупреждением, если нового нет |

@@ -9,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -68,5 +69,52 @@ func TestDecisionRefs_NotInProductText(t *testing.T) {
 	}
 	for _, b := range bad {
 		t.Errorf("%s: an internal decision in the text a person or a model reads; say the reason in words", b)
+	}
+}
+
+// docsOutOfReach are the files under docs/ that are not for a reader of
+// the product: the project's internals, and the release rules, which cite
+// the decisions they enforce and only the owner changes.
+var docsOutOfReach = map[string]bool{"docs/internal": true, "docs/RELEASING.md": true}
+
+// The same for the user documentation under docs/: the pages a person or a
+// model reads cite no internal decision (#2462; the owner's rule: clean the
+// sources, not the published copy). Generated pages come from the code the
+// test above walks; this one reads the hand-written ones too.
+func TestDecisionRefs_NotInUserDocs(t *testing.T) {
+	root := filepath.Join("..", "..")
+	read := 0
+	err := filepath.WalkDir(filepath.Join(root, "docs"), func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
+		if docsOutOfReach[rel] {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() || !strings.HasSuffix(p, ".md") {
+			return nil
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		read++
+		for i, line := range strings.Split(string(data), "\n") {
+			if ref := decisionRef.FindString(line); ref != "" {
+				t.Errorf("%s:%d: %s: an internal decision in a page a person or a model reads; say the reason in words", rel, i+1, ref)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read < 10 {
+		t.Fatalf("only %d pages read: the walk lost docs/", read)
 	}
 }

@@ -108,16 +108,7 @@ func markIn(v any) (has, bare bool) {
 // as evo's, "tool: field" ("tool: *" — every field of its answer) → the
 // finding; each is a line to the owner of the tool. Only shrinks: a line
 // no longer found fails the test. Closes by 1.9, before the tag (#2393).
-var untrustedClassPending = map[string]string{
-	"k8s_nodepools: node_pools": "ids and names of the pools, not in _untrusted",
-	"cert_import: certificate":  "the certificate the cloud answered, not in _untrusted",
-	"cert_renew: operation":     "the operation the cloud answered, not in _untrusted",
-	"pg_db_create: database":    "the database the cloud answered, not in _untrusted",
-	"pg_user_create: user":      "the user the cloud answered, not in _untrusted",
-	// Found once the calls reached the cloud (#2434).
-	"billing_balance: *":       "the answer of the balance API as it came, no _untrusted (#2434)",
-	"cert_issue_le: operation": "the operation the cloud answered, not in _untrusted (#2434)",
-}
+var untrustedClassPending = map[string]string{}
 
 // classWorldArgs are the arguments a tool needs beyond its required ones
 // to reach the cloud: a rule needs its source, helm status its release,

@@ -212,7 +212,7 @@ func MigrateLegacyDir() (string, error) {
 			return "", fmt.Errorf(i18n.T("read %s: %w", "чтение %s: %w"), src, err)
 		}
 		if !st.Mode().IsRegular() {
-			return "", fmt.Errorf("%s is not a regular file", src)
+			return "", fmt.Errorf(i18n.T("%s is not a regular file", "%s — не обычный файл"), src)
 		}
 		data, err := os.ReadFile(src)
 		if err != nil {

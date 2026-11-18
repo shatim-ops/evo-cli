@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -37,19 +38,24 @@ func TestIsLegacyAlias(t *testing.T) {
 }
 
 func TestAliasNotice(t *testing.T) {
-	want := "cloudru-vm переименован в evo, alias будет удалён в v2.0"
-	if aliasNotice != want {
-		t.Fatalf("aliasNotice = %q", aliasNotice)
+	prev := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(prev) })
+	i18n.SetLang(i18n.RU)
+	want := "cloudru-vm переименован в evo, alias работает до v2.0"
+	if aliasNotice() != want {
+		t.Fatalf("aliasNotice = %q", aliasNotice())
 	}
 	var buf bytes.Buffer
 	printAliasNotice(&buf, []string{"version"})
 	if buf.String() != want+"\n" {
 		t.Errorf("text: %q", buf.String())
 	}
+	// With --json run speaks English before the notice (D6, #2440).
+	i18n.SetLang(i18n.EN)
 	buf.Reset()
 	printAliasNotice(&buf, []string{"status", "--json"})
 	var got map[string]string
-	if err := json.Unmarshal(buf.Bytes(), &got); err != nil || got["warning"] != want {
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil || got["warning"] != "cloudru-vm is renamed evo; the alias works until v2.0" {
 		t.Errorf("json: %q, %v", buf.String(), err)
 	}
 }

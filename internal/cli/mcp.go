@@ -602,7 +602,7 @@ func newMCPHealthcheckCmd() *cobra.Command {
 			defer resp.Body.Close()
 			_, _ = io.Copy(io.Discard, resp.Body)
 			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("healthcheck: %s returned %s", target, resp.Status)
+				return fmt.Errorf(i18n.T("healthcheck: %s answered %s", "healthcheck: %s ответил %s"), target, resp.Status)
 			}
 			if flagJSON {
 				return output.NewWithWriter(cmd.OutOrStdout(), output.ModeJSON, false).JSON(map[string]string{"status": "ok", "url": target})
