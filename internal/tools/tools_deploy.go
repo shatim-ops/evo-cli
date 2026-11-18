@@ -490,7 +490,7 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 		out := map[string]any{"status": "creating", "vm_id": res.VMID, "vm_status": res.VMStatus, "plan_id": planID,
 			"elapsed_sec": res.ElapsedSec,
 			"next": i18n.Tf("The VM is still being created. Call deploy_apply again with next_args (plan_id %s, confirmed=true, vm_id): it adopts this VM (no second one), waits and finishes it (public IP, SSH, ports); if the VM is gone by then, it refuses and creates nothing. vm_get vm_id=%s shows its state.",
-				"ВМ ещё создаётся. Повторите evo deploy apply %s с --vm-id %[2]s: команда продолжит эту ВМ (вторую не создаст), дождётся её и доделает (публичный IP, SSH, порты); если ВМ к тому времени исчезнет — откажет и ничего не создаст. Состояние показывает evo vm get %[2]s.", planID, res.VMID)}
+				"ВМ ещё создаётся. Повторите evo deploy apply %s с --vm-id %[2]s: команда продолжит эту ВМ (вторую не создаст), дождётся её и доделает (публичный IP, SSH, порты); если ВМ к тому времени исчезнет — откажет и ничего не создаст. Состояние показывает evo vm get %[2]s.", planID, quoteCloud(res.VMID))}
 		// The consent goes on for this VM and no other (continuedVM, D102).
 		nextStep(out, "deploy_apply", map[string]any{"plan_id": planID, "confirmed": true, continuedVMArg: res.VMID})
 		if res.Password != "" {
