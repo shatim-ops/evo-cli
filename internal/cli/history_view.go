@@ -31,6 +31,7 @@ type historyEntry struct {
 	Zone       string `json:"zone"`
 	Surface    string `json:"surface"`
 	IntentID   string `json:"intent_id"`
+	Result     string `json:"check_result"`
 }
 
 // where is the project and the zone of e, as one cell.
@@ -57,6 +58,13 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 		LiveCut   bool           `json:"live_truncated"`
 		Retired   string         `json:"retired_through"`
 		Note      string         `json:"note"`
+		Would     []historyEntry `json:"would_close"`
+		CheckNote string         `json:"check_note"`
+		Checked   *struct {
+			Read       int            `json:"read"`
+			WouldClose int            `json:"would_close"`
+			NotChecked map[string]int `json:"not_checked"`
+		} `json:"checked"`
 	}
 	if err := json.Unmarshal([]byte(text), &a); err != nil {
 		return err
@@ -96,9 +104,36 @@ func renderHistory(p *output.Printer, w io.Writer, reg *tools.Registry, text str
 				check = toolCommandPath(t)
 			}
 			rows[i] = []string{e.Time, e.Tool, what(e), e.ResourceID, e.Outcome, check, e.where(), e.call()}
+			if a.Checked != nil {
+				rows[i] = append(rows[i], e.Result)
+			}
 		}
-		p.Table([]string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID",
-			i18n.T("Outcome", "Итог"), i18n.T("Check with", "Проверить"), i18n.T("Project · zone", "Проект · зона"), i18n.T("Call", "Вызов")}, rows)
+		head := []string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID",
+			i18n.T("Outcome", "Итог"), i18n.T("Check with", "Проверить"), i18n.T("Project · zone", "Проект · зона"), i18n.T("Call", "Вызов")}
+		if a.Checked != nil {
+			head = append(head, i18n.T("Read by id", "Чтение по id"))
+		}
+		p.Table(head, rows)
+	}
+	if a.Checked != nil {
+		fmt.Fprintln(w)
+		notRead := 0
+		for _, n := range a.Checked.NotChecked {
+			notRead += n
+		}
+		fmt.Fprintln(w, i18n.Tf("Checked: %d read by id, %d not seen by this key, %d not read.",
+			"Проверено: прочитано по id %d, этот ключ не видит %d, не прочитано %d.", a.Checked.Read, a.Checked.WouldClose, notRead))
+		if len(a.Would) > 0 {
+			rows := make([][]string, len(a.Would))
+			for i, e := range a.Would {
+				rows[i] = []string{e.Time, e.Tool, what(e), e.ResourceID}
+			}
+			fmt.Fprintln(w, i18n.T("Not seen by this key now — removed, or no longer seen by it:", "Этот ключ сейчас не видит — удалено или больше не видно ему:"))
+			p.Table([]string{i18n.T("Time", "Время"), i18n.T("Tool", "Инструмент"), i18n.T("Resource", "Ресурс"), "ID"}, rows)
+		}
+		if a.CheckNote != "" {
+			fmt.Fprintln(w, a.CheckNote)
+		}
 	}
 	if a.LiveCut {
 		fmt.Fprintln(w, i18n.T("Only the last live lines are shown, there are more: narrow it to a project with --project-id.",

@@ -238,3 +238,21 @@ func TestLive_AnUnknownIsClosedByALaterGone(t *testing.T) {
 		t.Errorf("d-1 deleted, then a cut call on d-1: live %d, want the cut call", len(got))
 	}
 }
+
+// not_found is not final: a later line that makes or finds the same
+// resource — kind, parent, id — makes it live again («Риск», conclusion
+// 315, У2). The order of the lines decides.
+func TestLive_ALaterLineOpensWhatNotFoundClosed(t *testing.T) {
+	mk := func(intent, outcome string) Line {
+		return Line{Format: Format, Time: "2026-11-17T12:00:00Z", Tool: "pg_create", ProjectID: "p", Kind: "PostgreSQL cluster",
+			ResourceID: "c-1", Outcome: outcome, IntentID: intent}
+	}
+	closed := []Line{mk("1000000000000001", Created), mk("1000000000000001", NotFound)}
+	if live := Live(closed); len(live) != 0 {
+		t.Errorf("made, then not found: live %+v; want none", live)
+	}
+	again := append(closed, mk("1000000000000002", Found))
+	if live := Live(again); len(live) != 1 || live[0].IntentID != "1000000000000002" {
+		t.Errorf("found again after not_found: live %+v; want the later line", live)
+	}
+}
