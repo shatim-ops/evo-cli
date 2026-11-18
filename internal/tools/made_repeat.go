@@ -116,12 +116,14 @@ func madeGoesOn(tool, answer string) (id, next string, nextArgs map[string]any, 
 // operation is in a state of error, its operation is done with an error,
 // or — past madeListGrace — a read by id lists none of it, the read of
 // the operation (op) does not find it, or the operation is done and the
-// resource, read in the list before the step, is not there: made, then
-// gone (A19-8, #2428). An operation not found sooner is
+// list before the step was read (listRead) and does not show it: made,
+// then gone (A19-8, #2428). A list that did not answer tells nothing of
+// the resource: the file stays («Риск», conclusion 405, У1). An
+// operation not found sooner is
 // one the platform does not show yet, not a resource gone: it goes on, as
 // a list that lags («Риск», conclusion 310, У1). A read that fails
 // otherwise tells nothing.
-func madeEnded(read string, isErr bool, age time.Duration, op bool) bool {
+func madeEnded(read string, isErr bool, age time.Duration, op, listRead bool) bool {
 	if isErr {
 		return madeNotFound(read) && (!op || age > madeListGrace)
 	}
@@ -137,7 +139,7 @@ func madeEnded(read string, isErr bool, age time.Duration, op bool) bool {
 	// The read of an operation (*_operation): done with an error; done
 	// with none past the grace of a list that lags.
 	if done, _ := m["done"].(bool); done {
-		if _, _, failed := opFailure(m["error"]); failed || (op && age > madeListGrace) {
+		if _, _, failed := opFailure(m["error"]); failed || (op && listRead && age > madeListGrace) {
 			return true
 		}
 	}
@@ -252,7 +254,8 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		forget()
 		return "", false, false
 	}
-	if _, listed, _ := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID); listed {
+	listSaid, listed, _ := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID)
+	if listed {
 		forget()
 		return "", false, false
 	}
@@ -283,7 +286,9 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		// The read says the resource is not there, or its operation
 		// failed: nothing goes on, the file goes, and the call is planned
 		// as any other — a new create («Риск», conclusion 268, 1).
-		if madeEnded(read, readErr, clock.Since(mc.StartedAt), strings.HasSuffix(mc.Next, "_operation")) {
+		// listSaid: the list answered (checkByList says "" of a list not
+		// read).
+		if madeEnded(read, readErr, clock.Since(mc.StartedAt), strings.HasSuffix(mc.Next, "_operation"), listSaid != "") {
 			forget()
 			return "", false, false
 		}
@@ -300,9 +305,9 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 			if done, _ := m["done"].(bool); done {
 				// Done with no error (madeEnded): the outcome is known,
 				// the list does not show it yet — or it is gone.
-				said = i18n.Tf("An earlier %s of %s was taken by the platform as %s, and its operation is done; the list does not show it yet: no second create was sent. Read the list again in a minute; if it is still not there, it was deleted, and the same call creates it anew.",
-					"Предыдущий вызов %s для %s принят платформой как %s, и его операция завершена; список его пока не показывает: второе создание не отправлено. Прочитайте список снова через минуту; если его там всё ещё нет, он удалён, и тот же вызов создаст его заново.",
-					name, quoteCloud(resource), quoteCloud(mc.ID))
+				said = i18n.Tf("An earlier %s of %s was taken by the platform as %s, and its operation is done; the list does not show it yet: no second create was sent. The list may lag for up to %d minutes: read it again; if it is still not there after that, it may have been deleted — whether to create it anew is the person's decision.",
+					"Предыдущий вызов %s для %s принят платформой как %s, и его операция завершена; список его пока не показывает: второе создание не отправлено. Список может отставать до %d минут: прочитайте его снова; если его там и после этого нет, он, возможно, удалён — создавать ли заново, решает человек.",
+					name, quoteCloud(resource), quoteCloud(mc.ID), int(madeListGrace/time.Minute))
 			}
 			if was, _ := m["message"].(string); was != "" {
 				said += " " + was

@@ -346,9 +346,14 @@ func TestMadeEnded(t *testing.T) {
 		{`{"id":"op-1","done":false}`, false, madeListGrace * 2, false, true},
 		{`{"id":"op-1","done":false}`, false, time.Hour, false, false},
 	} {
-		if got := madeEnded(c.read, c.isErr, c.age, c.op); got != c.want {
+		if got := madeEnded(c.read, c.isErr, c.age, c.op, true); got != c.want {
 			t.Errorf("madeEnded(%s, %v, %v, op %v) = %v, want %v", c.read, c.isErr, c.age, c.op, got, c.want)
 		}
+	}
+	// A list that did not answer tells nothing of the resource: a done
+	// operation past the grace does not end the create («Риск», 405, У1).
+	if madeEnded(`{"id":"op-1","done":true}`, false, madeListGrace*2, true, false) {
+		t.Error("a done operation ends the create though the list was not read")
 	}
 }
 
@@ -361,6 +366,8 @@ type dnsWaitAPI struct {
 	calls []string
 	// done: the operation of the create is done with no error.
 	done bool
+	// listFails: the lists of zones answer 500.
+	listFails bool
 }
 
 func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -372,6 +379,8 @@ func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Path == "/v1/publicZones" && r.Method == http.MethodPost:
 		a.posts++
 		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":false}`)
+	case a.listFails && r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "Zones"):
+		http.Error(rec, `{"message":"internal"}`, http.StatusInternalServerError)
 	case r.URL.Path == "/v1/publicZones":
 		_, _ = io.WriteString(rec, `{"zones":[]}`)
 	case r.URL.Path == "/v1/privateZones":
@@ -429,7 +438,10 @@ func TestDNSZoneCreate_ARepeatAfterADoneOperationOfAGoneZone(t *testing.T) {
 	now = now.Add(madeListGrace / 2)
 	m, text, _ := callNamed(t, r, "dns_zone_create", args)
 	msg, _ := m["message"].(string)
-	if m["repeat_of"] == nil || api.posts != 1 || strings.Contains(msg, "not known") || !strings.Contains(msg, "done") {
+	// The words: the list lags for the whole grace, and a new create is
+	// the person's decision, not a fact of a deletion («Риск», 405, У2).
+	if m["repeat_of"] == nil || api.posts != 1 || strings.Contains(msg, "not known") || !strings.Contains(msg, "done") ||
+		!strings.Contains(msg, "10 minutes") || !strings.Contains(msg, "the person's decision") || strings.Contains(msg, "it was deleted") {
 		t.Fatalf("within the grace: %d POSTs, want the repeat that says the operation is done: %s", api.posts, text)
 	}
 	now = now.Add(madeListGrace)
@@ -454,5 +466,25 @@ func TestMade_ADeleteOfTheResourceTakesItsFileAway(t *testing.T) {
 	}
 	if n := madeFiles(t, r); n != 0 {
 		t.Errorf("the file of the create of a deleted zone stays: %d", n)
+	}
+}
+
+// A list that does not answer past the grace keeps the file: a done
+// operation is no word that the zone is gone, and the repeat sends no
+// second create («Риск», conclusion 405, У1).
+func TestDNSZoneCreate_ARepeatWhoseListFailsSendsNoSecondCreate(t *testing.T) {
+	api := &dnsWaitAPI{done: true}
+	r := waitingRegistry(t, api)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	clock.Now = func() time.Time { return now }
+	t.Cleanup(func() { clock.Now = time.Now })
+	args := map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}
+	callNamed(t, r, "dns_zone_create", args)
+	api.mu.Lock()
+	api.listFails = true
+	api.mu.Unlock()
+	now = now.Add(madeListGrace * 2)
+	if _, text, _ := callNamed(t, r, "dns_zone_create", args); api.posts != 1 || madeFiles(t, r) != 1 {
+		t.Errorf("the list failed past the grace: %d POSTs, %d files, %s", api.posts, madeFiles(t, r), text)
 	}
 }
