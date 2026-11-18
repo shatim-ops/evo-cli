@@ -132,8 +132,10 @@ func enumValue(k string, p map[string]any, s string) (string, error) {
 			return es, nil
 		}
 	}
+	// The value is not repeated: a secret given in the wrong place would
+	// reach the output before consent (#2437).
 	return "", clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("%s %q is not one of %s", "%s %q не входит в список: %s", k, s, strings.Join(allowed, ", ")),
+		i18n.Tf("%s: the value is not one of %s", "%s: значение не входит в список: %s", k, strings.Join(allowed, ", ")),
 		i18n.Tf("Pass %s as one of: %s.", "Допустимые значения %s: %s.", k, strings.Join(allowed, ", ")))
 }
 
@@ -236,14 +238,15 @@ func ruleArg(k string, p map[string]any, v any) error {
 	if strings.TrimSpace(s) == "" {
 		return nil
 	}
+	// The refusals name the argument and the rule, not the value (#2437).
 	switch p["format"] {
 	case "uuid":
 		if !isUUID(s) {
-			return ruleErr(k, p, i18n.Tf("%s %q is not an id: it is a UUID", "%s %q — не id: он задаётся UUID", k, s))
+			return ruleErr(k, p, i18n.Tf("%s: the value is not an id: it is a UUID", "%s: значение — не id: он задаётся UUID", k))
 		}
 	case "cidr":
 		if _, err := netip.ParsePrefix(s); err != nil {
-			return ruleErr(k, p, i18n.Tf("%s %q is not a CIDR (address/prefix length, e.g. 10.0.0.0/16)", "%s %q — не CIDR (адрес/длина префикса, например 10.0.0.0/16)", k, s))
+			return ruleErr(k, p, i18n.Tf("%s: the value is not a CIDR (address/prefix length, e.g. 10.0.0.0/16)", "%s: значение — не CIDR (адрес/длина префикса, например 10.0.0.0/16)", k))
 		}
 	}
 	return nil

@@ -13,3 +13,9 @@
 - **Пара `--meta` (`evo vm create`, `evo deploy plan`) и `--env` (`evo ca deploy`) без `=` не печатается.**
   - Было: «--meta "admin_password:<значение>": want key=value» — пара целиком, в том числе с `--dry-run` и в `--json`.
   - Стало: «--meta number N: want key=value», как у `--arg`. `reason` (`USAGE`) и код выхода не меняются.
+
+- **Отказ по правилу схемы не повторяет значение** — id (UUID), CIDR и значение из закрытого списка, в CLI и MCP.
+  - Было: «disk_id "<значение>" is not an id: it is a UUID», «status "<значение>" is not one of …» — значение
+    целиком, до согласия.
+  - Стало: «disk_id: the value is not an id: it is a UUID», «status: the value is not one of …»; допустимые значения
+    по-прежнему перечислены. `reason` (`USAGE`) и коды не меняются.
