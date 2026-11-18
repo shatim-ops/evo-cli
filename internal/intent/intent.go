@@ -124,7 +124,7 @@ type Intent struct {
 	Print string `json:"print,omitempty"`
 	// Ended tells a call that returned with the record kept: its outcome
 	// is not known, and it is no longer in flight. A record without it
-	// whose process lives is a call that has not returned (inFlight).
+	// whose process lives is a call that has not returned (InFlight).
 	Ended bool `json:"ended,omitempty"`
 	// Sent tells a call whose first write went out: it is marked right
 	// before that write is sent (MarkSent), so a process killed after it
@@ -185,11 +185,11 @@ func (in Intent) SameCall(canon []byte) bool {
 	return in.Print != "" && canon != nil && in.Print == printOf(in.ID, canon)
 }
 
-// inFlight tells a record of a call that may not have returned yet: it
+// InFlight tells a record of a call that may not have returned yet: it
 // has not said it ended, and its process lives — this one, or another
 // (two agents of one server, two terminals). In doubt it is in flight:
 // its record is not another call's to remove.
-func (in Intent) inFlight() bool {
+func (in Intent) InFlight() bool {
 	return !in.Ended && !in.Held && (in.PID == os.Getpid() || processAlive(in.PID))
 }
 
@@ -368,7 +368,7 @@ func Pending(dir string) []Intent {
 	all, _ := scan(dir)
 	var out []Intent
 	for _, in := range all {
-		if in.Counts && !in.Sent && !in.Ended && !in.Held && in.Machine != "" && in.Machine == thisMachine() && !in.inFlight() {
+		if in.Counts && !in.Sent && !in.Ended && !in.Held && in.Machine != "" && in.Machine == thisMachine() && !in.InFlight() {
 			remove(dir, in.ID)
 			continue
 		}
@@ -458,7 +458,7 @@ func Settle(dir string, done Intent, out history.Outcome) (kept []Intent) {
 			kept = append(kept, in)
 			continue
 		}
-		if in.StartedAt.After(done.StartedAt) || in.Held || in.inFlight() || (in.Print != "" && in.Key == nil) {
+		if in.StartedAt.After(done.StartedAt) || in.Held || in.InFlight() || (in.Print != "" && in.Key == nil) {
 			continue
 		}
 		journal(in, out)
