@@ -254,9 +254,15 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 		res["disk_id"] = diskID
 		partial := func(err error) (string, bool) {
 			res["status"] = "partial"
+			// A command names the id only in the form of an id; another is
+			// said in quotes, with no command («Риск», 291-2, 314).
+			hint := "Attach it with disk_attach once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person."
+			if isUUID(diskID) {
+				hint = fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.", diskID, attachTo)
+			}
 			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-				fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, diskID, attachTo, err),
-				fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.", diskID, attachTo), err), res), true
+				fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, quoteCloud(diskID), attachTo, err),
+				hint, err), res), true
 		}
 		if diskID == "" {
 			return partial(fmt.Errorf("the create response has no disk id"))
@@ -735,10 +741,19 @@ func diskAttachedError(diskID string, disk map[string]any) ([]map[string]any, er
 		id, name, primary := vm["id"].(string), vm["name"].(string), vm["primary"].(bool)
 		label := quoteCloud(firstNonEmptyStr(name, id))
 		names = append(names, label)
-		if primary {
+		// A command names the VM's id only in the form of an id; another
+		// VM is named in quotes, with no command («Риск», 291-2, 314).
+		switch {
+		case !isUUID(id) && primary:
+			ways = append(ways, i18n.Tf("It is the boot disk of VM %s: it goes with the VM — whether to delete the VM, ask the person; evo vm list shows it.",
+				"Это загрузочный диск ВМ %s: он уходит вместе с ВМ — удалять ли ВМ, спросите человека; ВМ показывает evo vm list.", label))
+		case !isUUID(id):
+			ways = append(ways, i18n.Tf("Detach it from VM %s, then delete it; evo vm list shows the VM.",
+				"Отключите его от ВМ %s, затем удалите; ВМ показывает evo vm list.", label))
+		case primary:
 			ways = append(ways, i18n.Tf("It is the boot disk of VM %s: it goes with the VM (destroy vm_id=%s, 'evo vm delete %s') — whether to delete the VM, ask the person.",
 				"Это загрузочный диск ВМ %s: он уходит вместе с ВМ (destroy vm_id=%s, 'evo vm delete %s') — удалять ли ВМ, спросите человека.", label, id, id))
-		} else {
+		default:
 			ways = append(ways, i18n.Tf("Detach it from VM %s with disk_detach disk_id=%s vm=%s ('evo disk detach %s --vm %s'), then delete it.",
 				"Отключите его от ВМ %s — disk_detach disk_id=%s vm=%s ('evo disk detach %s --vm %s'), затем удалите.", label, diskID, id, diskID, id))
 		}
@@ -797,10 +812,16 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		case errors.As(err, &failed):
 			res["status"] = "failed"
 			res["disk_id"] = id
+			// The id in a command only in the form of an id (291-2, 314).
+			hint := i18n.T("disk_list shows it; whether to delete it (disk_delete) — ask the person.",
+				"Диск показывает disk_list; удалять ли его (disk_delete) — спросите человека.")
+			if isUUID(id) {
+				hint = i18n.Tf("disk_list ids=[%s] shows it; whether to delete it (disk_delete) — ask the person.",
+					"Диск показывает disk_list ids=[%s]; удалять ли его (disk_delete) — спросите человека.", id)
+			}
 			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-				i18n.Tf("Cloud.ru did not make disk %s: %v", "Cloud.ru не создал диск %s: %v", id, err),
-				i18n.Tf("disk_list ids=[%s] shows it; whether to delete it (disk_delete) — ask the person.",
-					"Диск показывает disk_list ids=[%s]; удалять ли его (disk_delete) — спросите человека.", id), err), res), true
+				i18n.Tf("Cloud.ru did not make disk %s: %v", "Cloud.ru не создал диск %s: %v", quoteCloud(id), err),
+				hint, err), res), true
 		case err != nil:
 			// Not available by the end of the wait: still being made.
 			cancelled = errors.Is(err, context.Canceled)
@@ -836,13 +857,18 @@ func diskCreated(ctx context.Context, eng *engine.Engine, res, disk map[string]a
 		if !known {
 			word = i18n.T("in an unknown state", "в неизвестном состоянии")
 		}
-		res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list ids=[%s] shows its state.",
-			"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list ids=[%s].", id, word, id)
+		// The id in a command only in the form of an id (291-2, 314).
+		res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list shows its state.",
+			"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list.", quoteCloud(id), word)
+		if isUUID(id) {
+			res["next"] = i18n.Tf("Disk %s is %s: the platform has not made it available yet. disk_list ids=[%s] shows its state.",
+				"Диск %s — %s: платформа ещё не сделала его доступным. Состояние показывает disk_list ids=[%s].", quoteCloud(id), word, id)
+		}
 		nextStep(res, "disk_list", map[string]any{"ids": []any{id}})
 	}
 	if cancelled {
 		return errAnswer(fmt.Errorf("%s: %w", i18n.Tf("disk %s: the wait was cancelled, the platform goes on making it",
-			"диск %s: ожидание прервано, платформа продолжает создание", id), context.Canceled), res), true
+			"диск %s: ожидание прервано, платформа продолжает создание", quoteCloud(id)), context.Canceled), res), true
 	}
 	return toJSON(res), false
 }
