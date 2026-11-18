@@ -54,7 +54,7 @@ func newDiagSwitchCmd(on bool) *cobra.Command {
 	return &cobra.Command{
 		Use:   use,
 		Short: short,
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if dryRunWrite(cmd.Context(), confirm.Preview{Action: "diag " + use, Summary: short}) {
 				return nil
@@ -87,7 +87,7 @@ func newDiagStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: i18n.T("Is the session journal on, and what it holds", "Включён ли журнал сессии и что в нём"),
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE:  func(cmd *cobra.Command, _ []string) error { return printDiagStatus() },
 	}
 }
@@ -135,7 +135,7 @@ and sizes, no values.`,
 продолжает расти, так что промежуточная выгрузка безопасна. Просмотрите
 файл перед отправкой: в нём имена инструментов и аргументов, причины,
 длительности и размеры, без значений.`),
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if out == "" {
 				out = "evo-journal-" + time.Now().UTC().Format("20060102-150405") + ".jsonl"

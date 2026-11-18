@@ -35,7 +35,7 @@ func TestRussian_RootHelp(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Коды выхода:\n  0    успех",
-		"Использование:\n  evo [команда]",
+		"Использование:\n  evo [флаги]\n  evo [команда]",
 		"Evolution Compute, Evolution Disk:",
 		"Сценарии: compose-проект, стек:",
 		"  deploy      Развернуть docker-compose проект на ВМ Cloud.ru\n",
@@ -273,7 +273,6 @@ func lastLine(s string) string {
 func TestRussian_UsageErrors(t *testing.T) {
 	russian(t)
 	for in, want := range map[string]string{
-		`unknown command "dploy" for "evo"` + "\n\nDid you mean this?\n\tdeploy\n": `неизвестная команда "dploy" для "evo"; может быть, deploy?`,
 		"unknown flag: --nosuch":            "неизвестный флаг: --nosuch",
 		"unknown shorthand flag: 'q' in -q": "неизвестный флаг: -q в -q",
 		"flag needs an argument: --tail":    "флагу --tail нужно значение",

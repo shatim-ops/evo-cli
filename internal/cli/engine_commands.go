@@ -322,7 +322,7 @@ func newStatusCmd() *cobra.Command {
 	var noRefresh bool
 	cmd := &cobra.Command{
 		Use:   "status",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		Short: i18n.T("Show current deployment status", "Состояние текущего развёртывания"),
 		Long: i18n.T(`Show this directory's deployment from the local state, and the VM's live
 state from one request to Cloud.ru (at most 8 s). A VM deleted outside evo
@@ -397,7 +397,7 @@ func newLogsCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "logs",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		Short: i18n.T("View container logs from the deployed VM", "Журналы контейнеров на развёрнутой ВМ"),
 		Example: i18n.T(`  evo logs
   evo logs -s web -n 50
@@ -426,7 +426,7 @@ func newDestroyCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "destroy",
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		Short: i18n.T("Delete the deployed VM and clean up resources", "Удалить развёрнутую ВМ и связанные ресурсы"),
 		Long: i18n.T(`Delete this directory's deployment VM, release its floating IP and
 remove the security group rules deploy created.
@@ -467,7 +467,7 @@ func newListZonesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "list-zones",
 		Hidden: true,
-		Args:   cobra.NoArgs,
+		Args:   noArgs,
 		Short:  i18n.T("List available availability zones", "Список зон доступности"),
 		Long: i18n.T(`List availability zones from the Cloud.ru API.
 
@@ -521,7 +521,7 @@ func newListImagesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "list-images",
 		Hidden: true,
-		Args:   cobra.NoArgs,
+		Args:   noArgs,
 		Short:  i18n.T("List available VM boot images", "Список загрузочных образов ВМ"),
 		Long: i18n.T(`List boot images from the Cloud.ru API.
 
@@ -579,7 +579,7 @@ func newProjectListCmd() *cobra.Command {
 		Short: i18n.T("List the projects the key sees (* — the active one)", "Проекты, которые видит ключ (* — активный)"),
 		Example: `  evo project list
   evo project list --json | jq -r '.projects[].id'`,
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)
 			c := &tools.Caller{}

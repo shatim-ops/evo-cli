@@ -141,7 +141,7 @@ func newToolsListCmd() *cobra.Command {
 		Use: "list",
 		Short: i18n.T("List the tools: name, group, whether it changes anything, description",
 			"Список инструментов: имя, группа, меняет ли что-то, описание"),
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p := cmdPrinter(cmd)
 			if group != "" && !knownGroup(group) {

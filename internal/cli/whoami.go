@@ -36,7 +36,7 @@ Key ID (маскированный), проект, срок действия т�
 Действующий токен, сохранённый предыдущей командой, используется повторно:
 к IAM команда обращается, только когда срок токена подходит к концу. Код
 выхода 2 — ключа нет или IAM его отклонил.`),
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			text, err := callEngineTool(cmd, "whoami", map[string]any{}, &tools.Caller{})
 			if err != nil {
