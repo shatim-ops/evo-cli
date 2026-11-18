@@ -10,8 +10,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -301,5 +303,157 @@ func TestHistory_ATimeNotOfEvosFormDoesNotReorder(t *testing.T) {
 	}
 	if len(a.Lines) != 1 || a.Lines[0].Outcome != history.Deleted || a.Skipped != 1 {
 		t.Errorf("lines %+v, skipped %d; want the delete, and the line of a fraction of a second skipped\n%s", a.Lines, a.Skipped, text)
+	}
+}
+
+// The journal is pruned after a call that changes the cloud, not on its
+// way (the ТЗ of the journal, §0, 9): an old file of a day goes, its live
+// line stays.
+func TestHistory_ACallPrunesTheJournalAfterItsLine(t *testing.T) {
+	r, dir := targetRegistry(t, &goneCloud{})
+	hdir := history.DirOf(intent.Dir(dir))
+	if err := os.MkdirAll(hdir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"format":1,"time":"2020-01-01T10:00:00Z","tool":"disk_create","kind":"disk","resource_id":"d-old","outcome":"created","intent_id":"f000000000000001"}`
+	if err := os.WriteFile(filepath.Join(hdir, "2020-01-01.jsonl"), []byte(old+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tool, _ := r.Lookup("disk_create")
+	h := r.intended(tool, func(context.Context, map[string]any) (string, bool) { return `{"disk":{"id":"d-1"}}`, false })
+	h(context.Background(), map[string]any{"name": "disk-1", "size": 10, "confirmed": true})
+	if _, err := os.Stat(filepath.Join(hdir, "2020-01-01.jsonl")); !os.IsNotExist(err) {
+		t.Error("the old file of a day is still there after a call")
+	}
+	lines, _ := historyOf(t, dir)
+	var ids []string
+	for _, l := range lines {
+		ids = append(ids, l.ResourceID)
+	}
+	if len(ids) != 2 || !slices.Contains(ids, "d-old") || !slices.Contains(ids, "d-1") {
+		t.Errorf("the journal after the call: %v; want the live line of the old file and the call's", ids)
+	}
+}
+
+// The pruning after a call checks each line as history does (historyCheck):
+// a delete of a tool the registry does not know, or with a reason not of
+// evo, closes nothing — the create it would close stays live, and both are
+// kept (Астра, #2297).
+func TestHistory_TheCallsPruningChecksLinesAsHistoryDoes(t *testing.T) {
+	for _, mode := range []string{"tool", "reason"} {
+		r, dir := targetRegistry(t, &goneCloud{})
+		hdir := history.DirOf(intent.Dir(dir))
+		if err := os.MkdirAll(hdir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		made := `{"format":1,"time":"2020-01-01T10:00:00Z","tool":"disk_create","kind":"disk","resource_id":"still-live","outcome":"created","intent_id":"a000000000000001"}`
+		odd := `{"format":1,"time":"2020-01-01T11:00:00Z","tool":"future_delete","kind":"disk","resource_id":"still-live","outcome":"deleted","intent_id":"a000000000000002"}`
+		if mode == "reason" {
+			odd = `{"format":1,"time":"2020-01-01T11:00:00Z","tool":"disk_delete","kind":"disk","resource_id":"still-live","outcome":"deleted","reason":"FUTURE_REASON","intent_id":"a000000000000002"}`
+		}
+		if err := os.WriteFile(filepath.Join(hdir, "2020-01-01.jsonl"), []byte(made+"\n"+odd+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		tool, _ := r.Lookup("disk_create")
+		h := r.intended(tool, func(context.Context, map[string]any) (string, bool) { return `{"disk":{"id":"d-1"}}`, false })
+		h(context.Background(), map[string]any{"name": "disk-1", "size": 10, "confirmed": true})
+		j, _ := history.ReadAll(hdir, r.historyCheck)
+		var live []string
+		for _, l := range history.Live(j.Lines) {
+			live = append(live, l.ResourceID)
+		}
+		if !slices.Contains(live, "still-live") {
+			t.Errorf("%s: live after the call's pruning %v; want still-live kept", mode, live)
+		}
+	}
+}
+
+// doctor says a pruning of the journal was put off and names the files in
+// the way, in its detail and in a field of their own — a pruning left undone
+// in silence is a journal that grows with no one told why («Риск» to 324-3).
+func TestDoctor_SaysAPruningPutOffAndTheFilesInTheWay(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), history.DirName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A delete in LiveName, which evo never writes there, closes a create
+	// of a file of a day that goes (TestPrune_LeftUndoneNamesTheFileInTheWay).
+	write("2026-07-01.jsonl", `{"format":1,"time":"2026-07-01T10:00:00Z","tool":"disk_create","kind":"disk","resource_id":"d-1","outcome":"created","intent_id":"a000000000000001"}`)
+	write(history.LiveName, `{"format":1,"time":"2026-07-15T10:00:00Z","tool":"disk_delete","kind":"disk","resource_id":"d-1","outcome":"deleted","intent_id":"a000000000000002"}`)
+	write("retired", "2026-08-01")
+	r := New(nil)
+	if p, err := history.Prune(dir, time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC), r.historyCheck); err != nil || len(p.Deferred) == 0 {
+		t.Fatalf("pruned %+v, %v; want it put off", p, err)
+	}
+	c, ok := r.journalCheck(dir)
+	data, _ := json.Marshal(c)
+	want := []history.DeferredFile{{Name: history.LiveName, NotEvos: 1}}
+	if !ok || c.Status != CheckWarn || !strings.Contains(c.Detail, history.LiveName) || !slices.Equal(c.Files, want) {
+		t.Errorf("doctor: %s; want a warning naming %s, in detail and in files with its counts", data, history.LiveName)
+	}
+	// No advice to remove a file: an agent with a terminal would run it,
+	// and a file of the journal may hold live lines («Риск» to 324-3).
+	for _, word := range []string{"remove it", "delete", "move a file", "rm "} {
+		if strings.Contains(strings.ToLower(c.Detail), word) {
+			t.Errorf("doctor advises %q: %s", word, c.Detail)
+		}
+	}
+}
+
+// doctor says a pruning that did not fit its limit of time («Риск»,
+// conclusion 356, У2): the journal it was to prune grows.
+func TestDoctor_SaysAPruningThatDidNotFit(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), history.DirName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"format":1,"time":"2026-11-17T10:00:00Z","tool":"disk_create","kind":"disk","resource_id":"d-1","outcome":"created","intent_id":"a000000000000001"}`
+	if err := os.WriteFile(filepath.Join(dir, "2026-11-17.jsonl"), []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "unfinished"), []byte("2026-11-17\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, ok := New(nil).journalCheck(dir)
+	if !ok || c.Status != CheckWarn || !strings.Contains(c.Detail, "did not fit its limit of time") {
+		t.Errorf("doctor: %+v; want a warning that the pruning did not fit", c)
+	}
+}
+
+// The mark of the days pruned gone, the lines of live.jsonl are not read —
+// evo's own among them: doctor says they are not read, not that evo did not
+// write them, gives them a field of their own, and says live.jsonl is never
+// to be removed («Риск», conclusion 358, У4).
+func TestDoctor_SaysLinesOfLiveNotReadAreNotAnothers(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), history.DirName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The pruned created line of evo in live.jsonl, the mark gone.
+	write(history.LiveName, `{"format":1,"time":"2026-06-01T10:00:00Z","tool":"disk_create","kind":"disk","resource_id":"d-1","outcome":"created","intent_id":"a000000000000001"}`)
+	write("2026-07-01.jsonl", `{"format":1,"time":"2026-07-01T10:00:00Z","tool":"disk_delete","kind":"disk","resource_id":"d-0","outcome":"deleted","intent_id":"a000000000000002"}`)
+	r := New(nil)
+	if p, err := history.Prune(dir, time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC), r.historyCheck); err != nil || len(p.Deferred) == 0 {
+		t.Fatalf("pruned %+v, %v; want it put off", p, err)
+	}
+	c, _ := r.journalCheck(dir)
+	data, _ := json.Marshal(c)
+	if want := []history.DeferredFile{{Name: history.LiveName, Unread: 1}}; !slices.Equal(c.Files, want) || strings.Contains(string(data), "lines_not_evos") {
+		t.Errorf("doctor: %s; want %+v, no count of lines evo did not write", data, want)
+	}
+	if !strings.Contains(c.Detail, "lines not read") || !strings.Contains(c.Detail, "is not to be moved or removed whatever the counts") {
+		t.Errorf("doctor: %s; want the lines of %s said not read, and it never to be removed", c.Detail, history.LiveName)
 	}
 }

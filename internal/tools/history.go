@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/history"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -231,4 +234,66 @@ func settledOutcome(in intent.Intent, listedID string) history.Outcome {
 	}
 	out.Result, out.ResourceID = history.Found, id
 	return out
+}
+
+// pruneJournal keeps the journal of changes beside the records of dir in
+// its bounds (history.Prune), each line checked as history checks it
+// (historyCheck); a pruning that fails is said once, and the call answers
+// as it would.
+func (r *Registry) pruneJournal(dir string) {
+	if _, err := history.Prune(history.DirOf(dir), clock.Now(), r.historyCheck); err != nil {
+		config.Warn(i18n.Tf("the journal of changes in %s was not pruned (%v); it is pruned the next time",
+			"журнал изменений %s не очищен (%v); очистка — в следующий раз", history.DirOf(dir), err))
+	}
+}
+
+// journalCheck is doctor's check of the journal of changes of dir: its
+// size, its oldest day and its live lines; a warning when the live lines
+// alone are over the ceiling — none is removed, and the journal grows. No
+// check for a journal that is not there.
+func (r *Registry) journalCheck(dir string) (DoctorCheck, bool) {
+	s, err := history.Describe(dir, r.historyCheck)
+	if err != nil {
+		return DoctorCheck{Name: "journal of changes", Status: CheckWarn, Detail: CheckDetail(err)}, true
+	}
+	if s.Bytes == 0 {
+		return DoctorCheck{}, false
+	}
+	c := DoctorCheck{Name: "journal of changes", Status: CheckOK,
+		Detail: i18n.Tf("%s: %d KB since %s, %d live lines (made and not removed, or an outcome not known)",
+			"%s: %d КБ с %s, живых строк — %d (создано и не удалено или итог неизвестен)", dir, (s.Bytes+1023)/1024, s.Oldest, s.Live)}
+	if len(s.Deferred) > 0 {
+		// A pruning put off is said, with the files in the way and what
+		// they hold: the journal grows, and the person and the agent know
+		// why. No file is to be removed while it holds a live line — a
+		// resource made and not removed («Риск» to 324-3).
+		c.Status, c.Files = CheckWarn, s.Deferred
+		var files []string
+		for _, f := range s.Deferred {
+			if f.Name == history.LiveName {
+				// Lines of LiveName not read are evo's own when the mark of
+				// the days pruned is gone: they are not said to be another's,
+				// and LiveName is never to be removed («Риск», 358, У4).
+				files = append(files, i18n.Tf("%s: %d lines not read — the mark of the days pruned is gone or older than them; %d lines evo did not write, %d live; %s is not to be moved or removed whatever the counts",
+					"%s: строк не читается — %d: метки вычищенных дней нет или она старше их; строк не от evo — %d, живых — %d; %s не переносить и не удалять ни при каком счёте", f.Name, f.Unread, f.NotEvos, f.Live, f.Name))
+				continue
+			}
+			files = append(files, i18n.Tf("%s: %d lines evo did not write, %d live", "%s: строк не от evo — %d, живых — %d", f.Name, f.NotEvos, f.Live))
+		}
+		c.Detail += i18n.Tf("; the pruning is put off: going on would change what history finds live — nothing is removed and the journal grows; it tries again each day (%s). history shows what is live. A file with live lines is not to be moved or removed: a live line is a resource made and not removed, or an outcome not known",
+			"; очистка отложена: продолжение изменило бы то, что history находит живым, — ничего не удаляется, и журнал растёт; очистка пробует снова каждый день (%s). Живое показывает history. Файл с живыми строками не переносить и не удалять: живая строка — ресурс, созданный и не удалённый, или неизвестный итог", strings.Join(files, "; "))
+	}
+	if s.Unfinished {
+		// A pruning that did not fit its limit of time is said: the journal
+		// it was to prune grows («Риск», conclusion 356, У2).
+		c.Status = CheckWarn
+		c.Detail += i18n.T("; the last pruning did not fit its limit of time (a large journal): nothing was removed, and it tries again the next day",
+			"; последняя очистка не уложилась в свой предел времени (журнал велик): ничего не удалено, очистка попробует снова на следующий день")
+	}
+	if s.OverCeiling {
+		c.Status = CheckWarn
+		c.Detail += i18n.T("; the live lines alone are over the ceiling of 64 MB: none is removed, and the journal grows — a line closes when evo deletes its resource",
+			"; одни живые строки больше потолка 64 МБ: ни одна не удаляется, и журнал растёт — строка закрывается, когда ресурс удалён через evo")
+	}
+	return c, true
 }
