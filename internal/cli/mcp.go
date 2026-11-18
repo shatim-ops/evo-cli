@@ -55,7 +55,7 @@ func newMCPCmd() *cobra.Command {
 		Short: i18n.T("Run as an MCP server (stdio, or Streamable HTTP with --http) for AI agents",
 			"MCP-сервер для ИИ-агентов (stdio или Streamable HTTP с --http)"),
 		Long: i18n.T(mcpHelpEN, mcpHelpRU),
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMCP(cmd, httpAddr, authMode, allowSecretExport, readOnly, allowProjects, toolsets)
 		},
@@ -511,7 +511,7 @@ func newMCPHealthcheckCmd() *cobra.Command {
 		Use:    "healthcheck",
 		Short:  i18n.T("Probe /healthz of a running HTTP MCP server (exit 0 when healthy)", "Проверить /healthz работающего HTTP MCP-сервера (код 0 — работает)"),
 		Hidden: true,
-		Args:   cobra.NoArgs,
+		Args:   noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if url == "" {
 				url = os.Getenv("MCP_HEALTHCHECK_URL")

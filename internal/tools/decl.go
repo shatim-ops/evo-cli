@@ -483,9 +483,10 @@ var decls = map[string]Decl{
 // (cert_operation): its time, its hint and details for a quota, the step
 // that waits on — evo's words, not the service's («Риск» 293-1).
 // opReadUntrusted is what the read of an operation answers from the
-// cloud: its error as the service words it, and the id it names its
-// resource by (resource_id or resourceId, as the service spells it) —
-// «Риск», conclusion 312, 312-2.
-var opReadUntrusted = untrustedAnswer{fields: []string{"error", "resource_id", "resourceId"}}
+// cloud: its error as the service words it, the id it names its resource
+// by (resource_id or resourceId, as the service spells it) — «Риск»,
+// conclusion 312, 312-2 — and the id of the operation itself, as the
+// service sent it, not the operation_id of the call (Астра, #2336).
+var opReadUntrusted = untrustedAnswer{fields: []string{"error", "id", "resource_id", "resourceId"}}
 
 var opOwnFields = []string{"details", "elapsed_note", "elapsed_sec", "hint", "next_args", "next_tool", "note", "still_running"}

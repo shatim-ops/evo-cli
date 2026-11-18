@@ -26,7 +26,7 @@ func newProjectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project",
 		Short: i18n.T("Projects the key sees and the project of the profile", "Проекты, которые видит ключ, и проект профиля"),
-		Args:  cobra.NoArgs,
+		Args:  noArgs,
 		RunE:  func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newProjectListCmd(), newProjectUseCmd())
