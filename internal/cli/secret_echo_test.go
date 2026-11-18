@@ -99,6 +99,11 @@ func TestSecretValues_NotEchoedInTheCloudsError(t *testing.T) {
 		{"the env of an app", "ca_deploy", "/v2/containers", map[string]any{"name": "app", "image": "nginx:1.27", "env": map[string]any{"DB_PASSWORD": secretMarker}}, true},
 		{"a value the caller gave", "provision", "/api/v1.1/vms", map[string]any{"name": "app", "image_metadata": map[string]any{"public_key": secretMarker}}, true},
 		{"evo's key and login only", "provision", "/api/v1.1/vms", map[string]any{"name": "app"}, false},
+		{"the name of an env variable", "ca_deploy", "/v2/containers", map[string]any{"name": "app", "image": "nginx:1.27", "env": map[string]any{secretMarker: ""}}, true},
+		{"the default of a field of an image", "image_create", "/api/v1/images", map[string]any{"name": "img-web", "disk_id": parityVM,
+			"image_metadata": []any{map[string]any{"name": "admin_password", "display_name": "Password", "display_position": 1, "field_type": "plain_password", "default_value": secretMarker, "sensitive": true}}}, true},
+		{"the fields of an image with no default", "image_create", "/api/v1/images", map[string]any{"name": "img-web", "disk_id": parityVM,
+			"image_metadata": []any{map[string]any{"name": "admin_password", "display_name": "Password", "display_position": 1, "field_type": "plain_password", "sensitive": true}}}, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			w, _ := withJSONWorld(t)
@@ -114,10 +119,15 @@ func TestSecretValues_NotEchoedInTheCloudsError(t *testing.T) {
 				}
 				return original(r)
 			}
+			// The preview names the variables of an app, not their values:
+			// a name is the caller's own word there, and the cloud's echo
+			// of it is what must not show.
+			env, _ := c.args["env"].(map[string]any)
+			_, named := env[secretMarker]
 			check := func(where, text string) {
 				t.Helper()
-				if c.secret && strings.Contains(text, secretMarker) {
-					t.Errorf("%s: the value sent is in the answer: %s", where, text)
+				if c.secret && (strings.Contains(text, platformWords) || !named && strings.Contains(text, secretMarker)) {
+					t.Errorf("%s: the cloud's text of a call that sent a secret is in the answer: %s", where, text)
 				}
 				if !c.secret && !strings.Contains(text, platformWords) {
 					t.Errorf("%s: the platform's words are lost with no secret sent: %s", where, text)

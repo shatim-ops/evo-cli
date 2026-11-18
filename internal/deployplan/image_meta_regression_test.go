@@ -159,3 +159,36 @@ func TestApply_RedOSFqdnFilled(t *testing.T) {
 func (*metaCloud) PriceCalculation(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
 	return nil, errNoPriceAPI
 }
+
+// deploy_apply marks a VM request that may carry a secret — a password made
+// at apply or a value the caller gave — so the cloud's refusal is shown by
+// its class (secretsent); evo's key, login and hostname carry none.
+func TestApply_SecretMetadataWhenAValueMayBeASecret(t *testing.T) {
+	const key = "ssh-ed25519 AAAA agent"
+	keyOnly := []provision.ImageMetadataField{
+		{Name: "name", FieldType: "linux_login", DefaultValue: "user1", MandatoryGroup: "name"},
+		{Name: "public_key", FieldType: "public_key", MandatoryGroup: "authentication"},
+		{Name: "hostname", FieldType: "hostname", MandatoryGroup: "hostname"},
+		{Name: "admin_email", FieldType: "text"},
+	}
+	for _, c := range []struct {
+		name   string
+		fields []provision.ImageMetadataField
+		meta   map[string]string
+		want   bool
+	}{
+		{"evo's key, login and hostname", keyOnly, nil, false},
+		{"a value the caller gave", keyOnly, map[string]string{"admin_email": "ops@example.test"}, true},
+		{"a password made at apply", ubuntu2404Fields(), nil, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, req, _ := resolveAndApply(t, c.fields, Params{Name: "web", SSHKey: key, Meta: c.meta})
+			if len(req.ImageMetadata) == 0 {
+				t.Fatal("no metadata sent: the world did not reach the create")
+			}
+			if req.SecretMetadata != c.want {
+				t.Errorf("SecretMetadata = %v, want %v (metadata %v)", req.SecretMetadata, c.want, req.ImageMetadata)
+			}
+		})
+	}
+}
