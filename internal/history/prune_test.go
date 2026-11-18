@@ -545,33 +545,35 @@ func TestPrune_ACloseInTheFileOfAnotherDayBringsNothingBack(t *testing.T) {
 }
 
 // LiveName holds the lines of the days retired: a line of a day after the
-// mark is not evo's there — it would close a line of a file kept, and a
-// pruning that rewrites LiveName would drop it and bring the line it closed
-// back. It is not taken; the pruning keeps it in StrayName.
+// mark is not taken there — it would close a line of a file kept. Taken in
+// no file of a day, it may be evo's own (a mark gone): it is not moved, and
+// the pruning is put off with LiveName named («Риск», conclusion 356, У1).
 func TestPrune_ALineInLiveOfADayNotRetiredIsNotTaken(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), DirName)
 	at := "2026-11-17T02:00:00Z"
 	unknown := lineOf("a000000000000004", Unknown, "disk", "", at)
+	writeDay(t, dir, "2026-07-01", lineOf("a000000000000001", Deleted, "disk", "d-0", "2026-07-01T10:00:00Z"))
 	writeDay(t, dir, "2026-11-17", unknown)
 	closer := lineOf("a000000000000004", Deleted, "disk", "r-2", at)
 	if err := os.WriteFile(filepath.Join(dir, LiveName), []byte(closer+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, retiredName), []byte("2026-08-01\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, retiredName), []byte("2026-06-01\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	before := liveTexts(t, dir, nil)
 	if len(before) != 1 {
 		t.Fatalf("live %v; want the unknown, the delete of another day not taken", before)
 	}
-	if _, err := Prune(dir, pruneNow, nil); err != nil {
-		t.Fatal(err)
+	p, err := Prune(dir, pruneNow, nil)
+	if want := []DeferredFile{{Name: LiveName, NotEvos: 1}}; err != nil || len(p.Retired) != 0 || !reflect.DeepEqual(p.Deferred, want) {
+		t.Fatalf("pruned %+v, %v; want it put off with %+v", p, err, want)
 	}
 	if after := liveTexts(t, dir, nil); strings.Join(after, "\n") != strings.Join(before, "\n") {
 		t.Errorf("live before %v, after %v", before, after)
 	}
-	if strays, _ := os.ReadFile(filepath.Join(dir, StrayName)); !strings.Contains(string(strays), closer+"\n") {
-		t.Errorf("%s: %q; want the delete kept", StrayName, strays)
+	if data, _ := os.ReadFile(filepath.Join(dir, LiveName)); string(data) != closer+"\n" {
+		t.Errorf("%s: %q; want the delete left where it is", LiveName, data)
 	}
 }
 
@@ -688,5 +690,70 @@ func TestPrune_ALineWrittenUnderTheLockIsKept(t *testing.T) {
 		if len(live) != 4 || !strings.Contains(strings.Join(live, "\n"), `"resource_id":"d-4"`) {
 			t.Errorf("after write %d: live %v; want the three and the line written", step, live)
 		}
+	}
+}
+
+// «Риск», conclusion 356, У1: a mark of the retired days gone — a folder
+// copied in part, the small files of evo cleaned away — leaves the live
+// lines of LiveName out of their place. They may be evo's own: the next
+// pruning moves none of them, is put off, and names LiveName; the mark back,
+// history finds them again.
+func TestPrune_AMarkGoneMovesNoLiveLine(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	writeDay(t, dir, "2026-06-01", lineOf("a000000000000001", Created, "disk", "d-1", "2026-06-01T10:00:00Z"))
+	writeDay(t, dir, "2026-11-17", lineOf("a000000000000002", Created, "disk", "d-2", "2026-11-17T09:00:00Z"))
+	if p, err := Prune(dir, pruneNow, nil); err != nil || len(p.Retired) != 1 {
+		t.Fatalf("pruned %+v, %v; want the old file retired", p, err)
+	}
+	if live := liveTexts(t, dir, nil); len(live) != 2 {
+		t.Fatalf("live %v; want two", live)
+	}
+	mark, err := os.ReadFile(filepath.Join(dir, retiredName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dir, retiredName)); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Prune(dir, pruneNow.AddDate(0, 0, 1), nil)
+	if want := []DeferredFile{{Name: LiveName, NotEvos: 1}}; err != nil || !reflect.DeepEqual(p.Deferred, want) {
+		t.Errorf("the mark gone: %+v, %v; want it put off with %+v", p, err, want)
+	}
+	if strays, _ := os.ReadFile(filepath.Join(dir, StrayName)); len(strays) != 0 {
+		t.Errorf("%s: %q; want no line moved", StrayName, strays)
+	}
+	if err := os.WriteFile(filepath.Join(dir, retiredName), mark, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if live := liveTexts(t, dir, nil); len(live) != 2 {
+		t.Errorf("the mark back: live %v; want two", live)
+	}
+}
+
+// «Риск», conclusion 356, У2: a pruning that does not fit its limit of
+// time is marked — it tries again the next day, not at each call — and
+// doctor says so (Describe); one that goes on clears the mark.
+func TestPrune_OneThatDoesNotFitTriesTheNextDay(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	writeDay(t, dir, "2026-06-01", lineOf("a000000000000001", Deleted, "disk", "d-1", "2026-06-01T10:00:00Z"))
+	writeDay(t, dir, "2026-11-17", lineOf("a000000000000002", Created, "disk", "d-2", "2026-11-17T09:00:00Z"))
+	was := pruneLimit
+	t.Cleanup(func() { pruneLimit = was })
+	pruneLimit = 0
+	if p, err := Prune(dir, pruneNow, nil); err != nil || !p.Unfinished || len(p.Retired) != 0 {
+		t.Fatalf("pruned %+v, %v; want it unfinished", p, err)
+	}
+	if s, err := Describe(dir, nil); err != nil || !s.Unfinished {
+		t.Errorf("Describe: %+v, %v; want it unfinished", s, err)
+	}
+	pruneLimit = was
+	if p, err := Prune(dir, pruneNow, nil); err != nil || p.Unfinished || len(p.Retired) != 0 {
+		t.Errorf("the same day: %+v, %v; want no second try", p, err)
+	}
+	if p, err := Prune(dir, pruneNow.AddDate(0, 0, 1), nil); err != nil || p.Unfinished || len(p.Retired) != 1 {
+		t.Errorf("the next day: %+v, %v; want the old file retired", p, err)
+	}
+	if s, _ := Describe(dir, nil); s.Unfinished {
+		t.Errorf("Describe after a pruning that went on: %+v; want the mark cleared", s)
 	}
 }

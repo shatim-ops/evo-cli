@@ -405,3 +405,23 @@ func TestDoctor_SaysAPruningPutOffAndTheFilesInTheWay(t *testing.T) {
 		}
 	}
 }
+
+// doctor says a pruning that did not fit its limit of time («Риск»,
+// conclusion 356, У2): the journal it was to prune grows.
+func TestDoctor_SaysAPruningThatDidNotFit(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), history.DirName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"format":1,"time":"2026-11-17T10:00:00Z","tool":"disk_create","kind":"disk","resource_id":"d-1","outcome":"created","intent_id":"a000000000000001"}`
+	if err := os.WriteFile(filepath.Join(dir, "2026-11-17.jsonl"), []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "unfinished"), []byte("2026-11-17\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, ok := New(nil).journalCheck(dir)
+	if !ok || c.Status != CheckWarn || !strings.Contains(c.Detail, "did not fit its limit of time") {
+		t.Errorf("doctor: %+v; want a warning that the pruning did not fit", c)
+	}
+}
