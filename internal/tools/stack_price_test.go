@@ -99,8 +99,11 @@ func TestStackPlan_CostNamesNoSumWithoutAPrice(t *testing.T) {
 	if note, _ := cost["note"].(string); unpriced > 0 && !strings.Contains(note, "paid_unpriced") {
 		t.Errorf("note %q: the total leaves out %d billable resource(s) without a price and must say so", note, unpriced)
 	}
-	if strings.Contains(text, "5000") {
-		t.Errorf("the card of the stack is still there: %s", text)
+	// The card's sum is looked for in the cost only: the rest of the answer
+	// carries a random job id, which can hold "5000" by chance (#2586,
+	// job 135129019955: stk-42250001cf).
+	if b, _ := json.Marshal(cost); strings.Contains(string(b), "5000") {
+		t.Errorf("the card of the stack is still there: %s", b)
 	}
 }
 
