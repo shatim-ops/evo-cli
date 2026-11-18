@@ -225,6 +225,11 @@ jobs:
       # Число — умолчание × 2: запас на рост до правки самих тестов (план
       # 1.9, «CI: main красный на Windows… и предел macOS», М1 и М2). Это
       # не лечение: время пакета растёт как «инструменты × миры».
+      # macOS — 30m (решение «релиза» 18.11, #2551): 18.11 internal/tools и
+      # internal/cli на macOS шли 570–1200 с на соседних push-прогонах
+      # почти одного кода (нагрузка раннера, три пакета -race параллельно)
+      # и упёрлись в 20m. Срез тяжёлых обходов реестра — бэклог 1.10;
+      # сигнал «больше половины предела» в сводке остаётся.
       # Сбой кучи рантайма Go на windows/amd64 приходит не на каждом
       # раннере (golang/go#81238: восстановление аппаратного исключения на
       # части процессоров Xeon). Модель процессора — в лог и сводку, чтобы
@@ -240,7 +245,7 @@ jobs:
       - id: gotest
         name: go test
         shell: bash
-        run: .github/scripts/go_test_ci.sh go test -race -count=1 -timeout 20m -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }}
+        run: .github/scripts/go_test_ci.sh go test -race -count=1 -timeout ${{ matrix.os == 'macos-latest' && '30m' || '20m' }} -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }}
         env:
           GORACE: atexit_sleep_ms=0
       - name: "go test: повтор после сбоя рантайма Go"
@@ -248,7 +253,7 @@ jobs:
         shell: bash
         run: |
           # shellcheck disable=SC2086 # the package list is split on purpose
-          go test -race -count=1 -timeout 20m -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} $RETRY
+          go test -race -count=1 -timeout ${{ matrix.os == 'macos-latest' && '30m' || '20m' }} -shuffle=${{ github.ref == 'refs/heads/main' && 'on' || 'off' }} $RETRY
         env:
           GORACE: atexit_sleep_ms=0
           RETRY: ${{ steps.gotest.outputs.retry }}

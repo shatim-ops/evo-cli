@@ -58,7 +58,7 @@
     "id_args": [
       "backup_id why=\"\" target=true ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[will_delete target resource_status] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[will_delete target resource_status details] whole:false own:[] workload:false deep:false}"
   },
   "backup_get": {
     "id_args": [
