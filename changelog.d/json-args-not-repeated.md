@@ -9,3 +9,7 @@
     type… (at byte N)»), неизвестные аргументы — числом («1 unknown argument(s)»). Подсказка, как прежде, перечисляет
     аргументы инструмента.
   - `reason` (`USAGE`) и коды не меняются; MCP-код `-32602` для неразбираемых параметров прежний.
+
+- **Пара `--meta` (`evo vm create`, `evo deploy plan`) и `--env` (`evo ca deploy`) без `=` не печатается.**
+  - Было: «--meta "admin_password:<значение>": want key=value» — пара целиком, в том числе с `--dry-run` и в `--json`.
+  - Стало: «--meta number N: want key=value», как у `--arg`. `reason` (`USAGE`) и код выхода не меняются.
