@@ -375,14 +375,21 @@ func TestPrune_KeepsWhatHistoryFindsLive(t *testing.T) {
 					if len(lines) > 0 { // a line written twice
 						l = lines[rng.Intn(len(lines))]
 					}
+				case 4: // a line of another day: not evo's (Астра, #2346, #2347)
+					if other := days[rng.Intn(len(days))]; other != day {
+						l = strings.Replace(l, `"time":"`+day, `"time":"`+other, 1)
+						odd = append(odd, l)
+					}
 				}
 				lines = append(lines, l)
 			}
 			all = append(all, lines...)
 			writeDay(t, dir, day, lines...)
 		}
+		plain := len(odd) == 0 // lines evo writes, as it writes them
 		// The state a killed pruning leaves: some lines copied to LiveName.
 		if rng.Intn(3) == 0 && len(all) > 0 {
+			plain = false
 			var copied []string
 			for k := rng.Intn(3); k >= 0; k-- {
 				copied = append(copied, all[rng.Intn(len(all))])
@@ -390,24 +397,38 @@ func TestPrune_KeepsWhatHistoryFindsLive(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, LiveName), []byte(strings.Join(copied, "\n")+"\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
+			// The mark a pruning writes before LiveName: the lines of the
+			// days through it may stand there, the others may not.
+			if err := os.WriteFile(filepath.Join(dir, retiredName), []byte(days[rng.Intn(len(days))]+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
 		}
 		before := liveTexts(t, dir, check)
-		if _, err := Prune(dir, pruneNow, check); err != nil {
-			t.Fatalf("seed %d: %v", seed, err)
-		}
-		if after := liveTexts(t, dir, check); strings.Join(after, "\n") != strings.Join(before, "\n") {
-			t.Fatalf("seed %d: live before %v\nafter %v", seed, before, after)
-		}
-		var kept strings.Builder
-		entries, _ := os.ReadDir(dir)
-		for _, e := range entries {
-			data, _ := os.ReadFile(filepath.Join(dir, e.Name()))
-			kept.Write(data)
-		}
-		for _, l := range odd {
-			if !strings.Contains(kept.String(), l+"\n") {
-				t.Fatalf("seed %d: the line the reader does not take is gone: %s", seed, l)
+		// A pruning, then one a hundred days later that retires every file
+		// of a day: what is live and what the reader does not take stay.
+		for _, now := range []time.Time{pruneNow, pruneNow.AddDate(0, 0, 100)} {
+			if _, err := Prune(dir, now, check); err != nil {
+				t.Fatalf("seed %d: %v", seed, err)
 			}
+			if after := liveTexts(t, dir, check); strings.Join(after, "\n") != strings.Join(before, "\n") {
+				t.Fatalf("seed %d, pruned %s: live before %v\nafter %v", seed, now.Format(time.DateOnly), before, after)
+			}
+			var kept strings.Builder
+			entries, _ := os.ReadDir(dir)
+			for _, e := range entries {
+				data, _ := os.ReadFile(filepath.Join(dir, e.Name()))
+				kept.Write(data)
+			}
+			for _, l := range odd {
+				if !strings.Contains(kept.String(), l+"\n") {
+					t.Fatalf("seed %d, pruned %s: the line the reader does not take is gone: %s", seed, now.Format(time.DateOnly), l)
+				}
+			}
+		}
+		// A journal of lines evo writes is pruned, not left as it is: a
+		// hundred days later no file of a day stays.
+		if days, _, _ := dayFiles(dir); plain && len(days) > 0 {
+			t.Fatalf("seed %d: files of days %v stay", seed, days)
 		}
 	}
 }
@@ -459,4 +480,81 @@ func TestPrune_ALineInTheFileOfAnotherDayIsNotTaken(t *testing.T) {
 		t.Errorf("after the next pruning %s: %q; want the stray line once", StrayName, strays)
 	}
 	read("after the next pruning")
+}
+
+// Астра, #2346: a call's create in its file and its unknown, of the same
+// second, in the file of another day. The unknown is not evo's there and
+// is not taken; the pruning keeps it, and what is live stays, after a
+// pruning and after the next one retires the file it stood in.
+func TestPrune_AnUnknownInTheFileOfAnotherDayChangesNothing(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	at := "2026-07-01T10:00:00Z"
+	made := lineOf("a000000000000001", Created, "disk", "d-1", at)
+	unknown := lineOf("a000000000000001", Unknown, "disk", "d-1", at)
+	writeDay(t, dir, "2026-07-01", made)
+	writeDay(t, dir, "2026-11-16", unknown)
+	before := liveTexts(t, dir, nil)
+	for _, now := range []time.Time{pruneNow, pruneNow.AddDate(0, 0, 100)} {
+		if _, err := Prune(dir, now, nil); err != nil {
+			t.Fatal(err)
+		}
+		if after := liveTexts(t, dir, nil); strings.Join(after, "\n") != strings.Join(before, "\n") {
+			t.Errorf("pruned %s: live %v; want %v", now.Format(time.DateOnly), after, before)
+		}
+	}
+	if strays, _ := os.ReadFile(filepath.Join(dir, StrayName)); !strings.Contains(string(strays), unknown+"\n") {
+		t.Errorf("%s: %q; want the unknown kept", StrayName, strays)
+	}
+}
+
+// Астра, #2347: a delete in the file of a day before its own and the
+// create it closes in the file of a later day — both not evo's there. No
+// line is taken before the pruning or after it: a closed create does not
+// come back live.
+func TestPrune_ACloseInTheFileOfAnotherDayBringsNothingBack(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	gone := lineOf("a000000000000002", Deleted, "disk", "d-1", "2026-07-02T10:00:00Z")
+	writeDay(t, dir, "2026-07-01", gone)
+	writeDay(t, dir, "2026-11-16", lineOf("a000000000000001", Created, "disk", "d-1", "2026-07-01T10:00:00Z"))
+	before := liveTexts(t, dir, nil)
+	if _, err := Prune(dir, pruneNow, nil); err != nil {
+		t.Fatal(err)
+	}
+	if after := liveTexts(t, dir, nil); strings.Join(after, "\n") != strings.Join(before, "\n") {
+		t.Errorf("live before %v, after %v", before, after)
+	}
+	if strays, _ := os.ReadFile(filepath.Join(dir, StrayName)); !strings.Contains(string(strays), gone+"\n") {
+		t.Errorf("%s: %q; want the delete kept", StrayName, strays)
+	}
+}
+
+// LiveName holds the lines of the days retired: a line of a day after the
+// mark is not evo's there — it would close a line of a file kept, and a
+// pruning that rewrites LiveName would drop it and bring the line it closed
+// back. It is not taken; the pruning keeps it in StrayName.
+func TestPrune_ALineInLiveOfADayNotRetiredIsNotTaken(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	at := "2026-11-17T02:00:00Z"
+	unknown := lineOf("a000000000000004", Unknown, "disk", "", at)
+	writeDay(t, dir, "2026-11-17", unknown)
+	closer := lineOf("a000000000000004", Deleted, "disk", "r-2", at)
+	if err := os.WriteFile(filepath.Join(dir, LiveName), []byte(closer+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, retiredName), []byte("2026-08-01\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := liveTexts(t, dir, nil)
+	if len(before) != 1 {
+		t.Fatalf("live %v; want the unknown, the delete of another day not taken", before)
+	}
+	if _, err := Prune(dir, pruneNow, nil); err != nil {
+		t.Fatal(err)
+	}
+	if after := liveTexts(t, dir, nil); strings.Join(after, "\n") != strings.Join(before, "\n") {
+		t.Errorf("live before %v, after %v", before, after)
+	}
+	if strays, _ := os.ReadFile(filepath.Join(dir, StrayName)); !strings.Contains(string(strays), closer+"\n") {
+		t.Errorf("%s: %q; want the delete kept", StrayName, strays)
+	}
 }

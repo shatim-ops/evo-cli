@@ -103,6 +103,7 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	if err != nil {
 		return p, err
 	}
+	retired := RetiredThrough(dir)
 	var all []rawLine
 	from := map[string][2]int{} // file → its lines in all
 	for _, name := range readOrder(days) {
@@ -114,7 +115,7 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 			return p, err
 		}
 		start := len(all)
-		all = append(all, rawLines(name, data, check)...)
+		all = append(all, rawLines(name, retired, data, check)...)
 		from[name] = [2]int{start, len(all)}
 		if time.Now().After(deadline) { // wall-clock: the limit of one pruning
 			return p, nil
@@ -170,7 +171,8 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 			}
 		}
 	}
-	// The stray lines of StrayName and of the files that go, once each.
+	// The stray lines of StrayName, of the files that go and of LiveName,
+	// which is written anew, once each.
 	var strays bytes.Buffer
 	straySeen := map[string]bool{}
 	for i, r := from[StrayName][0], from[StrayName]; i < r[1]; i++ {
@@ -179,8 +181,8 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 		strays.WriteByte('\n')
 	}
 	newStrays := false
-	for _, name := range days {
-		if !retire[name] {
+	for _, name := range append(append([]string(nil), days...), LiveName) {
+		if name != LiveName && !retire[name] {
 			continue
 		}
 		for i, r := from[name][0], from[name]; i < r[1]; i++ {
@@ -203,6 +205,38 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	}
 	p.OverCeiling = liveBytes > ceiling
 
+	through := retired
+	for _, n := range days {
+		if day := strings.TrimSuffix(n, ".jsonl"); retire[n] && day > through {
+			through = day
+		}
+	}
+
+	// What the reader finds live is what it found before: the journal as
+	// the pruning leaves it is read before it is written. A journal it
+	// would change — lines evo does not write, where a line it keeps is
+	// closed by one it drops (Астра, #2347) — is left as it is: the
+	// pruning keeps what it cannot show it keeps.
+	var after []rawLine
+	for _, n := range days {
+		if r := from[n]; !retire[n] {
+			after = append(after, all[r[0]:r[1]]...)
+		}
+	}
+	after = append(after, rawLines(LiveName, through, kept.Bytes(), check)...)
+	after = append(after, rawLines(StrayName, through, strays.Bytes(), check)...)
+	if !sameLive(all, live, after, liveOfRaw(after)) {
+		p.Retired, p.Live = nil, 0
+		return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
+	}
+
+	// The mark first: the lines LiveName is given are of the days it names
+	// (ofFile), whatever a kill leaves after it.
+	if through != retired {
+		if err := config.WriteFileAtomic(filepath.Join(dir, retiredName), []byte(through+"\n"), 0o600); err != nil {
+			return p, err
+		}
+	}
 	if len(retire) > 0 || from[LiveName] != [2]int{} {
 		if err := config.WriteFileAtomic(filepath.Join(dir, LiveName), kept.Bytes(), 0o600); err != nil {
 			return p, err
@@ -221,15 +255,6 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 			return p, err
 		}
 		p.Retired = append(p.Retired, n)
-	}
-	if len(p.Retired) > 0 {
-		through := strings.TrimSuffix(p.Retired[len(p.Retired)-1], ".jsonl")
-		if was := RetiredThrough(dir); was > through {
-			through = was
-		}
-		if err := config.WriteFileAtomic(filepath.Join(dir, retiredName), []byte(through+"\n"), 0o600); err != nil {
-			return p, err
-		}
 	}
 	return p, config.WriteFileAtomic(filepath.Join(dir, prunedName), []byte(today+"\n"), 0o600)
 }
@@ -258,11 +283,12 @@ func dayFiles(dir string) ([]string, map[string]int64, error) {
 	return names, sizes, nil
 }
 
-// rawLines are the lines of the file name, data, each with what a reader
+// rawLines are the lines of the file name, data, of a journal retired
+// through the day retired, each with what a reader
 // makes of it; an empty line is none. A line too long for a reader is one
 // line it does not read — kept — and the lines after it are read as
 // ReadAll reads them (lines).
-func rawLines(name string, data []byte, check Check) []rawLine {
+func rawLines(name, retired string, data []byte, check Check) []rawLine {
 	var out []rawLine
 	for _, raw := range lines(data) {
 		r := rawLine{text: string(raw)}
@@ -270,8 +296,8 @@ func rawLines(name string, data []byte, check Check) []rawLine {
 		// fileCheck): what history skips, the pruning keeps as it is — a
 		// line of another day in StrayName.
 		r.line, r.ok = parse(raw)
-		r.stray = r.ok && !ofFile(name, r.line)
-		r.ok = r.ok && fileCheck(name, check)(r.line)
+		r.stray = r.ok && !ofFile(name, retired, r.line)
+		r.ok = r.ok && fileCheck(name, retired, check)(r.line)
 		out = append(out, r)
 	}
 	return out
@@ -281,8 +307,9 @@ func rawLines(name string, data []byte, check Check) []rawLine {
 // reads, and every line it does not — kept, never dropped — but a stray one,
 // kept in StrayName.
 func liveOfRaw(all []rawLine) []bool {
-	// Each line once, where the reader first meets it (readOrder): a copy
-	// of a line is the line, and is as live as it is.
+	// Each line once, where the reader first meets it and takes it
+	// (readOrder, taken): a copy of a line is the line, and is as live as
+	// it is; a copy the reader does not take shadows none.
 	var lines []Line
 	first := map[string]int{} // text → index in lines
 	for _, r := range all {
@@ -297,6 +324,30 @@ func liveOfRaw(all []rawLine) []bool {
 		live[i] = (!r.ok && !r.stray) || (r.ok && mask[first[r.text]])
 	}
 	return live
+}
+
+// sameLive says whether two readings of a journal take the same live
+// lines: its raw lines and their live mask, before and after.
+func sameLive(before []rawLine, liveBefore []bool, after []rawLine, liveAfter []bool) bool {
+	taken := func(all []rawLine, live []bool) map[string]bool {
+		m := map[string]bool{}
+		for i, r := range all {
+			if r.ok && live[i] {
+				m[r.text] = true
+			}
+		}
+		return m
+	}
+	b, a := taken(before, liveBefore), taken(after, liveAfter)
+	if len(a) != len(b) {
+		return false
+	}
+	for t := range b {
+		if !a[t] {
+			return false
+		}
+	}
+	return true
 }
 
 // RetiredThrough is the newest day whose file a pruning retired
@@ -341,6 +392,7 @@ func Describe(dir string, check Check) (Summary, error) {
 	if len(days) > 0 {
 		s.Oldest = strings.TrimSuffix(days[0], ".jsonl")
 	}
+	retired := RetiredThrough(dir)
 	var all []rawLine
 	for _, name := range readOrder(days) {
 		data, err := config.ReadFileNoFollow(filepath.Join(dir, name))
@@ -350,7 +402,7 @@ func Describe(dir string, check Check) (Summary, error) {
 		if name == LiveName || name == StrayName {
 			s.Bytes += int64(len(data))
 		}
-		all = append(all, rawLines(name, data, check)...)
+		all = append(all, rawLines(name, retired, data, check)...)
 	}
 	var liveBytes int64
 	seen := map[string]bool{}

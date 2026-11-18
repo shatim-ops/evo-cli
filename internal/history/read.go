@@ -43,8 +43,11 @@ const maxLine = 64 << 10
 type Journal struct {
 	Lines   []Line
 	Skipped int
-	// seen are the lines read, as they are: one read twice is one.
-	seen map[string]bool
+	// taken are the lines taken, as they are: one met twice is one.
+	// skipped are the lines not taken, counted once each. A line not taken
+	// where it stands — another day's in the file of a day — shadows no
+	// copy of it that may be taken where that stands.
+	taken, skipped map[string]bool
 }
 
 // Check is what a reader knows of a line beyond its form: the tool is of
@@ -73,7 +76,8 @@ func ReadAll(dir string, check Check) (Journal, error) {
 	}
 	sort.Strings(names)
 	names = readOrder(names)
-	j := Journal{seen: map[string]bool{}}
+	j := Journal{taken: map[string]bool{}, skipped: map[string]bool{}}
+	retired := RetiredThrough(dir)
 	for _, name := range names {
 		data, err := config.ReadFileNoFollow(filepath.Join(dir, name))
 		if err != nil {
@@ -82,14 +86,16 @@ func ReadAll(dir string, check Check) (Journal, error) {
 			}
 			continue
 		}
-		j.read(data, fileCheck(name, check))
+		j.read(data, fileCheck(name, retired, check))
 	}
 	return j, nil
 }
 
 // readOrder is the order a reader and the pruning read the files of a
 // journal in: the days, oldest first, then LiveName, then StrayName. A line
-// is taken once, where it is first met (seen, liveOfRaw): a copy LiveName
+// is taken once, where it is first met and may be taken (taken, liveOfRaw):
+// a copy where it may not — another day's in the file of a day — shadows
+// none. A copy LiveName
 // holds after a pruning killed before it removed the file of its day is met
 // in that file first — lines of one second keep the order they were written
 // in, whatever file holds them («Риск», conclusion 324 revised). LiveName
@@ -98,16 +104,20 @@ func readOrder(days []string) []string {
 	return append(append([]string(nil), days...), LiveName, StrayName)
 }
 
-// ofFile says whether the line l may stand in the file name: a line of the
-// file of a day is of that day — Append writes a line to the file of the day
-// of its time — and a line of another day there is not evo's («Риск»,
-// conclusion 324, 324-3: a line of another day reordered what is live).
-// LiveName holds the lines of many days: any may stand there; StrayName
-// holds the lines that stood in a file not their day's: none does.
-func ofFile(name string, l Line) bool {
+// ofFile says whether the line l may stand in the file name of a journal
+// whose files are retired through the day retired (RetiredThrough): a line
+// of the file of a day is of that day — Append writes a line to the file of
+// the day of its time — and a line of another day there is not evo's
+// («Риск», conclusion 324, 324-3: a line of another day reordered what is
+// live; Астра, #2346, #2347). LiveName holds the lines of the days retired
+// — a pruning marks the day before it writes them — and a line of a day
+// after is not evo's there either: it would close a line of a file kept.
+// StrayName holds the lines that stood where they may not: none stands
+// there.
+func ofFile(name, retired string, l Line) bool {
 	switch name {
 	case LiveName:
-		return true
+		return retired != "" && l.Time[:len(time.DateOnly)] <= retired
 	case StrayName:
 		return false
 	}
@@ -117,24 +127,27 @@ func ofFile(name string, l Line) bool {
 // fileCheck is check for the lines of the file name: a line not of its file
 // (ofFile) is not taken, as a line check refuses. The reader and the pruning
 // take the lines of a file by it alike.
-func fileCheck(name string, check Check) Check {
+func fileCheck(name, retired string, check Check) Check {
 	return func(l Line) bool {
-		return ofFile(name, l) && (check == nil || check(l))
+		return ofFile(name, retired, l) && (check == nil || check(l))
 	}
 }
 
 // read adds the lines of the file data.
 func (j *Journal) read(data []byte, check Check) {
 	for _, raw := range lines(data) {
-		if j.seen[string(raw)] {
+		if j.taken[string(raw)] {
 			continue
 		}
-		j.seen[string(raw)] = true
 		l, ok := parse(raw)
 		if !ok || (check != nil && !check(l)) {
-			j.Skipped++
+			if !j.skipped[string(raw)] {
+				j.skipped[string(raw)] = true
+				j.Skipped++
+			}
 			continue
 		}
+		j.taken[string(raw)] = true
 		j.Lines = append(j.Lines, l)
 	}
 }
