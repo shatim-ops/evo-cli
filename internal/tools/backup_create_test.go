@@ -434,4 +434,11 @@ func TestBackupCreate_AtTheLimitSaysTheReadsThatFailed(t *testing.T) {
 	if m["last_read_at"] == nil || m["failed_reads"] == nil || m["failed_reads"].(float64) < 1 {
 		t.Errorf("the answer at the limit does not say when evo read last and how many reads failed: %s", text)
 	}
+	// wait=false: evo did not wait, and the answer names no reads of a wait
+	// (Qwen to #2339).
+	w = &createWorld{readyAfter: 1000, failAfter: 1}
+	m, text, _ = callNamed(t, createRegistry(t, w), "backup_create", map[string]any{"disk_id": bcDisk, "name": "before-change", "confirmed": true, "wait": false})
+	if _, has := m["last_read_at"]; has || m["failed_reads"] != nil {
+		t.Errorf("wait=false: the answer names reads of a wait: %s", text)
+	}
 }

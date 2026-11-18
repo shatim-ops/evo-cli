@@ -534,6 +534,13 @@ func TestBackupRestore_AtTheLimitSaysTheReadsThatFailed(t *testing.T) {
 	if m["last_read_at"] == nil || m["failed_reads"] == nil || m["failed_reads"].(float64) < 1 {
 		t.Errorf("the answer at the limit does not say when evo read last and how many reads failed: %s", text)
 	}
+	// wait=false: evo did not wait, and the answer names no reads of a wait
+	// (Qwen to #2339).
+	w = (&restoreWorld{made: "creating", failDisksAfter: 1}).stateIn(t)
+	m, text, _ = backupRestore(t, w, map[string]any{"confirmed": true, "wait": false})
+	if _, has := m["last_read_at"]; has || m["failed_reads"] != nil {
+		t.Errorf("wait=false: the answer names reads of a wait: %s", text)
+	}
 }
 
 // The refusal of a VM's backup says why in words: a document of the
