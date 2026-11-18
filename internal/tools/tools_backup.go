@@ -732,7 +732,7 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 	r, _ := b["resource"].(map[string]any)
 	if kind, _ := r["resource_type"].(string); kind != "disk" {
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("backup %s is of a %s: evo restores a disk's backup; a VM's comes in a version of its own; nothing was sent", "копия %s — копия ресурса %s: evo восстанавливает копию диска; копия ВМ — в своей версии; ничего не отправлено", id, quoteCloud(kind)),
+			i18n.Tf("backup %s is of a %s: evo restores a disk's backup; a VM's comes in a version of its own (docs/internal/briefs/backups.md); nothing was sent", "копия %s — копия ресурса %s: evo восстанавливает копию диска; копия ВМ — в своей версии (docs/internal/briefs/backups.md); ничего не отправлено", id, quoteCloud(kind)),
 			i18n.T("The Cloud.ru console restores a VM's backup.", "Копию ВМ восстанавливает консоль Cloud.ru.")),
 			map[string]any{"backup_id": id, "resource_type": kind}), true), nil
 	}
