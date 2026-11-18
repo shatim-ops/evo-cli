@@ -2415,6 +2415,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		AvailabilityZoneID: region,
 		ImageName:          imgDetail.Name,
 		ImageMetadata:      imgMeta,
+		SecretMetadata:     images.SendsSecret(metaValues, filled),
 		Disks: []provision.DiskReq{
 			{
 				Name:         provision.FitName(vmName, "-boot"),

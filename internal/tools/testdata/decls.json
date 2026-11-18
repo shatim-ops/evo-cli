@@ -193,7 +193,8 @@
     "delete": "{arg:ports parent:security_group what:port rule whRU:правило порта statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
       "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
-    ]
+    ],
+    "untrusted": "{fields:[security_group] whole:false own:[] workload:false deep:false}"
   },
   "deploy": {
     "group": "deploy",
@@ -704,7 +705,7 @@
     "id_args": [
       "security_group why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
     ],
-    "untrusted": "{fields:[open_only_to_groups vms] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[security_group open_only_to_groups vms] whole:false own:[] workload:false deep:false}"
   },
   "org_projects": {
     "group": "org"

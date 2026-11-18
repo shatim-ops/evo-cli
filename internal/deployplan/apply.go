@@ -20,6 +20,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/floatingip"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
@@ -217,6 +218,8 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	}
 	if len(meta) > 0 {
 		req.ImageMetadata = meta
+		// A password made here or a value the caller gave (images.SendsSecret).
+		req.SecretMetadata = password != "" || images.AnyValue(plan.SourceParams.Meta)
 	}
 
 	show.step(i18n.Tf("Creating VM %s…", "Создаю ВМ %s…", plan.VM.Name))

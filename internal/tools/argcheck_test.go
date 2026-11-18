@@ -29,7 +29,7 @@ func TestCheckedArgs(t *testing.T) {
 		args map[string]any
 		err  string
 	}{
-		{map[string]any{"domain": "x.ru.", "vm": "orphan-1"}, "unknown argument(s) vm"},
+		{map[string]any{"domain": "x.ru.", "vm": "orphan-1"}, "1 unknown argument(s)"},
 		{map[string]any{"domain": "x.ru.", "type": "internal"}, "is not one of public, private"},
 	} {
 		got = nil
@@ -50,7 +50,8 @@ func TestRegistry_DestroyUnknownArgRefused(t *testing.T) {
 	r.SetStateDir(t.TempDir())
 	tl, _ := r.Lookup("destroy")
 	text, isErr := tl.Handler(context.Background(), map[string]any{"vm": "orphan-1"})
-	if !isErr || !strings.Contains(text, "unknown argument(s) vm") || !strings.Contains(text, "vm_id") {
+	// Counted, not named (Астра, #2386); the hint names what destroy takes.
+	if !isErr || !strings.Contains(text, "1 unknown argument(s)") || !strings.Contains(text, "vm_id") {
 		t.Errorf("destroy {vm}: %s", text)
 	}
 }
