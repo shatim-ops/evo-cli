@@ -26,7 +26,9 @@ func TestR4_11_BlankArgumentOfEveryPair(t *testing.T) {
 		{"destroy", map[string]any{"vm_id": qaID1, "name": "web", "confirmed": true}, "vm_id"},
 		{"destroy", map[string]any{"vm_id": " ", "name": "web", "confirmed": true}, "vm_id"},
 		{"provision", map[string]any{"name": "web", "image": " "}, "image"},
-		{"provision", map[string]any{"name": "web", "image": " ", "image_id": qaID1}, "image_id"},
+		// A blank image is refused as a place argument (Decl.Place, D100)
+		// before «not both».
+		{"provision", map[string]any{"name": "web", "image": " ", "image_id": qaID1}, "image"},
 		{"deploy", map[string]any{"image_id": " "}, "image_id"},
 		{"deploy", map[string]any{"image": "ubuntu", "image_id": qaID1}, "image_id"},
 		{"vpc_route_create", map[string]any{"vpc_id": qaID1, "subnet": "10.1.0.0/24", "next_hop_vip_id": qaID1, "next_hop_magic_router_id": qaID2}, "next_hop"},

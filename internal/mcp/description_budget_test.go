@@ -29,8 +29,8 @@ const toolBudget = 1500
 // in 1.8).
 var toolsOverBudget = map[string]int{
 	"deploy_plan": 2750,
-	"pg_create":   1676,
-	"provision":   2352,
+	"pg_create":   1670,
+	"provision":   2351,
 }
 
 // P13 and D68 (release plan 1.7; agent runs of Grok on 1.6.0): D68 moves

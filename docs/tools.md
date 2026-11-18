@@ -69,7 +69,7 @@
 |---|---|---|---|---|---|
 | `ca_list` | `evo ca list` | нет | — | List Container Apps (serverless containers) in the project (name, status). | Приложения Container Apps проекта |
 | `ca_get` | `evo ca get` | нет | `name` | Get a Container App by name — full details incl. | Приложение Container Apps по имени: состояние, публичный URL |
-| `ca_deploy` | `evo ca deploy` | да | `name`, `image` | Deploy a serverless Container App from an image; the preview lists every setting, root included. | Развернуть приложение Container Apps из образа контейнера (асинхронно) |
+| `ca_deploy` | `evo ca deploy` | да | `name`, `image` | Deploy a serverless Container App from an image; the preview lists all settings, root included. | Развернуть приложение Container Apps из образа контейнера (асинхронно) |
 | `ca_delete` | `evo ca delete` | удаляет | `name` | Delete a Container App by name. | Удалить приложение Container Apps (асинхронно) |
 | `ca_logs` | `evo ca logs` | нет | `name` | Get recent logs of a Container App: the last 100 lines by time, oldest first (app logs are the container's stdout/stderr). | Последние журналы приложения Container Apps |
 | `ca_start` | `evo ca start` | да | `name` | Start a stopped Container App (it is billed while running). | Запустить остановленное приложение Container Apps |
@@ -94,7 +94,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `deploy` | `evo deploy` | да | — | Deploy the local compose project to a VM evo-<project_name> (billable when created) with a public floating IP: uploads the compose files over SSH, runs them … | Развернуть локальный проект docker-compose на ВМ Cloud.ru |
+| `deploy` | `evo deploy` | да | — | Deploy the local compose project to a VM evo-<project_name> (billable when created) with a public IP: uploads the compose files over SSH, runs them; ports open … | Развернуть локальный проект docker-compose на ВМ Cloud.ru |
 | `status` | `evo status` | нет | — | Current deployment from the local state: VM id, public IP, flavor, region, health, ports. | Состояние текущего развёртывания |
 | `list` | `evo deploy list` | нет | — | List all recorded deployments for this project (VM IP, status, flavor, creation time). | Локальные записи развёртываний этого проекта |
 | `logs` | `evo logs` | нет | — | Retrieve container logs from the deployed VM via 'docker compose logs' over SSH. | Журналы контейнеров развёрнутой ВМ |

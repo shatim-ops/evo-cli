@@ -296,8 +296,9 @@ func (r *Registry) argRefused(tool, arg string, v any) bool {
 var scopeArgs = []string{"project_id", "region", "zone", "availability_zone_id"}
 
 // noEmptyValue declares that the string arguments of t named take no empty
-// value (minLength, D36): the one place a scope argument and a handler's
-// own filter get the rule a filter of the registry has (listFilter.prop).
+// value (minLength, D36): the one place a scope argument, a place argument
+// (Decl.Place) and a handler's own filter get the rule a filter of the
+// registry has (listFilter.prop).
 func noEmptyValue(t *Tool, names ...string) {
 	props, _ := t.InputSchema["properties"].(map[string]any)
 	for _, n := range names {

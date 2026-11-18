@@ -48,16 +48,16 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local compose project to a VM evo-<project_name> (billable when created) with a public floating IP: uploads the compose files over SSH, runs them; ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: server's). Updates ask too (preview: compose_changed).",
+			Description: "Deploy the local compose project to a VM evo-<project_name> (billable when created) with a public IP: uploads the compose files over SSH, runs them; ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: server's). Updates ask too (compose_changed).",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Default: docker-compose.yml."),
 				"flavor":       strProp("Flavor or 'auto' (default)."),
 				"region":       strProp("Zone UUID."),
 				"project_id":   strProp("Project UUID."),
 				"image_id":     strProp("Image UUID."),
-				"image":        strProp("Image, Ubuntu or Debian (not Astra, Alt, RED OS)."),
-				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10 or min_disk).")),
-				"force":        boolProp("Redeploy unchanged compose."),
+				"image":        strProp("Ubuntu or Debian (not Astra, Alt, RED OS)."),
+				"disk_size":    atLeast(0, intProp("Boot disk GB (default 10/min_disk).")),
+				"force":        boolProp("Redeploy unchanged."),
 				"cidr":         cidrProp(portsCidrDesc),
 				"compose_hash": strProp("next_args: consented hash"),
 				"confirmed":    confirmedProp(),
@@ -65,9 +65,9 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "provision",
-			Description: "Provision a bare VM (docker-compose: use 'deploy'). Public floating IP unless no_public_ip. " +
+			Description: "Provision a bare VM (docker-compose: use 'deploy'). Public IP unless no_public_ip. " +
 				"evo fills the image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata. " +
-				"Refused before anything is created: no image or region ('missing' names it), an image the project cannot use, a mandatory field not given. " +
+				"Refused before any create: no image or region ('missing' names it), an image the project cannot use, a missing mandatory field. " +
 				"Returns ssh, password (generated; this answer only), state_dir (key, state).",
 			InputSchema: objSchema(map[string]any{
 				"name":       strProp("VM name."),
@@ -77,11 +77,11 @@ func (s *Registry) registerTools() {
 				"image":      strProp("Boot image name or UUID, e.g. 'Ubuntu-24.04'. Not with image_id."),
 				"image_id":   strProp("Image UUID."),
 				"image_metadata": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"},
-					"description": "Image metadata fields by name; they override evo's. An undeclared field is refused."},
+					"description": "Image metadata fields by name; they override evo's. Undeclared: refused."},
 				"ports": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
-					"description": "Inbound ports to open from cidr, e.g. [\"80\", \"53/udp\"] (tcp by default), in the zone's shared security group; destroy deletes the rules evo created."},
+					"description": "Inbound ports to open from cidr, e.g. [\"80\", \"53/udp\"] (tcp by default), in the zone's shared security group; destroy deletes evo's rules."},
 				"cidr":         cidrProp(portsCidrDesc),
-				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10 or the image's min_disk).")),
+				"disk_size":    atLeast(0, intProp("Boot disk GB (default 10/min_disk).")),
 				"subnet_id":    strProp("Subnet UUID or name (default: the zone's)."),
 				"no_public_ip": boolProp("Private VM, no floating IP."),
 				"confirmed":    confirmedProp(),
@@ -525,7 +525,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_add_addon",
-			Description: "Install a Managed Kubernetes addon release into a cluster. The preview only reads: the version picked, namespace, the release's requirements and the cluster checks (Kubernetes version, ready workers); what cannot be checked is in not_checked, a certain mismatch is refused. Async: status installing with operation_id; ready when the addon's pods run (k8s_kubectl get pods -n <namespace>). Pods in ImagePullBackOff may mean the cluster has no internet egress (snat_create).",
+			Description: "Install a Managed Kubernetes addon release into a cluster. The preview only reads: the version picked, namespace, release requirements and cluster checks (Kubernetes version, ready workers); what cannot be checked is in not_checked, a certain mismatch is refused. Async: status installing with operation_id; ready when the addon's pods run (k8s_kubectl get pods -n <namespace>). ImagePullBackOff may mean no internet egress (snat_create).",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":   strProp("Cluster UUID."),
 				"name":         strProp("Addon name (k8s_addons)."),
@@ -677,16 +677,16 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ca_deploy",
-			Description: "Deploy a serverless Container App from an image; the preview lists every setting, root included. Async: ca_get gives its status and URL.",
+			Description: "Deploy a serverless Container App from an image; the preview lists all settings, root included. Async: ca_get shows status and URL.",
 			InputSchema: objSchema(map[string]any{
 				"name":          strProp("App name, unique: an RFC 1123 label."),
-				"image":         strProp("Image URI (this project's Artifact Registry or public), linux/amd64, listening on 0.0.0.0:$PORT."),
+				"image":         strProp("Image URI (this project's Artifact Registry or public), linux/amd64, on 0.0.0.0:$PORT."),
 				"cpu":           strProp("CPU, e.g. '1' (default 0.1)."),
 				"memory":        strProp("Memory, e.g. '1Gi' (default 256Mi)."),
 				"port":          intProp("Container port (default 8080). Refused: 1-1024, 8008, 8012, 8013, 8022, 8112, 9090-9092."),
-				"privileged":    boolProp("Run as root, privileged (default false)."),
+				"privileged":    boolProp("Root, privileged (default false)."),
 				"public":        boolPropTrue("Public URL (default true)."),
-				"min_instances": intProp("Minimum instances (default 0: scale to zero). Above 0: billed all the time."),
+				"min_instances": intProp("Min instances (default 0: scale to zero); above 0 billed always."),
 				"max_instances": intProp("Max instances (default 1)."),
 				"env":           map[string]any{"type": "object", "description": "Env variables by name.", "additionalProperties": map[string]any{"type": "string"}},
 				"description":   strProp("Description."),
@@ -815,19 +815,19 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster. Refuses a taken name. Default subnet: the main subnet of the profile's zone. No public access: the API has no such parameter.",
+			Description: "Create a Managed PostgreSQL cluster. Refuses a taken name. Default subnet: the main subnet of the profile's zone. No public access (no API parameter).",
 			InputSchema: objSchema(map[string]any{
 				"name":                  strProp("Cluster name."),
-				"version":               strProp("Version. Default: latest."),
+				"version":               strProp("Default: latest."),
 				"specification_id":      strProp("Specification UUID, or cpu and ram."),
 				"cpu":                   intProp("vCPU, with ram: picks the spec."),
 				"ram":                   intProp("RAM GB, with cpu."),
-				"storage_gb":            atLeast(1, intProp("Disk, GB. Default: the spec minimum.")),
+				"storage_gb":            atLeast(1, intProp("Disk GB (default: spec minimum).")),
 				"instances":             atLeast(1, intProp("Nodes: 1-2 standard, 1-3 business (default 1).")),
 				"subnet_id":             strProp("Subnet UUID or name; sets the zone."),
-				"initial_database":      strProp("Database made with the cluster (default 'defaultdb'), ownerless; pg_db_create makes an owned one."),
+				"initial_database":      strProp("Initial database (default 'defaultdb'), ownerless; pg_db_create makes an owned one."),
 				"description":           strProp("Description."),
-				"no_backup":             boolProp("true: no automatic backups (they are on by default); CANNOT be changed after creation."),
+				"no_backup":             boolProp("true: no automatic backups (on by default); CANNOT be changed after creation."),
 				"backup_schedule":       strProp("Backup CRON (default '0 3 * * 0'; every 6h at most)."),
 				"backup_retention_days": inRange(1, 30, intProp("Backup retention days (default 14).")),
 				"confirmed":             confirmedProp(),
@@ -876,10 +876,10 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster. Refuses a taken name. Default subnet: the main subnet of the configured zone, else of the first zone with one (ru.AZ-2 first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication. Controllers: combined; dedicated (controller_spec): Cloud.ru console only.",
+			Description: "Create a Managed Kafka cluster. Refuses a taken name. Default subnet: the configured zone's main one, else the first zone's with one (ru.AZ-2 first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication. Controllers: combined; dedicated (controller_spec): Cloud.ru console only.",
 			InputSchema: objSchema(map[string]any{
-				"name":             strProp("Cluster name, 2-63 characters."),
-				"version_id":       strProp("Kafka version UUID. Default: latest."),
+				"name":             strProp("Cluster name, 2-63 chars."),
+				"version_id":       strProp("Version UUID. Default: latest."),
 				"specification_id": strProp("Specification UUID, or cpu and ram."),
 				"cpu":              intProp("vCPU, with ram: picks the spec."),
 				"ram":              intProp("RAM GB, with cpu."),
@@ -930,16 +930,16 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Refuses a taken name. All hosts go to the subnet's zone (default: the configured zone's main subnet, else another zone's). MASTER_REPLICA (default): a master and two replicas, three billed hosts per shard; STANDALONE: one host.",
+			Description: "Create a Managed Redis cluster. Refuses a taken name. Hosts: the subnet's zone (default: the configured zone's main subnet, else another). MASTER_REPLICA (default): master + 2 replicas: three billed hosts per shard; STANDALONE: 1 host.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name."),
 				"version_id":       strProp("Version UUID. Default: latest."),
 				"specification_id": strProp("Specification UUID, or cpu and ram."),
 				"cpu":              intProp("vCPU, with ram: picks the spec."),
 				"ram":              intProp("RAM GB, with cpu."),
-				"storage_gb":       atLeast(1, intProp("Disk, GB. Default: the spec minimum.")),
+				"storage_gb":       atLeast(1, intProp("Disk GB (default: spec minimum).")),
 				"shards":           intProp("Shards, 1-8 (default 1)."),
-				"replicas":         intProp("Replicas per shard WITHOUT the master: 2 for MASTER_REPLICA (default), 0 for STANDALONE; redis_get counts the master too."),
+				"replicas":         intProp("Replicas per shard, master excluded: 2 for MASTER_REPLICA, 0 for STANDALONE; redis_get counts the master."),
 				"type":             enumProp("Default: MASTER_REPLICA.", "MASTER_REPLICA", "STANDALONE"),
 				"subnet_id":        strProp("Subnet UUID or name."),
 				"description":      strProp("Description."),
