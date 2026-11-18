@@ -59,3 +59,21 @@ func TestArgObject_JSONRefusalIsTheOnePoint(t *testing.T) {
 		}
 	}
 }
+
+// evo agent skill --group with --read-only says that --read-only does not
+// apply to the card, instead of dropping it in silence; the card is printed
+// and the exit is 0 as before (release audit rc.1, A19-25).
+func TestAgentSkillGroup_ReadOnlyIsNotDroppedInSilence(t *testing.T) {
+	setupCLI(t)
+	for _, extra := range [][]string{nil, {"--json"}} {
+		newProcess()
+		args := append(append([]string{}, extra...), "agent", "skill", "--group", "vm", "--read-only")
+		code, out, errOut := runCLI(t, "", args...)
+		if code != 0 || !strings.Contains(out, "vm_") {
+			t.Fatalf("%v: want the card, exit 0: %d %s%s", extra, code, out, errOut)
+		}
+		if !strings.Contains(errOut, "--read-only") {
+			t.Errorf("%v: --read-only dropped in silence: %q", extra, errOut)
+		}
+	}
+}

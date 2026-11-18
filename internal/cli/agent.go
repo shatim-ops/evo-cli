@@ -76,6 +76,14 @@ CLI: их пишет 'evo agent setup --read-only --skill'.
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			text := agentSkill(cmd.Root(), readOnly)
 			if cmd.Flags().Changed("group") {
+				if readOnly {
+					// The card lists every tool of the group: --read-only
+					// is said not to apply, not dropped in silence (release
+					// audit rc.1, A19-25).
+					printWarnings(cmdPrinter(cmd), []string{i18n.T(
+						"--read-only does not apply to --group: the card lists every tool of the group; a read-only agent calls only the ones that change nothing",
+						"--read-only не действует вместе с --group: в карточке все инструменты группы; агент только для чтения вызывает лишь те, что ничего не меняют")})
+				}
 				// The card is the answer of the tool agent_skill, as the
 				// MCP server gives it — with the commands, for a terminal.
 				answer, err := callEngineTool(cmd, "agent_skill", map[string]any{"group": group}, &tools.Caller{})
