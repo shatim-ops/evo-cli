@@ -113,7 +113,6 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/intent.go|Registry.checkByID":                 1,
 	"internal/tools/intent_targets.go|groupTarget":                1,
 	"internal/tools/intent_targets.go|vmTarget":                   1,
-	"internal/tools/made.go|madeAnswer":                           1,
 	"internal/tools/made_repeat.go|Registry.repeatOfMade":         1,
 	"internal/tools/provision_adopt.go|creatingVM":                1,
 	"internal/tools/tools.go|Registry.handleDestroy":              2,
@@ -172,7 +171,10 @@ var unquotedCloudFlowSteps = map[string]int{
 // id and the status of a stack job (stack.newID), a JSON path of a
 // declaration, the image of the configuration, the HTTP status of evo's
 // own MCP server, the id of a record of a call (intent, D46). Quoted as the cloud's, they would read as the cloud's
-// words (Астра #2237). A place here is a count of such values in it, not
+// words (Астра #2237). And a text evo built from a value of the cloud by
+// the rule of #2253 — the id under isUUID as it is, for a command, else in
+// quotes (madeShows): glued into another text, it is counted again, and
+// quotes would break the command («Риск», 340). A place here is a count of such values in it, not
 // a pass for the function: a value of the cloud in it is still counted.
 var evoOwnValues = map[string]int{
 	"internal/cli/history_view.go|historyEntry.call":           1,
@@ -189,6 +191,7 @@ var evoOwnValues = map[string]int{
 	"internal/sgrules/sgrules.go|Close":                        1,
 	"internal/stack/store.go|jobNotFoundError.Error":           1,
 	"internal/tools/card.go|cardDoes":                          1,
+	"internal/tools/made.go|madeAnswer":                        1,
 	"internal/tools/tools.go|deployInProgress":                 1,
 	"internal/tools/tools_stack.go|Registry.appliableJob":      1,
 	"internal/tools/tools_stack.go|Registry.checkJobProject":   1,
