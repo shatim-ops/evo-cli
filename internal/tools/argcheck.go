@@ -52,16 +52,15 @@ func CheckArgs(t Tool, args map[string]any) error {
 
 func checkArgs(name string, schema map[string]any, args map[string]any) error {
 	props, _ := schema["properties"].(map[string]any)
-	var unknown []string
+	unknown := 0
 	for k := range args {
 		// confirmed on a read-only tool is harmless: agents send it
 		// after an approval they got for another call.
 		if _, ok := props[k]; !ok && k != "confirmed" {
-			unknown = append(unknown, k)
+			unknown++
 		}
 	}
-	if len(unknown) > 0 {
-		sort.Strings(unknown)
+	if unknown > 0 {
 		known := make([]string, 0, len(props))
 		for k := range props {
 			known = append(known, k)
@@ -71,8 +70,11 @@ func checkArgs(name string, schema map[string]any, args map[string]any) error {
 		if len(known) > 0 {
 			hint = i18n.Tf("%s takes: %s.", "Аргументы %s: %s.", name, strings.Join(known, ", "))
 		}
+		// Counted, not named: a name the caller sent may be a value in the
+		// wrong place, a secret included (Астра, #2386). The hint names
+		// the arguments the tool takes.
 		return clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("unknown argument(s) %s", "неизвестные аргументы: %s", strings.Join(unknown, ", ")),
+			i18n.Tf("%d unknown argument(s)", "неизвестных аргументов: %d", unknown),
 			hint)
 	}
 	for k, v := range args {
