@@ -307,7 +307,7 @@ func sgRuleSame(rules []*provision.SGRule, want provision.SGRule) *provision.SGR
 func (s *Registry) sgRuleListed(ctx context.Context, eng *engine.Engine, group *provision.SecurityGroup, want provision.SGRule) *provision.SGRule {
 	const listed, absent = "listed", "not listed"
 	var found *provision.SGRule
-	_, _, _, _ = waitState(ctx, eng, sgRuleMadeTimeout,
+	_, _, _, _, _ = waitState(ctx, eng, sgRuleMadeTimeout,
 		func(ctx context.Context) (string, bool, error) {
 			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
 			if err != nil {
@@ -331,7 +331,7 @@ func (s *Registry) sgRuleListed(ctx context.Context, eng *engine.Engine, group *
 // next step; a rule that failed is an error that names it, for
 // sg_rule_delete to remove.
 func (s *Registry) sgRuleCreated(ctx context.Context, eng *engine.Engine, group *provision.SecurityGroup, id string, rule map[string]any) (string, bool) {
-	last, timedOut, atLimit, err := waitState(ctx, eng, sgRuleMadeTimeout,
+	last, timedOut, atLimit, reads, err := waitState(ctx, eng, sgRuleMadeTimeout,
 		func(ctx context.Context) (string, bool, error) {
 			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
 			if err != nil {
@@ -367,6 +367,7 @@ func (s *Registry) sgRuleCreated(ctx context.Context, eng *engine.Engine, group 
 		return errAnswer(err, ans), true
 	case atLimit || timedOut > 0:
 		ans["status"], ans["state"] = "creating", last
+		reads.put(ans)
 		ans["next"] = fmt.Sprintf("Rule %s is still being created. list_security_groups with rules=true shows its state.", id)
 		nextStep(ans, "list_security_groups", map[string]any{"rules": true})
 		return toJSON(ans), false

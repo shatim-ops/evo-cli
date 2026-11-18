@@ -95,7 +95,7 @@ func TestQA17_UnknownFlagBeforeCommand(t *testing.T) {
 	// A typo in the command name is still an unknown command, flags or not.
 	for _, args := range [][]string{{"lst"}, {"--profile", "p", "vm", "lst"}, {"--json", "-y", "lst"}} {
 		code, _, stderr := runCLI(t, "", append([]string{"--json"}, args...)...)
-		if _, reason, msg := cliJSONError(t, stderr); code != clerrors.ExitGeneral || reason != clerrors.CodeUsage || !strings.Contains(msg, `unknown command "lst"`) {
+		if _, reason, msg := cliJSONError(t, stderr); code != clerrors.ExitGeneral || reason != clerrors.CodeUsage || !strings.Contains(msg, `unknown command (argument 1)`) || strings.Contains(msg, "lst") {
 			t.Errorf("%v: exit %d, %s %q", args, code, reason, msg)
 		}
 	}

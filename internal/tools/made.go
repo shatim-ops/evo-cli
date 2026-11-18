@@ -73,7 +73,7 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 	// one listed and then gone is not in the state it was in (Астра
 	// #1922).
 	listed := false
-	last, _, _, err := waitState(ctx, eng, madeLimit,
+	last, _, _, reads, err := waitState(ctx, eng, madeLimit,
 		func(ctx context.Context) (string, bool, error) {
 			items, err := m.read(ctx)
 			if err != nil {
@@ -91,7 +91,7 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		},
 		func(st string) string {
 			return i18n.Tf("%s %s: %s, waiting until it is made…", "%s %s: %s, жду завершения создания…",
-				i18n.T(m.what, m.whatRU), id, quoteCloud(st))
+				i18n.T(m.what, m.whatRU), quoteCloud(id), quoteCloud(st))
 		},
 		func(st string) (bool, error) { return madeKind(st) != stateMaking, nil })
 	word := "unknown"
@@ -116,14 +116,17 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 		res["status"] = "failed"
 		res[m.field] = mergedItem(res[m.field], item)
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("%s %s: Cloud.ru did not finish making it, state %s", "%s %s: Cloud.ru не завершил создание, состояние — %s", i18n.T(m.what, m.whatRU), id, quoteCloud(last)),
-			i18n.Tf("%s ids=[%s] shows it; whether to delete it (%s) — ask the person.",
-				"Состояние показывает %s ids=[%s]; удалять ли (%s) — спросите человека.", m.list, id, decls[m.tool].Created.delete)), res), true
+			i18n.Tf("%s %s: Cloud.ru did not finish making it, state %s", "%s %s: Cloud.ru не завершил создание, состояние — %s", i18n.T(m.what, m.whatRU), quoteCloud(id), quoteCloud(last)),
+			madeShowsText(m, id)+" "+i18n.Tf("Whether to delete it (%s) — ask the person.",
+				"Удалять ли (%s) — спросите человека.", decls[m.tool].Created.delete)), res), true
 	}
 	res["status"] = "creating"
 	if !listed || kind == stateOther {
 		res["status"] = "waiting"
 	}
+	// The state may be old: when evo last read the resource and how many
+	// reads failed after it (#2216; Астра #2317).
+	reads.put(res)
 	res[m.field+"_state"] = last
 	if listed {
 		// The state is the cloud's text; evo's own «unknown» is not
@@ -138,23 +141,27 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 	if (!listed || kind == stateOther) && m.unknown != "" {
 		res["note"] = i18n.T(m.unknown, m.unknownRU)
 	}
-	res["next"] = i18n.Tf("%s %s is %s: the platform has not finished making it. %s ids=[%s] shows its state.",
-		"%s %s — %s: платформа ещё не завершила создание. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
+	res["next"] = i18n.Tf("%s %s is %s: the platform has not finished making it.",
+		"%s %s — %s: платформа ещё не завершила создание.", i18n.T(m.what, m.whatRU), quoteCloud(id), word)
 	switch {
 	case !listed:
 		// Not in the last list read: never listed yet, or listed and
 		// gone. Neither says it is being made (Астра #1920, #1922).
-		res["next"] = i18n.Tf("%s %s is not in the list evo read last: evo does not know its state. %s ids=[%s] shows it.",
-			"%s %s нет в списке, который evo прочитал последним: evo не знает его состояния. Его показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, m.list, id)
+		res["next"] = i18n.Tf("%s %s is not in the list evo read last: evo does not know its state.",
+			"%s %s нет в списке, который evo прочитал последним: evo не знает его состояния.", i18n.T(m.what, m.whatRU), quoteCloud(id))
 	case kind == stateOther:
 		// A state of no list: evo does not tell whether it is made.
-		res["next"] = i18n.Tf("%s %s is %s: evo does not know this state as made or being made. %s ids=[%s] shows its state.",
-			"%s %s — %s: evo не знает, сделан ли ресурс в этом состоянии. Состояние показывает %s ids=[%s].", i18n.T(m.what, m.whatRU), id, word, m.list, id)
+		res["next"] = i18n.Tf("%s %s is %s: evo does not know this state as made or being made.",
+			"%s %s — %s: evo не знает, сделан ли ресурс в этом состоянии.", i18n.T(m.what, m.whatRU), quoteCloud(id), word)
 	}
-	nextStep(res, m.list, map[string]any{"ids": []any{id}})
+	shows, command := madeShows(m, id)
+	res["next"] = res["next"].(string) + " " + shows
+	if command {
+		nextStep(res, m.list, map[string]any{"ids": []any{id}})
+	}
 	if stderrors.Is(err, context.Canceled) {
 		return errAnswer(fmt.Errorf("%s: %w", i18n.Tf("%s %s: the wait was cancelled, the platform goes on making it",
-			"%s %s: ожидание прервано, платформа продолжает создание", i18n.T(m.what, m.whatRU), id), err), res), true
+			"%s %s: ожидание прервано, платформа продолжает создание", i18n.T(m.what, m.whatRU), quoteCloud(id)), err), res), true
 	}
 	return toJSON(res), false
 }
@@ -225,4 +232,25 @@ func mergedItem(was any, read map[string]any) map[string]any {
 	delete(out, "status")
 	maps.Copy(out, read)
 	return out
+}
+
+// madeShows names the list that shows the state of the resource id, and
+// whether a command carries the id. The command — in the text and as
+// next_tool with next_args — is copied as it is, so the id goes into it
+// only when it has the form of an id (isUUID); any other id is named in
+// the prose, quoted, and no command carries it, in the text or as the next
+// step («Риск», conclusion 327, У1 and У2; as vmLeftNote).
+func madeShows(m made, id string) (string, bool) {
+	if isUUID(id) {
+		return i18n.Tf("%s ids=[%s] shows its state.", "Состояние показывает %s ids=[%s].", m.list, id), true
+	}
+	return i18n.Tf("%s shows its state; the id %s is not of the form of an id, so no command is named with it.",
+		"Состояние показывает %s; id %s не той формы, поэтому команда с ним не названа.", m.list, quoteCloud(id)), false
+}
+
+// madeShowsText is the text of madeShows alone: a refusal names no next
+// step.
+func madeShowsText(m made, id string) string {
+	s, _ := madeShows(m, id)
+	return s
 }

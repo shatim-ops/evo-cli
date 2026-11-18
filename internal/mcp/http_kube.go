@@ -6,6 +6,7 @@ package mcp
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -243,24 +244,28 @@ func helmHTTPCheck(ctx context.Context, args map[string]any) error {
 		local = true
 	}
 	if local {
-		return fmt.Errorf("k8s_helm over HTTP: chart %q is a path on the MCP server; use repo/name with repo_url, or an oci:// / https:// chart", chart)
+		// The chart is not repeated: a value with ":" may be
+		// user:pass@host (#2356).
+		return fmt.Errorf("k8s_helm over HTTP: chart is a path on the MCP server; use repo/name with repo_url, or an oci:// / https:// chart")
 	}
 	return nil
 }
 
 // publicURL accepts an https or oci URL whose host resolves only to public
-// unicast addresses.
+// unicast addresses. A refusal names the host at most, never the URL: it
+// may carry user:pass, and "user:pass@host" parses with "user" as its
+// scheme (#2356).
 func publicURL(ctx context.Context, raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("invalid URL %q", raw)
+		return stderrors.New("not a valid URL")
 	}
 	if u.Scheme != "https" && u.Scheme != "oci" {
-		return fmt.Errorf("%q: only https:// and oci:// URLs are allowed in this mode", raw)
+		return stderrors.New("only https:// and oci:// URLs are allowed in this mode")
 	}
 	host := u.Hostname()
 	if host == "" {
-		return fmt.Errorf("%q has no host", raw)
+		return stderrors.New("the URL has no host")
 	}
 	ips := []net.IP{net.ParseIP(host)}
 	if ips[0] == nil {

@@ -1606,6 +1606,52 @@ grep -q 'vm_start (mcp) *ok *status starting; vm_get после: running, .*evo 
 	{ echo "FAIL: opsevo: передача vm_get у предела не названа"; sed 's/^/  | /' "$tmp/out"; fail=1; }
 grep -q 'vm_resize (cli) *ok' "$tmp/out" || { echo "FAIL: opsevo: после передачи vm_get шаги питания и vm_resize не шли"; fail=1; }
 
+# vm_start по MCP у предела вызова (прогон 229): первый ответ — ход и тот
+# же vm_start в next_tool, повтор застал ВМ running — already_running. Это
+# переход, который прошёл: шаг принят, строка называет первый ответ и итог.
+opsevo_world
+answers vm_start '{"status":"starting","next_tool":"vm_start","next_args":{"vm_id":"vmid1"}}' \
+	'{"status":"already_running"}' '{"status":"already_running"}' '{"status":"started"}' '{"status":"already_running"}'
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+want "opsevo, vm_start продолжен тем же вызовом: код" "$rc" 0
+grep -q 'vm_start (mcp) *ok *status already_running; vm_get после: running, .*evo продолжил тем же вызовом: первый ответ starting, итог повтора already_running через' "$tmp/out" ||
+	{ echo "FAIL: opsevo: продолжение тем же вызовом не принято или не названо"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+grep -q 'vm_resize (cli) *ok' "$tmp/out" || { echo "FAIL: opsevo: после продолжения шаги питания и vm_resize не шли"; fail=1; }
+
+# Тот же итог без хода в первом ответе — ВМ уже шла до шага: провал, а не
+# «продолжение».
+opsevo_world
+answers vm_start '{"status":"already_running"}' '{"status":"already_running"}' '{"status":"started"}' '{"status":"already_running"}'
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+[ "$rc" != 0 ] || { echo "FAIL: opsevo: already_running без хода принят как старт"; fail=1; }
+grep -q 'vm_start (mcp) *FAIL *status already_running, ждали started' "$tmp/out" ||
+	{ echo "FAIL: opsevo: already_running без хода не назван провалом"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if grep -q 'evo продолжил' "$tmp/out"; then echo "FAIL: opsevo: продолжение принято без хода"; fail=1; fi
+
+# Ход другого действия (stopping) и already_running у старта — не
+# продолжение старта: провал («Риск», 338, У1).
+opsevo_world
+answers vm_start '{"status":"stopping","next_tool":"vm_start","next_args":{"vm_id":"vmid1"}}' \
+	'{"status":"already_running"}' '{"status":"already_running"}' '{"status":"started"}' '{"status":"already_running"}'
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+[ "$rc" != 0 ] || { echo "FAIL: opsevo: ход другого действия принят как продолжение старта"; fail=1; }
+if grep -q 'evo продолжил' "$tmp/out"; then echo "FAIL: opsevo: продолжение принято после stopping"; fail=1; fi
+
+# Повтор (ждут already_stopped) ответил словом хода и передал vm_get: не
+# принимается — шаг провален, охвата нет («Риск», 317, У1).
+opsevo_world
+answers vm_stop '{"status":"stopped"}' '{"status":"stopping","next_tool":"vm_get","next_args":{"vm_id":"vmid1"}}' \
+	'{"status":"stopped"}' '{"status":"already_stopped"}'
+rc=0
+"$here/cloud-live.sh" opsevo >"$tmp/out" 2>&1 || rc=$?
+[ "$rc" != 0 ] || { echo "FAIL: opsevo: повтор со словом хода прошёл"; fail=1; }
+grep -q 'vm_stop (mcp) *FAIL *status stopping, ждали already_stopped' "$tmp/out" ||
+	{ echo "FAIL: opsevo: повтор со словом хода не назван провалом"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if grep -q 'evo перестал ждать' "$tmp/out"; then echo "FAIL: opsevo: передача vm_get принята у повтора"; fail=1; fi
+
 # Ссылка консоли в ответе (D110): провал, ответ и ссылка в лог не идут.
 # sha256 восстановленного файла другой — провал. Повтор удаления правила
 # ответил не already_deleted (D26) — провал.
