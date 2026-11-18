@@ -511,3 +511,12 @@ func TestBackupRestore_TheZoneOfTheLiveForm(t *testing.T) {
 		t.Errorf("no zone anywhere: want USAGE before the question: %s", text)
 	}
 }
+
+// The refusal of a VM's backup says why in words: a document of the
+// development of evo is not the person's nor the agent's to read (#2348).
+func TestBackupRestore_AVMBackupsRefusalNamesNoDocumentOfDevelopment(t *testing.T) {
+	_, text, isErr := backupRestore(t, &restoreWorld{kind: "virtual_machine"}, map[string]any{"confirmed": true})
+	if !isErr || strings.Contains(text, "docs/") {
+		t.Errorf("a VM's backup: want a refusal naming no document: %s", text)
+	}
+}
