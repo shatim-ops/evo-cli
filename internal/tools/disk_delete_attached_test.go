@@ -7,6 +7,7 @@ package tools
 import (
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -57,7 +58,9 @@ func TestDiskDelete_AttachedRefusedBeforeTheQuestion(t *testing.T) {
 			if first["id"] != liveID || first["name"] != "web" || first["primary"] == nil {
 				t.Errorf("%s: attached_vms %v", c.label, m["attached_vms"])
 			}
-			if u, _ := m["_untrusted"].([]any); len(u) != 1 || u[0] != "attached_vms" {
+			// The VMs are the cloud's; the error and its hint are marked as
+			// every answer's are (alwaysUntrusted, #2254).
+			if u, _ := m["_untrusted"].([]any); len(u) != 3 || !slices.Contains(u, any("attached_vms")) || !slices.Contains(u, any("error")) || !slices.Contains(u, any("hint")) {
 				t.Errorf("%s: _untrusted %v", c.label, m["_untrusted"])
 			}
 			for _, w := range c.want {
