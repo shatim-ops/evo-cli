@@ -171,6 +171,11 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	if j.Skipped > 0 {
 		ans["skipped"] = j.Skipped
 	}
+	// The lines of that day and before were pruned by age or size: what
+	// is live of them is kept, the rest is gone (history.Prune).
+	if day := history.RetiredThrough(history.DirOf(intent.Dir(root))); day != "" {
+		ans["retired_through"] = day
+	}
 	if len(hidden) > 0 {
 		ans["hidden_without_project"] = len(hidden)
 	}

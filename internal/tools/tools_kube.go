@@ -292,14 +292,16 @@ func (s *Registry) planK8sHelm(_ context.Context, args map[string]any) (*Plan, e
 		}
 	case "list":
 	default:
-		return answered(usageT("unknown action %q (install|upgrade|uninstall|list|status)", "неизвестное действие %q (install|upgrade|uninstall|list|status)", action), true), nil
+		// The action is not repeated: it may be anything typed (#2356).
+		return answered(usageT("unknown action: want install, upgrade, uninstall, list or status", "неизвестное действие: нужно install, upgrade, uninstall, list или status"), true), nil
 	}
 	// helm itself refused a relative repo_url ("non-absolute URLs"), and
 	// that read as an API error (release audit, A-003).
 	if raw := stringArg(args, "repo_url"); raw != "" {
 		if u, err := url.Parse(raw); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "oci") {
-			return answered(usageT("'repo_url' must be an absolute https://, http:// or oci:// URL, got %q",
-				"'repo_url' должен быть абсолютным URL https://, http:// или oci://, передано %q", raw), true), nil
+			// The URL is not repeated: it may carry user:pass (#2356).
+			return answered(usageT("'repo_url' must be an absolute https://, http:// or oci:// URL",
+				"'repo_url' должен быть абсолютным URL https://, http:// или oci://"), true), nil
 		}
 	}
 	preview := map[string]any{

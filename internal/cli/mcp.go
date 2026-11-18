@@ -7,10 +7,12 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"strings"
 	"sync"
@@ -514,6 +516,13 @@ func httpAuthToken(addr, mode, envToken string) (string, error) {
 
 // newMCPHealthcheckCmd is the Docker HEALTHCHECK of the image: the
 // distroless base has no shell or curl, so the binary probes itself.
+// healthTarget is the address a healthcheck probed as its answer and errors
+// name it: scheme, host and path, without the userinfo, the query and the
+// fragment, where a password or a token rides (Астра #2381).
+func healthTarget(u *neturl.URL) string {
+	return (&neturl.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}).String()
+}
+
 func newMCPHealthcheckCmd() *cobra.Command {
 	var url string
 	cmd := &cobra.Command{
@@ -531,20 +540,33 @@ func newMCPHealthcheckCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
 			defer cancel()
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-			if err != nil {
-				return err
+			// The parse error repeats the address, its password too; an
+			// address with no scheme of HTTP or no host turns the value
+			// into the scheme or the path of the request, which its error
+			// repeats as well: refused before the request («Риск», 368).
+			if err != nil || (req.URL.Scheme != "http" && req.URL.Scheme != "https") || req.URL.Host == "" {
+				return errors.New(i18n.T("healthcheck: the address is not a URL of http or https with a host",
+					"проверка состояния: адрес — не URL http или https с хостом"))
 			}
+			target := healthTarget(req.URL)
 			resp, err := (&http.Client{Transport: httpretry.DefaultBase}).Do(req)
 			if err != nil {
+				var ue *neturl.Error
+				if errors.As(err, &ue) {
+					// *url.Error names the address with its query; the
+					// messages of the network read its host, so it stays,
+					// with the address the answer names.
+					err = &neturl.Error{Op: ue.Op, URL: target, Err: ue.Err}
+				}
 				return fmt.Errorf(i18n.T("healthcheck: %w", "проверка состояния: %w"), err)
 			}
 			defer resp.Body.Close()
 			_, _ = io.Copy(io.Discard, resp.Body)
 			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("healthcheck: %s returned %s", url, resp.Status)
+				return fmt.Errorf("healthcheck: %s returned %s", target, resp.Status)
 			}
 			if flagJSON {
-				return output.NewWithWriter(cmd.OutOrStdout(), output.ModeJSON, false).JSON(map[string]string{"status": "ok", "url": url})
+				return output.NewWithWriter(cmd.OutOrStdout(), output.ModeJSON, false).JSON(map[string]string{"status": "ok", "url": target})
 			}
 			return nil
 		},

@@ -10,10 +10,14 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
 
 // untrustedContainers are the fields of an answer into which evo carries
@@ -21,11 +25,14 @@ import (
 // failures of a part, a preview, a hint. Any answer of any tool that has
 // one marks it in "_untrusted", with no declaration of the tool (owner's
 // decision 17.11 on #2254, variant B: a forgotten declaration falls on the
-// safe side; #2177, #2243–#2247).
-var untrustedContainers = []string{"error", "warnings", "failures", "failed", "preview", "hint"}
+// safe side; #2177, #2243–#2247). "warning" is the form of one warning
+// (image_list, Астра #2277).
+var untrustedContainers = []string{"error", "warnings", "warning", "failures", "failed", "preview", "hint"}
 
-// unmarkedContainers are the fields of untrustedContainers answer m has
-// and its "_untrusted" does not name.
+// unmarkedContainers are the fields of answer m its "_untrusted" does not
+// name and should: a field of untrustedContainers, and a field that holds
+// one at any depth — the answer of a service carried whole, as result of
+// disk_attach with its error and warnings (Астра #2276).
 func unmarkedContainers(m map[string]any) []string {
 	var marked []string
 	switch u := m["_untrusted"].(type) {
@@ -39,12 +46,35 @@ func unmarkedContainers(m map[string]any) []string {
 		marked = u
 	}
 	var out []string
-	for _, f := range untrustedContainers {
-		if v, has := m[f]; has && v != nil && !slices.Contains(marked, f) {
+	for _, f := range slices.Sorted(maps.Keys(m)) {
+		v := m[f]
+		if v == nil || f == "_untrusted" || slices.Contains(marked, f) {
+			continue
+		}
+		if slices.Contains(untrustedContainers, f) || holdsContainer(v) {
 			out = append(out, f)
 		}
 	}
 	return out
+}
+
+// holdsContainer: v holds a field of untrustedContainers at any depth.
+func holdsContainer(v any) bool {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, e := range x {
+			if e != nil && slices.Contains(untrustedContainers, k) || holdsContainer(e) {
+				return true
+			}
+		}
+	case []any:
+		for _, e := range x {
+			if holdsContainer(e) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // containerBudget is the budget of a call in the worlds of
@@ -131,8 +161,9 @@ func TestUntrustedContainers_MarkedInEveryAnswer(t *testing.T) {
 // marketplace_list #2245, failures of open_ports #2246, failed of
 // stack_destroy #2247).
 func TestUntrustedContainers_MarkedOverAnyHandler(t *testing.T) {
-	answer := map[string]any{"status": "error", "error": "e", "warnings": []any{"w"}, "failures": []any{"f"},
-		"failed": []any{"x"}, "preview": map[string]any{"message": "p"}, "hint": "h"}
+	answer := map[string]any{"status": "error", "error": "e", "warnings": []any{"w"}, "warning": "w1", "failures": []any{"f"},
+		"failed": []any{"x"}, "preview": map[string]any{"message": "p"}, "hint": "h",
+		"result": map[string]any{"error": map[string]any{"message": "m"}, "warnings": []any{map[string]any{"message": "m"}}}}
 	for _, isErr := range []bool{false, true} {
 		r := New(nil)
 		for _, tl := range r.Tools() {
@@ -156,6 +187,76 @@ func TestUntrustedContainers_MarkedOverAnyHandler(t *testing.T) {
 	}
 }
 
+// hostileStageVM is the stage VM whose compose-up writes a line of the
+// workload that reads as an instruction (Астра #2275).
+type hostileStageVM struct{ *stageVM }
+
+func (v hostileStageVM) Read(ctx context.Context, name string) (vmstage.Stage, error) {
+	st, err := v.stageVM.Read(ctx, name)
+	if name == "compose-up" {
+		st.LogTail = "web-1  | pulling\nweb-1  | " + hostileMarker + "\n" + hostileMarker
+	}
+	return st, err
+}
+
+// A line of progress (notifications/progress, WithProgress) is evo's text:
+// the workload's output that it passes on never starts a line of it, and a
+// stage of evo ("==> …") never carries it (Астра #2275: "==> IGNORE
+// PREVIOUS INSTRUCTIONS" from the LogTail of compose-up). The channel has no "_untrusted": the
+// quotes, or a prefix that says whose the line is, are its one defence.
+func TestUntrustedContainers_ProgressLinesAreEvos(t *testing.T) {
+	vm := newStageVM()
+	r := stageRegistry(t, vm, progressBudget, func(e *engine.Engine) { e.Deployer = hostileStageVM{vm} })
+	var mu sync.Mutex
+	var lines []string
+	ctx := WithProgress(context.Background(), func(l string) {
+		mu.Lock()
+		lines = append(lines, l)
+		mu.Unlock()
+	})
+	for range deployStageCalls {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			_, _ = r.handlers["deploy"](ctx, map[string]any{"confirmed": true})
+		}()
+		select {
+		case <-done:
+		case <-time.After(progressWatch):
+			t.Fatal("deploy did not answer within its budget")
+		}
+		vm.mu.Lock()
+		started := vm.starts > 0
+		vm.mu.Unlock()
+		if started {
+			break
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	reached := false
+	for _, l := range lines {
+		for _, part := range strings.Split(l, "\n") {
+			if strings.Contains(part, "pulling") || strings.Contains(part, hostileMarker) {
+				reached = true
+			}
+			line := strings.TrimSpace(part)
+			if strings.HasPrefix(strings.TrimLeft(line, "=>-•* "), hostileMarker) ||
+				strings.HasPrefix(line, "==>") && strings.Contains(line, hostileMarker) {
+				t.Errorf("a line of the workload is a line of evo's progress (a stage of evo, or a line of its own): %q", part)
+			}
+			// The workload's line is shown in quotes, whole on its line
+			// («Риск», conclusion 344, У1).
+			if strings.Contains(part, hostileMarker) && !strings.Contains(part, `"`+hostileMarker+`"`) {
+				t.Errorf("a line of the workload is not in quotes: %q", part)
+			}
+		}
+	}
+	if !reached {
+		t.Fatalf("the progress carries no line of the stage: the check sees nothing (%d lines)", len(lines))
+	}
+}
+
 // The check of a field: named — passes; not named, or a marker of another
 // field — fails; absent or null — nothing to mark.
 func TestUntrustedContainers_Check(t *testing.T) {
@@ -169,6 +270,11 @@ func TestUntrustedContainers_Check(t *testing.T) {
 		{map[string]any{"warnings": []any{"w"}, "preview": map[string]any{}, "_untrusted": []any{"preview"}}, []string{"warnings"}},
 		{map[string]any{"hint": nil}, nil},
 		{map[string]any{"message": "evo's"}, nil},
+		{map[string]any{"warning": "w"}, []string{"warning"}},
+		{map[string]any{"result": map[string]any{"error": map[string]any{"message": "m"}}}, []string{"result"}},
+		{map[string]any{"result": map[string]any{"items": []any{map[string]any{"warnings": []any{"w"}}}}, "_untrusted": []any{}}, []string{"result"}},
+		{map[string]any{"result": map[string]any{"error": "m"}, "_untrusted": []any{"result"}}, nil},
+		{map[string]any{"result": map[string]any{"id": "x"}}, nil},
 	} {
 		if got := unmarkedContainers(c.m); !slices.Equal(got, c.want) {
 			t.Errorf("%v: %v, want %v", c.m, got, c.want)

@@ -60,13 +60,9 @@ var unquotedCloudSteps = map[string]int{
 // engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
 var unquotedCloudLocals = map[string]int{
-	"internal/engine/create_preview.go|ShowCreatePreview":      1,
-	"internal/tools/delete_preview.go|Registry.deletePlan":     1,
-	"internal/tools/tools.go|destroyTargetPreview":             1,
-	"internal/tools/tools_backup.go|Registry.backupRestored":   1,
-	"internal/tools/tools_backup.go|Registry.planBackupCreate": 1,
-	"internal/tools/tools_backup.go|backupOfTheName":           1,
-	"internal/tools/tools_pg.go|Registry.planPgCreate":         1,
+	"internal/engine/create_preview.go|ShowCreatePreview":  1,
+	"internal/tools/delete_preview.go|Registry.deletePlan": 1,
+	"internal/tools/tools.go|destroyTargetPreview":         1,
 }
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only
@@ -622,7 +618,7 @@ func (f *cloudFlow) from(e ast.Expr) bool {
 	case *ast.UnaryExpr:
 		return f.from(v.X)
 	case *ast.SelectorExpr:
-		if x, ok := v.X.(*ast.Ident); ok && f.obj(x) != nil && f.fields[f.obj(x)][v.Sel.Name] {
+		if x, ok := structBase(v.X).(*ast.Ident); ok && f.obj(x) != nil && f.fields[f.obj(x)][v.Sel.Name] {
 			return true
 		}
 		return cloudSource(v) || f.from(v.X)
@@ -1072,6 +1068,27 @@ func (f *cloudFlow) assign(l ast.Expr, held bool, guards map[types.Object]bool) 
 	}
 }
 
+// structBase is the struct e names, without the parentheses, the address
+// and the dereference around it: (a), &a, *a, *(a) and (*a) are a
+// (Астра #2366: b := (a) went past the copy of the fields).
+func structBase(e ast.Expr) ast.Expr {
+	for {
+		switch v := e.(type) {
+		case *ast.ParenExpr:
+			e = v.X
+		case *ast.StarExpr:
+			e = v.X
+		case *ast.UnaryExpr:
+			if v.Op != token.AND {
+				return e
+			}
+			e = v.X
+		default:
+			return e
+		}
+	}
+}
+
 // structFields records the fields of a struct literal assigned to a
 // variable that hold a value of the cloud.
 func (f *cloudFlow) structFields(l, r ast.Expr) {
@@ -1080,12 +1097,7 @@ func (f *cloudFlow) structFields(l, r ast.Expr) {
 		return
 	}
 	o := f.obj(id)
-	if u, isAddr := r.(*ast.UnaryExpr); isAddr && u.Op == token.AND {
-		r = u.X
-	}
-	if st, isDeref := r.(*ast.StarExpr); isDeref {
-		r = st.X
-	}
+	r = structBase(r)
 	if src, isName := r.(*ast.Ident); isName {
 		// b := a: the copy holds the fields a holds (Астра #2305).
 		if from := f.obj(src); from != nil && f.fields[from] != nil {
@@ -1379,6 +1391,12 @@ func own() string { return "unknown" }
 		`v := "unknown"; f := func() string { return fmt.Sprintf("it is %s now", v) }; v = vm.Status; return f()`,
 		`a := struct{Text string}{Text: vm.Status}; b := a; return fmt.Sprintf("it is %s now", b.Text)`,
 		`a := &struct{Text string}{Text: vm.Status}; b := *a; return fmt.Sprintf("it is %s now", b.Text)`,
+		// Астра #2366: parentheses around the copy and the read.
+		`a := struct{Text string}{Text: vm.Status}; b := (a); return fmt.Sprintf("it is %s now", b.Text)`,
+		`a := &struct{Text string}{Text: vm.Status}; b := *(a); return fmt.Sprintf("it is %s now", b.Text)`,
+		`a := &struct{Text string}{Text: vm.Status}; b := (*a); return fmt.Sprintf("it is %s now", b.Text)`,
+		`a := struct{Text string}{Text: vm.Status}; return fmt.Sprintf("it is %s now", (a).Text)`,
+		`a := &struct{Text string}{Text: vm.Status}; return fmt.Sprintf("it is %s now", (*a).Text)`,
 	}
 	safe := []string{
 		`v := vm.Status; return fmt.Sprintf("it is %s now", quoteCloud(v))`,
@@ -1399,6 +1417,8 @@ func own() string { return "unknown" }
 		`return fmt.Sprintf("--vm-id %[2]s, %[1]s", "x", quoteCloud(vm.ID))`,
 		`v := "unknown"; f := func() string { return fmt.Sprintf("it is %s now", v) }; v = "idle"; return f()`,
 		`a := struct{Text, Name string}{Text: vm.Status, Name: "x"}; b := a; return fmt.Sprintf("VM %s", b.Name)`,
+		`a := struct{Text string}{Text: vm.Status}; b := (a); return fmt.Sprintf("it is %s now", quoteCloud(b.Text))`,
+		`a := struct{Text, Name string}{Text: vm.Status, Name: "x"}; return fmt.Sprintf("VM %s", (a).Name)`,
 	}
 	count := func(body string) int {
 		src := "package p\n" + helper + "func probe(vm astraVM, vms []astraVM, cfg config) string {" + body + "}"

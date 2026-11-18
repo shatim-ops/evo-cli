@@ -7,6 +7,7 @@ package history
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -253,5 +254,40 @@ func TestAppend_ATextNotOfUTF8StaysItself(t *testing.T) {
 	}
 	if len(j.Lines) != 2 || j.Lines[0].ResourceID == j.Lines[1].ResourceID || !utf8.ValidString(j.Lines[0].ResourceID) {
 		t.Errorf("read %+v; want two lines of two ids, each valid UTF-8", j.Lines)
+	}
+}
+
+// Every text of a line is cut by the writer, not only the name: a field the
+// writer leaves long is a line the reader skips («Риск», conclusion 311,
+// 311-5). The fields are found by reflection, so a new one is in the test.
+func TestAppend_EveryTextIsCut(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), DirName)
+	l := line(Created)
+	v := reflect.ValueOf(&l).Elem()
+	long := strings.Repeat("я", maxText)
+	var cut []string
+	for i := 0; i < v.NumField(); i++ {
+		switch name := v.Type().Field(i).Name; name {
+		case "Time", "Outcome", "IntentID":
+			// Of a form, not a text: checked, never cut.
+		default:
+			if v.Field(i).Kind() == reflect.String {
+				v.Field(i).SetString(long)
+				cut = append(cut, name)
+			}
+		}
+	}
+	if err := Append(dir, l); err != nil {
+		t.Fatal(err)
+	}
+	j, err := ReadAll(dir, nil)
+	if err != nil || len(j.Lines) != 1 {
+		t.Fatalf("read %d lines, skipped %d, %v; want the line, its texts cut", len(j.Lines), j.Skipped, err)
+	}
+	got := reflect.ValueOf(j.Lines[0])
+	for _, name := range cut {
+		if s := got.FieldByName(name).String(); !strings.HasSuffix(s, cutMark) || len(s) > maxText {
+			t.Errorf("%s: %d bytes; want cut to %d with the mark", name, len(s), maxText)
+		}
 	}
 }
