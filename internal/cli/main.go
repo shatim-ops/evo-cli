@@ -179,7 +179,7 @@ func run(args []string) int {
 		}
 	}
 	if !commandStarted {
-		err = usageError(cmd, err)
+		err = usageError(cmd, flagError(err, args))
 	}
 	// cobra stops at the first bad flag or command, and k8s kubectl passes
 	// what follows the cluster id to kubectl, refusing a --json there
@@ -208,7 +208,7 @@ func mcpCommand(root *cobra.Command, args []string) bool {
 	return true
 }
 
-// leadingUnknownFlag returns the error pflag gives for the first flag
+// leadingUnknownFlag returns the refusal (flagError's wording) of the first flag
 // before the command name that the root does not know, or nil. Cobra finds
 // the command with the root's flags stripped, and a flag it does not know is
 // taken to have a value: the next argument, the command name, went with it.
@@ -228,7 +228,7 @@ func leadingUnknownFlag(root *cobra.Command, args []string) error {
 				f = persistent.Lookup(name)
 			}
 			if f == nil {
-				return fmt.Errorf("unknown flag: --%s", name)
+				return unknownFlagError(i + 1)
 			}
 			if !inline && f.NoOptDefVal == "" {
 				i++ // its value
@@ -242,7 +242,7 @@ func leadingUnknownFlag(root *cobra.Command, args []string) error {
 				f = persistent.ShorthandLookup(a[j : j+1])
 			}
 			if f == nil {
-				return fmt.Errorf("unknown shorthand flag: %q in %s", a[j], a)
+				return unknownShorthandError(a[j:j+1], i+1)
 			}
 			if f.NoOptDefVal == "" {
 				if j == len(a)-1 {
@@ -322,16 +322,27 @@ func helpTopicsUnechoed(root *cobra.Command) {
 
 // unknownSubcommand is the Args of a command with subcommands: an argument
 // that is none of them is "unknown command", with the subcommands it may
-// have meant.
+// have meant. The argument is not repeated: it may be a secret given in
+// the wrong place (#2334); the suggestions are names of evo.
 func unknownSubcommand(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return nil
 	}
-	msg := i18n.Tf("unknown command %q for %q", "неизвестная команда %q для %q", args[0], cmd.CommandPath())
+	msg := i18n.Tf("unknown command (argument 1) for %q", "неизвестная команда (аргумент 1) для %q", cmd.CommandPath())
 	if s := cmd.SuggestionsFor(args[0]); len(s) > 0 {
 		msg += i18n.T("; did you mean ", "; может быть, ") + strings.Join(s, ", ") + "?"
 	}
 	return stderrors.New(msg)
+}
+
+// noArgs is the Args of a command that takes no positional arguments. It
+// counts them and does not repeat them, as cobra.NoArgs does: one may be a
+// secret given in the wrong place (#2334).
+func noArgs(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	return fmt.Errorf(i18n.T("%s takes no arguments, got %d", "%s не принимает аргументов, передано: %d"), cmd.CommandPath(), len(args))
 }
 
 // stateDir is the directory evo works in — the working directory. The one
@@ -445,9 +456,17 @@ func newRootCmd() *cobra.Command {
 		if c.Name() == "completion" {
 			asGroup(c)
 			zshMenuOfEvo(c)
+			// cobra builds the shells with cobra.NoArgs, which names
+			// the argument (#2334).
+			for _, shell := range c.Commands() {
+				shell.Args = noArgs
+			}
 		}
 	}
 	tabNoFiles(cmd)
+	// The root is a group too: left to cobra, an argument that is no
+	// command was named in its refusal, and it may be a secret (#2334).
+	asGroup(cmd)
 
 	return cmd
 }
@@ -772,7 +791,7 @@ func handleError(p *output.Printer, err error) {
 func newVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:  "verify",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		Short: i18n.T("Run health checks against the deployed application (exit 1 if unhealthy, 4 if nothing is deployed)",
 			"Проверить, отвечает ли приложение (код 1 — не отвечает, 4 — ничего не развёрнуто)"),
 		Long: i18n.T(`Run health checks against the deployed application: a TCP connect to each
@@ -811,7 +830,7 @@ func newInitCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:  "init",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		Short: i18n.T("Create .evo.yaml with a zone and image chosen from the Cloud.ru API",
 			"Создать .evo.yaml с зоной и образом из API Cloud.ru"),
 		Long: i18n.T(`Create .evo.yaml for this project.
@@ -866,7 +885,7 @@ deploy нужен Ubuntu или Debian: образы Astra Linux, Альт и Р
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:  "version",
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		Short: i18n.T("Print the version, commit, build date, Go version and platform",
 			"Версия, коммит, дата сборки, версия Go и платформа"),
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -536,25 +536,41 @@ func anotherVMsDisk(tool, diskID, vmID string, disk map[string]any) (string, boo
 	if len(vms) == 0 {
 		return "", false
 	}
-	var ids []string
+	var ids, labels []string
 	for _, v := range vms {
 		if v["id"] == vmID {
 			return "", false
 		}
-		ids = append(ids, v["id"].(string))
+		id := v["id"].(string)
+		ids = append(ids, id)
+		labels = append(labels, quoteCloud(id))
 	}
-	on := strings.Join(ids, ", ")
+	// The ids of the card are the cloud's: in quotes in the text, and a
+	// command only with an id of the form of an id («Риск», 291-2, 314;
+	// Астра #2323).
+	on, other := strings.Join(labels, ", "), ids[0]
 	var err error
-	if tool == "disk_attach" {
+	switch {
+	case tool == "disk_attach" && isUUID(other):
 		err = clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("disk %s is attached to VM %s: Cloud.ru attaches a disk to one VM at a time; nothing was attached", "диск %s подключён к ВМ %s: Cloud.ru подключает диск только к одной ВМ; ничего не подключено", diskID, on),
 			i18n.Tf("To move it, detach it from that VM first (disk_detach disk_id=%s vm=%s) — whether that VM can lose it, ask the person.",
-				"Чтобы перенести диск, сначала отключите его от той ВМ (disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, ids[0]))
-	} else {
+				"Чтобы перенести диск, сначала отключите его от той ВМ (disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, other))
+	case tool == "disk_attach":
 		err = clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("disk %s is attached to VM %s, not to %s; nothing was detached", "диск %s подключён к ВМ %s, а не к %s; ничего не отключено", diskID, on, vmID),
+			i18n.Tf("disk %s is attached to VM %s: Cloud.ru attaches a disk to one VM at a time; nothing was attached", "диск %s подключён к ВМ %s: Cloud.ru подключает диск только к одной ВМ; ничего не подключено", diskID, on),
+			i18n.T("To move it, detach it from that VM first; evo vm list shows the VM — whether that VM can lose it, ask the person.",
+				"Чтобы перенести диск, сначала отключите его от той ВМ; ВМ показывает evo vm list — может ли та ВМ остаться без него, спросите человека."))
+	case isUUID(other):
+		err = clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("disk %s is attached to VM %s, not to %s; nothing was detached", "диск %s подключён к ВМ %s, а не к %s; ничего не отключено", diskID, on, quoteCloud(vmID)),
 			i18n.Tf("The disk is on another VM (disk_detach disk_id=%s vm=%s detaches it there) — whether that VM can lose it, ask the person.",
-				"Диск стоит на другой ВМ (отключить его там — disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, ids[0]))
+				"Диск стоит на другой ВМ (отключить его там — disk_detach disk_id=%s vm=%s) — может ли та ВМ остаться без него, спросите человека.", diskID, other))
+	default:
+		err = clierrors.New(clierrors.CodeUsage,
+			i18n.Tf("disk %s is attached to VM %s, not to %s; nothing was detached", "диск %s подключён к ВМ %s, а не к %s; ничего не отключено", diskID, on, quoteCloud(vmID)),
+			i18n.T("The disk is on another VM; evo vm list shows it — whether that VM can lose it, ask the person.",
+				"Диск стоит на другой ВМ; её показывает evo vm list — может ли та ВМ остаться без него, спросите человека."))
 	}
 	return errAnswer(err, map[string]any{"attached_vms": vms}), true
 }

@@ -186,17 +186,12 @@ func localizeCompletion(app string, c *cobra.Command) {
 	}
 }
 
-// Parsing errors of cobra and pflag, translated by usageMessage.
+// Parsing errors of cobra, translated by usageMessage. Those of pflag are
+// evo's own (flagError), already in the language of the run.
 var usageErrorsRU = []struct {
 	re *regexp.Regexp
 	ru string
 }{
-	{regexp.MustCompile(`^unknown command (".*") for (".*")$`), "неизвестная команда $1 для $2"},
-	{regexp.MustCompile(`^unknown flag: (\S+)$`), "неизвестный флаг: $1"},
-	{regexp.MustCompile(`^unknown shorthand flag: '(.)' in (\S+)$`), "неизвестный флаг: -$1 в $2"},
-	{regexp.MustCompile(`^flag needs an argument: '(.)' in (\S+)$`), "флагу -$1 нужно значение ($2)"},
-	{regexp.MustCompile(`^flag needs an argument: (\S+)$`), "флагу $1 нужно значение"},
-	{regexp.MustCompile(`^invalid argument (".*") for (".*") flag: (.*)$`), "недопустимое значение $1 флага $2: $3"},
 	{regexp.MustCompile(`^accepts (\d+) arg\(s\), received (\d+)$`), "нужно аргументов: $1, передано: $2"},
 	{regexp.MustCompile(`^accepts at most (\d+) arg\(s\), received (\d+)$`), "можно не больше аргументов: $1, передано: $2"},
 	{regexp.MustCompile(`^requires at least (\d+) arg\(s\), only received (\d+)$`), "нужно хотя бы аргументов: $1, передано: $2"},
@@ -204,35 +199,18 @@ var usageErrorsRU = []struct {
 	{regexp.MustCompile(`^required flag\(s\) (.*) not set$`), "не заданы обязательные флаги: $1"},
 }
 
-// The strconv error pflag puts into an "invalid argument" message.
-var (
-	parseNumberRE = regexp.MustCompile(`strconv\.Parse(Int|Uint|Float): parsing ".*": (invalid syntax|value out of range)`)
-	parseBoolRE   = regexp.MustCompile(`strconv\.ParseBool: parsing ".*": invalid syntax`)
-)
-
-// usageMessage translates a cobra parsing error. cobra's suggestion
-// ("\n\nDid you mean this?\n\tdeploy\n") becomes "; может быть, deploy?".
+// usageMessage translates a parsing error of cobra. An unknown command
+// (unknownSubcommand) and a refused flag (flagError) are evo's own refusals,
+// already in the language of the run.
 func usageMessage(msg string) string {
 	if i18n.Lang() != i18n.RU {
 		return msg
 	}
-	head, suggest, _ := strings.Cut(msg, "\n\nDid you mean this?\n")
 	for _, e := range usageErrorsRU {
-		if e.re.MatchString(head) {
-			head = e.re.ReplaceAllString(head, e.ru)
+		if e.re.MatchString(msg) {
+			msg = e.re.ReplaceAllString(msg, e.ru)
 			break
 		}
 	}
-	head = parseNumberRE.ReplaceAllString(head, "нужно число")
-	head = parseBoolRE.ReplaceAllString(head, "нужно true или false")
-	var names []string
-	for _, l := range strings.Split(suggest, "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			names = append(names, l)
-		}
-	}
-	if len(names) > 0 {
-		head += "; может быть, " + strings.Join(names, ", ") + "?"
-	}
-	return head
+	return msg
 }
