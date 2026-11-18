@@ -117,20 +117,6 @@ var untrustedClassPending = map[string]string{
 	// Found once the calls reached the cloud (#2434).
 	"billing_balance: *":       "the answer of the balance API as it came, no _untrusted (#2434)",
 	"cert_issue_le: operation": "the operation the cloud answered, not in _untrusted (#2434)",
-	// The repeat of a create whose outcome is not known yet (made/): the
-	// id of the cloud the record holds, in message and repeat_of (#2434).
-	"ar_create: message":          "the repeat names the id the record holds, bare (#2434)",
-	"ar_create: repeat_of":        "the id the record holds, not in _untrusted (#2434)",
-	"backup_create: message":      "the repeat names the id the record holds, bare (#2434)",
-	"backup_create: repeat_of":    "the id the record holds, not in _untrusted (#2434)",
-	"dns_zone_create: message":    "the repeat names the id the record holds, bare (#2434)",
-	"dns_zone_create: repeat_of":  "the id the record holds, not in _untrusted (#2434)",
-	"pg_backup_create: message":   "the repeat names the id the record holds, bare (#2434)",
-	"pg_backup_create: repeat_of": "the id the record holds, not in _untrusted (#2434)",
-	"tg_create: message":          "the repeat names the id the record holds, bare (#2434)",
-	"tg_create: repeat_of":        "the id the record holds, not in _untrusted (#2434)",
-	"vpc_create: message":         "the repeat names the id the record holds, bare (#2434)",
-	"vpc_create: repeat_of":       "the id the record holds, not in _untrusted (#2434)",
 }
 
 // classWorldArgs are the arguments a tool needs beyond its required ones

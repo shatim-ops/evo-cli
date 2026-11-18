@@ -325,29 +325,12 @@ func TestUntrustedNames_Marked(t *testing.T) {
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
 	cloud.SetToken("t")
 	r := raRegistry(t, api, cloud, nil)
-	found := map[string]bool{}
 	for _, tl := range r.Tools() {
 		_, text, _ := callNamed(t, r, tl.Name, requiredArgs(tl))
 		if strings.Contains(text, hostileMarker) && !strings.Contains(text, `"_untrusted"`) {
-			found[tl.Name] = true
-			if namesUnmarkedPending[tl.Name] == "" {
-				t.Errorf("%s answers a name from the cloud with no _untrusted in the answer", tl.Name)
-			}
+			t.Errorf("%s answers a name from the cloud with no _untrusted in the answer", tl.Name)
 		}
 	}
-	for name := range namesUnmarkedPending {
-		if !found[name] {
-			t.Errorf("namesUnmarkedPending names %s, whose answer now marks the name or carries none: remove the line (the list only shrinks)", name)
-		}
-	}
-}
-
-// namesUnmarkedPending are the tools whose answer to the calls of
-// requiredCalls carries a name of the cloud with no "_untrusted", found
-// once the calls reached the cloud (#2434); each is a line to the owner of
-// the tool. Only shrinks. Closes by 1.9, before the tag (#2434).
-var namesUnmarkedPending = map[string]string{
-	"open_ports": "the preview names the security group as the cloud gave it in security_group, with no _untrusted (#2434)",
 }
 
 // copiedStatusPending are the fields, "tool: field", that carry the
