@@ -445,14 +445,15 @@ var decls = map[string]Decl{
 	"audit_events":        {Project: true},
 	"cert_list":           {Project: true, Untrusted: untrustedAnswer{fields: []string{"certificates"}}},
 	// Certificate Manager.
-	"cert_get":         {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
-	"cert_issue_le":    {Project: true, Created: created{id: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}}},
-	"cert_import":      {Project: true, Created: created{id: "certificate.id", lost: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}, {name: "intermediate_certificate", summary: certChainSummary}}},
-	"cert_renew":       {IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}}},
-	"cert_delete":      {Delete: deleteTarget{arg: "id", what: "certificate", whRU: "сертификат"}, IDArgs: []idArg{{name: "id", kind: kindCert, target: true}}},
-	"cert_usage":       {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
-	"cert_versions":    {IDArgs: []idArg{{name: "certificate_id", kind: kindCert}}},
-	"cert_private_key": {Sensitive: true, IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}, {name: "version_id", why: whyInParent}}},
+	"cert_get":      {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
+	"cert_issue_le": {Project: true, Created: created{id: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}}},
+	"cert_import":   {Project: true, Created: created{id: "certificate.id", lost: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}, {name: "intermediate_certificate", summary: certChainSummary}}},
+	"cert_renew":    {IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}}},
+	"cert_delete":   {Delete: deleteTarget{arg: "id", what: "certificate", whRU: "сертификат"}, IDArgs: []idArg{{name: "id", kind: kindCert, target: true}}},
+	"cert_usage":    {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
+	"cert_versions": {IDArgs: []idArg{{name: "certificate_id", kind: kindCert}}},
+	// The body of the service as it has it; key_format is evo's (#2378).
+	"cert_private_key": {Sensitive: true, IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}, {name: "version_id", why: whyInParent}}, Untrusted: untrustedAnswer{whole: true, own: []string{"key_format"}}},
 	"cert_operation":   {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: untrustedAnswer{fields: []string{"error"}, whole: true, own: opOwnFields}},
 	// The keys of a bucket: whoever wrote an object named it (Astra, #1804).
 	"s3_ls": {Untrusted: untrustedAnswer{fields: []string{"objects"}}},
