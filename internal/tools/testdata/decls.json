@@ -63,7 +63,7 @@
     "id_args": [
       "backup_id why=\"\" target=false ids=false kind={what:\"backup\" byName:false list:\"backup_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[name description tags resource_name source protection_plan] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name description tags resource_name source protection_plan] whole:false own:[] workload:false deep:false}"
   },
   "backup_list": {
     "project": true,
@@ -141,6 +141,7 @@
     "project": true,
     "created": "{id:certificate.id lost:certificate_id arg: none: list:cert_list field:certificates listArgs:[] delete:cert_delete}",
     "create_name": "{args:[name] rule: what:certificate whRU:сертификат}",
+    "untrusted": "{fields:[certificate] whole:false own:[] workload:false deep:false}",
     "echoed_args": [
       "description",
       "intermediate_certificate summary=github.com/shatim-ops/evo-cli/internal/tools.certChainSummary"
@@ -508,7 +509,7 @@
     "id_args": [
       "nodepool_id why=\"\" target=false ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[name cluster_name labels taints flavor] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name cluster_name labels taints flavor] whole:false own:[] workload:false deep:false}"
   },
   "k8s_nodepool_scale": {
     "destructive": true,
@@ -812,7 +813,8 @@
     "create_name": "{args:[name] rule: what:database user whRU:пользователь базы данных}",
     "id_args": [
       "cluster_id why=\"\" target=true ids=false kind={what:\"PostgreSQL cluster\" byName:false list:\"pg_list\" check:true project:true card:true}"
-    ]
+    ],
+    "untrusted": "{fields:[user] whole:false own:[] workload:false deep:false}"
   },
   "pg_user_delete": {
     "delete": "{arg:name parent:cluster_id what:database user whRU:пользователь базы данных statePrefix: creatingUnseen: failedUnseen:}",
@@ -1109,7 +1111,7 @@
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[name interfaces security_groups checks exposure image] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name interfaces security_groups checks exposure image] whole:false own:[] workload:false deep:false}"
   },
   "vm_list": {
     "project": true,

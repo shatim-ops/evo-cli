@@ -209,7 +209,7 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	}
 	said := i18n.Tf("An earlier %s of %s was taken by the platform as %s and its outcome is not known yet: no second create was sent; this is its progress.",
 		"Предыдущий вызов %s для %s принят платформой как %s, его исход ещё неизвестен: второе создание не отправлено; ниже — его ход.",
-		name, quoteCloud(resource), mc.ID)
+		name, quoteCloud(resource), quoteCloud(mc.ID))
 	out := map[string]any{"message": said}
 	if t, found := r.Lookup(mc.Next); found && t.Handler != nil {
 		read, readErr := t.Handler(ctx, maps.Clone(mc.NextArgs))

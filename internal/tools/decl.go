@@ -206,7 +206,7 @@ var decls = map[string]Decl{
 	// Compute.
 	// The names of the VM, its interfaces, groups, subnets and the rules
 	// of the groups, as the cloud names them («Риск», conclusion 209, У5).
-	"vm_get": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}, Untrusted: untrustedAnswer{fields: []string{"name", "interfaces", "security_groups", "checks", "exposure", "image"}}},
+	"vm_get": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "interfaces", "security_groups", "checks", "exposure", "image"}}},
 	// A read: no consent, on --read-only too. The name of the VM is the
 	// cloud's, and where and note quote it (brief vm-console.md, §4, У3).
 	"vm_console": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}, Untrusted: untrustedAnswer{fields: []string{"name", "where", "note"}}},
@@ -284,7 +284,7 @@ var decls = map[string]Decl{
 	"k8s_nodepools": {IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
 	// The name of a node pool and the labels and taints of its nodes:
 	// anyone with access to the project writes them.
-	"k8s_nodepool_get": {IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool}}, Untrusted: untrustedAnswer{fields: []string{"name", "cluster_name", "labels", "taints", "flavor"}}},
+	"k8s_nodepool_get": {IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "cluster_name", "labels", "taints", "flavor"}}},
 	// A scale down deletes nodes with the data on their disks; the hint is
 	// the tool's, not the call's, so a scale up asks too (D99; conclusion
 	// 112 of «Риск»).
@@ -310,7 +310,7 @@ var decls = map[string]Decl{
 	// A backup and its source, as anyone with access to the project names
 	// them (docs/internal/briefs/backups.md).
 	// The plan of a backup by its name too (FB19I-21).
-	"backup_get": {IDArgs: []idArg{{name: "backup_id", kind: kindBackup}}, Untrusted: untrustedAnswer{fields: []string{"name", "description", "tags", "resource_name", "source", "protection_plan"}}},
+	"backup_get": {IDArgs: []idArg{{name: "backup_id", kind: kindBackup}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "description", "tags", "resource_name", "source", "protection_plan"}}},
 	// The names of the backup and of its source, in the preview and the
 	// answer (the audit of #1544, С1).
 	"backup_create": {Project: true, RequiredOneOf: [][]string{{"vm_id", "disk_id"}}, Created: created{id: "backup_id", list: "backup_list", field: "backups", delete: "backup_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "disk_id", kind: kindDisk}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "backup", "name"}}},
@@ -385,7 +385,7 @@ var decls = map[string]Decl{
 	"pg_versions":      {Untrusted: untrustedAnswer{fields: []string{"versions"}}},
 	"kafka_versions":   {Untrusted: untrustedAnswer{fields: []string{"versions"}}},
 	"redis_versions":   {Untrusted: untrustedAnswer{fields: []string{"versions"}}},
-	"pg_user_create":   {Created: created{arg: "name", list: "pg_users", field: "users", listArgs: []string{"cluster_id"}, delete: "pg_user_delete"}, CreateName: createName{args: []string{"name"}, what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
+	"pg_user_create":   {Created: created{arg: "name", list: "pg_users", field: "users", listArgs: []string{"cluster_id"}, delete: "pg_user_delete"}, CreateName: createName{args: []string{"name"}, what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}, Untrusted: untrustedAnswer{fields: []string{"user"}}},
 	"pg_user_delete":   {Delete: deleteTarget{arg: "name", parent: "cluster_id", what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
 	"pg_backups":       {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}},
 	"pg_backup_create": {Created: created{id: "backup_id", list: "pg_backups", field: "backups", listArgs: []string{"cluster_id"}}, CreateName: createName{args: []string{"name"}, what: "backup", whRU: "резервная копия"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
@@ -447,7 +447,7 @@ var decls = map[string]Decl{
 	// Certificate Manager.
 	"cert_get":      {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
 	"cert_issue_le": {Project: true, Created: created{id: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}}},
-	"cert_import":   {Project: true, Created: created{id: "certificate.id", lost: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}, {name: "intermediate_certificate", summary: certChainSummary}}},
+	"cert_import":   {Project: true, Created: created{id: "certificate.id", lost: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}, {name: "intermediate_certificate", summary: certChainSummary}}, Untrusted: untrustedAnswer{fields: []string{"certificate"}}},
 	"cert_renew":    {IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}}},
 	"cert_delete":   {Delete: deleteTarget{arg: "id", what: "certificate", whRU: "сертификат"}, IDArgs: []idArg{{name: "id", kind: kindCert, target: true}}},
 	"cert_usage":    {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
