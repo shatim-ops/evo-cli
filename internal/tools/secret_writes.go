@@ -91,7 +91,8 @@ func untrustedError(m map[string]any) bool {
 // a surface shows it (outer): a refusal that may carry the service's text
 // by its class and status, the CLI's error alike; a success of a secret
 // write with the public fields of its object. Any other answer is as it
-// is.
+// is. ctx is the one outer gave the handler: secretsent.Sent reads the mark
+// outer's secretsent.Watch set up for this call.
 func secretWriteAnswer(ctx context.Context, tool string, args map[string]any, text string, isErr bool) string {
 	o, ok := secretWrites[tool]
 	if !ok && !(isErr && secretsent.Sent(ctx)) {
