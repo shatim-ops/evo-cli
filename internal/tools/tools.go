@@ -1941,7 +1941,7 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 		rec := u.Deployment
 		answer["message"] = i18n.Tf("deploy updates VM %s of this directory's deployment: it uploads the compose file and runs 'docker compose up -d' there (no new VM; a floating IP only for a VM without a public IP, see creates).",
 			"deploy обновляет ВМ %s развёртывания этого каталога: загружает на неё compose-файл и выполняет 'docker compose up -d' (новой ВМ нет; floating IP — только для ВМ без внешнего IP, см. creates).",
-			firstNonEmptyStr(rec.VMName, rec.VMID))
+			quoteCloud(firstNonEmptyStr(rec.VMName, rec.VMID)))
 		answer["update"] = true
 		answer["vm_id"] = rec.VMID
 		answer["vm_ip"] = rec.VMIP
@@ -1976,7 +1976,7 @@ func (s *Registry) deployAnswer(ctx context.Context, args map[string]any, eng *e
 			answer["unchanged"] = true
 			answer["message"] = i18n.Tf("The same compose file is already running on VM %s: deploy has nothing to do, and called with confirmed=true it changes nothing. force=true redeploys anyway.",
 				"На ВМ %s уже работает тот же compose-файл: deploy делать нечего, вызов с confirmed=true ничего не изменит. force=true — развернуть заново.",
-				firstNonEmptyStr(rec.VMName, rec.VMID))
+				quoteCloud(firstNonEmptyStr(rec.VMName, rec.VMID)))
 		}
 		return s.deployAddressAnswer(ctx, eng, answer), nil
 	}
