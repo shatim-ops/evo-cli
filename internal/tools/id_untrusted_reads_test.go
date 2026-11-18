@@ -60,12 +60,10 @@ func TestRepeatOf_CloudIDMarkedAndQuoted(t *testing.T) {
 
 // The reads of one resource (vm_get, backup_get, k8s_nodepool_get) answer
 // its id as the service has it — no check of its form on the way: the
-// marker names id. pg_user_create and cert_import answer the user and the
-// certificate the service made: user and certificate are named (#2378,
-// part 2; «Риск», 357).
-func TestReadsAndCreates_CloudIDsMarked(t *testing.T) {
+// marker names id (#2378, part 2; «Риск», 357).
+func TestReads_CloudIDsMarked(t *testing.T) {
 	faultToolsIsolate(t)
-	want := map[string]string{"vm_get": "id", "backup_get": "id", "k8s_nodepool_get": "id", "pg_user_create": "user", "cert_import": "certificate"}
+	want := map[string]string{"vm_get": "id", "backup_get": "id", "k8s_nodepool_get": "id"}
 	body := hostileBody(map[string]any{"id": hostileName, "operation_id": hostileName, "operationId": hostileName})
 	api := &oddAPI{status: http.StatusOK, body: body}
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")

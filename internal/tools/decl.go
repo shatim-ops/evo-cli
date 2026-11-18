@@ -385,7 +385,7 @@ var decls = map[string]Decl{
 	"pg_versions":      {Untrusted: untrustedAnswer{fields: []string{"versions"}}},
 	"kafka_versions":   {Untrusted: untrustedAnswer{fields: []string{"versions"}}},
 	"redis_versions":   {Untrusted: untrustedAnswer{fields: []string{"versions"}}},
-	"pg_user_create":   {Created: created{arg: "name", list: "pg_users", field: "users", listArgs: []string{"cluster_id"}, delete: "pg_user_delete"}, CreateName: createName{args: []string{"name"}, what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}, Untrusted: untrustedAnswer{fields: []string{"user"}}},
+	"pg_user_create":   {Created: created{arg: "name", list: "pg_users", field: "users", listArgs: []string{"cluster_id"}, delete: "pg_user_delete"}, CreateName: createName{args: []string{"name"}, what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
 	"pg_user_delete":   {Delete: deleteTarget{arg: "name", parent: "cluster_id", what: "database user", whRU: "пользователь базы данных"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
 	"pg_backups":       {IDArgs: []idArg{{name: "cluster_id", kind: kindPG}}},
 	"pg_backup_create": {Created: created{id: "backup_id", list: "pg_backups", field: "backups", listArgs: []string{"cluster_id"}}, CreateName: createName{args: []string{"name"}, what: "backup", whRU: "резервная копия"}, IDArgs: []idArg{{name: "cluster_id", kind: kindPG, target: true}}},
@@ -447,7 +447,7 @@ var decls = map[string]Decl{
 	// Certificate Manager.
 	"cert_get":      {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
 	"cert_issue_le": {Project: true, Created: created{id: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}}},
-	"cert_import":   {Project: true, Created: created{id: "certificate.id", lost: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}, {name: "intermediate_certificate", summary: certChainSummary}}, Untrusted: untrustedAnswer{fields: []string{"certificate"}}},
+	"cert_import":   {Project: true, Created: created{id: "certificate.id", lost: "certificate_id", list: "cert_list", field: "certificates", delete: "cert_delete"}, CreateName: createName{args: []string{"name"}, what: "certificate", whRU: "сертификат"}, EchoedArgs: []echoedArg{{name: "description"}, {name: "intermediate_certificate", summary: certChainSummary}}},
 	"cert_renew":    {IDArgs: []idArg{{name: "certificate_id", kind: kindCert, target: true}}},
 	"cert_delete":   {Delete: deleteTarget{arg: "id", what: "certificate", whRU: "сертификат"}, IDArgs: []idArg{{name: "id", kind: kindCert, target: true}}},
 	"cert_usage":    {IDArgs: []idArg{{name: "id", kind: kindCert}}, Untrusted: untrustedAnswer{whole: true}},
