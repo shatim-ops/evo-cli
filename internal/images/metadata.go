@@ -94,6 +94,24 @@ type Result struct {
 	Sensitive []string
 }
 
+// SendsSecret reports whether the metadata FillMetadata filled with values
+// and res carries a value that may be a secret: a password field filled
+// (res.Sensitive, evo's random one included) or any value the caller gave —
+// not only evo's public key, login and hostname.
+func SendsSecret(values map[string]string, res Result) bool {
+	return len(res.Sensitive) > 0 || AnyValue(values)
+}
+
+// AnyValue reports whether values holds a value that is not empty.
+func AnyValue(values map[string]string) bool {
+	for _, v := range values {
+		if v != "" {
+			return true
+		}
+	}
+	return false
+}
+
 type kind int
 
 const (

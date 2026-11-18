@@ -803,6 +803,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		AvailabilityZoneID: region,
 		ImageName:          imgDetail.Name,
 		ImageMetadata:      imgMeta,
+		SecretMetadata:     images.SendsSecret(e.Config.ImageMetadata, filled),
 		Disks: []provision.DiskReq{
 			{
 				Name:         provision.FitName(vmName, "-boot"),

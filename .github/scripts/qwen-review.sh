@@ -76,7 +76,7 @@ sensitive() {
         internal/tools/secret_writes.go | internal/tools/effect.go | internal/tools/cli_spec.go | \
         internal/tools/intent.go | internal/tools/intent_targets.go | internal/tools/tools_stack.go | \
         internal/tools/history.go | internal/history/* | internal/tools/tools_history.go | internal/cli/history_view.go | \
-        internal/tools/tools_auth.go | internal/intent/* | internal/secret/* | internal/login/flow.go | \
+        internal/tools/tools_auth.go | internal/intent/* | internal/secret/* | internal/secretsent/* | internal/login/flow.go | \
         internal/cli/trees.go | internal/cli/login.go | internal/floatingip/floatingip.go | internal/receipt/receipt.go | \
         internal/tools/preview_args.go | internal/tools/made_repeat.go | internal/tools/errreason.go | internal/tools/delete_preview.go | \
         internal/tools/tools_backup.go | internal/tools/journal.go | internal/tools/card.go | internal/tools/completion.go | \
