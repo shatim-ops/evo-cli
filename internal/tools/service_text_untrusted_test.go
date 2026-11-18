@@ -50,11 +50,11 @@ func TestWhoamiDoctor_TextOfTheServiceMarked(t *testing.T) {
 // The state of an operation in a line of the wait is the cloud's text:
 // quoted on one line (A19-12, #2432).
 func TestOpWaitLine_StateQuoted(t *testing.T) {
-	s := opWaitState(map[string]any{"status": hostileName})
+	s := opState(map[string]any{"status": hostileName})
 	if strings.ContainsAny(s, "\n\r") || s != quoteCloud(hostileName) {
 		t.Errorf("the state of the operation is not quoted on one line: %q", s)
 	}
-	if s := opWaitState(map[string]any{"done": false}); s != "done=false" {
+	if s := opState(map[string]any{"done": false}); s != "done=false" {
 		t.Errorf("evo's own word is quoted: %q", s)
 	}
 }

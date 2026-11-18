@@ -126,7 +126,7 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 		if opTerminal(m) {
 			return m, nil
 		}
-		wait.State(opWaitState(m))
+		wait.State(opState(m))
 		if !time.Now().Before(deadline) {
 			return stillRunning(m, waitSeconds), nil
 		}
@@ -165,30 +165,19 @@ func sleepShowing(ctx context.Context, d time.Duration, wait *engine.WaitLine) e
 }
 
 // opState is the state an operation reports (status, state or phase), as
-// the wait line shows it.
+// the wait line shows it: a state of the cloud quoted on one line — a line
+// of progress has no marker — and evo's own done=… as it is (A19-12,
+// #2432).
 func opState(m map[string]any) string {
 	for _, k := range []string{"status", "state", "phase"} {
 		if v, ok := m[k].(string); ok && v != "" {
-			return v
+			return quoteCloud(v)
 		}
 	}
 	if b, ok := m["done"].(bool); ok {
 		return fmt.Sprintf("done=%t", b)
 	}
 	return ""
-}
-
-// opWaitState is the state of operation m as a line of the wait names it:
-// a state of the cloud quoted on one line — a line of progress has no
-// marker — and evo's own done=… as it is (A19-12, #2432).
-func opWaitState(m map[string]any) string {
-	s := opState(m)
-	for _, k := range []string{"status", "state", "phase"} {
-		if v, _ := m[k].(string); v != "" {
-			return quoteCloud(s)
-		}
-	}
-	return s
 }
 
 // stillRunning marks an operation the wait gave up on: done=false alone
