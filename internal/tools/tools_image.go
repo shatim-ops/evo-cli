@@ -180,7 +180,7 @@ func (s *Registry) planImageCreate(ctx context.Context, args map[string]any) (*P
 		}
 		// The template is the call's, a secret it may carry: the image the
 		// service answers goes out without it, as image_get shows it
-		// (secretTexts).
+		// (secretsent).
 		delete(img, "user_data_template")
 		return toJSON(map[string]any{
 			"status": "building",

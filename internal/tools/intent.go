@@ -1121,41 +1121,74 @@ func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engi
 	return r.checkByList(ctx, in, eng.Config.ProjectID)
 }
 
-// checkByID checks a cut delete of the resource id by reading it by id:
-// the list of the call's project does not tell a deleted resource from
-// one of another project, which a key of the organization deletes as
-// well (R-82; «Риск», conclusion 114). Only «not there», answered to the
-// key that sent the delete, closes the record: another key may not see
-// the resource, and a read that failed says nothing. A kind with no read
-// by id is never closed here — the same delete on it settles the record.
-// found is "" when doctor has nothing to add to the record's words.
+// checkByID checks a cut delete of the resource id by reading it by id
+// (readByID). found is "" when doctor has nothing to add to the record's
+// words.
 func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind, id string, cur *state.Maker) (found string, settled bool, gone string) {
 	what, tool := quoteCloud(id), quoteCloud(in.Tool)
-	if k.card == nil {
+	m, isGone, skip, err := r.readByID(ctx, k, id, in.Key, cur)
+	switch {
+	case skip == readNoCard || skip == readOtherKey:
 		// Never closed here; the record's own words say why (pendingNote).
 		return "", false, ""
-	}
-	if in.Key.Other(cur) {
-		// The record's own words say it (pendingNote).
-		return "", false, ""
-	}
-	if in.Key == nil || cur == nil {
+	case skip == readNoKey:
 		return i18n.Tf("not checked: the record or this run names no key, and another key may not see %s — run doctor with the key that sent the delete",
 			"не проверено: запись или этот запуск не называет ключ, а другой ключ может не видеть %s — запустите doctor с ключом, который отправил удаление", what), false, ""
-	}
-	m, err := k.card(ctx, &ownerCall{r: r, args: map[string]any{}}, id)
-	switch {
 	case err == nil:
 		status := firstNonEmptyStr(stringArg(m, "status"), stringArg(m, "state"))
 		return i18n.Tf("%s %s is still there (status %s): the delete did not take effect, or is still going — run doctor again, or the same %s",
 			"%s %s ещё есть (статус %s): удаление не прошло или ещё идёт — повторите doctor или тот же %s", k.what, what, quoteCloud(status), tool), false, ""
-	case notThere(err):
+	case isGone:
 		return i18n.Tf("the read of %s %s by id, with the key that sent the delete, answers that it is not there: the delete took effect; the record is closed",
 			"чтение ресурса «%s» %s по id ключом, который отправил удаление, отвечает, что его нет: удаление прошло; запись закрыта", k.what, what), true, ""
 	}
 	reason, _, _ := errReason(err, nil)
 	return i18n.Tf("could not read %s %s by id (%s): not checked — run doctor again",
 		"не удалось прочитать ресурс «%s» %s по id (%s): не проверено — повторите doctor", k.what, what, reason), false, ""
+}
+
+// readSkip is why a read by id was not sent.
+type readSkip int
+
+const (
+	readSent readSkip = iota
+	// readNoCard: the kind has no read by id.
+	readNoCard
+	// readOtherKey: this run's key is surely not the one that sent the
+	// call.
+	readOtherKey
+	// readNoKey: the call or this run names no key.
+	readNoKey
+)
+
+// readByID is the one rule by which a read tells that a resource evo
+// wrote of is gone: doctor closes a cut delete with it (checkByID), and
+// history a live line of the journal (У7). The resource id of kind k is
+// read by id, whatever its project: the list of a project does not tell a
+// resource gone from one of another project (R-82; «Риск», conclusion 114).
+// Only «not there», answered to the key that sent the call (key), is gone:
+// another key may not see the resource, and a read that failed says
+// nothing. m and err are the read's when it was sent.
+func (r *Registry) readByID(ctx context.Context, k *ownerKind, id string, key, cur *state.Maker) (m map[string]any, gone bool, skip readSkip, err error) {
+	if skip := readSkipOf(k, key, cur); skip != readSent {
+		return nil, false, skip, nil
+	}
+	m, err = k.card(ctx, &ownerCall{r: r, args: map[string]any{}}, id)
+	return m, err != nil && notThere(err), readSent, err
+}
+
+// readSkipOf is why readByID would send no read of kind k for a call sent
+// with key, in a run with the key cur; readSent when it would.
+func readSkipOf(k *ownerKind, key, cur *state.Maker) readSkip {
+	switch {
+	case k == nil || k.card == nil:
+		return readNoCard
+	case key.Other(cur):
+		return readOtherKey
+	case key == nil || cur == nil:
+		return readNoKey
+	}
+	return readSent
 }
 
 // checkByList reads the list of what in names (Decl.Created: list, field),
