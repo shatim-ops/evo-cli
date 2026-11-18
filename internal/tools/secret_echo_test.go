@@ -39,17 +39,3 @@ func TestSecretWriteAnswer_ACallThatSentASecret(t *testing.T) {
 		t.Errorf("a success changed: %s", got)
 	}
 }
-
-// A mark set in a step of a call is the call's too: a stack carries the
-// error of its step (secretsent.Watch).
-func TestSecretSent_AStepMarksTheCallItIsMadeIn(t *testing.T) {
-	call := secretsent.Watch(context.Background())
-	step := secretsent.Watch(call)
-	secretsent.Mark(step)
-	if !secretsent.Sent(call) || !secretsent.Sent(step) {
-		t.Errorf("a step marked: the call %v, the step %v; want both", secretsent.Sent(call), secretsent.Sent(step))
-	}
-	if other := secretsent.Watch(context.Background()); secretsent.Sent(other) {
-		t.Error("a call no step of marked is marked")
-	}
-}

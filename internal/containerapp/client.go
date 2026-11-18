@@ -152,13 +152,12 @@ type CreateContainerReq struct {
 	Template      Template       `json:"template"`
 }
 
-// carriesEnv reports whether req sends a value of an env variable.
+// carriesEnv reports whether req sends an env variable: its value, or its
+// name alone, may be a secret («Риск», conclusion 382).
 func (req CreateContainerReq) carriesEnv() bool {
 	for _, c := range req.Template.Containers {
-		for _, e := range c.Env {
-			if e.Value != "" {
-				return true
-			}
+		if len(c.Env) > 0 {
+			return true
 		}
 	}
 	return false
