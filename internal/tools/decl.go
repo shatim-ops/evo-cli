@@ -252,7 +252,7 @@ var decls = map[string]Decl{
 	// preview and in the answer: anyone with access to the project writes
 	// them.
 	"sg_rule_create": {Group: "vpc", Created: created{id: "rule_id", delete: "sg_rule_delete"}, Nameless: "a rule has no name: it is known by its fields, and the same rule there answers already_exists", IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "remote_group", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "rule", "preview"}}},
-	"sg_rule_delete": {Group: "vpc", Delete: deleteTarget{arg: "rule_id", parent: "security_group", what: "security group rule", whRU: "правило группы безопасности"}, IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "resource_status", "rule", "still_allowed_by", "still_allowed_from_groups", "vms"}}},
+	"sg_rule_delete": {Group: "vpc", Delete: deleteTarget{arg: "rule_id", parent: "security_group", what: "security group rule", whRU: "правило группы безопасности"}, IDArgs: []idArg{{name: "security_group", why: whyListed}, {name: "rule_id", why: whyInParent}}, Untrusted: untrustedAnswer{fields: []string{"security_group", "resource_status", "rule", "still_allowed_by", "still_allowed_from_groups", "vms", "target"}}},
 	// The clusters of a list by their names: anyone with access to the
 	// project names a cluster (release plan 1.9, «Просроченные убывающие
 	// списки»).
@@ -324,7 +324,7 @@ var decls = map[string]Decl{
 	"backup_delete": {Delete: deleteTarget{arg: "backup_id", what: "backup", whRU: "резервная копия",
 		// Probe Г-16: docs/internal/briefs/backups.md.
 		creatingUnseen: "no run has deleted a backup still being created: the third run of probe Г-16",
-		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"will_delete", "target", "resource_status"}}},
+		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"will_delete", "target", "resource_status", "details"}}},
 	// The names of the backup, its disk and the new disk, in the preview
 	// and the answer.
 	"backup_restore": {Created: created{id: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "will_create", "disk", "name"}}},
@@ -359,7 +359,7 @@ var decls = map[string]Decl{
 	"whoami":              {Group: "auth", Untrusted: untrustedAnswer{fields: []string{"roles"}}},
 	"doctor":              {Group: "auth"},
 	"history":             {Group: "auth", AlwaysListed: "what evo changed is the inventory of every group: the cleanup of any group reads it, whichever groups the server serves", IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}, Untrusted: untrustedAnswer{fields: []string{"lines", "live", "would_close"}, workload: true}},
-	"release_floating_ip": {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status"}}},
+	"release_floating_ip": {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "message"}}},
 	"snat_list":           {Project: true, Untrusted: untrustedAnswer{fields: []string{"nat_gateways"}}},
 	"snat_create":         {Project: true, Created: created{id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "availability_zone_id", why: whyCatalogue}}},
 	"snat_delete":         {Delete: deleteTarget{arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"}, IDArgs: []idArg{{name: "id", kind: kindNAT, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},

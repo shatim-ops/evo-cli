@@ -133,7 +133,6 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/tools_kafka.go|Registry.planKafkaCreate":      1,
 	"internal/tools/tools_pg.go|Registry.planPgCreate":            1,
 	"internal/tools/tools_redis.go|Registry.planRedisCreate":      1,
-	"internal/tools/tools_sg.go|Registry.planSGRuleDelete":        2,
 	"internal/tools/tools_sg_create.go|Registry.planSGRuleCreate": 2,
 	"internal/tools/tools_stack.go|Registry.advance":              5,
 	"internal/tools/tools_stack.go|Registry.stepRead":             1,

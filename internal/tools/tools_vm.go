@@ -580,7 +580,9 @@ func platformCode(err error) string {
 	var body []struct {
 		Code string `json:"code"`
 	}
-	if json.Unmarshal([]byte(se.Body), &body) != nil || len(body) == 0 {
+	// A code only in the form of one (operationToken): any other text of
+	// the body is the cloud's words, not a code (audit of rc.1, A19-32).
+	if json.Unmarshal([]byte(se.Body), &body) != nil || len(body) == 0 || !operationToken.MatchString(body[0].Code) {
 		return ""
 	}
 	return body[0].Code

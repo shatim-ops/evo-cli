@@ -6,6 +6,7 @@ package tools
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -94,7 +95,8 @@ func TestSGRules_EveryStateOfTheTableHasAWorld(t *testing.T) {
 				// A rule going away is named apart from a failed one: the
 				// row of deleting is not kept green by failed_rules.
 				going, _ := json.Marshal(preview["deleting_rules"])
-				says := strings.Contains(warning, "in "+state+":")
+				// The state is the cloud's: quoted in the text of evo (A19-30).
+				says := strings.Contains(warning, "in "+state+":") || strings.Contains(warning, "in "+strconv.Quote(state)+":")
 				if state == "deleting" {
 					says = says || strings.Contains(string(going), sgRuleWeb)
 				} else {

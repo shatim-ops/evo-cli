@@ -109,7 +109,7 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 		if other != nil {
 			return nil, clierrors.New(clierrors.CodeUsage,
 				i18n.Tf("rule %s is a rule of security group %s (%s), not of %s", "правило %s принадлежит группе безопасности %s (%s), а не %s",
-					ruleID, quoteCloud(other.Name), other.ID, quoteCloud(group.Name)),
+					ruleID, quoteCloud(other.Name), quoteCloud(other.ID), quoteCloud(group.Name)),
 				i18n.T("Name the group the rule is in, or check the rule id (list_security_groups with rules=true).",
 					"Назовите группу, в которой правило, или проверьте id правила (list_security_groups с rules=true)."))
 		}
@@ -122,7 +122,9 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 	if cutsSSH && !boolArg(args, allowCutSSHArg, false) {
 		return nil, cutSSHRefusal(ruleID, group)
 	}
-	words := fmt.Sprintf("%s %s %s %s", rule.Direction, rule.IPProtocol, rule.PortRange, sgRuleSource(rule))
+	// The fields of the rule are the cloud's: one quoted phrase in the
+	// text of the consent (audit of rc.1, A19-30).
+	words := quoteCloud(fmt.Sprintf("%s %s %s %s", rule.Direction, rule.IPProtocol, rule.PortRange, sgRuleSource(rule)))
 	p := s.deletePlan("sg_rule_delete",
 		fmt.Sprintf("sg_rule_delete deletes rule %%s (%s) of security group %s.", words, quoteCloud(group.Name)),
 		fmt.Sprintf("sg_rule_delete удаляет правило %%s (%s) группы безопасности %s.", words, quoteCloud(group.Name)),
@@ -141,7 +143,7 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 		// deletes a rule in this state is not verified — said, as for the
 		// other error states (the brief, §4: «the outcome is unknown»).
 		p.Preview["warning"] = i18n.Tf("it is in %s: whether Cloud.ru deletes a rule in this state is not verified; list_security_groups with rules=true shows whether it is gone",
-			"оно в состоянии %s: удалит ли Cloud.ru правило в этом состоянии — не проверено; есть ли оно ещё, показывает list_security_groups с rules=true", rule.State)
+			"оно в состоянии %s: удалит ли Cloud.ru правило в этом состоянии — не проверено; есть ли оно ещё, показывает list_security_groups с rules=true", quoteCloud(rule.State))
 	}
 	p.Preview["rule"] = sgRuleFields(rule)
 	p.Preview["security_group"] = map[string]any{"id": group.ID, "name": group.Name, "default": group.Default}
@@ -150,8 +152,8 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 		p.Preview["cuts_ssh"] = true
 	}
 	if rule.Direction == "ingress" {
-		p.Preview["cuts_access"] = i18n.Tf("after the delete %s %s from %s no longer gets to the VMs of the group, unless another rule lets it in",
-			"после удаления %s %s с %s к ВМ группы не пройдёт, если это не разрешает другое правило", rule.IPProtocol, rule.PortRange, sgRuleSource(rule))
+		p.Preview["cuts_access"] = i18n.Tf("after the delete %s from %s no longer gets to the VMs of the group, unless another rule lets it in",
+			"после удаления %s с %s к ВМ группы не пройдёт, если это не разрешает другое правило", quoteCloud(rule.IPProtocol+" "+rule.PortRange), quoteCloud(sgRuleSource(rule)))
 		still, fromGroups := sgStillAllowed(rules, rule)
 		if len(still) > 0 {
 			p.Preview["still_allowed_by"] = still
