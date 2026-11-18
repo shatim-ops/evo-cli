@@ -12,6 +12,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -165,6 +166,25 @@ func (r *Registry) rememberMade(rec intent.Intent, answer string) {
 	_ = config.WriteFileAtomic(filepath.Join(dir, madeKey(rec.Tool, rec.Canon, rec.Name, rec.Target)), b, 0o600)
 }
 
+// madeStepReads tells that step, a read, is one the repeat of create runs
+// from a file of made/: a closed list per create — its declared list, its
+// declared read by id (created.read), or an operation of its group — and
+// none that holds a secret or does something besides (Sensitive,
+// SideEffects: k8s_kubeconfig mints a token). A file of the key of the
+// call still names any tool: another is named, not run, and its answer
+// does not stand for the repeat's (A19-42, #2470; «Риск», 393).
+func (r *Registry) madeStepReads(create string, step Tool) bool {
+	c, ok := createdOf(create)
+	if !ok || step.Decl.Sensitive || step.Decl.SideEffects != "" {
+		return false
+	}
+	if step.Name == c.list || step.Name == c.read {
+		return true
+	}
+	ct, ok := r.Lookup(create)
+	return ok && step.Group == ct.Group && slices.ContainsFunc(step.Decl.IDArgs, func(a idArg) bool { return a.kind == kindOperation })
+}
+
 // madeByKey tells that the key cur wrote the file of made/ whose key is m:
 // a field both name — the account, else the Key ID — is the same. A file
 // whose key names nothing cur knows too — empty, or another account the
@@ -239,12 +259,17 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	// with no consent, for the caller to take (A19-1, #2418).
 	step := withoutConsent(mc.NextArgs)
 	t, found := r.Lookup(mc.Next)
-	reads := found && t.Handler != nil && !t.Mutating && !NeedsConsent(t, step)
-	if found && !reads {
+	writes := found && (t.Mutating || NeedsConsent(t, step))
+	reads := found && t.Handler != nil && !writes && r.madeStepReads(name, t)
+	switch {
+	case writes:
 		// No consent is told here: the step asks for it with its own
 		// preview («Риск», conclusion 379).
 		out["message"] = said + " " + i18n.Tf("Its next step, %s, needs its own consent: it was not run.",
 			"Его следующему шагу, %s, нужно своё согласие: он не выполнен.", mc.Next)
+	case found && !reads:
+		out["message"] = said + " " + i18n.Tf("Its next step, %s, does not read this resource: it was not run.",
+			"Его следующий шаг, %s, не читает этот ресурс: он не выполнен.", mc.Next)
 	}
 	if reads {
 		read, readErr := t.Handler(ctx, maps.Clone(step))

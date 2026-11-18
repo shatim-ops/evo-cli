@@ -27,10 +27,15 @@ func TestUntrusted_ToolsOfTheDirectoryMarkCloudValues(t *testing.T) {
 		// quotes, on one line (quoteCloud).
 		quoted []string
 	}{
-		// vm_flavor is the flavor evo picked from the catalogue, region the
+		// id is the record's, named by the VM's id the cloud gave (deploy,
+		// deploy_apply, provision; #2500); vm_flavor is the flavor evo
+		// picked from the catalogue, region the
 		// zone's UUID a read gave, ssh_user the login of the image's
 		// metadata («Риск», 391).
-		{name: "status", tool: "status", record: true, fields: []string{"vm_ip", "vm_name", "zone_name", "cloud_state", "vm_flavor", "region", "ssh_user"}},
+		{name: "status", tool: "status", record: true, fields: []string{"id", "vm_ip", "vm_name", "zone_name", "cloud_state", "vm_flavor", "region", "ssh_user"}},
+		// The record of a deployment is named by its VM's id, the one the
+		// cloud gave (#2500): list shows the records as they are.
+		{name: "list", tool: "list", record: true, fields: []string{"deployments"}},
 		{name: "deploy, a new VM", tool: "deploy", fields: []string{"vm", "security_group", "subnet_id"}},
 		{name: "deploy, an update", tool: "deploy", record: true, fields: []string{"vm_ip", "vm_name", "upload"}, quoted: []string{`"evo-web"`}},
 		{name: "deploy_apply", tool: "deploy_apply", args: map[string]any{"confirmed": true}, fields: []string{"public_ip", "floating_ip_id", "ssh", "note"}},
@@ -79,5 +84,26 @@ func TestUntrusted_ToolsOfTheDirectoryMarkCloudValues(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A VM deploy_apply made is the record status reads: its id is the VM's id
+// the cloud gave, and status marks it (Астра, #2500).
+func TestUntrusted_StatusAfterApplyMarksTheRecordsID(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	srv := parityServers(t)
+	args, undo := paritySetup["deploy_apply"](t, w)
+	t.Cleanup(undo)
+	args["confirmed"] = true
+	applied := stdioDetails(t, srv.stdio, "deploy_apply", args)
+	if applied["status"] != "running" {
+		t.Fatalf("apply: %v", applied)
+	}
+	m := stdioDetails(t, srv.stdio, "status", map[string]any{"refresh": false})
+	if m["id"] != applied["vm_id"] {
+		t.Fatalf("the record's id %v is not the VM's id %v", m["id"], applied["vm_id"])
+	}
+	if marked, _ := m["_untrusted"].([]any); !slices.Contains(marked, any("id")) {
+		t.Errorf("the VM's id as the record's id is outside _untrusted %v", marked)
 	}
 }

@@ -337,9 +337,7 @@ func TestUntrustedNames_Marked(t *testing.T) {
 // cloud's status unmarked, found once the calls of requiredCalls reached
 // the cloud (#2434); each is a line to the owner of the tool. Only
 // shrinks. Closes by 1.9, before the tag (#2434).
-var copiedStatusPending = map[string]string{
-	"backup_restore: state": "the refusal for a backup not yet created carries its state as the cloud gave it, not in _untrusted (#2434)",
-}
+var copiedStatusPending = map[string]string{}
 
 // A field evo copies from the cloud's read to the top of a marked answer —
 // resource_status of a delete of a resource being created or deleted
