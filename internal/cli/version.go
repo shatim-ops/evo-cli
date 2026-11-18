@@ -96,7 +96,7 @@ func newCrewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "crew",
 		Hidden: true,
-		Args:   cobra.NoArgs,
+		Args:   noArgs,
 		Short:  i18n.T("Who made evo", "Кто сделал evo"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flagJSON {
