@@ -753,7 +753,7 @@ func TestLbCreate_VPCOfAnotherTargetGroupRefused(t *testing.T) {
 		t.Fatalf("vpc_id of another VPC accepted: %s", text)
 	}
 	wantReason(t, "vpc_id of another VPC", m, text, "CONFIG_INVALID")
-	if !strings.Contains(text, "target group tg-1 is in VPC vpc-1") {
+	if !strings.Contains(text, `target group tg-1 is in VPC \"vpc-1\"`) {
 		t.Errorf("refusal does not name the target group's VPC: %s", text)
 	}
 	if f.postCount() != 0 {

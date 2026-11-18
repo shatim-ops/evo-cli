@@ -9,6 +9,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -661,7 +662,7 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) (err error) {
 	}
 	if lastSeen != "" {
 		e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet (state %s); waiting up to %s...",
-			"ВМ %s пока нельзя удалить (состояние %s); ждём до %s...", vmID, lastSeen, t.DeletableWaitTimeout))
+			"ВМ %s пока нельзя удалить (состояние %s); ждём до %s...", vmID, strconv.Quote(lastSeen), t.DeletableWaitTimeout))
 	} else {
 		e.Printer.StepDone(i18n.Tf("VM %s cannot be deleted yet; waiting up to %s...",
 			"ВМ %s пока нельзя удалить; ждём до %s...", vmID, t.DeletableWaitTimeout))
@@ -686,7 +687,8 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) (err error) {
 			lastReport = time.Now()
 			status := i18n.T("unknown (the status request failed)", "неизвестно (запрос состояния не удался)")
 			if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
-				status, lastSeen = vm.Status, vm.Status
+				// The cloud's status in quotes; the words above are evo's.
+				status, lastSeen = strconv.Quote(vm.Status), vm.Status
 			}
 			e.Printer.StepDone(i18n.Tf("still waiting: VM is %s (%s elapsed)", "всё ещё ждём: состояние ВМ — %s (прошло %s)",
 				status, clock.Since(shown).Round(time.Second)))
