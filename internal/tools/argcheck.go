@@ -52,16 +52,15 @@ func CheckArgs(t Tool, args map[string]any) error {
 
 func checkArgs(name string, schema map[string]any, args map[string]any) error {
 	props, _ := schema["properties"].(map[string]any)
-	var unknown []string
+	unknown := 0
 	for k := range args {
 		// confirmed on a read-only tool is harmless: agents send it
 		// after an approval they got for another call.
 		if _, ok := props[k]; !ok && k != "confirmed" {
-			unknown = append(unknown, k)
+			unknown++
 		}
 	}
-	if len(unknown) > 0 {
-		sort.Strings(unknown)
+	if unknown > 0 {
 		known := make([]string, 0, len(props))
 		for k := range props {
 			known = append(known, k)
@@ -71,8 +70,11 @@ func checkArgs(name string, schema map[string]any, args map[string]any) error {
 		if len(known) > 0 {
 			hint = i18n.Tf("%s takes: %s.", "Аргументы %s: %s.", name, strings.Join(known, ", "))
 		}
+		// Counted, not named: a name the caller sent may be a value in the
+		// wrong place, a secret included (Астра, #2386). The hint names
+		// the arguments the tool takes.
 		return clierrors.New(clierrors.CodeUsage,
-			i18n.Tf("unknown argument(s) %s", "неизвестные аргументы: %s", strings.Join(unknown, ", ")),
+			i18n.Tf("%d unknown argument(s)", "неизвестных аргументов: %d", unknown),
 			hint)
 	}
 	for k, v := range args {
@@ -130,8 +132,10 @@ func enumValue(k string, p map[string]any, s string) (string, error) {
 			return es, nil
 		}
 	}
+	// The value is not repeated: a secret given in the wrong place would
+	// reach the output before consent (#2437).
 	return "", clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("%s %q is not one of %s", "%s %q не входит в список: %s", k, s, strings.Join(allowed, ", ")),
+		i18n.Tf("%s: the value is not one of %s", "%s: значение не входит в список: %s", k, strings.Join(allowed, ", ")),
 		i18n.Tf("Pass %s as one of: %s.", "Допустимые значения %s: %s.", k, strings.Join(allowed, ", ")))
 }
 
@@ -234,14 +238,15 @@ func ruleArg(k string, p map[string]any, v any) error {
 	if strings.TrimSpace(s) == "" {
 		return nil
 	}
+	// The refusals name the argument and the rule, not the value (#2437).
 	switch p["format"] {
 	case "uuid":
 		if !isUUID(s) {
-			return ruleErr(k, p, i18n.Tf("%s %q is not an id: it is a UUID", "%s %q — не id: он задаётся UUID", k, s))
+			return ruleErr(k, p, i18n.Tf("%s: the value is not an id: it is a UUID", "%s: значение — не id: он задаётся UUID", k))
 		}
 	case "cidr":
 		if _, err := netip.ParsePrefix(s); err != nil {
-			return ruleErr(k, p, i18n.Tf("%s %q is not a CIDR (address/prefix length, e.g. 10.0.0.0/16)", "%s %q — не CIDR (адрес/длина префикса, например 10.0.0.0/16)", k, s))
+			return ruleErr(k, p, i18n.Tf("%s: the value is not a CIDR (address/prefix length, e.g. 10.0.0.0/16)", "%s: значение — не CIDR (адрес/длина префикса, например 10.0.0.0/16)", k))
 		}
 	}
 	return nil

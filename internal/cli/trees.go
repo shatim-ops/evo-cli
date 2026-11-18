@@ -714,12 +714,14 @@ func treeArgs(cmd *cobra.Command, c treeCmd, t tools.Tool, pos []positional, fla
 func pairsArg(ctx context.Context, stdin io.Reader, prompt io.Writer, flag string, vals []string) (map[string]any, error) {
 	out := make(map[string]any, len(vals))
 	fromStdin := ""
-	for _, v := range vals {
+	for i, v := range vals {
 		k, val, ok := strings.Cut(v, "=")
 		k = strings.TrimSpace(k)
 		if !ok || k == "" {
+			// The pair is named by its number: a typo in the separator
+			// (admin_password:<secret>) puts the secret where it goes (#2420).
 			return nil, clerrors.New(clerrors.CodeUsage,
-				i18n.Tf("--%s %q: want key=value", "--%s %q: нужно поле=значение", flag, v),
+				i18n.Tf("--%s number %d: want key=value", "--%s номер %d: нужно поле=значение", flag, i+1),
 				i18n.Tf("Example: --%[1]s hostname=web-01; a password from a file or stdin: --%[1]s admin_password=@./admin.pass or --%[1]s admin_password=-; the fields of an image: evo image get <image>.",
 					"Пример: --%[1]s hostname=web-01; пароль — из файла или stdin: --%[1]s admin_password=@./admin.pass или --%[1]s admin_password=-; поля образа — evo image get <образ>.", flag))
 		}

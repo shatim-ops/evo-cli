@@ -251,9 +251,9 @@ func TestQA7_BoundsBeforePreview(t *testing.T) {
 		{"provision", map[string]any{"name": "web", "disk_size": float64(-5)}, "disk_size"},
 		{"deploy", map[string]any{"disk_size": float64(-5)}, "disk_size"},
 		// QA-15
-		{"ar_create", map[string]any{"name": "reg", "registry_type": "MAVEN"}, "MAVEN"},
-		{"ar_create", map[string]any{"name": "reg", "tariff": "GOLD"}, "GOLD"},
-		{"k8s_kubeconfig", map[string]any{"cluster_id": qaID1, "network": "internet"}, "internet"},
+		{"ar_create", map[string]any{"name": "reg", "registry_type": "MAVEN"}, "registry_type"},
+		{"ar_create", map[string]any{"name": "reg", "tariff": "GOLD"}, "tariff"},
+		{"k8s_kubeconfig", map[string]any{"cluster_id": qaID1, "network": "internet"}, "network"},
 		{"vpc_create", map[string]any{"name": " net"}, "space"},
 		{"vpc_create", map[string]any{"name": "net\x01"}, "control"},
 		{"vpc_create", map[string]any{"name": strings.Repeat("n", 256)}, "255"},

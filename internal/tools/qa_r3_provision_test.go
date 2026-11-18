@@ -77,7 +77,7 @@ func TestProvision_NoUndeclaredDryRun(t *testing.T) {
 	// An undeclared argument is refused before the cloud (release QA,
 	// D-mcp 4), not silently taken or ignored.
 	text, isErr := r.handlers["provision"](context.Background(), map[string]any{"name": "web", "confirmed": true, "dry_run": true})
-	if !isErr || !strings.Contains(text, "USAGE") || !strings.Contains(text, "dry_run") || cloud.creates != 0 {
+	if !isErr || !strings.Contains(text, "USAGE") || !strings.Contains(text, "1 unknown argument(s)") || cloud.creates != 0 {
 		t.Fatalf("creates = %d, answer %s: an undeclared argument must be refused", cloud.creates, text)
 	}
 }
