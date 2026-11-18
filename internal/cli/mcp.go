@@ -484,8 +484,10 @@ func httpAuthToken(addr, mode, envToken string) (string, error) {
 		// reaches it, and the warning says it.
 		if len(envToken) < minBearerTokenLen && !mcp.LoopbackHost(host) {
 			return "", clerrors.New(clerrors.CodeConfigInvalid,
-				i18n.Tf("%s is shorter than %d characters: the HTTP server on %s does not start with it",
-					"%s короче %d символов: HTTP-сервер на %s с ним не запускается", envBearerToken, minBearerTokenLen, addr),
+				// The address is not repeated: its host is any text typed
+				// (Астра, #2370).
+				i18n.Tf("%s is shorter than %d characters: the HTTP server on a non-loopback address does not start with it",
+					"%s короче %d символов: HTTP-сервер на адресе не loopback с ним не запускается", envBearerToken, minBearerTokenLen),
 				i18n.Tf("Set %s to a long random string (e.g. openssl rand -hex 32), or listen on a loopback address (--http 127.0.0.1:8080)",
 					"Задайте в %s длинную случайную строку (например, openssl rand -hex 32) или слушайте адрес loopback (--http 127.0.0.1:8080)", envBearerToken))
 		}
@@ -493,8 +495,10 @@ func httpAuthToken(addr, mode, envToken string) (string, error) {
 	case authNone:
 		if !mcp.LoopbackHost(host) { // an empty host (":8080") is every interface
 			return "", clerrors.New(clerrors.CodeUsage,
-				i18n.Tf("--auth none is only allowed on a loopback address, not %q",
-					"--auth none допускается только на адресе loopback, а не на %q", addr),
+				// The address is not repeated: its host is any text typed
+				// (Астра, #2370).
+				i18n.T("--auth none is only allowed on a loopback address",
+					"--auth none допускается только на адресе loopback"),
 				i18n.T("Use --http 127.0.0.1:PORT for a local server, or --auth bearer with ",
 					"Для локального сервера — --http 127.0.0.1:ПОРТ, иначе --auth bearer с ")+envBearerToken)
 		}
