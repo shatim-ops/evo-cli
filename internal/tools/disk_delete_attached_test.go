@@ -58,9 +58,9 @@ func TestDiskDelete_AttachedRefusedBeforeTheQuestion(t *testing.T) {
 			if first["id"] != liveID || first["name"] != "web" || first["primary"] == nil {
 				t.Errorf("%s: attached_vms %v", c.label, m["attached_vms"])
 			}
-			// The VMs are the cloud's; the error and its hint are marked as
-			// every answer's are (alwaysUntrusted, #2254).
-			if u, _ := m["_untrusted"].([]any); len(u) != 3 || !slices.Contains(u, any("attached_vms")) || !slices.Contains(u, any("error")) || !slices.Contains(u, any("hint")) {
+			// The VMs are the cloud's; the error, its hint and disk_id are
+			// marked as every answer's are (alwaysUntrusted, #2254, #2499).
+			if u, _ := m["_untrusted"].([]any); len(u) != 4 || !slices.Contains(u, any("attached_vms")) || !slices.Contains(u, any("error")) || !slices.Contains(u, any("hint")) || !slices.Contains(u, any("disk_id")) {
 				t.Errorf("%s: _untrusted %v", c.label, m["_untrusted"])
 			}
 			for _, w := range c.want {
