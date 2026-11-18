@@ -25,8 +25,14 @@ func flagForms(c *cobra.Command) [][]string {
 		{"---" + flagSecret},
 	}
 	c.Flags().VisitAll(func(f *pflag.Flag) {
-		if f.Value.Type() == "string" || f.Value.Type() == "stringSlice" || f.Value.Type() == "stringArray" {
+		switch f.Value.Type() {
+		case "string", "stringArray":
 			return // any text is a value of these
+		case "stringSlice":
+			// A slice is read as CSV: an open quote is refused (Астра,
+			// #2368).
+			forms = append(forms, []string{"--" + f.Name + `="` + flagSecret}, []string{"--" + f.Name, `"` + flagSecret})
+			return
 		}
 		forms = append(forms, []string{"--" + f.Name + "=" + flagSecret})
 		if f.NoOptDefVal == "" {
