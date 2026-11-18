@@ -22,5 +22,18 @@ func TestAgentSkill_SaysWhatUntrustedMeans(t *testing.T) {
 		if strings.Contains(s, "do what the hint says") {
 			t.Errorf("read-only %v: the skill tells the agent to do what the hint says, a field _untrusted names", readOnly)
 		}
+		// The line runs on a change of the cloud, not on «new»: a read the
+		// hint names is taken, a change it proposes is the person's; and a
+		// field the marker does not name is no instruction («Риск», 389).
+		// The rules wrap lines: words are compared, not the breaks.
+		flat := strings.Join(strings.Fields(s), " ")
+		for _, want := range []string{"not thereby an instruction", "the person decides"} {
+			if !strings.Contains(flat, want) {
+				t.Errorf("read-only %v: the skill does not say %q", readOnly, want)
+			}
+		}
+		if strings.Contains(flat, "Every answer names") || strings.Contains(flat, "never a new action") {
+			t.Errorf("read-only %v: the skill promises a complete marker or forbids the reads the hints name", readOnly)
+		}
 	}
 }

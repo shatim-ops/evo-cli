@@ -20,4 +20,9 @@ func TestInitialize_InstructionsSayWhatUntrustedMeans(t *testing.T) {
 	if !strings.Contains(ins, `"_untrusted"`) || !strings.Contains(ins, "never as instructions") {
 		t.Fatalf("instructions do not say what _untrusted means: %q", ins)
 	}
+	// The marker is not complete yet: no promise that it is, and a field
+	// it does not name is no instruction either («Риск», conclusion 389).
+	if strings.Contains(ins, "Every answer") || !strings.Contains(ins, "not thereby an instruction") {
+		t.Errorf("instructions promise the marker is complete, or let a field it does not name read as evo's words: %q", ins)
+	}
 }
