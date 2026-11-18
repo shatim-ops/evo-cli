@@ -7,9 +7,9 @@
 | Код | Значение | Типичные причины (внутренний код ошибки) |
 |---|---|---|
 | `0` | успех; также `--dry-run` | |
-| `1` | прочая ошибка, в том числе неизвестная команда или флаг | `USAGE`, `SSH_TIMEOUT`, `UPLOAD_FAILED` и `COMPOSE_FAILED` (`deploy`: загрузка compose-файла или `docker compose up` на ВМ не удались, с 1.8, D87), `SSH_AUTH_FAILED`, `SSH_HOST_KEY_CHANGED` (ключ хоста ВМ не совпал с записанным в known_hosts проекта), `VM_PROVISION_FAILED`, `COMPOSE_INVALID`, `COMPOSE_NOT_FOUND`, `API_UNREACHABLE`, `STATE_CORRUPTED` (битый или более новый state), `STATE_LOCKED` (в каталоге уже идёт `deploy`/`destroy`); `verify`: сервис не отвечает (`UNHEALTHY`); `logs`, `verify`: `deploy` ещё не закончил развёртывание (`DEPLOY_IN_PROGRESS`, с 1.7, D76); `SERVER_BUSY` — только в ответах `evo mcp --http`: у сервера уже идёт 32 вызова инструментов; `evo login`: время ожидания истекло, вход не завершён в браузере (`LOGIN_TIMEOUT`, с 1.8); на этом компьютере уже ждёт другой `evo login` (`STATE_LOCKED`) |
-| `2` | ошибка аутентификации или конфигурации | `AUTH_REQUIRED` (нет ключа), `AUTH_FAILED` (IAM отверг ключ — `details.http_status` 401 или 403; у 403 подсказка добавляет: это отказ в доступе, а не неверный ключ — проверить сервисный аккаунт и его ключи, с 1.8; у `whoami` — и токен ключа, отвергнутый облаком (401) на чтении проектов или ролей, и ключ, отозванный при живом токене из кеша, с 1.8, D88; у `doctor` — ключ, который IAM отвергает, с 1.8, D94; `evo login` — и отказ IAM в праве (403) на шагах записи: аккаунт, роль, ключ), `AUTH_EXPIRED`, `CONFIG_INVALID` (нет профиля, битый YAML, не задан `MCP_BEARER_TOKEN`; `evo agent setup`: система не дала прочитать или записать файл клиента, с 1.8, D88; вызов с согласием, когда `.evo/intents/` не пишется, с 1.8, D92; `destroy` записи, сделанной ключом другого сервисного аккаунта, при 404 Cloud.ru, с 1.8, D93; файл evo — символьная ссылка, с 1.8) |
-| `3` | нужно подтверждение, а его нет | `CONFIRMATION_REQUIRED`: нет `--yes`, а спросить нельзя — stdin не терминал или у `deploy` задан `--non-interactive` (этот флаг есть только у `deploy` и `init`, общий способ — `--yes`); ответ не «y»; и с `--yes` — `deploy_apply` по плану, который устарел: изменились ключи пользователя (D90) или compose-файл (`compose_hash`), план без хеша ключей (до 1.8) — пересоздайте план; и с `--yes` — повтор `evo vm reboot`, `evo backup create`, `evo backup restore` или платного создания (`evo pg create`, `evo kafka create`, `evo redis create`, `evo k8s create`, `evo k8s add-nodepool`, `evo lb create`, `evo vpc create`, `evo tg create`, `evo ar create`, `evo cert import`, `evo pg backup-create`) после вызова, оборванного до ответа облака: исход того вызова неизвестен, новый вызов — ещё одно изменение, и на вопрос о нём отвечает только человек в терминале |
+| `1` | прочая ошибка, в том числе неизвестная команда или флаг | `USAGE`, `SSH_TIMEOUT`, `UPLOAD_FAILED` и `COMPOSE_FAILED` (`deploy`: загрузка compose-файла или `docker compose up` на ВМ не удались, с 1.8), `SSH_AUTH_FAILED`, `SSH_HOST_KEY_CHANGED` (ключ хоста ВМ не совпал с записанным в known_hosts проекта), `VM_PROVISION_FAILED`, `COMPOSE_INVALID`, `COMPOSE_NOT_FOUND`, `API_UNREACHABLE`, `STATE_CORRUPTED` (битый или более новый state), `STATE_LOCKED` (в каталоге уже идёт `deploy`/`destroy`); `verify`: сервис не отвечает (`UNHEALTHY`); `logs`, `verify`: `deploy` ещё не закончил развёртывание (`DEPLOY_IN_PROGRESS`, с 1.7); `SERVER_BUSY` — только в ответах `evo mcp --http`: у сервера уже идёт 32 вызова инструментов; `evo login`: время ожидания истекло, вход не завершён в браузере (`LOGIN_TIMEOUT`, с 1.8); на этом компьютере уже ждёт другой `evo login` (`STATE_LOCKED`) |
+| `2` | ошибка аутентификации или конфигурации | `AUTH_REQUIRED` (нет ключа), `AUTH_FAILED` (IAM отверг ключ — `details.http_status` 401 или 403; у 403 подсказка добавляет: это отказ в доступе, а не неверный ключ — проверить сервисный аккаунт и его ключи, с 1.8; у `whoami` — и токен ключа, отвергнутый облаком (401) на чтении проектов или ролей, и ключ, отозванный при живом токене из кеша, с 1.8; у `doctor` — ключ, который IAM отвергает, с 1.8; `evo login` — и отказ IAM в праве (403) на шагах записи: аккаунт, роль, ключ), `AUTH_EXPIRED`, `CONFIG_INVALID` (нет профиля, битый YAML, не задан `MCP_BEARER_TOKEN`; `evo agent setup`: система не дала прочитать или записать файл клиента, с 1.8; вызов с согласием, когда `.evo/intents/` не пишется, с 1.8; `destroy` записи, сделанной ключом другого сервисного аккаунта, при 404 Cloud.ru, с 1.8; файл evo — символьная ссылка, с 1.8) |
+| `3` | нужно подтверждение, а его нет | `CONFIRMATION_REQUIRED`: нет `--yes`, а спросить нельзя — stdin не терминал или у `deploy` задан `--non-interactive` (этот флаг есть только у `deploy` и `init`, общий способ — `--yes`); ответ не «y»; и с `--yes` — `deploy_apply` по плану, который устарел: изменились ключи пользователя или compose-файл (`compose_hash`), план без хеша ключей (до 1.8) — пересоздайте план; и с `--yes` — повтор `evo vm reboot`, `evo backup create`, `evo backup restore` или платного создания (`evo pg create`, `evo kafka create`, `evo redis create`, `evo k8s create`, `evo k8s add-nodepool`, `evo lb create`, `evo vpc create`, `evo tg create`, `evo ar create`, `evo cert import`, `evo pg backup-create`) после вызова, оборванного до ответа облака: исход того вызова неизвестен, новый вызов — ещё одно изменение, и на вопрос о нём отвечает только человек в терминале |
 | `4` | объект не найден | `VM_NOT_FOUND`, `NOT_FOUND` |
 | `5` | API Cloud.ru ответил ошибкой (HTTP 4xx/5xx, кроме аутентификации при обмене ключа) | `API_ERROR`, `API_RATE_LIMITED` |
 | `130` | прервано пользователем (Ctrl-C, SIGTERM) | |
@@ -27,7 +27,7 @@
   ошибки инструмента, см. [MCP](mcp.md#ошибки). Ошибка без своего
   кода получает причину по происхождению: `5` (`API_ERROR`) — только ответ
   API с HTTP-статусом (`404` с телом сервиса — `4`; `404` без него —
-  адрес, а не ресурс, `5`, D63), сбой операции облака или ошибка
+  адрес, а не ресурс, `5`), сбой операции облака или ошибка
   kubectl/helm от кластера; локальная ошибка (в облако ничего не ушло) —
   `1` (`USAGE`) или `4`, если объект не найден.
 - Образ по имени (`evo image get`, `evo vm create --image`, `evo deploy
@@ -70,7 +70,7 @@
 - Удаление того, чего уже нет (все команды `delete`, `evo vpc fip-release`,
   `evo s3 rm`; MCP `*_delete`, `destroy`, `release_floating_ip`, `s3_rm`), —
   `0`: `status: already_deleted`, `existed: false`, поле `note`, без вопроса
-  о согласии и на превью (DECISIONS D26). Повтор удаления безопасен; при
+  о согласии и на превью. Повтор удаления безопасен; при
   опечатке в id ответ тот же, поэтому, если важно, что ресурс был, сверьте
   id со списком. Ошибкой остаются: значение не той формы (не UUID у
   `vm_id`, `disk_id`, `image_id`, id floating IP и шлюза SNAT) — `1`
@@ -94,7 +94,7 @@
   `status: refused`). Повтор `provision` с
   занятым именем (409) — `1` (`USAGE`). `deploy`, чьё имя ВМ
   (`evo-<project_name>`) занято ВМ не из state папки, — `1` (`USAGE`, с
-  `existing_id`) до вопроса (с 1.7, D73); если такая ВМ появилась между
+  `existing_id`) до вопроса (с 1.7); если такая ВМ появилась между
   превью и созданием — `2` (`CONFIG_INVALID`, 409). Чужая ВМ не
   подхватывается, floating IP повтора освобождается.
 - Список, который API отдал не целиком, — `5` (`API_ERROR`, «список не
@@ -111,7 +111,7 @@
 - `doctor`: `2`, если сломаны конфигурация или ключ (в том числе не задан
   проект); `1`, если упали только проверки сети. Ключ, который IAM
   отвергает (отозван, а токен в кеше жив; 401 на ролях или списке
-  проектов), — `2` с `AUTH_FAILED`, как у `whoami` (D88, D94).
+  проектов), — `2` с `AUTH_FAILED`, как у `whoami`.
 - Не задан проект (`project_id`, `CLOUDRU_PROJECT_ID`): команды и инструменты,
   которым API нужен проект (`vm list`, `vpc subnets`, `k8s list`, `pg list`,
   секреты, …), — `2` (`CONFIG_INVALID`, подсказка `evo configure --project-id`

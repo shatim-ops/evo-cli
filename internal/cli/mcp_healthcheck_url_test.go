@@ -90,3 +90,52 @@ func TestMCPHealthcheck_URLSecretsNotEchoed(t *testing.T) {
 		})
 	}
 }
+
+// A server that answers with a redirect whose Location does not parse
+// puts the Location into the error of net/http whole — the query of the
+// request with it, when the server copies it there. The error of the
+// healthcheck says neither the user, the password nor the query of the
+// address, whatever Location the server gives — empty, relative, one that
+// does not parse, one of another host — on a real HTTP client (Астра,
+// #2381 reopened; «Риск», conclusions 392 and the condition of rc.2).
+func TestMCPHealthcheck_RedirectErrorHidesTheAddressSecrets(t *testing.T) {
+	const user, pw, tok = "us3rTok2381r", "s3cr3tPw2381r", "t0ken2381r"
+	for name, location := range map[string]func(r *http.Request) string{
+		"empty":    func(*http.Request) string { return "" },
+		"relative": func(r *http.Request) string { return "/elsewhere?" + r.URL.RawQuery },
+		"does not parse": func(r *http.Request) string {
+			return "http://127.0.0.1:bad/healthz?" + r.URL.RawQuery + "#" + pw + "&" + user
+		},
+		"another host": func(r *http.Request) string {
+			return "http://" + user + ":" + pw + "@127.0.0.1:1/healthz?" + r.URL.RawQuery
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/elsewhere" {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Location", location(r))
+				w.WriteHeader(http.StatusFound)
+			}))
+			t.Cleanup(srv.Close)
+			old := httpretry.DefaultBase
+			httpretry.DefaultBase = http.DefaultTransport
+			t.Cleanup(func() { httpretry.DefaultBase = old })
+			t.Setenv("MCP_HEALTHCHECK_URL", "")
+			addr := strings.Replace(srv.URL, "http://", "http://"+user+":"+pw+"@", 1) + "/redirect?token=" + tok
+			for _, args := range [][]string{{"mcp", "healthcheck", "--url", addr}, {"--json", "mcp", "healthcheck", "--url", addr}} {
+				out, errOut, code := execCLI(t, args...)
+				if code == 0 {
+					t.Fatalf("%v: a redirect the server breaks answers healthy: %s", args, out)
+				}
+				for _, secret := range []string{user, pw, tok} {
+					if strings.Contains(out+errOut, secret) {
+						t.Errorf("%v: the error repeats %q of the address:\n%s%s", args, secret, out, errOut)
+					}
+				}
+			}
+		})
+	}
+}
