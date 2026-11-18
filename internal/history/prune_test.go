@@ -415,29 +415,48 @@ func TestPrune_KeepsWhatHistoryFindsLive(t *testing.T) {
 // A line in the file of a day not its own is not evo's — Append writes a
 // line to the file of the day of its time — and is not taken: the reader
 // skips and counts it, it closes nothing, and the pruning does not move it
-// to LiveName — where its day is no more known — but lets it go with its
-// file («Риск», conclusion 324, 324-3: a line of another day reordered what
-// is live).
+// to LiveName — where its day is no more known — but keeps it in StrayName,
+// which no reader takes lines of («Риск», conclusion 324, 324-3: a line of
+// another day reordered what is live; #2297: what evo does not understand
+// is kept).
 func TestPrune_ALineInTheFileOfAnotherDayIsNotTaken(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), DirName)
 	made := lineOf("d100000000000001", Created, "disk", "d-1", "2026-07-01T10:00:00Z")
 	stray := lineOf("d100000000000002", Deleted, "disk", "d-1", "2026-11-17T10:00:00Z") // a time of another day
 	writeDay(t, dir, "2026-07-01", made, stray)
-	j, err := ReadAll(dir, nil)
-	if err != nil {
+	read := func(when string) {
+		t.Helper()
+		j, err := ReadAll(dir, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if j.Skipped != 1 || len(Live(j.Lines)) != 1 {
+			t.Fatalf("%s: skipped %d, live %+v; want the stray line skipped, the create live", when, j.Skipped, Live(j.Lines))
+		}
+	}
+	read("before pruning")
+	if _, err := Prune(dir, pruneNow, nil); err != nil {
 		t.Fatal(err)
 	}
-	if j.Skipped != 1 || len(Live(j.Lines)) != 1 {
-		t.Fatalf("read: skipped %d, live %d; want the stray line skipped, the create live", j.Skipped, len(Live(j.Lines)))
+	live, _ := os.ReadFile(filepath.Join(dir, LiveName))
+	strays, _ := os.ReadFile(filepath.Join(dir, StrayName))
+	if !strings.Contains(string(live), made) || strings.Contains(string(live), stray) || string(strays) != stray+"\n" {
+		t.Errorf("%s: %q, %s: %q; want the create live, the stray line kept apart", LiveName, live, StrayName, strays)
+	}
+	read("after pruning")
+	// A pruning killed after it kept the stray line and before the file of
+	// its day went: the line is in both, and read once.
+	writeDay(t, dir, "2026-07-01", made, stray)
+	read("after a killed pruning")
+	// The next pruning keeps it once.
+	if err := os.Remove(filepath.Join(dir, prunedName)); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := Prune(dir, pruneNow, nil); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, LiveName))
-	if !strings.Contains(string(data), made) || strings.Contains(string(data), stray) {
-		t.Errorf("%s: %q; want the create kept, the stray line gone with its file", LiveName, data)
+	if strays, _ := os.ReadFile(filepath.Join(dir, StrayName)); string(strays) != stray+"\n" {
+		t.Errorf("after the next pruning %s: %q; want the stray line once", StrayName, strays)
 	}
-	if j, _ := ReadAll(dir, nil); len(Live(j.Lines)) != 1 {
-		t.Errorf("after pruning live %+v; want the create", Live(j.Lines))
-	}
+	read("after the next pruning")
 }

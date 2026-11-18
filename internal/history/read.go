@@ -51,8 +51,9 @@ type Journal struct {
 // the registry, the reason is a code of evo. nil checks the form only.
 type Check func(l Line) bool
 
-// ReadAll reads the live lines of the files pruned (LiveName), then every
-// file of a day in dir, oldest first. A file that is not a regular one of
+// ReadAll reads every file of a day in dir, oldest first, then the live
+// lines of the files pruned (LiveName) and the lines that stood in a file
+// not their day's (StrayName), which it skips. A file that is not a regular one of
 // evo's form — a link, a directory, another name — is not read. A line
 // read twice — a pruning killed between keeping a live line and removing
 // its file — is one line.
@@ -87,23 +88,30 @@ func ReadAll(dir string, check Check) (Journal, error) {
 }
 
 // readOrder is the order a reader and the pruning read the files of a
-// journal in: the days, oldest first, then LiveName. A line is taken once,
-// where it is first met (seen, liveOfRaw): a copy LiveName holds after a
-// pruning killed before it removed the file of its day is met in that
-// file first — lines of one second keep the order they were written in,
-// whatever file holds them («Риск», conclusion 324 revised). LiveName
+// journal in: the days, oldest first, then LiveName, then StrayName. A line
+// is taken once, where it is first met (seen, liveOfRaw): a copy LiveName
+// holds after a pruning killed before it removed the file of its day is met
+// in that file first — lines of one second keep the order they were written
+// in, whatever file holds them («Риск», conclusion 324 revised). LiveName
 // holds lines of retired days only, older than every file kept.
 func readOrder(days []string) []string {
-	return append(append([]string(nil), days...), LiveName)
+	return append(append([]string(nil), days...), LiveName, StrayName)
 }
 
 // ofFile says whether the line l may stand in the file name: a line of the
 // file of a day is of that day — Append writes a line to the file of the day
 // of its time — and a line of another day there is not evo's («Риск»,
 // conclusion 324, 324-3: a line of another day reordered what is live).
-// LiveName holds the lines of many days: any may stand there.
+// LiveName holds the lines of many days: any may stand there; StrayName
+// holds the lines that stood in a file not their day's: none does.
 func ofFile(name string, l Line) bool {
-	return name == LiveName || strings.HasPrefix(l.Time, strings.TrimSuffix(name, ".jsonl")+"T")
+	switch name {
+	case LiveName:
+		return true
+	case StrayName:
+		return false
+	}
+	return strings.HasPrefix(l.Time, strings.TrimSuffix(name, ".jsonl")+"T")
 }
 
 // fileCheck is check for the lines of the file name: a line not of its file

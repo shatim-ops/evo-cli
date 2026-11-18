@@ -33,6 +33,10 @@ const (
 	// LiveName is the file the live lines of the files retired go to:
 	// read always, whatever their age.
 	LiveName = "live.jsonl"
+	// StrayName is the file the lines a pruning found in a file not their
+	// day's go to (ofFile): no reader takes them, none is dropped («Риск»,
+	// 324-3; #2297: what evo does not understand is kept).
+	StrayName = "stray.jsonl"
 	// prunedName marks the day of the last pruning: once a day.
 	prunedName = "pruned"
 	// retiredName names the newest day whose file was retired: the
@@ -59,7 +63,7 @@ type rawLine struct {
 	line Line
 	ok   bool
 	// stray: a line read whole that does not stand in its file (ofFile).
-	// It is not taken and not live: it goes with its file, never to
+	// It is not taken and not live: it goes to StrayName, never to
 	// LiveName, where its day is no more known.
 	stray bool
 }
@@ -71,8 +75,8 @@ type rawLine struct {
 // and any line this reader cannot read or does not know (a newer evo wrote
 // it: not this one's to drop) — checked by check as the reader checks it
 // (ReadAll), so a line history skips closes nothing here either (Астра,
-// #2297). A line of another day in the file of a day (ofFile) is not live:
-// it goes with its file. The live lines are written whole to a temp
+// #2297). A line of another day in the file of a day (ofFile) is kept in
+// StrayName, which no reader takes lines of. The live lines are written whole to a temp
 // file and renamed, then the files go: a kill between the two leaves a
 // line twice, which a reader reads once (ReadAll), never none.
 //
@@ -124,16 +128,18 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 	for _, n := range days {
 		total += sizes[n]
 	}
-	if fi, err := os.Lstat(filepath.Join(dir, LiveName)); err == nil {
-		total += fi.Size()
+	for _, n := range []string{LiveName, StrayName} {
+		if fi, err := os.Lstat(filepath.Join(dir, n)); err == nil {
+			total += fi.Size()
+		}
 	}
 	// A file that goes frees the bytes of its closed lines: its live
-	// lines move to LiveName. Over the ceiling only a file with closed
+	// lines move to LiveName, its stray ones to StrayName. Over the ceiling only a file with closed
 	// lines goes — one of live lines alone frees nothing.
 	closed := func(name string) (n int64) {
 		r := from[name]
 		for i := r[0]; i < r[1]; i++ {
-			if !live[i] {
+			if !live[i] && !all[i].stray {
 				n += int64(len(all[i].text) + 1)
 			}
 		}
@@ -164,6 +170,28 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 			}
 		}
 	}
+	// The stray lines of StrayName and of the files that go, once each.
+	var strays bytes.Buffer
+	straySeen := map[string]bool{}
+	for i, r := from[StrayName][0], from[StrayName]; i < r[1]; i++ {
+		straySeen[all[i].text] = true
+		strays.WriteString(all[i].text)
+		strays.WriteByte('\n')
+	}
+	newStrays := false
+	for _, name := range days {
+		if !retire[name] {
+			continue
+		}
+		for i, r := from[name][0], from[name]; i < r[1]; i++ {
+			if all[i].stray && !straySeen[all[i].text] {
+				straySeen[all[i].text] = true
+				newStrays = true
+				strays.WriteString(all[i].text)
+				strays.WriteByte('\n')
+			}
+		}
+	}
 	var liveBytes int64
 	counted := map[string]bool{}
 	for i := range all {
@@ -177,6 +205,11 @@ func Prune(dir string, now time.Time, check Check) (Pruned, error) {
 
 	if len(retire) > 0 || from[LiveName] != [2]int{} {
 		if err := config.WriteFileAtomic(filepath.Join(dir, LiveName), kept.Bytes(), 0o600); err != nil {
+			return p, err
+		}
+	}
+	if newStrays {
+		if err := config.WriteFileAtomic(filepath.Join(dir, StrayName), strays.Bytes(), 0o600); err != nil {
 			return p, err
 		}
 	}
@@ -234,8 +267,8 @@ func rawLines(name string, data []byte, check Check) []rawLine {
 	for _, raw := range lines(data) {
 		r := rawLine{text: string(raw)}
 		// One reading of a line for the reader and the pruning (parse,
-		// fileCheck): what history skips, the pruning keeps as it is — but
-		// a line of another day, which no evo writes there.
+		// fileCheck): what history skips, the pruning keeps as it is — a
+		// line of another day in StrayName.
 		r.line, r.ok = parse(raw)
 		r.stray = r.ok && !ofFile(name, r.line)
 		r.ok = r.ok && fileCheck(name, check)(r.line)
@@ -245,7 +278,8 @@ func rawLines(name string, data []byte, check Check) []rawLine {
 }
 
 // liveOfRaw is the live mask of raw lines: Live of the lines a reader
-// reads, and every line it does not — kept, never dropped — but a stray one.
+// reads, and every line it does not — kept, never dropped — but a stray one,
+// kept in StrayName.
 func liveOfRaw(all []rawLine) []bool {
 	// Each line once, where the reader first meets it (readOrder): a copy
 	// of a line is the line, and is as live as it is.
@@ -313,7 +347,7 @@ func Describe(dir string, check Check) (Summary, error) {
 		if err != nil {
 			continue
 		}
-		if name == LiveName {
+		if name == LiveName || name == StrayName {
 			s.Bytes += int64(len(data))
 		}
 		all = append(all, rawLines(name, data, check)...)
