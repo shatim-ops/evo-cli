@@ -252,7 +252,7 @@ func (p *CreatePreview) Price() {
 	case p.Resource == ResourceVM && p.VM != nil && p.VM.Flavor.VCPUs > 0:
 		cost := deployplan.EstimateVM(*p.VM, p.PublicIP == nil || *p.PublicIP)
 		p.Cost = &cost
-	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0:
+	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0 && p.Disk.Type != "":
 		cost := pricing.EstimateDisk(p.Disk.SizeGB, p.Disk.Type)
 		p.Cost = &cost
 	case p.Resource == ResourcePGCluster && p.PG != nil && p.PG.CPU > 0 && p.PG.RAMGB > 0:
@@ -276,6 +276,12 @@ func (p *CreatePreview) Price() {
 	if p.Resource == ResourceVM && p.VM != nil {
 		p.CostNote = "not estimated: flavor size unknown"
 	}
+	// A disk of no type the call or the source names: the platform picks
+	// it, and a price for a type evo does not know is a guess (§6, axis 4;
+	// A19-10, #2430).
+	if p.Resource == ResourceDisk && p.Disk != nil && p.Disk.Type == "" {
+		p.CostNote = "not estimated: the disk type is chosen by the platform"
+	}
 }
 
 // priceFromAPI prices a VM or a disk preview that has talked to the cloud:
@@ -290,7 +296,7 @@ func (p *CreatePreview) priceFromAPI(ctx context.Context, cloud provision.CloudA
 	case p.Resource == ResourceVM && p.VM != nil:
 		cost, err = deployplan.QuoteVM(ctx, cloud, deployplan.PriceInput{ProjectID: p.ProjectID, VM: *p.VM,
 			PublicIP: p.PublicIP == nil || *p.PublicIP})
-	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0:
+	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0 && p.Disk.Type != "":
 		cost, err = deployplan.QuoteDisk(ctx, cloud, p.ProjectID, *p.Disk)
 	default:
 		return

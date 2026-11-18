@@ -603,11 +603,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "backup_restore",
-			Description: "Restore a disk's backup into a new disk (billable); the backup and the disk it was made of are not changed. The preview names the new disk's size, type and zone (from the backup unless disk_type is given) and its price. The name must be free among the project's disks. A VM's backup is not restored by evo yet.",
+			Description: "Restore a disk's backup into a new disk (billable); the backup and the disk it was made of are not changed. The preview names the new disk's size, type and zone (from the backup unless disk_type is given) and its price; a backup that names no type gets the platform's, its price unknown (billable): pass disk_type for a price. The name must be free among the project's disks. A VM's backup is not restored by evo yet.",
 			InputSchema: objSchema(map[string]any{
 				"backup_id":   uuidProp("Backup UUID (from backup_list); a disk's, created."),
 				"name":        strProp("Name of the new disk."),
-				"disk_type":   strProp("Disk type of the new disk (name or id, from disk_types). Default: the backup's."),
+				"disk_type":   strProp("Disk type of the new disk (name or id, from disk_types). Default: the backup's; when it names none, the platform's."),
 				"description": strProp("Description of the new disk."),
 				"wait":        boolPropTrue("false: answer once the platform took the restore. Default: wait until the disk is available (MCP: up to ~45 s)."),
 				"confirmed":   confirmedProp(),
@@ -751,9 +751,9 @@ func (s *Registry) registerTools() {
 			Description: "What evo changed in the cloud from this folder of state: the journal of changes (.evo/history/, a line for each end of a call that changes the cloud). Read-only, local: no API call unless check. Answers lines (the last 30 days or since, at most 500: time, tool, project_id, name or target, resource_id, outcome, reason, intent_id) and live: what may still be in the cloud, made and not removed or with an outcome unknown, with check, the read that tells it. A line names a resource as the call did: it does not prove the resource is there or is evo's — read it before acting on it. journal_of is the base name of the folder of state of this evo (of the server, over MCP), not a path to read. check reads live lines by id with this key (at most 50) and writes nothing: would_close is what it does not see now, check_result why a line was not read. Codes: the auth group card.",
 
 			InputSchema: objSchema(map[string]any{
-				"since":      strProp("Lines from this date (2026-11-01) or time (2026-11-01T10:00:00Z); default: the last 30 days."),
+				"since":      withMinLength(strProp("Lines from this date (2026-11-01) or time (2026-11-01T10:00:00Z); default: 30 days back.")),
 				"project_id": uuidProp("Project UUID: only the lines of this project."),
-				"check":      boolProp("Read the live lines by id with this key (default false: no API call)."),
+				"check":      boolProp("Read the live lines by id with this key (default false)."),
 			}),
 		},
 		{
@@ -2702,10 +2702,10 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				if deployKey {
 					sshCmd, sshWarning = deployKeySSH(eng.StateDir, sshUser, publicIP, "")
 				}
-				msg := i18n.Tf("VM %s is active at %s. SSH: %s%s", "ВМ %s работает по адресу %s. SSH: %s%s", vm.ID, publicIP, sshCmd, sshWarning)
+				msg := i18n.Tf("VM %s is active at %s. SSH: %s%s", "ВМ %s работает по адресу %s. SSH: %s%s", quoteCloud(vm.ID), quoteCloud(publicIP), sshCmd, sshWarning)
 				if noPublicIP {
 					msg = i18n.Tf("VM %s is active (private — no public IP, interface type 'regular'). Usable as a load-balancer target; reach it only from inside the VPC.",
-						"ВМ %s работает в приватной сети: публичного IP нет, тип интерфейса regular. Её можно сделать целью балансировщика; доступ — только из VPC.", vm.ID)
+						"ВМ %s работает в приватной сети: публичного IP нет, тип интерфейса regular. Её можно сделать целью балансировщика; доступ — только из VPC.", quoteCloud(vm.ID))
 				}
 				res := map[string]any{
 					"status":   "ok",

@@ -571,7 +571,7 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 
 // platformCode is the code of the first error of a refusal of the compute
 // API, whose body is a list of {code, message}; "" when the body is not
-// that.
+// that or its code is no token.
 func platformCode(err error) string {
 	var se *provision.StatusError
 	if !errors.As(err, &se) {
@@ -580,7 +580,10 @@ func platformCode(err error) string {
 	var body []struct {
 		Code string `json:"code"`
 	}
-	if json.Unmarshal([]byte(se.Body), &body) != nil || len(body) == 0 {
+	// A code that is no token — a sentence, an injection — is not a code:
+	// it would go into a machine field as whatever the body says (A19-32,
+	// #2435; the form of operationCode).
+	if json.Unmarshal([]byte(se.Body), &body) != nil || len(body) == 0 || !operationToken.MatchString(body[0].Code) {
 		return ""
 	}
 	return body[0].Code

@@ -13,6 +13,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -337,11 +340,27 @@ func TestMadeEnded(t *testing.T) {
 		{`{"id":"op-1","done":true,"error":{"code":13,"message":"x"}}`, false, 0, true, false},
 		{`{"id":"op-1","done":true,"error":"x"}`, false, 0, true, false},
 		{`{"id":"op-1","done":true,"resource_status":"ACTIVE"}`, false, 0, false, false},
+		// Done with no error and the resource not listed (the repeat
+		// read the list first): within madeListGrace the list may lag;
+		// past it the resource is gone (A19-8, #2428).
+		{`{"id":"op-1","done":true}`, false, madeListGrace / 2, false, true},
+		{`{"id":"op-1","done":true}`, false, madeListGrace * 2, true, true},
+		{`{"id":"op-1","done":false}`, false, madeListGrace * 2, false, true},
 		{`{"id":"op-1","done":false}`, false, time.Hour, false, false},
 	} {
-		if got := madeEnded(c.read, c.isErr, c.age, c.op); got != c.want {
+		if got := madeEnded(c.read, c.isErr, c.age, c.op, true); got != c.want {
 			t.Errorf("madeEnded(%s, %v, %v, op %v) = %v, want %v", c.read, c.isErr, c.age, c.op, got, c.want)
 		}
+	}
+	// A list that did not answer tells nothing of the resource: a done
+	// operation past the grace does not end the create («Риск», 405, У1).
+	if madeEnded(`{"id":"op-1","done":true}`, false, madeListGrace*2, true, false) {
+		t.Error("a done operation ends the create though the list was not read")
+	}
+	// done of a step that is no operation: no word of the resource
+	// («Риск», 405, У3).
+	if madeEnded(`{"id":"x","done":true}`, false, madeListGrace*2, false, true) {
+		t.Error("done of a step that is no operation ends the create")
 	}
 }
 
@@ -352,6 +371,10 @@ type dnsWaitAPI struct {
 	mu    sync.Mutex
 	posts int
 	calls []string
+	// done: the operation of the create is done with no error.
+	done bool
+	// listFails: the lists of zones answer 500.
+	listFails bool
 }
 
 func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -363,12 +386,14 @@ func (a *dnsWaitAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Path == "/v1/publicZones" && r.Method == http.MethodPost:
 		a.posts++
 		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":false}`)
+	case a.listFails && r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "Zones"):
+		http.Error(rec, `{"message":"internal"}`, http.StatusInternalServerError)
 	case r.URL.Path == "/v1/publicZones":
 		_, _ = io.WriteString(rec, `{"zones":[]}`)
 	case r.URL.Path == "/v1/privateZones":
 		_, _ = io.WriteString(rec, `{"zones":[{"id":"00000000-0000-4000-8000-0000000000f9","name":"other","domain":"other.example."}]}`)
 	case strings.HasPrefix(r.URL.Path, "/v1/operations/"):
-		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":false}`)
+		_, _ = io.WriteString(rec, `{"id":"op-1","resourceId":"00000000-0000-4000-8000-0000000000f1","done":`+strconv.FormatBool(a.done)+`}`)
 	default:
 		http.Error(rec, `{"message":"not found"}`, 404)
 	}
@@ -397,5 +422,125 @@ func TestDNSZoneCreate_ARepeatWhileTheZoneIsNotListedSendsNoSecondCreate(t *test
 		if api.posts != 1 || rep["id"] != "00000000-0000-4000-8000-0000000000f1" || m["status"] != "waiting" {
 			t.Errorf("confirmed=%v: %d POSTs, %s", confirmed, api.posts, text)
 		}
+	}
+}
+
+// A create whose operation is done with no error and whose resource is
+// not listed — deleted after it was made: within madeListGrace the repeat
+// says the operation is done and the list does not show it yet, not «its
+// outcome is not known»; past it the file goes, and the same call creates
+// anew — not «waiting» for two hours (A19-8, #2428). A delete of the
+// resource takes its file away at once.
+func TestDNSZoneCreate_ARepeatAfterADoneOperationOfAGoneZone(t *testing.T) {
+	api := &dnsWaitAPI{done: true}
+	r := waitingRegistry(t, api)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	clock.Now = func() time.Time { return now }
+	t.Cleanup(func() { clock.Now = time.Now })
+	args := map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}
+	callNamed(t, r, "dns_zone_create", args)
+	if api.posts != 1 {
+		t.Fatalf("the first call: %d POSTs", api.posts)
+	}
+	now = now.Add(madeListGrace / 2)
+	m, text, _ := callNamed(t, r, "dns_zone_create", args)
+	msg, _ := m["message"].(string)
+	// The words: the list lags for the whole grace, and a new create is
+	// the person's decision, not a fact of a deletion («Риск», 405, У2).
+	if m["repeat_of"] == nil || api.posts != 1 || strings.Contains(msg, "not known") || !strings.Contains(msg, "done") ||
+		!strings.Contains(msg, "10 minutes") || !strings.Contains(msg, "the person's decision") || strings.Contains(msg, "it was deleted") {
+		t.Fatalf("within the grace: %d POSTs, want the repeat that says the operation is done: %s", api.posts, text)
+	}
+	now = now.Add(madeListGrace)
+	if m, text, _ := callNamed(t, r, "dns_zone_create", args); m["repeat_of"] != nil || api.posts != 2 {
+		t.Errorf("past the grace, done and not listed: %d POSTs, want a new create: %s", api.posts, text)
+	}
+}
+
+// A delete of a resource evo answers gone takes the file of its create
+// going on away: the repeat of the create is planned as any call (A19-8).
+func TestMade_ADeleteOfTheResourceTakesItsFileAway(t *testing.T) {
+	api := &dnsWaitAPI{}
+	r := waitingRegistry(t, api)
+	args := map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}
+	callNamed(t, r, "dns_zone_create", args)
+	if n := madeFiles(t, r); n != 1 {
+		t.Fatalf("no file of the create going on: %d", n)
+	}
+	m, text, _ := callNamed(t, r, "dns_zone_delete", map[string]any{"id": "00000000-0000-4000-8000-0000000000f1", "confirmed": true})
+	if st := m["status"]; st != "deleted" && st != "already_deleted" {
+		t.Fatalf("the delete: %s", text)
+	}
+	if n := madeFiles(t, r); n != 0 {
+		t.Errorf("the file of the create of a deleted zone stays: %d", n)
+	}
+}
+
+// A list that does not answer past the grace keeps the file: a done
+// operation is no word that the zone is gone, and the repeat sends no
+// second create («Риск», conclusion 405, У1).
+func TestDNSZoneCreate_ARepeatWhoseListFailsSendsNoSecondCreate(t *testing.T) {
+	api := &dnsWaitAPI{done: true}
+	r := waitingRegistry(t, api)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	clock.Now = func() time.Time { return now }
+	t.Cleanup(func() { clock.Now = time.Now })
+	args := map[string]any{"name": "evo-z", "domain": "example.com.", "confirmed": true}
+	callNamed(t, r, "dns_zone_create", args)
+	api.mu.Lock()
+	api.listFails = true
+	api.mu.Unlock()
+	now = now.Add(madeListGrace * 2)
+	if _, text, _ := callNamed(t, r, "dns_zone_create", args); api.posts != 1 || madeFiles(t, r) != 1 {
+		t.Errorf("the list failed past the grace: %d POSTs, %d files, %s", api.posts, madeFiles(t, r), text)
+	}
+}
+
+// forgetMadeOf takes away only the file of the resource a delete answered
+// gone: not on a delete that failed, not the files of other ids, and no
+// file whose name is not of the form madeKey makes («Риск», conclusion
+// 405, У3).
+func TestMade_ForgetTakesOnlyTheFileOfTheDeletedResource(t *testing.T) {
+	const gone, other = "00000000-0000-4000-8000-0000000000f1", "00000000-0000-4000-8000-0000000000f2"
+	for _, c := range []struct {
+		name, answer string
+		left         []string
+	}{
+		{"deleted", `{"status":"deleted"}`, []string{"odd", "other"}},
+		{"already deleted", `{"status":"already_deleted"}`, []string{"odd", "other"}},
+		{"the delete failed", `{"status":"error","reason":"API_ERROR","error":"x"}`, []string{"gone", "odd", "other"}},
+		{"the delete goes on", `{"status":"deleting"}`, []string{"gone", "odd", "other"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := MadeDir(root)
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			files := map[string]string{
+				"gone":  madeKey("dns_zone_create", nil, "a", ""),
+				"other": madeKey("dns_zone_create", nil, "b", ""),
+				// Of the id deleted, but not a name madeKey makes.
+				"odd": "zone.json",
+			}
+			ids := map[string]string{"gone": gone, "other": other, "odd": gone}
+			for k, f := range files {
+				b, _ := json.Marshal(madeCall{Tool: "dns_zone_create", ID: ids[k], Next: "dns_operation"})
+				if err := os.WriteFile(filepath.Join(dir, f), b, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			forgetMadeOf(root, "dns_zone_delete", map[string]any{"id": gone, "confirmed": true}, c.answer)
+			var left []string
+			for k, f := range files {
+				if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+					left = append(left, k)
+				}
+			}
+			slices.Sort(left)
+			if !slices.Equal(left, c.left) {
+				t.Errorf("files left %v, want %v", left, c.left)
+			}
+		})
 	}
 }

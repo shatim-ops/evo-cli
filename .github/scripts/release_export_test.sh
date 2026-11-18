@@ -227,6 +227,8 @@ cat >CHANGELOG.md <<'MD'
 - **Квитанция** (D112, решение владельца 17.11, #1999). Было: успех.
 - **Зона** (решение владельца по #2008). Было: выбор.
 - Ещё пять (`changelog.d/x.md`). Для остальных — нет.
+- Пустая группа отвечает так же (класс D100; дельта-аудит 1.9, FB19I-26 (б)).
+- Страница шлюза — не успех (R3B-1, найдено атакой) и не ответ (CUR122-4).
 MD
 cat >"$tmp/changelog.want" <<'MD'
 ## 9.9.9
@@ -248,6 +250,8 @@ cat >"$tmp/changelog.want" <<'MD'
 - **Квитанция**. Было: успех.
 - **Зона**. Было: выбор.
 - Ещё пять. Для остальных — нет.
+- Пустая группа отвечает так же.
+- Страница шлюза — не успех и не ответ.
 MD
 git add CHANGELOG.md && git -c user.name=t -c user.email=t@t commit -qm changelog
 rc=0
@@ -256,7 +260,7 @@ log=$("$here/release_export.sh" HEAD "$tmp/s-changelog" 2>&1) || rc=$?
 diff -u "$tmp/changelog.want" "$tmp/s-changelog/CHANGELOG.md" >"$tmp/changelog.diff" ||
 	{ echo "FAIL: CHANGELOG снимка не тот:"; sed 's/^/  | /' "$tmp/changelog.diff"; fail=1; }
 # shellcheck disable=SC2016 # обратные кавычки — фрагмент кода Markdown, не подстановка
-git -C "$tmp/s-changelog" show HEAD:CHANGELOG.md | sed 's/`[^`]*`//g' | grep -qE 'DECISIONS|Fable|Grok|D[0-9]|REL12|R4-|B12|QA-|план 1|владельца|changelog\.d' &&
+git -C "$tmp/s-changelog" show HEAD:CHANGELOG.md | sed 's/`[^`]*`//g' | grep -qE 'DECISIONS|Fable|Grok|D[0-9]|REL12|R4-|B12|QA-|план 1|владельца|changelog\.d|FB19|R3B|CUR1' &&
 	{ echo "FAIL: в коммите снимка осталась ссылка разработки"; fail=1; }
 # «Решение владельца» вне скобок не вычищается — провал с названной
 # строкой (#2512), а не молчаливая публикация.

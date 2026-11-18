@@ -66,3 +66,27 @@ func TestDiskPreview_PriceFromAPI(t *testing.T) {
 		t.Errorf("fallback cost line %q", line)
 	}
 }
+
+// A disk of no type is not priced even when the price-calculation API would
+// answer: the platform picks the type, and a price for one evo does not know
+// is a guess — the request would name SSD for it (#2430; «Риск», 403, У1).
+func TestDiskPreview_NoTypeIsNotPricedByTheAPI(t *testing.T) {
+	asked := 0
+	cloud := &mockCloudAPI{priceFn: func(context.Context, string, provision.PriceCalculationRequest) (*provision.PriceCalculation, error) {
+		asked++
+		return &provision.PriceCalculation{Disks: 228.38, TotalPriceHour: 0.312, TotalPriceMonth: 228.38}, nil
+	}}
+	e := &Engine{Config: config.Config{ProjectID: "p"}, Cloud: cloud,
+		Auth: &mockTokenProvider{token: auth.Token{Value: "t", ExpiresAt: time.Now().Add(time.Hour)}}}
+	p := CreatePreview{Resource: ResourceDisk, Name: "data", ProjectID: "p", Zone: &deployplan.RefSpec{ID: testZoneID, Name: "zone-a"},
+		Disk: &deployplan.DiskSpec{SizeGB: 20}}
+	if err := e.CompletePreview(context.Background(), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Cost != nil || asked != 0 {
+		t.Errorf("a disk of no type priced (%d price calls): %+v", asked, p.Cost)
+	}
+	if len(p.PriceClasses) != 1 || p.PriceClasses[0].Class != PricePaidUnpriced || !strings.Contains(p.PriceClasses[0].Note, "platform") {
+		t.Errorf("price classes %+v: want paid_unpriced, the platform's type", p.PriceClasses)
+	}
+}

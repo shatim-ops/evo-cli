@@ -518,7 +518,7 @@ func verboseCause(printer *output.Printer, err error) {
 // errNotProjectUUID refuses a project ID that is not a UUID.
 func errNotProjectUUID(id string) error {
 	return clerrors.New(clerrors.CodeConfigInvalid,
-		i18n.Tf("project ID %q is not a UUID", "ID проекта %q — не UUID", output.SanitizeCell(id)),
+		i18n.T("the project ID is not a UUID", "ID проекта — не UUID"),
 		notProjectUUIDHint())
 }
 

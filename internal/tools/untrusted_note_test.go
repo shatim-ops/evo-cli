@@ -28,6 +28,7 @@ var untrustedNoteOnly = map[string]string{}
 // description has no note, with why: the note speaks of the output of a
 // workload, and the field is not one.
 var untrustedMarkerOnly = map[string]string{
+	"audit_events":         "next_page_token: the page token as the audit API gave it, not the output of a workload (A19-31)",
 	"ca_start":             "app_status: the status of the app as the API words it in the question, not the output of a workload",
 	"ca_stop":              "app_status: the status of the app as the API words it in the question, not the output of a workload",
 	"disk_delete":          "attached_vms: the names of VMs in a refusal (D59), not the output of a workload",
@@ -43,6 +44,7 @@ var untrustedMarkerOnly = map[string]string{
 	"disk_resize":          "disk: the disk as Compute answered it, not the output of a workload",
 	"vm_console":           "name, where, note: the name of the VM and the texts that quote it and its state, not the output of a workload (brief vm-console.md, §4, У3)",
 	"whoami":               "roles: the names of the key's roles as IAM names them (A0-2), not the output of a workload",
+	"billing_balance":      "the whole answer: the agreement as the billing service has it, not the output of a workload",
 	"backup_get":           "name, description, tags, resource_name, source, protection_plan: what the project's people named the backup, its tags, its source and its plan, not the output of a workload",
 	"backup_create":        "preview, will_create, backup, name: the names of the backup and of its source, not the output of a workload",
 	"backup_restore":       "preview, will_create, disk, name: the names of the backup, its disk and the new disk, not the output of a workload",
@@ -91,7 +93,8 @@ var untrustedMarkerOnly = map[string]string{
 	"close_ports":          "security_group: the name of the group of the call, in the preview and the answer, not the output of a workload",
 	"sg_rule_create":       "security_group, rule, preview: the name of the group and the descriptions of its rules in the preview and the answer, not the output of a workload",
 	"stack_apply":          "preview, error, details: the names and values of the steps of a manifest in the question, the caller's text, and what the steps' tools and operations answered, the service's text, not the output of a workload",
-	"status":               "vm_ip, vm_name, zone_name, vm_flavor, region, ssh_user, cloud_state, cloud_error and the rest: the VM, its address, group and rules as the cloud gave them and the record keeps them (#2463), not the output of a workload",
+	"provision":            "vm_ip, ssh, flavor_name, region_name: the address, the ssh command and the names the cloud gave the VM it made (#2477), not the output of a workload",
+	"status":               "id, vm_ip, vm_name, zone_name, vm_flavor, region, ssh_user, cloud_state, cloud_error and the rest: the VM, its address, group and rules as the cloud gave them and the record keeps them (#2463), not the output of a workload",
 	"stack_destroy":        "resources: the ids of the stack's resources its steps and reads got (#2463), not the output of a workload",
 	"stack_status":         "error, details: what the steps' tools and operations answered, the service's text (#1762); outputs: the ids and the address the steps got (#2463) — not the output of a workload",
 	"k8s_kubeconfig":       "kubeconfig: the configuration as Managed Kubernetes gives it (#1803), not the output of a workload",
