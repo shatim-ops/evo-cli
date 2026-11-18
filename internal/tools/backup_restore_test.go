@@ -7,6 +7,7 @@ package tools
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -550,6 +551,40 @@ func TestBackupRestore_AVMBackupsRefusalNamesNoDocumentOfDevelopment(t *testing.
 	_, text, isErr := backupRestore(t, &restoreWorld{kind: "virtual_machine"}, map[string]any{"confirmed": true})
 	if !isErr || strings.Contains(text, "docs/") {
 		t.Errorf("a VM's backup: want a refusal naming no document: %s", text)
+	}
+}
+
+// noTypeCard is a backup's card that names no type of its disk.
+const noTypeCard = `{"id":"` + brBackup + `","project_id":"` + raProject + `","name":"before-change","state":"created","type":"full","size":10240,"created_at":"2026-11-12T10:00:00Z",` +
+	`"resource":{"resource_id":"` + brSource + `","resource_type":"disk","resource_state":{"name":"data","size":10}}}`
+
+// A backup whose card names no type of its disk, and no disk_type asked
+// for: the platform picks the type, and the preview says so — it prices no
+// type it does not know: billable, its price unknown (§6, axis 4; A19-10,
+// #2430).
+func TestBackupRestore_NoTypeIsThePlatformsAndNotPriced(t *testing.T) {
+	w := &restoreWorld{card: noTypeCard}
+	m, text, _ := backupRestore(t, w, nil)
+	will, _ := m["will_create"].(map[string]any)
+	p, _ := m["preview"].(map[string]any)
+	if m["status"] != "confirmation_required" || will["disk_type_from"] != "platform" || w.restores != 0 {
+		t.Fatalf("want the question saying the platform picks the type: %s", text)
+	}
+	if p["cost"] != nil || p["tariff_url"] == nil {
+		t.Errorf("a price for a type evo does not know, or no tariff to read: %v, %v", p["cost"], p["tariff_url"])
+	}
+	classes, _ := p["price_classes"].([]any)
+	if len(classes) != 1 {
+		t.Fatalf("price classes: %v", classes)
+	}
+	c, _ := classes[0].(map[string]any)
+	if c["class"] != "paid_unpriced" || !strings.Contains(fmt.Sprint(c["note"]), "platform") || !strings.Contains(fmt.Sprint(p["cost_note"]), "platform") {
+		t.Errorf("want billable with no price, the note naming the platform's type: %v, %v", c, p["cost_note"])
+	}
+	// A type asked for prices the disk as before.
+	m, text, _ = backupRestore(t, &restoreWorld{card: noTypeCard}, map[string]any{"disk_type": "SSD"})
+	if p, _ := m["preview"].(map[string]any); p["cost"] == nil {
+		t.Errorf("a type asked for: want its price: %s", text)
 	}
 }
 
