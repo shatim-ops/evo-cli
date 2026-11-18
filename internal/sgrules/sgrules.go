@@ -51,7 +51,7 @@ func splitKey(key string) (proto string, port int) {
 // "53/udp". Duplicates are dropped; a bad spec is a USAGE error.
 func ParsePorts(specs []string) (tcp, udp []int, err error) {
 	seen := map[string]bool{}
-	for _, raw := range specs {
+	for i, raw := range specs {
 		spec := strings.ToLower(strings.TrimSpace(raw))
 		if spec == "" {
 			continue
@@ -63,7 +63,7 @@ func ParsePorts(specs []string) (tcp, udp []int, err error) {
 		port, perr := strconv.Atoi(strings.TrimSpace(num))
 		if perr != nil || port < 1 || port > 65535 || (proto != "tcp" && proto != "udp") {
 			return nil, nil, clerrors.New(clerrors.CodeUsage,
-				i18n.Tf("bad port %q", "неверный порт %q", raw),
+				i18n.Tf("bad port (item %d of the list)", "неверный порт (элемент %d списка)", i+1),
 				i18n.T("A port is 1-65535, optionally with /tcp or /udp: 80, 8080/tcp, 53/udp.",
 					"Порт — число 1–65535, можно с /tcp или /udp: 80, 8080/tcp, 53/udp."))
 		}
