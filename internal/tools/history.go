@@ -275,6 +275,13 @@ func (r *Registry) journalCheck(dir string) (DoctorCheck, bool) {
 		c.Detail += i18n.Tf("; the pruning is put off: lines evo did not write would change what history finds live if it went on — nothing is removed and the journal grows; it tries again each day while they are there (%s). history shows what is live. A file with live lines is not to be moved or removed: a live line is a resource made and not removed, or an outcome not known",
 			"; очистка отложена: строки, которых evo не писал, изменили бы то, что history находит живым, — ничего не удаляется, и журнал растёт; очистка пробует снова каждый день, пока они есть (%s). Живое показывает history. Файл с живыми строками не переносить и не удалять: живая строка — ресурс, созданный и не удалённый, или неизвестный итог", strings.Join(files, "; "))
 	}
+	if s.Unfinished {
+		// A pruning that did not fit its limit of time is said: the journal
+		// it was to prune grows («Риск», conclusion 356, У2).
+		c.Status = CheckWarn
+		c.Detail += i18n.T("; the last pruning did not fit its limit of time (a large journal): nothing was removed, and it tries again the next day",
+			"; последняя очистка не уложилась в свой предел времени (журнал велик): ничего не удалено, очистка попробует снова на следующий день")
+	}
 	if s.OverCeiling {
 		c.Status = CheckWarn
 		c.Detail += i18n.T("; the live lines alone are over the ceiling of 64 MB: none is removed, and the journal grows — a line closes when evo deletes its resource",
