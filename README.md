@@ -322,7 +322,6 @@ MCP-сервер (`evo mcp`) всегда отвечает по-английск
 | [docs/exit-codes.md](docs/exit-codes.md) | коды выхода и формат ошибок `--json` |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | типовые ошибки и что приложить к обращению |
 | [docs/journal.md](docs/journal.md) | журнал сессии: `evo diag on/status/export`, что записывается и чего нет |
-| [docs/RELEASING.md](docs/RELEASING.md) | для сопровождающих: выпуск релиза |
 
 ## Поддержка
 

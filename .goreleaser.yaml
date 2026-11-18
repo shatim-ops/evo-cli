@@ -4,7 +4,6 @@
 # Локальная проверка без публикации и подписи (без syft — и без SBOM):
 #   goreleaser check
 #   goreleaser release --snapshot --clean --skip=sign,sbom
-# Как выпускать релиз — docs/RELEASING.md.
 version: 2
 
 project_name: evo
@@ -86,7 +85,7 @@ sboms:
 
 # Keyless: сертификат выдаёт Fulcio на OIDC-токен GitHub Actions, запись
 # ложится в Rekor. Ключей хранить не нужно; проверка — по identity workflow
-# (команда в docs/RELEASING.md). Бандл .sigstore.json содержит подпись,
+# (команда в docs/install.md). Бандл .sigstore.json содержит подпись,
 # сертификат и доказательство включения в журнал.
 signs:
   - id: checksum
