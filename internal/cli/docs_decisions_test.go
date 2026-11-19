@@ -192,11 +192,7 @@ func migrationItems(text string) map[string]string {
 // cite no decision marked breaking, title → what is missing; each is a
 // line to «релиз» (#2472, 1–2). Only shrinks. Closes by 1.9, before the
 // stable tag (#2472).
-var migrationsWithoutBreakingDecision = map[string]string{
-	"Базы данных без зоны при всех закрытых зонах — `USAGE` до вопроса": "no decision recorded (#2008)",
-	"Целый аргумент вне 32 бит отвергается до обращения к облаку":       "D36 does not record the 32-bit bound as breaking",
-	"`--json` CLI отвечает по-английски, как JSON инструмента MCP":      "no row of D6 is marked breaking",
-}
+var migrationsWithoutBreakingDecision = map[string]string{}
 
 // A breaking change of the coming version — an item of «Миграция» in a
 // fragment of changelog.d or in a section of CHANGELOG.md above the last
