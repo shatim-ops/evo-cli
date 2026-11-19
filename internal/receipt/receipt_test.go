@@ -15,29 +15,39 @@ import (
 // ErrUnusable with API_ERROR (the outcome unknown).
 func TestDecode(t *testing.T) {
 	for _, c := range []struct {
-		body, field string
-		ok          bool
+		body  string
+		field Field
+		ok    bool
 	}{
-		{`{"name":"app","owner":"app"}`, "name", true},
-		{`{"version":{"id":"v-1"}}`, "version.id", true},
-		{`{}`, "name", false},
-		{``, "name", false},
-		{`{"name":`, "name", false},
-		{`null`, "name", false},
-		{`[]`, "name", false},
-		{`{"name":""}`, "name", false},
-		{`{"name":" "}`, "name", false},
-		{`{"version":{"id":"\t "}}`, "version.id", false},
-		{`{"name":7}`, "name", false},
-		{`{"version":{}}`, "version.id", false},
-		{`{"version":"v-1"}`, "version.id", false},
+		{`{"name":"app","owner":"app"}`, Text("name"), true},
+		// v2AddVersionResponse of Secret Manager: version.id is an int32
+		// (cloud-e2e of 1.9: the receipt of a real add was refused).
+		{`{"secret":{"id":"s-1"},"version":{"id":2,"state":"ENABLED"}}`, Number("version.id"), true},
+		{`{"version":{"id":1}}`, Number("version.id"), true},
+		{`{}`, Text("name"), false},
+		{``, Text("name"), false},
+		{`{"name":`, Text("name"), false},
+		{`null`, Text("name"), false},
+		{`[]`, Text("name"), false},
+		{`{"name":""}`, Text("name"), false},
+		{`{"name":" "}`, Text("name"), false},
+		{`{"name":7}`, Text("name"), false},
+		{`{"version":{}}`, Number("version.id"), false},
+		{`{"version":"v-1"}`, Number("version.id"), false},
+		{`{"version":2}`, Number("version.id"), false},
+		{`{"version":{"id":0}}`, Number("version.id"), false},
+		{`{"version":{"id":-1}}`, Number("version.id"), false},
+		{`{"version":{"id":1.5}}`, Number("version.id"), false},
+		{`{"version":{"id":null}}`, Number("version.id"), false},
+		{`{"version":{"id":"2"}}`, Number("version.id"), false},
+		{`{"version":{"id":{"value":2}}}`, Number("version.id"), false},
 	} {
 		out, err := Decode([]byte(c.body), c.field)
 		if c.ok != (err == nil) || c.ok != (out != nil) {
-			t.Errorf("Decode(%q, %s): %v, %v; want ok %v", c.body, c.field, out, err, c.ok)
+			t.Errorf("Decode(%q, %+v): %v, %v; want ok %v", c.body, c.field, out, err, c.ok)
 		}
 		if err != nil && (!stderrors.Is(err, ErrUnusable) || clierrors.Reason(err) != clierrors.CodeAPIError) {
-			t.Errorf("Decode(%q, %s): %v; want API_ERROR wrapping ErrUnusable", c.body, c.field, err)
+			t.Errorf("Decode(%q, %+v): %v; want API_ERROR wrapping ErrUnusable", c.body, c.field, err)
 		}
 	}
 }
