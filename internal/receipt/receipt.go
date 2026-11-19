@@ -11,6 +11,7 @@ package receipt
 import (
 	"encoding/json"
 	stderrors "errors"
+	"math"
 	"strings"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -22,33 +23,55 @@ import (
 // (Астра, the full audit of 14.11, findings 06 and 07).
 var ErrUnusable = stderrors.New("no receipt")
 
+// Field is what a receipt must carry to name what was made: the dotted
+// path of the field and the JSON type its specification gives it.
+type Field struct {
+	path   string
+	number bool
+}
+
+// Text is a field the specification types string: a receipt names what was
+// made by a string that is not blank.
+func Text(path string) Field { return Field{path: path} }
+
+// Number is an id the specification types integer (an int32 is a JSON
+// number): a receipt names what was made by a whole number above zero — a
+// zero is what proto3 omits, so it names nothing.
+func Number(path string) Field { return Field{path: path, number: true} }
+
 // Decode reads data, the body of a create's 2xx, as a receipt named by
-// field (dotted: "version.id"). Without one it answers API_ERROR wrapping
-// ErrUnusable, which leaves the record of the call open
-// (intent.OutcomeUnknown): the cloud may have made it.
-func Decode(data []byte, field string) (map[string]any, error) {
+// field. Without one it answers API_ERROR wrapping ErrUnusable, which leaves
+// the record of the call open (intent.OutcomeUnknown): the cloud may have
+// made it.
+func Decode(data []byte, field Field) (map[string]any, error) {
 	var out map[string]any
-	if json.Unmarshal(data, &out) != nil || out == nil || strings.TrimSpace(lookup(out, field)) == "" {
+	if json.Unmarshal(data, &out) != nil || out == nil || !field.in(out) {
 		return nil, clierrors.Wrap(clierrors.CodeAPIError,
 			i18n.Tf("the API took the create (2xx) but its answer names no %s: whether it was made is not known",
-				"API приняло создание (2xx), но его ответ не называет %s: создано ли, неизвестно", field),
+				"API приняло создание (2xx), но его ответ не называет %s: создано ли, неизвестно", field.path),
 			"", ErrUnusable)
 	}
 	return out, nil
 }
 
-// lookup is the string at the dotted path of m; "" when there is none or
-// the value there is not a string (a number, null, an object): a receipt
-// names what was made by a string, as its specification gives it.
-func lookup(m map[string]any, path string) string {
-	keys := strings.Split(path, ".")
+// in reports whether m holds, at the field's path, a value of the field's
+// type that names something: another type there (a number where the
+// specification gives a string, or the other way round), null or an object
+// is no receipt.
+func (f Field) in(m map[string]any) bool {
+	keys := strings.Split(f.path, ".")
 	for _, k := range keys[:len(keys)-1] {
 		next, ok := m[k].(map[string]any)
 		if !ok {
-			return ""
+			return false
 		}
 		m = next
 	}
-	s, _ := m[keys[len(keys)-1]].(string)
-	return s
+	switch v := m[keys[len(keys)-1]].(type) {
+	case string:
+		return !f.number && strings.TrimSpace(v) != ""
+	case float64:
+		return f.number && v >= 1 && v == math.Trunc(v)
+	}
+	return false
 }

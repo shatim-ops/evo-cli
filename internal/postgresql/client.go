@@ -264,7 +264,7 @@ func (c *Client) CreateDatabase(ctx context.Context, clusterID string, body map[
 		return nil, apiError(status, data)
 	}
 	// The receipt names the database (Database.name, required).
-	return receipt.Decode(data, "name")
+	return receipt.Decode(data, receipt.Text("name"))
 }
 
 func (c *Client) DeleteDatabase(ctx context.Context, clusterID, name string) error {
@@ -293,7 +293,7 @@ func (c *Client) CreateUser(ctx context.Context, clusterID string, body map[stri
 		return nil, apiError(status, data)
 	}
 	// The receipt names the user (User.name, required).
-	return receipt.Decode(data, "name")
+	return receipt.Decode(data, receipt.Text("name"))
 }
 
 func (c *Client) DeleteUser(ctx context.Context, clusterID, name string) error {

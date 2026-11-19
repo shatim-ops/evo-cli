@@ -63,7 +63,10 @@ func TestCreate_NoReceiptIsNoSuccess(t *testing.T) {
 			map[string]any{"cluster_id": cluster, "name": "app", "owner": "app", "confirmed": true}},
 		{"pg_user_create", `{"name":"app"}`, "pg_users",
 			map[string]any{"cluster_id": cluster, "name": "app", "password": "Qwerty123456!", "confirmed": true}},
-		{"secret_add_version", `{"version":{"id":"v-1"}}`, "secret_get",
+		// The form of v2AddVersionResponse in the specification of Secret
+		// Manager: version.id is an int32 (cloud-e2e of 1.9, the job of
+		// secrets: a number was no receipt).
+		{"secret_add_version", `{"secret":{"id":"s-1","path":"app/db"},"version":{"id":2,"state":"ENABLED","createdAt":"2026-11-19T00:00:00Z"}}`, "secret_get",
 			map[string]any{"path": "app/db", "value": "s3cret-value", "confirmed": true}},
 	} {
 		for _, receipt := range []string{`{}`, `{"name":`, ``, c.good} {

@@ -177,8 +177,9 @@ func (c *Client) AddVersion(ctx context.Context, body map[string]any) (map[strin
 	if status < 200 || status >= 300 {
 		return nil, apiError(status, data)
 	}
-	// The receipt names the version made (AddVersionResponse.version.id).
-	return receipt.Decode(data, "version.id")
+	// The receipt names the version made: v2AddVersionResponse.version.id,
+	// an int32 in the specification of Secret Manager.
+	return receipt.Decode(data, receipt.Number("version.id"))
 }
 
 // AccessPayload returns the Base64 payload of a secret version at path.

@@ -690,7 +690,7 @@ var parityAnswers = map[string]string{
 	"DELETE compute.api.cloud.ru/api/v1/images/{id}":       `{}`,
 	"DELETE compute.api.cloud.ru/api/v1/nat-gateways/{id}": `{}`,
 	"DELETE secretmanager.api.cloud.ru/v2/secret/app/db":   `{}`,
-	"POST secretmanager.api.cloud.ru/v2/version":           `{"version":{"id":"` + parityVM + `","secret_id":"` + parityVM + `"}}`,
+	"POST secretmanager.api.cloud.ru/v2/version":           `{"secret":{"id":"` + parityVM + `","path":"app/db"},"version":{"id":2,"state":"ENABLED"}}`,
 }
 
 // parityEmptyLists are the lists the world leaves empty on purpose: the
