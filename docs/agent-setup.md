@@ -7,7 +7,7 @@ Gemini CLI, Codex) одну строку:
 Настрой evo по https://github.com/shatim-ops/evo-cli/blob/main/docs/agent-setup.md
 ```
 
-Агент проверит evo, запустит вход в Cloud.ru и подключит evo к себе. От вас —
+Агент сам установит или обновит evo, запустит вход в Cloud.ru и подключит evo к себе. От вас —
 одно действие: на странице **Evolution CMCP** в браузере выбрать проект и
 нажать «Выдать доступ». Ключ агенту выдаёте вы: агент не может нажать эту
 кнопку за вас, а секрет ключа не проходит ни через чат, ни через браузер.
@@ -39,23 +39,51 @@ Gemini CLI, Codex) одну строку:
 - **Не касайся секрета.** Не проси у человека ключ или секрет в чате, не
   печатай и не читай файлы настроек и ключей evo, не передавай секрет в
   командной строке.
-- **Спрашивай перед установкой и записью.** Покажи команду или diff и
-  выполняй после согласия человека.
+- **Установку evo делай сам, запись в настройки клиента — после согласия.**
+  Строка «Настрой evo по…» — согласие человека на установку evo (шаг 1):
+  скажи, что ставишь, и ставь. Изменение настроек клиента (шаг 3) покажи
+  diff'ом и выполняй после согласия человека.
 - **На ошибке остановись** и покажи человеку ошибку так, как её напечатал
   evo; не обходи её.
 
-### 1. Проверь evo
+### 1. Установи или обнови evo
 
 Выполни `evo version`.
 
-- Печатает версию — переходи к шагу 2.
-- `evo` не найден — попроси человека его установить. На Linux и macOS
-  команда такая:
-  `curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | sh`
-  (запускай только после его согласия). Для Windows установщика нет —
-  дай человеку ссылку
-  https://github.com/shatim-ops/evo-cli/blob/main/docs/install.md#windows.
-  Затем снова выполни `evo version`.
+- Печатает версию 1.9.0 или новее — переходи к шагу 2.
+- `evo` не найден или версия старше — установи его сам, сказав человеку,
+  что ставишь. Установщик скачивает последний стабильный выпуск, сверяет
+  sha256 архива (и подпись, если есть `cosign`) и кладёт бинарь в
+  `~/.local/bin`; прав администратора не нужно.
+  - Linux и macOS (с `EVO_ZSHRC=0` установщик не правит `~/.zshrc`: ставит
+    бинарь и файлы автодополнения evo и печатает строки для профиля — передай
+    их человеку):
+    `curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | EVO_ZSHRC=0 sh`
+  - Windows (PowerShell; для ARM — `$arch = "arm64"`):
+
+    ```powershell
+    $v = (Invoke-RestMethod https://api.github.com/repos/shatim-ops/evo-cli/releases/latest).tag_name.TrimStart("v"); $arch = "amd64"; $dir = "$env:LOCALAPPDATA\Programs\evo"; $base = "https://github.com/shatim-ops/evo-cli/releases/download/v$v"; $zip = "evo_${v}_windows_$arch.zip"; $tmp = New-Item -ItemType Directory -Force "$env:TEMP\evo-$v"
+    Invoke-WebRequest "$base/$zip" -OutFile "$tmp\$zip"; Invoke-WebRequest "$base/checksums.txt" -OutFile "$tmp\checksums.txt"
+    $want = ((Select-String -Path "$tmp\checksums.txt" -Pattern $zip).Line -split '\s+')[0]; if ($want -ne (Get-FileHash "$tmp\$zip" -Algorithm SHA256).Hash.ToLower()) { throw "sha256 mismatch" }
+    Expand-Archive "$tmp\$zip" -DestinationPath $dir -Force
+    if (($env:Path -split ';') -notcontains $dir) { [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User"); $env:Path += ";$dir" }
+    ```
+
+    Скрипт кладёт `evo.exe` в `%LOCALAPPDATA%\Programs\evo` и, если этого
+    каталога нет в `Path` пользователя, добавляет его туда навсегда — скажи
+    об этом человеку до запуска.
+
+  Затем снова выполни `evo version`. Если `evo` не находится, а установщик
+  сказал, что каталога нет в `PATH`, — запускай `~/.local/bin/evo` (Windows —
+  `$env:LOCALAPPDATA\Programs\evo\evo.exe`) полным путём до конца
+  настройки и скажи человеку, какую строку добавить в профиль оболочки.
+- Если `evo version` после установки по-прежнему печатает старую версию,
+  evo стоит ещё где-то (Homebrew, другой каталог в `PATH`): не ставь
+  повторно — назови человеку путь (`command -v evo`, на Windows
+  `(Get-Command evo).Source`) и спроси, какую копию оставить.
+- Установка упала (нет сети, хэш не сошёлся) — не обходи проверку и не
+  качай бинарь другим способом: покажи человеку ошибку и ссылку
+  https://github.com/shatim-ops/evo-cli/blob/main/docs/install.md.
 
 ### 2. Вход: доступ выдаёт человек
 
@@ -121,8 +149,11 @@ evo agent setup --client <клиент> --profile agent --dry-run
 
 Попроси человека перезапустить клиент (Claude Desktop — закрыть полностью и
 открыть снова) или перечитать его MCP-серверы, потом вернуться и работать.
-После перезапуска проверь, что инструменты `evo` на месте;
-`evo doctor --profile agent` проверяет ключ и связь с Cloud.ru из терминала.
+После перезапуска проверь, что инструменты `evo` на месте: вызови
+инструмент `whoami` — он назовёт проект и роли ключа (из терминала то же
+делает `evo doctor --profile agent`). Скажи человеку, что evo подключён, к
+какому проекту, и спроси, с чего начать: например, показать ВМ проекта
+(`vm_list`) или развернуть его `docker-compose`-проект (`deploy_plan`).
 
 У ключа — роль «Администратор проекта» на выбранном проекте на срок, который
 выбрал человек. Изменение в облаке приходит с превью evo, а одобрение вызова
