@@ -12,9 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/clock"
-	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
@@ -58,22 +56,7 @@ func TestHistoryRedisReadBudgetOnEachSurface(t *testing.T) {
 			var answer string
 			switch surface {
 			case "stdio":
-				eng, err := toolEngine(nil)
-				if err != nil {
-					t.Fatal(err)
-				}
-				cache := auth.FileCache{Path: config.TokenCachePath(eng.Config.Profile)}
-				key := auth.CacheKey(auth.Credentials{KeyID: eng.Config.KeyID, Secret: eng.Config.Secret})
-				if err := cache.Store(key, auth.Token{Value: "fake-token", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
-					t.Fatal(err)
-				}
-				body := roRequest("tools/call", map[string]any{"name": "history", "arguments": map[string]any{"check": true}})
-				code, out, stderr := runCLI(t, stdioInit+string(body)+"\n", "mcp")
-				if code != 0 {
-					t.Fatal(code, stderr)
-				}
-				_, reply, _ := strings.Cut(out, "\n")
-				a, _ := roDecode(t, []byte(reply))
+				a := callStdioTool(t, "history", map[string]any{"check": true})
 				if a.isErr || a.rpcErr != "" {
 					t.Fatal(a)
 				}

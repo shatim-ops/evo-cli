@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 func TestKafkaPagesCLI(t *testing.T) {
@@ -59,5 +61,46 @@ func TestKafkaPagesCLI(t *testing.T) {
 				t.Fatalf("exit %d, pages %d: %s %s", code, pages, out, stderr)
 			}
 		})
+	}
+}
+
+// A broken continuation must refuse even a confirmed billable call over MCP.
+func TestContract_KafkaIncompletePageRefusesConfirmedStdio(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	old := w.rt.extra
+	var pages []string
+	w.rt.extra = func(r *http.Request) (*http.Response, error) {
+		if r.Method != "GET" || r.URL.Host != "kafka.api.cloud.ru" || r.URL.Path != "/v1/clusters" {
+			return old(r)
+		}
+		token := r.URL.Query().Get("page_token")
+		pages = append(pages, token)
+		body := "null"
+		if token == "" {
+			body = `{"clusters":[],"next_page_token":"next+"}`
+		}
+		return contractRT{status: 200, body: body}.RoundTrip(r)
+	}
+	defer i18n.SetLang(i18n.Lang())
+	for _, tc := range []struct{ lang, why string }{{i18n.RU, "страница равна null"}, {i18n.EN, "null page"}} {
+		i18n.SetLang(tc.lang)
+		newProcess()
+		code, out, stderr := runCLI(t, "", "kafka", "list")
+		if code != 5 || !strings.Contains(out+stderr, tc.why) {
+			t.Errorf("human %s: exit %d: %s%s", tc.lang, code, out, stderr)
+		}
+	}
+	pages = nil
+	i18n.SetLang(i18n.RU)
+	a := callStdioTool(t, "kafka_create", map[string]any{"name": "events", "cpu": 2, "ram": 4, "confirmed": true})
+	m := parseObject(a.text)
+	if !a.isErr || m["reason"] != "API_ERROR" || m["will_create"] != nil || !strings.Contains(a.text, "null page") {
+		t.Errorf("confirmed create: %s", a.text)
+	}
+	if len(pages) != 2 || pages[0] != "" || pages[1] != "next+" {
+		t.Fatalf("page tokens: %q", pages)
+	}
+	if writes := w.rt.takeWrites(); len(writes) != 0 {
+		t.Fatalf("confirmed create sent %v", writes)
 	}
 }
