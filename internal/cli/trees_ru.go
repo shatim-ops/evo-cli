@@ -127,6 +127,7 @@ var moreColumnHeaderRU = map[string]string{
 
 // treeColumnHeaderRU are the titles a tree gives a column its own way.
 var treeColumnHeaderRU = map[string]map[string]string{
+	"vpc": {"vm": "ВМ", "security_groups": "Группы безопасности"},
 	"iam": {"enabled": "Включён"}, // columnHeaderRU: a zone is "Открыта"
 }
 

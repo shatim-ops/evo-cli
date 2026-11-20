@@ -125,6 +125,8 @@ var cliSpecs = map[string]CLISpec{
 	"vpc_routes":           {Group: "vpc", Verb: "routes", Args: []string{"vpc_id"}},
 	"vpc_route_create":     {Group: "vpc", Verb: "route-create", Args: []string{"vpc_id"}},
 	"vpc_route_delete":     {Group: "vpc", Verb: "route-delete", Args: []string{"vpc_id", "route_id"}},
+	"interface_list":       {Group: "vpc", Verb: "interfaces", Columns: []string{"id", "name", "ip_address", "state", "vm", "security_groups"}},
+	"interface_get":        {Group: "vpc", Verb: "interface-get", Args: []string{"interface_id"}},
 	"list_subnets":         {Group: "vpc", Verb: "subnets"},
 	"subnet_create":        {Group: "vpc", Verb: "subnet-create", Args: []string{"name"}},
 	"subnet_delete":        {Group: "vpc", Verb: "subnet-delete", Args: []string{"subnet_id"}},

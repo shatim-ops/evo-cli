@@ -45,6 +45,7 @@ type CloudAPI interface {
 	// ListInterfaces lists the project's network interfaces with their VM
 	// and security groups: how many interfaces a rule of a group acts on.
 	ListInterfaces(ctx context.Context, projectID string) ([]*Interface, error)
+	GetInterface(ctx context.Context, id string) (*Interface, error)
 	ListFloatingIPs(ctx context.Context, projectID string) ([]*FloatingIP, error)
 	// AttachFloatingIP binds an existing floating IP to a VM interface (PUT).
 	AttachFloatingIP(ctx context.Context, fipID, projectID, interfaceID, name string) (*FloatingIP, error)

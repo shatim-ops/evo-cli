@@ -227,7 +227,17 @@ type SecurityGroup struct {
 // (GET /api/v1/interfaces): the VM it belongs to and the security groups
 // it is in — what a rule of a group acts on.
 type Interface struct {
-	ID             string           `json:"id"`
+	ID string `json:"id"`
+	// ProjectID is optional: Compute normally scopes the list by its query only.
+	ProjectID  string           `json:"project_id,omitempty"`
+	Name       string           `json:"name,omitempty"`
+	IPAddress  string           `json:"ip_address,omitempty"`
+	Type       string           `json:"type,omitempty"`
+	State      string           `json:"state,omitempty"`
+	Primary    *bool            `json:"primary,omitempty"`
+	FloatingIP *IfaceFloatingIP `json:"floating_ip,omitempty"`
+	// VMReported distinguishes an explicit null (unassigned) from missing binding data.
+	VMReported     bool             `json:"-"`
 	VM             *InterfaceVM     `json:"vm,omitempty"`
 	SecurityGroups []InterfaceGroup `json:"security_groups,omitempty"`
 	// Subnet is the subnet of the interface (vm_get): the card of a VM

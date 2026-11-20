@@ -247,7 +247,8 @@ var listSpecs = withSets(map[string]listSpec{
 	"image_list": {rows: "images", own: []string{"query", "type", "zone"}},
 
 	// VPC, DNS
-	"vpc_list": {rows: "vpcs", filters: []listFilter{nameFilter()}},
+	"interface_list": {rows: "interfaces", filters: []listFilter{nameFilter()}},
+	"vpc_list":       {rows: "vpcs", filters: []listFilter{nameFilter()}},
 	"dns_zones": {rows: "zones", filters: []listFilter{
 		nameFilter(),
 		textFilter("domain", "Only with this in the domain, any case.", "Только с этой частью домена, регистр не важен"),
