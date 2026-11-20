@@ -157,6 +157,12 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 			out.Result, out.ResourceID = history.Found, id
 		default:
 			out.Result, out.ResourceID = history.Created, id
+			// Both lostCreate and the create can return subnet_id. Only the
+			// latter carries the subnet object from POST.
+			if name == "subnet_create" {
+				subnet, _ := res["subnet"].(map[string]any)
+				out.CreateReceipt = stringArg(subnet, "id") == id
+			}
 		}
 	default:
 		out.Result = history.Changed
