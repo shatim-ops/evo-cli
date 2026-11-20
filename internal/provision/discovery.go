@@ -135,6 +135,11 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.Tf("failed to read response for %s", "не удалось прочитать ответ %s", path), hintUnexpectedFormat(), err)
 		}
 
+		if project, strict := ctx.Value(natDeleteInventoryKey{}).(string); strict && path == "/api/v1/nat-gateways" {
+			if err := validateNATPage(body, project); err != nil {
+				return nil, err
+			}
+		}
 		var page paginatedResponse[T]
 		if err := json.Unmarshal(body, &page); err == nil && page.Items != nil {
 			// The ids of the page, to drop items already read: a server

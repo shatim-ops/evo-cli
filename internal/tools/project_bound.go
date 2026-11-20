@@ -400,7 +400,7 @@ var (
 		return ids, err
 	}))
 	kindNAT = inProjectList("SNAT gateway", "snat_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
-		gws, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+		gws, err := provision.NATDeleteInventory(ctx, eng.Cloud, eng.Config.ProjectID)
 		return mapIDs(gws), err
 	}))
 	kindSG = inProjectList("security group", "list_security_groups", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {

@@ -89,7 +89,6 @@ var lostDeleteSaysNeverExisted = map[string]string{
 	"disk_delete":         "the compute client repeats the DELETE; existed false, «deleted earlier, or the disk_id is wrong»",
 	"image_delete":        "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
 	"release_floating_ip": "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
-	"snat_delete":         "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
 	"subnet_delete":       "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
 }
 

@@ -427,6 +427,10 @@ var computeRetry = httpretry.Policy{DropMethods: []string{http.MethodDelete}, Re
 // one retry loop of evo (process audit 1.2.1, 6.1) — and turns the final
 // answer into evo's errors.
 func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
+	return a.doWithPolicy(ctx, method, path, body, computeRetry)
+}
+
+func (a *CloudRuAdapter) doWithPolicy(ctx context.Context, method, path string, body []byte, policy httpretry.Policy) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
@@ -441,7 +445,7 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 	}
 
 	client := *a.client
-	client.Transport = &httpretry.Transport{Base: a.client.Transport, Backoff: a.firstBackoff(), Policy: computeRetry}
+	client.Transport = &httpretry.Transport{Base: a.client.Transport, Backoff: a.firstBackoff(), Policy: policy}
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
