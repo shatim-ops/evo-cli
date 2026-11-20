@@ -51,11 +51,14 @@ func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
 	}{
 		{name: "not seen, the same key", tool: "pg_create", id: resGone, outcome: history.Created, key: this, says: checkNotSeen, reads: 1},
 		{name: "found by a repeat, not seen", tool: "lb_create", id: resGone, outcome: history.Found, key: this, says: checkNotSeen, reads: 1},
-		{name: "still there", tool: "pg_create", id: resForeign, outcome: history.Created, key: this, says: checkThere, reads: 1},
+		{name: "missing VM from provision", tool: "provision", id: resGone, outcome: history.Unknown, key: this, says: checkNotSeen, reads: 1},
+		{name: "same account different key", tool: "pg_create", id: resGone, outcome: history.Created, key: &state.Maker{KeyID: "different"}, says: checkOtherKey},
+		{name: "still there", tool: "pg_create", id: resMine, outcome: history.Created, key: this, says: checkThere, reads: 1},
 		{name: "the read is refused", tool: "lb_create", id: resGone, outcome: history.Created, key: this, status: http.StatusForbidden, says: checkReadFailed, reads: 1},
 		{name: "the read is throttled", tool: "vpc_create", id: resGone, outcome: history.Created, key: this, status: http.StatusTooManyRequests, says: checkReadFailed, reads: 1},
 		{name: "the API fails", tool: "k8s_create", id: resGone, outcome: history.Created, key: this, status: http.StatusBadGateway, says: checkReadFailed, reads: 1},
 		{name: "another key", tool: "cert_import", id: resGone, outcome: history.Created, key: other, says: checkOtherKey},
+		{name: "card of another project", tool: "pg_create", id: resForeign, outcome: history.Created, key: this, says: checkReadFailed, reads: 1},
 		{name: "a line with no key", tool: "pg_create", id: resGone, outcome: history.Created, says: checkNoKey},
 		{name: "a kind with no read by id", tool: "disk_create", id: resGone, outcome: history.Created, key: this, says: checkNoRead},
 		{name: "an outcome not known: the id may be a name", tool: "pg_create", id: resGone, outcome: history.Unknown, key: this, says: checkNotByID},
@@ -133,8 +136,8 @@ func TestHistory_CheckReadsTheLaterLineAndKeepsItsBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	add("c000000000000001", "pg_create", history.Created, resForeign)
-	add("c000000000000002", "pg_create", history.Found, resForeign)
+	add("c000000000000001", "pg_create", history.Created, resMine)
+	add("c000000000000002", "pg_create", history.Found, resMine)
 	// Lines it does not read spend no budget: a kind with no read by id.
 	for i := 0; i < 3; i++ {
 		add(fmt.Sprintf("d00000000000000%d", i), "disk_create", history.Created, fmt.Sprintf("00000000-0000-4000-8000-0000000d000%d", i))
@@ -205,5 +208,32 @@ func TestHistory_CheckOnABoundServerReadsOnlyWhatItShows(t *testing.T) {
 	}
 	if q := f.log(); len(q) != 0 {
 		t.Errorf("check on a bound server read lines it does not show: %v\n%s", q, text)
+	}
+}
+
+func TestHistory_ErasedClusterIsAbsentFromCheckedInventory(t *testing.T) {
+	checkAt(t)
+	r := ownerRegistry(t, &ownerFake{pgStatus: "ERASED"}, false, ownProject)
+	eng, _ := r.newEngine(nil)
+	dir := history.DirOf(intent.Dir(eng.StateDir))
+	for i, tool := range []string{"pg_create", "pg_delete"} {
+		line := history.Line{Time: "2026-11-17T10:00:00Z", Tool: tool, ProjectID: ownProject, Kind: resourceKind(tool), ResourceID: resMine, Outcome: history.Created, IntentID: fmt.Sprintf("a%015d", i), Key: eng.Maker()}
+		if i == 1 {
+			line.Outcome = history.Unknown
+			line.Target = "cluster_id=" + resMine
+		}
+		if err := history.Append(dir, line); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, check := range []bool{true, false} {
+		ans, failed := r.handleHistory(context.Background(), map[string]any{"check": check})
+		var out struct {
+			Live       []historyLine
+			WouldClose []historyLine `json:"would_close"`
+		}
+		if failed || json.Unmarshal([]byte(ans), &out) != nil || (check && (len(out.Live) != 0 || len(out.WouldClose) != 0)) || (!check && len(out.Live) != 2) {
+			t.Fatalf("check=%v: %s", check, ans)
+		}
 	}
 }

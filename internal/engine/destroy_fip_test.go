@@ -48,8 +48,12 @@ func runningRecord() state.DeploymentRecord {
 func TestDestroy_ReleasesFloatingIPFromState(t *testing.T) {
 	eng, cloud, out := destroyFixture(t, runningRecord())
 
-	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+	var result DestroyResult
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result}); err != nil {
 		t.Fatalf("Destroy: %v", err)
+	}
+	if result.VMID != "vm-1" || result.CleanupPending {
+		t.Fatalf("destroy result: %+v", result)
 	}
 	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-9" {
 		t.Errorf("released FIPs = %v, want [fip-9]", cloud.deletedFIPs)

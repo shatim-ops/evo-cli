@@ -25,12 +25,19 @@ import (
 
 // DestroyOptions holds parameters for the destroy command.
 type DestroyOptions struct {
+	// Result identifies the target and incomplete cleanup under the state lock.
+	Result *DestroyResult
 	Force  bool // skip confirmation prompt (--force / --yes)
 	DryRun bool // show what would be deleted and stop
 	// Gate, when set, asks for consent to the preview instead of
 	// confirm.Ask: the destroy tool sets it for 'evo destroy', which shows
 	// the preview with the tool's answer as its details (spec REQ-4).
 	Gate func(ctx context.Context, p confirm.Preview) (bool, error)
+}
+
+type DestroyResult struct {
+	VMID           string
+	CleanupPending bool
 }
 
 // gate asks for consent to p: through opts.Gate, else confirm.Ask.
@@ -132,6 +139,11 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 	if !proceed {
 		return nil // --dry-run
+	}
+
+	if opts.Result != nil {
+		opts.Result.VMID = active.VMID
+		opts.Result.CleanupPending = true
 	}
 
 	// Auth.
@@ -268,6 +280,10 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 	if err := state.Write(statePath, stateFile); err != nil {
 		return err
+	}
+
+	if opts.Result != nil {
+		opts.Result.CleanupPending = len(rules.Failed) > 0 || uncheckedErr != nil || len(lostMissing) > 0
 	}
 
 	if e.Printer.IsJSON() {

@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
+	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/verify"
 	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
@@ -78,6 +79,8 @@ type Engine struct {
 
 // DeployOptions holds parameters for the deploy command.
 type DeployOptions struct {
+	// Record receives the deployment this call used while it holds the state lock.
+	Record         *state.DeploymentRecord
 	ComposeFile    string
 	Flavor         string // "auto" or explicit flavor name
 	Region         string

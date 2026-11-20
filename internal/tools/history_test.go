@@ -148,6 +148,10 @@ func TestHistoryOutcome_OneReadingOfAnAnswer(t *testing.T) {
 		// У3: a delete that goes on.
 		{"lb_delete", `{"status":"deleting","operation_id":"op-2","next_tool":"lb_operation"}`, map[string]any{"id": "lb-1"}, history.Outcome{Result: history.Unknown, Kind: "load balancer", ResourceID: "lb-1", OperationID: "op-2"}},
 		{"destroy", `{"status":"deleting"}`, map[string]any{"vm_id": "vm-1"}, history.Outcome{Result: history.Unknown, Kind: "VM", ResourceID: "vm-1"}},
+		{"destroy", `{"status":"ok","deleted_vm":"vm-1"}`, nil, history.Outcome{Result: history.Deleted, Kind: "VM", ResourceID: "vm-1"}},
+		{"destroy", `{"status":"partial","vm_id":"vm-1","reason":"API_ERROR"}`, nil, history.Outcome{Result: history.Unknown, Reason: "API_ERROR", Kind: "VM", ResourceID: "vm-1"}},
+		{"destroy", `{"status":"ok","deleted_vm":"vm-1","cleanup_pending":true}`, nil, history.Outcome{Result: history.Unknown, Kind: "VM", ResourceID: "vm-1"}},
+		{"pg_delete", `{"status":"deleted"}`, map[string]any{"cluster_id": "pg-1"}, history.Outcome{Result: history.Deleted, Kind: "PostgreSQL cluster", ResourceID: "pg-1"}},
 		// У5: a create whose answer names no id.
 		{"pg_create", `{"status":"creating","operation_id":"op-1"}`, nil, history.Outcome{Result: history.Unknown, Kind: "PostgreSQL cluster", OperationID: "op-1"}},
 	} {

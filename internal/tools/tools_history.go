@@ -9,6 +9,7 @@ import (
 	stderrors "errors"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
@@ -150,6 +151,14 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	var checked *historyChecked
 	results := map[int]string{}
 	if boolArg(args, "check", false) {
+		// Older pg_delete lines kept the cluster_id alias only in the target.
+		for i, l := range live {
+			if l.Tool == "pg_delete" && l.Format == history.Format && l.ResourceID == "" && l.Outcome == history.Unknown {
+				if id, ok := strings.CutPrefix(l.Target, "cluster_id="); ok && isUUID(id) {
+					live[i].ResourceID = id
+				}
+			}
+		}
 		eng, err := s.engineOfCall(args)
 		if err != nil {
 			return failed(ctx, err, nil), true
@@ -164,7 +173,7 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	}
 	liveLines := []historyLine{}
 	for i, l := range live {
-		if shown(l) {
+		if shown(l) && results[i] != checkGone {
 			hl := s.historyLineOf(l)
 			hl.CheckResult = results[i]
 			liveLines = append(liveLines, hl)
@@ -209,8 +218,8 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 			}
 		}
 		ans["would_close"] = would
-		ans["check_note"] = i18n.T("would_close: a read by id, with the key that sent the call, answers «not found»: the resource was removed, or this key no longer sees it — the platform does not tell which. history writes nothing and closes nothing: the lines stay live in the journal until evo deletes the resource. check_result tells why a live line was not read.",
-			"would_close — чтение по id ключом, которым отправлен вызов, отвечает «не найдено»: ресурс удалён или этот ключ его больше не видит, — какое из двух, платформа не говорит. history ничего не пишет и не закрывает: в журнале строки остаются живыми, пока ресурс не удалён через evo. check_result — почему живая строка не прочитана.")
+		ans["check_note"] = i18n.T("would_close: a read by id, with the key that sent the call, answers «not found»: the resource was removed, or this key no longer sees it — the platform does not tell which. A matching PostgreSQL card in ERASED or DELETED is omitted from checked live. history writes nothing: the lines stay live in the journal until evo deletes the resource. check_result tells why a live line was not read.",
+			"would_close — чтение по id ключом, которым отправлен вызов, отвечает «не найдено»: ресурс удалён или этот ключ его больше не видит, — какое из двух, платформа не говорит. Кластер PostgreSQL с совпадающим ID в ERASED или DELETED исключён из проверенного live. history ничего не пишет: в журнале строки остаются живыми, пока ресурс не удалён через evo. check_result — почему живая строка не прочитана.")
 	}
 	return toJSON(ans), false
 }
@@ -254,6 +263,7 @@ const (
 	checkNotSeen = "not_seen"
 	// checkThere: the read by id finds the resource.
 	checkThere = "there"
+	checkGone  = "gone"
 	// checkReadFailed: the read answered neither «there» nor «not found»
 	// (403, 401, 429, 5xx, a cut): not checked.
 	checkReadFailed = "read_failed"
@@ -285,6 +295,7 @@ const (
 // historyChecked counts what history with check did: the reads sent, the
 // lines it would close, and the lines not read, by why.
 type historyChecked struct {
+	Gone       int            `json:"gone,omitempty"`
 	Read       int            `json:"read"`
 	WouldClose int            `json:"would_close"`
 	NotChecked map[string]int `json:"not_checked,omitempty"`
@@ -299,10 +310,19 @@ type historyChecked struct {
 func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible []int, cur *state.Maker) (*historyChecked, map[int]string) {
 	out := &historyChecked{NotChecked: map[string]int{}}
 	results := map[int]string{}
-	resource := func(l history.Line) string { return l.Kind + "\x00" + l.Parent + "\x00" + l.ResourceID }
-	latest := map[string]int{}
+	type identity struct{ project, kind, parent, id, key, account string }
+	resource := func(l history.Line) identity {
+		k := identity{project: l.ProjectID, kind: l.Kind, parent: l.Parent, id: l.ResourceID}
+		if l.Key != nil {
+			k.key, k.account = l.Key.KeyID, l.Key.ServiceAccountID
+		}
+		return k
+	}
+	latest := map[identity]int{}
 	for _, i := range visible {
-		latest[resource(live[i])] = i
+		if historyIDReadable(live[i]) {
+			latest[resource(live[i])] = i
+		}
 	}
 	fresh := clock.Now().Add(-madeListGrace)
 	for _, i := range visible {
@@ -311,12 +331,16 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 		k := cardOf(l.Tool)
 		why := ""
 		switch {
-		case (l.Outcome != history.Created && l.Outcome != history.Found) || l.ResourceID == "":
+		case !historyIDReadable(l):
 			why = checkNotByID
-		case l.ProjectID == "":
+		case l.ProjectID == "" && !(l.Tool == "pg_delete" && !s.projectBound):
 			why = checkNoProject
 		case l.Parent != "":
 			why = checkInParent
+		case l.Key == nil || cur == nil || l.Key.KeyID == "" || cur.KeyID == "":
+			why = checkNoKey
+		case l.Key.KeyID != cur.KeyID || l.Key.Other(cur):
+			why = checkOtherKey
 		case latest[resource(l)] != i:
 			why = checkLater
 		case at.After(fresh):
@@ -333,11 +357,17 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 			continue
 		}
 		out.Read++
-		_, notSeen, _, err := s.readByID(ctx, k, l.ResourceID, l.Key, cur)
+		m, notSeen, _, err := s.readByID(ctx, k, l.ResourceID, l.Key, cur)
 		switch {
 		case notSeen:
 			results[i] = checkNotSeen
 			out.WouldClose++
+		case err == nil && k == kindPG && (stringArg(m, "id") != l.ResourceID || (projectField(m) != "" && l.ProjectID != "" && projectField(m) != l.ProjectID)):
+			results[i] = checkReadFailed
+			out.NotChecked[checkReadFailed]++
+		case err == nil && k == kindPG && statusGone(firstNonEmptyStr(stringArg(m, "status"), stringArg(m, "state"))):
+			results[i] = checkGone
+			out.Gone++
 		case err == nil:
 			results[i] = checkThere
 		default:
@@ -345,8 +375,46 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 			out.NotChecked[checkReadFailed]++
 		}
 	}
+	for _, i := range visible {
+		if results[i] == checkLater && results[latest[resource(live[i])]] == checkGone {
+			results[i] = checkGone
+			out.NotChecked[checkLater]--
+			if out.NotChecked[checkLater] == 0 {
+				delete(out.NotChecked, checkLater)
+			}
+		}
+	}
 	return out, results
 }
+
+// Only VM creates return their ID from the cloud even on a partial failure.
+func historyIDReadable(l history.Line) bool {
+	if l.Format != history.Format || l.ResourceID == "" || l.Kind != resourceKind(l.Tool) {
+		return false
+	}
+	switch l.Outcome {
+	case history.Created, history.Found:
+		return true
+	case history.Unknown:
+		switch l.Tool {
+		case "deploy", "deploy_apply", "provision", "destroy", "pg_delete":
+			return isUUID(l.ResourceID)
+		}
+	}
+	return false
+}
+
+var historyVMCard = &ownerKind{card: func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+	eng, err := c.engine(ctx)
+	if err != nil {
+		return nil, err
+	}
+	vm, err := eng.Cloud.GetVM(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"id": vm.ID, "state": vm.Status}, nil
+}}
 
 // cardOf is the kind of the resource tool makes or removes, as its delete
 // addresses it by id: its read by id tells whether the resource is there
@@ -355,6 +423,9 @@ func cardOf(tool string) *ownerKind {
 	del := tool
 	if c, ok := createdOf(tool); ok && c.delete != "" {
 		del = c.delete
+	}
+	if del == "destroy" {
+		return historyVMCard
 	}
 	d, ok := deleteOf(del)
 	if !ok {

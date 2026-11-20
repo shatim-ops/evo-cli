@@ -502,7 +502,8 @@ func TestDeploy_NewDeploy(t *testing.T) {
 
 	composePath := writeComposeFile(t, tmpDir)
 
-	opts := DeployOptions{
+	var result state.DeploymentRecord
+	opts := DeployOptions{Record: &result,
 		ComposeFile:    composePath,
 		Flavor:         "small",
 		Region:         "az-1",
@@ -513,6 +514,10 @@ func TestDeploy_NewDeploy(t *testing.T) {
 	err := eng.Deploy(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("Deploy returned error: %v", err)
+	}
+
+	if result.VMID != "vm-123" || result.Region == "" {
+		t.Fatalf("deploy result: %+v", result)
 	}
 
 	// Verify stages were called.

@@ -1767,7 +1767,8 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			eng.Printer = logAndProgress(ctx, &buf)
 
 			force, _ := args["force"].(bool)
-			opts := engine.DeployOptions{
+			var record state.DeploymentRecord
+			opts := engine.DeployOptions{Record: &record,
 				ComposeFile:    eng.Config.ComposeFile,
 				Flavor:         eng.Config.Flavor,
 				Region:         eng.Config.Region,
@@ -1788,10 +1789,10 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			}
 
 			result := map[string]any{"log": buf.String()}
-			if sf, e := state.Read(state.DefaultPath(eng.StateDir)); e == nil {
-				if active := sf.ActiveComposeDeployment(); active != nil {
-					result["deployment"] = active
-				}
+			if record.VMID != "" {
+				result["deployment"] = record
+				result["vm_id"] = record.VMID
+				result["region"] = record.Region
 			}
 			deployPortsOnlyFromGroups(result, eng.PortsOnlyFromGroups())
 			var going *engine.InProgress
@@ -2025,7 +2026,8 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 		return failed(ctx, errComposeChangedSinceConsent(), nil), true
 	}
 	force, _ := args["force"].(bool)
-	err = eng.Deploy(ctx, engine.DeployOptions{
+	var record state.DeploymentRecord
+	err = eng.Deploy(ctx, engine.DeployOptions{Record: &record,
 		ComposeFile:    eng.Config.ComposeFile,
 		Flavor:         eng.Config.Flavor,
 		Region:         eng.Config.Region,
@@ -2044,7 +2046,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 	if err != nil {
 		return failed(ctx, err, deployFields(err, nil)), true
 	}
-	return toJSON(map[string]any{"status": "ok"}), false
+	return toJSON(map[string]any{"status": "ok", "vm_id": record.VMID, "region": record.Region}), false
 }
 
 // deployFields adds to fields of a deploy error answer the argument of a
@@ -3025,18 +3027,19 @@ func (s *Registry) destroyLive(ctx context.Context, c *Caller) (string, bool) {
 		return failed(ctx, err, nil), true
 	}
 	eng.Printer = c.Printer
-	err = eng.Destroy(ctx, engine.DestroyOptions{DryRun: c.DryRun,
+	var result engine.DestroyResult
+	err = eng.Destroy(ctx, engine.DestroyOptions{Result: &result, DryRun: c.DryRun,
 		Gate: func(ctx context.Context, p confirm.Preview) (bool, error) {
 			return c.ask(ctx, destroyAnswer(p, s.deploymentProject()), &p)
 		}})
 	if err != nil {
-		fields := map[string]any{}
+		fields := map[string]any{"vm_id": result.VMID, "cleanup_pending": result.CleanupPending}
 		if stderrors.Is(err, engine.ErrDeletionUnconfirmed) {
 			fields["status"] = "partial"
 		}
 		return failed(ctx, err, fields), true
 	}
-	return toJSON(map[string]any{"status": "ok"}), false
+	return toJSON(map[string]any{"status": "ok", "deleted_vm": result.VMID, "cleanup_pending": result.CleanupPending}), false
 }
 
 // logField is the "log" of an error answer: none when nothing was logged —
@@ -3442,6 +3445,9 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			"status":     "ok",
 			"deleted_vm": target.ID,
 			"name":       target.Name,
+		}
+		if fipLeft || len(rules.Failed) > 0 || stateErr != nil || uncheckedErr != nil || len(lostMissing) > 0 {
+			out["cleanup_pending"] = true
 		}
 		if alreadyGone {
 			out["status"] = "already_deleted"
