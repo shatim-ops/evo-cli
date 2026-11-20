@@ -260,3 +260,32 @@ func TestDestroy_ExtraAddressRefusalKeepsTargetUntilRetry(t *testing.T) {
 		}
 	}
 }
+
+// A lost VM reply is verified before any dependent cleanup. Retrying
+// partial cleanup of an absent VM must never issue a second VM delete.
+func TestDestroy_LostVMReplyAndPartialRelease(t *testing.T) {
+	eng, cloud, out := destroyFixture(t, runningRecord())
+	var vmDeletes, addressDeletes int
+	lost := clerrors.New(clerrors.CodeAPIUnreachable, "connection lost after send", "")
+	cloud.deleteVMFn = func(context.Context, string) error {
+		vmDeletes++
+		return lost
+	}
+	cloud.deleteFloatingIPFn = func(context.Context, string, string) error {
+		addressDeletes++
+		if addressDeletes == 1 {
+			return lost
+		}
+		return nil
+	}
+	var result DestroyResult
+	err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result})
+	if clerrors.Reason(err) != clerrors.CodeAPIUnreachable || !result.VMReplyLost || !result.CleanupPending || vmDeletes != 1 || addressDeletes != 1 || !strings.Contains(out.String(), "did not acknowledge") {
+		t.Fatalf("partial: %v result=%+v writes=%d/%d output=%s", err, result, vmDeletes, addressDeletes, out)
+	}
+	result = DestroyResult{}
+	err = eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result})
+	if err != nil || result.CleanupPending || vmDeletes != 1 || addressDeletes != 2 || readActive(t, eng.StateDir) != nil {
+		t.Fatalf("retry: %v result=%+v writes=%d/%d", err, result, vmDeletes, addressDeletes)
+	}
+}

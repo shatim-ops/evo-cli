@@ -38,6 +38,13 @@ type DestroyOptions struct {
 type DestroyResult struct {
 	VMID           string
 	CleanupPending bool
+	VMReplyLost    bool
+	VMDeleteUnsent bool
+}
+
+// VMDeleteObservation describes the read after a lost VM delete reply.
+func VMDeleteObservation() string {
+	return i18n.T("The VM is now absent. The service did not acknowledge the VM delete request.", "При проверке ВМ отсутствовала. Ответ сервиса на запрос удаления ВМ не получен.")
 }
 
 // gate asks for consent to p: through opts.Gate, else confirm.Ask.
@@ -83,6 +90,7 @@ func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, err
 
 // Destroy tears down the active deployment.
 func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
+	ctx = provision.DestroyRequests(ctx)
 	statePath := state.DefaultPath(e.StateDir)
 	if !opts.DryRun {
 		unlock, err := state.Lock(statePath)
@@ -165,10 +173,22 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	stateFile.UpsertDeployment(*active)
 	_ = state.Write(statePath, stateFile)
 
+	var previouslyAbsent bool
+	if prevStatus == "destroying" && active.VMID != "" && !active.CreatedBy.Other(e.Maker()) && (active.ProjectID == "" || active.ProjectID == e.Config.ProjectID) {
+		_, readErr := e.Cloud.GetVM(ctx, active.VMID)
+		if readErr != nil && clerrors.Reason(readErr) != clerrors.CodeVMNotFound {
+			return readErr
+		}
+		previouslyAbsent = clerrors.Reason(readErr) == clerrors.CodeVMNotFound
+	}
+	sendCtx, unsent := provision.TraceDeleteConnection(ctx)
+	observedAbsent := false
 	if active.VMID == "" {
 		// No ID to delete by: DELETE /vms/ with an empty ID is not a VM.
 		e.Printer.Warning(i18n.T("No VM ID in state; nothing to delete in the cloud", "В state нет ID ВМ; удалять в облаке нечего"))
-	} else if err = e.deleteVMWhenDeletable(ctx, active.VMID); err != nil {
+	} else if previouslyAbsent {
+		e.Printer.StepDone(i18n.T("The VM is absent. Continuing cleanup.", "ВМ отсутствует. Продолжается уборка ресурсов."))
+	} else if err = e.deleteVMWhenDeletable(sendCtx, active.VMID); err != nil {
 		// If VM is already gone (VM_NOT_FOUND), that's fine — unless the
 		// record is of another project than the active one: DELETE
 		// /vms/{id} carries no project, so a key that does not see that
@@ -177,7 +197,20 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		// the MCP destroy refuse the same way).
 		var cliErr *clerrors.CLIError
 		otherProject := active.ProjectID != "" && e.Config.ProjectID != "" && active.ProjectID != e.Config.ProjectID
-		if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound && otherProject {
+		beforeSend := unsent(err)
+		if opts.Result != nil {
+			opts.Result.VMDeleteUnsent = beforeSend
+		}
+		if !beforeSend && !otherProject && ctx.Err() == nil && clerrors.Reason(err) == clerrors.CodeAPIUnreachable {
+			_, readErr := e.Cloud.GetVM(ctx, active.VMID)
+			observedAbsent = clerrors.Reason(readErr) == clerrors.CodeVMNotFound
+		}
+		if observedAbsent {
+			e.Printer.StepDone(VMDeleteObservation())
+			if opts.Result != nil {
+				opts.Result.VMReplyLost = true
+			}
+		} else if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound && otherProject {
 			active.Status = prevStatus
 			stateFile.UpsertDeployment(*active)
 			_ = state.Write(statePath, stateFile)
@@ -191,8 +224,11 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		} else if stderrors.As(err, &cliErr) && cliErr.Code == clerrors.CodeVMNotFound {
 			e.Printer.StepDone(i18n.T("VM already deleted", "ВМ уже удалена"))
 		} else {
-			// The VM is still there: the record keeps saying what it was.
-			active.Status = prevStatus
+			// A refused or unsent delete preserves the previous state. A lost
+			// reply leaves the record available for a read before another delete.
+			if beforeSend || clerrors.Reason(err) != clerrors.CodeAPIUnreachable {
+				active.Status = prevStatus
+			}
 			stateFile.UpsertDeployment(*active)
 			_ = state.Write(statePath, stateFile)
 			if st := provision.HTTPStatus(err); st == http.StatusConflict || st == http.StatusUnprocessableEntity {
@@ -292,6 +328,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	if e.Printer.IsJSON() {
 		out := map[string]any{"status": "destroyed", "vm_id": vmID, "vm_ip": vmIP}
+		if observedAbsent {
+			out["message"] = VMDeleteObservation()
+		}
 		if shown.VMName != "" {
 			out["vm_name"] = shown.VMName
 		}
@@ -597,6 +636,11 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 			return nil
 		}
 		lastErr = err
+		if provision.IsDestroyRequest(ctx) && clerrors.Reason(err) == clerrors.CodeAPIUnreachable {
+			return clerrors.Wrap(clerrors.CodeAPIUnreachable,
+				i18n.Tf("No reply confirmed release of floating IP %s.", "Нет ответа, подтверждающего освобождение floating IP %s.", fipLabel(rec.VMIP, fipID)),
+				i18n.T("Check the address before retrying destroy.", "Проверьте адрес перед повтором destroy."), err)
+		}
 		if attempt == fipReleaseAttempts-1 {
 			break
 		}

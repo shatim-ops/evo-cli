@@ -3055,13 +3055,22 @@ func (s *Registry) destroyLive(ctx context.Context, c *Caller) (string, bool) {
 			return c.ask(ctx, destroyAnswer(p, s.deploymentProject()), &p)
 		}})
 	if err != nil {
+		if result.VMDeleteUnsent {
+			if c, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && c.hasOpen && c.open.Tool == "destroy" {
+				c.deleteUnsent = true
+			}
+		}
 		fields := map[string]any{"vm_id": result.VMID, "cleanup_pending": result.CleanupPending}
 		if stderrors.Is(err, engine.ErrDeletionUnconfirmed) {
 			fields["status"] = "partial"
 		}
 		return failed(ctx, err, fields), true
 	}
-	return toJSON(map[string]any{"status": "ok", "deleted_vm": result.VMID, "cleanup_pending": result.CleanupPending}), false
+	fields := map[string]any{"status": "ok", "deleted_vm": result.VMID, "cleanup_pending": result.CleanupPending}
+	if result.VMReplyLost {
+		fields["message"] = engine.VMDeleteObservation()
+	}
+	return toJSON(fields), false
 }
 
 // logField is the "log" of an error answer: none when nothing was logged —
@@ -3329,11 +3338,14 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			eng.Printer = pp
 		}
 
+		ctx = provision.DestroyRequests(ctx)
+		sendCtx, unsent := deleteConnection(ctx, "destroy")
+		observedAbsent := false
 		if alreadyGone || strings.EqualFold(target.Status, "deleting") {
 			// Nothing to delete in the cloud, or the delete of an earlier
 			// call still going: Cloud.ru refuses another DELETE then with
 			// 409 (OPS-18), and the wait below is what the repeat is for.
-		} else if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
+		} else if err := eng.Cloud.DeleteVMInProject(sendCtx, target.ID, projectID); err != nil {
 			var gone *clierrors.CLIError
 			if stderrors.As(err, &gone) && gone.Code == clierrors.CodeVMNotFound {
 				// Gone between the list and the DELETE, which names the
@@ -3341,6 +3353,23 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				// the engine's destroy takes it, and the rest is cleaned up
 				// (D26).
 				alreadyGone = true
+			} else if unsent(err) {
+				return unsentDeleteAnswer(err)
+			} else if clierrors.Reason(err) == clierrors.CodeAPIUnreachable && ctx.Err() == nil {
+				_, readErr := eng.Cloud.GetVM(ctx, target.ID)
+				if clierrors.Reason(readErr) != clierrors.CodeVMNotFound {
+					fields := map[string]any{"vm_id": target.ID, "cleanup_pending": true, "next_tool": "vm_get", "next_args": map[string]any{"vm_id": target.ID}}
+					if _, saveErr := markDestroying(statePath, projectID, target, &fipRec, releaseIP && hasFIP); saveErr != nil {
+						fields["state_error"] = saveErr.Error()
+					}
+					if readErr != nil {
+						fields["check_reason"] = clierrors.Reason(readErr)
+					}
+					return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable,
+						i18n.T("No reply confirmed deletion of the VM. The check by ID did not establish that it is absent.", "Ответ на удаление ВМ не получен. Проверка по ID не подтвердила её отсутствие."),
+						i18n.T("Check the VM by ID before retrying destroy.", "Проверьте ВМ по ID перед повтором destroy."), err), fields), true
+				}
+				observedAbsent = true
 			} else if engine.IsNotDeletableYet(err) {
 				// Cloud.ru refused the delete in the VM's state: the state it
 				// reads in and the way out, as the CLI destroy (QA H1/H4,
@@ -3352,7 +3381,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				return errResult(fmt.Errorf(i18n.T("delete VM: %w", "удаление ВМ: %w"), err)), true
 			}
 		}
-		if !alreadyGone {
+		if !alreadyGone && !observedAbsent {
 			// The wait ends with the budget of an MCP call too (D69).
 			waitCtx := ctx
 			if left, capped := budgetLeft(ctx); capped {
@@ -3380,8 +3409,11 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		// release left the FIP billed with no trace (QA r3 R1).
 		msg := i18n.T("VM deleted", "ВМ удалена")
 		if alreadyGone {
-			msg = i18n.T("VM already deleted (not found in the cloud); its local record is cleaned up",
-				"ВМ уже удалена (в облаке не найдена); локальная запись очищена")
+			msg = i18n.T("VM already deleted (not found in the cloud)",
+				"ВМ уже удалена (в облаке не найдена)")
+		}
+		if observedAbsent {
+			msg = engine.VMDeleteObservation()
 		}
 		if keptFIP != "" {
 			msg += i18n.Tf("; floating IP %s kept: %s — whether to release it (release_floating_ip, or destroy with release_ip=true), ask the person",
@@ -3391,10 +3423,14 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		if releaseIP && hasFIP {
 			if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
 				fipLeft = true
-				msg += i18n.Tf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
-					"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release",
-					"; ВНИМАНИЕ: floating IP %s НЕ освобождён и продолжает оплачиваться (%v) — "+
-						"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
+				if clierrors.Reason(ferr) == clierrors.CodeAPIUnreachable {
+					msg += "; " + ferr.Error()
+				} else {
+					msg += i18n.Tf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
+						"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release",
+						"; ВНИМАНИЕ: floating IP %s НЕ освобождён и продолжает оплачиваться (%v) — "+
+							"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
+				}
 			} else {
 				msg += i18n.T("; released floating IP ", "; освобождён floating IP ") + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 			}

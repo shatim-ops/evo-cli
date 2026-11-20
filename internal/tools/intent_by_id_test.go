@@ -126,6 +126,18 @@ func TestDoctor_CutDeleteByIDIsCheckedByID(t *testing.T) {
 	}
 }
 
+// A lost destroy response can leave a floating IP and port rules even
+// when the VM itself is gone. Doctor cannot sign off that cleanup.
+func TestDoctor_DestroyVMAbsenceDoesNotSettleCleanup(t *testing.T) {
+	r := ownerRegistry(t, &ownerFake{}, false, ownProject)
+	eng, _ := r.newEngine(nil)
+	in := intent.Intent{Tool: "destroy", Target: "vm_id=" + resGone, Key: eng.Maker(), Sent: true, Ended: true}
+	found, closed, _ := r.checkPending(context.Background(), in, eng)
+	if closed || !strings.Contains(found, "cleanup") {
+		t.Fatalf("VM absence alone: closed=%t detail=%q", closed, found)
+	}
+}
+
 // A call whose request carries its project keeps it in the record, and a
 // delete inside a parent is not checked by a read of the parent: the
 // parent being there says nothing of the child.

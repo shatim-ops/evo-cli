@@ -83,10 +83,7 @@ var lostDeleteUnreached = map[string]string{
 // «already deleted»: the call that removed the resource answers that it
 // did not exist («deleted earlier, or the id is wrong») though it read it
 // alive before the question. The list only shrinks. Closes by 1.10.
-var lostDeleteSaysNeverExisted = map[string]string{
-	"destroy":             "the compute client repeats the DELETE; the answer is «VM already deleted (not found in the cloud)»",
-
-}
+var lostDeleteSaysNeverExisted = map[string]string{}
 
 // Release plan 1.9, «Находки промежуточного дельта-аудита», class 1, for
 // the deletes: the request is taken and its answer is lost. For every

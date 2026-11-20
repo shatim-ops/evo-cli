@@ -6,30 +6,18 @@ package tools
 
 import (
 	"context"
-	"errors"
-	"net"
-	"net/http/httptrace"
-	"sync/atomic"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // A failed dial, proxy connection, or TLS handshake precedes the HTTP
 // request. A later 404 cannot attribute the disappearance to this call.
 func deleteConnection(ctx context.Context, tool string) (context.Context, func(error) bool) {
-	var connecting, connected atomic.Bool
-	trace := &httptrace.ClientTrace{
-		GetConn: func(string) { connecting.Store(true) },
-		GotConn: func(httptrace.GotConnInfo) { connected.Store(true) },
-	}
-	return httptrace.WithClientTrace(ctx, trace), func(err error) bool {
-		if clierrors.Reason(err) != clierrors.CodeAPIUnreachable {
-			return false
-		}
-		var op *net.OpError
-		refused := errors.As(err, &op) && (op.Op == "dial" || op.Op == "proxyconnect")
-		if !refused && !clierrors.TLSUntrusted(err) && !(connecting.Load() && !connected.Load()) {
+	send, unsent := provision.TraceDeleteConnection(ctx)
+	return send, func(err error) bool {
+		if !unsent(err) {
 			return false
 		}
 		if c, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && c.hasOpen && c.open.Tool == tool {

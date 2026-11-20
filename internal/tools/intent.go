@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -74,6 +75,23 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	// refuses the call before it goes out (intended), so here it has not.
 	if in.Name, in.Target, err = r.resourceOf(ctx, name, args); err != nil {
 		return nil, err
+	}
+	// A folder destroy can include older deployments' leftover rules.
+	// It is equivalent to a targeted destroy only for one recorded VM.
+	if name == "destroy" && in.Name == "" && in.Target == "" && callerOf(ctx) != nil && eng != nil {
+		sf, readErr := state.Read(state.DefaultPath(root))
+		if readErr == nil && len(sf.Deployments) == 1 {
+			d := sf.Deployments[0]
+			if d.VMID != "" && (d.ProjectID == "" || d.ProjectID == eng.Config.ProjectID) {
+				targetArgs := maps.Clone(args)
+				if targetArgs == nil {
+					targetArgs = map[string]any{}
+				}
+				targetArgs["vm_id"] = d.VMID
+				in.Target = "vm_id=" + d.VMID
+				in.Canon = r.canonArgs(name, targetArgs)
+			}
+		}
 	}
 	in.ProjectID = projectOfCall(eng, in, args)
 	if z, _ := args["zone"].(string); z != "" {
@@ -170,7 +188,11 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		r.rememberMade(rec, answer)
 		forgetMadeOf(root, name, args, answer)
 		intent.Close(rec, out)
-		intent.Settle(dir, rec, settledOf(out))
+		// The VM may be gone while its address or port rules still need
+		// cleanup. Only a finished destroy can settle an earlier one.
+		if name != "destroy" || out.Result == history.Deleted || out.Result == history.AlreadyDeleted {
+			intent.Settle(dir, rec, settledOf(out))
+		}
 	}, nil
 }
 
@@ -1127,6 +1149,9 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 		return head + i18n.Tf(" — sent with another key (%s): a call with this key does not close the record; run evo doctor with that key",
 			" — отправлено другим ключом (%s): вызов этим ключом запись не закроет; запустите evo doctor с тем ключом", quoteCloud(in.Key.KeyID))
 	}
+	if in.Tool == "destroy" {
+		return head + i18n.T(" — check the deployment before repeating destroy", " — проверьте развёртывание перед повтором destroy")
+	}
 	// Every call of the tool is one more change: the same call again does
 	// not settle the record, it changes the resource a second time.
 	if read := everySendIsAChange[in.Tool].read; read != "" {
@@ -1206,6 +1231,9 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 // addressed by id is checked by a read of that id (checkByID), any other
 // by the list of what it names (checkByList).
 func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool, listedID string) {
+	if in.Tool == "destroy" {
+		return i18n.T("VM absence alone cannot confirm cleanup of its floating IP and port rules. Check the deployment and run destroy again to finish cleanup.", "Отсутствие ВМ не подтверждает уборку публичного адреса и портовых правил. Проверьте развёртывание и повторите destroy для завершения уборки."), false, ""
+	}
 	if _, k, id, ok := deleteByID(in); ok {
 		if in.Tool == "snat_delete" {
 			cur := eng.Maker()
