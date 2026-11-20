@@ -20,11 +20,15 @@ import (
 
 func TestDestroyLostReplyHybridCleanup(t *testing.T) {
 	for _, cmd := range []string{"targeted", "compose"} {
-		t.Run(cmd, func(t *testing.T) { checkDestroyLostReply(t, cmd) })
+		for _, lost := range []string{"address", "rule", "both"} {
+			for _, retry := range []string{"cli", "mcp"} {
+				t.Run(cmd+"/"+lost+"/"+retry, func(t *testing.T) { checkDestroyLostReply(t, cmd, lost, retry) })
+			}
+		}
 	}
 }
 
-func checkDestroyLostReply(t *testing.T, cmd string) {
+func checkDestroyLostReply(t *testing.T, cmd, lost, retry string) {
 	w := withParityWorld(t)
 	t.Setenv("CLOUDRU_KEY_ID", "fixture-destroy")
 	const address = "00000000-0000-4000-8000-0000000000f1"
@@ -60,7 +64,7 @@ func checkDestroyLostReply(t *testing.T, cmd string) {
 		case "/api/v1/floating-ips/" + address:
 			if r.Method == "DELETE" {
 				addressDeletes++
-				if addressDeletes == 1 {
+				if lost != "rule" && addressDeletes == 1 {
 					return nil, errors.New("read tcp: connection reset by peer")
 				}
 				return reply(204, "")
@@ -68,6 +72,9 @@ func checkDestroyLostReply(t *testing.T, cmd string) {
 		case "/api/v1/security-groups/own-group/rules/own-rule":
 			if r.Method == "DELETE" {
 				ruleDeletes++
+				if lost != "address" && ruleDeletes == 1 {
+					return nil, errors.New("read tcp: connection reset by peer")
+				}
 				return reply(204, "")
 			}
 		}
@@ -150,8 +157,24 @@ func checkDestroyLostReply(t *testing.T, cmd string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	finish := call("destroy", args)
-	if p := pending(); len(p) != 1 || p[0].ID != foreign.ID || parseObject(finish)["cleanup_pending"] == true || addressDeletes != 2 || ruleDeletes != 1 || vmDeletes != 1 {
+	var finish string
+	if retry == "cli" {
+		code, out, errOut := runCLI(t, "", "--yes", "--json", "vm", "delete", parityVM)
+		if code != 0 {
+			t.Fatalf("retry: %s %s", out, errOut)
+		}
+		finish = out
+	} else {
+		finish = call("destroy", args)
+	}
+	wantAddress, wantRule := 2, 2
+	if lost == "rule" {
+		wantAddress = 1
+	}
+	if lost == "address" {
+		wantRule = 1
+	}
+	if p := pending(); len(p) != 1 || p[0].ID != foreign.ID || parseObject(finish)["cleanup_pending"] == true || addressDeletes != wantAddress || ruleDeletes != wantRule || vmDeletes != 1 {
 		t.Fatalf("finish: %s receipts=%+v writes=%d/%d/%d", finish, p, vmDeletes, addressDeletes, ruleDeletes)
 	}
 	checkJournal(history.AlreadyDeleted)

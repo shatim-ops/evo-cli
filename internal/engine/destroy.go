@@ -281,7 +281,13 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// The VM is gone but its floating IP is billed until released. On failure
 	// the record stays ("destroying"), so re-running destroy retries.
 	stateFile.UpsertDeployment(*active)
+	releasedBefore := active.ReleasedFloatingIPID
 	fipErr := e.releaseFloatingIP(ctx, active)
+	if active.ReleasedFloatingIPID != releasedBefore {
+		if err := state.Write(statePath, stateFile); err != nil {
+			return err
+		}
+	}
 
 	// Port rules only now that the VM is gone: had its delete failed, the
 	// app would still be serving and must keep its ports. A failed rule
@@ -617,7 +623,7 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 			}
 		}
 	}
-	if fipID == "" {
+	if fipID == "" || (provision.IsDestroyRequest(ctx) && rec.ReleasedFloatingIPID == fipID) {
 		return nil
 	}
 
@@ -626,12 +632,18 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 	for attempt := 0; attempt < fipReleaseAttempts; attempt++ {
 		err := e.Cloud.DeleteFloatingIP(ctx, fipID, projectID)
 		if err == nil {
+			if provision.IsDestroyRequest(ctx) {
+				rec.FloatingIPID, rec.ReleasedFloatingIPID = fipID, fipID
+			}
 			e.Printer.StepDone(i18n.Tf("Floating IP %s released", "Floating IP %s освобождён", fipLabel(rec.VMIP, fipID)))
 			return nil
 		}
 		// 404 — already released: NOT_FOUND (VM_NOT_FOUND before QA-10).
 		var cliErr *clerrors.CLIError
 		if stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound) {
+			if provision.IsDestroyRequest(ctx) {
+				rec.FloatingIPID, rec.ReleasedFloatingIPID = fipID, fipID
+			}
 			e.Printer.StepDone(i18n.T("Floating IP already released", "Floating IP уже освобождён"))
 			return nil
 		}

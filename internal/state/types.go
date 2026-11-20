@@ -12,6 +12,8 @@ type DeploymentRecord struct {
 	VMID         string `json:"vm_id"`
 	VMIP         string `json:"vm_ip"`
 	FloatingIPID string `json:"floating_ip_id,omitempty"` // released by destroy
+	// ReleasedFloatingIPID records a completed destroy step while other cleanup is pending.
+	ReleasedFloatingIPID string `json:"released_floating_ip_id,omitempty"`
 	// ProjectID is the Cloud.ru project the VM was created in: destroy and
 	// a re-run of deploy work there, whatever project the config now names.
 	// Empty in records from before this field existed.
@@ -93,6 +95,14 @@ type SSHWait struct {
 	// wait makes in all.
 	Attempts int `json:"attempts"`
 	Limit    int `json:"limit"`
+}
+
+// HasPendingFloatingIP reports whether destroy still has a recorded address to release.
+func (d DeploymentRecord) HasPendingFloatingIP() bool {
+	if d.FloatingIPID != "" {
+		return d.ReleasedFloatingIPID != d.FloatingIPID
+	}
+	return d.VMIP != ""
 }
 
 // SGRule is a security-group rule created by a deployment.

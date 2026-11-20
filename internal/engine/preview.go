@@ -403,7 +403,7 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 	// boundary.
 	prov := ProvenanceOf(ProvenanceVM, rec.VMID, made, madeErr, sf, nil)
 	lines = append(lines, ProvenanceLine(prov))
-	if rec.VMIP != "" || rec.FloatingIPID != "" {
+	if rec.HasPendingFloatingIP() {
 		// The public address of a deployed VM is a floating IP; destroy
 		// releases it after the VM (by floating_ip_id, else by address).
 		res = append(res, destroyResource{Type: "floating_ip", ID: rec.FloatingIPID, Address: rec.VMIP, Action: "release"})
