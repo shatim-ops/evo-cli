@@ -1180,9 +1180,27 @@ var (
 func addScopeFlags(root *cobra.Command) {
 	root.PersistentFlags().StringVar(&flagProjectID, "project-id", "", i18n.T("Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)",
 		"UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)"))
-	root.PersistentFlags().StringVar(&flagRegion, "region", "", i18n.T("Availability zone UUID (default: from the profile or $CLOUDRU_REGION)",
-		"UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)"))
+	root.PersistentFlags().StringVar(&flagRegion, "az", "", i18n.T("Availability zone name or UUID (default: from $CLOUDRU_REGION or the profile)",
+		"Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)"))
+	root.PersistentFlags().StringVar(&flagRegion, "region", "", i18n.T("Alias for --az until v2.0", "Синоним --az до v2.0"))
 	noEmptyScope(root.PersistentFlags())
+}
+
+// applyZoneAlias forwards the global spelling to commands with their own
+// region option, including configure (which stores the zone in the profile).
+func applyZoneAlias(cmd *cobra.Command) error {
+	flags := cmd.Flags()
+	if flags.Changed("region") {
+		if flags.Changed("az") {
+			return clerrors.New(clerrors.CodeUsage, i18n.T("--az and --region are both given", "заданы оба флага: --az и --region"),
+				i18n.T("Give the zone once with --az.", "Укажите зону один раз через --az."))
+		}
+		cmdPrinter(cmd).Warning(i18n.T("--region is renamed --az; the alias works until v2.0", "--region переименован в --az; прежнее имя работает до v2.0"))
+	}
+	if flags.Changed("az") && cmd.LocalNonPersistentFlags().Lookup("region") != nil {
+		return flags.Set("region", flagRegion)
+	}
+	return nil
 }
 
 // applyScopeFlags adds --project-id and --region to the engine overrides

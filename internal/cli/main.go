@@ -396,6 +396,9 @@ func newRootCmd() *cobra.Command {
 			if err := emptyFlagGiven(cmd); err != nil {
 				return err
 			}
+			if err := applyZoneAlias(cmd); err != nil {
+				return err
+			}
 			// Warnings about legacy paths (.cloudru-vm/, .cloudru-vm.yaml)
 			// follow --json and --no-color from here on.
 			config.SetWarnFunc(func(msg string) {
@@ -926,7 +929,7 @@ func noEmptyValue(fs *pflag.FlagSet, names ...string) {
 // project or the zone of the profile (D89, the owner's decision 10.11 on
 // conclusion 53 of «Риск»). Wherever they are declared — the global
 // scope, a command's own, a tool's argument — they are marked.
-var scopeFlags = []string{"project-id", "region", "zone"}
+var scopeFlags = []string{"project-id", "az", "region", "zone"}
 
 // noEmptyScope marks the scope flags fs declares.
 func noEmptyScope(fs *pflag.FlagSet) {
