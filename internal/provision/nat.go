@@ -59,7 +59,7 @@ func NATDeleteInventory(ctx context.Context, cloud CloudAPI, project string) ([]
 
 type natDeleteInventoryKey struct{}
 
-func validateNATPage(body []byte, project string) error {
+func validateNATPage(body []byte, project string, seen map[string]bool, promised int) error {
 	var envelope paginatedResponse[map[string]any]
 	var rows []map[string]any
 	if json.Unmarshal(body, &envelope) == nil {
@@ -69,6 +69,19 @@ func validateNATPage(body []byte, project string) error {
 		if err := json.Unmarshal(body, &rows); err != nil || rows == nil {
 			return clierrors.New(clierrors.CodeAPIError, i18n.T("Expected a complete gateway list.", "Ожидался полный список шлюзов."), hintUnexpectedFormat())
 		}
+		// A bare array ends the walk. Count overlap with all preceding pages.
+		if promised > 0 {
+			fresh := map[string]bool{}
+			for _, row := range rows {
+				id, _ := row["id"].(string)
+				if id != "" && !seen[id] {
+					fresh[id] = true
+				}
+			}
+			if len(seen)+len(fresh) < promised {
+				return incompleteNATInventory(len(seen)+len(fresh), promised)
+			}
+		}
 	}
 	for _, row := range rows {
 		if err := validateNATOwner(row, project); err != nil {
@@ -76,6 +89,10 @@ func validateNATPage(body []byte, project string) error {
 		}
 	}
 	return nil
+}
+
+func incompleteNATInventory(read, total int) error {
+	return clierrors.New(clierrors.CodeAPIError, i18n.Tf("The gateway list ended after %d of %d distinct IDs.", "Список шлюзов закончился после %d из %d уникальных ID.", read, total), "")
 }
 
 func validateNATOwner(row map[string]any, project string) error {

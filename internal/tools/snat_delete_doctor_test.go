@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -83,5 +84,66 @@ func TestSNATDeleteInterruptedKeepsDoctorEvidence(t *testing.T) {
 	report = doctorOnFake(t, r)
 	if writes != 1 || len(intent.Pending(intent.Dir(dir))) != 0 || !strings.Contains(report, "not acknowledged") {
 		t.Fatalf("writes=%d doctor=%s", writes, report)
+	}
+}
+
+func TestSNATDeleteIncompleteSecondPage(t *testing.T) {
+	const target = "00000000-0000-4000-8000-0000000000c1"
+	for _, second := range []string{`{"items":[]}`, `[]`, `[{"id":"other"}]`, `{"items":[],"total":1}`} {
+		t.Run(second, func(t *testing.T) {
+			partial := true
+			reads, writes := 0, 0
+			after := second
+			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				rec := httptest.NewRecorder()
+				if req.Method == "DELETE" {
+					writes++
+					partial = true
+					return nil, errors.New("read tcp: connection reset by peer")
+				}
+				if req.Method != "GET" || req.URL.Path != "/api/v1/nat-gateways" || req.URL.Query().Get("project_id") != provisionCfg.ProjectID {
+					t.Fatalf("unexpected %s %s", req.Method, req.URL)
+				}
+				reads++
+				switch {
+				case !partial:
+					fmt.Fprintf(rec, `{"items":[{"id":%q}],"total":1}`, target)
+				case req.URL.Query().Get("offset") == "":
+					fmt.Fprint(rec, `{"items":[{"id":"other"}],"total":2}`)
+				case req.URL.Query().Get("offset") == "1":
+					fmt.Fprint(rec, after)
+				default:
+					t.Fatal(req.URL)
+				}
+				return rec.Result(), nil
+			})
+			api := provision.NewCloudRuAdapter(&http.Client{Transport: rt}, "")
+			r, dir := fastRegistry(t, api, provisionCfg)
+			t.Chdir(dir)
+			tool, _ := r.Lookup("snat_delete")
+			for _, consent := range []bool{false, true} {
+				before := reads
+				out, failed := tool.Handler(t.Context(), map[string]any{"id": target, "confirmed": consent})
+				if !failed || !strings.Contains(out, "API_ERROR") || writes != 0 || reads-before != 2 || len(intent.Pending(intent.Dir(dir))) != 0 {
+					t.Fatalf("preflight: %s reads=%d writes=%d", out, reads-before, writes)
+				}
+			}
+			partial = false
+			before := reads
+			out, failed := tool.Handler(t.Context(), map[string]any{"id": target, "confirmed": true})
+			if !failed || !strings.Contains(out, "API_UNREACHABLE") || !strings.Contains(out, "API_ERROR") || writes != 1 || reads-before != 3 || len(intent.Pending(intent.Dir(dir))) != 1 {
+				t.Fatalf("lost: %s reads=%d writes=%d", out, reads-before, writes)
+			}
+			before = reads
+			report := doctorOnFake(t, r)
+			if reads-before != 2 || writes != 1 || len(intent.Pending(intent.Dir(dir))) != 1 || !strings.Contains(report, "API_ERROR") {
+				t.Fatalf("incomplete: %s", report)
+			}
+			after = `[{"id":"another"}]`
+			report = doctorOnFake(t, r)
+			if writes != 1 || len(intent.Pending(intent.Dir(dir))) != 0 || !strings.Contains(report, "not acknowledged") {
+				t.Fatalf("complete: %s", report)
+			}
+		})
 	}
 }
