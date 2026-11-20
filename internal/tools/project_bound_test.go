@@ -107,6 +107,8 @@ type ownerFake struct {
 	// diskOn is the VM every disk of the fake is attached to; "" — none
 	// (a detach needs a disk that is attached to reach its preview).
 	diskOn string
+	// diskCard overrides the raw response to a disk GET.
+	diskCard map[string]any
 	// goneStatus is the status of a read of resGone by id; 0 — 404.
 	goneStatus    int
 	clusterStatus string
@@ -218,6 +220,10 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	for id := range projectOf {
 		if strings.Contains(r.URL.Path, id) {
 			o := ownerObject(id)
+			if f.diskCard != nil && r.URL.Path == "/api/v1/disks/"+id {
+				_ = json.NewEncoder(w).Encode(f.diskCard)
+				return
+			}
 			if f.clusterStatus != "" && (r.URL.Host == "postgresql.api.cloud.ru" || r.URL.Host == "redis.api.cloud.ru") {
 				o["status"] = f.clusterStatus
 			}

@@ -400,9 +400,25 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 	return out, results
 }
 
-// historyCardMatches verifies the identity used to interpret VM and cluster reads.
+// historyCardMatches verifies the identity used to interpret VM, disk and cluster reads.
 func historyCardMatches(k *ownerKind, l history.Line, m map[string]any) bool {
 	switch k {
+	case kindDisk:
+		if l.ResourceID == "" || stringArg(m, "id") != l.ResourceID || l.ProjectID == "" {
+			return false
+		}
+		// A disk card may omit the owner. Each supplied spelling must
+		// identify the journal project before this read can establish presence.
+		hasOwner := false
+		for _, field := range []string{"project_id", "projectId"} {
+			if owner, supplied := m[field]; supplied {
+				if owner != l.ProjectID {
+					return false
+				}
+				hasOwner = true
+			}
+		}
+		return hasOwner
 	case kindPG, kindRedis:
 		project := projectField(m)
 		return stringArg(m, "id") == l.ResourceID && project != "" && (l.ProjectID == "" || project == l.ProjectID)

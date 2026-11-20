@@ -49,6 +49,7 @@ func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
 		status                                       int
 		says                                         string
 		reads                                        int
+		diskCard                                     map[string]any
 	}{
 		{name: "not seen, the same key", tool: "pg_create", id: resGone, outcome: history.Created, key: this, says: checkNotSeen, reads: 1},
 		{name: "found by a repeat, not seen", tool: "lb_create", id: resGone, outcome: history.Found, key: this, says: checkNotSeen, reads: 1},
@@ -63,6 +64,12 @@ func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
 		{name: "card of another project", tool: "pg_create", id: resForeign, outcome: history.Created, key: this, says: checkReadFailed, reads: 1},
 		{name: "a line with no key", tool: "pg_create", id: resGone, outcome: history.Created, says: checkNoKey},
 		{name: "disk visible", tool: "disk_create", id: resMine, outcome: history.Created, key: this, says: checkThere, reads: 1},
+		{name: "disk card wrong id", tool: "disk_create", id: resMine, outcome: history.Created, key: this, says: checkReadFailed, reads: 1, diskCard: map[string]any{"id": resOther, "project_id": ownProject}},
+		{name: "disk card no id", tool: "disk_create", id: resMine, outcome: history.Created, key: this, says: checkReadFailed, reads: 1, diskCard: map[string]any{"project_id": ownProject}},
+		{name: "disk card no owner", tool: "disk_create", id: resMine, outcome: history.Created, key: this, says: checkReadFailed, reads: 1, diskCard: map[string]any{"id": resMine}},
+		{name: "disk card invalid owner", tool: "disk_create", id: resMine, outcome: history.Created, key: this, says: checkReadFailed, reads: 1, diskCard: map[string]any{"id": resMine, "project_id": 7}},
+		{name: "disk card conflicting owners", tool: "disk_create", id: resMine, outcome: history.Created, key: this, says: checkReadFailed, reads: 1, diskCard: map[string]any{"id": resMine, "project_id": ownProject, "projectId": ownForeign}},
+		{name: "disk card camel case owner", tool: "disk_create", id: resMine, outcome: history.Created, key: this, says: checkThere, reads: 1, diskCard: map[string]any{"id": resMine, "projectId": ownProject}},
 		{name: "disk card of another project", tool: "disk_create", id: resForeign, outcome: history.Created, key: this, says: checkReadFailed, reads: 1},
 		{name: "disk not seen by the same key", tool: "disk_create", id: resGone, outcome: history.Created, key: this, says: checkNotSeen, reads: 1},
 		{name: "disk read refused", tool: "disk_create", id: resGone, outcome: history.Created, key: this, status: http.StatusForbidden, says: checkReadFailed, reads: 1},
@@ -74,7 +81,7 @@ func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
 		{name: "made just now", tool: "pg_create", id: resGone, outcome: history.Created, at: "2026-11-17T11:55:00Z", key: this, says: checkTooNew},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := &ownerFake{goneStatus: c.status}
+			f := &ownerFake{goneStatus: c.status, diskCard: c.diskCard}
 			r := ownerRegistry(t, f, false, ownProject)
 			eng, _ := r.newEngine(nil)
 			hdir := history.DirOf(intent.Dir(eng.StateDir))
@@ -96,18 +103,18 @@ func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
 				t.Fatal(text)
 			}
 			var a struct {
-				Live       []historyLine `json:"live"`
-				WouldClose []historyLine `json:"would_close"`
-				Checked    struct {
-					Read       int `json:"read"`
-					WouldClose int `json:"would_close"`
-				} `json:"checked"`
+				Live       []historyLine  `json:"live"`
+				WouldClose []historyLine  `json:"would_close"`
+				Checked    historyChecked `json:"checked"`
 			}
 			if err := json.Unmarshal([]byte(text), &a); err != nil {
 				t.Fatal(err)
 			}
 			if len(a.Live) != 1 || a.Live[0].CheckResult != c.says || a.Checked.Read != c.reads {
 				t.Errorf("live %+v, %d reads; want the line live with check_result %q, %d reads\n%s", a.Live, a.Checked.Read, c.says, c.reads, text)
+			}
+			if c.says == checkReadFailed && a.Checked.NotChecked[checkReadFailed] != 1 {
+				t.Errorf("inconclusive read missing from checked.not_checked: %+v", a.Checked)
 			}
 			if wants := c.says == checkNotSeen; (len(a.WouldClose) == 1) != wants || (a.Checked.WouldClose == 1) != wants {
 				t.Errorf("would_close %+v; want it %v\n%s", a.WouldClose, wants, text)
