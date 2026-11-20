@@ -343,7 +343,8 @@ func (s *Registry) planImageDelete(ctx context.Context, args map[string]any) (*P
 		return nil, err
 	}
 	// An image that is not there is already deleted (D26).
-	if _, err := eng.Cloud.GetImage(ctx, imageID); err != nil {
+	before, err := eng.Cloud.GetImage(ctx, imageID)
+	if err != nil {
 		return answered(s.deleteFailed("image_delete", imageID, err)), nil
 	}
 	preview := map[string]any{"message": i18n.T("image_delete permanently removes the image. VMs already running keep working, but no new VM can be created from it.",
@@ -352,7 +353,21 @@ func (s *Registry) planImageDelete(ctx context.Context, args map[string]any) (*P
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		if err := eng.Cloud.DeleteImage(ctx, imageID, eng.Config.ProjectID); err != nil {
-			return s.deleteFailed("image_delete", imageID, fmt.Errorf(i18n.T("delete image: %w", "удаление образа: %w"), err))
+			if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
+				return s.deleteFailed("image_delete", imageID, fmt.Errorf(i18n.T("delete image: %w", "удаление образа: %w"), err))
+			}
+			_, checkErr := eng.Cloud.GetImage(ctx, imageID)
+			if before == nil || before.ID != imageID || checkErr == nil || !isGone(checkErr) {
+				fields := map[string]any{"image_id": imageID, "next_tool": "image_get", "next_args": map[string]any{"image_id": imageID}}
+				message := i18n.T("No delete reply was received. The follow-up read did not confirm deletion.", "Ответ на удаление не получен. Повторное чтение не подтвердило удаление.")
+				if checkErr != nil {
+					reason := clierrors.Reason(checkErr)
+					fields["check_reason"] = reason
+					message = i18n.Tf("No delete reply was received. The follow-up read failed (%s), so the outcome is unknown.", "Ответ на удаление не получен. Проверка завершилась ошибкой (%s), поэтому исход удаления неизвестен.", reason)
+				}
+				return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message,
+					i18n.T("Check the image with image_get before retrying.", "Перед повтором проверьте образ через evo image get."), err), fields), true
+			}
 		}
 		return toJSON(map[string]any{"status": "deleted", "image_id": imageID}), false
 	}}, nil

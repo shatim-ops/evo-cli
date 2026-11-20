@@ -117,7 +117,10 @@ func (a *CloudRuAdapter) DeleteImage(ctx context.Context, imageID, projectID str
 	if projectID != "" {
 		path += "?project_id=" + url.QueryEscape(projectID)
 	}
-	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
+	// Resolve a lost reply by reading the image, without resending the delete.
+	policy := computeRetry
+	policy.DropMethods = nil
+	resp, err := a.doWithPolicy(ctx, http.MethodDelete, path, nil, policy)
 	if err != nil {
 		return err
 	}
