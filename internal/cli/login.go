@@ -71,7 +71,7 @@ func newLoginCmd() *cobra.Command {
 			if flagDryRun {
 				return login.RefuseDryRun()
 			}
-			for _, n := range []string{"project-id", "region"} {
+			for _, n := range []string{"project-id", "az", "region"} {
 				if f := cmd.Flag(n); f != nil && f.Changed {
 					return login.RefuseScopeFlag(n)
 				}
