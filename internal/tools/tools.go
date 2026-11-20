@@ -3229,6 +3229,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				if d.FloatingIPID != "" {
 					fipRec.FloatingIPID = d.FloatingIPID
 				}
+				fipRec.ReleasedFloatingIPID = d.ReleasedFloatingIPID
 				fipRec.ProjectID = d.ProjectID
 				if d.VMIP != "" {
 					fipRec.VMIP = d.VMIP
@@ -3301,7 +3302,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			}
 		}
 	}
-	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
+	hasFIP := fipRec.HasPendingFloatingIP()
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
 	// What this delete leaves open to the internet in the VM's groups
@@ -3432,6 +3433,21 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 							"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
 				}
 			} else {
+				if recordedHere && fipRec.ReleasedFloatingIPID != "" {
+					err := state.Update(statePath, stateLockWait, func(sf *state.File) error {
+						for i := range sf.Deployments {
+							d := &sf.Deployments[i]
+							if d.VMID == target.ID && (d.FloatingIPID == "" || d.FloatingIPID == fipRec.ReleasedFloatingIPID) {
+								d.FloatingIPID = fipRec.ReleasedFloatingIPID
+								d.ReleasedFloatingIPID = fipRec.ReleasedFloatingIPID
+							}
+						}
+						return nil
+					})
+					if err != nil {
+						return errAnswer(err, map[string]any{"vm_id": target.ID, "cleanup_pending": true}), true
+					}
+				}
 				msg += i18n.T("; released floating IP ", "; освобождён floating IP ") + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 			}
 		}
@@ -3487,6 +3503,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					}
 				}
 				rec.Status = "destroying"
+				rec.ReleasedFloatingIPID = fipRec.ReleasedFloatingIPID
 				rec.FloatingIPID = firstNonEmptyStr(fipRec.FloatingIPID, rec.FloatingIPID)
 				rec.VMIP = firstNonEmptyStr(fipRec.VMIP, rec.VMIP)
 				rec.ProjectID = firstNonEmptyStr(rec.ProjectID, fipRec.ProjectID, projectID)
