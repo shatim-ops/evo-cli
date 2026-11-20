@@ -599,19 +599,19 @@ func (s *Registry) backupCreated(ctx context.Context, eng *engine.Engine, api pr
 	// (waitReads, #2216; #2338).
 	var reads *waitReads
 	if boolArg(args, "wait", true) && state != "created" {
-		read := func(ctx context.Context) (string, bool, error) {
+		read := func(ctx context.Context) (string, waitObservation, error) {
 			cur, err := api.GetBackup(ctx, id)
 			if err != nil {
 				// Only a backup that is gone ends the wait: a failed read
 				// (a 5xx, the network) is read again (the audit, С5).
 				if isGone(err) {
-					return "", false, err
+					return "", waitReadFailed, err
 				}
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			st, _ := cur["state"].(string)
 			b = cur
-			return st, true, nil
+			return st, waitObserved, nil
 		}
 		waiting := func(st string) string {
 			return i18n.Tf("backup %s: %s", "копия %s: %s", id, quoteCloud(st))
@@ -869,10 +869,10 @@ var backupRestoreWait = diskReadyTimeout
 // disk not found then may still come and be billed.
 func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), backupID, name string, asked time.Time, sent error, wait bool) (string, bool) {
 	var found, before []map[string]any
-	read := func(ctx context.Context) (string, bool, error) {
+	read := func(ctx context.Context) (string, waitObservation, error) {
 		items, err := list(ctx)
 		if err != nil {
-			return "", false, nil
+			return "", waitReadFailed, nil
 		}
 		found, before = found[:0], before[:0]
 		for _, d := range items {
@@ -889,11 +889,14 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 			}
 			found = append(found, d)
 		}
-		if len(found) != 1 {
-			return "", len(found) > 1, nil
+		if len(found) == 0 {
+			return "", waitNotListed, nil
+		}
+		if len(found) > 1 {
+			return "", waitObserved, nil
 		}
 		st, _ := found[0]["state"].(string)
-		return st, true, nil
+		return st, waitObserved, nil
 	}
 	waiting := func(st string) string { return i18n.Tf("disk %s: %s", "диск %s: %s", name, quoteCloud(st)) }
 	announced := false

@@ -726,18 +726,18 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 func (s *Registry) waitVM(ctx context.Context, eng *engine.Engine, vm *provision.VMDetail, limit time.Duration,
 	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, reads waitReads, err error) {
 	return waitState(ctx, eng, limit,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			d, err := eng.Cloud.GetVMDetail(ctx, vm.ID)
 			var ce *clierrors.CLIError
 			switch {
 			case errors.As(err, &ce) && ce.Code == clierrors.CodeVMNotFound:
 				// The VM was deleted while the call waited: not found, not
 				// «still starting» (П6; audit of the reference, Н2).
-				return "", false, err
+				return "", waitReadFailed, err
 			case err != nil:
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
-			return d.State, true, nil
+			return d.State, waitObserved, nil
 		},
 		func(st string) string {
 			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), vm.ID, st)
@@ -1221,17 +1221,17 @@ func (s *Registry) waitVMDetail(ctx context.Context, eng *engine.Engine, vm *pro
 	last = vm
 	cur := vm
 	_, timedOut, atLimit, reads, err = waitState(ctx, eng, limit,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			d, err := eng.Cloud.GetVMDetail(ctx, vm.ID)
 			var ce *clierrors.CLIError
 			switch {
 			case errors.As(err, &ce) && ce.Code == clierrors.CodeVMNotFound:
-				return "", false, err
+				return "", waitReadFailed, err
 			case err != nil:
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			cur = d
-			return d.State, true, nil
+			return d.State, waitObserved, nil
 		},
 		func(st string) string {
 			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), vm.ID, st)

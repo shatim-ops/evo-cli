@@ -336,18 +336,18 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string, limit time.Duration,
 	waiting string, done func(state string) (bool, error)) (last string, timedOut time.Duration, err error) {
 	last, timedOut, atLimit, reads, err := waitState(ctx, eng, limit,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			disks, err := eng.Cloud.ListDisks(ctx, projectID)
 			if err != nil {
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			for _, d := range disks {
 				if id, _ := d["id"].(string); id == diskID {
 					st, _ := d["state"].(string)
-					return st, true, nil
+					return st, waitObserved, nil
 				}
 			}
-			return "", false, nil
+			return "", waitNotListed, nil
 		},
 		func(st string) string { return fmt.Sprintf(waiting, diskID, st) }, done)
 	if atLimit {

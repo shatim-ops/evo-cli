@@ -27,9 +27,12 @@ func TestWaitState_SaysWhenItLastReadAndHowManyReadsFailed(t *testing.T) {
 	eng := &engine.Engine{Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 30 * time.Millisecond}}
 	n := 0
 	last, timedOut, _, reads, err := waitState(context.Background(), eng, time.Second,
-		func(context.Context) (string, bool, error) {
+		func(context.Context) (string, waitObservation, error) {
 			n++
-			return "starting", n == 1, nil
+			if n == 1 {
+				return "starting", waitObserved, nil
+			}
+			return "", waitReadFailed, nil
 		},
 		func(st string) string { return st },
 		func(string) (bool, error) { return false, nil })

@@ -685,17 +685,17 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 	}
 	if poolSettling[status] && !onItsWay(status, desired) {
 		last, timedOut, atLimit, reads, werr := waitState(ctx, eng, poolSettleTimeout,
-			func(ctx context.Context) (string, bool, error) {
+			func(ctx context.Context) (string, waitObservation, error) {
 				now, err := cli.GetNodePool(ctx, id)
 				switch {
 				case err != nil && apiStatus(err) == http.StatusNotFound:
-					return "", false, err
+					return "", waitReadFailed, err
 				case err != nil:
-					return "", false, nil
+					return "", waitReadFailed, nil
 				}
 				np = now
 				st, _ := now["status"].(string)
-				return st, true, nil
+				return st, waitObserved, nil
 			},
 			func(st string) string {
 				return fmt.Sprintf(i18n.T("node pool %s: %s, waiting…", "группа узлов %s: %s, жду…"), id, quoteCloud(st))
