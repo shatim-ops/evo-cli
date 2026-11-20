@@ -34,6 +34,9 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 		{"verification denied", 200, 0, 403, clierrors.CodeAPIUnreachable},
 		{"by address, lost", 200, 0, 404, "ok"},
 		{"NAT gateway", 200, 0, 200, clierrors.CodeUsage},
+		{"bound interface", 200, 0, 200, clierrors.CodeUsage},
+		{"wrong card before consent", 200, 0, 200, clierrors.CodeAPIError},
+		{"by address, absent", 404, 0, 404, "already_deleted"},
 		{"attached", 200, 0, 200, clierrors.CodeUsage},
 		{"gateway 404", 200, 0, 404, clierrors.CodeAPIUnreachable},
 		{"still present", 200, 0, 200, clierrors.CodeAPIUnreachable},
@@ -47,6 +50,12 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 				rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 					code := tc.before
 					body := `{"id":"` + parityVM + `","ip_address":"192.0.2.4","state":"available"}`
+					if tc.name == "bound interface" {
+						body = `{"id":"` + parityVM + `","state":"available","interface":{"id":"iface"}}`
+					}
+					if tc.name == "wrong card before consent" {
+						body = `{"id":"` + parityStoppedVM + `","state":"available"}`
+					}
 					if tc.name == "NAT gateway" {
 						body = `{"id":"` + parityVM + `","ip_address":"192.0.2.4","state":"available","nat_gateway":{"id":"gw"}}`
 					}
@@ -54,6 +63,12 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 						body = `{"id":"` + parityVM + `","ip_address":"192.0.2.4","state":"in_use","vm":{"id":"` + parityStoppedVM + `"}}`
 					}
 					if req.Method == "GET" && req.URL.Path == "/api/v1/floating-ips" && req.URL.Query().Get("project_id") == pvProject {
+						if tc.name == "by address, absent" {
+							return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(req)
+						}
+						if writes > 0 {
+							t.Fatal("release must verify the resolved ID even when called by address")
+						}
 						return contractRT{status: 200, body: `{"items":[` + body + `],"total":1}`}.RoundTrip(req)
 					}
 					if req.URL.Path != "/api/v1/floating-ips/"+parityVM || req.Header.Get("Authorization") == "" {
@@ -107,7 +122,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 				if surface == "CLI" {
 					i18n.SetLang(i18n.RU)
 					args := []string{"--json", "--yes", "vpc", "fip-release"}
-					if tc.name == "by address, lost" {
+					if strings.HasPrefix(tc.name, "by address,") {
 						args = append(args, "--ip-address", "192.0.2.4")
 					} else {
 						args = append(args, parityVM)
@@ -129,7 +144,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 					i18n.SetLang(i18n.EN)
 					servers := newROServers(t)
 					args := map[string]any{"id": parityVM, "confirmed": true}
-					if tc.name == "by address, lost" {
+					if strings.HasPrefix(tc.name, "by address,") {
 						delete(args, "id")
 						args["ip_address"] = "192.0.2.4"
 					}
@@ -147,7 +162,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 					}
 				}
 				wantWrites := 0
-				if tc.before == 200 && tc.name != "attached" && tc.name != "NAT gateway" {
+				if tc.before == 200 && tc.name != "attached" && tc.name != "NAT gateway" && tc.name != "bound interface" && tc.name != "wrong card before consent" {
 					wantWrites = 1
 				}
 				wantChecks := 0
