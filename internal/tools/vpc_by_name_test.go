@@ -96,8 +96,13 @@ func TestVPCRoutePreviewNamesParentAndUsesID(t *testing.T) {
 				t.Fatal(writes, body)
 			}
 			args["confirmed"] = true
-			if _, body, fail := callNamed(t, registry, tool, args); fail || writes != 1 {
-				t.Fatal(writes, body)
+			answer, body, fail := callNamed(t, registry, tool, args)
+			if fail || writes != 1 || args["vpc_id"] != "project-net" {
+				t.Fatal(writes, args, body)
+			}
+			next, _ := answer["next_args"].(map[string]any)
+			if _, carried := next["confirmed"]; carried {
+				t.Fatalf("follow-up carries confirmation: %s", body)
 			}
 		})
 	}

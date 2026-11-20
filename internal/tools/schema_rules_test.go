@@ -6,6 +6,7 @@ package tools
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,8 +45,6 @@ var schemaRules = map[string]schemaRule{
 	"pg_get.id":                       {format: "uuid"},
 	"pg_get.cluster_id":               {format: "uuid"},
 	"redis_get.cluster_id":            {format: "uuid"},
-	"vpc_get.id":                      {format: "uuid"},
-	"vpc_routes.vpc_id":               {format: "uuid"},
 	"destroy.vm_id":                   {format: "uuid"},
 	"disk_delete.disk_id":             {format: "uuid"},
 	"image_delete.image_id":           {format: "uuid"},
@@ -69,9 +68,7 @@ var schemaRules = map[string]schemaRule{
 	"pg_user_delete.cluster_id":   {format: "uuid"},
 	"redis_delete.cluster_id":     {format: "uuid"},
 	"tg_delete.id":                {format: "uuid"},
-	"vpc_delete.id":               {format: "uuid"},
 	"vpc_route_delete.route_id":   {format: "uuid"},
-	"vpc_route_delete.vpc_id":     {format: "uuid"},
 	// G13-3: a value no API takes made a preview, then failed after consent.
 	"kafka_create.storage_gib": {min: 1},
 	"redis_create.storage_gb":  {min: 1},
@@ -234,7 +231,6 @@ var idWithoutFormat = map[string]string{
 	"kafka_specs.version_id":                    idUndeclared,
 	"lb_create.subnet_id":                       idUndeclared,
 	"lb_create.target_group_id":                 idUndeclared,
-	"lb_create.vpc_id":                          idUndeclared,
 	"lb_get.id":                                 idUndeclared,
 	"lb_operation.operation_id":                 idUndeclared,
 	"org_quotas.project_id":                     idUndeclared,
@@ -269,7 +265,44 @@ var idWithoutFormat = map[string]string{
 	"vpc_route_create.next_hop_magic_router_id": idUndeclared,
 	"vpc_route_create.next_hop_vip_id":          idUndeclared,
 	"vpc_route_create.next_hop_vm_id":           idUndeclared,
-	"vpc_route_create.vpc_id":                   idUndeclared,
+}
+
+// VPC arguments that accept a project-scoped name as well as a UUID (#2623).
+// List filters already declare their own lookup through listSpecs.
+var vpcNameArguments = map[string]string{
+	"vpc_get": "id", "vpc_delete": "id", "vpc_routes": "vpc_id",
+	"vpc_route_create": "vpc_id", "vpc_route_delete": "vpc_id",
+	"dns_zone_create": "vpc_id", "subnet_create": "vpc_id", "lb_create": "vpc_id",
+}
+
+func TestVPCNameArgumentsMatchSchemaAndResolver(t *testing.T) {
+	reg := New(nil)
+	for name, arg := range vpcNameArguments {
+		tl, ok := reg.Lookup(name)
+		if !ok {
+			t.Fatalf("missing %s", name)
+		}
+		props := tl.InputSchema["properties"].(map[string]any)
+		p, _ := props[arg].(map[string]any)
+		if p["type"] != "string" || p["format"] != nil {
+			t.Errorf("%s.%s must accept a UUID or a VPC name: %v", name, arg, p)
+		}
+		if !slices.Contains(tl.Decl.RefArgs, nameRef{arg, refVPC}) {
+			t.Errorf("%s.%s lacks a VPC resolver", name, arg)
+		}
+		for _, value := range []string{auditUUID, "project-net"} {
+			if err := CheckArgs(tl, map[string]any{arg: value}); err != nil {
+				t.Errorf("%s.%s=%s: %v", name, arg, value, err)
+			}
+		}
+	}
+	for _, tl := range reg.Tools() {
+		for _, ref := range tl.Decl.RefArgs {
+			if ref.kind == refVPC && vpcNameArguments[tl.Name] != ref.arg {
+				t.Errorf("unexpected VPC name argument %s.%s", tl.Name, ref.arg)
+			}
+		}
+	}
 }
 
 // An id the description calls a UUID is a UUID in the schema too, so
@@ -285,7 +318,7 @@ func TestArgs_IDsDeclareTheirFormat(t *testing.T) {
 				continue
 			}
 			key := tl.Name + "." + arg
-			if p["format"] != nil {
+			if p["format"] != nil || vpcNameArguments[tl.Name] == arg {
 				continue
 			}
 			seen[key] = true

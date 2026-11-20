@@ -6,7 +6,6 @@ package tools
 
 import (
 	"context"
-	"maps"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -176,7 +175,7 @@ func takesName(tool, arg string) bool {
 func (r *Registry) resolveRefs(refs []nameRef, next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		var eng *engine.Engine
-		var out map[string]any
+		var resolved map[string]string
 		for _, ra := range refs {
 			v := stringArg(args, ra.arg)
 			if v == "" || looksUUID(v) {
@@ -201,18 +200,12 @@ func (r *Registry) resolveRefs(refs []nameRef, next Handler) Handler {
 			if err != nil {
 				return errResult(err), true
 			}
-			if out == nil {
-				out = make(map[string]any, len(args))
-				for k, a := range args {
-					out[k] = a
-				}
+			if resolved == nil {
+				resolved = make(map[string]string)
 			}
-			out[ra.arg] = id
+			resolved[ra.arg] = id
 		}
-		if out == nil {
-			return next(ctx, args)
-		}
-		return next(ctx, out)
+		return callWithResolvedRefs(ctx, next, args, resolved)
 	}
 }
 
@@ -228,8 +221,24 @@ func (r *Registry) resolveVPCArg(arg string, next Handler) Handler {
 		if err != nil {
 			return errResult(err), true
 		}
-		resolved := maps.Clone(args)
-		resolved[arg] = vpc.id
-		return next(context.WithValue(ctx, vpcReferenceKey{}, vpc), resolved)
+		ctx = context.WithValue(ctx, vpcReferenceKey{}, vpc)
+		return callWithResolvedRefs(ctx, next, args, map[string]string{arg: vpc.id})
 	}
+}
+
+// callWithResolvedRefs passes canonical IDs to the next layer of this same
+// tool invocation. The caller keeps its original arguments; no follow-up
+// tool or next step receives this call's consent.
+func callWithResolvedRefs(ctx context.Context, next Handler, args map[string]any, ids map[string]string) (string, bool) {
+	if len(ids) == 0 {
+		return next(ctx, args)
+	}
+	call := make(map[string]any, len(args))
+	for key, value := range args {
+		if id, ok := ids[key]; ok {
+			value = id
+		}
+		call[key] = value
+	}
+	return next(ctx, call)
 }
