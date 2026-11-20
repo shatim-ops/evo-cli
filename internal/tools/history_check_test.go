@@ -51,6 +51,7 @@ func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
 	}{
 		{name: "not seen, the same key", tool: "pg_create", id: resGone, outcome: history.Created, key: this, says: checkNotSeen, reads: 1},
 		{name: "found by a repeat, not seen", tool: "lb_create", id: resGone, outcome: history.Found, key: this, says: checkNotSeen, reads: 1},
+		{name: "partial destroy may still own addresses and rules", tool: "destroy", id: resGone, outcome: history.Unknown, key: this, says: "cleanup_unconfirmed"},
 		{name: "missing VM from provision", tool: "provision", id: resGone, outcome: history.Unknown, key: this, says: checkNotSeen, reads: 1},
 		{name: "same account different key", tool: "pg_create", id: resGone, outcome: history.Created, key: &state.Maker{KeyID: "different"}, says: checkOtherKey},
 		{name: "still there", tool: "pg_create", id: resMine, outcome: history.Created, key: this, says: checkThere, reads: 1},
@@ -240,5 +241,21 @@ func TestHistory_ErasedClusterIsAbsentFromCheckedInventory(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestHistoryCardRequiresMatchingIdentity(t *testing.T) {
+	line := history.Line{ResourceID: resMine, ProjectID: ownProject}
+	for _, k := range []*ownerKind{kindPG, historyVMCard} {
+		for _, id := range []string{"", resOther} {
+			if historyCardMatches(k, line, map[string]any{"id": id, "project_id": ownProject}) {
+				t.Fatalf("accepted id %q for %s", id, line.ResourceID)
+			}
+		}
+	}
+	for _, project := range []string{"", ownOther} {
+		if historyCardMatches(kindPG, line, map[string]any{"id": resMine, "project_id": project}) {
+			t.Fatalf("accepted project %q for %s", project, line.ProjectID)
+		}
 	}
 }

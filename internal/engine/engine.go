@@ -77,10 +77,16 @@ type Engine struct {
 	decided bool
 }
 
+// DeployResult identifies the VM this call created, updated or found unchanged.
+type DeployResult struct {
+	Record state.DeploymentRecord
+	Action string
+}
+
 // DeployOptions holds parameters for the deploy command.
 type DeployOptions struct {
-	// Record receives the deployment this call used while it holds the state lock.
-	Record         *state.DeploymentRecord
+	// Result receives the outcome selected under the state lock.
+	Result         *DeployResult
 	ComposeFile    string
 	Flavor         string // "auto" or explicit flavor name
 	Region         string

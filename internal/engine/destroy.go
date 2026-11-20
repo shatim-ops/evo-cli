@@ -265,11 +265,15 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// when listed by their name, else named in the answer — their marks
 	// close either way, so nothing billed stays unnamed (D107; «Риск»,
 	// conclusion 180, Т3 and Т4).
-	lostReleased, lostMissing := e.releaseLostAddresses(ctx, stateFile, active)
+	lostReleased, lostMissing, extraErr := e.releaseLostAddresses(ctx, stateFile, active)
 
 	// Clean up state. Retire moves records: active points into the slice.
-	vmID, vmIP := active.VMID, active.VMIP
+	recID, vmID, vmIP := active.ID, active.VMID, active.VMIP
 	for _, id := range append([]string{active.ID}, pending...) {
+		if extraErr != nil && id == recID {
+			// The receipt and VM ID are needed to retry the extra address.
+			continue
+		}
 		sgrules.Retire(stateFile, id)
 	}
 	// The rules labelled for the VM that the preview named and no record
@@ -283,7 +287,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 
 	if opts.Result != nil {
-		opts.Result.CleanupPending = len(rules.Failed) > 0 || uncheckedErr != nil || len(lostMissing) > 0
+		opts.Result.CleanupPending = extraErr != nil || len(rules.Failed) > 0 || uncheckedErr != nil || len(lostMissing) > 0
 	}
 
 	if e.Printer.IsJSON() {
@@ -316,7 +320,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 // with no answer (floatingip.Release) and says what it did: released by
 // destroy itself; not listed — named, with where to release it if it comes.
 // A list that cannot be read keeps the marks, with a warning.
-func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) (released, missing []string) {
+func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) (released, missing []string, releaseErr error) {
 	rel, miss, err := floatingip.Release(ctx, e.Cloud, sf, e.projectOf(rec), rec.VMName, rec.VMID, rec.FloatingIPID)
 	for _, m := range rel {
 		released = append(released, m.Name)
@@ -331,7 +335,7 @@ func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *
 		e.Printer.Warning(i18n.Tf("the floating IPs requested with no answer were not checked (%v); the next destroy checks them again",
 			"floating IP, запрошенные без ответа облака, не проверены (%v); следующий destroy проверит их снова", err))
 	}
-	return released, missing
+	return released, missing, err
 }
 
 // ErrDeletionUnconfirmed is the cause of the error destroy returns when
@@ -519,12 +523,19 @@ func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, st
 		ts.SetToken(tok.Value)
 	}
 	e.Printer.Step(1, 1, i18n.T("Deleting port rules left by an earlier destroy...", "Удаление правил портов, оставшихся от прошлого destroy..."))
+	if opts.Result != nil && len(pending) == 1 {
+		opts.Result.VMID = sf.FindDeployment(pending[0]).VMID
+		opts.Result.CleanupPending = true
+	}
 	rules := e.closeRules(ctx, sf, pending)
 	for _, id := range pending {
 		sgrules.Retire(sf, id)
 	}
 	if err := state.Write(statePath, sf); err != nil {
 		return err
+	}
+	if opts.Result != nil {
+		opts.Result.CleanupPending = len(rules.Failed) > 0
 	}
 	if e.Printer.IsJSON() {
 		status := "destroyed"

@@ -331,6 +331,8 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 		k := cardOf(l.Tool)
 		why := ""
 		switch {
+		case l.Tool == "destroy" && l.Outcome == history.Unknown && l.ResourceID != "":
+			why = "cleanup_unconfirmed"
 		case !historyIDReadable(l):
 			why = checkNotByID
 		case l.ProjectID == "" && !((l.Tool == "pg_delete" || l.Tool == "redis_delete") && !s.projectBound):
@@ -363,7 +365,7 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 		case notSeen:
 			results[i] = checkNotSeen
 			out.WouldClose++
-		case err == nil && terminalCluster && (stringArg(m, "id") != l.ResourceID || (projectField(m) != "" && l.ProjectID != "" && projectField(m) != l.ProjectID)):
+		case err == nil && !historyCardMatches(k, l, m):
 			results[i] = checkReadFailed
 			out.NotChecked[checkReadFailed]++
 		case err == nil && terminalCluster && statusGone(firstNonEmptyStr(stringArg(m, "status"), stringArg(m, "state"))):
@@ -388,7 +390,21 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 	return out, results
 }
 
-// Only VM creates return their ID from the cloud even on a partial failure.
+// historyCardMatches verifies the identity used to interpret VM and cluster reads.
+func historyCardMatches(k *ownerKind, l history.Line, m map[string]any) bool {
+	switch k {
+	case kindPG, historyRedisCard:
+		project := projectField(m)
+		return stringArg(m, "id") == l.ResourceID && project != "" && (l.ProjectID == "" || project == l.ProjectID)
+	case historyVMCard:
+		return stringArg(m, "id") == l.ResourceID
+	default:
+		return true
+	}
+}
+
+// A partial VM create can still name the cloud ID. A partial destroy
+// also covers addresses and rules that a read of the VM cannot settle.
 func historyIDReadable(l history.Line) bool {
 	if l.Format != history.Format || l.ResourceID == "" || l.Kind != resourceKind(l.Tool) {
 		return false
@@ -398,7 +414,7 @@ func historyIDReadable(l history.Line) bool {
 		return true
 	case history.Unknown:
 		switch l.Tool {
-		case "deploy", "deploy_apply", "provision", "destroy", "pg_delete", "redis_delete":
+		case "deploy", "deploy_apply", "provision", "pg_delete", "redis_delete":
 			return isUUID(l.ResourceID)
 		}
 	}
@@ -421,6 +437,9 @@ var historyVMCard = &ownerKind{card: func(ctx context.Context, c *ownerCall, id 
 	vm, err := eng.Cloud.GetVM(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if vm == nil {
+		return nil, nil
 	}
 	return map[string]any{"id": vm.ID, "state": vm.Status}, nil
 }}

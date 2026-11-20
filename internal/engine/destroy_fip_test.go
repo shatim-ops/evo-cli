@@ -221,3 +221,42 @@ func TestDestroy_RecordOfAnotherProject404Refused(t *testing.T) {
 		t.Errorf("deployment left in state: %+v", a)
 	}
 }
+
+func TestDestroy_ExtraAddressRefusalKeepsTargetUntilRetry(t *testing.T) {
+	rec := runningRecord()
+	eng, cloud, _ := destroyFixture(t, rec)
+	path := state.DefaultPath(eng.StateDir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf.LostFloatingIPs = []state.LostFloatingIP{{Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
+		return []*provision.FloatingIP{{ID: "fip-extra", Name: "extra"}}, nil
+	}
+	var deny bool
+	attempts := 0
+	cloud.deleteFloatingIPFn = func(_ context.Context, id, _ string) error {
+		if id == "fip-extra" {
+			attempts++
+			if deny {
+				return stderrors.New("release refused")
+			}
+		}
+		return nil
+	}
+	for i, pending := range []bool{true, true, false} {
+		deny = pending
+		var result DestroyResult
+		if err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result}); err != nil {
+			t.Fatal(err)
+		}
+		sf, err = state.Read(path)
+		if err != nil || result.VMID != rec.VMID || result.CleanupPending != pending || (sf.ActiveDeployment() != nil) != pending || (len(sf.LostFloatingIPs) != 0) != pending || attempts != i+1 {
+			t.Fatalf("attempt %d: result=%+v state=%+v releases=%d err=%v", i, result, sf, attempts, err)
+		}
+	}
+}
