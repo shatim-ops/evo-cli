@@ -36,7 +36,7 @@ func TestHistoryRedisProjectMembership(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			l := history.Line{Time: "2026-11-17T10:00:00Z", Tool: "redis_create", Kind: resourceKind("redis_create"), ResourceID: resMine, ProjectID: ownProject, Key: eng.Maker(), Outcome: history.Created}
+			l := history.Line{Format: history.Format, Time: "2026-11-17T10:00:00Z", Tool: "redis_create", Kind: resourceKind("redis_create"), ResourceID: resMine, ProjectID: ownProject, Key: eng.Maker(), Outcome: history.Created}
 			pages := 0
 			httpretry.DefaultBase = &apiFake{own: func(w http.ResponseWriter, req *http.Request) bool {
 				if req.Method != "GET" {
