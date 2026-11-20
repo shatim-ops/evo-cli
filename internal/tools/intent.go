@@ -7,7 +7,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -83,12 +82,12 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		if readErr == nil && len(sf.Deployments) == 1 {
 			d := sf.Deployments[0]
 			if d.VMID != "" && (d.ProjectID == "" || d.ProjectID == eng.Config.ProjectID) {
-				targetArgs := maps.Clone(args)
+				targetArgs := withoutConsent(args)
 				if targetArgs == nil {
 					targetArgs = map[string]any{}
 				}
 				targetArgs["vm_id"] = d.VMID
-				in.Target = "vm_id=" + d.VMID
+				_, in.Target = intentResource(name, targetArgs)
 				in.Canon = r.canonArgs(name, targetArgs)
 			}
 		}
@@ -1150,7 +1149,7 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 			" — отправлено другим ключом (%s): вызов этим ключом запись не закроет; запустите evo doctor с тем ключом", quoteCloud(in.Key.KeyID))
 	}
 	if in.Tool == "destroy" {
-		return head + i18n.T(" — check the deployment before repeating destroy", " — проверьте развёртывание перед повтором destroy")
+		return head + i18n.T(" — check the deployment and ask the person whether to run destroy again", " — проверьте развёртывание и спросите человека, повторить ли destroy")
 	}
 	// Every call of the tool is one more change: the same call again does
 	// not settle the record, it changes the resource a second time.
@@ -1232,7 +1231,7 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 // by the list of what it names (checkByList).
 func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool, listedID string) {
 	if in.Tool == "destroy" {
-		return i18n.T("VM absence alone cannot confirm cleanup of its floating IP and port rules. Check the deployment and run destroy again to finish cleanup.", "Отсутствие ВМ не подтверждает уборку публичного адреса и портовых правил. Проверьте развёртывание и повторите destroy для завершения уборки."), false, ""
+		return i18n.T("VM absence alone cannot confirm cleanup of its floating IP and port rules. Check the deployment and ask the person whether to run destroy again to finish cleanup.", "Отсутствие ВМ не подтверждает уборку публичного адреса и портовых правил. Проверьте развёртывание и спросите человека, повторить ли destroy для завершения уборки."), false, ""
 	}
 	if _, k, id, ok := deleteByID(in); ok {
 		if in.Tool == "snat_delete" {

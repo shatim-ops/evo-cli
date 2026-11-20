@@ -1206,7 +1206,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 
 	// Safety: never release an IP that is attached to a VM.
 	if bound || state == "in_use" {
-		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it from the VM first; not released", fipIP, quoteCloud(fipID))
+		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it from the VM first; not released", quoteCloud(fipIP), quoteCloud(fipID))
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("Detach it from the VM, then release it.", "Отвяжите его от ВМ, затем освободите.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
@@ -1216,7 +1216,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 		return refused, nil
 	}
 	preview := map[string]any{"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
-		"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
+		"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", quoteCloud(ref)),
 	}
 	if warning, _ := engine.DeleteWayOut(state, fipID); warning != "" {
 		preview["warning"] = warning
@@ -1229,7 +1229,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 		// the transport persists before sending, including on interruption.
 		if ip != "" {
 			if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && own.hasOpen && own.open.Tool == "release_floating_ip" {
-				own.open.Target = "id=" + fipID
+				_, own.open.Target = intentResource("release_floating_ip", map[string]any{"id": fipID})
 			}
 		}
 		release := eng.Cloud.DeleteFloatingIP
@@ -1239,7 +1239,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 			release = api.ReleaseFloatingIP
 		}
 		sendCtx, unsent := deleteConnection(ctx, "release_floating_ip")
-		message := i18n.Tf("floating IP %s released", "floating IP %s освобождён", fipIP)
+		message := i18n.Tf("floating IP %s released", "floating IP %s освобождён", quoteCloud(fipIP))
 		if err := release(sendCtx, fipID, projectID); err != nil {
 			if unsent(err) {
 				return unsentDeleteAnswer(err)
