@@ -124,8 +124,8 @@ func newConfigureCmd() *cobra.Command {
 		"Прочитать секрет из первой строки stdin (без вопросов)"))
 	cmd.Flags().StringVar(&opts.projectID, "project-id", "", i18n.T("Cloud.ru project UUID (skips the project list)",
 		"UUID проекта Cloud.ru (без выбора из списка)"))
-	cmd.Flags().StringVar(&opts.region, "region", "", i18n.T("Default availability zone for the profile: a name (ru.AZ-2) or a UUID; the UUID is stored",
-		"Зона доступности по умолчанию для профиля: имя (ru.AZ-2) или UUID; сохраняется UUID"))
+	cmd.Flags().StringVar(&opts.region, "region", "", i18n.T("Alias for --az until v2.0. Default availability zone for the profile: a name (ru.AZ-2) or a UUID; the UUID is stored",
+		"Синоним --az до v2.0. Зона доступности по умолчанию для профиля: имя (ru.AZ-2) или UUID; сохраняется UUID"))
 	noEmptyScope(cmd.Flags())
 
 	cmd.AddCommand(newConfigureListCmd(), newConfigureDeleteCmd(), newConfigureS3Cmd())
