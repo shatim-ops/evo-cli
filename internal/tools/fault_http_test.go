@@ -344,6 +344,9 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 				} else if path == "/api/v1/subnets" || path == "/api/v1/nat-gateways" {
 					// The state the published specification names (made.go).
 					item["state"] = "created"
+					if path == "/api/v1/nat-gateways" {
+						item["availability_zone_id"] = zoneAZ1
+					}
 				}
 				items = append(items, item)
 			}

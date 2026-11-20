@@ -239,8 +239,8 @@ func projectOfCall(eng *engine.Engine, in intent.Intent, args map[string]any) st
 	if eng != nil {
 		project = eng.Config.ProjectID
 	}
-	// The SNAT delete verifies membership in this project before sending.
-	if _, _, byID := intentTarget(in); byID && in.Tool != "snat_delete" {
+	// SNAT delete verifies project membership; routes belong to a project VPC.
+	if _, _, byID := intentTarget(in); byID && in.Tool != "snat_delete" && in.Tool != "vpc_route_create" {
 		project = ""
 	}
 	if p := stringArg(args, "project_id"); p != "" {
@@ -295,6 +295,8 @@ type changeRule struct {
 	// that is taken — the question is asked only while the list does not
 	// show it («Риск», conclusion 179, У1).
 	made bool
+	// listedName returns the same identity from a row of the declared list.
+	listedName func(map[string]any) string
 	// notBilled: what the tool makes has no price of its own — a database
 	// or a user of a cluster, which is billed. The question after a cut
 	// call names a second billed resource only of a billed one: a price
@@ -345,6 +347,14 @@ func paidCreate(tool, parent string, name func(args map[string]any) string) chan
 func unbilledCreate(tool, parent string, name func(args map[string]any) string) changeRule {
 	rule := paidCreate(tool, parent, name)
 	rule.notBilled = true
+	return rule
+}
+
+// networkCreate uses the identity within the parent both at send time and
+// when a later list establishes the outcome.
+func networkCreate(tool, parent string, requestName, listedName func(map[string]any) string) changeRule {
+	rule := unbilledCreate(tool, parent, requestName)
+	rule.listedName = listedName
 	return rule
 }
 
@@ -402,6 +412,10 @@ var everySendIsAChange = map[string]changeRule{
 	"ar_create":        paidCreate("ar_create", "", nameArg),
 	"cert_import":      paidCreate("cert_import", "", nameArg),
 	"pg_backup_create": paidCreate("pg_backup_create", "cluster_id", nameArg),
+	// D107 in 1.10: the list must identify the exact network target.
+	"dns_record_create": {read: "dns_records", made: true, notBilled: true, listedName: listedDNSRecordKey, target: dnsRecordIntent},
+	"snat_create":       {read: "snat_list", made: true, target: snatIntent, listedName: nameArg},
+	"vpc_route_create":  networkCreate("vpc_route_create", "vpc_id", routeDestination, routeDestination),
 	// D112 (the owner's decision of 17.11, #1999): a create whose 2xx
 	// names nothing it made (receipt.ErrUnusable) has an unknown outcome,
 	// and no second create follows it — the same call again asks, as a
@@ -513,16 +527,19 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
 	var cut []intent.Intent
 	for _, in := range ofTool {
-		if in.ProjectID != project {
-			continue
-		}
-		if in.Name != resource || in.Target != target {
-			// A record written before the target was resolved names the
-			// resource as its call spelled it: it is resolved the same
-			// way. One that cannot be resolved now is not this call's.
-			was, wasTarget, err := r.resourceOf(ctx, name, spelledArgs(in))
-			if err != nil || was != resource || wasTarget != target {
+		if everySendIsAChange[name].listedName != nil {
+			if !networkIntentConflicts(in, project, resource, target, args) {
 				continue
+			}
+		} else {
+			if in.ProjectID != project {
+				continue
+			}
+			if in.Name != resource || in.Target != target {
+				was, wasTarget, err := r.resourceOf(ctx, name, spelledArgs(in))
+				if err != nil || was != resource || wasTarget != target {
+					continue
+				}
 			}
 		}
 		cut = append(cut, in)
@@ -642,7 +659,12 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 	}
 	message, interrupted := cutCallWarning(name, mine)
 	out := map[string]any{"status": "confirmation_required"}
-	if text, _ := plan(ctx); answerStatus(text) == "confirmation_required" {
+	text, previewErr := plan(ctx)
+	if everySendIsAChange[name].listedName != nil && previewErr && answerStatus(text) != "confirmation_required" {
+		// A failed read or an occupied target does not spend the question.
+		return text, true
+	}
+	if answerStatus(text) == "confirmation_required" {
 		var m map[string]any
 		if json.Unmarshal([]byte(text), &m) == nil {
 			out = m
@@ -1381,11 +1403,23 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	// The list of a part of a parent needs the parent (listArgs): a
 	// create inside it names the parent as its target.
 	parentArg, parentID, _ := strings.Cut(in.Target, "=")
+	visibility := ""
+	if in.Tool == "dns_record_create" {
+		if parentArg == "public_zone_id" || parentArg == "private_zone_id" {
+			visibility, _, _ = strings.Cut(parentArg, "_")
+			parentArg = "zone_id"
+		} else {
+			return "", false, ""
+		} // older records omit the record type and scope
+	}
 	inParent := isCreate && len(c.listArgs) == 1 && c.listArgs[0] == parentArg && parentID != ""
 	if c.list == "" || c.field == "" || (len(c.listArgs) > 0 && !inParent) || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
 		return "", false, ""
 	}
 	listArgs := map[string]any{}
+	if visibility != "" {
+		listArgs["type"] = visibility
+	}
 	if inParent {
 		listArgs[parentArg] = parentID
 	}
@@ -1407,6 +1441,12 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 		o, _ := it.(map[string]any)
 		id, _ := o["id"].(string)
 		name, _ := o["name"].(string)
+		if listedName := everySendIsAChange[in.Tool].listedName; listedName != nil {
+			name = listedName(o)
+			if statusGone(stringArg(o, "status")) || id == "" || (in.Tool == "snat_create" && in.Target != "availability_zone_id="+stringArg(o, "availability_zone_id")) {
+				continue
+			}
+		}
 		if (isCreate && name == in.Name) || (!isCreate && id == targetID) {
 			matched, listed = true, id
 			break

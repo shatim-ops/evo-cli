@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -276,6 +277,14 @@ func routeNextHop(args map[string]any) (map[string]any, error) {
 	return nil, errors.New(i18n.T("a next hop is required: next_hop_vm_id+next_hop_interface_id, or next_hop_vip_id, or next_hop_magic_router_id+next_hop_az", "нужен следующий узел: next_hop_vm_id+next_hop_interface_id, next_hop_vip_id или next_hop_magic_router_id+next_hop_az"))
 }
 
+func routeDestination(row map[string]any) string {
+	subnet := stringArg(row, "subnet")
+	if p, err := netip.ParsePrefix(subnet); err == nil {
+		return p.Masked().String()
+	}
+	return subnet
+}
+
 func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	vpcID := stringArg(args, "vpc_id")
 	subnet := stringArg(args, "subnet")
@@ -296,7 +305,7 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 		routes, err := cli.ListRoutes(ctx, vpcID)
 		listed := make([]map[string]any, 0, len(routes))
 		for _, r := range routes {
-			listed = append(listed, map[string]any{"id": r["id"], "name": r["subnet"], "status": r["status"]})
+			listed = append(listed, map[string]any{"id": r["id"], "name": routeDestination(r), "status": r["status"]})
 		}
 		return listed, err
 	}
@@ -304,7 +313,7 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("check the destination is free: list routes: %w", "проверка, что назначение свободно: список маршрутов: %w"), err)
 	}
-	if id, st, ok := takenName(existing, subnet); ok {
+	if id, st, ok := takenName(existing, routeDestination(args)); ok {
 		return answered(nameTakenResult(i18n.T("static route", "статический маршрут"), subnet, id, st, "vpc_routes vpc_id="+vpcID)), nil
 	}
 	details := willPreview(engine.ResourceVPCRoute, subnet, "", args, []string{"vpc_id", "next_hop_vm_id", "next_hop_interface_id", "next_hop_vip_id", "next_hop_magic_router_id", "next_hop_az"})
@@ -323,7 +332,7 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), subnet, nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf(i18n.T("create route: %w", "создание маршрута: %w"), err))
+			return lostCreate(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), routeDestination(args), nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf(i18n.T("create route: %w", "создание маршрута: %w"), err))
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": i18n.T("Async — poll vpc_operation(operation_id).", "Асинхронно — опрашивайте evo vpc operation <operation_id>.")}
 		if op.ResourceID != "" {

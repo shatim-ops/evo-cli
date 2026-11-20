@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
@@ -239,13 +240,30 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 	}
 	file := filepath.Join(MadeDir(root), madeKey(name, r.canonArgs(name, args), resource, target))
 	b, err := config.ReadFileNoFollow(file)
+	legacy := false
+	if errors.Is(err, os.ErrNotExist) && everySendIsAChange[name].listedName != nil {
+		oldName, oldTarget := intentResource(name, args)
+		oldFile := filepath.Join(MadeDir(root), madeKey(name, r.canonArgs(name, args), oldName, oldTarget))
+		if oldFile != file {
+			file = oldFile
+			b, err = config.ReadFileNoFollow(file)
+			legacy = true
+		}
+	}
 	var mc madeCall
 	if err != nil || json.Unmarshal(b, &mc) != nil || mc.Key == nil {
 		return "", false, false
 	}
 	eng, _ := r.engineOfCall(args)
-	if eng == nil || !madeByKey(mc.Key, eng.Maker()) ||
-		mc.ProjectID != projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args) {
+	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
+	if legacy {
+		// 1.9 identified child creates by the parent's ID and stored only an
+		// explicitly supplied project in those receipts.
+		if _, _, byID := intentTarget(intent.Intent{Tool: name, Target: mc.Target}); byID {
+			project = stringArg(args, "project_id")
+		}
+	}
+	if eng == nil || !madeByKey(mc.Key, eng.Maker()) || mc.ProjectID != project {
 		return "", false, false
 	}
 	// forget drops the file: nothing goes on, or nothing is known.
@@ -254,7 +272,11 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		forget()
 		return "", false, false
 	}
-	listSaid, listed, _ := r.checkByList(ctx, intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}, mc.ProjectID)
+	lookup := intent.Intent{Tool: name, Name: mc.Name, Target: mc.Target, ProjectID: mc.ProjectID}
+	if legacy {
+		lookup.Name, lookup.Target = resource, target
+	}
+	listSaid, listed, _ := r.checkByList(ctx, lookup, mc.ProjectID)
 	if listed {
 		forget()
 		return "", false, false

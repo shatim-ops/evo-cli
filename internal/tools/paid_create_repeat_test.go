@@ -206,8 +206,7 @@ func TestPaidCreate_NoRequestSentLeavesNoRecord(t *testing.T) {
 
 // Why the repeat of a create is not asked about after a lost answer.
 const (
-	repeatMeasured = "one of the three of the eight the owner left to 1.10 (release plan 1.9, «Правило повтора платного создания (D107) — ещё на пять созданий»): a known limit of 1.9, a line of the backlog (listLagsPending names it)"
-	repeatOutside  = "not a create billed at the price of a cluster (D107): its repeat is held by the check of the name and by the fault matrix"
+	repeatOutside = "not a create billed at the price of a cluster (D107): its repeat is held by the check of the name and by the fault matrix"
 )
 
 // repeatNotAsked is the closed list of the creates that are not in
@@ -216,7 +215,6 @@ const (
 // declaration of how its outcome is read fails the build («Риск»,
 // conclusion 179, У8).
 var repeatNotAsked = map[string]string{
-	"dns_record_create": repeatMeasured, "snat_create": repeatMeasured, "vpc_route_create": repeatMeasured,
 	"ca_deploy": repeatOutside, "cert_issue_le": repeatOutside, "deploy": repeatOutside, "deploy_apply": repeatOutside,
 	"disk_create": repeatOutside, "dns_zone_create": repeatOutside, "image_create": repeatOutside, "k8s_add_addon": repeatOutside,
 	"provision": repeatOutside, "s3_bucket_create": repeatOutside,
@@ -237,12 +235,6 @@ func TestPaidCreate_EveryCreateIsDeclaredOrNamedWithAReason(t *testing.T) {
 	for tool := range repeatNotAsked {
 		if _, ok := createdOf(tool); !ok {
 			t.Errorf("repeatNotAsked names %s, which creates nothing (Decl.Created)", tool)
-		}
-	}
-	// The measured eight are the ones the fault matrix still finds.
-	for tool, reason := range repeatNotAsked {
-		if _, pending := listLagsPending[tool]; pending != (reason == repeatMeasured) {
-			t.Errorf("%s: in listLagsPending %v, its reason here %q — the two lists tell the same eight", tool, pending, reason)
 		}
 	}
 	// A create that asks tells its resource by the name its plan makes it
