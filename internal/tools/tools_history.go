@@ -13,11 +13,12 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/dbaas"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
-	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // The bounds of an answer of history (the ТЗ of the journal, §0, 6): the
@@ -169,7 +170,7 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 				visible = append(visible, i)
 			}
 		}
-		checked, results = s.checkLive(ctx, live, visible, eng.Maker())
+		checked, results = s.checkLive(ctx, live, visible, eng)
 	}
 	liveLines := []historyLine{}
 	for i, l := range live {
@@ -307,7 +308,9 @@ type historyChecked struct {
 // this run, and tells what it found (the ТЗ of the journal, У7; «Риск»,
 // conclusion 315). It writes nothing: a line the read does not see is
 // would_close. The cloud is only read.
-func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible []int, cur *state.Maker) (*historyChecked, map[int]string) {
+func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible []int, eng *engine.Engine) (*historyChecked, map[int]string) {
+	cur := eng.Maker()
+	redis := redisHistoryRead{}
 	out := &historyChecked{NotChecked: map[string]int{}}
 	results := map[int]string{}
 	type identity struct{ project, kind, parent, id, key, account string }
@@ -347,7 +350,7 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 			why = checkLater
 		case at.After(fresh):
 			why = checkTooNew
-		default:
+		case k != kindRedis:
 			why = map[readSkip]string{readNoCard: checkNoRead, readOtherKey: checkOtherKey, readNoKey: checkNoKey}[readSkipOf(k, l.Key, cur)]
 		}
 		if why == "" && out.Read == historyCheckMax {
@@ -359,8 +362,15 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 			continue
 		}
 		out.Read++
-		terminalCluster := k == kindPG || k == historyRedisCard
-		m, notSeen, _, err := s.readByID(ctx, k, l.ResourceID, l.Key, cur)
+		terminalCluster := k == kindPG || k == kindRedis
+		var m map[string]any
+		var notSeen bool
+		var err error
+		if k == kindRedis {
+			m, notSeen, err = redis.card(ctx, eng, l, out)
+		} else {
+			m, notSeen, _, err = s.readByID(ctx, k, l.ResourceID, l.Key, cur)
+		}
 		switch {
 		case notSeen:
 			results[i] = checkNotSeen
@@ -393,7 +403,7 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 // historyCardMatches verifies the identity used to interpret VM and cluster reads.
 func historyCardMatches(k *ownerKind, l history.Line, m map[string]any) bool {
 	switch k {
-	case kindPG, historyRedisCard:
+	case kindPG, kindRedis:
 		project := projectField(m)
 		return stringArg(m, "id") == l.ResourceID && project != "" && (l.ProjectID == "" || project == l.ProjectID)
 	case historyVMCard:
@@ -421,13 +431,49 @@ func historyIDReadable(l history.Line) bool {
 	return false
 }
 
-var historyRedisCard = &ownerKind{card: func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
-	cli, _, err := c.r.redisClientEng(ctx)
-	if err != nil {
-		return nil, err
+// Redis often omits project_id from GET by ID. Resolve it only through the
+// complete list of the selected project, once per check, using the same key.
+type redisHistoryRead struct {
+	client  *dbaas.Client
+	members map[string]bool
+}
+
+func (r *redisHistoryRead) card(ctx context.Context, eng *engine.Engine, l history.Line, checked *historyChecked) (map[string]any, bool, error) {
+	project := eng.Config.ProjectID
+	if r.client == nil {
+		token, err := eng.Auth.Token(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		r.client = dbaas.New(token.Value, project, redisHost)
 	}
-	return cli.GetCluster(ctx, id)
-}}
+	m, err := r.client.GetCluster(ctx, l.ResourceID)
+	if err != nil {
+		return nil, notThere(err), err
+	}
+	cardProject := projectField(m)
+	if l.ProjectID == "" && cardProject != "" && cardProject != project {
+		return nil, false, nil
+	}
+	if stringArg(m, "id") != l.ResourceID || cardProject != "" || project == "" || (l.ProjectID != "" && l.ProjectID != project) {
+		return m, false, nil
+	}
+	if r.members == nil {
+		r.members = map[string]bool{}
+		items, pages, err := r.client.ListClustersWithin(ctx, nil, historyCheckMax-checked.Read)
+		checked.Read += pages
+		if err != nil {
+			return nil, false, err
+		}
+		for _, item := range items {
+			r.members[stringArg(item, "id")] = true
+		}
+	}
+	if r.members[l.ResourceID] {
+		m["project_id"] = project
+	}
+	return m, false, nil
+}
 
 var historyVMCard = &ownerKind{card: func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
 	eng, err := c.engine(ctx)
@@ -453,7 +499,7 @@ func cardOf(tool string) *ownerKind {
 		del = c.delete
 	}
 	if del == "redis_delete" {
-		return historyRedisCard
+		return kindRedis
 	}
 	if del == "destroy" {
 		return historyVMCard
