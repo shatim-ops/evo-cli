@@ -27,28 +27,35 @@ func TestContract_DoctorRetriesInterruptedDiskDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	pending := intent.Pending(dir)
-	if len(pending) != 1 {
+	if len(pending) != 1 || pending[0].Target != "disk_id="+resGone {
 		t.Fatalf("pending before doctor: %v", pending)
 	}
 	intent.End(pending[0], history.Outcome{})
 	for _, tc := range []struct {
 		status, left int
 		why          string
-	}{{http.StatusForbidden, 1, "could not read"}, {http.StatusNotFound, 0, "the delete took effect"}} {
+	}{{http.StatusForbidden, 1, "could not read"}, {http.StatusNotFound, 0, "original request was not acknowledged"}} {
 		f.goneStatus = tc.status
 		before := len(f.log())
 		text := doctorOnFake(t, r)
-		card := false
+		cardReads := 0
 		for _, q := range f.log()[before:] {
 			if q == "GET compute.api.cloud.ru/api/v1/disks/"+resGone {
-				card = true
+				cardReads++
 			}
 			if !strings.HasPrefix(q, "GET ") || strings.HasSuffix(q, "/api/v1/disks") {
 				t.Errorf("unexpected doctor request: %s", q)
 			}
 		}
-		if !card || len(intent.Pending(dir)) != tc.left || !strings.Contains(text, tc.why) {
-			t.Errorf("HTTP %d: card read %v, pending %d: %s", tc.status, card, len(intent.Pending(dir)), text)
+		left := intent.Pending(dir)
+		if len(left) == 1 && left[0].ID != pending[0].ID {
+			t.Errorf("doctor retained a different receipt: %s", left[0].ID)
+		}
+		if tc.status == http.StatusNotFound && (!strings.Contains(text, "absent") || !strings.Contains(text, resGone)) {
+			t.Errorf("missing observation for disk %s: %s", resGone, text)
+		}
+		if cardReads != 1 || len(left) != tc.left || !strings.Contains(text, tc.why) || strings.Contains(text, "delete took effect") {
+			t.Errorf("HTTP %d: card reads %d, pending %d: %s", tc.status, cardReads, len(left), text)
 		}
 	}
 }

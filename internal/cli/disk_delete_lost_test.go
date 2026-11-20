@@ -28,6 +28,7 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 		want                      string // terminal status on success, error reason on failure
 	}{
 		{"wrong ID before consent", 200, 0, 200, clierrors.CodeAPIError},
+		{"acknowledged", 200, http.StatusNoContent, 404, "deleted"},
 		{"lost, gone", 200, 0, 404, "deleted"},
 		{"absent before consent", 404, 0, 404, "already_deleted"},
 		{"read denied", 403, 0, 404, clierrors.CodeAuthFailed},
@@ -43,6 +44,7 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 				world := withParityWorld(t)
 				t.Setenv("CLOUDRU_KEY_ID", "00000000-0000-0000-0000-0000000000a9")
 				writes, postReads := 0, 0
+				checkStatus := tc.after
 				rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 					code := tc.before
 					body := `{"id":"` + parityVM + `","name":"test disk","vms":[]}`
@@ -74,7 +76,7 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 					case "GET":
 						if writes > 0 {
 							postReads++
-							code = tc.after
+							code = checkStatus
 						}
 					default:
 						t.Fatalf("unexpected method %s", req.Method)
@@ -102,12 +104,14 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 				}
 				lang := i18n.Lang()
 				t.Cleanup(func() { toolEngine = factory; i18n.SetLang(lang) })
-				var got string
+				var got, message string
 				if surface == "CLI" {
 					i18n.SetLang(i18n.RU)
 					code, out, errOut := runCLI(t, "", "--json", "--yes", "disk", "delete", parityVM)
 					if code == 0 {
-						got, _ = parseObject(out)["status"].(string)
+						answer := parseObject(out)
+						got, _ = answer["status"].(string)
+						message, _ = answer["message"].(string)
 					} else {
 						env, ok := errorEnvelope(errOut)
 						if !ok || code != clierrors.ExitCode(clierrors.New(tc.want, "", "")) || cyrillic.MatchString(env.Message) {
@@ -127,11 +131,18 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 					}
 					m := parseObject(ans.text)
 					got, _ = m["status"].(string)
+					message, _ = m["message"].(string)
 					if ans.isErr {
 						got, _ = m["reason"].(string)
 					}
 					if tc.name == "verification denied" && (m["check_reason"] != clierrors.CodeAuthFailed) {
 						t.Fatalf("verification failure: %s", ans.text)
+					}
+				}
+				if got == "deleted" {
+					observed := strings.Contains(message, "did not acknowledge")
+					if observed != (tc.deleteCode == 0) {
+						t.Errorf("delete HTTP status %d, unexpected observation: %q", tc.deleteCode, message)
 					}
 				}
 				wantWrites := 0
@@ -152,6 +163,26 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 				}
 				if got != tc.want || writes != wantWrites || postReads != wantChecks {
 					t.Fatalf("got=%s DELETE=%d verification GET=%d; want %s %d %d", got, writes, postReads, tc.want, wantWrites, wantChecks)
+				}
+				if tc.name == "verification denied" {
+					i18n.SetLang(i18n.EN)
+					servers := newROServers(t)
+					for _, status := range []int{http.StatusForbidden, http.StatusNotFound} {
+						checkStatus = status
+						before := postReads
+						report, _ := servers.stdio(t, servers.plain, "tools/call", map[string]any{"name": "doctor", "arguments": map[string]any{}})
+						if report.rpcErr != "" || writes != 1 || postReads != before+1 || !strings.Contains(report.text, parityVM) || strings.Contains(report.text, "delete took effect") {
+							t.Fatalf("doctor after HTTP %d: DELETE=%d card reads=%d: %s", status, writes, postReads-before, report.text)
+						}
+						remaining := intent.Pending(intent.Dir(world.dir))
+						if status == http.StatusForbidden {
+							if len(remaining) != 1 || remaining[0].ID != pending[0].ID || !strings.Contains(report.text, "could not read") {
+								t.Fatalf("unverified receipt: %+v: %s", remaining, report.text)
+							}
+						} else if len(remaining) != 0 || !strings.Contains(report.text, "original request was not acknowledged") || !strings.Contains(report.text, "absent") {
+							t.Fatalf("observed absence: %+v: %s", remaining, report.text)
+						}
+					}
 				}
 			})
 		}
