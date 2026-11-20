@@ -153,7 +153,9 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		switch {
 		case id == "":
 			out.Result = history.Unknown
-		case strings.HasPrefix(status, "already_"):
+		case name == "deploy" && stringArg(res, "deploy_action") == "updated":
+			out.Result, out.ResourceID = history.Changed, id
+		case strings.HasPrefix(status, "already_") || (name == "deploy" && stringArg(res, "deploy_action") == "unchanged"):
 			out.Result, out.ResourceID = history.Found, id
 		default:
 			out.Result, out.ResourceID = history.Created, id

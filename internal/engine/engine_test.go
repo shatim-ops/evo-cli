@@ -502,8 +502,8 @@ func TestDeploy_NewDeploy(t *testing.T) {
 
 	composePath := writeComposeFile(t, tmpDir)
 
-	var result state.DeploymentRecord
-	opts := DeployOptions{Record: &result,
+	var result DeployResult
+	opts := DeployOptions{Result: &result,
 		ComposeFile:    composePath,
 		Flavor:         "small",
 		Region:         "az-1",
@@ -516,7 +516,7 @@ func TestDeploy_NewDeploy(t *testing.T) {
 		t.Fatalf("Deploy returned error: %v", err)
 	}
 
-	if result.VMID != "vm-123" || result.Region == "" {
+	if result.Action != "created" || result.Record.VMID != "vm-123" || result.Record.Region == "" {
 		t.Fatalf("deploy result: %+v", result)
 	}
 
@@ -613,7 +613,8 @@ func TestDeploy_UpdateDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := DeployOptions{
+	var result DeployResult
+	opts := DeployOptions{Result: &result,
 		ComposeFile:    composePath,
 		Flavor:         "small",
 		Region:         "az-1",
@@ -626,6 +627,9 @@ func TestDeploy_UpdateDeploy(t *testing.T) {
 		t.Fatalf("Deploy returned error: %v", err)
 	}
 
+	if result.Action != "updated" || result.Record.VMID != "vm-existing" {
+		t.Fatalf("update result: %+v", result)
+	}
 	// Provision should NOT have been called — reusing existing VM.
 	if cloud.createCalled {
 		t.Error("expected CreateVM NOT to be called on update deploy")

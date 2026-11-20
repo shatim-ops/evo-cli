@@ -1767,8 +1767,8 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			eng.Printer = logAndProgress(ctx, &buf)
 
 			force, _ := args["force"].(bool)
-			var record state.DeploymentRecord
-			opts := engine.DeployOptions{Record: &record,
+			var deployment engine.DeployResult
+			opts := engine.DeployOptions{Result: &deployment,
 				ComposeFile:    eng.Config.ComposeFile,
 				Flavor:         eng.Config.Flavor,
 				Region:         eng.Config.Region,
@@ -1789,7 +1789,8 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			}
 
 			result := map[string]any{"log": buf.String()}
-			if record.VMID != "" {
+			if record := deployment.Record; record.VMID != "" {
+				result["deploy_action"] = deployment.Action
 				result["deployment"] = record
 				result["vm_id"] = record.VMID
 				result["region"] = record.Region
@@ -2026,8 +2027,8 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 		return failed(ctx, errComposeChangedSinceConsent(), nil), true
 	}
 	force, _ := args["force"].(bool)
-	var record state.DeploymentRecord
-	err = eng.Deploy(ctx, engine.DeployOptions{Record: &record,
+	var deployment engine.DeployResult
+	err = eng.Deploy(ctx, engine.DeployOptions{Result: &deployment,
 		ComposeFile:    eng.Config.ComposeFile,
 		Flavor:         eng.Config.Flavor,
 		Region:         eng.Config.Region,
@@ -2046,7 +2047,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 	if err != nil {
 		return failed(ctx, err, deployFields(err, nil)), true
 	}
-	return toJSON(map[string]any{"status": "ok", "vm_id": record.VMID, "region": record.Region}), false
+	return toJSON(map[string]any{"status": "ok", "vm_id": deployment.Record.VMID, "region": deployment.Record.Region, "deploy_action": deployment.Action}), false
 }
 
 // deployFields adds to fields of a deploy error answer the argument of a
@@ -2970,7 +2971,8 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 			var buf bytes.Buffer
 			eng.Printer = bufferPrinter(&buf)
 
-			if err := eng.Destroy(ctx, engine.DestroyOptions{Force: true}); err != nil {
+			var result engine.DestroyResult
+			if err := eng.Destroy(ctx, engine.DestroyOptions{Force: true, Result: &result}); err != nil {
 				fields := logField(buf.String())
 				if stderrors.Is(err, engine.ErrDeletionUnconfirmed) {
 					// The delete is accepted, the rest waits for the re-run
@@ -2979,7 +2981,7 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 				}
 				return errAnswer(err, fields), true
 			}
-			return toJSON(map[string]any{"status": "ok", "log": buf.String()}), false
+			return toJSON(map[string]any{"status": "ok", "log": buf.String(), "deleted_vm": result.VMID, "cleanup_pending": result.CleanupPending}), false
 		})
 }
 
@@ -3381,9 +3383,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		// released when listed by their name, else named — the marks close
 		// either way (D107; «Риск», conclusion 180, Т3 and Т4).
 		var lostReleased, lostMissing []string
+		var extraPending bool
 		if releaseIP {
 			var rel, miss []state.LostFloatingIP
-			lerr, _ := withAddressMarks(statePath, func(sf *state.File) (err error) {
+			lerr, werr := withAddressMarks(statePath, func(sf *state.File) (err error) {
 				rel, miss, err = floatingip.Release(ctx, eng.Cloud, sf, projectID, target.Name, target.ID, fipRec.FloatingIPID)
 				return err
 			})
@@ -3398,7 +3401,8 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					"; floating IP %s, запрошенного %s без ответа, нет в списке: если evo vpc fips покажет его позже, он оплачивается — освобождать ли его (evo vpc fip-release), решает человек",
 					m.Name, m.RequestedAt.UTC().Format(time.RFC3339))
 			}
-			if lerr != nil {
+			if lerr = stderrors.Join(lerr, werr); lerr != nil {
+				extraPending = true
 				msg += i18n.Tf("; the floating IPs requested with no answer were not checked (%v): destroy checks them again",
 					"; floating IP, запрошенные без ответа, не проверены (%v): повтор evo vm delete проверит их снова", lerr)
 			}
@@ -3418,7 +3422,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			for _, id := range ids {
 				rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id))
 			}
-			if fipLeft {
+			if fipLeft || extraPending {
 				rec := state.DeploymentRecord{ID: target.ID, VMID: target.ID, CreatedAt: time.Now()}
 				for _, d := range sf.Deployments {
 					if d.VMID == target.ID {
@@ -3446,7 +3450,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			"deleted_vm": target.ID,
 			"name":       target.Name,
 		}
-		if fipLeft || len(rules.Failed) > 0 || stateErr != nil || uncheckedErr != nil || len(lostMissing) > 0 {
+		if fipLeft || extraPending || len(rules.Failed) > 0 || stateErr != nil || uncheckedErr != nil || len(lostMissing) > 0 {
 			out["cleanup_pending"] = true
 		}
 		if alreadyGone {
