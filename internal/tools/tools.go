@@ -312,7 +312,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"name":                 strProp("Subnet name: a Latin letter first, then letters, digits, '.', '-', '_'."),
 				"cidr":                 cidrProp("Network with a mask /8../29, e.g. 10.10.0.0/24."),
-				"vpc_id":               uuidProp("VPC UUID (default: the project's default VPC)."),
+				"vpc_id":               strProp("VPC UUID or name (default: the project's default VPC)."),
 				"zone":                 strProp("Zone name, e.g. 'ru.AZ-1' (default: the configured region)."),
 				"availability_zone_id": uuidProp("Zone UUID, instead of zone."),
 				"routed_network":       boolPropTrue("Routed (default true); false: isolated."),
@@ -1099,8 +1099,8 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_get",
-			Description: "Get full details of one VPC by id (from vpc_list). Read-only.",
-			InputSchema: objSchema(map[string]any{"id": uuidProp("VPC UUID (from vpc_list). Required.")}, "id"),
+			Description: "Get full details of one VPC by UUID or name (from vpc_list). Read-only.",
+			InputSchema: objSchema(map[string]any{"id": strProp("VPC UUID or name (from vpc_list). Required.")}, "id"),
 		},
 		{
 			Name:        "vpc_create",
@@ -1113,9 +1113,9 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_delete",
-			Description: "Delete a VPC by id (from vpc_list) (async). Remove its subnets and resources first.",
+			Description: "Delete a VPC by UUID or name (from vpc_list) (async). Remove its subnets and resources first.",
 			InputSchema: objSchema(map[string]any{
-				"id":        uuidProp("VPC UUID (from vpc_list). Required."),
+				"id":        strProp("VPC UUID or name (from vpc_list). Required."),
 				"confirmed": confirmedProp(),
 				"wait":      boolProp(deleteWaitDesc),
 			}, "id"),
@@ -1128,13 +1128,13 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "vpc_routes",
 			Description: "List static routes of a VPC (id, subnet, next_hop_type, status). Read-only.",
-			InputSchema: objSchema(map[string]any{"vpc_id": uuidProp("VPC UUID (from vpc_list). Required.")}, "vpc_id"),
+			InputSchema: objSchema(map[string]any{"vpc_id": strProp("VPC UUID or name (from vpc_list). Required.")}, "vpc_id"),
 		},
 		{
 			Name:        "vpc_route_create",
 			Description: "Add a static route to a VPC (async). Destination is a CIDR; the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az).",
 			InputSchema: objSchema(map[string]any{
-				"vpc_id":                   strProp("VPC UUID. Required."),
+				"vpc_id":                   strProp("VPC UUID or name. Required."),
 				"subnet":                   cidrProp("Destination CIDR, e.g. '192.168.0.0/24'. Required."),
 				"next_hop_vm_id":           strProp("VM UUID for a VM-interface next hop (with next_hop_interface_id)."),
 				"next_hop_interface_id":    strProp("VM network interface UUID."),
@@ -1149,7 +1149,7 @@ func (s *Registry) registerTools() {
 			Name:        "vpc_route_delete",
 			Description: "Delete a static route from a VPC by id (from vpc_routes) (async).",
 			InputSchema: objSchema(map[string]any{
-				"vpc_id":    uuidProp("VPC UUID. Required."),
+				"vpc_id":    strProp("VPC UUID or name. Required."),
 				"route_id":  uuidProp("Static route UUID (from vpc_routes). Required."),
 				"confirmed": confirmedProp(),
 			}, "vpc_id", "route_id"),
@@ -1175,7 +1175,7 @@ func (s *Registry) registerTools() {
 				"name":        strProp("Zone display name. Optional; default = domain."),
 				"type":        enumProp("Zone visibility (default public).", "public", "private"),
 				"description": strProp("Optional zone description."),
-				"vpc_id":      uuidProp("Private zone: the VPC it resolves in. Default: the project's default VPC."),
+				"vpc_id":      strProp("Private zone: VPC UUID or name. Default: the project's default VPC."),
 				"confirmed":   confirmedProp(),
 			}, "domain"),
 		},

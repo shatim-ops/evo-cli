@@ -410,8 +410,17 @@ func New(factory EngineFactory) *Registry {
 			h = r.boundToProjects(*t, h)
 			// Inside requireProject too: the list of a name is the call's
 			// project's; outside boundToProjects: it checks the id.
-			if refs := decls[t.Name].RefArgs; refs != nil {
-				h = r.resolveRefs(refs, h)
+			var vpcArg string
+			var innerRefs []nameRef
+			for _, ref := range t.Decl.RefArgs {
+				if ref.kind == refVPC {
+					vpcArg = ref.arg
+				} else {
+					innerRefs = append(innerRefs, ref)
+				}
+			}
+			if len(innerRefs) > 0 {
+				h = r.resolveRefs(innerRefs, h)
 			}
 			if t.Decl.Project {
 				h = r.requireProject(h)
@@ -428,7 +437,11 @@ func New(factory EngineFactory) *Registry {
 			if r.unchecked == nil {
 				r.unchecked = map[string]Handler{}
 			}
-			r.unchecked[t.Name] = checkedCreateName(t.Name, r.intended(*t, h))
+			h = r.intended(*t, h)
+			if vpcArg != "" {
+				h = r.resolveVPCArg(vpcArg, h)
+			}
+			r.unchecked[t.Name] = checkedCreateName(t.Name, h)
 			// Outermost: the fields every answer marks (markAlways), over
 			// the answer every surface shows.
 			r.handlers[t.Name] = markAlways(r.budgeted(t.Name, outer(t.Name, t.InputSchema, r.unchecked[t.Name])))

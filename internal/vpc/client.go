@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -133,15 +134,28 @@ func (c *Client) doOperation(ctx context.Context, method, path string, body any)
 // ListVPCs lists VPCs in the project, every page (vpc/openapi.yaml: the
 // answer carries nextPageToken, the next request sends pageToken).
 func (c *Client) ListVPCs(ctx context.Context) ([]map[string]any, error) {
+	return c.listVPCs(ctx, false)
+}
+
+// ListVPCReferences reads the complete catalogue for a name lookup. A
+// malformed final page cannot establish that a name occurs only once.
+func (c *Client) ListVPCReferences(ctx context.Context) ([]map[string]any, error) {
+	if c.projectID == "" {
+		return nil, clierrors.ProjectRequired()
+	}
+	return c.listVPCs(ctx, true)
+}
+
+func (c *Client) listVPCs(ctx context.Context, verifyReferences bool) ([]map[string]any, error) {
 	q := url.Values{}
 	if c.projectID != "" {
 		q.Set("project_id", c.projectID)
 	}
-	return c.listPages(ctx, "/v1/vpcs", q, "vpcs")
+	return c.listPages(ctx, "/v1/vpcs", q, "vpcs", verifyReferences)
 }
 
 // listPages reads every page of a list whose items are in field.
-func (c *Client) listPages(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
+func (c *Client) listPages(ctx context.Context, path string, query url.Values, field string, verifyReferences bool) ([]map[string]any, error) {
 	var all []map[string]any
 	err := pager.All("vpc: "+field, func(token string) (string, error) {
 		q := url.Values{}
@@ -168,10 +182,30 @@ func (c *Client) listPages(ctx context.Context, path string, query url.Values, f
 				return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 			}
 		}
+		if verifyReferences {
+			if page == nil {
+				return "", incompleteVPCReferences()
+			}
+			for _, item := range page {
+				id, _ := item["id"].(string)
+				name, _ := item["name"].(string)
+				if strings.TrimSpace(id) == "" || strings.TrimSpace(name) == "" {
+					return "", incompleteVPCReferences()
+				}
+				for _, key := range []string{"projectId", "project_id"} {
+					if owner, present := item[key]; present && owner != c.projectID {
+						return "", incompleteVPCReferences()
+					}
+				}
+			}
+		}
 		all = append(all, page...)
 		var next string
 		if raw, ok := out["nextPageToken"]; ok {
-			_ = json.Unmarshal(raw, &next)
+			err := json.Unmarshal(raw, &next)
+			if verifyReferences && (err != nil || string(raw) == "null") {
+				return "", incompleteVPCReferences()
+			}
 		}
 		return next, nil
 	})
@@ -179,6 +213,11 @@ func (c *Client) listPages(ctx context.Context, path string, query url.Values, f
 		return nil, err
 	}
 	return all, nil
+}
+
+func incompleteVPCReferences() error {
+	return clierrors.New(clierrors.CodeAPIError, i18n.T("the project VPC list is incomplete", "список VPC проекта неполон"),
+		i18n.T("Retry the lookup or give the VPC UUID.", "Повторите поиск или укажите UUID VPC."))
 }
 
 // GetVPC returns one VPC by id.
@@ -227,7 +266,7 @@ func (c *Client) GetOperation(ctx context.Context, id string) (*Operation, error
 
 // ListRoutes lists static routes of a VPC, every page.
 func (c *Client) ListRoutes(ctx context.Context, vpcID string) ([]map[string]any, error) {
-	return c.listPages(ctx, "/v1/vpcs/"+url.PathEscape(vpcID)+"/routes/static", url.Values{}, "routes")
+	return c.listPages(ctx, "/v1/vpcs/"+url.PathEscape(vpcID)+"/routes/static", url.Values{}, "routes", false)
 }
 
 // CreateRoute creates a static route (async). body: {vpcId, projectId, subnet, nextHop}.

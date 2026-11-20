@@ -235,11 +235,11 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 	if id, st, ok := takenName(existing, subnet); ok {
 		return answered(nameTakenResult(i18n.T("static route", "статический маршрут"), subnet, id, st, "vpc_routes vpc_id="+vpcID)), nil
 	}
+	details := willPreview(engine.ResourceVPCRoute, subnet, "", args, []string{"vpc_id", "next_hop_vm_id", "next_hop_interface_id", "next_hop_vip_id", "next_hop_magic_router_id", "next_hop_az"})
+	details.Add("vpc_name", s.vpcName(ctx, vpcID))
 	preview := map[string]any{
-		"message": i18n.Tf("vpc_route_create adds a static route %s in VPC %s (async).",
-			"vpc_route_create добавляет статический маршрут %s в VPC %s (асинхронно).", subnet, vpcID),
-		"preview": willPreview(engine.ResourceVPCRoute, subnet, "", args, []string{"vpc_id",
-			"next_hop_vm_id", "next_hop_interface_id", "next_hop_vip_id", "next_hop_magic_router_id", "next_hop_az"}),
+		"message": i18n.Tf("vpc_route_create adds a static route %s in VPC %s (async).", "vpc_route_create добавляет статический маршрут %s в VPC %s (асинхронно).", subnet, vpcID),
+		"preview": details,
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		body := map[string]any{"vpcId": vpcID, "projectId": cli.ProjectID(), "subnet": subnet, "nextHop": nextHop}
@@ -273,7 +273,8 @@ func (s *Registry) planVpcRouteDelete(ctx context.Context, args map[string]any) 
 	}
 	// The VPC first: one that is not there is the call's error (NOT_FOUND),
 	// not a repeat; a route that is not there is (D26).
-	if _, err := cli.GetVPC(ctx, vpcID); err != nil {
+	parent, err := cli.GetVPC(ctx, vpcID)
+	if err != nil {
 		return nil, err
 	}
 	routes, err := cli.ListRoutes(ctx, vpcID)
@@ -286,6 +287,12 @@ func (s *Registry) planVpcRouteDelete(ctx context.Context, args map[string]any) 
 	}
 	preview := map[string]any{"message": i18n.Tf("vpc_route_delete removes static route %s from VPC %s (async).",
 		"vpc_route_delete удаляет статический маршрут %s из VPC %s (асинхронно).", routeID, vpcID)}
+	preview["vpc_id"] = vpcID
+	if name, _ := parent["name"].(string); name != "" {
+		preview["vpc_name"] = name
+	} else if ref, ok := resolvedVPC(ctx, vpcID); ok {
+		preview["vpc_name"] = ref.name
+	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := cli.DeleteRoute(ctx, vpcID, routeID)
 		if err != nil {
