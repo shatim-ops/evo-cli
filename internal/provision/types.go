@@ -227,6 +227,12 @@ type SecurityGroup struct {
 // (GET /api/v1/interfaces): the VM it belongs to and the security groups
 // it is in — what a rule of a group acts on.
 type Interface struct {
+	Name           string           `json:"name,omitempty"`
+	IPAddress      string           `json:"ip_address,omitempty"`
+	Type           string           `json:"type,omitempty"`
+	State          string           `json:"state,omitempty"`
+	Primary        *bool            `json:"primary,omitempty"`
+	FloatingIP     *IfaceFloatingIP `json:"floating_ip,omitempty"`
 	ID             string           `json:"id"`
 	VM             *InterfaceVM     `json:"vm,omitempty"`
 	SecurityGroups []InterfaceGroup `json:"security_groups,omitempty"`

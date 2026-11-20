@@ -62,6 +62,7 @@ func TestNetworkInterfaceCardRequiresMatchingID(t *testing.T) {
 		{"ok", 200, `{"id":"nic","name":"spare","vm":null,"security_groups":[],"primary":false}`, ""},
 		{"wrong ID", 200, `{"id":"other"}`, clierrors.CodeAPIError},
 		{"null", 200, `null`, clierrors.CodeAPIError},
+		{"forbidden", 403, `{"message":"access denied"}`, clierrors.CodeAuthFailed},
 		{"absent", 404, `{"error_code":"interface_not_found","message":"interface not found"}`, clierrors.CodeNotFound},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
@@ -73,13 +74,7 @@ func TestNetworkInterfaceCardRequiresMatchingID(t *testing.T) {
 				fmt.Fprint(w, tc.body)
 			})
 			defer srv.Close()
-			reader, ok := any(a).(interface {
-				GetInterface(context.Context, string) (*Interface, error)
-			})
-			if !ok {
-				t.Fatal("no single-interface read in Compute client")
-			}
-			row, err := reader.GetInterface(context.Background(), "nic")
+			row, err := a.GetInterface(context.Background(), "nic")
 			if tc.reason == "" {
 				if err != nil || row == nil || row.ID != "nic" {
 					t.Fatalf("card=%v err=%v", row, err)
@@ -90,5 +85,31 @@ func TestNetworkInterfaceCardRequiresMatchingID(t *testing.T) {
 				t.Fatalf("card=%v err=%v, want %s", row, err, tc.reason)
 			}
 		})
+	}
+}
+
+func TestNetworkInterfaceCardMissingIDSkipsHTTP(t *testing.T) {
+	srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request %s %s", r.Method, r.URL)
+	})
+	defer srv.Close()
+	card, err := a.GetInterface(context.Background(), "")
+	if card != nil || err == nil || clierrors.Reason(err) != clierrors.CodeUsage {
+		t.Fatalf("card=%v err=%v", card, err)
+	}
+}
+
+func TestNetworkInterfaceDeniedNextPageDiscardsRows(t *testing.T) {
+	srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("offset") == "" {
+			fmt.Fprint(w, `{"items":[{"id":"first"}],"total":2}`)
+			return
+		}
+		http.Error(w, "access denied", http.StatusForbidden)
+	})
+	defer srv.Close()
+	rows, err := a.ListInterfaces(context.Background(), "p")
+	if len(rows) != 0 || err == nil || clierrors.Reason(err) != clierrors.CodeAuthFailed {
+		t.Fatalf("rows=%v err=%v", rows, err)
 	}
 }
