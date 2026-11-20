@@ -215,3 +215,73 @@ func TestLBVPCNameFailsOnIncompleteLaterPage(t *testing.T) {
 		t.Fatal(requests, body)
 	}
 }
+
+func TestVPCNameListFiltersNeedCompleteCatalog(t *testing.T) {
+	for _, tool := range []string{"list_subnets", "lb_list", "tg_list"} {
+		t.Run(tool, func(t *testing.T) {
+			pages, downstream := 0, 0
+			f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+				if r.Method == "GET" && r.URL.Path == "/v1/vpcs" {
+					pages++
+					if r.URL.Query().Get("project_id") != dbaasProject {
+						t.Error("missing project")
+					}
+					if r.URL.Query().Get("pageToken") == "last" {
+						fmt.Fprint(w, `{"vpcs":null}`)
+					} else {
+						fmt.Fprintf(w, `{"vpcs":[{"id":%q,"name":"Shared"}],"nextPageToken":"last"}`, auditUUID)
+					}
+					return true
+				}
+				downstream++
+				fmt.Fprint(w, `{"items":[],"balancers":[],"targetGroups":[]}`)
+				return true
+			}}
+			m, body, failed := callNamed(t, apiFakeRegistry(t, f), tool, map[string]any{"vpc_id": "shared"})
+			if !failed || m["reason"] != "API_ERROR" || pages != 2 || downstream != 0 {
+				t.Fatal(pages, downstream, body)
+			}
+		})
+	}
+}
+
+func TestVPCFilterCatalogReadCounts(t *testing.T) {
+	for _, tool := range []string{"list_subnets", "lb_list", "tg_list", "vpc_list"} {
+		for _, ref := range []string{"Shared", auditUUID} {
+			t.Run(tool+"/"+ref, func(t *testing.T) {
+				reads, targets := 0, 0
+				f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+					if r.Method != "GET" {
+						t.Fatal(r.Method, r.URL)
+					}
+					if r.URL.Path == "/v1/vpcs" {
+						reads++
+						if r.URL.Query().Get("pageToken") == "last" {
+							if ref == auditUUID {
+								fmt.Fprint(w, `{"vpcs":null}`)
+							} else {
+								fmt.Fprint(w, `{"vpcs":[]}`)
+							}
+						} else {
+							fmt.Fprintf(w, `{"vpcs":[{"id":%q,"name":"Shared"}],"nextPageToken":"last"}`, auditUUID)
+						}
+					} else {
+						targets++
+						fmt.Fprint(w, `{"items":[],"balancers":[],"targetGroups":[]}`)
+					}
+					return true
+				}}
+				args := map[string]any{"vpc_id": ref}
+				wantTargets := 1
+				if tool == "vpc_list" {
+					args = nil
+					wantTargets = 0
+				}
+				_, body, failed := callNamed(t, apiFakeRegistry(t, f), tool, args)
+				if failed || !strings.Contains(body, auditUUID) || reads != 2 || targets != wantTargets {
+					t.Fatal(reads, targets, body)
+				}
+			})
+		}
+	}
+}

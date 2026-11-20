@@ -111,24 +111,33 @@ func resolvedVPC(ctx context.Context, id string) (catalogEntry, bool) {
 	return ref, ok && ref.id == id
 }
 
-// vpcRef resolves a name only in the configured project. The direct UUID
-// path of vpc_get and vpc_delete does not require a project catalog read.
-func (r *Registry) vpcRef(ctx context.Context, ref string) (catalogEntry, error) {
+// projectVPCEntries reads the complete project catalogue for name lookups
+// in resource commands and list filters.
+func (r *Registry) projectVPCEntries(ctx context.Context) ([]catalogEntry, error) {
 	cli, err := r.vpcClient(context.WithValue(ctx, needsProject{}, true))
 	if err != nil {
-		return catalogEntry{}, err
+		return nil, err
 	}
 	rows, err := cli.ListVPCReferences(ctx)
 	if err != nil {
-		return catalogEntry{}, err
+		return nil, err
 	}
 	entries := make([]catalogEntry, 0, len(rows))
 	for _, row := range rows {
 		id := stringOf(row["id"])
 		if !isUUID(id) {
-			return catalogEntry{}, clierrors.New(clierrors.CodeAPIError, i18n.T("a project VPC has no valid UUID", "у VPC проекта нет корректного UUID"), "")
+			return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("a project VPC has no valid UUID", "у VPC проекта нет корректного UUID"), "")
 		}
 		entries = append(entries, catalogEntry{id, stringOf(row["name"])})
+	}
+	return entries, nil
+}
+
+// vpcRef resolves a name only in the configured project.
+func (r *Registry) vpcRef(ctx context.Context, ref string) (catalogEntry, error) {
+	entries, err := r.projectVPCEntries(ctx)
+	if err != nil {
+		return catalogEntry{}, err
 	}
 	matches := matchingEntries(entries, ref)
 	switch len(matches) {
