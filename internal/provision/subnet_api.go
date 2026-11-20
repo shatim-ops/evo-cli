@@ -66,7 +66,9 @@ func (a *CloudRuAdapter) GetSubnet(ctx context.Context, id string) (map[string]a
 // (the subnet's id names it); projectID is the interface's, as the other
 // deletes'.
 func (a *CloudRuAdapter) DeleteSubnet(ctx context.Context, id, _ string) error {
-	resp, err := a.doWithRetry(ctx, http.MethodDelete, fmt.Sprintf("/api/v1/subnets/%s", seg(id)), nil)
+	policy := computeRetry
+	policy.DropMethods = nil
+	resp, err := a.doWithPolicy(ctx, http.MethodDelete, fmt.Sprintf("/api/v1/subnets/%s", seg(id)), nil, policy)
 	if err != nil {
 		return err
 	}

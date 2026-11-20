@@ -153,6 +153,8 @@ type InterfaceReq struct {
 
 // Subnet represents a Cloud.ru subnet (GET /api/v1/subnets).
 type Subnet struct {
+	// ProjectID comes from project.id and is used to verify a scoped delete.
+	ProjectID          string `json:"-"`
 	ID                 string `json:"id"`
 	Name               string `json:"name"`
 	AvailabilityZoneID string `json:"availability_zone_id"`
@@ -190,12 +192,16 @@ func (s *Subnet) UnmarshalJSON(b []byte) error {
 	type plain Subnet
 	var r struct {
 		plain
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
 		AvailabilityZone *ZoneRef `json:"availability_zone"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
 		return err
 	}
 	*s = Subnet(r.plain)
+	s.ProjectID = r.Project.ID
 	if s.AvailabilityZoneID == "" && r.AvailabilityZone != nil {
 		s.AvailabilityZoneID = r.AvailabilityZone.ID
 	}

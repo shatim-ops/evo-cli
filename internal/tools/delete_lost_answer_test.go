@@ -86,7 +86,6 @@ var lostDeleteUnreached = map[string]string{
 var lostDeleteSaysNeverExisted = map[string]string{
 	"destroy":             "the compute client repeats the DELETE; the answer is «VM already deleted (not found in the cloud)»",
 	"snat_delete":         "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
-	"subnet_delete":       "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
 }
 
 // Release plan 1.9, «Находки промежуточного дельта-аудита», class 1, for
