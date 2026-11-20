@@ -17,6 +17,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
+	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/verify"
 	"github.com/shatim-ops/evo-cli/internal/vmstage"
 )
@@ -76,8 +77,16 @@ type Engine struct {
 	decided bool
 }
 
+// DeployResult identifies the VM this call created, updated or found unchanged.
+type DeployResult struct {
+	Record state.DeploymentRecord
+	Action string
+}
+
 // DeployOptions holds parameters for the deploy command.
 type DeployOptions struct {
+	// Result receives the outcome selected under the state lock.
+	Result         *DeployResult
 	ComposeFile    string
 	Flavor         string // "auto" or explicit flavor name
 	Region         string
