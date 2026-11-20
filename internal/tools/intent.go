@@ -200,7 +200,8 @@ func projectOfCall(eng *engine.Engine, in intent.Intent, args map[string]any) st
 	if eng != nil {
 		project = eng.Config.ProjectID
 	}
-	if _, _, byID := intentTarget(in); byID {
+	// The SNAT delete verifies membership in this project before sending.
+	if _, _, byID := intentTarget(in); byID && in.Tool != "snat_delete" {
 		project = ""
 	}
 	if p := stringArg(args, "project_id"); p != "" {
@@ -1136,6 +1137,9 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	// project, which does not tell a deleted resource from one of another
 	// project (R-82): doctor reads it by id and says what to do.
 	if _, k, id, byID := deleteByID(in); byID {
+		if in.Tool == "snat_delete" && in.ProjectID != "" {
+			return head + i18n.T(" — doctor checks the gateway list with the original project and key.", " — doctor проверяет список шлюзов с исходным проектом и ключом.")
+		}
 		if k.card == nil {
 			// No read by id closes it: doctor says the same and no more.
 			return head + i18n.Tf(" — evo has no read by id that tells a deleted %s from one of another project: check %s where it was — the same %s with the same arguments settles the record",
@@ -1203,6 +1207,24 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 // by the list of what it names (checkByList).
 func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool, listedID string) {
 	if _, k, id, ok := deleteByID(in); ok {
+		if in.Tool == "snat_delete" {
+			cur := eng.Maker()
+			if in.Key == nil || cur == nil || in.Key.Other(cur) || in.ProjectID == "" || in.ProjectID != eng.Config.ProjectID {
+				return "", false, ""
+			}
+			var gw map[string]any
+			err := authorize(ctx, eng)
+			if err == nil {
+				gw, err = readDeleteGateway(ctx, eng, id)
+			}
+			if err != nil {
+				return i18n.Tf("Could not verify gateway %s (%s).", "Не удалось проверить шлюз %s (%s).", quoteCloud(id), clierrors.Reason(err)), false, ""
+			}
+			if gw == nil {
+				return i18n.Tf("Gateway %s is absent from the project list. The original request was not acknowledged. The record is closed.", "Шлюз %s отсутствует в списке проекта. Ответ на исходный запрос не получен. Запись закрыта.", quoteCloud(id)), true, ""
+			}
+			return i18n.Tf("Gateway %s is still listed. Run doctor again.", "Шлюз %s ещё есть в списке. Повторите doctor.", quoteCloud(id)), false, ""
+		}
 		return r.checkByID(ctx, in, k, id, eng.Maker())
 	}
 	return r.checkByList(ctx, in, eng.Config.ProjectID)

@@ -181,26 +181,55 @@ func (s *Registry) planSnatDelete(ctx context.Context, args map[string]any) (*Pl
 	if err != nil {
 		return nil, err
 	}
+	gw, err := readDeleteGateway(ctx, eng, id)
+	if err != nil {
+		return nil, err
+	}
 	return s.deletePlan("snat_delete", "snat_delete removes SNAT gateway %s — nodes in that zone lose outbound internet.",
 		"snat_delete удаляет шлюз SNAT %s — узлы в этой зоне потеряют исходящий доступ в интернет.",
 		id, func() (map[string]any, error) {
-			gws, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
-			if err != nil {
-				return nil, err
-			}
-			for _, gw := range gws {
-				if gid, _ := gw["id"].(string); gid == id {
-					return gw, nil
-				}
+			if gw != nil {
+				return gw, nil
 			}
 			return nil, clierrors.New(clierrors.CodeNotFound, i18n.Tf("SNAT gateway %s not found in the project", "SNAT-шлюз %s в проекте не найден", id), i18n.T("snat_list lists the project's gateways.", "Шлюзы проекта — в выводе snat_list."))
 		},
 		func(ctx context.Context) (string, bool) {
-			if err := eng.Cloud.DeleteNATGateway(ctx, id, eng.Config.ProjectID); err != nil {
+			sendCtx, unsent := deleteConnection(ctx, "snat_delete")
+			if err := eng.Cloud.DeleteNATGateway(sendCtx, id, eng.Config.ProjectID); err != nil {
+				if unsent(err) {
+					return unsentDeleteAnswer(err)
+				}
+				if clierrors.Reason(err) == clierrors.CodeAPIUnreachable && ctx.Err() == nil {
+					observed, checkErr := readDeleteGateway(ctx, eng, id)
+					if checkErr == nil && observed == nil {
+						return toJSON(map[string]any{"status": "deleted", "id": id, "message": deleteObservation()}), false
+					}
+					fields := map[string]any{"id": id, "next_tool": "snat_list", "next_args": map[string]any{}}
+					msg := i18n.T("No delete reply was received. The project list did not confirm the gateway's absence.", "Ответ на удаление не получен. Список проекта не подтвердил отсутствие шлюза.")
+					if checkErr != nil {
+						reason := clierrors.Reason(checkErr)
+						fields["check_reason"] = reason
+						msg = i18n.Tf("No delete reply was received. The project list could not be verified (%s).", "Ответ на удаление не получен. Не удалось проверить список проекта (%s).", reason)
+					}
+					return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, msg, i18n.T("Check the gateway ID in snat_list before retrying.", "Перед повтором проверьте ID шлюза в snat_list."), err), fields), true
+				}
 				return s.deleteFailed("snat_delete", id, fmt.Errorf(i18n.T("delete SNAT gateway: %w", "удаление шлюза SNAT: %w"), err))
 			}
 			return toJSON(map[string]any{"status": "deleted", "id": id}), false
 		}), nil
+}
+
+func readDeleteGateway(ctx context.Context, eng *engine.Engine, id string) (map[string]any, error) {
+	rows, err := provision.NATDeleteInventory(ctx, eng.Cloud, eng.Config.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	for _, gw := range rows {
+		if stringArg(gw, "id") == id {
+			return gw, nil
+		}
+	}
+	return nil, nil
 }
 
 // firstNonNil returns the first non-nil value.

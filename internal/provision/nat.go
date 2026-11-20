@@ -8,8 +8,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // NATTypePublicSNAT is the only nat_type the Cloud.ru Compute API accepts for a
@@ -37,6 +40,67 @@ type CreateNATGatewayRequest struct {
 func (a *CloudRuAdapter) ListNATGateways(ctx context.Context, projectID string) ([]map[string]any, error) {
 	// Every page, as ListDisks.
 	return listRaw(a, ctx, "/api/v1/nat-gateways", projectID)
+}
+
+// NATDeleteInventory requests a complete, project-consistent list for a
+// destructive decision. Ordinary discovery retains its existing decoding.
+func NATDeleteInventory(ctx context.Context, cloud CloudAPI, project string) ([]map[string]any, error) {
+	rows, err := cloud.ListNATGateways(context.WithValue(ctx, natDeleteInventoryKey{}, project), project)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if err := validateNATOwner(row, project); err != nil {
+			return nil, err
+		}
+	}
+	return rows, nil
+}
+
+type natDeleteInventoryKey struct{}
+
+func validateNATPage(body []byte, project string) error {
+	var envelope paginatedResponse[map[string]any]
+	var rows []map[string]any
+	if json.Unmarshal(body, &envelope) == nil {
+		rows = envelope.Items
+	}
+	if rows == nil {
+		if err := json.Unmarshal(body, &rows); err != nil || rows == nil {
+			return clierrors.New(clierrors.CodeAPIError, i18n.T("Expected a complete gateway list.", "Ожидался полный список шлюзов."), hintUnexpectedFormat())
+		}
+	}
+	for _, row := range rows {
+		if err := validateNATOwner(row, project); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateNATOwner(row map[string]any, project string) error {
+	id, _ := row["id"].(string)
+	if strings.TrimSpace(id) == "" {
+		return clierrors.New(clierrors.CodeAPIError, i18n.T("The gateway list contains a record without an ID.", "В списке шлюзов есть запись без ID."), "")
+	}
+	owners := []any{row["project_id"]}
+	if value := row["project"]; value != nil {
+		owner, ok := value.(map[string]any)
+		if !ok {
+			return invalidNATOwner()
+		}
+		owners = append(owners, owner["id"])
+	}
+	for _, owner := range owners {
+		if owner != nil && owner != "" && owner != project {
+			return invalidNATOwner()
+		}
+	}
+	return nil
+}
+
+func invalidNATOwner() error {
+	return clierrors.New(clierrors.CodeAPIError, i18n.T("The gateway list contradicts the selected project.", "Список шлюзов противоречит выбранному проекту."), "")
 }
 
 // CreateNATGateway creates a SNAT gateway and returns the raw API object (its
@@ -71,7 +135,9 @@ func (a *CloudRuAdapter) DeleteNATGateway(ctx context.Context, id, projectID str
 	if projectID != "" {
 		path += "?project_id=" + url.QueryEscape(projectID)
 	}
-	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
+	policy := computeRetry
+	policy.DropMethods = nil
+	resp, err := a.doWithPolicy(ctx, http.MethodDelete, path, nil, policy)
 	if err != nil {
 		return err
 	}
