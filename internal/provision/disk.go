@@ -129,7 +129,10 @@ func (a *CloudRuAdapter) DeleteDisk(ctx context.Context, diskID, projectID strin
 	if projectID != "" {
 		path += "?project_id=" + url.QueryEscape(projectID)
 	}
-	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
+	// After a lost reply, the caller verifies the disk by ID.
+	policy := computeRetry
+	policy.DropMethods = nil
+	resp, err := a.doWithPolicy(ctx, http.MethodDelete, path, nil, policy)
 	if err != nil {
 		return err
 	}

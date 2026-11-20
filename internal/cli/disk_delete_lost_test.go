@@ -35,6 +35,7 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 		{"attached", 200, 0, 200, clierrors.CodeUsage},
 		{"gateway 404", 200, 0, 404, clierrors.CodeAPIUnreachable},
 		{"still present", 200, 0, 200, clierrors.CodeAPIUnreachable},
+		{"different disk on check", 200, 0, 200, clierrors.CodeAPIUnreachable},
 	} {
 		for _, surface := range []string{"CLI", "MCP"} {
 			t.Run(tc.name+"/"+surface, func(t *testing.T) {
@@ -76,6 +77,9 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 					}
 					if code >= 400 {
 						body = `{"detail":"disk request refused"}`
+					}
+					if tc.name == "different disk on check" && writes > 0 && req.Method == "GET" {
+						body = `{"id":"` + parityStoppedVM + `","state":"deleted"}`
 					}
 					if tc.name == "gateway 404" && writes > 0 && req.Method == "GET" {
 						body = "404 page not found"
