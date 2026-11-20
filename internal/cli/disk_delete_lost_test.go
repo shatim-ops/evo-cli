@@ -27,6 +27,7 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 		before, deleteCode, after int
 		want                      string // terminal status on success, error reason on failure
 	}{
+		{"wrong ID before consent", 200, 0, 200, clierrors.CodeAPIError},
 		{"lost, gone", 200, 0, 404, "deleted"},
 		{"absent before consent", 404, 0, 404, "already_deleted"},
 		{"read denied", 403, 0, 404, clierrors.CodeAuthFailed},
@@ -45,6 +46,9 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 				rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 					code := tc.before
 					body := `{"id":"` + parityVM + `","name":"test disk","vms":[]}`
+					if tc.name == "wrong ID before consent" {
+						body = `{"id":"` + parityStoppedVM + `","name":"other resource"}`
+					}
 					if tc.name == "attached" {
 						body = `{"id":"` + parityVM + `","vms":[{"id":"` + parityStoppedVM + `","name":"attached-vm","primary":true}]}`
 					}
@@ -131,7 +135,7 @@ func TestDiskDeleteLostReplySurfaces(t *testing.T) {
 					}
 				}
 				wantWrites := 0
-				if tc.before == 200 && tc.name != "attached" {
+				if tc.name != "wrong ID before consent" && tc.before == 200 && tc.name != "attached" {
 					wantWrites = 1
 				}
 				wantChecks := 0

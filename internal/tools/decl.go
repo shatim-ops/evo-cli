@@ -361,7 +361,7 @@ var decls = map[string]Decl{
 	// The VMs a disk is attached to, as the cloud names them: the refusal
 	// of disk_delete (D59) names them for the way out. Names, not the
 	// output of a workload: no note.
-	"disk_delete": {Delete: deleteTarget{arg: "disk_id", what: "disk", whRU: "диск"}, IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}}, Untrusted: untrustedAnswer{fields: []string{"attached_vms"}}},
+	"disk_delete": {verifiesDeleteByRead: true, Delete: deleteTarget{arg: "disk_id", what: "disk", whRU: "диск"}, IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}}, Untrusted: untrustedAnswer{fields: []string{"attached_vms"}}},
 	"ca_list":     {Project: true, Untrusted: untrustedAnswer{fields: []string{"containers"}}},
 	"ca_get":      {Project: true, Untrusted: untrustedAnswer{whole: true}},
 	// Container Apps: an app is addressed by name with projectId in the
