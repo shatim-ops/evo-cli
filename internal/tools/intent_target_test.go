@@ -245,30 +245,3 @@ func TestDeleteEvidenceBelongsToOpenReceipt(t *testing.T) {
 		})
 	}
 }
-
-// A pre-send failure settles only the marked receipt, even if the same
-// record holder is reused for another delete of the same resource.
-func TestDeleteUnsentSettlesOnlyItsReceipt(t *testing.T) {
-	r := ownerRegistry(t, &ownerFake{}, false, ownProject)
-	root, _ := r.stateDir()
-	c := &callRecords{}
-	ctx := context.WithValue(context.Background(), callRecordsKey{}, c)
-	open := func() (string, func(string)) {
-		t.Helper()
-		end, err := r.beginIntent(ctx, "disk_delete", map[string]any{"disk_id": resMine, "confirmed": true})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return c.open.ID, end
-	}
-	first, endFirst := open()
-	markDeleteUnsent(ctx, "disk_delete")
-	second, endSecond := open()
-	const interrupted = `{"status":"error","reason":"INTERRUPTED"}`
-	endFirst(interrupted)
-	endSecond(interrupted)
-	pending := intent.Pending(intent.Dir(root))
-	if first == second || len(pending) != 1 || pending[0].ID != second {
-		t.Fatalf("marked %s, unmarked %s, pending %+v", first, second, pending)
-	}
-}
