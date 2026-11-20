@@ -97,3 +97,34 @@ func TestContract_InterfaceReadNeedsCompleteProjectList(t *testing.T) {
 		t.Errorf("group: %v", group)
 	}
 }
+
+// Once Compute reports two interfaces, an incomplete second page cannot
+// turn a one-row prefix into a successful user-visible inventory.
+func TestContract_InterfaceListKeepsReportedTotal(t *testing.T) {
+	for _, tc := range []struct{ name, body string }{
+		{"null", "null"}, {"empty items without total", `{"items":[]}`}, {"empty array", `[]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := withParityWorld(t)
+			var offsets []string
+			w.rt.extra = func(r *http.Request) (*http.Response, error) {
+				if r.Method != "GET" || r.URL.Path != "/api/v1/interfaces" || r.URL.Query().Get("project_id") != pvProject {
+					return nil, fmt.Errorf("unexpected request: %s %s", r.Method, r.URL)
+				}
+				offset := r.URL.Query().Get("offset")
+				offsets = append(offsets, offset)
+				body := tc.body
+				if offset == "" {
+					body = fmt.Sprintf(`{"items":[{"id":%q,"name":"first-row"}],"total":2}`, parityNIC)
+				}
+				return contractRT{status: 200, body: body}.RoundTrip(r)
+			}
+			newProcess()
+			code, out, stderr := runCLI(t, "", "--json", "vpc", "interfaces")
+			e, ok := errorEnvelope(stderr)
+			if !slices.Equal(offsets, []string{"", "1"}) || code != 5 || !ok || e.Reason != "API_ERROR" || strings.TrimSpace(out) != "" {
+				t.Errorf("offsets=%v exit=%d stdout=%s stderr=%s", offsets, code, out, stderr)
+			}
+		})
+	}
+}
