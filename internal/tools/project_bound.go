@@ -163,7 +163,7 @@ func (r *Registry) boundToProjects(t Tool, next Handler) Handler {
 		if !r.projectBound {
 			return next(ctx, args)
 		}
-		c := &ownerCall{r: r, args: args, group: t.Group}
+		c := &ownerCall{r: r, args: args, group: t.Group, tool: t.Name}
 		for _, a := range checks {
 			for _, id := range a.values(args) {
 				if err := a.kind.check(ctx, c, a.kind, id); err != nil {
@@ -185,6 +185,7 @@ type ownerCall struct {
 	r     *Registry
 	args  map[string]any
 	group string
+	tool  string
 	eng   *engine.Engine
 }
 
@@ -395,10 +396,25 @@ var (
 	})
 	// A disk by id: disk_get, and evo doctor checks a cut disk_delete with
 	// it (FB19I-20).
-	kindDisk = withCard(inProjectList("disk", "disk_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	kindDisk = withCard(inProjectList("disk", "disk_list", func(ctx context.Context, c *ownerCall) ([]string, error) {
+		eng, err := c.engine(ctx)
+		if err != nil {
+			return nil, err
+		}
 		disks, err := eng.Cloud.ListDisks(ctx, eng.Config.ProjectID)
-		return mapIDs(disks), err
-	})), func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+		if err != nil {
+			return nil, err
+		}
+		if c.tool == "disk_delete" {
+			id := stringArg(c.args, "disk_id")
+			for _, disk := range disks {
+				if disk["id"] == id && conflictingDiskProject(disk, eng.Config.ProjectID) {
+					return nil, nil
+				}
+			}
+		}
+		return mapIDs(disks), nil
+	}), func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
 		eng, err := c.engine(ctx)
 		if err != nil {
 			return nil, err

@@ -821,6 +821,13 @@ func resizedNote(disk map[string]any) string {
 		"Диск увеличен. На ВМ найдите его устройство через `lsblk`, расширьте раздел, если он есть (`growpart <device> <n>`), затем файловую систему (`resize2fs` для ext4, `xfs_growfs` для XFS).")
 }
 
+// The project list proves membership when ownership is omitted. An explicit
+// different owner contradicts that proof, even when the resource ID matches.
+func conflictingDiskProject(card map[string]any, projectID string) bool {
+	owner := projectField(card)
+	return owner != "" && owner != projectID
+}
+
 // planDiskDelete plans the delete of a disk by id (gate.go).
 func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	diskID := stringArg(args, "disk_id")
@@ -839,6 +846,9 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 	}
 	if disk["id"] != diskID {
 		return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The disk response did not identify the requested resource.", "Ответ сервиса не подтвердил ID запрошенного диска."), "")
+	}
+	if s.projectBound && conflictingDiskProject(disk, eng.Config.ProjectID) {
+		return nil, notInProject(kindDisk, diskID)
 	}
 	if vms, err := diskAttachedError(diskID, disk); err != nil {
 		return answered(errAnswer(err, map[string]any{"disk_id": diskID, "attached_vms": vms}), true), nil
