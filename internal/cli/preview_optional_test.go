@@ -36,6 +36,10 @@ var optionalArgs = map[string]map[string]any{
 	"pg_create":        {"storage_gb": float64(30), "version": "17", "subnet_id": optionalSubnet, "backup_schedule": "0 3 * * *"},
 	"lb_create":        {"subnet_id": optionalSubnet},
 	"backup_restore":   {"disk_type": "SSD"},
+
+	// The VPC catalogue uses parityVM as the ID of its default VPC.
+	"dns_zone_create": {"vpc_id": parityVM},
+	"subnet_create":   {"vpc_id": parityVM},
 }
 
 // optionalSubnet is the subnet of the world's project.
