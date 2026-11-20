@@ -44,6 +44,7 @@ func TestSubnetDeleteLostReplySurfaces(t *testing.T) {
 				world := withParityWorld(t)
 				t.Setenv("CLOUDRU_KEY_ID", "00000000-0000-0000-0000-0000000000a9")
 				writes, postReads := 0, 0
+				doctorReply := ""
 				rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 					code := tc.before
 					body := `{"id":"` + parityVM + `","name":"test subnet","can_delete":true}`
@@ -88,6 +89,16 @@ func TestSubnetDeleteLostReplySurfaces(t *testing.T) {
 					}
 					if tc.name == "gateway 404" && writes > 0 && req.Method == "GET" {
 						body = "404 page not found"
+					}
+					if req.Method == "GET" && doctorReply != "" {
+						switch doctorReply {
+						case "gateway":
+							code, body = 404, "404 page not found"
+						case "other ID":
+							code, body = 200, `{"id":"`+parityStoppedVM+`"}`
+						case "absent":
+							code, body = 404, `{"detail":"Subnet not found"}`
+						}
 					}
 					return contractRT{status: code, body: body}.RoundTrip(req)
 				})
@@ -160,6 +171,29 @@ func TestSubnetDeleteLostReplySurfaces(t *testing.T) {
 				}
 				if got != tc.want || writes != wantWrites || postReads != wantChecks {
 					t.Fatalf("got=%s DELETE=%d verification GET=%d; want %s %d %d", got, writes, postReads, tc.want, wantWrites, wantChecks)
+				}
+				if tc.name == "verification denied" {
+					if len(pending) != 1 {
+						t.Fatal("missing initial receipt")
+					}
+					i18n.SetLang(i18n.EN)
+					servers := newROServers(t)
+					for _, reply := range []string{"denied", "gateway", "other ID", "absent"} {
+						doctorReply = reply
+						before := postReads
+						ans, _ := servers.stdio(t, servers.plain, "tools/call", map[string]any{"name": "doctor", "arguments": map[string]any{}})
+						left := intent.Pending(intent.Dir(world.dir))
+						if ans.rpcErr != "" || writes != 1 || postReads != before+1 {
+							t.Fatalf("doctor %s: RPC=%s DELETE=%d new GET=%d", reply, ans.rpcErr, writes, postReads-before)
+						}
+						if reply == "absent" {
+							if len(left) != 0 || !strings.Contains(ans.text, "original request was not acknowledged") {
+								t.Fatalf("doctor absence: %+v %s", left, ans.text)
+							}
+						} else if len(left) != 1 || left[0].ID != pending[0].ID {
+							t.Fatalf("doctor %s changed receipt: %+v", reply, left)
+						}
+					}
 				}
 			})
 		}
