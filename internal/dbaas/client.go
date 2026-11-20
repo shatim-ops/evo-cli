@@ -158,15 +158,6 @@ func (c *Client) doOperation(ctx context.Context, method, path string, query url
 	return &op, nil
 }
 
-// listPageSize is the page_size of ListClusters. The specifications
-// (openapi-kafka.yaml, openapi-redis.yaml) name no range; Redis rejects
-// page_size<=0. cloud-e2e readonly #23 got API_ERROR from the Kafka and
-// Redis lists with page_size=1000 (the HTTP status was not logged; an
-// out-of-range page_size is a suspect, not a proven cause), so a page is
-// kept to a common maximum and the rest is read by next_page_token, which
-// the old code ignored.
-const listPageSize = 100
-
 // maxListPages bounds the page loop against a server that never ends it.
 const maxListPages = 50
 
@@ -176,6 +167,11 @@ const maxListPages = 50
 // maxListPages pages are errors: the list is not complete (break r4, R4-8;
 // the cut list was a success).
 func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[string]any, error) {
+	// Kafka accepts at most 50 clusters per page (#2632).
+	pageSize := 100
+	if extra.Get("product_type") == "kafka" {
+		pageSize = 50
+	}
 	var all []map[string]any
 	more, err := pager.Upto(maxListPages, func(token string) (string, error) {
 		q := url.Values{}
@@ -185,7 +181,7 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 		if c.projectID != "" {
 			q.Set("project_id", c.projectID)
 		}
-		q.Set("page_size", strconv.Itoa(listPageSize))
+		q.Set("page_size", strconv.Itoa(pageSize))
 		if token != "" {
 			q.Set("page_token", token)
 		}
