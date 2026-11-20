@@ -6,6 +6,7 @@ package tools
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -31,14 +32,15 @@ const (
 )
 
 type fakeDbaas struct {
-	mu   sync.Mutex
-	reqs []string // host + path + "?" + query
+	nextClusterPage func(http.ResponseWriter, string)
+	mu              sync.Mutex
+	reqs            []string // method, host, path and query
 }
 
 func (f *fakeDbaas) RoundTrip(r *http.Request) (*http.Response, error) {
 	rec := httptest.NewRecorder()
 	f.mu.Lock()
-	f.reqs = append(f.reqs, r.URL.Host+r.URL.Path+"?"+r.URL.RawQuery)
+	f.reqs = append(f.reqs, r.Method+" "+r.URL.Host+r.URL.Path+"?"+r.URL.RawQuery)
 	f.mu.Unlock()
 	f.serve(rec, r)
 	return rec.Result(), nil
@@ -64,8 +66,19 @@ func (f *fakeDbaas) serve(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"message":"product_type is required"}`, 400)
 			return
 		}
-		if q.Get("page_size") != "100" {
+		wantSize := "100"
+		if host == "kafka.api.cloud.ru" {
+			wantSize = "50"
+		} else if q.Has("product_type") {
+			http.Error(w, "unexpected product_type", 400)
+			return
+		}
+		if q.Get("page_size") != wantSize {
 			http.Error(w, `{"message":"page_size out of range"}`, 400)
+			return
+		}
+		if token := q.Get("page_token"); token != "" && f.nextClusterPage != nil {
+			f.nextClusterPage(w, token)
 			return
 		}
 		switch q.Get("page_token") {
@@ -117,8 +130,7 @@ func dbaasRegistry(t *testing.T, f *fakeDbaas, region string) *Registry {
 	return r
 }
 
-// kafka_list и redis_list читают все страницы по next_page_token с
-// page_size=100 (было page_size=1000 и одна страница).
+// Each service keeps its page size and filters on both pages.
 func TestDbaasList_PagesWithProjectAndProductType(t *testing.T) {
 	for _, tool := range []string{"kafka_list", "redis_list"} {
 		f := &fakeDbaas{}
@@ -259,5 +271,42 @@ func TestKafka_SubnetsAndControllers(t *testing.T) {
 		if d.Name == "kafka_create" && !strings.Contains(d.Description, "controller_spec") {
 			t.Errorf("kafka_create does not declare controller_spec: %s", d.Description)
 		}
+	}
+}
+
+func TestKafkaCreateChecksCompleteList(t *testing.T) {
+	for _, tc := range []struct {
+		name, requested, diagnostic string
+		pages                       int
+		next                        func(http.ResponseWriter, string)
+	}{
+		{"taken on page two", "two", "c2", 2, nil},
+		{"page error", "free", "page unavailable", 2, func(w http.ResponseWriter, _ string) { http.Error(w, "page unavailable", 400) }},
+		{"repeated token", "free", "repeats page token", 2, func(w http.ResponseWriter, token string) {
+			fmt.Fprintf(w, `{"clusters":[],"next_page_token":%q}`, token)
+		}},
+		{"page limit", "free", "more than 50 pages", 50, func(w http.ResponseWriter, token string) {
+			fmt.Fprintf(w, `{"clusters":[],"next_page_token":%q}`, token+"x")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, confirmed := range []bool{false, true} {
+				f := &fakeDbaas{nextClusterPage: tc.next}
+				r := dbaasRegistry(t, f, "")
+				m, text, isErr := callNamed(t, r, "kafka_create", map[string]any{"name": tc.requested, "cpu": 2, "ram": 4, "confirmed": confirmed})
+				if !isErr || !strings.Contains(text, tc.diagnostic) || m["will_create"] != nil {
+					t.Fatalf("confirmed=%t: %s", confirmed, text)
+				}
+				reqs := f.take()
+				if len(reqs) != tc.pages {
+					t.Fatalf("requests = %d, want %d: %v", len(reqs), tc.pages, reqs)
+				}
+				for _, req := range reqs {
+					if !strings.HasPrefix(req, "GET kafka.api.cloud.ru/v1/clusters?") {
+						t.Fatalf("unexpected request: %s", req)
+					}
+				}
+			}
+		})
 	}
 }
