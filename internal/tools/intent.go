@@ -1172,6 +1172,28 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 	if d, isDelete := deleteOf(in.Tool); !isDelete || d.parent == a.name {
 		return idArg{}, nil, "", false
 	}
+	if in.Tool == "subnet_delete" && a.kind == kindSubnet {
+		// Only the delete receipt uses the subnet card. Ownership and
+		// general history keep their project-list contract.
+		k := *a.kind
+		k.card = func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+			eng, err := c.engine(ctx)
+			if err != nil {
+				return nil, err
+			}
+			m, err := eng.Cloud.GetSubnet(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			owner, _ := m["project"].(map[string]any)
+			project := stringArg(owner, "id")
+			if m["id"] != id || (project != "" && ((in.ProjectID != "" && project != in.ProjectID) || (c.r.projectBound && project != eng.Config.ProjectID))) {
+				return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The subnet response does not match the deletion record.", "Карточка подсети не соответствует записи об удалении."), "")
+			}
+			return m, nil
+		}
+		return a, &k, id, true
+	}
 	return a, a.kind, id, true
 }
 
@@ -1192,6 +1214,10 @@ func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engi
 func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind, id string, cur *state.Maker) (found string, settled bool, gone string) {
 	what, tool := quoteCloud(id), quoteCloud(in.Tool)
 	m, isGone, skip, err := r.readByID(ctx, k, id, in.Key, cur)
+	if in.Tool == "subnet_delete" && err != nil {
+		// A gateway's plain-text 404 is not a service observation.
+		isGone = clierrors.Reason(err) == clierrors.CodeNotFound
+	}
 	switch {
 	case skip == readNoCard || skip == readOtherKey:
 		// Never closed here; the record's own words say why (pendingNote).
