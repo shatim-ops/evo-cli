@@ -22,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -29,7 +30,11 @@ import (
 // doctor must not reconcile this call as one which changed the resource.
 func checkDeleteConnectionRefused(t *testing.T, group, command, tool, key, collection, id string) {
 	t.Helper()
-	for _, surface := range []string{"human", "JSON", "MCP"} {
+	surfaces := []string{"human", "JSON", "MCP"}
+	if tool == "destroy" {
+		surfaces = append(surfaces, "compose")
+	}
+	for _, surface := range surfaces {
 		t.Run(surface, func(t *testing.T) {
 			world := withParityWorld(t)
 			t.Setenv("EVO_LANG", "ru")
@@ -44,10 +49,19 @@ func checkDeleteConnectionRefused(t *testing.T, group, command, tool, key, colle
 			}}
 			t.Cleanup(transport.CloseIdleConnections)
 			card := fmt.Sprintf(`{"id":%q,"state":"available","name":"fixture","vms":[],"ip_address":"192.0.2.4"}`, id)
+			if surface == "compose" {
+				sf := &state.File{Deployments: []state.DeploymentRecord{{ID: id, VMID: id, ProjectID: pvProject, Status: "running"}}}
+				if err := state.Write(state.DefaultPath(world.dir), sf); err != nil {
+					t.Fatal(err)
+				}
+			}
 			path := "/api/v1/" + collection
 			rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if r.URL.Path == path && r.Method == "GET" {
 					return contractRT{status: 200, body: `{"items":[` + card + `],"total":1}`}.RoundTrip(r)
+				}
+				if tool == "destroy" && r.Method == "GET" && r.URL.Path != path+"/"+id {
+					return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(r)
 				}
 				if r.URL.Path != path+"/"+id {
 					t.Fatalf("unexpected %s %s", r.Method, r.URL)
@@ -85,6 +99,9 @@ func checkDeleteConnectionRefused(t *testing.T, group, command, tool, key, colle
 				}
 			} else {
 				args := []string{"--yes", group, command, id}
+				if surface == "compose" {
+					args = []string{"--yes", "--json", "destroy"}
+				}
 				if surface == "JSON" {
 					args = append(args, "--json")
 				}

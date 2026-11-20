@@ -423,6 +423,19 @@ func (a *CloudRuAdapter) firstBackoff() time.Duration {
 // them.
 var computeRetry = httpretry.Policy{DropMethods: []string{http.MethodDelete}, ReadStatuses: []int{http.StatusInternalServerError}, BackoffOnly: true}
 
+type destroyRequestKey struct{}
+
+// DestroyRequests keeps the individual deletes of a VM, address and rules
+// from being replayed after a lost response during a destroy operation.
+func DestroyRequests(ctx context.Context) context.Context {
+	return context.WithValue(ctx, destroyRequestKey{}, true)
+}
+
+// IsDestroyRequest identifies the requests covered by DestroyRequests.
+func IsDestroyRequest(ctx context.Context) bool {
+	return ctx.Value(destroyRequestKey{}) == true
+}
+
 // doWithRetry sends one request through httpretry with computeRetry — the
 // one retry loop of evo (process audit 1.2.1, 6.1) — and turns the final
 // answer into evo's errors.
@@ -431,6 +444,9 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 }
 
 func (a *CloudRuAdapter) doWithPolicy(ctx context.Context, method, path string, body []byte, policy httpretry.Policy) (*http.Response, error) {
+	if method == http.MethodDelete && IsDestroyRequest(ctx) {
+		policy.DropMethods = nil
+	}
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
