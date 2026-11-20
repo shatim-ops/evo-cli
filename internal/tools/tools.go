@@ -2365,7 +2365,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 	if subnet != nil {
 		gateway = subnet.DefaultGateway
 		if subnet.NoDNS() {
-			netWarnings = append(netWarnings, "subnet "+quoteCloud(subnet.Name)+" has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console")
+			netWarnings = append(netWarnings, provision.SubnetNoDNSWarning(subnet.Name))
 		}
 	}
 	// The zone's default group (provision.PickSecurityGroup, as deploy).

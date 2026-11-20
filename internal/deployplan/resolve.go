@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -160,7 +159,7 @@ func Resolve(ctx context.Context, cloud provision.CloudAPI, projectID string, p 
 	}
 	subnetID := subnet.ID
 	if subnet.NoDNS() {
-		warnings = append(warnings, fmt.Sprintf("subnet %s has no DNS servers: the VM will not resolve names — Docker and images will not download; add a DNS server to the subnet in the Cloud.ru console", strconv.Quote(subnet.Name)))
+		warnings = append(warnings, provision.SubnetNoDNSWarning(subnet.Name))
 	}
 
 	// --- Security group (the default group of the zone, then the first by name) ---

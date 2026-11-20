@@ -9,6 +9,8 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // GroupGaps is what a security group's rules lack for a new VM.
@@ -41,17 +43,39 @@ func GroupRules(ctx context.Context, cloud CloudAPI, g *SecurityGroup) ([]SGRule
 	return out, nil
 }
 
-// Warnings words the gaps of group name for an agent (English, as MCP
-// answers are).
+// Warnings words the gaps of group name: the same texts evo deploy and
+// evo provision print (GroupNoSSHWarning, GroupNoEgressWarning).
 func (g GroupGaps) Warnings(name string) []string {
 	var out []string
 	if g.NoSSH {
-		out = append(out, "security group "+strconv.Quote(name)+" has no ingress rule for TCP 22: SSH to the VM will not come up; add an ingress TCP 22 rule or choose another group")
+		out = append(out, GroupNoSSHWarning(name))
 	}
 	if g.NoSystemEgress {
-		out = append(out, "security group "+strconv.Quote(name)+" does not allow the VM's system egress (metadata service 169.254.169.254/32 and UDP 67 to the subnet gateway): the VM gets no IP by DHCP and cloud-init does not run; allow all egress or these two rules (Cloud.ru docs: security groups, limitations)")
+		out = append(out, GroupNoEgressWarning(name))
 	}
 	return out
+}
+
+// GroupNoSSHWarning: group name lets no TCP 22 in. The name is the
+// cloud's text, quoted (Астра, #2244).
+func GroupNoSSHWarning(name string) string {
+	return i18n.Tf("security group %s has no ingress rule for TCP 22: SSH to the VM will not come up. Add an ingress TCP 22 rule in the Cloud.ru console or choose another group",
+		"в группе безопасности %s нет входящего правила для TCP 22: SSH к ВМ не поднимется. Добавьте входящее правило TCP 22 в консоли Cloud.ru или выберите другую группу", strconv.Quote(name))
+}
+
+// GroupNoEgressWarning: group name blocks the VM's system egress.
+func GroupNoEgressWarning(name string) string {
+	return i18n.Tf("security group %s does not allow the VM's system egress (the metadata service 169.254.169.254/32 and UDP 67 to the subnet gateway): the VM gets no IP by DHCP and cloud-init does not run. Allow all egress, or these two rules (Cloud.ru docs, security groups, limitations)",
+		"группа безопасности %s не разрешает исходящий системный трафик ВМ (сервис метаданных 169.254.169.254/32 и UDP 67 до шлюза подсети): ВМ не получит IP по DHCP, cloud-init не запустится. Разрешите весь исходящий трафик или эти два правила (документация Cloud.ru, «Группы безопасности», ограничения)", strconv.Quote(name))
+}
+
+// SubnetNoDNSWarning: a subnet without DNS servers leaves the VM unable to
+// resolve names (docs, troubleshooting «Temporary failure in name
+// resolution»): apt, Docker and image pulls fail. A warning, not a refusal:
+// the user may resolve names otherwise.
+func SubnetNoDNSWarning(name string) string {
+	return i18n.Tf("subnet %s has no DNS servers: the VM will not resolve names — Docker and images will not download. Add a DNS server to the subnet in the Cloud.ru console",
+		"в подсети %s не указаны DNS-серверы: ВМ не будет разрешать имена — Docker и образы не скачаются. Добавьте DNS-сервер в настройках подсети в консоли Cloud.ru", strconv.Quote(name))
 }
 
 // metadataIP is the metadata service a VM reaches at boot.

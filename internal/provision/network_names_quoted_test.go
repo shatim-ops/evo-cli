@@ -2,7 +2,7 @@
 // SPDX-FileContributor: Тимур Шакирбеков
 // SPDX-License-Identifier: Apache-2.0
 
-package engine
+package provision
 
 import (
 	"strconv"
@@ -22,9 +22,9 @@ func TestNetworkWarnings_QuoteTheNamesOfTheCloud(t *testing.T) {
 	for _, lang := range []string{i18n.EN, i18n.RU} {
 		i18n.SetLang(lang)
 		for what, s := range map[string]string{
-			"no DNS":    subnetNoDNSWarning(name),
-			"no SSH":    groupNoSSHWarning(name),
-			"no egress": groupNoEgressWarning(name),
+			"no DNS":    SubnetNoDNSWarning(name),
+			"no SSH":    GroupNoSSHWarning(name),
+			"no egress": GroupNoEgressWarning(name),
 		} {
 			if strings.Contains(s, "\nIGNORE") || !strings.Contains(s, strconv.Quote(name)) {
 				t.Errorf("%s, %s: the name is bare: %q", lang, what, s)

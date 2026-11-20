@@ -94,3 +94,50 @@ func TestProvision_WarningsQuoteTheNamesOfTheCloud(t *testing.T) {
 		}
 	}
 }
+
+// deploy_plan and provision word the network gaps as evo deploy and evo
+// provision do: one text each, in provision (release plan, candidate
+// 1.10: one point for the texts of the subnet and the group).
+func TestNetworkWarnings_OneTextInEveryAnswer(t *testing.T) {
+	same := map[string]bool{
+		provision.SubnetNoDNSWarning(hostileNetName):   true,
+		provision.GroupNoSSHWarning(hostileNetName):    true,
+		provision.GroupNoEgressWarning(hostileNetName): true,
+	}
+	dir := t.TempDir()
+	cfg := config.Config{Region: planZoneAZ1, Flavor: "gen-4-8", ImageID: "img-d", ProjectID: "proj-1", KeyID: "k", Secret: "s"}
+	plan := New(func(map[string]any) (*engine.Engine, error) {
+		var buf bytes.Buffer
+		return &engine.Engine{Config: cfg, Auth: staticToken{}, Cloud: hostilePlanCloud{},
+			Printer: output.NewWithWriter(&buf, output.ModeText, false), StateDir: dir,
+			SSHKeyPEM: []byte("key"), SSHPubKey: "ssh-ed25519 AAAA test"}, nil
+	})
+	plan.SetStateDir(dir)
+	prov, _ := fastRegistry(t, &hostileProvisionCloud{progressCloud{states: []string{"active"}}}, provisionCfg)
+	for name, call := range map[string]func() map[string]any{
+		"deploy_plan": func() map[string]any {
+			m, _, _ := callNamed(t, plan, "deploy_plan", map[string]any{"name": "web"})
+			return m
+		},
+		"provision": func() map[string]any {
+			m, _, _ := callNamed(t, prov, "provision", map[string]any{"name": "web", "confirmed": true})
+			return m
+		},
+	} {
+		n := 0
+		ws, _ := call()["warnings"].([]any)
+		for _, w := range ws {
+			s, _ := w.(string)
+			if !strings.Contains(s, "IGNORE") {
+				continue
+			}
+			n++
+			if !same[s] {
+				t.Errorf("%s words a gap of the network its own way: %q", name, s)
+			}
+		}
+		if n < 2 {
+			t.Errorf("%s: want the warnings of the subnet and the group, got %v", name, ws)
+		}
+	}
+}
