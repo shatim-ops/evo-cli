@@ -388,10 +388,10 @@ var toolsRU = map[string]toolRU{
 		Long:  "VPC (виртуальные частные облака) проекта: id, имя, признак VPC по умолчанию, тип. Только чтение.",
 	},
 	"vpc_get": {
-		Short: "VPC по ID: все сведения",
-		Long:  "Все сведения об одном VPC по id (список: 'evo vpc list'). Только чтение.",
+		Short: "VPC по UUID или имени: все сведения",
+		Long:  "Все сведения об одном VPC по UUID или имени (список: 'evo vpc list'). Только чтение.",
 		Args: map[string]string{
-			"id": "UUID VPC (список: evo vpc list), обязательный",
+			"id": "UUID или имя VPC (список: evo vpc list), обязательный",
 		},
 	},
 	"vpc_create": {
@@ -407,11 +407,11 @@ var toolsRU = map[string]toolRU{
 	},
 	"vpc_delete": {
 		Short: "Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы)",
-		Long: "Удалить VPC по id (список: 'evo vpc list'). Сначала удалите его подсети и другие ресурсы. " +
+		Long: "Удалить VPC по UUID или имени (список: 'evo vpc list'). Сначала удалите его подсети и другие ресурсы. " +
 			"Операция асинхронная: ход — 'evo vpc operation <operation-id>'.",
 		Args: map[string]string{
 			"wait": deleteWaitRU,
-			"id":   "UUID VPC (список: evo vpc list), обязательный",
+			"id":   "UUID или имя VPC (список: evo vpc list), обязательный",
 		},
 	},
 	"vpc_operation": {
@@ -426,15 +426,15 @@ var toolsRU = map[string]toolRU{
 	},
 	"vpc_routes": {
 		Short: "Статические маршруты VPC",
-		Long: "Статические маршруты VPC: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. " +
+		Long: "Статические маршруты VPC по UUID или имени сети: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. " +
 			"Только чтение.",
 		Args: map[string]string{
-			"vpc_id": "UUID VPC (список: evo vpc list), обязательный",
+			"vpc_id": "UUID или имя VPC (список: evo vpc list), обязательный",
 		},
 	},
 	"vpc_route_create": {
 		Short: "Добавить статический маршрут в VPC (асинхронно)",
-		Long: "Добавить статический маршрут в VPC. Назначение — CIDR (--subnet); следующий узел — интерфейс ВМ " +
+		Long: "Добавить статический маршрут в VPC по UUID или имени сети. Назначение — CIDR (--subnet); следующий узел — интерфейс ВМ " +
 			"(--next-hop-vm-id и --next-hop-interface-id), виртуальный IP (--next-hop-vip-id) или Magic Router " +
 			"(--next-hop-magic-router-id и --next-hop-az). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.",
 		Args: map[string]string{
@@ -445,16 +445,16 @@ var toolsRU = map[string]toolRU{
 			"next_hop_vip_id":          "UUID виртуального IP — следующего узла",
 			"next_hop_vm_id":           "UUID ВМ, интерфейс которой — следующий узел (вместе с --next-hop-interface-id)",
 			"subnet":                   "CIDR назначения, например 192.168.0.0/24 (обязательный)",
-			"vpc_id":                   "UUID VPC (обязательный)",
+			"vpc_id":                   "UUID или имя VPC (обязательный)",
 		},
 	},
 	"vpc_route_delete": {
 		Short: "Удалить статический маршрут из VPC (асинхронно)",
-		Long: "Удалить статический маршрут из VPC по id маршрута (список: 'evo vpc routes <vpc-id>'). " +
+		Long: "Удалить статический маршрут по его UUID. Для VPC укажите UUID или имя сети (список маршрутов: 'evo vpc routes <vpc-id>'). " +
 			"Операция асинхронная: ход — 'evo vpc operation <operation-id>'.",
 		Args: map[string]string{
 			"route_id": "UUID статического маршрута (список: evo vpc routes), обязательный",
-			"vpc_id":   "UUID VPC (обязательный)",
+			"vpc_id":   "UUID или имя VPC (обязательный)",
 		},
 	},
 	"list_subnets": {
@@ -1009,7 +1009,7 @@ var toolsRU = map[string]toolRU{
 			"приватная зона разрешается только в привязанном VPC: --vpc-id, иначе VPC проекта по умолчанию (его называет превью).",
 		Args: map[string]string{
 			"description": "Описание зоны (необязательно)",
-			"vpc_id":      "Приватная зона: VPC, к которому она привязана (по умолчанию — VPC проекта по умолчанию)",
+			"vpc_id":      "Приватная зона: UUID или имя VPC, к которому она привязана (по умолчанию — VPC проекта по умолчанию)",
 			"domain":      "FQDN зоны, например example.com. (обязательный)",
 			"name":        "Отображаемое имя зоны (по умолчанию — домен)",
 			"type":        "Видимость зоны: public (по умолчанию) или private",
@@ -1256,7 +1256,7 @@ var toolsRU = map[string]toolRU{
 			"subnet_id":       "UUID или имя подсети (по умолчанию — основная подсеть зоны в VPC)",
 			"target_group_id": "UUID группы целей",
 			"target_port":     "Порт на целях (по умолчанию — --port)",
-			"vpc_id":          "UUID VPC (по умолчанию — VPC группы целей)",
+			"vpc_id":          "UUID или имя VPC (по умолчанию — VPC группы целей)",
 			"zone":            "Зона: имя или UUID",
 		},
 	},
@@ -1309,7 +1309,7 @@ var toolsRU = map[string]toolRU{
 		Args: map[string]string{
 			"name":                 "Имя подсети: первая — латинская буква, дальше буквы, цифры, '.', '-', '_'",
 			"cidr":                 "Сеть с маской от /8 до /29, например 10.10.0.0/24",
-			"vpc_id":               "UUID VPC (по умолчанию — VPC проекта по умолчанию)",
+			"vpc_id":               "UUID или имя VPC (по умолчанию — VPC проекта по умолчанию)",
 			"zone":                 "Имя зоны, например ru.AZ-1 (по умолчанию — зона из настроек)",
 			"availability_zone_id": "UUID зоны (вместо --zone)",
 			"routed_network":       "Маршрутизируемая подсеть; false — изолированная",

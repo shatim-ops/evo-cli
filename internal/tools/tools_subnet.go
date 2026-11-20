@@ -56,6 +56,9 @@ func subnetCIDR(cidr string) (netip.Prefix, error) {
 // names the VPC; two VPCs marked default are no default (the first of the
 // list would depend on its order).
 func (s *Registry) projectVPC(ctx context.Context, vpcID string) (id, name string, err error) {
+	if ref, ok := resolvedVPC(ctx, vpcID); ok {
+		return ref.id, ref.name, nil
+	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return "", "", err

@@ -915,19 +915,15 @@ func (r *Registry) listed(ctx context.Context, f listFilter, ref string) (id, na
 	if err != nil {
 		return "", "", "", err
 	}
-	type entry struct{ id, name string }
-	var found []entry
+	entries := make([]catalogEntry, 0, len(rows))
 	var known []string
 	for _, row := range rows {
 		item, _ := row.(map[string]any)
-		e := entry{stringOf(item["id"]), stringOf(item["name"])}
-		// A name or id of the cloud in evo's hint is quoted, one line, as
-		// the other cloud words of these refusals (quoteCloud).
+		e := catalogEntry{stringOf(item["id"]), stringOf(item["name"])}
+		entries = append(entries, e)
 		known = append(known, quoteCloud(firstNonEmptyStr(e.name, e.id)))
-		if (e.id != "" && strings.EqualFold(e.id, ref)) || (e.name != "" && strings.EqualFold(e.name, ref)) {
-			found = append(found, e)
-		}
 	}
+	found := matchingEntries(entries, ref)
 	switch len(found) {
 	case 1:
 		return found[0].id, found[0].name, "", nil

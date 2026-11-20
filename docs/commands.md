@@ -4015,7 +4015,7 @@ evo dns zone-create <domain> [flags]
   -h, --help                 Справка по zone-create
       --name string          Отображаемое имя зоны (по умолчанию — домен)
       --type string          Видимость зоны: public (по умолчанию) или private
-      --vpc-id string        Приватная зона: VPC, к которому она привязана (по умолчанию — VPC проекта по умолчанию)
+      --vpc-id string        Приватная зона: UUID или имя VPC, к которому она привязана (по умолчанию — VPC проекта по умолчанию)
 ```
 
 ### Options inherited from parent commands
@@ -6155,7 +6155,7 @@ evo lb create <name> [flags]
       --subnet-id string         UUID или имя подсети (по умолчанию — основная подсеть зоны в VPC)
       --target-group-id string   UUID группы целей
       --target-port int          Порт на целях (по умолчанию — --port)
-      --vpc-id string            UUID VPC (по умолчанию — VPC группы целей)
+      --vpc-id string            UUID или имя VPC (по умолчанию — VPC группы целей)
       --zone string              Зона: имя или UUID
 ```
 
@@ -10659,7 +10659,7 @@ evo vpc [flags]
 * [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Привязать свободный floating IP к основному интерфейсу ВМ
 * [evo vpc fip-release](#evo-vpc-fip-release)	 - Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается)
 * [evo vpc fips](#evo-vpc-fips)	 - Floating IP: адрес, состояние, свободен ли
-* [evo vpc get](#evo-vpc-get)	 - VPC по ID: все сведения
+* [evo vpc get](#evo-vpc-get)	 - VPC по UUID или имени: все сведения
 * [evo vpc interface-get](#evo-vpc-interface-get)	 - Карточка сетевого интерфейса по UUID
 * [evo vpc interfaces](#evo-vpc-interfaces)	 - Сетевые интерфейсы проекта, включая свободные
 * [evo vpc list](#evo-vpc-list)	 - Список VPC проекта
@@ -10777,7 +10777,7 @@ evo vpc create <name> [flags]
 ```text
 Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы).
 
-Удалить VPC по id (список: 'evo vpc list'). Сначала удалите его подсети и другие ресурсы. Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
+Удалить VPC по UUID или имени (список: 'evo vpc list'). Сначала удалите его подсети и другие ресурсы. Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
 Вызывает инструмент vpc_delete (подробнее: 'evo tools describe vpc_delete').
 
@@ -10961,14 +10961,14 @@ evo vpc fips [flags]
 
 ## evo vpc get
 
-VPC по ID: все сведения
+VPC по UUID или имени: все сведения
 
 ### Synopsis
 
 ```text
-VPC по ID: все сведения.
+VPC по UUID или имени: все сведения.
 
-Все сведения об одном VPC по id (список: 'evo vpc list'). Только чтение.
+Все сведения об одном VPC по UUID или имени (список: 'evo vpc list'). Только чтение.
 
 Вызывает инструмент vpc_get (подробнее: 'evo tools describe vpc_get').
 ```
@@ -11255,7 +11255,7 @@ evo vpc operation <operation-id> [flags]
 ```text
 Добавить статический маршрут в VPC (асинхронно).
 
-Добавить статический маршрут в VPC. Назначение — CIDR (--subnet); следующий узел — интерфейс ВМ (--next-hop-vm-id и --next-hop-interface-id), виртуальный IP (--next-hop-vip-id) или Magic Router (--next-hop-magic-router-id и --next-hop-az). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
+Добавить статический маршрут в VPC по UUID или имени сети. Назначение — CIDR (--subnet); следующий узел — интерфейс ВМ (--next-hop-vm-id и --next-hop-interface-id), виртуальный IP (--next-hop-vip-id) или Magic Router (--next-hop-magic-router-id и --next-hop-az). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
 Вызывает инструмент vpc_route_create (подробнее: 'evo tools describe vpc_route_create').
 
@@ -11306,7 +11306,7 @@ evo vpc route-create <vpc-id> [flags]
 ```text
 Удалить статический маршрут из VPC (асинхронно).
 
-Удалить статический маршрут из VPC по id маршрута (список: 'evo vpc routes <vpc-id>'). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
+Удалить статический маршрут по его UUID. Для VPC укажите UUID или имя сети (список маршрутов: 'evo vpc routes <vpc-id>'). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
 Вызывает инструмент vpc_route_delete (подробнее: 'evo tools describe vpc_route_delete').
 
@@ -11350,7 +11350,7 @@ evo vpc route-delete <vpc-id> <route-id> [flags]
 ```text
 Статические маршруты VPC.
 
-Статические маршруты VPC: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. Только чтение.
+Статические маршруты VPC по UUID или имени сети: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. Только чтение.
 
 Вызывает инструмент vpc_routes (подробнее: 'evo tools describe vpc_routes').
 
@@ -11568,7 +11568,7 @@ evo vpc subnet-create <name> [flags]
       --dns-servers stringArray       Адреса DNS-серверов IPv4; без них имена на ВМ подсети не разрешатся (флаг повторяется или значения через запятую)
   -h, --help                          Справка по subnet-create
       --routed-network                Маршрутизируемая подсеть; false — изолированная Выключить: --routed-network=false (по умолчанию true)
-      --vpc-id string                 UUID VPC (по умолчанию — VPC проекта по умолчанию)
+      --vpc-id string                 UUID или имя VPC (по умолчанию — VPC проекта по умолчанию)
       --zone string                   Имя зоны, например ru.AZ-1 (по умолчанию — зона из настроек)
 ```
 
