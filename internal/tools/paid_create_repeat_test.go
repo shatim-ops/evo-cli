@@ -94,8 +94,9 @@ func TestPaidCreate_TheRepeatAfterALostAnswerAsks(t *testing.T) {
 			if strings.Contains(msg, "lags") || strings.Contains(msg, "delay") {
 				t.Errorf("the question states of the platform what no run has shown: %s", msg)
 			}
-			// The person was asked (MCP): the next consented call is sent.
-			r.handlers[c.tool](context.Background(), maps.Clone(c.args))
+			// The person was asked (MCP): the next consent to precisely
+			// the preview they saw is sent.
+			r.handlers[c.tool](context.Background(), maps.Clone(other))
 			if creates(api) != sent+1 {
 				t.Errorf("the consented call after the question: create requests %d, want %d", creates(api), sent+1)
 			}

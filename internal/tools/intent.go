@@ -674,6 +674,13 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 		}
 	}
 	out["message"], out["interrupted"] = message, interrupted
+	if everySendIsAChange[name].listedName != nil {
+		if !r.networkQuestion(ctx, name, args, mine, true) {
+			return toJSON(out), true
+		}
+		r.closeAsked(ctx, mine)
+		return "", false
+	}
 	r.closeAsked(ctx, mine)
 	return toJSON(out), true
 }
@@ -757,7 +764,11 @@ func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args ma
 		message += " " + was
 	}
 	m["message"], m["interrupted"] = message, interrupted
-	r.closeAsked(ctx, mine)
+	if everySendIsAChange[name].listedName != nil {
+		r.networkQuestion(ctx, name, args, mine, false)
+	} else {
+		r.closeAsked(ctx, mine)
+	}
 	return toJSON(m)
 }
 
@@ -1404,13 +1415,16 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	// create inside it names the parent as its target.
 	parentArg, parentID, _ := strings.Cut(in.Target, "=")
 	visibility := ""
+	wantedName := in.Name
 	if in.Tool == "dns_record_create" {
-		if parentArg == "public_zone_id" || parentArg == "private_zone_id" {
-			visibility, _, _ = strings.Cut(parentArg, "_")
-			parentArg = "zone_id"
-		} else {
+		scope, ok := strings.CutSuffix(parentArg, "_zone_id")
+		var recordType string
+		visibility, recordType, _ = strings.Cut(scope, "_")
+		if !ok || (visibility != "public" && visibility != "private") || !slices.Contains(dnsRecordTypes, recordType) {
 			return "", false, ""
-		} // older records omit the record type and scope
+		}
+		parentArg = "zone_id"
+		wantedName = dnsRecordKey(in.Name, recordType)
 	}
 	inParent := isCreate && len(c.listArgs) == 1 && c.listArgs[0] == parentArg && parentID != ""
 	if c.list == "" || c.field == "" || (len(c.listArgs) > 0 && !inParent) || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
@@ -1447,7 +1461,7 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 				continue
 			}
 		}
-		if (isCreate && name == in.Name) || (!isCreate && id == targetID) {
+		if (isCreate && name == wantedName) || (!isCreate && id == targetID) {
 			matched, listed = true, id
 			break
 		}

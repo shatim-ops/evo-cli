@@ -160,3 +160,39 @@ func TestNetworkRepeat_FailedReadKeepsCut(t *testing.T) {
 		})
 	}
 }
+
+func TestNetworkRepeat_QuestionStaysWithItsClient(t *testing.T) {
+	for _, c := range faultMatrixCases {
+		if c.tool != "dns_record_create" && c.tool != "vpc_route_create" && c.tool != "snat_create" {
+			continue
+		}
+		t.Run(c.tool, func(t *testing.T) {
+			api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			api.failAt(k, faultLost)
+			r.handlers[c.tool](ctx, maps.Clone(c.args))
+			api.disarm()
+			root, _ := r.stateDir()
+			other := New(r.newEngine)
+			other.SetStateDir(root)
+			readOnly := New(r.newEngine)
+			readOnly.SetStateDir(root)
+			readOnly.SetReadOnly()
+			ask := func(client *Registry, args map[string]any) {
+				t.Helper()
+				text, _ := client.handlers[c.tool](context.Background(), args)
+				if answerStatus(text) != "confirmation_required" || creates(api) != 1 || len(intent.Pending(dir)) != 1 {
+					t.Fatalf("question: posts=%d records=%d answer=%s", creates(api), len(intent.Pending(dir)), text)
+				}
+			}
+			ask(readOnly, withoutConsent(c.args))
+			ask(r, maps.Clone(c.args))
+			ask(other, maps.Clone(c.args))
+			// In the asking client the agent sends the existing confirmed=true
+			// response after obtaining the person's approval in the conversation.
+			other.handlers[c.tool](context.Background(), maps.Clone(c.args))
+			if creates(api) != 2 {
+				t.Fatalf("approved second create: posts=%d", creates(api))
+			}
+		})
+	}
+}

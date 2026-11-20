@@ -121,6 +121,11 @@ type Registry struct {
 	// stateDirOf: SetStateDir.
 	stateDirOf string
 
+	// Keep the last interrupted question per network tool in this client.
+	// A different process reading the shared intent cannot spend it.
+	networkQuestionMu sync.Mutex
+	networkQuestions  map[string]string
+
 	pendingMu    sync.Mutex
 	pendingNoted bool
 }
