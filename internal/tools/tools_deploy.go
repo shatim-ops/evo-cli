@@ -1206,7 +1206,8 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 
 	// Safety: never release an IP that is attached to a VM.
 	if bound || state == "in_use" {
-		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it from the VM first; not released", quoteCloud(fipIP), quoteCloud(fipID))
+		msg := i18n.Tf("floating IP %s (%s) is in use by a VM — detach it from the VM first; not released",
+			"Публичный IP-адрес %s (%s) используется виртуальной машиной и не освобождён.", quoteCloud(fipIP), quoteCloud(fipID))
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("Detach it from the VM, then release it.", "Отвяжите его от ВМ, затем освободите.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
