@@ -370,6 +370,29 @@ func mapIDs(items []map[string]any) []string {
 	return out
 }
 
+var kindInterface = withCard(inProjectList("network interface", "interface_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	items, err := projectInterfaces(ctx, eng)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(items))
+	for i, nic := range items {
+		ids[i] = nic.ID
+	}
+	return ids, nil
+})), func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+	eng, err := c.engine(ctx)
+	if err != nil {
+		return nil, err
+	}
+	nic, err := eng.Cloud.GetInterface(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// Doctor and history use the actual resource card to establish existence.
+	return map[string]any{"id": nic.ID, "name": nic.Name, "state": nic.State}, nil
+})
+
 var (
 	kindVM = byName(inProjectList("VM", "vm_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		vms, err := eng.Cloud.ListVMsInProject(ctx, eng.Config.ProjectID)
