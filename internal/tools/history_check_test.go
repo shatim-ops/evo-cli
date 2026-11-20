@@ -212,28 +212,33 @@ func TestHistory_CheckOnABoundServerReadsOnlyWhatItShows(t *testing.T) {
 }
 
 func TestHistory_ErasedClusterIsAbsentFromCheckedInventory(t *testing.T) {
-	checkAt(t)
-	r := ownerRegistry(t, &ownerFake{pgStatus: "ERASED"}, false, ownProject)
-	eng, _ := r.newEngine(nil)
-	dir := history.DirOf(intent.Dir(eng.StateDir))
-	for i, tool := range []string{"pg_create", "pg_delete"} {
-		line := history.Line{Time: "2026-11-17T10:00:00Z", Tool: tool, ProjectID: ownProject, Kind: resourceKind(tool), ResourceID: resMine, Outcome: history.Created, IntentID: fmt.Sprintf("a%015d", i), Key: eng.Maker()}
-		if i == 1 {
-			line.Outcome = history.Unknown
-			line.Target = "cluster_id=" + resMine
-		}
-		if err := history.Append(dir, line); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, check := range []bool{true, false} {
-		ans, failed := r.handleHistory(context.Background(), map[string]any{"check": check})
-		var out struct {
-			Live       []historyLine
-			WouldClose []historyLine `json:"would_close"`
-		}
-		if failed || json.Unmarshal([]byte(ans), &out) != nil || (check && (len(out.Live) != 0 || len(out.WouldClose) != 0)) || (!check && len(out.Live) != 2) {
-			t.Fatalf("check=%v: %s", check, ans)
-		}
+	for _, svc := range []string{"pg", "redis"} {
+		t.Run(svc, func(t *testing.T) {
+			checkAt(t)
+			r := ownerRegistry(t, &ownerFake{clusterStatus: "ERASED"}, false, ownProject)
+			eng, _ := r.newEngine(nil)
+			dir := history.DirOf(intent.Dir(eng.StateDir))
+			for i, tool := range []string{svc + "_create", svc + "_delete"} {
+				line := history.Line{Time: "2026-11-17T10:00:00Z", Tool: tool, ProjectID: ownProject, Kind: resourceKind(tool), ResourceID: resMine, Outcome: history.Created, IntentID: fmt.Sprintf("a%015d", i), Key: eng.Maker()}
+				if i == 1 {
+					line.ProjectID = ""
+					line.Outcome = history.Unknown
+					line.Target = "cluster_id=" + resMine
+				}
+				if err := history.Append(dir, line); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, check := range []bool{true, false} {
+				ans, failed := r.handleHistory(context.Background(), map[string]any{"check": check})
+				var out struct {
+					Live       []historyLine
+					WouldClose []historyLine `json:"would_close"`
+				}
+				if failed || json.Unmarshal([]byte(ans), &out) != nil || (check && (len(out.Live) != 0 || len(out.WouldClose) != 0)) || (!check && len(out.Live) != 2) {
+					t.Fatalf("check=%v: %s", check, ans)
+				}
+			}
+		})
 	}
 }

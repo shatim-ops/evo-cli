@@ -218,8 +218,8 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 			}
 		}
 		ans["would_close"] = would
-		ans["check_note"] = i18n.T("would_close: a read by id, with the key that sent the call, answers «not found»: the resource was removed, or this key no longer sees it — the platform does not tell which. A matching PostgreSQL card in ERASED or DELETED is omitted from checked live. history writes nothing: the lines stay live in the journal until evo deletes the resource. check_result tells why a live line was not read.",
-			"would_close — чтение по id ключом, которым отправлен вызов, отвечает «не найдено»: ресурс удалён или этот ключ его больше не видит, — какое из двух, платформа не говорит. Кластер PostgreSQL с совпадающим ID в ERASED или DELETED исключён из проверенного live. history ничего не пишет: в журнале строки остаются живыми, пока ресурс не удалён через evo. check_result — почему живая строка не прочитана.")
+		ans["check_note"] = i18n.T("would_close: a read by id, with the key that sent the call, answers «not found»: the resource was removed, or this key no longer sees it — the platform does not tell which. A matching PostgreSQL or Redis card in ERASED or DELETED is omitted from checked live. history writes nothing: the lines stay live in the journal until evo deletes the resource. check_result tells why a live line was not read.",
+			"would_close — чтение по id ключом, которым отправлен вызов, отвечает «не найдено»: ресурс удалён или этот ключ его больше не видит, — какое из двух, платформа не говорит. Кластер PostgreSQL или Redis с совпадающим ID в ERASED или DELETED исключён из проверенного live. history ничего не пишет: в журнале строки остаются живыми, пока ресурс не удалён через evo. check_result — почему живая строка не прочитана.")
 	}
 	return toJSON(ans), false
 }
@@ -333,7 +333,7 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 		switch {
 		case !historyIDReadable(l):
 			why = checkNotByID
-		case l.ProjectID == "" && !(l.Tool == "pg_delete" && !s.projectBound):
+		case l.ProjectID == "" && !((l.Tool == "pg_delete" || l.Tool == "redis_delete") && !s.projectBound):
 			why = checkNoProject
 		case l.Parent != "":
 			why = checkInParent
@@ -357,15 +357,16 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 			continue
 		}
 		out.Read++
+		terminalCluster := k == kindPG || k == historyRedisCard
 		m, notSeen, _, err := s.readByID(ctx, k, l.ResourceID, l.Key, cur)
 		switch {
 		case notSeen:
 			results[i] = checkNotSeen
 			out.WouldClose++
-		case err == nil && k == kindPG && (stringArg(m, "id") != l.ResourceID || (projectField(m) != "" && l.ProjectID != "" && projectField(m) != l.ProjectID)):
+		case err == nil && terminalCluster && (stringArg(m, "id") != l.ResourceID || (projectField(m) != "" && l.ProjectID != "" && projectField(m) != l.ProjectID)):
 			results[i] = checkReadFailed
 			out.NotChecked[checkReadFailed]++
-		case err == nil && k == kindPG && statusGone(firstNonEmptyStr(stringArg(m, "status"), stringArg(m, "state"))):
+		case err == nil && terminalCluster && statusGone(firstNonEmptyStr(stringArg(m, "status"), stringArg(m, "state"))):
 			results[i] = checkGone
 			out.Gone++
 		case err == nil:
@@ -397,12 +398,20 @@ func historyIDReadable(l history.Line) bool {
 		return true
 	case history.Unknown:
 		switch l.Tool {
-		case "deploy", "deploy_apply", "provision", "destroy", "pg_delete":
+		case "deploy", "deploy_apply", "provision", "destroy", "pg_delete", "redis_delete":
 			return isUUID(l.ResourceID)
 		}
 	}
 	return false
 }
+
+var historyRedisCard = &ownerKind{card: func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+	cli, _, err := c.r.redisClientEng(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cli.GetCluster(ctx, id)
+}}
 
 var historyVMCard = &ownerKind{card: func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
 	eng, err := c.engine(ctx)
@@ -423,6 +432,9 @@ func cardOf(tool string) *ownerKind {
 	del := tool
 	if c, ok := createdOf(tool); ok && c.delete != "" {
 		del = c.delete
+	}
+	if del == "redis_delete" {
+		return historyRedisCard
 	}
 	if del == "destroy" {
 		return historyVMCard

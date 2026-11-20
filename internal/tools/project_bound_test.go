@@ -108,8 +108,8 @@ type ownerFake struct {
 	// (a detach needs a disk that is attached to reach its preview).
 	diskOn string
 	// goneStatus is the status of a read of resGone by id; 0 — 404.
-	goneStatus int
-	pgStatus   string
+	goneStatus    int
+	clusterStatus string
 	// refuseWrites answers every write with this body and 422; "" — the
 	// write is taken.
 	refuseWrites string
@@ -218,8 +218,8 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	for id := range projectOf {
 		if strings.Contains(r.URL.Path, id) {
 			o := ownerObject(id)
-			if f.pgStatus != "" && r.URL.Host == "postgresql.api.cloud.ru" {
-				o["status"] = f.pgStatus
+			if f.clusterStatus != "" && (r.URL.Host == "postgresql.api.cloud.ru" || r.URL.Host == "redis.api.cloud.ru") {
+				o["status"] = f.clusterStatus
 			}
 			if strings.HasPrefix(r.URL.Path, "/api/v1/backups/") {
 				// A backup is a disk's, created: what a restore reads
