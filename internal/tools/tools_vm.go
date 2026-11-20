@@ -105,6 +105,16 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 		"public_ip":  publicIP,
 		"interfaces": ifaces,
 	}
+	// The flavor of the VM, from the same card, as vm_resize names it
+	// (110-09; «Риск», conclusion 333).
+	if det.Flavor != nil {
+		if strings.TrimSpace(det.Flavor.ID) != "" {
+			out["flavor_id"] = det.Flavor.ID
+		}
+		if strings.TrimSpace(det.Flavor.Name) != "" {
+			out["flavor_name"] = det.Flavor.Name
+		}
+	}
 	// The image the VM was made of: what vm_list selects by (images).
 	if img := vmImage(det); img != nil {
 		out["image"] = img

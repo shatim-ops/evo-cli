@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -125,6 +126,108 @@ func (s *Registry) handleDiskList(ctx context.Context, args map[string]any) (str
 		out = append(out, row)
 	}
 	return toJSON(map[string]any{"disks": out}), false
+}
+
+// diskCardFacts are the fields of the card of a disk that disk_get shows
+// as the platform reports them, each with the one type it has: a field
+// its answer does not carry, or carries with another type, is absent from
+// the answer and named in not_checked — its type never changed by what the
+// platform sent or evo would imply («Риск», conclusions 333, Д3, and 336,
+// У1).
+var diskCardFacts = []struct {
+	field, as string
+	ok        func(any) bool
+}{
+	{"size", "size_gb", isNumber},
+	{"bootable", "bootable", isBool},
+	{"encrypted", "encrypted", isBool},
+	{"readonly", "readonly", isBool},
+	{"shared", "shared", isBool},
+	{"serial_id", "serial_id", isString},
+}
+
+func isBool(v any) bool   { _, ok := v.(bool); return ok }
+func isString(v any) bool { _, ok := v.(string); return ok }
+func isNumber(v any) bool {
+	switch v.(type) {
+	case float64, json.Number:
+		return true
+	}
+	return false
+}
+
+// handleDiskGet answers the card of one disk by its id, by one read
+// (110-09). The id is the call's: the card's own id is not shown.
+func (s *Registry) handleDiskGet(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "disk_id")
+	if id == "" {
+		return usageT("'disk_id' is required", "нужен 'disk_id'"), true
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	d, err := eng.Cloud.GetDisk(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	out := map[string]any{"id": id, "name": d["name"], "state": d["state"]}
+	if dt, ok := d["disk_type"].(map[string]any); ok {
+		out["disk_type"] = dt["name"]
+	}
+	if az, ok := d["availability_zone"].(map[string]any); ok {
+		out["zone"] = az["name"]
+	}
+	var missing []map[string]any
+	for _, f := range diskCardFacts {
+		v, has := d[f.field]
+		switch {
+		case !has || v == nil:
+			missing = append(missing, map[string]any{"check": f.as,
+				"why": i18n.T("the answer of Cloud.ru does not carry it", "в ответе Cloud.ru этого поля нет")})
+		case !f.ok(v):
+			missing = append(missing, map[string]any{"check": f.as,
+				"why": i18n.T("the answer of Cloud.ru carries it with another type", "в ответе Cloud.ru у этого поля другой тип")})
+		default:
+			out[f.as] = v
+		}
+	}
+	vms, complete := diskCardVMs(d["vms"])
+	if len(vms) > 0 || complete {
+		out["attached_vms"] = vms
+	}
+	if !complete {
+		why := i18n.T("the answer of Cloud.ru does not carry it", "в ответе Cloud.ru этого поля нет")
+		if d["vms"] != nil {
+			why = i18n.T("the answer of Cloud.ru does not identify all attached VMs", "по ответу Cloud.ru нельзя определить все привязанные ВМ")
+		}
+		missing = append(missing, map[string]any{"check": "attached_vms", "why": why})
+	}
+	if len(missing) > 0 {
+		out["not_checked"] = missing
+	}
+	return toJSON(out), false
+}
+
+// A missing or unusable attachment list cannot establish that the disk is free.
+func diskCardVMs(raw any) ([]map[string]any, bool) {
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, false
+	}
+	vms := make([]map[string]any, 0, len(list))
+	complete := true
+	for _, entry := range list {
+		vm, _ := entry.(map[string]any)
+		id, _ := vm["id"].(string)
+		name, _ := vm["name"].(string)
+		if strings.TrimSpace(id) == "" && strings.TrimSpace(name) == "" {
+			complete = false
+			continue
+		}
+		vms = append(vms, map[string]any{"id": vm["id"], "name": vm["name"], "primary": vm["primary"], "state": vm["state"]})
+	}
+	return vms, complete
 }
 
 // planDiskCreate plans the create of a disk. If attach_to (a VM) is given, the disk is

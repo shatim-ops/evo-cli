@@ -80,6 +80,7 @@
     - [evo disk create](#evo-disk-create)
     - [evo disk delete](#evo-disk-delete)
     - [evo disk detach](#evo-disk-detach)
+    - [evo disk get](#evo-disk-get)
     - [evo disk list](#evo-disk-list)
     - [evo disk resize](#evo-disk-resize)
     - [evo disk types](#evo-disk-types)
@@ -3235,6 +3236,7 @@ evo disk [flags]
 * [evo disk create](#evo-disk-create)	 - Создать диск (с --attach-to — в зоне ВМ и сразу подключить)
 * [evo disk delete](#evo-disk-delete)	 - Удалить диск и все данные на нём (безвозвратно)
 * [evo disk detach](#evo-disk-detach)	 - Отключить диск от ВМ
+* [evo disk get](#evo-disk-get)	 - Диск по ID: размер, состояние, тип, зона, шифрование, только чтение, общий доступ, серийный номер, ВМ
 * [evo disk list](#evo-disk-list)	 - Диски: id, имя, размер, состояние, тип, зона, к каким ВМ подключены
 * [evo disk resize](#evo-disk-resize)	 - Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ)
 * [evo disk types](#evo-disk-types)	 - Типы дисков (UUID и имя, например SSD или HDD)
@@ -3398,6 +3400,47 @@ evo disk detach <disk-id> [flags]
 ```
   -h, --help        Справка по detach
       --vm string   ВМ, к которой подключён диск: имя или UUID
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo disk](#evo-disk)	 - Диски
+
+## evo disk get
+
+Диск по ID: размер, состояние, тип, зона, шифрование, только чтение, общий доступ, серийный номер, ВМ
+
+### Synopsis
+
+```text
+Диск по ID: размер, состояние, тип, зона, шифрование, только чтение, общий доступ, серийный номер, ВМ.
+
+Карточка одного диска из облака по UUID одним чтением: имя, размер (ГБ), состояние, тип, зона, загрузочный ли, encrypted, readonly, shared и serial_id — как их сообщает платформа, и ВМ, к которым диск подключён. Поля, которого нет в ответе платформы, нет и в ответе evo: оно названо в not_checked, значение не подставляется. Только чтение.
+
+Вызывает инструмент disk_get (подробнее: 'evo tools describe disk_get').
+```
+
+```
+evo disk get <disk-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
 ```
 
 ### Options inherited from parent commands

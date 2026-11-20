@@ -110,6 +110,7 @@
 |---|---|---|---|---|---|
 | `list_disk_types` | `evo disk types` | нет | — | List available Cloud.ru disk types (UUID + name, e.g. | Типы дисков (UUID и имя, например SSD или HDD) |
 | `disk_list` | `evo disk list` | нет | — | List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). | Диски: id, имя, размер, состояние, тип, зона, к каким ВМ подключены |
+| `disk_get` | `evo disk get` | нет | `disk_id` | Live card of one disk by disk_id, by one read: name, size_gb, state, disk_type, zone, bootable, encrypted, readonly, shared, serial_id as the platform reports … | Диск по ID: размер, состояние, тип, зона, шифрование, только чтение, общий доступ, серийный номер, ВМ |
 | `disk_create` | `evo disk create` | да | `name`, `size_gb` | Create a block-storage disk. | Создать диск (с --attach-to — в зоне ВМ и сразу подключить) |
 | `disk_attach` | `evo disk attach` | да | `disk_id`, `vm` | Attach an existing disk to a VM (POST /disks/{id}/attach). | Подключить диск к ВМ (диск и ВМ должны быть в одной зоне) |
 | `disk_detach` | `evo disk detach` | да | `disk_id`, `vm` | Detach a disk from a VM (POST /disks/{id}/detach). | Отключить диск от ВМ |
