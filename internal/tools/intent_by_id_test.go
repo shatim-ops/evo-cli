@@ -58,7 +58,7 @@ func TestDoctor_CutDeleteByIDIsCheckedByID(t *testing.T) {
 		{name: "a kind with no read by id", tool: "redis_delete", arg: "cluster_id", id: resGone, says: "no read by id"},
 		// A disk has its read by id since disk_get (110-09): a cut
 		// disk_delete is checked by it.
-		{name: "a disk not there, the same key", tool: "disk_delete", arg: "disk_id", id: resGone, closed: true, says: "the delete took effect"},
+		{name: "a disk not there, the same key", tool: "disk_delete", arg: "disk_id", id: resGone, closed: true, says: "original request was not acknowledged"},
 		{name: "a disk of another project is still there", tool: "disk_delete", arg: "disk_id", id: resForeign, says: "is still there"},
 		{name: "a kind with no read by id, of another project", tool: "kafka_delete", arg: "cluster_id", id: resForeign, says: "no read by id"},
 	} {
