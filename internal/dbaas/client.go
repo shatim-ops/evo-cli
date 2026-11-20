@@ -14,7 +14,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -215,11 +214,11 @@ func (c *Client) ListClustersWithin(ctx context.Context, extra url.Values, limit
 			return "", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), err)
 		}
 		if page == nil {
-			return "", errors.New(i18n.T("parse clusters: null page", "разбор кластеров: страница равна null"))
+			return "", pager.Incomplete(i18n.T("parse clusters: null page", "разбор кластеров: страница равна null"))
 		}
 		for _, cluster := range page.Clusters {
 			if cluster == nil {
-				return "", errors.New(i18n.T("parse clusters: null cluster in list", "разбор кластеров: элемент списка равен null"))
+				return "", pager.Incomplete(i18n.T("parse clusters: null cluster in list", "разбор кластеров: элемент списка равен null"))
 			}
 		}
 		all = append(all, page.Clusters...)

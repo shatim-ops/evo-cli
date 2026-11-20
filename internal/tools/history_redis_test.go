@@ -70,7 +70,7 @@ func TestHistoryRedisProjectMembership(t *testing.T) {
 			if tc.gone {
 				want = checkGone
 			}
-			if pages != tc.pages || out.Read != 1+pages || results[0] != want || out.WouldClose != 0 {
+			if pages != tc.pages || out.Read != 1 || results[0] != want || out.WouldClose != 0 {
 				t.Fatalf("pages=%d checked=%+v results=%v", pages, out, results)
 			}
 		})

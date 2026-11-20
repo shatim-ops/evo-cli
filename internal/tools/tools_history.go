@@ -353,7 +353,7 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 		case k != kindRedis:
 			why = map[readSkip]string{readNoCard: checkNoRead, readOtherKey: checkOtherKey, readNoKey: checkNoKey}[readSkipOf(k, l.Key, cur)]
 		}
-		if why == "" && out.Read == historyCheckMax {
+		if why == "" && out.Read+redis.pages >= historyCheckMax {
 			why = checkOverBudget
 		}
 		if why != "" {
@@ -367,7 +367,7 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 		var notSeen bool
 		var err error
 		if k == kindRedis {
-			m, notSeen, err = redis.card(ctx, eng, l, out)
+			m, notSeen, err = redis.card(ctx, eng, l, historyCheckMax-out.Read-redis.pages)
 		} else {
 			m, notSeen, _, err = s.readByID(ctx, k, l.ResourceID, l.Key, cur)
 		}
@@ -436,9 +436,10 @@ func historyIDReadable(l history.Line) bool {
 type redisHistoryRead struct {
 	client  *dbaas.Client
 	members map[string]bool
+	pages   int // project-list GETs consume budget but are not reads by ID
 }
 
-func (r *redisHistoryRead) card(ctx context.Context, eng *engine.Engine, l history.Line, checked *historyChecked) (map[string]any, bool, error) {
+func (r *redisHistoryRead) card(ctx context.Context, eng *engine.Engine, l history.Line, remaining int) (map[string]any, bool, error) {
 	project := eng.Config.ProjectID
 	if r.client == nil {
 		token, err := eng.Auth.Token(ctx)
@@ -460,8 +461,8 @@ func (r *redisHistoryRead) card(ctx context.Context, eng *engine.Engine, l histo
 	}
 	if r.members == nil {
 		r.members = map[string]bool{}
-		items, pages, err := r.client.ListClustersWithin(ctx, nil, historyCheckMax-checked.Read)
-		checked.Read += pages
+		items, pages, err := r.client.ListClustersWithin(ctx, nil, remaining)
+		r.pages += pages
 		if err != nil {
 			return nil, false, err
 		}
