@@ -353,6 +353,7 @@ func newTreeLeaf(reg *tools.Registry, c treeCmd, t tools.Tool) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:         strings.Join(use, " "),
+		Aliases:     c.Aliases,
 		Short:       short,
 		Long:        long,
 		Annotations: map[string]string{toolAnnotation: t.Name},

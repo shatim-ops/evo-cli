@@ -11046,6 +11046,7 @@ evo vpc security-groups [flags]
 ### Examples
 
 ```
+  evo vpc sg --rules
   evo vpc security-groups --zone ru.AZ-2 --name web
 ```
 
