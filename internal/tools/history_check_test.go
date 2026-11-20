@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -57,7 +58,11 @@ func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
 		{name: "the API fails", tool: "k8s_create", id: resGone, outcome: history.Created, key: this, status: http.StatusBadGateway, says: checkReadFailed, reads: 1},
 		{name: "another key", tool: "cert_import", id: resGone, outcome: history.Created, key: other, says: checkOtherKey},
 		{name: "a line with no key", tool: "pg_create", id: resGone, outcome: history.Created, says: checkNoKey},
-		{name: "a kind with no read by id", tool: "disk_create", id: resGone, outcome: history.Created, key: this, says: checkNoRead},
+		{name: "disk visible", tool: "disk_create", id: resMine, outcome: history.Created, key: this, says: checkThere, reads: 1},
+		{name: "disk not seen by the same key", tool: "disk_create", id: resGone, outcome: history.Created, key: this, says: checkNotSeen, reads: 1},
+		{name: "disk read refused", tool: "disk_create", id: resGone, outcome: history.Created, key: this, status: http.StatusForbidden, says: checkReadFailed, reads: 1},
+		{name: "disk read by another key", tool: "disk_create", id: resGone, outcome: history.Created, key: other, says: checkOtherKey},
+		{name: "a kind with no read by id", tool: "subnet_create", id: resGone, outcome: history.Created, key: this, says: checkNoRead},
 		{name: "an outcome not known: the id may be a name", tool: "pg_create", id: resGone, outcome: history.Unknown, key: this, says: checkNotByID},
 		{name: "a line with no project", tool: "pg_create", id: resGone, outcome: history.Created, project: "-", key: this, says: checkNoProject},
 		{name: "a resource in a parent", tool: "k8s_add_nodepool", id: resGone, outcome: history.Created, parent: "cluster_id=" + resForeign, key: this, says: checkInParent},
@@ -102,8 +107,17 @@ func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
 			if wants := c.says == checkNotSeen; (len(a.WouldClose) == 1) != wants || (a.Checked.WouldClose == 1) != wants {
 				t.Errorf("would_close %+v; want it %v\n%s", a.WouldClose, wants, text)
 			}
-			if after, _ := history.ReadAll(hdir, nil); len(after.Lines) != len(before.Lines) {
+			if after, _ := history.ReadAll(hdir, nil); !reflect.DeepEqual(after.Lines, before.Lines) {
 				t.Errorf("history with check wrote to the journal: %d lines, were %d", len(after.Lines), len(before.Lines))
+			}
+			if c.tool == "disk_create" {
+				var want []string
+				if c.reads == 1 {
+					want = []string{"GET compute.api.cloud.ru/api/v1/disks/" + c.id}
+				}
+				if got := f.log(); !reflect.DeepEqual(got, want) {
+					t.Errorf("disk requests %v, want %v", got, want)
+				}
 			}
 			for _, q := range f.log() {
 				if !strings.HasPrefix(q, "GET ") {
@@ -133,11 +147,11 @@ func TestHistory_CheckReadsTheLaterLineAndKeepsItsBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	add("c000000000000001", "pg_create", history.Created, resForeign)
-	add("c000000000000002", "pg_create", history.Found, resForeign)
+	add("c000000000000001", "disk_create", history.Created, resForeign)
+	add("c000000000000002", "disk_create", history.Found, resForeign)
 	// Lines it does not read spend no budget: a kind with no read by id.
 	for i := 0; i < 3; i++ {
-		add(fmt.Sprintf("d00000000000000%d", i), "disk_create", history.Created, fmt.Sprintf("00000000-0000-4000-8000-0000000d000%d", i))
+		add(fmt.Sprintf("d00000000000000%d", i), "subnet_create", history.Created, fmt.Sprintf("00000000-0000-4000-8000-0000000d000%d", i))
 	}
 	for i := 0; i < historyCheckMax+2; i++ {
 		add(fmt.Sprintf("e0000000000000%02x", i), "pg_create", history.Created, fmt.Sprintf("00000000-0000-4000-8000-0000000e00%02x", i))
@@ -155,6 +169,9 @@ func TestHistory_CheckReadsTheLaterLineAndKeepsItsBudget(t *testing.T) {
 	}
 	if a.Live[0].CheckResult != checkLater || a.Live[1].CheckResult != checkThere {
 		t.Errorf("the two lines of one resource: %q, %q; want later_line, then there", a.Live[0].CheckResult, a.Live[1].CheckResult)
+	}
+	if got := len(f.log()); got != historyCheckMax {
+		t.Errorf("sent %d requests, want %d", got, historyCheckMax)
 	}
 	if a.Checked.Read != historyCheckMax || a.Checked.NotChecked[checkOverBudget] != 3 || a.Checked.NotChecked[checkNoRead] != 3 {
 		t.Errorf("checked %+v; want %d reads, 3 over the budget, 3 with no read by id", a.Checked, historyCheckMax)
