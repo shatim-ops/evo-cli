@@ -45,7 +45,8 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 		{"still present", 200, 0, 200, clierrors.CodeAPIUnreachable},
 		{"different address on check", 200, 0, 200, clierrors.CodeAPIUnreachable},
 	} {
-		occupied := tc.name == "attached" || tc.name == "bound interface"
+		onNAT := tc.name == "NAT gateway"
+		occupied := onNAT || tc.name == "attached" || tc.name == "bound interface"
 		surfaces := []string{"CLI", "MCP"}
 		if occupied {
 			surfaces = append(surfaces, "human-ru", "human-en")
@@ -141,7 +142,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 					if code != 1 {
 						t.Fatalf("exit=%d: %s", code, errOut)
 					}
-					checkOccupiedFIPText(t, lang, errOut)
+					checkOccupiedFIPText(t, onNAT, lang, errOut)
 					got = clierrors.CodeUsage
 				} else if surface == "CLI" {
 					t.Setenv("EVO_LANG", "ru")
@@ -164,7 +165,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 							t.Fatalf("verification failure: %s", errOut)
 						}
 						if occupied {
-							checkOccupiedFIPText(t, "en", env.Message+"\n"+env.Hint)
+							checkOccupiedFIPText(t, onNAT, "en", env.Message+"\n"+env.Hint)
 							checkOccupiedFIPFields(t, env.Details)
 						}
 						got = env.Reason
@@ -188,7 +189,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 					if occupied {
 						msg, _ := m["error"].(string)
 						hint, _ := m["hint"].(string)
-						checkOccupiedFIPText(t, "en", msg+"\n"+hint)
+						checkOccupiedFIPText(t, onNAT, "en", msg+"\n"+hint)
 						checkOccupiedFIPFields(t, m)
 					}
 					got, _ = m["status"].(string)
@@ -223,11 +224,17 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 	}
 }
 
-func checkOccupiedFIPText(t *testing.T, lang, text string) {
+func checkOccupiedFIPText(t *testing.T, onNAT bool, lang, text string) {
 	t.Helper()
 	message, hint := "is in use by a VM", "Detach it from the VM, then release it."
 	if lang == "ru" {
 		message, hint = "используется виртуальной машиной", "Отвяжите его от ВМ, затем освободите."
+	}
+	if onNAT {
+		message, hint = "belongs to a SNAT gateway", "whether to delete the gateway (snat_delete) — ask the person."
+		if lang == "ru" {
+			message, hint = "принадлежит SNAT-шлюзу", "удалять ли шлюз (snat_delete) — спросите человека."
+		}
 	}
 	for _, want := range []string{message, hint, `"192.0.2.4"`, `"` + parityVM + `"`} {
 		if !strings.Contains(text, want) {
