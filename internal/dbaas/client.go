@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -192,12 +193,22 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 		if status < 200 || status >= 300 {
 			return "", apiError(status, data)
 		}
-		var page struct {
+		// An empty object is a valid empty protobuf response. A null
+		// response gives no evidence that the list is complete.
+		var page *struct {
 			Clusters      []map[string]any `json:"clusters"`
 			NextPageToken string           `json:"next_page_token"`
 		}
 		if err := json.Unmarshal(data, &page); err != nil {
 			return "", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), err)
+		}
+		if page == nil {
+			return "", errors.New(i18n.T("parse clusters: null page", "разбор кластеров: страница равна null"))
+		}
+		for _, cluster := range page.Clusters {
+			if cluster == nil {
+				return "", errors.New(i18n.T("parse clusters: null cluster in list", "разбор кластеров: элемент списка равен null"))
+			}
 		}
 		all = append(all, page.Clusters...)
 		return page.NextPageToken, nil

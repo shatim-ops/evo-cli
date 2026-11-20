@@ -282,6 +282,8 @@ func TestKafkaCreateChecksCompleteList(t *testing.T) {
 	}{
 		{"taken on page two", "two", "c2", 2, nil},
 		{"page error", "free", "page unavailable", 2, func(w http.ResponseWriter, _ string) { http.Error(w, "page unavailable", 400) }},
+		{"null page", "free", "null", 2, func(w http.ResponseWriter, _ string) { io.WriteString(w, "null") }},
+		{"null cluster", "free", "null cluster", 2, func(w http.ResponseWriter, _ string) { io.WriteString(w, `{"clusters":[null]}`) }},
 		{"repeated token", "free", "repeats page token", 2, func(w http.ResponseWriter, token string) {
 			fmt.Fprintf(w, `{"clusters":[],"next_page_token":%q}`, token)
 		}},

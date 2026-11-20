@@ -274,7 +274,7 @@
       "name": "kafka",
       "spec": "kafka/openapi-kafka.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/clusters", "code": "internal/dbaas/client.go:188", "query": ["product_type=kafka", "project_id", "page_size=50", "page_token"], "paginates": true,
+        {"method": "GET", "path": "/v1/clusters", "code": "internal/dbaas/client.go:189", "query": ["product_type=kafka", "project_id", "page_size=50", "page_token"], "paginates": true,
          "reads": ["clusters[].id", "clusters[].name", "clusters[].status", "clusters[].version_id", "clusters[].brokers", "clusters[].health", "clusters[].subnet_ids[]", "clusters[].controller_spec.specification_id", "clusters[].controller_spec.storage_gib", "next_page_token"], "enums": {"clusters[].status": ["STATUS_UNSPECIFIED", "PENDING", "DEPLOYING", "FAILED", "UPDATING", "READY", "SUSPENDED", "SUSPENDING", "ERASED", "ERASING", "ROLLING_BACK"]}},
         {"method": "GET", "path": "/v1/clusters/{cluster_id}", "code": "internal/dbaas/client.go:215", "reads": ["id", "status", "kafka_hosts", "subnet_ids[]", "controller_spec.specification_id", "controller_spec.storage_gib"], "_note": "kafka_get отдаёт ответ целиком: subnet_ids и controller_spec (спецификация 10.11) агент видит как есть"},
         {"method": "POST", "path": "/v1/clusters", "code": "internal/dbaas/client.go:221", "creates": ["kafka_create"], "impact": {"specification_id": "цена", "brokers": "цена", "storage_gib": "цена", "version_id": "работа", "subnet_id": "безопасность", "ui_enabled": "безопасность", "subnet_ids": "работа; не шлёт: evo шлёт subnet_id (deprecated, в схеме 10.11), одна зона; 3 подсети — после пробы #1103, до rc.1", "controller_spec": "работа; не шлёт: кластер создаётся в комбинированном режиме — без controller_spec каждый хост и брокер, и контроллер (спецификация 10.11); превью kafka_create называет режим (controllers: combined) и что он не меняется после создания; выделенные контроллеры — бэклог 1.9"},
@@ -293,7 +293,7 @@
       "name": "redis",
       "spec": "redis/openapi-redis.yaml",
       "requests": [
-        {"method": "GET", "path": "/v1/clusters", "code": "internal/dbaas/client.go:188", "query": ["project_id", "page_size=100", "page_token"], "paginates": true,
+        {"method": "GET", "path": "/v1/clusters", "code": "internal/dbaas/client.go:189", "query": ["project_id", "page_size=100", "page_token"], "paginates": true,
          "reads": ["clusters[].id", "clusters[].name", "clusters[].status", "clusters[].type", "clusters[].shards", "clusters[].replicas", "clusters[].health", "next_page_token"], "enums": {"clusters[].status": ["STATUS_UNSPECIFIED", "PENDING", "DEPLOYING", "FAILED", "UPDATING", "READY", "SUSPENDED", "SUSPENDING", "ERASED", "ERASING", "ROLLING_BACK"]}},
         {"method": "GET", "path": "/v1/clusters/{cluster_id}", "code": "internal/dbaas/client.go:215", "reads": ["id", "status", "redis_hosts"]},
         {"method": "POST", "path": "/v1/clusters", "code": "internal/dbaas/client.go:221", "creates": ["redis_create"], "impact": {"specification_id": "цена", "shards": "цена", "replicas": "цена", "storage_gb": "цена", "type": "работа", "version_id": "работа", "subnet_id": "безопасность"},
