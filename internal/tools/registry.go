@@ -244,6 +244,8 @@ type callRecords struct {
 	// open is the record the call opened (beginIntent), with hasOpen.
 	open    intent.Intent
 	hasOpen bool
+	// deleteUnsent is set only when this standalone delete failed before HTTP.
+	deleteUnsent bool
 
 	// resolved is what the call has resolved of the cloud by a read that
 	// more than one of its layers needs (onceACall).

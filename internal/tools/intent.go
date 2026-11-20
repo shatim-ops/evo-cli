@@ -128,7 +128,8 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			// and so do kubectl, helm and ssh (httpretry.NoteWrite): the
 			// call changed nothing, whatever cut it («Риск», conclusion
 			// 187, У2).
-			if n, counted := httpretry.Writes(ctx); counted && n == 0 {
+			own, _ := ctx.Value(callRecordsKey{}).(*callRecords)
+			if n, counted := httpretry.Writes(ctx); (counted && n == 0) || (own != nil && own.deleteUnsent) {
 				out.Result = history.Error
 				if out.Reason == "" {
 					out.Reason = clierrors.ReasonInterrupted
@@ -1202,6 +1203,9 @@ func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind
 		return i18n.Tf("%s %s is still there (status %s): the delete did not take effect, or is still going — run doctor again, or the same %s",
 			"%s %s ещё есть (статус %s): удаление не прошло или ещё идёт — повторите doctor или тот же %s", k.what, what, quoteCloud(status), tool), false, ""
 	case isGone:
+		if decls[in.Tool].verifiesDeleteByRead {
+			return i18n.Tf("The check by ID found %s %s absent. The original request was not acknowledged. The record is closed.", "При проверке по ID ресурс «%s» %s отсутствовал. Ответ на исходный запрос не получен. Запись закрыта.", k.what, what), true, ""
+		}
 		return i18n.Tf("the read of %s %s by id, with the key that sent the delete, answers that it is not there: the delete took effect; the record is closed",
 			"чтение ресурса «%s» %s по id ключом, который отправил удаление, отвечает, что его нет: удаление прошло; запись закрыта", k.what, what), true, ""
 	}
@@ -1326,6 +1330,9 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	case isCreate:
 		return i18n.Tf("%s has no %s yet: the cloud did not make it, or still makes it — run doctor again, or the same %s", "в %s пока нет %s: облако его не создало или ещё создаёт — повторите doctor или тот же %s", c.list, quoteCloud(in.Name), quoteCloud(in.Tool)), false, ""
 	case !matched:
+		if decls[in.Tool].verifiesDeleteByRead {
+			return i18n.Tf("%s no longer lists %s. The original request was not acknowledged. The record is closed.", "В списке %s больше нет %s. Ответ на исходный запрос не получен. Запись закрыта.", c.list, quoteCloud(targetID)), true, ""
+		}
 		return i18n.Tf("%s no longer lists %s: the delete took effect; the record is closed", "%s больше не показывает %s: удаление прошло; запись закрыта", c.list, quoteCloud(targetID)), true, ""
 	}
 	return i18n.Tf("%s still lists %s: the delete did not take effect (yet) — run doctor again, or the same %s", "%s ещё показывает %s: удаление не прошло (или идёт) — повторите doctor или тот же %s", c.list, quoteCloud(targetID), quoteCloud(in.Tool)), false, ""
