@@ -7,6 +7,7 @@ package cli
 import (
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -44,7 +45,13 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 		{"still present", 200, 0, 200, clierrors.CodeAPIUnreachable},
 		{"different address on check", 200, 0, 200, clierrors.CodeAPIUnreachable},
 	} {
-		for _, surface := range []string{"CLI", "MCP"} {
+		onNAT := tc.name == "NAT gateway"
+		occupied := onNAT || tc.name == "attached" || tc.name == "bound interface"
+		surfaces := []string{"CLI", "MCP"}
+		if occupied {
+			surfaces = append(surfaces, "human-ru", "human-en")
+		}
+		for _, surface := range surfaces {
 			if tc.name == "foreign ID, project-bound" && surface == "CLI" {
 				continue
 			}
@@ -56,7 +63,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 					code := tc.before
 					body := `{"id":"` + parityVM + `","ip_address":"192.0.2.4","state":"available"}`
 					if tc.name == "bound interface" {
-						body = `{"id":"` + parityVM + `","state":"available","interface":{"id":"iface"}}`
+						body = `{"id":"` + parityVM + `","ip_address":"192.0.2.4","state":"available","interface":{"id":"iface"}}`
 					}
 					if tc.name == "wrong card before consent" {
 						body = `{"id":"` + parityStoppedVM + `","state":"available"}`
@@ -65,7 +72,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 						body = `{"id":"` + parityVM + `","ip_address":"192.0.2.4","state":"available","nat_gateway":{"id":"gw"}}`
 					}
 					if tc.name == "attached" {
-						body = `{"id":"` + parityVM + `","ip_address":"192.0.2.4","state":"in_use","vm":{"id":"` + parityStoppedVM + `"}}`
+						body = `{"id":"` + parityVM + `","ip_address":"192.0.2.4","state":"in_use"}`
 					}
 					if req.Method == "GET" && req.URL.Path == "/api/v1/floating-ips" && req.URL.Query().Get("project_id") == pvProject {
 						if tc.name == "by address, absent" || tc.name == "foreign ID, project-bound" {
@@ -127,7 +134,18 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 				lang := i18n.Lang()
 				t.Cleanup(func() { toolEngine = factory; i18n.SetLang(lang) })
 				var got string
-				if surface == "CLI" {
+				if strings.HasPrefix(surface, "human-") {
+					lang := strings.TrimPrefix(surface, "human-")
+					t.Setenv("EVO_LANG", lang)
+					i18n.SetLang(lang)
+					code, _, errOut := runCLI(t, "", "vpc", "fip-release", parityVM)
+					if code != 1 {
+						t.Fatalf("exit=%d: %s", code, errOut)
+					}
+					checkOccupiedFIPText(t, onNAT, lang, errOut)
+					got = clierrors.CodeUsage
+				} else if surface == "CLI" {
+					t.Setenv("EVO_LANG", "ru")
 					i18n.SetLang(i18n.RU)
 					args := []string{"--json", "--yes", "vpc", "fip-release"}
 					if strings.HasPrefix(tc.name, "by address,") {
@@ -145,6 +163,10 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 						}
 						if tc.name == "verification denied" && !strings.Contains(env.Message, clierrors.CodeAuthFailed) {
 							t.Fatalf("verification failure: %s", errOut)
+						}
+						if occupied {
+							checkOccupiedFIPText(t, onNAT, "en", env.Message+"\n"+env.Hint)
+							checkOccupiedFIPFields(t, env.Details)
 						}
 						got = env.Reason
 					}
@@ -164,6 +186,12 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 						t.Fatal(ans.rpcErr)
 					}
 					m := parseObject(ans.text)
+					if occupied {
+						msg, _ := m["error"].(string)
+						hint, _ := m["hint"].(string)
+						checkOccupiedFIPText(t, onNAT, "en", msg+"\n"+hint)
+						checkOccupiedFIPFields(t, m)
+					}
 					got, _ = m["status"].(string)
 					if ans.isErr {
 						got, _ = m["reason"].(string)
@@ -193,5 +221,32 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func checkOccupiedFIPText(t *testing.T, onNAT bool, lang, text string) {
+	t.Helper()
+	message, hint := "is in use by a VM", "Detach it from the VM, then release it."
+	if lang == "ru" {
+		message, hint = "используется виртуальной машиной", "Отвяжите его от ВМ, затем освободите."
+	}
+	if onNAT {
+		message, hint = "belongs to a SNAT gateway", "whether to delete the gateway (snat_delete) — ask the person."
+		if lang == "ru" {
+			message, hint = "принадлежит SNAT-шлюзу", "удалять ли шлюз (snat_delete) — спросите человека."
+		}
+	}
+	for _, want := range []string{message, hint, `"192.0.2.4"`, `"` + parityVM + `"`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q in output:\n%s", want, text)
+		}
+	}
+}
+
+func checkOccupiedFIPFields(t *testing.T, fields map[string]any) {
+	t.Helper()
+	marked, _ := fields["_untrusted"].([]any)
+	if fields["id"] != parityVM || fields["ip_address"] != "192.0.2.4" || !slices.Contains(marked, any("id")) || !slices.Contains(marked, any("ip_address")) {
+		t.Fatalf("cloud fields: %v", fields)
 	}
 }
