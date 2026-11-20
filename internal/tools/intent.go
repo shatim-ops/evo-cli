@@ -23,6 +23,24 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
+// openCallForTool returns the current call's record holder only while its
+// open receipt belongs to this tool.
+func openCallForTool(ctx context.Context, tool string) *callRecords {
+	c, _ := ctx.Value(callRecordsKey{}).(*callRecords)
+	if c == nil || !c.hasOpen || c.open.Tool != tool {
+		return nil
+	}
+	return c
+}
+
+// markDeleteUnsent associates the transport's pre-send failure with the
+// receipt it applies to, so it can never settle another receipt.
+func markDeleteUnsent(ctx context.Context, tool string) {
+	if c := openCallForTool(ctx, tool); c != nil {
+		c.deleteUnsentID = c.open.ID
+	}
+}
+
 // beginIntent writes the intent of a consented call before it goes to the
 // cloud, at the one gate of consent (D35): a process cut between the
 // consent and the cloud's answer leaves it, and the next run names it
@@ -147,7 +165,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			// call changed nothing, whatever cut it («Риск», conclusion
 			// 187, У2).
 			own, _ := ctx.Value(callRecordsKey{}).(*callRecords)
-			if n, counted := httpretry.Writes(ctx); (counted && n == 0) || (own != nil && own.deleteUnsent) {
+			if n, counted := httpretry.Writes(ctx); (counted && n == 0) || (own != nil && own.deleteUnsentID == rec.ID) {
 				out.Result = history.Error
 				if out.Reason == "" {
 					out.Reason = clierrors.ReasonInterrupted

@@ -20,9 +20,7 @@ func deleteConnection(ctx context.Context, tool string) (context.Context, func(e
 		if !unsent(err) {
 			return false
 		}
-		if c, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && c.hasOpen && c.open.Tool == tool {
-			c.deleteUnsent = true
-		}
+		markDeleteUnsent(ctx, tool)
 		return true
 	}
 }

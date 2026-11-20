@@ -1227,13 +1227,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	// the folder's, as AdoptedVM takes a VM without a time (P3).
 	preview["provenance"] = folderProvenance(eng.StateDir, engine.ProvenanceFloatingIP, fipID, time.Time{})
 	return &Plan{Preview: preview, Execute: withWayOut(func(ctx context.Context) (string, bool) {
-		// The address can be reassigned. Keep the resolved ID in the record that
-		// the transport persists before sending, including on interruption.
-		if ip != "" {
-			if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && own.hasOpen && own.open.Tool == "release_floating_ip" {
-				_, own.open.Target = intentResource("release_floating_ip", map[string]any{"id": fipID})
-			}
-		}
+		bindFloatingIPReleaseTarget(ctx, ip, fipID)
 		release := eng.Cloud.DeleteFloatingIP
 		if api, ok := eng.Cloud.(interface {
 			ReleaseFloatingIP(context.Context, string, string) error

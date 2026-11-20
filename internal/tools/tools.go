@@ -3056,9 +3056,7 @@ func (s *Registry) destroyLive(ctx context.Context, c *Caller) (string, bool) {
 		}})
 	if err != nil {
 		if result.VMDeleteUnsent {
-			if c, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && c.hasOpen && c.open.Tool == "destroy" {
-				c.deleteUnsent = true
-			}
+			markDeleteUnsent(ctx, "destroy")
 		}
 		fields := map[string]any{"vm_id": result.VMID, "cleanup_pending": result.CleanupPending}
 		if stderrors.Is(err, engine.ErrDeletionUnconfirmed) {

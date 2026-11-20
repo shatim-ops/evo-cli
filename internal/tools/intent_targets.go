@@ -13,6 +13,18 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
+// bindFloatingIPReleaseTarget pins an address-based release to the ID the
+// plan resolved. The address may be reassigned before a lost reply is checked.
+// The transport persists the open call's target before it sends the delete.
+func bindFloatingIPReleaseTarget(ctx context.Context, address, id string) {
+	if address == "" {
+		return
+	}
+	if own := openCallForTool(ctx, "release_floating_ip"); own != nil {
+		_, own.open.Target = intentResource("release_floating_ip", map[string]any{"id": id})
+	}
+}
+
 // vmTarget is the target of a call that names a VM by vm_id or by name
 // (changeRule.target): the VM's id, read as the plan of a power tool
 // reads it — an id as it is, a name through the one point names are
