@@ -347,17 +347,24 @@ func (s *Registry) planImageDelete(ctx context.Context, args map[string]any) (*P
 	if err != nil {
 		return answered(s.deleteFailed("image_delete", imageID, err)), nil
 	}
+	if before == nil || before.ID != imageID {
+		return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The image response did not identify the requested resource.", "Ответ сервиса не подтвердил ID запрошенного образа."), "")
+	}
 	preview := map[string]any{"message": i18n.T("image_delete permanently removes the image. VMs already running keep working, but no new VM can be created from it.",
 		"image_delete безвозвратно удаляет образ. Уже работающие ВМ продолжат работать, но новую ВМ из него не создать."),
 		"will_delete": map[string]any{"image_id": imageID},
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-		if err := eng.Cloud.DeleteImage(ctx, imageID, eng.Config.ProjectID); err != nil {
+		sendCtx, unsent := deleteConnection(ctx, "image_delete")
+		if err := eng.Cloud.DeleteImage(sendCtx, imageID, eng.Config.ProjectID); err != nil {
+			if unsent(err) {
+				return unsentDeleteAnswer(err)
+			}
 			if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
 				return s.deleteFailed("image_delete", imageID, fmt.Errorf(i18n.T("delete image: %w", "удаление образа: %w"), err))
 			}
 			_, checkErr := eng.Cloud.GetImage(ctx, imageID)
-			if before == nil || before.ID != imageID || checkErr == nil || !isGone(checkErr) {
+			if checkErr == nil || !isGone(checkErr) {
 				fields := map[string]any{"image_id": imageID, "next_tool": "image_get", "next_args": map[string]any{"image_id": imageID}}
 				message := i18n.T("No delete reply was received. The follow-up read did not confirm deletion.", "Ответ на удаление не получен. Повторное чтение не подтвердило удаление.")
 				if checkErr != nil {
@@ -368,6 +375,7 @@ func (s *Registry) planImageDelete(ctx context.Context, args map[string]any) (*P
 				return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message,
 					i18n.T("Check the image with image_get before retrying.", "Перед повтором проверьте образ через evo image get."), err), fields), true
 			}
+			return toJSON(map[string]any{"status": "deleted", "image_id": imageID, "message": deleteObservation()}), false
 		}
 		return toJSON(map[string]any{"status": "deleted", "image_id": imageID}), false
 	}}, nil
