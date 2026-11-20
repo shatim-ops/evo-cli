@@ -718,6 +718,13 @@ func resizedNote(disk map[string]any) string {
 		"Диск увеличен. На ВМ найдите его устройство через `lsblk`, расширьте раздел, если он есть (`growpart <device> <n>`), затем файловую систему (`resize2fs` для ext4, `xfs_growfs` для XFS).")
 }
 
+// The project list proves membership when ownership is omitted. An explicit
+// different owner contradicts that proof, even when the resource ID matches.
+func conflictingDiskProject(card map[string]any, projectID string) bool {
+	owner := projectField(card)
+	return owner != "" && owner != projectID
+}
+
 // planDiskDelete plans the delete of a disk by id (gate.go).
 func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	diskID := stringArg(args, "disk_id")
@@ -734,14 +741,39 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 	if err != nil {
 		return answered(s.deleteFailed("disk_delete", diskID, err)), nil
 	}
+	if disk["id"] != diskID {
+		return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The disk response did not identify the requested resource.", "Ответ сервиса не подтвердил ID запрошенного диска."), "")
+	}
+	if s.projectBound && conflictingDiskProject(disk, eng.Config.ProjectID) {
+		return nil, notInProject(kindDisk, diskID)
+	}
 	if vms, err := diskAttachedError(diskID, disk); err != nil {
 		return answered(errAnswer(err, map[string]any{"disk_id": diskID, "attached_vms": vms}), true), nil
 	}
 	preview := map[string]any{"message": i18n.Tf("disk_delete permanently destroys disk %s and its data.",
 		"disk_delete безвозвратно удаляет диск %s и его данные.", diskID)}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-		if err := eng.Cloud.DeleteDisk(ctx, diskID, eng.Config.ProjectID); err != nil {
-			return s.deleteFailed("disk_delete", diskID, fmt.Errorf(i18n.T("delete disk: %w", "удаление диска: %w"), err))
+		sendCtx, unsent := deleteConnection(ctx, "disk_delete")
+		if err := eng.Cloud.DeleteDisk(sendCtx, diskID, eng.Config.ProjectID); err != nil {
+			if unsent(err) {
+				return unsentDeleteAnswer(err)
+			}
+			if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
+				return s.deleteFailed("disk_delete", diskID, fmt.Errorf(i18n.T("delete disk: %w", "удаление диска: %w"), err))
+			}
+			_, checkErr := eng.Cloud.GetDisk(ctx, diskID)
+			if checkErr == nil || !isGone(checkErr) {
+				fields := map[string]any{"disk_id": diskID, "next_tool": "doctor", "next_args": map[string]any{}}
+				message := i18n.T("No delete reply was received. The follow-up read did not confirm deletion.", "Ответ на удаление не получен. Повторное чтение не подтвердило удаление.")
+				if checkErr != nil {
+					reason := clierrors.Reason(checkErr)
+					fields["check_reason"] = reason
+					message = i18n.Tf("No delete reply was received. The follow-up read failed (%s), so the outcome is unknown.", "Ответ на удаление не получен. Проверка завершилась ошибкой (%s), поэтому исход удаления неизвестен.", reason)
+				}
+				return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message,
+					i18n.T("Check the disk in the Cloud.ru console before retrying. doctor shows the interrupted call.", "Перед повтором проверьте диск в консоли Cloud.ru. Запись прерванного вызова показывает evo doctor."), err), fields), true
+			}
+			return toJSON(map[string]any{"status": "deleted", "disk_id": diskID, "message": deleteObservation()}), false
 		}
 		return toJSON(map[string]any{"status": "deleted", "disk_id": diskID}), false
 	}}, nil
