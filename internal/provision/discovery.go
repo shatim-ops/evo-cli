@@ -110,6 +110,9 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 	var out []*T
 	seen := map[string]bool{}
 	offset := 0
+	project, verifyNAT := ctx.Value(natDeleteInventoryKey{}).(string)
+	verifyNAT = verifyNAT && path == "/api/v1/nat-gateways"
+	promised := 0
 	for range listMaxPages {
 		pq := url.Values{}
 		for k, v := range q {
@@ -135,8 +138,8 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.Tf("failed to read response for %s", "не удалось прочитать ответ %s", path), hintUnexpectedFormat(), err)
 		}
 
-		if project, strict := ctx.Value(natDeleteInventoryKey{}).(string); strict && path == "/api/v1/nat-gateways" {
-			if err := validateNATPage(body, project); err != nil {
+		if verifyNAT {
+			if err := validateNATPage(body, project, seen, promised); err != nil {
 				return nil, err
 			}
 		}
@@ -168,7 +171,14 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			if !paged {
 				return out, nil
 			}
-			done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, page.Total, listPageSize)
+			endOffset := offset
+			if verifyNAT {
+				// Count distinct gateways against the largest total advertised on this walk.
+				promised = max(promised, page.Total)
+				page.Total = promised
+				endOffset = len(out)
+			}
+			done, err := offsetPageEnd(len(page.Items), fresh, len(out), endOffset, page.Total, listPageSize)
 			if err != nil {
 				return nil, pager.Named(path, err)
 			}
