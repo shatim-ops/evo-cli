@@ -12,6 +12,8 @@ import "iter"
 // name (modules of other domains, step 0: docs/internal/briefs/modules.md,
 // §5). The tools of evo declare it in decls; New sets Tool.Decl.
 type Decl struct {
+	// doctor reports the observed state after an unacknowledged delete.
+	verifiesDeleteByRead bool
 	// Group is the tool's group when its name does not start with the
 	// group (groupPrefixes assign the rest).
 	Group string
@@ -339,7 +341,7 @@ var decls = map[string]Decl{
 	// under way, of a state being created and of a final one is the same.
 	// The names of the backup, its source and the backups that depend on
 	// it, in the preview.
-	"backup_delete": {Delete: deleteTarget{arg: "backup_id", what: "backup", whRU: "резервная копия",
+	"backup_delete": {verifiesDeleteByRead: true, Delete: deleteTarget{arg: "backup_id", what: "backup", whRU: "резервная копия",
 		// Probe Г-16: docs/internal/briefs/backups.md.
 		creatingUnseen: "no run has deleted a backup still being created: the third run of probe Г-16",
 		failedUnseen:   "no run has deleted a backup in error: the third run of probe Г-16"}, IDArgs: []idArg{{name: "backup_id", kind: kindBackup, target: true}}, Untrusted: untrustedAnswer{fields: []string{"will_delete", "target", "resource_status", "details"}}},

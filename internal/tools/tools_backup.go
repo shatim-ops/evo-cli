@@ -203,7 +203,13 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 		return nil, err
 	}
 	var card map[string]any
-	read := func(ctx context.Context) (map[string]any, error) { return api.GetBackup(ctx, id) }
+	read := func(ctx context.Context) (map[string]any, error) {
+		got, err := api.GetBackup(ctx, id)
+		if err == nil && got["id"] != id {
+			return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The backup response did not identify the requested backup.", "Ответ сервиса не подтвердил ID запрошенной резервной копии."), "")
+		}
+		return got, err
+	}
 	p := s.deletePlan(tool,
 		"backup_delete permanently deletes backup %s: what it holds cannot be restored after.",
 		"backup_delete безвозвратно удаляет резервную копию %s: восстановить из неё после этого нельзя.",
@@ -212,14 +218,19 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 			return card, err
 		},
 		func(ctx context.Context) (string, bool) {
-			if err := api.DeleteBackup(ctx, id); err != nil {
+			sendCtx, unsent := deleteConnection(ctx, "backup_delete")
+			ident := map[string]any{"backup_id": id}
+			if err := api.DeleteBackup(sendCtx, id); err != nil {
+				if unsent(err) {
+					return unsentDeleteAnswer(err)
+				}
 				if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
 					return backupDeleteRefused(ctx, tool, id, args, err, s, read)
 				}
 				// Reconcile the one write against the backup read before consent.
 				observed, checkErr := read(ctx)
-				if card["id"] == id && checkErr != nil && isGone(checkErr) {
-					return toJSON(map[string]any{"status": "deleted", "backup_id": id}), false
+				if checkErr != nil && isGone(checkErr) {
+					return toJSON(map[string]any{"status": "deleted", "backup_id": id, "message": deleteObservation()}), false
 				}
 				if checkErr != nil || observed["id"] != id || observed["state"] != "deleting" {
 					fields := backupGetNext(id)
@@ -232,8 +243,9 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 					return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message,
 						i18n.T("Check the backup with backup_get before retrying.", "Перед повтором проверьте копию через evo backup get."), err), fields), true
 				}
+				ident["message"] = i18n.T("The backup was observed in the deleting state. The service did not acknowledge this delete request.", "При проверке копия находилась в состоянии удаления. Ответ сервиса на запрос удаления не получен.")
 			}
-			return deleteOutcome(ctx, args, goneWatch(tool, id, map[string]any{"backup_id": id}, "", "backup_get", read))
+			return deleteOutcome(ctx, args, goneWatch(tool, id, ident, "", "backup_get", read))
 		})
 	if p.Execute == nil {
 		return p, nil
