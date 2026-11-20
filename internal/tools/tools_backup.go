@@ -213,7 +213,25 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 		},
 		func(ctx context.Context) (string, bool) {
 			if err := api.DeleteBackup(ctx, id); err != nil {
-				return backupDeleteRefused(ctx, tool, id, args, err, s, read)
+				if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
+					return backupDeleteRefused(ctx, tool, id, args, err, s, read)
+				}
+				// Reconcile the one write against the backup read before consent.
+				observed, checkErr := read(ctx)
+				if card["id"] == id && checkErr != nil && isGone(checkErr) {
+					return toJSON(map[string]any{"status": "deleted", "backup_id": id}), false
+				}
+				if checkErr != nil || observed["id"] != id || observed["state"] != "deleting" {
+					fields := backupGetNext(id)
+					message := i18n.T("No delete reply was received. The follow-up read did not confirm deletion.", "Ответ на удаление не получен. Повторное чтение не подтвердило удаление.")
+					if checkErr != nil {
+						reason := clierrors.Reason(checkErr)
+						fields["check_reason"] = reason
+						message = i18n.Tf("No delete reply was received. The follow-up read failed (%s), so the outcome is unknown.", "Ответ на удаление не получен. Проверка завершилась ошибкой (%s), поэтому исход удаления неизвестен.", reason)
+					}
+					return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message,
+						i18n.T("Check the backup with backup_get before retrying.", "Перед повтором проверьте копию через evo backup get."), err), fields), true
+				}
 			}
 			return deleteOutcome(ctx, args, goneWatch(tool, id, map[string]any{"backup_id": id}, "", "backup_get", read))
 		})

@@ -25,6 +25,7 @@ func TestBackupDeleteLostReplySurfaces(t *testing.T) {
 		writes              int
 	}{
 		{"lost then gone", 200, 0, 404, "deleted", "", 1},
+		{"deleting then gone", 200, 0, 200, "deleted", "", 1},
 		{"initially absent", 404, 0, 404, "already_deleted", "", 0},
 		{"read forbidden", 403, 0, 404, "", clierrors.CodeAuthFailed, 0},
 		{"delete forbidden", 200, 403, 404, "", clierrors.CodeAuthFailed, 1},
@@ -58,6 +59,13 @@ func TestBackupDeleteLostReplySurfaces(t *testing.T) {
 						if writes > 0 {
 							checks++
 							code = tc.after
+							if tc.name == "deleting then gone" {
+								if checks == 1 {
+									body = `{"id":"` + parityDiskBackup + `","state":"deleting"}`
+								} else {
+									code = http.StatusNotFound
+								}
+							}
 						}
 					default:
 						t.Errorf("unexpected method %s", req.Method)
@@ -91,6 +99,9 @@ func TestBackupDeleteLostReplySurfaces(t *testing.T) {
 							t.Fatalf("exit=%d: %s", code, errOut)
 						}
 						reason = env.Reason
+						if tc.name == "check forbidden" && !strings.Contains(env.Message, clierrors.CodeAuthFailed) {
+							t.Fatalf("missing check failure: %s", errOut)
+						}
 					}
 				} else {
 					i18n.SetLang(i18n.EN)
@@ -104,6 +115,9 @@ func TestBackupDeleteLostReplySurfaces(t *testing.T) {
 						status, _ = m["status"].(string)
 					}
 					reason, _ = m["reason"].(string)
+					if tc.name == "check forbidden" && (m["check_reason"] != clierrors.CodeAuthFailed || m["next_tool"] != "backup_get") {
+						t.Fatalf("missing check result: %s", ans.text)
+					}
 				}
 				if writes != tc.writes || status != tc.status || reason != tc.reason || (tc.send == 0 && tc.writes == 1 && checks == 0) {
 					t.Fatalf("status=%s reason=%s writes=%d checks=%d; want %s %s writes=%d", status, reason, writes, checks, tc.status, tc.reason, tc.writes)

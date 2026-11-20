@@ -84,7 +84,6 @@ var lostDeleteUnreached = map[string]string{
 // did not exist («deleted earlier, or the id is wrong») though it read it
 // alive before the question. The list only shrinks. Closes by 1.10.
 var lostDeleteSaysNeverExisted = map[string]string{
-	"backup_delete":       "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
 	"destroy":             "the compute client repeats the DELETE; the answer is «VM already deleted (not found in the cloud)»",
 	"disk_delete":         "the compute client repeats the DELETE; existed false, «deleted earlier, or the disk_id is wrong»",
 	"image_delete":        "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
