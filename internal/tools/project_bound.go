@@ -163,7 +163,7 @@ func (r *Registry) boundToProjects(t Tool, next Handler) Handler {
 		if !r.projectBound {
 			return next(ctx, args)
 		}
-		c := &ownerCall{r: r, args: args, group: t.Group}
+		c := &ownerCall{r: r, args: args, group: t.Group, tool: t.Name}
 		for _, a := range checks {
 			for _, id := range a.values(args) {
 				if err := a.kind.check(ctx, c, a.kind, id); err != nil {
@@ -185,6 +185,7 @@ type ownerCall struct {
 	r     *Registry
 	args  map[string]any
 	group string
+	tool  string
 	eng   *engine.Engine
 }
 
@@ -411,14 +412,27 @@ var (
 		}
 		return ids, err
 	}))
-	kindSubnet = inProjectList("subnet", "list_subnets", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	kindSubnet = inProjectList("subnet", "list_subnets", func(ctx context.Context, c *ownerCall) ([]string, error) {
+		eng, err := c.engine(ctx)
+		if err != nil {
+			return nil, err
+		}
 		subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
+		if err != nil {
+			return nil, err
+		}
 		ids := make([]string, 0, len(subs))
 		for _, sn := range subs {
+			if sn == nil {
+				continue
+			}
+			if c.tool == "subnet_delete" && sn.ID == stringArg(c.args, "subnet_id") && sn.ProjectID != "" && sn.ProjectID != eng.Config.ProjectID {
+				return nil, nil
+			}
 			ids = append(ids, sn.ID)
 		}
-		return ids, err
-	}))
+		return ids, nil
+	})
 
 	// Kafka and Redis answer a cluster without its project
 	// (openapi-kafka.yaml, openapi-redis.yaml): the list of the project.
