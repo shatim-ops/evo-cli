@@ -192,12 +192,14 @@ func (s *Registry) handleDiskGet(ctx context.Context, args map[string]any) (stri
 			out[f.as] = v
 		}
 	}
-	if vms, ok := diskCardVMs(d["vms"]); ok {
+	vms, complete := diskCardVMs(d["vms"])
+	if len(vms) > 0 || complete {
 		out["attached_vms"] = vms
-	} else {
+	}
+	if !complete {
 		why := i18n.T("the answer of Cloud.ru does not carry it", "в ответе Cloud.ru этого поля нет")
 		if d["vms"] != nil {
-			why = i18n.T("the answer of Cloud.ru does not contain a list of VM objects", "в ответе Cloud.ru нет списка объектов ВМ")
+			why = i18n.T("the answer of Cloud.ru does not identify all attached VMs", "по ответу Cloud.ru нельзя определить все привязанные ВМ")
 		}
 		missing = append(missing, map[string]any{"check": "attached_vms", "why": why})
 	}
@@ -214,14 +216,18 @@ func diskCardVMs(raw any) ([]map[string]any, bool) {
 		return nil, false
 	}
 	vms := make([]map[string]any, 0, len(list))
+	complete := true
 	for _, entry := range list {
-		vm, ok := entry.(map[string]any)
-		if !ok {
-			return nil, false
+		vm, _ := entry.(map[string]any)
+		id, _ := vm["id"].(string)
+		name, _ := vm["name"].(string)
+		if strings.TrimSpace(id) == "" && strings.TrimSpace(name) == "" {
+			complete = false
+			continue
 		}
 		vms = append(vms, map[string]any{"id": vm["id"], "name": vm["name"], "primary": vm["primary"], "state": vm["state"]})
 	}
-	return vms, true
+	return vms, complete
 }
 
 // planDiskCreate plans the create of a disk. If attach_to (a VM) is given, the disk is
