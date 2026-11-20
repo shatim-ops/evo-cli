@@ -13,7 +13,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
-func TestKafkaIncompletePageErrorContract(t *testing.T) {
+func TestRedisIncompletePageErrorContract(t *testing.T) {
 	for _, page := range []string{"null", `{"clusters":[null]}`} {
 		t.Run(page, func(t *testing.T) {
 			w, _ := withJSONWorld(t)
@@ -22,7 +22,7 @@ func TestKafkaIncompletePageErrorContract(t *testing.T) {
 			i18n.SetLang(i18n.RU)
 			old := w.rt.extra
 			w.rt.extra = func(r *http.Request) (*http.Response, error) {
-				if r.Method != http.MethodGet || r.URL.Host != "kafka.api.cloud.ru" || r.URL.Path != "/v1/clusters" {
+				if r.Method != http.MethodGet || r.URL.Host != "redis.api.cloud.ru" || r.URL.Path != "/v1/clusters" {
 					return old(r)
 				}
 				body := page
@@ -32,7 +32,7 @@ func TestKafkaIncompletePageErrorContract(t *testing.T) {
 				return contractRT{status: 200, body: body}.RoundTrip(r)
 			}
 			newProcess()
-			code, out, stderr := runCLI(t, "", "kafka", "list", "--json")
+			code, out, stderr := runCLI(t, "", "redis", "list", "--json")
 			var result struct {
 				Error struct{ Reason, Message string }
 			}
