@@ -12,6 +12,8 @@ import "iter"
 // name (modules of other domains, step 0: docs/internal/briefs/modules.md,
 // §5). The tools of evo declare it in decls; New sets Tool.Decl.
 type Decl struct {
+	// doctor reports the observed state after an unacknowledged delete.
+	verifiesDeleteByRead bool
 	// Group is the tool's group when its name does not start with the
 	// group (groupPrefixes assign the rest).
 	Group string
@@ -356,7 +358,7 @@ var decls = map[string]Decl{
 	// The VMs a disk is attached to, as the cloud names them: the refusal
 	// of disk_delete (D59) names them for the way out. Names, not the
 	// output of a workload: no note.
-	"disk_delete": {Delete: deleteTarget{arg: "disk_id", what: "disk", whRU: "диск"}, IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}}, Untrusted: untrustedAnswer{fields: []string{"attached_vms"}}},
+	"disk_delete": {verifiesDeleteByRead: true, Delete: deleteTarget{arg: "disk_id", what: "disk", whRU: "диск"}, IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}}, Untrusted: untrustedAnswer{fields: []string{"attached_vms"}}},
 	"ca_list":     {Project: true, Untrusted: untrustedAnswer{fields: []string{"containers"}}},
 	"ca_get":      {Project: true, Untrusted: untrustedAnswer{whole: true}},
 	// Container Apps: an app is addressed by name with projectId in the

@@ -734,18 +734,25 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 	if err != nil {
 		return answered(s.deleteFailed("disk_delete", diskID, err)), nil
 	}
+	if disk["id"] != diskID {
+		return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The disk response did not identify the requested resource.", "Ответ сервиса не подтвердил ID запрошенного диска."), "")
+	}
 	if vms, err := diskAttachedError(diskID, disk); err != nil {
 		return answered(errAnswer(err, map[string]any{"disk_id": diskID, "attached_vms": vms}), true), nil
 	}
 	preview := map[string]any{"message": i18n.Tf("disk_delete permanently destroys disk %s and its data.",
 		"disk_delete безвозвратно удаляет диск %s и его данные.", diskID)}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-		if err := eng.Cloud.DeleteDisk(ctx, diskID, eng.Config.ProjectID); err != nil {
+		sendCtx, unsent := deleteConnection(ctx, "disk_delete")
+		if err := eng.Cloud.DeleteDisk(sendCtx, diskID, eng.Config.ProjectID); err != nil {
+			if unsent(err) {
+				return unsentDeleteAnswer(err)
+			}
 			if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
 				return s.deleteFailed("disk_delete", diskID, fmt.Errorf(i18n.T("delete disk: %w", "удаление диска: %w"), err))
 			}
 			_, checkErr := eng.Cloud.GetDisk(ctx, diskID)
-			if disk["id"] != diskID || checkErr == nil || !isGone(checkErr) {
+			if checkErr == nil || !isGone(checkErr) {
 				fields := map[string]any{"disk_id": diskID, "next_tool": "doctor", "next_args": map[string]any{}}
 				message := i18n.T("No delete reply was received. The follow-up read did not confirm deletion.", "Ответ на удаление не получен. Повторное чтение не подтвердило удаление.")
 				if checkErr != nil {
@@ -756,6 +763,7 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 				return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message,
 					i18n.T("Check the disk in the Cloud.ru console before retrying. doctor shows the interrupted call.", "Перед повтором проверьте диск в консоли Cloud.ru. Запись прерванного вызова показывает evo doctor."), err), fields), true
 			}
+			return toJSON(map[string]any{"status": "deleted", "disk_id": diskID, "message": deleteObservation()}), false
 		}
 		return toJSON(map[string]any{"status": "deleted", "disk_id": diskID}), false
 	}}, nil
