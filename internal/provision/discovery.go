@@ -186,8 +186,9 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			continue
 		}
 		var arr []T
-		// A bare array is a complete first response only. JSON null is not a list.
-		if offset == 0 && json.Unmarshal(body, &arr) == nil && arr != nil {
+		// After the first page, only the NAT delete inventory verifies a bare
+		// array against the promised total and all previously seen gateway IDs.
+		if (offset == 0 || (verifyNAT && promised > 0)) && json.Unmarshal(body, &arr) == nil && arr != nil {
 			for i := range arr {
 				out = append(out, &arr[i])
 			}
