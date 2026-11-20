@@ -171,14 +171,15 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			if !paged {
 				return out, nil
 			}
-			endOffset := offset
 			if verifyNAT {
 				// Count distinct gateways against the largest total advertised on this walk.
 				promised = max(promised, page.Total)
 				page.Total = promised
-				endOffset = len(out)
+				if offset >= promised && len(out) < promised {
+					return nil, incompleteNATInventory(len(out), promised)
+				}
 			}
-			done, err := offsetPageEnd(len(page.Items), fresh, len(out), endOffset, page.Total, listPageSize)
+			done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, page.Total, listPageSize)
 			if err != nil {
 				return nil, pager.Named(path, err)
 			}

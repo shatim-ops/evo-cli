@@ -79,7 +79,7 @@ func validateNATPage(body []byte, project string, seen map[string]bool, promised
 				}
 			}
 			if len(seen)+len(fresh) < promised {
-				return clierrors.New(clierrors.CodeAPIError, i18n.Tf("The gateway list ended after %d of %d distinct IDs.", "Список шлюзов закончился после %d из %d уникальных ID.", len(seen)+len(fresh), promised), "")
+				return incompleteNATInventory(len(seen)+len(fresh), promised)
 			}
 		}
 	}
@@ -89,6 +89,10 @@ func validateNATPage(body []byte, project string, seen map[string]bool, promised
 		}
 	}
 	return nil
+}
+
+func incompleteNATInventory(read, total int) error {
+	return clierrors.New(clierrors.CodeAPIError, i18n.Tf("The gateway list ended after %d of %d distinct IDs.", "Список шлюзов закончился после %d из %d уникальных ID.", read, total), "")
 }
 
 func validateNATOwner(row map[string]any, project string) error {
