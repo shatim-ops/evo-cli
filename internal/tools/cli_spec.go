@@ -26,6 +26,8 @@ type CLISpec struct {
 	Group string
 	// Verb is the command inside the group ("create", "list").
 	Verb string
+	// Aliases are additional names for the same CLI command.
+	Aliases []string
 	// Args lists the positional arguments as tool argument names:
 	//
 	//	"disk_id"     required
@@ -130,7 +132,7 @@ var cliSpecs = map[string]CLISpec{
 	"list_subnets":         {Group: "vpc", Verb: "subnets"},
 	"subnet_create":        {Group: "vpc", Verb: "subnet-create", Args: []string{"name"}},
 	"subnet_delete":        {Group: "vpc", Verb: "subnet-delete", Args: []string{"subnet_id"}},
-	"list_security_groups": {Group: "vpc", Verb: "security-groups"},
+	"list_security_groups": {Group: "vpc", Verb: "security-groups", Aliases: []string{"sg"}},
 	"list_floating_ips":    {Group: "vpc", Verb: "fips"},
 	"fip_attach":           {Group: "vpc", Verb: "fip-attach", Args: []string{"fip"}},
 	"release_floating_ip":  {Group: "vpc", Verb: "fip-release", Args: []string{"id?"}},
