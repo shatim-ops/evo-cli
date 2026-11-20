@@ -1225,13 +1225,25 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	// the folder's, as AdoptedVM takes a VM without a time (P3).
 	preview["provenance"] = folderProvenance(eng.StateDir, engine.ProvenanceFloatingIP, fipID, time.Time{})
 	return &Plan{Preview: preview, Execute: withWayOut(func(ctx context.Context) (string, bool) {
+		// The address can be reassigned. Keep the resolved ID in the record that
+		// the transport persists before sending, including on interruption.
+		if ip != "" {
+			if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && own.hasOpen && own.open.Tool == "release_floating_ip" {
+				own.open.Target = "id=" + fipID
+			}
+		}
 		release := eng.Cloud.DeleteFloatingIP
 		if api, ok := eng.Cloud.(interface {
 			ReleaseFloatingIP(context.Context, string, string) error
 		}); ok {
 			release = api.ReleaseFloatingIP
 		}
-		if err := release(ctx, fipID, projectID); err != nil {
+		sendCtx, unsent := deleteConnection(ctx, "release_floating_ip")
+		message := i18n.Tf("floating IP %s released", "floating IP %s освобождён", fipIP)
+		if err := release(sendCtx, fipID, projectID); err != nil {
+			if unsent(err) {
+				return unsentDeleteAnswer(err)
+			}
 			if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
 				return s.deleteFailed("release_floating_ip", fipID, fmt.Errorf(i18n.T("release floating IP: %w", "освобождение floating IP: %w"), err))
 			}
@@ -1246,12 +1258,13 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 				}
 				return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message, i18n.T("Check the floating IP by ID in list_floating_ips before retrying.", "Перед повтором проверьте ID в списке list_floating_ips."), err), fields), true
 			}
+			message = deleteObservation()
 		}
 		return toJSON(map[string]any{
 			"status":   "ok",
 			"released": fipIP,
 			"id":       fipID,
-			"message":  i18n.Tf("floating IP %s released", "floating IP %s освобождён", fipIP),
+			"message":  message,
 		}), false
 	}, state, state, fipID)}, nil
 }

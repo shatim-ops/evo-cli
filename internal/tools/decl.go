@@ -12,6 +12,8 @@ import "iter"
 // name (modules of other domains, step 0: docs/internal/briefs/modules.md,
 // §5). The tools of evo declare it in decls; New sets Tool.Decl.
 type Decl struct {
+	// doctor reports the observed state after an unacknowledged delete.
+	verifiesDeleteByRead bool
 	// Group is the tool's group when its name does not start with the
 	// group (groupPrefixes assign the rest).
 	Group string
@@ -377,7 +379,7 @@ var decls = map[string]Decl{
 	"whoami":              {Group: "auth", Untrusted: untrustedAnswer{fields: []string{"roles", "roles_note", "key_term_note"}}},
 	"doctor":              {Group: "auth", Untrusted: untrustedAnswer{fields: []string{"checks"}}},
 	"history":             {Group: "auth", AlwaysListed: "what evo changed is the inventory of every group: the cleanup of any group reads it, whichever groups the server serves", IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}, Untrusted: untrustedAnswer{fields: []string{"lines", "live", "would_close"}, workload: true}},
-	"release_floating_ip": {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "id", "ip_address"}}},
+	"release_floating_ip": {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, verifiesDeleteByRead: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "id", "ip_address"}}},
 	"snat_list":           {Project: true, Untrusted: untrustedAnswer{fields: []string{"nat_gateways"}}},
 	"snat_create":         {Project: true, Created: created{id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "availability_zone_id", why: whyCatalogue}}, Untrusted: untrustedAnswer{fields: []string{"nat_gateway"}}},
 	"snat_delete":         {Delete: deleteTarget{arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"}, IDArgs: []idArg{{name: "id", kind: kindNAT, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},

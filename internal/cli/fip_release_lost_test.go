@@ -29,9 +29,11 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 	}{
 		{"lost, gone", 200, 0, 404, "ok"},
 		{"absent before consent", 404, 0, 404, "already_deleted"},
+		{"foreign ID, project-bound", 200, 0, 404, clierrors.CodeNotFound},
 		{"read denied", 403, 0, 404, clierrors.CodeAuthFailed},
 		{"write denied", 200, 403, 404, clierrors.CodeAuthFailed},
 		{"verification denied", 200, 0, 403, clierrors.CodeAPIUnreachable},
+		{"by address, still present", 200, 0, 200, clierrors.CodeAPIUnreachable},
 		{"by address, lost", 200, 0, 404, "ok"},
 		{"NAT gateway", 200, 0, 200, clierrors.CodeUsage},
 		{"bound interface", 200, 0, 200, clierrors.CodeUsage},
@@ -43,6 +45,9 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 		{"different address on check", 200, 0, 200, clierrors.CodeAPIUnreachable},
 	} {
 		for _, surface := range []string{"CLI", "MCP"} {
+			if tc.name == "foreign ID, project-bound" && surface == "CLI" {
+				continue
+			}
 			t.Run(tc.name+"/"+surface, func(t *testing.T) {
 				world := withParityWorld(t)
 				t.Setenv("CLOUDRU_KEY_ID", "00000000-0000-0000-0000-0000000000a9")
@@ -63,7 +68,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 						body = `{"id":"` + parityVM + `","ip_address":"192.0.2.4","state":"in_use","vm":{"id":"` + parityStoppedVM + `"}}`
 					}
 					if req.Method == "GET" && req.URL.Path == "/api/v1/floating-ips" && req.URL.Query().Get("project_id") == pvProject {
-						if tc.name == "by address, absent" {
+						if tc.name == "by address, absent" || tc.name == "foreign ID, project-bound" {
 							return contractRT{status: 200, body: `{"items":[],"total":0}`}.RoundTrip(req)
 						}
 						if writes > 0 {
@@ -73,6 +78,9 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 					}
 					if req.URL.Path != "/api/v1/floating-ips/"+parityVM || req.Header.Get("Authorization") == "" {
 						t.Fatalf("unexpected request %s %s", req.Method, req.URL)
+					}
+					if tc.name == "foreign ID, project-bound" {
+						t.Fatalf("project check allowed card access: %s", req.URL)
 					}
 					switch req.Method {
 					case "DELETE":
@@ -143,6 +151,9 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 				} else {
 					i18n.SetLang(i18n.EN)
 					servers := newROServers(t)
+					if tc.name == "foreign ID, project-bound" {
+						servers.plain.SetProjectBound()
+					}
 					args := map[string]any{"id": parityVM, "confirmed": true}
 					if strings.HasPrefix(tc.name, "by address,") {
 						delete(args, "id")
@@ -162,7 +173,7 @@ func TestFIPReleaseLostReplySurfaces(t *testing.T) {
 					}
 				}
 				wantWrites := 0
-				if tc.before == 200 && tc.name != "attached" && tc.name != "NAT gateway" && tc.name != "bound interface" && tc.name != "wrong card before consent" {
+				if tc.before == 200 && (tc.want == "ok" || tc.want == clierrors.CodeAPIUnreachable || tc.deleteCode == 403) {
 					wantWrites = 1
 				}
 				wantChecks := 0
