@@ -192,19 +192,36 @@ func (s *Registry) handleDiskGet(ctx context.Context, args map[string]any) (stri
 			out[f.as] = v
 		}
 	}
-	vms := []map[string]any{}
-	if list, ok := d["vms"].([]any); ok {
-		for _, x := range list {
-			if vm, ok := x.(map[string]any); ok {
-				vms = append(vms, map[string]any{"id": vm["id"], "name": vm["name"], "primary": vm["primary"], "state": vm["state"]})
-			}
+	if vms, ok := diskCardVMs(d["vms"]); ok {
+		out["attached_vms"] = vms
+	} else {
+		why := i18n.T("the answer of Cloud.ru does not carry it", "в ответе Cloud.ru этого поля нет")
+		if d["vms"] != nil {
+			why = i18n.T("the answer of Cloud.ru does not contain a list of VM objects", "в ответе Cloud.ru нет списка объектов ВМ")
 		}
+		missing = append(missing, map[string]any{"check": "attached_vms", "why": why})
 	}
-	out["attached_vms"] = vms
 	if len(missing) > 0 {
 		out["not_checked"] = missing
 	}
 	return toJSON(out), false
+}
+
+// A missing or unusable attachment list cannot establish that the disk is free.
+func diskCardVMs(raw any) ([]map[string]any, bool) {
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, false
+	}
+	vms := make([]map[string]any, 0, len(list))
+	for _, entry := range list {
+		vm, ok := entry.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		vms = append(vms, map[string]any{"id": vm["id"], "name": vm["name"], "primary": vm["primary"], "state": vm["state"]})
+	}
+	return vms, true
 }
 
 // planDiskCreate plans the create of a disk. If attach_to (a VM) is given, the disk is

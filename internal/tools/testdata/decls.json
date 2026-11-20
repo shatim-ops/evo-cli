@@ -272,7 +272,7 @@
     "id_args": [
       "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[name state disk_type zone serial_id attached_vms] whole:false own:[] workload:false}"
+    "untrusted": "{fields:[name state disk_type zone serial_id attached_vms] whole:false own:[] workload:false deep:false}"
   },
   "disk_list": {
     "project": true,
@@ -1131,7 +1131,7 @@
     "id_args": [
       "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
     ],
-    "untrusted": "{fields:[id name interfaces security_groups checks not_checked exposure image flavor_name] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name interfaces security_groups checks not_checked exposure image flavor_id flavor_name] whole:false own:[] workload:false deep:false}"
   },
   "vm_list": {
     "project": true,
