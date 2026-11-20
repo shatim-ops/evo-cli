@@ -2,7 +2,7 @@
 
 <!-- Generated from the tool registry of evo: 'evo agent skill --group vpc' prints it. -->
 
-17 tools. Consent, exit codes and untrusted answers: the rules of the `evo` skill. The arguments of a tool: `evo tools describe <tool> --json`.
+19 tools. Consent, exit codes and untrusted answers: the rules of the `evo` skill. The arguments of a tool: `evo tools describe <tool> --json`.
 
 | Tool | Command | Does | Ids from |
 |---|---|---|---|
@@ -14,6 +14,8 @@
 | `list_floating_ips` | `evo vpc fips` | reads |  |
 | `sg_rule_create` | `evo vpc sg-rule-create` | creates: id in `rule_id`; deleted with `sg_rule_delete` |  |
 | `sg_rule_delete` | `evo vpc sg-rule-delete` | deletes; a repeat answers `already_deleted` |  |
+| `interface_list` | `evo vpc interfaces` | reads |  |
+| `interface_get` | `evo vpc interface-get` | reads | `interface_id` ← `interface_list` |
 | `release_floating_ip` | `evo vpc fip-release` | deletes; a repeat answers `already_deleted` | `id` ← `list_floating_ips` |
 | `vpc_list` | `evo vpc list` | reads |  |
 | `vpc_get` | `evo vpc get` | reads | `id` ← `vpc_list` |
@@ -26,4 +28,4 @@
 
 A change of this group that answers an `operation_id` runs on: wait for it with `vpc_operation` and its `wait_seconds`, not by polling a list.
 
-Filters of the lists (the rule of the `evo` skill): `list_subnets` — zone, state, name, vpc_id, ids, states; `list_security_groups` — zone, name, ids; `list_floating_ips` — zone, state, name, free, ids, states; `vpc_list` — name, ids; `vpc_routes` — status, ids, statuses.
+Filters of the lists (the rule of the `evo` skill): `list_subnets` — zone, state, name, vpc_id, ids, states; `list_security_groups` — zone, name, ids; `list_floating_ips` — zone, state, name, free, ids, states; `interface_list` — name, ids; `vpc_list` — name, ids; `vpc_routes` — status, ids, statuses.

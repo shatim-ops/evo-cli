@@ -350,10 +350,12 @@ var decls = map[string]Decl{
 	"disk_create":    {Place: []string{"disk_type"}, Project: true, Created: created{id: "disk.id", lost: "disk_id", list: "disk_list", field: "disks", delete: "disk_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "attach_to", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"disk", "attach", "disk_state", "next_args"}}},
 	// The disk and the VM the preview of disk_attach and disk_detach names,
 	// as the cloud names them.
-	"disk_attach": {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed, party: partyVM}}, Untrusted: untrustedAnswer{fields: []string{"will_attach", "attached_vms", "result", "disk_state"}}},
-	"disk_detach": {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"will_detach", "attached_vms", "result"}}},
-	"disk_resize": {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}}, Untrusted: untrustedAnswer{fields: []string{"disk"}}},
-	"disk_get":    {IDArgs: []idArg{{name: "disk_id", kind: kindDisk}}, Untrusted: untrustedAnswer{fields: []string{"name", "state", "disk_type", "zone", "serial_id", "attached_vms"}}},
+	"disk_attach":    {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed, party: partyVM}}, Untrusted: untrustedAnswer{fields: []string{"will_attach", "attached_vms", "result", "disk_state"}}},
+	"disk_detach":    {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}, {name: "vm", why: whyListed}}, Untrusted: untrustedAnswer{fields: []string{"will_detach", "attached_vms", "result"}}},
+	"disk_resize":    {IDArgs: []idArg{{name: "disk_id", kind: kindDisk, target: true}}, Untrusted: untrustedAnswer{fields: []string{"disk"}}},
+	"interface_list": {Group: "vpc", Project: true, Untrusted: untrustedAnswer{fields: []string{"interfaces"}}},
+	"interface_get":  {Group: "vpc", IDArgs: []idArg{{name: "interface_id", kind: kindInterface}}, Untrusted: untrustedAnswer{fields: []string{"interface"}}},
+	"disk_get":       {IDArgs: []idArg{{name: "disk_id", kind: kindDisk}}, Untrusted: untrustedAnswer{fields: []string{"name", "state", "disk_type", "zone", "serial_id", "attached_vms"}}},
 	// The VMs a disk is attached to, as the cloud names them: the refusal
 	// of disk_delete (D59) names them for the way out. Names, not the
 	// output of a workload: no note.

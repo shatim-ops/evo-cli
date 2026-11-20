@@ -619,6 +619,16 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{}),
 		},
 		{
+			Name:        "interface_list",
+			Description: "List the project's network interfaces, including unassigned ones, with VM, subnet, IP and security groups. Read-only.",
+			InputSchema: objSchema(map[string]any{}),
+		},
+		{
+			Name:        "interface_get",
+			Description: "Read a network interface by UUID, including its VM binding, subnet, IP and security groups.",
+			InputSchema: objSchema(map[string]any{"interface_id": uuidProp("Network interface UUID from interface_list.")}, "interface_id"),
+		},
+		{
 			Name:        "disk_get",
 			Description: "Live card of one disk by disk_id, by one read: name, size_gb, state, disk_type, zone, bootable, encrypted, readonly, shared, serial_id as the platform reports them, and attached_vms (id, name, primary, state). A field the platform's answer does not carry is absent and named in not_checked: no value of it is implied. Read-only.",
 			InputSchema: objSchema(map[string]any{
@@ -1606,6 +1616,8 @@ func (s *Registry) registerTools() {
 		"backup_restore":       s.gated("backup_restore", s.planBackupRestore),
 		"backup_delete":        s.gated("backup_delete", s.planBackupDelete),
 		"disk_list":            s.handleDiskList,
+		"interface_list":       s.handleInterfaceList,
+		"interface_get":        s.handleInterfaceGet,
 		"disk_get":             s.handleDiskGet,
 		"disk_create":          s.gated("disk_create", s.planDiskCreate),
 		"disk_attach":          s.gated("disk_attach", s.planDiskAttach),

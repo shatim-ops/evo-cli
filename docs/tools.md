@@ -311,6 +311,8 @@
 | `list_floating_ips` | `evo vpc fips` | нет | — | List Cloud.ru floating IPs (address, state, whether available to attach, zone when the API names it). | Floating IP: адрес, состояние, свободен ли |
 | `sg_rule_create` | `evo vpc sg-rule-create` | да | `security_group`, `direction`, `protocol`, `ports` | Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). | Добавить правило в группу безопасности |
 | `sg_rule_delete` | `evo vpc sg-rule-delete` | удаляет | `security_group`, `rule_id` | Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). | Удалить правило группы безопасности по его id |
+| `interface_list` | `evo vpc interfaces` | нет | — | List the project's network interfaces, including unassigned ones, with VM, subnet, IP and security groups. | Сетевые интерфейсы проекта, включая свободные |
+| `interface_get` | `evo vpc interface-get` | нет | `interface_id` | Read a network interface by UUID, including its VM binding, subnet, IP and security groups. | Карточка сетевого интерфейса по UUID |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |
 | `vpc_list` | `evo vpc list` | нет | — | List VPCs in the project (id, name, default, type). | Список VPC проекта |
 | `vpc_get` | `evo vpc get` | нет | `id` | Get full details of one VPC by id (from vpc_list). | VPC по ID: все сведения |

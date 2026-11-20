@@ -29,6 +29,7 @@ type listBudget struct{ n, perObject int }
 // — as maxToolsListBytes (internal/mcp/limits_test.go), never by cutting
 // fields or rows without a word («Риск», conclusion 49, Р3).
 var answerBudget = map[string]listBudget{
+	"interface_list interfaces": {1, 115}, // 91 bytes for a free interface
 	// "tool key": {n, budget}, // measured bytes per object
 	"backup_list backups":                  {2, 330}, // 263
 	"disk_get attached_vms":                {1, 110}, // 87

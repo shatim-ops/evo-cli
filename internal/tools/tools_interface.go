@@ -17,12 +17,19 @@ import (
 // empty group list. Both fields also serve existing readers that omit them.
 type interfaceRow struct {
 	*provision.Interface
-	VM             *provision.InterfaceVM     `json:"vm"`
-	SecurityGroups []provision.InterfaceGroup `json:"security_groups"`
+	VM             **provision.InterfaceVM     `json:"vm,omitempty"`
+	SecurityGroups *[]provision.InterfaceGroup `json:"security_groups,omitempty"`
 }
 
 func networkInterfaceRow(nic *provision.Interface) interfaceRow {
-	return interfaceRow{nic, nic.VM, nic.SecurityGroups}
+	row := interfaceRow{Interface: nic}
+	if nic.VMReported || nic.VM != nil {
+		row.VM = &nic.VM
+	}
+	if nic.SecurityGroups != nil {
+		row.SecurityGroups = &nic.SecurityGroups
+	}
+	return row
 }
 
 // projectInterfaces is also the source for the by-ID ownership check.

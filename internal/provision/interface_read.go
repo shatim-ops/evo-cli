@@ -12,6 +12,26 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
+// UnmarshalJSON retains whether Compute actually reported the VM binding.
+func (nic *Interface) UnmarshalJSON(data []byte) error {
+	type plain Interface
+	var decoded struct {
+		plain
+		VM json.RawMessage `json:"vm"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.VM != nil {
+		decoded.VMReported = true
+		if err := json.Unmarshal(decoded.VM, &decoded.plain.VM); err != nil {
+			return err
+		}
+	}
+	*nic = Interface(decoded.plain)
+	return nil
+}
+
 // GetInterface reads the Compute interface card, including a free interface.
 func (a *CloudRuAdapter) GetInterface(ctx context.Context, id string) (*Interface, error) {
 	if id == "" {

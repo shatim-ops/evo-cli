@@ -233,6 +233,8 @@
     - [evo vpc fip-release](#evo-vpc-fip-release)
     - [evo vpc fips](#evo-vpc-fips)
     - [evo vpc get](#evo-vpc-get)
+    - [evo vpc interface-get](#evo-vpc-interface-get)
+    - [evo vpc interfaces](#evo-vpc-interfaces)
     - [evo vpc list](#evo-vpc-list)
     - [evo vpc open-ports](#evo-vpc-open-ports)
     - [evo vpc operation](#evo-vpc-operation)
@@ -10447,6 +10449,8 @@ evo vpc [flags]
 * [evo vpc fip-release](#evo-vpc-fip-release)	 - Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается)
 * [evo vpc fips](#evo-vpc-fips)	 - Floating IP: адрес, состояние, свободен ли
 * [evo vpc get](#evo-vpc-get)	 - VPC по ID: все сведения
+* [evo vpc interface-get](#evo-vpc-interface-get)	 - Карточка сетевого интерфейса по UUID
+* [evo vpc interfaces](#evo-vpc-interfaces)	 - Сетевые интерфейсы проекта, включая свободные
 * [evo vpc list](#evo-vpc-list)	 - Список VPC проекта
 * [evo vpc open-ports](#evo-vpc-open-ports)	 - Открыть входящие порты в группе безопасности
 * [evo vpc operation](#evo-vpc-operation)	 - Состояние асинхронной операции VPC
@@ -10760,6 +10764,98 @@ evo vpc get <id> [flags]
 
 ```
   -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+
+## evo vpc interface-get
+
+Карточка сетевого интерфейса по UUID
+
+### Synopsis
+
+```text
+Карточка сетевого интерфейса по UUID.
+
+Показывает привязку сетевого интерфейса к ВМ, подсеть, IP-адрес и группы безопасности.
+
+Вызывает инструмент interface_get (подробнее: 'evo tools describe interface_get').
+```
+
+```
+evo vpc interface-get <interface-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по interface-get
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+
+## evo vpc interfaces
+
+Сетевые интерфейсы проекта, включая свободные
+
+### Synopsis
+
+```text
+Сетевые интерфейсы проекта, включая свободные.
+
+Показывает сетевые интерфейсы проекта, их привязку к ВМ, подсеть, IP-адрес и группы безопасности.
+
+Вызывает инструмент interface_list (подробнее: 'evo tools describe interface_list').
+
+Фильтры — отдельным блоком флагов ниже. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+```
+
+```
+evo vpc interfaces [flags]
+```
+
+### Examples
+
+```
+  evo vpc interfaces --name web
+```
+
+### Options
+
+```
+  -h, --help              Справка по interfaces
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени, регистр не важен
 ```
 
 ### Options inherited from parent commands

@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Exercise the actual CLI command and a read-only, project-bound stdio
@@ -53,28 +55,52 @@ func TestNetworkInterfaceReadSurfaces(t *testing.T) {
 		{"interface_list", "interfaces", map[string]any{}},
 		{"interface_get", "interface", map[string]any{"interface_id": parityNIC}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			mcpAnswer, _ := servers.stdio(t, servers.ro, "tools/call", map[string]any{"name": tc.name, "arguments": tc.args})
-			cmd, ok := commandsByTool()[tc.name]
-			if !ok || mcpAnswer.rpcErr != "" || mcpAnswer.isErr {
-				t.Fatalf("CLI registered=%t, MCP error=%q, result=%s", ok, mcpAnswer.rpcErr, mcpAnswer.text)
-			}
-			tl, ok := newRegistry().Lookup(tc.name)
-			if !ok {
-				t.Fatal("missing registry entry")
-			}
-			line := parityCommandOf(t, cmd.group, cmd.cmd, tl, tc.args).tree
-			code, out, errOut := runCLI(t, "", append([]string{"--json"}, line...)...)
-			if code != 0 || strings.TrimSpace(out) != mcpAnswer.text {
-				t.Fatalf("CLI exit=%d stdout=%s stderr=%s; MCP=%s", code, out, errOut, mcpAnswer.text)
-			}
-			var result struct {
-				Untrusted []string `json:"_untrusted"`
-			}
-			if json.Unmarshal([]byte(out), &result) != nil || !slices.Contains(result.Untrusted, tc.key) || !strings.Contains(out, `spare\ncloud text`) {
-				t.Fatalf("untrusted cloud data: %s", out)
-			}
-		})
+		for _, lang := range []string{i18n.RU, i18n.EN} {
+			t.Run(tc.name+"/"+lang, func(t *testing.T) {
+				orig := i18n.Lang()
+				t.Cleanup(func() { i18n.SetLang(orig) })
+				t.Setenv("EVO_LANG", lang)
+				i18n.SetLang(lang)
+				mcpAnswer, _ := servers.stdio(t, servers.ro, "tools/call", map[string]any{"name": tc.name, "arguments": tc.args})
+				cmd, ok := commandsByTool()[tc.name]
+				if !ok || mcpAnswer.rpcErr != "" || mcpAnswer.isErr {
+					t.Fatalf("CLI registered=%t, MCP error=%q, result=%s", ok, mcpAnswer.rpcErr, mcpAnswer.text)
+				}
+				tl, ok := newRegistry().Lookup(tc.name)
+				if !ok {
+					t.Fatal("missing registry entry")
+				}
+				line := parityCommandOf(t, cmd.group, cmd.cmd, tl, tc.args).tree
+				helpCode, help, helpErr := runCLI(t, "", append(slices.Clone(line), "--help")...)
+				wantHelp := tl.ShortRU
+				if lang == i18n.EN {
+					wantHelp = strings.Split(tl.Description, ".")[0]
+				}
+				if helpCode != 0 || wantHelp == "" || !strings.Contains(help, wantHelp) {
+					t.Fatalf("%s help: exit=%d stdout=%s stderr=%s", lang, helpCode, help, helpErr)
+				}
+				code, out, errOut := runCLI(t, "", append([]string{"--json"}, line...)...)
+				if code != 0 || strings.TrimSpace(out) != mcpAnswer.text {
+					t.Fatalf("CLI exit=%d stdout=%s stderr=%s; MCP=%s", code, out, errOut, mcpAnswer.text)
+				}
+				if tc.name == "interface_list" {
+					var list struct {
+						Interfaces []map[string]json.RawMessage `json:"interfaces"`
+					}
+					if json.Unmarshal([]byte(out), &list) != nil || len(list.Interfaces) != 2 ||
+						list.Interfaces[0]["vm"] != nil || list.Interfaces[0]["security_groups"] != nil ||
+						string(list.Interfaces[1]["vm"]) != "null" || string(list.Interfaces[1]["security_groups"]) != "[]" {
+						t.Fatalf("missing and reported binding data: %s", out)
+					}
+				}
+				var result struct {
+					Untrusted []string `json:"_untrusted"`
+				}
+				if json.Unmarshal([]byte(out), &result) != nil || !slices.Contains(result.Untrusted, tc.key) || !strings.Contains(out, `spare\ncloud text`) {
+					t.Fatalf("untrusted cloud data: %s", out)
+				}
+			})
+		}
 	}
 	t.Run("outside project", func(t *testing.T) {
 		ans, _ := servers.stdio(t, servers.ro, "tools/call", map[string]any{"name": "interface_get", "arguments": map[string]any{"interface_id": parityStoppedVM}})

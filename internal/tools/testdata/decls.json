@@ -414,6 +414,18 @@
     "group": "image",
     "untrusted": "{fields:[images] whole:false own:[] workload:false deep:false}"
   },
+  "interface_get": {
+    "group": "vpc",
+    "id_args": [
+      "interface_id why=\"\" target=false ids=false kind={what:\"network interface\" byName:false list:\"interface_list\" check:true project:true card:false}"
+    ],
+    "untrusted": "{fields:[interface] whole:false own:[] workload:false deep:false}"
+  },
+  "interface_list": {
+    "group": "vpc",
+    "project": true,
+    "untrusted": "{fields:[interfaces] whole:false own:[] workload:false deep:false}"
+  },
   "k8s_add_addon": {
     "project": true,
     "destructive": true,

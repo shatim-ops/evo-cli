@@ -187,6 +187,8 @@
 | vm | `vm_start` | да | дерево | `evo vm start` | да/да |
 | vm | `vm_stop` | да | дерево | `evo vm stop` | да/да |
 | vpc | `fip_attach` | да | дерево | `evo vpc fip-attach` | да/да |
+| vpc | `interface_get` | нет | дерево | `evo vpc interface-get` | да/да |
+| vpc | `interface_list` | нет | дерево | `evo vpc interfaces` | да/да |
 | vpc | `list_floating_ips` | нет | дерево | `evo vpc fips` | да/да |
 | vpc | `list_security_groups` | нет | дерево | `evo vpc security-groups` | да/да |
 | vpc | `list_subnets` | нет | дерево | `evo vpc subnets` | да/да |
@@ -374,6 +376,8 @@
 | `evo vpc fip-release` | `release_floating_ip` | id? | — | — | confirmed | — |
 | `evo vpc fips` | `list_floating_ips` | — | — | — | — | — |
 | `evo vpc get` | `vpc_get` | id | — | — | — | — |
+| `evo vpc interface-get` | `interface_get` | interface_id | — | — | — | — |
+| `evo vpc interfaces` | `interface_list` | — | — | — | — | — |
 | `evo vpc list` | `vpc_list` | — | — | — | — | — |
 | `evo vpc open-ports` | `open_ports` | security_group | ports→--port | — | confirmed | — |
 | `evo vpc operation` | `vpc_operation` | operation_id | — | — | — | — |
