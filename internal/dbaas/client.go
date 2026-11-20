@@ -14,7 +14,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -168,11 +167,6 @@ const maxListPages = 50
 // maxListPages pages are errors: the list is not complete (break r4, R4-8;
 // the cut list was a success).
 func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[string]any, error) {
-	// Kafka accepts at most 50 clusters per page (#2632).
-	pageSize := 100
-	if extra.Get("product_type") == "kafka" {
-		pageSize = 50
-	}
 	var all []map[string]any
 	more, err := pager.Upto(maxListPages, func(token string) (string, error) {
 		q := url.Values{}
@@ -181,6 +175,11 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 		}
 		if c.projectID != "" {
 			q.Set("project_id", c.projectID)
+		}
+		// Kafka accepts at most 50 clusters per page (#2632).
+		pageSize := 100
+		if extra.Get("product_type") == "kafka" {
+			pageSize = 50
 		}
 		q.Set("page_size", strconv.Itoa(pageSize))
 		if token != "" {
@@ -193,8 +192,6 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 		if status < 200 || status >= 300 {
 			return "", apiError(status, data)
 		}
-		// An empty object is a valid empty protobuf response. A null
-		// response gives no evidence that the list is complete.
 		var page *struct {
 			Clusters      []map[string]any `json:"clusters"`
 			NextPageToken string           `json:"next_page_token"`
@@ -203,11 +200,11 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 			return "", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), err)
 		}
 		if page == nil {
-			return "", errors.New(i18n.T("parse clusters: null page", "разбор кластеров: страница равна null"))
+			return "", pager.Incomplete(i18n.T("parse clusters: null page", "разбор кластеров: страница равна null"))
 		}
 		for _, cluster := range page.Clusters {
 			if cluster == nil {
-				return "", errors.New(i18n.T("parse clusters: null cluster in list", "разбор кластеров: элемент списка равен null"))
+				return "", pager.Incomplete(i18n.T("parse clusters: null cluster in list", "разбор кластеров: элемент списка равен null"))
 			}
 		}
 		all = append(all, page.Clusters...)

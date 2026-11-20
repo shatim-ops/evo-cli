@@ -23,7 +23,8 @@ func TestKafkaPagesCLI(t *testing.T) {
 		{"list", []string{"list"}, 200, takenPage, "on-page-two", true},
 		{"free name", []string{"create", "free", "--cpu", "2", "--ram", "4", "--dry-run"}, 200, "{}", "will_create", true},
 		{"taken name", []string{"create", "on-page-two", "--yes"}, 200, takenPage, "existing_id", false},
-		{"null page", []string{"create", "free", "--cpu", "2", "--ram", "4", "--yes"}, 200, "null", "null", false},
+		{"null list page", []string{"list"}, 200, "null", "API_ERROR", false},
+		{"null page", []string{"create", "free", "--cpu", "2", "--ram", "4", "--yes"}, 200, "null", "API_ERROR", false},
 		{"page error", []string{"create", "free", "--yes"}, 400, `{"message":"page unavailable"}`, "page unavailable", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -50,6 +51,9 @@ func TestKafkaPagesCLI(t *testing.T) {
 			code, out, stderr := runCLI(t, "", append([]string{"--json", "kafka"}, tc.args...)...)
 			if writes := w.rt.takeWrites(); len(writes) != 0 {
 				t.Errorf("unexpected writes: %v", writes)
+			}
+			if tc.pageBody == "null" && code != 5 {
+				t.Errorf("incomplete list: exit %d, want 5", code)
 			}
 			if (code == 0) != tc.success || !strings.Contains(out+stderr, tc.want) || pages != 2 {
 				t.Fatalf("exit %d, pages %d: %s %s", code, pages, out, stderr)

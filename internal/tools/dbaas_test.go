@@ -296,6 +296,9 @@ func TestKafkaCreateChecksCompleteList(t *testing.T) {
 				f := &fakeDbaas{nextClusterPage: tc.next}
 				r := dbaasRegistry(t, f, "")
 				m, text, isErr := callNamed(t, r, "kafka_create", map[string]any{"name": tc.requested, "cpu": 2, "ram": 4, "confirmed": confirmed})
+				if strings.HasPrefix(tc.name, "null ") && m["reason"] != "API_ERROR" {
+					t.Errorf("incomplete list: reason %v, want API_ERROR", m["reason"])
+				}
 				if !isErr || !strings.Contains(text, tc.diagnostic) || m["will_create"] != nil {
 					t.Fatalf("confirmed=%t: %s", confirmed, text)
 				}
