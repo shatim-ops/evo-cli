@@ -167,8 +167,18 @@ const maxListPages = 50
 // maxListPages pages are errors: the list is not complete (break r4, R4-8;
 // the cut list was a success).
 func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[string]any, error) {
+	items, _, err := c.ListClustersWithin(ctx, extra, maxListPages)
+	return items, err
+}
+
+// ListClustersWithin returns a complete list and the number of pages requested.
+// An incomplete list cannot establish membership in a project.
+func (c *Client) ListClustersWithin(ctx context.Context, extra url.Values, limit int) ([]map[string]any, int, error) {
+	limit = min(limit, maxListPages)
+	pages := 0
 	var all []map[string]any
-	more, err := pager.Upto(maxListPages, func(token string) (string, error) {
+	more, err := pager.Upto(limit, func(token string) (string, error) {
+		pages++
 		q := url.Values{}
 		for k, v := range extra {
 			q[k] = v
@@ -211,12 +221,12 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 		return page.NextPageToken, nil
 	})
 	if err != nil {
-		return nil, pager.Named("dbaas: clusters", err)
+		return nil, pages, pager.Named("dbaas: clusters", err)
 	}
 	if more {
-		return nil, pager.Named("dbaas: clusters", pager.TooManyPages(maxListPages))
+		return nil, pages, pager.Named("dbaas: clusters", pager.TooManyPages(limit))
 	}
-	return all, nil
+	return all, pages, nil
 }
 
 // GetCluster returns one cluster by id.

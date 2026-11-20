@@ -110,7 +110,16 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		}
 		return out
 	}
+	deleteID := stringArg(args, d.arg)
+	if name == "destroy" {
+		deleteID = firstNonEmptyStr(stringArg(res, "deleted_vm"), stringArg(res, "vm_id"), deleteID)
+	}
+	if name == "pg_delete" {
+		deleteID = firstNonEmptyStr(deleteID, stringArg(args, "cluster_id"))
+	}
 	switch reason := answerReason(answer); {
+	case name == "destroy" && (status == "partial" || boolArg(res, "cleanup_pending", false)):
+		out.Result, out.ResourceID, out.Reason = history.Unknown, deleteID, reason
 	case reason != "" && intent.OutcomeUnknown(reason, answerHTTPStatus(answer)):
 		// Cut after it sent — the network, a time limit, Ctrl-C: what it
 		// made may be there, named by its argument too («Риск», conclusion
@@ -126,12 +135,12 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 	case status == "already_deleted":
 		out.Result = history.AlreadyDeleted
 		if isDelete {
-			out.ResourceID = stringArg(args, d.arg)
+			out.ResourceID = deleteID
 		}
 	case isDelete:
 		// The id the delete takes: the same createdRef wrote in the line
 		// of the create, so the two meet (history.Live).
-		out.ResourceID = stringArg(args, d.arg)
+		out.ResourceID = deleteID
 		// A delete that goes on — its status a doing («deleting»), or a
 		// next step to read — has not removed its resource yet.
 		if strings.HasSuffix(status, "ing") || stringArg(res, "next_tool") != "" {
@@ -144,10 +153,18 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		switch {
 		case id == "":
 			out.Result = history.Unknown
-		case strings.HasPrefix(status, "already_"):
+		case name == "deploy" && stringArg(res, "deploy_action") == "updated":
+			out.Result, out.ResourceID = history.Changed, id
+		case strings.HasPrefix(status, "already_") || (name == "deploy" && stringArg(res, "deploy_action") == "unchanged"):
 			out.Result, out.ResourceID = history.Found, id
 		default:
 			out.Result, out.ResourceID = history.Created, id
+			// Both lostCreate and the create can return subnet_id. Only the
+			// latter carries the subnet object from POST.
+			if name == "subnet_create" {
+				subnet, _ := res["subnet"].(map[string]any)
+				out.CreateReceipt = stringArg(subnet, "id") == id
+			}
 		}
 	default:
 		out.Result = history.Changed
