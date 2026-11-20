@@ -110,6 +110,7 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// way: its settling is told by them too («Риск», conclusion 233, У1).
 		if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && own.hasOpen && own.open.ID == rec.ID {
 			rec.Parties = own.open.Parties
+			rec.Target = own.open.Target
 		}
 		if rec.Parties == nil {
 			rec.Parties = r.partiesOf(ctx, name, args)

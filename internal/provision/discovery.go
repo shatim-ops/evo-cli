@@ -14,6 +14,7 @@ import (
 	"net/url"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
@@ -390,11 +391,23 @@ func (a *CloudRuAdapter) AttachFloatingIP(ctx context.Context, fipID, projectID,
 
 // DeleteFloatingIP releases a floating IP via DELETE /api/v1/floating-ips/{id}.
 func (a *CloudRuAdapter) DeleteFloatingIP(ctx context.Context, fipID, projectID string) error {
+	return a.deleteFloatingIP(ctx, fipID, projectID, computeRetry)
+}
+
+// ReleaseFloatingIP lets the standalone release operation verify a lost reply
+// by ID. Deploy and destroy retain their own retry policies.
+func (a *CloudRuAdapter) ReleaseFloatingIP(ctx context.Context, fipID, projectID string) error {
+	policy := computeRetry
+	policy.DropMethods = nil
+	return a.deleteFloatingIP(ctx, fipID, projectID, policy)
+}
+
+func (a *CloudRuAdapter) deleteFloatingIP(ctx context.Context, fipID, projectID string, policy httpretry.Policy) error {
 	path := fmt.Sprintf("/api/v1/floating-ips/%s", seg(fipID))
 	if projectID != "" {
 		path += "?project_id=" + url.QueryEscape(projectID)
 	}
-	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
+	resp, err := a.doWithPolicy(ctx, http.MethodDelete, path, nil, policy)
 	if err != nil {
 		return err
 	}
