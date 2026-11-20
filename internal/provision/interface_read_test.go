@@ -113,3 +113,43 @@ func TestNetworkInterfaceDeniedNextPageDiscardsRows(t *testing.T) {
 		t.Fatalf("rows=%v err=%v", rows, err)
 	}
 }
+
+func TestNetworkInterfaceCompleteList(t *testing.T) {
+	const first = `{"items":[{"id":"a"}],"total":2}`
+	for _, tc := range []struct {
+		name  string
+		pages []string
+		count int // -1 requires a failure without a partial result.
+	}{
+		{"null", []string{"null"}, -1},
+		{"null tail", []string{first, "null"}, -1},
+		{"bare tail", []string{first, "[]"}, -1},
+		{"lost total", []string{first, `{"items":[]}`}, -1},
+		{"overlap", []string{`{"items":[{"id":"a"},{"id":"b"}],"total":4}`, `{"items":[{"id":"b"},{"id":"c"}],"total":4}`, `{"items":[]}`}, -1},
+		{"complete without repeated total", []string{first, `{"items":[{"id":"b"}]}`}, 2},
+		{"legacy bare array", []string{`[{"id":"a"}]`}, 1},
+		{"legacy empty array", []string{"[]"}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i := 0
+			srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if i >= len(tc.pages) {
+					t.Errorf("unexpected request %s", r.URL)
+					http.Error(w, "unexpected page", 400)
+					return
+				}
+				fmt.Fprint(w, tc.pages[i])
+				i++
+			})
+			defer srv.Close()
+			rows, err := a.ListInterfaces(t.Context(), "p")
+			if tc.count < 0 {
+				if err == nil || clierrors.Reason(err) != clierrors.CodeAPIError || len(rows) != 0 {
+					t.Fatalf("incomplete list rows=%v error=%v", rows, err)
+				}
+			} else if err != nil || len(rows) != tc.count {
+				t.Fatalf("rows=%v error=%v", rows, err)
+			}
+		})
+	}
+}

@@ -417,7 +417,7 @@
   "interface_get": {
     "group": "vpc",
     "id_args": [
-      "interface_id why=\"\" target=false ids=false kind={what:\"network interface\" byName:false list:\"interface_list\" check:true project:true card:false}"
+      "interface_id why=\"\" target=false ids=false kind={what:\"network interface\" byName:false list:\"interface_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[interface] whole:false own:[] workload:false deep:false}"
   },

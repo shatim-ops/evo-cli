@@ -65,7 +65,7 @@ func (s *Registry) handleInterfaceList(ctx context.Context, _ map[string]any) (s
 	return toJSON(map[string]any{"interfaces": rows}), false
 }
 
-var kindInterface = inProjectList("network interface", "interface_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+var kindInterface = withCard(inProjectList("network interface", "interface_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 	items, err := projectInterfaces(ctx, eng)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,18 @@ var kindInterface = inProjectList("network interface", "interface_list", compute
 		ids[i] = nic.ID
 	}
 	return ids, nil
-}))
+})), func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+	eng, err := c.engine(ctx)
+	if err != nil {
+		return nil, err
+	}
+	nic, err := eng.Cloud.GetInterface(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// Doctor and history use the actual resource card to establish existence.
+	return map[string]any{"id": nic.ID, "name": nic.Name, "state": nic.State}, nil
+})
 
 func (s *Registry) handleInterfaceGet(ctx context.Context, args map[string]any) (string, bool) {
 	id := stringArg(args, "interface_id")

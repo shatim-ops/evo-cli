@@ -109,7 +109,7 @@ func projectNotVisible(err error, projectID string) error {
 func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged bool) ([]*T, error) {
 	var out []*T
 	seen := map[string]bool{}
-	offset := 0
+	offset, promised := 0, 0
 	for range listMaxPages {
 		pq := url.Values{}
 		for k, v := range q {
@@ -163,7 +163,9 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			if !paged {
 				return out, nil
 			}
-			done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, page.Total, listPageSize)
+			// A later page may omit total; the earlier promise still applies.
+			promised = max(promised, page.Total)
+			done, err := offsetPageEnd(len(page.Items), fresh, len(out), promised, listPageSize)
 			if err != nil {
 				return nil, pager.Named(path, err)
 			}
@@ -173,7 +175,8 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			continue
 		}
 		var arr []T
-		if err := json.Unmarshal(body, &arr); err == nil {
+		// A bare array is a complete first response only. JSON null is not a list.
+		if offset == 0 && json.Unmarshal(body, &arr) == nil && arr != nil {
 			for i := range arr {
 				out = append(out, &arr[i])
 			}
@@ -188,7 +191,7 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 
 // offsetPageEnd decides after a page of an offset walk whether the list is
 // read: items is the size of the page, fresh how many of them were not read
-// before, read how many the list has now, offset the next offset, total the
+// before, read how many distinct rows the list has now, total the
 // answer's total (0: not given). A list read only in part is an error, not
 // a shorter list: evo deletes what is left over and counts from it
 // (break r4, R4-2…R4-5).
@@ -196,16 +199,16 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 // With a total: a page of items already read is an error (the server
 // ignores the offset, QA-9: 300 items, 100 distinct) — checked before the
 // offset reaches the total, or such a server with total=2*pageSize would
-// give half the list as the whole one (REL-2); offset at the total ends
+// give half the list as the whole one (REL-2); reading the promised number of distinct items ends
 // the list; an empty page before it is an error. Without one: an empty
 // page or a page shorter than pageSize ends it, a page of items already
 // read is an error.
-func offsetPageEnd(items, fresh, read, offset, total, pageSize int) (bool, error) {
+func offsetPageEnd(items, fresh, read, total, pageSize int) (bool, error) {
 	if total > 0 {
 		switch {
 		case items > 0 && fresh == 0:
 			return false, pager.NoNewItems(read, total)
-		case offset >= total:
+		case read >= total:
 			return true, nil
 		case items == 0:
 			return false, pager.EmptyPage(read, total)
@@ -311,7 +314,7 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 			out = append(out, &page.Items[i])
 		}
 		offset += len(page.Items)
-		done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, page.Total, sgRulesPageSize)
+		done, err := offsetPageEnd(len(page.Items), fresh, len(out), page.Total, sgRulesPageSize)
 		if err != nil {
 			return nil, pager.Named(base, err)
 		}
