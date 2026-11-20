@@ -25,6 +25,7 @@ func TestImageDeleteLostReplySurfaces(t *testing.T) {
 		before, deleteCode, after int
 		want                      string // terminal status on success, error reason on failure
 	}{
+		{"wrong ID before consent", 200, 0, 200, clierrors.CodeAPIError},
 		{"lost, gone", 200, 0, 404, "deleted"},
 		{"absent before consent", 404, 0, 404, "already_deleted"},
 		{"read denied", 403, 0, 404, clierrors.CodeAuthFailed},
@@ -39,6 +40,9 @@ func TestImageDeleteLostReplySurfaces(t *testing.T) {
 				rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 					code := tc.before
 					body := `{"id":"` + parityVM + `","name":"test image"}`
+					if tc.name == "wrong ID before consent" {
+						body = `{"id":"` + parityStoppedVM + `","name":"other resource"}`
+					}
 					if req.Method == "GET" && req.URL.Path == "/api/v1/images" && req.URL.Query().Get("project_id") == pvProject {
 						return contractRT{status: 200, body: `{"items":[` + body + `],"total":1}`}.RoundTrip(req)
 					}
@@ -116,7 +120,7 @@ func TestImageDeleteLostReplySurfaces(t *testing.T) {
 					}
 				}
 				wantWrites := 0
-				if tc.before == 200 {
+				if tc.name != "wrong ID before consent" && tc.before == 200 {
 					wantWrites = 1
 				}
 				wantChecks := 0

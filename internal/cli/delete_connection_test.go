@@ -18,6 +18,8 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/tools"
@@ -31,6 +33,9 @@ func checkDeleteConnectionRefused(t *testing.T, group, command, tool, key, colle
 		t.Run(surface, func(t *testing.T) {
 			world := withParityWorld(t)
 			t.Setenv("EVO_LANG", "ru")
+			lang := i18n.Lang()
+			t.Cleanup(func() { i18n.SetLang(lang) })
+			i18n.SetLang(i18n.RU)
 			t.Setenv("CLOUDRU_KEY_ID", "fixture-test-key")
 			dials, written := 0, 0
 			transport := &http.Transport{DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -87,6 +92,9 @@ func checkDeleteConnectionRefused(t *testing.T, group, command, tool, key, colle
 				if code == 0 || stderr == "" {
 					t.Errorf("exit=%d stdout=%s stderr=%s", code, out, stderr)
 				}
+				if surface == "human" && !strings.Contains(stderr, "Не удалось установить соединение") && !strings.Contains(stderr, "The connection failed before") {
+					t.Errorf("missing cause: %s", stderr)
+				}
 				if surface == "JSON" {
 					env, ok := errorEnvelope(stderr)
 					if !ok || env.Reason != "API_UNREACHABLE" {
@@ -99,6 +107,14 @@ func checkDeleteConnectionRefused(t *testing.T, group, command, tool, key, colle
 			}
 			local := httptest.NewServer(http.NotFoundHandler())
 			defer local.Close()
+			previousBase := httpretry.DefaultBase
+			httpretry.DefaultBase = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Host == local.Listener.Addr().String() {
+					return local.Client().Transport.RoundTrip(req)
+				}
+				return previousBase.RoundTrip(req)
+			})
+			t.Cleanup(func() { httpretry.DefaultBase = previousBase })
 			oldIAM, oldCompute := auth.IAMEndpoint, tools.ComputeBaseURL
 			auth.IAMEndpoint, tools.ComputeBaseURL = local.URL+"/token", local.URL
 			t.Cleanup(func() { auth.IAMEndpoint, tools.ComputeBaseURL = oldIAM, oldCompute })

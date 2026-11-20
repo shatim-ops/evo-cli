@@ -12,6 +12,8 @@ import "iter"
 // name (modules of other domains, step 0: docs/internal/briefs/modules.md,
 // §5). The tools of evo declare it in decls; New sets Tool.Decl.
 type Decl struct {
+	// doctor reports the observed state after an unacknowledged delete.
+	verifiesDeleteByRead bool
 	// Group is the tool's group when its name does not start with the
 	// group (groupPrefixes assign the rest).
 	Group string
@@ -251,7 +253,7 @@ var decls = map[string]Decl{
 	"image_create":         {Project: true, Created: created{id: "image.id", lost: "image_id", list: "image_list", field: "images", delete: "image_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "disk_id", kind: kindDisk}}, EchoedArgs: []echoedArg{{name: "description"}, {name: "display_name"}, {name: "user_data_template", summary: templateSummary}}, Untrusted: untrustedAnswer{fields: []string{"image", "will_create"}}},
 	"fip_attach":           {Group: "vpc", IDArgs: []idArg{{name: "fip", why: whyListed, party: partyFloatingIP}, {name: "vm", why: whyListed, party: partyVM}}},
 	"image_get":            {RequiredOneOf: [][]string{{"image", "image_id"}}, IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "image_id", kind: kindImage}}, Untrusted: untrustedAnswer{fields: []string{"image", "create", "fields", "fields_required", "zone_states", "zones_ready"}}},
-	"image_delete":         {Delete: deleteTarget{arg: "image_id", what: "image", whRU: "образ"}, IDArgs: []idArg{{name: "image_id", kind: kindImage, target: true}}},
+	"image_delete":         {verifiesDeleteByRead: true, Delete: deleteTarget{arg: "image_id", what: "image", whRU: "образ"}, IDArgs: []idArg{{name: "image_id", kind: kindImage, target: true}}},
 	"deploy_plan":          {Source: []string{"cidr"}, Group: "deploy", Project: true, IDArgs: []idArg{{name: "image", kind: kindImage}, {name: "base_plan_id", why: whyLocal}}},
 	"deploy_apply":         {Group: "deploy", Created: created{id: "vm_id", delete: "destroy"}, Nameless: "the VM is named by the saved plan, checked by deploy_plan", IDArgs: []idArg{{name: "plan_id", why: whyLocal}, {name: "vm_id", why: whyContinued}}, Untrusted: untrustedAnswer{fields: []string{"vm_status", "public_ip", "floating_ip_id", "ssh", "note", "existing_id"}}},
 	"list_flavors":         {Group: "vm", Untrusted: untrustedAnswer{fields: []string{"flavors"}}},
