@@ -415,7 +415,7 @@ var toolsRU = map[string]toolRU{
 	},
 	"vpc_routes": {
 		Short: "Статические маршруты VPC",
-		Long: "Статические маршруты VPC: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. " +
+		Long: "Статические маршруты VPC по UUID или имени сети: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. " +
 			"Только чтение.",
 		Args: map[string]string{
 			"vpc_id": "UUID или имя VPC (список: evo vpc list), обязательный",
@@ -423,7 +423,7 @@ var toolsRU = map[string]toolRU{
 	},
 	"vpc_route_create": {
 		Short: "Добавить статический маршрут в VPC (асинхронно)",
-		Long: "Добавить статический маршрут в VPC. Назначение — CIDR (--subnet); следующий узел — интерфейс ВМ " +
+		Long: "Добавить статический маршрут в VPC по UUID или имени сети. Назначение — CIDR (--subnet); следующий узел — интерфейс ВМ " +
 			"(--next-hop-vm-id и --next-hop-interface-id), виртуальный IP (--next-hop-vip-id) или Magic Router " +
 			"(--next-hop-magic-router-id и --next-hop-az). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.",
 		Args: map[string]string{
@@ -439,7 +439,7 @@ var toolsRU = map[string]toolRU{
 	},
 	"vpc_route_delete": {
 		Short: "Удалить статический маршрут из VPC (асинхронно)",
-		Long: "Удалить статический маршрут из VPC по id маршрута (список: 'evo vpc routes <vpc-id>'). " +
+		Long: "Удалить статический маршрут по его UUID. Для VPC укажите UUID или имя сети (список маршрутов: 'evo vpc routes <vpc-id>'). " +
 			"Операция асинхронная: ход — 'evo vpc operation <operation-id>'.",
 		Args: map[string]string{
 			"route_id": "UUID статического маршрута (список: evo vpc routes), обязательный",

@@ -745,19 +745,21 @@ func TestLbCreate_SubnetOfAnotherVPCRefused(t *testing.T) {
 // Повторная приемка #90, N-01: vpc_id не той VPC, что у группы целей,
 // отказывал текстом про подсеть; теперь отказ про сам vpc_id до запроса.
 func TestLbCreate_VPCOfAnotherTargetGroupRefused(t *testing.T) {
-	f := &raAPI{targetVMs: `{"id":"vm-1","interface_id":"if-1","vpc_id":"vpc-1","zone_id":"` + raAZ1 + `","zone_name":"ru.AZ-1"}`}
+	f := lbVPCFixture()
 	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
 	m, text, isErr := callNamed(t, r, "lb_create", map[string]any{"name": "web", "target_group_id": "tg-1", "port": float64(80),
-		"vpc_id": "vpc-other", "confirmed": true})
+		"vpc_id": "00000000-0000-4000-8000-000000000042", "confirmed": true})
 	if !isErr {
 		t.Fatalf("vpc_id of another VPC accepted: %s", text)
 	}
 	wantReason(t, "vpc_id of another VPC", m, text, "CONFIG_INVALID")
-	if !strings.Contains(text, `target group tg-1 is in VPC \"vpc-1\"`) {
+	if !strings.Contains(text, `target group tg-1 is in VPC \"`+auditUUID+`\"`) {
 		t.Errorf("refusal does not name the target group's VPC: %s", text)
 	}
-	if f.postCount() != 0 {
-		t.Error("refused call sent a POST")
+	for _, call := range f.calls {
+		if strings.HasPrefix(call, "POST ") || call == "GET vpc.api.cloud.ru/v1/vpcs" {
+			t.Fatalf("UUID mismatch sent %s", call)
+		}
 	}
 }
 

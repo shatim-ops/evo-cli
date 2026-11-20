@@ -1081,7 +1081,7 @@ func (s *Registry) registerTools() {
 				"target_port":     inRange(1, 65535, intProp("Target port (default: port).")),
 				"hc_port":         inRange(1, 65535, intProp("Health-check port (default: target_port).")),
 				"external":        boolPropTrue("Allocate a public IP (default true); false: internal only."),
-				"vpc_id":          strProp("VPC UUID (default: the target group's)."),
+				"vpc_id":          strProp("VPC UUID or name (default: the target group's)."),
 				"zone":            strProp("Zone name or UUID."),
 				"subnet_id":       strProp("Subnet UUID or name (default: the zone's main subnet of the VPC)."),
 				"confirmed":       confirmedProp(),
@@ -1127,12 +1127,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_routes",
-			Description: "List static routes of a VPC (id, subnet, next_hop_type, status). Read-only.",
+			Description: "List static routes of a VPC selected by UUID or name (id, subnet, next_hop_type, status). Read-only.",
 			InputSchema: objSchema(map[string]any{"vpc_id": strProp("VPC UUID or name (from vpc_list). Required.")}, "vpc_id"),
 		},
 		{
 			Name:        "vpc_route_create",
-			Description: "Add a static route to a VPC (async). Destination is a CIDR; the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az).",
+			Description: "Add a static route to a VPC selected by UUID or name (async). Destination is a CIDR; the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az).",
 			InputSchema: objSchema(map[string]any{
 				"vpc_id":                   strProp("VPC UUID or name. Required."),
 				"subnet":                   cidrProp("Destination CIDR, e.g. '192.168.0.0/24'. Required."),
@@ -1147,7 +1147,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_route_delete",
-			Description: "Delete a static route from a VPC by id (from vpc_routes) (async).",
+			Description: "Delete a static route by its UUID (from vpc_routes). Select the VPC by UUID or name (async).",
 			InputSchema: objSchema(map[string]any{
 				"vpc_id":    strProp("VPC UUID or name. Required."),
 				"route_id":  uuidProp("Static route UUID (from vpc_routes). Required."),

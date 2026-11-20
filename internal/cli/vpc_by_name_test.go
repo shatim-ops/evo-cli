@@ -57,6 +57,14 @@ func TestVPCNameOnCLIAndStdio(t *testing.T) {
 				if code != 1 || !strings.Contains(stderr, "USAGE") || !strings.Contains(stderr, other) || !response.isErr || !strings.Contains(response.text, other) || hasCyrillic(stderr+response.text) {
 					t.Fatal(code, stderr, response)
 				}
+				for _, lang := range []string{i18n.RU, i18n.EN} {
+					t.Setenv("EVO_LANG", lang)
+					i18n.SetLang(lang)
+					code, stdout, stderr := runCLI(t, "", "vpc", "delete", "pRivate-net", "--yes")
+					if code != 1 || !strings.Contains(stdout+stderr, other) || hasCyrillic(stdout+stderr) != (lang == i18n.RU) || len(w.rt.takeWrites()) != 0 {
+						t.Fatal(lang, code, stdout, stderr)
+					}
+				}
 			} else if code != 0 || !json.Valid([]byte(out)) || !strings.Contains(out, id) || !strings.Contains(out, "Private-Net") || !strings.Contains(response.text, "confirmation_required") || !strings.Contains(response.text, id) || !strings.Contains(response.text, "Private-Net") {
 				t.Fatal(code, out, stderr, response)
 			}
@@ -74,6 +82,46 @@ func TestVPCNameOnCLIAndStdio(t *testing.T) {
 				if answer.isErr || len(writes) != 1 || writes[0] != want {
 					t.Fatal(writes, answer)
 				}
+			}
+		})
+	}
+}
+
+func TestLBVPCNamePreservesCatalogFailure(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusForbidden, http.StatusNotFound} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			w, _ := withJSONWorld(t)
+			prior := w.rt.extra
+			w.rt.extra = func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path == "/v1/vpcs" {
+					if status == http.StatusOK {
+						return contractRT{status: 200, body: `{"vpcs":[]}`}.RoundTrip(req)
+					}
+					return contractRT{status: status, body: `{"message":"catalog failure"}`}.RoundTrip(req)
+				}
+				return prior(req)
+			}
+			catalogCode, _, catalogErr := runCLI(t, "", "vpc", "list", "--json")
+			var failure struct{ Error struct{ Reason string } }
+			wantCode := catalogCode
+			wantText := "catalog failure"
+			if status == http.StatusOK {
+				if catalogCode != 0 {
+					t.Fatal(catalogCode, catalogErr)
+				}
+				wantCode, wantText = 1, "no VPC"
+				failure.Error.Reason = "USAGE"
+			} else if json.Unmarshal([]byte(catalogErr), &failure) != nil || failure.Error.Reason == "" || catalogCode == 0 {
+				t.Fatal(catalogCode, catalogErr)
+			}
+			t.Logf("catalog HTTP %d: expected CLI exit %d, reason %s", status, wantCode, failure.Error.Reason)
+			code, out, stderr := runCLI(t, "", "lb", "create", "web", "--target-group-id", parityVM, "--port", "80", "--vpc-id", "private", "--yes", "--json")
+			if code != wantCode || out != "" || !strings.Contains(stderr, failure.Error.Reason) || !strings.Contains(stderr, wantText) {
+				t.Error(code, out, stderr)
+			}
+			resp, _ := roDecode(t, stdioRaw(t, parityServers(t).stdio, "lb_create", map[string]any{"target_group_id": parityVM, "name": "web", "port": 80, "vpc_id": "private", "confirmed": true}))
+			if !resp.isErr || !strings.Contains(resp.text, failure.Error.Reason) || !strings.Contains(resp.text, wantText) || len(w.rt.takeWrites()) != 0 {
+				t.Fatal(resp)
 			}
 		})
 	}

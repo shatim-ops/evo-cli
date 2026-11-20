@@ -312,10 +312,10 @@
 | `sg_rule_delete` | `evo vpc sg-rule-delete` | удаляет | `security_group`, `rule_id` | Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). | Удалить правило группы безопасности по его id |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |
 | `vpc_list` | `evo vpc list` | нет | — | List VPCs in the project (id, name, default, type). | Список VPC проекта |
-| `vpc_get` | `evo vpc get` | нет | `id` | Get full details of one VPC by id (from vpc_list). | VPC по ID: все сведения |
+| `vpc_get` | `evo vpc get` | нет | `id` | Get full details of one VPC by UUID or name (from vpc_list). | VPC по UUID или имени: все сведения |
 | `vpc_create` | `evo vpc create` | да | `name` | Create a VPC (async). | Создать VPC (асинхронно) |
-| `vpc_delete` | `evo vpc delete` | удаляет | `id` | Delete a VPC by id (from vpc_list) (async). | Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы) |
+| `vpc_delete` | `evo vpc delete` | удаляет | `id` | Delete a VPC by UUID or name (from vpc_list) (async). | Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы) |
 | `vpc_operation` | `evo vpc operation` | нет | `operation_id` | Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). | Состояние асинхронной операции VPC |
-| `vpc_routes` | `evo vpc routes` | нет | `vpc_id` | List static routes of a VPC (id, subnet, next_hop_type, status). | Статические маршруты VPC |
-| `vpc_route_create` | `evo vpc route-create` | да | `vpc_id`, `subnet`, `next_hop_vip_id` или `next_hop_vm_id` или `next_hop_magic_router_id` | Add a static route to a VPC (async). | Добавить статический маршрут в VPC (асинхронно) |
-| `vpc_route_delete` | `evo vpc route-delete` | удаляет | `vpc_id`, `route_id` | Delete a static route from a VPC by id (from vpc_routes) (async). | Удалить статический маршрут из VPC (асинхронно) |
+| `vpc_routes` | `evo vpc routes` | нет | `vpc_id` | List static routes of a VPC selected by UUID or name (id, subnet, next_hop_type, status). | Статические маршруты VPC |
+| `vpc_route_create` | `evo vpc route-create` | да | `vpc_id`, `subnet`, `next_hop_vip_id` или `next_hop_vm_id` или `next_hop_magic_router_id` | Add a static route to a VPC selected by UUID or name (async). | Добавить статический маршрут в VPC (асинхронно) |
+| `vpc_route_delete` | `evo vpc route-delete` | удаляет | `vpc_id`, `route_id` | Delete a static route by its UUID (from vpc_routes). | Удалить статический маршрут из VPC (асинхронно) |

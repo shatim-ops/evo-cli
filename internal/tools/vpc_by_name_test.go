@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -104,7 +105,8 @@ func TestVPCRoutePreviewNamesParentAndUsesID(t *testing.T) {
 
 func TestVPCNameAmbiguityPrecedesEveryAction(t *testing.T) {
 	for tool, args := range map[string]map[string]any{
-		"vpc_get": {"id": "shared"}, "vpc_delete": {"id": "shared", "confirmed": true},
+		"lb_create": {"name": "web", "target_group_id": "tg-1", "port": float64(80), "vpc_id": "shared", "confirmed": true},
+		"vpc_get":   {"id": "shared"}, "vpc_delete": {"id": "shared", "confirmed": true},
 		"vpc_routes":       {"vpc_id": "shared"},
 		"vpc_route_create": {"vpc_id": "shared", "subnet": "10.5.0.0/24", "next_hop_vip_id": auditUUID, "confirmed": true},
 		"vpc_route_delete": {"vpc_id": "shared", "route_id": auditUUID, "confirmed": true},
@@ -127,5 +129,89 @@ func TestVPCNameAmbiguityPrecedesEveryAction(t *testing.T) {
 				t.Fatal(extra, body)
 			}
 		})
+	}
+}
+
+func TestVPCNameRequiresProjectBeforeLookup(t *testing.T) {
+	r, rec := noProjectRegistry(t)
+	m, body, fail := callNamed(t, r, "vpc_get", map[string]any{"id": "not-global"})
+	if calls := rec.take(); !fail || m["reason"] != "CONFIG_INVALID" || len(calls) != 0 {
+		t.Fatal(calls, body)
+	}
+}
+
+func lbVPCFixture() *apiFake {
+	return &apiFake{own: func(w http.ResponseWriter, req *http.Request) bool {
+		switch req.URL.Path {
+		case "/v1/vpcs":
+			fmt.Fprintf(w, `{"vpcs":[{"id":%q,"name":"Private-Net"}]}`, auditUUID)
+		case "/v2/targetGroups/tg-1":
+			fmt.Fprintf(w, `{"id":"tg-1","name":"tg","vpc_id":%q}`, auditUUID)
+		case "/v2/networkLoadBalancers":
+			if req.Method == "POST" {
+				fmt.Fprint(w, `{"id":"op-1","done":false}`)
+			} else {
+				fmt.Fprint(w, `{"balancers":[]}`)
+			}
+		default:
+			return false
+		}
+		return true
+	}}
+}
+
+func TestLBVPCNameMatchesTargetGroup(t *testing.T) {
+	f := lbVPCFixture()
+	subs := raSubnets()
+	subs[0].VPCID = auditUUID
+	r := raRegistry(t, f, raCloud{subnets: subs}, nil)
+	args := map[string]any{"name": "web", "vpc_id": "private-net", "target_group_id": "tg-1", "port": float64(80), "zone": "ru.AZ-1"}
+	m, body, _ := callNamed(t, r, "lb_create", args)
+	if m["status"] != "confirmation_required" || !strings.Contains(body, "Private-Net") || !strings.Contains(body, auditUUID) {
+		t.Fatal(body)
+	}
+	args["confirmed"] = true
+	if _, body, failed := callNamed(t, r, "lb_create", args); failed {
+		t.Fatal(body)
+	}
+	posts := 0
+	for _, call := range f.calls {
+		if strings.HasPrefix(call, "POST ") {
+			posts++
+		}
+	}
+	if posts != 1 {
+		t.Fatalf("got %d POSTs: %v", posts, f.calls)
+	}
+	post, ok := f.posted("nlb.api.cloud.ru/v2/networkLoadBalancers")
+	var sent struct {
+		VPC string `json:"vpc_id"`
+	}
+	if !ok || json.Unmarshal([]byte(post), &sent) != nil || sent.VPC != auditUUID {
+		t.Fatal(post)
+	}
+}
+
+func TestLBVPCNameFailsOnIncompleteLaterPage(t *testing.T) {
+	f := lbVPCFixture()
+	requests := 0
+	f.own = func(w http.ResponseWriter, r *http.Request) bool {
+		if r.Method != "GET" || r.URL.Path != "/v1/vpcs" || r.URL.Query().Get("project_id") != dbaasProject {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL)
+			w.WriteHeader(400)
+			return true
+		}
+		requests++
+		if r.URL.Query().Get("pageToken") == "rest" {
+			fmt.Fprint(w, `{"vpcs":null}`)
+		} else {
+			fmt.Fprintf(w, `{"vpcs":[{"id":%q,"name":"Private-Net"}],"nextPageToken":"rest"}`, auditUUID)
+		}
+		return true
+	}
+	args := map[string]any{"name": "web", "port": float64(80), "target_group_id": "tg-1", "vpc_id": "private-net", "confirmed": true}
+	m, body, failed := callNamed(t, apiFakeRegistry(t, f), "lb_create", args)
+	if !failed || m["reason"] != "API_ERROR" || requests != 2 {
+		t.Fatal(requests, body)
 	}
 }
