@@ -65,7 +65,10 @@ __evo_unquote_word() {
 }
 
 __evo_get_completion_results() {
-    local args=() value i
+    local args=() value i program=evo
+    __evo_unquote_word "${words[0]}"
+    # An explicit path selects that installation even when another evo is on PATH.
+    case $value in */evo|*/cloudru-vm) program=$value ;; esac
     for ((i=1; i<cword; i++)); do
         __evo_unquote_word "${words[i]}"
         args+=("$value")
@@ -74,7 +77,7 @@ __evo_get_completion_results() {
     args+=("$value")
     cur=$value
     if [[ $cur == -*=* ]]; then cur=${cur#*=}; fi
-    out=$(evo __EVO_COMPLETION_REQUEST__ "${args[@]}" 2>/dev/null) || { out=; directive=1; return; }
+    out=$("$program" __EVO_COMPLETION_REQUEST__ "${args[@]}" 2>/dev/null) || { out=; directive=1; return; }
     directive=${out##*$'\n':}
     [[ $out == :* && $out != *$'\n'* ]] && directive=${out#:}
     case $directive in

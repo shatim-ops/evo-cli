@@ -85,6 +85,13 @@ line='evo --name $(touch_marker) a\ b'
 run 3 "$line" "${#line}" evo --name '$(touch_marker)' 'a\ b'
 [[ $(cat "$dir/argv") == $'--name\n$(touch_marker)\na b' ]] || exit 8
 [[ ! -e "$dir/executed" ]] || exit 9
+mkdir -p "$dir/path with space" || exit 11
+printf '%s\n' '#!/bin/sh' 'printf "via_path\n:4\n"' > "$dir/path with space/evo"
+chmod +x "$dir/path with space/evo"
+program='"'"$dir/path with space/evo"'"'
+line="$program v"
+run 1 "$line" "${#line}" "$program" v
+has via_path || exit 12
 `
 	loaders := []string{""}
 	for _, candidate := range []string{"/usr/share/bash-completion/bash_completion", "/etc/bash_completion", "/opt/homebrew/etc/profile.d/bash_completion.sh", "/usr/local/etc/profile.d/bash_completion.sh"} {
