@@ -61,6 +61,7 @@ func (tc networkRetryCase) exercise(t *testing.T, first string, appeared bool) {
 	posts, reads := 0, 0
 	approved, visible := false, false
 	unstableRead := 0
+	foreignPage := false
 	w.rt.extra = func(r *http.Request) (*http.Response, error) {
 		if r.URL.Host == tc.host && r.URL.Path == tc.path {
 			switch r.Method {
@@ -68,6 +69,9 @@ func (tc networkRetryCase) exercise(t *testing.T, first string, appeared bool) {
 				reads++
 				if visible {
 					body := tc.visibleList
+					if foreignPage {
+						body = strings.Replace(body, `"id":`, `"project_id":"another-project","id":`, 1)
+					}
 					if posts == 2 || (unstableRead > 0 && reads == unstableRead) {
 						body = strings.ReplaceAll(body, retryResourceID, retryNewID)
 					}
@@ -181,6 +185,12 @@ func (tc networkRetryCase) exercise(t *testing.T, first string, appeared bool) {
 		return
 	}
 	visible = true
+	foreignPage = true
+	outside := call(two, tc.tool, confirmed)
+	if !outside.isErr || parseObject(outside.text)["existing_id"] != nil || posts != 1 || !reflect.DeepEqual(retryReceipts(w.dir), saved) {
+		t.Fatalf("foreign project in list: POST=%d answer=%s", posts, outside.text)
+	}
+	foreignPage = false
 	checkList(true)
 	// A matching name with a different ID on recheck cannot settle the receipt.
 	unstableRead = reads + 2
