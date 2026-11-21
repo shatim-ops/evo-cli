@@ -213,10 +213,10 @@ func (c *Client) Consumption(ctx context.Context, startISO, endISO string) ([]ma
 			return "", c.consumptionError(status, data)
 		}
 		var out struct {
-			Consumptions  []map[string]any `json:"consumptions"`
-			NextPageToken string           `json:"next_page_token"`
+			Consumptions  pager.Rows[map[string]any] `json:"consumptions"`
+			NextPageToken string                     `json:"next_page_token"`
 		}
-		if err := json.Unmarshal(data, &out); err != nil {
+		if err := pager.DecodePage(data, &out); err != nil {
 			return "", fmt.Errorf(i18n.T("parse consumption: %w", "разбор потребления: %w"), err)
 		}
 		all = append(all, out.Consumptions...)

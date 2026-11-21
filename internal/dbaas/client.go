@@ -117,13 +117,9 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 	if status < 200 || status >= 300 {
 		return nil, apiError(status, data)
 	}
-	var out map[string]json.RawMessage
-	if err := json.Unmarshal(data, &out); err != nil {
+	items, _, err := pager.ObjectPage(data, field)
+	if err != nil {
 		return nil, fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
-	}
-	var items []map[string]any
-	if raw, ok := out[field]; ok {
-		_ = json.Unmarshal(raw, &items)
 	}
 	return items, nil
 }

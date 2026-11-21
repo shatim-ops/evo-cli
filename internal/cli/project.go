@@ -15,6 +15,7 @@ import (
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // evo project list / use: an explicit "active project" kept in the profile,
@@ -111,6 +112,9 @@ func resolveProjectArg(cmd *cobra.Command, cfg config.Config, want string) (id, 
 		return "", "", err
 	}
 	projects, listErr := listProjects(cmd.Context(), tok.Value)
+	if pager.IsIncomplete(listErr) {
+		return "", "", listErr
+	}
 	if listErr != nil {
 		if !looksLikeUUID(want) {
 			return "", "", clerrors.Wrap(clerrors.CodeConfigInvalid,

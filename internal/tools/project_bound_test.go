@@ -201,6 +201,10 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	// The children of a resource and the catalogue of addons: what a call
 	// on a child reads before its question.
 	switch {
+	case strings.HasPrefix(r.URL.Path, "/api/v1/security-groups/") && strings.HasSuffix(r.URL.Path, "/rules"):
+		// A group's child collection is a page, even when it has no rules.
+		_, _ = w.Write([]byte(`{"items":[],"total":0}`))
+		return
 	case strings.HasSuffix(r.URL.Path, "/databases"):
 		_, _ = w.Write([]byte(`{"databases":[{"name":"` + ownerChild + `"}]}`))
 		return

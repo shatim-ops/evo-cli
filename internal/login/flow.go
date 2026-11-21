@@ -519,6 +519,9 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 			return "", 0, withStatus(clierrors.New(clierrors.CodeAPIError,
 				eOrgStatus(resp.StatusCode, path), eRetry()), resp.StatusCode)
 		}
+		if err := pager.CheckObjectRows(m, key); err != nil {
+			return "", 0, err
+		}
 		xs, _ := m[key].([]any)
 		for _, x := range xs {
 			if o, ok := x.(map[string]any); ok {

@@ -173,15 +173,9 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 		if status < 200 || status >= 300 {
 			return "", apiError(status, data)
 		}
-		var out map[string]json.RawMessage
-		if err := json.Unmarshal(data, &out); err != nil {
+		page, out, err := pager.ObjectPage(data, field)
+		if err != nil {
 			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
-		}
-		var page []map[string]any
-		if raw, ok := out[field]; ok {
-			if err := json.Unmarshal(raw, &page); err != nil && field == "records" && pager.IsReconciliation(ctx) {
-				return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
-			}
 		}
 		if field == "records" && pager.IsReconciliation(ctx) {
 			visibility := "public"

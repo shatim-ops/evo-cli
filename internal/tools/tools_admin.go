@@ -26,16 +26,16 @@ import (
 // adminGET performs an authenticated GET against an absolute Cloud.ru API URL
 // and returns the decoded JSON. Used for the read-only IAM / Organization
 // admin endpoints (they share the same IAM bearer token).
-func (s *Registry) adminGET(ctx context.Context, rawurl string) (map[string]any, error) {
+func (s *Registry) adminGET(ctx context.Context, rawurl string, fields ...string) (map[string]any, error) {
 	eng, err := s.engineFor(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	return tokenGET(ctx, eng.Auth, rawurl)
+	return tokenGET(ctx, eng.Auth, rawurl, fields...)
 }
 
 // tokenGET is adminGET with the token of tp.
-func tokenGET(ctx context.Context, tp auth.TokenProvider, rawurl string) (map[string]any, error) {
+func tokenGET(ctx context.Context, tp auth.TokenProvider, rawurl string, fields ...string) (map[string]any, error) {
 	tok, err := tp.Token(ctx)
 	if err != nil {
 		return nil, err
@@ -58,6 +58,9 @@ func tokenGET(ctx context.Context, tp auth.TokenProvider, rawurl string) (map[st
 	if resp.StatusCode != 200 {
 		msg, _ := m["message"].(string)
 		return nil, &adminHTTPError{Status: resp.StatusCode, Msg: msg}
+	}
+	if err := pager.CheckObjectRows(m, fields...); err != nil {
+		return nil, err
 	}
 	return m, nil
 }
@@ -95,7 +98,7 @@ func (s *Registry) handleIamServiceAccounts(ctx context.Context, args map[string
 		if token != "" {
 			u += "&pageToken=" + neturl.QueryEscape(token)
 		}
-		m, err := s.adminGET(ctx, u)
+		m, err := s.adminGET(ctx, u, "service_accounts", "serviceAccounts")
 		if err != nil {
 			return "", err
 		}
@@ -200,7 +203,7 @@ func orgProjectPages(ctx context.Context, tp auth.TokenProvider) (raw []any, lat
 		if token != "" {
 			u += "?page_token=" + neturl.QueryEscape(token)
 		}
-		m, err := tokenGET(ctx, tp, u)
+		m, err := tokenGET(ctx, tp, u, "projects")
 		if err != nil {
 			laterPage = token != ""
 			return "", 0, err
@@ -247,7 +250,7 @@ func quotaUsagesURL(projectID string) string {
 // quota usages as org_quotas does; a 403 is engine.ErrQuotasForbidden — a
 // key of a project reads none (P37, D60).
 func QuotaProbe(ctx context.Context, tp auth.TokenProvider, projectID string) error {
-	_, err := tokenGET(ctx, tp, quotaUsagesURL(projectID))
+	_, err := tokenGET(ctx, tp, quotaUsagesURL(projectID), "usages")
 	var he *adminHTTPError
 	if errors.As(err, &he) && he.Status == http.StatusForbidden {
 		return fmt.Errorf("%w: %s", engine.ErrQuotasForbidden, he.Msg)
@@ -267,7 +270,7 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 		if token != "" {
 			u += "&page_token=" + neturl.QueryEscape(token)
 		}
-		m, err := s.adminGET(ctx, u)
+		m, err := s.adminGET(ctx, u, "usages")
 		if err != nil {
 			return "", err
 		}
@@ -321,7 +324,7 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 // paged (organization api.op.v3.yaml, v3ListQuotaResourceTypesResponse:
 // resource_types of v3QuotaResourceType — code, name, product_name, unit).
 func (s *Registry) quotaTypes(ctx context.Context) map[string]map[string]any {
-	m, err := s.adminGET(ctx, "https://organization.api.cloud.ru/v3/quotas/resourceTypes")
+	m, err := s.adminGET(ctx, "https://organization.api.cloud.ru/v3/quotas/resourceTypes", "resource_types")
 	if err != nil {
 		return nil
 	}

@@ -189,7 +189,7 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			}
 			continue
 		}
-		var arr []T
+		var arr pager.Rows[T]
 		// After the first page, only the NAT delete inventory verifies a bare
 		// array against the promised total and all previously seen gateway IDs.
 		if (offset == 0 || (verifyNAT && promised > 0)) && json.Unmarshal(body, &arr) == nil && arr != nil {
@@ -304,7 +304,7 @@ const (
 func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string) ([]*SGRule, error) {
 	var out []*SGRule
 	seen := map[string]bool{}
-	offset := 0
+	offset, promised := 0, 0
 	base := fmt.Sprintf("/api/v1/security-groups/%s/rules", seg(sgID))
 	for range sgRulesMaxPages {
 		path := fmt.Sprintf("%s?offset=%d&limit=%d", base, offset, sgRulesPageSize)
@@ -318,6 +318,9 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 		if err != nil {
 			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode security group rules", "не удалось разобрать правила группы безопасности"), hintUnexpectedFormatVerbose(), err)
 		}
+		if page.Items == nil {
+			return nil, pager.Named(base, pager.Incomplete(i18n.T("missing list items", "отсутствует поле элементов списка")))
+		}
 		fresh := 0
 		for i := range page.Items {
 			if id := page.Items[i].ID; id != "" {
@@ -330,7 +333,8 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 			out = append(out, &page.Items[i])
 		}
 		offset += len(page.Items)
-		done, err := offsetPageEnd(len(page.Items), fresh, len(out), page.Total, sgRulesPageSize)
+		promised = max(promised, page.Total)
+		done, err := offsetPageEnd(len(page.Items), fresh, len(out), promised, sgRulesPageSize)
 		if err != nil {
 			return nil, pager.Named(base, err)
 		}

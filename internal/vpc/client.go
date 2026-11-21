@@ -174,10 +174,10 @@ func (c *Client) listPages(ctx context.Context, path string, query url.Values, f
 			return "", apiError(status, data)
 		}
 		var out map[string]json.RawMessage
-		if err := json.Unmarshal(data, &out); err != nil {
+		if err := pager.DecodePage(data, &out); err != nil {
 			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 		}
-		var page []map[string]any
+		var page pager.Rows[map[string]any]
 		if raw, ok := out[field]; ok {
 			if err := json.Unmarshal(raw, &page); err != nil {
 				return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
