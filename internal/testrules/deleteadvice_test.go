@@ -26,6 +26,8 @@ var deleteVerb = regexp.MustCompile(`(?i)\b(delet|remov|eras|purg|wip)\w*|уда
 // (internal/cli/local_commands.go) print: the command → its files. A new
 // local command without a line here fails the test.
 var localCommandFiles = map[string][]string{
+	"evo intent":                {"internal/cli/intent_close.go"},
+	"evo intent close":          {"internal/cli/intent_close.go", "internal/intent/manual.go", "internal/tools/manual_review.go"},
 	"evo configure":             {"internal/cli/configure.go", "internal/cli/credentials.go"},
 	"evo configure list":        {"internal/cli/configure.go"},
 	"evo configure delete":      {"internal/cli/configure.go"},

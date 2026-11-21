@@ -23,7 +23,12 @@ import (
 )
 
 func newIntentCmd() *cobra.Command {
-	group := &cobra.Command{Use: "intent", Short: i18n.T("Review local receipts for interrupted operations", "Проверять локальные квитанции оборванных операций")}
+	group := &cobra.Command{
+		Use:   "intent",
+		Short: i18n.T("Review local receipts for interrupted operations", "Проверять локальные квитанции оборванных операций"),
+		Args:  noArgs,
+		RunE:  func(cmd *cobra.Command, args []string) error { return cmd.Help() },
+	}
 	var noninteractive bool
 	closeCmd := &cobra.Command{Use: "close <id>", Short: i18n.T("Close the local review of one receipt in a terminal", "Закрыть разбор одной локальной квитанции в терминале"), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		refused := func() error {
@@ -32,10 +37,11 @@ func newIntentCmd() *cobra.Command {
 		if flagYes || noninteractive || flagJSON || flagDryRun || !manualTerminal() {
 			return refused()
 		}
-		for _, k := range []string{"CI", "GITHUB_ACTIONS", "GITLAB_CI", "JENKINS_URL", "TF_BUILD", "BUILDKITE", "CIRCLECI", "TEAMCITY_VERSION"} {
-			if os.Getenv(k) != "" {
-				return refused()
-			}
+		if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" ||
+			os.Getenv("GITLAB_CI") != "" || os.Getenv("JENKINS_URL") != "" ||
+			os.Getenv("TF_BUILD") != "" || os.Getenv("BUILDKITE") != "" ||
+			os.Getenv("CIRCLECI") != "" || os.Getenv("TEAMCITY_VERSION") != "" {
+			return refused()
 		}
 		load := func() (*intent.ManualSnapshot, error) {
 			root, err := stateDir()
@@ -74,7 +80,7 @@ func newIntentCmd() *cobra.Command {
 			return nil
 		}
 		in := s.Record
-		fmt.Fprintf(os.Stderr, i18n.T("Receipt %s in %q\nTool %q, name %q, target %q, project %q, owner %q (key %q), started %s, write sent.\n", "Квитанция %s в %q\nИнструмент %q, имя %q, цель %q, проект %q, владелец %q (ключ %q), начало %s, запись отправлена.\n"), in.ID, in.Dir, in.Tool, in.Name, in.Target, in.ProjectID, in.Key.ServiceAccountID, config.MaskKeyID(in.Key.KeyID), in.StartedAt.Format(time.RFC3339))
+		fmt.Fprintf(os.Stderr, i18n.T("Receipt %q in %q\nTool %q, name %q, target %q, project %q, owner %q (key %q), started %s, write sent.\n", "Квитанция %q в %q\nИнструмент %q, имя %q, цель %q, проект %q, владелец %q (ключ %q), начало %s, запись отправлена.\n"), in.ID, in.Dir, in.Tool, in.Name, in.Target, in.ProjectID, in.Key.ServiceAccountID, config.MaskKeyID(in.Key.KeyID), in.StartedAt.Format(time.RFC3339))
 		fmt.Fprintln(os.Stderr, i18n.T("This closes local review only. The cloud outcome is unknown. The resource may exist and incur charges. This does not authorize a retry. Enter the full receipt ID:", "Закрывается только локальный разбор. Облачный исход неизвестен. Ресурс может существовать и тарифицироваться. Повтор не разрешается. Введите полный ID квитанции:"))
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 		if err != nil || strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r") != in.ID {

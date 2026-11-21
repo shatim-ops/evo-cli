@@ -270,7 +270,7 @@ func (s *ManualSnapshot) Apply(recheck func() (*ManualSnapshot, error)) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(stage, "decision.json"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	f, err := config.OpenNoFollow(filepath.Join(stage, "decision.json"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
