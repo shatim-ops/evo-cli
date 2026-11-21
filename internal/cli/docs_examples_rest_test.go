@@ -20,6 +20,7 @@ import (
 	"unicode"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -470,6 +471,58 @@ func TestDocsExamples_Links(t *testing.T) {
 	}
 	if n < 20 {
 		t.Fatalf("only %d relative links parsed", n)
+	}
+}
+
+// Check each archive's file set. A target can exist in Git while the archive
+// omits it; check outgoing links from the packaged guides as well as README.
+func TestDocsExamples_ArchiveLinks(t *testing.T) {
+	var config struct {
+		Archives []struct {
+			ID    string
+			Files []string
+		}
+	}
+	if err := yaml.Unmarshal(mustReadRepo(t, ".goreleaser.yaml"), &config); err != nil {
+		t.Fatal(err)
+	}
+	if len(config.Archives) == 0 {
+		t.Fatal("no archive recipes")
+	}
+	for _, archive := range config.Archives {
+		t.Run(archive.ID, func(t *testing.T) {
+			files := map[string]bool{}
+			for _, pattern := range archive.Files {
+				matches, err := filepath.Glob(filepath.Join(repoRoot, pattern))
+				if err != nil || len(matches) == 0 {
+					t.Fatalf("archive pattern %q: matches %v, error %v", pattern, matches, err)
+				}
+				for _, match := range matches {
+					rel, err := filepath.Rel(repoRoot, match)
+					if err != nil {
+						t.Fatal(err)
+					}
+					files[rel] = true
+				}
+			}
+			if !files["README.md"] {
+				t.Error("archive omits README.md")
+			}
+			for source := range files {
+				if filepath.Ext(source) != ".md" {
+					continue
+				}
+				for _, link := range markdownLinks(string(mustReadRepo(t, source))) {
+					if skipDocLink(link.raw) {
+						continue
+					}
+					target, _ := resolveDocLink(source, link.raw)
+					if !files[target] {
+						t.Errorf("%s:%d: archive omits %s (link %q)", source, link.line, target, link.raw)
+					}
+				}
+			}
+		})
 	}
 }
 
