@@ -891,6 +891,10 @@ func toolPreview(name string, resp map[string]any) confirm.Preview {
 		p.Lines = append(p.Lines, engine.ProvenanceLine(prov))
 		delete(rest, "provenance")
 	}
+	if name == "k8s_nodepool_upgrade" && namedRef(rest, "cluster_name") {
+		rest["cluster_id"] = refValue(rest, "cluster_id")
+		delete(rest, "cluster_name")
+	}
 	p.Lines = append(p.Lines, argLines(rest)...)
 	return p
 }
