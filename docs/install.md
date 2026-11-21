@@ -217,7 +217,8 @@ Tab дополняет команды и флаги, а с 1.5 — и значе
 ```sh
 # bash: создайте файл и подключите в текущей оболочке
 dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
-mkdir -p "$dir" && evo completion bash > "$dir/evo"
+mkdir -p "$dir"
+evo completion bash > "$dir/evo"
 source "$dir/evo"
 # zsh: каталог из $fpath, куда у вас есть запись, например
 evo completion zsh > "${fpath[1]}/_evo"
@@ -234,6 +235,15 @@ Bash работает и без пакета bash-completion. Если ваша 
 `EVO_BASHRC=0` оставляет настройку ручной. Повторная установка распознаёт
 свою строку, а `install.sh --uninstall` убирает её. Для Bash в режиме
 входа проверьте, что ваш профиль входа подключает `~/.bashrc`.
+
+В Debian с bash-completion 2.11 при пробеле в `XDG_DATA_HOME` загрузчик
+может пропустить файл evo. Подключите его явно строкой
+`source "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo"`
+в `~/.bashrc` или разрешите установщику добавить строку.
+
+Если вызываете evo по полному пути с пробелом, экранируйте пробел обратной косой чертой.
+Например, наберите `/opt/my\ tools/evo vm lis` и нажмите Tab. В проверенном Bash 5 на Debian при вводе
+`"/opt/my tools/evo" vm lis` Readline не вызывает обработчик дополнения.
 
 Выбор из списка стрелками в zsh скрипт `evo completion zsh` включает сам —
 только для evo (`zstyle ':completion:*:*:evo:*' menu yes select`) и только если
