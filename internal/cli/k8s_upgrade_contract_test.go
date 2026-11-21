@@ -508,16 +508,7 @@ func TestUpgradeLostPreviewResponse(t *testing.T) {
 					}
 					return old(req)
 				}
-				server := newROServers(t).plain
-				var call func(map[string]any) roAnswer
-				if surface == "stdio" {
-					call = processUpgradeStdio(t, server)
-				} else {
-					h := mcp.NewHTTPHandler(server, mcp.HTTPOptions{})
-					t.Cleanup(h.Close)
-					_, session := retryRPC(t, h, "", "initialize", map[string]any{"protocolVersion": "2025-03-26"})
-					call = func(params map[string]any) roAnswer { a, _ := retryRPC(t, h, session, "tools/call", params); return a }
-				}
+				call := upgradeRPC(t, surface)
 				args := map[string]any{r.argument: r.id, "version": upgradeTo}
 				params := map[string]any{"name": r.tool, "arguments": args}
 				preview := call(params)
@@ -593,5 +584,62 @@ func TestUpgradeStatelessHTTPExplainsSessionAndReadsReceipt(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func upgradeRPC(t *testing.T, surface string) func(map[string]any) roAnswer {
+	t.Helper()
+	server := newROServers(t).plain
+	if surface == "stdio" {
+		return processUpgradeStdio(t, server)
+	}
+	h := mcp.NewHTTPHandler(server, mcp.HTTPOptions{})
+	t.Cleanup(h.Close)
+	_, session := retryRPC(t, h, "", "initialize", map[string]any{"protocolVersion": "2025-03-26"})
+	return func(params map[string]any) roAnswer {
+		a, _ := retryRPC(t, h, session, "tools/call", params)
+		return a
+	}
+}
+
+func TestUpgradeRejectsBlankPreviewIDBeforeCloud(t *testing.T) {
+	for _, surface := range []string{"stdio", "HTTP"} {
+		for _, tool := range []string{"k8s_upgrade", "k8s_nodepool_upgrade"} {
+			t.Run(surface+"/"+tool, func(t *testing.T) {
+				w, _ := withJSONWorld(t)
+				inner := w.rt.extra
+				requests := 0
+				w.rt.extra = func(r *http.Request) (*http.Response, error) {
+					requests++
+					return inner(r)
+				}
+				call := upgradeRPC(t, surface)
+				args := map[string]any{"version": upgradeTo}
+				if tool == "k8s_upgrade" {
+					args["cluster_id"] = upgradeParityCluster
+				} else {
+					args["nodepool_id"] = upgradeParityPool
+				}
+				params := map[string]any{"name": tool, "arguments": args}
+				preview := parseObject(call(params).text)
+				id, _ := preview["preview_id"].(string)
+				if preview["status"] != "confirmation_required" || id == "" || requests == 0 || len(w.rt.takeWrites()) != 0 {
+					t.Fatalf("omitted preview_id: %v, requests=%d", preview, requests)
+				}
+				for _, confirmed := range []bool{false, true} {
+					for _, value := range []struct{ name, text string }{{"empty", ""}, {"whitespace", " \t "}} {
+						t.Run(fmt.Sprintf("%s/confirmed=%t", value.name, confirmed), func(t *testing.T) {
+							args["confirmed"], args["preview_id"] = confirmed, value.text
+							requests = 0
+							a := call(params)
+							obj := parseObject(a.text)
+							if !a.isErr || obj["reason"] != "USAGE" || obj["argument"] != "preview_id" || obj["preview_id"] != nil || requests != 0 {
+								t.Fatalf("got %s, cloud requests=%d", a.text, requests)
+							}
+						})
+					}
+				}
+			})
+		}
 	}
 }
