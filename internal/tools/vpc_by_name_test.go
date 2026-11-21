@@ -251,40 +251,71 @@ func TestVPCNameListFiltersNeedCompleteCatalog(t *testing.T) {
 }
 
 func TestVPCFilterCatalogReadCounts(t *testing.T) {
-	for _, tool := range []string{"list_subnets", "lb_list", "tg_list", "vpc_list"} {
-		for _, ref := range []string{"Shared", auditUUID} {
-			t.Run(tool+"/"+ref, func(t *testing.T) {
+	for _, tc := range []struct {
+		tool, ref, targetPath string
+	}{
+		{"list_subnets", "Shared", "/api/v1/subnets"},
+		{"list_subnets", auditUUID, "/api/v1/subnets"},
+		{"lb_list", "Shared", "/v2/networkLoadBalancers"},
+		{"lb_list", auditUUID, "/v2/networkLoadBalancers"},
+		{"tg_list", "Shared", "/v2/targetGroups"},
+		{"tg_list", auditUUID, "/v2/targetGroups"},
+		{"vpc_list", "", ""},
+	} {
+		for _, page := range []struct {
+			name, body string
+			wantError  bool
+		}{
+			{"empty-array", `{"vpcs":[]}`, false},
+			{"null-list", `{"vpcs":null}`, true},
+		} {
+			name := tc.tool
+			if tc.ref != "" {
+				name += "/" + tc.ref
+			}
+			t.Run(name+"/"+page.name, func(t *testing.T) {
 				reads, targets := 0, 0
 				f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
-					if r.Method != "GET" {
-						t.Fatal(r.Method, r.URL)
-					}
-					if r.URL.Path == "/v1/vpcs" {
+					switch {
+					case r.Method == "GET" && r.URL.Path == "/v1/vpcs":
 						reads++
-						if r.URL.Query().Get("pageToken") == "last" {
-							if ref == auditUUID {
-								fmt.Fprint(w, `{"vpcs":null}`)
-							} else {
-								fmt.Fprint(w, `{"vpcs":[]}`)
-							}
-						} else {
+						token := r.URL.Query().Get("pageToken")
+						switch {
+						case reads == 1 && token == "":
 							fmt.Fprintf(w, `{"vpcs":[{"id":%q,"name":"Shared"}],"nextPageToken":"last"}`, auditUUID)
+						case reads == 2 && token == "last":
+							fmt.Fprint(w, page.body)
+						default:
+							t.Errorf("unexpected catalog GET #%d: %s", reads, r.URL)
+							w.WriteHeader(http.StatusBadRequest)
 						}
-					} else {
+					case r.Method == "GET" && r.URL.Path == tc.targetPath:
 						targets++
 						fmt.Fprint(w, `{"items":[],"balancers":[],"targetGroups":[]}`)
+					default:
+						t.Errorf("unexpected request %s %s", r.Method, r.URL)
+						w.WriteHeader(http.StatusBadRequest)
 					}
 					return true
 				}}
-				args := map[string]any{"vpc_id": ref}
-				wantTargets := 1
-				if tool == "vpc_list" {
-					args = nil
-					wantTargets = 0
+				var args map[string]any
+				wantTargets := 0
+				if tc.ref != "" {
+					args = map[string]any{"vpc_id": tc.ref}
+					if !page.wantError {
+						wantTargets = 1
+					}
 				}
-				_, body, failed := callNamed(t, apiFakeRegistry(t, f), tool, args)
-				if failed || !strings.Contains(body, auditUUID) || reads != 2 || targets != wantTargets {
-					t.Fatal(reads, targets, body)
+				result, body, failed := callNamed(t, apiFakeRegistry(t, f), tc.tool, args)
+				if reads != 2 || targets != wantTargets || failed != page.wantError {
+					t.Fatalf("catalog GETs=%d target GETs=%d failed=%t: %s", reads, targets, failed, body)
+				}
+				if page.wantError {
+					if result["reason"] != "API_ERROR" || strings.Contains(body, auditUUID) {
+						t.Fatal(body)
+					}
+				} else if !strings.Contains(body, auditUUID) {
+					t.Fatal(body)
 				}
 			})
 		}
