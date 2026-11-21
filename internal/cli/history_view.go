@@ -7,6 +7,7 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -175,7 +176,7 @@ func newIntentCmd() *cobra.Command {
 		RunE:  func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
 	var noninteractive bool
-	closeCmd := &cobra.Command{Use: "close <id>", Short: i18n.T("Close the local review of one receipt in a terminal", "Закрыть разбор одной локальной квитанции в терминале"), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	closeCmd := &cobra.Command{Use: "close <id>", Short: i18n.T("Close the local review of one receipt in a terminal", "Закрыть разбор одной локальной квитанции в терминале"), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) (result error) {
 		refused := func() error {
 			return clerrors.New(clerrors.CodeConfirmationRequired, i18n.T("Closing a receipt requires a new confirmation in a local terminal.", "Для закрытия квитанции необходимо новое подтверждение в локальном терминале."), "")
 		}
@@ -215,7 +216,11 @@ func newIntentCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		defer s.Close()
+		defer func() {
+			if err := s.Close(); err != nil {
+				result = errors.Join(result, err)
+			}
+		}()
 		marked, err := s.Marked()
 		if err != nil {
 			return err
@@ -223,6 +228,13 @@ func newIntentCmd() *cobra.Command {
 		if marked {
 			fmt.Fprintln(os.Stderr, i18n.T("This version was already closed locally. The cloud outcome is unknown.", "Разбор этой версии уже закрыт локально. Облачный исход неизвестен."))
 			return nil
+		}
+		pin, err := s.PrepareTerminal()
+		if err != nil {
+			return err
+		}
+		if pin != "" {
+			fmt.Fprintf(os.Stderr, i18n.T("Temporary receipt link %q keeps this version until cleanup, including after a crash.\n", "Временная ссылка %q хранит эту версию квитанции до уборки, в том числе после аварии.\n"), pin)
 		}
 		in := s.Record
 		fmt.Fprintf(os.Stderr, i18n.T("Receipt %q in %q\nTool %q, name %q, target %q, project %q, owner %q (key %q), started %s, write sent.\n", "Квитанция %q в %q\nИнструмент %q, имя %q, цель %q, проект %q, владелец %q (ключ %q), начало %s, запись отправлена.\n"), in.ID, in.Dir, in.Tool, in.Name, in.Target, in.ProjectID, in.Key.ServiceAccountID, config.MaskKeyID(in.Key.KeyID), in.StartedAt.Format(time.RFC3339))

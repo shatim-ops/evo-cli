@@ -94,6 +94,9 @@ func TestContract_ManualReviewPreservesHistoryAndGuards(t *testing.T) {
 	if err = s.Eligible(eng.Maker(), cfg.ProjectID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = s.PrepareTerminal(); err != nil {
+		t.Fatal(err)
+	}
 	if err = s.Apply(load); err != nil {
 		t.Fatal(err)
 	}
