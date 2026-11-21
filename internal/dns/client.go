@@ -174,7 +174,7 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 		}
 		page, out, err := pager.ObjectPage(data, field)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 		}
 		items = append(items, page...)
 		var next string

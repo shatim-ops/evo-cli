@@ -124,6 +124,9 @@ func Named(what string, err error) error {
 // them by it.
 var errIncomplete = stderrors.New("the list is not complete")
 
+// IsIncomplete distinguishes a damaged collection from a refusal to list it.
+func IsIncomplete(err error) bool { return stderrors.Is(err, errIncomplete) }
+
 // Incomplete is the error of a list read only in part: API_ERROR, as
 // billing answered a broken page sequence before (QA-2).
 func Incomplete(why string) *clierrors.CLIError {

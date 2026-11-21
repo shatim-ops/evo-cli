@@ -403,8 +403,7 @@ func listProjectsPage(ctx context.Context, token, pageToken string) ([]orgProjec
 		NextPageToken string                 `json:"next_page_token"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, "", clerrors.Wrap(clerrors.CodeAPIError, i18n.T("unexpected response from the Organization API", "неожиданный ответ Organization API"),
-			i18n.T("Pass --project-id", "Передайте --project-id"), err)
+		return nil, "", pager.Incomplete(i18n.T("unexpected response from the Organization API", "неожиданный ответ Organization API"))
 	}
 	if body == nil {
 		return nil, "", pager.Incomplete(i18n.T("expected a project list page", "ожидалась страница списка проектов"))
@@ -416,6 +415,9 @@ func listProjectsPage(ctx context.Context, token, pageToken string) ([]orgProjec
 // user's choice, or the current one when it is still in the list.
 func chooseProject(ctx context.Context, token, current string, con *console, printer *output.Printer) (string, error) {
 	projects, err := listProjects(ctx, token)
+	if pager.IsIncomplete(err) {
+		return "", err
+	}
 	if err != nil {
 		if !con.interactive {
 			if current != "" {

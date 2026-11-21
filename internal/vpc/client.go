@@ -172,12 +172,15 @@ func (c *Client) listPages(ctx context.Context, path string, query url.Values, f
 		if status < 200 || status >= 300 {
 			return "", apiError(status, data)
 		}
-		page, out, err := pager.ObjectPage(data, field)
-		if err != nil {
-			if verifyReferences {
-				return "", incompleteVPCReferences()
+		var out map[string]json.RawMessage
+		if err := pager.DecodePage(data, &out); err != nil {
+			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
+		}
+		var page pager.Rows[map[string]any]
+		if raw, ok := out[field]; ok {
+			if err := json.Unmarshal(raw, &page); err != nil {
+				return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 			}
-			return "", err
 		}
 		if verifyReferences {
 			if page == nil {

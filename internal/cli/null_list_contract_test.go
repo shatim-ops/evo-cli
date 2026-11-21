@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
@@ -115,5 +117,75 @@ func TestContract_IncompletePostgresCatalog(t *testing.T) {
 	}
 	if n := other.Load(); n != 0 {
 		t.Errorf("%d unexpected requests", n)
+	}
+}
+
+// Only an unavailable catalog allows saving a UUID without checking it.
+// A damaged second page must leave both the selected project and credentials intact.
+func TestProjectSelection_IncompleteCatalogKeepsProfile(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		args     []string
+		denied   bool
+		wantCode int
+	}{
+		{"use-name", []string{"project", "use", "fresh"}, false, 5},
+		{"use-uuid", []string{"project", "use", manualProject}, false, 5},
+		{"configure", []string{"configure", "--key-id", fakeKeyID, "--secret-stdin"}, false, 5},
+		{"use-uuid-forbidden", []string{"project", "use", manualProject}, true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupCLI(t)
+			saveProfile(t, "default", allowedProject)
+			settings, err := os.ReadFile(config.SettingsPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			creds, err := os.ReadFile(config.CredentialsPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if tc.denied {
+					http.Error(w, `{"message":"permission denied"}`, http.StatusForbidden)
+					return
+				}
+				if r.URL.Query().Get("page_token") == "" {
+					io.WriteString(w, `{"projects":[{"id":"first","name":"already-read"}],"next_page_token":"two"}`)
+					return
+				}
+				io.WriteString(w, "null")
+			}))
+			defer srv.Close()
+			orgProjectsURL = srv.URL
+			stdin := ""
+			if tc.name == "configure" {
+				stdin = fakeSecret + "\n"
+			}
+			code, out, stderr := runCLI(t, stdin, tc.args...)
+			if code != tc.wantCode {
+				t.Fatalf("exit %d, wanted %d: %s%s", code, tc.wantCode, out, stderr)
+			}
+			if tc.denied {
+				profile, _, _, err := config.LoadProfile("default")
+				if err != nil || profile.ProjectID != manualProject || !strings.Contains(out+stderr, "unchecked") || calls != 1 {
+					t.Errorf("403 fallback: id=%s calls=%d err=%v output=%s%s", profile.ProjectID, calls, err, out, stderr)
+				}
+				return
+			}
+			afterSettings, err := os.ReadFile(config.SettingsPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			afterCreds, err := os.ReadFile(config.CredentialsPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if calls != 2 || !bytes.Equal(settings, afterSettings) || !bytes.Equal(creds, afterCreds) || !strings.Contains(out+stderr, "the list is not complete") {
+				t.Errorf("corrupt catalog: calls=%d, settings unchanged=%v, credentials unchanged=%v, output=%s%s", calls, bytes.Equal(settings, afterSettings), bytes.Equal(creds, afterCreds), out, stderr)
+			}
+		})
 	}
 }

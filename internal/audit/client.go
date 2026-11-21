@@ -172,7 +172,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) (*EventPage, error)
 			return nil, err
 		}
 	} else if err := pager.DecodePage(data, &wire); err != nil {
-		return nil, err
+		return nil, fmt.Errorf(i18n.T("parse audit events: %w", "разбор событий аудита: %w"), err)
 	}
 	if len(wire.Events) == 0 && len(wire.Logs) > 0 {
 		wire.Events = wire.Logs

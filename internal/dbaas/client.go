@@ -118,7 +118,10 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 		return nil, apiError(status, data)
 	}
 	items, _, err := pager.ObjectPage(data, field)
-	return items, err
+	if err != nil {
+		return nil, fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
+	}
+	return items, nil
 }
 
 func (c *Client) getObject(ctx context.Context, path string, query url.Values) (map[string]any, error) {
