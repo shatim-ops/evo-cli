@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -101,5 +102,63 @@ func TestLBStackHumanQuestion(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLBQuestionAfterIndependentWriteKeepsStackHistory(t *testing.T) {
+	_, f := withJSONWorld(t)
+	var m stack.Manifest
+	if e := json.Unmarshal([]byte(`{"name":"test","vm":{"name":"vm"},"nlb":{"name":"web","port":80},"vpc":{"name":"independent-network"}}`), &m); e != nil {
+		t.Fatal(e)
+	}
+	j := stack.Plan(m)
+	j.ProjectID = pvProject
+	var independent *stack.Step
+	var steps []*stack.Step
+	for _, st := range j.Steps {
+		switch st.Key {
+		case "vpc":
+			independent = st
+			continue
+		case "lb":
+			st.Args["vpc_id"] = parityVM
+			st.Args["zone"] = pvZone
+		default:
+			st.Status = "done"
+			st.ResourceID = parityVM
+			j.Outputs[st.Key] = parityVM
+		}
+		steps = append(steps, st)
+	}
+	if independent == nil || len(independent.DependsOn) != 0 {
+		t.Fatal("fixture needs an independent writable step")
+	}
+	j.Steps = append([]*stack.Step{independent}, steps...)
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reg := newRegistry()
+	apply, _ := reg.Lookup("stack_apply")
+	history, _ := reg.Lookup("history")
+	args := map[string]any{"job_id": j.ID, "confirmed": true}
+	for i := 0; i < 2; i++ {
+		f.reset()
+		text, _ := apply.Handler(context.Background(), args)
+		if parseObject(text)["status"] != "confirmation_required" {
+			t.Fatal(text)
+		}
+		writes := f.takeWrites()
+		if (i == 0 && (len(writes) != 1 || !strings.Contains(writes[0], "/v1/vpcs"))) || (i == 1 && len(writes) != 0) {
+			t.Fatalf("apply %d writes %v", i, writes)
+		}
+		text, _ = history.Handler(context.Background(), map[string]any{"project_id": pvProject})
+		rows, _ := parseObject(text)["lines"].([]any)
+		if len(rows) != 1 {
+			t.Fatal(text)
+		}
+		row := rows[0].(map[string]any)
+		if row["tool"] != "stack_apply" || row["job_id"] != j.ID || row["outcome"] != "unknown" {
+			t.Fatal(text)
+		}
 	}
 }

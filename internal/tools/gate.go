@@ -234,7 +234,7 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		deferLB := t.Name == "lb_create"
 		if t.Name == "stack_apply" {
 			job, err := stack.LoadJob(stringArg(args, "job_id"))
-			deferLB = err == nil && onlyLBPending(job)
+			deferLB = err == nil && jobHasPendingLB(job)
 		}
 		if held, goesOn := r.goesOn(ctx, t.Name, args); goesOn {
 			end = func(answer string) { cutSendOf(ctx, held, answer) }
