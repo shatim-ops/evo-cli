@@ -9873,7 +9873,7 @@ evo tools [flags]
   evo tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
   evo tools call pg_operation --arg operation_id=OP --wait
 
-Коды выхода: 0 — успех; 3 — нет подтверждения; ошибка инструмента с кодом
+Коды выхода: 0 — успех; 3 — нужно подтверждение или сверка исхода прерванного вызова; ошибка инструмента с кодом
 (API_UNREACHABLE, AUTH_FAILED, …) — код выхода этого кода, как у других
 команд (см. docs/exit-codes.md); без кода — 4, если инструмент сообщил, что
 объект не найден, иначе 5.

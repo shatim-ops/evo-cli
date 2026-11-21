@@ -15,7 +15,9 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
 
 1. Add `--json` to every command and read the JSON.
 2. A change waits for the person. Exit code 3, or `"status": "confirmation_required"`
-   in MCP, means: stop, show the preview to the person (what is created or
+   in MCP, means stop. If a DNS record, static route or SNAT create lost its response,
+   use the indicated read tool. While the outcome is unknown, even fresh consent
+   keeps the retry on hold. For an ordinary confirmation, show the preview to the person (what is created or
    deleted, and the price) and ask. The `approval` field says the same.
 3. Consent comes only from the person: `--yes` in the CLI, `confirmed=true` in
    MCP, and only after they said yes to this preview. Never add it on your own.
@@ -59,7 +61,7 @@ a command: the tool `vm_list` is `evo vm list`, `vm_get` is `evo vm get`.
 | 0 | success | |
 | 1 | usage or other error | read the hint, fix the arguments |
 | 2 | no key, or a configuration error | ask the person to run `evo configure` |
-| 3 | consent needed | ask the person; after their yes, repeat with `--yes` |
+| 3 | consent or outcome check needed | review the preview with the person; for an interrupted network create, check the outcome with the indicated read tool |
 | 4 | not found | check the ID or name with a list command |
 | 5 | Cloud.ru API error | read the message; retry later if it is temporary |
 | 130 | interrupted | |

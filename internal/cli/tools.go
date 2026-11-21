@@ -415,7 +415,7 @@ const toolsCallHelpRU = `Вызвать инструмент и напечата
   evo tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
   evo tools call pg_operation --arg operation_id=OP --wait
 
-Коды выхода: 0 — успех; 3 — нет подтверждения; ошибка инструмента с кодом
+Коды выхода: 0 — успех; 3 — нужно подтверждение или сверка исхода прерванного вызова; ошибка инструмента с кодом
 (API_UNREACHABLE, AUTH_FAILED, …) — код выхода этого кода, как у других
 команд (см. docs/exit-codes.md); без кода — 4, если инструмент сообщил, что
 объект не найден, иначе 5.`
@@ -434,7 +434,7 @@ comma-separated string); null means "not given".
   evo tools call open_ports --arg security_group=web-sg --arg ports=80,443 --yes
   evo tools call pg_operation --arg operation_id=OP --wait
 
-Exit codes: 0 success; 3 confirmation not given; an error the tool reports
+Exit codes: 0 success; 3 confirmation or a check of an interrupted call’s outcome required; an error the tool reports
 with a code (API_UNREACHABLE, AUTH_FAILED, ...) exits as that code does for
 any other command (see docs/exit-codes.md); without a code, 4 when the tool
 reported that something was not found, 5 otherwise.`
