@@ -47,7 +47,7 @@ var specStatesOf = map[string]string{
 	"vpc_route_create": "vpc:StaticRoute.status", "vpc_route_delete": "vpc:StaticRoute.status",
 
 	"k8s_create": "mk8s:cloudru.containers.mk8s.v3.Cluster.status", "k8s_delete": "mk8s:cloudru.containers.mk8s.v3.Cluster.status",
-	"k8s_add_nodepool": "mk8s:cloudru.containers.mk8s.v3.NodePool.status", "k8s_nodepool_delete": "mk8s:cloudru.containers.mk8s.v3.NodePool.status", "k8s_nodepool_scale": "mk8s:cloudru.containers.mk8s.v3.NodePool.status",
+	"k8s_add_nodepool": "mk8s:cloudru.containers.mk8s.v3.NodePool.status", "k8s_nodepool_delete": "mk8s:cloudru.containers.mk8s.v3.NodePool.status", "k8s_upgrade": "mk8s:cloudru.containers.mk8s.v3.Cluster.status", "k8s_nodepool_upgrade": "mk8s:cloudru.containers.mk8s.v3.NodePool.status", "k8s_nodepool_scale": "mk8s:cloudru.containers.mk8s.v3.NodePool.status",
 	"k8s_add_addon": "mk8s:cloudru.containers.mk8s.v3.ClusterAddon.status",
 
 	"kafka_create": "kafka:cloudru.dbaas.kafka.v1.Cluster.status", "kafka_delete": "kafka:cloudru.dbaas.kafka.v1.Cluster.status",

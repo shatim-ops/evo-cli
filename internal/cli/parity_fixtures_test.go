@@ -123,13 +123,15 @@ var parityArgs = map[string]map[string]any{
 	"k8s_nodepools":    {"cluster_id": addonClusterID},
 	"k8s_nodepool_get": {"nodepool_id": parityVM},
 	// The pool of the world has two nodes: three is a scale up.
-	"k8s_nodepool_scale":  {"nodepool_id": parityVM, "count": 3},
-	"k8s_nodepool_delete": {"nodepool_id": parityVM},
-	"k8s_addons":          {"query": "cert"},
-	"k8s_addon_versions":  {"name": "cert-manager"},
-	"k8s_delete":          {"cluster_id": addonClusterID},
-	"k8s_add_nodepool":    {"cluster_id": addonClusterID, "name": "pool-1", "zone": pvZone},
-	"k8s_add_addon":       {"cluster_id": addonClusterID, "name": "cert-manager"},
+	"k8s_upgrade":          {"cluster_id": upgradeParityCluster, "version": "v1.36.5"},
+	"k8s_nodepool_upgrade": {"nodepool_id": upgradeParityPool, "version": "v1.36.5"},
+	"k8s_nodepool_scale":   {"nodepool_id": parityVM, "count": 3},
+	"k8s_nodepool_delete":  {"nodepool_id": parityVM},
+	"k8s_addons":           {"query": "cert"},
+	"k8s_addon_versions":   {"name": "cert-manager"},
+	"k8s_delete":           {"cluster_id": addonClusterID},
+	"k8s_add_nodepool":     {"cluster_id": addonClusterID, "name": "pool-1", "zone": pvZone},
+	"k8s_add_addon":        {"cluster_id": addonClusterID, "name": "cert-manager"},
 	// A verb that changes the cluster: a read verb runs without consent.
 	"k8s_kubectl": {"cluster_id": addonClusterID, "args": "delete pod web"},
 	"k8s_apply":   {"cluster_id": addonClusterID, "manifest": "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: web\n"},
@@ -545,6 +547,9 @@ func (p *parityRT) answer(r *http.Request) (*http.Response, error) {
 	}
 	switch r.URL.Host {
 	case "mk8s.api.cloud.ru":
+		if resp := parityUpgradeResponse(r, false); resp != nil {
+			return resp, nil
+		}
 		if r.URL.Path == "/v3/productConfiguration" {
 			// The catalogue the preview of k8s_create resolves its plan
 			// from, and k8s_add_nodepool its flavor (D29).

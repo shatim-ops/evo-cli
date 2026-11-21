@@ -3016,6 +3016,14 @@
    "clusterId",
    "network"
   ],
+  "mk8s POST /v3/clusters/{clusterId}:upgrade": [
+   "clusterId",
+   "version"
+  ],
+  "mk8s POST /v3/nodePools/{nodePoolId}:upgrade": [
+   "nodePoolId",
+   "version"
+  ],
   "mk8s POST /v3/nodePools": [
    "autoRepair",
    "autoRepair.enabled",

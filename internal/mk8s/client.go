@@ -78,7 +78,15 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	client := c.http
+	if method == http.MethodPost && httpretry.IsOnce(ctx) {
+		// A confirmed upgrade authorizes one POST, including after a 401 or redirect.
+		req.GetBody = nil
+		single := *client
+		single.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &single
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf(i18n.T("mk8s request failed: %w", "запрос к mk8s не удался: %w"), err)
 	}
@@ -335,6 +343,31 @@ func (c *Client) GetOperation(ctx context.Context, id string) (*Operation, error
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
 		return nil, fmt.Errorf(i18n.T("parse operation: %w", "разбор операции: %w"), err)
+	}
+	return &op, nil
+}
+
+// UpgradeCluster submits the target version of the control plane alone.
+func (c *Client) UpgradeCluster(ctx context.Context, id, version string) (*Operation, error) {
+	return c.upgrade(ctx, "/v3/clusters/"+seg(id)+":upgrade", version)
+}
+
+// UpgradeNodePool submits the target version of one node pool.
+func (c *Client) UpgradeNodePool(ctx context.Context, id, version string) (*Operation, error) {
+	return c.upgrade(ctx, "/v3/nodePools/"+seg(id)+":upgrade", version)
+}
+
+func (c *Client) upgrade(ctx context.Context, path, version string) (*Operation, error) {
+	data, status, err := c.do(httpretry.Once(ctx), http.MethodPost, path, nil, map[string]string{"version": version})
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, apiError(status, data)
+	}
+	var op Operation
+	if err := json.Unmarshal(data, &op); err != nil {
+		return nil, err
 	}
 	return &op, nil
 }

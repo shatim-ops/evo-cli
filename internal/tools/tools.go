@@ -476,6 +476,8 @@ func (s *Registry) registerTools() {
 			Description: "Read one node pool of Managed Kubernetes by its id: cluster (id and name), status, version, zone, scale (fixed: desired; auto: min_count, max_count), flavor, disk, subnet, security group, labels, taints, versions it can upgrade to. Read-only. Ids: k8s_nodepools.",
 			InputSchema: objSchema(map[string]any{"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools or k8s_add_nodepool).")}, "nodepool_id"),
 		},
+		{Name: "k8s_upgrade", Description: "Upgrade the control plane to an available version. Node pools require separate approval. Repeat with the same version to check the operation and actual version.", InputSchema: objSchema(map[string]any{"cluster_id": uuidProp("Cluster UUID (from k8s_list)."), "version": strProp("Target Kubernetes version offered by the resource."), "confirmed": confirmedProp()}, "cluster_id", "version")},
+		{Name: "k8s_nodepool_upgrade", Description: "Upgrade one node pool after its control plane reaches the target version. Workloads may be interrupted. Repeat with the same version to verify the result.", InputSchema: objSchema(map[string]any{"nodepool_id": uuidProp("Node pool UUID (from k8s_nodepools)."), "version": strProp("Target Kubernetes version offered by the resource."), "confirmed": confirmedProp()}, "nodepool_id", "version")},
 		{
 			Name:        "k8s_nodepool_scale",
 			Description: "Set the number of nodes of a Managed Kubernetes node pool with a fixed count. More nodes are billed; fewer nodes are deleted with the data on their disks, and their pods are evicted. A pool that has the count already answers already_scaled with no question; an autoscaled pool is refused. Async — returns operation_id: wait with k8s_operation.",
@@ -1608,6 +1610,8 @@ func (s *Registry) registerTools() {
 		"k8s_add_nodepool":     s.gated("k8s_add_nodepool", s.planK8sAddNodePool),
 		"k8s_nodepools":        s.handleK8sNodePools,
 		"k8s_nodepool_get":     s.handleK8sNodePoolGet,
+		"k8s_upgrade":          s.gated("k8s_upgrade", s.planK8sUpgrade),
+		"k8s_nodepool_upgrade": s.gated("k8s_nodepool_upgrade", s.planK8sNodePoolUpgrade),
 		"k8s_nodepool_scale":   s.gated("k8s_nodepool_scale", s.planK8sNodePoolScale),
 		"k8s_nodepool_delete":  s.gated("k8s_nodepool_delete", s.planK8sNodePoolDelete),
 		"k8s_addons":           s.handleK8sAddons,

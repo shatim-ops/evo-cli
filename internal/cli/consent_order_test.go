@@ -240,6 +240,7 @@ type consentWorld struct {
 }
 
 var consentWorlds = map[string]consentWorld{
+	"Kubernetes already at target version": {answer: func(r *http.Request) *http.Response { return parityUpgradeResponse(r, true) }, alreadyFor: []string{"k8s_upgrade", "k8s_nodepool_upgrade"}},
 	// The profile has no S3 keys (agent runs of Grok on 1.6.0, F5a): the
 	// S3 tools know it from the configuration, before the question; the
 	// write would fail on the client, without a request.
@@ -759,6 +760,7 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		if confirmed {
 			a["confirmed"] = true
 		}
+		forgetUpgradeReceipts(w)
 		fake.reset()
 		w.rt.takeWrites()
 		mu.Lock()

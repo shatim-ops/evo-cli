@@ -110,10 +110,12 @@
 | k8s | `k8s_nodepool_delete` | да | дерево | `evo k8s nodepool-delete` | да/да |
 | k8s | `k8s_nodepool_get` | нет | дерево | `evo k8s nodepool-get` | да/да |
 | k8s | `k8s_nodepool_scale` | да | дерево | `evo k8s nodepool-scale` | да/да |
+| k8s | `k8s_nodepool_upgrade` | да | дерево | `evo k8s nodepool-upgrade` | да/да |
 | k8s | `k8s_nodepools` | нет | дерево | `evo k8s nodepools` | да/да |
 | k8s | `k8s_operation` | нет | дерево | `evo k8s operation` | да/да |
 | k8s | `k8s_options` | нет | дерево | `evo k8s options` | да/да |
 | k8s | `k8s_plan` | нет | дерево | `evo k8s plan` | да/да |
+| k8s | `k8s_upgrade` | да | дерево | `evo k8s upgrade` | да/да |
 | kafka | `kafka_create` | да | дерево | `evo kafka create` | да/да |
 | kafka | `kafka_delete` | да | дерево | `evo kafka delete` | да/да |
 | kafka | `kafka_get` | нет | дерево | `evo kafka get` | да/да |
@@ -292,10 +294,12 @@
 | `evo k8s nodepool-delete` | `k8s_nodepool_delete` | nodepool_id | — | — | confirmed | — |
 | `evo k8s nodepool-get` | `k8s_nodepool_get` | nodepool_id | — | — | — | — |
 | `evo k8s nodepool-scale` | `k8s_nodepool_scale` | nodepool_id | — | — | confirmed | — |
+| `evo k8s nodepool-upgrade` | `k8s_nodepool_upgrade` | nodepool_id | — | — | confirmed | — |
 | `evo k8s nodepools` | `k8s_nodepools` | cluster_id | — | — | — | — |
 | `evo k8s operation` | `k8s_operation` | operation_id | — | — | — | — |
 | `evo k8s options` | `k8s_options` | — | — | — | — | — |
 | `evo k8s plan` | `k8s_plan` | — | — | — | — | — |
+| `evo k8s upgrade` | `k8s_upgrade` | cluster_id | — | — | confirmed | — |
 | `evo kafka create` | `kafka_create` | name | — | — | confirmed | — |
 | `evo kafka delete` | `kafka_delete` | cluster_id | — | — | confirmed | — |
 | `evo kafka get` | `kafka_get` | cluster_id | — | — | — | — |

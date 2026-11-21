@@ -156,6 +156,10 @@ var gatedPreviewFixtures = map[string]func(t *testing.T) string{
 	},
 	// k8s_nodepool_scale reads the pool before the question (D99): a
 	// running pool of two nodes, scaled to three.
+	"k8s_upgrade": func(t *testing.T) string { return upgradeStatePreview(t, "k8s_upgrade", "OBJECT_STATUS_RUNNING") },
+	"k8s_nodepool_upgrade": func(t *testing.T) string {
+		return upgradeStatePreview(t, "k8s_nodepool_upgrade", "OBJECT_STATUS_RUNNING")
+	},
 	"k8s_nodepool_scale": func(t *testing.T) string {
 		w := &poolWorld{status: poolRunning}
 		w.setCount(2)

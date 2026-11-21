@@ -247,6 +247,12 @@
   "k8s_nodepool_scale": {
     "destructive": true
   },
+  "k8s_nodepool_upgrade": {
+    "destructive": true
+  },
+  "k8s_upgrade": {
+    "destructive": true
+  },
   "kafka_create": {
     "destructive": false,
     "taken": "checked",

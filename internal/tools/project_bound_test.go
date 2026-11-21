@@ -102,8 +102,9 @@ func TestProjectBound_IDArgsDeclared(t *testing.T) {
 // holds its resource, any other method answers an operation. It records
 // "METHOD host/path" of every request.
 type ownerFake struct {
-	mu   sync.Mutex
-	reqs []string
+	upgradeTool, upgradeStatus string
+	mu                         sync.Mutex
+	reqs                       []string
 	// diskOn is the VM every disk of the fake is attached to; "" — none
 	// (a detach needs a disk that is attached to reach its preview).
 	diskOn string
@@ -181,6 +182,9 @@ func ownerObject(id string) map[string]any {
 }
 
 func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
+	if f.upgradeTool != "" && f.serveUpgradeCard(w, r) {
+		return
+	}
 	if r.Method == http.MethodDelete && f.forbidDelete {
 		http.Error(w, `{"message":"permission denied"}`, http.StatusForbidden)
 		return

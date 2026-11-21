@@ -92,9 +92,10 @@ var previewCalls = map[string]map[string]any{
 	// Fewer nodes than the pool of the world has: the preview, whatever
 	// the status of the pool.
 	"k8s_nodepool_scale": {"count": 1},
-	"pg_db_delete":       {"name": ownerChild},
-	"pg_user_delete":     {"name": ownerChild},
-	"vpc_route_delete":   {"route_id": ownerRoute},
+	"k8s_upgrade":        {"version": "v1.36.5"}, "k8s_nodepool_upgrade": {"version": "v1.36.5"},
+	"pg_db_delete":     {"name": ownerChild},
+	"pg_user_delete":   {"name": ownerChild},
+	"vpc_route_delete": {"route_id": ownerRoute},
 	// The tools that run a command in the cluster: a call that needs
 	// consent. Without it nothing runs: the preview only.
 	"k8s_kubectl": {"args": "delete pod web"},
@@ -108,7 +109,9 @@ var previewCalls = map[string]map[string]any{
 // The call with the call's own resource reaches its preview and is checked
 // like any other.
 var foreignRefused = map[string]string{
-	"dns_record_create": "the zone is looked up in the call's project: a zone of another is NOT_FOUND before any preview",
+	"k8s_upgrade":          "the cluster identifies its project before the preview",
+	"k8s_nodepool_upgrade": "the pool and its parent are checked before the preview",
+	"dns_record_create":    "the zone is looked up in the call's project: a zone of another is NOT_FOUND before any preview",
 }
 
 // With a key of the organization and no --allow-project, the preview of a
@@ -134,6 +137,9 @@ func TestPreviewProject_NamesWhereTheWriteLands(t *testing.T) {
 		for _, id := range []string{resMine, resForeign} {
 			// vm_resize needs its target in the catalogue.
 			f := &ownerFake{flavors: c.tool == "vm_resize"}
+			if c.tool == "k8s_upgrade" || c.tool == "k8s_nodepool_upgrade" {
+				f.upgradeTool, f.upgradeStatus = c.tool, "OBJECT_STATUS_RUNNING"
+			}
 			if c.tool == "disk_detach" {
 				// A detach has a preview only of a disk that is attached.
 				f.diskOn = resMine

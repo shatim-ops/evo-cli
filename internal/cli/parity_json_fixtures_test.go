@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -225,6 +226,9 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			return write(jsonOp)
 		}
 	case "mk8s.api.cloud.ru":
+		if resp := parityUpgradeResponse(r, false); resp != nil {
+			return resp
+		}
 		switch {
 		case p == "/v3/clusters" && get:
 			return write(`{"clusters":[]}`)
@@ -419,6 +423,7 @@ func withJSONWorld(t *testing.T) (parityWorld, *jsonFake) {
 // and asked again. A case that reads the records of its own call reads
 // them before this.
 func forgetRun(w parityWorld) {
+	forgetUpgradeReceipts(w)
 	_ = os.Remove(state.DefaultPath(w.dir))
 	for _, dir := range intent.Dirs(w.dir) {
 		_ = os.RemoveAll(dir)
@@ -444,4 +449,9 @@ func recordUnchanged(t *testing.T, w parityWorld) (map[string]any, func()) {
 		t.Fatal(err)
 	}
 	return args, done
+}
+
+// Independent parity worlds begin before the first upgrade submission.
+func forgetUpgradeReceipts(w parityWorld) {
+	_ = os.RemoveAll(filepath.Join(w.dir, "k8s-upgrades"))
 }

@@ -122,10 +122,12 @@
     - [evo k8s nodepool-delete](#evo-k8s-nodepool-delete)
     - [evo k8s nodepool-get](#evo-k8s-nodepool-get)
     - [evo k8s nodepool-scale](#evo-k8s-nodepool-scale)
+    - [evo k8s nodepool-upgrade](#evo-k8s-nodepool-upgrade)
     - [evo k8s nodepools](#evo-k8s-nodepools)
     - [evo k8s operation](#evo-k8s-operation)
     - [evo k8s options](#evo-k8s-options)
     - [evo k8s plan](#evo-k8s-plan)
+    - [evo k8s upgrade](#evo-k8s-upgrade)
   - [evo kafka](#evo-kafka)
     - [evo kafka create](#evo-kafka-create)
     - [evo kafka delete](#evo-kafka-delete)
@@ -4808,10 +4810,12 @@ evo k8s [flags]
 * [evo k8s nodepool-delete](#evo-k8s-nodepool-delete)	 - Удалить группу узлов кластера Managed Kubernetes (асинхронно)
 * [evo k8s nodepool-get](#evo-k8s-nodepool-get)	 - Группа узлов кластера Managed Kubernetes по id
 * [evo k8s nodepool-scale](#evo-k8s-nodepool-scale)	 - Изменить число узлов группы узлов Managed Kubernetes
+* [evo k8s nodepool-upgrade](#evo-k8s-nodepool-upgrade)	 - Обновить одну группу узлов после перехода управляющей части на целевую версию
 * [evo k8s nodepools](#evo-k8s-nodepools)	 - Группы узлов кластера
 * [evo k8s operation](#evo-k8s-operation)	 - Состояние асинхронной операции Managed Kubernetes
 * [evo k8s options](#evo-k8s-options)	 - Версии Kubernetes, flavor узлов и зоны для кластеров
 * [evo k8s plan](#evo-k8s-plan)	 - Шаг 1: рассчитать конфигурацию кластера, ничего не создавая
+* [evo k8s upgrade](#evo-k8s-upgrade)	 - Обновить управляющую часть кластера до доступной версии
 
 ## evo k8s add-addon
 
@@ -5548,6 +5552,51 @@ evo k8s nodepool-scale <nodepool-id> [flags]
 
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 
+## evo k8s nodepool-upgrade
+
+Обновить одну группу узлов после перехода управляющей части на целевую версию
+
+### Synopsis
+
+```text
+Обновить одну группу узлов после перехода управляющей части на целевую версию.
+
+Обновить одну группу узлов после перехода управляющей части на целевую версию. Возможны перерывы в работе приложений. Повтор с той же версией проверяет результат.
+
+Вызывает инструмент k8s_nodepool_upgrade (подробнее: 'evo tools describe k8s_nodepool_upgrade').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo k8s nodepool-upgrade <nodepool-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help             Справка по nodepool-upgrade
+      --version string   Целевая версия Kubernetes из карточки ресурса
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
 ## evo k8s nodepools
 
 Группы узлов кластера
@@ -5720,6 +5769,51 @@ evo k8s plan [flags]
       --subnet-id string       UUID или имя подсети зоны кластера для VIP мастер-узлов (по умолчанию — основная подсеть зоны)
       --version string         Версия Kubernetes, например v1.34.6 (по умолчанию — новейшая STABLE)
       --zone string            Зона мастер-узлов: имя или UUID (по умолчанию — зона --subnet-id, иначе зона по умолчанию сервиса)
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
+
+## evo k8s upgrade
+
+Обновить управляющую часть кластера до доступной версии
+
+### Synopsis
+
+```text
+Обновить управляющую часть кластера до доступной версии.
+
+Обновить управляющую часть кластера до доступной версии. Для групп узлов требуется отдельное согласие. Повтор с той же версией проверяет операцию и фактическую версию.
+
+Вызывает инструмент k8s_upgrade (подробнее: 'evo tools describe k8s_upgrade').
+
+Спрашивает подтверждение: вопрос на терминале, --yes — согласие заранее, --dry-run — только превью.
+```
+
+```
+evo k8s upgrade <cluster-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help             Справка по upgrade
+      --version string   Целевая версия Kubernetes из карточки ресурса
 ```
 
 ### Options inherited from parent commands

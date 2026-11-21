@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+
 	"slices"
 	"strings"
 	"testing"
@@ -59,7 +62,10 @@ func (r *upgradeResource) call(t *testing.T, surface, version string, confirm bo
 		flag = "--yes"
 	}
 	code, out, stderr := runCLI(t, "", "--json", flag, "k8s", r.verb, r.id, "--version", version)
-	return out + stderr, code != 0
+	if out == "" {
+		out = stderr
+	}
+	return out, code != 0
 }
 
 func TestUpgradeSeparateConsentAndObservedVersion(t *testing.T) {
@@ -126,7 +132,11 @@ func TestUpgradeSeparateConsentAndObservedVersion(t *testing.T) {
 					t.Helper()
 					before := r.posts
 					text, failed := r.call(t, surface, upgradeTo, false)
-					if failed || r.posts != before || !strings.Contains(text, upgradeFrom) || !strings.Contains(text, upgradeTo) || !strings.Contains(text, r.id) {
+					status := "dry_run"
+					if surface == "stdio" {
+						status = "confirmation_required"
+					}
+					if failed != (surface == "stdio") || parseObject(text)["status"] != status || r.posts != before || !strings.Contains(text, upgradeFrom) || !strings.Contains(text, upgradeTo) || !strings.Contains(text, r.id) {
 						t.Fatalf("preview for %s: %s", r.kind, text)
 					}
 				}
@@ -220,4 +230,147 @@ func TestUpgradeSeparateConsentAndObservedVersion(t *testing.T) {
 func saysUpgradeComplete(text string) bool {
 	status, _ := parseObject(text)["status"].(string)
 	return status == "already_upgraded" || status == "upgraded" || status == "ok"
+}
+
+const (
+	upgradeParityCluster = "00000000-0000-4000-8000-00000000c003"
+	upgradeParityPool    = "00000000-0000-4000-8000-00000000c004"
+	upgradeParityParent  = "00000000-0000-4000-8000-00000000c005"
+)
+
+// A pool eligible for its own upgrade belongs to a control plane already at the target.
+func parityUpgradeResponse(req *http.Request, upgraded bool) *http.Response {
+	if req.URL.Host != "mk8s.api.cloud.ru" {
+		return nil
+	}
+	resource := upgradeResource{kind: "control plane", version: upgradeFrom, state: "OBJECT_STATUS_RUNNING", available: []string{upgradeTo}}
+	switch req.URL.Path {
+	case "/v3/clusters/" + upgradeParityCluster, "/v3/clusters/" + upgradeParityCluster + ":upgrade":
+		resource.id, resource.operation = upgradeParityCluster, upgradeClusterOp
+	case "/v3/nodePools/" + upgradeParityPool, "/v3/nodePools/" + upgradeParityPool + ":upgrade":
+		resource.id, resource.operation, resource.kind = upgradeParityPool, upgradePoolOp, "node pool"
+	case "/v3/clusters/" + upgradeParityParent:
+		resource.id, resource.version = upgradeParityParent, upgradeTo
+	default:
+		return nil
+	}
+	if upgraded {
+		resource.version = upgradeTo
+	}
+	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, ":upgrade") {
+		return consentJSON(http.StatusOK, fmt.Sprintf(`{"id":%q,"resourceId":%q,"done":false}`, resource.operation, resource.id))
+	}
+	if req.Method != http.MethodGet {
+		return nil
+	}
+	card := resource.card()
+	if resource.kind == "node pool" {
+		card["clusterId"] = upgradeParityParent
+	}
+	b, _ := json.Marshal(card)
+	return consentJSON(http.StatusOK, string(b))
+}
+
+// Every retry uses a fresh CLI or stdio registry over the same state directory.
+func TestUpgradeRejectsUnverifiedEvidence(t *testing.T) {
+	for _, scenario := range []string{"project", "changed before POST", "receipt resource", "missing receipt resource", "lost response", "receipt storage", "wrong operation", "wrong operation resource", "operation error", "card forbidden", "pool parent"} {
+		t.Run(scenario, func(t *testing.T) {
+			w, _ := withJSONWorld(t)
+			cluster := upgradeResource{kind: "control plane", tool: "k8s_upgrade", verb: "upgrade", argument: "cluster_id", id: addonClusterID, path: "/v3/clusters/" + addonClusterID, version: upgradeFrom, state: "OBJECT_STATUS_RUNNING", available: []string{upgradeTo}, operation: upgradeClusterOp}
+			pool := upgradeResource{kind: "node pool", tool: "k8s_nodepool_upgrade", verb: "nodepool-upgrade", argument: "nodepool_id", id: parityVM, path: "/v3/nodePools/" + parityVM, version: upgradeFrom, state: "OBJECT_STATUS_RUNNING", available: []string{upgradeTo}, operation: upgradePoolOp}
+			target := &cluster
+			if scenario == "pool parent" {
+				target = &pool
+				cluster.version = upgradeTo
+			}
+			gets, posts := 0, 0
+			w.rt.extra = func(req *http.Request) (*http.Response, error) {
+				if req.URL.Host != "mk8s.api.cloud.ru" || req.URL.Query().Get("project_id") != pvProject {
+					t.Fatalf("unexpected URL %s", req.URL)
+				}
+				answer := func(status int, value any) (*http.Response, error) {
+					data, err := json.Marshal(value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					return contractRT{status: status, body: string(data)}.RoundTrip(req)
+				}
+				switch {
+				case req.Method == "GET" && req.URL.Path == target.path:
+					gets++
+					card := target.card()
+					if scenario == "project" {
+						card["projectId"] = parityVM
+					}
+					if scenario == "changed before POST" && gets > 1 {
+						card["versionUpgrade"] = map[string]any{}
+					}
+					if scenario == "card forbidden" && posts > 0 {
+						return answer(403, map[string]string{"message": "forbidden"})
+					}
+					if scenario == "pool parent" {
+						card["clusterId"] = upgradeParityParent
+					}
+					return answer(200, card)
+				case req.Method == "GET" && req.URL.Path == "/v3/clusters/"+upgradeParityParent:
+					return answer(200, cluster.card()) // a different cluster ID than the one requested
+				case req.Method == "POST" && req.URL.Path == target.path+":upgrade":
+					posts++
+					op := map[string]any{"id": target.operation, "resourceId": target.id, "done": false}
+					switch scenario {
+					case "receipt resource":
+						op["resourceId"] = parityVM
+					case "missing receipt resource":
+						delete(op, "resourceId")
+					case "lost response":
+						return nil, io.ErrUnexpectedEOF
+					case "receipt storage":
+						// Move the prepared receipt aside and make its destination unwritable as a file.
+						files, err := filepath.Glob(filepath.Join(w.dir, "k8s-upgrades", "*.json"))
+						if err != nil || len(files) != 1 {
+							t.Fatalf("prepared receipts %v, %v", files, err)
+						}
+						path := files[0]
+						if err := os.Rename(path, path+".saved"); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.Mkdir(path, 0700); err != nil {
+							t.Fatal(err)
+						}
+						t.Cleanup(func() { _ = os.Remove(path); _ = os.Rename(path+".saved", path) })
+					}
+					return answer(200, op)
+				case req.Method == "GET" && req.URL.Path == "/v3/operations/"+target.operation:
+					op := map[string]any{"id": target.operation, "resourceId": target.id, "done": true}
+					switch scenario {
+					case "wrong operation":
+						op["id"] = upgradePoolOp
+					case "wrong operation resource":
+						op["resourceId"] = parityVM
+					case "operation error":
+						op["error"] = map[string]any{"code": 5, "message": "failed"}
+					}
+					return answer(200, op)
+				default:
+					t.Fatalf("unexpected request %s %s", req.Method, req.URL)
+					return nil, io.EOF
+				}
+			}
+			first, failed := target.call(t, "CLI", upgradeTo, true)
+			if scenario == "project" || scenario == "changed before POST" || scenario == "pool parent" {
+				if !failed || posts != 0 {
+					t.Fatalf("invalid precondition: %s; POST=%d", first, posts)
+				}
+				return
+			}
+			if posts != 1 {
+				t.Fatalf("first request: %s; POST=%d", first, posts)
+			}
+			target.version = upgradeTo
+			second, failed := target.call(t, "stdio", upgradeTo, true)
+			if !failed || saysUpgradeComplete(second) || posts != 1 {
+				t.Fatalf("unverified result: %s; POST=%d", second, posts)
+			}
+		})
+	}
 }

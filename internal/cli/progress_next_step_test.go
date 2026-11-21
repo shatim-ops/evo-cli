@@ -27,6 +27,7 @@ import (
 // statusGoingOn are the statuses of a change the cloud is still making:
 // the call has answered, the resource is not there yet (or not gone yet).
 var statusGoingOn = map[string]bool{
+	"submitted": true, "upgrading": true, "version_unverified": true,
 	"backing_up": true, "building": true, "creating": true, "deleting": true,
 	"deploying": true, "installing": true, "issuing": true, "renewing": true,
 	// vm_start (D99): the VM is on its way; and the state of another

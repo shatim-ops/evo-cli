@@ -189,7 +189,7 @@ func TestToolsList_Annotations(t *testing.T) {
 		// memory (D99, §4.3).
 		"vm_stop": true,
 		// A scale down deletes nodes with the data on their disks (D99).
-		"k8s_nodepool_scale": true,
+		"k8s_nodepool_scale": true, "k8s_upgrade": true, "k8s_nodepool_upgrade": true,
 		// vm_reboot takes the service down for the time of the reboot (§5.2).
 		"vm_reboot": true,
 		// vm_resize of a running VM may restart its guest OS: the probe does

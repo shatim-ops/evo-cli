@@ -326,6 +326,8 @@ var faultMatrixOut = map[string]string{
 	// Its faults — a lost answer taken and not, a refusal, a failed
 	// operation — are the worlds of k8s_nodepool_scale_test.go.
 	"k8s_nodepool_scale": faultOutChanges,
+	// The separate-consent and recovery tests exercise these interrupted writes through CLI and MCP.
+	"k8s_upgrade": faultOutChanges, "k8s_nodepool_upgrade": faultOutChanges,
 	// Its faults — a lost answer taken, a refusal with its cause, a change
 	// that did not take place — are the worlds of vm_resize_test.go.
 	"vm_resize":   faultOutChanges,
