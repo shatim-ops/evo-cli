@@ -1299,6 +1299,22 @@
    "type",
    "vpc_id"
   ],
+  "compute GET /api/v1/tasks": [
+   "items[]",
+   "items[].created_time",
+   "items[].entity_id",
+   "items[].entity_name",
+   "items[].entity_type",
+   "items[].id",
+   "items[].modified_time",
+   "items[].name",
+   "items[].status",
+   "items[].user_email",
+   "items[].user_id",
+   "limit",
+   "offset",
+   "total"
+  ],
   "compute GET /api/v1/vms": [
    "items[]",
    "items[].availability_zone",

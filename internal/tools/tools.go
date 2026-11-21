@@ -111,6 +111,11 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_history",
+			Description: "Read the platform's Compute Tasks history for one VM UUID in the current project, including after deletion. Each task has an ID, action, state and creation time. A failed or inconsistent later page returns the verified rows with partial=true. Visibility depends on the key. Offset pagination can change while tasks arrive.",
+			InputSchema: objSchema(map[string]any{"vm_id": uuidProp("VM UUID (from vm_list or the result of provision).")}, "vm_id"),
+		},
+		{
 			Name:        "vm_console",
 			Description: "Where a human opens the console of one VM, by vm_id or name: state, serial_ready and console_available (true only while the VM is running; a condition, not a promise that the console opens). The console opens in the Cloud.ru web console after the person signs in; evo does not open it, hand out a console link or connect to the VM, and an agent has no use for the page. A stopped VM is someone's decision: starting it is vm_start, charged, and the person's call.",
 			InputSchema: objSchema(map[string]any{
@@ -1558,6 +1563,7 @@ func (s *Registry) registerTools() {
 		"status":               s.handleStatus,
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
+		"vm_history":           s.handleVMHistory,
 		"vm_console":           s.handleVMConsole,
 		"vm_start":             s.gated("vm_start", s.planVMPower("vm_start")),
 		"vm_stop":              s.gated("vm_stop", s.planVMPower("vm_stop")),

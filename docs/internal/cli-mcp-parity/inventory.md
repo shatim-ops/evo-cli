@@ -181,6 +181,7 @@
 | vm | `provision` | да | дерево | `evo vm create` | да/да |
 | vm | `vm_console` | нет | дерево | `evo vm console` | да/да |
 | vm | `vm_get` | нет | дерево | `evo vm get` | да/да |
+| vm | `vm_history` | нет | дерево | `evo vm history` | да/да |
 | vm | `vm_list` | нет | дерево | `evo vm list` | да/да |
 | vm | `vm_reboot` | да | дерево | `evo vm reboot` | да/да |
 | vm | `vm_resize` | да | дерево | `evo vm resize` | да/да |
@@ -363,6 +364,7 @@
 | `evo vm delete` | `destroy` | vm_id\|name | — | — | confirmed | — |
 | `evo vm flavors` | `list_flavors` | — | — | — | — | — |
 | `evo vm get` | `vm_get` | vm_id\|name | — | — | — | render |
+| `evo vm history` | `vm_history` | vm_id | — | — | — | — |
 | `evo vm list` | `vm_list` | — | — | — | — | — |
 | `evo vm reboot` | `vm_reboot` | vm_id\|name | — | — | confirmed | — |
 | `evo vm resize` | `vm_resize` | vm_id\|name | — | — | confirmed | — |

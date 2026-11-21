@@ -39,6 +39,8 @@
                       "read-unknown:flavor_id": "плоских полей нет в ответе — BACKLOG [04]; читать вложенные flavor/image/interfaces[].floating_ip",
                       "read-unknown:image_id": "см. flavor_id", "read-unknown:public_ip": "см. flavor_id", "read-unknown:floating_ip": "см. flavor_id",
                       "read-unknown:availability_zone_id": "см. flavor_id: VM.UnmarshalJSON берёт зону из вложенного availability_zone"}},
+        {"method": "GET", "path": "/api/v1/tasks", "code": "internal/provision/vm_tasks.go:44", "query": ["project_id", "entity_id", "entity_type", "offset=100", "limit=100"], "paginates": true,
+         "reads": ["items[].id", "items[].entity_id", "items[].entity_type", "items[].name", "items[].status", "items[].created_time", "items[].modified_time", "offset", "limit", "total"]},
         {"method": "GET", "path": "/api/v1/vms/{vm_id}", "code": "internal/provision/adapter.go:129",
          "reads": ["id", "name", "state", "created_time", "availability_zone.id", "availability_zone.name", "flavor.id", "flavor.name", "flavor.cpu", "flavor.ram", "flavor.gpu", "flavor.oversubscription", "flavor.free_tier", "flavor.flavor_type.is_spot", "image.id", "image.name", "interfaces[].id", "interfaces[].name", "interfaces[].ip_address", "interfaces[].type", "interfaces[].primary", "interfaces[].state", "interfaces[].floating_ip.id", "interfaces[].floating_ip.ip_address", "interfaces[].floating_ip.state"],
          "enums": {"state": ["running", "stopped", "starting", "stopping", "rebooting", "creating", "updating", "deleting", "error", "error_creating", "error_deleting"], "interfaces[].state": ["created"], "interfaces[].type": ["regular", "direct_ip"]},

@@ -219,6 +219,7 @@
     - [evo vm delete](#evo-vm-delete)
     - [evo vm flavors](#evo-vm-flavors)
     - [evo vm get](#evo-vm-get)
+    - [evo vm history](#evo-vm-history)
     - [evo vm list](#evo-vm-list)
     - [evo vm reboot](#evo-vm-reboot)
     - [evo vm resize](#evo-vm-resize)
@@ -10060,6 +10061,7 @@ evo vm [flags]
 * [evo vm delete](#evo-vm-delete)	 - Удалить ВМ и все данные на ней (безвозвратно)
 * [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц
 * [evo vm get](#evo-vm-get)	 - ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы
+* [evo vm history](#evo-vm-history)	 - История задач Compute по UUID ВМ
 * [evo vm list](#evo-vm-list)	 - Список ВМ проекта: id, имя, состояние, зона, время создания
 * [evo vm reboot](#evo-vm-reboot)	 - Перезагрузить работающую ВМ и дождаться состояния running
 * [evo vm resize](#evo-vm-resize)	 - Сменить конфигурацию (flavor) ВМ и дождаться её
@@ -10322,6 +10324,48 @@ evo vm get <vm-id|name> [flags]
 ```
       --diagnose   Прочитать и правила групп безопасности ВМ и ответить проверками, доступом, итогом и not_checked
   -h, --help       Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vm](#evo-vm)	 - Виртуальные машины
+
+## evo vm history
+
+История задач Compute по UUID ВМ
+
+### Synopsis
+
+```text
+История задач Compute по UUID ВМ.
+
+Читает историю задач ВМ в текущем проекте, в том числе после удаления ВМ. Для каждой задачи показывает ID, действие, состояние и время создания. При сбое или расхождении страниц возвращает проверенные записи с partial=true. Видимость зависит от прав ключа. При появлении новых задач состав страниц может измениться.
+
+Вызывает инструмент vm_history (подробнее: 'evo tools describe vm_history').
+```
+
+```
+evo vm history <vm-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по history
 ```
 
 ### Options inherited from parent commands
