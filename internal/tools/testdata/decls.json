@@ -1152,6 +1152,14 @@
     ],
     "untrusted": "{fields:[id name interfaces security_groups checks not_checked exposure image flavor_id flavor_name] whole:false own:[] workload:false deep:false}"
   },
+  "vm_history": {
+    "group": "vm",
+    "project": true,
+    "id_args": [
+      "vm_id why=\"the request carries the project (projectId in the query), and the API looks the resource up in that project\" target=false ids=false"
+    ],
+    "untrusted": "{fields:[tasks] whole:false own:[] workload:false deep:false}"
+  },
   "vm_list": {
     "project": true,
     "untrusted": "{fields:[vms] whole:false own:[] workload:false deep:false}"

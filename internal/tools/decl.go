@@ -229,6 +229,7 @@ var decls = map[string]Decl{
 	"vm_get": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "interfaces", "security_groups", "checks", "not_checked", "exposure", "image", "flavor_id", "flavor_name"}}},
 	// A read: no consent, on --read-only too. The name of the VM is the
 	// cloud's, and where and note quote it (brief vm-console.md, §4, У3).
+	"vm_history": {Group: "vm", Project: true, IDArgs: []idArg{{name: "vm_id", why: whyInProject}}, Untrusted: untrustedAnswer{fields: []string{"tasks"}}},
 	"vm_console": {Group: "vm", RequiredOneOf: [][]string{{"vm_id", "name"}}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}}, Untrusted: untrustedAnswer{fields: []string{"name", "where", "note"}}},
 	// The VM a power tool names in its preview and its answer, as the
 	// cloud names it.

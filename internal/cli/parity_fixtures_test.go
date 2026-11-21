@@ -53,6 +53,7 @@ var parityArgs = map[string]map[string]any{
 	"list":         {},
 	"logs":         {"tail": float64(100)},
 	"vm_get":       {"vm_id": parityVM},
+	"vm_history":   {"vm_id": parityVM},
 	"vm_console":   {"vm_id": parityVM},
 	"vm_start":     {"vm_id": parityStoppedVM},
 	"vm_stop":      {"vm_id": parityRunningVM},
@@ -650,6 +651,7 @@ var parityAnswers = map[string]string{
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}:usage":                 `{"usage":[]}`,
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/version/0:private_key": `{"private_key":"-----BEGIN PRIVATE KEY-----\nparity\n-----END PRIVATE KEY-----\n"}`,
 	"GET certificatemanager.api.cloud.ru/v1/operation/{id}":                         jsonOp,
+	"GET compute.api.cloud.ru/api/v1/tasks":                                         `{"items":[{"id":"` + parityNIC + `","entity_id":"` + parityVM + `","entity_type":"vm","name":"Create VM","status":"complete","created_time":"2026-11-12T10:00:00Z"}],"total":1}`,
 	"GET compute.api.cloud.ru/api/v1/backups/{id}": `{"id":"` + parityVM + `","project_id":"` + pvProject + `","name":"web-copy","state":"created","type":"full","size":20480,"created_at":"2026-11-12T10:00:00Z","tags":[],` +
 		`"resource":{"resource_id":"` + parityVM + `","resource_type":"virtual_machine","resource_exists":true,"resource_state":{"name":"web"}}}`,
 	"GET compute.api.cloud.ru/api/v1/disks/{id}":        `{"id":"` + parityVM + `","name":"old","size":20,"state":"available"}`,
@@ -940,4 +942,9 @@ type freeFIPCloud struct{ provision.CloudAPI }
 
 func (freeFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
 	return []*provision.FloatingIP{{ID: parityVM, IPAddress: "203.0.113.10", State: "available"}}, nil
+}
+
+// Use the same filtered HTTP reader in the CLI and MCP parity worlds.
+func (p parityCloud) VMTasks(ctx context.Context, project, vm string, offset, limit int) (*provision.VMTaskPage, error) {
+	return p.CloudAPI.(provision.VMTaskReader).VMTasks(ctx, project, vm, offset, limit)
 }
