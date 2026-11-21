@@ -19,7 +19,7 @@ import (
 )
 
 func TestVMHistorySecondPage(t *testing.T) {
-	for _, scenario := range []string{"complete", "forbidden", "repeat", "early_empty", "foreign"} {
+	for _, scenario := range []string{"complete", "forbidden", "repeat", "early_empty", "foreign", "null_item"} {
 		t.Run(scenario, func(t *testing.T) {
 			vm, first, second := faultID(21), faultID(22), faultID(23)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +54,9 @@ func TestVMHistorySecondPage(t *testing.T) {
 				if scenario == "early_empty" && page == 1 {
 					rows = []map[string]any{}
 				}
+				if scenario == "null_item" && page == 1 {
+					rows[0] = nil
+				}
 				json.NewEncoder(w).Encode(map[string]any{"items": rows, "total": 2, "offset": page, "limit": 1})
 			}))
 			defer srv.Close()
@@ -70,6 +73,9 @@ func TestVMHistorySecondPage(t *testing.T) {
 			if strings.Contains(body, "private@example.invalid") || !strings.Contains(body, first) {
 				t.Fatalf("unexpected visible rows: %s", body)
 			}
+			if scenario == "forbidden" && (m["http_status"] != float64(403) || m["access_denied"] != true) {
+				t.Fatalf("403 lost its structured denial: %s", body)
+			}
 			if scenario == "complete" {
 				if isErr || !strings.Contains(body, second) {
 					t.Fatalf("missing successful second page: %s", body)
@@ -78,5 +84,32 @@ func TestVMHistorySecondPage(t *testing.T) {
 				t.Fatalf("invalid page must leave an explicit partial result: %s", body)
 			}
 		})
+	}
+}
+
+// The OpenAPI page requires items and total. Only an actual empty array
+// with total=0 establishes an empty selection.
+func TestVMHistoryPageShape(t *testing.T) {
+	for _, c := range []struct {
+		body  string
+		valid bool
+	}{
+		{`{"items":[],"total":0}`, true},
+		{`null`, false},
+		{`{}`, false},
+		{`{"items":null,"total":0}`, false},
+		{`{"items":[]}`, false},
+		{`{"items":[],"total":-1}`, false},
+		{`{"items":[],"total":0,"limit":0}`, false},
+		{`{"items":[],"total":0,"offset":1}`, false},
+		{`{"items":[],"total":0,"limit":101}`, false},
+	} {
+		var p *provision.VMTaskPage
+		if err := json.Unmarshal([]byte(c.body), &p); err != nil {
+			t.Fatal(err)
+		}
+		if got := validTaskPage(p, 0, 100, -1); got != c.valid {
+			t.Errorf("%s: valid=%v, want %v", c.body, got, c.valid)
+		}
 	}
 }
