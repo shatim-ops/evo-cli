@@ -140,6 +140,11 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 		// limit on a slow runner, C(7) on #2218), or its text found in the
 		// output (hypotheses, one run).
 		seenIn[c.tool.Name] = clipLong(jsonOut) + " | human: " + clipLong(human)
+		if c.tool.Name == "list_zones" {
+			// Check the actual cell, even if another row or the header
+			// contains "enabled". Only verified booleans leave the walk.
+			bad = append(bad, checkZoneReadCells(c.path, answer, out, i18n.EN)...)
+		}
 		for _, miss := range valueMisses(answer, human, readForm) {
 			key := c.tool.Name + " " + miss.path
 			if shownAsWritten(miss.value, human) {
@@ -185,6 +190,81 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 	if len(bad) > 0 {
 		sort.Strings(bad)
 		t.Fatal(strings.Join(bad, "\n"))
+	}
+}
+
+// checkZoneReadCells compares the JSON bool with its representation in the
+// table of the same command. The legacy command returns a bare JSON array.
+func checkZoneReadCells(path string, answer any, table, lang string) []string {
+	legacy := path == "evo list-zones"
+	rows, _ := answer.([]any)
+	if !legacy {
+		object, _ := answer.(map[string]any)
+		rows, _ = object["zones"].([]any)
+	}
+	header, yes, no := "ENABLED", "true", "false"
+	if legacy {
+		header, yes, no = "New resources", "open", "closed (enabled=false)"
+	}
+	if lang == i18n.RU {
+		header, yes, no = "Открыта", "да", "нет"
+		if legacy {
+			header, yes, no = "Новые ресурсы", "открыта", "закрыта (enabled=false)"
+		}
+	}
+	lines := strings.Split(strings.TrimSpace(table), "\n")
+	columns := zoneTableGap.Split(strings.TrimSpace(lines[0]), -1)
+	column := -1
+	for i, label := range columns {
+		if label == header {
+			column = i
+		}
+	}
+	cells := map[string]string{}
+	for _, line := range lines[1:] {
+		fields := zoneTableGap.Split(strings.TrimSpace(line), -1)
+		if column >= 0 && column < len(fields) {
+			cells[fields[0]] = fields[column]
+		}
+	}
+	var bad []string
+	for _, item := range rows {
+		row, _ := item.(map[string]any)
+		enabled, present := row["enabled"].(bool)
+		if !present {
+			continue
+		}
+		id, _ := row["id"].(string)
+		want := no
+		if enabled {
+			want = yes
+		}
+		if cells[id] != want {
+			bad = append(bad, fmt.Sprintf("%s: zone %s enabled=%t: column %q shows %q, want %q", path, id, enabled, header, cells[id], want))
+			continue
+		}
+		delete(row, "enabled") // Verified for this row. Check its remaining values as usual.
+	}
+	return bad
+}
+
+var zoneTableGap = regexp.MustCompile(` {2,}|\t+`)
+
+func TestRead_ZoneEnabledBelongsToItsRow(t *testing.T) {
+	for _, tc := range []struct {
+		label, table string
+		misses       int
+	}{
+		{"correct", "a  az-one  open\nb  az-two  closed (enabled=false)", 0},
+		{"swapped", "a  az-one  closed (enabled=false)\nb  az-two  open", 2},
+		{"missing", "a  az-one\nb  az-two  closed (enabled=false)", 1},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			answer := []any{map[string]any{"id": "a", "enabled": true}, map[string]any{"id": "b", "enabled": false}}
+			if bad := checkZoneReadCells("evo list-zones", answer, "ID  Name  New resources\n"+tc.table, i18n.EN); len(bad) != tc.misses {
+				t.Fatalf("mismatches %v, want %d", bad, tc.misses)
+			}
+		})
 	}
 }
 
