@@ -196,7 +196,9 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			}
 			intent.Hold(rec, out)
 			rec.Held = true
-			intent.Settle(dir, rec, settledOf(out))
+			if everySendIsAChange[name].listedName == nil {
+				intent.Settle(dir, rec, settledOf(out))
+			}
 			return
 		}
 		// A create the platform took whose operation goes on: the same
@@ -205,6 +207,11 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		r.rememberMade(rec, answer)
 		forgetMadeOf(root, name, args, answer)
 		intent.Close(rec, out)
+		// D119 closes an older network receipt only after its exact resource
+		// is observed under its own key. This call settles only itself.
+		if everySendIsAChange[name].listedName != nil {
+			return
+		}
 		// The VM may be gone while its address or port rules still need
 		// cleanup. Only a finished destroy can settle an earlier one.
 		if name != "destroy" || out.Result == history.Deleted || out.Result == history.AlreadyDeleted {

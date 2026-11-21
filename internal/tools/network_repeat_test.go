@@ -231,3 +231,37 @@ func TestNetworkRepeat_TerminalAnswerCannotSettleAnUnknownOutcome(t *testing.T) 
 		})
 	}
 }
+
+func TestNetworkRepeat_AnotherKeyOfTheAccountKeepsItsReceipt(t *testing.T) {
+	for _, c := range faultMatrixCases {
+		if everySendIsAChange[c.tool].listedName == nil {
+			continue
+		}
+		t.Run(c.tool, func(t *testing.T) {
+			api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			factory := r.newEngine
+			key := "previous-key-id"
+			r.newEngine = func(args map[string]any) (*engine.Engine, error) {
+				eng, err := factory(args)
+				if err == nil {
+					eng.Config.KeyID = key
+					eng.Config.ServiceAccountID = "same-account"
+				}
+				return eng, err
+			}
+			api.failAt(k, faultLost)
+			r.handlers[c.tool](ctx, maps.Clone(c.args))
+			api.disarm()
+			old := intent.Pending(dir)
+			if len(old) != 1 {
+				t.Fatalf("pending: %+v", old)
+			}
+			key = "different-key-id"
+			r.handlers[c.tool](context.Background(), maps.Clone(c.args))
+			left := intent.Pending(dir)
+			if len(left) != 1 || left[0].ID != old[0].ID {
+				t.Fatalf("another key settled original receipt: %+v", left)
+			}
+		})
+	}
+}
