@@ -148,11 +148,6 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			rec.Parties = own.open.Parties
 			rec.Target = own.open.Target
 		}
-		if name == "lb_create" && answerStatus(answer) == "confirmation_required" {
-			// This call stopped before the paid write. Keep any older uncertain receipt.
-			intent.Close(rec, historyOutcome(name, args, answer))
-			return
-		}
 		if rec.Parties == nil {
 			rec.Parties = r.partiesOf(ctx, name, args)
 		}

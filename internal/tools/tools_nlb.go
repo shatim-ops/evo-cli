@@ -466,6 +466,9 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 	}
 	digest := lbDigest(terms)
 	return s.lbApproval(ctx, args, out, digest, func(ctx context.Context) (string, bool) {
+		if err := startLBIntent(ctx); err != nil {
+			return errResult(err), true
+		}
 		job, _ := ctx.Value(lbJobKey{}).(*stack.Job)
 		wasUncertain := job != nil && job.LBUncertain
 		if job != nil {

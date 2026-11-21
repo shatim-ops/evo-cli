@@ -12,6 +12,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/stack"
 )
 
 // The gate of consent is one function of the registry (owner's decision
@@ -57,6 +58,17 @@ func answered(text string, isErr bool) *Plan {
 // Planner plans a call of a gated tool. An error refuses the call before
 // the question.
 type Planner func(ctx context.Context, args map[string]any) (*Plan, error)
+
+type lbIntentStartKey struct{}
+
+// startLBIntent records the accepted change before execution. Re-showing a
+// placement (including a paused stack) never opens a second cloud intent.
+func startLBIntent(ctx context.Context) error {
+	if start, ok := ctx.Value(lbIntentStartKey{}).(func() error); ok {
+		return start()
+	}
+	return nil
+}
 
 // gated is the handler of tool name on its planner: the plan first, then
 // the question when this call needs consent (NeedsConsent), then the
@@ -213,15 +225,30 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		// the limit of the repeats counts from («Риск», conclusion 177,
 		// У7).
 		var end func(string)
+		deferLB := t.Name == "lb_create"
+		if t.Name == "stack_apply" {
+			job, err := stack.LoadJob(stringArg(args, "job_id"))
+			deferLB = err == nil && onlyLBPending(job)
+		}
 		if held, goesOn := r.goesOn(ctx, t.Name, args); goesOn {
 			end = func(answer string) { cutSendOf(ctx, held, answer) }
+		} else if deferLB {
+			start := sync.OnceValue(func() error {
+				var err error
+				end, err = r.beginIntent(ctx, t.Name, args)
+				if release != nil {
+					release()
+				}
+				return err
+			})
+			ctx = context.WithValue(ctx, lbIntentStartKey{}, start)
 		} else {
 			var err error
 			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
 				return errResult(err), true
 			}
 		}
-		if release != nil {
+		if release != nil && !deferLB {
 			release()
 		}
 		// A handler that panics does not return: the server recovers it,
@@ -230,7 +257,7 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		// («Риск», conclusion 401, У1).
 		returned := false
 		defer func() {
-			if !returned {
+			if !returned && end != nil {
 				end(toJSON(map[string]any{"status": "error", "reason": clierrors.ReasonInterrupted,
 					"error": i18n.T("the call stopped before it returned", "вызов остановился, не вернувшись")}))
 			}
@@ -243,7 +270,9 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		if err := httpretry.WriteRefused(ctx); err != nil {
 			text, isErr = errResult(err), true
 		}
-		end(text)
+		if end != nil {
+			end(text)
+		}
 		// A held record the call names by another argument than its step
 		// (a name, where the record has the id).
 		r.settleHeld(ctx, t.Name, args, text)

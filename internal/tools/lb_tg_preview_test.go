@@ -59,6 +59,7 @@ func TestLBStackResumeSameJob(t *testing.T) {
 	if q["status"] != "confirmation_required" || f.postCount() != 0 {
 		t.Fatal(raw)
 	}
+	assertLBHistoryCount(t, r, 0, 0)
 	old := q["preview_id"]
 	for i := 0; i < 2; i++ {
 		m, raw, _ := callNamed(t, r, "stack_status", map[string]any{"job_id": j.ID})
@@ -74,8 +75,10 @@ func TestLBStackResumeSameJob(t *testing.T) {
 			t.Fatal(raw)
 		}
 	}
+	assertLBHistoryCount(t, r, 0, 0)
 	a["preview_id"] = q["preview_id"]
 	_, raw, _ = callNamed(t, r, "stack_apply", a)
+	assertLBHistoryCount(t, r, 1, 1)
 	job, err := stack.LoadJob(j.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -291,5 +294,27 @@ func TestLBApprovalTargetProject(t *testing.T) {
 				t.Fatal("unexpected write")
 			}
 		})
+	}
+}
+
+func assertLBHistoryCount(t *testing.T, r *Registry, lines, live int) {
+	t.Helper()
+	m, raw, failed := callNamed(t, r, "history", map[string]any{"project_id": raProject})
+	all, okAll := m["lines"].([]any)
+	current, okLive := m["live"].([]any)
+	if failed || !okAll || !okLive || len(all) != lines || len(current) != live {
+		t.Fatalf("want %d history lines and %d live: %s", lines, live, raw)
+	}
+}
+func TestLBUnlinkedConfirmationHasNoHistory(t *testing.T) {
+	f := &raAPI{targetVMs: `{"id":"vm-1","zone_name":"ru.AZ-1","vpc_id":"vpc-1"}`}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	a := map[string]any{"name": "test", "port": float64(80), "target_group_id": raTargetGroup, "confirmed": true}
+	for i := 0; i < 2; i++ {
+		m, raw, _ := callNamed(t, r, "lb_create", a)
+		if m["status"] != "confirmation_required" || f.postCount() != 0 {
+			t.Fatal(raw)
+		}
+		assertLBHistoryCount(t, r, 0, 0)
 	}
 }

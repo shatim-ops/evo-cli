@@ -1380,6 +1380,10 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 				return toJSON(prev), true
 			}
 			ctx = context.WithValue(ctx, lbResumeKey{}, grant)
+		} else if !onlyLBPending(job) {
+			if err := startLBIntent(ctx); err != nil {
+				return errResult(err), true
+			}
 		}
 		s.advance(ctx, job)
 		if e := job.Save(); e != nil {
@@ -1913,6 +1917,22 @@ type lbPinKey struct{}
 type lbJobKey struct{}
 type lbResumeKey struct{}
 type lbStackCLIKey struct{}
+
+// onlyLBPending reports whether this apply can do anything beyond asking
+// about, or executing, its LB step. Earlier writes retain the parent intent.
+func onlyLBPending(job *stack.Job) bool {
+	lb := false
+	for _, step := range job.Steps {
+		if step.Status == "done" || step.Status == "error" {
+			continue
+		}
+		if step.Tool != "lb_create" || step.Status != "pending" {
+			return false
+		}
+		lb = true
+	}
+	return lb
+}
 
 func validStackTG(job *stack.Job, st *stack.Step, args map[string]any) bool {
 	if st.Args["target_group_id"] != "$tg" || stringArg(args, "target_group_id") == "" {
