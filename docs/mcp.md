@@ -426,7 +426,7 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 работа с ВМ и сетью, оставьте эти группы:
 
 ```sh
-evo mcp --toolsets deploy,vm,vpc     # около 40 инструментов, ~35 КБ
+evo mcp --toolsets deploy,vm,vpc     # около 40 инструментов, ~39 КБ
 ```
 
 Группы перечислены в столбце ГРУППА вывода `evo tools list`: deploy, vm,
