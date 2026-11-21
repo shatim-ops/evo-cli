@@ -45,3 +45,40 @@ func TestEvidencePages_OnlyCompleteScopedRowsCanSettleAReceipt(t *testing.T) {
 		})
 	}
 }
+
+func TestEvidencePages_TotalMustAgreeWithRowsAndEarlierPages(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		totals []string
+		valid  bool
+	}{
+		{"omitted", []string{""}, true},
+		{"zero with one row", []string{"0"}, false},
+		{"stable total", []string{"2", "2"}, true},
+		{"implied total from first page", []string{"2", ""}, true},
+		{"total increases", []string{"1", "2"}, false},
+		{"total decreases", []string{"2", "1"}, false},
+		{"extra row", []string{"1", ""}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var pages EvidencePages
+			var err error
+			for i, total := range tc.totals {
+				envelope := map[string]json.RawMessage{}
+				if i+1 < len(tc.totals) {
+					envelope["nextPageToken"] = json.RawMessage(`"next"`)
+				}
+				if total != "" {
+					envelope["total"] = json.RawMessage(total)
+				}
+				row := map[string]any{"id": []string{"a", "b"}[i]}
+				if err = pages.Check(envelope, []map[string]any{row}, nil); err != nil {
+					break
+				}
+			}
+			if (err == nil) != tc.valid {
+				t.Fatalf("valid=%v, err=%v", tc.valid, err)
+			}
+		})
+	}
+}

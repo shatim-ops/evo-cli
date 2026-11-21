@@ -27,7 +27,7 @@ func IsReconciliation(ctx context.Context) bool {
 // EvidencePages tracks the distinct rows and any total promised by a page.
 type EvidencePages struct {
 	ids   map[string]bool
-	total int
+	total *int
 }
 
 // Check verifies the DNS and VPC token-page envelope and its
@@ -50,7 +50,10 @@ func (p *EvidencePages) Check(envelope map[string]json.RawMessage, rows []map[st
 		if json.Unmarshal(raw, &total) != nil || total == nil || *total < 0 {
 			return invalid()
 		}
-		p.total = max(*total, p.total)
+		if p.total != nil && *p.total != *total {
+			return invalid()
+		}
+		p.total = total
 	}
 	if p.ids == nil {
 		p.ids = make(map[string]bool)
@@ -73,8 +76,11 @@ func (p *EvidencePages) Check(envelope map[string]json.RawMessage, rows []map[st
 			}
 		}
 	}
-	if (token == nil || *token == "") && len(p.ids) < p.total {
-		return invalid()
+	if p.total != nil {
+		lastPage := token == nil || *token == ""
+		if len(p.ids) > *p.total || (lastPage && len(p.ids) != *p.total) {
+			return invalid()
+		}
 	}
 	return nil
 }
