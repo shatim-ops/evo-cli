@@ -88,7 +88,7 @@ func TestCreate_NeverTakesWhatWasThereBefore(t *testing.T) {
 	sort.Strings(parts)
 	// The answer to the write is cut short: the create cannot read what it
 	// made, and lostCreate looks it up by name.
-	rt := &contractRT{kind: "200",
+	rt := &contractRT{kind: "200", targetGroupCard: true,
 		body:      "{" + strings.Join(parts, ",") + `,"total":1,"id":"` + takenBefore + `","name":"web","status":"ACTIVE","done":true}`,
 		writeBody: `{"truncated`}
 	reg := contractReg(t, rt)

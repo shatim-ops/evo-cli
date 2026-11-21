@@ -285,7 +285,7 @@ func TestContract_PreviewMessageHasNoConfirmedHint(t *testing.T) {
 	prev := i18n.Lang()
 	t.Cleanup(func() { i18n.SetLang(prev) })
 
-	rt := &contractRT{kind: "200"}
+	rt := &contractRT{kind: "200", targetGroupCard: true}
 	reg := contractReg(t, rt)
 	stackHome(t)
 	planned := planJob(t, `{"name":"s","vpc":{"name":"v"}}`)
