@@ -31,6 +31,7 @@ type localJSONCase struct {
 // localJSONCases: one case for each command of localCommands that answers
 // a call, in the order they run (diag on before diag status).
 var localJSONCases = map[string]localJSONCase{
+	"evo intent close":     {args: []string{"0123456789abcdef"}, ok: false},
 	"evo configure":        {args: []string{"--key-id", fakeKeyID, "--secret-stdin", "--project-id", localJSONProject}, stdin: fakeSecret, ok: true},
 	"evo configure list":   {ok: true},
 	"evo configure delete": {args: []string{"other"}, ok: true},
@@ -67,6 +68,7 @@ var localJSONCases = map[string]localJSONCase{
 // and why: a group without a verb and help print cobra's help, a completion
 // script is shell code for eval, the server speaks MCP on stdio.
 var localJSONExempt = map[string]string{
+	"evo intent":                "a group: prints its help",
 	"evo project":               "a group: prints its help",
 	"evo tools":                 "a group: prints its help",
 	"evo diag":                  "a group: prints its help",

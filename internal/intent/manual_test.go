@@ -21,7 +21,7 @@ func manualFixture(t *testing.T) (string, Intent, func() (*ManualSnapshot, error
 	t.Helper()
 	root := t.TempDir()
 	t.Setenv("CLOUDRU_CONFIG_DIR", t.TempDir())
-	rec, err := Open(Dir(root), Intent{Tool: "redis_create", Name: "data", Surface: "cli", StartedAt: time.Now(), Ended: true, Counts: true, Sent: true, Key: &state.Maker{KeyID: "1234****5678"}, ProjectID: "project"})
+	rec, err := Open(Dir(root), Intent{Tool: "redis_create", Name: "data", Surface: "cli", StartedAt: time.Now(), Ended: true, Counts: true, Sent: true, Key: &state.Maker{ServiceAccountID: "account", KeyID: "1234****5678"}, ProjectID: "project"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,5 +298,30 @@ func TestManualPublicationErrorKeepsOriginal(t *testing.T) {
 	}
 	if p := Pending(rec.Dir); len(p) != 1 || p[0].ID != rec.ID {
 		t.Fatal(p)
+	}
+}
+
+func TestManualOwnerEvidence(t *testing.T) {
+	_, _, load := manualFixture(t)
+	s, err := load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, tc := range []struct {
+		record, current, key string
+		allowed              bool
+	}{
+		{"", "", "1234****5678", false},
+		{"account", "", "1234****5678", false},
+		{"", "account", "1234****5678", false},
+		{"account", "other", "1234****5678", false},
+		{"account", "account", "0000****9999", true},
+	} {
+		s.Record.Key.ServiceAccountID = tc.record
+		err := s.Eligible(&state.Maker{ServiceAccountID: tc.current, KeyID: tc.key}, "project")
+		if (err == nil) != tc.allowed {
+			t.Errorf("receipt %q/current %q/key %q: %v", tc.record, tc.current, tc.key, err)
+		}
 	}
 }

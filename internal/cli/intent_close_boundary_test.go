@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
@@ -70,6 +71,11 @@ func TestContract_ManualIntentCloseIsAbsentFromMCP(t *testing.T) {
 // readers, write guards and history still see the original unknown outcome.
 func TestContract_ManualReviewPreservesHistoryAndGuards(t *testing.T) {
 	w, _ := withJSONWorld(t)
+	t.Setenv("CLOUDRU_KEY_ID", "")
+	t.Setenv("CLOUDRU_SECRET", "")
+	if err := config.SaveProfile("default", config.Profile{ProjectID: pvProject}, config.Credentials{KeyID: fakeKeyID, Secret: fakeSecret, Login: &config.LoginKey{ServiceAccountID: "receipt-account"}}); err != nil {
+		t.Fatal(err)
+	}
 	eng, err := toolEngine(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -85,6 +91,9 @@ func TestContract_ManualReviewPreservesHistoryAndGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	if err = s.Eligible(eng.Maker(), cfg.ProjectID); err != nil {
+		t.Fatal(err)
+	}
 	if err = s.Apply(load); err != nil {
 		t.Fatal(err)
 	}
