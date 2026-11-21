@@ -30,14 +30,18 @@ func ExitCodesHelp() string {
   0    success
   1    general error (including unknown command or flag)
   2    authentication or configuration error
-  3    confirmation required (not given, or stdin is not a terminal; use --yes)
+  3    consent or an outcome check required. Review the preview before giving consent.
+       If a DNS record, static route or SNAT create lost its response, use the listed read command.
+       While the outcome is unknown, even --yes leaves the retry on hold.
   4    object not found
   5    Cloud.ru API error (HTTP 4xx/5xx other than authentication)
   130  interrupted by the user`, `Коды выхода:
   0    успех
   1    прочая ошибка (в том числе неизвестная команда или флаг)
   2    ошибка аутентификации или конфигурации
-  3    нужно подтверждение (не дано или stdin не терминал; используйте --yes)
+  3    нужно согласие или сверка исхода. Перед согласием проверьте превью.
+       Если потерян ответ на создание DNS-записи, статического маршрута или шлюза SNAT, выполните указанную команду чтения.
+       Пока исход неизвестен, повтор удерживается даже с --yes.
   4    объект не найден
   5    ошибка API Cloud.ru (HTTP 4xx/5xx, кроме аутентификации)
   130  прервано пользователем`)

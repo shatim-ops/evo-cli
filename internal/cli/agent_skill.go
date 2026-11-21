@@ -100,7 +100,9 @@ func agentSkillBody(root *cobra.Command, readOnly bool) string {
 
 	// Rules 2-4 and the row of exit code 3: a change after consent, or none.
 	consent := fmt.Sprintf(`2. A change waits for the person. Exit code %d, or `+"`\"status\": \"confirmation_required\"`"+`
-   in MCP, means: stop, show the preview to the person (what is created or
+   in MCP, means stop. If a DNS record, static route or SNAT create lost its response,
+   use the indicated read tool. While the outcome is unknown, even fresh consent
+   keeps the retry on hold. For an ordinary confirmation, show the preview to the person (what is created or
    deleted, and the price) and ask. The `+"`approval`"+` field says the same.
 3. Consent comes only from the person: `+"`--yes`"+` in the CLI, `+"`confirmed=true`"+` in
    MCP, and only after they said yes to this preview. Never add it on your own.
@@ -110,7 +112,7 @@ func agentSkillBody(root *cobra.Command, readOnly bool) string {
    parent cluster or versions change, show a fresh preview and ask again.
 4. Before a change, see its preview: `+"`--dry-run`"+` in the CLI, the call without
    `+"`confirmed`"+` in MCP.`, clerrors.ExitConfirmationRequired)
-	consentRow := "ask the person; after their yes, repeat with `--yes`"
+	consentRow := "review the preview with the person; for an interrupted network create, check the outcome with the indicated read tool"
 	head, examples := "", skillExamples
 	if readOnly {
 		consent = fmt.Sprintf(`2. This agent changes nothing (see above). Exit code %d, or
@@ -176,7 +178,7 @@ a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+
 | %d | success | |
 | %d | usage or other error | read the hint, fix the arguments |
 | %d | no key, or a configuration error | ask the person to run `+"`evo configure`"+` |
-| %d | consent needed | %s |
+| %d | consent or outcome check needed | %s |
 | %d | not found | check the ID or name with a list command |
 | %d | Cloud.ru API error | read the message; retry later if it is temporary |
 | %d | interrupted | |
