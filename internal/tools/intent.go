@@ -20,6 +20,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -641,7 +642,7 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 		interrupted
 }
 
-func interruptedWarning(ctx context.Context, name string, mine []intent.Intent) (string, map[string]any) {
+func interruptedWarning(ctx context.Context, name string, args map[string]any, mine []intent.Intent) (string, map[string]any) {
 	message, details := cutCallWarning(name, mine)
 	rule := everySendIsAChange[name]
 	if rule.listedName == nil {
@@ -649,6 +650,24 @@ func interruptedWarning(ctx context.Context, name string, mine []intent.Intent) 
 	}
 	details["outcome"] = "unknown"
 	last := mine[len(mine)-1]
+	readArgs := map[string]any{}
+	switch name {
+	case "dns_record_create":
+		readArgs["zone_id"] = args["zone_id"]
+		visibility, _, _ := strings.Cut(last.Target, "_")
+		if visibility == "public" || visibility == "private" {
+			readArgs["type"] = visibility
+		}
+	case "vpc_route_create":
+		readArgs["vpc_id"] = args["vpc_id"]
+	}
+	if project := stringArg(args, "project_id"); project != "" {
+		readArgs["project_id"] = project
+	}
+	details["read_args"] = readArgs
+	if isUUID(last.ProjectID) {
+		details["project_id"] = last.ProjectID
+	}
 	message = i18n.Tf("The earlier %s for %s may have been accepted and the resource may not be listed yet. Check %s in the same project. While its outcome is unknown, a second create is blocked even with fresh consent.", "Предыдущий запрос %s для %s мог быть принят, а ресурс ещё не виден в списке. Проверьте %s в том же проекте. Пока исход неизвестен, повторное создание заблокировано даже с новым согласием.", name, quoteCloud(firstNonEmptyStr(last.Name, last.Target)), rule.read)
 	if statelessNetworkHTTP(ctx) {
 		message += " " + i18n.T("Use an initialized session with Mcp-Session-Id for recovery. A session ID alone cannot establish the outcome.", "Для сверки используйте инициализированную сессию с Mcp-Session-Id. Сам ID сессии не устанавливает исход операции.")
@@ -679,8 +698,11 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 	if len(mine) == 0 {
 		return "", false
 	}
-	message, interrupted := interruptedWarning(ctx, name, mine)
+	message, interrupted := interruptedWarning(ctx, name, args, mine)
 	out := map[string]any{"status": "confirmation_required"}
+	if everySendIsAChange[name].listedName != nil {
+		ctx = pager.ForReconciliation(ctx)
+	}
 	text, previewErr := plan(ctx)
 	if everySendIsAChange[name].listedName != nil && previewErr && answerStatus(text) != "confirmation_required" {
 		r.settleNetworkConflict(ctx, mine, text)
@@ -782,7 +804,7 @@ func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args ma
 	if json.Unmarshal([]byte(answer), &m) != nil {
 		return answer
 	}
-	message, interrupted := interruptedWarning(ctx, name, mine)
+	message, interrupted := interruptedWarning(ctx, name, args, mine)
 	if was, _ := m["message"].(string); was != "" {
 		message += " " + was
 	}
@@ -1227,6 +1249,9 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	}
 	// Every call of the tool is one more change: the same call again does
 	// not settle the record, it changes the resource a second time.
+	if rule := everySendIsAChange[in.Tool]; rule.listedName != nil {
+		return head + i18n.Tf(" — check %s in the original project; a second create stays blocked while the outcome is unknown", " — проверьте %s в исходном проекте; пока исход неизвестен, повторное создание заблокировано", quoteCloud(rule.read))
+	}
 	if read := everySendIsAChange[in.Tool].read; read != "" {
 		return head + i18n.Tf(" — %s shows it; the same %s again is one more change, not a repeat: whether to send it is the person's decision",
 			" — его показывает %s; тот же %s ещё раз — это ещё одно изменение, а не повтор: слать ли его — решает человек", quoteCloud(read), tool)
@@ -1468,6 +1493,9 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	}
 	if props, _ := t.InputSchema["properties"].(map[string]any); props["project_id"] != nil && in.ProjectID != "" {
 		listArgs["project_id"] = in.ProjectID
+	}
+	if everySendIsAChange[in.Tool].listedName != nil {
+		ctx = pager.ForReconciliation(ctx)
 	}
 	text, isErr := h(ctx, listArgs)
 	var m map[string]any

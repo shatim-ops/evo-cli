@@ -157,6 +157,7 @@ func (c *Client) listVPCs(ctx context.Context, verifyReferences bool) ([]map[str
 // listPages reads every page of a list whose items are in field.
 func (c *Client) listPages(ctx context.Context, path string, query url.Values, field string, verifyReferences bool) ([]map[string]any, error) {
 	var all []map[string]any
+	var evidence pager.EvidencePages
 	err := pager.All("vpc: "+field, func(token string) (string, error) {
 		q := url.Values{}
 		for k, v := range query {
@@ -180,6 +181,14 @@ func (c *Client) listPages(ctx context.Context, path string, query url.Values, f
 		if raw, ok := out[field]; ok {
 			if err := json.Unmarshal(raw, &page); err != nil {
 				return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
+			}
+		}
+		if field == "routes" && pager.IsReconciliation(ctx) {
+			// The parent UUID is the path component just before /routes/static.
+			parent := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/vpcs/"), "/routes/static")
+			scope := map[string]string{"projectId": c.projectID, "project_id": c.projectID, "vpcId": parent, "vpc_id": parent}
+			if err := evidence.Check(out, page, scope, "subnet"); err != nil {
+				return "", err
 			}
 		}
 		if verifyReferences {

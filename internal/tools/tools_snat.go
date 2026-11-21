@@ -12,6 +12,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -67,6 +68,13 @@ func (s *Registry) readSnatZone(ctx context.Context, args map[string]any) (id, n
 	return id, "", nil
 }
 
+func listSNATForCreate(ctx context.Context, eng *engine.Engine) ([]map[string]any, error) {
+	if pager.IsReconciliation(ctx) {
+		return provision.NATDeleteInventory(ctx, eng.Cloud, eng.Config.ProjectID)
+	}
+	return eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+}
+
 // handleSnatList lists SNAT gateways (outbound-internet egress for private
 // subnets, e.g. mk8s worker nodes).
 func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (string, bool) {
@@ -74,7 +82,7 @@ func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (str
 	if err != nil {
 		return errResult(err), true
 	}
-	gws, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+	gws, err := listSNATForCreate(ctx, eng)
 	if err != nil {
 		return errResult(err), true
 	}
@@ -114,7 +122,7 @@ func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Pl
 	// the consent, as every other create (fault matrix, process audit
 	// 1.2.1: a repeated snat_create made one more each time).
 	list := func(ctx context.Context) ([]map[string]any, error) {
-		return eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+		return listSNATForCreate(ctx, eng)
 	}
 	existing, err := list(ctx)
 	if err != nil {
