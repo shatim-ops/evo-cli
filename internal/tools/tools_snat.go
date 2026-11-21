@@ -100,8 +100,7 @@ func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (str
 	return toJSON(map[string]any{"nat_gateways": out}), false
 }
 
-func prepareSNATGateway(ctx context.Context, eng *engine.Engine, name string, placement snatPlacement) (*Plan, error) {
-	zoneID, zoneName := placement.id, placement.name
+func prepareSNATGateway(ctx context.Context, eng *engine.Engine, name, zoneID, zoneName string) (*Plan, error) {
 	// A second gateway of the same name is a second bill: refused before
 	// the consent, as every other create (fault matrix, process audit
 	// 1.2.1: a repeated snat_create made one more each time).

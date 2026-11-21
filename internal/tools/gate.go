@@ -307,7 +307,7 @@ func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Pl
 	if err != nil {
 		return nil, err
 	}
-	plan, err := prepareSNATGateway(ctx, eng, name, placement)
+	plan, err := prepareSNATGateway(ctx, eng, name, placement.id, placement.name)
 	if err != nil || plan.Execute == nil {
 		return plan, err
 	}
