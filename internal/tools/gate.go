@@ -6,11 +6,14 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -79,14 +82,50 @@ func startLBIntent(ctx context.Context) error {
 	return nil
 }
 
+func lbDigest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// approvalDigest keeps previously displayed offers compatible. It binds the exact
+// POST body and resolved zone to the caller and the interrupted attempts shown.
+func (p *lbPlacement) approvalDigest(interruptedIDs []string) (string, error) {
+	if p.config.KeyID == "" && p.config.ServiceAccountID == "" {
+		return "", usageErr("Cannot identify the caller for load balancer approval.", "Не удалось определить учётную запись для согласования балансировщика.")
+	}
+	terms, err := json.Marshal([]any{
+		p.body, p.zoneID, p.config.Profile, p.config.ServiceAccountID,
+		lbDigest([]byte(p.config.KeyID)), interruptedIDs,
+	})
+	if err != nil {
+		return "", err
+	}
+	return lbDigest(terms), nil
+}
+
 // planLbCreate binds each way to execute the paid request to its approved placement.
 // Both a direct call and a resumed stack open the intent only on that transition.
 func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan, error) {
-	plan, digest, err := s.prepareLBCreate(ctx, args)
+	plan, placement, err := s.prepareLBCreate(ctx, args)
 	if err != nil || plan.Execute == nil {
 		return plan, err
 	}
 	preview := plan.Preview
+	cuts := s.cutCalls(ctx, "lb_create", args)
+	var ids []string
+	if len(cuts) > 0 {
+		message, warn := interruptedWarning(ctx, "lb_create", args, cuts)
+		preview["interrupted"] = warn
+		preview["message"] = message + " " + stringArg(preview, "message")
+		for _, cut := range cuts {
+			ids = append(ids, cut.ID)
+		}
+		slices.Sort(ids)
+	}
+	digest, err := placement.approvalDigest(ids)
+	if err != nil {
+		return nil, err
+	}
 	send := func(ctx context.Context) (string, bool) {
 		if err := startLBIntent(ctx); err != nil {
 			return errResult(err), true
