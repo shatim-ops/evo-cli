@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -73,7 +74,7 @@ func newIntentCmd() *cobra.Command {
 			return nil
 		}
 		in := s.Record
-		fmt.Fprintf(os.Stderr, i18n.T("Receipt %s in %q\nTool %q, name %q, target %q, project %q, owner %q (key %q), started %s, write sent.\n", "Квитанция %s в %q\nИнструмент %q, имя %q, цель %q, проект %q, владелец %q (ключ %q), начало %s, запись отправлена.\n"), in.ID, in.Dir, in.Tool, in.Name, in.Target, in.ProjectID, in.Key.ServiceAccountID, in.Key.KeyID, in.StartedAt.Format(time.RFC3339))
+		fmt.Fprintf(os.Stderr, i18n.T("Receipt %s in %q\nTool %q, name %q, target %q, project %q, owner %q (key %q), started %s, write sent.\n", "Квитанция %s в %q\nИнструмент %q, имя %q, цель %q, проект %q, владелец %q (ключ %q), начало %s, запись отправлена.\n"), in.ID, in.Dir, in.Tool, in.Name, in.Target, in.ProjectID, in.Key.ServiceAccountID, config.MaskKeyID(in.Key.KeyID), in.StartedAt.Format(time.RFC3339))
 		fmt.Fprintln(os.Stderr, i18n.T("This closes local review only. The cloud outcome is unknown. The resource may exist and incur charges. This does not authorize a retry. Enter the full receipt ID:", "Закрывается только локальный разбор. Облачный исход неизвестен. Ресурс может существовать и тарифицироваться. Повтор не разрешается. Введите полный ID квитанции:"))
 		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 		if err != nil || strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r") != in.ID {

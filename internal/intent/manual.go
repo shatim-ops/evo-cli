@@ -125,7 +125,7 @@ func PreviewManual(root, id, profile string) (*ManualSnapshot, error) {
 // allow a human to dismiss this receipt. Tool-specific scope is checked by the caller.
 func (s *ManualSnapshot) Eligible(key *state.Maker, project string) error {
 	in := s.Record
-	if !in.Key.Matches(key) || project == "" || in.ProjectID != project {
+	if in.Key == nil || key == nil || in.Key.ServiceAccountID == "" || in.Key.ServiceAccountID != key.ServiceAccountID || project == "" || in.ProjectID != project {
 		return manualError("Cannot verify the owner and project of this receipt.", "Не удалось подтвердить владельца и проект квитанции.")
 	}
 	if in.Held || in.InFlight() || !in.Ended && (in.Machine == "" || in.Machine != thisMachine() || in.PID <= 0) || !in.Sent || !in.Counts {
