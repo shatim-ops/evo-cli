@@ -163,6 +163,18 @@ func TestContract_VMHistory(t *testing.T) {
 						t.Fatalf("%s: incomplete page must preserve only the first verified row: %v", surface, answer)
 					}
 				}
+				if hasFirst || hasSecond || scenario == "empty" {
+					src, ok := answer["source"].(string)
+					if !ok || !strings.Contains(strings.ToLower(src), "compute") {
+						t.Fatalf("%s: missing Compute source: %v", surface, answer)
+					}
+				}
+				if hasFirst {
+					checkVMTaskProjection(t, answer, ids[0], "Create VM")
+				}
+				if hasSecond {
+					checkVMTaskProjection(t, answer, ids[1], "Delete Vm")
+				}
 				if len(wantReads) == 2 && len(offsets) == 3 && offsets[2] == 2 {
 					wantReads = append(wantReads, 2)
 				}
@@ -176,5 +188,44 @@ func TestContract_VMHistory(t *testing.T) {
 				previous = observed
 			}
 		})
+	}
+}
+
+// Check the actual row in the wire result. A denied page can carry service
+// metadata in its body even when neither of the two fixture task IDs appears.
+func checkVMTaskProjection(t *testing.T, answer map[string]any, id, action string) {
+	t.Helper()
+	found := 0
+	var visit func(any)
+	visit = func(v any) {
+		switch node := v.(type) {
+		case map[string]any:
+			for _, value := range node {
+				if str, ok := value.(string); ok && str == id {
+					found++
+					values := map[string]bool{}
+					for _, entry := range node {
+						if text, ok := entry.(string); ok {
+							values[text] = true
+						}
+					}
+					if len(node) != 4 || !values[action] || !values["complete"] || !values["2026-11-21T05:53:30Z"] {
+						t.Errorf("unexpected task projection for %s: %v", id, node)
+					}
+					return
+				}
+			}
+			for _, entry := range node {
+				visit(entry)
+			}
+		case []any:
+			for _, entry := range node {
+				visit(entry)
+			}
+		}
+	}
+	visit(answer)
+	if found != 1 {
+		t.Errorf("wanted a single task row for %s, got %d", id, found)
 	}
 }
