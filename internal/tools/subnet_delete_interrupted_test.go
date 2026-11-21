@@ -14,7 +14,6 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/intent"
-	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 func TestSubnetDeleteInterruptedKeepsDoctorEvidence(t *testing.T) {
@@ -35,7 +34,7 @@ func TestSubnetDeleteInterruptedKeepsDoctorEvidence(t *testing.T) {
 		}
 		return rec.Result(), nil
 	})
-	r, dir := fastRegistry(t, provision.NewCloudRuAdapter(&http.Client{Transport: rt}, ""), provisionCfg)
+	r, dir := interruptedDeleteRegistry(t, rt)
 	t.Chdir(dir)
 	tl, _ := r.Lookup("subnet_delete")
 	text, failed := tl.Handler(ctx, map[string]any{"subnet_id": subnetOld, "confirmed": true})

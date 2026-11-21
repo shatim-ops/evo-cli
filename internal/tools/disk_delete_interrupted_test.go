@@ -14,7 +14,6 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/intent"
-	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 func TestDiskDeleteInterruptedKeepsDoctorEvidence(t *testing.T) {
@@ -35,7 +34,7 @@ func TestDiskDeleteInterruptedKeepsDoctorEvidence(t *testing.T) {
 		}
 		return rec.Result(), nil
 	})
-	r, dir := fastRegistry(t, provision.NewCloudRuAdapter(&http.Client{Transport: rt}, ""), provisionCfg)
+	r, dir := interruptedDeleteRegistry(t, rt)
 	t.Chdir(dir)
 	tl, _ := r.Lookup("disk_delete")
 	text, failed := tl.Handler(ctx, map[string]any{"disk_id": faultDisk, "confirmed": true})

@@ -22,6 +22,24 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
+// Doctor reads the key and its projects through separate HTTP clients.
+// Compute still uses the fixture that records the interrupted delete.
+func interruptedDeleteRegistry(t *testing.T, compute http.RoundTripper) (*Registry, string) {
+	t.Helper()
+	old := httpretry.DefaultBase
+	t.Cleanup(func() { httpretry.DefaultBase = old })
+	httpretry.DefaultBase = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("unexpected doctor request: %s %s", req.Method, req.URL)
+		}
+		rec := httptest.NewRecorder()
+		http.NotFound(rec, req)
+		return rec.Result(), nil
+	})
+	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: compute}, "")
+	return fastRegistry(t, cloud, provisionCfg)
+}
+
 // lostDeleteWorld is a cloud that has the resource named liveID or
 // liveName (liveWorld) until the first write: the write is taken — from
 // then on the resource is gone, as in goneWorld — and its answer is lost.

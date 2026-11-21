@@ -15,7 +15,6 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/intent"
-	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -45,7 +44,7 @@ func TestSNATDeleteInterruptedKeepsDoctorEvidence(t *testing.T) {
 		}
 		return rec.Result(), nil
 	})
-	r, dir := fastRegistry(t, provision.NewCloudRuAdapter(&http.Client{Transport: rt}, ""), provisionCfg)
+	r, dir := interruptedDeleteRegistry(t, rt)
 	t.Chdir(dir)
 	tl, _ := r.Lookup("snat_delete")
 	text, failed := tl.Handler(ctx, map[string]any{"id": gatewayID, "confirmed": true})
@@ -117,8 +116,7 @@ func TestSNATDeleteIncompleteSecondPage(t *testing.T) {
 				}
 				return rec.Result(), nil
 			})
-			api := provision.NewCloudRuAdapter(&http.Client{Transport: rt}, "")
-			r, dir := fastRegistry(t, api, provisionCfg)
+			r, dir := interruptedDeleteRegistry(t, rt)
 			t.Chdir(dir)
 			tool, _ := r.Lookup("snat_delete")
 			for _, consent := range []bool{false, true} {
