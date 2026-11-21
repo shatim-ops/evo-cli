@@ -1272,6 +1272,11 @@ func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engi
 		}
 		return r.checkByID(ctx, in, k, id, eng.Maker())
 	}
+	// A name in this key's list cannot settle another key's call (R-86).
+	// pendingNote identifies the key needed to check the record.
+	if in.Key.Other(eng.Maker()) {
+		return "", false, ""
+	}
 	return r.checkByList(ctx, in, eng.Config.ProjectID)
 }
 
