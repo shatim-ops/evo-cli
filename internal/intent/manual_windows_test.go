@@ -233,3 +233,18 @@ func TestManualWindowsSubstitutedDirectory(t *testing.T) {
 		t.Fatal(marks)
 	}
 }
+
+func TestManualWindowsRejectsAncestorJunction(t *testing.T) {
+	root, rec, _ := manualFixture(t)
+	alias := filepath.Join(t.TempDir(), "workspace-junction")
+	if out, err := exec.Command("cmd.exe", "/d", "/c", "mklink", "/J", alias, root).CombinedOutput(); err != nil {
+		t.Fatal(string(out), err)
+	}
+	if view, err := PreviewManual(alias, rec.ID, "default"); err == nil {
+		view.Close()
+		t.Fatal("accepted ancestor junction")
+	}
+	if _, err := os.Stat(filepath.Join(config.Dir(), "intent-review")); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}

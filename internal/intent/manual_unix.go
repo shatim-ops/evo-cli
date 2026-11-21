@@ -9,6 +9,7 @@ package intent
 import (
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 )
@@ -56,3 +57,5 @@ func (s *manualSource) matchesFile(f *os.File) (bool, error) {
 
 func (s *manualSource) prepareTerminal() (string, error) { return "", nil }
 func (s *manualSource) linkDecision(path string) error   { return os.Link(s.Name(), path) }
+
+func canonicalManualDir(path string) (string, error) { return filepath.EvalSymlinks(path) }
