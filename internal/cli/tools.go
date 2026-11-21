@@ -776,7 +776,11 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 		}
 		ask := opts
 		if interrupted, _ := resp["interrupted"].(map[string]any); interrupted["outcome"] == "unknown" && !flagDryRun {
-			return text, toolError(text, hints)
+			err := toolError(text, hints)
+			if ce, ok := err.(*clerrors.CLIError); ok {
+				ce.Hint = cutCallHint(cmd, interrupted)
+			}
+			return text, err
 		}
 		if interrupted, cut := resp["interrupted"]; cut {
 			// The question names a call of this tool that was cut with
@@ -825,6 +829,21 @@ func cutCallHint(cmd *cobra.Command, interrupted any) string {
 		name, _ := m["read_tool"].(string)
 		if t, ok := registryOf(cmd).Lookup(name); ok {
 			read = toolCommandPath(t)
+			if m["outcome"] == "unknown" {
+				args, _ := m["read_args"].(map[string]any)
+				for _, arg := range t.CLI.Args {
+					if id, _ := args[arg].(string); looksLikeUUID(id) {
+						read += " " + id
+					}
+				}
+				if visibility, _ := args["type"].(string); visibility == "public" || visibility == "private" {
+					read += " --type " + visibility
+				}
+				if project, _ := m["project_id"].(string); looksLikeUUID(project) {
+					read += " --project-id " + project
+				}
+				return i18n.Tf("Check the target with '%s' in the original project. While the earlier outcome is unknown, the create stays blocked.", "Проверьте цель командой «%s» в исходном проекте. Пока исход предыдущего запроса неизвестен, создание остаётся заблокированным.", read)
+			}
 		}
 	}
 	if read == "" {
