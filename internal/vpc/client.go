@@ -184,6 +184,9 @@ func (c *Client) listPages(ctx context.Context, path string, query url.Values, f
 			}
 		}
 		if field == "routes" && pager.IsReconciliation(ctx) {
+			if err := evidence.CheckTotalCount(out["totalCount"]); err != nil {
+				return "", err
+			}
 			scope := map[string]string{"projectId": c.projectID, "project_id": c.projectID, "vpcId": routeVPCID, "vpc_id": routeVPCID}
 			if err := evidence.Check(out, page, scope, "subnet"); err != nil {
 				return "", err

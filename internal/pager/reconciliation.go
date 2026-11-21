@@ -27,7 +27,7 @@ func IsReconciliation(ctx context.Context) bool {
 // EvidencePages tracks the distinct rows and any total promised by a page.
 type EvidencePages struct {
 	ids   map[string]bool
-	total *int
+	total *int64
 }
 
 // Check verifies the DNS and VPC token-page envelope and its
@@ -46,20 +46,40 @@ func invalidEvidence() error {
 	return clierrors.New(clierrors.CodeAPIError, i18n.T("The resource list is incomplete or contradicts the requested scope.", "Список ресурсов неполон или противоречит области запроса."), i18n.T("Read the target again in the original project.", "Повторите проверку цели в исходном проекте."))
 }
 
+// CheckTotalCount records the optional uint32 totalCount of a VPC route page.
+// Any other count supplied on this or a later page must agree.
+func (p *EvidencePages) CheckTotalCount(raw json.RawMessage) error {
+	if raw == nil {
+		return nil
+	}
+	var n *uint32
+	if json.Unmarshal(raw, &n) != nil || n == nil {
+		return invalidEvidence()
+	}
+	return p.recordTotal(int64(*n))
+}
+
+func (p *EvidencePages) recordTotal(n int64) error {
+	if n < 0 || (p.total != nil && *p.total != n) {
+		return invalidEvidence()
+	}
+	p.total = &n
+	return nil
+}
+
 // CheckRows validates distinct identities and the declared count across token or offset pages.
 func (p *EvidencePages) CheckRows(raw json.RawMessage, rows []map[string]any, lastPage bool, scope map[string]string, fields ...string) error {
 	if rows == nil {
 		return invalidEvidence()
 	}
 	if raw != nil {
-		var total *int
-		if json.Unmarshal(raw, &total) != nil || total == nil || *total < 0 {
+		var total *int64
+		if json.Unmarshal(raw, &total) != nil || total == nil {
 			return invalidEvidence()
 		}
-		if p.total != nil && *p.total != *total {
-			return invalidEvidence()
+		if err := p.recordTotal(*total); err != nil {
+			return err
 		}
-		p.total = total
 	}
 	if p.ids == nil {
 		p.ids = make(map[string]bool)
@@ -83,7 +103,8 @@ func (p *EvidencePages) CheckRows(raw json.RawMessage, rows []map[string]any, la
 		}
 	}
 	if p.total != nil {
-		if len(p.ids) > *p.total || (lastPage && len(p.ids) != *p.total) {
+		seen := int64(len(p.ids))
+		if seen > *p.total || (lastPage && seen != *p.total) {
 			return invalidEvidence()
 		}
 	}

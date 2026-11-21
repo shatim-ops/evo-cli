@@ -34,7 +34,7 @@ type networkRetryCase struct {
 func TestContract_NetworkRetryConsent(t *testing.T) {
 	cases := []networkRetryCase{
 		{"dns_record_create", "dns.api.cloud.ru", "/v1/publicRecordsSole", "dns_records", map[string]any{"zone_id": parityVM, "type": "public"}, "records", `{"records":[{"id":"` + retryResourceID + `","name":"www","type":"A"}],"total":1}`},
-		{"vpc_route_create", "vpc.api.cloud.ru", "/v1/vpcs/" + parityVM + "/routes/static", "vpc_routes", map[string]any{"vpc_id": parityVM}, "routes", `{"routes":[{"id":"` + retryResourceID + `","subnet":"192.0.2.0/24"}],"total":1}`},
+		{"vpc_route_create", "vpc.api.cloud.ru", "/v1/vpcs/" + parityVM + "/routes/static", "vpc_routes", map[string]any{"vpc_id": parityVM}, "routes", `{"routes":[{"id":"` + retryResourceID + `","subnet":"192.0.2.0/24"}],"totalCount":1}`},
 		{"snat_create", "compute.api.cloud.ru", "/api/v1/nat-gateways", "snat_list", map[string]any{}, "nat_gateways", `{"items":[{"id":"` + retryResourceID + `","name":"nat-new","availability_zone_id":"` + pvZone + `","status":"ACTIVE"}],"total":1}`},
 	}
 	for _, tc := range cases {
@@ -71,6 +71,7 @@ func (tc networkRetryCase) exercise(t *testing.T, first string, appeared bool) {
 					body := tc.visibleList
 					if contradictoryTotal {
 						body = strings.Replace(body, `"total":1`, `"total":0`, 1)
+						body = strings.Replace(body, `"totalCount":1`, `"totalCount":0`, 1)
 					}
 					if foreignPage {
 						body = strings.Replace(body, `"id":`, `"project_id":"another-project","id":`, 1)
