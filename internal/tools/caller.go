@@ -49,6 +49,7 @@ type Caller struct {
 	RequireNewApproval bool
 	upgradePreview     *upgradeReceipt
 	lbDigest           string
+	snatZoneID         string
 	// Printer receives the engine's output; nil keeps it in the answer.
 	Printer *output.Printer
 	// Progress shows the stages of a long call to the person while it

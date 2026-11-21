@@ -71,12 +71,12 @@ func answered(text string, isErr bool) *Plan {
 // the question.
 type Planner func(ctx context.Context, args map[string]any) (*Plan, error)
 
-type lbIntentStartKey struct{}
+type placementIntentStartKey struct{}
 
-// startLBIntent records the accepted change before execution. Re-showing a
+// startPlacementIntent records the accepted change before execution. Re-showing a
 // placement (including a paused stack) never opens a second cloud intent.
-func startLBIntent(ctx context.Context) error {
-	if start, ok := ctx.Value(lbIntentStartKey{}).(func() error); ok {
+func startPlacementIntent(ctx context.Context) error {
+	if start, ok := ctx.Value(placementIntentStartKey{}).(func() error); ok {
 		return start()
 	}
 	return nil
@@ -127,7 +127,7 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		return nil, err
 	}
 	send := func(ctx context.Context) (string, bool) {
-		if err := startLBIntent(ctx); err != nil {
+		if err := startPlacementIntent(ctx); err != nil {
 			return errResult(err), true
 		}
 		return plan.Execute(ctx)
@@ -286,6 +286,90 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		}
 		return send(ctx)
 	}}, nil
+}
+
+// bindSNATPlacement remembers the UUID displayed for a named gateway. A
+// first confirmed call needs no offer. The CLI's implicit --yes planning
+// pass must not overwrite an earlier offer before comparing the UUID.
+func (s *Registry) bindSNATPlacement(ctx context.Context, eng *engine.Engine, plan *Plan, name string, placement snatPlacement) *Plan {
+	caller := callerOf(ctx)
+	// A retry can arrive on a new connection or after a process restart.
+	// Share the offer only within the same credential, project and gateway.
+	terms, _ := json.Marshal([]string{eng.Config.ProjectID, eng.Config.Profile, eng.Config.ServiceAccountID, eng.Config.KeyID, name})
+	root, _ := s.stateDir()
+	path := filepath.Join(root, "snat-previews", lbDigest(terms)+".json")
+	type offer struct {
+		ID      string `json:"id"`
+		Changed bool   `json:"changed,omitempty"`
+	}
+	check := func(show bool) (bool, error) {
+		unlock, err := state.FileLock(path+".lock", 5*time.Second)
+		if err != nil {
+			return false, err
+		}
+		defer unlock()
+		var saved offer
+		b, err := config.ReadFileNoFollow(path)
+		if err == nil {
+			if json.Unmarshal(b, &saved) != nil || !isUUID(saved.ID) {
+				return false, clierrors.New(clierrors.CodeStateCorrupted, i18n.T("Cannot read the displayed SNAT placement.", "Не удалось прочитать сохранённое размещение SNAT."), "")
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+		changed := saved.Changed || (saved.ID != "" && saved.ID != placement.id)
+		if caller != nil && !show && caller.snatZoneID != "" && caller.snatZoneID != placement.id {
+			changed = true
+		}
+		if (show && saved.ID == "" && (caller == nil || !caller.AutomaticPreview)) || (changed && !saved.Changed) {
+			if saved.ID == "" {
+				saved.ID = placement.id
+			}
+			saved.Changed = changed
+			b, _ := json.Marshal(saved)
+			if err := config.WriteDurableReceipt(path, b); err != nil {
+				return false, err
+			}
+		}
+		if caller != nil {
+			if show {
+				caller.snatZoneID = placement.id
+				caller.RequireNewApproval = changed && caller.AutomaticPreview
+			} else if !caller.AutomaticPreview && caller.snatZoneID == placement.id {
+				// The CLI has just asked the person about this exact UUID.
+				return false, nil
+			}
+		}
+		return changed, nil
+	}
+	markChanged := func() {
+		message := i18n.T("The zone placement changed. Show the new UUID to the person. After fresh approval, pass will_create.availability_zone_id as availability_zone_id with confirmed=true.", "Размещение зоны изменилось. Покажите человеку новый UUID. После нового согласия передайте will_create.availability_zone_id как availability_zone_id вместе с confirmed=true.")
+		if caller != nil {
+			message = i18n.T("The zone placement changed. Review the new UUID and confirm it at the terminal, or pass the approved --availability-zone-id.", "Размещение зоны изменилось. Проверьте новый UUID и подтвердите его в терминале или передайте одобренный --availability-zone-id.")
+		}
+		plan.Preview["message"] = message
+		human := plan.Preview["preview"].(engine.CreatePreview)
+		human.Warnings = append(human.Warnings, message)
+		plan.Preview["preview"] = human
+	}
+	return &Plan{Preview: plan.Preview, PreviewOf: func(context.Context) (map[string]any, error) {
+		changed, err := check(true)
+		if changed {
+			markChanged()
+		}
+		return plan.Preview, err
+	}, Execute: func(ctx context.Context) (string, bool) {
+		changed, err := check(false)
+		if err != nil {
+			return errResult(err), true
+		}
+		if changed {
+			markChanged()
+			plan.Preview["status"] = "confirmation_required"
+			return toJSON(plan.Preview), true
+		}
+		return plan.Execute(ctx)
+	}}
 }
 
 // gated is the handler of tool name on its planner: the plan first, then
@@ -449,14 +533,14 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		// the limit of the repeats counts from («Риск», conclusion 177,
 		// У7).
 		var end func(string)
-		deferLB := t.Name == "lb_create"
+		deferPlacement := t.Name == "lb_create" || t.Name == "snat_create"
 		if t.Name == "stack_apply" {
 			job, err := stack.LoadJob(stringArg(args, "job_id"))
-			deferLB = err == nil && jobHasPendingLB(job)
+			deferPlacement = err == nil && jobHasPendingLB(job)
 		}
 		if held, goesOn := r.goesOn(ctx, t.Name, args); goesOn {
 			end = func(answer string) { cutSendOf(ctx, held, answer) }
-		} else if deferLB {
+		} else if deferPlacement {
 			startBeforeWrite = sync.OnceValue(func() error {
 				var err error
 				end, err = r.beginIntent(ctx, t.Name, args)
@@ -465,14 +549,14 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 				}
 				return err
 			})
-			ctx = context.WithValue(ctx, lbIntentStartKey{}, startBeforeWrite)
+			ctx = context.WithValue(ctx, placementIntentStartKey{}, startBeforeWrite)
 		} else {
 			var err error
 			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
 				return errResult(err), true
 			}
 		}
-		if release != nil && !deferLB {
+		if release != nil && !deferPlacement {
 			release()
 		}
 		// A handler that panics does not return: the server recovers it,

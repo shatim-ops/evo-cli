@@ -86,3 +86,17 @@ func TestSnatCreate_PreviewNamesTheZone(t *testing.T) {
 		t.Errorf("preview zone %v: %s", p["zone"], text)
 	}
 }
+
+// The catalog omits enabled. An explicit UUID still works (the preview
+// test above); a paid name selection cannot establish the zone is active.
+func TestSnatCreate_MissingZoneState(t *testing.T) {
+	api := &natZoneAPI{}
+	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: api}, "")
+	r := raRegistry(t, api, cloud, nil)
+	for _, confirmed := range []bool{false, true} {
+		m, text, failed := callNamed(t, r, "snat_create", map[string]any{"name": "nat-new", "zone": "ru.AZ-1", "confirmed": confirmed})
+		if !failed || m["reason"] != "API_ERROR" || api.posts != 0 {
+			t.Fatalf("confirmed=%v: %s, POST=%d", confirmed, text, api.posts)
+		}
+	}
+}

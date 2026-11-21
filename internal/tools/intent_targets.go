@@ -64,8 +64,8 @@ func snatIntent(ctx context.Context, r *Registry, args map[string]any) (string, 
 	if err := provision.ValidName(i18n.T("SNAT gateway", "SNAT-шлюза"), name); err != nil {
 		return "", "", err
 	}
-	id, _, err := r.resolveZone(ctx, args)
-	return name, "availability_zone_id=" + id, err
+	placement, err := r.snatPlacement(ctx, args)
+	return name, "availability_zone_id=" + placement.id, err
 }
 
 // Before 1.10 DNS stored just the label and a route just its VPC.

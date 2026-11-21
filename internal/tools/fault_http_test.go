@@ -277,7 +277,7 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 	case host == faultS3Host:
 		a.serveS3(w, r)
 	case path == "/api/v1/availability-zones":
-		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}]}`)
+		_, _ = io.WriteString(w, `{"items":[{"id":"`+zoneAZ1+`","name":"ru.AZ-1","enabled":true}],"total":1}`)
 	case strings.HasPrefix(path, "/api/v1/disks/") && strings.HasSuffix(path, "/attach") && r.Method == http.MethodPost:
 		// A disk still being created is not attachable yet (CMP-15).
 		a.mu.Lock()

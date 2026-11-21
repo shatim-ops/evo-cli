@@ -778,6 +778,10 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 		ask := opts
 		if caller.RequireNewApproval {
 			ask.Yes, ask.NoPrompt = false, true
+			if t.Name == "snat_create" {
+				ask.PersonOnly = true
+				ask.Hint = i18n.T("Review the UUID and run the command interactively, or pass the approved --availability-zone-id.", "Проверьте UUID и запустите команду в терминале или передайте одобренный --availability-zone-id.")
+			}
 		}
 		if interrupted, _ := resp["interrupted"].(map[string]any); interrupted["outcome"] == "unknown" && !flagDryRun {
 			err := toolError(text, hints)
@@ -812,7 +816,7 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 			}
 		}
 		text, isErr = t.Handler(ctx, confirmed)
-		if (t.Name == "lb_create" || t.Name == "stack_apply") && isErr {
+		if (t.Name == "lb_create" || t.Name == "stack_apply" || t.Name == "snat_create") && isErr {
 			if changed := parseObject(text); changed["status"] == "confirmation_required" && changed["will_create"] != nil {
 				p := toolPreview(t.Name, changed)
 				if human {

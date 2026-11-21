@@ -337,3 +337,47 @@ func TestConnectionError(t *testing.T) {
 		t.Errorf("Code = %q, want %q", cliErr.Code, clierrors.CodeAPIUnreachable)
 	}
 }
+
+func TestSNATZoneCatalogEnvelope(t *testing.T) {
+	const row = `{"id":"00000000-0000-4000-8000-0000000000a1","name":"ru.AZ-1","enabled":true}`
+	for _, tc := range []struct {
+		name, body    string
+		status, count int
+	}{
+		{"array", "[" + row + "]", 200, 1}, {"empty", "[]", 200, 0},
+		{"whole", `{"items":[` + row + `],"total":1,"offset":0}`, 200, 1},
+		{"no count", `{"items":[` + row + `]}`, 200, -1},
+		{"zero count", `{"items":[` + row + `],"total":0}`, 200, -1},
+		{"tail", `{"items":[` + row + `],"total":1,"offset":1}`, 200, -1},
+		{"continuation", `{"items":[` + row + `],"total":1,"nextPageToken":"more"}`, 200, -1},
+		{"denied", "", 403, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, cloud := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			})
+			defer srv.Close()
+			zones, err := SNATZoneCatalog(context.Background(), cloud)
+			if tc.count >= 0 {
+				if err != nil || len(zones) != tc.count {
+					t.Fatalf("zones=%v err=%v", zones, err)
+				}
+				return
+			}
+			var e *clierrors.CLIError
+			if !errors.As(err, &e) {
+				t.Fatal(err)
+			}
+			if tc.status == 403 {
+				_, ordinary := cloud.ListAvailabilityZones(context.Background())
+				var other *clierrors.CLIError
+				if !errors.As(ordinary, &other) || e.Code != other.Code {
+					t.Fatalf("catalog=%v ordinary=%v", err, ordinary)
+				}
+			} else if e.Code != clierrors.CodeAPIError {
+				t.Fatal(err)
+			}
+		})
+	}
+}

@@ -189,6 +189,14 @@ func (a *CloudRuAdapter) ListFlavors(ctx context.Context) ([]*Flavor, error) {
 	return result, nil
 }
 
+// SNATZoneCatalog requests the complete inventory needed to place a paid
+// gateway by name. The Compute contract for this endpoint is a bare array.
+func SNATZoneCatalog(ctx context.Context, cloud CloudAPI) ([]*AvailabilityZone, error) {
+	return cloud.ListAvailabilityZones(context.WithValue(ctx, snatZoneCatalogKey{}, true))
+}
+
+type snatZoneCatalogKey struct{}
+
 // ListAvailabilityZones lists available zones via GET /api/v1/availability-zones.
 func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*AvailabilityZone, error) {
 	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/availability-zones", nil)
@@ -200,6 +208,26 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to read availability zones response", "не удалось прочитать список зон доступности"), hintUnexpectedFormat(), err)
+	}
+
+	if ctx.Value(snatZoneCatalogKey{}) == true && bytes.HasPrefix(bytes.TrimSpace(body), []byte("{")) {
+		// The documented endpoint returns a single array. Accept the legacy
+		// wrapper only when it accounts for the whole catalog in this response.
+		var page struct {
+			Items  pager.Rows[AvailabilityZone] `json:"items"`
+			Total  *int                         `json:"total"`
+			Offset json.RawMessage              `json:"offset"`
+			Next   json.RawMessage              `json:"nextPageToken"`
+		}
+		if json.Unmarshal(body, &page) != nil || page.Items == nil || page.Total == nil || *page.Total != len(page.Items) ||
+			(page.Offset != nil && string(page.Offset) != "0") || (page.Next != nil && string(page.Next) != `""`) {
+			return nil, pager.Incomplete(i18n.T("expected the entire availability zone catalog", "ожидался полный каталог зон доступности"))
+		}
+		result := make([]*AvailabilityZone, len(page.Items))
+		for i := range page.Items {
+			result[i] = &page.Items[i]
+		}
+		return result, nil
 	}
 
 	// Try paginated response first, then plain array.
