@@ -565,7 +565,14 @@ func TestStage_LockDirectoryOwnerIdentity(t *testing.T) {
 		}
 	}
 	check(owner, "running")
-	for _, bad := range []string{"", pid, owner + " extra", "self " + boot + " " + ticks, "* " + boot + " " + ticks, pid + " " + boot + " x", pid + " " + boot + " " + ticks + "0", pid + " bad-boot " + ticks} {
+	otherBoot := "00000000-0000-0000-0000-000000000000"
+	for _, bad := range []string{
+		"", pid, owner + " extra",
+		"self " + boot + " " + ticks, "* " + boot + " " + ticks,
+		"2147483647 " + boot + " " + ticks, // No such Linux PID.
+		pid + " " + boot + " x", pid + " " + boot + " " + ticks + "0",
+		pid + " " + otherBoot + " " + ticks,
+	} {
 		check(bad, "lost")
 	}
 	if err := child.Process.Signal(syscall.SIGSTOP); err != nil {
