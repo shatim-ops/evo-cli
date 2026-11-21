@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"maps"
+	"sync"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -150,6 +151,19 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if r.stateDirUndeclared() {
 			return errResult(errNoStateDir()), true
 		}
+		// Serialize the check and opening of network create intents across
+		// processes sharing this state directory. Release before the POST:
+		// a second client can read the in-flight record while it is running.
+		var release func()
+		if confirmed, _ := args["confirmed"].(bool); confirmed && everySendIsAChange[t.Name].listedName != nil && r.newEngine != nil {
+			unlock, err := r.lockNetworkIntents(t.Name)
+			if err != nil {
+				return errResult(err), true
+			}
+			release = sync.OnceFunc(unlock)
+			defer release()
+			forgetPending(ctx)
+		}
 		// The same create before was taken and goes on: its progress is
 		// read, with or without consent, and no second create is sent.
 		if text, isErr, ok := r.repeatOfMade(ctx, t.Name, args); ok {
@@ -193,6 +207,9 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
 				return errResult(err), true
 			}
+		}
+		if release != nil {
+			release()
 		}
 		// A handler that panics does not return: the server recovers it,
 		// and the record would read as a call still going on (InFlight)

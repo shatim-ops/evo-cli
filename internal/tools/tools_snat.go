@@ -19,6 +19,14 @@ import (
 // into a concrete zone UUID, defaulting to the configured region (the AZ the
 // deploy stack targets). Returns the zone id.
 func (s *Registry) resolveZone(ctx context.Context, args map[string]any) (id, name string, err error) {
+	z, e := onceACall(ctx, "snat_zone", func() ([2]string, error) {
+		id, name, err := s.readSnatZone(ctx, args)
+		return [2]string{id, name}, err
+	})
+	return z[0], z[1], e
+}
+
+func (s *Registry) readSnatZone(ctx context.Context, args map[string]any) (id, name string, err error) {
 	eng, err := s.authedEngine(ctx, nil)
 	if err != nil {
 		return "", "", err

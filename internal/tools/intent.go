@@ -239,8 +239,8 @@ func projectOfCall(eng *engine.Engine, in intent.Intent, args map[string]any) st
 	if eng != nil {
 		project = eng.Config.ProjectID
 	}
-	// The SNAT delete verifies membership in this project before sending.
-	if _, _, byID := intentTarget(in); byID && in.Tool != "snat_delete" {
+	// SNAT delete verifies project membership; routes belong to a project VPC.
+	if _, _, byID := intentTarget(in); byID && in.Tool != "snat_delete" && in.Tool != "vpc_route_create" {
 		project = ""
 	}
 	if p := stringArg(args, "project_id"); p != "" {
@@ -295,6 +295,8 @@ type changeRule struct {
 	// that is taken — the question is asked only while the list does not
 	// show it («Риск», conclusion 179, У1).
 	made bool
+	// listedName returns the same identity from a row of the declared list.
+	listedName func(map[string]any) string
 	// notBilled: what the tool makes has no price of its own — a database
 	// or a user of a cluster, which is billed. The question after a cut
 	// call names a second billed resource only of a billed one: a price
@@ -345,6 +347,14 @@ func paidCreate(tool, parent string, name func(args map[string]any) string) chan
 func unbilledCreate(tool, parent string, name func(args map[string]any) string) changeRule {
 	rule := paidCreate(tool, parent, name)
 	rule.notBilled = true
+	return rule
+}
+
+// networkCreate uses the identity within the parent both at send time and
+// when a later list establishes the outcome.
+func networkCreate(tool, parent string, requestName, listedName func(map[string]any) string) changeRule {
+	rule := unbilledCreate(tool, parent, requestName)
+	rule.listedName = listedName
 	return rule
 }
 
@@ -402,6 +412,10 @@ var everySendIsAChange = map[string]changeRule{
 	"ar_create":        paidCreate("ar_create", "", nameArg),
 	"cert_import":      paidCreate("cert_import", "", nameArg),
 	"pg_backup_create": paidCreate("pg_backup_create", "cluster_id", nameArg),
+	// D107 in 1.10: the list must identify the exact network target.
+	"dns_record_create": {read: "dns_records", made: true, notBilled: true, listedName: listedDNSRecordKey, target: dnsRecordIntent},
+	"snat_create":       {read: "snat_list", made: true, target: snatIntent, listedName: nameArg},
+	"vpc_route_create":  networkCreate("vpc_route_create", "vpc_id", routeDestination, routeDestination),
 	// D112 (the owner's decision of 17.11, #1999): a create whose 2xx
 	// names nothing it made (receipt.ErrUnusable) has an unknown outcome,
 	// and no second create follows it — the same call again asks, as a
@@ -495,7 +509,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 		// A held record is an operation evo goes on with, not a cut call
 		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
 		// call whose change was seen going on, HoldCut).
-		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil {
+		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || (in.Key == nil && everySendIsAChange[name].listedName == nil) {
 			continue
 		}
 		// A call that has not returned is going on, not cut: its record
@@ -513,16 +527,19 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
 	var cut []intent.Intent
 	for _, in := range ofTool {
-		if in.ProjectID != project {
-			continue
-		}
-		if in.Name != resource || in.Target != target {
-			// A record written before the target was resolved names the
-			// resource as its call spelled it: it is resolved the same
-			// way. One that cannot be resolved now is not this call's.
-			was, wasTarget, err := r.resourceOf(ctx, name, spelledArgs(in))
-			if err != nil || was != resource || wasTarget != target {
+		if everySendIsAChange[name].listedName != nil {
+			if !networkIntentConflicts(in, project, resource, target, args) {
 				continue
+			}
+		} else {
+			if in.ProjectID != project {
+				continue
+			}
+			if in.Name != resource || in.Target != target {
+				was, wasTarget, err := r.resourceOf(ctx, name, spelledArgs(in))
+				if err != nil || was != resource || wasTarget != target {
+					continue
+				}
 			}
 		}
 		cut = append(cut, in)
@@ -538,7 +555,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 	}
 	var mine []intent.Intent
 	for _, in := range cut {
-		if cur == nil || in.Key.Other(cur) {
+		if cur == nil || in.Key.Other(cur) || (everySendIsAChange[name].listedName != nil && in.Key != nil && in.Key.KeyID != "" && in.Key.KeyID != cur.KeyID) {
 			continue
 		}
 		if inFlight {
@@ -547,7 +564,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 		}
 		// What the cut call made is listed: its outcome is read, the
 		// record closes, and nobody is asked about it.
-		if everySendIsAChange[name].made {
+		if everySendIsAChange[name].made && everySendIsAChange[name].listedName == nil {
 			if _, listed, id := r.checkByList(ctx, in, in.ProjectID); listed {
 				intent.Close(in, settledOutcome(in, id))
 				forgetPending(ctx)
@@ -617,6 +634,21 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 		interrupted
 }
 
+func interruptedWarning(ctx context.Context, name string, mine []intent.Intent) (string, map[string]any) {
+	message, details := cutCallWarning(name, mine)
+	rule := everySendIsAChange[name]
+	if rule.listedName == nil {
+		return message, details
+	}
+	details["outcome"] = "unknown"
+	last := mine[len(mine)-1]
+	message = i18n.Tf("The earlier %s for %s may have been accepted and the resource may not be listed yet. Check %s in the same project. While its outcome is unknown, a second create is blocked even with fresh consent.", "Предыдущий запрос %s для %s мог быть принят, а ресурс ещё не виден в списке. Проверьте %s в том же проекте. Пока исход неизвестен, повторное создание заблокировано даже с новым согласием.", name, quoteCloud(firstNonEmptyStr(last.Name, last.Target)), rule.read)
+	if statelessNetworkHTTP(ctx) {
+		message += " " + i18n.T("Use an initialized session with Mcp-Session-Id for recovery. A session ID alone cannot establish the outcome.", "Для сверки используйте инициализированную сессию с Mcp-Session-Id. Сам ID сессии не устанавливает исход операции.")
+	}
+	return message, details
+}
+
 // askAgainAfterACut answers a consented call of a tool of
 // everySendIsAChange that finds the record of its own cut call: the call
 // is not sent. A client that timed out and sends the same call again,
@@ -640,9 +672,14 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 	if len(mine) == 0 {
 		return "", false
 	}
-	message, interrupted := cutCallWarning(name, mine)
+	message, interrupted := interruptedWarning(ctx, name, mine)
 	out := map[string]any{"status": "confirmation_required"}
-	if text, _ := plan(ctx); answerStatus(text) == "confirmation_required" {
+	text, previewErr := plan(ctx)
+	if everySendIsAChange[name].listedName != nil && previewErr && answerStatus(text) != "confirmation_required" {
+		r.settleNetworkConflict(ctx, mine, text)
+		return text, true
+	}
+	if answerStatus(text) == "confirmation_required" {
 		var m map[string]any
 		if json.Unmarshal([]byte(text), &m) == nil {
 			out = m
@@ -652,7 +689,11 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 		}
 	}
 	out["message"], out["interrupted"] = message, interrupted
-	r.closeAsked(ctx, mine)
+	if everySendIsAChange[name].listedName == nil {
+		r.closeAsked(ctx, mine)
+	} else {
+		out["reason"] = clierrors.CodeConfirmationRequired
+	}
 	return toJSON(out), true
 }
 
@@ -703,6 +744,10 @@ func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
 // (interrupted.floating_ip, addressQuestion) records the person's answer
 // on its mark.
 func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any, interrupted any) {
+	if everySendIsAChange[name].listedName != nil {
+		// A terminal answer cannot establish the outcome of a previous write.
+		return
+	}
 	r.addressAnswered(args, interrupted)
 	for _, in := range r.cutCalls(ctx, name, args) {
 		// Answered, not known: the line stays unknown (closeAsked).
@@ -730,12 +775,16 @@ func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args ma
 	if json.Unmarshal([]byte(answer), &m) != nil {
 		return answer
 	}
-	message, interrupted := cutCallWarning(name, mine)
+	message, interrupted := interruptedWarning(ctx, name, mine)
 	if was, _ := m["message"].(string); was != "" {
 		message += " " + was
 	}
 	m["message"], m["interrupted"] = message, interrupted
-	r.closeAsked(ctx, mine)
+	if everySendIsAChange[name].listedName != nil {
+		m["reason"] = clierrors.CodeConfirmationRequired
+	} else {
+		r.closeAsked(ctx, mine)
+	}
 	return toJSON(m)
 }
 
@@ -1248,6 +1297,12 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 // addressed by id is checked by a read of that id (checkByID), any other
 // by the list of what it names (checkByList).
 func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool, listedID string) {
+	if everySendIsAChange[in.Tool].listedName != nil {
+		cur := eng.Maker()
+		if cur == nil || in.Key == nil || in.Key.KeyID == "" || in.Key.KeyID != cur.KeyID || in.Key.Other(cur) || in.ProjectID == "" || in.ProjectID != eng.Config.ProjectID {
+			return "", false, ""
+		}
+	}
 	if in.Tool == "destroy" {
 		return i18n.T("VM absence alone cannot confirm cleanup of its floating IP and port rules. Check the deployment and ask the person whether to run destroy again to finish cleanup.", "Отсутствие ВМ не подтверждает уборку публичного адреса и портовых правил. Проверьте развёртывание и спросите человека, повторить ли destroy для завершения уборки."), false, ""
 	}
@@ -1381,11 +1436,26 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	// The list of a part of a parent needs the parent (listArgs): a
 	// create inside it names the parent as its target.
 	parentArg, parentID, _ := strings.Cut(in.Target, "=")
+	visibility := ""
+	wantedName := in.Name
+	if in.Tool == "dns_record_create" {
+		scope, ok := strings.CutSuffix(parentArg, "_zone_id")
+		var recordType string
+		visibility, recordType, _ = strings.Cut(scope, "_")
+		if !ok || (visibility != "public" && visibility != "private") || !slices.Contains(dnsRecordTypes, recordType) {
+			return "", false, ""
+		}
+		parentArg = "zone_id"
+		wantedName = dnsRecordKey(in.Name, recordType)
+	}
 	inParent := isCreate && len(c.listArgs) == 1 && c.listArgs[0] == parentArg && parentID != ""
 	if c.list == "" || c.field == "" || (len(c.listArgs) > 0 && !inParent) || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
 		return "", false, ""
 	}
 	listArgs := map[string]any{}
+	if visibility != "" {
+		listArgs["type"] = visibility
+	}
 	if inParent {
 		listArgs[parentArg] = parentID
 	}
@@ -1407,7 +1477,13 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 		o, _ := it.(map[string]any)
 		id, _ := o["id"].(string)
 		name, _ := o["name"].(string)
-		if (isCreate && name == in.Name) || (!isCreate && id == targetID) {
+		if listedName := everySendIsAChange[in.Tool].listedName; listedName != nil {
+			name = listedName(o)
+			if statusGone(stringArg(o, "status")) || id == "" || (in.Tool == "snat_create" && in.Target != "availability_zone_id="+stringArg(o, "availability_zone_id")) {
+				continue
+			}
+		}
+		if (isCreate && name == wantedName) || (!isCreate && id == targetID) {
 			matched, listed = true, id
 			break
 		}
