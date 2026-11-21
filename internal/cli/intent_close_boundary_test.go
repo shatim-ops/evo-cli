@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/intent"
 )
@@ -61,5 +63,47 @@ func TestContract_ManualIntentCloseIsAbsentFromMCP(t *testing.T) {
 				t.Errorf("intent changed over %s: %v", surface, err)
 			}
 		})
+	}
+}
+
+// The diagnostic decision applies only in its own folder and profile. Legacy
+// readers, write guards and history still see the original unknown outcome.
+func TestContract_ManualReviewPreservesHistoryAndGuards(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	eng, err := toolEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := eng.Config
+	rec, err := intent.Open(intent.Dir(w.dir), intent.Intent{Tool: "redis_create", Name: "manual-review-target", StartedAt: time.Now(), Surface: "cli", Counts: true, Ended: true, Sent: true, Key: eng.Maker(), ProjectID: cfg.ProjectID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	load := func() (*intent.ManualSnapshot, error) { return intent.PreviewManual(w.dir, rec.ID, cfg.Profile) }
+	s, err := load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.Apply(load); err != nil {
+		t.Fatal(err)
+	}
+	previous := w.rt.extra
+	w.rt.extra = func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "redis.api.cloud.ru" {
+			t.Errorf("manually reviewed receipt triggered Redis read: %s", req.URL.Path)
+		}
+		return previous(req)
+	}
+	code, out, stderr := runCLI(t, "", "doctor", "--json")
+	if code != 0 || strings.Contains(out+stderr, rec.Name) {
+		t.Fatal(code, out, stderr)
+	}
+	code, out, stderr = runCLI(t, "", "history", "--json")
+	if code != 0 || !strings.Contains(out, rec.ID) || !strings.Contains(out, "unknown") {
+		t.Fatal(code, out, stderr)
+	}
+	if records := intent.Pending(rec.Dir); len(records) != 1 || records[0].ID != rec.ID {
+		t.Fatal(records)
 	}
 }
