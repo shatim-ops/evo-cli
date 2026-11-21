@@ -66,6 +66,7 @@ var answerBudget = map[string]listBudget{
 	"snat_list nat_gateways":               {1, 190}, // 145
 	"vm_get interfaces":                    {1, 170}, // 134
 	"vm_get not_checked":                   {1, 200}, // 160
+	"vm_history tasks":                     {1, 140}, // 109
 	"vm_list vms":                          {1, 110}, // 86
 	"vpc_list vpcs":                        {1, 120}, // 89
 	"vpc_routes routes":                    {1, 140}, // 107
