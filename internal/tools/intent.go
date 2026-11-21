@@ -115,6 +115,14 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			rec.Parties = r.partiesOf(ctx, name, args)
 		}
 		out := historyOutcome(name, args, answer)
+		if name == "deploy" && out.ResourceID != "" {
+			var res struct {
+				Region string `json:"region"`
+			}
+			if json.Unmarshal([]byte(answer), &res) == nil && res.Region != "" {
+				rec.Zone = res.Region
+			}
+		}
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			// No write went out — every client of evo counts its writes,
 			// and so do kubectl, helm and ssh (httpretry.NoteWrite): the

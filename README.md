@@ -102,6 +102,8 @@ Artifact Registry и Container Apps. Только чтение — биллин�
 стало → что поменять» — в [CHANGELOG.md](CHANGELOG.md); анонс выпуска —
 [docs/release-notes/v1.9.0.md](docs/release-notes/v1.9.0.md).
 
+**При переходе на 1.9.1.** Если Redis или Kafka вернули неполную страницу кластеров, `evo redis list` и `evo kafka list` завершаются с кодом 5 (`API_ERROR`). Перед разбором списка проверьте код выхода, в MCP — `result.isError`. [Анонс 1.9.1](docs/release-notes/v1.9.1.md).
+
 ## Что понадобится
 
 - **Учётная запись Cloud.ru Evolution** и проект, в котором вы администратор:
