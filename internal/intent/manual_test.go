@@ -36,6 +36,7 @@ func TestManualExactVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	prepareManualTest(t, s)
 	if err = s.Eligible(rec.Key, "project"); err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +56,7 @@ func TestManualExactVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer current.Close()
+	prepareManualTest(t, current)
 	if err = current.Apply(load); err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +86,7 @@ func TestManualExactVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fresh.Close()
+	prepareManualTest(t, fresh)
 	if yes, err := fresh.Marked(); err != nil || yes {
 		t.Fatal("replacement was hidden", yes, err)
 	}
@@ -103,6 +106,7 @@ func TestManualFailureKeepsReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	prepareManualTest(t, s)
 	stages := 0
 	err = s.Apply(func() (*ManualSnapshot, error) {
 		stages++
@@ -156,6 +160,7 @@ func TestManualConcurrentProcesses(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer s.Close()
+		prepareManualTest(t, s)
 		if err = s.Apply(load); err != nil {
 			t.Fatal(err)
 		}
@@ -194,6 +199,7 @@ func TestManualReplacementAfterPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	prepareManualTest(t, s)
 	path := s.source.Name()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -204,7 +210,7 @@ func TestManualReplacementAfterPublication(t *testing.T) {
 		checks++
 		if checks == 3 {
 			if e := config.WriteFileAtomic(path, data, 0600); e != nil {
-				return nil, e
+				t.Fatalf("old writer could not replace the receipt after publication: %v", e)
 			}
 		}
 		return load()
@@ -233,6 +239,7 @@ func TestManualScopeAndUnreadableAnchor(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	prepareManualTest(t, s)
 	if err = s.Apply(load); err != nil {
 		t.Fatal(err)
 	}
@@ -289,6 +296,7 @@ func TestManualPublicationErrorKeepsOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	prepareManualTest(t, s)
 	// Make the intended staging parent a file. A write failure cannot dismiss the receipt.
 	if err = os.WriteFile(filepath.Dir(s.audit), nil, 0600); err != nil {
 		t.Fatal(err)
@@ -323,5 +331,12 @@ func TestManualOwnerEvidence(t *testing.T) {
 		if (err == nil) != tc.allowed {
 			t.Errorf("receipt %q/current %q/key %q: %v", tc.record, tc.current, tc.key, err)
 		}
+	}
+}
+
+func prepareManualTest(t *testing.T, s *ManualSnapshot) {
+	t.Helper()
+	if _, err := s.PrepareTerminal(); err != nil {
+		t.Fatal(err)
 	}
 }
