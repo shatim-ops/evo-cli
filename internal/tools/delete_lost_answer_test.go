@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -26,11 +27,21 @@ import (
 // Compute still uses the fixture that records the interrupted delete.
 func interruptedDeleteRegistry(t *testing.T, compute http.RoundTripper) (*Registry, string) {
 	t.Helper()
+	// staticToken names service account x. Doctor lists its keys and asks
+	// for its roles only in the project of this fixture.
+	filter := strings.ReplaceAll(url.QueryEscape("resource_id="+provisionCfg.ProjectID+" AND subject_id=x"), "+", "%20")
+	reads := map[string]bool{
+		"https://organization.api.cloud.ru/v3/projects":                true,
+		"https://iam.api.cloud.ru/api/v3/permissions?filter=" + filter: true,
+		"https://iam.api.cloud.ru/api/v2/serviceAccounts/x/accessKeys": true,
+	}
 	old := httpretry.DefaultBase
 	t.Cleanup(func() { httpretry.DefaultBase = old })
 	httpretry.DefaultBase = roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.Method != http.MethodGet {
-			t.Fatalf("unexpected doctor request: %s %s", req.Method, req.URL)
+		// doctorOnFake points both reachability probes at one local server.
+		localProbe := req.URL.Scheme == "http" && req.URL.String() == ComputeBaseURL+"/"
+		if req.Method != http.MethodGet || !(localProbe || reads[req.URL.String()]) {
+			t.Errorf("unexpected doctor request: %s %s", req.Method, req.URL)
 		}
 		rec := httptest.NewRecorder()
 		http.NotFound(rec, req)
