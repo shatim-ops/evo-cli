@@ -320,11 +320,16 @@ func comparePreviews(t *testing.T, name string, pc parityCommand, srv parityMCP,
 		got["http"] = h
 	}
 	if pc.tool.Name == "k8s_upgrade" || pc.tool.Name == "k8s_nodepool_upgrade" {
-		// This stdio session has its own confirmation capability. The human CLI and stateless HTTP have none.
-		if id, _ := got["stdio"]["preview_id"].(string); id == "" {
-			lines = append(lines, name+": missing MCP preview_id")
+		// Compare the terms across transports; each MCP session issued its own capability.
+		seen := map[string]bool{}
+		for _, surface := range []string{"stdio", "http", "http --allow-secret-export"} {
+			id, _ := got[surface]["preview_id"].(string)
+			if id == "" || seen[id] {
+				lines = append(lines, name+": missing or reused MCP preview_id on "+surface)
+			}
+			seen[id] = true
+			delete(got[surface], "preview_id")
 		}
-		delete(got["stdio"], "preview_id")
 	}
 	if why := parityDiff(name, got); why != "" {
 		lines = append(lines, why)
@@ -657,6 +662,23 @@ func httpDetails(t *testing.T, ts *httptest.Server, name string, args map[string
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer parity-token")
+	if name == "k8s_upgrade" || name == "k8s_nodepool_upgrade" {
+		init, err := http.NewRequest(http.MethodPost, ts.URL+"/mcp", bytes.NewReader(roRequest("initialize", map[string]any{"protocolVersion": "2025-03-26"})))
+		if err != nil {
+			t.Fatal(err)
+		}
+		init.Header = req.Header.Clone()
+		resp, err := ts.Client().Do(init)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		session := resp.Header.Get("Mcp-Session-Id")
+		if session == "" {
+			t.Fatal("initialize returned no Mcp-Session-Id")
+		}
+		req.Header.Set("Mcp-Session-Id", session)
+	}
 	resp, err := ts.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)

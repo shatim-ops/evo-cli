@@ -57,7 +57,7 @@ func TestProcessUpgradeConsent(t *testing.T) {
 			modes = append(modes, "pool-after-cluster-preview", "missing-id", "pool-missing-id", "wrong-id", "pool-wrong-id", "lost-new-preview", "pool-lost-new-preview", "foreign-client", "pool-foreign-client")
 		}
 		if surface == "HTTP" {
-			modes = append(modes, "other-session", "no-session")
+			modes = append(modes, "other-session", "no-session", "pool-no-session")
 		}
 		for _, mode := range modes {
 			t.Run(surface+"/"+mode, func(t *testing.T) {
@@ -263,8 +263,20 @@ func TestProcessUpgradeConsent(t *testing.T) {
 					if old == session {
 						t.Fatal("same session")
 					}
-				case "no-session":
+				case "no-session", "pool-no-session":
 					session = ""
+					for _, confirm := range []bool{false, true} {
+						a := call(confirm)
+						requireZero(a)
+						payload := parseObject(a.text)
+						if payload["status"] == "confirmation_required" {
+							id, _ := payload["preview_id"].(string)
+							if strings.TrimSpace(id) == "" {
+								t.Errorf("stateless %s confirmed=%v asks for confirmation without preview_id; POST=%d", target.tool, confirm, cluster.posts+pool.posts)
+							}
+						}
+					}
+					return
 				case "project-changed":
 					effectiveProject = "00000000-0000-4000-8000-000000000322"
 					project = effectiveProject
@@ -288,7 +300,7 @@ func TestProcessUpgradeConsent(t *testing.T) {
 					}
 					return
 				}
-				if mode == "foreign-project" || mode == "no-session" {
+				if mode == "foreign-project" {
 					if cluster.posts+pool.posts != 0 || (!answer.isErr && answer.rpcErr == "" && parseObject(answer.text)["status"] != "confirmation_required") {
 						t.Fatalf("expected refusal or question: %s POST=%d/%d", answer.text, cluster.posts, pool.posts)
 					}

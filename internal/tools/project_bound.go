@@ -84,9 +84,10 @@ type idArg struct {
 const (
 	whyProjectArg = "the project itself: the server's engine factory admits only the projects of --allow-project (checkAllowedProject); " +
 		"org_quotas and iam_service_accounts are the documented reads of other projects"
-	whyCatalogue = "an entry of a catalogue shared by every project (zone, specification, version), not a project's resource"
-	whyLocal     = "a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)"
-	whyListed    = "the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, " +
+	whyCatalogue      = "an entry of a catalogue shared by every project (zone, specification, version), not a project's resource"
+	whyUpgradePreview = "a one-time local approval for this MCP session and upgrade transition; reserveUpgrade checks it before the cloud request"
+	whyLocal          = "a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)"
+	whyListed         = "the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, " +
 		"list_subnets) and refuses one that is not there"
 	whyFilter = "a filter of a list of the call's project (listSpecs): evo resolves it through the project's own list and only compares it with " +
 		"the items that list read; it reaches no API as an id"

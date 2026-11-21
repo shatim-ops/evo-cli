@@ -49,6 +49,8 @@ const optionalSubnet = "00000000-0000-0000-0000-0000000000d1"
 // "tool argument" → why. An alternative of another argument (image or
 // image_id) goes here, the other one is set.
 var optionalLeftOut = map[string]string{
+	"k8s_upgrade preview_id":                        "server-issued only after preview, never sent to the cloud",
+	"k8s_nodepool_upgrade preview_id":               "server-issued only after preview, never sent to the cloud",
 	"deploy image":                                  "an alternative of image_id",
 	"backup_create disk_id":                         "an alternative of vm_id: one backup is of one resource",
 	"sg_rule_create remote_group":                   "an alternative of cidr",

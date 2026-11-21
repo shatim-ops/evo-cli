@@ -333,6 +333,11 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 	scope := "stdio-" + s.upgradeClient
 	session, httpCall := ctx.Value(networkSessionKey{}).(string)
 	caller := callerOf(ctx)
+	if httpCall && session == "" {
+		return nil, clierrors.New(clierrors.CodeConfirmationRequired,
+			i18n.T("An initialized MCP session is required to approve this upgrade.", "Для согласования обновления нужна открытая сессия MCP."),
+			i18n.T("Call initialize, include the returned Mcp-Session-Id in the HTTP header, then request the preview without confirmation in that session.", "Вызовите initialize, передайте полученный Mcp-Session-Id в заголовке HTTP и запросите превью без подтверждения в этой сессии."))
+	}
 	if httpCall {
 		scope = "http-" + session
 	} else if caller != nil {
@@ -343,9 +348,6 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 		if caller != nil {
 			offer := r
 			caller.upgradePreview = &offer
-		}
-		if httpCall && session == "" {
-			return preview, nil
 		}
 		unlock, err := state.FileLock(offerPath+".lock", 5*time.Second)
 		if err != nil {
@@ -389,7 +391,7 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 			}
 		}
 		contextChanged := cardChanged || caller != nil && caller.upgradePreview != nil && *caller.upgradePreview != r
-		allowed, err := reserveUpgrade(offerPath, path, caller == nil, httpCall && session == "", contextChanged, r, stringArg(args, "preview_id"), preview)
+		allowed, err := reserveUpgrade(offerPath, path, caller == nil, contextChanged, r, stringArg(args, "preview_id"), preview)
 		if err != nil {
 			return errResult(err), true
 		}
@@ -421,7 +423,7 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 
 // Reserving the cloud write and consuming a matching offer happen under the
 // same local lock. A different client cannot use another client's preview.
-func reserveUpgrade(offerPath, receiptPath string, mcpCall, stateless, contextChanged bool, r upgradeReceipt, suppliedID string, preview map[string]any) (bool, error) {
+func reserveUpgrade(offerPath, receiptPath string, mcpCall, contextChanged bool, r upgradeReceipt, suppliedID string, preview map[string]any) (bool, error) {
 	unlock, err := state.FileLock(offerPath+".lock", 5*time.Second)
 	if err != nil {
 		return false, err
@@ -430,9 +432,6 @@ func reserveUpgrade(offerPath, receiptPath string, mcpCall, stateless, contextCh
 	shown, err := readUpgradeReceipt(offerPath)
 	if err != nil {
 		return false, err
-	}
-	if stateless {
-		return false, nil
 	}
 	validID := false
 	if shown != nil {

@@ -336,6 +336,18 @@ func TestDeterminism_ListOrderDoesNotChangeTheAnswer(t *testing.T) {
 				fake.reset()
 				a := first(srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": args}))
 				done()
+				if tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade" {
+					answer := parseObject(a.text)
+					if id, _ := answer["preview_id"].(string); id == "" {
+						t.Fatal("missing preview_id")
+					}
+					answer["preview_id"] = "session-specific"
+					b, err := json.Marshal(answer)
+					if err != nil {
+						t.Fatal(err)
+					}
+					a.text = string(b)
+				}
 				out[tl.Name] = map[bool]string{true: "isError ", false: "result "}[a.isErr] + canonical(a.text)
 			}
 		})

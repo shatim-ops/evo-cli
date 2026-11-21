@@ -540,3 +540,54 @@ func TestUpgradeLostPreviewResponse(t *testing.T) {
 		}
 	}
 }
+
+func TestUpgradeStatelessHTTPExplainsSessionAndReadsReceipt(t *testing.T) {
+	for _, tool := range []string{"k8s_upgrade", "k8s_nodepool_upgrade"} {
+		t.Run(tool, func(t *testing.T) {
+			w, _ := withJSONWorld(t)
+			id, arg, op := upgradeParityCluster, "cluster_id", upgradeClusterOp
+			if tool == "k8s_nodepool_upgrade" {
+				id, arg, op = upgradeParityPool, "nodepool_id", upgradePoolOp
+			}
+			inner := w.rt.extra
+			w.rt.extra = func(r *http.Request) (*http.Response, error) {
+				if r.Method == "GET" && r.URL.Path == "/v3/operations/"+op {
+					return consentJSON(200, fmt.Sprintf(`{"id":%q,"resourceId":%q,"done":false}`, op, id)), nil
+				}
+				return inner(r)
+			}
+			h := mcp.NewHTTPHandler(newROServers(t).plain, mcp.HTTPOptions{})
+			t.Cleanup(h.Close)
+			args := map[string]any{arg: id, "version": upgradeTo}
+			params := map[string]any{"name": tool, "arguments": args}
+			for _, confirmed := range []bool{false, true} {
+				args["confirmed"] = confirmed
+				a, _ := retryRPC(t, h, "", "tools/call", params)
+				o := parseObject(a.text)
+				hint, _ := o["hint"].(string)
+				if !a.isErr || o["reason"] != "CONFIRMATION_REQUIRED" || o["approval"] != nil || o["preview_id"] != nil || !strings.Contains(hint, "initialize") || !strings.Contains(hint, "Mcp-Session-Id") || !strings.Contains(hint, "preview") {
+					t.Fatalf("stateless: %s", a.text)
+				}
+			}
+			if writes := w.rt.takeWrites(); len(writes) != 0 {
+				t.Fatalf("stateless writes: %v", writes)
+			}
+			_, session := retryRPC(t, h, "", "initialize", map[string]any{"protocolVersion": "2025-03-26"})
+			args["confirmed"] = false
+			preview, _ := retryRPC(t, h, session, "tools/call", params)
+			args["confirmed"], args["preview_id"] = true, parseObject(preview.text)["preview_id"]
+			start, _ := retryRPC(t, h, session, "tools/call", params)
+			if start.isErr || parseObject(start.text)["operation_id"] != op || len(w.rt.takeWrites()) != 1 {
+				t.Fatalf("submitted: %s", start.text)
+			}
+			delete(args, "preview_id")
+			for _, confirmed := range []bool{false, true} {
+				args["confirmed"] = confirmed
+				a, _ := retryRPC(t, h, "", "tools/call", params)
+				if a.isErr || parseObject(a.text)["status"] != "upgrading" || parseObject(a.text)["operation_id"] != op || len(w.rt.takeWrites()) != 0 {
+					t.Fatalf("read receipt: %s", a.text)
+				}
+			}
+		})
+	}
+}

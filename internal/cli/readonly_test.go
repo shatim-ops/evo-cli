@@ -376,7 +376,15 @@ func roCase(t *testing.T, srv roServers, w parityWorld, tl tools.Tool, args map[
 	roHTTP := func(params any) roAnswer { return first(srv.http(t, "tools/call", params)) }
 
 	needs := tools.NeedsConsent(tl, args)
+	if tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade" {
+		session := processUpgradeStdio(t, srv.plain)
+		plainCall = func(params any) roAnswer { return session(params.(map[string]any)) }
+	}
 	plain, plainWrites := call(false, plainCall)
+	if id, ok := parseObject(plain.text)["preview_id"].(string); ok {
+		args = copyArgs(args)
+		args["preview_id"] = id
+	}
 	if gated := parseObject(plain.text)["status"] == "confirmation_required"; gated != needs {
 		bad = append(bad, fmt.Sprintf("%s: without confirmed the handler gates: %v, tools.NeedsConsent: %v: %s", tl.Name, gated, needs, clipLine(plain.text)))
 	}
