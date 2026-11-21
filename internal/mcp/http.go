@@ -496,7 +496,7 @@ func (h *HTTPHandler) dispatch(ctx context.Context, scope string, req *rpcReques
 		}()
 	}
 	start := time.Now()
-	resp = h.srv.handle(tools.WithNetworkSession(ctx, "http:"+scope), scope, req)
+	resp = h.srv.handle(tools.WithNetworkSession(ctx, scope), scope, req)
 	if h.opts.Logger != nil {
 		var p struct {
 			Name string `json:"name"`

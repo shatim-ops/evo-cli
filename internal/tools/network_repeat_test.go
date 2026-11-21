@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -192,6 +193,41 @@ func TestNetworkRepeat_QuestionStaysWithItsClient(t *testing.T) {
 			other.handlers[c.tool](context.Background(), maps.Clone(c.args))
 			if creates(api) != 2 {
 				t.Fatalf("approved second create: posts=%d", creates(api))
+			}
+		})
+	}
+}
+
+func TestNetworkRepeat_TerminalAnswerBelongsToTheInvocation(t *testing.T) {
+	for _, c := range faultMatrixCases {
+		if everySendIsAChange[c.tool].listedName == nil {
+			continue
+		}
+		t.Run(c.tool, func(t *testing.T) {
+			api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			api.failAt(k, faultLost)
+			r.handlers[c.tool](ctx, maps.Clone(c.args))
+			api.disarm()
+			command := WithCaller(context.Background(), &Caller{})
+			text, _ := r.handlers[c.tool](command, withoutConsent(c.args))
+			if answerStatus(text) != "confirmation_required" {
+				t.Fatal(text)
+			}
+			r.CutCallAnswered(command, c.tool, c.args, nil)
+			// Even after the terminal answer the old intent stays durable until
+			// this invocation actually sends. A declined prompt simply exits.
+			for _, other := range []context.Context{WithCaller(context.Background(), &Caller{}), WithNetworkSession(context.Background(), ""), WithNetworkSession(context.Background(), "")} {
+				text, _ = r.handlers[c.tool](other, maps.Clone(c.args))
+				if creates(api) != 1 || len(intent.Pending(dir)) != 1 || answerStatus(text) != "confirmation_required" {
+					t.Fatalf("unanswered client: %s, POSTs=%d", text, creates(api))
+				}
+				if statelessNetworkHTTP(other) && !strings.Contains(text, "Mcp-Session-Id") {
+					t.Fatal(text)
+				}
+			}
+			r.handlers[c.tool](command, maps.Clone(c.args))
+			if creates(api) != 2 {
+				t.Fatalf("terminal approval: POSTs=%d", creates(api))
 			}
 		})
 	}

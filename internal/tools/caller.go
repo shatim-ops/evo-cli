@@ -81,6 +81,9 @@ type Caller struct {
 
 	// answeredYes is set when Gate answered yes (ask).
 	answeredYes bool
+	// One invocation of the terminal command owns its interrupted preview.
+	networkPrompt   string
+	networkAnswered bool
 	// consent runs on a yes, before the engine writes anything: the gate
 	// writes the intent of the call there (engineGated). Its error refuses
 	// the call.

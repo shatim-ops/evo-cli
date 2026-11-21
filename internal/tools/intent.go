@@ -658,6 +658,9 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 		return "", false
 	}
 	message, interrupted := cutCallWarning(name, mine)
+	if everySendIsAChange[name].listedName != nil && statelessNetworkHTTP(ctx) {
+		message = statelessNetworkWarning(name, mine)
+	}
 	out := map[string]any{"status": "confirmation_required"}
 	text, previewErr := plan(ctx)
 	if everySendIsAChange[name].listedName != nil && previewErr && answerStatus(text) != "confirmation_required" {
@@ -678,7 +681,7 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 		if !r.networkQuestion(ctx, name, args, mine, true) {
 			return toJSON(out), true
 		}
-		r.closeAsked(ctx, mine)
+		ctx.Value(callRecordsKey{}).(*callRecords).networkReplaces = mine
 		return "", false
 	}
 	r.closeAsked(ctx, mine)
@@ -732,6 +735,14 @@ func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
 // (interrupted.floating_ip, addressQuestion) records the person's answer
 // on its mark.
 func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any, interrupted any) {
+	if everySendIsAChange[name].listedName != nil {
+		// A declined terminal prompt ends this invocation. Only its own
+		// following confirmed call may use the answer under the write lock.
+		if c := callerOf(ctx); c != nil {
+			c.networkAnswered = true
+		}
+		return
+	}
 	r.addressAnswered(args, interrupted)
 	for _, in := range r.cutCalls(ctx, name, args) {
 		// Answered, not known: the line stays unknown (closeAsked).
@@ -760,6 +771,9 @@ func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args ma
 		return answer
 	}
 	message, interrupted := cutCallWarning(name, mine)
+	if everySendIsAChange[name].listedName != nil && statelessNetworkHTTP(ctx) {
+		message = statelessNetworkWarning(name, mine)
+	}
 	if was, _ := m["message"].(string); was != "" {
 		message += " " + was
 	}

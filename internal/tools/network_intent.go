@@ -98,13 +98,19 @@ func WithNetworkSession(ctx context.Context, session string) context.Context {
 	return context.WithValue(ctx, networkSessionKey{}, session)
 }
 
+// HTTP dispatch always sets the session context, including for stateless requests.
+func statelessNetworkHTTP(ctx context.Context) bool {
+	session, http := ctx.Value(networkSessionKey{}).(string)
+	return http && session == ""
+}
+
 // networkQuestion remembers which question this client saw. The shared
 // intent stays until an answering call; a CLI preview, read-only server
 // or another MCP registry cannot release it for a script with --yes.
 // At most one question per network tool is cached. A displaced question
 // asks again. A restart likewise asks again.
 func (r *Registry) networkQuestion(ctx context.Context, tool string, args map[string]any, mine []intent.Intent, confirmed bool) bool {
-	if callerOf(ctx) != nil || r.readOnly {
+	if r.readOnly || statelessNetworkHTTP(ctx) {
 		return false
 	}
 	ids := make([]string, 0, len(mine))
@@ -114,6 +120,14 @@ func (r *Registry) networkQuestion(ctx context.Context, tool string, args map[st
 	slices.Sort(ids)
 	scope, _ := ctx.Value(networkSessionKey{}).(string)
 	question := madeKey(tool, r.canonArgs(tool, args), strings.Join(ids, ":"), scope)
+	if c := callerOf(ctx); c != nil {
+		if confirmed && c.networkAnswered && c.networkPrompt == question {
+			c.networkAnswered = false
+			return true
+		}
+		c.networkPrompt, c.networkAnswered = question, false
+		return false
+	}
 	r.networkQuestionMu.Lock()
 	defer r.networkQuestionMu.Unlock()
 	if confirmed && r.networkQuestions[tool] == question {
@@ -125,4 +139,9 @@ func (r *Registry) networkQuestion(ctx context.Context, tool string, args map[st
 	}
 	r.networkQuestions[tool] = question
 	return false
+}
+
+func statelessNetworkWarning(tool string, mine []intent.Intent) string {
+	last := mine[len(mine)-1]
+	return i18n.Tf("The outcome of the earlier %s for %s is unknown. Nothing was sent. Initialize an MCP session and include its Mcp-Session-Id, or use stdio or an interactive terminal. Check %s again. In that session, show the interrupted preview and ask the person whether to create one more before confirming.", "Исход предыдущего вызова %s для %s неизвестен. Ничего не отправлено. Начните сессию MCP и передавайте её Mcp-Session-Id либо используйте stdio или интерактивный терминал. Ещё раз проверьте %s. В этой сессии покажите превью прерванного вызова и перед подтверждением спросите человека, создавать ли ещё один ресурс.", tool, quoteCloud(firstNonEmptyStr(last.Name, last.Target)), everySendIsAChange[tool].read)
 }
