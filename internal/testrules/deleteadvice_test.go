@@ -26,8 +26,8 @@ var deleteVerb = regexp.MustCompile(`(?i)\b(delet|remov|eras|purg|wip)\w*|уда
 // (internal/cli/local_commands.go) print: the command → its files. A new
 // local command without a line here fails the test.
 var localCommandFiles = map[string][]string{
-	"evo intent":                {"internal/cli/intent_close.go"},
-	"evo intent close":          {"internal/cli/intent_close.go", "internal/intent/manual.go", "internal/tools/manual_review.go"},
+	"evo intent":                {"internal/cli/history_view.go"},
+	"evo intent close":          {"internal/cli/history_view.go", "internal/intent/manual.go", "internal/tools/intent_targets.go"},
 	"evo configure":             {"internal/cli/configure.go", "internal/cli/credentials.go"},
 	"evo configure list":        {"internal/cli/configure.go"},
 	"evo configure delete":      {"internal/cli/configure.go"},
@@ -97,6 +97,7 @@ var deleteAdviceOwn = map[string]string{
 	"internal/login/texts.go\teKeyNotDeleted":         "the key evo login made",
 	"internal/login/texts.go\teKeyNotDeletedHint":     "the key evo login made, which evo logout could not delete",
 	"internal/login/texts.go\tTLoginLong":             "evo logout deletes the key of evo login",
+	"internal/cli/history_view.go\trenderHistory":     "reports a recorded removal or a resource no longer visible to this key",
 	// Files of evo on this computer.
 	"internal/cli/configure.go\tnewConfigureDeleteCmd": "a profile of evo on disk",
 	"internal/cli/diag.go\tprintDiagStatus":            "the journal file of evo",
