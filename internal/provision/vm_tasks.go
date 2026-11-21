@@ -40,6 +40,12 @@ type VMTaskReader interface {
 }
 
 func (a *CloudRuAdapter) VMTasks(ctx context.Context, project, vm string, offset, limit int) (*VMTaskPage, error) {
+	if project == "" {
+		return nil, clierrors.ProjectRequired()
+	}
+	if vm == "" {
+		return nil, clierrors.New(clierrors.CodeUsage, i18n.T("VM UUID is required.", "Нужен UUID ВМ."), "")
+	}
 	q := url.Values{"project_id": {project}, "entity_id": {vm}, "entity_type": {"vm"}, "offset": {strconv.Itoa(offset)}, "limit": {strconv.Itoa(limit)}}
 	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/tasks?"+q.Encode(), nil)
 	if err != nil {
@@ -47,7 +53,11 @@ func (a *CloudRuAdapter) VMTasks(ctx context.Context, project, vm string, offset
 			return nil, ctx.Err()
 		}
 		// Compute error bodies can include identities from the task records.
-		return nil, clierrors.New(clierrors.Reason(err), i18n.T("Could not read the Compute Tasks page.", "Не удалось прочитать страницу задач Compute."), "")
+		msg := i18n.T("Could not read the Compute Tasks page.", "Не удалось прочитать страницу задач Compute.")
+		if status := HTTPStatus(err); status != 0 {
+			return nil, clierrors.Wrap(clierrors.Reason(err), msg, "", &StatusError{Status: status})
+		}
+		return nil, clierrors.New(clierrors.Reason(err), msg, "")
 	}
 	defer resp.Body.Close()
 	var page VMTaskPage
