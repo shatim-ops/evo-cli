@@ -215,8 +215,10 @@ Tab дополняет команды и флаги, а с 1.5 — и значе
 установки из архива — скрипт для своей оболочки:
 
 ```sh
-# bash: в текущей оболочке; для будущих добавьте эту строку в ~/.bashrc
-source <(evo completion bash)
+# bash: создайте файл и подключите в текущей оболочке
+dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+mkdir -p "$dir" && evo completion bash > "$dir/evo"
+source "$dir/evo"
 # zsh: каталог из $fpath, куда у вас есть запись, например
 evo completion zsh > "${fpath[1]}/_evo"
 # fish

@@ -294,17 +294,27 @@ func zshMenuOfEvo(completion *cobra.Command) {
 
 func configureBashCompletion(cmd *cobra.Command) {
 	cmd.RunE = bashCompletionOfEvo
-	cmd.Long = i18n.T(`Generate Bash completions for evo. In the current shell run:
+	cmd.Long = i18n.T(`Generate Bash completions for evo. Run these commands in Bash:
 
-    source <(evo completion bash)
+    dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+    mkdir -p "$dir" && evo completion bash > "$dir/evo"
+    source "$dir/evo"
 
-For future interactive shells, add the same line to ~/.bashrc.
+For future interactive shells, add this line to ~/.bashrc:
+
+    [ -r "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo" ] && source "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo"
+
 Login Bash reads ~/.bashrc when your login profile sources it.
-`, `Скрипт автодополнения для Bash. В текущей оболочке выполните:
+`, `Скрипт автодополнения для Bash. Выполните в Bash:
 
-    source <(evo completion bash)
+    dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+    mkdir -p "$dir" && evo completion bash > "$dir/evo"
+    source "$dir/evo"
 
-Для новых интерактивных оболочек добавьте эту строку в ~/.bashrc.
+Для новых интерактивных оболочек добавьте в ~/.bashrc строку:
+
+    [ -r "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo" ] && source "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo"
+
 При входе Bash читает ~/.bashrc, если его подключает ваш профиль входа.
 `)
 }
