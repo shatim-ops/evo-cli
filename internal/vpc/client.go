@@ -151,11 +151,11 @@ func (c *Client) listVPCs(ctx context.Context, verifyReferences bool) ([]map[str
 	if c.projectID != "" {
 		q.Set("project_id", c.projectID)
 	}
-	return c.listPages(ctx, "/v1/vpcs", q, "vpcs", verifyReferences)
+	return c.listPages(ctx, "/v1/vpcs", q, "vpcs", verifyReferences, "")
 }
 
 // listPages reads every page of a list whose items are in field.
-func (c *Client) listPages(ctx context.Context, path string, query url.Values, field string, verifyReferences bool) ([]map[string]any, error) {
+func (c *Client) listPages(ctx context.Context, path string, query url.Values, field string, verifyReferences bool, routeVPCID string) ([]map[string]any, error) {
 	var all []map[string]any
 	var evidence pager.EvidencePages
 	err := pager.All("vpc: "+field, func(token string) (string, error) {
@@ -184,9 +184,7 @@ func (c *Client) listPages(ctx context.Context, path string, query url.Values, f
 			}
 		}
 		if field == "routes" && pager.IsReconciliation(ctx) {
-			// The parent UUID is the path component just before /routes/static.
-			parent := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/vpcs/"), "/routes/static")
-			scope := map[string]string{"projectId": c.projectID, "project_id": c.projectID, "vpcId": parent, "vpc_id": parent}
+			scope := map[string]string{"projectId": c.projectID, "project_id": c.projectID, "vpcId": routeVPCID, "vpc_id": routeVPCID}
 			if err := evidence.Check(out, page, scope, "subnet"); err != nil {
 				return "", err
 			}
@@ -275,7 +273,7 @@ func (c *Client) GetOperation(ctx context.Context, id string) (*Operation, error
 
 // ListRoutes lists static routes of a VPC, every page.
 func (c *Client) ListRoutes(ctx context.Context, vpcID string) ([]map[string]any, error) {
-	return c.listPages(ctx, "/v1/vpcs/"+url.PathEscape(vpcID)+"/routes/static", url.Values{}, "routes", false)
+	return c.listPages(ctx, "/v1/vpcs/"+url.PathEscape(vpcID)+"/routes/static", url.Values{}, "routes", false, vpcID)
 }
 
 // CreateRoute creates a static route (async). body: {vpcId, projectId, subnet, nextHop}.
