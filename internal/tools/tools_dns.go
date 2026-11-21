@@ -492,6 +492,19 @@ func listedDNSRecordKey(row map[string]any) string {
 	return dnsRecordKey(stringArg(row, "name"), stringArg(row, "type"))
 }
 
+func validateDNSRecordCreate(args map[string]any, zoneID, name, rtype string) error {
+	if err := recordValueArgs(args); err != nil {
+		return err
+	}
+	if zoneID == "" || name == "" || rtype == "" || len(recordValues(args)) == 0 {
+		return usageErr("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required", "нужны 'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) и 'value' или 'values'")
+	}
+	if !slices.Contains(dnsRecordTypes, rtype) {
+		return usageErr("record_type: the value is not one of %s", "record_type: значение не входит в список: %s", strings.Join(dnsRecordTypes, ", "))
+	}
+	return nil
+}
+
 // planDnsRecordCreate plans dns_record_create (D35): the zone and its
 // records are read before the question — a zone that is not there is
 // NOT_FOUND and a record of the same name and type is the taken name, both
@@ -500,16 +513,10 @@ func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any)
 	zoneID := stringArg(args, "zone_id")
 	name := stringArg(args, "name")
 	rtype := strings.ToLower(stringArg(args, "record_type"))
-	if err := recordValueArgs(args); err != nil {
+	if err := validateDNSRecordCreate(args, zoneID, name, rtype); err != nil {
 		return nil, err
 	}
 	vals := recordValues(args)
-	if zoneID == "" || name == "" || rtype == "" || len(vals) == 0 {
-		return nil, usageErr("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required", "нужны 'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) и 'value' или 'values'")
-	}
-	if !slices.Contains(dnsRecordTypes, rtype) {
-		return nil, usageErr("record_type: the value is not one of %s", "record_type: значение не входит в список: %s", strings.Join(dnsRecordTypes, ", "))
-	}
 	ttl := pgInt(args, "ttl", 300)
 	cli, err := s.dnsClient(ctx)
 	if err != nil {

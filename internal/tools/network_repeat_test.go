@@ -71,8 +71,8 @@ func TestNetworkRepeat_IdentityWithinParent(t *testing.T) {
 		args, independent map[string]any
 		equivalent        map[string]any
 	}{
-		{"dns_record_create", map[string]any{"type": "public", "zone_id": "z1", "name": "www", "record_type": "A"}, map[string]any{"zone_id": "z2"}, map[string]any{"record_type": "a", "ttl": 20}},
-		{"dns_record_create", map[string]any{"type": "public", "zone_id": "z1", "name": "www", "record_type": "A"}, map[string]any{"record_type": "AAAA"}, map[string]any{"value": "192.0.2.1"}},
+		{"dns_record_create", map[string]any{"type": "public", "zone_id": "z1", "name": "www", "record_type": "A", "value": "192.0.2.8"}, map[string]any{"zone_id": "z2"}, map[string]any{"record_type": "a", "ttl": 20}},
+		{"dns_record_create", map[string]any{"type": "public", "zone_id": "z1", "name": "www", "record_type": "A", "value": "192.0.2.8"}, map[string]any{"record_type": "AAAA"}, map[string]any{"value": "192.0.2.1"}},
 		{"vpc_route_create", map[string]any{"vpc_id": "v1", "subnet": "2001:db8::/64"}, map[string]any{"vpc_id": "v2"}, map[string]any{"subnet": "2001:0db8::/64", "description": "changed"}},
 		{"vpc_route_create", map[string]any{"vpc_id": "v1", "subnet": "192.0.2.0/24"}, map[string]any{"subnet": "192.0.3.0/24"}, map[string]any{"next_hop_vip_id": "another"}},
 	} {

@@ -472,6 +472,10 @@ func (r *Registry) named(ctx context.Context, name string, args map[string]any) 
 // it (intentResource). An error is the read of the resolver that failed.
 func (r *Registry) resourceOf(ctx context.Context, name string, args map[string]any) (resource, target string, err error) {
 	if rule := everySendIsAChange[name]; rule.target != nil {
+		// Identity resolution precedes the planner and may itself read the cloud.
+		if rule.listedName != nil && decls[name].Project {
+			ctx = projectContext(ctx, args)
+		}
 		return rule.target(ctx, r, args)
 	}
 	resource, target = intentResource(name, args)
