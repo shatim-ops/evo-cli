@@ -89,6 +89,7 @@ var checkLabels = map[string][2]string{
 	"key roles":             {"key roles", "роли ключа"},
 	"key scope":             {"key scope", "область действия ключа"},
 	"pending operation":     {"pending operation", "незавершённая операция"},
+	"unresolved operations": {"unresolved operations", "операции с неизвестным исходом"},
 	"journal of changes":    {"journal of changes", "журнал изменений"},
 	"lost floating IP":      {"lost floating IP", "floating IP с неизвестным исходом создания"},
 	"foreign intent record": {"foreign intent record", "чужая запись намерения"},

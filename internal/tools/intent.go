@@ -509,7 +509,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 		// A held record is an operation evo goes on with, not a cut call
 		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
 		// call whose change was seen going on, HoldCut).
-		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || (in.Key == nil && everySendIsAChange[name].listedName == nil) {
+		if in.AwaitingContinuation() || in.Tool != name || (in.Key == nil && everySendIsAChange[name].listedName == nil) {
 			continue
 		}
 		// A call that has not returned is going on, not cut: its record
@@ -1326,6 +1326,11 @@ func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engi
 			return i18n.Tf("Gateway %s is still listed. Run doctor again.", "Шлюз %s ещё есть в списке. Повторите doctor.", quoteCloud(id)), false, ""
 		}
 		return r.checkByID(ctx, in, k, id, eng.Maker())
+	}
+	// A name in this key's list cannot settle another key's call (R-86).
+	// pendingNote identifies the key needed to check the record.
+	if in.Key.Other(eng.Maker()) {
+		return "", false, ""
 	}
 	return r.checkByList(ctx, in, eng.Config.ProjectID)
 }
