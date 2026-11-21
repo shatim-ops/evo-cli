@@ -21,7 +21,9 @@ const priceNoNewResource = "changes or removes what exists: nothing new to pay f
 // noPriceInPreview is the closed list of the tools whose preview carries no
 // cost and no tariff_url, with the reason.
 var noPriceInPreview = map[string]string{
-	"ar_delete": priceNoNewResource, "ca_delete": priceNoNewResource, "ca_start": priceNoNewResource,
+	"k8s_upgrade":          "updates the version of the existing control plane; no newly requested resource to price",
+	"k8s_nodepool_upgrade": "updates the version of the existing pool; its count and configuration stay as requested",
+	"ar_delete":            priceNoNewResource, "ca_delete": priceNoNewResource, "ca_start": priceNoNewResource,
 	"ca_stop": priceNoNewResource, "cert_delete": priceNoNewResource, "cert_import": priceNoNewResource,
 	"cert_issue_le": priceNoNewResource, "cert_renew": priceNoNewResource, "destroy": priceNoNewResource,
 	"disk_attach": priceNoNewResource, "disk_delete": priceNoNewResource, "disk_detach": priceNoNewResource,
