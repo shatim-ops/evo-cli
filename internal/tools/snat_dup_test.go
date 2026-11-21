@@ -5,9 +5,13 @@
 package tools
 
 import (
+	"context"
+	"errors"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 
@@ -98,5 +102,19 @@ func TestSnatCreate_MissingZoneState(t *testing.T) {
 		if !failed || m["reason"] != "API_ERROR" || api.posts != 0 {
 			t.Fatalf("confirmed=%v: %s, POST=%d", confirmed, text, api.posts)
 		}
+	}
+}
+
+// A nested caller may reach the planner directly. A missing state
+// directory must never turn the offer path into a path below cwd.
+func TestSnatCreate_ApprovalNeedsStateDir(t *testing.T) {
+	t.Chdir(t.TempDir())
+	r := &Registry{}
+	got, err := r.bindSNATPlacement(context.Background(), &engine.Engine{}, &Plan{}, "named", snatPlacement{id: faultZone, ref: "ru.AZ-1"})
+	if got != nil || err == nil || err.Error() != errNoStateDir().Error() {
+		t.Fatalf("plan=%v err=%v", got, err)
+	}
+	if _, err := os.Stat("snat-previews"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("offer path in cwd: %v", err)
 	}
 }

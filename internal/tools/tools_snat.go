@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -69,57 +68,6 @@ func (s *Registry) readSnatZone(ctx context.Context, args map[string]any) (id, n
 	return id, "", nil
 }
 
-// snatPlacement keeps the intent and POST on the same catalog observation.
-type snatPlacement struct{ id, name, ref string }
-
-func (s *Registry) snatPlacement(ctx context.Context, args map[string]any) (snatPlacement, error) {
-	return onceACall(ctx, "snat_placement", func() (snatPlacement, error) {
-		eng, err := s.authedEngine(ctx, nil)
-		if err != nil {
-			return snatPlacement{}, err
-		}
-		explicit := stringArg(args, "zone")
-		ref := firstNonEmptyStr(explicit, eng.Config.Region)
-		if stringArg(args, "availability_zone_id") != "" || ref == "" || (explicit == "" && isUUID(ref)) {
-			id, name, err := s.resolveZone(ctx, args)
-			return snatPlacement{id: id, name: name}, err
-		}
-		zones, err := provision.SNATZoneCatalog(ctx, eng.Cloud)
-		if err != nil {
-			return snatPlacement{}, err
-		}
-		var match *provision.AvailabilityZone
-		seen := map[string]bool{}
-		for _, z := range zones {
-			if z == nil || !isUUID(z.ID) || z.Name == "" || seen[z.ID] {
-				return snatPlacement{}, pager.Incomplete(i18n.T("invalid availability zone record", "повреждена запись каталога зон доступности"))
-			}
-			seen[z.ID] = true
-			if z.Name != ref && (explicit != "" || !strings.EqualFold(z.Name, ref)) {
-				continue
-			}
-			if match != nil {
-				return snatPlacement{}, usageErr("Several availability zones have this name. Select the intended UUID.", "Несколько зон доступности имеют это имя. Выберите нужный UUID.")
-			}
-			match = z
-		}
-		if match == nil {
-			if explicit == "" {
-				_, err := provision.ResolveZone(zones, ref)
-				return snatPlacement{}, err
-			}
-			return snatPlacement{}, clierrors.New(clierrors.CodeNotFound, i18n.Tf("availability zone %q not found", "зона доступности %q не найдена", ref), "")
-		}
-		if match.Enabled == nil {
-			return snatPlacement{}, pager.Incomplete(i18n.T("the catalog does not report whether this zone accepts new resources", "каталог не сообщает, принимает ли эта зона новые ресурсы"))
-		}
-		if err := provision.ClosedZoneError(zones, match.ID); err != nil {
-			return snatPlacement{}, err
-		}
-		return snatPlacement{match.ID, match.Name, ref}, nil
-	})
-}
-
 func listSNATForCreate(ctx context.Context, eng *engine.Engine) ([]map[string]any, error) {
 	if pager.IsReconciliation(ctx) {
 		return provision.NATDeleteInventory(ctx, eng.Cloud, eng.Config.ProjectID)
@@ -152,25 +100,8 @@ func (s *Registry) handleSnatList(ctx context.Context, args map[string]any) (str
 	return toJSON(map[string]any{"nat_gateways": out}), false
 }
 
-// handleSnatCreate creates a SNAT gateway so a private subnet's nodes can reach
-// the internet (pull public images, apt, outbound calls). Gated on confirmed.
-func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Plan, error) {
-	name := stringArg(args, "name")
-	if name == "" {
-		return answered(usageT("'name' is required", "нужен 'name'"), true), nil
-	}
-	if err := provision.ValidName(i18n.T("SNAT gateway", "SNAT-шлюза"), name); err != nil {
-		return nil, err
-	}
-	placement, err := s.snatPlacement(ctx, args)
+func prepareSNATGateway(ctx context.Context, eng *engine.Engine, name string, placement snatPlacement) (*Plan, error) {
 	zoneID, zoneName := placement.id, placement.name
-	if err != nil {
-		return nil, err
-	}
-	eng, err := s.authedEngine(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
 	// A second gateway of the same name is a second bill: refused before
 	// the consent, as every other create (fault matrix, process audit
 	// 1.2.1: a repeated snat_create made one more each time).
@@ -209,9 +140,6 @@ func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Pl
 	}
 	plan := &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 
-		if err := startPlacementIntent(ctx); err != nil {
-			return errResult(err), true
-		}
 		gw, err := eng.Cloud.CreateNATGateway(ctx, provision.CreateNATGatewayRequest{
 			Name:               name,
 			NATType:            provision.NATTypePublicSNAT,
@@ -228,10 +156,7 @@ func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Pl
 		m.read = list
 		return madeAnswer(ctx, eng, map[string]any{"nat_gateway": gw}, m)
 	}}
-	if placement.ref == "" {
-		return plan, nil
-	}
-	return s.bindSNATPlacement(ctx, eng, plan, name, placement), nil
+	return plan, nil
 }
 
 // snatMadeNotes is the create of snat_create as madeAnswer reads it, with

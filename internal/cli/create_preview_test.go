@@ -63,7 +63,8 @@ func (previewCloud) ListFlavors(context.Context) ([]*provision.Flavor, error) {
 	}, nil
 }
 func (previewCloud) ListAvailabilityZones(context.Context) ([]*provision.AvailabilityZone, error) {
-	return []*provision.AvailabilityZone{{ID: pvZone, Name: "ru.AZ-1"}}, nil
+	enabled := true
+	return []*provision.AvailabilityZone{{ID: pvZone, Name: "ru.AZ-1", Enabled: &enabled}}, nil
 }
 func (previewCloud) GetImage(_ context.Context, id string) (*provision.ImageDetail, error) {
 	return &provision.ImageDetail{ID: id, Name: "Ubuntu 22.04", MinDisk: 20}, nil

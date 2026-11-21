@@ -23,6 +23,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -288,15 +289,54 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 	}}, nil
 }
 
+// planSnatCreate creates a SNAT gateway so a private subnet's nodes can reach
+// the internet (pull public images, apt, outbound calls). Gated on confirmed.
+func (s *Registry) planSnatCreate(ctx context.Context, args map[string]any) (*Plan, error) {
+	name := stringArg(args, "name")
+	if name == "" {
+		return answered(usageT("'name' is required", "нужен 'name'"), true), nil
+	}
+	if err := provision.ValidName(i18n.T("SNAT gateway", "SNAT-шлюза"), name); err != nil {
+		return nil, err
+	}
+	placement, err := s.snatPlacement(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := prepareSNATGateway(ctx, eng, name, placement)
+	if err != nil || plan.Execute == nil {
+		return plan, err
+	}
+	return s.bindSNATPlacement(ctx, eng, plan, name, placement)
+}
+
 // bindSNATPlacement remembers the UUID displayed for a named gateway. A
 // first confirmed call needs no offer. The CLI's implicit --yes planning
 // pass must not overwrite an earlier offer before comparing the UUID.
-func (s *Registry) bindSNATPlacement(ctx context.Context, eng *engine.Engine, plan *Plan, name string, placement snatPlacement) *Plan {
+func (s *Registry) bindSNATPlacement(ctx context.Context, eng *engine.Engine, plan *Plan, name string, placement snatPlacement) (*Plan, error) {
+	root, ok := s.stateDir()
+	if !ok {
+		return nil, errNoStateDir()
+	}
+	execute := plan.Execute
+	send := func(ctx context.Context) (string, bool) {
+		if err := startPlacementIntent(ctx); err != nil {
+			return errResult(err), true
+		}
+		return execute(ctx)
+	}
+	if placement.ref == "" {
+		plan.Execute = send
+		return plan, nil
+	}
 	caller := callerOf(ctx)
 	// A retry can arrive on a new connection or after a process restart.
 	// Share the offer only within the same credential, project and gateway.
 	terms, _ := json.Marshal([]string{eng.Config.ProjectID, eng.Config.Profile, eng.Config.ServiceAccountID, eng.Config.KeyID, name})
-	root, _ := s.stateDir()
 	path := filepath.Join(root, "snat-previews", lbDigest(terms)+".json")
 	type offer struct {
 		ID      string `json:"id"`
@@ -368,8 +408,8 @@ func (s *Registry) bindSNATPlacement(ctx context.Context, eng *engine.Engine, pl
 			plan.Preview["status"] = "confirmation_required"
 			return toJSON(plan.Preview), true
 		}
-		return plan.Execute(ctx)
-	}}
+		return send(ctx)
+	}}, nil
 }
 
 // gated is the handler of tool name on its planner: the plan first, then

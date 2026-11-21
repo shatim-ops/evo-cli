@@ -19,6 +19,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -54,6 +55,57 @@ func dnsRecordIntent(ctx context.Context, r *Registry, args map[string]any) (str
 		}
 	}
 	return name, vis + "_" + recordType + "_zone_id=" + id, nil
+}
+
+// snatPlacement keeps the intent and POST on the same catalog observation.
+type snatPlacement struct{ id, name, ref string }
+
+func (s *Registry) snatPlacement(ctx context.Context, args map[string]any) (snatPlacement, error) {
+	return onceACall(ctx, "snat_placement", func() (snatPlacement, error) {
+		eng, err := s.authedEngine(ctx, nil)
+		if err != nil {
+			return snatPlacement{}, err
+		}
+		explicit := stringArg(args, "zone")
+		ref := firstNonEmptyStr(explicit, eng.Config.Region)
+		if stringArg(args, "availability_zone_id") != "" || ref == "" || (explicit == "" && isUUID(ref)) {
+			id, name, err := s.resolveZone(ctx, args)
+			return snatPlacement{id: id, name: name}, err
+		}
+		zones, err := provision.SNATZoneCatalog(ctx, eng.Cloud)
+		if err != nil {
+			return snatPlacement{}, err
+		}
+		var match *provision.AvailabilityZone
+		seen := map[string]bool{}
+		for _, z := range zones {
+			if z == nil || !isUUID(z.ID) || z.Name == "" || seen[z.ID] {
+				return snatPlacement{}, pager.Incomplete(i18n.T("invalid availability zone record", "повреждена запись каталога зон доступности"))
+			}
+			seen[z.ID] = true
+			if z.Name != ref && (explicit != "" || !strings.EqualFold(z.Name, ref)) {
+				continue
+			}
+			if match != nil {
+				return snatPlacement{}, usageErr("Several availability zones have this name. Select the intended UUID.", "Несколько зон доступности имеют это имя. Выберите нужный UUID.")
+			}
+			match = z
+		}
+		if match == nil {
+			if explicit == "" {
+				_, err := provision.ResolveZone(zones, ref)
+				return snatPlacement{}, err
+			}
+			return snatPlacement{}, clierrors.New(clierrors.CodeNotFound, i18n.Tf("availability zone %q not found", "зона доступности %q не найдена", ref), "")
+		}
+		if match.Enabled == nil {
+			return snatPlacement{}, pager.Incomplete(i18n.T("the catalog does not report whether this zone accepts new resources", "каталог не сообщает, принимает ли эта зона новые ресурсы"))
+		}
+		if err := provision.ClosedZoneError(zones, match.ID); err != nil {
+			return snatPlacement{}, err
+		}
+		return snatPlacement{match.ID, match.Name, ref}, nil
+	})
 }
 
 func snatIntent(ctx context.Context, r *Registry, args map[string]any) (string, string, error) {
