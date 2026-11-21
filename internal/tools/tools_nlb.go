@@ -6,8 +6,6 @@ package tools
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -314,16 +312,22 @@ func (s *Registry) planTgDelete(ctx context.Context, args map[string]any) (*Plan
 
 // --- Load balancer create/delete ---
 
+type lbPlacement struct {
+	body   map[string]any
+	zoneID string
+	config *config.Config
+}
+
 // prepareLBCreate resolves the billed placement, its preview and the matching wire request.
-func (s *Registry) prepareLBCreate(ctx context.Context, args map[string]any) (*Plan, string, error) {
+func (s *Registry) prepareLBCreate(ctx context.Context, args map[string]any) (*Plan, *lbPlacement, error) {
 	if _, given := args["preview_id"]; given && !isUUID(stringArg(args, "preview_id")) {
-		return nil, "", usageErr("preview_id must be a UUID from the displayed preview.", "Нужен UUID preview_id из показанного превью.")
+		return nil, nil, usageErr("preview_id must be a UUID from the displayed preview.", "Нужен UUID preview_id из показанного превью.")
 	}
 	name := stringArg(args, "name")
 	tgID := stringArg(args, "target_group_id")
 	port := pgInt(args, "port", 0)
 	if name == "" || tgID == "" || port == 0 {
-		return nil, "", usageErr("'name', 'target_group_id' and 'port' are required", "нужны 'name', 'target_group_id' и 'port'")
+		return nil, nil, usageErr("'name', 'target_group_id' and 'port' are required", "нужны 'name', 'target_group_id' и 'port'")
 	}
 	targetPort := pgInt(args, "target_port", port)
 	hcPort := pgInt(args, "hc_port", targetPort)
@@ -337,33 +341,33 @@ func (s *Registry) prepareLBCreate(ctx context.Context, args map[string]any) (*P
 
 	cli, eng, err := s.nlbClientEng(ctx)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 	// A second balancer of the same name is a second bill: refused before
 	// the consent, as every other create (DECISIONS D21).
 	existing, err := cli.ListNLB(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf(i18n.T("check the name is free: list load balancers: %w", "проверка, что имя свободно: список балансировщиков: %w"), err)
+		return nil, nil, fmt.Errorf(i18n.T("check the name is free: list load balancers: %w", "проверка, что имя свободно: список балансировщиков: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return answered(nameTakenResult(i18n.T("load balancer", "балансировщик"), name, id, st, "lb_list")), "", nil
+		return answered(nameTakenResult(i18n.T("load balancer", "балансировщик"), name, id, st, "lb_list")), nil, nil
 	}
 
 	// VPC: explicit, else inherit from the target group (LB must share its
 	// VPC). The group's VMs also name the zone the balancer serves.
 	tg, e := cli.GetTargetGroup(ctx, tgID)
 	if e != nil {
-		return nil, "", fmt.Errorf(i18n.T("read target group %s: %w", "чтение целевой группы %s: %w"), tgID, e)
+		return nil, nil, fmt.Errorf(i18n.T("read target group %s: %w", "чтение целевой группы %s: %w"), tgID, e)
 	}
 	if err := validateLBTargetGroup(tg, tgID, cli.ProjectID()); err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 	tgVPC, _ := tg["vpc_id"].(string)
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID != "" && tgVPC != "" && vpcID != tgVPC {
 		// The balancer shares its target group's VPC (release audit
 		// re-run, N-01).
-		return nil, "", clierrors.New(clierrors.CodeConfigInvalid,
+		return nil, nil, clierrors.New(clierrors.CodeConfigInvalid,
 			i18n.Tf("target group %s is in VPC %s, not in vpc_id %s; nothing was created", "целевая группа %s в VPC %s, а не в vpc_id %s; ничего не создано", tgID, quoteCloud(tgVPC), vpcID),
 			i18n.T("Omit vpc_id (the balancer takes its target group's VPC) or pass a target group of that VPC.", "Не указывайте vpc_id (балансировщик возьмёт VPC целевой группы) или передайте целевую группу этой VPC."))
 	}
@@ -371,11 +375,11 @@ func (s *Registry) prepareLBCreate(ctx context.Context, args map[string]any) (*P
 		vpcID = tgVPC
 	}
 	if vpcID == "" {
-		return nil, "", errors.New(i18n.T("could not resolve vpc_id — pass it explicitly", "не удалось определить vpc_id — передайте его"))
+		return nil, nil, errors.New(i18n.T("could not resolve vpc_id — pass it explicitly", "не удалось определить vpc_id — передайте его"))
 	}
 	zone, subnetID, subnetName, warnings, err := lbZoneAndSubnet(ctx, eng, args, tg, vpcID)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
 	// AZ spec requires exactly one of {id, name} (nlb API 400 otherwise);
@@ -439,24 +443,6 @@ func (s *Registry) prepareLBCreate(ctx context.Context, args map[string]any) (*P
 	}
 	willCreate["zone_id"] = zone.ID
 	willCreate["project_id"] = cli.ProjectID()
-	cuts := s.cutCalls(ctx, "lb_create", args)
-	var ids []string
-	if len(cuts) > 0 {
-		message, warn := interruptedWarning(ctx, "lb_create", args, cuts)
-		out["interrupted"] = warn
-		out["message"] = message + " " + stringArg(out, "message")
-		for _, cut := range cuts {
-			ids = append(ids, cut.ID)
-		}
-		slices.Sort(ids)
-	}
-	if eng.Config.KeyID == "" && eng.Config.ServiceAccountID == "" {
-		return nil, "", usageErr("Cannot identify the caller for load balancer approval.", "Не удалось определить учётную запись для согласования балансировщика.")
-	}
-	terms, err := json.Marshal([]any{body, zone.ID, eng.Config.Profile, eng.Config.ServiceAccountID, lbDigest([]byte(eng.Config.KeyID)), ids})
-	if err != nil {
-		return nil, "", err
-	}
 	return &Plan{Preview: out, Execute: func(ctx context.Context) (string, bool) {
 		job, _ := ctx.Value(lbJobKey{}).(*stack.Job)
 		wasUncertain := job != nil && job.LBUncertain
@@ -521,7 +507,7 @@ func (s *Registry) prepareLBCreate(ctx context.Context, args map[string]any) (*P
 			}
 		}
 		return toJSON(out), false
-	}}, lbDigest(terms), nil
+	}}, &lbPlacement{body: body, zoneID: zone.ID, config: &eng.Config}, nil
 }
 
 // GET /v2/targetGroups/{id} addresses the group. The v2TargetGroup schema
@@ -712,9 +698,4 @@ func (s *Registry) planLbDelete(ctx context.Context, args map[string]any) (*Plan
 			}
 			return deleteOutcome(ctx, args, opWatch("lb_delete", id, map[string]any{"id": id}, op.ID, "lb_operation", cli.GetOperation))
 		}), nil
-}
-
-func lbDigest(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
 }

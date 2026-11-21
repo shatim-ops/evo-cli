@@ -318,3 +318,116 @@ func TestLBUnlinkedConfirmationHasNoHistory(t *testing.T) {
 		assertLBHistoryCount(t, r, 0, 0)
 	}
 }
+
+func TestLBApprovalIgnoresPathInStoredOffer(t *testing.T) {
+	f := &raAPI{targetVMs: `{"id":"vm-1","zone_name":"ru.AZ-1","vpc_id":"vpc-1"}`}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	args := map[string]any{"name": "web", "port": float64(80), "target_group_id": raTargetGroup}
+	q, raw, _ := callNamed(t, r, "lb_create", args)
+	if q["status"] != "confirmation_required" || q["preview_id"] == nil || f.postCount() != 0 {
+		t.Fatal(raw)
+	}
+	root, _ := r.stateDir()
+	offerPath := filepath.Join(root, "lb-previews", lbDigest([]byte("stdio-"+r.upgradeClient))+".json")
+	data, err := os.ReadFile(offerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var offer map[string]string
+	if err := json.Unmarshal(data, &offer); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(t.TempDir(), "keep")
+	if err := os.WriteFile(other, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	offer["Path"] = other
+	data, err = json.Marshal(offer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(offerPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	args["confirmed"], args["preview_id"] = true, q["preview_id"]
+	if _, raw, failed := callNamed(t, r, "lb_create", args); failed || f.postCount() != 1 {
+		t.Fatal(raw)
+	}
+	if _, err := os.Stat(offerPath); !os.IsNotExist(err) {
+		t.Fatalf("consumed offer still accessible: %v", err)
+	}
+	if data, err := os.ReadFile(other); err != nil || string(data) != "keep" {
+		t.Fatalf("unrelated file changed: %q, %v", data, err)
+	}
+}
+
+func TestLBApprovalStoredDigestCompatibility(t *testing.T) {
+	// One persisted offer with all six material inputs from the previous format.
+	p := lbPlacement{body: map[string]any{"name": "web"}, zoneID: "az", config: &config.Config{Profile: "profile", ServiceAccountID: "account", KeyID: "example-key"}}
+	digest, err := p.approvalDigest([]string{"cut-1", "cut-2"})
+	if err != nil || digest != "83469feb7567d931f8bf2c38ec2e3c8ad1903ee695350d2c93fea10f78938082" {
+		t.Fatalf("stored offer no longer matches: %s, %v", digest, err)
+	}
+}
+
+func TestLBApprovalCallerContextChanged(t *testing.T) {
+	for _, field := range []string{"profile", "account"} {
+		t.Run(field, func(t *testing.T) {
+			f := &raAPI{targetVMs: `{"id":"vm-1","zone_name":"ru.AZ-1","vpc_id":"vpc-1"}`}
+			profile, account := "profile-a", "account-a"
+			r := raRegistry(t, f, raCloud{subnets: raSubnets()}, func(c *config.Config) {
+				c.Profile, c.ServiceAccountID = profile, account
+			})
+			args := map[string]any{"name": "web", "port": float64(80), "target_group_id": raTargetGroup}
+			first, raw, _ := callNamed(t, r, "lb_create", args)
+			if first["status"] != "confirmation_required" || first["preview_id"] == nil || f.postCount() != 0 {
+				t.Fatal(raw)
+			}
+			if field == "profile" {
+				profile = "profile-b"
+			} else {
+				account = "account-b"
+			}
+			args["confirmed"], args["preview_id"] = true, first["preview_id"]
+			next, raw, _ := callNamed(t, r, "lb_create", args)
+			if next["status"] != "confirmation_required" || next["preview_id"] == nil || next["preview_id"] == first["preview_id"] || f.postCount() != 0 {
+				t.Fatal(raw)
+			}
+			args["preview_id"] = next["preview_id"]
+			if _, raw, failed := callNamed(t, r, "lb_create", args); failed || f.postCount() != 1 {
+				t.Fatal(raw)
+			}
+		})
+	}
+}
+
+func TestLBUncertainInvalidatesStackOffer(t *testing.T) {
+	j := pausedLBWorldJob(t)
+	f := &raAPI{targetVMs: `{"id":"vm-1","zone_name":"ru.AZ-1","vpc_id":"vpc-1"}`}
+	r := raRegistry(t, f, raCloud{subnets: raSubnets()}, nil)
+	args := map[string]any{"job_id": j.ID, "confirmed": true}
+	before, raw, _ := callNamed(t, r, "stack_apply", args)
+	if before["preview_id"] == nil || f.postCount() != 0 {
+		t.Fatal(raw)
+	}
+	saved, err := stack.LoadJob(j.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved.LBUncertain = true
+	if err := saved.Save(); err != nil {
+		t.Fatal(err)
+	}
+	args["preview_id"] = before["preview_id"]
+	after, raw, _ := callNamed(t, r, "stack_apply", args)
+	if after["status"] != "confirmation_required" || after["preview_id"] == nil || after["preview_id"] == before["preview_id"] || f.postCount() != 0 {
+		t.Fatal(raw)
+	}
+	assertLBHistoryCount(t, r, 0, 0)
+	args["preview_id"] = after["preview_id"]
+	_, raw, _ = callNamed(t, r, "stack_apply", args)
+	if f.postCount() != 1 {
+		t.Fatal(raw)
+	}
+	assertLBHistoryCount(t, r, 1, 1)
+}
