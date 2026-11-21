@@ -155,6 +155,18 @@ type Maker struct {
 	KeyID            string `json:"key_id,omitempty"`
 }
 
+// Matches requires comparable owner evidence on both sides. A rotated key
+// of the same identified service account has the same owner.
+func (m *Maker) Matches(cur *Maker) bool {
+	if m == nil || cur == nil {
+		return false
+	}
+	if m.ServiceAccountID != "" && cur.ServiceAccountID != "" {
+		return m.ServiceAccountID == cur.ServiceAccountID
+	}
+	return m.KeyID != "" && m.KeyID != "****" && m.KeyID == cur.KeyID
+}
+
 // Other tells that cur is surely not the key that made the record: by the
 // account when both know it — a new key of the same account (evo login
 // replaces it) sees the same — else by the Key ID. Unknown on either side

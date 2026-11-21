@@ -27,6 +27,13 @@ import (
 // Compute still uses the fixture that records the interrupted delete.
 func interruptedDeleteRegistry(t *testing.T, compute http.RoundTripper) (*Registry, string) {
 	t.Helper()
+	stubDoctorIdentity(t)
+	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: compute}, "")
+	return fastRegistry(t, cloud, provisionCfg)
+}
+
+func stubDoctorIdentity(t *testing.T) {
+	t.Helper()
 	// staticToken names service account x. Doctor lists its keys and asks
 	// for its roles only in the project of this fixture.
 	filter := strings.ReplaceAll(url.QueryEscape("resource_id="+provisionCfg.ProjectID+" AND subject_id=x"), "+", "%20")
@@ -47,8 +54,6 @@ func interruptedDeleteRegistry(t *testing.T, compute http.RoundTripper) (*Regist
 		http.NotFound(rec, req)
 		return rec.Result(), nil
 	})
-	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: compute}, "")
-	return fastRegistry(t, cloud, provisionCfg)
 }
 
 // lostDeleteWorld is a cloud that has the resource named liveID or

@@ -185,7 +185,14 @@ func (c *disksCloud) ListDisks(context.Context, string) ([]map[string]any, error
 // delete settles it.
 func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 	cloud := &disksCloud{}
-	r, dir := targetRegistryWith(t, cloud, noKey)
+	stubDoctorIdentity(t)
+	cfg := provisionCfg
+	cfg.ServiceAccountID = "x"
+	r, dir := targetRegistryWith(t, cloud, cfg)
+	eng, err := r.newEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
@@ -197,8 +204,8 @@ func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	begin(intent.Intent{Tool: "disk_create", Name: "made"})
-	begin(intent.Intent{Tool: "disk_create", Name: "not-yet"})
+	begin(intent.Intent{Tool: "disk_create", Key: eng.Maker(), ProjectID: eng.Config.ProjectID, Name: "made"})
+	begin(intent.Intent{Tool: "disk_create", Key: eng.Maker(), ProjectID: eng.Config.ProjectID, Name: "not-yet"})
 	begin(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-gone"})
 	begin(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-still"})
 	cloud.disks = []map[string]any{{"id": "d-made", "name": "made"}, {"id": "d-still", "name": "still"}}

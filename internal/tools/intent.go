@@ -1277,6 +1277,11 @@ func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engi
 	if in.Key.Other(eng.Maker()) {
 		return "", false, ""
 	}
+	if c, create := createdOf(in.Tool); create && c.list != "" && in.Name != "" {
+		if !in.Key.Matches(eng.Maker()) || in.ProjectID == "" || eng.Config.ProjectID == "" {
+			return i18n.T("Cannot verify the owner and project of this record. A matching name cannot establish the outcome; the record is kept.", "Не удалось подтвердить владельца и проект записи. Совпадение имени не устанавливает исход операции. Запись сохранена."), false, ""
+		}
+	}
 	return r.checkByList(ctx, in, eng.Config.ProjectID)
 }
 
