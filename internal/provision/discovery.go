@@ -113,6 +113,10 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 	offset, promised := 0, 0
 	project, verifyNAT := ctx.Value(natDeleteInventoryKey{}).(string)
 	verifyNAT = verifyNAT && path == "/api/v1/nat-gateways"
+	var evidence *pager.EvidencePages
+	if verifyNAT && pager.IsReconciliation(ctx) {
+		evidence = &pager.EvidencePages{}
+	}
 	for range listMaxPages {
 		pq := url.Values{}
 		for k, v := range q {
@@ -139,7 +143,7 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 		}
 
 		if verifyNAT {
-			if err := validateNATPage(body, project, seen, promised); err != nil {
+			if err := validateNATPage(body, project, seen, promised, evidence); err != nil {
 				return nil, err
 			}
 		}
