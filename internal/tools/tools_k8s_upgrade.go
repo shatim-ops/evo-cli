@@ -6,7 +6,6 @@ package tools
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -16,6 +15,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -178,7 +179,11 @@ func (r upgradeReceipt) save(path string) error {
 // The client can return this capability only after receiving the preview.
 func (r upgradeReceipt) offer(path string, mcpCall bool, preview map[string]any) error {
 	if mcpCall {
-		r.PreviewID = rand.Text()
+		id, err := uuid.NewRandom()
+		if err != nil {
+			return err
+		}
+		r.PreviewID = id.String()
 		preview["preview_id"] = r.PreviewID
 		preview["approval"] = i18n.T("Show this preview to the person. Only after their explicit approval, return its preview_id with confirmed=true in this session.", "Покажите это превью человеку. Только после его явного согласия передайте preview_id этого превью вместе с confirmed=true в текущей сессии.")
 	}

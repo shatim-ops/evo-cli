@@ -431,7 +431,11 @@ func TestUpgradeHTTPAndSecondClientDoNotReplay(t *testing.T) {
 	a, b := open(first), open(second)
 	var previewID string
 	params := func(confirmed bool) map[string]any {
-		return map[string]any{"name": "k8s_upgrade", "arguments": map[string]any{"cluster_id": upgradeParityCluster, "version": upgradeTo, "confirmed": confirmed, "preview_id": previewID}}
+		a := map[string]any{"cluster_id": upgradeParityCluster, "version": upgradeTo, "confirmed": confirmed}
+		if previewID != "" {
+			a["preview_id"] = previewID
+		}
+		return map[string]any{"name": "k8s_upgrade", "arguments": a}
 	}
 	preview, _ := retryRPC(t, first, a, "tools/call", params(false))
 	if parseObject(preview.text)["status"] != "confirmation_required" || posts.Load() != 0 {
