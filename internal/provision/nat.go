@@ -10,6 +10,7 @@ import (
 	"fmt"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 	"net/http"
 	"net/url"
 	"strings"
@@ -59,8 +60,11 @@ func NATDeleteInventory(ctx context.Context, cloud CloudAPI, project string) ([]
 
 type natDeleteInventoryKey struct{}
 
-func validateNATPage(body []byte, project string, seen map[string]bool, promised int) error {
-	var envelope paginatedResponse[map[string]any]
+func validateNATPage(body []byte, project string, seen map[string]bool, promised int, evidence *pager.EvidencePages) error {
+	var envelope struct {
+		Items []map[string]any `json:"items"`
+		Total json.RawMessage  `json:"total"`
+	}
 	var rows []map[string]any
 	if json.Unmarshal(body, &envelope) == nil {
 		rows = envelope.Items
@@ -81,6 +85,13 @@ func validateNATPage(body []byte, project string, seen map[string]bool, promised
 			if len(seen)+len(fresh) < promised {
 				return incompleteNATInventory(len(seen)+len(fresh), promised)
 			}
+		}
+	}
+	if evidence != nil {
+		// A bare array ends the offset walk. For envelopes listAll checks
+		// for an early end against the previously promised total.
+		if err := evidence.CheckRows(envelope.Total, rows, envelope.Items == nil, nil); err != nil {
+			return err
 		}
 	}
 	for _, row := range rows {

@@ -33,25 +33,31 @@ type EvidencePages struct {
 // Check verifies the DNS and VPC token-page envelope and its
 // resource identities. An omitted token is the normal end of pagination.
 func (p *EvidencePages) Check(envelope map[string]json.RawMessage, rows []map[string]any, scope map[string]string, fields ...string) error {
-	invalid := func() error {
-		return clierrors.New(clierrors.CodeAPIError, i18n.T("The resource list is incomplete or contradicts the requested scope.", "Список ресурсов неполон или противоречит области запроса."), i18n.T("Read the target again in the original project.", "Повторите проверку цели в исходном проекте."))
-	}
-	if rows == nil {
-		return invalid()
-	}
 	var token *string
 	if raw, ok := envelope["nextPageToken"]; ok {
 		if json.Unmarshal(raw, &token) != nil || token == nil {
-			return invalid()
+			return invalidEvidence()
 		}
 	}
-	if raw, ok := envelope["total"]; ok {
+	return p.CheckRows(envelope["total"], rows, token == nil || *token == "", scope, fields...)
+}
+
+func invalidEvidence() error {
+	return clierrors.New(clierrors.CodeAPIError, i18n.T("The resource list is incomplete or contradicts the requested scope.", "Список ресурсов неполон или противоречит области запроса."), i18n.T("Read the target again in the original project.", "Повторите проверку цели в исходном проекте."))
+}
+
+// CheckRows validates distinct identities and the declared count across token or offset pages.
+func (p *EvidencePages) CheckRows(raw json.RawMessage, rows []map[string]any, lastPage bool, scope map[string]string, fields ...string) error {
+	if rows == nil {
+		return invalidEvidence()
+	}
+	if raw != nil {
 		var total *int
 		if json.Unmarshal(raw, &total) != nil || total == nil || *total < 0 {
-			return invalid()
+			return invalidEvidence()
 		}
 		if p.total != nil && *p.total != *total {
-			return invalid()
+			return invalidEvidence()
 		}
 		p.total = total
 	}
@@ -61,25 +67,24 @@ func (p *EvidencePages) Check(envelope map[string]json.RawMessage, rows []map[st
 	for _, row := range rows {
 		id, _ := row["id"].(string)
 		if strings.TrimSpace(id) == "" || p.ids[id] {
-			return invalid()
+			return invalidEvidence()
 		}
 		p.ids[id] = true
 		for _, field := range fields {
 			v, _ := row[field].(string)
 			if strings.TrimSpace(v) == "" {
-				return invalid()
+				return invalidEvidence()
 			}
 		}
 		for key, expected := range scope {
 			if value, ok := row[key]; ok && value != expected {
-				return invalid()
+				return invalidEvidence()
 			}
 		}
 	}
 	if p.total != nil {
-		lastPage := token == nil || *token == ""
 		if len(p.ids) > *p.total || (lastPage && len(p.ids) != *p.total) {
-			return invalid()
+			return invalidEvidence()
 		}
 	}
 	return nil
