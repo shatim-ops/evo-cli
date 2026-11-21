@@ -29,7 +29,8 @@ import (
 // terminal or under --dry-run nobody read it — nothing is sent, the exit
 // is the one of «consent is needed», and the record of the cut call stays,
 // however many times the command runs. A person at the terminal closes it
-// with the answer: a yes sends one request, a no none. The tools are the
+// with the answer: a yes sends one request, a no none. D119 keeps an unknown
+// network create open for either answer until its outcome is established. The tools are the
 // ones whose every send is one more change — everySendIsAChange, read from
 // its source; each must have a case in the world, with its setup or
 // without, that is cut and asked again.
@@ -149,6 +150,29 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 			newProcess()
 			_, _, stderr := runCLI(t, c.stdin, append([]string{"--yes"}, line...)...)
 			read, _ := newRegistry().Lookup(fmt.Sprint(interrupted["read_tool"]))
+			// D119 keeps an unresolved network create open even when a person
+			// is at the terminal. A localized CLI command still points to the
+			// resource, and neither yes nor no may consume the receipt.
+			switch c.tool.Name {
+			case "dns_record_create", "vpc_route_create", "snat_create":
+				path := toolCommandPath(read)
+				if interrupted["outcome"] != "unknown" || path == "" || !strings.Contains(stderr, path) ||
+					!strings.Contains(stderr, "outcome is unknown") || strings.Contains(stderr, "Re-run with --yes") {
+					t.Errorf("unresolved network create needs the CLI read command %q: %s", path, stderr)
+				}
+				confirm.StdinIsTTY = func() bool { return true }
+				for _, input := range []string{"n\n", "y\n"} {
+					for _, flags := range [][]string{{}, {"--yes"}} {
+						terminal := strings.NewReader(input)
+						confirm.Stdin = terminal
+						code, writes := run(flags...)
+						if code != 3 || len(writes) != 0 || records() != 1 || terminal.Len() != len(input) {
+							t.Errorf("unresolved create, input %q flags %v: exit %d, writes %v, records %d, input remaining %d", input, flags, code, writes, records(), terminal.Len())
+						}
+					}
+				}
+				return
+			}
 			if !strings.Contains(stderr, "Look at the resource with '"+toolCommandPath(read)+"'") || toolCommandPath(read) == "" ||
 				!strings.Contains(stderr, "--yes does not answer") || !strings.Contains(stderr, "outcome is unknown") || strings.Contains(stderr, "Re-run with --yes") {
 				t.Errorf("the refusal of --yes: %s", stderr)
