@@ -247,7 +247,8 @@ var listSpecs = withSets(map[string]listSpec{
 	"image_list": {rows: "images", own: []string{"query", "type", "zone"}},
 
 	// VPC, DNS
-	"vpc_list": {rows: "vpcs", filters: []listFilter{nameFilter()}},
+	"interface_list": {rows: "interfaces", filters: []listFilter{nameFilter()}},
+	"vpc_list":       {rows: "vpcs", filters: []listFilter{nameFilter()}},
 	"dns_zones": {rows: "zones", filters: []listFilter{
 		nameFilter(),
 		textFilter("domain", "Only with this in the domain, any case.", "Только с этой частью домена, регистр не важен"),
@@ -281,6 +282,7 @@ var listSpecs = withSets(map[string]listSpec{
 	// lists: no filter, with why.
 	"list_zones":       {rows: "zones", none: "a catalogue of a few zones"},
 	"list_disk_types":  {rows: "disk_types", none: "a catalogue of a few types"},
+	"disk_get":         {rows: "attached_vms", none: "the VMs one disk is attached to: one, or a few of a shared disk"},
 	"list":             {none: "the records of this directory, read from the local state: a few"},
 	"list_images":      {none: "deprecated (v2.0): image_list searches the catalogue"},
 	"marketplace_list": {none: "a search of the catalogue by its own query and kind, not a list of the project"},
@@ -905,31 +907,19 @@ const knownShown = 12
 // something evo cannot find is not an empty list (condition 4 of the risk
 // conclusion 104).
 func (r *Registry) listed(ctx context.Context, f listFilter, ref string) (id, name, refusal string, _ error) {
-	text, isErr := r.unchecked[f.ref](ctx, map[string]any{})
-	if isErr {
-		return "", "", text, nil
+	entries, refusal, err := r.filterEntries(ctx, f, ref)
+	if err != nil || refusal != "" {
+		return "", "", refusal, err
 	}
-	_, rows, err := listRows(text, listSpecs[f.ref].rows)
-	if err != nil {
-		return "", "", "", err
-	}
-	type entry struct{ id, name string }
-	var found []entry
-	var known []string
-	for _, row := range rows {
-		item, _ := row.(map[string]any)
-		e := entry{stringOf(item["id"]), stringOf(item["name"])}
-		// A name or id of the cloud in evo's hint is quoted, one line, as
-		// the other cloud words of these refusals (quoteCloud).
-		known = append(known, quoteCloud(firstNonEmptyStr(e.name, e.id)))
-		if (e.id != "" && strings.EqualFold(e.id, ref)) || (e.name != "" && strings.EqualFold(e.name, ref)) {
-			found = append(found, e)
-		}
-	}
+	found := matchingEntries(entries, ref)
 	switch len(found) {
 	case 1:
 		return found[0].id, found[0].name, "", nil
 	case 0:
+		known := make([]string, 0, len(entries))
+		for _, e := range entries {
+			known = append(known, quoteCloud(firstNonEmptyStr(e.name, e.id)))
+		}
 		sort.Strings(known)
 		hint := i18n.Tf("Known: %s.", "Известные: %s.", strings.Join(known, ", "))
 		if len(known) == 0 || len(known) > knownShown {
@@ -945,4 +935,30 @@ func (r *Registry) listed(ctx context.Context, f listFilter, ref string) (id, na
 	return "", "", "", clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("filter %s: %d entries of %s are named %s: %s", "фильтр %s: в %s имя %[4]s носят %[2]d: %[5]s", f.arg, len(found), f.ref, quoteCloud(ref), strings.Join(ids, ", ")),
 		i18n.Tf("Pass %s as an id.", "Передайте %s как id.", f.arg))
+}
+
+// filterEntries keeps the released list lookup for IDs. Resolving a VPC
+// name requires every page, even when the first one contains a match.
+func (r *Registry) filterEntries(ctx context.Context, f listFilter, ref string) ([]catalogEntry, string, error) {
+	if f.ref == refVPC.list && !isUUID(ref) {
+		entries, err := r.projectVPCEntries(ctx)
+		return entries, "", err
+	}
+	text, isErr := r.unchecked[f.ref](ctx, map[string]any{})
+	if isErr {
+		return nil, text, nil
+	}
+	_, rows, err := listRows(text, listSpecs[f.ref].rows)
+	if err != nil {
+		return nil, "", err
+	}
+	entries := make([]catalogEntry, 0, len(rows))
+
+	for _, row := range rows {
+		item, _ := row.(map[string]any)
+		e := catalogEntry{stringOf(item["id"]), stringOf(item["name"])}
+		entries = append(entries, e)
+
+	}
+	return entries, "", nil
 }

@@ -1164,13 +1164,16 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	// Resolve to a concrete FIP (id, address, state), before the question:
 	// one that is not there is already released (D26).
 	var fipID, fipIP, state string
-	onNAT := false
+	var onNAT, bound bool
 	if id != "" {
 		f, e := eng.Cloud.GetFloatingIP(ctx, id)
 		if e != nil {
 			return answered(s.deleteFailed("release_floating_ip", id, fmt.Errorf(i18n.T("floating IP %q: %w", "адрес floating IP %q: %w"), id, e))), nil
 		}
-		fipID, fipIP, state, onNAT = id, f.IPAddress, f.State, f.OnNATGateway()
+		if f == nil || f.ID != id {
+			return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The floating IP response did not identify the requested resource.", "Ответ сервиса не подтвердил ID запрошенного floating IP."), "")
+		}
+		fipID, fipIP, state, onNAT, bound = id, f.IPAddress, f.State, f.OnNATGateway(), f.Bound()
 	} else {
 		fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID)
 		if e != nil {
@@ -1178,7 +1181,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 		}
 		for _, f := range fips {
 			if f.IPAddress == ip {
-				fipID, fipIP, state, onNAT = f.ID, f.IPAddress, f.State, f.OnNATGateway()
+				fipID, fipIP, state, onNAT, bound = f.ID, f.IPAddress, f.State, f.OnNATGateway(), f.Bound()
 				break
 			}
 		}
@@ -1195,15 +1198,17 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	// Both refusals come before the consent: the call cannot go through
 	// whatever the person answers (A6, D31).
 	if onNAT {
-		msg := fmt.Sprintf("floating IP %s (%s) belongs to a SNAT gateway and is released with it (snat_delete) — whether to delete the gateway, ask the person; not released", quoteCloud(fipIP), quoteCloud(fipID))
+		msg := i18n.Tf("floating IP %s (%s) belongs to a SNAT gateway and is released with it (snat_delete) — whether to delete the gateway, ask the person; not released",
+			"Публичный IP-адрес %s (%s) принадлежит SNAT-шлюзу и не освобождён.", quoteCloud(fipIP), quoteCloud(fipID))
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("It goes with its SNAT gateway: whether to delete the gateway (snat_delete) — ask the person.", "Он освободится вместе с SNAT-шлюзом: удалять ли шлюз (snat_delete) — спросите человека.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
 	}
 
 	// Safety: never release an IP that is attached to a VM.
-	if state == "in_use" {
-		msg := fmt.Sprintf("floating IP %s (%s) is in use by a VM — detach it from the VM first; not released", fipIP, quoteCloud(fipID))
+	if bound || state == "in_use" {
+		msg := i18n.Tf("floating IP %s (%s) is in use by a VM — detach it from the VM first; not released",
+			"Публичный IP-адрес %s (%s) используется виртуальной машиной и не освобождён.", quoteCloud(fipIP), quoteCloud(fipID))
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage, msg,
 			i18n.T("Detach it from the VM, then release it.", "Отвяжите его от ВМ, затем освободите.")),
 			map[string]any{"status": "refused", "message": msg, "id": fipID, "ip_address": fipIP}), true), nil
@@ -1213,7 +1218,7 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 		return refused, nil
 	}
 	preview := map[string]any{"message": i18n.Tf("release_floating_ip releases floating IP %s: the address leaves the project.",
-		"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", ref),
+		"release_floating_ip освободит floating IP %s: адрес уйдёт из проекта.", quoteCloud(ref)),
 	}
 	if warning, _ := engine.DeleteWayOut(state, fipID); warning != "" {
 		preview["warning"] = warning
@@ -1222,14 +1227,40 @@ func (s *Registry) planReleaseFloatingIP(ctx context.Context, args map[string]an
 	// the folder's, as AdoptedVM takes a VM without a time (P3).
 	preview["provenance"] = folderProvenance(eng.StateDir, engine.ProvenanceFloatingIP, fipID, time.Time{})
 	return &Plan{Preview: preview, Execute: withWayOut(func(ctx context.Context) (string, bool) {
-		if err := eng.Cloud.DeleteFloatingIP(ctx, fipID, projectID); err != nil {
-			return s.deleteFailed("release_floating_ip", fipID, fmt.Errorf(i18n.T("release floating IP: %w", "освобождение floating IP: %w"), err))
+		bindFloatingIPReleaseTarget(ctx, ip, fipID)
+		release := eng.Cloud.DeleteFloatingIP
+		if api, ok := eng.Cloud.(interface {
+			ReleaseFloatingIP(context.Context, string, string) error
+		}); ok {
+			release = api.ReleaseFloatingIP
+		}
+		sendCtx, unsent := deleteConnection(ctx, "release_floating_ip")
+		message := i18n.Tf("floating IP %s released", "floating IP %s освобождён", quoteCloud(fipIP))
+		if err := release(sendCtx, fipID, projectID); err != nil {
+			if unsent(err) {
+				return unsentDeleteAnswer(err)
+			}
+			if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
+				return s.deleteFailed("release_floating_ip", fipID, fmt.Errorf(i18n.T("release floating IP: %w", "освобождение floating IP: %w"), err))
+			}
+			_, checkErr := eng.Cloud.GetFloatingIP(ctx, fipID)
+			if checkErr == nil || !isGone(checkErr) {
+				fields := map[string]any{"id": fipID, "next_tool": "list_floating_ips", "next_args": map[string]any{}}
+				message := i18n.T("No release reply was received. The follow-up read did not confirm release.", "Ответ на освобождение адреса не получен. Проверка не подтвердила освобождение.")
+				if checkErr != nil {
+					reason := clierrors.Reason(checkErr)
+					fields["check_reason"] = reason
+					message = i18n.Tf("No release reply was received. The follow-up read failed (%s), so the outcome is unknown.", "Ответ на освобождение адреса не получен. Проверка завершилась ошибкой (%s), поэтому исход неизвестен.", reason)
+				}
+				return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message, i18n.T("Check the floating IP by ID in list_floating_ips before retrying.", "Перед повтором проверьте ID в списке list_floating_ips."), err), fields), true
+			}
+			message = deleteObservation()
 		}
 		return toJSON(map[string]any{
 			"status":   "ok",
 			"released": fipIP,
 			"id":       fipID,
-			"message":  i18n.Tf("floating IP %s released", "floating IP %s освобождён", fipIP),
+			"message":  message,
 		}), false
 	}, state, state, fipID)}, nil
 }

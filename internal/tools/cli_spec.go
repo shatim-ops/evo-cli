@@ -26,6 +26,8 @@ type CLISpec struct {
 	Group string
 	// Verb is the command inside the group ("create", "list").
 	Verb string
+	// Aliases are additional names for the same CLI command.
+	Aliases []string
 	// Args lists the positional arguments as tool argument names:
 	//
 	//	"disk_id"     required
@@ -84,6 +86,7 @@ var cliSpecs = map[string]CLISpec{
 	// vm
 	"vm_list":      {Group: "vm", Verb: "list", Columns: []string{"id", "name", "state", "zone", "created_time"}},
 	"vm_get":       {Group: "vm", Verb: "get", Args: []string{"vm_id|name"}, Render: "vm-card"},
+	"vm_history":   {Group: "vm", Verb: "history", Args: []string{"vm_id"}},
 	"vm_console":   {Group: "vm", Verb: "console", Args: []string{"vm_id|name"}},
 	"vm_start":     {Group: "vm", Verb: "start", Args: []string{"vm_id|name"}},
 	"vm_stop":      {Group: "vm", Verb: "stop", Args: []string{"vm_id|name"}},
@@ -113,6 +116,7 @@ var cliSpecs = map[string]CLISpec{
 	"disk_attach":     {Group: "disk", Verb: "attach", Args: []string{"disk_id"}},
 	"disk_detach":     {Group: "disk", Verb: "detach", Args: []string{"disk_id"}},
 	"disk_resize":     {Group: "disk", Verb: "resize", Args: []string{"disk_id"}},
+	"disk_get":        {Group: "disk", Verb: "get", Args: []string{"disk_id"}},
 	"disk_delete":     {Group: "disk", Verb: "delete", Args: []string{"disk_id"}},
 
 	// vpc
@@ -124,10 +128,12 @@ var cliSpecs = map[string]CLISpec{
 	"vpc_routes":           {Group: "vpc", Verb: "routes", Args: []string{"vpc_id"}},
 	"vpc_route_create":     {Group: "vpc", Verb: "route-create", Args: []string{"vpc_id"}},
 	"vpc_route_delete":     {Group: "vpc", Verb: "route-delete", Args: []string{"vpc_id", "route_id"}},
+	"interface_list":       {Group: "vpc", Verb: "interfaces", Columns: []string{"id", "name", "ip_address", "state", "vm", "security_groups"}},
+	"interface_get":        {Group: "vpc", Verb: "interface-get", Args: []string{"interface_id"}},
 	"list_subnets":         {Group: "vpc", Verb: "subnets"},
 	"subnet_create":        {Group: "vpc", Verb: "subnet-create", Args: []string{"name"}},
 	"subnet_delete":        {Group: "vpc", Verb: "subnet-delete", Args: []string{"subnet_id"}},
-	"list_security_groups": {Group: "vpc", Verb: "security-groups"},
+	"list_security_groups": {Group: "vpc", Verb: "security-groups", Aliases: []string{"sg"}},
 	"list_floating_ips":    {Group: "vpc", Verb: "fips"},
 	"fip_attach":           {Group: "vpc", Verb: "fip-attach", Args: []string{"fip"}},
 	"release_floating_ip":  {Group: "vpc", Verb: "fip-release", Args: []string{"id?"}},

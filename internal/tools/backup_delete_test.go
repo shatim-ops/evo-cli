@@ -391,3 +391,29 @@ func TestBackupDelete_ListOfBackupsNotAllowed(t *testing.T) {
 		t.Errorf("500: want the refusal before the question: %s", text)
 	}
 }
+
+func TestDoctorReportsObservedBackupAbsence(t *testing.T) {
+	w := &deleteWorld{gone: true}
+	r := deleteRegistry(t, w)
+	root, _ := r.stateDir()
+	factory := r.newEngine
+	r.newEngine = func(o map[string]any) (*engine.Engine, error) {
+		e, err := factory(o)
+		if err == nil {
+			e.StateDir = root
+		}
+		return e, err
+	}
+	eng, err := r.newEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := intent.Dir(root)
+	if _, err := intent.Begin(dir, intent.Intent{Tool: "backup_delete", Target: "backup_id=" + bdID, Key: eng.Maker(), Sent: true, Ended: true}); err != nil {
+		t.Fatal(err)
+	}
+	report := doctorOnFake(t, r)
+	if !strings.Contains(report, "original request was not acknowledged") || strings.Contains(report, "delete took effect") || w.deletes != 0 || len(intent.Pending(dir)) != 0 {
+		t.Fatalf("doctor: %s", report)
+	}
+}

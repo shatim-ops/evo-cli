@@ -8,11 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/vpc"
 )
 
@@ -27,6 +29,77 @@ func (s *Registry) vpcClient(ctx context.Context) (*vpc.Client, error) {
 		return nil, err
 	}
 	return vpc.New(tok.Value, eng.Config.ProjectID, ""), nil
+}
+
+// interfaceRow retains null for an unassigned VM and [] for an explicitly
+// empty group list. Both fields also serve existing readers that omit them.
+type interfaceRow struct {
+	*provision.Interface
+	VM             **provision.InterfaceVM     `json:"vm,omitempty"`
+	SecurityGroups *[]provision.InterfaceGroup `json:"security_groups,omitempty"`
+}
+
+func networkInterfaceRow(nic *provision.Interface) interfaceRow {
+	row := interfaceRow{Interface: nic}
+	if nic.VMReported || nic.VM != nil {
+		row.VM = &nic.VM
+	}
+	if nic.SecurityGroups != nil {
+		row.SecurityGroups = &nic.SecurityGroups
+	}
+	return row
+}
+
+// projectInterfaces is also the source for the by-ID ownership check.
+// Reject a contradictory answer before returning any rows or proving ownership.
+func projectInterfaces(ctx context.Context, eng *engine.Engine) ([]*provision.Interface, error) {
+	project := eng.Config.ProjectID
+	rows, err := eng.Cloud.ListInterfaces(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+	for _, nic := range rows {
+		if nic == nil || nic.ID == "" || (nic.ProjectID != "" && nic.ProjectID != project) {
+			return nil, clierrors.New(clierrors.CodeAPIError,
+				i18n.T("Compute returned an invalid interface in the project list", "Compute вернул некорректный интерфейс в списке проекта"), "")
+		}
+	}
+	return rows, nil
+}
+
+func (s *Registry) handleInterfaceList(ctx context.Context, _ map[string]any) (string, bool) {
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	items, err := projectInterfaces(ctx, eng)
+	if err != nil {
+		return errResult(err), true
+	}
+	rows := make([]interfaceRow, 0, len(items))
+	for _, nic := range items {
+		rows = append(rows, networkInterfaceRow(nic))
+	}
+	return toJSON(map[string]any{"interfaces": rows}), false
+}
+
+func (s *Registry) handleInterfaceGet(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "interface_id")
+	if !isUUID(id) {
+		return usageT("'interface_id' must be a UUID from interface_list", "нужен UUID интерфейса из списка интерфейсов"), true
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	card, err := eng.Cloud.GetInterface(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	if s.projectBound && card.ProjectID != "" && card.ProjectID != eng.Config.ProjectID {
+		return errResult(notInProject(kindInterface, id)), true
+	}
+	return toJSON(map[string]any{"interface": networkInterfaceRow(card)}), false
 }
 
 // --- VPCs: read ---
@@ -204,6 +277,14 @@ func routeNextHop(args map[string]any) (map[string]any, error) {
 	return nil, errors.New(i18n.T("a next hop is required: next_hop_vm_id+next_hop_interface_id, or next_hop_vip_id, or next_hop_magic_router_id+next_hop_az", "нужен следующий узел: next_hop_vm_id+next_hop_interface_id, next_hop_vip_id или next_hop_magic_router_id+next_hop_az"))
 }
 
+func routeDestination(row map[string]any) string {
+	subnet := stringArg(row, "subnet")
+	if p, err := netip.ParsePrefix(subnet); err == nil {
+		return p.Masked().String()
+	}
+	return subnet
+}
+
 func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) (*Plan, error) {
 	vpcID := stringArg(args, "vpc_id")
 	subnet := stringArg(args, "subnet")
@@ -224,7 +305,7 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 		routes, err := cli.ListRoutes(ctx, vpcID)
 		listed := make([]map[string]any, 0, len(routes))
 		for _, r := range routes {
-			listed = append(listed, map[string]any{"id": r["id"], "name": r["subnet"], "status": r["status"]})
+			listed = append(listed, map[string]any{"id": r["id"], "name": routeDestination(r), "status": r["status"]})
 		}
 		return listed, err
 	}
@@ -232,14 +313,14 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("check the destination is free: list routes: %w", "проверка, что назначение свободно: список маршрутов: %w"), err)
 	}
-	if id, st, ok := takenName(existing, subnet); ok {
+	if id, st, ok := takenName(existing, routeDestination(args)); ok {
 		return answered(nameTakenResult(i18n.T("static route", "статический маршрут"), subnet, id, st, "vpc_routes vpc_id="+vpcID)), nil
 	}
+	details := willPreview(engine.ResourceVPCRoute, subnet, "", args, []string{"vpc_id", "next_hop_vm_id", "next_hop_interface_id", "next_hop_vip_id", "next_hop_magic_router_id", "next_hop_az"})
+	details.Add("vpc_name", s.vpcName(ctx, vpcID))
 	preview := map[string]any{
-		"message": i18n.Tf("vpc_route_create adds a static route %s in VPC %s (async).",
-			"vpc_route_create добавляет статический маршрут %s в VPC %s (асинхронно).", subnet, vpcID),
-		"preview": willPreview(engine.ResourceVPCRoute, subnet, "", args, []string{"vpc_id",
-			"next_hop_vm_id", "next_hop_interface_id", "next_hop_vip_id", "next_hop_magic_router_id", "next_hop_az"}),
+		"message": i18n.Tf("vpc_route_create adds a static route %s in VPC %s (async).", "vpc_route_create добавляет статический маршрут %s в VPC %s (асинхронно).", subnet, vpcID),
+		"preview": details,
 	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		body := map[string]any{"vpcId": vpcID, "projectId": cli.ProjectID(), "subnet": subnet, "nextHop": nextHop}
@@ -251,7 +332,7 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), subnet, nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf(i18n.T("create route: %w", "создание маршрута: %w"), err))
+			return lostCreate(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), routeDestination(args), nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf(i18n.T("create route: %w", "создание маршрута: %w"), err))
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": i18n.T("Async — poll vpc_operation(operation_id).", "Асинхронно — опрашивайте evo vpc operation <operation_id>.")}
 		if op.ResourceID != "" {
@@ -273,7 +354,8 @@ func (s *Registry) planVpcRouteDelete(ctx context.Context, args map[string]any) 
 	}
 	// The VPC first: one that is not there is the call's error (NOT_FOUND),
 	// not a repeat; a route that is not there is (D26).
-	if _, err := cli.GetVPC(ctx, vpcID); err != nil {
+	parent, err := cli.GetVPC(ctx, vpcID)
+	if err != nil {
 		return nil, err
 	}
 	routes, err := cli.ListRoutes(ctx, vpcID)
@@ -286,6 +368,12 @@ func (s *Registry) planVpcRouteDelete(ctx context.Context, args map[string]any) 
 	}
 	preview := map[string]any{"message": i18n.Tf("vpc_route_delete removes static route %s from VPC %s (async).",
 		"vpc_route_delete удаляет статический маршрут %s из VPC %s (асинхронно).", routeID, vpcID)}
+	preview["vpc_id"] = vpcID
+	if name, _ := parent["name"].(string); name != "" {
+		preview["vpc_name"] = name
+	} else if ref, ok := resolvedVPC(ctx, vpcID); ok {
+		preview["vpc_name"] = ref.name
+	}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := cli.DeleteRoute(ctx, vpcID, routeID)
 		if err != nil {

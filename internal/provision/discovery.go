@@ -14,6 +14,7 @@ import (
 	"net/url"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
 )
@@ -109,7 +110,13 @@ func projectNotVisible(err error, projectID string) error {
 func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged bool) ([]*T, error) {
 	var out []*T
 	seen := map[string]bool{}
-	offset := 0
+	offset, promised := 0, 0
+	project, verifyNAT := ctx.Value(natDeleteInventoryKey{}).(string)
+	verifyNAT = verifyNAT && path == "/api/v1/nat-gateways"
+	var evidence *pager.EvidencePages
+	if verifyNAT && pager.IsReconciliation(ctx) {
+		evidence = &pager.EvidencePages{}
+	}
 	for range listMaxPages {
 		pq := url.Values{}
 		for k, v := range q {
@@ -135,6 +142,11 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.Tf("failed to read response for %s", "не удалось прочитать ответ %s", path), hintUnexpectedFormat(), err)
 		}
 
+		if verifyNAT {
+			if err := validateNATPage(body, project, seen, promised, evidence); err != nil {
+				return nil, err
+			}
+		}
 		var page paginatedResponse[T]
 		if err := json.Unmarshal(body, &page); err == nil && page.Items != nil {
 			// The ids of the page, to drop items already read: a server
@@ -163,7 +175,12 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			if !paged {
 				return out, nil
 			}
-			done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, page.Total, listPageSize)
+			// A later page may omit total; the earlier promise still applies.
+			promised = max(promised, page.Total)
+			if verifyNAT && offset >= promised && len(out) < promised {
+				return nil, incompleteNATInventory(len(out), promised)
+			}
+			done, err := offsetPageEnd(len(page.Items), fresh, len(out), promised, listPageSize)
 			if err != nil {
 				return nil, pager.Named(path, err)
 			}
@@ -172,8 +189,10 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 			}
 			continue
 		}
-		var arr []T
-		if err := json.Unmarshal(body, &arr); err == nil {
+		var arr pager.Rows[T]
+		// After the first page, only the NAT delete inventory verifies a bare
+		// array against the promised total and all previously seen gateway IDs.
+		if (offset == 0 || (verifyNAT && promised > 0)) && json.Unmarshal(body, &arr) == nil && arr != nil {
 			for i := range arr {
 				out = append(out, &arr[i])
 			}
@@ -188,7 +207,7 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 
 // offsetPageEnd decides after a page of an offset walk whether the list is
 // read: items is the size of the page, fresh how many of them were not read
-// before, read how many the list has now, offset the next offset, total the
+// before, read how many distinct rows the list has now, total the
 // answer's total (0: not given). A list read only in part is an error, not
 // a shorter list: evo deletes what is left over and counts from it
 // (break r4, R4-2…R4-5).
@@ -196,16 +215,16 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 // With a total: a page of items already read is an error (the server
 // ignores the offset, QA-9: 300 items, 100 distinct) — checked before the
 // offset reaches the total, or such a server with total=2*pageSize would
-// give half the list as the whole one (REL-2); offset at the total ends
+// give half the list as the whole one (REL-2); reading the promised number of distinct items ends
 // the list; an empty page before it is an error. Without one: an empty
 // page or a page shorter than pageSize ends it, a page of items already
 // read is an error.
-func offsetPageEnd(items, fresh, read, offset, total, pageSize int) (bool, error) {
+func offsetPageEnd(items, fresh, read, total, pageSize int) (bool, error) {
 	if total > 0 {
 		switch {
 		case items > 0 && fresh == 0:
 			return false, pager.NoNewItems(read, total)
-		case offset >= total:
+		case read >= total:
 			return true, nil
 		case items == 0:
 			return false, pager.EmptyPage(read, total)
@@ -285,7 +304,7 @@ const (
 func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string) ([]*SGRule, error) {
 	var out []*SGRule
 	seen := map[string]bool{}
-	offset := 0
+	offset, promised := 0, 0
 	base := fmt.Sprintf("/api/v1/security-groups/%s/rules", seg(sgID))
 	for range sgRulesMaxPages {
 		path := fmt.Sprintf("%s?offset=%d&limit=%d", base, offset, sgRulesPageSize)
@@ -299,6 +318,9 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 		if err != nil {
 			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode security group rules", "не удалось разобрать правила группы безопасности"), hintUnexpectedFormatVerbose(), err)
 		}
+		if page.Items == nil {
+			return nil, pager.Named(base, pager.Incomplete(i18n.T("missing list items", "отсутствует поле элементов списка")))
+		}
 		fresh := 0
 		for i := range page.Items {
 			if id := page.Items[i].ID; id != "" {
@@ -311,7 +333,8 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 			out = append(out, &page.Items[i])
 		}
 		offset += len(page.Items)
-		done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, page.Total, sgRulesPageSize)
+		promised = max(promised, page.Total)
+		done, err := offsetPageEnd(len(page.Items), fresh, len(out), promised, sgRulesPageSize)
 		if err != nil {
 			return nil, pager.Named(base, err)
 		}
@@ -387,11 +410,23 @@ func (a *CloudRuAdapter) AttachFloatingIP(ctx context.Context, fipID, projectID,
 
 // DeleteFloatingIP releases a floating IP via DELETE /api/v1/floating-ips/{id}.
 func (a *CloudRuAdapter) DeleteFloatingIP(ctx context.Context, fipID, projectID string) error {
+	return a.deleteFloatingIP(ctx, fipID, projectID, computeRetry)
+}
+
+// ReleaseFloatingIP lets the standalone release operation verify a lost reply
+// by ID. Deploy and destroy retain their own retry policies.
+func (a *CloudRuAdapter) ReleaseFloatingIP(ctx context.Context, fipID, projectID string) error {
+	policy := computeRetry
+	policy.DropMethods = nil
+	return a.deleteFloatingIP(ctx, fipID, projectID, policy)
+}
+
+func (a *CloudRuAdapter) deleteFloatingIP(ctx context.Context, fipID, projectID string, policy httpretry.Policy) error {
 	path := fmt.Sprintf("/api/v1/floating-ips/%s", seg(fipID))
 	if projectID != "" {
 		path += "?project_id=" + url.QueryEscape(projectID)
 	}
-	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
+	resp, err := a.doWithPolicy(ctx, http.MethodDelete, path, nil, policy)
 	if err != nil {
 		return err
 	}

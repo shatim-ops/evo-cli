@@ -13,6 +13,8 @@ import (
 	"net/url"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // --- Node pool types (v3) ---
@@ -96,10 +98,10 @@ func (c *Client) ListNodePools(ctx context.Context, clusterID string) ([]map[str
 	query := func() url.Values { return url.Values{"clusterId": {clusterID}} }
 	err := c.walk(ctx, "/v3/nodePools", query, func(data []byte) (string, error) {
 		var r struct {
-			NodePools     []map[string]any `json:"nodePools"`
-			NextPageToken string           `json:"nextPageToken"`
+			NodePools     pager.Rows[map[string]any] `json:"nodePools"`
+			NextPageToken string                     `json:"nextPageToken"`
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
+		if err := pager.DecodePage(data, &r); err != nil {
 			return "", fmt.Errorf(i18n.T("parse node pools: %w", "разбор групп узлов: %w"), err)
 		}
 		out = append(out, r.NodePools...)

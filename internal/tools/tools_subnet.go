@@ -56,6 +56,9 @@ func subnetCIDR(cidr string) (netip.Prefix, error) {
 // names the VPC; two VPCs marked default are no default (the first of the
 // list would depend on its order).
 func (s *Registry) projectVPC(ctx context.Context, vpcID string) (id, name string, err error) {
+	if ref, ok := resolvedVPC(ctx, vpcID); ok {
+		return ref.id, ref.name, nil
+	}
 	cli, err := s.vpcClient(ctx)
 	if err != nil {
 		return "", "", err
@@ -256,11 +259,38 @@ func (s *Registry) planSubnetDelete(ctx context.Context, args map[string]any) (*
 		return nil, err
 	}
 	m, getErr := eng.Cloud.GetSubnet(ctx, id)
+	if getErr == nil {
+		if m["id"] != id {
+			return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The subnet response did not identify the requested subnet.", "Ответ сервиса не подтвердил ID запрошенной подсети."), "")
+		}
+		owner, _ := m["project"].(map[string]any)
+		if project := stringArg(owner, "id"); s.projectBound && project != "" && project != eng.Config.ProjectID {
+			return nil, notInProject(kindSubnet, id)
+		}
+	}
 	p := s.deletePlan("subnet_delete", "subnet_delete deletes subnet %s.", "subnet_delete удаляет подсеть %s.",
 		id, func() (map[string]any, error) { return m, getErr },
 		func(ctx context.Context) (string, bool) {
-			if err := eng.Cloud.DeleteSubnet(ctx, id, eng.Config.ProjectID); err != nil {
-				return s.deleteFailed("subnet_delete", id, fmt.Errorf(i18n.T("delete subnet: %w", "удаление подсети: %w"), err))
+			sendCtx, unsent := deleteConnection(ctx, "subnet_delete")
+			if err := eng.Cloud.DeleteSubnet(sendCtx, id, eng.Config.ProjectID); err != nil {
+				if unsent(err) {
+					return unsentDeleteAnswer(err)
+				}
+				if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil {
+					return s.deleteFailed("subnet_delete", id, fmt.Errorf(i18n.T("delete subnet: %w", "удаление подсети: %w"), err))
+				}
+				_, checkErr := eng.Cloud.GetSubnet(ctx, id)
+				if checkErr != nil && isGone(checkErr) {
+					return toJSON(map[string]any{"status": "deleted", "subnet_id": id, "message": deleteObservation()}), false
+				}
+				fields := map[string]any{"subnet_id": id, "next_tool": "list_subnets", "next_args": map[string]any{}}
+				message := i18n.T("No delete reply was received. The follow-up read did not confirm deletion.", "Ответ на удаление не получен. Проверка не подтвердила удаление.")
+				if checkErr != nil {
+					reason := clierrors.Reason(checkErr)
+					fields["check_reason"] = reason
+					message = i18n.Tf("No delete reply was received. The follow-up read failed (%s), so the outcome is unknown.", "Ответ на удаление не получен. Проверка завершилась ошибкой (%s), поэтому исход неизвестен.", reason)
+				}
+				return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message, i18n.T("Check the subnet by ID in list_subnets before retrying.", "Перед повтором проверьте ID подсети в списке подсетей."), err), fields), true
 			}
 			return toJSON(map[string]any{"status": "deleted", "subnet_id": id}), false
 		})

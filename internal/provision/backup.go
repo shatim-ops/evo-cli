@@ -95,9 +95,11 @@ func (a *CloudRuAdapter) CreateBackup(ctx context.Context, req CreateBackupReq) 
 
 // DeleteBackup asks to delete a backup; the platform answers 204 and deletes
 // it after (state deleting, then 404). A DELETE is not repeated after a
-// dropped connection (computeRetry).
+// dropped connection: its caller reconciles the outcome with a read.
 func (a *CloudRuAdapter) DeleteBackup(ctx context.Context, backupID string) error {
-	resp, err := a.doWithRetry(ctx, http.MethodDelete, fmt.Sprintf("/api/v1/backups/%s", seg(backupID)), nil)
+	policy := computeRetry
+	policy.DropMethods = nil
+	resp, err := a.doWithPolicy(ctx, http.MethodDelete, fmt.Sprintf("/api/v1/backups/%s", seg(backupID)), nil, policy)
 	if err != nil {
 		return err
 	}

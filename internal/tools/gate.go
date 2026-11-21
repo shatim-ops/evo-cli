@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"maps"
+	"sync"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
@@ -131,13 +132,20 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 	if !takesConsent(t) {
 		return next
 	}
+	run := r.recordedCall(t, next)
+	step := next
+	if t.Name == "dns_record_create" {
+		// Check the zone before resolving or replaying the record's intent.
+		run = r.boundToProjects(t, run)
+		step = r.boundToProjects(t, step)
+	}
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		// A step of a stack is a call one level deeper (journaled): the
 		// intent of the call the person consented to covers it, and the
 		// job of the stack records its steps.
 		depth, _ := ctx.Value(journalDepthKey{}).(int)
 		if depth > 1 {
-			return next(ctx, args)
+			return step(ctx, args)
 		}
 		// The holder of what the call reads and says of its records: the
 		// call of a tool has it (budgeted); a layer called on its own gets
@@ -149,6 +157,25 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		// about a call that would be refused, and none is sent.
 		if r.stateDirUndeclared() {
 			return errResult(errNoStateDir()), true
+		}
+		return run(ctx, args)
+	}
+}
+
+func (r *Registry) recordedCall(t Tool, next Handler) Handler {
+	return func(ctx context.Context, args map[string]any) (string, bool) {
+		// Serialize the check and opening of network create intents across
+		// processes sharing this state directory. Release before the POST:
+		// a second client can read the in-flight record while it is running.
+		var release func()
+		if confirmed, _ := args["confirmed"].(bool); confirmed && everySendIsAChange[t.Name].listedName != nil && r.newEngine != nil {
+			unlock, err := r.lockNetworkIntents(t.Name)
+			if err != nil {
+				return errResult(err), true
+			}
+			release = sync.OnceFunc(unlock)
+			defer release()
+			forgetPending(ctx)
 		}
 		// The same create before was taken and goes on: its progress is
 		// read, with or without consent, and no second create is sent.
@@ -193,6 +220,9 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
 				return errResult(err), true
 			}
+		}
+		if release != nil {
+			release()
 		}
 		// A handler that panics does not return: the server recovers it,
 		// and the record would read as a call still going on (InFlight)

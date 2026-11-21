@@ -66,7 +66,10 @@ func (c *Client) Actions(ctx context.Context) ([]string, error) {
 			out = append(out, n)
 		}
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // Evaluate answers one check.
@@ -98,7 +101,10 @@ func (c *Client) ServiceAccounts(ctx context.Context, projectID, name string) ([
 	err := c.list(ctx, "service accounts", "/api/v2/serviceAccounts", q, "serviceAccounts", func(m map[string]any) {
 		out = append(out, ServiceAccount{ID: str(m, "id"), Name: str(m, "name")})
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // CreateServiceAccount creates the service account name in a project.
@@ -131,7 +137,10 @@ func (c *Client) RolePermissions(ctx context.Context, resourceID, subjectID, rol
 	err := c.list(ctx, "permissions", "/api/v3/permissions", q, "permissions", func(m map[string]any) {
 		out = append(out, permissionOf(m))
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // Grant is a permission to create: the role by its name, or by its id

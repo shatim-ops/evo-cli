@@ -80,6 +80,7 @@
     - [evo disk create](#evo-disk-create)
     - [evo disk delete](#evo-disk-delete)
     - [evo disk detach](#evo-disk-detach)
+    - [evo disk get](#evo-disk-get)
     - [evo disk list](#evo-disk-list)
     - [evo disk resize](#evo-disk-resize)
     - [evo disk types](#evo-disk-types)
@@ -103,6 +104,8 @@
     - [evo image get](#evo-image-get)
     - [evo image list](#evo-image-list)
   - [evo init](#evo-init)
+  - [evo intent](#evo-intent)
+    - [evo intent close](#evo-intent-close)
   - [evo k8s](#evo-k8s)
     - [evo k8s add-addon](#evo-k8s-add-addon)
     - [evo k8s add-nodepool](#evo-k8s-add-nodepool)
@@ -218,6 +221,7 @@
     - [evo vm delete](#evo-vm-delete)
     - [evo vm flavors](#evo-vm-flavors)
     - [evo vm get](#evo-vm-get)
+    - [evo vm history](#evo-vm-history)
     - [evo vm list](#evo-vm-list)
     - [evo vm reboot](#evo-vm-reboot)
     - [evo vm resize](#evo-vm-resize)
@@ -232,6 +236,8 @@
     - [evo vpc fip-release](#evo-vpc-fip-release)
     - [evo vpc fips](#evo-vpc-fips)
     - [evo vpc get](#evo-vpc-get)
+    - [evo vpc interface-get](#evo-vpc-interface-get)
+    - [evo vpc interfaces](#evo-vpc-interfaces)
     - [evo vpc list](#evo-vpc-list)
     - [evo vpc open-ports](#evo-vpc-open-ports)
     - [evo vpc operation](#evo-vpc-operation)
@@ -272,13 +278,14 @@ evo [flags]
 ### Options
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
   -h, --help                Справка по evo
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
       --version             Версия (как 'evo version')
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
@@ -305,6 +312,7 @@ evo [flags]
 * [evo iam](#evo-iam)	 - IAM: сервисные аккаунты
 * [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
 * [evo init](#evo-init)	 - Создать .evo.yaml с зоной и образом из API Cloud.ru
+* [evo intent](#evo-intent)	 - Проверять локальные квитанции оборванных операций
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 * [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
 * [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
@@ -348,12 +356,13 @@ evo agent [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -443,12 +452,13 @@ evo agent setup --client <client> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -498,12 +508,13 @@ evo agent skill [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -529,12 +540,13 @@ evo ar [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -587,12 +599,13 @@ evo ar create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -638,12 +651,13 @@ evo ar delete <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -685,12 +699,13 @@ evo ar get <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -741,12 +756,13 @@ evo ar list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -790,12 +806,13 @@ evo ar operation <operation-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -821,12 +838,13 @@ evo audit [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -874,12 +892,13 @@ evo audit events [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -905,12 +924,13 @@ evo backup [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -957,12 +977,13 @@ evo backup create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1001,12 +1022,13 @@ evo backup delete <backup-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1042,12 +1064,13 @@ evo backup get <backup-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1097,12 +1120,13 @@ evo backup list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1144,12 +1168,13 @@ evo backup restore <backup-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1175,12 +1200,13 @@ evo billing [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1226,12 +1252,13 @@ evo billing balance [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1277,11 +1304,12 @@ evo billing consumption [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string        Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json             Вывод в формате JSON
       --no-color         Без цвета
       --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
-      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string    Синоним --az до v2.0
       --verbose          Подробный журнал
   -y, --yes              Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1330,11 +1358,12 @@ evo billing finops [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string        Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json             Вывод в формате JSON
       --no-color         Без цвета
       --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
-      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string    Синоним --az до v2.0
       --verbose          Подробный журнал
   -y, --yes              Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1360,12 +1389,13 @@ evo ca [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1418,12 +1448,13 @@ evo ca delete <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1479,12 +1510,13 @@ evo ca deploy <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1527,12 +1559,13 @@ evo ca get <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1580,12 +1613,13 @@ evo ca list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1630,12 +1664,13 @@ evo ca logs <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1679,12 +1714,13 @@ evo ca start <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1728,12 +1764,13 @@ evo ca stop <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1759,12 +1796,13 @@ evo cert [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1820,12 +1858,13 @@ evo cert delete <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1868,12 +1907,13 @@ evo cert get <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1922,12 +1962,13 @@ evo cert import <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -1974,12 +2015,13 @@ evo cert issue-le <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2030,12 +2072,13 @@ evo cert list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2079,12 +2122,13 @@ evo cert operation <operation-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2130,12 +2174,13 @@ evo cert private-key <certificate-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2180,12 +2225,13 @@ evo cert renew <certificate-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2227,12 +2273,13 @@ evo cert usage <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2275,12 +2322,13 @@ evo cert versions <certificate-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2315,12 +2363,13 @@ evo completion [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2342,24 +2391,17 @@ evo completion [flags]
 ### Synopsis
 
 ```text
-Скрипт автодополнения для bash. Нужен пакет bash-completion (ставится
-пакетным менеджером системы).
+Скрипт автодополнения для Bash. Выполните в Bash:
 
-В текущей сессии:
+    dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+    mkdir -p "$dir" && evo completion bash > "$dir/evo"
+    source "$dir/evo"
 
-	source <(evo completion bash)
+Для новых интерактивных оболочек добавьте в ~/.bashrc строку:
 
-Для всех новых сессий выполните один раз:
+    [ -r "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo" ] && source "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo"
 
-#### Linux:
-
-	evo completion bash > /etc/bash_completion.d/evo
-
-#### macOS:
-
-	evo completion bash > $(brew --prefix)/etc/bash_completion.d/evo
-
-Настройка действует в новой оболочке.
+При входе Bash читает ~/.bashrc, если его подключает ваш профиль входа.
 ```
 
 ```
@@ -2376,12 +2418,13 @@ evo completion bash
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2426,12 +2469,13 @@ evo completion fish [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2472,12 +2516,13 @@ evo completion powershell [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2531,12 +2576,13 @@ evo completion zsh [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2597,13 +2643,14 @@ evo configure [flags]
   -h, --help                Справка по configure
       --key-id string       Key ID ключа доступа сервисного аккаунта
       --project-id string   UUID проекта Cloud.ru (без выбора из списка)
-      --region string       Зона доступности по умолчанию для профиля: имя (ru.AZ-2) или UUID; сохраняется UUID
+      --region string       Синоним --az до v2.0. Зона доступности по умолчанию для профиля: имя (ru.AZ-2) или UUID; сохраняется UUID
       --secret-stdin        Прочитать секрет из первой строки stdin (без вопросов)
 ```
 
 ### Options inherited from parent commands
 
 ```
+      --az string        Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json             Вывод в формате JSON
       --no-color         Без цвета
@@ -2638,12 +2685,13 @@ evo configure delete <profile> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2671,12 +2719,13 @@ evo configure list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2715,12 +2764,13 @@ evo configure s3 [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2773,12 +2823,13 @@ evo deploy [flags]
       --image-id string       UUID загрузочного образа
       --non-interactive       Никогда не спрашивать; тогда и для создания ВМ, и для обновления ВМ развёртывания нужен --yes
       --project-id string     UUID проекта Cloud.ru
-      --region string         Зона доступности: имя (например, ru.AZ-2) или UUID (evo vm zones)
+      --region string         Синоним --az до v2.0. Зона доступности: имя (например, ru.AZ-2) или UUID (evo vm zones)
 ```
 
 ### Options inherited from parent commands
 
 ```
+      --az string        Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json             Вывод в формате JSON
       --no-color         Без цвета
@@ -2832,12 +2883,13 @@ evo deploy apply <plan-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2880,12 +2932,13 @@ evo deploy list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2947,12 +3000,13 @@ evo deploy plan [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -2997,12 +3051,13 @@ evo destroy [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3041,12 +3096,13 @@ evo diag [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3088,12 +3144,13 @@ evo diag export [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3121,12 +3178,13 @@ evo diag off [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3154,12 +3212,13 @@ evo diag on [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3187,12 +3246,13 @@ evo diag status [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3218,12 +3278,13 @@ evo disk [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3235,6 +3296,7 @@ evo disk [flags]
 * [evo disk create](#evo-disk-create)	 - Создать диск (с --attach-to — в зоне ВМ и сразу подключить)
 * [evo disk delete](#evo-disk-delete)	 - Удалить диск и все данные на нём (безвозвратно)
 * [evo disk detach](#evo-disk-detach)	 - Отключить диск от ВМ
+* [evo disk get](#evo-disk-get)	 - Диск по ID: размер, состояние, тип, зона, шифрование, только чтение, общий доступ, серийный номер, ВМ
 * [evo disk list](#evo-disk-list)	 - Диски: id, имя, размер, состояние, тип, зона, к каким ВМ подключены
 * [evo disk resize](#evo-disk-resize)	 - Увеличить диск (только рост; затем расширьте раздел и файловую систему на ВМ)
 * [evo disk types](#evo-disk-types)	 - Типы дисков (UUID и имя, например SSD или HDD)
@@ -3269,12 +3331,13 @@ evo disk attach <disk-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3316,12 +3379,13 @@ evo disk create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3359,12 +3423,13 @@ evo disk delete <disk-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3403,12 +3468,55 @@ evo disk detach <disk-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo disk](#evo-disk)	 - Диски
+
+## evo disk get
+
+Диск по ID: размер, состояние, тип, зона, шифрование, только чтение, общий доступ, серийный номер, ВМ
+
+### Synopsis
+
+```text
+Диск по ID: размер, состояние, тип, зона, шифрование, только чтение, общий доступ, серийный номер, ВМ.
+
+Карточка одного диска из облака по UUID одним чтением: имя, размер (ГБ), состояние, тип, зона, загрузочный ли, encrypted, readonly, shared и serial_id — как их сообщает платформа, и ВМ, к которым диск подключён. Поля, которого нет в ответе платформы, нет и в ответе evo: оно названо в not_checked, значение не подставляется. Только чтение.
+
+Вызывает инструмент disk_get (подробнее: 'evo tools describe disk_get').
+```
+
+```
+evo disk get <disk-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по get
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3462,12 +3570,13 @@ evo disk list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3506,12 +3615,13 @@ evo disk resize <disk-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3547,12 +3657,13 @@ evo disk types [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3578,12 +3689,13 @@ evo dns [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3636,12 +3748,13 @@ evo dns operation <operation-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3691,12 +3804,13 @@ evo dns record-create <zone-id> <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3743,12 +3857,13 @@ evo dns record-delete <record-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3792,12 +3907,13 @@ evo dns record-get <record-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3846,12 +3962,13 @@ evo dns records <zone-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3895,18 +4012,19 @@ evo dns zone-create <domain> [flags]
   -h, --help                 Справка по zone-create
       --name string          Отображаемое имя зоны (по умолчанию — домен)
       --type string          Видимость зоны: public (по умолчанию) или private
-      --vpc-id string        Приватная зона: VPC, к которому она привязана (по умолчанию — VPC проекта по умолчанию)
+      --vpc-id string        Приватная зона: UUID или имя VPC, к которому она привязана (по умолчанию — VPC проекта по умолчанию)
 ```
 
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -3953,12 +4071,13 @@ evo dns zone-delete <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4002,12 +4121,13 @@ evo dns zone-get <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4056,12 +4176,13 @@ evo dns zones [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4107,12 +4228,13 @@ evo doctor [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4156,11 +4278,12 @@ evo history [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string        Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json             Вывод в формате JSON
       --no-color         Без цвета
       --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
-      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string    Синоним --az до v2.0
       --verbose          Подробный журнал
   -y, --yes              Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4186,12 +4309,13 @@ evo iam [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4241,11 +4365,12 @@ evo iam service-accounts [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string        Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json             Вывод в формате JSON
       --no-color         Без цвета
       --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
-      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string    Синоним --az до v2.0
       --verbose          Подробный журнал
   -y, --yes              Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4271,12 +4396,13 @@ evo image [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4334,12 +4460,13 @@ evo image create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4384,12 +4511,13 @@ evo image delete <image-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4433,12 +4561,13 @@ evo image get <image-id|image> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4487,12 +4616,13 @@ evo image list [query] [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4547,12 +4677,13 @@ evo init [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4560,6 +4691,76 @@ evo init [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+
+## evo intent
+
+> Локальная команда: локальные квитанции рабочей папки и решение человека у терминала.
+
+Проверять локальные квитанции оборванных операций
+
+```
+evo intent [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по intent
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo intent close](#evo-intent-close)	 - Закрыть разбор одной локальной квитанции в терминале
+
+## evo intent close
+
+> Локальная команда: ручное решение оператора об одной версии квитанции на его машине.
+
+Закрыть разбор одной локальной квитанции в терминале
+
+```
+evo intent close <id> [flags]
+```
+
+### Options
+
+```
+  -h, --help              Справка по close
+      --non-interactive   Отключить интерактивное подтверждение
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo intent](#evo-intent)	 - Проверять локальные квитанции оборванных операций
 
 ## evo k8s
 
@@ -4578,12 +4779,13 @@ evo k8s [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4652,12 +4854,13 @@ evo k8s add-addon <cluster-id> <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4704,12 +4907,13 @@ evo k8s add-nodepool <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4753,12 +4957,13 @@ evo k8s addon-versions <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4806,12 +5011,13 @@ evo k8s addons [query] [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4851,12 +5057,13 @@ evo k8s apply <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4905,12 +5112,13 @@ evo k8s create [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4949,12 +5157,13 @@ evo k8s delete <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -4990,12 +5199,13 @@ evo k8s get <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5040,12 +5250,13 @@ evo k8s helm <cluster-id> <action> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5090,12 +5301,13 @@ evo k8s kubeconfig <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5134,12 +5346,13 @@ evo k8s kubectl <cluster-id> <args>... [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5188,12 +5401,13 @@ evo k8s list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5232,12 +5446,13 @@ evo k8s nodepool-delete <nodepool-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5273,12 +5488,13 @@ evo k8s nodepool-get <nodepool-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5317,12 +5533,13 @@ evo k8s nodepool-scale <nodepool-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5370,12 +5587,13 @@ evo k8s nodepools <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5412,12 +5630,13 @@ evo k8s operation <operation-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5453,12 +5672,13 @@ evo k8s options [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5505,12 +5725,13 @@ evo k8s plan [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5536,12 +5757,13 @@ evo kafka [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5602,12 +5824,13 @@ evo kafka create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5653,12 +5876,13 @@ evo kafka delete <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5701,12 +5925,13 @@ evo kafka get <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5756,12 +5981,13 @@ evo kafka list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5805,12 +6031,13 @@ evo kafka operation <operation-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5857,12 +6084,13 @@ evo kafka specs [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5904,12 +6132,13 @@ evo kafka versions [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5935,12 +6164,13 @@ evo lb [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -5992,19 +6222,20 @@ evo lb create <name> [flags]
       --subnet-id string         UUID или имя подсети (по умолчанию — основная подсеть зоны в VPC)
       --target-group-id string   UUID группы целей
       --target-port int          Порт на целях (по умолчанию — --port)
-      --vpc-id string            UUID VPC (по умолчанию — VPC группы целей)
+      --vpc-id string            UUID или имя VPC (по умолчанию — VPC группы целей)
       --zone string              Зона: имя или UUID
 ```
 
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6050,12 +6281,13 @@ evo lb delete <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6098,12 +6330,13 @@ evo lb get <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6154,12 +6387,13 @@ evo lb list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6203,12 +6437,13 @@ evo lb operation <operation-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6260,12 +6495,13 @@ evo login [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6302,12 +6538,13 @@ evo logout [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6344,12 +6581,13 @@ evo logs [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6375,12 +6613,13 @@ evo marketplace [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6421,12 +6660,13 @@ evo marketplace list [query] [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6534,12 +6774,13 @@ evo mcp [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6565,12 +6806,13 @@ evo metrics [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6616,12 +6858,13 @@ evo metrics history <match> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6664,12 +6907,13 @@ evo metrics scrape [match] [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6695,12 +6939,13 @@ evo org [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6750,12 +6995,13 @@ evo org projects [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6799,11 +7045,12 @@ evo org quotas [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string        Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run          Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json             Вывод в формате JSON
       --no-color         Без цвета
       --profile string   Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
-      --region string    UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string    Синоним --az до v2.0
       --verbose          Подробный журнал
   -y, --yes              Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6829,12 +7076,13 @@ evo pg [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6887,12 +7135,13 @@ evo pg backup-create <cluster-id> <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -6940,12 +7189,13 @@ evo pg backups <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7002,12 +7252,13 @@ evo pg create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7052,12 +7303,13 @@ evo pg databases <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7098,12 +7350,13 @@ evo pg db-create <cluster-id> <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7141,12 +7394,13 @@ evo pg db-delete <cluster-id> <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7185,12 +7439,13 @@ evo pg delete <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7226,12 +7481,13 @@ evo pg get <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7280,12 +7536,13 @@ evo pg list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7322,12 +7579,13 @@ evo pg operation <operation-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7366,12 +7624,13 @@ evo pg specs [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7417,12 +7676,13 @@ evo pg user-create <cluster-id> <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7460,12 +7720,13 @@ evo pg user-delete <cluster-id> <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7510,12 +7771,13 @@ evo pg users <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7551,12 +7813,13 @@ evo pg versions [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7584,12 +7847,13 @@ evo project [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7626,12 +7890,13 @@ evo project list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7678,12 +7943,13 @@ evo project use <UUID|name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7709,12 +7975,13 @@ evo redis [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7776,12 +8043,13 @@ evo redis create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7827,12 +8095,13 @@ evo redis delete <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7875,12 +8144,13 @@ evo redis get <cluster-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7930,12 +8200,13 @@ evo redis list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -7979,12 +8250,13 @@ evo redis operation <operation-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8031,12 +8303,13 @@ evo redis specs [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8078,12 +8351,13 @@ evo redis versions [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8109,12 +8383,13 @@ evo s3 [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8160,12 +8435,13 @@ evo s3 bucket-create <bucket> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8203,12 +8479,13 @@ evo s3 bucket-delete <bucket> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8254,12 +8531,13 @@ evo s3 buckets [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8295,12 +8573,13 @@ evo s3 get <bucket> <key> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8347,12 +8626,13 @@ evo s3 ls <bucket> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8393,12 +8673,13 @@ evo s3 put <bucket> <key> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8436,12 +8717,13 @@ evo s3 rm <bucket> <key> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8467,12 +8749,13 @@ evo secret [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8518,12 +8801,13 @@ evo secret add-version <path> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8572,12 +8856,13 @@ evo secret create <path> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8616,12 +8901,13 @@ evo secret delete <path> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8657,12 +8943,13 @@ evo secret get <path> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8708,12 +8995,13 @@ evo secret list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8752,12 +9040,13 @@ evo secret value <path> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8783,12 +9072,13 @@ evo snat [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8840,12 +9130,13 @@ evo snat create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8890,12 +9181,13 @@ evo snat delete <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8946,12 +9238,13 @@ evo snat list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -8977,12 +9270,13 @@ evo stack [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9031,12 +9325,13 @@ evo stack apply <job-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9081,12 +9376,13 @@ evo stack destroy <job-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9134,12 +9430,13 @@ evo stack plan [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9183,12 +9480,13 @@ evo stack status <job-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9237,12 +9535,13 @@ evo status [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9268,12 +9567,13 @@ evo tg [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9325,12 +9625,13 @@ evo tg create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9376,12 +9677,13 @@ evo tg delete <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9423,12 +9725,13 @@ evo tg get <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9479,12 +9782,13 @@ evo tg list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9528,12 +9832,13 @@ evo tools [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9599,12 +9904,13 @@ evo tools call <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9639,12 +9945,13 @@ evo tools describe <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9680,12 +9987,13 @@ evo tools list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9734,12 +10042,13 @@ evo verify [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9767,12 +10076,13 @@ evo version [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9798,12 +10108,13 @@ evo vm [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9816,6 +10127,7 @@ evo vm [flags]
 * [evo vm delete](#evo-vm-delete)	 - Удалить ВМ и все данные на ней (безвозвратно)
 * [evo vm flavors](#evo-vm-flavors)	 - Flavor ВМ: vCPU, доля vCPU, RAM, GPU, spot, зоны, оценка цены за месяц
 * [evo vm get](#evo-vm-get)	 - ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы
+* [evo vm history](#evo-vm-history)	 - История задач Compute по UUID ВМ
 * [evo vm list](#evo-vm-list)	 - Список ВМ проекта: id, имя, состояние, зона, время создания
 * [evo vm reboot](#evo-vm-reboot)	 - Перезагрузить работающую ВМ и дождаться состояния running
 * [evo vm resize](#evo-vm-resize)	 - Сменить конфигурацию (flavor) ВМ и дождаться её
@@ -9850,12 +10162,13 @@ evo vm console <vm-id|name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9923,12 +10236,13 @@ evo vm create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -9974,12 +10288,13 @@ evo vm delete <vm-id|name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10030,12 +10345,13 @@ evo vm flavors [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10079,12 +10395,55 @@ evo vm get <vm-id|name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vm](#evo-vm)	 - Виртуальные машины
+
+## evo vm history
+
+История задач Compute по UUID ВМ
+
+### Synopsis
+
+```text
+История задач Compute по UUID ВМ.
+
+Читает историю задач ВМ в текущем проекте, в том числе после удаления ВМ. Для каждой задачи показывает ID, действие, состояние и время создания. При сбое или расхождении страниц возвращает проверенные записи с partial=true. Видимость зависит от прав ключа. При появлении новых задач состав страниц может измениться.
+
+Вызывает инструмент vm_history (подробнее: 'evo tools describe vm_history').
+```
+
+```
+evo vm history <vm-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по history
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10139,12 +10498,13 @@ evo vm list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10182,12 +10542,13 @@ evo vm reboot <vm-id|name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10226,12 +10587,13 @@ evo vm resize <vm-id|name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10269,12 +10631,13 @@ evo vm start <vm-id|name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10312,12 +10675,13 @@ evo vm stop <vm-id|name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10353,12 +10717,13 @@ evo vm zones [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10384,12 +10749,13 @@ evo vpc [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10403,7 +10769,9 @@ evo vpc [flags]
 * [evo vpc fip-attach](#evo-vpc-fip-attach)	 - Привязать свободный floating IP к основному интерфейсу ВМ
 * [evo vpc fip-release](#evo-vpc-fip-release)	 - Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается)
 * [evo vpc fips](#evo-vpc-fips)	 - Floating IP: адрес, состояние, свободен ли
-* [evo vpc get](#evo-vpc-get)	 - VPC по ID: все сведения
+* [evo vpc get](#evo-vpc-get)	 - VPC по UUID или имени: все сведения
+* [evo vpc interface-get](#evo-vpc-interface-get)	 - Карточка сетевого интерфейса по UUID
+* [evo vpc interfaces](#evo-vpc-interfaces)	 - Сетевые интерфейсы проекта, включая свободные
 * [evo vpc list](#evo-vpc-list)	 - Список VPC проекта
 * [evo vpc open-ports](#evo-vpc-open-ports)	 - Открыть входящие порты в группе безопасности
 * [evo vpc operation](#evo-vpc-operation)	 - Состояние асинхронной операции VPC
@@ -10450,12 +10818,13 @@ evo vpc close-ports <security-group> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10494,12 +10863,13 @@ evo vpc create <name> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10517,7 +10887,7 @@ evo vpc create <name> [flags]
 ```text
 Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы).
 
-Удалить VPC по id (список: 'evo vpc list'). Сначала удалите его подсети и другие ресурсы. Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
+Удалить VPC по UUID или имени (список: 'evo vpc list'). Сначала удалите его подсети и другие ресурсы. Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
 Вызывает инструмент vpc_delete (подробнее: 'evo tools describe vpc_delete').
 
@@ -10538,12 +10908,13 @@ evo vpc delete <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10582,12 +10953,13 @@ evo vpc fip-attach <fip> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10626,12 +10998,13 @@ evo vpc fip-release [id] [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10681,12 +11054,13 @@ evo vpc fips [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10697,14 +11071,14 @@ evo vpc fips [flags]
 
 ## evo vpc get
 
-VPC по ID: все сведения
+VPC по UUID или имени: все сведения
 
 ### Synopsis
 
 ```text
-VPC по ID: все сведения.
+VPC по UUID или имени: все сведения.
 
-Все сведения об одном VPC по id (список: 'evo vpc list'). Только чтение.
+Все сведения об одном VPC по UUID или имени (список: 'evo vpc list'). Только чтение.
 
 Вызывает инструмент vpc_get (подробнее: 'evo tools describe vpc_get').
 ```
@@ -10722,12 +11096,107 @@ evo vpc get <id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+
+## evo vpc interface-get
+
+Карточка сетевого интерфейса по UUID
+
+### Synopsis
+
+```text
+Карточка сетевого интерфейса по UUID.
+
+Показывает привязку сетевого интерфейса к ВМ, подсеть, IP-адрес и группы безопасности.
+
+Вызывает инструмент interface_get (подробнее: 'evo tools describe interface_get').
+```
+
+```
+evo vpc interface-get <interface-id> [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по interface-get
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo vpc](#evo-vpc)	 - Сети: VPC, маршруты, подсети, группы безопасности, floating IP
+
+## evo vpc interfaces
+
+Сетевые интерфейсы проекта, включая свободные
+
+### Synopsis
+
+```text
+Сетевые интерфейсы проекта, включая свободные.
+
+Показывает сетевые интерфейсы проекта, их привязку к ВМ, подсеть, IP-адрес и группы безопасности.
+
+Вызывает инструмент interface_list (подробнее: 'evo tools describe interface_list').
+
+Фильтры — отдельным блоком флагов ниже. Несколько фильтров — «и»; пустая выборка — не «в проекте нет».
+```
+
+```
+evo vpc interfaces [flags]
+```
+
+### Examples
+
+```
+  evo vpc interfaces --name web
+```
+
+### Options
+
+```
+  -h, --help              Справка по interfaces
+      --ids stringArray   Только с одним из этих id (флаг повторяется или значения через запятую)
+      --name string       Только с этой частью имени, регистр не важен
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10773,12 +11242,13 @@ evo vpc list [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10828,12 +11298,13 @@ evo vpc open-ports <security-group> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10870,12 +11341,13 @@ evo vpc operation <operation-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10893,7 +11365,7 @@ evo vpc operation <operation-id> [flags]
 ```text
 Добавить статический маршрут в VPC (асинхронно).
 
-Добавить статический маршрут в VPC. Назначение — CIDR (--subnet); следующий узел — интерфейс ВМ (--next-hop-vm-id и --next-hop-interface-id), виртуальный IP (--next-hop-vip-id) или Magic Router (--next-hop-magic-router-id и --next-hop-az). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
+Добавить статический маршрут в VPC по UUID или имени сети. Назначение — CIDR (--subnet); следующий узел — интерфейс ВМ (--next-hop-vm-id и --next-hop-interface-id), виртуальный IP (--next-hop-vip-id) или Magic Router (--next-hop-magic-router-id и --next-hop-az). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
 Вызывает инструмент vpc_route_create (подробнее: 'evo tools describe vpc_route_create').
 
@@ -10920,12 +11392,13 @@ evo vpc route-create <vpc-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10943,7 +11416,7 @@ evo vpc route-create <vpc-id> [flags]
 ```text
 Удалить статический маршрут из VPC (асинхронно).
 
-Удалить статический маршрут из VPC по id маршрута (список: 'evo vpc routes <vpc-id>'). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
+Удалить статический маршрут по его UUID. Для VPC укажите UUID или имя сети (список маршрутов: 'evo vpc routes <vpc-id>'). Операция асинхронная: ход — 'evo vpc operation <operation-id>'.
 
 Вызывает инструмент vpc_route_delete (подробнее: 'evo tools describe vpc_route_delete').
 
@@ -10963,12 +11436,13 @@ evo vpc route-delete <vpc-id> <route-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -10986,7 +11460,7 @@ evo vpc route-delete <vpc-id> <route-id> [flags]
 ```text
 Статические маршруты VPC.
 
-Статические маршруты VPC: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. Только чтение.
+Статические маршруты VPC по UUID или имени сети: id, подсеть назначения, тип следующего узла (next_hop_type), состояние. Только чтение.
 
 Вызывает инструмент vpc_routes (подробнее: 'evo tools describe vpc_routes').
 
@@ -11009,12 +11483,13 @@ evo vpc routes <vpc-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -11046,6 +11521,7 @@ evo vpc security-groups [flags]
 ### Examples
 
 ```
+  evo vpc sg --rules
   evo vpc security-groups --zone ru.AZ-2 --name web
 ```
 
@@ -11062,12 +11538,13 @@ evo vpc security-groups [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -11112,12 +11589,13 @@ evo vpc sg-rule-create <security-group> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -11157,12 +11635,13 @@ evo vpc sg-rule-delete <security-group> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -11200,19 +11679,20 @@ evo vpc subnet-create <name> [flags]
       --dns-servers stringArray       Адреса DNS-серверов IPv4; без них имена на ВМ подсети не разрешатся (флаг повторяется или значения через запятую)
   -h, --help                          Справка по subnet-create
       --routed-network                Маршрутизируемая подсеть; false — изолированная Выключить: --routed-network=false (по умолчанию true)
-      --vpc-id string                 UUID VPC (по умолчанию — VPC проекта по умолчанию)
+      --vpc-id string                 UUID или имя VPC (по умолчанию — VPC проекта по умолчанию)
       --zone string                   Имя зоны, например ru.AZ-1 (по умолчанию — зона из настроек)
 ```
 
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -11250,12 +11730,13 @@ evo vpc subnet-delete <subnet-id> [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -11305,12 +11786,13 @@ evo vpc subnets [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```
@@ -11356,12 +11838,13 @@ evo whoami [flags]
 ### Options inherited from parent commands
 
 ```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
       --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
       --json                Вывод в формате JSON
       --no-color            Без цвета
       --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
       --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
-      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --region string       Синоним --az до v2.0
       --verbose             Подробный журнал
   -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
 ```

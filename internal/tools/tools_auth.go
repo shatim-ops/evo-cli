@@ -346,6 +346,9 @@ func (s *Registry) handleDoctor(ctx context.Context, _ map[string]any) (string, 
 	return toJSON(answer), false
 }
 
+// Warn on the diagnostic surface only. Queue size never closes a record.
+const unresolvedWarningThreshold = 20
+
 // doctorChecks are doctor's own checks: the configuration the next call
 // uses, the reachability of IAM and Compute, the key and what it sees.
 func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck {
@@ -361,18 +364,30 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		// (и)): a warning, not a failure — the setup works.
 		// The list of what each names closes the ones whose outcome it
 		// shows (PR-2).
+		unresolved := 0
 		for _, in := range pendingIntents(eng.StateDir) {
+			if manualReviewClosed(eng.StateDir, in, eng) {
+				continue
+			}
 			found, settled, id := s.checkPending(ctx, in, eng)
 			if settled {
 				intent.Close(in, settledOutcome(in, id))
 				checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckOK, Detail: found})
 				continue
 			}
+			if !in.InFlight() && !in.AwaitingContinuation() {
+				unresolved++
+			}
 			detail := s.pendingNote(in, eng.Maker())
 			if found != "" {
 				detail += "; " + found
 			}
 			checks = append(checks, DoctorCheck{Name: "pending operation", Status: CheckWarn, Detail: detail})
+		}
+		if unresolved >= unresolvedWarningThreshold {
+			checks = append(checks, DoctorCheck{Name: "unresolved operations", Status: CheckWarn,
+				Detail: i18n.Tf("The outcome of %d operations is unknown. Review their individual checks.",
+					"Число операций с неизвестным исходом — %d. Проверьте их по отдельным строкам.", unresolved)})
 		}
 		// A floating IP whose create got no answer may be billed: named
 		// until it is taken for its VM or destroy closes its mark (D107;

@@ -111,6 +111,11 @@ func (s *Registry) registerTools() {
 			}),
 		},
 		{
+			Name:        "vm_history",
+			Description: "Read the platform's Compute Tasks history for one VM UUID in the current project, including after deletion. Each task has an ID, action, state and creation time. A failed or inconsistent later page returns the verified rows with partial=true. Visibility depends on the key. Offset pagination can change while tasks arrive.",
+			InputSchema: objSchema(map[string]any{"vm_id": uuidProp("VM UUID (from vm_list or the result of provision).")}, "vm_id"),
+		},
+		{
 			Name:        "vm_console",
 			Description: "Where a human opens the console of one VM, by vm_id or name: state, serial_ready and console_available (true only while the VM is running; a condition, not a promise that the console opens). The console opens in the Cloud.ru web console after the person signs in; evo does not open it, hand out a console link or connect to the VM, and an agent has no use for the page. A stopped VM is someone's decision: starting it is vm_start, charged, and the person's call.",
 			InputSchema: objSchema(map[string]any{
@@ -312,7 +317,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"name":                 strProp("Subnet name: a Latin letter first, then letters, digits, '.', '-', '_'."),
 				"cidr":                 cidrProp("Network with a mask /8../29, e.g. 10.10.0.0/24."),
-				"vpc_id":               uuidProp("VPC UUID (default: the project's default VPC)."),
+				"vpc_id":               strProp("VPC UUID or name (default: the project's default VPC)."),
 				"zone":                 strProp("Zone name, e.g. 'ru.AZ-1' (default: the configured region)."),
 				"availability_zone_id": uuidProp("Zone UUID, instead of zone."),
 				"routed_network":       boolPropTrue("Routed (default true); false: isolated."),
@@ -617,6 +622,23 @@ func (s *Registry) registerTools() {
 			Name:        "disk_list",
 			Description: "List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). Read-only.",
 			InputSchema: objSchema(map[string]any{}),
+		},
+		{
+			Name:        "interface_list",
+			Description: "List the project's network interfaces, including unassigned ones, with VM, subnet, IP and security groups. Read-only.",
+			InputSchema: objSchema(map[string]any{}),
+		},
+		{
+			Name:        "interface_get",
+			Description: "Read a network interface by UUID, including its VM binding, subnet, IP and security groups.",
+			InputSchema: objSchema(map[string]any{"interface_id": uuidProp("Network interface UUID from interface_list.")}, "interface_id"),
+		},
+		{
+			Name:        "disk_get",
+			Description: "Live card of one disk by disk_id, by one read: name, size_gb, state, disk_type, zone, bootable, encrypted, readonly, shared, serial_id as the platform reports them, and attached_vms (id, name, primary, state). A field the platform's answer does not carry is absent and named in not_checked: no value of it is implied. Read-only.",
+			InputSchema: objSchema(map[string]any{
+				"disk_id": uuidProp("Disk UUID (from disk_list)."),
+			}, "disk_id"),
 		},
 		{
 			Name:        "disk_create",
@@ -1081,7 +1103,7 @@ func (s *Registry) registerTools() {
 				"target_port":     inRange(1, 65535, intProp("Target port (default: port).")),
 				"hc_port":         inRange(1, 65535, intProp("Health-check port (default: target_port).")),
 				"external":        boolPropTrue("Allocate a public IP (default true); false: internal only."),
-				"vpc_id":          strProp("VPC UUID (default: the target group's)."),
+				"vpc_id":          strProp("VPC UUID or name (default: the target group's)."),
 				"zone":            strProp("Zone name or UUID."),
 				"subnet_id":       strProp("Subnet UUID or name (default: the zone's main subnet of the VPC)."),
 				"confirmed":       confirmedProp(),
@@ -1099,8 +1121,8 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_get",
-			Description: "Get full details of one VPC by id (from vpc_list). Read-only.",
-			InputSchema: objSchema(map[string]any{"id": uuidProp("VPC UUID (from vpc_list). Required.")}, "id"),
+			Description: "Get full details of one VPC by UUID or name (from vpc_list). Read-only.",
+			InputSchema: objSchema(map[string]any{"id": strProp("VPC UUID or name (from vpc_list). Required.")}, "id"),
 		},
 		{
 			Name:        "vpc_create",
@@ -1113,9 +1135,9 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_delete",
-			Description: "Delete a VPC by id (from vpc_list) (async). Remove its subnets and resources first.",
+			Description: "Delete a VPC by UUID or name (from vpc_list) (async). Remove its subnets and resources first.",
 			InputSchema: objSchema(map[string]any{
-				"id":        uuidProp("VPC UUID (from vpc_list). Required."),
+				"id":        strProp("VPC UUID or name (from vpc_list). Required."),
 				"confirmed": confirmedProp(),
 				"wait":      boolProp(deleteWaitDesc),
 			}, "id"),
@@ -1127,14 +1149,14 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_routes",
-			Description: "List static routes of a VPC (id, subnet, next_hop_type, status). Read-only.",
-			InputSchema: objSchema(map[string]any{"vpc_id": uuidProp("VPC UUID (from vpc_list). Required.")}, "vpc_id"),
+			Description: "List static routes of a VPC selected by UUID or name (id, subnet, next_hop_type, status). Read-only.",
+			InputSchema: objSchema(map[string]any{"vpc_id": strProp("VPC UUID or name (from vpc_list). Required.")}, "vpc_id"),
 		},
 		{
 			Name:        "vpc_route_create",
-			Description: "Add a static route to a VPC (async). Destination is a CIDR; the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az).",
+			Description: "Add a static route to a VPC selected by UUID or name (async). Destination is a CIDR; the next hop is a VM interface (next_hop_vm_id+next_hop_interface_id), a VIP (next_hop_vip_id), or a Magic Router (next_hop_magic_router_id+next_hop_az).",
 			InputSchema: objSchema(map[string]any{
-				"vpc_id":                   strProp("VPC UUID. Required."),
+				"vpc_id":                   strProp("VPC UUID or name. Required."),
 				"subnet":                   cidrProp("Destination CIDR, e.g. '192.168.0.0/24'. Required."),
 				"next_hop_vm_id":           strProp("VM UUID for a VM-interface next hop (with next_hop_interface_id)."),
 				"next_hop_interface_id":    strProp("VM network interface UUID."),
@@ -1147,9 +1169,9 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "vpc_route_delete",
-			Description: "Delete a static route from a VPC by id (from vpc_routes) (async).",
+			Description: "Delete a static route by its UUID (from vpc_routes). Select the VPC by UUID or name (async).",
 			InputSchema: objSchema(map[string]any{
-				"vpc_id":    uuidProp("VPC UUID. Required."),
+				"vpc_id":    strProp("VPC UUID or name. Required."),
 				"route_id":  uuidProp("Static route UUID (from vpc_routes). Required."),
 				"confirmed": confirmedProp(),
 			}, "vpc_id", "route_id"),
@@ -1175,7 +1197,7 @@ func (s *Registry) registerTools() {
 				"name":        strProp("Zone display name. Optional; default = domain."),
 				"type":        enumProp("Zone visibility (default public).", "public", "private"),
 				"description": strProp("Optional zone description."),
-				"vpc_id":      uuidProp("Private zone: the VPC it resolves in. Default: the project's default VPC."),
+				"vpc_id":      strProp("Private zone: VPC UUID or name. Default: the project's default VPC."),
 				"confirmed":   confirmedProp(),
 			}, "domain"),
 		},
@@ -1541,6 +1563,7 @@ func (s *Registry) registerTools() {
 		"status":               s.handleStatus,
 		"list":                 s.handleList,
 		"vm_get":               s.handleVMGet,
+		"vm_history":           s.handleVMHistory,
 		"vm_console":           s.handleVMConsole,
 		"vm_start":             s.gated("vm_start", s.planVMPower("vm_start")),
 		"vm_stop":              s.gated("vm_stop", s.planVMPower("vm_stop")),
@@ -1599,6 +1622,9 @@ func (s *Registry) registerTools() {
 		"backup_restore":       s.gated("backup_restore", s.planBackupRestore),
 		"backup_delete":        s.gated("backup_delete", s.planBackupDelete),
 		"disk_list":            s.handleDiskList,
+		"interface_list":       s.handleInterfaceList,
+		"interface_get":        s.handleInterfaceGet,
+		"disk_get":             s.handleDiskGet,
 		"disk_create":          s.gated("disk_create", s.planDiskCreate),
 		"disk_attach":          s.gated("disk_attach", s.planDiskAttach),
 		"disk_detach":          s.gated("disk_detach", s.planDiskDetach),
@@ -1767,7 +1793,8 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			eng.Printer = logAndProgress(ctx, &buf)
 
 			force, _ := args["force"].(bool)
-			opts := engine.DeployOptions{
+			var deployment engine.DeployResult
+			opts := engine.DeployOptions{Result: &deployment,
 				ComposeFile:    eng.Config.ComposeFile,
 				Flavor:         eng.Config.Flavor,
 				Region:         eng.Config.Region,
@@ -1788,10 +1815,11 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			}
 
 			result := map[string]any{"log": buf.String()}
-			if sf, e := state.Read(state.DefaultPath(eng.StateDir)); e == nil {
-				if active := sf.ActiveComposeDeployment(); active != nil {
-					result["deployment"] = active
-				}
+			if record := deployment.Record; record.VMID != "" {
+				result["deploy_action"] = deployment.Action
+				result["deployment"] = record
+				result["vm_id"] = record.VMID
+				result["region"] = record.Region
 			}
 			deployPortsOnlyFromGroups(result, eng.PortsOnlyFromGroups())
 			var going *engine.InProgress
@@ -2025,7 +2053,8 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 		return failed(ctx, errComposeChangedSinceConsent(), nil), true
 	}
 	force, _ := args["force"].(bool)
-	err = eng.Deploy(ctx, engine.DeployOptions{
+	var deployment engine.DeployResult
+	err = eng.Deploy(ctx, engine.DeployOptions{Result: &deployment,
 		ComposeFile:    eng.Config.ComposeFile,
 		Flavor:         eng.Config.Flavor,
 		Region:         eng.Config.Region,
@@ -2044,7 +2073,7 @@ func (s *Registry) deployLive(ctx context.Context, args, overrides map[string]an
 	if err != nil {
 		return failed(ctx, err, deployFields(err, nil)), true
 	}
-	return toJSON(map[string]any{"status": "ok"}), false
+	return toJSON(map[string]any{"status": "ok", "vm_id": deployment.Record.VMID, "region": deployment.Record.Region, "deploy_action": deployment.Action}), false
 }
 
 // deployFields adds to fields of a deploy error answer the argument of a
@@ -2968,7 +2997,8 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 			var buf bytes.Buffer
 			eng.Printer = bufferPrinter(&buf)
 
-			if err := eng.Destroy(ctx, engine.DestroyOptions{Force: true}); err != nil {
+			var result engine.DestroyResult
+			if err := eng.Destroy(ctx, engine.DestroyOptions{Force: true, Result: &result}); err != nil {
 				fields := logField(buf.String())
 				if stderrors.Is(err, engine.ErrDeletionUnconfirmed) {
 					// The delete is accepted, the rest waits for the re-run
@@ -2977,7 +3007,7 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 				}
 				return errAnswer(err, fields), true
 			}
-			return toJSON(map[string]any{"status": "ok", "log": buf.String()}), false
+			return toJSON(map[string]any{"status": "ok", "log": buf.String(), "deleted_vm": result.VMID, "cleanup_pending": result.CleanupPending}), false
 		})
 }
 
@@ -3025,18 +3055,26 @@ func (s *Registry) destroyLive(ctx context.Context, c *Caller) (string, bool) {
 		return failed(ctx, err, nil), true
 	}
 	eng.Printer = c.Printer
-	err = eng.Destroy(ctx, engine.DestroyOptions{DryRun: c.DryRun,
+	var result engine.DestroyResult
+	err = eng.Destroy(ctx, engine.DestroyOptions{Result: &result, DryRun: c.DryRun,
 		Gate: func(ctx context.Context, p confirm.Preview) (bool, error) {
 			return c.ask(ctx, destroyAnswer(p, s.deploymentProject()), &p)
 		}})
 	if err != nil {
-		fields := map[string]any{}
+		if result.VMDeleteUnsent {
+			markDeleteUnsent(ctx, "destroy")
+		}
+		fields := map[string]any{"vm_id": result.VMID, "cleanup_pending": result.CleanupPending}
 		if stderrors.Is(err, engine.ErrDeletionUnconfirmed) {
 			fields["status"] = "partial"
 		}
 		return failed(ctx, err, fields), true
 	}
-	return toJSON(map[string]any{"status": "ok"}), false
+	fields := map[string]any{"status": "ok", "deleted_vm": result.VMID, "cleanup_pending": result.CleanupPending}
+	if result.VMReplyLost {
+		fields["message"] = engine.VMDeleteObservation()
+	}
+	return toJSON(fields), false
 }
 
 // logField is the "log" of an error answer: none when nothing was logged —
@@ -3195,6 +3233,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				if d.FloatingIPID != "" {
 					fipRec.FloatingIPID = d.FloatingIPID
 				}
+				fipRec.ReleasedFloatingIPID = d.ReleasedFloatingIPID
 				fipRec.ProjectID = d.ProjectID
 				if d.VMIP != "" {
 					fipRec.VMIP = d.VMIP
@@ -3267,7 +3306,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			}
 		}
 	}
-	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
+	hasFIP := fipRec.HasPendingFloatingIP()
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
 	// What this delete leaves open to the internet in the VM's groups
@@ -3304,11 +3343,14 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			eng.Printer = pp
 		}
 
+		ctx = provision.DestroyRequests(ctx)
+		sendCtx, unsent := deleteConnection(ctx, "destroy")
+		observedAbsent := false
 		if alreadyGone || strings.EqualFold(target.Status, "deleting") {
 			// Nothing to delete in the cloud, or the delete of an earlier
 			// call still going: Cloud.ru refuses another DELETE then with
 			// 409 (OPS-18), and the wait below is what the repeat is for.
-		} else if err := eng.Cloud.DeleteVMInProject(ctx, target.ID, projectID); err != nil {
+		} else if err := eng.Cloud.DeleteVMInProject(sendCtx, target.ID, projectID); err != nil {
 			var gone *clierrors.CLIError
 			if stderrors.As(err, &gone) && gone.Code == clierrors.CodeVMNotFound {
 				// Gone between the list and the DELETE, which names the
@@ -3316,6 +3358,23 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				// the engine's destroy takes it, and the rest is cleaned up
 				// (D26).
 				alreadyGone = true
+			} else if unsent(err) {
+				return unsentDeleteAnswer(err)
+			} else if clierrors.Reason(err) == clierrors.CodeAPIUnreachable && ctx.Err() == nil {
+				_, readErr := eng.Cloud.GetVM(ctx, target.ID)
+				if clierrors.Reason(readErr) != clierrors.CodeVMNotFound {
+					fields := map[string]any{"vm_id": target.ID, "cleanup_pending": true, "next_tool": "vm_get", "next_args": map[string]any{"vm_id": target.ID}}
+					if _, saveErr := markDestroying(statePath, projectID, target, &fipRec, releaseIP && hasFIP); saveErr != nil {
+						fields["state_error"] = saveErr.Error()
+					}
+					if readErr != nil {
+						fields["check_reason"] = clierrors.Reason(readErr)
+					}
+					return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable,
+						i18n.T("No reply confirmed deletion of the VM. The check by ID did not establish that it is absent.", "Ответ на удаление ВМ не получен. Проверка по ID не подтвердила её отсутствие."),
+						i18n.T("Check the VM by ID before retrying destroy.", "Проверьте ВМ по ID перед повтором destroy."), err), fields), true
+				}
+				observedAbsent = true
 			} else if engine.IsNotDeletableYet(err) {
 				// Cloud.ru refused the delete in the VM's state: the state it
 				// reads in and the way out, as the CLI destroy (QA H1/H4,
@@ -3327,7 +3386,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				return errResult(fmt.Errorf(i18n.T("delete VM: %w", "удаление ВМ: %w"), err)), true
 			}
 		}
-		if !alreadyGone {
+		if !alreadyGone && !observedAbsent {
 			// The wait ends with the budget of an MCP call too (D69).
 			waitCtx := ctx
 			if left, capped := budgetLeft(ctx); capped {
@@ -3355,8 +3414,11 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		// release left the FIP billed with no trace (QA r3 R1).
 		msg := i18n.T("VM deleted", "ВМ удалена")
 		if alreadyGone {
-			msg = i18n.T("VM already deleted (not found in the cloud); its local record is cleaned up",
-				"ВМ уже удалена (в облаке не найдена); локальная запись очищена")
+			msg = i18n.T("VM already deleted (not found in the cloud)",
+				"ВМ уже удалена (в облаке не найдена)")
+		}
+		if observedAbsent {
+			msg = engine.VMDeleteObservation()
 		}
 		if keptFIP != "" {
 			msg += i18n.Tf("; floating IP %s kept: %s — whether to release it (release_floating_ip, or destroy with release_ip=true), ask the person",
@@ -3366,11 +3428,30 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		if releaseIP && hasFIP {
 			if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
 				fipLeft = true
-				msg += i18n.Tf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
-					"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release",
-					"; ВНИМАНИЕ: floating IP %s НЕ освобождён и продолжает оплачиваться (%v) — "+
-						"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
+				if clierrors.Reason(ferr) == clierrors.CodeAPIUnreachable {
+					msg += "; " + ferr.Error()
+				} else {
+					msg += i18n.Tf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
+						"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release",
+						"; ВНИМАНИЕ: floating IP %s НЕ освобождён и продолжает оплачиваться (%v) — "+
+							"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
+				}
 			} else {
+				if recordedHere && fipRec.ReleasedFloatingIPID != "" {
+					err := state.Update(statePath, stateLockWait, func(sf *state.File) error {
+						for i := range sf.Deployments {
+							d := &sf.Deployments[i]
+							if d.VMID == target.ID && (d.FloatingIPID == "" || d.FloatingIPID == fipRec.ReleasedFloatingIPID) {
+								d.FloatingIPID = fipRec.ReleasedFloatingIPID
+								d.ReleasedFloatingIPID = fipRec.ReleasedFloatingIPID
+							}
+						}
+						return nil
+					})
+					if err != nil {
+						return errAnswer(err, map[string]any{"vm_id": target.ID, "cleanup_pending": true}), true
+					}
+				}
 				msg += i18n.T("; released floating IP ", "; освобождён floating IP ") + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 			}
 		}
@@ -3378,9 +3459,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		// released when listed by their name, else named — the marks close
 		// either way (D107; «Риск», conclusion 180, Т3 and Т4).
 		var lostReleased, lostMissing []string
+		var extraPending bool
 		if releaseIP {
 			var rel, miss []state.LostFloatingIP
-			lerr, _ := withAddressMarks(statePath, func(sf *state.File) (err error) {
+			lerr, werr := withAddressMarks(statePath, func(sf *state.File) (err error) {
 				rel, miss, err = floatingip.Release(ctx, eng.Cloud, sf, projectID, target.Name, target.ID, fipRec.FloatingIPID)
 				return err
 			})
@@ -3395,7 +3477,8 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					"; floating IP %s, запрошенного %s без ответа, нет в списке: если evo vpc fips покажет его позже, он оплачивается — освобождать ли его (evo vpc fip-release), решает человек",
 					m.Name, m.RequestedAt.UTC().Format(time.RFC3339))
 			}
-			if lerr != nil {
+			if lerr = stderrors.Join(lerr, werr); lerr != nil {
+				extraPending = true
 				msg += i18n.Tf("; the floating IPs requested with no answer were not checked (%v): destroy checks them again",
 					"; floating IP, запрошенные без ответа, не проверены (%v): повтор evo vm delete проверит их снова", lerr)
 			}
@@ -3415,7 +3498,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			for _, id := range ids {
 				rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id))
 			}
-			if fipLeft {
+			if fipLeft || extraPending {
 				rec := state.DeploymentRecord{ID: target.ID, VMID: target.ID, CreatedAt: time.Now()}
 				for _, d := range sf.Deployments {
 					if d.VMID == target.ID {
@@ -3424,6 +3507,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					}
 				}
 				rec.Status = "destroying"
+				rec.ReleasedFloatingIPID = fipRec.ReleasedFloatingIPID
 				rec.FloatingIPID = firstNonEmptyStr(fipRec.FloatingIPID, rec.FloatingIPID)
 				rec.VMIP = firstNonEmptyStr(fipRec.VMIP, rec.VMIP)
 				rec.ProjectID = firstNonEmptyStr(rec.ProjectID, fipRec.ProjectID, projectID)
@@ -3442,6 +3526,9 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			"status":     "ok",
 			"deleted_vm": target.ID,
 			"name":       target.Name,
+		}
+		if fipLeft || extraPending || len(rules.Failed) > 0 || stateErr != nil || uncheckedErr != nil || len(lostMissing) > 0 {
+			out["cleanup_pending"] = true
 		}
 		if alreadyGone {
 			out["status"] = "already_deleted"

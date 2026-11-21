@@ -285,17 +285,17 @@ func folderDeploymentInGroup(stateDir, groupID string) bool {
 // group's rules is the next step.
 func (s *Registry) sgRuleDeleted(ctx context.Context, eng *engine.Engine, group *provision.SecurityGroup, ruleID string) (string, bool) {
 	last, timedOut, atLimit, reads, err := waitState(ctx, eng, sgRuleGoneTimeout,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
 			if err != nil {
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			for _, r := range rules {
 				if r != nil && r.ID == ruleID {
-					return r.State, true, nil
+					return r.State, waitObserved, nil
 				}
 			}
-			return sgRuleGone, true, nil
+			return sgRuleGone, waitObserved, nil
 		},
 		func(st string) string {
 			return fmt.Sprintf(i18n.T("rule %s: %s, waiting…", "правило %s: %s, жду…"), ruleID, st)

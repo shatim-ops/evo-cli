@@ -396,6 +396,9 @@ func newRootCmd() *cobra.Command {
 			if err := emptyFlagGiven(cmd); err != nil {
 				return err
 			}
+			if err := applyZoneAlias(cmd); err != nil {
+				return err
+			}
 			// Warnings about legacy paths (.cloudru-vm/, .cloudru-vm.yaml)
 			// follow --json and --no-color from here on.
 			config.SetWarnFunc(func(msg string) {
@@ -409,7 +412,8 @@ func newRootCmd() *cobra.Command {
 			// What a cut call of an earlier run may have left in the cloud
 			// (release plan 1.8, (и)): every command of this directory says
 			// it until it is settled; over MCP the first answer carries it.
-			if cwd, err := stateDir(); err == nil {
+			// Manual close must not reconcile unrelated receipts during preflight.
+			if cwd, err := stateDir(); err == nil && cmd.CommandPath() != "evo intent close" {
 				printWarnings(output.New(flagJSON, flagNoColor), reg.PendingNotes(cwd))
 			}
 			return nil
@@ -449,7 +453,7 @@ func newRootCmd() *cobra.Command {
 		newLogoutCmd(),
 		newProjectCmd(),
 		newWhoamiCmd(),
-		newDoctorCmd(),
+		newDoctorCmd(), newIntentCmd(),
 		newHistoryCmd(),
 		newToolsCmd(),
 		newAgentCmd(),
@@ -473,6 +477,9 @@ func newRootCmd() *cobra.Command {
 			// the argument (#2334).
 			for _, shell := range c.Commands() {
 				shell.Args = noArgs
+				if shell.Name() == "bash" {
+					configureBashCompletion(shell)
+				}
 			}
 		}
 	}
@@ -926,7 +933,7 @@ func noEmptyValue(fs *pflag.FlagSet, names ...string) {
 // project or the zone of the profile (D89, the owner's decision 10.11 on
 // conclusion 53 of «Риск»). Wherever they are declared — the global
 // scope, a command's own, a tool's argument — they are marked.
-var scopeFlags = []string{"project-id", "region", "zone"}
+var scopeFlags = []string{"project-id", "az", "region", "zone"}
 
 // noEmptyScope marks the scope flags fs declares.
 func noEmptyScope(fs *pflag.FlagSet) {

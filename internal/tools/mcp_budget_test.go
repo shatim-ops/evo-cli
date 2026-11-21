@@ -75,7 +75,7 @@ const faultCluster = "00000000-0000-4000-8000-0000000000c1"
 // they are shell scripts.
 func kubeBudget(tool string, args map[string]any) func(t *testing.T) (func(ctx context.Context) (string, bool), func()) {
 	return func(t *testing.T) (func(ctx context.Context) (string, bool), func()) {
-		r := budgeted(kubeWorld(t, `echo "$(basename "$0"): waiting"; exec sleep 600`))
+		r := budgeted(kubeWorld(t, `echo "${0##*/}: waiting"; exec sleep 600`))
 		return func(ctx context.Context) (string, bool) { return r.handlers[tool](ctx, args) }, nil
 	}
 }

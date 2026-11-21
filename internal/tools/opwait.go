@@ -236,11 +236,23 @@ func readsPut(w waitReads, fields map[string]any) map[string]any {
 	return fields
 }
 
+// waitObservation distinguishes a successful list missing the target from
+// a failed read. Neither supplies a state for the result of the wait.
+type waitObservation int
+
+const (
+	waitReadFailed waitObservation = iota
+	waitNotListed
+	waitObserved
+)
+
 // waitState polls the state of a resource until done says the state ends
 // the wait, at the VM poll interval (Engine.Timings.VMPollInterval, 5 s by
 // default), for at most limit (or Timings.VMPollTimeout when shorter). read
-// gives the state and whether the read saw the resource; a read that did
-// not (a fault of the network, a 5xx) is tried again, and read's error
+// distinguishes an observed state, a successful list missing the target,
+// and a failed read. If successful lists keep missing the target, elapsed
+// time is reported at the same progress interval as for an unchanged state.
+// A transient failure (a network fault or 5xx) is retried, and read's error
 // ends the wait at once — the resource is not there any more, and a wait
 // that went on would answer «still on its way» for what is gone. waiting words each state that does not end the wait,
 // and the wait says it when the state changes: a wait is not silent, in the CLI and over MCP alike
@@ -254,7 +266,7 @@ func readsPut(w waitReads, fields map[string]any) map[string]any {
 // state may be old, and an answer at the limit says so (waitReads.put).
 // One loop for the waits on a state: a disk's, a VM's (D99, П4 and П5).
 func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
-	read func(context.Context) (state string, seen bool, err error), waiting func(state string) string,
+	read func(context.Context) (state string, observation waitObservation, err error), waiting func(state string) string,
 	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, reads waitReads, err error) {
 	pp, _ := progressOf(ctx)
 	every := 5 * time.Second
@@ -273,15 +285,18 @@ func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
 	start := clock.Now()
 	shown := start
 	for {
-		st, seen, err := read(ctx)
+		st, observation, err := read(ctx)
 		if err != nil {
 			// The resource is gone: nothing to wait for.
 			return last, 0, false, reads, err
 		}
-		if !seen {
+		var progress string
+		if observation != waitObserved {
 			reads.failed++
-		}
-		if seen {
+			if observation == waitNotListed && clock.Since(shown) >= eng.ProgressInterval() {
+				progress = i18n.T("The resource is not listed in the latest read, waiting…", "В последнем списке ресурса нет, жду…")
+			}
+		} else {
 			// The time of the read goes into the answer (last_read_at): a
 			// reading of internal/clock.
 			reads.lastSeen, reads.failed = clock.Now(), 0
@@ -292,13 +307,16 @@ func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
 				pp.Step(0, 0, waiting(st))
 				shown = clock.Now()
 			case clock.Since(shown) >= eng.ProgressInterval():
-				pp.Step(0, 0, waiting(st)+i18n.Tf(" (%s so far)", " (прошло %s)", engine.ElapsedText(clock.Since(start))))
-				shown = clock.Now()
+				progress = waiting(st)
 			}
 			last = st
 			if ok {
 				return st, 0, false, reads, err
 			}
+		}
+		if progress != "" {
+			pp.Step(0, 0, progress+i18n.Tf(" (%s so far)", " (прошло %s)", engine.ElapsedText(clock.Since(start))))
+			shown = clock.Now()
 		}
 		if !time.Now().Before(deadline) {
 			if capped {

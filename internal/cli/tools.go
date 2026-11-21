@@ -775,6 +775,13 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 			}
 		}
 		ask := opts
+		if interrupted, _ := resp["interrupted"].(map[string]any); interrupted["outcome"] == "unknown" && !flagDryRun {
+			err := toolError(text, hints)
+			if ce, ok := err.(*clerrors.CLIError); ok {
+				ce.Hint = cutCallHint(cmd, interrupted)
+			}
+			return text, err
+		}
 		if interrupted, cut := resp["interrupted"]; cut {
 			// The question names a call of this tool that was cut with
 			// its outcome unknown: a call now is one more change, and
@@ -822,6 +829,21 @@ func cutCallHint(cmd *cobra.Command, interrupted any) string {
 		name, _ := m["read_tool"].(string)
 		if t, ok := registryOf(cmd).Lookup(name); ok {
 			read = toolCommandPath(t)
+			if m["outcome"] == "unknown" {
+				args, _ := m["read_args"].(map[string]any)
+				for _, arg := range t.CLI.Args {
+					if id, _ := args[arg].(string); looksLikeUUID(id) {
+						read += " " + id
+					}
+				}
+				if visibility, _ := args["type"].(string); visibility == "public" || visibility == "private" {
+					read += " --type " + visibility
+				}
+				if project, _ := m["project_id"].(string); looksLikeUUID(project) {
+					read += " --project-id " + project
+				}
+				return i18n.Tf("Check the target with '%s' in the original project. While the earlier outcome is unknown, the create stays blocked.", "Проверьте цель командой «%s» в исходном проекте. Пока исход предыдущего запроса неизвестен, создание остаётся заблокированным.", read)
+			}
 		}
 	}
 	if read == "" {
@@ -1180,9 +1202,27 @@ var (
 func addScopeFlags(root *cobra.Command) {
 	root.PersistentFlags().StringVar(&flagProjectID, "project-id", "", i18n.T("Cloud.ru project UUID (default: from the profile or $CLOUDRU_PROJECT_ID)",
 		"UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)"))
-	root.PersistentFlags().StringVar(&flagRegion, "region", "", i18n.T("Availability zone UUID (default: from the profile or $CLOUDRU_REGION)",
-		"UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)"))
+	root.PersistentFlags().StringVar(&flagRegion, "az", "", i18n.T("Availability zone name or UUID (default: from $CLOUDRU_REGION or the profile)",
+		"Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)"))
+	root.PersistentFlags().StringVar(&flagRegion, "region", "", i18n.T("Alias for --az until v2.0", "Синоним --az до v2.0"))
 	noEmptyScope(root.PersistentFlags())
+}
+
+// applyZoneAlias forwards the global spelling to commands with their own
+// region option, including configure (which stores the zone in the profile).
+func applyZoneAlias(cmd *cobra.Command) error {
+	flags := cmd.Flags()
+	if flags.Changed("region") {
+		if flags.Changed("az") {
+			return clerrors.New(clerrors.CodeUsage, i18n.T("--az and --region are both given", "заданы оба флага: --az и --region"),
+				i18n.T("Give the zone once with --az.", "Укажите зону один раз через --az."))
+		}
+		cmdPrinter(cmd).Warning(i18n.T("--region is renamed --az; the alias works until v2.0", "--region переименован в --az; прежнее имя работает до v2.0"))
+	}
+	if flags.Changed("az") && cmd.LocalNonPersistentFlags().Lookup("region") != nil {
+		return flags.Set("region", flagRegion)
+	}
+	return nil
 }
 
 // applyScopeFlags adds --project-id and --region to the engine overrides

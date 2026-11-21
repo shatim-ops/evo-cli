@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -48,7 +49,7 @@ func TestMadeAnswer_CreatedOnlyOfAMadeResource(t *testing.T) {
 		{name: "the wait cancelled", answered: "creating", reads: []string{"creating"}, cancel: true, status: "creating",
 			reason: clierrors.ReasonInterrupted, state: "creating", next: true},
 	} {
-		t.Run(c.name, func(t *testing.T) {
+		check := func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			n := 0
@@ -89,6 +90,10 @@ func TestMadeAnswer_CreatedOnlyOfAMadeResource(t *testing.T) {
 					t.Errorf("the created subnet lost the fields of the create's answer, or kept its state: %s", text)
 				}
 			}
+		}
+		t.Run(c.name, func(t *testing.T) {
+			// Polls and the deadline advance on the same virtual clock.
+			synctest.Test(t, check)
 		})
 	}
 }

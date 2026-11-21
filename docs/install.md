@@ -30,7 +30,7 @@ evo version
    оболочки.
 5. ставит автодополнение по Tab туда, где оболочка находит его сама: fish —
    `~/.config/fish/completions/evo.fish`, bash —
-   `~/.local/share/bash-completion/completions/evo` (нужен пакет
+   `~/.local/share/bash-completion/completions/evo` (его подхватывает загрузчик
    bash-completion), zsh — каталог из `$fpath` в домашнем каталоге, если он
    там есть. Если такого каталога нет (так на macOS по умолчанию), `_evo`
    ложится в `~/.local/share/zsh/site-functions` (или
@@ -215,8 +215,11 @@ Tab дополняет команды и флаги, а с 1.5 — и значе
 установки из архива — скрипт для своей оболочки:
 
 ```sh
-# bash (нужен пакет bash-completion)
-evo completion bash > ~/.local/share/bash-completion/completions/evo
+# bash: создайте файл и подключите в текущей оболочке
+dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+mkdir -p "$dir"
+evo completion bash > "$dir/evo"
+source "$dir/evo"
 # zsh: каталог из $fpath, куда у вас есть запись, например
 evo completion zsh > "${fpath[1]}/_evo"
 # fish
@@ -224,6 +227,23 @@ evo completion fish > ~/.config/fish/completions/evo.fish
 # PowerShell: скрипт в $HOME и строка «. $HOME\evo.ps1» в профиле ($PROFILE)
 evo completion powershell > $HOME\evo.ps1
 ```
+
+Bash работает и без пакета bash-completion. Если ваша оболочка входа — Bash,
+установщик показывает строку подключения установленного файла. При запуске
+из терминала он предлагает добавить её в `~/.bashrc`. При установке через
+канал передайте `EVO_BASHRC=1` процессу `sh`, чтобы добавить строку;
+`EVO_BASHRC=0` оставляет настройку ручной. Повторная установка распознаёт
+свою строку, а `install.sh --uninstall` убирает её. Для Bash в режиме
+входа проверьте, что ваш профиль входа подключает `~/.bashrc`.
+
+В Debian с bash-completion 2.11 при пробеле в `XDG_DATA_HOME` загрузчик
+может пропустить файл evo. Подключите его явно строкой
+`source "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo"`
+в `~/.bashrc` или разрешите установщику добавить строку.
+
+Если вызываете evo по полному пути с пробелом, экранируйте пробел обратной косой чертой.
+Например, наберите `/opt/my\ tools/evo vm lis` и нажмите Tab. В проверенном Bash 5 на Debian при вводе
+`"/opt/my tools/evo" vm lis` Readline не вызывает обработчик дополнения.
 
 Выбор из списка стрелками в zsh скрипт `evo completion zsh` включает сам —
 только для evo (`zstyle ':completion:*:*:evo:*' menu yes select`) и только если

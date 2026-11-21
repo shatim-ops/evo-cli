@@ -36,7 +36,7 @@ func TestKubectl_StoppedAtTheLimitSaysWhatHolds(t *testing.T) {
 			// reads how far kubectl got — the line it printed — and on a
 			// loaded runner the process does not start and print within
 			// 250 ms (macOS, run 43267821110: "output": "", #793's class).
-			r := progressed(kubeWorld(t, `echo "$(basename "$0"): waiting"; exec sleep 600`))
+			r := progressed(kubeWorld(t, `echo "${0##*/}: waiting"; exec sleep 600`))
 			text, isErr := r.handlers["k8s_kubectl"](context.Background(), args)
 			var m map[string]any
 			if err := json.Unmarshal([]byte(text), &m); err != nil || isErr {

@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
@@ -47,7 +48,7 @@ var listSizeClaims = map[string][]*regexp.Regexp{
 		regexp.MustCompile(`` + "`--read-only`" + ` — около \d+, ~(\d+) КБ схем`),
 	},
 	"--toolsets deploy,vm,vpc":                 {regexp.MustCompile(`# около \d+ инструментов, ~(\d+) КБ`)},
-	"--read-only --toolsets vm,vpc,disk,image": {regexp.MustCompile(`\d+ инструментов на чтение, ~(\d+) КБ`)},
+	"--read-only --toolsets vm,vpc,disk,image": {regexp.MustCompile(`\d+ инструмент(?:а|ов)? на чтение, ~(\d+) КБ`)},
 }
 
 // listSizeTolerance is how far a size in the docs may be from the size
@@ -97,7 +98,7 @@ func TestDocsExamples_Counts(t *testing.T) {
 		strconv.Itoa(nearest10(readOnly)): true,
 		strconv.Itoa(nearest10(subset)):   true,
 	}
-	exactSlice := fmt.Sprintf("%d инструментов на чтение", readOnlySlice)
+	exactSlice := fmt.Sprintf("%d %s на чтение", readOnlySlice, i18n.Plural(readOnlySlice, "инструмент", "инструмента", "инструментов"))
 
 	flat := func(rel string) string {
 		return strings.Join(strings.Fields(string(mustReadRepo(t, rel))), " ")

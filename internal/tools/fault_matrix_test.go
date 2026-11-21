@@ -157,7 +157,7 @@ var faultMatrixCases = []faultMatrixCase{
 	apiCase("pg_backup_create", map[string]any{"cluster_id": faultPGCluster, "name": "evo-b", "confirmed": true}),
 	apiCase("tg_create", map[string]any{"name": "evo-tg", "targets": []any{map[string]any{"id": faultTargetVM, "interface_id": faultNIC}}, "confirmed": true}),
 	apiCase("vpc_route_create", map[string]any{"vpc_id": faultVPC, "subnet": "192.168.10.0/24", "next_hop_vip_id": "vip-1", "confirmed": true}),
-	apiCase("dns_record_create", map[string]any{"zone_id": "z-1", "type": "public", "name": "www", "record_type": "a", "value": "203.0.113.7", "confirmed": true}),
+	apiCase("dns_record_create", map[string]any{"zone_id": "z-1", "type": "public", "name": "www", "record_type": "a", "value": "203.0.113.7", "confirmed": true}, faultResource{host: "dns.api.cloud.ru", path: "/v1/publicZones", ID: "z-1", Name: "example.com", before: true}),
 	func() faultMatrixCase {
 		c := apiCase("cert_issue_le", map[string]any{"name": "evo-le", "dns_names": []any{"www.example.com"}, "confirmed": true})
 		// The issue's operation names no certificate (api-contract.json);

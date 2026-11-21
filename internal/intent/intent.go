@@ -204,6 +204,12 @@ func (in Intent) InFlight() bool {
 	return processAlive(in.PID)
 }
 
+// AwaitingContinuation reports an operation that is known to be going on.
+// A cut send during that operation has an unknown outcome of its own.
+func (in Intent) AwaitingContinuation() bool {
+	return in.Held && in.CutSend.IsZero()
+}
+
 // openHere are the ids of the records this process opened (Open) whose
 // call has not ended them (End, Hold, Close).
 var openHere = struct {
@@ -530,7 +536,7 @@ func journal(in Intent, out history.Outcome) {
 	}
 	l := history.Line{Time: clock.Now().UTC().Format(time.RFC3339), Tool: in.Tool, Surface: surface,
 		ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target,
-		Kind: out.Kind, Parent: out.Parent, ResourceID: out.ResourceID, Outcome: out.Result, Reason: out.Reason, OperationID: out.OperationID,
+		CreateReceipt: out.CreateReceipt, Kind: out.Kind, Parent: out.Parent, ResourceID: out.ResourceID, Outcome: out.Result, Reason: out.Reason, OperationID: out.OperationID,
 		IntentID: in.ID, JobID: out.JobID, StateDir: stateDirOf(in.Dir), Key: in.Key}
 	if err := appendLine(history.DirOf(in.Dir), l); err != nil {
 		config.Warn(i18n.Tf("the journal of changes in %s got no line of %s (%v); the call is as it answered",

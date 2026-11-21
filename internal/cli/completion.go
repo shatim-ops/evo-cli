@@ -7,6 +7,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	_ "embed"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -288,6 +290,68 @@ func zshMenuOfEvo(completion *cobra.Command) {
 			return err
 		}
 	}
+}
+
+func configureBashCompletion(cmd *cobra.Command) {
+	cmd.RunE = bashCompletionOfEvo
+	cmd.Long = i18n.T(`Generate Bash completions for evo. Run these commands in Bash:
+
+    dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+    mkdir -p "$dir" && evo completion bash > "$dir/evo"
+    source "$dir/evo"
+
+For future interactive shells, add this line to ~/.bashrc:
+
+    [ -r "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo" ] && source "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo"
+
+Login Bash reads ~/.bashrc when your login profile sources it.
+`, `Скрипт автодополнения для Bash. Выполните в Bash:
+
+    dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+    mkdir -p "$dir" && evo completion bash > "$dir/evo"
+    source "$dir/evo"
+
+Для новых интерактивных оболочек добавьте в ~/.bashrc строку:
+
+    [ -r "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo" ] && source "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo"
+
+При входе Bash читает ~/.bashrc, если его подключает ваш профиль входа.
+`)
+}
+
+//go:embed bash_completion.sh
+var bashCompletionInput string
+
+// Keep Cobra's completion protocol, formatting, directives and registration.
+// Replace its Bash input adapter: the upstream fallback needs an external
+// function, and its request reinterprets the entire command line with eval.
+func bashCompletionOfEvo(cmd *cobra.Command, _ []string) error {
+	noDesc, _ := cmd.Flags().GetBool("no-descriptions")
+	var buf bytes.Buffer
+	if err := cmd.Root().GenBashCompletionV2(&buf, !noDesc); err != nil {
+		return err
+	}
+	before, rest, ok := strings.Cut(buf.String(), "# Macs have bash3")
+	_, after, end := strings.Cut(rest, "__evo_process_completion_results()")
+	if !ok || !end {
+		return fmt.Errorf("unexpected Cobra Bash completion script")
+	}
+	request := cobra.ShellCompRequestCmd
+	if noDesc {
+		request = cobra.ShellCompNoDescRequestCmd
+	}
+	adapter := strings.ReplaceAll(bashCompletionInput, "__EVO_COMPLETION_REQUEST__", request)
+	// The adapter decodes shell quotes. Compare the actual candidate to
+	// that prefix; Cobra quotes candidates with descriptions for display.
+	after = strings.Replace(after, `[[ $comp == "$cur"* ]]`, `[[ ${compline%%$tab*} == "$cur"* ]]`, 1)
+	// Readline supplies the enclosing quote for a single result.
+	after = strings.ReplaceAll(after, `COMPREPLY[0]=$(printf "%q" `, `COMPREPLY[0]=$(__evo_quote_reply `)
+	// Bash 3 lacks compopt: the adapter supplies its per-request default.
+	after = strings.Replace(after, "complete -o default -o nospace", "complete -o nospace", 1)
+	// ActiveHelp can ask for filenames before Readline runs its fallback.
+	after = strings.Replace(after, "\n                    _filedir\n", "\n                    __evo_default_files\n", 1)
+	_, err := fmt.Fprint(cmd.OutOrStdout(), before, adapter, "__evo_cobra_results()", after)
+	return err
 }
 
 // schemaEnum is the closed list of values the schema of t gives arg.

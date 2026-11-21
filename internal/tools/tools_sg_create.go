@@ -308,15 +308,15 @@ func (s *Registry) sgRuleListed(ctx context.Context, eng *engine.Engine, group *
 	const listed, absent = "listed", "not listed"
 	var found *provision.SGRule
 	_, _, _, _, _ = waitState(ctx, eng, sgRuleMadeTimeout,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
 			if err != nil {
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			if found = sgRuleSame(rules, want); found != nil {
-				return listed, true, nil
+				return listed, waitObserved, nil
 			}
-			return absent, true, nil
+			return absent, waitObserved, nil
 		},
 		func(string) string {
 			return i18n.T("the answer of the create was lost: waiting for the rule to be listed…", "ответ на создание потерян: жду, появится ли правило в списке…")
@@ -332,19 +332,19 @@ func (s *Registry) sgRuleListed(ctx context.Context, eng *engine.Engine, group *
 // sg_rule_delete to remove.
 func (s *Registry) sgRuleCreated(ctx context.Context, eng *engine.Engine, group *provision.SecurityGroup, id string, rule map[string]any) (string, bool) {
 	last, timedOut, atLimit, reads, err := waitState(ctx, eng, sgRuleMadeTimeout,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			rules, err := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
 			if err != nil {
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			for _, r := range rules {
 				if r != nil && r.ID == id {
 					// A rule listed with no state is listed as it is.
-					return firstNonEmptyStr(r.State, "created"), true, nil
+					return firstNonEmptyStr(r.State, "created"), waitObserved, nil
 				}
 			}
 			// Not listed yet: the write was taken, the list is behind.
-			return "creating", true, nil
+			return "creating", waitObserved, nil
 		},
 		func(st string) string {
 			return fmt.Sprintf(i18n.T("rule %s: %s, waiting…", "правило %s: %s, жду…"), id, st)

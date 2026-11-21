@@ -382,6 +382,9 @@ func TestAudit_DestroyCurrentUnconfirmedIsPartial(t *testing.T) {
 	if !isErr || m["status"] != "partial" || m["reason"] != "API_ERROR" {
 		t.Fatalf("want partial API_ERROR, got %s", text)
 	}
+	if out := historyOutcome("destroy", nil, text); out.Result != "unknown" || out.ResourceID != "0000a1a1-0000-4000-8000-000000000001" {
+		t.Fatalf("partial destroy recorded as %+v", out)
+	}
 	if cloud.fipTries != 0 {
 		t.Errorf("FIP released while the VM still exists")
 	}

@@ -159,10 +159,10 @@ func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 			return "", apiError(status, data)
 		}
 		var out struct {
-			Registries    []map[string]any `json:"registries"`
-			NextPageToken string           `json:"nextPageToken"`
+			Registries    pager.Rows[map[string]any] `json:"registries"`
+			NextPageToken string                     `json:"nextPageToken"`
 		}
-		if err := json.Unmarshal(data, &out); err != nil {
+		if err := pager.DecodePage(data, &out); err != nil {
 			return "", fmt.Errorf(i18n.T("parse registries: %w", "разбор реестров: %w"), err)
 		}
 		added := 0

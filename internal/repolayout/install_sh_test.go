@@ -206,3 +206,44 @@ zshrc_unblock "$2"`, "probe", dir, rc)
 		t.Errorf("unblock left its own copy after a good write: %v", left)
 	}
 }
+
+func TestInstallSh_BashrcConsent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix installer")
+	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("no Bash")
+	}
+	src, err := os.ReadFile(filepath.Join("..", "..", "install.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	script := strings.TrimSuffix(strings.TrimSpace(string(src)), `main "$@"`)
+	script += `
+export HOME="$1" XDG_DATA_HOME="$1/xdg ' space" SHELL=/bin/bash
+f="$XDG_DATA_HOME/bash-completion/completions/evo"
+mkdir -p "$(dirname "$f")"
+echo "complete -W 'vm version' evo" > "$f"
+printf '# user\n\n\n' > "$HOME/.bashrc"
+cp "$HOME/.bashrc" "$HOME/original"
+EVO_BASHRC=0 bashrc_setup
+(EVO_BASHRC=1 SHELL=/bin/zsh bashrc_setup)
+cmp "$HOME/original" "$HOME/.bashrc"
+EVO_BASHRC=1 bashrc_setup
+cp "$HOME/.bashrc" "$HOME/once"
+EVO_BASHRC=1 bashrc_setup
+cmp "$HOME/.bashrc" "$HOME/once"
+"$2" --noprofile --rcfile "$HOME/.bashrc" -ic 'complete -p evo' | grep 'vm version'
+printf '# tail' >> "$HOME/.bashrc"
+printf '# tail' >> "$HOME/original"
+bashrc_remove
+bashrc_remove
+cmp "$HOME/original" "$HOME/.bashrc"
+`
+	cmd := exec.Command("sh", "-c", script, "sh", dir, bash)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+}

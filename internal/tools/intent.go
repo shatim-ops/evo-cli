@@ -20,8 +20,27 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
+
+// openCallForTool returns the current call's record holder only while its
+// open receipt belongs to this tool.
+func openCallForTool(ctx context.Context, tool string) *callRecords {
+	c, _ := ctx.Value(callRecordsKey{}).(*callRecords)
+	if c == nil || !c.hasOpen || c.open.Tool != tool {
+		return nil
+	}
+	return c
+}
+
+// markDeleteUnsent associates the transport's pre-send failure with the
+// receipt it applies to, so it can never settle another receipt.
+func markDeleteUnsent(ctx context.Context, tool string) {
+	if c := openCallForTool(ctx, tool); c != nil {
+		c.deleteUnsentID = c.open.ID
+	}
+}
 
 // beginIntent writes the intent of a consented call before it goes to the
 // cloud, at the one gate of consent (D35): a process cut between the
@@ -75,6 +94,23 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 	if in.Name, in.Target, err = r.resourceOf(ctx, name, args); err != nil {
 		return nil, err
 	}
+	// A folder destroy can include older deployments' leftover rules.
+	// It is equivalent to a targeted destroy only for one recorded VM.
+	if name == "destroy" && in.Name == "" && in.Target == "" && callerOf(ctx) != nil && eng != nil {
+		sf, readErr := state.Read(state.DefaultPath(root))
+		if readErr == nil && len(sf.Deployments) == 1 {
+			d := sf.Deployments[0]
+			if d.VMID != "" && (d.ProjectID == "" || d.ProjectID == eng.Config.ProjectID) {
+				targetArgs := withoutConsent(args)
+				if targetArgs == nil {
+					targetArgs = map[string]any{}
+				}
+				targetArgs["vm_id"] = d.VMID
+				_, in.Target = intentResource(name, targetArgs)
+				in.Canon = r.canonArgs(name, targetArgs)
+			}
+		}
+	}
 	in.ProjectID = projectOfCall(eng, in, args)
 	if z, _ := args["zone"].(string); z != "" {
 		in.Zone = z
@@ -110,17 +146,27 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// way: its settling is told by them too («Риск», conclusion 233, У1).
 		if own, ok := ctx.Value(callRecordsKey{}).(*callRecords); ok && own.hasOpen && own.open.ID == rec.ID {
 			rec.Parties = own.open.Parties
+			rec.Target = own.open.Target
 		}
 		if rec.Parties == nil {
 			rec.Parties = r.partiesOf(ctx, name, args)
 		}
 		out := historyOutcome(name, args, answer)
+		if name == "deploy" && out.ResourceID != "" {
+			var res struct {
+				Region string `json:"region"`
+			}
+			if json.Unmarshal([]byte(answer), &res) == nil && res.Region != "" {
+				rec.Zone = res.Region
+			}
+		}
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			// No write went out — every client of evo counts its writes,
 			// and so do kubectl, helm and ssh (httpretry.NoteWrite): the
 			// call changed nothing, whatever cut it («Риск», conclusion
 			// 187, У2).
-			if n, counted := httpretry.Writes(ctx); counted && n == 0 {
+			own, _ := ctx.Value(callRecordsKey{}).(*callRecords)
+			if n, counted := httpretry.Writes(ctx); (counted && n == 0) || (own != nil && own.deleteUnsentID == rec.ID) {
 				out.Result = history.Error
 				if out.Reason == "" {
 					out.Reason = clierrors.ReasonInterrupted
@@ -151,7 +197,9 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			}
 			intent.Hold(rec, out)
 			rec.Held = true
-			intent.Settle(dir, rec, settledOf(out))
+			if everySendIsAChange[name].listedName == nil {
+				intent.Settle(dir, rec, settledOf(out))
+			}
 			return
 		}
 		// A create the platform took whose operation goes on: the same
@@ -160,7 +208,16 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		r.rememberMade(rec, answer)
 		forgetMadeOf(root, name, args, answer)
 		intent.Close(rec, out)
-		intent.Settle(dir, rec, settledOf(out))
+		// D119 closes an older network receipt only after its exact resource
+		// is observed under its own key. This call settles only itself.
+		if everySendIsAChange[name].listedName != nil {
+			return
+		}
+		// The VM may be gone while its address or port rules still need
+		// cleanup. Only a finished destroy can settle an earlier one.
+		if name != "destroy" || out.Result == history.Deleted || out.Result == history.AlreadyDeleted {
+			intent.Settle(dir, rec, settledOf(out))
+		}
 	}, nil
 }
 
@@ -190,7 +247,8 @@ func projectOfCall(eng *engine.Engine, in intent.Intent, args map[string]any) st
 	if eng != nil {
 		project = eng.Config.ProjectID
 	}
-	if _, _, byID := intentTarget(in); byID {
+	// SNAT delete verifies project membership; routes belong to a project VPC.
+	if _, _, byID := intentTarget(in); byID && in.Tool != "snat_delete" && in.Tool != "vpc_route_create" {
 		project = ""
 	}
 	if p := stringArg(args, "project_id"); p != "" {
@@ -245,6 +303,8 @@ type changeRule struct {
 	// that is taken — the question is asked only while the list does not
 	// show it («Риск», conclusion 179, У1).
 	made bool
+	// listedName returns the same identity from a row of the declared list.
+	listedName func(map[string]any) string
 	// notBilled: what the tool makes has no price of its own — a database
 	// or a user of a cluster, which is billed. The question after a cut
 	// call names a second billed resource only of a billed one: a price
@@ -295,6 +355,14 @@ func paidCreate(tool, parent string, name func(args map[string]any) string) chan
 func unbilledCreate(tool, parent string, name func(args map[string]any) string) changeRule {
 	rule := paidCreate(tool, parent, name)
 	rule.notBilled = true
+	return rule
+}
+
+// networkCreate uses the identity within the parent both at send time and
+// when a later list establishes the outcome.
+func networkCreate(tool, parent string, requestName, listedName func(map[string]any) string) changeRule {
+	rule := unbilledCreate(tool, parent, requestName)
+	rule.listedName = listedName
 	return rule
 }
 
@@ -352,6 +420,10 @@ var everySendIsAChange = map[string]changeRule{
 	"ar_create":        paidCreate("ar_create", "", nameArg),
 	"cert_import":      paidCreate("cert_import", "", nameArg),
 	"pg_backup_create": paidCreate("pg_backup_create", "cluster_id", nameArg),
+	// D107 in 1.10: the list must identify the exact network target.
+	"dns_record_create": {read: "dns_records", made: true, notBilled: true, listedName: listedDNSRecordKey, target: dnsRecordIntent},
+	"snat_create":       {read: "snat_list", made: true, target: snatIntent, listedName: nameArg},
+	"vpc_route_create":  networkCreate("vpc_route_create", "vpc_id", routeDestination, routeDestination),
 	// D112 (the owner's decision of 17.11, #1999): a create whose 2xx
 	// names nothing it made (receipt.ErrUnusable) has an unknown outcome,
 	// and no second create follows it — the same call again asks, as a
@@ -400,6 +472,10 @@ func (r *Registry) named(ctx context.Context, name string, args map[string]any) 
 // it (intentResource). An error is the read of the resolver that failed.
 func (r *Registry) resourceOf(ctx context.Context, name string, args map[string]any) (resource, target string, err error) {
 	if rule := everySendIsAChange[name]; rule.target != nil {
+		// Identity resolution precedes the planner and may itself read the cloud.
+		if rule.listedName != nil && decls[name].Project {
+			ctx = projectContext(ctx, args)
+		}
 		return rule.target(ctx, r, args)
 	}
 	resource, target = intentResource(name, args)
@@ -445,7 +521,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 		// A held record is an operation evo goes on with, not a cut call
 		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
 		// call whose change was seen going on, HoldCut).
-		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil {
+		if in.AwaitingContinuation() || in.Tool != name || (in.Key == nil && everySendIsAChange[name].listedName == nil) {
 			continue
 		}
 		// A call that has not returned is going on, not cut: its record
@@ -463,16 +539,19 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 	project := projectOfCall(eng, intent.Intent{Tool: name, Name: resource, Target: target}, args)
 	var cut []intent.Intent
 	for _, in := range ofTool {
-		if in.ProjectID != project {
-			continue
-		}
-		if in.Name != resource || in.Target != target {
-			// A record written before the target was resolved names the
-			// resource as its call spelled it: it is resolved the same
-			// way. One that cannot be resolved now is not this call's.
-			was, wasTarget, err := r.resourceOf(ctx, name, spelledArgs(in))
-			if err != nil || was != resource || wasTarget != target {
+		if everySendIsAChange[name].listedName != nil {
+			if !networkIntentConflicts(in, project, resource, target, args) {
 				continue
+			}
+		} else {
+			if in.ProjectID != project {
+				continue
+			}
+			if in.Name != resource || in.Target != target {
+				was, wasTarget, err := r.resourceOf(ctx, name, spelledArgs(in))
+				if err != nil || was != resource || wasTarget != target {
+					continue
+				}
 			}
 		}
 		cut = append(cut, in)
@@ -488,7 +567,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 	}
 	var mine []intent.Intent
 	for _, in := range cut {
-		if cur == nil || in.Key.Other(cur) {
+		if cur == nil || in.Key.Other(cur) || (everySendIsAChange[name].listedName != nil && in.Key != nil && in.Key.KeyID != "" && in.Key.KeyID != cur.KeyID) {
 			continue
 		}
 		if inFlight {
@@ -497,7 +576,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 		}
 		// What the cut call made is listed: its outcome is read, the
 		// record closes, and nobody is asked about it.
-		if everySendIsAChange[name].made {
+		if everySendIsAChange[name].made && everySendIsAChange[name].listedName == nil {
 			if _, listed, id := r.checkByList(ctx, in, in.ProjectID); listed {
 				intent.Close(in, settledOutcome(in, id))
 				forgetPending(ctx)
@@ -567,6 +646,39 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 		interrupted
 }
 
+func interruptedWarning(ctx context.Context, name string, args map[string]any, mine []intent.Intent) (string, map[string]any) {
+	message, details := cutCallWarning(name, mine)
+	rule := everySendIsAChange[name]
+	if rule.listedName == nil {
+		return message, details
+	}
+	details["outcome"] = "unknown"
+	last := mine[len(mine)-1]
+	readArgs := map[string]any{}
+	switch name {
+	case "dns_record_create":
+		readArgs["zone_id"] = args["zone_id"]
+		visibility, _, _ := strings.Cut(last.Target, "_")
+		if visibility == "public" || visibility == "private" {
+			readArgs["type"] = visibility
+		}
+	case "vpc_route_create":
+		readArgs["vpc_id"] = args["vpc_id"]
+	}
+	if project := stringArg(args, "project_id"); project != "" {
+		readArgs["project_id"] = project
+	}
+	details["read_args"] = readArgs
+	if isUUID(last.ProjectID) {
+		details["project_id"] = last.ProjectID
+	}
+	message = i18n.Tf("The earlier %s for %s may have been accepted and the resource may not be listed yet. Check %s in the same project. While its outcome is unknown, a second create is blocked even with fresh consent.", "Предыдущий запрос %s для %s мог быть принят, а ресурс ещё не виден в списке. Проверьте %s в том же проекте. Пока исход неизвестен, повторное создание заблокировано даже с новым согласием.", name, quoteCloud(firstNonEmptyStr(last.Name, last.Target)), rule.read)
+	if statelessNetworkHTTP(ctx) {
+		message += " " + i18n.T("Use an initialized session with Mcp-Session-Id for recovery. A session ID alone cannot establish the outcome.", "Для сверки используйте инициализированную сессию с Mcp-Session-Id. Сам ID сессии не устанавливает исход операции.")
+	}
+	return message, details
+}
+
 // askAgainAfterACut answers a consented call of a tool of
 // everySendIsAChange that finds the record of its own cut call: the call
 // is not sent. A client that timed out and sends the same call again,
@@ -590,9 +702,17 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 	if len(mine) == 0 {
 		return "", false
 	}
-	message, interrupted := cutCallWarning(name, mine)
+	message, interrupted := interruptedWarning(ctx, name, args, mine)
 	out := map[string]any{"status": "confirmation_required"}
-	if text, _ := plan(ctx); answerStatus(text) == "confirmation_required" {
+	if everySendIsAChange[name].listedName != nil {
+		ctx = pager.ForReconciliation(ctx)
+	}
+	text, previewErr := plan(ctx)
+	if everySendIsAChange[name].listedName != nil && previewErr && answerStatus(text) != "confirmation_required" {
+		r.settleNetworkConflict(ctx, mine, text)
+		return text, true
+	}
+	if answerStatus(text) == "confirmation_required" {
 		var m map[string]any
 		if json.Unmarshal([]byte(text), &m) == nil {
 			out = m
@@ -602,7 +722,11 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 		}
 	}
 	out["message"], out["interrupted"] = message, interrupted
-	r.closeAsked(ctx, mine)
+	if everySendIsAChange[name].listedName == nil {
+		r.closeAsked(ctx, mine)
+	} else {
+		out["reason"] = clierrors.CodeConfirmationRequired
+	}
 	return toJSON(out), true
 }
 
@@ -653,6 +777,10 @@ func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
 // (interrupted.floating_ip, addressQuestion) records the person's answer
 // on its mark.
 func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any, interrupted any) {
+	if everySendIsAChange[name].listedName != nil {
+		// A terminal answer cannot establish the outcome of a previous write.
+		return
+	}
 	r.addressAnswered(args, interrupted)
 	for _, in := range r.cutCalls(ctx, name, args) {
 		// Answered, not known: the line stays unknown (closeAsked).
@@ -680,12 +808,16 @@ func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args ma
 	if json.Unmarshal([]byte(answer), &m) != nil {
 		return answer
 	}
-	message, interrupted := cutCallWarning(name, mine)
+	message, interrupted := interruptedWarning(ctx, name, args, mine)
 	if was, _ := m["message"].(string); was != "" {
 		message += " " + was
 	}
 	m["message"], m["interrupted"] = message, interrupted
-	r.closeAsked(ctx, mine)
+	if everySendIsAChange[name].listedName != nil {
+		m["reason"] = clierrors.CodeConfirmationRequired
+	} else {
+		r.closeAsked(ctx, mine)
+	}
 	return toJSON(m)
 }
 
@@ -989,7 +1121,14 @@ func (r *Registry) PendingNotes(root string) []string {
 // whether any was left out.
 func (r *Registry) pendingNotes(root string, own []string, call callResource) (notes []string, leftOut bool) {
 	var named []intent.Intent
+	var eng *engine.Engine
+	if intent.HasManualDecisions() && r.newEngine != nil {
+		eng, _ = r.newEngine(nil)
+	}
 	for _, in := range pendingIntents(root) {
+		if eng != nil && manualReviewClosed(root, in, eng) {
+			continue
+		}
 		if slices.Contains(own, in.ID) {
 			leftOut = true
 			continue
@@ -1116,8 +1255,14 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 		return head + i18n.Tf(" — sent with another key (%s): a call with this key does not close the record; run evo doctor with that key",
 			" — отправлено другим ключом (%s): вызов этим ключом запись не закроет; запустите evo doctor с тем ключом", quoteCloud(in.Key.KeyID))
 	}
+	if in.Tool == "destroy" {
+		return head + i18n.T(" — check the deployment and ask the person whether to run destroy again", " — проверьте развёртывание и спросите человека, повторить ли destroy")
+	}
 	// Every call of the tool is one more change: the same call again does
 	// not settle the record, it changes the resource a second time.
+	if rule := everySendIsAChange[in.Tool]; rule.listedName != nil {
+		return head + i18n.Tf(" — check %s in the original project; a second create stays blocked while the outcome is unknown", " — проверьте %s в исходном проекте; пока исход неизвестен, повторное создание заблокировано", quoteCloud(rule.read))
+	}
 	if read := everySendIsAChange[in.Tool].read; read != "" {
 		return head + i18n.Tf(" — %s shows it; the same %s again is one more change, not a repeat: whether to send it is the person's decision",
 			" — его показывает %s; тот же %s ещё раз — это ещё одно изменение, а не повтор: слать ли его — решает человек", quoteCloud(read), tool)
@@ -1126,6 +1271,9 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	// project, which does not tell a deleted resource from one of another
 	// project (R-82): doctor reads it by id and says what to do.
 	if _, k, id, byID := deleteByID(in); byID {
+		if in.Tool == "snat_delete" && in.ProjectID != "" {
+			return head + i18n.T(" — doctor checks the gateway list with the original project and key.", " — doctor проверяет список шлюзов с исходным проектом и ключом.")
+		}
 		if k.card == nil {
 			// No read by id closes it: doctor says the same and no more.
 			return head + i18n.Tf(" — evo has no read by id that tells a deleted %s from one of another project: check %s where it was — the same %s with the same arguments settles the record",
@@ -1162,6 +1310,28 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 	if d, isDelete := deleteOf(in.Tool); !isDelete || d.parent == a.name {
 		return idArg{}, nil, "", false
 	}
+	if in.Tool == "subnet_delete" && a.kind == kindSubnet {
+		// Only the delete receipt uses the subnet card. Ownership and
+		// general history keep their project-list contract.
+		k := *a.kind
+		k.card = func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+			eng, err := c.engine(ctx)
+			if err != nil {
+				return nil, err
+			}
+			m, err := eng.Cloud.GetSubnet(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			owner, _ := m["project"].(map[string]any)
+			project := stringArg(owner, "id")
+			if m["id"] != id || (project != "" && ((in.ProjectID != "" && project != in.ProjectID) || (c.r.projectBound && project != eng.Config.ProjectID))) {
+				return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The subnet response does not match the deletion record.", "Карточка подсети не соответствует записи об удалении."), "")
+			}
+			return m, nil
+		}
+		return a, &k, id, true
+	}
 	return a, a.kind, id, true
 }
 
@@ -1170,8 +1340,45 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 // addressed by id is checked by a read of that id (checkByID), any other
 // by the list of what it names (checkByList).
 func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool, listedID string) {
+	if everySendIsAChange[in.Tool].listedName != nil {
+		cur := eng.Maker()
+		if cur == nil || in.Key == nil || in.Key.KeyID == "" || in.Key.KeyID != cur.KeyID || in.Key.Other(cur) || in.ProjectID == "" || in.ProjectID != eng.Config.ProjectID {
+			return "", false, ""
+		}
+	}
+	if in.Tool == "destroy" {
+		return i18n.T("VM absence alone cannot confirm cleanup of its floating IP and port rules. Check the deployment and ask the person whether to run destroy again to finish cleanup.", "Отсутствие ВМ не подтверждает уборку публичного адреса и портовых правил. Проверьте развёртывание и спросите человека, повторить ли destroy для завершения уборки."), false, ""
+	}
 	if _, k, id, ok := deleteByID(in); ok {
+		if in.Tool == "snat_delete" {
+			cur := eng.Maker()
+			if in.Key == nil || cur == nil || in.Key.Other(cur) || in.ProjectID == "" || in.ProjectID != eng.Config.ProjectID {
+				return "", false, ""
+			}
+			var gw map[string]any
+			err := authorize(ctx, eng)
+			if err == nil {
+				gw, err = readDeleteGateway(ctx, eng, id)
+			}
+			if err != nil {
+				return i18n.Tf("Could not verify gateway %s (%s).", "Не удалось проверить шлюз %s (%s).", quoteCloud(id), clierrors.Reason(err)), false, ""
+			}
+			if gw == nil {
+				return i18n.Tf("Gateway %s is absent from the project list. The original request was not acknowledged. The record is closed.", "Шлюз %s отсутствует в списке проекта. Ответ на исходный запрос не получен. Запись закрыта.", quoteCloud(id)), true, ""
+			}
+			return i18n.Tf("Gateway %s is still listed. Run doctor again.", "Шлюз %s ещё есть в списке. Повторите doctor.", quoteCloud(id)), false, ""
+		}
 		return r.checkByID(ctx, in, k, id, eng.Maker())
+	}
+	// A name in this key's list cannot settle another key's call (R-86).
+	// pendingNote identifies the key needed to check the record.
+	if in.Key.Other(eng.Maker()) {
+		return "", false, ""
+	}
+	if c, create := createdOf(in.Tool); create && c.list != "" && in.Name != "" {
+		if !in.Key.Matches(eng.Maker()) || in.ProjectID == "" || eng.Config.ProjectID == "" {
+			return i18n.T("Cannot verify the owner and project of this record. A matching name cannot establish the outcome; the record is kept.", "Не удалось подтвердить владельца и проект записи. Совпадение имени не устанавливает исход операции. Запись сохранена."), false, ""
+		}
 	}
 	return r.checkByList(ctx, in, eng.Config.ProjectID)
 }
@@ -1182,6 +1389,10 @@ func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engi
 func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind, id string, cur *state.Maker) (found string, settled bool, gone string) {
 	what, tool := quoteCloud(id), quoteCloud(in.Tool)
 	m, isGone, skip, err := r.readByID(ctx, k, id, in.Key, cur)
+	if in.Tool == "subnet_delete" && err != nil {
+		// A gateway's plain-text 404 is not a service observation.
+		isGone = clierrors.Reason(err) == clierrors.CodeNotFound
+	}
 	switch {
 	case skip == readNoCard || skip == readOtherKey:
 		// Never closed here; the record's own words say why (pendingNote).
@@ -1194,6 +1405,9 @@ func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind
 		return i18n.Tf("%s %s is still there (status %s): the delete did not take effect, or is still going — run doctor again, or the same %s",
 			"%s %s ещё есть (статус %s): удаление не прошло или ещё идёт — повторите doctor или тот же %s", k.what, what, quoteCloud(status), tool), false, ""
 	case isGone:
+		if decls[in.Tool].verifiesDeleteByRead {
+			return i18n.Tf("The check by ID found %s %s absent. The original request was not acknowledged. The record is closed.", "При проверке по ID ресурс «%s» %s отсутствовал. Ответ на исходный запрос не получен. Запись закрыта.", k.what, what), true, ""
+		}
 		return i18n.Tf("the read of %s %s by id, with the key that sent the delete, answers that it is not there: the delete took effect; the record is closed",
 			"чтение ресурса «%s» %s по id ключом, который отправил удаление, отвечает, что его нет: удаление прошло; запись закрыта", k.what, what), true, ""
 	}
@@ -1275,16 +1489,34 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	// The list of a part of a parent needs the parent (listArgs): a
 	// create inside it names the parent as its target.
 	parentArg, parentID, _ := strings.Cut(in.Target, "=")
+	visibility := ""
+	wantedName := in.Name
+	if in.Tool == "dns_record_create" {
+		scope, ok := strings.CutSuffix(parentArg, "_zone_id")
+		var recordType string
+		visibility, recordType, _ = strings.Cut(scope, "_")
+		if !ok || (visibility != "public" && visibility != "private") || !slices.Contains(dnsRecordTypes, recordType) {
+			return "", false, ""
+		}
+		parentArg = "zone_id"
+		wantedName = dnsRecordKey(in.Name, recordType)
+	}
 	inParent := isCreate && len(c.listArgs) == 1 && c.listArgs[0] == parentArg && parentID != ""
 	if c.list == "" || c.field == "" || (len(c.listArgs) > 0 && !inParent) || !ok || h == nil || (isCreate && in.Name == "") || (!isCreate && !isDelete) {
 		return "", false, ""
 	}
 	listArgs := map[string]any{}
+	if visibility != "" {
+		listArgs["type"] = visibility
+	}
 	if inParent {
 		listArgs[parentArg] = parentID
 	}
 	if props, _ := t.InputSchema["properties"].(map[string]any); props["project_id"] != nil && in.ProjectID != "" {
 		listArgs["project_id"] = in.ProjectID
+	}
+	if everySendIsAChange[in.Tool].listedName != nil {
+		ctx = pager.ForReconciliation(ctx)
 	}
 	text, isErr := h(ctx, listArgs)
 	var m map[string]any
@@ -1301,7 +1533,13 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 		o, _ := it.(map[string]any)
 		id, _ := o["id"].(string)
 		name, _ := o["name"].(string)
-		if (isCreate && name == in.Name) || (!isCreate && id == targetID) {
+		if listedName := everySendIsAChange[in.Tool].listedName; listedName != nil {
+			name = listedName(o)
+			if statusGone(stringArg(o, "status")) || id == "" || (in.Tool == "snat_create" && in.Target != "availability_zone_id="+stringArg(o, "availability_zone_id")) {
+				continue
+			}
+		}
+		if (isCreate && name == wantedName) || (!isCreate && id == targetID) {
 			matched, listed = true, id
 			break
 		}
@@ -1318,6 +1556,9 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 	case isCreate:
 		return i18n.Tf("%s has no %s yet: the cloud did not make it, or still makes it — run doctor again, or the same %s", "в %s пока нет %s: облако его не создало или ещё создаёт — повторите doctor или тот же %s", c.list, quoteCloud(in.Name), quoteCloud(in.Tool)), false, ""
 	case !matched:
+		if decls[in.Tool].verifiesDeleteByRead {
+			return i18n.Tf("%s no longer lists %s. The original request was not acknowledged. The record is closed.", "В списке %s больше нет %s. Ответ на исходный запрос не получен. Запись закрыта.", c.list, quoteCloud(targetID)), true, ""
+		}
 		return i18n.Tf("%s no longer lists %s: the delete took effect; the record is closed", "%s больше не показывает %s: удаление прошло; запись закрыта", c.list, quoteCloud(targetID)), true, ""
 	}
 	return i18n.Tf("%s still lists %s: the delete did not take effect (yet) — run doctor again, or the same %s", "%s ещё показывает %s: удаление не прошло (или идёт) — повторите doctor или тот же %s", c.list, quoteCloud(targetID), quoteCloud(in.Tool)), false, ""

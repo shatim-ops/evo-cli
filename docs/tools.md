@@ -110,6 +110,7 @@
 |---|---|---|---|---|---|
 | `list_disk_types` | `evo disk types` | нет | — | List available Cloud.ru disk types (UUID + name, e.g. | Типы дисков (UUID и имя, например SSD или HDD) |
 | `disk_list` | `evo disk list` | нет | — | List block-storage disks (id, name, size_gb, state, disk_type, zone, attached VMs). | Диски: id, имя, размер, состояние, тип, зона, к каким ВМ подключены |
+| `disk_get` | `evo disk get` | нет | `disk_id` | Live card of one disk by disk_id, by one read: name, size_gb, state, disk_type, zone, bootable, encrypted, readonly, shared, serial_id as the platform reports … | Диск по ID: размер, состояние, тип, зона, шифрование, только чтение, общий доступ, серийный номер, ВМ |
 | `disk_create` | `evo disk create` | да | `name`, `size_gb` | Create a block-storage disk. | Создать диск (с --attach-to — в зоне ВМ и сразу подключить) |
 | `disk_attach` | `evo disk attach` | да | `disk_id`, `vm` | Attach an existing disk to a VM (POST /disks/{id}/attach). | Подключить диск к ВМ (диск и ВМ должны быть в одной зоне) |
 | `disk_detach` | `evo disk detach` | да | `disk_id`, `vm` | Detach a disk from a VM (POST /disks/{id}/detach). | Отключить диск от ВМ |
@@ -289,6 +290,7 @@
 |---|---|---|---|---|---|
 | `provision` | `evo vm create` | да | — | Provision a bare VM (docker-compose: use 'deploy'). | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
 | `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface with its security groups and subnet. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
+| `vm_history` | `evo vm history` | нет | `vm_id` | Read the platform's Compute Tasks history for one VM UUID in the current project, including after deletion. | История задач Compute по UUID ВМ |
 | `vm_console` | `evo vm console` | нет | `vm_id` или `name` | Where a human opens the console of one VM, by vm_id or name: state, serial_ready and console_available (true only while the VM is running; a condition, not a … | Где человек открывает консоль ВМ и доступна ли она сейчас |
 | `vm_start` | `evo vm start` | да | `vm_id` или `name` | Start a stopped VM (power_on) and wait until it is running. | Запустить остановленную ВМ и дождаться состояния running |
 | `vm_stop` | `evo vm stop` | удаляет | `vm_id` или `name` | Stop a running VM (power_off) and wait until it is stopped: the VM and what runs on it stop answering until vm_start, and unsaved data in memory may be lost. | Остановить работающую ВМ и дождаться состояния stopped |
@@ -310,12 +312,14 @@
 | `list_floating_ips` | `evo vpc fips` | нет | — | List Cloud.ru floating IPs (address, state, whether available to attach, zone when the API names it). | Floating IP: адрес, состояние, свободен ли |
 | `sg_rule_create` | `evo vpc sg-rule-create` | да | `security_group`, `direction`, `protocol`, `ports` | Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). | Добавить правило в группу безопасности |
 | `sg_rule_delete` | `evo vpc sg-rule-delete` | удаляет | `security_group`, `rule_id` | Delete one rule of a Cloud.ru security group by its id (from list_security_groups with rules=true). | Удалить правило группы безопасности по его id |
+| `interface_list` | `evo vpc interfaces` | нет | — | List the project's network interfaces, including unassigned ones, with VM, subnet, IP and security groups. | Сетевые интерфейсы проекта, включая свободные |
+| `interface_get` | `evo vpc interface-get` | нет | `interface_id` | Read a network interface by UUID, including its VM binding, subnet, IP and security groups. | Карточка сетевого интерфейса по UUID |
 | `release_floating_ip` | `evo vpc fip-release` | удаляет | `id` или `ip_address` | Release (delete) a floating IP, freeing it from the project. | Освободить floating IP (адрес, занятый ВМ или SNAT-шлюзом, не освобождается) |
 | `vpc_list` | `evo vpc list` | нет | — | List VPCs in the project (id, name, default, type). | Список VPC проекта |
-| `vpc_get` | `evo vpc get` | нет | `id` | Get full details of one VPC by id (from vpc_list). | VPC по ID: все сведения |
+| `vpc_get` | `evo vpc get` | нет | `id` | Get full details of one VPC by UUID or name (from vpc_list). | VPC по UUID или имени: все сведения |
 | `vpc_create` | `evo vpc create` | да | `name` | Create a VPC (async). | Создать VPC (асинхронно) |
-| `vpc_delete` | `evo vpc delete` | удаляет | `id` | Delete a VPC by id (from vpc_list) (async). | Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы) |
+| `vpc_delete` | `evo vpc delete` | удаляет | `id` | Delete a VPC by UUID or name (from vpc_list) (async). | Удалить VPC (асинхронно; сначала удалите его подсети и ресурсы) |
 | `vpc_operation` | `evo vpc operation` | нет | `operation_id` | Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). | Состояние асинхронной операции VPC |
-| `vpc_routes` | `evo vpc routes` | нет | `vpc_id` | List static routes of a VPC (id, subnet, next_hop_type, status). | Статические маршруты VPC |
-| `vpc_route_create` | `evo vpc route-create` | да | `vpc_id`, `subnet`, `next_hop_vip_id` или `next_hop_vm_id` или `next_hop_magic_router_id` | Add a static route to a VPC (async). | Добавить статический маршрут в VPC (асинхронно) |
-| `vpc_route_delete` | `evo vpc route-delete` | удаляет | `vpc_id`, `route_id` | Delete a static route from a VPC by id (from vpc_routes) (async). | Удалить статический маршрут из VPC (асинхронно) |
+| `vpc_routes` | `evo vpc routes` | нет | `vpc_id` | List static routes of a VPC selected by UUID or name (id, subnet, next_hop_type, status). | Статические маршруты VPC |
+| `vpc_route_create` | `evo vpc route-create` | да | `vpc_id`, `subnet`, `next_hop_vip_id` или `next_hop_vm_id` или `next_hop_magic_router_id` | Add a static route to a VPC selected by UUID or name (async). | Добавить статический маршрут в VPC (асинхронно) |
+| `vpc_route_delete` | `evo vpc route-delete` | удаляет | `vpc_id`, `route_id` | Delete a static route by its UUID (from vpc_routes). | Удалить статический маршрут из VPC (асинхронно) |

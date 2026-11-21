@@ -107,11 +107,15 @@ type ownerFake struct {
 	// diskOn is the VM every disk of the fake is attached to; "" — none
 	// (a detach needs a disk that is attached to reach its preview).
 	diskOn string
+	// diskCard overrides the raw response to a disk GET.
+	diskCard map[string]any
 	// goneStatus is the status of a read of resGone by id; 0 — 404.
-	goneStatus int
+	goneStatus    int
+	clusterStatus string
 	// refuseWrites answers every write with this body and 422; "" — the
 	// write is taken.
 	refuseWrites string
+	forbidDelete bool
 	// flavors serves a flavor of the catalogue (gen-2-4); false — the
 	// catalogue is empty.
 	flavors bool
@@ -177,6 +181,10 @@ func ownerObject(id string) map[string]any {
 }
 
 func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete && f.forbidDelete {
+		http.Error(w, `{"message":"permission denied"}`, http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodGet {
 		if f.refuseWrites != "" {
 			http.Error(w, f.refuseWrites, http.StatusUnprocessableEntity)
@@ -193,6 +201,10 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	// The children of a resource and the catalogue of addons: what a call
 	// on a child reads before its question.
 	switch {
+	case strings.HasPrefix(r.URL.Path, "/api/v1/security-groups/") && strings.HasSuffix(r.URL.Path, "/rules"):
+		// A group's child collection is a page, even when it has no rules.
+		_, _ = w.Write([]byte(`{"items":[],"total":0}`))
+		return
 	case strings.HasSuffix(r.URL.Path, "/databases"):
 		_, _ = w.Write([]byte(`{"databases":[{"name":"` + ownerChild + `"}]}`))
 		return
@@ -212,6 +224,13 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	for id := range projectOf {
 		if strings.Contains(r.URL.Path, id) {
 			o := ownerObject(id)
+			if f.diskCard != nil && r.URL.Path == "/api/v1/disks/"+id {
+				_ = json.NewEncoder(w).Encode(f.diskCard)
+				return
+			}
+			if f.clusterStatus != "" && (r.URL.Host == "postgresql.api.cloud.ru" || r.URL.Host == "redis.api.cloud.ru") {
+				o["status"] = f.clusterStatus
+			}
 			if strings.HasPrefix(r.URL.Path, "/api/v1/backups/") {
 				// A backup is a disk's, created: what a restore reads
 				// before its question.

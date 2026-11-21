@@ -105,6 +105,16 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 		"public_ip":  publicIP,
 		"interfaces": ifaces,
 	}
+	// The flavor of the VM, from the same card, as vm_resize names it
+	// (110-09; «Риск», conclusion 333).
+	if det.Flavor != nil {
+		if strings.TrimSpace(det.Flavor.ID) != "" {
+			out["flavor_id"] = det.Flavor.ID
+		}
+		if strings.TrimSpace(det.Flavor.Name) != "" {
+			out["flavor_name"] = det.Flavor.Name
+		}
+	}
 	// The image the VM was made of: what vm_list selects by (images).
 	if img := vmImage(det); img != nil {
 		out["image"] = img
@@ -128,6 +138,87 @@ func (s *Registry) handleVMGet(ctx context.Context, args map[string]any) (string
 		out["not_checked"] = missing
 	}
 	return toJSON(out), false
+}
+
+func (s *Registry) handleVMHistory(ctx context.Context, args map[string]any) (string, bool) {
+	vm, _ := args["vm_id"].(string)
+	if !isUUID(vm) {
+		return usageT("vm_id must be a VM UUID", "vm_id должен быть UUID ВМ"), true
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	api, ok := eng.Cloud.(provision.VMTaskReader)
+	if !ok {
+		return errResult(clierrors.New(clierrors.CodeConfigInvalid, i18n.T("This Compute client cannot read VM tasks.", "Этот клиент Compute не поддерживает чтение задач ВМ."), "")), true
+	}
+	const pageSize = 100
+	const maxPages = 32
+	rows := make([]map[string]any, 0)
+	seen := make(map[string]bool)
+	total := -1
+	result := func() map[string]any {
+		return map[string]any{"source": "Compute Tasks", "tasks": rows, "count": len(rows), "partial": false}
+	}
+	failed := func(err error) (string, bool) {
+		if len(rows) == 0 {
+			return errResult(err), true
+		}
+		out := result()
+		out["partial"] = true
+		out["status"] = "partial"
+		return errAnswer(err, out), true
+	}
+	for range maxPages {
+		offset := len(rows)
+		p, err := api.VMTasks(ctx, eng.Config.ProjectID, vm, offset, pageSize)
+		if err != nil {
+			return failed(err)
+		}
+		if !validTaskPage(p, offset, pageSize, total) {
+			return failed(clierrors.New(clierrors.CodeAPIError, i18n.T("Inconsistent Compute Tasks pagination.", "Нарушена последовательность страниц задач Compute."), ""))
+		}
+		total = *p.Total
+		for _, t := range p.Items {
+			key := strings.ToLower(t.ID)
+			if !strings.EqualFold(t.EntityID, vm) || t.EntityType != "vm" || !isUUID(key) || seen[key] || t.Created.IsZero() || strings.TrimSpace(t.Name) == "" || strings.TrimSpace(t.Status) == "" {
+				return failed(clierrors.New(clierrors.CodeAPIError, i18n.T("Compute Tasks returned an incomplete, unrelated or repeated task.", "Compute вернул неполную, постороннюю или повторную запись задачи."), ""))
+			}
+			seen[key] = true
+			row := map[string]any{"id": t.ID, "action": t.Name, "state": t.Status, "created_time": t.Created}
+			if t.Modified != nil {
+				row["modified_time"] = t.Modified
+			}
+			rows = append(rows, row)
+		}
+		if len(rows) == total {
+			return toJSON(result()), false
+		}
+	}
+	return failed(clierrors.New(clierrors.CodeAPIError, i18n.T("Compute Tasks page limit reached.", "Достигнут предел числа страниц задач Compute."), ""))
+}
+
+func validTaskPage(p *provision.VMTaskPage, offset, requested, previousTotal int) bool {
+	if p == nil || p.Items == nil || p.Total == nil {
+		return false
+	}
+	total := *p.Total
+	if total < offset || (previousTotal >= 0 && total != previousTotal) {
+		return false
+	}
+	if p.Offset != nil && *p.Offset != offset {
+		return false
+	}
+	limit := requested
+	if p.Limit != nil {
+		limit = *p.Limit
+		if limit < 1 || limit > requested {
+			return false
+		}
+	}
+	n := len(p.Items)
+	return n <= limit && n <= total-offset && (n > 0 || offset == total)
 }
 
 // handleVMConsole answers where a person opens the console of one VM, and
@@ -726,18 +817,18 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 func (s *Registry) waitVM(ctx context.Context, eng *engine.Engine, vm *provision.VMDetail, limit time.Duration,
 	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, reads waitReads, err error) {
 	return waitState(ctx, eng, limit,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			d, err := eng.Cloud.GetVMDetail(ctx, vm.ID)
 			var ce *clierrors.CLIError
 			switch {
 			case errors.As(err, &ce) && ce.Code == clierrors.CodeVMNotFound:
 				// The VM was deleted while the call waited: not found, not
 				// «still starting» (П6; audit of the reference, Н2).
-				return "", false, err
+				return "", waitReadFailed, err
 			case err != nil:
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
-			return d.State, true, nil
+			return d.State, waitObserved, nil
 		},
 		func(st string) string {
 			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), vm.ID, st)
@@ -1221,17 +1312,17 @@ func (s *Registry) waitVMDetail(ctx context.Context, eng *engine.Engine, vm *pro
 	last = vm
 	cur := vm
 	_, timedOut, atLimit, reads, err = waitState(ctx, eng, limit,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			d, err := eng.Cloud.GetVMDetail(ctx, vm.ID)
 			var ce *clierrors.CLIError
 			switch {
 			case errors.As(err, &ce) && ce.Code == clierrors.CodeVMNotFound:
-				return "", false, err
+				return "", waitReadFailed, err
 			case err != nil:
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			cur = d
-			return d.State, true, nil
+			return d.State, waitObserved, nil
 		},
 		func(st string) string {
 			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), vm.ID, st)

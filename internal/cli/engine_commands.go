@@ -273,7 +273,7 @@ compose file changed (with --force, even if it did not).`, `Развернуть
 	cmd.Flags().StringVarP(&composeFile, "compose-file", "f", "", i18n.T("Path to docker-compose file (default: docker-compose.yml)",
 		"Путь к compose-файлу (по умолчанию docker-compose.yml)"))
 	cmd.Flags().StringVar(&flavor, "flavor", "", i18n.T("VM flavor (default: auto)", "Flavor ВМ (по умолчанию auto — подбор по сервисам)"))
-	cmd.Flags().StringVar(&region, "region", "", i18n.T("Availability zone: a name such as ru.AZ-2 or its UUID (evo vm zones)", "Зона доступности: имя (например, ru.AZ-2) или UUID (evo vm zones)"))
+	cmd.Flags().StringVar(&region, "region", "", i18n.T("Alias for --az until v2.0. Availability zone: a name such as ru.AZ-2 or its UUID (evo vm zones)", "Синоним --az до v2.0. Зона доступности: имя (например, ru.AZ-2) или UUID (evo vm zones)"))
 	cmd.Flags().StringVar(&projectID, "project-id", "", i18n.T("Cloud.ru project UUID", "UUID проекта Cloud.ru"))
 	noEmptyScope(cmd.Flags())
 	cmd.Flags().StringVar(&imageID, "image-id", "", i18n.T("Boot image UUID", "UUID загрузочного образа"))

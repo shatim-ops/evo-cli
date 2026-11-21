@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +22,39 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
+
+// Doctor reads the key and its projects through separate HTTP clients.
+// Compute still uses the fixture that records the interrupted delete.
+func interruptedDeleteRegistry(t *testing.T, compute http.RoundTripper) (*Registry, string) {
+	t.Helper()
+	stubDoctorIdentity(t)
+	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: compute}, "")
+	return fastRegistry(t, cloud, provisionCfg)
+}
+
+func stubDoctorIdentity(t *testing.T) {
+	t.Helper()
+	// staticToken names service account x. Doctor lists its keys and asks
+	// for its roles only in the project of this fixture.
+	filter := strings.ReplaceAll(url.QueryEscape("resource_id="+provisionCfg.ProjectID+" AND subject_id=x"), "+", "%20")
+	reads := map[string]bool{
+		"https://organization.api.cloud.ru/v3/projects":                true,
+		"https://iam.api.cloud.ru/api/v3/permissions?filter=" + filter: true,
+		"https://iam.api.cloud.ru/api/v2/serviceAccounts/x/accessKeys": true,
+	}
+	old := httpretry.DefaultBase
+	t.Cleanup(func() { httpretry.DefaultBase = old })
+	httpretry.DefaultBase = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		// doctorOnFake points both reachability probes at one local server.
+		localProbe := req.URL.Scheme == "http" && req.URL.String() == ComputeBaseURL+"/"
+		if req.Method != http.MethodGet || !(localProbe || reads[req.URL.String()]) {
+			t.Errorf("unexpected doctor request: %s %s", req.Method, req.URL)
+		}
+		rec := httptest.NewRecorder()
+		http.NotFound(rec, req)
+		return rec.Result(), nil
+	})
+}
 
 // lostDeleteWorld is a cloud that has the resource named liveID or
 // liveName (liveWorld) until the first write: the write is taken — from
@@ -83,15 +117,7 @@ var lostDeleteUnreached = map[string]string{
 // «already deleted»: the call that removed the resource answers that it
 // did not exist («deleted earlier, or the id is wrong») though it read it
 // alive before the question. The list only shrinks. Closes by 1.10.
-var lostDeleteSaysNeverExisted = map[string]string{
-	"backup_delete":       "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
-	"destroy":             "the compute client repeats the DELETE; the answer is «VM already deleted (not found in the cloud)»",
-	"disk_delete":         "the compute client repeats the DELETE; existed false, «deleted earlier, or the disk_id is wrong»",
-	"image_delete":        "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
-	"release_floating_ip": "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
-	"snat_delete":         "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
-	"subnet_delete":       "the compute client repeats the DELETE; the 404 to the repeat is answered as already_deleted",
-}
+var lostDeleteSaysNeverExisted = map[string]string{}
 
 // Release plan 1.9, «Находки промежуточного дельта-аудита», class 1, for
 // the deletes: the request is taken and its answer is lost. For every

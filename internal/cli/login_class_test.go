@@ -30,6 +30,7 @@ var loginFlagChecks = map[string]loginFlagCheck{
 	"profile":    {bad: [][]string{{"--profile", "../x"}, {"--profile", "a/b"}, {"--profile", "a b"}}},
 	"dry-run":    {bad: [][]string{{"--dry-run"}}},
 	"project-id": {bad: [][]string{{"--project-id", "not-a-uuid"}}},
+	"az":         {bad: [][]string{{"--az", "ru.AZ-1"}, {"--az", "a\nb"}, {"--az", " "}, {"--az", "ru.AZ-1", "--region", "ru.AZ-1"}}},
 	"region":     {bad: [][]string{{"--region", "a\nb"}}},
 
 	"no-browser": {none: "a switch: the link is printed instead of opening the browser"},

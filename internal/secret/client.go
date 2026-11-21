@@ -25,6 +25,8 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/receipt"
+
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://secretmanager.api.cloud.ru"
@@ -126,9 +128,9 @@ func (c *Client) List(ctx context.Context) ([]map[string]any, error) {
 		return nil, apiError(status, data)
 	}
 	var out struct {
-		Secrets []map[string]any `json:"secrets"`
+		Secrets pager.Rows[map[string]any] `json:"secrets"`
 	}
-	if err := json.Unmarshal(data, &out); err != nil {
+	if err := pager.DecodePage(data, &out); err != nil {
 		return nil, fmt.Errorf(i18n.T("parse secrets: %w", "разбор секретов: %w"), err)
 	}
 	return out.Secrets, nil
