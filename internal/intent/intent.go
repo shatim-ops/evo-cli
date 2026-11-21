@@ -204,6 +204,12 @@ func (in Intent) InFlight() bool {
 	return processAlive(in.PID)
 }
 
+// AwaitingContinuation reports an operation that is known to be going on.
+// A cut send during that operation has an unknown outcome of its own.
+func (in Intent) AwaitingContinuation() bool {
+	return in.Held && in.CutSend.IsZero()
+}
+
 // openHere are the ids of the records this process opened (Open) whose
 // call has not ended them (End, Hold, Close).
 var openHere = struct {

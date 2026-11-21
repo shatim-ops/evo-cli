@@ -495,7 +495,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 		// A held record is an operation evo goes on with, not a cut call
 		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
 		// call whose change was seen going on, HoldCut).
-		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil {
+		if in.AwaitingContinuation() || in.Tool != name || in.Key == nil {
 			continue
 		}
 		// A call that has not returned is going on, not cut: its record
