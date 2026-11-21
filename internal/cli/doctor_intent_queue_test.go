@@ -75,7 +75,7 @@ func TestContract_DoctorUnknownIntentQueue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	settling := open(intent.Intent{Tool: "redis_create", Name: "known", Key: eng.Maker(), Ended: true})
+	settling := open(intent.Intent{Tool: "redis_create", Name: "known", ProjectID: eng.Config.ProjectID, Key: eng.Maker(), Ended: true})
 	closed := open(intent.Intent{Tool: "vm_reboot"})
 	intent.Close(closed, history.Outcome{Result: history.Found})
 	for i := 0; i < 16; i++ {
