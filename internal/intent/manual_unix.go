@@ -53,3 +53,6 @@ func (s *manualSource) matchesFile(f *os.File) (bool, error) {
 	}
 	return os.SameFile(a, b), nil
 }
+
+func (s *manualSource) prepareTerminal() (string, error) { return "", nil }
+func (s *manualSource) linkDecision(path string) error   { return os.Link(s.Name(), path) }

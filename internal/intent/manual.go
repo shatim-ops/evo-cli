@@ -31,7 +31,11 @@ type ManualSnapshot struct {
 	audit   string
 }
 
-func (s *ManualSnapshot) Close() { s.source.Close() }
+func (s *ManualSnapshot) Close() error { return s.source.Close() }
+
+// PrepareTerminal is called after eligibility checks and before showing the receipt.
+// On Windows the returned pathname identifies the temporary hard link for this attempt.
+func (s *ManualSnapshot) PrepareTerminal() (string, error) { return s.source.prepareTerminal() }
 
 func manualError(en, ru string) error { return errors.New(i18n.T(en, ru)) }
 
@@ -248,7 +252,7 @@ func (s *ManualSnapshot) Apply(recheck func() (*ManualSnapshot, error)) error {
 	}
 	defer os.RemoveAll(stage)
 	anchor := filepath.Join(stage, "receipt")
-	if err := os.Link(s.source.Name(), anchor); err != nil {
+	if err := s.source.linkDecision(anchor); err != nil {
 		return fmt.Errorf("%s: %w", i18n.T("cannot anchor this receipt in the local configuration directory", "не удалось закрепить эту квитанцию в локальном каталоге настроек"), err)
 	}
 	a, err := openManualReceipt(anchor)
