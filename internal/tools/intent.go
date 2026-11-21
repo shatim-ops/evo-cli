@@ -509,7 +509,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 		// A held record is an operation evo goes on with, not a cut call
 		// — unless a send of it was cut (CutSend: cutSendOf, or a cut
 		// call whose change was seen going on, HoldCut).
-		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || in.Key == nil {
+		if (in.Held && in.CutSend.IsZero()) || in.Tool != name || (in.Key == nil && everySendIsAChange[name].listedName == nil) {
 			continue
 		}
 		// A call that has not returned is going on, not cut: its record
@@ -555,7 +555,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 	}
 	var mine []intent.Intent
 	for _, in := range cut {
-		if cur == nil || in.Key.Other(cur) {
+		if cur == nil || in.Key.Other(cur) || (everySendIsAChange[name].listedName != nil && in.Key != nil && in.Key.KeyID != "" && in.Key.KeyID != cur.KeyID) {
 			continue
 		}
 		if inFlight {
@@ -564,7 +564,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 		}
 		// What the cut call made is listed: its outcome is read, the
 		// record closes, and nobody is asked about it.
-		if everySendIsAChange[name].made {
+		if everySendIsAChange[name].made && everySendIsAChange[name].listedName == nil {
 			if _, listed, id := r.checkByList(ctx, in, in.ProjectID); listed {
 				intent.Close(in, settledOutcome(in, id))
 				forgetPending(ctx)
@@ -634,6 +634,21 @@ func cutCallWarning(name string, mine []intent.Intent) (message string, interrup
 		interrupted
 }
 
+func interruptedWarning(ctx context.Context, name string, mine []intent.Intent) (string, map[string]any) {
+	message, details := cutCallWarning(name, mine)
+	rule := everySendIsAChange[name]
+	if rule.listedName == nil {
+		return message, details
+	}
+	details["outcome"] = "unknown"
+	last := mine[len(mine)-1]
+	message = i18n.Tf("The earlier %s for %s may have been accepted and the resource may not be listed yet. Check %s in the same project. While its outcome is unknown, a second create is blocked even with fresh consent.", "Предыдущий запрос %s для %s мог быть принят, а ресурс ещё не виден в списке. Проверьте %s в том же проекте. Пока исход неизвестен, повторное создание заблокировано даже с новым согласием.", name, quoteCloud(firstNonEmptyStr(last.Name, last.Target)), rule.read)
+	if statelessNetworkHTTP(ctx) {
+		message += " " + i18n.T("Use an initialized session with Mcp-Session-Id for recovery. A session ID alone cannot establish the outcome.", "Для сверки используйте инициализированную сессию с Mcp-Session-Id. Сам ID сессии не устанавливает исход операции.")
+	}
+	return message, details
+}
+
 // askAgainAfterACut answers a consented call of a tool of
 // everySendIsAChange that finds the record of its own cut call: the call
 // is not sent. A client that timed out and sends the same call again,
@@ -657,14 +672,11 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 	if len(mine) == 0 {
 		return "", false
 	}
-	message, interrupted := cutCallWarning(name, mine)
-	if everySendIsAChange[name].listedName != nil && statelessNetworkHTTP(ctx) {
-		message = statelessNetworkWarning(name, mine)
-	}
+	message, interrupted := interruptedWarning(ctx, name, mine)
 	out := map[string]any{"status": "confirmation_required"}
 	text, previewErr := plan(ctx)
 	if everySendIsAChange[name].listedName != nil && previewErr && answerStatus(text) != "confirmation_required" {
-		// A failed read or an occupied target does not spend the question.
+		r.settleNetworkConflict(ctx, mine, text)
 		return text, true
 	}
 	if answerStatus(text) == "confirmation_required" {
@@ -677,14 +689,11 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 		}
 	}
 	out["message"], out["interrupted"] = message, interrupted
-	if everySendIsAChange[name].listedName != nil {
-		if !r.networkQuestion(ctx, name, args, mine, true) {
-			return toJSON(out), true
-		}
-		ctx.Value(callRecordsKey{}).(*callRecords).networkReplaces = mine
-		return "", false
+	if everySendIsAChange[name].listedName == nil {
+		r.closeAsked(ctx, mine)
+	} else {
+		out["reason"] = clierrors.CodeConfirmationRequired
 	}
-	r.closeAsked(ctx, mine)
 	return toJSON(out), true
 }
 
@@ -736,11 +745,7 @@ func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
 // on its mark.
 func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any, interrupted any) {
 	if everySendIsAChange[name].listedName != nil {
-		// A declined terminal prompt ends this invocation. Only its own
-		// following confirmed call may use the answer under the write lock.
-		if c := callerOf(ctx); c != nil {
-			c.networkAnswered = true
-		}
+		// A terminal answer cannot establish the outcome of a previous write.
 		return
 	}
 	r.addressAnswered(args, interrupted)
@@ -770,16 +775,13 @@ func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args ma
 	if json.Unmarshal([]byte(answer), &m) != nil {
 		return answer
 	}
-	message, interrupted := cutCallWarning(name, mine)
-	if everySendIsAChange[name].listedName != nil && statelessNetworkHTTP(ctx) {
-		message = statelessNetworkWarning(name, mine)
-	}
+	message, interrupted := interruptedWarning(ctx, name, mine)
 	if was, _ := m["message"].(string); was != "" {
 		message += " " + was
 	}
 	m["message"], m["interrupted"] = message, interrupted
 	if everySendIsAChange[name].listedName != nil {
-		r.networkQuestion(ctx, name, args, mine, false)
+		m["reason"] = clierrors.CodeConfirmationRequired
 	} else {
 		r.closeAsked(ctx, mine)
 	}
@@ -1295,6 +1297,12 @@ func deleteByID(in intent.Intent) (a idArg, k *ownerKind, id string, ok bool) {
 // addressed by id is checked by a read of that id (checkByID), any other
 // by the list of what it names (checkByList).
 func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engine.Engine) (found string, settled bool, listedID string) {
+	if everySendIsAChange[in.Tool].listedName != nil {
+		cur := eng.Maker()
+		if cur == nil || in.Key == nil || in.Key.KeyID == "" || in.Key.KeyID != cur.KeyID || in.Key.Other(cur) || in.ProjectID == "" || in.ProjectID != eng.Config.ProjectID {
+			return "", false, ""
+		}
+	}
 	if in.Tool == "destroy" {
 		return i18n.T("VM absence alone cannot confirm cleanup of its floating IP and port rules. Check the deployment and ask the person whether to run destroy again to finish cleanup.", "Отсутствие ВМ не подтверждает уборку публичного адреса и портовых правил. Проверьте развёртывание и спросите человека, повторить ли destroy для завершения уборки."), false, ""
 	}

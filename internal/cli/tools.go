@@ -775,6 +775,9 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 			}
 		}
 		ask := opts
+		if interrupted, _ := resp["interrupted"].(map[string]any); interrupted["outcome"] == "unknown" && !flagDryRun {
+			return text, toolError(text, hints)
+		}
 		if interrupted, cut := resp["interrupted"]; cut {
 			// The question names a call of this tool that was cut with
 			// its outcome unknown: a call now is one more change, and

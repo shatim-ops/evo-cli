@@ -30,7 +30,6 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
-	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
@@ -121,11 +120,6 @@ type Registry struct {
 	// them on stderr.
 	// stateDirOf: SetStateDir.
 	stateDirOf string
-
-	// Keep the last interrupted question per network tool in this client.
-	// A different process reading the shared intent cannot spend it.
-	networkQuestionMu sync.Mutex
-	networkQuestions  map[string]string
 
 	pendingMu    sync.Mutex
 	pendingNoted bool
@@ -252,8 +246,6 @@ type callRecords struct {
 	hasOpen bool
 	// ID of the open receipt whose delete was proved unsent.
 	deleteUnsentID string
-	// Interrupted receipts superseded when the approved replacement is marked sent.
-	networkReplaces []intent.Intent
 
 	// resolved is what the call has resolved of the cloud by a read that
 	// more than one of its layers needs (onceACall).
@@ -360,9 +352,6 @@ func markSent(ctx context.Context, parties func() []string) (marked bool, err er
 		return false, err
 	}
 	c.open.Sent = true
-	for _, previous := range c.networkReplaces {
-		intent.Close(previous, history.Outcome{Result: history.Unknown})
-	}
 	return true, nil
 }
 

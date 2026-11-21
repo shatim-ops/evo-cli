@@ -97,8 +97,12 @@ func TestPaidCreate_TheRepeatAfterALostAnswerAsks(t *testing.T) {
 			// The person was asked (MCP): the next consent to precisely
 			// the preview they saw is sent.
 			r.handlers[c.tool](context.Background(), maps.Clone(other))
-			if creates(api) != sent+1 {
-				t.Errorf("the consented call after the question: create requests %d, want %d", creates(api), sent+1)
+			want := sent + 1
+			if everySendIsAChange[c.tool].listedName != nil {
+				want = sent
+			}
+			if creates(api) != want {
+				t.Errorf("the consented call after the question: create requests %d, want %d", creates(api), want)
 			}
 		})
 	}

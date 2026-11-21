@@ -162,7 +162,7 @@ func TestNetworkRepeat_FailedReadKeepsCut(t *testing.T) {
 	}
 }
 
-func TestNetworkRepeat_QuestionStaysWithItsClient(t *testing.T) {
+func TestNetworkRepeat_UnknownOutcomeBlocksEveryClient(t *testing.T) {
 	for _, c := range faultMatrixCases {
 		if c.tool != "dns_record_create" && c.tool != "vpc_route_create" && c.tool != "snat_create" {
 			continue
@@ -191,14 +191,14 @@ func TestNetworkRepeat_QuestionStaysWithItsClient(t *testing.T) {
 			// In the asking client the agent sends the existing confirmed=true
 			// response after obtaining the person's approval in the conversation.
 			other.handlers[c.tool](context.Background(), maps.Clone(c.args))
-			if creates(api) != 2 {
-				t.Fatalf("approved second create: posts=%d", creates(api))
+			if creates(api) != 1 || len(intent.Pending(dir)) != 1 {
+				t.Fatalf("unknown outcome after fresh consent: posts=%d", creates(api))
 			}
 		})
 	}
 }
 
-func TestNetworkRepeat_TerminalAnswerBelongsToTheInvocation(t *testing.T) {
+func TestNetworkRepeat_TerminalAnswerCannotSettleAnUnknownOutcome(t *testing.T) {
 	for _, c := range faultMatrixCases {
 		if everySendIsAChange[c.tool].listedName == nil {
 			continue
@@ -214,8 +214,7 @@ func TestNetworkRepeat_TerminalAnswerBelongsToTheInvocation(t *testing.T) {
 				t.Fatal(text)
 			}
 			r.CutCallAnswered(command, c.tool, c.args, nil)
-			// Even after the terminal answer the old intent stays durable until
-			// this invocation actually sends. A declined prompt simply exits.
+			// Neither a terminal answer nor a change of transport proves the outcome.
 			for _, other := range []context.Context{WithCaller(context.Background(), &Caller{}), WithNetworkSession(context.Background(), ""), WithNetworkSession(context.Background(), "")} {
 				text, _ = r.handlers[c.tool](other, maps.Clone(c.args))
 				if creates(api) != 1 || len(intent.Pending(dir)) != 1 || answerStatus(text) != "confirmation_required" {
@@ -226,7 +225,7 @@ func TestNetworkRepeat_TerminalAnswerBelongsToTheInvocation(t *testing.T) {
 				}
 			}
 			r.handlers[c.tool](command, maps.Clone(c.args))
-			if creates(api) != 2 {
+			if creates(api) != 1 || len(intent.Pending(dir)) != 1 {
 				t.Fatalf("terminal approval: POSTs=%d", creates(api))
 			}
 		})
