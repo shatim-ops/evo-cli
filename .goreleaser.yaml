@@ -57,18 +57,24 @@ archives:
       - LICENSE*
       - NOTICE*
       - README.md
+      - SECURITY.md
       # CHANGELOG — с разделом «Миграция» версии; на него ссылается guide.md.
       - CHANGELOG.md
       # README ссылается на docs/*.md — в распакованном архиве они должны
       # быть рядом (и те, на которые ссылаются они сами: rename.md).
       # Документы процесса разработки — нет.
+      - docs/agent-setup.md
       - docs/agent-skill.md
       - docs/auth.md
       - docs/commands.md
       - docs/exit-codes.md
       - docs/guide.md
       - docs/install.md
+      - docs/journal.md
       - docs/mcp.md
+      - docs/release-notes/v1.9.0.md
+      - docs/release-notes/v1.9.1.md
+      - docs/release-notes/v1.10.0.md
       - docs/rename.md
       - docs/tools.md
       - docs/troubleshooting.md
