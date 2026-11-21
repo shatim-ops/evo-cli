@@ -42,6 +42,7 @@ func (f *ownerFake) serveUpgradeCard(w http.ResponseWriter, r *http.Request) boo
 
 func upgradeStatePreview(t *testing.T, tool, status string) string {
 	t.Helper()
+	t.Setenv("CLOUDRU_CONFIG_DIR", t.TempDir())
 	f := &ownerFake{upgradeTool: tool, upgradeStatus: status}
 	r := ownerRegistry(t, f, false, ownProject)
 	arg := "cluster_id"

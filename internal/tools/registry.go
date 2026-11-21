@@ -20,6 +20,7 @@ package tools
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"math"
@@ -120,6 +121,8 @@ type Registry struct {
 	// them on stderr.
 	// stateDirOf: SetStateDir.
 	stateDirOf string
+	// Session identity for stdio upgrade previews; HTTP supplies its validated session.
+	upgradeClient string
 
 	pendingMu    sync.Mutex
 	pendingNoted bool
@@ -379,7 +382,7 @@ func (r *Registry) budgeted(name string, next Handler) Handler {
 // New builds the registry. factory is called by handlers that need an
 // engine (credentials, project, region).
 func New(factory EngineFactory) *Registry {
-	r := &Registry{newEngine: factory}
+	r := &Registry{newEngine: factory, upgradeClient: rand.Text()}
 	r.registerTools()
 	for i := range r.tools {
 		t := &r.tools[i]

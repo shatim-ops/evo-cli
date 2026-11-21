@@ -191,6 +191,9 @@ func TestGate_IntentBeforeTheCloudGoneAfter(t *testing.T) {
 				a := copyArgs(args)
 				a["confirmed"] = true
 				tl, _ := newRegistry().Lookup(c.tool.Name)
+				if c.tool.Name == "k8s_upgrade" || c.tool.Name == "k8s_nodepool_upgrade" {
+					tl.Handler(context.Background(), args)
+				}
 				tl.Handler(context.Background(), a)
 			}
 			done()

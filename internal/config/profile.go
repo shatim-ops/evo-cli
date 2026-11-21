@@ -622,6 +622,16 @@ func WriteFilePrivate(path string, data []byte) error {
 // current user, SYSTEM and Administrators only, without inheritance; a
 // wider perm keeps the inherited ACL.
 func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
+	return writeFileAtomic(path, data, perm, false)
+}
+
+// WriteDurableReceipt flushes a private decision file before publishing it.
+// dir and its parent may have just been created for the operation.
+func WriteDurableReceipt(path string, data []byte) error {
+	return writeFileAtomic(path, data, 0600, true)
+}
+
+func writeFileAtomic(path string, data []byte, perm fs.FileMode, durable bool) error {
 	dir := filepath.Dir(path)
 	if err := MkdirPrivate(dir); err != nil {
 		return fmt.Errorf(i18n.T("create %s: %w", "создание %s: %w"), dir, err)
@@ -644,8 +654,17 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 		tmp.Close()
 		return fmt.Errorf(i18n.T("write %s: %w", "запись %s: %w"), path, err)
 	}
+	if durable {
+		if err := tmp.Sync(); err != nil {
+			tmp.Close()
+			return err
+		}
+	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf(i18n.T("write %s: %w", "запись %s: %w"), path, err)
+	}
+	if durable {
+		return publishDurableReceipt(tmpName, path)
 	}
 	if err := renameAtomic(tmpName, path); err != nil {
 		return fmt.Errorf(i18n.T("write %s: %w", "запись %s: %w"), path, err)

@@ -12,8 +12,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -25,6 +28,7 @@ const (
 )
 
 type upgradeResource struct {
+	stdio                                           func(map[string]any) roAnswer
 	kind, tool, verb, argument, id, path, operation string
 	version, state, desired, phase                  string
 	available                                       []string
@@ -53,7 +57,10 @@ func (r *upgradeResource) card() map[string]any {
 func (r *upgradeResource) call(t *testing.T, surface, version string, confirm bool) (string, bool) {
 	t.Helper()
 	if surface == "stdio" {
-		result := callStdioTool(t, r.tool, map[string]any{r.argument: r.id, "version": version, "confirmed": confirm})
+		if r.stdio == nil {
+			r.stdio = processUpgradeStdio(t, newROServers(t).plain)
+		}
+		result := r.stdio(map[string]any{"name": r.tool, "arguments": map[string]any{r.argument: r.id, "version": version, "confirmed": confirm}})
 		return result.text, result.isErr
 	}
 	newProcess()
@@ -153,6 +160,9 @@ func TestUpgradeSeparateConsentAndObservedVersion(t *testing.T) {
 						t.Fatal("unavailable version accepted")
 					}
 					return
+				}
+				if surface == "stdio" {
+					checkPreview(&cluster)
 				}
 				text, failed := cluster.call(t, surface, upgradeTo, true)
 				if scenario == "lost response" {
@@ -372,5 +382,68 @@ func TestUpgradeRejectsUnverifiedEvidence(t *testing.T) {
 				t.Fatalf("unverified result: %s; POST=%d", second, posts)
 			}
 		})
+	}
+}
+
+func TestUpgradeHTTPAndSecondClientDoNotReplay(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	old := w.rt.extra
+	var posts atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var unblock sync.Once
+	resume := func() { unblock.Do(func() { close(release) }) }
+	defer resume()
+	w.rt.extra = func(req *http.Request) (*http.Response, error) {
+		if req.Method == http.MethodPost && req.URL.Path == "/v3/clusters/"+upgradeParityCluster+":upgrade" {
+			if posts.Add(1) == 1 {
+				close(started)
+				select {
+				case <-release:
+				case <-req.Context().Done():
+					return nil, req.Context().Err()
+				}
+			}
+			return nil, io.ErrUnexpectedEOF
+		}
+		return old(req)
+	}
+	first := mcp.NewHTTPHandler(newROServers(t).plain, mcp.HTTPOptions{})
+	second := mcp.NewHTTPHandler(newROServers(t).plain, mcp.HTTPOptions{})
+	t.Cleanup(first.Close)
+	t.Cleanup(second.Close)
+	open := func(h http.Handler) string {
+		_, session := retryRPC(t, h, "", "initialize", map[string]any{"protocolVersion": "2025-03-26"})
+		if session == "" {
+			t.Fatal("missing session")
+		}
+		return session
+	}
+	a, b := open(first), open(second)
+	params := func(confirmed bool) map[string]any {
+		return map[string]any{"name": "k8s_upgrade", "arguments": map[string]any{"cluster_id": upgradeParityCluster, "version": upgradeTo, "confirmed": confirmed}}
+	}
+	preview, _ := retryRPC(t, first, a, "tools/call", params(false))
+	if parseObject(preview.text)["status"] != "confirmation_required" || posts.Load() != 0 {
+		t.Fatalf("preview: %s", preview.text)
+	}
+	result := make(chan roAnswer, 1)
+	go func() { ans, _ := retryRPC(t, first, a, "tools/call", params(true)); result <- ans }()
+	select {
+	case <-started:
+	case got := <-result:
+		t.Fatalf("no upgrade request: %s", got.text)
+	case <-t.Context().Done():
+		t.Fatal("first call did not reach its request")
+	}
+	other, _ := retryRPC(t, second, b, "tools/call", params(true))
+	resume()
+	got := <-result
+	if !other.isErr || !got.isErr || posts.Load() != 1 {
+		t.Fatalf("POST=%d first=%s second=%s", posts.Load(), got.text, other.text)
+	}
+	again, _ := retryRPC(t, second, b, "tools/call", params(true))
+	if !again.isErr || posts.Load() != 1 || saysUpgradeComplete(again.text) {
+		t.Fatalf("ambiguous POST repeated: %d %s", posts.Load(), again.text)
 	}
 }

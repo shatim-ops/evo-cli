@@ -562,6 +562,7 @@ func withParityWorld(t *testing.T) parityWorld {
 		if err != nil {
 			return nil, err
 		}
+		e.Config.ServiceAccountID = "parity-test-actor"
 		e.Auth, e.Cloud = previewToken{}, parityCloud{previewCloud{CloudAPI: compute}}
 		// No host is reached: SSH and the health checks of deploy are fakes,
 		// as the cloud is (TestParityWorlds_NoProductionWaits).

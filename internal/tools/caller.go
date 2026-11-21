@@ -42,6 +42,12 @@ import (
 // another one (callTool: the steps of a stack) calls it without one: the
 // person ran the outer tool, not its steps.
 type Caller struct {
+	// AutomaticPreview is the initial CLI planning pass before an explicit --yes.
+	// It cannot replace the terms previously displayed to the operator.
+	AutomaticPreview bool
+	// RequireNewApproval stops --yes when the terms of a visible preview changed.
+	RequireNewApproval bool
+	upgradePreview     *upgradeReceipt
 	// Printer receives the engine's output; nil keeps it in the answer.
 	Printer *output.Printer
 	// Progress shows the stages of a long call to the person while it

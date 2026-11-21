@@ -352,11 +352,15 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 	forgetRun(w)
 
 	args, done = prepare()
-	args["confirmed"] = true
 	reset()
 	newProcess()
 	flagJSON, flagDryRun, flagYes = false, false, false
 	tl, _ := newRegistry().Lookup(c.tool.Name)
+	if c.tool.Name == "k8s_upgrade" || c.tool.Name == "k8s_nodepool_upgrade" {
+		// MCP binds approval to a visible preview in the same session.
+		tl.Handler(context.Background(), args)
+	}
+	args["confirmed"] = true
 	r.text, r.isErr = tl.Handler(context.Background(), args)
 	r.toolWrites = takeWrites()
 	done()

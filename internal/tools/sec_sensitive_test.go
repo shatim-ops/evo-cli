@@ -78,7 +78,7 @@ func TestSecretValue_ConfirmedReturnsValue(t *testing.T) {
 func TestUntrustedOutputNote(t *testing.T) {
 	// history: the journal of changes is a file on the machine, which
 	// anyone with a terminal writes (D43, the ТЗ, §0, 6, У5).
-	want := map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_apply": true, "k8s_helm": true, "deploy": true, "history": true}
+	want := map[string]bool{"logs": true, "ca_logs": true, "s3_get": true, "k8s_kubectl": true, "k8s_apply": true, "k8s_helm": true, "k8s_upgrade": true, "k8s_nodepool_upgrade": true, "deploy": true, "history": true}
 	for _, tl := range New(nil).Tools() {
 		if tl.UntrustedOutput != want[tl.Name] {
 			t.Errorf("%s: UntrustedOutput=%v, want %v", tl.Name, tl.UntrustedOutput, want[tl.Name])

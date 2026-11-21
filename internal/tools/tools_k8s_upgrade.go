@@ -24,17 +24,32 @@ import (
 )
 
 type upgradeReceipt struct {
-	Project, Subject, Tool, Resource, Parent, From, Target, Operation string
+	Project, Subject, Tool, Resource, Parent, From, Target, Operation, Topology string
 }
 
 type upgradeCard struct {
-	version, status, parent, phase string
-	available                      []string
-	busy                           bool
+	version, status, parent, parentName, phase, topology string
+	available                                            []string
+	busy                                                 bool
 }
 
 func upgradeMismatch() error {
 	return usageErr("The resource, its parent, status or version does not match this upgrade. Read the current cluster and node pool cards.", "Ресурс, родитель, состояние или версия не соответствуют обновлению. Прочитайте текущие карточки кластера и группы узлов.")
+}
+
+func upgradeEvidenceError() error {
+	return clierrors.New(clierrors.CodeAPIError, i18n.T("The operation does not identify the expected upgrade resource.", "Операция не подтверждает обновление ожидаемого ресурса."), i18n.T("Read the original operation and resource in the same project before taking any further action.", "Проверьте исходную операцию и ресурс в том же проекте перед дальнейшими действиями."))
+}
+
+func upgradeOutcome(r upgradeReceipt, card upgradeCard, status string) (string, bool) {
+	out := upgradeResult(r, card, status)
+	switch status {
+	case "outcome_unknown":
+		return errAnswer(clierrors.New(clierrors.CodeAPIError, i18n.T("The original upgrade has no verified operation ID.", "Для исходного обновления нет подтверждённого ID операции."), i18n.T("Read the resource in the same project. Its current version alone cannot identify who made the change.", "Прочитайте карточку ресурса в том же проекте. Одна текущая версия не подтверждает, кто выполнил изменение.")), out), true
+	case "operation_failed":
+		return errAnswer(clierrors.New(clierrors.CodeAPIError, i18n.T("The upgrade operation reported an error, cancellation or rollback.", "Операция обновления сообщила об ошибке, отмене или откате."), i18n.T("Inspect the operation and the resource before deciding what to do next.", "Проверьте операцию и ресурс перед выбором дальнейшего действия.")), out), true
+	}
+	return toJSON(out), false
 }
 
 func readUpgradeCard(ctx context.Context, cli *mk8s.Client, request upgradeReceipt) (upgradeCard, error) {
@@ -67,6 +82,7 @@ func readUpgradeCard(ctx context.Context, cli *mk8s.Client, request upgradeRecei
 		if err != nil {
 			return card, err
 		}
+		card.parentName = stringArg(parent, "name")
 		cp, _ := parent["controlPlane"].(map[string]any)
 		if stringArg(parent, "id") != card.parent || stringArg(parent, "projectId") != request.Project ||
 			stringArg(parent, "status") != "OBJECT_STATUS_RUNNING" || stringArg(cp, "version") != request.Target || cp["upgradeInfo"] != nil {
@@ -75,6 +91,13 @@ func readUpgradeCard(ctx context.Context, cli *mk8s.Client, request upgradeRecei
 	} else if stringArg(data, "projectId") != request.Project {
 		return card, upgradeMismatch()
 	}
+	// Bind the displayed resource to its configuration without volatile timestamps.
+	shape := []any{source["count"], source["zones"], source["machineConfiguration"], data["scalePolicy"]}
+	encoded, err := json.Marshal(shape)
+	if err != nil {
+		return card, err
+	}
+	card.topology = fmt.Sprintf("%x", sha256.Sum256(encoded))
 	card.version = stringArg(source, "version")
 	card.status = stringArg(data, "status")
 	card.busy = source["upgradeInfo"] != nil
@@ -147,7 +170,7 @@ func (r upgradeReceipt) save(path string) error {
 	if err != nil {
 		return err
 	}
-	return config.WriteFileAtomic(path, data, 0600)
+	return config.WriteDurableReceipt(path, data)
 }
 
 func upgradeResult(r upgradeReceipt, card upgradeCard, status string) map[string]any {
@@ -157,6 +180,9 @@ func upgradeResult(r upgradeReceipt, card upgradeCard, status string) map[string
 	}
 	if card.parent != "" {
 		out["cluster_id"] = card.parent
+		if card.parentName != "" {
+			out["cluster_name"] = card.parentName
+		}
 	}
 	if r.Operation != "" {
 		out["operation_id"] = r.Operation
@@ -167,7 +193,11 @@ func upgradeResult(r upgradeReceipt, card upgradeCard, status string) map[string
 		if r.Tool == "k8s_nodepool_upgrade" {
 			idArg = "nodepool_id"
 		}
-		nextStep(out, r.Tool, map[string]any{idArg: r.Resource, "version": r.Target})
+		if r.Operation != "" {
+			nextStep(out, "k8s_operation", map[string]any{"operation_id": r.Operation})
+		} else {
+			nextStep(out, r.Tool, map[string]any{idArg: r.Resource, "version": r.Target})
+		}
 		out["next"] = i18n.T("Read this upgrade again to check its operation and the actual resource version.", "Повторите чтение этого обновления для проверки операции и фактической версии ресурса.")
 	}
 	return out
@@ -232,7 +262,7 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 					return card, nil, err
 				}
 				if op.ID != prior.Operation || op.ResourceID != prior.Resource {
-					return card, nil, upgradeMismatch()
+					return card, nil, upgradeEvidenceError()
 				}
 				if op.Done {
 					card, err = readUpgradeCard(ctx, client, r)
@@ -256,8 +286,8 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 				}
 			}
 			if prior.Target == r.Target {
-				out := upgradeResult(*prior, card, status)
-				return card, answered(toJSON(out), status == "outcome_unknown" || status == "operation_failed"), nil
+				text, isErr := upgradeOutcome(*prior, card, status)
+				return card, answered(text, isErr), nil
 			}
 			if status != "upgraded" {
 				return card, nil, upgradeMismatch()
@@ -279,14 +309,52 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 	if err != nil || result != nil {
 		return result, err
 	}
-	r.From, r.Parent = card.version, card.parent
+	r.From, r.Parent, r.Topology = card.version, card.parent, card.topology
 	preview := upgradeResult(r, card, "confirmation_required")
 	preview["project_id"] = project
+	preview["price_known"] = false
 	preview["message"] = i18n.T("Upgrade only the control plane. Cluster API availability may be interrupted. The request cannot be withdrawn after submission. Node pools need separate approval.", "Обновить только управляющую часть кластера. Возможны перерывы в доступе к API. Отозвать отправленный запрос нельзя. Группы узлов требуют отдельного согласия.")
 	if tool == "k8s_nodepool_upgrade" {
 		preview["message"] = i18n.T("Upgrade this node pool. Workloads may be interrupted while nodes are updated. The request cannot be withdrawn after submission.", "Обновить эту группу узлов. Во время обновления узлов возможны перерывы в работе приложений. Отозвать отправленный запрос нельзя.")
 	}
-	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
+	offerDir := filepath.Join(dir, "previews")
+	scope := "stdio-" + s.upgradeClient
+	session, httpCall := ctx.Value(networkSessionKey{}).(string)
+	caller := callerOf(ctx)
+	if httpCall {
+		scope = "http-" + session
+	} else if caller != nil {
+		scope = "cli"
+	}
+	offerPath := filepath.Join(offerDir, fmt.Sprintf("%x.json", sha256.Sum256([]byte(scope))))
+	return &Plan{PreviewOf: func(ctx context.Context) (map[string]any, error) {
+		if caller != nil {
+			offer := r
+			caller.upgradePreview = &offer
+		}
+		if httpCall && session == "" {
+			return preview, nil
+		}
+		unlock, err := state.FileLock(offerPath+".lock", 5*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		defer unlock()
+		if caller != nil && caller.AutomaticPreview {
+			shown, err := readUpgradeReceipt(offerPath)
+			if err != nil {
+				return nil, err
+			}
+			if shown == nil || *shown == r {
+				return preview, nil
+			}
+			caller.RequireNewApproval = true
+		}
+		if err := r.save(offerPath); err != nil {
+			return nil, err
+		}
+		return preview, nil
+	}, Execute: func(ctx context.Context) (string, bool) {
 		unlock, err := state.FileLock(lock, 5*time.Second)
 		if err != nil {
 			return errResult(err), true
@@ -299,11 +367,22 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 		if prior != nil {
 			return prior.answer, prior.answerErr
 		}
-		if current.version != r.From || current.parent != r.Parent {
-			return errResult(upgradeMismatch()), true
+		cardChanged := current.version != r.From || current.parent != r.Parent || current.topology != r.Topology
+		if cardChanged {
+			r.From, r.Parent, r.Topology = current.version, current.parent, current.topology
+			preview["current_version"] = current.version
+			if current.parent != "" {
+				preview["cluster_id"] = current.parent
+				preview["cluster_name"] = current.parentName
+			}
 		}
-		if err := r.save(path); err != nil {
+		contextChanged := cardChanged || caller != nil && caller.upgradePreview != nil && *caller.upgradePreview != r
+		allowed, err := reserveUpgrade(offerPath, path, caller == nil, httpCall && session == "", contextChanged, r)
+		if err != nil {
 			return errResult(err), true
+		}
+		if !allowed {
+			return toJSON(preview), true
 		}
 		var op *mk8s.Operation
 		if tool == "k8s_nodepool_upgrade" {
@@ -315,17 +394,47 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 			return errAnswer(err, upgradeResult(r, current, "outcome_unknown")), true
 		}
 		if !isUUID(op.ID) || op.ResourceID != r.Resource {
-			return errResult(upgradeMismatch()), true
+			return errAnswer(upgradeEvidenceError(), upgradeResult(r, current, "outcome_unknown")), true
 		}
 		r.Operation = op.ID
 		if err := r.save(path); err != nil {
 			return errResult(err), true
 		}
 		if len(op.Error) > 0 && string(op.Error) != "null" {
-			return toJSON(upgradeResult(r, current, "operation_failed")), true
+			return upgradeOutcome(r, current, "operation_failed")
 		}
 		return toJSON(upgradeResult(r, current, "submitted")), false
 	}}, nil
+}
+
+// Reserving the cloud write and consuming a matching offer happen under the
+// same local lock. A different client cannot use another client's preview.
+func reserveUpgrade(offerPath, receiptPath string, mcpCall, stateless, contextChanged bool, r upgradeReceipt) (bool, error) {
+	unlock, err := state.FileLock(offerPath+".lock", 5*time.Second)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+	shown, err := readUpgradeReceipt(offerPath)
+	if err != nil {
+		return false, err
+	}
+	if stateless {
+		return false, nil
+	}
+	if contextChanged || (mcpCall && shown == nil) || (shown != nil && *shown != r) {
+		return false, r.save(offerPath)
+	}
+
+	if err := r.save(receiptPath); err != nil {
+		return false, err
+	}
+	if shown != nil {
+		if err := os.Remove(offerPath); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 func (s *Registry) planK8sUpgrade(ctx context.Context, args map[string]any) (*Plan, error) {

@@ -767,6 +767,17 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		variant, refuse, attempts = c.world, confirmed, 0
 		reads = map[string]bool{}
 		mu.Unlock()
+		if confirmed && (tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade") {
+			preview := copyArgs(a)
+			delete(preview, "confirmed")
+			srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": preview})
+			mu.Lock()
+			if attempts != 0 {
+				t.Errorf("%s preview attempted %d writes", tl.Name, attempts)
+			}
+			reads = map[string]bool{}
+			mu.Unlock()
+		}
 		ans := first(srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": a}))
 		mu.Lock()
 		n := attempts

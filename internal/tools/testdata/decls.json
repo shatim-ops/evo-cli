@@ -549,6 +549,16 @@
     ],
     "untrusted": "{fields:[preview name details] whole:false own:[] workload:false deep:false}"
   },
+  "k8s_nodepool_upgrade": {
+    "destructive": true,
+    "id_args": [
+      "nodepool_id why=\"\" target=true ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
+    ],
+    "untrusted": "{fields:[preview current_version resource_status upgrade_phase] whole:false own:[] workload:true deep:false}",
+    "no_completion": {
+      "nodepool_id": "node pools are listed within a cluster; use k8s_nodepools with its cluster_id"
+    }
+  },
   "k8s_nodepools": {
     "id_args": [
       "cluster_id why=\"\" target=false ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
@@ -580,6 +590,13 @@
     "no_completion": {
       "flavor": "a control-plane flavor of k8s_options, not a VM flavor"
     }
+  },
+  "k8s_upgrade": {
+    "destructive": true,
+    "id_args": [
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}"
+    ],
+    "untrusted": "{fields:[preview current_version resource_status upgrade_phase] whole:false own:[] workload:true deep:false}"
   },
   "kafka_create": {
     "project": true,

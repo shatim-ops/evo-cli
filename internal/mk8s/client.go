@@ -50,6 +50,14 @@ func New(token, projectID, baseURL string) *Client {
 
 // do performs an HTTP request and returns the raw body + status code.
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body any) ([]byte, int, error) {
+	return c.request(ctx, method, path, query, body, false)
+}
+
+// A single submission must not be replayed after a redirect, rejection or transport error.
+func (c *Client) request(ctx context.Context, method, path string, query url.Values, body any, singleSubmission bool) ([]byte, int, error) {
+	if singleSubmission {
+		ctx = httpretry.Once(ctx)
+	}
 	if query == nil {
 		query = url.Values{}
 	}
@@ -79,7 +87,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		req.Header.Set("Content-Type", "application/json")
 	}
 	client := c.http
-	if method == http.MethodPost && httpretry.IsOnce(ctx) {
+	if singleSubmission {
 		// A confirmed upgrade authorizes one POST, including after a 401 or redirect.
 		req.GetBody = nil
 		single := *client
@@ -91,7 +99,10 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return nil, 0, fmt.Errorf(i18n.T("mk8s request failed: %w", "запрос к mk8s не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
+	data, readErr := io.ReadAll(resp.Body)
+	if readErr != nil && singleSubmission {
+		return nil, resp.StatusCode, readErr
+	}
 	return data, resp.StatusCode, nil
 }
 
@@ -358,7 +369,7 @@ func (c *Client) UpgradeNodePool(ctx context.Context, id, version string) (*Oper
 }
 
 func (c *Client) upgrade(ctx context.Context, path, version string) (*Operation, error) {
-	data, status, err := c.do(httpretry.Once(ctx), http.MethodPost, path, nil, map[string]string{"version": version})
+	data, status, err := c.request(ctx, http.MethodPost, path, nil, map[string]string{"version": version}, true)
 	if err != nil {
 		return nil, err
 	}

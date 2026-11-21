@@ -313,7 +313,7 @@ var decls = map[string]Decl{
 	// The name of the pool, in the preview and in the answer; the words
 	// and the code of the platform in a failed operation (details).
 	"k8s_upgrade":          {Destructive: true, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "current_version", "resource_status", "upgrade_phase"}, workload: true}},
-	"k8s_nodepool_upgrade": {Destructive: true, NoCompletion: map[string]string{"nodepool_id": "node pools are listed within a cluster; use k8s_nodepools with its cluster_id"}, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "current_version", "resource_status", "upgrade_phase"}, workload: true}},
+	"k8s_nodepool_upgrade": {Destructive: true, NoCompletion: map[string]string{"nodepool_id": "node pools are listed within a cluster; use k8s_nodepools with its cluster_id"}, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "current_version", "resource_status", "upgrade_phase", "cluster_name"}, workload: true}},
 	"k8s_nodepool_scale":   {Destructive: true, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
 	// The cluster of the pool by its name, in the preview of the delete;
 	// the name of the pool, in the target (FB19I-9); its status in a
