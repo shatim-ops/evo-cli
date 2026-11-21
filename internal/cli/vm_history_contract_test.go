@@ -12,6 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 )
 
 // Compute's task list survives deletion of the VM. Both public surfaces must
@@ -21,6 +26,23 @@ func TestContract_VMHistory(t *testing.T) {
 	for _, scenario := range []string{"two pages", "second VM", "empty", "unauthorized", "forbidden", "late denial", "wrong VM", "wrong type", "missing ID", "repeated ID", "early end", "total changed", "invalid argument"} {
 		t.Run(scenario, func(t *testing.T) {
 			w, _ := withJSONWorld(t)
+			if scenario == "unauthorized" {
+				toolEngine = func(opts map[string]any) (*engine.Engine, error) {
+					if opts == nil {
+						opts = map[string]any{}
+					}
+					return buildEngine(opts)
+				}
+				eng, err := toolEngine(nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cache := auth.FileCache{Path: config.TokenCachePath(eng.Config.Profile)}
+				key := auth.CacheKey(auth.Credentials{KeyID: eng.Config.KeyID, Secret: eng.Config.Secret})
+				if err := cache.Store(key, auth.Token{Value: "fake-token", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if _, ok := newRegistry().Lookup("vm_history"); !ok {
 				t.Fatal("vm_history is absent from the registry")
 			}
@@ -34,7 +56,18 @@ func TestContract_VMHistory(t *testing.T) {
 			}
 			old := w.rt.extra
 			var offsets []int
+			refreshes := 0
 			w.rt.extra = func(req *http.Request) (*http.Response, error) {
+				if scenario == "unauthorized" && req.Method == http.MethodPost && req.URL.String() == "https://iam.api.cloud.ru/api/v1/auth/token" {
+					if refreshes != 0 || len(offsets) != 1 {
+						t.Fatalf("token refresh out of sequence: offset=%v refreshes=%d", offsets, refreshes)
+					}
+					refreshes++
+					return contractRT{status: 200, body: `{"access_token":"refreshed-fixture-token","expires_in":3600}`}.RoundTrip(req)
+				}
+				if scenario == "unauthorized" && (req.URL.Scheme != "https" || req.URL.Host != "compute.api.cloud.ru" || req.Method != http.MethodGet || req.URL.Path != "/api/v1/tasks") {
+					t.Fatalf("unexpected 401 fixture request %s %s", req.Method, req.URL)
+				}
 				if req.URL.Host != "compute.api.cloud.ru" {
 					return old(req)
 				}
@@ -53,13 +86,24 @@ func TestContract_VMHistory(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if q.Get("entity_id") != target || q.Get("project_id") != pvProject || q.Get("entity_type") != "vm" || offset != len(offsets) || offset > 2 {
+				expectedOffset := len(offsets)
+				if scenario == "unauthorized" && refreshes == 1 {
+					expectedOffset = 0
+				}
+				if q.Get("entity_id") != target || q.Get("project_id") != pvProject || q.Get("entity_type") != "vm" || offset != expectedOffset || offset > 2 {
 					t.Fatalf("unexpected task query %s after %v", req.URL, offsets)
 				}
 				offsets = append(offsets, offset)
 				status := 200
 				switch scenario {
 				case "unauthorized":
+					wantToken := "Bearer fake-token"
+					if refreshes == 1 {
+						wantToken = "Bearer refreshed-fixture-token"
+					}
+					if req.Header.Get("Authorization") != wantToken {
+						t.Fatal("unexpected bearer on task read")
+					}
 					status = 401
 				case "forbidden":
 					status = 403
@@ -106,6 +150,7 @@ func TestContract_VMHistory(t *testing.T) {
 			var previous map[string]any
 			for _, surface := range []string{"CLI", "MCP stdio"} {
 				offsets = nil
+				refreshes = 0
 				var answer map[string]any
 				var failed bool
 				var raw string
@@ -134,6 +179,14 @@ func TestContract_VMHistory(t *testing.T) {
 					raw = reply.text
 					answer = parseObject(raw)
 				}
+				writes := w.rt.takeWrites()
+				if scenario == "unauthorized" {
+					if !reflect.DeepEqual(writes, []string{"POST iam.api.cloud.ru/api/v1/auth/token"}) {
+						t.Fatalf("%s unexpected writes %v", surface, writes)
+					}
+				} else if len(writes) != 0 {
+					t.Fatalf("%s unexpected writes %v", surface, writes)
+				}
 				if answer == nil || strings.Contains(raw, "private-fixture-") {
 					t.Fatalf("%s leaked fixture data or returned invalid JSON", surface)
 				}
@@ -143,6 +196,12 @@ func TestContract_VMHistory(t *testing.T) {
 				switch scenario {
 				case "invalid argument", "unauthorized", "forbidden":
 					wantReads = []int{0}
+					if scenario == "unauthorized" && refreshes == 1 {
+						wantReads = []int{0, 0}
+					}
+					if scenario == "unauthorized" && refreshes != 1 {
+						t.Fatal("expected one token refresh on the shipping transport")
+					}
 					if scenario == "invalid argument" {
 						wantReads = nil
 					}
@@ -175,11 +234,14 @@ func TestContract_VMHistory(t *testing.T) {
 				if hasSecond {
 					checkVMTaskProjection(t, answer, ids[1], "Delete Vm")
 				}
-				if len(wantReads) == 2 && len(offsets) == 3 && offsets[2] == 2 {
+				if scenario != "unauthorized" && len(wantReads) == 2 && len(offsets) == 3 && offsets[2] == 2 {
 					wantReads = append(wantReads, 2)
 				}
 				if !reflect.DeepEqual(offsets, wantReads) {
 					t.Fatalf("%s offsets %v, want %v", surface, offsets, wantReads)
+				}
+				if scenario == "unauthorized" {
+					t.Logf("%s: task GET offsets=%v IAM refresh=%d", surface, offsets, refreshes)
 				}
 				observed := map[string]any{"first": hasFirst, "second": hasSecond, "partial": partial, "failed": failed, "reason": fmt.Sprint(answer["reason"])}
 				if previous != nil && !reflect.DeepEqual(previous, observed) {
