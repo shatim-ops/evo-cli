@@ -55,7 +55,14 @@ func (a *CloudRuAdapter) VMTasks(ctx context.Context, project, vm string, offset
 		// Compute error bodies can include identities from the task records.
 		msg := i18n.T("Could not read the Compute Tasks page.", "Не удалось прочитать страницу задач Compute.")
 		if status := HTTPStatus(err); status != 0 {
-			return nil, clierrors.Wrap(clierrors.Reason(err), msg, "", &StatusError{Status: status})
+			hint := ""
+			switch status {
+			case http.StatusForbidden:
+				hint = i18n.T("Check the selected project and the service account role for reading Compute Tasks.", "Проверьте выбранный проект и роль сервисного аккаунта для чтения задач Compute.")
+			case http.StatusUnauthorized:
+				hint = clierrors.TokenRejectedHint()
+			}
+			return nil, clierrors.Wrap(clierrors.Reason(err), msg, hint, &StatusError{Status: status})
 		}
 		return nil, clierrors.New(clierrors.Reason(err), msg, "")
 	}

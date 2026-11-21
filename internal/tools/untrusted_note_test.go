@@ -141,6 +141,7 @@ var untrustedMarkerOnly = map[string]string{
 	"list_subnets":         "subnets: the names of the project's subnets, not the output of a workload",
 	"list_zones":           "zones: the names of the availability zones as Compute has them, not the output of a workload",
 	"snat_list":            "nat_gateways: the names of the project's SNAT gateways, not the output of a workload",
+	"vm_history":           "tasks: action and state from the Compute service, not the output of a workload",
 	"vm_list":              "vms: the project's VMs as Compute has them, names included, not the output of a workload",
 	"subnet_delete":        "target, message: the name of the subnet in the preview and the answer, not the output of a workload",
 	"snat_delete":          "target, message: the name of the gateway in the preview and the answer, not the output of a workload",
