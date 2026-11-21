@@ -204,7 +204,13 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		// record before it goes out: a call cut before it sent one changed
 		// nothing («Риск», conclusion 187, У2).
 		holder := ctx
+		var startBeforeWrite func() error
 		ctx = httpretry.CountWrites(ctx, func() (bool, error) {
+			if startBeforeWrite != nil {
+				if err := startBeforeWrite(); err != nil {
+					return false, err
+				}
+			}
 			return markSent(holder, func() []string { return r.partiesOf(holder, t.Name, args) })
 		})
 		// The resource the call names cannot be read: nothing is sent,
@@ -233,7 +239,7 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		if held, goesOn := r.goesOn(ctx, t.Name, args); goesOn {
 			end = func(answer string) { cutSendOf(ctx, held, answer) }
 		} else if deferLB {
-			start := sync.OnceValue(func() error {
+			startBeforeWrite = sync.OnceValue(func() error {
 				var err error
 				end, err = r.beginIntent(ctx, t.Name, args)
 				if release != nil {
@@ -241,7 +247,7 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 				}
 				return err
 			})
-			ctx = context.WithValue(ctx, lbIntentStartKey{}, start)
+			ctx = context.WithValue(ctx, lbIntentStartKey{}, startBeforeWrite)
 		} else {
 			var err error
 			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
