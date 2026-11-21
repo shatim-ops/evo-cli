@@ -341,6 +341,11 @@ func bashCompletionOfEvo(cmd *cobra.Command, _ []string) error {
 		request = cobra.ShellCompNoDescRequestCmd
 	}
 	adapter := strings.ReplaceAll(bashCompletionInput, "__EVO_COMPLETION_REQUEST__", request)
+	// The adapter decodes shell quotes. Compare the actual candidate to
+	// that prefix; Cobra quotes candidates with descriptions for display.
+	after = strings.Replace(after, `[[ $comp == "$cur"* ]]`, `[[ ${compline%%$tab*} == "$cur"* ]]`, 1)
+	// Readline supplies the enclosing quote for a single result.
+	after = strings.ReplaceAll(after, `COMPREPLY[0]=$(printf "%q" `, `COMPREPLY[0]=$(__evo_quote_reply `)
 	// Bash 3 lacks compopt: the adapter supplies its per-request default.
 	after = strings.Replace(after, "complete -o default -o nospace", "complete -o nospace", 1)
 	// ActiveHelp can ask for filenames before Readline runs its fallback.

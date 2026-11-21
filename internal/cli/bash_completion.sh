@@ -42,7 +42,8 @@ __evo_init_completion() {
 
 # Convert shell quoting into one argument without evaluating expansions.
 __evo_unquote_word() {
-    local raw=$1 quote= ch next i
+    local raw=$1 ch next i
+    quote=
     value=
     for ((i=0; i<${#raw}; i++)); do
         ch=${raw:i:1}
@@ -64,8 +65,24 @@ __evo_unquote_word() {
     done
 }
 
+# Readline closes a pending quote after a single match. Inside that quote
+# backslash-space would be a literal backslash in the completed argument.
+__evo_quote_reply() {
+    local value quote reply=$1
+    __evo_unquote_word "${words[cword]}"
+    case $quote in
+        "'") reply=${reply//\'/\'\\\'\'} ;;
+        '"') reply=${reply//\\/\\\\}
+             reply=${reply//\"/\\\"}
+             reply=${reply//\$/\\\$}
+             reply=${reply//\`/\\\`} ;;
+        *) printf '%q' "$reply"; return ;;
+    esac
+    printf '%s' "$reply"
+}
+
 __evo_get_completion_results() {
-    local args=() value i program=evo
+    local args=() value quote i program=evo
     __evo_unquote_word "${words[0]}"
     # An explicit path selects that installation even when another evo is on PATH.
     case $value in */evo|*/cloudru-vm) program=$value ;; esac
@@ -73,6 +90,7 @@ __evo_get_completion_results() {
         __evo_unquote_word "${words[i]}"
         args+=("$value")
     done
+    words[cword]=$cur
     __evo_unquote_word "$cur"
     args+=("$value")
     cur=$value
@@ -104,7 +122,7 @@ __evo_process_completion_results() {
                 done <<< "$out"
             fi
             if [[ -n $accepted ]]; then
-                printf -v candidate '%q' "$path"
+                candidate=$(__evo_quote_reply "$path")
                 COMPREPLY+=("$candidate")
             fi
         done < <(cd -- "$base" && compgen -f -- "$cur")
@@ -121,7 +139,7 @@ __evo_default_files() {
     local path candidate
     while IFS= read -r path; do
         [[ -d $path ]] && path=${path%/}/
-        printf -v candidate '%q' "$path"
+        candidate=$(__evo_quote_reply "$path")
         COMPREPLY+=("$candidate")
     done < <(compgen -f -- "$cur")
 }

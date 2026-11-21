@@ -32,6 +32,7 @@ func TestBashCompletion_Readline(t *testing.T) {
 		}
 	}
 	generate("script", "completion", "bash", "--no-descriptions")
+	generate("descriptions", "completion", "bash")
 	generate("root", "__completeNoDesc", "v")
 	generate("vm", "__completeNoDesc", "vm", "")
 	test := `
@@ -92,6 +93,25 @@ program='"'"$dir/path with space/evo"'"'
 line="$program v"
 run 1 "$line" "${#line}" "$program" v
 has via_path || exit 12
+# A prefix with whitespace must match with and without candidate descriptions.
+for form in script descriptions; do
+    source "$dir/$form"
+    evo() {
+        case $1 in
+            __complete) printf 'two words\tnote\n:4\n' ;;
+            __completeNoDesc) printf 'two words\n:4\n' ;;
+            *) return 1 ;;
+        esac
+    }
+    for input in 'two\ w' '"two w'; do
+        line="evo $input"
+        run 1 "$line" "${#line}" evo "$input"
+        case $input in
+            '"two w') has 'two words' || exit 13 ;;
+            *) has 'two\ words' || exit 13 ;;
+        esac
+    done
+done
 `
 	loaders := []string{""}
 	for _, candidate := range []string{"/usr/share/bash-completion/bash_completion", "/etc/bash_completion", "/opt/homebrew/etc/profile.d/bash_completion.sh", "/usr/local/etc/profile.d/bash_completion.sh"} {
