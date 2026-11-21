@@ -2387,24 +2387,12 @@ evo completion [flags]
 ### Synopsis
 
 ```text
-Скрипт автодополнения для bash. Нужен пакет bash-completion (ставится
-пакетным менеджером системы).
+Скрипт автодополнения для Bash. В текущей оболочке выполните:
 
-В текущей сессии:
+    source <(evo completion bash)
 
-	source <(evo completion bash)
-
-Для всех новых сессий выполните один раз:
-
-#### Linux:
-
-	evo completion bash > /etc/bash_completion.d/evo
-
-#### macOS:
-
-	evo completion bash > $(brew --prefix)/etc/bash_completion.d/evo
-
-Настройка действует в новой оболочке.
+Для новых интерактивных оболочек добавьте эту строку в ~/.bashrc.
+При входе Bash читает ~/.bashrc, если его подключает ваш профиль входа.
 ```
 
 ```

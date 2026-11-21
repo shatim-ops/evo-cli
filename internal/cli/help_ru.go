@@ -114,25 +114,6 @@ func localizeCompletion(app string, c *cobra.Command) {
 	c.Long = fmt.Sprintf("Печатает скрипт автодополнения %s для выбранной оболочки.\n"+
 		"Как подключить скрипт — в справке подкоманды (bash, zsh, fish, powershell).\n", app)
 	long := map[string]string{
-		"bash": `Скрипт автодополнения для bash. Нужен пакет bash-completion (ставится
-пакетным менеджером системы).
-
-В текущей сессии:
-
-	source <(%[1]s completion bash)
-
-Для всех новых сессий выполните один раз:
-
-#### Linux:
-
-	%[1]s completion bash > /etc/bash_completion.d/%[1]s
-
-#### macOS:
-
-	%[1]s completion bash > $(brew --prefix)/etc/bash_completion.d/%[1]s
-
-Настройка действует в новой оболочке.
-`,
 		"zsh": `Скрипт автодополнения для zsh. Если автодополнение в zsh ещё не включено,
 выполните один раз:
 

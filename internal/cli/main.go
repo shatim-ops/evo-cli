@@ -476,6 +476,9 @@ func newRootCmd() *cobra.Command {
 			// the argument (#2334).
 			for _, shell := range c.Commands() {
 				shell.Args = noArgs
+				if shell.Name() == "bash" {
+					configureBashCompletion(shell)
+				}
 			}
 		}
 	}

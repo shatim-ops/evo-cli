@@ -13,10 +13,11 @@
 #   CLOUDRU_VM_BASE_URL откуда качать вместо GitHub (зеркало, проверка
 #                       скрипта); ожидается <base>/<тег>/<файл>
 #
+#   EVO_BASHRC          1 — подключить файл из ~/.bashrc; 0 — только подсказка
 #   EVO_ZSHRC           0 — не трогать ~/.zshrc (см. ниже)
 #
 # Автодополнение по Tab ставится туда, где оболочка находит его сама, без
-# правки её конфигов: fish, bash (нужен пакет bash-completion), zsh — если
+# правки её конфигов: fish, bash с загрузчиком bash-completion, zsh — если
 # в $fpath есть каталог в домашнем каталоге. Иначе для zsh _evo ложится в
 # ${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions, и в конец ~/.zshrc
 # дописывается блок между метками «# >>> evo» и «# <<< evo <<<»: каталог в
@@ -244,6 +245,64 @@ zshrc_block() {
 	fi
 }
 
+# Use a literal startup line. The login shell expands HOME/XDG; installer
+# inputs never become executable text. An exact match marks our own line.
+# shellcheck disable=SC2016
+bashrc_line='[ -r "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo" ] && . "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo" # evo install.sh'
+
+bashrc_setup() {
+    case ${SHELL:-} in */bash) ;; *) return 0 ;; esac
+    [ -r "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo" ] || return 0
+    rc=$HOME/.bashrc
+    new_line="$bashrc_line (created .bashrc)"
+    if [ -f "$rc" ] && grep -Fqx -e "$bashrc_line" -e "$new_line" "$rc"; then return 0; fi
+    if [ "${EVO_BASHRC:-}" != 1 ]; then
+        say "Bash с загрузчиком bash-completion подключает файл автоматически. Для Bash без загрузчика добавьте в ~/.bashrc:"
+        say "$bashrc_line"
+        say "При входе Bash должен читать ~/.bashrc из вашего профиля входа."
+        [ -z "${EVO_BASHRC:-}" ] && [ -t 0 ] || return 0
+        printf '%s' 'Подключить автодополнение в ~/.bashrc? [y/N] ' >&2
+        IFS= read -r answer || return 0
+        case $answer in y|Y|yes|да) ;; *) return 0 ;; esac
+    fi
+    if [ -L "$rc" ] || { [ -e "$rc" ] && [ ! -f "$rc" ]; }; then
+        say "Добавьте строку вручную в ваш файл запуска Bash: $bashrc_line"
+        return 0
+    fi
+    # A missing final newline belongs to the user; leave this file alone.
+    if [ -s "$rc" ] && [ "$(tail -c 1 "$rc" | wc -l)" -eq 0 ]; then
+        say "В $rc нет перевода строки в конце. Добавьте строку вручную: $bashrc_line"
+        return 0
+    fi
+    if [ ! -e "$rc" ]; then bashrc_line=$new_line; fi
+    (umask 077; printf '%s\n' "$bashrc_line" >> "$rc")
+    say "Добавлено в $rc. Для оболочки входа проверьте подключение ~/.bashrc в профиле."
+}
+
+bashrc_remove() {
+    rc=$HOME/.bashrc
+    new_line="$bashrc_line (created .bashrc)"
+    [ -f "$rc" ] && [ ! -L "$rc" ] && grep -Fqx -e "$bashrc_line" -e "$new_line" "$rc" || return 0
+    if [ "$(wc -l < "$rc")" -eq 1 ] && [ "$(cat "$rc")" = "$new_line" ]; then
+        rm -f "$rc"
+        return
+    fi
+    # Stage a complete file next to the original. Preserve permissions,
+    # blank lines, and any unterminated line the user has appended.
+    staged=$(mktemp "$rc.evo.XXXXXX") || return 1
+    if cp -p "$rc" "$staged" && (
+        while IFS= read -r line; do
+            [ "$line" = "$bashrc_line" ] || [ "$line" = "$new_line" ] || printf '%s\n' "$line" || exit 1
+        done
+        printf '%s' "$line"
+    ) < "$rc" > "$staged" && mv -f "$staged" "$rc"; then
+        say "Удалено: строка evo из $rc"
+    else
+        rm -f "$staged"
+        return 1
+    fi
+}
+
 # install_completions bin: файлы автодополнения из установленного бинаря;
 # сбой не мешает установке. Оболочкам без такого каталога — строка для
 # профиля.
@@ -265,21 +324,11 @@ install_completions() {
 	if command -v pwsh >/dev/null 2>&1; then
 		say "Автодополнение PowerShell: добавьте в \$PROFILE строку  $bin completion powershell | Out-String | Invoke-Expression"
 	fi
-	if completion_files | grep -q '^bash '; then
-		found=""
-		for f in /usr/share/bash-completion/bash_completion /etc/bash_completion \
-			/opt/homebrew/etc/profile.d/bash_completion.sh /usr/local/etc/profile.d/bash_completion.sh; do
-			[ -r "$f" ] && found=1
-		done
-		if [ -n "$found" ]; then
-			say "bash: автодополнение подхватит пакет bash-completion в новой оболочке"
-		else
-			say "bash: пакет bash-completion не найден — без него bash файл автодополнения не прочитает; установите пакет"
-		fi
-	fi
+	bashrc_setup
 }
 
 uninstall() {
+	bashrc_remove
 	dir=$(install_dir)
 	for b in "$BINARY" "$LEGACY_ALIAS"; do
 		if [ -e "$dir/$b" ]; then
