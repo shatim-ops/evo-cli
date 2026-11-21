@@ -557,7 +557,8 @@
     ],
     "untrusted": "{fields:[preview current_version resource_status upgrade_phase cluster_name] whole:false own:[] workload:true deep:false}",
     "no_completion": {
-      "nodepool_id": "node pools are listed within a cluster; use k8s_nodepools with its cluster_id"
+      "nodepool_id": "node pools are listed within a cluster; use k8s_nodepools with its cluster_id",
+      "preview_id": "a one-time local approval for this MCP session and upgrade transition; reserveUpgrade checks it before the cloud request"
     }
   },
   "k8s_nodepools": {
@@ -598,7 +599,10 @@
       "cluster_id why=\"\" target=true ids=false kind={what:\"Kubernetes cluster\" byName:false list:\"k8s_list\" check:true project:true card:true}",
       "preview_id why=\"a one-time local approval for this MCP session and upgrade transition; reserveUpgrade checks it before the cloud request\" target=false ids=false"
     ],
-    "untrusted": "{fields:[preview current_version resource_status upgrade_phase] whole:false own:[] workload:true deep:false}"
+    "untrusted": "{fields:[preview current_version resource_status upgrade_phase] whole:false own:[] workload:true deep:false}",
+    "no_completion": {
+      "preview_id": "a one-time local approval for this MCP session and upgrade transition; reserveUpgrade checks it before the cloud request"
+    }
   },
   "kafka_create": {
     "project": true,
