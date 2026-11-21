@@ -715,6 +715,7 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		return world(r)
 	}
 
+	upgradeSession := processUpgradeStdio(t, srv.plain)
 	call := func(tl tools.Tool, c consentCase, confirmed bool) (map[string]any, bool, int) {
 		a := copyArgs(c.args)
 		done := func() {}
@@ -767,10 +768,16 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		variant, refuse, attempts = c.world, confirmed, 0
 		reads = map[string]bool{}
 		mu.Unlock()
+		callTool := func(args map[string]any) roAnswer {
+			return first(srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": args}))
+		}
 		if confirmed && (tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade") {
+			callTool = func(args map[string]any) roAnswer {
+				return upgradeSession(map[string]any{"name": tl.Name, "arguments": args})
+			}
 			preview := copyArgs(a)
 			delete(preview, "confirmed")
-			srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": preview})
+			callTool(preview)
 			mu.Lock()
 			if attempts != 0 {
 				t.Errorf("%s preview attempted %d writes", tl.Name, attempts)
@@ -778,7 +785,7 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			reads = map[string]bool{}
 			mu.Unlock()
 		}
-		ans := first(srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": a}))
+		ans := callTool(a)
 		mu.Lock()
 		n := attempts
 		variant, refuse = consentWorld{}, false

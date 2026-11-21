@@ -12,12 +12,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/mcp"
 )
 
 const (
@@ -445,5 +446,19 @@ func TestUpgradeHTTPAndSecondClientDoNotReplay(t *testing.T) {
 	again, _ := retryRPC(t, second, b, "tools/call", params(true))
 	if !again.isErr || posts.Load() != 1 || saysUpgradeComplete(again.text) {
 		t.Fatalf("ambiguous POST repeated: %d %s", posts.Load(), again.text)
+	}
+}
+
+func TestUpgradeStdioNewProcessNeedsOwnPreview(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	args := map[string]any{"cluster_id": upgradeParityCluster, "version": upgradeTo}
+	preview := callStdioTool(t, "k8s_upgrade", args)
+	args["confirmed"] = true
+	fresh := callStdioTool(t, "k8s_upgrade", args)
+	if parseObject(preview.text)["status"] != "confirmation_required" || parseObject(fresh.text)["status"] != "confirmation_required" {
+		t.Fatalf("first process: %s; fresh process: %s", preview.text, fresh.text)
+	}
+	if writes := w.rt.takeWrites(); len(writes) != 0 {
+		t.Fatalf("two processes shared approval: %v", writes)
 	}
 }

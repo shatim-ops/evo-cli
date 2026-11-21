@@ -554,7 +554,7 @@
     "id_args": [
       "nodepool_id why=\"\" target=true ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[preview current_version resource_status upgrade_phase] whole:false own:[] workload:true deep:false}",
+    "untrusted": "{fields:[preview current_version resource_status upgrade_phase cluster_name] whole:false own:[] workload:true deep:false}",
     "no_completion": {
       "nodepool_id": "node pools are listed within a cluster; use k8s_nodepools with its cluster_id"
     }
