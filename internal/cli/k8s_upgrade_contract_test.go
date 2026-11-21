@@ -462,3 +462,70 @@ func TestUpgradeStdioNewProcessNeedsOwnPreview(t *testing.T) {
 		t.Fatalf("two processes shared approval: %v", writes)
 	}
 }
+
+func TestUpgradeLostPreviewResponse(t *testing.T) {
+	for _, surface := range []string{"stdio", "HTTP"} {
+		for _, kind := range []string{"control plane", "node pool"} {
+			t.Run(surface+"/"+kind, func(t *testing.T) {
+				w, _ := withJSONWorld(t)
+				r := upgradeResource{kind: kind, tool: "k8s_upgrade", argument: "cluster_id", id: upgradeParityCluster, version: upgradeFrom, state: "OBJECT_STATUS_RUNNING", available: []string{upgradeTo}}
+				path := "/v3/clusters/" + r.id
+				if kind == "node pool" {
+					r.tool, r.argument, r.id = "k8s_nodepool_upgrade", "nodepool_id", upgradeParityPool
+					path = "/v3/nodePools/" + r.id
+				}
+				old := w.rt.extra
+				posts := 0
+				w.rt.extra = func(req *http.Request) (*http.Response, error) {
+					if req.Method == "GET" && req.URL.Path == path {
+						card := r.card()
+						if kind == "node pool" {
+							card["clusterId"] = upgradeParityParent
+						}
+						b, err := json.Marshal(card)
+						if err != nil {
+							return nil, err
+						}
+						return consentJSON(200, string(b)), nil
+					}
+					if req.Method == "POST" && req.URL.Path == path+":upgrade" {
+						posts++
+					}
+					return old(req)
+				}
+				server := newROServers(t).plain
+				var call func(map[string]any) roAnswer
+				if surface == "stdio" {
+					call = processUpgradeStdio(t, server)
+				} else {
+					h := mcp.NewHTTPHandler(server, mcp.HTTPOptions{})
+					t.Cleanup(h.Close)
+					_, session := retryRPC(t, h, "", "initialize", map[string]any{"protocolVersion": "2025-03-26"})
+					call = func(params map[string]any) roAnswer { a, _ := retryRPC(t, h, session, "tools/call", params); return a }
+				}
+				args := map[string]any{r.argument: r.id, "version": upgradeTo}
+				params := map[string]any{"name": r.tool, "arguments": args}
+				preview := call(params)
+				if id, ok := parseObject(preview.text)["preview_id"].(string); ok {
+					args["preview_id"] = id
+				}
+				args["confirmed"] = true
+				r.version = "v1.35.10"
+				call(params) // The replacement preview is lost before the client can read it.
+				retry := call(params)
+				if posts != 0 {
+					t.Fatalf("old confirmation replayed after a lost preview: %d POST", posts)
+				}
+				id, _ := parseObject(retry.text)["preview_id"].(string)
+				if id == "" || id == args["preview_id"] || !strings.Contains(retry.text, r.version) {
+					t.Fatalf("missing replacement preview: %s", retry.text)
+				}
+				args["preview_id"] = id
+				result := call(params)
+				if result.isErr || posts != 1 {
+					t.Fatalf("fresh approval: %s, POST=%d", result.text, posts)
+				}
+			})
+		}
+	}
+}
