@@ -1097,8 +1097,9 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "lb_create",
-			Description: "Create an L4 TCP load balancer in front of a target group, billable: it forwards TCP and terminates no TLS (HTTPS ends on the VM). A listener on port to target_port with a TCP health check. Zone: zone, else subnet_id's, else the target group's VMs', else the configured region; none is refused.",
+			Description: "Billable L4 TCP balancer. TLS ends on the VM. MCP: show placement, then return its preview_id with human consent in this session.",
 			InputSchema: objSchema(map[string]any{
+				"preview_id":      withMinLength(uuidProp("Approved preview UUID.")),
 				"name":            strProp("Balancer name."),
 				"target_group_id": strProp("Target group UUID."),
 				"port":            inRange(1, 65535, intProp("Listener port.")),
@@ -1537,8 +1538,9 @@ func (s *Registry) registerTools() {
 			Name:        "stack_apply",
 			Description: "Apply a planned stack (from stack_plan). Starts the steps that are ready and returns a compact status: over MCP within ~45 s — a VM still coming up stays pending (details: creating) and stack_status finishes it; the CLI waits for the VM. Postgres, Kafka, Redis, k8s and NLB only start. passwords{step} is the password evo generated for a step's VM, in that answer only. Then poll stack_status(job_id) until status=done; do not orchestrate the resources yourself.",
 			InputSchema: objSchema(map[string]any{
-				"job_id":    strProp("Job id from stack_plan. Required."),
-				"confirmed": confirmedProp(),
+				"preview_id": withMinLength(uuidProp("Approval of the displayed placement for a paused LB step.")),
+				"job_id":     strProp("Job id from stack_plan. Required."),
+				"confirmed":  confirmedProp(),
 			}, "job_id"),
 		},
 		{

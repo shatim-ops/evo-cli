@@ -184,7 +184,7 @@ func TestCreate_EveryCreateWhoseAnswerGoesOnIsInTheMigration(t *testing.T) {
 			continue
 		}
 		t.Run(c.tool, func(t *testing.T) {
-			_, r, _, _, _ := paidCreateWorld(t, c, 1000)
+			_, r, _, _, _ := paidCreateWorld(t, &c, 1000)
 			first, _ := r.handlers[c.tool](context.Background(), maps.Clone(c.args))
 			_, _, _, goesOn := madeGoesOn(c.tool, first)
 			// subnet_create's answer in this world is created at once: its
@@ -206,7 +206,7 @@ func TestCreate_ARepeatWhileItsOperationGoesOnSendsNoSecondCreate(t *testing.T) 
 			continue
 		}
 		t.Run(c.tool, func(t *testing.T) {
-			api, r, _, _, _ := paidCreateWorld(t, c, 1000)
+			api, r, _, _, _ := paidCreateWorld(t, &c, 1000)
 			first, _ := r.handlers[c.tool](context.Background(), maps.Clone(c.args))
 			if _, _, _, goesOn := madeGoesOn(c.tool, first); !goesOn {
 				t.Skipf("the first call's answer does not go on in another read: %.600s", first)

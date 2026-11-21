@@ -376,7 +376,7 @@ func roCase(t *testing.T, srv roServers, w parityWorld, tl tools.Tool, args map[
 	roHTTP := func(params any) roAnswer { return first(srv.http(t, "tools/call", params)) }
 
 	needs := tools.NeedsConsent(tl, args)
-	if tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade" {
+	if tl.Name == "lb_create" || tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade" {
 		session := processUpgradeStdio(t, srv.plain)
 		plainCall = func(params any) roAnswer { return session(params.(map[string]any)) }
 	}

@@ -83,7 +83,15 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	client := c.http
+	if method == http.MethodPost && path == "/v2/networkLoadBalancers" {
+		req = req.WithContext(httpretry.Once(ctx))
+		req.GetBody = nil
+		single := *client
+		single.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &single
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf(i18n.T("nlb request failed: %w", "запрос к nlb не удался: %w"), err)
 	}

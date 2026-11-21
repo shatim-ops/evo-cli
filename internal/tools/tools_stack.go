@@ -418,6 +418,14 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 						st.Detail = "poll: " + err.Error()
 						continue
 					}
+					if st.Tool == "lb_create" {
+						rid := stringArg(op, "resource_id")
+						if stringArg(op, "id") != st.OpID || rid == "" || (st.ResourceID != "" && rid != st.ResourceID) {
+							st.Detail = i18n.T("Waiting for the saved operation to identify this load balancer.", "Ожидается подтверждение ID балансировщика сохранённой операцией.")
+							continue
+						}
+						st.ResourceID = rid
+					}
 					if done, _ := op["done"].(bool); done {
 						// A completed operation can still carry an error (create
 						// failed server-side). Treat that as terminal, don't proceed.
@@ -564,7 +572,36 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// conclusion 216, У2).
 					args["vm_id"] = st.ResourceID
 				}
-				res, err := s.callTool(ctx, st.Tool, args)
+				stepCtx := ctx
+				if st.Tool == "lb_create" {
+					if !validStackTG(job, st, args) {
+						failStep(job, st, clierrors.CodeConfigInvalid, "target group ID differs from this job’s completed tg step")
+						return
+					}
+					stepCtx = context.WithValue(ctx, lbJobKey{}, job)
+					if callerOf(ctx) != nil {
+						stepCtx = context.WithValue(stepCtx, lbStackCLIKey{}, true)
+					}
+					if grant, _ := ctx.Value(lbResumeKey{}).(string); grant != "" {
+						args["preview_id"] = grant
+					}
+				}
+				res, err := s.callTool(stepCtx, st.Tool, args)
+				if st.Tool == "lb_create" && res["status"] == "confirmation_required" {
+					placement, _ := res["will_create"].(map[string]any)
+					job.LBPending = placement
+					job.Status = "awaiting_lb_approval"
+					st.Detail = i18n.T("Review the load balancer placement with stack_apply before continuing.", "Проверьте размещение балансировщика через stack_apply для продолжения.")
+					return
+				}
+				if st.Tool == "lb_create" && err != nil && job.LBUncertain {
+					st.Detail = err.Error()
+					job.Status = "awaiting_lb_approval"
+					return
+				}
+				if st.Tool == "lb_create" && err == nil {
+					job.LBPending = nil
+				}
 				if err != nil && ctx.Err() != nil {
 					// Cancelled mid-create: not a failed attempt. Keep the id
 					// the tool reported (provision names the VM it made).
@@ -869,6 +906,7 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 	if eng, e := s.newEngine(nil); e == nil && eng != nil {
 		job.ProjectID = eng.Config.ProjectID
 	}
+	job.LBPlacement = s.plannedLBPlacement(ctx, job)
 	if err := job.CheckDeps(); err != nil {
 		return errResult(fmt.Errorf(i18n.T("invalid manifest: %w", "неверный манифест: %w"), err)), true
 	}
@@ -889,6 +927,9 @@ func (s *Registry) handleStackPlan(ctx context.Context, args map[string]any) (st
 		// (A9, decision 21.10).
 		"next": i18n.T("The stack is BILLABLE: show the user the steps and the cost, and on explicit approval call stack_apply with this job_id and confirmed=true.",
 			fmt.Sprintf("Стек ПЛАТНЫЙ: покажите пользователю шаги и стоимость и только после явного согласия выполните evo stack apply %s.", job.ID)),
+	}
+	if job.LBPlacement != nil {
+		out["lb_placement"] = job.LBPlacement
 	}
 	if s.readOnly {
 		out["next"] = i18n.T("Show the user the steps and the cost; creating the stack (stack_apply) needs a server without --read-only.",
@@ -1238,6 +1279,9 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 	// The preview is built for the question only: its price reads what a
 	// consented call does not need.
 	previewOf := func(ctx context.Context) (map[string]any, error) {
+		if job.LBPending != nil {
+			return s.stackLBPreview(ctx, job)
+		}
 		create, finish, failed, steps := s.stackSteps(job)
 		will := map[string]any{"will_create": create}
 		keys := []string{"will_create"}
@@ -1268,6 +1312,28 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 		// it would change an exit code, which waits for the major — and
 		// says that the consent creates nothing, as deploy's does of an
 		// unchanged compose file (unchanged: true).
+		if job.LBPlacement == nil {
+			for _, step := range job.Steps {
+				if step.Tool != "lb_create" || step.Status != "pending" || !depsDone(step, job) {
+					continue
+				}
+				a := substituteRefs(step.Args, job.Outputs)
+				if !validStackTG(job, step, a) || !isUUID(stringArg(a, "vpc_id")) || !isUUID(stringArg(a, "subnet_id")) || stringArg(a, "zone") == "" {
+					continue
+				}
+				cx := context.WithValue(context.WithValue(ctx, lbJobKey{}, job), lbPinKey{}, true)
+				plan, e := s.planLbCreate(cx, a)
+				if e != nil {
+					return nil, e
+				}
+				if plan.Preview != nil {
+					preview["lb_placement"] = plan.Preview["will_create"]
+				}
+			}
+		}
+		if job.LBPlacement != nil {
+			preview["lb_placement"] = job.LBPlacement
+		}
 		if job.Done() {
 			preview["unchanged"] = true
 			preview["message"] = i18n.Tf("Stack job %s is done already: every step is made. stack_apply has nothing to do, and called with confirmed=true it creates nothing; stack_status shows the stack.",
@@ -1289,11 +1355,37 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 		// says so, as the question does — a call sent with confirmed at
 		// once never sees the question («Риск», conclusion 139).
 		unchanged := job.Done()
+		if job.LBPending != nil {
+			grant := stringArg(args, "preview_id")
+			if grant == "" {
+				prev, e := s.stackLBPreview(ctx, job)
+				if e != nil {
+					return errResult(e), true
+				}
+				return toJSON(prev), true
+			}
+			ctx = context.WithValue(ctx, lbResumeKey{}, grant)
+		}
 		s.advance(ctx, job)
 		if e := job.Save(); e != nil {
+			for _, st := range job.Steps {
+				if st.Tool == "lb_create" && st.OpID != "" {
+					return errAnswer(e, map[string]any{"job_id": job.ID, "operation_id": st.OpID, "lb_id": st.ResourceID, "receipt_error": true}), true
+				}
+			}
 			return errResult(fmt.Errorf(i18n.T("persist job: %w", "сохранение задания: %w"), e)), true
 		}
 		out := job.Compact()
+		if job.LBPending != nil {
+			p, e := s.stackLBPreview(ctx, job)
+			if e != nil {
+				return errResult(e), true
+			}
+			for k, v := range p {
+				out[k] = v
+			}
+			return toJSON(out), true
+		}
 		if unchanged {
 			out["unchanged"] = true
 		}
@@ -1800,4 +1892,93 @@ func (s *Registry) planStackDestroy(_ context.Context, args map[string]any) (*Pl
 			"стек %s ещё ничего не создал; stack_destroy только отметит его удалённым.", id)
 	}
 	return &Plan{Execute: execute, Preview: out}, nil
+}
+
+type lbPinKey struct{}
+type lbJobKey struct{}
+type lbResumeKey struct{}
+type lbStackCLIKey struct{}
+
+func validStackTG(job *stack.Job, st *stack.Step, args map[string]any) bool {
+	if st.Args["target_group_id"] != "$tg" || stringArg(args, "target_group_id") == "" {
+		return false
+	}
+	for _, tg := range job.Steps {
+		if tg.Key == "tg" && tg.Tool == "tg_create" && tg.Status == "done" && tg.ResourceID != "" && tg.ResourceID == job.Outputs["tg"] && tg.ResourceID == args["target_group_id"] {
+			return true
+		}
+	}
+	return false
+}
+
+// The implicit VM network identifies the LB placement only when there is one
+// subnet in that zone, its VPC is known, and no network is to be created.
+func (s *Registry) plannedLBPlacement(ctx context.Context, job *stack.Job) *stack.LBPlacement {
+	m := job.Manifest
+	if m.NLB == nil || m.VM == nil || m.VPC != nil || job.ProjectID == "" || (m.NLB.Target != "" && m.NLB.Target != "vm") {
+		return nil
+	}
+	e, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return nil
+	}
+	subs, err := e.Cloud.ListSubnets(ctx, job.ProjectID)
+	if err != nil {
+		return nil
+	}
+	var match *provision.Subnet
+	for _, sn := range subs {
+		if sn == nil || sn.AvailabilityZoneID == "" {
+			return nil
+		}
+		if sn.AvailabilityZoneID == m.VM.Zone {
+			if match != nil || sn.ID == "" || sn.VPCID == "" {
+				return nil
+			}
+			match = sn
+		}
+	}
+	if match == nil {
+		return nil
+	}
+	port := m.NLB.TargetPort
+	if port == 0 {
+		port = m.NLB.Port
+	}
+	return &stack.LBPlacement{Project: job.ProjectID, VPC: match.VPCID, Zone: m.VM.Zone, Subnet: match.ID, Name: m.NLB.Name, Port: m.NLB.Port, TargetPort: port, External: m.NLB.External}
+}
+
+func (s *Registry) stackLBPreview(ctx context.Context, j *stack.Job) (map[string]any, error) {
+	for _, st := range j.Steps {
+		if st.Tool == "lb_create" && st.Status == "pending" {
+			a := substituteRefs(st.Args, j.Outputs)
+			a = withoutConsent(a)
+			if !validStackTG(j, st, a) {
+				return nil, fmt.Errorf("invalid target group for job %s", j.ID)
+			}
+			if c := callerOf(ctx); c != nil {
+				ctx = context.WithValue(ctx, lbStackCLIKey{}, true)
+				if c.AutomaticPreview {
+					c.RequireNewApproval = true
+				}
+			}
+			ctx = context.WithValue(ctx, lbJobKey{}, j)
+			p, e := s.planLbCreate(stepOf(ctx), a)
+			if e != nil {
+				return nil, e
+			}
+			if p.PreviewOf == nil {
+				return nil, fmt.Errorf("cannot prepare placement approval for job %s", j.ID)
+			}
+			q, e := p.PreviewOf(ctx)
+			if e != nil {
+				return nil, e
+			}
+			q["status"] = "confirmation_required"
+			q["job_id"] = j.ID
+			q["outputs"] = j.Outputs
+			return q, nil
+		}
+	}
+	return nil, fmt.Errorf("job %s has no pending LB step", j.ID)
 }

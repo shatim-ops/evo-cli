@@ -6,7 +6,9 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -203,6 +205,9 @@ func faultRun(t *testing.T, c faultMatrixCase, k int, kind string) (faultWorld, 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	w, r, dir := c.world(t, cancel)
+	if api, ok := w.(*faultAPI); ok {
+		prepareFaultLB(t, ctx, &c, r, api)
+	}
 	if k > 0 {
 		w.failAt(k, kind)
 	}
@@ -384,4 +389,24 @@ func TestFault_MatrixCoversTheRegistry(t *testing.T) {
 	if len(bad) > 0 {
 		t.Fatal(strings.Join(bad, "\n"))
 	}
+}
+
+func prepareFaultLB(t *testing.T, ctx context.Context, c *faultMatrixCase, r *Registry, api *faultAPI) {
+	if c.tool != "lb_create" {
+		return
+	}
+	args := withoutConsent(c.args)
+	delete(args, "preview_id")
+	text, _ := r.handlers[c.tool](ctx, args)
+	var q map[string]any
+	if json.Unmarshal([]byte(text), &q) != nil || !isUUID(stringArg(q, "preview_id")) {
+		t.Fatalf("missing LB offer: %s", text)
+	}
+	c.args = maps.Clone(c.args)
+	c.args["preview_id"] = q["preview_id"]
+	// Fault indices in the common matrix count from the confirmed call.
+	api.mu.Lock()
+	api.seq = 0
+	api.log = nil
+	api.mu.Unlock()
 }

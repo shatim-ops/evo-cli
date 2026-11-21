@@ -222,7 +222,7 @@ var cliSpecs = map[string]CLISpec{
 	// (nlb, which --toolsets keeps): owner's decision Q4.
 	"lb_list":      {Group: "lb", Verb: "list"},
 	"lb_get":       {Group: "lb", Verb: "get", Args: []string{"id"}},
-	"lb_create":    {Group: "lb", Verb: "create", Args: []string{"name"}},
+	"lb_create":    {Group: "lb", Verb: "create", Omit: map[string]bool{"preview_id": true}, Args: []string{"name"}},
 	"lb_delete":    {Group: "lb", Verb: "delete", Args: []string{"id"}},
 	"lb_operation": {Group: "lb", Verb: "operation", Args: []string{"operation_id"}},
 	"tg_list":      {Group: "tg", Verb: "list"},
@@ -287,7 +287,7 @@ var cliSpecs = map[string]CLISpec{
 
 	// stack
 	"stack_plan":    {Group: "stack", Verb: "plan", Files: map[string]bool{"manifest": true}},
-	"stack_apply":   {Group: "stack", Verb: "apply", Args: []string{"job_id"}},
+	"stack_apply":   {Group: "stack", Verb: "apply", Omit: map[string]bool{"preview_id": true}, Args: []string{"job_id"}},
 	"stack_status":  {Group: "stack", Verb: "status", Args: []string{"job_id"}},
 	"stack_destroy": {Group: "stack", Verb: "destroy", Args: []string{"job_id"}},
 

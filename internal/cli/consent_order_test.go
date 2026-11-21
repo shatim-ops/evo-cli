@@ -771,7 +771,7 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 		callTool := func(args map[string]any) roAnswer {
 			return first(srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": args}))
 		}
-		if confirmed && (tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade") {
+		if confirmed && (tl.Name == "lb_create" || tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade") {
 			callTool = func(args map[string]any) roAnswer {
 				return upgradeSession(map[string]any{"name": tl.Name, "arguments": args})
 			}

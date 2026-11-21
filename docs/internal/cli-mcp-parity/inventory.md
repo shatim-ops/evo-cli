@@ -9,7 +9,7 @@
 
 Счёта инструментов и команд файл не хранит: его печатает `go test ./internal/cli -run TestParityInventory -v`. Команды бинара вне docs/commands.md и не скрытые: `evo help`.
 
-Для `k8s_upgrade` и `k8s_nodepool_upgrade` первый явный CLI `--yes` разрешён. MCP требует отдельного согласия и `preview_id` показанного превью в той же сессии. См. [основание](analysis.md#первый-вызов-обновления-kubernetes).
+Для `lb_create`, `k8s_upgrade` и `k8s_nodepool_upgrade` первый явный CLI `--yes` разрешён. MCP требует отдельного согласия и `preview_id` показанного превью в той же сессии. См. [основание](analysis.md#первый-вызов-обновления-kubernetes).
 
 ## 1. Инструменты по способу вызова из CLI
 
@@ -309,7 +309,7 @@
 | `evo kafka operation` | `kafka_operation` | operation_id | — | — | — | — |
 | `evo kafka specs` | `kafka_specs` | — | — | — | — | — |
 | `evo kafka versions` | `kafka_versions` | — | — | — | — | — |
-| `evo lb create` | `lb_create` | name | — | — | confirmed | — |
+| `evo lb create` | `lb_create` | name | — | preview_id | confirmed | — |
 | `evo lb delete` | `lb_delete` | id | — | — | confirmed | — |
 | `evo lb get` | `lb_get` | id | — | — | — | — |
 | `evo lb list` | `lb_list` | — | — | — | — | — |
@@ -357,7 +357,7 @@
 | `evo snat create` | `snat_create` | name | — | — | confirmed | — |
 | `evo snat delete` | `snat_delete` | id | — | — | confirmed | — |
 | `evo snat list` | `snat_list` | — | — | — | — | — |
-| `evo stack apply` | `stack_apply` | job_id | — | — | confirmed | — |
+| `evo stack apply` | `stack_apply` | job_id | — | preview_id | confirmed | — |
 | `evo stack destroy` | `stack_destroy` | job_id | — | — | confirmed | — |
 | `evo stack plan` | `stack_plan` | — | — | — | — | file:manifest |
 | `evo stack status` | `stack_status` | job_id | — | — | — | — |

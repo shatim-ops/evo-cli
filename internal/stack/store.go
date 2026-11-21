@@ -208,10 +208,24 @@ type Step struct {
 	StartedAt time.Time `json:"started_at,omitempty"`
 }
 
+// LBPlacement records the paid placement shown for this job's own target-group step.
+type LBPlacement struct {
+	Project    string `json:"project_id"`
+	VPC        string `json:"vpc_id"`
+	Zone       string `json:"zone_id"`
+	Subnet     string `json:"subnet_id"`
+	Name       string `json:"name"`
+	External   bool   `json:"external"`
+	Port       int    `json:"port"`
+	TargetPort int    `json:"target_port"`
+}
 type Job struct {
-	ID       string   `json:"id"`
-	Manifest Manifest `json:"manifest"`
-	Status   string   `json:"status"` // running|done|error|destroying|destroyed
+	LBUncertain bool           `json:"lb_submission_uncertain,omitempty"`
+	LBPlacement *LBPlacement   `json:"lb_placement,omitempty"`
+	LBPending   map[string]any `json:"lb_pending,omitempty"`
+	ID          string         `json:"id"`
+	Manifest    Manifest       `json:"manifest"`
+	Status      string         `json:"status"` // running|done|error|destroying|destroyed
 	// passwords are the VM passwords evo made in this crank, by step: the
 	// answer of the crank shows them once (Compact), the job file never
 	// holds them (FB121-7).
@@ -424,6 +438,9 @@ func (j *Job) Save() error {
 	data, err := json.MarshalIndent(j, "", "  ")
 	if err != nil {
 		return err
+	}
+	if j.Manifest.NLB != nil {
+		return config.WriteDurableReceipt(filepath.Join(dir, j.ID+".json"), data)
 	}
 	return config.WriteFilePrivate(filepath.Join(dir, j.ID+".json"), data)
 }
@@ -898,6 +915,11 @@ func (j *Job) Compact() map[string]any {
 		"running": running,
 		"pending": pending,
 		"outputs": j.Outputs,
+	}
+	if j.LBPending != nil {
+		out["approval"] = "confirmation_required"
+		out["lb_placement"] = j.LBPending
+		out["next_tool"] = "stack_apply"
 	}
 	if j.ProjectID != "" {
 		out["project_id"] = j.ProjectID

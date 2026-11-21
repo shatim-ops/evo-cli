@@ -319,7 +319,7 @@ func comparePreviews(t *testing.T, name string, pc parityCommand, srv parityMCP,
 		}
 		got["http"] = h
 	}
-	if pc.tool.Name == "k8s_upgrade" || pc.tool.Name == "k8s_nodepool_upgrade" {
+	if pc.tool.Name == "lb_create" || pc.tool.Name == "k8s_upgrade" || pc.tool.Name == "k8s_nodepool_upgrade" {
 		// Compare the terms across transports; each MCP session issued its own capability.
 		seen := map[string]bool{}
 		for _, surface := range []string{"stdio", "http", "http --allow-secret-export"} {
@@ -662,7 +662,7 @@ func httpDetails(t *testing.T, ts *httptest.Server, name string, args map[string
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer parity-token")
-	if name == "k8s_upgrade" || name == "k8s_nodepool_upgrade" {
+	if name == "lb_create" || name == "k8s_upgrade" || name == "k8s_nodepool_upgrade" {
 		init, err := http.NewRequest(http.MethodPost, ts.URL+"/mcp", bytes.NewReader(roRequest("initialize", map[string]any{"protocolVersion": "2025-03-26"})))
 		if err != nil {
 			t.Fatal(err)

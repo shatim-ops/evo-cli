@@ -50,6 +50,8 @@ const optionalSubnet = "00000000-0000-0000-0000-0000000000d1"
 // image_id) goes here, the other one is set.
 var optionalLeftOut = map[string]string{
 	"k8s_upgrade preview_id":                        "server-issued only after preview, never sent to the cloud",
+	"lb_create preview_id":                          "server-issued MCP approval only",
+	"stack_apply preview_id":                        "issued for a paused load balancer placement only",
 	"k8s_nodepool_upgrade preview_id":               "server-issued only after preview, never sent to the cloud",
 	"deploy image":                                  "an alternative of image_id",
 	"backup_create disk_id":                         "an alternative of vm_id: one backup is of one resource",

@@ -28,7 +28,7 @@ func TestNetworkRepeat_SecondClientAfterLostPost(t *testing.T) {
 			continue
 		}
 		t.Run(c.tool, func(t *testing.T) {
-			api, first, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			api, first, dir, k, ctx := paidCreateWorld(t, &c, 1000)
 			second := New(first.newEngine)
 			root, _ := first.stateDir()
 			second.SetStateDir(root)
@@ -53,7 +53,7 @@ func TestNetworkRepeat_SNATReadCut(t *testing.T) {
 		if c.tool != "snat_create" {
 			continue
 		}
-		api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+		api, r, dir, k, ctx := paidCreateWorld(t, &c, 1000)
 		api.failAt(k-1, faultCancel)
 		text, failed := r.handlers[c.tool](ctx, maps.Clone(c.args))
 		if !failed || creates(api) != 0 || len(intent.Pending(dir)) != 0 {
@@ -102,7 +102,7 @@ func TestNetworkRepeat_SNATConflicts(t *testing.T) {
 			{"different name and zone", "other", contractID, 2},
 		} {
 			t.Run(tc.label, func(t *testing.T) {
-				api, r, _, k, ctx := paidCreateWorld(t, c, 1000)
+				api, r, _, k, ctx := paidCreateWorld(t, &c, 1000)
 				api.failAt(k, faultLost)
 				r.handlers[c.tool](ctx, maps.Clone(c.args))
 				api.disarm()
@@ -126,7 +126,7 @@ func TestNetworkRepeat_FailedReadKeepsCut(t *testing.T) {
 			continue
 		}
 		t.Run(c.tool, func(t *testing.T) {
-			api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			api, r, dir, k, ctx := paidCreateWorld(t, &c, 1000)
 			api.failAt(k, faultLost)
 			r.handlers[c.tool](ctx, maps.Clone(c.args))
 			api.disarm()
@@ -168,7 +168,7 @@ func TestNetworkRepeat_UnknownOutcomeBlocksEveryClient(t *testing.T) {
 			continue
 		}
 		t.Run(c.tool, func(t *testing.T) {
-			api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			api, r, dir, k, ctx := paidCreateWorld(t, &c, 1000)
 			api.failAt(k, faultLost)
 			r.handlers[c.tool](ctx, maps.Clone(c.args))
 			api.disarm()
@@ -204,7 +204,7 @@ func TestNetworkRepeat_TerminalAnswerCannotSettleAnUnknownOutcome(t *testing.T) 
 			continue
 		}
 		t.Run(c.tool, func(t *testing.T) {
-			api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			api, r, dir, k, ctx := paidCreateWorld(t, &c, 1000)
 			api.failAt(k, faultLost)
 			r.handlers[c.tool](ctx, maps.Clone(c.args))
 			api.disarm()
@@ -238,7 +238,7 @@ func TestNetworkRepeat_AnotherKeyOfTheAccountKeepsItsReceipt(t *testing.T) {
 			continue
 		}
 		t.Run(c.tool, func(t *testing.T) {
-			api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			api, r, dir, k, ctx := paidCreateWorld(t, &c, 1000)
 			factory := r.newEngine
 			key := "previous-key-id"
 			r.newEngine = func(args map[string]any) (*engine.Engine, error) {

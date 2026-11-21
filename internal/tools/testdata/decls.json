@@ -664,6 +664,7 @@
     "created": "{id:lb_id lost: arg: none: list:lb_list field:load_balancers listArgs:[] read: delete:lb_delete}",
     "create_name": "{args:[name] rule: what:load balancer whRU:балансировщик}",
     "id_args": [
+      "preview_id why=\"a local single-use approval for this load balancer placement and session\" target=false ids=false",
       "target_group_id why=\"\" target=false ids=false kind={what:\"target group\" byName:false list:\"tg_list\" check:true project:true card:true}",
       "vpc_id why=\"\" target=false ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}",
       "subnet_id why=\"the handler resolves it through the project's own list (vm_list, list_floating_ips, list_security_groups, list_subnets) and refuses one that is not there\" target=false ids=false"
@@ -674,7 +675,10 @@
     ],
     "echoed_args": [
       "target_port"
-    ]
+    ],
+    "no_completion": {
+      "preview_id": "a local single-use approval for this load balancer placement and session"
+    }
   },
   "lb_delete": {
     "delete": "{arg:id parent: what:load balancer whRU:балансировщик statePrefix:NLB_STATUS_ creatingUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9) failedUnseen:no run has shown the refusal: after two runs of probe Г-12 (release plan 1.9)}",
@@ -1067,9 +1071,13 @@
   },
   "stack_apply": {
     "id_args": [
+      "preview_id why=\"a local single-use approval for this load balancer placement and session\" target=false ids=false",
       "job_id why=\"a local object of this host (plan, stack job), not a cloud resource; a stack job runs only in the server's project (checkJobProject)\" target=false ids=false"
     ],
-    "untrusted": "{fields:[preview error details outputs] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[preview error details outputs] whole:false own:[] workload:false deep:false}",
+    "no_completion": {
+      "preview_id": "a local single-use approval for this load balancer placement and session"
+    }
   },
   "stack_destroy": {
     "destructive": true,

@@ -106,6 +106,9 @@ func agentSkillBody(root *cobra.Command, readOnly bool) string {
    deleted, and the price) and ask. The `+"`approval`"+` field says the same.
 3. Consent comes only from the person: `+"`--yes`"+` in the CLI, `+"`confirmed=true`"+` in
    MCP, and only after they said yes to this preview. Never add it on your own.
+   For lb_create, show the resolved project, VPC, zone and subnet, then return the preview_id
+   with confirmed=true in the same MCP session after human approval. For a paused LB stack
+   step, request stack_apply for the same job and confirm its freshly shown placement.
    For k8s_upgrade and k8s_nodepool_upgrade, obtain separate approvals. Request
    each preview and show it to the person. After approval, pass its preview_id
    with confirmed=true in the same MCP session. If the project, resource,

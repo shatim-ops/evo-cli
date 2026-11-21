@@ -186,7 +186,7 @@ func genInventory() (doc []byte, counts string) {
 	fmt.Fprintf(&w, "Счёта инструментов и команд файл не хранит: его печатает `go test ./internal/cli -run TestParityInventory -v`. "+
 		"Команды бинара вне docs/commands.md и не скрытые: %s.\n\n", dash(strings.Join(others, ", ")))
 
-	fmt.Fprintln(&w, "Для `k8s_upgrade` и `k8s_nodepool_upgrade` первый явный CLI `--yes` разрешён. MCP требует отдельного согласия и `preview_id` показанного превью в той же сессии. См. [основание](analysis.md#первый-вызов-обновления-kubernetes).")
+	fmt.Fprintln(&w, "Для `lb_create`, `k8s_upgrade` и `k8s_nodepool_upgrade` первый явный CLI `--yes` разрешён. MCP требует отдельного согласия и `preview_id` показанного превью в той же сессии. См. [основание](analysis.md#первый-вызов-обновления-kubernetes).")
 	fmt.Fprintln(&w)
 
 	// --- 1. Tools by how the CLI calls them ---

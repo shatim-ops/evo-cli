@@ -336,7 +336,7 @@ func TestDeterminism_ListOrderDoesNotChangeTheAnswer(t *testing.T) {
 				fake.reset()
 				a := first(srv.stdio(t, srv.plain, "tools/call", map[string]any{"name": tl.Name, "arguments": args}))
 				done()
-				if tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade" {
+				if tl.Name == "lb_create" || tl.Name == "k8s_upgrade" || tl.Name == "k8s_nodepool_upgrade" {
 					answer := parseObject(a.text)
 					if id, _ := answer["preview_id"].(string); id == "" {
 						t.Fatal("missing preview_id")

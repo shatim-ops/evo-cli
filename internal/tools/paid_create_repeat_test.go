@@ -18,9 +18,9 @@ import (
 
 // paidCreateWorld is the world of a create of the fault matrix with its
 // create request found: k is the number of that call in a clean run.
-func paidCreateWorld(t *testing.T, c faultMatrixCase, lag int) (api *faultAPI, r *Registry, dir string, k int, ctx context.Context) {
+func paidCreateWorld(t *testing.T, c *faultMatrixCase, lag int) (api *faultAPI, r *Registry, dir string, k int, ctx context.Context) {
 	t.Helper()
-	happy, _, _, _ := faultRun(t, c, 0, "")
+	happy, _, _, _ := faultRun(t, *c, 0, "")
 	for i, call := range happy.callLog() {
 		if strings.HasPrefix(call, http.MethodPost+" ") || strings.HasPrefix(call, http.MethodPut+" ") {
 			k = i + 1
@@ -35,6 +35,7 @@ func paidCreateWorld(t *testing.T, c faultMatrixCase, lag int) (api *faultAPI, r
 	w, r, _ := c.world(t, cancel)
 	api = w.(*faultAPI)
 	api.lag = lag
+	prepareFaultLB(t, ctx, c, r, api)
 	root, _ := r.stateDir()
 	return api, r, intent.Dir(root), k, ctx
 }
@@ -65,7 +66,7 @@ func TestPaidCreate_TheRepeatAfterALostAnswerAsks(t *testing.T) {
 		}
 		ran++
 		t.Run(c.tool, func(t *testing.T) {
-			api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			api, r, dir, k, ctx := paidCreateWorld(t, &c, 1000)
 			api.failAt(k, faultLost)
 			r.handlers[c.tool](ctx, maps.Clone(c.args))
 			api.disarm()
@@ -96,6 +97,9 @@ func TestPaidCreate_TheRepeatAfterALostAnswerAsks(t *testing.T) {
 			}
 			// The person was asked (MCP): the next consent to precisely
 			// the preview they saw is sent.
+			if c.tool == "lb_create" {
+				other["preview_id"] = m["preview_id"]
+			}
 			r.handlers[c.tool](context.Background(), maps.Clone(other))
 			want := sent + 1
 			if everySendIsAChange[c.tool].listedName != nil {
@@ -144,7 +148,7 @@ func TestPaidCreate_WhatIsListedIsNotAskedAbout(t *testing.T) {
 			continue
 		}
 		t.Run(c.tool, func(t *testing.T) {
-			api, r, dir, k, ctx := paidCreateWorld(t, c, 1000)
+			api, r, dir, k, ctx := paidCreateWorld(t, &c, 1000)
 			api.failAt(k, faultLost)
 			r.handlers[c.tool](ctx, maps.Clone(c.args))
 			api.disarm()
@@ -160,8 +164,13 @@ func TestPaidCreate_WhatIsListedIsNotAskedAbout(t *testing.T) {
 			if strings.Contains(text, `"interrupted"`) || creates(api) != sent {
 				t.Errorf("the repeat once the resource is listed: create requests %d (were %d)\n%s", creates(api), sent, text)
 			}
-			if left := intent.Pending(dir); len(left) != 0 {
-				t.Errorf("the record of a call whose resource is listed stays: %+v", left)
+			left := intent.Pending(dir)
+			want := 0
+			if c.tool == "lb_create" {
+				want = 1
+			} // A namesake cannot settle the placement or origin.
+			if len(left) != want {
+				t.Errorf("receipts after a listing by name: %+v, want %d", left, want)
 			}
 		})
 	}
@@ -188,7 +197,7 @@ func TestPaidCreate_NoRequestSentLeavesNoRecord(t *testing.T) {
 			for at := 1; !cut; at++ {
 				var k int
 				var ctx context.Context
-				api, r, dir, k, ctx = paidCreateWorld(t, c, 0)
+				api, r, dir, k, ctx = paidCreateWorld(t, &c, 0)
 				if at >= k {
 					t.Fatalf("no read before the create request (call %d) ends the call when the client is gone at it", k)
 				}
@@ -316,7 +325,7 @@ func TestPaidCreate_TheQuestionOfAConsentedRepeatCarriesThePreview(t *testing.T)
 			// The repeat of each kind in a world of its own, after the
 			// same lost answer.
 			repeat := func(consented bool) (map[string]any, int) {
-				api, r, _, k, ctx := paidCreateWorld(t, c, 1000)
+				api, r, _, k, ctx := paidCreateWorld(t, &c, 1000)
 				api.failAt(k, faultLost)
 				r.handlers[c.tool](ctx, maps.Clone(c.args))
 				api.disarm()
@@ -337,6 +346,12 @@ func TestPaidCreate_TheQuestionOfAConsentedRepeatCarriesThePreview(t *testing.T)
 			without, readsWithout := repeat(false)
 			for field, want := range without {
 				if field == "interrupted" || field == "message" || field == "pending_operations" || field == "_untrusted" {
+					continue
+				}
+				if field == "preview_id" && c.tool == "lb_create" {
+					if !isUUID(stringArg(with, field)) || !isUUID(stringArg(without, field)) {
+						t.Fatal("missing fresh preview ID")
+					}
 					continue
 				}
 				got, _ := json.Marshal(with[field])

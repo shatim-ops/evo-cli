@@ -48,6 +48,7 @@ type Caller struct {
 	// RequireNewApproval stops --yes when the terms of a visible preview changed.
 	RequireNewApproval bool
 	upgradePreview     *upgradeReceipt
+	lbDigest           string
 	// Printer receives the engine's output; nil keeps it in the answer.
 	Printer *output.Printer
 	// Progress shows the stages of a long call to the person while it

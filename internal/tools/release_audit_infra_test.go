@@ -381,7 +381,7 @@ func TestLbCreate_ZoneFromTargetGroup(t *testing.T) {
 	if wc["zone"] != "ru.AZ-1" || wc["subnet_id"] != "sn-1" {
 		t.Errorf("preview: zone %v subnet %v, want ru.AZ-1 sn-1: %s", wc["zone"], wc["subnet_id"], text)
 	}
-	if _, text, isErr := callNamed(t, r, "lb_create", with(map[string]any{"confirmed": true})); isErr {
+	if _, text, isErr := callNamed(t, r, "lb_create", with(map[string]any{"confirmed": true, "preview_id": m["preview_id"]})); isErr {
 		t.Fatalf("lb_create: %s", text)
 	}
 	specs, _ := f.post("/v2/networkLoadBalancers")["availability_zone_specs"].([]any)

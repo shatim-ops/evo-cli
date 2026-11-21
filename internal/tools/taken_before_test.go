@@ -111,6 +111,12 @@ func TestCreate_NeverTakesWhatWasThereBefore(t *testing.T) {
 			continue
 		}
 		args := copyArgsMap(a)
+		if n == "lb_create" {
+			q, _, _ := contractCall(tl, args, contractCallLimit)
+			var preview map[string]any
+			_ = json.Unmarshal([]byte(q), &preview)
+			args["preview_id"] = preview["preview_id"]
+		}
 		args["confirmed"] = true
 		text, isErr, pan := contractCall(tl, args, contractCallLimit)
 		writes := contractWrites(rt.take())

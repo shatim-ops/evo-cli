@@ -310,6 +310,12 @@ func (r *Registry) repeatOfMade(ctx context.Context, name string, args map[strin
 		// as any other — a new create («Риск», conclusion 268, 1).
 		// listSaid: the list answered (checkByList says "" of a list not
 		// read).
+		if name == "lb_create" && !readErr {
+			var op map[string]any
+			if json.Unmarshal([]byte(read), &op) != nil || stringArg(op, "id") != stringArg(step, "operation_id") || (mc.ID != "" && stringArg(op, "resource_id") != mc.ID) {
+				return errAnswer(clierrors.New(clierrors.CodeAPIError, i18n.T("The operation does not verify the submitted load balancer.", "Операция не подтверждает отправленное создание балансировщика."), i18n.T("Check the saved operation ID in the original project.", "Проверьте сохранённый ID операции в исходном проекте.")), map[string]any{"operation_id": step["operation_id"], "repeat_of": map[string]any{"tool": name, "id": mc.ID}, "next_tool": mc.Next, "next_args": step}), true, true
+			}
+		}
 		if madeEnded(read, readErr, clock.Since(mc.StartedAt), strings.HasSuffix(mc.Next, "_operation"), listSaid != "") {
 			forget()
 			return "", false, false

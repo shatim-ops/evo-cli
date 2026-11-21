@@ -6,10 +6,19 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/stack"
+	"github.com/shatim-ops/evo-cli/internal/state"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -313,6 +322,9 @@ func (s *Registry) planTgDelete(ctx context.Context, args map[string]any) (*Plan
 // is read before the question, and the person agrees to what the
 // balancer serves (audit cli-ids-1.6, §3.2).
 func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan, error) {
+	if _, given := args["preview_id"]; given && !isUUID(stringArg(args, "preview_id")) {
+		return nil, usageErr("preview_id must be a UUID from the displayed preview.", "Нужен UUID preview_id из показанного превью.")
+	}
 	name := stringArg(args, "name")
 	tgID := stringArg(args, "target_group_id")
 	port := pgInt(args, "port", 0)
@@ -426,13 +438,59 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 	if len(warnings) > 0 {
 		out["warnings"] = warnings
 	}
-	return &Plan{Preview: out, Execute: func(ctx context.Context) (string, bool) {
+	willCreate["zone_id"] = zone.ID
+	willCreate["project_id"] = cli.ProjectID()
+	cuts := s.cutCalls(ctx, "lb_create", args)
+	var ids []string
+	if len(cuts) > 0 {
+		message, warn := interruptedWarning(ctx, "lb_create", args, cuts)
+		out["interrupted"] = warn
+		out["message"] = message + " " + stringArg(out, "message")
+		for _, cut := range cuts {
+			ids = append(ids, cut.ID)
+		}
+		slices.Sort(ids)
+	}
+	terms, err := json.Marshal([]any{body, zone.ID, eng.Config.Profile, eng.Maker(), ids})
+	if err != nil {
+		return nil, err
+	}
+	digest := fmt.Sprintf("%x", sha256.Sum256(terms))
+	return s.lbApproval(ctx, args, out, digest, func(ctx context.Context) (string, bool) {
+		job, _ := ctx.Value(lbJobKey{}).(*stack.Job)
+		if job != nil {
+			// Survives a process exit after the send but before advance saves its outcome.
+			job.LBPending = willCreate
+			job.Status = "awaiting_lb_approval"
+			job.LBUncertain = true
+			if err := job.Save(); err != nil {
+				return errResult(err), true
+			}
+		}
 		op, err := cli.CreateNLB(ctx, body)
 		if err != nil || op.ID == "" {
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "lb_create", cli.ListNLB, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf(i18n.T("create load balancer: %w", "создание балансировщика: %w"), err))
+			if st := apiStatus(err); st >= 400 && st < 500 {
+				return errResult(err), true
+			}
+			details := map[string]any{"warning": i18n.Tf("The create of %s may have been accepted. Check lb_list in the original project before approving a second paid creation; a matching name alone cannot identify this submission.", "Создание %s могло быть принято. Перед согласием на повторное платное создание проверьте lb_list в исходном проекте; совпадение имени не подтверждает исход.", quoteCloud(name)), "will_create": willCreate}
+			if rows, e := cli.ListNLB(ctx); e == nil {
+				for _, row := range rows {
+					pid := stringArg(row, "project_id")
+					if stringArg(row, "name") == name && (pid == "" || pid == cli.ProjectID()) {
+						if id := stringArg(row, "id"); id != "" {
+							details["listed_candidate_id"] = id
+							break
+						}
+					}
+				}
+			}
+			return errAnswer(err, details), true
+		}
+		if job != nil {
+			job.LBUncertain = false
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": i18n.T("Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING.",
 			"Асинхронно — опрашивайте evo lb operation <operation_id> до done=true; затем внешний IP и статус RUNNING покажет evo lb get.")}
@@ -442,8 +500,34 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 			out["lb_id"] = op.ResourceID
 		}
 		s.goingOn(ctx, out, "lb_operation", op.ID, op.ResourceID, nil)
+		if job == nil {
+			if own, _ := ctx.Value(callRecordsKey{}).(*callRecords); own != nil && own.hasOpen {
+				receipt := madeCall{Tool: "lb_create", Name: name, ProjectID: cli.ProjectID(), Key: eng.Maker(), ID: op.ResourceID, Next: "lb_operation", NextArgs: map[string]any{"operation_id": op.ID, "wait_seconds": opWaitMaxSeconds}, StartedAt: own.open.StartedAt}
+				root, _ := s.stateDir()
+				data, e := json.Marshal(receipt)
+				if e == nil {
+					e = config.WriteDurableReceipt(filepath.Join(MadeDir(root), madeKey("lb_create", own.open.Canon, name, own.open.Target)), data)
+				}
+				if e != nil {
+					return errAnswer(clierrors.New(clierrors.CodeAPIError, i18n.T("The cloud accepted the LB operation but its receipt could not be saved.", "Облако приняло создание балансировщика, но сохранить квитанцию не удалось."), i18n.T("Read lb_operation with the returned ID before any repeat.", "До повтора прочитайте lb_operation по возвращённому ID.")), map[string]any{"operation_id": op.ID, "lb_id": op.ResourceID, "receipt_error": true}), true
+				}
+			}
+		}
+		if job == nil {
+			if own, _ := ctx.Value(callRecordsKey{}).(*callRecords); own != nil && own.hasOpen {
+				receipt := madeCall{Tool: "lb_create", Name: name, ProjectID: cli.ProjectID(), Key: eng.Maker(), ID: op.ResourceID, Next: "lb_operation", NextArgs: map[string]any{"operation_id": op.ID, "wait_seconds": opWaitMaxSeconds}, StartedAt: own.open.StartedAt}
+				root, _ := s.stateDir()
+				data, e := json.Marshal(receipt)
+				if e == nil {
+					e = config.WriteDurableReceipt(filepath.Join(MadeDir(root), madeKey("lb_create", own.open.Canon, name, own.open.Target)), data)
+				}
+				if e != nil {
+					return errAnswer(clierrors.New(clierrors.CodeAPIError, i18n.T("The cloud accepted the LB operation but its receipt could not be saved.", "Облако приняло создание балансировщика, но сохранить квитанцию не удалось."), i18n.T("Read lb_operation with the returned ID before any repeat.", "До повтора прочитайте lb_operation по возвращённому ID.")), map[string]any{"operation_id": op.ID, "lb_id": op.ResourceID, "receipt_error": true}), true
+				}
+			}
+		}
 		return toJSON(out), false
-	}}, nil
+	})
 }
 
 // vpcName is the name of VPC id for a preview, "" when it cannot be read
@@ -616,4 +700,159 @@ func (s *Registry) planLbDelete(ctx context.Context, args map[string]any) (*Plan
 			}
 			return deleteOutcome(ctx, args, opWatch("lb_delete", id, map[string]any{"id": id}, op.ID, "lb_operation", cli.GetOperation))
 		}), nil
+}
+
+// lbApproval compares the resolved wire request before consuming the offer.
+// The same lock serializes offers and their consumption across CLI processes.
+func (s *Registry) lbApproval(ctx context.Context, args, preview map[string]any, digest string, send func(context.Context) (string, bool)) (*Plan, error) {
+	caller := callerOf(ctx)
+	session, httpCall := ctx.Value(networkSessionKey{}).(string)
+	scope := "stdio-" + s.upgradeClient
+	if caller != nil {
+		scope = "cli"
+	} else if httpCall {
+		if session == "" && ctx.Value(lbJobKey{}) == nil {
+			return nil, clierrors.New(clierrors.CodeConfirmationRequired, i18n.T("An initialized MCP session is required.", "Нужна открытая сессия MCP."), i18n.T("Call initialize, send Mcp-Session-Id, then request a preview.", "Вызовите initialize, передайте Mcp-Session-Id и запросите превью."))
+		}
+		scope = "http-" + session
+	}
+	if job, _ := ctx.Value(lbJobKey{}).(*stack.Job); job != nil {
+		root, ok := s.stateDir()
+		if !ok {
+			return nil, errNoStateDir()
+		}
+		jobPath := filepath.Join(root, "lb-previews", fmt.Sprintf("stack-%x.json", sha256.Sum256([]byte(job.ID))))
+		if capture, _ := ctx.Value(lbPinKey{}).(bool); capture {
+			unlock, err := state.FileLock(jobPath+".lock", 5*time.Second)
+			if err != nil {
+				return nil, err
+			}
+			defer unlock()
+			pin, err := config.ReadFileNoFollow(jobPath)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+			if len(pin) == 0 {
+				if err := config.WriteDurableReceipt(jobPath, []byte(digest)); err != nil {
+					return nil, err
+				}
+			}
+			return &Plan{Preview: preview}, nil
+		}
+		if job.LBPending == nil {
+			pin, err := config.ReadFileNoFollow(jobPath)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+			if string(pin) == digest {
+				return &Plan{Preview: preview, Execute: send}, nil
+			}
+		}
+		scope += ":stack:" + job.ID
+		if job.LBUncertain {
+			preview["warning"] = i18n.T("The preceding LB submission may already be billed. Inspect lb_list and the operation before explicitly approving a second creation.", "Предыдущее создание могло привести к оплате. Проверьте lb_list и операцию перед явным согласием на повторное создание.")
+			digest = fmt.Sprintf("%x", sha256.Sum256([]byte("uncertain:"+digest)))
+		}
+		if parent := ctx.Value(lbStackCLIKey{}); parent != nil {
+			scope = "cli:stack:" + job.ID
+		}
+		caller = nil // A paused stack always needs the actual offer returned to the operator.
+		will, _ := preview["will_create"].(map[string]any)
+		planned := job.LBPlacement
+		if planned != nil && job.LBPending == nil && planned.Project == will["project_id"] && planned.VPC == will["vpc_id"] && planned.Zone == will["zone_id"] && planned.Subnet == will["subnet_id"] && planned.Name == will["name"] && planned.External == will["external"] && planned.Port == pgInt(args, "port", 0) && planned.TargetPort == pgInt(args, "target_port", pgInt(args, "port", 0)) {
+			if _, cut := preview["interrupted"]; !cut {
+				return &Plan{Preview: preview, Execute: send}, nil
+			}
+		}
+	}
+	if httpCall && session == "" {
+		preview["status"] = "confirmation_required"
+		preview["hint"] = i18n.T("Initialize an MCP session and request stack_apply for this job.", "Откройте сессию MCP и запросите stack_apply для этого задания.")
+		return &Plan{Preview: preview, PreviewOf: func(context.Context) (map[string]any, error) { return preview, nil }, Execute: func(context.Context) (string, bool) { return toJSON(preview), true }}, nil
+	}
+	root, ok := s.stateDir()
+	if !ok {
+		return nil, errNoStateDir()
+	}
+	path := filepath.Join(root, "lb-previews", fmt.Sprintf("%x.json", sha256.Sum256([]byte(scope))))
+	type offer struct{ Digest, ID string }
+	lock := func() (func(), error) { return state.FileLock(path+".lock", 5*time.Second) }
+	read := func() (o offer, err error) {
+		b, e := config.ReadFileNoFollow(path)
+		if errors.Is(e, os.ErrNotExist) {
+			return o, nil
+		}
+		if e != nil {
+			return o, e
+		}
+		err = json.Unmarshal(b, &o)
+		return
+	}
+	show := func() error {
+		id, e := uuid.NewRandom()
+		if e != nil {
+			return e
+		}
+		b, e := json.Marshal(offer{digest, id.String()})
+		if e != nil {
+			return e
+		}
+		if e = config.WriteDurableReceipt(path, b); e != nil {
+			return e
+		}
+		if caller == nil {
+			preview["preview_id"] = id.String()
+			preview["approval"] = i18n.T("Show this placement to the person. After explicit approval send its preview_id with confirmed=true in this session.", "Покажите размещение человеку. После явного согласия передайте preview_id с confirmed=true в этой сессии.")
+		}
+		return nil
+	}
+	return &Plan{Preview: preview, PreviewOf: func(context.Context) (map[string]any, error) {
+		unlock, e := lock()
+		if e != nil {
+			return nil, e
+		}
+		defer unlock()
+		if caller != nil {
+			caller.lbDigest = digest
+			if caller.AutomaticPreview {
+				o, e := read()
+				if e != nil {
+					return nil, e
+				}
+				if o.Digest == "" || o.Digest == digest {
+					return preview, nil
+				}
+				caller.RequireNewApproval = true
+				return preview, nil
+			}
+		}
+		return preview, show()
+	}, Execute: func(ctx context.Context) (string, bool) {
+		unlock, e := lock()
+		if e != nil {
+			return errResult(e), true
+		}
+		defer unlock()
+		o, e := read()
+		if e != nil {
+			return errResult(e), true
+		}
+		valid := o.Digest == digest && o.ID == stringArg(args, "preview_id") && o.ID != ""
+		if caller != nil {
+			valid = caller.lbDigest == digest && (o.Digest == "" || o.Digest == digest)
+		}
+		if !valid {
+			if e := show(); e != nil {
+				return errResult(e), true
+			}
+			preview["status"] = "confirmation_required"
+			return toJSON(preview), true
+		}
+		if o.ID != "" {
+			if e := os.Remove(path); e != nil {
+				return errResult(e), true
+			}
+		}
+		return send(ctx)
+	}}, nil
 }

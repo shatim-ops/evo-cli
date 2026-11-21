@@ -175,6 +175,7 @@ func TestLBVPCNameMatchesTargetGroup(t *testing.T) {
 	if m["status"] != "confirmation_required" || !strings.Contains(body, "Private-Net") || !strings.Contains(body, auditUUID) {
 		t.Fatal(body)
 	}
+	args["preview_id"] = m["preview_id"]
 	args["confirmed"] = true
 	if _, body, failed := callNamed(t, r, "lb_create", args); failed {
 		t.Fatal(body)

@@ -168,7 +168,7 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		// processes sharing this state directory. Release before the POST:
 		// a second client can read the in-flight record while it is running.
 		var release func()
-		if confirmed, _ := args["confirmed"].(bool); confirmed && everySendIsAChange[t.Name].listedName != nil && r.newEngine != nil {
+		if confirmed, _ := args["confirmed"].(bool); confirmed && (t.Name == "lb_create" || everySendIsAChange[t.Name].listedName != nil) && r.newEngine != nil {
 			unlock, err := r.lockNetworkIntents(t.Name)
 			if err != nil {
 				return errResult(err), true

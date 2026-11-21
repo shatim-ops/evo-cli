@@ -148,6 +148,11 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			rec.Parties = own.open.Parties
 			rec.Target = own.open.Target
 		}
+		if name == "lb_create" && answerStatus(answer) == "confirmation_required" {
+			// This call stopped before the paid write. Keep any older uncertain receipt.
+			intent.Close(rec, historyOutcome(name, args, answer))
+			return
+		}
 		if rec.Parties == nil {
 			rec.Parties = r.partiesOf(ctx, name, args)
 		}
@@ -205,12 +210,14 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		// A create the platform took whose operation goes on: the same
 		// call again reads it (rememberMade, repeatOfMade); a delete that
 		// answers its resource gone ends it (forgetMadeOf).
-		r.rememberMade(rec, answer)
+		if name != "lb_create" {
+			r.rememberMade(rec, answer)
+		}
 		forgetMadeOf(root, name, args, answer)
 		intent.Close(rec, out)
 		// D119 closes an older network receipt only after its exact resource
 		// is observed under its own key. This call settles only itself.
-		if everySendIsAChange[name].listedName != nil {
+		if name == "lb_create" || everySendIsAChange[name].listedName != nil {
 			return
 		}
 		// The VM may be gone while its address or port rules still need
@@ -272,6 +279,9 @@ func (r *Registry) canonArgs(name string, args map[string]any) []byte {
 	t, _ := r.Lookup(name)
 	sig := make(map[string]any, len(args))
 	for k, v := range args {
+		if k == "preview_id" && (name == "lb_create" || name == "stack_apply") {
+			continue
+		}
 		if k != "confirmed" && !waitArgs[k] && !t.CLI.SecretFiles[k] {
 			sig[k] = v
 		}
@@ -576,7 +586,7 @@ func (r *Registry) callsOn(ctx context.Context, name string, args map[string]any
 		}
 		// What the cut call made is listed: its outcome is read, the
 		// record closes, and nobody is asked about it.
-		if everySendIsAChange[name].made && everySendIsAChange[name].listedName == nil {
+		if name != "lb_create" && everySendIsAChange[name].made && everySendIsAChange[name].listedName == nil {
 			if _, listed, id := r.checkByList(ctx, in, in.ProjectID); listed {
 				intent.Close(in, settledOutcome(in, id))
 				forgetPending(ctx)
@@ -702,6 +712,9 @@ func (r *Registry) askAgainAfterACut(ctx context.Context, name string, args map[
 	if len(mine) == 0 {
 		return "", false
 	}
+	if name == "lb_create" {
+		return "", false
+	} // Its placement offer also binds the cut receipt shown to the operator.
 	message, interrupted := interruptedWarning(ctx, name, args, mine)
 	out := map[string]any{"status": "confirmation_required"}
 	if everySendIsAChange[name].listedName != nil {
@@ -777,7 +790,7 @@ func (r *Registry) closeAsked(ctx context.Context, mine []intent.Intent) {
 // (interrupted.floating_ip, addressQuestion) records the person's answer
 // on its mark.
 func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[string]any, interrupted any) {
-	if everySendIsAChange[name].listedName != nil {
+	if name == "lb_create" || everySendIsAChange[name].listedName != nil {
 		// A terminal answer cannot establish the outcome of a previous write.
 		return
 	}
@@ -797,7 +810,7 @@ func (r *Registry) CutCallAnswered(ctx context.Context, name string, args map[st
 // refusal, an answer with nothing to consent to) stays as it is, and so
 // does the record.
 func (r *Registry) questionNamesTheCut(ctx context.Context, name string, args map[string]any, answer string) string {
-	if answerStatus(answer) != "confirmation_required" {
+	if name == "lb_create" || answerStatus(answer) != "confirmation_required" {
 		return answer
 	}
 	mine := r.cutCalls(ctx, name, args)
@@ -1468,6 +1481,9 @@ func readSkipOf(k *ownerKind, key, cur *state.Maker) readSkip {
 // listed, a list that needs another argument or did not answer — keeps
 // the record; found tells what the list said, "" when it was not read.
 func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active string) (found string, settled bool, listedID string) {
+	if in.Tool == "lb_create" {
+		return "", false, ""
+	} // A name alone cannot identify an interrupted paid placement.
 	// The list is the active project's: an intent of another one is not
 	// read in it — a target of a delete there is «not listed» here
 	// whatever happened to it («Риск», conclusion 47; the lesson of L3).

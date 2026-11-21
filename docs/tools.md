@@ -204,7 +204,7 @@
 | `tg_get` | `evo tg get` | нет | `id` | Get details of one target group by id (from tg_list): member VMs, vpc, status. | Группа целей по ID: ВМ, VPC, состояние |
 | `tg_create` | `evo tg create` | да | `name`, `vm_id` или `targets` | Create a target group (the set of VMs a load balancer distributes traffic to). | Создать группу целей балансировщика (асинхронно) |
 | `tg_delete` | `evo tg delete` | удаляет | `id` | Delete a target group by id (from tg_list). | Удалить группу целей (асинхронно) |
-| `lb_create` | `evo lb create` | да | `name`, `target_group_id`, `port` | Create an L4 TCP load balancer in front of a target group, billable: it forwards TCP and terminates no TLS (HTTPS ends on the VM). | Создать балансировщик L4 перед группой целей (платно, асинхронно) |
+| `lb_create` | `evo lb create` | да | `name`, `target_group_id`, `port` | Billable L4 TCP balancer. | Создать балансировщик L4 перед группой целей (платно, асинхронно) |
 | `lb_delete` | `evo lb delete` | удаляет | `id` | Delete a load balancer by id (from lb_list). | Удалить балансировщик (асинхронно) |
 
 ## org

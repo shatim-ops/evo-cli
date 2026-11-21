@@ -806,6 +806,11 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 			confirmed[k] = v
 		}
 		confirmed["confirmed"] = true
+		if t.Name == "stack_apply" {
+			if id, ok := resp["preview_id"].(string); ok {
+				confirmed["preview_id"] = id
+			}
+		}
 		text, isErr = t.Handler(ctx, confirmed)
 	}
 	if isErr {
