@@ -49,6 +49,8 @@ type localDryRun struct {
 // localDryRuns are the local commands (localCommands) → their run under
 // --dry-run. A new local command without a line here fails the test.
 var localDryRuns = map[string]localDryRun{
+	"evo intent":                {args: []string{"intent"}},
+	"evo intent close":          {args: []string{"intent", "close", "0123456789abcdef"}},
 	"evo configure":             {args: []string{"configure", "--key-id", "k2", "--secret-stdin"}, stdin: "s2\n", writes: true},
 	"evo login":                 {args: []string{"login"}},
 	"evo logout":                {args: []string{"logout"}, writes: true},

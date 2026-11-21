@@ -135,6 +135,8 @@ var humanLocalCommands = map[string]struct {
 	cloud bool
 	why   string
 }{
+	"evo intent":                {false, "a group"},
+	"evo intent close":          {false, "local receipt fields quoted in the terminal preview"},
 	"evo configure":             {true, "menus of projects and zones: the world has no IAM project list; #2026 checks its three places by its own test. Closes by 1.10"},
 	"evo login":                 {true, "a browser and a loopback port: the world has no login flow. Closes by 1.10"},
 	"evo logout":                {true, "deletes the key evo login made, by its token: the world has no login flow. Closes by 1.10"},
