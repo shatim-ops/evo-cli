@@ -22,10 +22,13 @@ name=$2
 d="$HOME/.evo/stage/$name"
 mkdir -p "$d"
 
-# starttime of process $1: field 22 of /proc/PID/stat, counted after the
-# command name, which may hold spaces.
+# Start time of a live process. Read state and start time from one snapshot.
+# The command name in parentheses can itself contain spaces or parentheses.
 starttime() {
-	sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | awk '{print $20}'
+	stat=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+	fields=${stat##*) }
+	[ "$fields" != "$stat" ] || return 1
+	printf '%s\n' "$fields" | awk '$1 !~ /^[ZXx]$/ && $20 ~ /^[0-9]+$/ {print $20}'
 }
 
 # owner_alive DIR: the process named in the lock directory DIR runs — the
@@ -41,9 +44,11 @@ owner_alive() {
 
 # is_alive "PID BOOT START": that process runs.
 is_alive() {
-	[ -n "$1" ] || return 1
+	# Only the characters of a saved PID, boot UUID and start time.
+	case "$1" in *[![:xdigit:]\ -]*) return 1 ;; esac
 	set -- $1
 	[ $# -eq 3 ] || return 1
+	case "$1:$3" in *[!0-9:]*) return 1 ;; esac
 	[ "$2" = "$(cat /proc/sys/kernel/random/boot_id)" ] || return 1
 	[ "$(starttime "$1")" = "$3" ]
 }

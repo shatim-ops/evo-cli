@@ -439,24 +439,25 @@ func cpuLoad() (stop func()) {
 // it, and the stage reads lost, not running for ever («1.7 — релиз»,
 // check of #769, B2).
 func TestStage_AChildThatOutlivesTheStageDoesNotHoldItsLock(t *testing.T) {
-	vm := newVM(t, true)
-	r := Over(vm)
-	script := `sleep 30 & echo $! >"$HOME/child.pid"; echo $PPID >"$HOME/run.pid"; echo $$ >"$HOME/script.pid"; wait`
-	if _, err := r.Start(context.Background(), "compose-up", "in1", script); err != nil {
-		t.Fatal(err)
-	}
-	pids := map[string]int{}
-	for _, f := range []string{"child", "run", "script"} {
-		waitFor(t, f+".pid", func() bool {
-			b, err := os.ReadFile(filepath.Join(vm.home, f+".pid"))
-			pids[f], _ = strconv.Atoi(strings.TrimSpace(string(b)))
-			return err == nil && pids[f] > 0
-		})
-	}
-	t.Cleanup(func() { _ = syscall.Kill(pids["child"], syscall.SIGKILL) })
-	_ = syscall.Kill(pids["run"], syscall.SIGKILL)
-	_ = syscall.Kill(pids["script"], syscall.SIGKILL)
-	waitFor(t, "the stage to read lost", func() bool { return read(t, r, "compose-up").State == "lost" })
+	forEachLock(t, func(t *testing.T, vm localVM) {
+		r := Over(vm)
+		script := `sleep 30 & echo $! >"$HOME/child.pid"; echo $PPID >"$HOME/run.pid"; echo $$ >"$HOME/script.pid"; wait`
+		if _, err := r.Start(context.Background(), "compose-up", "in1", script); err != nil {
+			t.Fatal(err)
+		}
+		pids := map[string]int{}
+		for _, f := range []string{"child", "run", "script"} {
+			waitFor(t, f+".pid", func() bool {
+				b, err := os.ReadFile(filepath.Join(vm.home, f+".pid"))
+				pids[f], _ = strconv.Atoi(strings.TrimSpace(string(b)))
+				return err == nil && pids[f] > 0
+			})
+		}
+		t.Cleanup(func() { _ = syscall.Kill(pids["child"], syscall.SIGKILL) })
+		_ = syscall.Kill(pids["run"], syscall.SIGKILL)
+		_ = syscall.Kill(pids["script"], syscall.SIGKILL)
+		waitFor(t, "the stage to read lost", func() bool { return read(t, r, "compose-up").State == "lost" })
+	})
 }
 
 // Without flock the lock directory names its owner before the stage is
@@ -517,4 +518,65 @@ func TestStage_TermStopsTheStage(t *testing.T) {
 		st := read(t, r, "compose-up").State
 		return st == "lost" || st == "failed"
 	})
+}
+
+// Keep a child unreaped so procfs exposes the same PID, boot ID and start
+// time before and after death even on hosts with an init that reaps orphans.
+func TestStage_LockDirectoryOwnerIdentity(t *testing.T) {
+	vm := newVM(t, false)
+	r := Over(vm)
+	d := filepath.Join(vm.home, ".evo", "stage", "compose-up")
+	if err := os.MkdirAll(filepath.Join(d, "lockdir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(file, value string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(d, file), []byte(value+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("state", "running")
+	child := exec.Command("sleep", "60")
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = child.Process.Kill(); _ = child.Wait() })
+	pid := strconv.Itoa(child.Process.Pid)
+	proc := func() []string {
+		t.Helper()
+		b, err := os.ReadFile("/proc/" + pid + "/stat")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Fields(string(b)[strings.LastIndex(string(b), ") ")+2:])
+	}
+	b, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	boot := strings.TrimSpace(string(b))
+	ticks := proc()[19]
+	owner := strings.Join([]string{pid, boot, ticks}, " ")
+	check := func(record, want string) {
+		t.Helper()
+		write("lockdir/owner", record)
+		if st := read(t, r, "compose-up"); st.State != want {
+			t.Fatalf("owner %q: got %s, want %s", record, st.State, want)
+		}
+	}
+	check(owner, "running")
+	for _, bad := range []string{"", pid, owner + " extra", "self " + boot + " " + ticks, "* " + boot + " " + ticks, pid + " " + boot + " x", pid + " " + boot + " " + ticks + "0", pid + " bad-boot " + ticks} {
+		check(bad, "lost")
+	}
+	if err := child.Process.Signal(syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "stopped owner", func() bool { return proc()[0] == "T" })
+	check(owner, "running")
+	if err := child.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "zombie owner", func() bool { return proc()[0] == "Z" })
+	t.Logf("owner PID=%s state=Z start=%s (live start=%s)", pid, proc()[19], ticks)
+	check(owner, "lost")
 }
