@@ -412,6 +412,12 @@ func TestAgentSetup_ModeAndSymlink(t *testing.T) {
 	setupAgent(t)
 	path := clientPath(t, c, scopeProject)
 	putFile(t, path, []byte("{}\n"), 0o644)
+	// Set the existing mode independently of the process umask.
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(path, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if code, _, stderr := runCLI(t, "", "agent", "setup", "--client", "claude-code", "--yes"); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
