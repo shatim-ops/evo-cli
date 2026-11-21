@@ -362,11 +362,8 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 	if e != nil {
 		return nil, fmt.Errorf(i18n.T("read target group %s: %w", "чтение целевой группы %s: %w"), tgID, e)
 	}
-	if projectField(tg) == "" || stringArg(tg, "id") == "" {
-		return nil, clierrors.New(clierrors.CodeConfigInvalid, i18n.T("The target group card does not identify the group and its project.", "В карточке целевой группы нет ID группы или проекта."), i18n.T("Check the target group in tg_list.", "Проверьте целевую группу в tg_list."))
-	}
-	if projectField(tg) != cli.ProjectID() || stringArg(tg, "id") != tgID {
-		return nil, clierrors.New(clierrors.CodeNotFound, i18n.T("Target group not found in the selected project.", "Целевая группа не найдена в выбранном проекте."), i18n.T("Select a target group from tg_list in this project.", "Выберите целевую группу из tg_list этого проекта."))
+	if err := validateLBTargetGroup(tg, tgID, cli.ProjectID()); err != nil {
+		return nil, err
 	}
 	tgVPC, _ := tg["vpc_id"].(string)
 	vpcID := stringArg(args, "vpc_id")
@@ -533,6 +530,24 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		}
 		return toJSON(out), false
 	})
+}
+
+// GET /v2/targetGroups/{id} addresses the group. The v2TargetGroup schema
+// requires project_id and permits omitting id from the response.
+func validateLBTargetGroup(card map[string]any, id, project string) error {
+	owner := stringArg(card, "project_id")
+	if strings.TrimSpace(owner) == "" {
+		return missingTGProject()
+	}
+	returned, present := card["id"]
+	if owner != project || (present && returned != id) {
+		return clierrors.New(clierrors.CodeNotFound, i18n.T("Target group not found in the selected project.", "Целевая группа не найдена в выбранном проекте."), i18n.T("Select a target group from tg_list in this project.", "Выберите целевую группу из tg_list этого проекта."))
+	}
+	return nil
+}
+
+func missingTGProject() error {
+	return clierrors.New(clierrors.CodeAPIError, i18n.T("The target group response is missing its required project_id.", "В ответе сервиса для целевой группы отсутствует обязательный project_id."), "")
 }
 
 // vpcName is the name of VPC id for a preview, "" when it cannot be read

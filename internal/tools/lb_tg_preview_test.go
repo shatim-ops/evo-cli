@@ -237,8 +237,14 @@ func TestLBApprovalIdentity(t *testing.T) {
 	}
 }
 func TestLBApprovalTargetProject(t *testing.T) {
-	for _, owner := range []string{"", "second-allowed-project", raProject} {
-		t.Run("owner-"+owner, func(t *testing.T) {
+	for _, tc := range []struct{ label, owner, returned, reason string }{
+		{"missing project", "", raTargetGroup, "API_ERROR"},
+		{"other allowed project", "second-allowed-project", raTargetGroup, "NOT_FOUND"},
+		{"wrong group", raProject, raMissingLB, "NOT_FOUND"},
+		{"explicit id", raProject, raTargetGroup, ""},
+		{"id omitted", raProject, "", ""},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
 			f := &raAPI{targetVMs: `{"id":"vm-1","zone_name":"ru.AZ-1","vpc_id":"vpc-1"}`}
 			rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				res, err := f.RoundTrip(req)
@@ -249,7 +255,12 @@ func TestLBApprovalTargetProject(t *testing.T) {
 					if err != nil {
 						return nil, err
 					}
-					card["project_id"] = owner
+					card["project_id"] = tc.owner
+					if tc.returned == "" {
+						delete(card, "id")
+					} else {
+						card["id"] = tc.returned
+					}
 					b, err := json.Marshal(card)
 					if err != nil {
 						return nil, err
@@ -262,12 +273,19 @@ func TestLBApprovalTargetProject(t *testing.T) {
 			r.SetProjectBound()
 			a := map[string]any{"name": "test", "port": float64(80), "target_group_id": raTargetGroup}
 			q, raw, _ := callNamed(t, r, "lb_create", a)
-			if owner == raProject {
+			if tc.reason == "" {
 				if q["preview_id"] == nil {
 					t.Fatal(raw)
 				}
-			} else if q["preview_id"] != nil || q["reason"] == nil || strings.Contains(raw, "second-allowed-project") {
+			} else if q["preview_id"] != nil || q["reason"] != tc.reason || strings.Contains(raw, "second-allowed-project") {
 				t.Fatal(raw)
+			}
+			if tc.reason == "" {
+				a["preview_id"], a["confirmed"] = q["preview_id"], true
+				if _, txt, failed := callNamed(t, r, "lb_create", a); failed || f.postCount() != 1 {
+					t.Fatal(txt)
+				}
+				return
 			}
 			if f.postCount() != 0 {
 				t.Fatal("unexpected write")

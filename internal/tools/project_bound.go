@@ -565,7 +565,11 @@ var (
 		if err != nil {
 			return nil, err
 		}
-		return cli.GetTargetGroup(ctx, id)
+		card, err := cli.GetTargetGroup(ctx, id)
+		if err == nil && c.tool == "lb_create" && strings.TrimSpace(stringArg(card, "project_id")) == "" {
+			err = missingTGProject()
+		}
+		return card, err
 	})
 	kindVPC = byProjectField("VPC", "vpc_list", func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
 		cli, err := c.r.vpcClient(ctx)
