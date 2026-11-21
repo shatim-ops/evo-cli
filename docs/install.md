@@ -235,6 +235,15 @@ Bash работает и без пакета bash-completion. Если ваша 
 свою строку, а `install.sh --uninstall` убирает её. Для Bash в режиме
 входа проверьте, что ваш профиль входа подключает `~/.bashrc`.
 
+В Debian с bash-completion 2.11 при пробеле в `XDG_DATA_HOME` загрузчик
+может пропустить файл evo. Подключите его явно строкой
+`source "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo"`
+в `~/.bashrc` или разрешите установщику добавить строку.
+
+Если вызываете evo по полному пути с пробелом, экранируйте пробел:
+`/opt/my\ tools/evo vm lis` и Tab. В проверенном Bash 5 на Debian при вводе
+`"/opt/my tools/evo" vm lis` Readline не вызывает обработчик дополнения.
+
 Выбор из списка стрелками в zsh скрипт `evo completion zsh` включает сам —
 только для evo (`zstyle ':completion:*:*:evo:*' menu yes select`) и только если
 у вас нет своего стиля для evo. В остальных оболочках это их настройка: PowerShell —
