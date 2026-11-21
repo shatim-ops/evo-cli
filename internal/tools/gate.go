@@ -132,13 +132,20 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 	if !takesConsent(t) {
 		return next
 	}
+	run := r.recordedCall(t, next)
+	step := next
+	if t.Name == "dns_record_create" {
+		// Check the zone before resolving or replaying the record's intent.
+		run = r.boundToProjects(t, run)
+		step = r.boundToProjects(t, step)
+	}
 	return func(ctx context.Context, args map[string]any) (string, bool) {
 		// A step of a stack is a call one level deeper (journaled): the
 		// intent of the call the person consented to covers it, and the
 		// job of the stack records its steps.
 		depth, _ := ctx.Value(journalDepthKey{}).(int)
 		if depth > 1 {
-			return next(ctx, args)
+			return step(ctx, args)
 		}
 		// The holder of what the call reads and says of its records: the
 		// call of a tool has it (budgeted); a layer called on its own gets
@@ -151,6 +158,12 @@ func (r *Registry) intended(t Tool, next Handler) Handler {
 		if r.stateDirUndeclared() {
 			return errResult(errNoStateDir()), true
 		}
+		return run(ctx, args)
+	}
+}
+
+func (r *Registry) recordedCall(t Tool, next Handler) Handler {
+	return func(ctx context.Context, args map[string]any) (string, bool) {
 		// Serialize the check and opening of network create intents across
 		// processes sharing this state directory. Release before the POST:
 		// a second client can read the in-flight record while it is running.

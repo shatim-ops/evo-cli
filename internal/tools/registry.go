@@ -409,7 +409,11 @@ func New(factory EngineFactory) *Registry {
 				h = r.filtered(spec, h)
 			}
 			// Inside requireProject: the check's engine sees its mark.
-			h = r.boundToProjects(*t, h)
+			// DNS record identity uses its parent zone before the planner.
+			// Its ownership check therefore wraps the intent handler below.
+			if t.Name != "dns_record_create" {
+				h = r.boundToProjects(*t, h)
+			}
 			// Inside requireProject too: the list of a name is the call's
 			// project's; outside boundToProjects: it checks the id.
 			var vpcArg string
