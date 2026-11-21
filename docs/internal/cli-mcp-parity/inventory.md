@@ -9,7 +9,7 @@
 
 Счёта инструментов и команд файл не хранит: его печатает `go test ./internal/cli -run TestParityInventory -v`. Команды бинара вне docs/commands.md и не скрытые: `evo help`.
 
-Для `k8s_upgrade` и `k8s_nodepool_upgrade` первый явный CLI `--yes` разрешён. MCP требует превью и отдельного согласия в той же сессии. См. [основание](analysis.md#первый-вызов-обновления-kubernetes).
+Для `k8s_upgrade` и `k8s_nodepool_upgrade` первый явный CLI `--yes` разрешён. MCP требует отдельного согласия и `preview_id` показанного превью в той же сессии. См. [основание](analysis.md#первый-вызов-обновления-kubernetes).
 
 ## 1. Инструменты по способу вызова из CLI
 
@@ -296,12 +296,12 @@
 | `evo k8s nodepool-delete` | `k8s_nodepool_delete` | nodepool_id | — | — | confirmed | — |
 | `evo k8s nodepool-get` | `k8s_nodepool_get` | nodepool_id | — | — | — | — |
 | `evo k8s nodepool-scale` | `k8s_nodepool_scale` | nodepool_id | — | — | confirmed | — |
-| `evo k8s nodepool-upgrade` | `k8s_nodepool_upgrade` | nodepool_id | — | — | confirmed | — |
+| `evo k8s nodepool-upgrade` | `k8s_nodepool_upgrade` | nodepool_id | — | preview_id | confirmed | — |
 | `evo k8s nodepools` | `k8s_nodepools` | cluster_id | — | — | — | — |
 | `evo k8s operation` | `k8s_operation` | operation_id | — | — | — | — |
 | `evo k8s options` | `k8s_options` | — | — | — | — | — |
 | `evo k8s plan` | `k8s_plan` | — | — | — | — | — |
-| `evo k8s upgrade` | `k8s_upgrade` | cluster_id | — | — | confirmed | — |
+| `evo k8s upgrade` | `k8s_upgrade` | cluster_id | — | preview_id | confirmed | — |
 | `evo kafka create` | `kafka_create` | name | — | — | confirmed | — |
 | `evo kafka delete` | `kafka_delete` | cluster_id | — | — | confirmed | — |
 | `evo kafka get` | `kafka_get` | cluster_id | — | — | — | — |

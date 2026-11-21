@@ -30,6 +30,7 @@ const (
 
 type upgradeResource struct {
 	stdio                                           func(map[string]any) roAnswer
+	previewID                                       string
 	kind, tool, verb, argument, id, path, operation string
 	version, state, desired, phase                  string
 	available                                       []string
@@ -61,7 +62,14 @@ func (r *upgradeResource) call(t *testing.T, surface, version string, confirm bo
 		if r.stdio == nil {
 			r.stdio = processUpgradeStdio(t, newROServers(t).plain)
 		}
-		result := r.stdio(map[string]any{"name": r.tool, "arguments": map[string]any{r.argument: r.id, "version": version, "confirmed": confirm}})
+		args := map[string]any{r.argument: r.id, "version": version, "confirmed": confirm}
+		if confirm && r.previewID != "" {
+			args["preview_id"] = r.previewID
+		}
+		result := r.stdio(map[string]any{"name": r.tool, "arguments": args})
+		if id, ok := parseObject(result.text)["preview_id"].(string); ok {
+			r.previewID = id
+		}
 		return result.text, result.isErr
 	}
 	newProcess()
@@ -421,13 +429,15 @@ func TestUpgradeHTTPAndSecondClientDoNotReplay(t *testing.T) {
 		return session
 	}
 	a, b := open(first), open(second)
+	var previewID string
 	params := func(confirmed bool) map[string]any {
-		return map[string]any{"name": "k8s_upgrade", "arguments": map[string]any{"cluster_id": upgradeParityCluster, "version": upgradeTo, "confirmed": confirmed}}
+		return map[string]any{"name": "k8s_upgrade", "arguments": map[string]any{"cluster_id": upgradeParityCluster, "version": upgradeTo, "confirmed": confirmed, "preview_id": previewID}}
 	}
 	preview, _ := retryRPC(t, first, a, "tools/call", params(false))
 	if parseObject(preview.text)["status"] != "confirmation_required" || posts.Load() != 0 {
 		t.Fatalf("preview: %s", preview.text)
 	}
+	previewID, _ = parseObject(preview.text)["preview_id"].(string)
 	result := make(chan roAnswer, 1)
 	go func() { ans, _ := retryRPC(t, first, a, "tools/call", params(true)); result <- ans }()
 	select {
@@ -454,6 +464,7 @@ func TestUpgradeStdioNewProcessNeedsOwnPreview(t *testing.T) {
 	args := map[string]any{"cluster_id": upgradeParityCluster, "version": upgradeTo}
 	preview := callStdioTool(t, "k8s_upgrade", args)
 	args["confirmed"] = true
+	args["preview_id"] = parseObject(preview.text)["preview_id"]
 	fresh := callStdioTool(t, "k8s_upgrade", args)
 	if parseObject(preview.text)["status"] != "confirmation_required" || parseObject(fresh.text)["status"] != "confirmation_required" {
 		t.Fatalf("first process: %s; fresh process: %s", preview.text, fresh.text)

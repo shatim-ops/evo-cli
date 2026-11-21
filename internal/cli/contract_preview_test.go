@@ -319,6 +319,13 @@ func comparePreviews(t *testing.T, name string, pc parityCommand, srv parityMCP,
 		}
 		got["http"] = h
 	}
+	if pc.tool.Name == "k8s_upgrade" || pc.tool.Name == "k8s_nodepool_upgrade" {
+		// This stdio session has its own confirmation capability. The human CLI and stateless HTTP have none.
+		if id, _ := got["stdio"]["preview_id"].(string); id == "" {
+			lines = append(lines, name+": missing MCP preview_id")
+		}
+		delete(got["stdio"], "preview_id")
+	}
 	if why := parityDiff(name, got); why != "" {
 		lines = append(lines, why)
 	}

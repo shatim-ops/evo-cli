@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ import (
 
 type upgradeReceipt struct {
 	Project, Subject, Tool, Resource, Parent, From, Target, Operation, Topology string
+	PreviewID                                                                   string `json:"preview_id,omitempty"`
 }
 
 type upgradeCard struct {
@@ -171,6 +173,16 @@ func (r upgradeReceipt) save(path string) error {
 		return err
 	}
 	return config.WriteDurableReceipt(path, data)
+}
+
+// The client can return this capability only after receiving the preview.
+func (r upgradeReceipt) offer(path string, mcpCall bool, preview map[string]any) error {
+	if mcpCall {
+		r.PreviewID = rand.Text()
+		preview["preview_id"] = r.PreviewID
+		preview["approval"] = i18n.T("Show this preview to the person. Only after their explicit approval, return its preview_id with confirmed=true in this session.", "Покажите это превью человеку. Только после его явного согласия передайте preview_id этого превью вместе с confirmed=true в текущей сессии.")
+	}
+	return r.save(path)
 }
 
 func upgradeResult(r upgradeReceipt, card upgradeCard, status string) map[string]any {
@@ -350,7 +362,7 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 			}
 			caller.RequireNewApproval = true
 		}
-		if err := r.save(offerPath); err != nil {
+		if err := r.offer(offerPath, caller == nil, preview); err != nil {
 			return nil, err
 		}
 		return preview, nil
@@ -377,7 +389,7 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 			}
 		}
 		contextChanged := cardChanged || caller != nil && caller.upgradePreview != nil && *caller.upgradePreview != r
-		allowed, err := reserveUpgrade(offerPath, path, caller == nil, httpCall && session == "", contextChanged, r)
+		allowed, err := reserveUpgrade(offerPath, path, caller == nil, httpCall && session == "", contextChanged, r, stringArg(args, "preview_id"), preview)
 		if err != nil {
 			return errResult(err), true
 		}
@@ -409,7 +421,7 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 
 // Reserving the cloud write and consuming a matching offer happen under the
 // same local lock. A different client cannot use another client's preview.
-func reserveUpgrade(offerPath, receiptPath string, mcpCall, stateless, contextChanged bool, r upgradeReceipt) (bool, error) {
+func reserveUpgrade(offerPath, receiptPath string, mcpCall, stateless, contextChanged bool, r upgradeReceipt, suppliedID string, preview map[string]any) (bool, error) {
 	unlock, err := state.FileLock(offerPath+".lock", 5*time.Second)
 	if err != nil {
 		return false, err
@@ -422,8 +434,13 @@ func reserveUpgrade(offerPath, receiptPath string, mcpCall, stateless, contextCh
 	if stateless {
 		return false, nil
 	}
-	if contextChanged || (mcpCall && shown == nil) || (shown != nil && *shown != r) {
-		return false, r.save(offerPath)
+	validID := false
+	if shown != nil {
+		validID = suppliedID != "" && shown.PreviewID == suppliedID
+		shown.PreviewID = "" // Compare the transition separately from its one-time approval.
+	}
+	if contextChanged || (mcpCall && !validID) || (shown != nil && *shown != r) {
+		return false, r.offer(offerPath, mcpCall, preview)
 	}
 
 	if err := r.save(receiptPath); err != nil {

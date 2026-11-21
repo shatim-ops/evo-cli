@@ -777,7 +777,10 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			}
 			preview := copyArgs(a)
 			delete(preview, "confirmed")
-			callTool(preview)
+			answer := callTool(preview)
+			if id, ok := parseObject(answer.text)["preview_id"].(string); ok {
+				a["preview_id"] = id
+			}
 			mu.Lock()
 			if attempts != 0 {
 				t.Errorf("%s preview attempted %d writes", tl.Name, attempts)

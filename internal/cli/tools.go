@@ -328,7 +328,7 @@ func schemaParams(t tools.Tool) []param {
 	}
 	var out []param
 	for name, v := range props {
-		if name == "confirmed" {
+		if name == "confirmed" || name == "preview_id" && t.CLI.Omit[name] {
 			continue
 		}
 		m, _ := v.(map[string]any)

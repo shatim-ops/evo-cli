@@ -105,7 +105,8 @@ func agentSkillBody(root *cobra.Command, readOnly bool) string {
 3. Consent comes only from the person: `+"`--yes`"+` in the CLI, `+"`confirmed=true`"+` in
    MCP, and only after they said yes to this preview. Never add it on your own.
    For k8s_upgrade and k8s_nodepool_upgrade, obtain separate approvals. Request
-   each preview and confirm in the same MCP session. If the project, resource,
+   each preview and show it to the person. After approval, pass its preview_id
+   with confirmed=true in the same MCP session. If the project, resource,
    parent cluster or versions change, show a fresh preview and ask again.
 4. Before a change, see its preview: `+"`--dry-run`"+` in the CLI, the call without
    `+"`confirmed`"+` in MCP.`, clerrors.ExitConfirmationRequired)

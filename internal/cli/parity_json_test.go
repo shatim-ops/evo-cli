@@ -358,7 +358,10 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 	tl, _ := newRegistry().Lookup(c.tool.Name)
 	if c.tool.Name == "k8s_upgrade" || c.tool.Name == "k8s_nodepool_upgrade" {
 		// MCP binds approval to a visible preview in the same session.
-		tl.Handler(context.Background(), args)
+		text, _ := tl.Handler(context.Background(), args)
+		if id, ok := parseObject(text)["preview_id"].(string); ok {
+			args["preview_id"] = id
+		}
 	}
 	args["confirmed"] = true
 	r.text, r.isErr = tl.Handler(context.Background(), args)

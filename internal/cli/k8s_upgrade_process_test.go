@@ -54,7 +54,7 @@ func TestProcessUpgradeConsent(t *testing.T) {
 	for _, surface := range []string{"CLI", "stdio", "HTTP"} {
 		modes := []string{"first-cluster", "first-pool", "unchanged", "unchanged-pool", "source-version-changed", "pool-parent-changed", "pool-version-changed", "target-changed", "cluster-changed", "project-changed", "lost-pool-response", "foreign-project"}
 		if surface != "CLI" {
-			modes = append(modes, "pool-after-cluster-preview")
+			modes = append(modes, "pool-after-cluster-preview", "missing-id", "pool-missing-id", "wrong-id", "pool-wrong-id", "lost-new-preview", "pool-lost-new-preview", "foreign-client", "pool-foreign-client")
 		}
 		if surface == "HTTP" {
 			modes = append(modes, "other-session", "no-session")
@@ -78,7 +78,7 @@ func TestProcessUpgradeConsent(t *testing.T) {
 					t.Cleanup(func() { toolEngine = original })
 				}
 				target := &cluster
-				if mode == "pool-parent-changed" || mode == "pool-version-changed" || mode == "lost-pool-response" || mode == "first-pool" || mode == "unchanged-pool" {
+				if mode == "pool-parent-changed" || mode == "pool-version-changed" || mode == "lost-pool-response" || mode == "first-pool" || mode == "unchanged-pool" || strings.HasPrefix(mode, "pool-") && mode != "pool-after-cluster-preview" {
 					target = &pool
 					cluster.version = upgradeTo
 				}
@@ -148,12 +148,17 @@ func TestProcessUpgradeConsent(t *testing.T) {
 						rpc = func(params map[string]any) roAnswer { a, _ := retryRPC(t, h, session, "tools/call", params); return a }
 					}
 				}
+				var approvedID string
 				call := func(confirm bool) roAnswer {
 					if surface == "CLI" {
 						text, failed := target.call(t, "CLI", version, confirm)
 						return roAnswer{text: text, isErr: failed}
 					}
-					return rpc(map[string]any{"name": target.tool, "arguments": map[string]any{target.argument: target.id, "version": version, "confirmed": confirm}})
+					args := map[string]any{target.argument: target.id, "version": version, "confirmed": confirm}
+					if confirm && approvedID != "" {
+						args["preview_id"] = approvedID
+					}
+					return rpc(map[string]any{"name": target.tool, "arguments": args})
 				}
 				checkQuestion := func(answer roAnswer) {
 					t.Helper()
@@ -162,6 +167,24 @@ func TestProcessUpgradeConsent(t *testing.T) {
 						!strings.Contains(answer.text, effectiveProject) || !strings.Contains(answer.text, target.id) || !strings.Contains(answer.text, target.version) || !strings.Contains(answer.text, version) ||
 						(target == &pool && !strings.Contains(answer.text, parent)) {
 						t.Fatalf("expected visible current preview and zero POST, got %+v POST=%d/%d", answer, cluster.posts, pool.posts)
+					}
+				}
+				readPreview := func(a roAnswer) string {
+					t.Helper()
+					checkQuestion(a)
+					if surface == "CLI" {
+						return ""
+					}
+					id, _ := parseObject(a.text)["preview_id"].(string)
+					if strings.TrimSpace(id) == "" {
+						t.Errorf("shown preview has no top-level preview_id")
+					}
+					return id
+				}
+				requireZero := func(a roAnswer) {
+					t.Helper()
+					if cluster.posts+pool.posts != 0 || (!a.isErr && a.rpcErr == "" && parseObject(a.text)["status"] != "confirmation_required") {
+						t.Fatalf("unapproved call: POST=%d/%d answer=%+v", cluster.posts, pool.posts, a)
 					}
 				}
 				checkSent := func(a roAnswer) {
@@ -176,14 +199,50 @@ func TestProcessUpgradeConsent(t *testing.T) {
 						if cluster.posts+pool.posts != 0 || (!a.isErr && a.rpcErr == "" && parseObject(a.text)["status"] != "confirmation_required") {
 							t.Fatalf("first unbound MCP confirmation: %+v POST=%d/%d", a, cluster.posts, pool.posts)
 						}
-						checkQuestion(call(false))
+						approvedID = readPreview(call(false))
 						a = call(true)
 					}
 					checkSent(a)
 					return
 				}
-				checkQuestion(call(false))
+				approvedID = readPreview(call(false))
 				switch mode {
+				case "missing-id", "pool-missing-id", "wrong-id", "pool-wrong-id":
+					approvedID = ""
+					if strings.Contains(mode, "wrong") {
+						approvedID = "not-issued-by-this-server"
+					}
+					requireZero(call(true))
+					approvedID = readPreview(call(false))
+					checkSent(call(true))
+					return
+				case "foreign-client", "pool-foreign-client":
+					if surface == "HTTP" {
+						session = initialize()
+					} else {
+						rpc = processUpgradeStdio(t, newROServers(t).plain)
+					}
+					foreign := approvedID
+					approvedID = readPreview(call(false))
+					if foreign != "" && approvedID == foreign {
+						t.Fatal("independent clients received the same identifier")
+					}
+					approvedID = foreign
+					requireZero(call(true))
+					approvedID = readPreview(call(false))
+					checkSent(call(true))
+					return
+				case "lost-new-preview", "pool-lost-new-preview":
+					target.version = "v1.35.10"
+					requireZero(call(true)) // The caller did not receive this response.
+					requireZero(call(true)) // Same arguments and previously approved identifier.
+					old := approvedID
+					approvedID = readPreview(call(false))
+					if approvedID != "" && approvedID == old {
+						t.Fatal("changed transition reused its previous preview_id")
+					}
+					checkSent(call(true))
+					return
 				case "source-version-changed":
 					cluster.version = "v1.35.10"
 				case "pool-version-changed":
@@ -239,12 +298,59 @@ func TestProcessUpgradeConsent(t *testing.T) {
 					if cluster.posts+pool.posts != 0 {
 						t.Fatal("previous session authorized a POST in the new session")
 					}
-					checkQuestion(call(false))
+					approvedID = readPreview(call(false))
 				} else {
-					checkQuestion(answer)
+					old := approvedID
+					approvedID = readPreview(answer)
+					if surface != "CLI" && approvedID != "" && old == approvedID {
+						t.Fatal("changed context reused preview_id")
+					}
 				}
 				checkSent(call(true))
 			})
 		}
+	}
+}
+
+func TestProcessUpgradePreviewIDRegistration(t *testing.T) {
+	seen := map[string]bool{}
+	for _, tool := range mcp.New(nil, "test").ListTools() {
+		props, _ := tool.InputSchema["properties"].(map[string]any)
+		_, listed := props["preview_id"]
+		upgrade := tool.Name == "k8s_upgrade" || tool.Name == "k8s_nodepool_upgrade"
+		if listed != upgrade {
+			t.Errorf("%s preview_id listed=%v", tool.Name, listed)
+		}
+		if !upgrade {
+			continue
+		}
+		seen[tool.Name] = true
+		b, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema struct {
+			Properties map[string]struct{ Type, Description string }
+			Required   []string
+		}
+		if err := json.Unmarshal(b, &schema); err != nil {
+			t.Fatal(err)
+		}
+		prop := schema.Properties["preview_id"]
+		if prop.Type != "string" {
+			t.Errorf("%s preview_id type %q", tool.Name, prop.Type)
+		}
+		for _, arg := range schema.Required {
+			if arg == "preview_id" {
+				t.Errorf("%s requires identifier to obtain first preview", tool.Name)
+			}
+		}
+		description := strings.ToLower(tool.Description + " " + prop.Description)
+		if !strings.Contains(description, "human") && !strings.Contains(description, "человек") && !strings.Contains(description, "пользовател") && !strings.Contains(description, "user") {
+			t.Errorf("%s lacks a human consent instruction", tool.Name)
+		}
+	}
+	if len(seen) != 2 {
+		t.Fatalf("missing upgrade tool: %v", seen)
 	}
 }
