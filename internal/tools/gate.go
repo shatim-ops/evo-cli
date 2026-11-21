@@ -6,13 +6,22 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"maps"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/stack"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // The gate of consent is one function of the registry (owner's decision
@@ -68,6 +77,176 @@ func startLBIntent(ctx context.Context) error {
 		return start()
 	}
 	return nil
+}
+
+// planLbCreate binds each way to execute the paid request to its approved placement.
+// Both a direct call and a resumed stack open the intent only on that transition.
+func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan, error) {
+	plan, digest, err := s.prepareLBCreate(ctx, args)
+	if err != nil || plan.Execute == nil {
+		return plan, err
+	}
+	preview := plan.Preview
+	send := func(ctx context.Context) (string, bool) {
+		if err := startLBIntent(ctx); err != nil {
+			return errResult(err), true
+		}
+		return plan.Execute(ctx)
+	}
+	caller := callerOf(ctx)
+	session, httpCall := ctx.Value(networkSessionKey{}).(string)
+	scope := "stdio-" + s.upgradeClient
+	if caller != nil {
+		scope = "cli"
+	} else if httpCall {
+		if session == "" && ctx.Value(lbJobKey{}) == nil {
+			return nil, clierrors.New(clierrors.CodeConfirmationRequired, i18n.T("An initialized MCP session is required.", "Нужна открытая сессия MCP."), i18n.T("Call initialize, send Mcp-Session-Id, then request a preview.", "Вызовите initialize, передайте Mcp-Session-Id и запросите превью."))
+		}
+		scope = "http-" + session
+	}
+	if job, _ := ctx.Value(lbJobKey{}).(*stack.Job); job != nil {
+		root, ok := s.stateDir()
+		if !ok {
+			return nil, errNoStateDir()
+		}
+		jobPath := filepath.Join(root, "lb-previews", "stack-"+lbDigest([]byte(job.ID))+".json")
+		if capture, _ := ctx.Value(lbPinKey{}).(bool); capture {
+			unlock, err := state.FileLock(jobPath+".lock", 5*time.Second)
+			if err != nil {
+				return nil, err
+			}
+			defer unlock()
+			pin, err := config.ReadFileNoFollow(jobPath)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+			if len(pin) == 0 {
+				if err := config.WriteDurableReceipt(jobPath, []byte(digest)); err != nil {
+					return nil, err
+				}
+			}
+			return &Plan{Preview: preview}, nil
+		}
+		if job.LBPending == nil {
+			pin, err := config.ReadFileNoFollow(jobPath)
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+			if string(pin) == digest {
+				return &Plan{Preview: preview, Execute: send}, nil
+			}
+		}
+		scope = scope + ":stack:" + lbDigest([]byte(job.ID))
+		if job.LBUncertain {
+			warning := i18n.T("The preceding LB submission may already be billed. Inspect lb_list and the operation before explicitly approving a second creation.", "Предыдущее создание могло привести к оплате. Проверьте lb_list и операцию перед явным согласием на повторное создание.")
+			preview["warning"] = warning
+			human := preview["preview"].(engine.CreatePreview)
+			human.Warnings = append(human.Warnings, warning)
+			preview["preview"] = human
+			digest = lbDigest([]byte("uncertain:" + digest))
+		}
+		if parent := ctx.Value(lbStackCLIKey{}); parent != nil {
+			scope = "cli:stack:" + lbDigest([]byte(job.ID))
+		}
+		caller = nil // A paused stack always needs the actual offer returned to the operator.
+		will, _ := preview["will_create"].(map[string]any)
+		planned := job.LBPlacement
+		if planned != nil && job.LBPending == nil && planned.Project == will["project_id"] && planned.VPC == will["vpc_id"] && planned.Zone == will["zone_id"] && planned.Subnet == will["subnet_id"] && planned.Name == will["name"] && planned.External == will["external"] && planned.Port == pgInt(args, "port", 0) && planned.TargetPort == pgInt(args, "target_port", pgInt(args, "port", 0)) {
+			if _, cut := preview["interrupted"]; !cut {
+				return &Plan{Preview: preview, Execute: send}, nil
+			}
+		}
+	}
+	if httpCall && session == "" {
+		preview["status"] = "confirmation_required"
+		preview["hint"] = i18n.T("Initialize an MCP session and request stack_apply for this job.", "Откройте сессию MCP и запросите stack_apply для этого задания.")
+		return &Plan{Preview: preview, PreviewOf: func(context.Context) (map[string]any, error) { return preview, nil }, Execute: func(context.Context) (string, bool) { return toJSON(preview), true }}, nil
+	}
+	root, ok := s.stateDir()
+	if !ok {
+		return nil, errNoStateDir()
+	}
+	path := filepath.Join(root, "lb-previews", lbDigest([]byte(scope))+".json")
+	type offer struct{ Digest, ID string }
+	lock := func() (func(), error) { return state.FileLock(path+".lock", 5*time.Second) }
+	read := func() (o offer, err error) {
+		b, e := config.ReadFileNoFollow(path)
+		if errors.Is(e, os.ErrNotExist) {
+			return o, nil
+		}
+		if e != nil {
+			return o, e
+		}
+		err = json.Unmarshal(b, &o)
+		return
+	}
+	show := func() error {
+		id, e := uuid.NewRandom()
+		if e != nil {
+			return e
+		}
+		b, e := json.Marshal(offer{digest, id.String()})
+		if e != nil {
+			return e
+		}
+		if e = config.WriteDurableReceipt(path, b); e != nil {
+			return e
+		}
+		if caller == nil {
+			preview["preview_id"] = id.String()
+			preview["approval"] = i18n.T("Show this placement to the person. After explicit approval send its preview_id with confirmed=true in this session.", "Покажите размещение человеку. После явного согласия передайте preview_id с confirmed=true в этой сессии.")
+		}
+		return nil
+	}
+	return &Plan{Preview: preview, PreviewOf: func(context.Context) (map[string]any, error) {
+		unlock, e := lock()
+		if e != nil {
+			return nil, e
+		}
+		defer unlock()
+		if caller != nil {
+			caller.lbDigest = digest
+			if caller.AutomaticPreview {
+				o, e := read()
+				if e != nil {
+					return nil, e
+				}
+				if o.Digest == "" || o.Digest == digest {
+					return preview, nil
+				}
+				caller.RequireNewApproval = true
+				return preview, nil
+			}
+		}
+		return preview, show()
+	}, Execute: func(ctx context.Context) (string, bool) {
+		unlock, e := lock()
+		if e != nil {
+			return errResult(e), true
+		}
+		defer unlock()
+		o, e := read()
+		if e != nil {
+			return errResult(e), true
+		}
+		valid := o.Digest == digest && o.ID == stringArg(args, "preview_id") && o.ID != ""
+		if caller != nil {
+			valid = caller.lbDigest == digest && (o.Digest == "" || o.Digest == digest)
+		}
+		if !valid {
+			if e := show(); e != nil {
+				return errResult(e), true
+			}
+			preview["status"] = "confirmation_required"
+			return toJSON(preview), true
+		}
+		if o.ID != "" {
+			if e := os.Remove(path); e != nil {
+				return errResult(e), true
+			}
+		}
+		return send(ctx)
+	}}, nil
 }
 
 // gated is the handler of tool name on its planner: the plan first, then

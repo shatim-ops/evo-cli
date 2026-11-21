@@ -11,13 +11,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -25,7 +22,6 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/nlb"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
-	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // pickVMInterface returns a VM's network interface to use as an NLB
@@ -318,19 +314,16 @@ func (s *Registry) planTgDelete(ctx context.Context, args map[string]any) (*Plan
 
 // --- Load balancer create/delete ---
 
-// planLbCreate plans the create of a load balancer (gate.go). The preview
-// names the target group and the VPC by name as well as by id: the group
-// is read before the question, and the person agrees to what the
-// balancer serves (audit cli-ids-1.6, §3.2).
-func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan, error) {
+// prepareLBCreate resolves the billed placement, its preview and the matching wire request.
+func (s *Registry) prepareLBCreate(ctx context.Context, args map[string]any) (*Plan, string, error) {
 	if _, given := args["preview_id"]; given && !isUUID(stringArg(args, "preview_id")) {
-		return nil, usageErr("preview_id must be a UUID from the displayed preview.", "Нужен UUID preview_id из показанного превью.")
+		return nil, "", usageErr("preview_id must be a UUID from the displayed preview.", "Нужен UUID preview_id из показанного превью.")
 	}
 	name := stringArg(args, "name")
 	tgID := stringArg(args, "target_group_id")
 	port := pgInt(args, "port", 0)
 	if name == "" || tgID == "" || port == 0 {
-		return nil, usageErr("'name', 'target_group_id' and 'port' are required", "нужны 'name', 'target_group_id' и 'port'")
+		return nil, "", usageErr("'name', 'target_group_id' and 'port' are required", "нужны 'name', 'target_group_id' и 'port'")
 	}
 	targetPort := pgInt(args, "target_port", port)
 	hcPort := pgInt(args, "hc_port", targetPort)
@@ -344,33 +337,33 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 
 	cli, eng, err := s.nlbClientEng(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// A second balancer of the same name is a second bill: refused before
 	// the consent, as every other create (DECISIONS D21).
 	existing, err := cli.ListNLB(ctx)
 	if err != nil {
-		return nil, fmt.Errorf(i18n.T("check the name is free: list load balancers: %w", "проверка, что имя свободно: список балансировщиков: %w"), err)
+		return nil, "", fmt.Errorf(i18n.T("check the name is free: list load balancers: %w", "проверка, что имя свободно: список балансировщиков: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return answered(nameTakenResult(i18n.T("load balancer", "балансировщик"), name, id, st, "lb_list")), nil
+		return answered(nameTakenResult(i18n.T("load balancer", "балансировщик"), name, id, st, "lb_list")), "", nil
 	}
 
 	// VPC: explicit, else inherit from the target group (LB must share its
 	// VPC). The group's VMs also name the zone the balancer serves.
 	tg, e := cli.GetTargetGroup(ctx, tgID)
 	if e != nil {
-		return nil, fmt.Errorf(i18n.T("read target group %s: %w", "чтение целевой группы %s: %w"), tgID, e)
+		return nil, "", fmt.Errorf(i18n.T("read target group %s: %w", "чтение целевой группы %s: %w"), tgID, e)
 	}
 	if err := validateLBTargetGroup(tg, tgID, cli.ProjectID()); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	tgVPC, _ := tg["vpc_id"].(string)
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID != "" && tgVPC != "" && vpcID != tgVPC {
 		// The balancer shares its target group's VPC (release audit
 		// re-run, N-01).
-		return nil, clierrors.New(clierrors.CodeConfigInvalid,
+		return nil, "", clierrors.New(clierrors.CodeConfigInvalid,
 			i18n.Tf("target group %s is in VPC %s, not in vpc_id %s; nothing was created", "целевая группа %s в VPC %s, а не в vpc_id %s; ничего не создано", tgID, quoteCloud(tgVPC), vpcID),
 			i18n.T("Omit vpc_id (the balancer takes its target group's VPC) or pass a target group of that VPC.", "Не указывайте vpc_id (балансировщик возьмёт VPC целевой группы) или передайте целевую группу этой VPC."))
 	}
@@ -378,11 +371,11 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		vpcID = tgVPC
 	}
 	if vpcID == "" {
-		return nil, errors.New(i18n.T("could not resolve vpc_id — pass it explicitly", "не удалось определить vpc_id — передайте его"))
+		return nil, "", errors.New(i18n.T("could not resolve vpc_id — pass it explicitly", "не удалось определить vpc_id — передайте его"))
 	}
 	zone, subnetID, subnetName, warnings, err := lbZoneAndSubnet(ctx, eng, args, tg, vpcID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// AZ spec requires exactly one of {id, name} (nlb API 400 otherwise);
@@ -458,17 +451,13 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		slices.Sort(ids)
 	}
 	if eng.Config.KeyID == "" && eng.Config.ServiceAccountID == "" {
-		return nil, usageErr("Cannot identify the caller for load balancer approval.", "Не удалось определить учётную запись для согласования балансировщика.")
+		return nil, "", usageErr("Cannot identify the caller for load balancer approval.", "Не удалось определить учётную запись для согласования балансировщика.")
 	}
 	terms, err := json.Marshal([]any{body, zone.ID, eng.Config.Profile, eng.Config.ServiceAccountID, lbDigest([]byte(eng.Config.KeyID)), ids})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	digest := lbDigest(terms)
-	return s.lbApproval(ctx, args, out, digest, func(ctx context.Context) (string, bool) {
-		if err := startLBIntent(ctx); err != nil {
-			return errResult(err), true
-		}
+	return &Plan{Preview: out, Execute: func(ctx context.Context) (string, bool) {
 		job, _ := ctx.Value(lbJobKey{}).(*stack.Job)
 		wasUncertain := job != nil && job.LBUncertain
 		if job != nil {
@@ -532,7 +521,7 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 			}
 		}
 		return toJSON(out), false
-	})
+	}}, lbDigest(terms), nil
 }
 
 // GET /v2/targetGroups/{id} addresses the group. The v2TargetGroup schema
@@ -723,165 +712,6 @@ func (s *Registry) planLbDelete(ctx context.Context, args map[string]any) (*Plan
 			}
 			return deleteOutcome(ctx, args, opWatch("lb_delete", id, map[string]any{"id": id}, op.ID, "lb_operation", cli.GetOperation))
 		}), nil
-}
-
-// lbApproval compares the resolved wire request before consuming the offer.
-// The same lock serializes offers and their consumption across CLI processes.
-func (s *Registry) lbApproval(ctx context.Context, args, preview map[string]any, digest string, send func(context.Context) (string, bool)) (*Plan, error) {
-	caller := callerOf(ctx)
-	session, httpCall := ctx.Value(networkSessionKey{}).(string)
-	scope := "stdio-" + s.upgradeClient
-	if caller != nil {
-		scope = "cli"
-	} else if httpCall {
-		if session == "" && ctx.Value(lbJobKey{}) == nil {
-			return nil, clierrors.New(clierrors.CodeConfirmationRequired, i18n.T("An initialized MCP session is required.", "Нужна открытая сессия MCP."), i18n.T("Call initialize, send Mcp-Session-Id, then request a preview.", "Вызовите initialize, передайте Mcp-Session-Id и запросите превью."))
-		}
-		scope = "http-" + session
-	}
-	if job, _ := ctx.Value(lbJobKey{}).(*stack.Job); job != nil {
-		root, ok := s.stateDir()
-		if !ok {
-			return nil, errNoStateDir()
-		}
-		jobPath := filepath.Join(root, "lb-previews", "stack-"+lbDigest([]byte(job.ID))+".json")
-		if capture, _ := ctx.Value(lbPinKey{}).(bool); capture {
-			unlock, err := state.FileLock(jobPath+".lock", 5*time.Second)
-			if err != nil {
-				return nil, err
-			}
-			defer unlock()
-			pin, err := config.ReadFileNoFollow(jobPath)
-			if err != nil && !errors.Is(err, os.ErrNotExist) {
-				return nil, err
-			}
-			if len(pin) == 0 {
-				if err := config.WriteDurableReceipt(jobPath, []byte(digest)); err != nil {
-					return nil, err
-				}
-			}
-			return &Plan{Preview: preview}, nil
-		}
-		if job.LBPending == nil {
-			pin, err := config.ReadFileNoFollow(jobPath)
-			if err != nil && !errors.Is(err, os.ErrNotExist) {
-				return nil, err
-			}
-			if string(pin) == digest {
-				return &Plan{Preview: preview, Execute: send}, nil
-			}
-		}
-		scope = scope + ":stack:" + lbDigest([]byte(job.ID))
-		if job.LBUncertain {
-			warning := i18n.T("The preceding LB submission may already be billed. Inspect lb_list and the operation before explicitly approving a second creation.", "Предыдущее создание могло привести к оплате. Проверьте lb_list и операцию перед явным согласием на повторное создание.")
-			preview["warning"] = warning
-			human := preview["preview"].(engine.CreatePreview)
-			human.Warnings = append(human.Warnings, warning)
-			preview["preview"] = human
-			digest = lbDigest([]byte("uncertain:" + digest))
-		}
-		if parent := ctx.Value(lbStackCLIKey{}); parent != nil {
-			scope = "cli:stack:" + lbDigest([]byte(job.ID))
-		}
-		caller = nil // A paused stack always needs the actual offer returned to the operator.
-		will, _ := preview["will_create"].(map[string]any)
-		planned := job.LBPlacement
-		if planned != nil && job.LBPending == nil && planned.Project == will["project_id"] && planned.VPC == will["vpc_id"] && planned.Zone == will["zone_id"] && planned.Subnet == will["subnet_id"] && planned.Name == will["name"] && planned.External == will["external"] && planned.Port == pgInt(args, "port", 0) && planned.TargetPort == pgInt(args, "target_port", pgInt(args, "port", 0)) {
-			if _, cut := preview["interrupted"]; !cut {
-				return &Plan{Preview: preview, Execute: send}, nil
-			}
-		}
-	}
-	if httpCall && session == "" {
-		preview["status"] = "confirmation_required"
-		preview["hint"] = i18n.T("Initialize an MCP session and request stack_apply for this job.", "Откройте сессию MCP и запросите stack_apply для этого задания.")
-		return &Plan{Preview: preview, PreviewOf: func(context.Context) (map[string]any, error) { return preview, nil }, Execute: func(context.Context) (string, bool) { return toJSON(preview), true }}, nil
-	}
-	root, ok := s.stateDir()
-	if !ok {
-		return nil, errNoStateDir()
-	}
-	path := filepath.Join(root, "lb-previews", lbDigest([]byte(scope))+".json")
-	type offer struct{ Digest, ID string }
-	lock := func() (func(), error) { return state.FileLock(path+".lock", 5*time.Second) }
-	read := func() (o offer, err error) {
-		b, e := config.ReadFileNoFollow(path)
-		if errors.Is(e, os.ErrNotExist) {
-			return o, nil
-		}
-		if e != nil {
-			return o, e
-		}
-		err = json.Unmarshal(b, &o)
-		return
-	}
-	show := func() error {
-		id, e := uuid.NewRandom()
-		if e != nil {
-			return e
-		}
-		b, e := json.Marshal(offer{digest, id.String()})
-		if e != nil {
-			return e
-		}
-		if e = config.WriteDurableReceipt(path, b); e != nil {
-			return e
-		}
-		if caller == nil {
-			preview["preview_id"] = id.String()
-			preview["approval"] = i18n.T("Show this placement to the person. After explicit approval send its preview_id with confirmed=true in this session.", "Покажите размещение человеку. После явного согласия передайте preview_id с confirmed=true в этой сессии.")
-		}
-		return nil
-	}
-	return &Plan{Preview: preview, PreviewOf: func(context.Context) (map[string]any, error) {
-		unlock, e := lock()
-		if e != nil {
-			return nil, e
-		}
-		defer unlock()
-		if caller != nil {
-			caller.lbDigest = digest
-			if caller.AutomaticPreview {
-				o, e := read()
-				if e != nil {
-					return nil, e
-				}
-				if o.Digest == "" || o.Digest == digest {
-					return preview, nil
-				}
-				caller.RequireNewApproval = true
-				return preview, nil
-			}
-		}
-		return preview, show()
-	}, Execute: func(ctx context.Context) (string, bool) {
-		unlock, e := lock()
-		if e != nil {
-			return errResult(e), true
-		}
-		defer unlock()
-		o, e := read()
-		if e != nil {
-			return errResult(e), true
-		}
-		valid := o.Digest == digest && o.ID == stringArg(args, "preview_id") && o.ID != ""
-		if caller != nil {
-			valid = caller.lbDigest == digest && (o.Digest == "" || o.Digest == digest)
-		}
-		if !valid {
-			if e := show(); e != nil {
-				return errResult(e), true
-			}
-			preview["status"] = "confirmation_required"
-			return toJSON(preview), true
-		}
-		if o.ID != "" {
-			if e := os.Remove(path); e != nil {
-				return errResult(e), true
-			}
-		}
-		return send(ctx)
-	}}, nil
 }
 
 func lbDigest(data []byte) string {
