@@ -104,6 +104,8 @@
     - [evo image get](#evo-image-get)
     - [evo image list](#evo-image-list)
   - [evo init](#evo-init)
+  - [evo intent](#evo-intent)
+    - [evo intent close](#evo-intent-close)
   - [evo k8s](#evo-k8s)
     - [evo k8s add-addon](#evo-k8s-add-addon)
     - [evo k8s add-nodepool](#evo-k8s-add-nodepool)
@@ -310,6 +312,7 @@ evo [flags]
 * [evo iam](#evo-iam)	 - IAM: сервисные аккаунты
 * [evo image](#evo-image)	 - Образы ВМ: операционные системы и продукты маркетплейса
 * [evo init](#evo-init)	 - Создать .evo.yaml с зоной и образом из API Cloud.ru
+* [evo intent](#evo-intent)	 - Проверять локальные квитанции оборванных операций
 * [evo k8s](#evo-k8s)	 - Кластеры Managed Kubernetes
 * [evo kafka](#evo-kafka)	 - Кластеры Managed Kafka
 * [evo lb](#evo-lb)	 - Балансировщики нагрузки (L4)
@@ -4695,6 +4698,72 @@ evo init [flags]
 ### SEE ALSO
 
 * [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+
+## evo intent
+
+> Локальная команда: локальные квитанции рабочей папки и решение человека у терминала.
+
+Проверять локальные квитанции оборванных операций
+
+### Options
+
+```
+  -h, --help   Справка по intent
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo intent close](#evo-intent-close)	 - Закрыть разбор одной локальной квитанции в терминале
+
+## evo intent close
+
+> Локальная команда: ручное решение оператора об одной версии квитанции на его машине.
+
+Закрыть разбор одной локальной квитанции в терминале
+
+```
+evo intent close <id> [flags]
+```
+
+### Options
+
+```
+  -h, --help              Справка по close
+      --non-interactive   Отключить интерактивное подтверждение
+```
+
+### Options inherited from parent commands
+
+```
+      --az string           Имя или UUID зоны доступности (по умолчанию из $CLOUDRU_REGION или профиля)
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       Синоним --az до v2.0
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo intent](#evo-intent)	 - Проверять локальные квитанции оборванных операций
 
 ## evo k8s
 

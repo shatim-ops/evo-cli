@@ -7,6 +7,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1121,7 +1123,14 @@ func (r *Registry) PendingNotes(root string) []string {
 // whether any was left out.
 func (r *Registry) pendingNotes(root string, own []string, call callResource) (notes []string, leftOut bool) {
 	var named []intent.Intent
+	var eng *engine.Engine
+	if intent.HasManualDecisions() && r.newEngine != nil {
+		eng, _ = r.newEngine(nil)
+	}
 	for _, in := range pendingIntents(root) {
+		if eng != nil && manualReviewClosed(root, in, eng) {
+			continue
+		}
 		if slices.Contains(own, in.ID) {
 			leftOut = true
 			continue
@@ -1182,6 +1191,33 @@ func (c callResource) names(in intent.Intent) bool {
 // foldPendingAfter is how many records of cut calls the first answer and
 // the CLI's stderr name in full (pendingNotes).
 const foldPendingAfter = 5
+
+// manualReviewClosed affects diagnostic output only. A failed read always
+// leaves the receipt visible. Cloud operations and history use the original.
+func manualReviewClosed(root string, in intent.Intent, eng *engine.Engine) bool {
+	if eng == nil || !intent.HasManualDecisions() || CheckManualIntentScope(in, eng.Config) != nil {
+		return false
+	}
+	snap, err := intent.PreviewManual(root, in.ID, eng.Config.Profile)
+	if err != nil {
+		return false
+	}
+	defer snap.Close()
+	if !sameReceiptDirectory(in.Dir, snap.Record.Dir) || snap.Eligible(eng.Maker(), eng.Config.ProjectID) != nil {
+		return false
+	}
+	closed, err := snap.Marked()
+	return err == nil && closed
+}
+
+func sameReceiptDirectory(a, b string) bool {
+	x, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	y, err := os.Stat(b)
+	return err == nil && os.SameFile(x, y)
+}
 
 // pendingIntents are the intents a run in root reads: the folder's and the
 // configuration directory's (evo login's key, № 37), oldest first in each.
@@ -1634,4 +1670,17 @@ func (r *Registry) notePending(answer string, own []string, call callResource) s
 		answer, r.pendingNoted = r.withPending(answer, own, call)
 	}
 	return answer
+}
+
+// CheckManualIntentScope uses the project and repeat rules of the exact tool.
+// In particular, a manual review cannot change the evidence for a network retry.
+func CheckManualIntentScope(in intent.Intent, cfg config.Config) error {
+	if everySendIsAChange[in.Tool].listedName != nil {
+		return errors.New(i18n.T("This receipt protects a network create from being repeated. Verify its target with the original key.", "Эта квитанция защищает от повторного создания сетевого ресурса. Проверьте цель исходным ключом."))
+	}
+	eng := &engine.Engine{Config: cfg}
+	if !decls[in.Tool].Project || projectOfCall(eng, in, nil) != cfg.ProjectID || in.Name == "" && in.Target == "" {
+		return errors.New(i18n.T("Cannot establish the project's scope and exact target of this operation.", "Не удалось установить область проекта и точную цель этой операции."))
+	}
+	return nil
 }

@@ -366,6 +366,9 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		// shows (PR-2).
 		unresolved := 0
 		for _, in := range pendingIntents(eng.StateDir) {
+			if manualReviewClosed(eng.StateDir, in, eng) {
+				continue
+			}
 			found, settled, id := s.checkPending(ctx, in, eng)
 			if settled {
 				intent.Close(in, settledOutcome(in, id))

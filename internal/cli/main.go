@@ -412,7 +412,8 @@ func newRootCmd() *cobra.Command {
 			// What a cut call of an earlier run may have left in the cloud
 			// (release plan 1.8, (и)): every command of this directory says
 			// it until it is settled; over MCP the first answer carries it.
-			if cwd, err := stateDir(); err == nil {
+			// Manual close must not reconcile unrelated receipts during preflight.
+			if cwd, err := stateDir(); err == nil && cmd.CommandPath() != "evo intent close" {
 				printWarnings(output.New(flagJSON, flagNoColor), reg.PendingNotes(cwd))
 			}
 			return nil
@@ -452,7 +453,7 @@ func newRootCmd() *cobra.Command {
 		newLogoutCmd(),
 		newProjectCmd(),
 		newWhoamiCmd(),
-		newDoctorCmd(),
+		newDoctorCmd(), newIntentCmd(),
 		newHistoryCmd(),
 		newToolsCmd(),
 		newAgentCmd(),
