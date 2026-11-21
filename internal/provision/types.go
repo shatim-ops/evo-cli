@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // VM represents a Cloud.ru virtual machine.
@@ -784,8 +786,8 @@ type IfaceFloatingIP struct {
 
 // paginatedResponse wraps paginated API responses.
 type paginatedResponse[T any] struct {
-	Items  []T `json:"items"`
-	Total  int `json:"total"`
-	Offset int `json:"offset"`
-	Limit  int `json:"limit"`
+	Items  pager.Rows[T] `json:"items"`
+	Total  int           `json:"total"`
+	Offset int           `json:"offset"`
+	Limit  int           `json:"limit"`
 }

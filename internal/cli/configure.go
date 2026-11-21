@@ -28,9 +28,10 @@ import (
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
-	"github.com/shatim-ops/evo-cli/internal/pager"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/tools"
+
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // orgProjectsURL lists the projects visible to the service account.
@@ -397,13 +398,16 @@ func listProjectsPage(ctx context.Context, token, pageToken string) ([]orgProjec
 			i18n.T("The Organization API may not list projects for this key; pass --project-id (find it in the Cloud.ru console)",
 				"Organization API может не отдавать список проектов для этого ключа; передайте --project-id (он есть в консоли Cloud.ru)"))
 	}
-	var body struct {
-		Projects      []orgProject `json:"projects"`
-		NextPageToken string       `json:"next_page_token"`
+	var body *struct {
+		Projects      pager.Rows[orgProject] `json:"projects"`
+		NextPageToken string                 `json:"next_page_token"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return nil, "", clerrors.Wrap(clerrors.CodeAPIError, i18n.T("unexpected response from the Organization API", "неожиданный ответ Organization API"),
 			i18n.T("Pass --project-id", "Передайте --project-id"), err)
+	}
+	if body == nil {
+		return nil, "", pager.Incomplete(i18n.T("expected a project list page", "ожидалась страница списка проектов"))
 	}
 	return body.Projects, body.NextPageToken, nil
 }

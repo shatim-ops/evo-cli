@@ -101,16 +101,19 @@ func (c *Client) ListAddons(ctx context.Context) ([]Addon, error) {
 	var out []Addon
 	err := c.pages(ctx, "/v3/addons", nil, func(data []byte) (string, error) {
 		var r struct {
-			Addons        []Addon `json:"addons"`
-			NextPageToken string  `json:"nextPageToken"`
+			Addons        pager.Rows[Addon] `json:"addons"`
+			NextPageToken string            `json:"nextPageToken"`
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
+		if err := pager.DecodePage(data, &r); err != nil {
 			return "", fmt.Errorf(i18n.T("parse addons: %w", "разбор аддонов: %w"), err)
 		}
 		out = append(out, r.Addons...)
 		return r.NextPageToken, nil
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // GetAddonReleases returns the releases of one addon, in the server's order
@@ -119,10 +122,10 @@ func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRele
 	var out []AddonRelease
 	err := c.pages(ctx, "/v3/addons/"+seg(name), nil, func(data []byte) (string, error) {
 		var r struct {
-			Releases      []AddonRelease `json:"releases"`
-			NextPageToken string         `json:"nextPageToken"`
+			Releases      pager.Rows[AddonRelease] `json:"releases"`
+			NextPageToken string                   `json:"nextPageToken"`
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
+		if err := pager.DecodePage(data, &r); err != nil {
 			return "", fmt.Errorf(i18n.T("parse addon releases: %w", "разбор релизов аддона: %w"), err)
 		}
 		for _, rel := range r.Releases {
@@ -143,7 +146,10 @@ func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRele
 		}
 		return r.NextPageToken, nil
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // pages GETs path page by page; page decodes one body and returns the next
@@ -279,18 +285,21 @@ func (c *Client) ListClusterAddons(ctx context.Context, clusterID string) ([]map
 	var out []map[string]any
 	err := c.pages(ctx, "/v3/clusterAddons", url.Values{"clusterId": {clusterID}}, func(data []byte) (string, error) {
 		var r struct {
-			ClusterAddons []map[string]any `json:"clusterAddons"`
-			Items         []map[string]any `json:"items"`
-			NextPageToken string           `json:"nextPageToken"`
+			ClusterAddons pager.Rows[map[string]any] `json:"clusterAddons"`
+			Items         pager.Rows[map[string]any] `json:"items"`
+			NextPageToken string                     `json:"nextPageToken"`
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
+		if err := pager.DecodePage(data, &r); err != nil {
 			return "", fmt.Errorf(i18n.T("parse cluster addons: %w", "разбор аддонов кластера: %w"), err)
 		}
 		out = append(out, r.ClusterAddons...)
 		out = append(out, r.Items...)
 		return r.NextPageToken, nil
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // namespaceRE is a Kubernetes namespace name (a DNS-1123 label).

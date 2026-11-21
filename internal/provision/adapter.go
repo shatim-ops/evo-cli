@@ -21,6 +21,8 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/secretsent"
+
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const (
@@ -202,7 +204,7 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 
 	// Try paginated response first, then plain array.
 	var page paginatedResponse[AvailabilityZone]
-	if err := json.Unmarshal(body, &page); err == nil && len(page.Items) > 0 {
+	if err := json.Unmarshal(body, &page); err == nil && page.Items != nil {
 		result := make([]*AvailabilityZone, len(page.Items))
 		for i := range page.Items {
 			result[i] = &page.Items[i]
@@ -210,7 +212,7 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 		return result, nil
 	}
 
-	var zones []AvailabilityZone
+	var zones pager.Rows[AvailabilityZone]
 	if err := json.Unmarshal(body, &zones); err == nil {
 		result := make([]*AvailabilityZone, len(zones))
 		for i := range zones {

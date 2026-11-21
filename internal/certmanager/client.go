@@ -117,6 +117,13 @@ func (c *Client) decode(data []byte, status int, out any) error {
 // certPath escapes an id segment while keeping the /v1/certificate prefix.
 func certPath(id string) string { return "/v1/certificate/" + url.PathEscape(id) }
 
+func (c *Client) decodeList(data []byte, status int, out any) error {
+	if status < 200 || status >= 300 {
+		return apiError(status, data)
+	}
+	return pager.DecodePage(data, out)
+}
+
 // ListOptions filter a certificate list. All fields optional except the client's
 // projectId (added automatically).
 type ListOptions struct {
@@ -151,9 +158,9 @@ func (c *Client) List(ctx context.Context, o ListOptions) ([]map[string]any, err
 		return nil, err
 	}
 	var out struct {
-		Certificates []map[string]any `json:"certificates"`
+		Certificates pager.Rows[map[string]any] `json:"certificates"`
 	}
-	if err := c.decode(data, status, &out); err != nil {
+	if err := c.decodeList(data, status, &out); err != nil {
 		return nil, err
 	}
 	return out.Certificates, nil
@@ -274,10 +281,10 @@ func (c *Client) Versions(ctx context.Context, id string) (map[string]any, error
 			return "", err
 		}
 		var out struct {
-			Versions      []any  `json:"versions"`
-			NextPageToken string `json:"nextPageToken"`
+			Versions      pager.Rows[any] `json:"versions"`
+			NextPageToken string          `json:"nextPageToken"`
 		}
-		if err := c.decode(data, status, &out); err != nil {
+		if err := c.decodeList(data, status, &out); err != nil {
 			return "", err
 		}
 		fresh := 0
