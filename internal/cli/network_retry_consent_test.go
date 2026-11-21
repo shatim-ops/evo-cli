@@ -61,7 +61,7 @@ func (tc networkRetryCase) exercise(t *testing.T, first string, appeared bool) {
 	posts, reads := 0, 0
 	approved, visible := false, false
 	unstableRead := 0
-	foreignPage := false
+	foreignPage, contradictoryTotal := false, false
 	w.rt.extra = func(r *http.Request) (*http.Response, error) {
 		if r.URL.Host == tc.host && r.URL.Path == tc.path {
 			switch r.Method {
@@ -69,6 +69,9 @@ func (tc networkRetryCase) exercise(t *testing.T, first string, appeared bool) {
 				reads++
 				if visible {
 					body := tc.visibleList
+					if contradictoryTotal {
+						body = strings.Replace(body, `"total":1`, `"total":0`, 1)
+					}
 					if foreignPage {
 						body = strings.Replace(body, `"id":`, `"project_id":"another-project","id":`, 1)
 					}
@@ -191,6 +194,13 @@ func (tc networkRetryCase) exercise(t *testing.T, first string, appeared bool) {
 		t.Fatalf("foreign project in list: POST=%d answer=%s", posts, outside.text)
 	}
 	foreignPage = false
+	// One matching row contradicts total=0. Neither its ID nor a write is safe.
+	contradictoryTotal = true
+	invalid := call(two, tc.tool, confirmed)
+	if !invalid.isErr || parseObject(invalid.text)["existing_id"] != nil || posts != 1 || !reflect.DeepEqual(retryReceipts(w.dir), saved) {
+		t.Fatalf("contradictory total: POST=%d answer=%s", posts, invalid.text)
+	}
+	contradictoryTotal = false
 	checkList(true)
 	// A matching name with a different ID on recheck cannot settle the receipt.
 	unstableRead = reads + 2
