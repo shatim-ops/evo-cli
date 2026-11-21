@@ -429,6 +429,8 @@ profiles:
 Переменные установщика (`CLOUDRU_VM_VERSION`, `INSTALL_DIR`,
 `CLOUDRU_VM_BASE_URL`) — в [install.md](install.md#linux-и-macos-installsh).
 
+Ручное закрытие квитанции командой `evo intent close` требует интерактивного терминала. Любое непустое значение `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `JENKINS_URL`, `TF_BUILD`, `BUILDKITE`, `CIRCLECI` или `TEAMCITY_VERSION` блокирует эту команду.
+
 ## Что хранится на машине
 
 | Что | Где | Права |

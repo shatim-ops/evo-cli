@@ -25,6 +25,7 @@ import (
 // makes before it is joined. Not a list of misses: each line is a removal
 // whose path is evo's own, declared with why; a new one is a new line.
 var removals = map[string]directWrite{
+	"internal/intent/manual.go\tManualSnapshot.Apply":      {1, "the private staging directory os.MkdirTemp made in this call under the verified decision directory"},
 	"internal/auth/cache.go\tFileCache.Delete":             {1, "the token cache's own path, set by evo from the configuration directory"},
 	"internal/cli/login.go\twritableConfigDir":             {1, "the probe file os.CreateTemp made in this call"},
 	"internal/config/profile.go\tMigrateLegacyDir":         {2, "the migration's own temporary directory: the configuration base and the pid, no name read"},
