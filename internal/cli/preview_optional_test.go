@@ -148,6 +148,7 @@ func TestPreview_NamesEveryOptionalArgument(t *testing.T) {
 			continue
 		}
 		tl, _ := reg.Lookup(c.tool.Name)
+		var previewID string
 		call := func(confirmed bool) (string, []string) {
 			args := copyArgs(full)
 			end := func() {}
@@ -160,6 +161,9 @@ func TestPreview_NamesEveryOptionalArgument(t *testing.T) {
 			}
 			if confirmed {
 				args["confirmed"] = true
+				if c.tool.Name == "lb_create" {
+					args["preview_id"] = previewID
+				}
 			}
 			fake.reset()
 			newProcess()
@@ -171,6 +175,7 @@ func TestPreview_NamesEveryOptionalArgument(t *testing.T) {
 			return text, writes
 		}
 		preview, _ := call(false)
+		previewID, _ = parseObject(preview)["preview_id"].(string)
 		answer, writes := call(true)
 		if len(writes) == 0 {
 			bad = append(bad, fmt.Sprintf("%s: the call with every optional argument writes nothing — a value of optionalArgs, or a line of optionalLeftOut: %s", c.tool.Name, clipLine(answer)))

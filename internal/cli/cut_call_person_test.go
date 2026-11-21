@@ -77,13 +77,17 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 			world, done = w.rt.extra, teardown
 		}
 		// byTool is a call over MCP with the consent; it returns the answer.
-		byTool := func() string {
+		byTool := func(approvePlacement bool) string {
 			args := copyArgs(caseArgs)
 			args["confirmed"] = true
 			fake.reset()
 			newProcess()
 			flagJSON, flagDryRun, flagYes = false, false, false
 			tl, _ := newRegistry().Lookup(c.tool.Name)
+			if approvePlacement && c.tool.Name == "lb_create" {
+				shown, _ := tl.Handler(context.Background(), caseArgs)
+				args["preview_id"] = parseObject(shown)["preview_id"]
+			}
 			text, _ := tl.Handler(context.Background(), args)
 			return text
 		}
@@ -100,7 +104,7 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 				return world(r)
 			}
 			defer func() { w.rt.extra = world }()
-			byTool()
+			byTool(true)
 			return records() > 0
 		}
 		if !cut() {
@@ -109,7 +113,7 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 			done()
 			continue
 		}
-		interrupted, named := parseObject(byTool())["interrupted"].(map[string]any)
+		interrupted, named := parseObject(byTool(false))["interrupted"].(map[string]any)
 		if !named {
 			t.Errorf("%s: declared in everySendIsAChange, and its consented call after the cut does not ask again", c.path)
 			forgetRun(w)
@@ -182,12 +186,15 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 				t.Fatalf("%d records before the person answers, want the one of the cut call", records())
 			}
 
-			// A person says no: nothing is sent, and the cut call is
-			// asked about no more.
+			// LB retains the earlier unknown receipt even after a decision about a second create.
+			remaining := 0
+			if c.tool.Name == "lb_create" {
+				remaining = 1
+			}
 			confirm.StdinIsTTY = func() bool { return true }
 			confirm.Stdin = strings.NewReader("n\n")
-			if code, writes := run(); code != 3 || len(writes) != 0 || records() != 0 {
-				t.Errorf("a no at the terminal: exit %d, writes %v, records %d; want no write and the record closed", code, writes, records())
+			if code, writes := run(); code != 3 || len(writes) != 0 || records() != remaining {
+				t.Errorf("a no at the terminal: exit %d, writes %v, records %d; want no write and %d records", code, writes, records(), remaining)
 			}
 
 			// A person says yes, --yes or not: one request, the record
@@ -197,8 +204,8 @@ func TestCutCall_OnlyAPersonAnswersTheQuestion(t *testing.T) {
 					t.Fatal("the cut left no record")
 				}
 				confirm.Stdin = strings.NewReader("y\n")
-				if code, writes := run(flags...); code != 0 || len(writes) != 1 || records() != 0 {
-					t.Errorf("a yes at the terminal %v: exit %d, writes %v, records %d; want one write and the record closed", flags, code, writes, records())
+				if code, writes := run(flags...); code != 0 || len(writes) != 1 || records() != remaining {
+					t.Errorf("a yes at the terminal %v: exit %d, writes %v, records %d; want one write and %d records", flags, code, writes, records(), remaining)
 				}
 			}
 		})

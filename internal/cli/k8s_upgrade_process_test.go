@@ -329,11 +329,11 @@ func TestProcessUpgradePreviewIDRegistration(t *testing.T) {
 	for _, tool := range mcp.New(nil, "test").ListTools() {
 		props, _ := tool.InputSchema["properties"].(map[string]any)
 		_, listed := props["preview_id"]
-		upgrade := tool.Name == "k8s_upgrade" || tool.Name == "k8s_nodepool_upgrade"
-		if listed != upgrade {
+		linked := tool.Name == "lb_create" || tool.Name == "stack_apply" || tool.Name == "k8s_upgrade" || tool.Name == "k8s_nodepool_upgrade"
+		if listed != linked {
 			t.Errorf("%s preview_id listed=%v", tool.Name, listed)
 		}
-		if !upgrade {
+		if !linked {
 			continue
 		}
 		seen[tool.Name] = true
@@ -362,7 +362,7 @@ func TestProcessUpgradePreviewIDRegistration(t *testing.T) {
 			t.Errorf("%s lacks a human consent instruction", tool.Name)
 		}
 	}
-	if len(seen) != 2 {
-		t.Fatalf("missing upgrade tool: %v", seen)
+	if len(seen) != 4 {
+		t.Fatalf("missing preview-bound tool: %v", seen)
 	}
 }

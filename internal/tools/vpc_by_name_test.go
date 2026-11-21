@@ -151,7 +151,7 @@ func lbVPCFixture() *apiFake {
 		case "/v1/vpcs":
 			fmt.Fprintf(w, `{"vpcs":[{"id":%q,"name":"Private-Net"}]}`, auditUUID)
 		case "/v2/targetGroups/tg-1":
-			fmt.Fprintf(w, `{"id":"tg-1","name":"tg","vpc_id":%q}`, auditUUID)
+			fmt.Fprintf(w, `{"id":"tg-1","name":"tg","project_id":"`+raProject+`","vpc_id":%q}`, auditUUID)
 		case "/v2/networkLoadBalancers":
 			if req.Method == "POST" {
 				fmt.Fprint(w, `{"id":"op-1","done":false}`)

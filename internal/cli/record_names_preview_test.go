@@ -55,19 +55,24 @@ func TestCutCall_RecordNamesWhatThePreviewNamed(t *testing.T) {
 			}
 			world, done = w.rt.extra, teardown
 		}
+		tl, _ := newRegistry().Lookup(c.tool.Name)
+		var previewID string
 		call := func(confirmed bool) string {
 			a := copyArgs(args)
 			if confirmed {
 				a["confirmed"] = true
+				if c.tool.Name == "lb_create" {
+					a["preview_id"] = previewID
+				}
 			}
 			fake.reset()
 			newProcess()
-			tl, _ := newRegistry().Lookup(c.tool.Name)
 			text, _ := tl.Handler(context.Background(), a)
 			return text
 		}
 		forgetRun(w)
 		preview := call(false)
+		previewID, _ = parseObject(preview)["preview_id"].(string)
 		w.rt.extra = func(r *http.Request) (*http.Response, error) {
 			if r.Method != http.MethodGet && r.Method != http.MethodHead {
 				return nil, errors.New("read: connection reset by peer")

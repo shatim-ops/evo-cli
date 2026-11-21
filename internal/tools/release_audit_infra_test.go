@@ -167,10 +167,10 @@ func (f *raAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.Method == http.MethodPost && r.URL.Path == "/v3/nodePools":
 		_, _ = io.WriteString(rec, `{"id":"op-np","resourceId":"np-1","done":false}`)
 	case r.URL.Path == "/v2/targetGroups/tg-1":
-		_, _ = io.WriteString(rec, `{"id":"tg-1","name":"tg","vpc_id":"vpc-1","target_vms":[`+f.targetVMs+`]}`)
+		_, _ = io.WriteString(rec, `{"id":"tg-1","name":"tg","project_id":"`+raProject+`","vpc_id":"vpc-1","target_vms":[`+f.targetVMs+`]}`)
 	case r.URL.Path == "/v2/targetGroups/"+raTargetGroup:
 		// The group tg_delete names by a UUID (its schema, D36).
-		_, _ = io.WriteString(rec, `{"id":"`+raTargetGroup+`","name":"tg","vpc_id":"vpc-1","target_vms":[`+f.targetVMs+`]}`)
+		_, _ = io.WriteString(rec, `{"id":"`+raTargetGroup+`","name":"tg","project_id":"`+raProject+`","vpc_id":"vpc-1","target_vms":[`+f.targetVMs+`]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/v2/networkLoadBalancers":
 		_, _ = io.WriteString(rec, `{"id":"op-lb","done":false}`)
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/containers"):
@@ -420,6 +420,11 @@ func TestLbCreate_ZoneFromTargetGroup(t *testing.T) {
 	// Группа без ВМ и без региона в конфигурации — USAGE, ничего не создано.
 	f.targetVMs = ""
 	m, text, isErr := callNamed(t, r, "lb_create", with(map[string]any{"confirmed": true}))
+	if m["repeat_of"] == nil || f.postCount() != posts {
+		t.Fatalf("saved operation was not read before considering a new create: %s", text)
+	}
+	// A distinct create has no earlier submission to inspect.
+	m, text, isErr = callNamed(t, r, "lb_create", with(map[string]any{"name": "web-without-zone", "confirmed": true}))
 	if !isErr {
 		t.Errorf("no zone: accepted: %s", text)
 	}

@@ -153,6 +153,7 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 		}
 		tools[c.tool.Name] = true
 		tl, _ := reg.Lookup(c.tool.Name)
+		var previewID string
 		call := func(confirmed bool) (string, []string) {
 			args := copyArgs(c.args)
 			done := func() {}
@@ -165,6 +166,9 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 			}
 			if confirmed {
 				args["confirmed"] = true
+				if c.tool.Name == "lb_create" {
+					args["preview_id"] = previewID
+				}
 			}
 			fake.reset()
 			newProcess()
@@ -176,6 +180,7 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 			return text, writes
 		}
 		preview, _ := call(false)
+		previewID, _ = parseObject(preview)["preview_id"].(string)
 		_, writes := call(true)
 		named := namedValues(preview, c.args)
 		for _, wr := range writes {

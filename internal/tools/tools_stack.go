@@ -420,11 +420,15 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					}
 					if st.Tool == "lb_create" {
 						rid := stringArg(op, "resource_id")
-						if stringArg(op, "id") != st.OpID || rid == "" || (st.ResourceID != "" && rid != st.ResourceID) {
+						_, terminalError := op["error"].(map[string]any)
+						done, _ := op["done"].(bool)
+						if stringArg(op, "id") != st.OpID || (rid == "" && !(done && terminalError)) || (rid != "" && st.ResourceID != "" && rid != st.ResourceID) {
 							st.Detail = i18n.T("Waiting for the saved operation to identify this load balancer.", "Ожидается подтверждение ID балансировщика сохранённой операцией.")
 							continue
 						}
-						st.ResourceID = rid
+						if rid != "" {
+							st.ResourceID = rid
+						}
 					}
 					if done, _ := op["done"].(bool); done {
 						// A completed operation can still carry an error (create
@@ -599,8 +603,14 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					job.Status = "awaiting_lb_approval"
 					return
 				}
-				if st.Tool == "lb_create" && err == nil {
+				if st.Tool == "lb_create" {
 					job.LBPending = nil
+					if err != nil {
+						st.Attempts++
+						st.Detail = err.Error()
+						failStep(job, st, stringArg(res, "reason"), st.Detail)
+						return
+					}
 				}
 				if err != nil && ctx.Err() != nil {
 					// Cancelled mid-create: not a failed attempt. Keep the id
@@ -1307,7 +1317,7 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 			keys = append(keys, "steps_cost")
 		}
 		preview := map[string]any{"message": i18n.T("stack_apply provisions BILLABLE resources.",
-			"stack_apply создаёт ПЛАТНЫЕ ресурсы."), "preview": willPreview(engine.ResourceStack, id, "", will, keys, warnings...)}
+			"stack_apply создаёт ПЛАТНЫЕ ресурсы.")}
 		// A job done: the question is asked as before — answering without
 		// it would change an exit code, which waits for the major — and
 		// says that the consent creates nothing, as deploy's does of an
@@ -1334,6 +1344,11 @@ func (s *Registry) planStackApply(_ context.Context, args map[string]any) (*Plan
 		if job.LBPlacement != nil {
 			preview["lb_placement"] = job.LBPlacement
 		}
+		if placement, ok := preview["lb_placement"]; ok {
+			will["lb_placement"] = placement
+			keys = append(keys, "lb_placement")
+		}
+		preview["preview"] = willPreview(engine.ResourceStack, id, "", will, keys, warnings...)
 		if job.Done() {
 			preview["unchanged"] = true
 			preview["message"] = i18n.Tf("Stack job %s is done already: every step is made. stack_apply has nothing to do, and called with confirmed=true it creates nothing; stack_status shows the stack.",
@@ -1954,7 +1969,7 @@ func (s *Registry) stackLBPreview(ctx context.Context, j *stack.Job) (map[string
 			a := substituteRefs(st.Args, j.Outputs)
 			a = withoutConsent(a)
 			if !validStackTG(j, st, a) {
-				return nil, fmt.Errorf("invalid target group for job %s", j.ID)
+				return nil, fmt.Errorf("invalid target group for job %q", j.ID)
 			}
 			if c := callerOf(ctx); c != nil {
 				ctx = context.WithValue(ctx, lbStackCLIKey{}, true)
@@ -1968,7 +1983,7 @@ func (s *Registry) stackLBPreview(ctx context.Context, j *stack.Job) (map[string
 				return nil, e
 			}
 			if p.PreviewOf == nil {
-				return nil, fmt.Errorf("cannot prepare placement approval for job %s", j.ID)
+				return nil, fmt.Errorf("cannot prepare placement approval for job %q", j.ID)
 			}
 			q, e := p.PreviewOf(ctx)
 			if e != nil {
@@ -1980,5 +1995,5 @@ func (s *Registry) stackLBPreview(ctx context.Context, j *stack.Job) (map[string
 			return q, nil
 		}
 	}
-	return nil, fmt.Errorf("job %s has no pending LB step", j.ID)
+	return nil, fmt.Errorf("job %q has no pending LB step", j.ID)
 }

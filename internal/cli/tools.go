@@ -812,6 +812,22 @@ func invokeTool(ctx context.Context, cmd *cobra.Command, t tools.Tool, args map[
 			}
 		}
 		text, isErr = t.Handler(ctx, confirmed)
+		if (t.Name == "lb_create" || t.Name == "stack_apply") && isErr {
+			if changed := parseObject(text); changed["status"] == "confirmation_required" && changed["will_create"] != nil {
+				p := toolPreview(t.Name, changed)
+				if human {
+					if cp, ok := createPreview(t.Name, changed); ok {
+						p = cp
+					}
+				}
+				ask.Yes = false
+				ask.NoPrompt = true
+				ask.PersonOnly = true
+				ask.Hint = i18n.T("Review this placement, then run the command again to approve it.", "Проверьте это размещение и повторно вызовите команду для согласования.")
+				_, e := confirm.Ask(ctx, p, ask)
+				return "", e
+			}
+		}
 	}
 	if isErr {
 		return text, toolError(text, hints)

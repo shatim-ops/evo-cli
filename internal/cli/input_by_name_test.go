@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
 
@@ -46,7 +47,16 @@ func TestInputByName_SubnetAndSecurityGroup(t *testing.T) {
 		}
 		byID, _ := call(c.id)
 		byName, _ := call(c.name)
-		if byName != byID {
+		same := byName == byID
+		if c.tool == "lb_create" {
+			a, b := parseObject(byID), parseObject(byName)
+			x, _ := a["preview_id"].(string)
+			y, _ := b["preview_id"].(string)
+			delete(a, "preview_id")
+			delete(b, "preview_id")
+			same = x != "" && y != "" && x != y && reflect.DeepEqual(a, b)
+		}
+		if !same {
 			t.Errorf("%s %s=%s: the answer differs from the call by id:\nby id:   %.400s\nby name: %.400s", c.tool, c.arg, c.name, byID, byName)
 		}
 		if w := world.rt.takeWrites(); len(w) > 0 {

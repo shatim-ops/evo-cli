@@ -324,7 +324,7 @@ func (a *faultAPI) serve(w http.ResponseWriter, r *http.Request) {
 	case path == "/api/v1/security-groups":
 		_, _ = io.WriteString(w, `{"items":[{"id":"sg-1","name":"SSH-access_ru.AZ-1","availability_zone":{"id":"`+zoneAZ1+`","name":"ru.AZ-1"}}],"total":1}`)
 	case path == "/v2/targetGroups/tg-1":
-		_, _ = io.WriteString(w, `{"id":"tg-1","name":"tg","vpc_id":"vpc-1","target_vms":[]}`)
+		_, _ = io.WriteString(w, `{"id":"tg-1","name":"tg","project_id":"`+dbaasProject+`","vpc_id":"vpc-1","target_vms":[]}`)
 	case path == "/v1/specifications":
 		_, _ = io.WriteString(w, `{"specifications":[{"id":"s-1","name":"small","cpu":2,"memory":4,"min_storage_gigs":40,"min_brokers":1}]}`)
 	case faultCollections[path].field != "" && r.Method == http.MethodGet:

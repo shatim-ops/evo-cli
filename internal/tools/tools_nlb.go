@@ -7,24 +7,25 @@ package tools
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/shatim-ops/evo-cli/internal/config"
-	"github.com/shatim-ops/evo-cli/internal/stack"
-	"github.com/shatim-ops/evo-cli/internal/state"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/nlb"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/stack"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // pickVMInterface returns a VM's network interface to use as an NLB
@@ -361,6 +362,12 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 	if e != nil {
 		return nil, fmt.Errorf(i18n.T("read target group %s: %w", "чтение целевой группы %s: %w"), tgID, e)
 	}
+	if projectField(tg) == "" || stringArg(tg, "id") == "" {
+		return nil, clierrors.New(clierrors.CodeConfigInvalid, i18n.T("The target group card does not identify the group and its project.", "В карточке целевой группы нет ID группы или проекта."), i18n.T("Check the target group in tg_list.", "Проверьте целевую группу в tg_list."))
+	}
+	if projectField(tg) != cli.ProjectID() || stringArg(tg, "id") != tgID {
+		return nil, clierrors.New(clierrors.CodeNotFound, i18n.T("Target group not found in the selected project.", "Целевая группа не найдена в выбранном проекте."), i18n.T("Select a target group from tg_list in this project.", "Выберите целевую группу из tg_list этого проекта."))
+	}
 	tgVPC, _ := tg["vpc_id"].(string)
 	vpcID := stringArg(args, "vpc_id")
 	if vpcID != "" && tgVPC != "" && vpcID != tgVPC {
@@ -427,6 +434,8 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		[]string{"listener", "health_check_port", "health_check", "external", "subnet_id", "subnet_name"}, warnings...)
 	preview.Add("target_group_id", tgID)
 	preview.Add("target_group_name", tgName)
+	preview.Add("project_id", cli.ProjectID())
+	preview.Add("zone_id", zone.ID)
 	preview.Add("vpc_id", vpcID)
 	preview.Add("vpc_name", s.vpcName(ctx, vpcID))
 	out := map[string]any{
@@ -451,19 +460,24 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 		}
 		slices.Sort(ids)
 	}
-	terms, err := json.Marshal([]any{body, zone.ID, eng.Config.Profile, eng.Maker(), ids})
+	if eng.Config.KeyID == "" && eng.Config.ServiceAccountID == "" {
+		return nil, usageErr("Cannot identify the caller for load balancer approval.", "Не удалось определить учётную запись для согласования балансировщика.")
+	}
+	terms, err := json.Marshal([]any{body, zone.ID, eng.Config.Profile, eng.Config.ServiceAccountID, lbDigest([]byte(eng.Config.KeyID)), ids})
 	if err != nil {
 		return nil, err
 	}
-	digest := fmt.Sprintf("%x", sha256.Sum256(terms))
+	digest := lbDigest(terms)
 	return s.lbApproval(ctx, args, out, digest, func(ctx context.Context) (string, bool) {
 		job, _ := ctx.Value(lbJobKey{}).(*stack.Job)
+		wasUncertain := job != nil && job.LBUncertain
 		if job != nil {
 			// Survives a process exit after the send but before advance saves its outcome.
 			job.LBPending = willCreate
 			job.Status = "awaiting_lb_approval"
 			job.LBUncertain = true
 			if err := job.Save(); err != nil {
+				job.LBUncertain = wasUncertain
 				return errResult(err), true
 			}
 		}
@@ -472,7 +486,11 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 			if err == nil {
 				err = noID("operation")
 			}
-			if st := apiStatus(err); st >= 400 && st < 500 {
+			err = fmt.Errorf(i18n.T("create load balancer: %w", "создание балансировщика: %w"), err)
+			if definiteRefusal(err) {
+				if job != nil {
+					job.LBUncertain = wasUncertain
+				}
 				return errResult(err), true
 			}
 			details := map[string]any{"warning": i18n.Tf("The create of %s may have been accepted. Check lb_list in the original project before approving a second paid creation; a matching name alone cannot identify this submission.", "Создание %s могло быть принято. Перед согласием на повторное платное создание проверьте lb_list в исходном проекте; совпадение имени не подтверждает исход.", quoteCloud(name)), "will_create": willCreate}
@@ -500,19 +518,6 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 			out["lb_id"] = op.ResourceID
 		}
 		s.goingOn(ctx, out, "lb_operation", op.ID, op.ResourceID, nil)
-		if job == nil {
-			if own, _ := ctx.Value(callRecordsKey{}).(*callRecords); own != nil && own.hasOpen {
-				receipt := madeCall{Tool: "lb_create", Name: name, ProjectID: cli.ProjectID(), Key: eng.Maker(), ID: op.ResourceID, Next: "lb_operation", NextArgs: map[string]any{"operation_id": op.ID, "wait_seconds": opWaitMaxSeconds}, StartedAt: own.open.StartedAt}
-				root, _ := s.stateDir()
-				data, e := json.Marshal(receipt)
-				if e == nil {
-					e = config.WriteDurableReceipt(filepath.Join(MadeDir(root), madeKey("lb_create", own.open.Canon, name, own.open.Target)), data)
-				}
-				if e != nil {
-					return errAnswer(clierrors.New(clierrors.CodeAPIError, i18n.T("The cloud accepted the LB operation but its receipt could not be saved.", "Облако приняло создание балансировщика, но сохранить квитанцию не удалось."), i18n.T("Read lb_operation with the returned ID before any repeat.", "До повтора прочитайте lb_operation по возвращённому ID.")), map[string]any{"operation_id": op.ID, "lb_id": op.ResourceID, "receipt_error": true}), true
-				}
-			}
-		}
 		if job == nil {
 			if own, _ := ctx.Value(callRecordsKey{}).(*callRecords); own != nil && own.hasOpen {
 				receipt := madeCall{Tool: "lb_create", Name: name, ProjectID: cli.ProjectID(), Key: eng.Maker(), ID: op.ResourceID, Next: "lb_operation", NextArgs: map[string]any{"operation_id": op.ID, "wait_seconds": opWaitMaxSeconds}, StartedAt: own.open.StartedAt}
@@ -721,7 +726,7 @@ func (s *Registry) lbApproval(ctx context.Context, args, preview map[string]any,
 		if !ok {
 			return nil, errNoStateDir()
 		}
-		jobPath := filepath.Join(root, "lb-previews", fmt.Sprintf("stack-%x.json", sha256.Sum256([]byte(job.ID))))
+		jobPath := filepath.Join(root, "lb-previews", "stack-"+lbDigest([]byte(job.ID))+".json")
 		if capture, _ := ctx.Value(lbPinKey{}).(bool); capture {
 			unlock, err := state.FileLock(jobPath+".lock", 5*time.Second)
 			if err != nil {
@@ -748,13 +753,17 @@ func (s *Registry) lbApproval(ctx context.Context, args, preview map[string]any,
 				return &Plan{Preview: preview, Execute: send}, nil
 			}
 		}
-		scope += ":stack:" + job.ID
+		scope = scope + ":stack:" + lbDigest([]byte(job.ID))
 		if job.LBUncertain {
-			preview["warning"] = i18n.T("The preceding LB submission may already be billed. Inspect lb_list and the operation before explicitly approving a second creation.", "Предыдущее создание могло привести к оплате. Проверьте lb_list и операцию перед явным согласием на повторное создание.")
-			digest = fmt.Sprintf("%x", sha256.Sum256([]byte("uncertain:"+digest)))
+			warning := i18n.T("The preceding LB submission may already be billed. Inspect lb_list and the operation before explicitly approving a second creation.", "Предыдущее создание могло привести к оплате. Проверьте lb_list и операцию перед явным согласием на повторное создание.")
+			preview["warning"] = warning
+			human := preview["preview"].(engine.CreatePreview)
+			human.Warnings = append(human.Warnings, warning)
+			preview["preview"] = human
+			digest = lbDigest([]byte("uncertain:" + digest))
 		}
 		if parent := ctx.Value(lbStackCLIKey{}); parent != nil {
-			scope = "cli:stack:" + job.ID
+			scope = "cli:stack:" + lbDigest([]byte(job.ID))
 		}
 		caller = nil // A paused stack always needs the actual offer returned to the operator.
 		will, _ := preview["will_create"].(map[string]any)
@@ -774,7 +783,7 @@ func (s *Registry) lbApproval(ctx context.Context, args, preview map[string]any,
 	if !ok {
 		return nil, errNoStateDir()
 	}
-	path := filepath.Join(root, "lb-previews", fmt.Sprintf("%x.json", sha256.Sum256([]byte(scope))))
+	path := filepath.Join(root, "lb-previews", lbDigest([]byte(scope))+".json")
 	type offer struct{ Digest, ID string }
 	lock := func() (func(), error) { return state.FileLock(path+".lock", 5*time.Second) }
 	read := func() (o offer, err error) {
@@ -855,4 +864,9 @@ func (s *Registry) lbApproval(ctx context.Context, args, preview map[string]any,
 		}
 		return send(ctx)
 	}}, nil
+}
+
+func lbDigest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
