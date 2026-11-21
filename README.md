@@ -26,8 +26,6 @@ Registry и Container Apps — и развёртывает `docker-compose`-пр
 
 ## Возможности (v1.9.0)
 
-**При переходе на 1.9.1.** Если Redis или Kafka вернули неполную страницу кластеров, `evo redis list` и `evo kafka list` завершаются с кодом 5 (`API_ERROR`). Перед разбором списка проверьте код выхода, в MCP — `result.isError`. [Анонс 1.9.1](docs/release-notes/v1.9.1.md).
-
 **При переходе на 1.10.0.** При отборе по имени VPC команды `evo vpc subnets`, `evo lb list` и `evo tg list` требуют полный каталог сетей проекта. Если следующая страница повреждена, проверьте код 5 (`API_ERROR`) до обработки результата, в MCP — `result.isError`. При известном UUID сети можно передать его в `--vpc-id`. [Анонс 1.10.0](docs/release-notes/v1.10.0.md).
 
 **Ресурсы облака.** Виртуальные машины, диски, образы и продукты
@@ -105,6 +103,8 @@ Artifact Registry и Container Apps. Только чтение — биллин�
 Что изменилось от версии к версии и ломающие изменения с инструкцией «было →
 стало → что поменять» — в [CHANGELOG.md](CHANGELOG.md); анонс выпуска —
 [docs/release-notes/v1.9.0.md](docs/release-notes/v1.9.0.md).
+
+**При переходе на 1.9.1.** Если Redis или Kafka вернули неполную страницу кластеров, `evo redis list` и `evo kafka list` завершаются с кодом 5 (`API_ERROR`). Перед разбором списка проверьте код выхода, в MCP — `result.isError`. [Анонс 1.9.1](docs/release-notes/v1.9.1.md).
 
 ## Что понадобится
 
