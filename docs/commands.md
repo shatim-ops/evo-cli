@@ -2391,11 +2391,16 @@ evo completion [flags]
 ### Synopsis
 
 ```text
-Скрипт автодополнения для Bash. В текущей оболочке выполните:
+Скрипт автодополнения для Bash. Выполните в Bash:
 
-    source <(evo completion bash)
+    dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+    mkdir -p "$dir" && evo completion bash > "$dir/evo"
+    source "$dir/evo"
 
-Для новых интерактивных оболочек добавьте эту строку в ~/.bashrc.
+Для новых интерактивных оболочек добавьте в ~/.bashrc строку:
+
+    [ -r "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo" ] && source "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/evo"
+
 При входе Bash читает ~/.bashrc, если его подключает ваш профиль входа.
 ```
 
