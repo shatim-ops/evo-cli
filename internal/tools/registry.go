@@ -625,11 +625,15 @@ type needsProject struct{}
 // preview or an argument refused before any engine stays as it was.
 func (r *Registry) requireProject(next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
-		if stringArg(args, "project_id") == "" {
-			ctx = context.WithValue(ctx, needsProject{}, true)
-		}
-		return next(ctx, args)
+		return next(projectContext(ctx, args), args)
 	}
+}
+
+func projectContext(ctx context.Context, args map[string]any) context.Context {
+	if stringArg(args, "project_id") == "" {
+		return context.WithValue(ctx, needsProject{}, true)
+	}
+	return ctx
 }
 
 // engineFor builds the engine of a handler, as newEngine does; for a

@@ -23,8 +23,8 @@ func dnsRecordIntent(ctx context.Context, r *Registry, args map[string]any) (str
 	name := nameArg(args)
 	recordType := strings.ToLower(stringArg(args, "record_type"))
 	id := stringArg(args, "zone_id")
-	if name == "" || recordType == "" || id == "" {
-		return name, "", nil
+	if err := validateDNSRecordCreate(args, id, name, recordType); err != nil {
+		return "", "", err
 	}
 	vis := dnsVisibility(args)
 	if stringArg(args, "type") == "" {
