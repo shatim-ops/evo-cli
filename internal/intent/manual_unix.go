@@ -7,8 +7,10 @@
 package intent
 
 import (
-	"github.com/shatim-ops/evo-cli/internal/config"
+	"io"
 	"os"
+
+	"github.com/shatim-ops/evo-cli/internal/config"
 )
 
 func openManualReceipt(path string) (*os.File, error) {
@@ -22,4 +24,32 @@ func syncDirectory(path string) error {
 	}
 	defer f.Close()
 	return f.Sync()
+}
+
+// POSIX permits an older writer to replace the name while this descriptor pins the inode.
+type manualSource struct{ *os.File }
+
+func readManualSource(path string) (*manualSource, []byte, error) {
+	f, err := openManualReceipt(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	return &manualSource{f}, data, nil
+}
+func (s *manualSource) matches(other *manualSource) (bool, error) { return s.matchesFile(other.File) }
+func (s *manualSource) matchesFile(f *os.File) (bool, error) {
+	a, err := s.Stat()
+	if err != nil {
+		return false, err
+	}
+	b, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+	return os.SameFile(a, b), nil
 }

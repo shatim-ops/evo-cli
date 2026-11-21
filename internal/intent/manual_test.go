@@ -204,7 +204,7 @@ func TestManualReplacementAfterPublication(t *testing.T) {
 		checks++
 		if checks == 3 {
 			if e := config.WriteFileAtomic(path, data, 0600); e != nil {
-				return nil, e
+				t.Fatalf("old writer could not replace the receipt after publication: %v", e)
 			}
 		}
 		return load()

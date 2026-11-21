@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -23,11 +22,10 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
-// ManualSnapshot keeps the preview's descriptor open across the question.
-// An old evo replaces the file by rename: equal bytes alone cannot identify it.
+// ManualSnapshot identifies the reviewed version across atomic replacement.
 type ManualSnapshot struct {
 	Record  Intent
-	source  *os.File
+	source  *manualSource
 	digest  string
 	profile string
 	audit   string
@@ -36,12 +34,6 @@ type ManualSnapshot struct {
 func (s *ManualSnapshot) Close() { s.source.Close() }
 
 func manualError(en, ru string) error { return errors.New(i18n.T(en, ru)) }
-
-func sameObject(a, b *os.File) bool {
-	left, e := a.Stat()
-	right, f := b.Stat()
-	return e == nil && f == nil && os.SameFile(left, right)
-}
 
 func manualDirectory(path string, private bool) error {
 	st, err := os.Lstat(path)
@@ -99,13 +91,8 @@ func PreviewManual(root, id, profile string) (*ManualSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, err := openManualReceipt(recordPath(dir, id))
+	f, data, err := readManualSource(recordPath(dir, id))
 	if err != nil {
-		return nil, err
-	}
-	data, err := io.ReadAll(f)
-	if err != nil {
-		f.Close()
 		return nil, err
 	}
 	var in Intent
@@ -180,12 +167,15 @@ func (s *ManualSnapshot) Marked() (bool, error) {
 		if err := manualDirectory(dir, true); err != nil {
 			return false, err
 		}
-		anchor, err := config.OpenNoFollow(filepath.Join(dir, "receipt"), os.O_RDONLY, 0)
+		anchor, err := openManualReceipt(filepath.Join(dir, "receipt"))
 		if err != nil {
 			return false, err
 		}
-		same := sameObject(s.source, anchor)
+		same, err := s.source.matchesFile(anchor)
 		anchor.Close()
+		if err != nil {
+			return false, err
+		}
 		if !same {
 			continue
 		}
@@ -233,7 +223,11 @@ func (s *ManualSnapshot) Apply(recheck func() (*ManualSnapshot, error)) error {
 			return err
 		}
 		defer fresh.Close()
-		if s.audit != fresh.audit || s.digest != fresh.digest || !sameObject(s.source, fresh.source) {
+		same, err := s.source.matches(fresh.source)
+		if err != nil {
+			return err
+		}
+		if s.audit != fresh.audit || s.digest != fresh.digest || !same {
 			return manualError("Receipt changed. Review it again.", "Квитанция изменилась. Проверьте её заново.")
 		}
 		return nil
@@ -257,12 +251,15 @@ func (s *ManualSnapshot) Apply(recheck func() (*ManualSnapshot, error)) error {
 	if err := os.Link(s.source.Name(), anchor); err != nil {
 		return fmt.Errorf("%s: %w", i18n.T("cannot anchor this receipt in the local configuration directory", "не удалось закрепить эту квитанцию в локальном каталоге настроек"), err)
 	}
-	a, err := config.OpenNoFollow(anchor, os.O_RDONLY, 0)
+	a, err := openManualReceipt(anchor)
 	if err != nil {
 		return err
 	}
-	same := sameObject(s.source, a)
+	same, err := s.source.matchesFile(a)
 	a.Close()
+	if err != nil {
+		return err
+	}
 	if !same {
 		return manualError("Receipt replaced.", "Квитанция заменена.")
 	}

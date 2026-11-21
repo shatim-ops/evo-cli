@@ -5,11 +5,15 @@
 package intent
 
 import (
-	"golang.org/x/sys/windows"
+	"io"
 	"os"
+	"path/filepath"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
-// Hold the previewed object without denying rename or delete to older evo processes.
+// Open the receipt only for the short read and identity check.
 // OPEN_REPARSE_POINT opens the link itself; reject it and every non-regular object.
 func openManualReceipt(path string) (*os.File, error) {
 	p, err := windows.UTF16PtrFromString(path)
@@ -51,3 +55,92 @@ func publishManualDirectory(stage, final string) error {
 
 // Directory publication on Windows uses MoveFileEx with WRITE_THROUGH.
 func syncDirectory(string) error { return nil }
+
+// FILE_ID_INFO identifies the open object on its volume. Capture it from the
+// handle used for the bytes, never by statting the pathname after a rename.
+type manualFileID struct {
+	Volume uint64
+	ID     [16]byte
+}
+
+func manualID(f *os.File) (manualFileID, error) {
+	var id manualFileID
+	raw, err := f.SyscallConn()
+	if err != nil {
+		return id, err
+	}
+	var queryErr error
+	err = raw.Control(func(fd uintptr) {
+		queryErr = windows.GetFileInformationByHandleEx(windows.Handle(fd), windows.FileIdInfo, (*byte)(unsafe.Pointer(&id)), uint32(unsafe.Sizeof(id)))
+	})
+	if err != nil {
+		return id, err
+	}
+	return id, queryErr
+}
+
+// An older MoveFileEx writer needs the destination closed while the operator
+// thinks. Watch directory entry changes from before the read. Never reset the
+// signal: even deletion and reuse of the same file ID invalidates the preview.
+type manualSource struct {
+	path  string
+	id    manualFileID
+	watch windows.Handle
+}
+
+func (s *manualSource) Name() string { return s.path }
+func (s *manualSource) Close()       { windows.FindCloseChangeNotification(s.watch) }
+func (s *manualSource) unchanged() error {
+	status, err := windows.WaitForSingleObject(s.watch, 0)
+	if err != nil {
+		return err
+	}
+	if status != uint32(windows.WAIT_TIMEOUT) {
+		return manualError("The receipt directory changed. Run intent close again and review the receipt.", "Каталог квитанций изменился. Снова запустите intent close и проверьте квитанцию.")
+	}
+	return nil
+}
+func readManualSource(path string) (*manualSource, []byte, error) {
+	watch, err := windows.FindFirstChangeNotification(filepath.Dir(path), false, windows.FILE_NOTIFY_CHANGE_FILE_NAME)
+	if err != nil {
+		return nil, nil, err
+	}
+	s := &manualSource{path: path, watch: watch}
+	ok := false
+	defer func() {
+		if !ok {
+			s.Close()
+		}
+	}()
+	f, err := openManualReceipt(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer f.Close()
+	s.id, err = manualID(f)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = s.unchanged(); err != nil {
+		return nil, nil, err
+	}
+	ok = true
+	return s, data, nil
+}
+func (s *manualSource) matches(other *manualSource) (bool, error) {
+	if err := other.unchanged(); err != nil {
+		return false, err
+	}
+	return s.id == other.id, s.unchanged()
+}
+func (s *manualSource) matchesFile(f *os.File) (bool, error) {
+	id, err := manualID(f)
+	if err != nil {
+		return false, err
+	}
+	return s.id == id, s.unchanged()
+}
