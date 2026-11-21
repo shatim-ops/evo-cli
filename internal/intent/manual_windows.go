@@ -404,3 +404,18 @@ func linkPreviewHandle(src, dir windows.Handle, name string) error {
 	const fileLinkInformation = 11
 	return windows.NtSetInformationFile(src, &windows.IO_STATUS_BLOCK{}, (*byte)(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info)), fileLinkInformation)
 }
+
+// Inspect the caller's path before canonicalization can erase evidence of an
+// ancestor junction. Keep its components stable during the canonical lookup.
+func canonicalManualDir(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	dirs, err := holdManualDirs(absolute)
+	if err != nil {
+		return "", err
+	}
+	defer closeManualDirs(dirs)
+	return filepath.EvalSymlinks(absolute)
+}

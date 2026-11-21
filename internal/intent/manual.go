@@ -91,7 +91,7 @@ func PreviewManual(root, id, profile string) (*ManualSnapshot, error) {
 			return nil, err
 		}
 	}
-	dir, err := filepath.EvalSymlinks(dir)
+	dir, err := canonicalManualDir(dir)
 	if err != nil {
 		return nil, err
 	}
