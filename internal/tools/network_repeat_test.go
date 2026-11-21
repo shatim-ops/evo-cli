@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -38,6 +39,9 @@ func TestNetworkRepeat_SecondClientAfterLostPost(t *testing.T) {
 			pending := intent.Pending(dir)
 			if len(pending) != 1 || !pending[0].Sent || !pending[0].Ended || creates(api) != 1 {
 				t.Fatalf("after accepted POST: pending=%+v writes=%d", pending, creates(api))
+			}
+			if c.tool == "snat_create" && pending[0].Target != "availability_zone_id="+zoneAZ1 {
+				t.Fatalf("unexpected on-disk SNAT target %q", pending[0].Target)
 			}
 			text, failed := second.handlers[c.tool](context.Background(), maps.Clone(c.args))
 			if !failed || answerStatus(text) != "confirmation_required" || creates(api) != 1 {
@@ -263,5 +267,32 @@ func TestNetworkRepeat_AnotherKeyOfTheAccountKeepsItsReceipt(t *testing.T) {
 				t.Fatalf("another key settled original receipt: %+v", left)
 			}
 		})
+	}
+}
+
+// Older receipts store the zone key as raw bytes. Only the message about
+// the listed gateway quotes cloud values; the machine ID stays unchanged.
+func TestNetworkRepeat_SNATLegacyTarget(t *testing.T) {
+	const oldTarget = "availability_zone_id=" + zoneAZ1
+	const gatewayID = "gateway\nnext line"
+	receipt := intent.Intent{Tool: "snat_create", Name: "nat-one", Target: oldTarget}
+	r := New(nil)
+	listedZone := contractID
+	if !r.Wrap("snat_list", func(Handler) Handler {
+		return func(context.Context, map[string]any) (string, bool) {
+			row := map[string]string{"id": gatewayID, "name": receipt.Name, "availability_zone_id": listedZone}
+			return toJSON(map[string]any{"nat_gateways": []map[string]string{row}}), false
+		}
+	}) {
+		t.Fatal("snat_list unavailable")
+	}
+	ctx := context.Background()
+	if _, settled, _ := r.checkByList(ctx, receipt, ""); settled {
+		t.Fatal("same name in another zone settled legacy receipt")
+	}
+	listedZone = zoneAZ1
+	message, settled, id := r.checkByList(ctx, receipt, "")
+	if !settled || id != gatewayID || !strings.Contains(message, strconv.Quote(gatewayID)) || strings.Contains(message, gatewayID) {
+		t.Fatalf("settled=%v machine ID=%q human message=%q", settled, id, message)
 	}
 }

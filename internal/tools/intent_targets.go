@@ -117,7 +117,13 @@ func snatIntent(ctx context.Context, r *Registry, args map[string]any) (string, 
 		return "", "", err
 	}
 	placement, err := r.snatPlacement(ctx, args)
-	return name, "availability_zone_id=" + placement.id, err
+	return name, snatZoneTarget(placement.id), err
+}
+
+// snatZoneTarget is the on-disk D119 identity. The list check must
+// reconstruct the exact bytes written by older versions.
+func snatZoneTarget(zoneID string) string {
+	return "availability_zone_id=" + zoneID
 }
 
 // Before 1.10 DNS stored just the label and a route just its VPC.

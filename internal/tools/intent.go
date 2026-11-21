@@ -1546,7 +1546,7 @@ func (r *Registry) checkByList(ctx context.Context, in intent.Intent, active str
 		name, _ := o["name"].(string)
 		if listedName := everySendIsAChange[in.Tool].listedName; listedName != nil {
 			name = listedName(o)
-			if statusGone(stringArg(o, "status")) || id == "" || (in.Tool == "snat_create" && in.Target != "availability_zone_id="+stringArg(o, "availability_zone_id")) {
+			if statusGone(stringArg(o, "status")) || id == "" || (in.Tool == "snat_create" && in.Target != snatZoneTarget(stringArg(o, "availability_zone_id"))) {
 				continue
 			}
 		}
