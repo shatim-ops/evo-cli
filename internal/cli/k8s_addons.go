@@ -45,13 +45,14 @@ func renderAddonList(p *output.Printer, w io.Writer, text string) error {
 		fmt.Fprintln(w, text)
 		return nil
 	}
+	if len(a.Categories) > 0 {
+		fmt.Fprintln(w, i18n.Tf("Categories (--category): %s.", "Категории (--category): %s.", output.SanitizeCell(strings.Join(a.Categories, ", "))))
+	}
 	if len(a.Addons) == 0 {
 		fmt.Fprintln(w, i18n.T("No addons found.", "Плагины не найдены."))
 		fmt.Fprintln(w, i18n.T("The search is a substring of the name, the display name or the description: evo k8s addons <substring>.",
 			"Поиск — по подстроке имени, отображаемого имени или описания: evo k8s addons <подстрока>."))
-		if len(a.Categories) > 0 {
-			fmt.Fprintln(w, i18n.Tf("Categories (--category): %s.", "Категории (--category): %s.", output.SanitizeCell(strings.Join(a.Categories, ", "))))
-		}
+
 		return nil
 	}
 	rows := make([][]string, 0, len(a.Addons))
@@ -68,6 +69,7 @@ func renderAddonList(p *output.Printer, w io.Writer, text string) error {
 }
 
 type addonVersionsAnswer struct {
+	Billable    *bool  `json:"billable"`
 	Addon       string `json:"addon"`
 	DisplayName string `json:"display_name"`
 	Releases    []struct {
@@ -120,6 +122,9 @@ func renderAddonVersions(p *output.Printer, w io.Writer, text string) error {
 	}
 	if a.DisplayName != "" {
 		fmt.Fprintf(w, "%s — %s\n", a.Addon, output.SanitizeCell(a.DisplayName))
+	}
+	if a.Billable != nil {
+		fmt.Fprintln(w, i18n.T("Billable:", "Платный:"), yesNo(*a.Billable))
 	}
 	if len(a.Releases) == 0 {
 		fmt.Fprintln(w, i18n.T("The addon has no releases.", "У плагина нет версий."))

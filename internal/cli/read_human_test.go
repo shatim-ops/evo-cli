@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
 // readForm are the keys of a read answer that are its form, not a value
@@ -51,12 +52,8 @@ var readUnnamed = map[string]struct{ class, why string }{
 	"image_get create.tool":                            {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
 	"image_get fields.mandatory_group":                 {unnamedWork, "группа обязательных полей образа; человеку — только REQUIRED"},
 	"image_get fields.role":                            {unnamedNoise, "роль поля; человеку — «evo: the SSH key» в FILLED BY"},
-	"k8s_addon_versions billable":                      {unnamedPrice, "платный ли аддон: карточка версий не говорит, список аддонов говорит"},
 	"k8s_addon_versions deploy_with.tool":              {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"k8s_addon_versions releases.has_schema":           {unnamedNoise, "есть ли схема настроек; человеку — размер схемы или «—»"},
-	"k8s_addon_versions releases.latest":               {unnamedNoise, "последняя версия; человеку — «*» у версии"},
 	"k8s_addons addons.deploy_with.tool":               {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"k8s_addons categories":                            {unnamedWork, "все категории каталога (значения отбора); человеку — только категории показанных аддонов"},
 	"list_flavors flavors.zones":                       {unnamedWork, "зоны, где есть конфигурация: таблица — не больше семи колонок"},
 	"marketplace_list items.available_in_project":      {unnamedWork, "доступен ли образ проекту"},
 	"marketplace_list items.billable":                  {unnamedPrice, "платный ли аддон"},
@@ -144,6 +141,23 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 			// Check the actual cell, even if another row or the header
 			// contains "enabled". Only verified booleans leave the walk.
 			bad = append(bad, checkZoneReadCells(c.path, answer, out, i18n.EN)...)
+		}
+		if c.tool.Name == "k8s_addon_versions" {
+			var versions addonVersionsAnswer
+			if err := json.Unmarshal([]byte(jsonOut), &versions); err != nil {
+				t.Fatal(err)
+			}
+			if err := checkAddonReleaseCells(versions, human); err != nil {
+				bad = append(bad, err.Error())
+			} else {
+				obj := answer.(map[string]any)
+				releases, _ := obj["releases"].([]any)
+				for _, item := range releases {
+					row := item.(map[string]any)
+					delete(row, "has_schema")
+					delete(row, "latest")
+				}
+			}
 		}
 		for _, miss := range valueMisses(answer, human, readForm) {
 			key := c.tool.Name + " " + miss.path
@@ -380,6 +394,73 @@ func TestShownAsWritten_Forms(t *testing.T) {
 	} {
 		if got := shownAsWritten(c.value, c.human); got != c.want {
 			t.Errorf("shownAsWritten(%q, %q) = %v, want %v", c.value, c.human, got, c.want)
+		}
+	}
+}
+
+func checkAddonReleaseCells(a addonVersionsAnswer, human string) error {
+	for _, release := range a.Releases {
+		version := release.Version
+		if release.Latest {
+			version += " *"
+		}
+		found := false
+		for _, line := range strings.Split(human, "\n") {
+			cells := zoneTableGap.Split(strings.TrimSpace(line), -1)
+			if len(cells) == 7 && cells[0] == version && cells[6] == schemaSize(release.HasSchema, release.SchemaBytes) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("release %s: incorrect version marker or schema size", release.Version)
+		}
+	}
+	return nil
+}
+
+func TestAddonReadValuesInBothLanguages(t *testing.T) {
+	old := i18n.Lang()
+	defer i18n.SetLang(old)
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		for _, tc := range []struct{ field, label string }{
+			{",\"billable\":true", i18n.T("Billable: yes", "Платный: да")},
+			{",\"billable\":false", i18n.T("Billable: no", "Платный: нет")},
+			{"", ""},
+		} {
+			var buf strings.Builder
+			raw := `{"addon":"test"` + tc.field + `,"releases":[{"version":"v1","latest":true,"has_schema":true,"schema_bytes":42},{"version":"v2","latest":false,"has_schema":false}]}`
+			if err := renderAddonVersions(output.NewWithWriter(&buf, output.ModePlain, false), &buf, raw); err != nil {
+				t.Fatal(err)
+			}
+			text := buf.String()
+			if tc.label == "" && strings.Contains(text, i18n.T("Billable:", "Платный:")) || tc.label != "" && !strings.Contains(text, tc.label+"\n") {
+				t.Fatal(text)
+			}
+			var a addonVersionsAnswer
+			if err := json.Unmarshal([]byte(raw), &a); err != nil {
+				t.Fatal(err)
+			}
+			if err := checkAddonReleaseCells(a, text); err != nil {
+				t.Fatal(err)
+			}
+			for _, wrong := range []string{strings.Replace(text, "v1 *", "v1", 1), strings.Replace(text, i18n.T("42 B", "42 Б"), "—", 1)} {
+				if checkAddonReleaseCells(a, wrong) == nil {
+					t.Fatal("lost release information", wrong)
+				}
+			}
+		}
+		for _, categories := range []string{`,"categories":["network","security"]`, ""} {
+			var buf strings.Builder
+			raw := `{"addons":[{"name":"addon","categories":["network"]}]` + categories + `}`
+			if err := renderAddonList(output.NewWithWriter(&buf, output.ModePlain, false), &buf, raw); err != nil {
+				t.Fatal(err)
+			}
+			want := i18n.T("Categories (--category): network, security.", "Категории (--category): network, security.")
+			if strings.Contains(buf.String(), want) != (categories != "") {
+				t.Fatal(buf.String())
+			}
 		}
 	}
 }
