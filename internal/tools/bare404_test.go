@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -244,6 +245,21 @@ func TestS3BucketList_ServiceAndNonService404(t *testing.T) {
 func TestContractS3ListErrorDocument(t *testing.T) {
 	rt := &contractRT{}
 	contractReg(t, rt)
+	var uri, wireBody string
+	httpretry.DefaultBase = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		res, err := rt.RoundTrip(r)
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(res.Body)
+		res.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		uri, wireBody = r.URL.RequestURI(), string(data)
+		res.Body = io.NopCloser(bytes.NewReader(data))
+		return res, nil
+	})
 	mc, err := minio.New(rt.s3Host, &minio.Options{
 		Creds: credentials.NewStaticV4("a", "b", ""), Region: "ru-central-1",
 		Transport: httpretry.UserAgent(nil),
@@ -262,6 +278,6 @@ func TestContractS3ListErrorDocument(t *testing.T) {
 		if !errors.As(listErr, &response) || response.StatusCode != http.StatusNotFound || response.Code != "NoSuchBucket" || response.XMLName.Local != tc.root || len(reqs) != 1 {
 			t.Fatalf("%s requests %v, SDK error %#v (%v)", tc.kind, reqs, response, listErr)
 		}
-		t.Logf("%s requests %v, SDK status=%d code=%s XMLName=%q", tc.kind, reqs, response.StatusCode, response.Code, response.XMLName.Local)
+		t.Logf("GET %s fixture %s body %q, requests %v, SDK status=%d code=%s XMLName=%q", uri, tc.kind, wireBody, reqs, response.StatusCode, response.Code, response.XMLName.Local)
 	}
 }
