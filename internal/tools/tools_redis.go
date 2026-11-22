@@ -124,7 +124,7 @@ func (s *Registry) planRedisCreate(ctx context.Context, args map[string]any) (*P
 		return nil, fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return answered(nameTakenResult(i18n.T("Redis cluster", "кластер Redis"), name, id, st, "redis_get cluster_id="+id)), nil
+		return answered(nameTakenResult(i18n.T("Redis cluster", "кластер Redis"), name, id, st, resourceReadHint("redis_get", "cluster_id", id))), nil
 	}
 
 	versionID := stringArg(args, "version_id")

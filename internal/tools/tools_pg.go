@@ -321,7 +321,7 @@ func (s *Registry) planPgCreate(ctx context.Context, args map[string]any) (*Plan
 		return nil, fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return answered(nameTakenResult(i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, id, st, "pg_get id="+id)), nil
+		return answered(nameTakenResult(i18n.T("PostgreSQL cluster", "кластер PostgreSQL"), name, id, st, resourceReadHint("pg_get", "id", id))), nil
 	}
 
 	// Resolve version (default: latest available).

@@ -155,7 +155,7 @@ func (s *Registry) planVpcCreate(ctx context.Context, args map[string]any) (*Pla
 		return nil, fmt.Errorf(i18n.T("check the name is free: list VPCs: %w", "проверка, что имя свободно: список VPC: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return answered(occupiedName("VPC", name, id, st, "vpc_get id="+id, "")), nil
+		return answered(occupiedName("VPC", name, id, st, resourceReadHint("vpc_get", "id", id), "")), nil
 	}
 	preview := map[string]any{
 		"message": i18n.Tf("vpc_create creates a new VPC %q (async).",

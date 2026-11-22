@@ -541,7 +541,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 		case state == act.via:
 			// A start in flight: this call's own, cut before its end, or
 			// another caller's. No command is sent, so no question.
-			since, _ := s.heldSince(eng, tool, "vm_id="+vm.ID)
+			since, _ := s.heldSince(eng, tool, persistedIDTarget("vm_id", vm.ID))
 			text, isErr := s.finishVMPower(ctx, eng, tool, act, vm, args, false, since)
 			return answered(text, isErr), nil
 		case vmStable[state] && state != act.from:
@@ -958,7 +958,7 @@ func (s *Registry) planVMResize() Planner {
 		case resizingTo(vm, target):
 			// A change to the target in flight: this call's own, cut before
 			// its end, or another caller's. Nothing is sent, so no question.
-			since, _ := s.heldSince(eng, tool, "vm_id="+vm.ID)
+			since, _ := s.heldSince(eng, tool, persistedIDTarget("vm_id", vm.ID))
 			text, isErr := s.finishVMResize(ctx, eng, vm, target, args, false, since)
 			return answered(text, isErr), nil
 		case onFlavor(vm, target):

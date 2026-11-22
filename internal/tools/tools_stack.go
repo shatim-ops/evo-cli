@@ -335,7 +335,7 @@ func (s *Registry) stepRead(ctx context.Context, st *stack.Step) (found, ok bool
 	if len(reads) == 0 {
 		return false, false, "", ""
 	}
-	check = reads[0].tool + " " + reads[0].arg + "=" + st.ResourceID
+	check = resourceReadHint(reads[0].tool, reads[0].arg, st.ResourceID)
 	for _, r := range reads {
 		res, err := s.callTool(ctx, r.tool, map[string]any{r.arg: st.ResourceID})
 		if err == nil {
@@ -485,7 +485,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 							if reason == "" {
 								reason = clierrors.CodeAPIError
 							}
-							check := fmt.Sprintf("%s %s=%s", st.StatusTool, st.StatusArg, st.ResourceID)
+							check := resourceReadHint(st.StatusTool, st.StatusArg, st.ResourceID)
 							if stepMissing(job, st, st.StatusTool+" answers "+reason, check, reason) {
 								return
 							}
