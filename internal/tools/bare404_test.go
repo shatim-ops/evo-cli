@@ -180,3 +180,55 @@ func TestBucketDeleteNeedsServiceEvidence(t *testing.T) {
 		})
 	}
 }
+
+// All three entry points read the bucket through ListObjectsV2. A service
+// answer about that bucket settles only its own delete, never its object's.
+func TestS3BucketList_ServiceAndNonService404(t *testing.T) {
+	rt := &contractRT{}
+	reg := contractReg(t, rt)
+	for _, name := range []string{"s3_ls", "s3_rm", "s3_bucket_delete"} {
+		tl, ok := reg.Lookup(name)
+		if !ok {
+			t.Fatal(name)
+		}
+		for _, kind := range []string{"404", "404json", "403"} {
+			t.Run(name+"/"+kind, func(t *testing.T) {
+				rt.kind = kind
+				args := contractArgs(tl)
+				if tl.Mutating {
+					args["confirmed"] = true
+				}
+				body, failed, pan := contractCall(tl, args, contractCallLimit)
+				reqs := rt.take()
+				if pan != "" || len(reqs) == 0 {
+					t.Fatalf("requests %v, panic %s", reqs, pan)
+				}
+				for _, req := range reqs {
+					if !strings.HasPrefix(req, "GET ") {
+						t.Fatalf("unexpected request %s", req)
+					}
+				}
+				reason, status := contractReason(body)
+				if kind == "404" && name == "s3_bucket_delete" {
+					if failed || status != "already_deleted" {
+						t.Fatalf("bucket absence: %s", body)
+					}
+					return
+				}
+				want := clierrors.CodeAPIError
+				if kind == "404" {
+					want = clierrors.CodeNotFound
+				}
+				if !failed || status == "already_deleted" || reason != want {
+					t.Fatalf("reason %s, want %s: %s", reason, want, body)
+				}
+				if kind == "403" {
+					var m map[string]any
+					if err := json.Unmarshal([]byte(body), &m); err != nil || m["access_denied"] != true || m["http_status"] != float64(403) {
+						t.Fatalf("denial metadata: %s", body)
+					}
+				}
+			})
+		}
+	}
+}

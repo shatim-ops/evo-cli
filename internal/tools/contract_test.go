@@ -51,6 +51,10 @@ type contractRT struct {
 }
 
 func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
+	return c.reply(r, false)
+}
+
+func (c *contractRT) reply(r *http.Request, s3BucketList bool) (*http.Response, error) {
 	if r.Body != nil {
 		_, _ = io.Copy(io.Discard, r.Body)
 	}
@@ -76,6 +80,14 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 		body = "<html><body>gateway</body></html>"
 	case "empty":
 		body = ""
+	case "404":
+		code = http.StatusNotFound
+		if s3BucketList {
+			hdr.Set("Content-Type", "application/xml")
+			body = "<Error><Code>NoSuchBucket</Code><Message>The specified bucket does not exist</Message></Error>"
+		}
+	case "404json":
+		code = http.StatusNotFound // the generic JSON refusal is not an S3 error document
 	case "404html":
 		// A 404 the product did not write: a gateway's page, a route that
 		// is not there (E1, FB13-3).
@@ -154,7 +166,7 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 	httpretry.DefaultBase = rt
 	t.Cleanup(func() { httpretry.DefaultBase = old })
 	s3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp, err := rt.RoundTrip(r)
+		resp, err := rt.reply(r, r.Method == http.MethodGet && r.URL.Query().Get("list-type") == "2")
 		if err != nil {
 			http.Error(w, "conn", http.StatusBadGateway)
 			return
