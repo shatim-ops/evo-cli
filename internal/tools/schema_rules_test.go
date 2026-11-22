@@ -388,26 +388,56 @@ func TestArgs_RequiredOpaqueServiceID(t *testing.T) {
 
 func TestArgs_ResourceReferencesKeepIDOrName(t *testing.T) {
 	r := New(nil)
-	for _, k := range []string{"k8s_add_nodepool.nodes_subnet_id", "k8s_add_nodepool.security_group_id", "k8s_create.subnet_id", "k8s_plan.subnet_id", "kafka_create.subnet_id", "lb_create.subnet_id", "pg_create.subnet_id", "provision.subnet_id", "redis_create.subnet_id", "image_get.image_id", "vm_get.vm_id"} {
-		name, arg, _ := strings.Cut(k, ".")
-		tl, _ := r.Lookup(name)
-		if name != "image_get" && name != "vm_get" && !takesName(name, arg) {
-			t.Fatal(k, "missing project-name resolution")
-		}
-		for _, ref := range []string{auditUUID, "prod A", "сеть-1", ""} {
-			if err := CheckArgs(tl, map[string]any{arg: ref}); err != nil {
-				t.Fatal(k, ref, err)
+	// Placement arguments have minLength=1 even though they are optional.
+	// The plan takes a free-form reference. The two card lookups also
+	// accept an empty ID alongside their alternative name argument.
+	for _, tc := range []struct {
+		tool, arg                 string
+		rejectEmpty, rejectSpaces bool
+	}{
+		{"k8s_add_nodepool", "nodes_subnet_id", true, true},
+		{"k8s_add_nodepool", "security_group_id", true, true},
+		{"k8s_create", "subnet_id", true, true},
+		{"kafka_create", "subnet_id", true, true},
+		{"lb_create", "subnet_id", true, true},
+		{"pg_create", "subnet_id", true, true},
+		{"provision", "subnet_id", true, true},
+		{"redis_create", "subnet_id", true, true},
+		{"k8s_plan", "subnet_id", false, false},
+		{"image_get", "image_id", false, true},
+		{"vm_get", "vm_id", false, true},
+	} {
+		t.Run(tc.tool+"/"+tc.arg, func(t *testing.T) {
+			tl, found := r.Lookup(tc.tool)
+			if !found {
+				t.Fatal("missing tool")
 			}
-		}
-		err := CheckArgs(tl, map[string]any{arg: "  "})
-		if takesName(name, arg) {
-			// D57 passes the raw name through project lookup and preserves the
-			// handler's own diagnostics and defaults for an unmatched value.
-			if err != nil {
-				t.Fatal(k, err)
+			if tc.tool != "image_get" && tc.tool != "vm_get" && !takesName(tc.tool, tc.arg) {
+				t.Fatal("missing project-name resolution")
 			}
-		} else if clierrors.Reason(err) != clierrors.CodeUsage {
-			t.Fatal(k, err)
-		}
+			for _, input := range []struct {
+				label  string
+				args   map[string]any
+				reject bool
+			}{
+				{"omitted", nil, false},
+				{"empty", map[string]any{tc.arg: ""}, tc.rejectEmpty},
+				{"spaces", map[string]any{tc.arg: "  "}, tc.rejectSpaces},
+				{"uuid", map[string]any{tc.arg: auditUUID}, false},
+				{"name", map[string]any{tc.arg: "prod A"}, false},
+				{"unicode name", map[string]any{tc.arg: "сеть-1"}, false},
+			} {
+				t.Run(input.label, func(t *testing.T) {
+					err := CheckArgs(tl, input.args)
+					if input.reject {
+						if err == nil || clierrors.Reason(err) != clierrors.CodeUsage {
+							t.Fatalf("want USAGE, got %v", err)
+						}
+					} else if err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		})
 	}
 }
