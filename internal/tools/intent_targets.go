@@ -159,7 +159,11 @@ func (r *Registry) lockNetworkIntents(tool string) (func(), error) {
 	root, _ := r.stateDir()
 	unlock, err := state.FileLock(filepath.Join(config.DataDir(root), tool+".lock"), 5*time.Second)
 	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeStateLocked, i18n.T("could not lock network create intents", "не удалось заблокировать записи сетевых созданий"), i18n.T("Check the state directory and retry.", "Проверьте каталог состояния и повторите вызов."), err)
+		code := clierrors.CodeStateLocked
+		if tool == "vpc_create" && !errors.Is(err, state.ErrFileLocked) {
+			code = clierrors.CodeConfigInvalid
+		}
+		return nil, clierrors.Wrap(code, i18n.T("could not lock network create intents", "не удалось заблокировать записи сетевых созданий"), i18n.T("Check the state directory and retry.", "Проверьте каталог состояния и повторите вызов."), err)
 	}
 	return unlock, nil
 }

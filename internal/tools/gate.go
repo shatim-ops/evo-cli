@@ -521,8 +521,12 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		// Serialize the check and opening of network create intents across
 		// processes sharing this state directory. Release before the POST:
 		// a second client can read the in-flight record while it is running.
+		// VPC name checks can finish the call before it needs an intent.
+		// Hold the same create lock through planning and opening the record
+		// so another caller can observe this send before making its own.
+		vpcCreate := t.Name == "vpc_create"
 		var release func()
-		if confirmed, _ := args["confirmed"].(bool); confirmed && (t.Name == "lb_create" || everySendIsAChange[t.Name].listedName != nil) && r.newEngine != nil {
+		if confirmed, _ := args["confirmed"].(bool); confirmed && (vpcCreate || t.Name == "lb_create" || everySendIsAChange[t.Name].listedName != nil) && r.newEngine != nil {
 			unlock, err := r.lockNetworkIntents(t.Name)
 			if err != nil {
 				return errResult(err), true
@@ -573,14 +577,14 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		// the limit of the repeats counts from («Риск», conclusion 177,
 		// У7).
 		var end func(string)
-		deferPlacement := t.Name == "lb_create" || t.Name == "snat_create"
+		deferIntent := vpcCreate || t.Name == "lb_create" || t.Name == "snat_create"
 		if t.Name == "stack_apply" {
 			job, err := stack.LoadJob(stringArg(args, "job_id"))
-			deferPlacement = err == nil && jobHasPendingLB(job)
+			deferIntent = err == nil && jobHasPendingLB(job)
 		}
 		if held, goesOn := r.goesOn(ctx, t.Name, args); goesOn {
 			end = func(answer string) { cutSendOf(ctx, held, answer) }
-		} else if deferPlacement {
+		} else if deferIntent {
 			startBeforeWrite = sync.OnceValue(func() error {
 				var err error
 				end, err = r.beginIntent(ctx, t.Name, args)
@@ -596,7 +600,7 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 				return errResult(err), true
 			}
 		}
-		if release != nil && !deferPlacement {
+		if release != nil && !deferIntent {
 			release()
 		}
 		// A handler that panics does not return: the server recovers it,
