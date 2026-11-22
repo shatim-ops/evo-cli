@@ -210,6 +210,12 @@ func ShowStatus(p *output.Printer, st DeploymentStatus, refreshed bool) {
 		[]string{i18n.T("Region", "Зона"), recordZoneText(&shown)},
 		[]string{i18n.T("Status", "Состояние"), shown.Status},
 	)
+	if shown.ProjectID != "" {
+		rows = append(rows, []string{i18n.T("Project ID", "ID проекта"), shown.ProjectID})
+	}
+	if shown.SSHUser != "" {
+		rows = append(rows, []string{i18n.T("SSH user", "Пользователь SSH"), shown.SSHUser})
+	}
 	if refreshed {
 		rows = append(rows, []string{i18n.T("In the cloud", "В облаке"), cloudCell(check)})
 	}
