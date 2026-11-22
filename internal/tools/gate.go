@@ -7,12 +7,12 @@ package tools
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"maps"
-	"sync"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
