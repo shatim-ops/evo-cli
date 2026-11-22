@@ -364,3 +364,27 @@ func TestToolError_JSONWithoutHint(t *testing.T) {
 		t.Errorf("got %q, want %q", buf.String(), want)
 	}
 }
+
+func TestVMAndImageGetSpaceOnlyReference(t *testing.T) {
+	for _, tc := range []struct{ tool, arg string }{
+		{"vm_get", "vm_id"},
+		{"image_get", "image_id"},
+	} {
+		t.Run(tc.tool, func(t *testing.T) {
+			withJSONWorld(t)
+			args := map[string]any{tc.arg: "  "}
+			body, err := json.Marshal(args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, out, stderr := runCLI(t, "", "tools", "call", tc.tool, "--args-json", string(body), "--json")
+			if code == 0 || !strings.Contains(out+stderr, tc.arg) || !strings.Contains(out+stderr, "USAGE") {
+				t.Fatalf("CLI exit %d, stdout %s, stderr %s", code, out, stderr)
+			}
+			reply := callStdioTool(t, tc.tool, args)
+			if !reply.isErr || !strings.Contains(reply.text, tc.arg) || !strings.Contains(reply.text, "USAGE") {
+				t.Fatalf("stdio reply %+v", reply)
+			}
+		})
+	}
+}
