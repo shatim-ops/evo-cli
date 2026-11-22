@@ -954,6 +954,19 @@ func createPreview(name string, resp map[string]any) (confirm.Preview, bool) {
 		return confirm.Preview{}, false
 	}
 	p := engine.ShowCreatePreview(name, cp)
+	if name == "deploy_apply" {
+		if id, ok := resp["plan_id"].(string); ok && id != "" {
+			p.Lines = append(p.Lines, i18n.Tf("Plan ID: %q", "ID плана: %q", id))
+		}
+		if expires, ok := resp["expires_at"].(string); ok && expires != "" {
+			p.Lines = append(p.Lines, i18n.Tf("Plan valid until: %q", "План действует до: %q", expires))
+		}
+	}
+	if will, ok := resp["will_create"].(map[string]any); ok {
+		if spec, ok := will["specification_id"].(string); ok && spec != "" {
+			p.Lines = append(p.Lines, i18n.Tf("Specification ID: %q", "ID спецификации: %q", spec))
+		}
+	}
 	details := make(map[string]any, len(resp))
 	for k, v := range resp {
 		details[k] = v

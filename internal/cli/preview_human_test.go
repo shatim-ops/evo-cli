@@ -43,19 +43,7 @@ var previewForm = map[string]string{
 // function, D). A line the human preview shows now fails the test.
 // Closes by 1.10 (owner's decision of 17.11, release plan 1.9,
 // «Сроки bodyUnnamed и humanUnnamed»). Risk reviews the remaining reasons.
-var humanUnnamed = map[string]struct{ class, why string }{
-	"deploy cost.hourly_rub":                    {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"deploy preview.cost.hourly_rub":            {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"deploy update":                             {unnamedWork, "обновит ли deploy существующую ВМ"},
-	"deploy_apply expires_at":                   {unnamedNoise, "срок плана"},
-	"deploy_apply plan_id":                      {unnamedNoise, "id плана: у плана нет имени"},
-	"deploy_apply preview.cost.hourly_rub":      {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"kafka_create will_create.specification_id": {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
-	"pg_create will_create.specification_id":    {unnamedNoise, "спецификация, которую превью называет параметрами; принято «Риском», 203"},
-	"provision preview.cost.hourly_rub":         {unnamedPrice, "почасовая цена; человеку — месячная"},
-	"pg_create preview.cost.hourly_rub":         {unnamedPrice, "почасовая цена узлов; человеку — месячная и полная почасовая; принято «Риском», 203"},
-	"redis_create will_create.specification_id": {unnamedNoise, "конфигурация, которую превью называет параметрами (vCPU, RAM); принято «Риском», 203"},
-}
+var humanUnnamed = map[string]struct{ class, why string }{}
 
 // Release plan 1.5, С2: what the agent sees in a preview (preview.details,
 // the same in MCP and --json), the person at the terminal sees too — the
@@ -124,6 +112,9 @@ func TestPreview_HumanShowsEveryValue(t *testing.T) {
 			}
 			for _, miss := range humanMisses(env.Preview.Details, human) {
 				key := c.tool.Name + " " + miss.path
+				if key == "deploy update" && deployActionShown(miss.value, env.Preview.Summary, human) {
+					continue
+				}
 				// An id whose thing the person sees by its name is shown:
 				// checked, not declared.
 				if namedBySibling(env.Preview.Details, miss.path, miss.value, human) {
@@ -183,6 +174,60 @@ func TestPreview_HumanShowsEveryValue(t *testing.T) {
 	if len(bad) > 0 {
 		sort.Strings(bad)
 		t.Fatal(strings.Join(bad, "\n"))
+	}
+}
+
+// The deploy command names the decision in the question itself.
+func deployActionShown(value, summary, text string) bool {
+	if !strings.Contains(text, summary) {
+		return false
+	}
+	switch value {
+	case "false":
+		return strings.HasPrefix(summary, "create VM ") || strings.HasPrefix(summary, "создать ВМ ")
+	case "true":
+		return strings.HasPrefix(summary, "update VM ") || strings.HasPrefix(summary, "обновить ВМ ")
+	}
+	return false
+}
+
+func TestPreview_DistinguishesDeployAction(t *testing.T) {
+	for _, words := range [][2]string{{"create VM web", "update VM web"}, {"создать ВМ web", "обновить ВМ web"}} {
+		for i, summary := range words {
+			for j, value := range []string{"false", "true"} {
+				if deployActionShown(value, summary, "Plan: "+summary) != (i == j) || deployActionShown(value, summary, "unrelated heading") {
+					t.Errorf("deploy update=%s, summary %q", value, summary)
+				}
+			}
+		}
+	}
+}
+
+func TestPreview_SelectedValuesBelongToThePlan(t *testing.T) {
+	for _, value := range []string{"alpha", "beta"} {
+		date := "2026-11-20T12:00:00Z"
+		cost := 1.3125
+		if value == "beta" {
+			date = "2026-11-24T12:00:00Z"
+			cost = 3.125
+		}
+		for _, resource := range []string{engine.ResourceVM, engine.ResourcePGCluster} {
+			answer := map[string]any{
+				"plan_id": "plan-" + value, "expires_at": date,
+				"will_create": map[string]any{"specification_id": "spec-" + value},
+				"preview":     map[string]any{"resource": resource, "cost": map[string]any{"currency": "RUB", "hourly_rub": cost}},
+			}
+			p, ok := createPreview("deploy_apply", answer)
+			human := strings.Join(p.Lines, "\n")
+			if !ok {
+				t.Fatal("no preview")
+			}
+			for _, want := range []string{"plan-" + value, date, "spec-" + value, fmt.Sprintf("%g RUB", cost)} {
+				if !strings.Contains(human, want) {
+					t.Errorf("missing %s in %s", want, human)
+				}
+			}
+		}
 	}
 }
 

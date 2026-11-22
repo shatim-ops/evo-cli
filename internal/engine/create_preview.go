@@ -959,9 +959,13 @@ func createCostLines(p CreatePreview) []string {
 		}
 		if p.Resource == ResourcePGCluster {
 			c := p.Cost
-			return []string{previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month: nodes %.2f, storage %.2f (~%.4f %s/hour); estimate by the tariff of %s, not a bill: %s",
+			lines := []string{previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month: nodes %.2f, storage %.2f (~%.4f %s/hour); estimate by the tariff of %s, not a bill: %s",
 				"~%.2f %s в месяц: узлы %.2f, хранилище %.2f (~%.4f %s в час); оценка по тарифу от %s, не счёт: %s",
 				c.TotalMonthlyRub, c.Currency, c.ComputeMonthlyRub, c.DiskMonthlyRub, c.TotalHourlyRub, c.Currency, pricing.PGTariffDate, p.TariffURL)}
+			if c.HourlyRub > 0 {
+				lines = append(lines, computeHourlyLine(*c))
+			}
+			return lines
 		}
 		lines := []string{previewLabel("cost", "цена") + i18n.Tf("~%.2f %s/month (disk), %s", "~%.2f %s в месяц (диск), %s",
 			p.Cost.TotalMonthlyRub, p.Cost.Currency, costNoteFor(*p.Cost))}
