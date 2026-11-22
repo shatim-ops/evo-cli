@@ -229,3 +229,57 @@ func TestStateDir_NoArgumentOfACallMovesIt(t *testing.T) {
 		t.Fatalf("records: %d in the declared directory, %d in another; want 1 and 0", a, b)
 	}
 }
+
+// Doctor reconciles records in the directory the registry declared, including
+// when an engine built for the same project has another working directory.
+func TestDoctor_ReconcilesOnlyTheDeclaredDirectory(t *testing.T) {
+	stubDoctorIdentity(t)
+	cfg := provisionCfg
+	cfg.ServiceAccountID = "test-owner"
+	cloud := &disksCloud{disks: []map[string]any{{"name": "listed-disk", "id": "d-listed"}}}
+	r, engineRoot := targetRegistryWith(t, cloud, cfg)
+	root := t.TempDir()
+	r.SetStateDir(root)
+	eng, err := r.newEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := eng.Maker()
+	foreign := &state.Maker{ServiceAccountID: "other-owner", KeyID: "other-key"}
+	open := func(dir string, maker *state.Maker) intent.Intent {
+		t.Helper()
+		rec, err := intent.Open(intent.Dir(dir), intent.Intent{Tool: "disk_create", Name: "listed-disk", Key: maker, ProjectID: cfg.ProjectID, Ended: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rec
+	}
+	correct, otherKey, otherDir := open(root, own), open(root, foreign), open(engineRoot, own)
+	files := []struct{ root, name string }{{root, "declared-foreign.json"}, {engineRoot, "engine-foreign.json"}}
+	for _, file := range files {
+		if err := os.WriteFile(filepath.Join(intent.Dir(file.root), file.name), []byte("{}"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	text := doctorOnFake(t, r)
+	if !strings.Contains(text, files[0].name) || strings.Contains(text, files[1].name) {
+		t.Fatal("doctor reported foreign files from the wrong directory")
+	}
+	remaining := intent.Pending(intent.Dir(root))
+	untouched := intent.Pending(intent.Dir(engineRoot))
+	if len(remaining) != 1 || remaining[0].ID != otherKey.ID || len(untouched) != 1 || untouched[0].ID != otherDir.ID {
+		t.Fatalf("wrong records after doctor: declared=%v engine=%v", remaining, untouched)
+	}
+	lines, _ := historyOf(t, root)
+	if len(lines) != 1 || lines[0].IntentID != correct.ID || lines[0].ResourceID != "d-listed" {
+		t.Fatalf("declared history: %+v", lines)
+	}
+	if lines, _ := historyOf(t, engineRoot); len(lines) != 0 {
+		t.Fatalf("unexpected history in engine directory: %+v", lines)
+	}
+	r.SetStateDir("")
+	text = doctorOnFake(t, r)
+	if strings.Contains(text, files[0].name) || strings.Contains(text, files[1].name) || len(intent.Pending(intent.Dir(engineRoot))) != 1 {
+		t.Fatal("undeclared registry read another directory")
+	}
+}

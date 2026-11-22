@@ -364,9 +364,18 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		// (и)): a warning, not a failure — the setup works.
 		// The list of what each names closes the ones whose outcome it
 		// shows (PR-2).
+		root, declared := s.stateDir()
+		var pending []intent.Intent
+		var dirs []string
+		if declared {
+			pending = pendingIntents(root)
+			dirs = intent.Dirs(root)
+		} else {
+			checks = append(checks, DoctorCheck{Name: "pending operations", Status: CheckWarn, Detail: CheckDetail(errNoStateDir())})
+		}
 		unresolved := 0
-		for _, in := range pendingIntents(eng.StateDir) {
-			if manualReviewClosed(eng.StateDir, in, eng) {
+		for _, in := range pending {
+			if manualReviewClosed(root, in, eng) {
 				continue
 			}
 			found, settled, id := s.checkPending(ctx, in, eng)
@@ -404,7 +413,7 @@ func (s *Registry) doctorChecks(ctx context.Context, verbose bool) []DoctorCheck
 		// A file there that is not evo's record is neither read nor
 		// removed, and named: a planted one is seen («Риск», conclusion
 		// 88). Its name is the directory's, quoted.
-		for _, dir := range intent.Dirs(eng.StateDir) {
+		for _, dir := range dirs {
 			for _, path := range intent.Foreign(dir) {
 				checks = append(checks, DoctorCheck{Name: "foreign intent record", Status: CheckWarn,
 					Detail: i18n.Tf("%s is not a record evo wrote: evo neither reads nor removes it — check where it came from (a cloned repository may bring it) and delete it yourself",

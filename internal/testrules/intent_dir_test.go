@@ -10,7 +10,6 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -32,13 +31,6 @@ import (
 // directory itself, and its callers are held to the same rule, and so on
 // up (pendingIntents(eng.StateDir) in doctor went by a parameter, a
 // finding of «Риск» at #1633).
-
-// intentDirUndeclared are the functions of internal/tools that give a
-// reader of the directory something else today, "file: function" → what
-// and whose it is. The list only shrinks. Closes by 1.10.
-var intentDirUndeclared = map[string]string{
-	"internal/tools/tools_auth.go: doctorChecks": "eng.StateDir, twice — the records doctor reads and settles (pendingIntents) and the foreign files it names (intent.Dirs); no money: a warning read, and a record closed, in another directory",
-}
 
 // intentDirCall is a call that hands a directory to a reader of it.
 type intentDirCall struct {
@@ -112,26 +104,12 @@ func TestTools_ReadIntentRecordsInTheDeclaredDirectory(t *testing.T) {
 	if len(calls) < 8 || len(readers) < 4 {
 		t.Fatalf("%d calls of %d readers of the directory found in internal/tools: the scan sees too little", len(calls), len(readers))
 	}
-	seen := map[string]bool{}
 	for _, c := range calls {
 		if id, ok := c.arg.(*ast.Ident); ok && c.declared[id.Name] {
 			continue
 		}
-		seen[c.key] = true
-		if intentDirUndeclared[c.key] == "" {
-			t.Errorf("%s (%s): %s is given a directory that is neither a parameter of the function nor what Registry.stateDir returned — the records are read where the layer writes them, the declared directory (one point of decision, CLAUDE.md §2)",
-				c.key, c.at, c.callee)
-		}
-	}
-	var gone []string
-	for key := range intentDirUndeclared {
-		if !seen[key] {
-			gone = append(gone, key)
-		}
-	}
-	sort.Strings(gone)
-	for _, key := range gone {
-		t.Errorf("intentDirUndeclared names %s, which reads the declared directory now: remove the line (the list only shrinks)", key)
+		t.Errorf("%s (%s): %s is given a directory that is neither a parameter of the function nor what Registry.stateDir returned — the records are read where the layer writes them, the declared directory (one point of decision, CLAUDE.md §2)",
+			c.key, c.at, c.callee)
 	}
 	t.Logf("readers of the directory: %d; calls of them: %d", len(readers), len(calls))
 }
