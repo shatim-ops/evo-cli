@@ -30,6 +30,7 @@ type marketplaceAnswer struct {
 		Kind               string        `json:"kind"`
 		Name               string        `json:"name"`
 		DisplayName        string        `json:"display_name"`
+		Billable           *bool         `json:"billable"`
 		AvailableInProject *bool         `json:"available_in_project"`
 		Ready              *bool         `json:"ready"`
 		Deploy             *marketDeploy `json:"deploy"`
@@ -81,10 +82,17 @@ func renderMarketplaceList(p *output.Printer, w io.Writer, text string) error {
 	}
 	rows := make([][]string, 0, len(a.Items))
 	for _, it := range a.Items {
-		rows = append(rows, []string{it.Kind, it.Name, clip(it.DisplayName, 48), deployCell(it.Kind, it.AvailableInProject, it.Ready, it.Deploy)})
+		available, billable := "—", "—"
+		if it.AvailableInProject != nil {
+			available = yesNo(*it.AvailableInProject)
+		}
+		if it.Billable != nil {
+			billable = yesNo(*it.Billable)
+		}
+		rows = append(rows, []string{it.Kind, it.Name, clip(it.DisplayName, 48), deployCell(it.Kind, it.AvailableInProject, it.Ready, it.Deploy), available, billable})
 	}
 	p.Table([]string{
-		i18n.T("KIND", "ВИД"), i18n.T("NAME", "ИМЯ"), i18n.T("DISPLAY NAME", "ОТОБРАЖАЕМОЕ ИМЯ"), i18n.T("HOW TO DEPLOY", "КАК РАЗВЕРНУТЬ"),
+		i18n.T("KIND", "ВИД"), i18n.T("NAME", "ИМЯ"), i18n.T("DISPLAY NAME", "ОТОБРАЖАЕМОЕ ИМЯ"), i18n.T("HOW TO DEPLOY", "КАК РАЗВЕРНУТЬ"), i18n.T("AVAILABLE IN PROJECT", "ДОСТУПЕН ПРОЕКТУ"), i18n.T("BILLABLE", "ПЛАТНЫЙ"),
 	}, rows)
 	fmt.Fprintln(w, i18n.Tf("Shown %d of %d: vm-os %d, vm-app %d, k8s-addon %d.",
 		"Показаны %d из %d: vm-os — %d, vm-app — %d, k8s-addon — %d.",

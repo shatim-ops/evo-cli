@@ -5,9 +5,12 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"io"
+	"net/http"
 	"regexp"
 	"sort"
 	"strconv"
@@ -35,19 +38,12 @@ var readForm = map[string]string{
 // stays is an exception declared with a reason «Риск» accepted (plan 1.9,
 // phase 0, И1).
 var readUnnamed = map[string]struct{ class, why string }{
-	"doctor checks.http_status":                   {unnamedNoise, "код ответа пробы; человеку — «reachable» в строке проверки"},
-	"image_get create.tool":                       {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"image_get fields.role":                       {unnamedNoise, "роль поля; человеку — «evo: the SSH key» в FILLED BY"},
-	"k8s_addon_versions deploy_with.tool":         {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"k8s_addons addons.deploy_with.tool":          {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"marketplace_list items.available_in_project": {unnamedWork, "доступен ли образ проекту"},
-	"marketplace_list items.billable":             {unnamedPrice, "платный ли аддон"},
-	"marketplace_list items.deploy.tool":          {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"metrics_scrape format":                       {unnamedNoise, "формат выгрузки; человеку — сама выгрузка"},
-	"metrics_scrape match":                        {unnamedWork, "отбор метрик, по которому сделана выгрузка"},
-	"metrics_scrape project":                      {unnamedNoise, "проект выгрузки: тот, что в профиле"},
-	"status cloud_checked":                        {unnamedNoise, "сверено ли с облаком; человеку — строка «In the cloud»"},
-	"whoami token_ttl_seconds":                    {unnamedNoise, "срок токена; человеку — «1h0m0s left»"},
+	"doctor checks.http_status":           {unnamedNoise, "код ответа пробы; человеку — «reachable» в строке проверки"},
+	"image_get create.tool":               {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
+	"image_get fields.role":               {unnamedNoise, "роль поля; человеку — «evo: the SSH key» в FILLED BY"},
+	"k8s_addon_versions deploy_with.tool": {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
+	"k8s_addons addons.deploy_with.tool":  {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
+	"marketplace_list items.deploy.tool":  {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
 }
 
 // Release plan 1.9, phase 0, И1 («человек видит каждое поле карточки»):
@@ -121,6 +117,46 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 		if c.tool.Name == "billing_consumption" || c.tool.Name == "billing_finops" {
 			if err := checkBillingRead(c.tool.Name, answer.(map[string]any), human); err != nil {
 				bad = append(bad, c.path+": "+err.Error())
+			}
+		}
+		if obj, ok := answer.(map[string]any); ok {
+			switch c.tool.Name {
+			case "metrics_scrape":
+				if err := checkScrapeAnswer(obj, out, pvProject, `{__name__=~".+"}`); err != nil {
+					bad = append(bad, err.Error())
+				}
+			case "marketplace_list":
+				if err := checkMarketFlags(obj, human); err != nil {
+					bad = append(bad, err.Error())
+				}
+			case "whoami":
+				if ttl, ok := obj["token_ttl_seconds"].(float64); ok {
+					remaining := (time.Duration(ttl) * time.Second).Truncate(time.Minute).String()
+					if !strings.Contains(out, remaining+" left,") {
+						bad = append(bad, "whoami: incorrect token duration")
+					} else {
+						delete(obj, "token_ttl_seconds")
+					}
+				}
+			case "status":
+				if checked, ok := obj["cloud_checked"].(bool); ok {
+					state, _ := obj["cloud_state"].(string)
+					want := "not checked:"
+					if checked {
+						want = state
+						if want == "" {
+							want = "found, state unknown"
+						}
+						if obj["not_found_in_cloud"] == true {
+							want = "not found (deleted outside evo)"
+						}
+					}
+					if !strings.Contains(strings.Join(strings.Fields(human), " "), "In the cloud "+want) {
+						bad = append(bad, "status: wrong cloud check row")
+					} else {
+						delete(obj, "cloud_checked")
+					}
+				}
 			}
 		}
 		if c.tool.Name == "list_zones" {
@@ -581,6 +617,115 @@ func TestBillingReadCurrencyAndVAT(t *testing.T) {
 			if err := checkBillingRead("billing_consumption", parseObject(tc.input), tc.render); (err == nil) != tc.ok {
 				t.Fatalf("%s: %v", lang, err)
 			}
+		}
+	}
+}
+
+func checkScrapeAnswer(a map[string]any, human, project, match string) error {
+	text, ok := a["exposition"].(string)
+	if !ok || a["format"] != "prometheus-text" || a["project"] != project || a["match"] != match {
+		return fmt.Errorf("metrics_scrape: scope, filter, format or exposition mismatch")
+	}
+	want := i18n.T("No metrics.", "Метрик нет.") + "\n"
+	if strings.TrimSpace(text) != "" {
+		lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+		for i, line := range lines {
+			lines[i] = output.SanitizeCell(line)
+		}
+		want = strings.Join(lines, "\n") + "\n"
+	}
+	if human != want {
+		return fmt.Errorf("metrics_scrape: stdout differs from exposition")
+	}
+	for _, k := range []string{"format", "project", "match"} {
+		delete(a, k)
+	}
+	return nil
+}
+
+func TestMetricsScopeAndFilterReachTheRequest(t *testing.T) {
+	withJSONWorld(t)
+	prev := httpretry.DefaultBase
+	defer func() { httpretry.DefaultBase = prev }()
+	var path, match string
+	httpretry.DefaultBase = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "monitoring.api.cloud.ru" {
+			path, match = r.URL.Path, r.URL.Query().Get("match")
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("test_metric 7\n"))}, nil
+		}
+		return prev.RoundTrip(r)
+	})
+	tl, _ := newRegistry().Lookup("metrics_scrape")
+	for _, filter := range []string{"", `{job="specific"}`} {
+		raw, failed := tl.Handler(context.Background(), map[string]any{"match": filter})
+		if failed {
+			t.Fatal(raw)
+		}
+		want := filter
+		if want == "" {
+			want = `{__name__=~".+"}`
+		}
+		if path != "/v2/"+pvProject+"/scrape_metrics" || match != want {
+			t.Fatal(path, match)
+		}
+		a := parseObject(raw)
+		if err := checkScrapeAnswer(a, "test_metric 7\n", pvProject, want); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"project", "format", "match"} {
+			a = parseObject(raw)
+			delete(a, key)
+			if checkScrapeAnswer(a, "test_metric 7\n", pvProject, want) == nil {
+				t.Fatal(key)
+			}
+		}
+		path, match = "", ""
+	}
+}
+
+func checkMarketFlags(a map[string]any, human string) error {
+	items, _ := a["items"].([]any)
+	for _, item := range items {
+		row := item.(map[string]any)
+		want := []string{"—", "—"}
+		for i, key := range []string{"available_in_project", "billable"} {
+			if flag, ok := row[key].(bool); ok {
+				want[i] = yesNo(flag)
+			}
+		}
+		found := false
+		for _, line := range strings.Split(human, "\n") {
+			cells := zoneTableGap.Split(strings.TrimSpace(line), -1)
+			n := len(cells)
+			if n >= 4 && cells[0] == row["kind"] && cells[1] == row["name"] && cells[n-2] == want[0] && cells[n-1] == want[1] {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("marketplace: incorrect availability or price for %v", row["name"])
+		}
+		delete(row, "available_in_project")
+		delete(row, "billable")
+	}
+	return nil
+}
+
+func TestMarketplaceFlagsFollowTheirRows(t *testing.T) {
+	old := i18n.Lang()
+	defer i18n.SetLang(old)
+	const raw = `{"items":[{"kind":"vm-os","name":"os","available_in_project":true},{"kind":"k8s-addon","name":"addon","billable":false}]}`
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		var buf strings.Builder
+		if err := renderMarketplaceList(output.NewWithWriter(&buf, output.ModePlain, false), &buf, raw); err != nil {
+			t.Fatal(err)
+		}
+		if err := checkMarketFlags(parseObject(raw), buf.String()); err != nil {
+			t.Fatal(err)
+		}
+		if checkMarketFlags(parseObject(strings.Replace(raw, "false", "true", 1)), buf.String()) == nil {
+			t.Fatal("changed price was accepted")
 		}
 	}
 }
