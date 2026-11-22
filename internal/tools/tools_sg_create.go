@@ -59,7 +59,7 @@ func sgRulePrice(preview map[string]any) {
 	preview["price_classes"] = []engine.ResourcePrice{{Resource: resourceSGRule, Class: engine.PricePaidUnpriced,
 		Note: i18n.T("price unknown, the resource is billable: no line of the tariffs at tariff_url names a rule of a security group",
 			"цена неизвестна, ресурс платный: в тарифах по tariff_url нет строки о правиле группы безопасности")}}
-	preview["tariff_url"] = engine.TariffURL(engine.ResourceVPC)
+	preview["tariff_url"] = engine.TariffURL(engine.ResourceSubnet)
 }
 
 // sgRuleCall is a call of sg_rule_create as its arguments alone tell it,

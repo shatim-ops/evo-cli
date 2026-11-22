@@ -75,11 +75,14 @@ func TestStackPlan_CostNamesNoSumWithoutAPrice(t *testing.T) {
 			t.Errorf("%v: class %q is none of the three", o, class)
 		}
 	}
-	for _, res := range []string{engine.ResourceK8sCluster, engine.ResourceSecret, engine.ResourceVPC,
+	for _, res := range []string{engine.ResourceK8sCluster, engine.ResourceSecret,
 		engine.ResourceTargetGroup, engine.ResourceLB, engine.ResourceDNSRecord} {
 		if classes[res] != string(engine.PricePaidUnpriced) {
 			t.Errorf("%s: class %q, want paid_unpriced: %s", res, classes[res], text)
 		}
+	}
+	if classes[engine.ResourceVPC] != string(engine.PriceZeroAtCreate) {
+		t.Errorf("VPC: %v", classes)
 	}
 	// The VM is priced by provision's own preview: the price-calculation API
 	// is silent in this world, so by the rate card, with its boot disk and

@@ -12,6 +12,11 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
+// vpcPreviewProject exists only for one invocation of the planner. The next
+// confirmed invocation must read its own current card before deleting.
+type vpcPreviewProject struct{ id, project string }
+type vpcPreviewProjectKey struct{}
+
 // namedProject is the handler of a tool whose preview names the project
 // the write lands in: a write in the wrong project is the costliest
 // mistake of a change, and the project comes from the profile, the
@@ -38,6 +43,9 @@ import (
 func (r *Registry) namedProject(t Tool, next Handler) Handler {
 	targets := targetArgs(t.Name)
 	return func(ctx context.Context, args map[string]any) (string, bool) {
+		if t.Name == "vpc_delete" {
+			ctx = context.WithValue(ctx, vpcPreviewProjectKey{}, &vpcPreviewProject{})
+		}
 		text, isErr := next(ctx, args)
 		var m map[string]any
 		if !isErr || json.Unmarshal([]byte(text), &m) != nil || m["status"] != "confirmation_required" {
@@ -99,7 +107,12 @@ func (r *Registry) callProject(args map[string]any) string {
 // call's project's; that the write goes to another project; or, with no
 // project, why it is not determined.
 func (r *Registry) targetProject(ctx context.Context, t Tool, a idArg, id string, args map[string]any) (project, note string) {
-	project, err := a.kind.project(ctx, &ownerCall{r: r, args: args, group: t.Group}, id)
+	var err error
+	if card, _ := ctx.Value(vpcPreviewProjectKey{}).(*vpcPreviewProject); card != nil && a.kind == kindVPC && card.id == id && card.project != "" {
+		project = card.project
+	} else {
+		project, err = a.kind.project(ctx, &ownerCall{r: r, args: args, group: t.Group}, id)
+	}
 	switch {
 	case err != nil:
 		return "", i18n.Tf("not determined: reading the project of %s %s failed; the change goes to the project of that resource. Confirm only if you know whose resource it is; if the task names no project, ask the person",

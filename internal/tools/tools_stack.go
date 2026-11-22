@@ -1039,6 +1039,9 @@ func (s *Registry) stackCost(ctx context.Context, j *stack.Job) map[string]any {
 				rub := p.MonthlyRub(c.Resource)
 				line["monthly_rub"], line["source"] = rub, p.Cost.Source
 				total += rub
+				if p.TariffURL != "" {
+					line["tariff_url"] = p.TariffURL
+				}
 			case engine.PricePaidUnpriced:
 				unpriced++
 				fallthrough
@@ -2007,4 +2010,9 @@ func (s *Registry) stackLBPreview(ctx context.Context, j *stack.Job) (map[string
 		}
 	}
 	return nil, fmt.Errorf("job %q has no pending LB step", j.ID)
+}
+
+func stackIntentBeforeWrite(args map[string]any) bool {
+	job, err := stack.LoadJob(stringArg(args, "job_id"))
+	return err == nil && jobHasPendingLB(job)
 }

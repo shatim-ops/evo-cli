@@ -195,7 +195,7 @@ var tariffs = map[string]string{
 	// product's tariff, with noTariffLine.
 	ResourcePGBackup:    tariffsBase + "managed-postgresql",
 	ResourceTargetGroup: tariffsBase + "load-balancer",
-	// Evolution publishes no tariff of an image, a secret, a VPC or a
+	// Evolution publishes no tariff of an image, a secret or a
 	// subnet (10.2026): the index of its tariffs, with noTariffLine; a
 	// stack's resources each go by their own.
 	ResourceImage: tariffsBase + "index",
@@ -204,7 +204,7 @@ var tariffs = map[string]string{
 	ResourceBackup:   tariffsBase + "index",
 	ResourceSecret:   tariffsBase + "index",
 	ResourceSubnet:   tariffsBase + "index",
-	ResourceVPC:      tariffsBase + "index",
+	ResourceVPC:      "https://cloud.ru/docs/evolution-vpc/ug/topics/pricing",
 	ResourceVPCRoute: tariffsBase + "index",
 	ResourceStack:    tariffsBase + "index",
 }
@@ -222,7 +222,6 @@ var tariffNotes = map[string]string{
 	ResourceBackup:      noTariffLine,
 	ResourceSecret:      noTariffLine,
 	ResourceSubnet:      noTariffLine,
-	ResourceVPC:         noTariffLine,
 	ResourceVPCRoute:    noTariffLine,
 	ResourcePGBackup:    noTariffLine,
 	ResourceTargetGroup: noTariffLine,
@@ -255,6 +254,14 @@ func (p *CreatePreview) Price() {
 	case p.Resource == ResourceDisk && p.Disk != nil && p.Disk.SizeGB > 0 && p.Disk.Type != "":
 		cost := pricing.EstimateDisk(p.Disk.SizeGB, p.Disk.Type)
 		p.Cost = &cost
+	case p.Resource == ResourceVPC:
+		p.CostNote, p.TariffURL = "Evolution VPC is free; see tariff_url", tariffs[p.Resource]
+		return
+	case p.Resource == ResourceSNAT:
+		cost := pricing.EstimatePublicSNAT()
+		p.Cost, p.TariffURL = &cost, tariffs[p.Resource]
+		p.CostNote = "public SNAT gateway rental, including VAT; 730 hours per month, tariff effective 2026-10-14"
+		return
 	case p.Resource == ResourcePGCluster && p.PG != nil && p.PG.CPU > 0 && p.PG.RAMGB > 0:
 		// By the public tariff, which may move: the note names its date and
 		// the preview its page (Ц-10).
@@ -953,7 +960,13 @@ func createdLine(p CreatePreview) string {
 // createCostLines is the price: in the words of deploy (the API's price or
 // the estimate, with its source), or why there is none.
 func createCostLines(p CreatePreview) []string {
+	if p.Resource == ResourceVPC {
+		return []string{previewLabel("cost", "цена") + i18n.Tf("0 RUB for Evolution VPC: %s", "0 ₽ за Evolution VPC: %s", p.TariffURL)}
+	}
 	if p.Cost != nil {
+		if p.Resource == ResourceSNAT {
+			return []string{previewLabel("cost", "цена") + i18n.Tf("%.4f RUB/hour including VAT (~%.2f RUB for 730 hours): %s", "%.4f ₽/ч с НДС (~%.2f ₽ за 730 часов): %s", p.Cost.TotalHourlyRub, p.Cost.TotalMonthlyRub, p.TariffURL)}
+		}
 		if p.Resource == ResourceVM {
 			return vmCostLines(*p.Cost, true)
 		}

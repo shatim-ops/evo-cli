@@ -75,11 +75,15 @@ func nameFree(ctx context.Context, list func(context.Context) ([]map[string]any,
 // The name and the status are the cloud's words in evo's text: quoted
 // («Риск», conclusion 232).
 func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
+	return occupiedName(kind, name, id, status, getHint, i18n.T("; a second one would be billed separately", "; второй оплачивался бы отдельно"))
+}
+
+func occupiedName(kind, name, id, status, getHint, charge string) (string, bool) {
 	if status == "" {
 		status = "unknown"
 	}
 	return errAnswer(clierrors.New(clierrors.CodeUsage,
-		i18n.Tf("a %s named %s already exists (id %s, status %s); a second one would be billed separately", "%s с именем %s уже есть (id %s, статус %s); второй оплачивался бы отдельно", kind, quoteCloud(name), quoteCloud(id), quoteCloud(status)),
+		i18n.Tf("a %s named %s already exists (id %s, status %s)", "%s с именем %s уже есть (id %s, статус %s)", kind, quoteCloud(name), quoteCloud(id), quoteCloud(status))+charge,
 		i18n.Tf("Use the existing one (%s), or pick another name.", "Используйте существующий (%s) или выберите другое имя.", getHint)),
 		map[string]any{"existing_id": id}), true
 }
@@ -135,11 +139,16 @@ func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]
 		return errResult(createErr), true
 	}
 	items, err := list(ctx)
+	possibleCharge, knownCharge := "", ""
+	if consentWords[tool] == consentBillable {
+		possibleCharge = i18n.T(" and be billed", " и оплачиваться")
+		knownCharge = i18n.T(" and is billed", " и оплачивается")
+	}
 	if err != nil {
 		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
-			"the %s %q may have been made and be billed: check %s by its name before any repeat — a repeat while it is not listed there may make a second",
-			"%s %q мог быть создан и оплачиваться: до любого повтора проверьте %s по имени — повтор, пока его там нет, может создать второй",
-			kind, name, listTool)}), true
+			"the %s %q may have been made%s: check %s by its name before any repeat — a repeat while it is not listed there may make a second",
+			"%s %q мог быть создан%s: до любого повтора проверьте %s по имени — повтор, пока его там нет, может создать второй",
+			kind, name, possibleCharge, listTool)}), true
 	}
 	id, status, ok := takenName(items, name)
 	if !ok {
@@ -156,7 +165,7 @@ func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]
 		answer = "failed"
 	}
 	out := map[string]any{"status": answer, idField: id, "resource_status": status, "created": created,
-		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s) and is billed", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s) и оплачивается", kind, name, quoteCloud(id), quoteCloud(status)),
+		"warning": i18n.Tf("the create answer did not come back, but the %s %q exists (id %s, status %s)%s", "ответ на создание не пришёл, но %s %q есть (id %s, статус %s)%s", kind, name, quoteCloud(id), quoteCloud(status), knownCharge),
 		"note":    i18n.Tf("Poll %s for its status.", "Статус — %s.", getHint)}
 	// The state is the list's word, the service's: marked as goingOn marks
 	// it (Астра, #1952).

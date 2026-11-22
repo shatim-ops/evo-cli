@@ -12,6 +12,7 @@ import "iter"
 // name (modules of other domains, step 0: docs/internal/briefs/modules.md,
 // §5). The tools of evo declare it in decls; New sets Tool.Decl.
 type Decl struct {
+	intentGate intentGatePolicy
 	// doctor reports the observed state after an unacknowledged delete.
 	verifiesDeleteByRead bool
 	// Group is the tool's group when its name does not start with the
@@ -387,7 +388,7 @@ var decls = map[string]Decl{
 	"history":             {Group: "auth", AlwaysListed: "what evo changed is the inventory of every group: the cleanup of any group reads it, whichever groups the server serves", IDArgs: []idArg{{name: "project_id", why: whyProjectArg}}, Untrusted: untrustedAnswer{fields: []string{"lines", "live", "would_close"}, workload: true}},
 	"release_floating_ip": {Group: "vpc", RequiredOneOf: [][]string{{"id", "ip_address"}}, Destructive: true, verifiesDeleteByRead: true, Delete: deleteTarget{arg: "id", what: "floating IP", whRU: "floating IP"}, IDArgs: []idArg{{name: "id", kind: kindFIP, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "id", "ip_address"}}},
 	"snat_list":           {Project: true, Untrusted: untrustedAnswer{fields: []string{"nat_gateways"}}},
-	"snat_create":         {Project: true, Created: created{id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "availability_zone_id", why: whyCatalogue}}, Untrusted: untrustedAnswer{fields: []string{"nat_gateway"}}},
+	"snat_create":         {intentGate: intentGatePolicy{beforeSend: intentBeforeWrite}, Project: true, Created: created{id: "nat_gateway.id", lost: "nat_gateway_id", list: "snat_list", field: "nat_gateways", delete: "snat_delete"}, CreateName: createName{args: []string{"name"}, rule: "provision.ValidName: the compute name pattern"}, IDArgs: []idArg{{name: "availability_zone_id", why: whyCatalogue}}, Untrusted: untrustedAnswer{fields: []string{"nat_gateway"}}},
 	"snat_delete":         {Delete: deleteTarget{arg: "id", what: "SNAT gateway", whRU: "SNAT-шлюз"}, IDArgs: []idArg{{name: "id", kind: kindNAT, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
 	"pg_list":             {Project: true, Untrusted: untrustedAnswer{fields: []string{"clusters"}}},
 	// Managed PostgreSQL, Kafka, Redis.
@@ -428,13 +429,13 @@ var decls = map[string]Decl{
 	"tg_create":    {Project: true, RequiredOneOf: [][]string{{"vm_id", "targets"}}, Created: created{id: "tg_id", list: "tg_list", field: "target_groups", delete: "tg_delete"}, CreateName: createName{args: []string{"name"}, what: "target group", whRU: "целевая группа"}, IDArgs: []idArg{{name: "vm_id", kind: kindVM}, {name: "targets", kind: kindVM, ids: targetIDs}, {name: "interface_id", why: whyInParent}}, Untrusted: untrustedAnswer{fields: []string{"targets"}}},
 	"tg_delete": {Delete: deleteTarget{arg: "id", what: "target group", whRU: "группа целей",
 		statePrefix: "TARGET_GROUP_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe}, IDArgs: []idArg{{name: "id", kind: kindTG, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
-	"lb_create": {NoCompletion: map[string]string{"preview_id": whyLBPreview}, Place: []string{"subnet_id", "vpc_id"}, Project: true, Created: created{id: "lb_id", list: "lb_list", field: "load_balancers", delete: "lb_delete"}, CreateName: createName{args: []string{"name"}, what: "load balancer", whRU: "балансировщик"}, IDArgs: []idArg{{name: "preview_id", why: whyLBPreview}, {name: "target_group_id", kind: kindTG}, {name: "vpc_id", kind: kindVPC}, {name: "subnet_id", why: whyListed}}, RefArgs: []nameRef{{"subnet_id", refSubnet}, {"vpc_id", refVPC}}, EchoedArgs: []echoedArg{{name: "target_port"}}},
+	"lb_create": {intentGate: intentGatePolicy{serialize: true, beforeSend: intentBeforeWrite}, NoCompletion: map[string]string{"preview_id": whyLBPreview}, Place: []string{"subnet_id", "vpc_id"}, Project: true, Created: created{id: "lb_id", list: "lb_list", field: "load_balancers", delete: "lb_delete"}, CreateName: createName{args: []string{"name"}, what: "load balancer", whRU: "балансировщик"}, IDArgs: []idArg{{name: "preview_id", why: whyLBPreview}, {name: "target_group_id", kind: kindTG}, {name: "vpc_id", kind: kindVPC}, {name: "subnet_id", why: whyListed}}, RefArgs: []nameRef{{"subnet_id", refSubnet}, {"vpc_id", refVPC}}, EchoedArgs: []echoedArg{{name: "target_port"}}},
 	"lb_delete": {Delete: deleteTarget{arg: "id", what: "load balancer", whRU: "балансировщик",
 		statePrefix: "NLB_STATUS_", creatingUnseen: unseenBeforeProbe, failedUnseen: unseenBeforeProbe}, IDArgs: []idArg{{name: "id", kind: kindNLB, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
 	"vpc_list": {Project: true, Untrusted: untrustedAnswer{fields: []string{"vpcs"}}},
 	// VPC.
 	"vpc_get":       {RefArgs: []nameRef{{"id", refVPC}}, IDArgs: []idArg{{name: "id", kind: kindVPC}}, Untrusted: untrustedAnswer{whole: true}},
-	"vpc_create":    {Project: true, Created: created{id: "vpc_id", list: "vpc_list", field: "vpcs", delete: "vpc_delete"}, CreateName: createName{args: []string{"name"}, what: "VPC", whRU: "VPC"}, EchoedArgs: []echoedArg{{name: "description"}}},
+	"vpc_create":    {intentGate: intentGatePolicy{serialize: true, beforeSend: intentBeforeWrite}, Project: true, Created: created{id: "vpc_id", list: "vpc_list", field: "vpcs", delete: "vpc_delete"}, CreateName: createName{args: []string{"name"}, what: "VPC", whRU: "VPC"}, EchoedArgs: []echoedArg{{name: "description"}}},
 	"vpc_delete":    {RefArgs: []nameRef{{"id", refVPC}}, Delete: deleteTarget{arg: "id", what: "VPC", whRU: "VPC"}, IDArgs: []idArg{{name: "id", kind: kindVPC, target: true}}, Untrusted: untrustedAnswer{fields: []string{"resource_status", "target", "message"}}},
 	"vpc_operation": {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"vpc_routes":    {RefArgs: []nameRef{{"vpc_id", refVPC}}, IDArgs: []idArg{{name: "vpc_id", kind: kindVPC}}},
@@ -449,7 +450,7 @@ var decls = map[string]Decl{
 	"dns_operation":     {IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"dns_records":       {IDArgs: []idArg{{name: "zone_id", kind: kindDNSZone}}, Untrusted: untrustedAnswer{fields: []string{"records"}}},
 	"dns_record_get":    {IDArgs: []idArg{{name: "record_id", kind: kindDNSRecord}}, Untrusted: untrustedAnswer{whole: true}},
-	"dns_record_create": {RequiredOneOf: [][]string{{"value", "values"}}, Created: created{id: "record_id", list: "dns_records", field: "records", listArgs: []string{"zone_id"}, delete: "dns_record_delete"}, CreateName: createName{args: []string{"name"}, what: "DNS record", whRU: "DNS-запись"}, IDArgs: []idArg{{name: "zone_id", kind: kindDNSZone, target: true}}},
+	"dns_record_create": {intentGate: intentGatePolicy{checkProjectFirst: true}, RequiredOneOf: [][]string{{"value", "values"}}, Created: created{id: "record_id", list: "dns_records", field: "records", listArgs: []string{"zone_id"}, delete: "dns_record_delete"}, CreateName: createName{args: []string{"name"}, what: "DNS record", whRU: "DNS-запись"}, IDArgs: []idArg{{name: "zone_id", kind: kindDNSZone, target: true}}},
 	"dns_record_delete": {Delete: deleteTarget{arg: "record_id", what: "DNS record", whRU: "DNS-запись"}, IDArgs: []idArg{{name: "record_id", kind: kindDNSRecord, target: true}}},
 	"secret_list":       {Project: true, Untrusted: untrustedAnswer{fields: []string{"secrets"}}},
 	"secret_get":        {Project: true, Untrusted: untrustedAnswer{whole: true}},
@@ -507,7 +508,7 @@ var decls = map[string]Decl{
 	// bring, as stack_plan's. The job's error and the details of its steps
 	// carry what a step's tool and operation answered: the service's text
 	// (Astra, #1762).
-	"stack_apply": {NoCompletion: map[string]string{"preview_id": whyLBPreview}, IDArgs: []idArg{{name: "preview_id", why: whyLBPreview}, {name: "job_id", why: whyLocal}}, Untrusted: untrustedAnswer{fields: []string{"preview", "error", "details", "outputs"}}},
+	"stack_apply": {intentGate: intentGatePolicy{beforeSend: stackIntentBeforeWrite}, NoCompletion: map[string]string{"preview_id": whyLBPreview}, IDArgs: []idArg{{name: "preview_id", why: whyLBPreview}, {name: "job_id", why: whyLocal}}, Untrusted: untrustedAnswer{fields: []string{"preview", "error", "details", "outputs"}}},
 	// The job's error and the details of its steps, as in stack_apply.
 	"stack_status":  {Untrusted: untrustedAnswer{fields: []string{"error", "details", "outputs"}}, SideEffects: "advances the running stack: its next steps create the resources approved in stack_apply; on a --read-only server only shows it", IDArgs: []idArg{{name: "job_id", why: whyLocal}}},
 	"stack_destroy": {Destructive: true, IDArgs: []idArg{{name: "job_id", why: whyLocal}}, Untrusted: untrustedAnswer{fields: []string{"resources"}}},
@@ -527,3 +528,13 @@ var opReadUntrusted = untrustedAnswer{fields: []string{"error", "id", "resource_
 	"createdAt", "created_at", "updatedAt", "updated_at"}}
 
 var opOwnFields = []string{"details", "elapsed_note", "elapsed_sec", "hint", "next_args", "next_tool", "note", "still_running"}
+
+// intentGatePolicy controls project admission, serialization before planning,
+// and deferral of a confirmed intent until the first resource write.
+type intentGatePolicy struct {
+	checkProjectFirst bool
+	serialize         bool
+	beforeSend        func(map[string]any) bool
+}
+
+func intentBeforeWrite(map[string]any) bool { return true }

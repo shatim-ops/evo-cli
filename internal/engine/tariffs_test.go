@@ -23,6 +23,12 @@ func TestTariffs_EveryResource(t *testing.T) {
 		t.Errorf("tariffs has %d entries, the resources are %d", len(tariffs), len(allResources))
 	}
 	for _, r := range allResources {
+		if r == ResourceVPC {
+			if tariffs[r] != "https://cloud.ru/docs/evolution-vpc/ug/topics/pricing" {
+				t.Fatal(tariffs[r])
+			}
+			continue
+		}
 		if u := tariffs[r]; !strings.HasPrefix(u, tariffsBase) || len(u) == len(tariffsBase) {
 			t.Errorf("%s: tariff %q, want a page under %s", r, u, tariffsBase)
 		}
@@ -35,7 +41,7 @@ func TestTariffs_EveryResource(t *testing.T) {
 // paid cluster was created (dogfood 1.2.1).
 func TestPrice_UnpricedLinksTariff(t *testing.T) {
 	for _, r := range []string{ResourcePGCluster, ResourceK8sCluster, ResourceK8sNodePool, ResourceK8sAddon, ResourceS3Bucket, ResourceDiskResize,
-		ResourceARRegistry, ResourceCAApp, ResourceKafka, ResourceLB, ResourceRedis, ResourceSNAT, ResourceDNSZone, ResourceS3Object} {
+		ResourceARRegistry, ResourceCAApp, ResourceKafka, ResourceLB, ResourceRedis, ResourceDNSZone, ResourceS3Object} {
 		p := CreatePreview{Resource: r, Name: "x"}
 		p.Price()
 		if p.Cost != nil || p.TariffURL != tariffs[r] || !strings.Contains(p.CostNote, "tariff_url") || strings.Contains(p.CostNote, "no rate card") {
@@ -55,12 +61,12 @@ func TestPrice_UnpricedLinksTariff(t *testing.T) {
 }
 
 // A resource no line of an Evolution tariff names (an image, a secret, a
-// VPC and its route, a PostgreSQL backup, a target group) links the nearest
+// VPC route, a PostgreSQL backup, a target group) links the nearest
 // tariff page and says the line is not there, rather than a price the
 // person would take for the tariff's: a wrong link is worse than none
 // (release-plan 1.3, A5). Counted as billable (owner's decision 22.10). A stack points to stack_plan, its resources.
 func TestPrice_NoTariffLineSaysSo(t *testing.T) {
-	for r, want := range map[string]string{ResourceImage: noTariffLine, ResourceSecret: noTariffLine, ResourceSubnet: noTariffLine, ResourceVPC: noTariffLine,
+	for r, want := range map[string]string{ResourceImage: noTariffLine, ResourceSecret: noTariffLine, ResourceSubnet: noTariffLine,
 		ResourceVPCRoute: noTariffLine, ResourcePGBackup: noTariffLine, ResourceTargetGroup: noTariffLine, ResourceStack: stackNotPriced} {
 		p := CreatePreview{Resource: r, Name: "x"}
 		p.Price()
@@ -71,5 +77,21 @@ func TestPrice_NoTariffLineSaysSo(t *testing.T) {
 		if !strings.Contains(line, tariffs[r]) || (want == noTariffLine) != strings.Contains(line, "no line") {
 			t.Errorf("%s: cost line %q", r, line)
 		}
+	}
+}
+
+func TestNetworkTariffSources(t *testing.T) {
+	vpc := CreatePreview{Resource: ResourceVPC}
+	vpc.Price()
+	if vpc.Cost != nil || vpc.PriceClasses[0].Class != PriceZeroAtCreate || !strings.Contains(strings.Join(createCostLines(vpc), " "), vpc.TariffURL) {
+		t.Fatalf("VPC tariff: %+v", vpc)
+	}
+	snat := CreatePreview{Resource: ResourceSNAT}
+	snat.Price()
+	if snat.Cost == nil || snat.Cost.TotalHourlyRub != 0.2074 || snat.MonthlyRub(ResourceSNAT) != 151.40 || snat.PriceClasses[0].Class != PricePriced || snat.TariffURL != tariffsBase+"evolution-compute" {
+		t.Fatalf("SNAT tariff: %+v", snat)
+	}
+	if text := strings.Join(createCostLines(snat), " "); !strings.Contains(text, snat.TariffURL) || !strings.Contains(text, "0.2074") {
+		t.Fatal(text)
 	}
 }
