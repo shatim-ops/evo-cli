@@ -35,33 +35,19 @@ var readForm = map[string]string{
 // stays is an exception declared with a reason «Риск» accepted (plan 1.9,
 // phase 0, И1).
 var readUnnamed = map[string]struct{ class, why string }{
-	"billing_consumption currency":                     {unnamedNoise, "валюта; человеку — знак ₽ у каждой суммы"},
-	"billing_consumption vat.by_service":               {unnamedNoise, "пояснение колонок; человеку — «with VAT / without VAT» у суммы"},
-	"billing_consumption vat.by_service.cost_with_nds": {unnamedNoise, "пояснение колонок; человеку — «with VAT / without VAT» у суммы"},
-	"billing_consumption vat.total":                    {unnamedNoise, "пояснение суммы; человеку — «without VAT» у суммы"},
-	"billing_consumption vat.total_with_nds":           {unnamedNoise, "пояснение суммы; человеку — «with VAT» у суммы"},
-	"billing_finops currency":                          {unnamedNoise, "валюта; человеку — знак ₽ у каждой суммы"},
-	"billing_finops runway_note":                       {unnamedNoise, "строка Runway говорит то же своими словами"},
-	"billing_finops vat.anomalies.now_with_nds":        {unnamedNoise, "пояснение колонок роста; человеку — «with VAT / without VAT»"},
-	"billing_finops vat.anomalies.prev_with_nds":       {unnamedNoise, "пояснение колонок роста; человеку — «with VAT / without VAT»"},
-	"billing_finops vat.by_service":                    {unnamedNoise, "пояснение колонок; человеку — «with VAT / without VAT» у суммы"},
-	"billing_finops vat.by_service.cost_with_nds":      {unnamedNoise, "пояснение колонок; человеку — «with VAT / without VAT» у суммы"},
-	"billing_finops vat.daily_burn_with_nds":           {unnamedNoise, "пояснение суммы в день; человеку — «with VAT» у суммы"},
-	"billing_finops vat.total_cost":                    {unnamedNoise, "пояснение суммы; человеку — «without VAT» у суммы"},
-	"billing_finops vat.total_cost_with_nds":           {unnamedNoise, "пояснение суммы; человеку — «with VAT» у суммы"},
-	"doctor checks.http_status":                        {unnamedNoise, "код ответа пробы; человеку — «reachable» в строке проверки"},
-	"image_get create.tool":                            {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"image_get fields.role":                            {unnamedNoise, "роль поля; человеку — «evo: the SSH key» в FILLED BY"},
-	"k8s_addon_versions deploy_with.tool":              {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"k8s_addons addons.deploy_with.tool":               {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"marketplace_list items.available_in_project":      {unnamedWork, "доступен ли образ проекту"},
-	"marketplace_list items.billable":                  {unnamedPrice, "платный ли аддон"},
-	"marketplace_list items.deploy.tool":               {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"metrics_scrape format":                            {unnamedNoise, "формат выгрузки; человеку — сама выгрузка"},
-	"metrics_scrape match":                             {unnamedWork, "отбор метрик, по которому сделана выгрузка"},
-	"metrics_scrape project":                           {unnamedNoise, "проект выгрузки: тот, что в профиле"},
-	"status cloud_checked":                             {unnamedNoise, "сверено ли с облаком; человеку — строка «In the cloud»"},
-	"whoami token_ttl_seconds":                         {unnamedNoise, "срок токена; человеку — «1h0m0s left»"},
+	"doctor checks.http_status":                   {unnamedNoise, "код ответа пробы; человеку — «reachable» в строке проверки"},
+	"image_get create.tool":                       {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
+	"image_get fields.role":                       {unnamedNoise, "роль поля; человеку — «evo: the SSH key» в FILLED BY"},
+	"k8s_addon_versions deploy_with.tool":         {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
+	"k8s_addons addons.deploy_with.tool":          {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
+	"marketplace_list items.available_in_project": {unnamedWork, "доступен ли образ проекту"},
+	"marketplace_list items.billable":             {unnamedPrice, "платный ли аддон"},
+	"marketplace_list items.deploy.tool":          {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
+	"metrics_scrape format":                       {unnamedNoise, "формат выгрузки; человеку — сама выгрузка"},
+	"metrics_scrape match":                        {unnamedWork, "отбор метрик, по которому сделана выгрузка"},
+	"metrics_scrape project":                      {unnamedNoise, "проект выгрузки: тот, что в профиле"},
+	"status cloud_checked":                        {unnamedNoise, "сверено ли с облаком; человеку — строка «In the cloud»"},
+	"whoami token_ttl_seconds":                    {unnamedNoise, "срок токена; человеку — «1h0m0s left»"},
 }
 
 // Release plan 1.9, phase 0, И1 («человек видит каждое поле карточки»):
@@ -132,6 +118,11 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 		// limit on a slow runner, C(7) on #2218), or its text found in the
 		// output (hypotheses, one run).
 		seenIn[c.tool.Name] = clipLong(jsonOut) + " | human: " + clipLong(human)
+		if c.tool.Name == "billing_consumption" || c.tool.Name == "billing_finops" {
+			if err := checkBillingRead(c.tool.Name, answer.(map[string]any), human); err != nil {
+				bad = append(bad, c.path+": "+err.Error())
+			}
+		}
 		if c.tool.Name == "list_zones" {
 			// Check the actual cell, even if another row or the header
 			// contains "enabled". Only verified booleans leave the walk.
@@ -488,6 +479,107 @@ func TestRead_SelectedFieldsInBothLanguages(t *testing.T) {
 						t.Fatalf("%s %s: expected field %q presence=%v in %q", lang, raw, want, raw == tc.present, buf.String())
 					}
 				}
+			}
+		}
+	}
+}
+
+// The VAT map describes the wire amounts. A person reads VAT-inclusive
+// service and growth rows and both period totals (billing_views.go).
+func checkBillingRead(tool string, answer map[string]any, human string) error {
+	consumption := tool == "billing_consumption"
+	totalKey, totalLabel := "total_cost", i18n.T("Costs of the period", "Расход за период")
+	if consumption {
+		totalKey, totalLabel = "total", i18n.T("Total", "Итого")
+	}
+	flat := strings.Join(strings.Fields(human), " ")
+	pair := func(label string, inc, exc any) bool {
+		a, oka := num(inc)
+		b, okb := num(exc)
+		return oka && okb && strings.Contains(flat, label+": "+withAndWithoutVAT(a, b))
+	}
+	if !pair(totalLabel, answer[totalKey+"_with_nds"], answer[totalKey]) {
+		return fmt.Errorf("incorrect period totals or VAT labels")
+	}
+	if currency := answer["currency"]; currency != "RUB" {
+		return fmt.Errorf("unexpected currency %v", currency)
+	}
+	if !consumption && !pair(i18n.T("Per day", "В день"), answer["daily_burn_with_nds"], answer["daily_burn"]) {
+		return fmt.Errorf("incorrect daily totals")
+	}
+	meta, ok := answer["vat"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("missing VAT metadata")
+	}
+	expected := map[string]string{
+		totalKey: "excluding VAT: sum of amount", totalKey + "_with_nds": "including VAT: sum of amount_nds",
+		"by_service": "excluding VAT: amount", "by_service.cost_with_nds": "including VAT: amount_nds",
+	}
+	if !consumption {
+		expected["daily_burn_with_nds"] = "including VAT: total_cost_with_nds per day"
+		expected["anomalies.now_with_nds"] = "including VAT: amount_nds; the growth is found by the sums excluding VAT"
+		expected["anomalies.prev_with_nds"] = "including VAT: amount_nds of the previous period"
+	}
+	for key, want := range expected {
+		if meta[key] != want {
+			return fmt.Errorf("VAT metadata for %s = %v, want %q", key, meta[key], want)
+		}
+	}
+	for _, collection := range []string{"by_service", "anomalies"} {
+		rows, _ := answer[collection].([]any)
+		for _, item := range rows {
+			row := item.(map[string]any)
+			keys := []string{"cost_with_nds"}
+			if collection == "anomalies" {
+				keys = []string{"prev_with_nds", "now_with_nds"}
+			}
+			want := fmt.Sprint(row["service"])
+			for _, key := range keys {
+				value, ok := num(row[key])
+				if !ok {
+					return fmt.Errorf("%s lacks %s", want, key)
+				}
+				want += " " + rub(value)
+			}
+			if !strings.Contains(flat, want) {
+				return fmt.Errorf("missing VAT amounts for %s", want)
+			}
+		}
+	}
+	if note, ok := answer["runway_note"]; ok {
+		if note != "runway not computed: the balance is the agreement's, the costs are the project's" || !strings.Contains(flat, i18n.T("Runway: not computed: the balance is the agreement's, the costs are the project's", "Запас: не рассчитан: баланс — договора, расход — проекта")) {
+			return fmt.Errorf("incorrect runway note")
+		}
+		delete(answer, "runway_note")
+	}
+	for key := range expected {
+		delete(meta, key)
+	}
+	delete(answer, "currency")
+	return nil
+}
+
+func TestBillingReadCurrencyAndVAT(t *testing.T) {
+	old := i18n.Lang()
+	defer i18n.SetLang(old)
+	const raw = `{"period":{"start":"2026-01-01","end":"2026-01-02"},"total":17,"total_with_nds":23,"currency":"RUB","vat":{"total":"excluding VAT: sum of amount","total_with_nds":"including VAT: sum of amount_nds","by_service":"excluding VAT: amount","by_service.cost_with_nds":"including VAT: amount_nds"},"by_service":[{"service":"db","cost":17,"cost_with_nds":23}]}`
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		var buf strings.Builder
+		if err := renderBillingConsumption(output.NewWithWriter(&buf, output.ModePlain, false), &buf, raw); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			input, render string
+			ok            bool
+		}{
+			{raw, buf.String(), true}, {strings.Replace(raw, "RUB", "USD", 1), buf.String(), false},
+			{strings.Replace(raw, "excluding VAT: sum", "including VAT: sum", 1), buf.String(), false},
+			{raw, strings.ReplaceAll(buf.String(), "23 ₽", "17 ₽"), false},
+			{strings.Replace(raw, `"currency":"RUB",`, "", 1), buf.String(), false},
+		} {
+			if err := checkBillingRead("billing_consumption", parseObject(tc.input), tc.render); (err == nil) != tc.ok {
+				t.Fatalf("%s: %v", lang, err)
 			}
 		}
 	}
