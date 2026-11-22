@@ -365,18 +365,38 @@ func (r *Registry) parentListValues(ctx context.Context, source string, args map
 	if args == nil {
 		args = map[string]any{}
 	}
+	if err := CheckArgs(tl, args); err != nil {
+		return nil
+	}
 	text, failed := r.unchecked[source](ctx, args)
 	if failed {
 		return nil
 	}
-	_, rows, err := listRows(text, collection)
+	answer, rows, err := listRows(text, collection)
 	if err != nil {
 		return nil
 	}
 	var out []Candidate
 	for _, row := range rows {
-		m, _ := row.(map[string]any)
+		m, ok := row.(map[string]any)
+		if !ok {
+			return nil
+		}
 		v := stringArg(m, field)
+		if source == "cert_list" {
+			project := stringArg(answer, "project")
+			if project == "" || v == "" {
+				return nil
+			}
+			for _, k := range []string{"projectId", "project_id"} {
+				if owner, present := m[k]; present && owner != project {
+					return nil
+				}
+			}
+		}
+		if (source == "vm_list" || source == "disk_list" || source == "vpc_routes") && !isUUID(v) {
+			return nil
+		}
 		if source == "cert_versions" {
 			if n, ok := m[field].(json.Number); ok {
 				v = n.String()
