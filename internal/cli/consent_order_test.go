@@ -23,6 +23,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -66,7 +67,8 @@ var repeatIsANewChange = map[string]string{
 // is closed: a new change answers already_<outcome> (D99, П3; «1.9 —
 // релиз», 12.11, variant «а»).
 var repeatRefused = map[string]string{
-	"disk_resize": "disk of the size asked",
+	"deploy_apply": "deployment of an applied plan",
+	"disk_resize":  "disk of the size asked",
 }
 
 // repeatUndeclared are the changes shipped before the invariant whose repeat
@@ -78,9 +80,7 @@ var repeatRefused = map[string]string{
 // 1.9, before rc.1 (release plan 1.9, «Сроки храповиков «к 1.7–1.9»»): each
 // line is a world or a declaration of «разработка» (release plan 1.9,
 // «Инварианты до новых изменяющих операций», Н1).
-var repeatUndeclared = map[string]string{
-	"deploy_apply": "an apply of a plan applied: no world",
-}
+var repeatUndeclared = map[string]string{}
 
 // repeatAsksUntilTheMajor are the changes shipped before the invariant
 // whose repeat asks for consent to nothing, or is refused by the platform
@@ -237,9 +237,12 @@ type consentWorld struct {
 	// A world with a job alone leaves the cloud as it is: it needs no
 	// answer and no cloud of its own.
 	job func(t *testing.T) *stack.Job
+	// appliedPlan replaces deploy_apply’s normal setup with the result of an earlier apply.
+	appliedPlan bool
 }
 
 var consentWorlds = map[string]consentWorld{
+	"deployment of an applied plan":        {appliedPlan: true, refusedBy: []string{"deploy_apply"}, names: parityVM},
 	"Kubernetes already at target version": {answer: func(r *http.Request) *http.Response { return parityUpgradeResponse(r, true) }, alreadyFor: []string{"k8s_upgrade", "k8s_nodepool_upgrade"}},
 	// The profile has no S3 keys (agent runs of Grok on 1.6.0, F5a): the
 	// S3 tools know it from the configuration, before the question; the
@@ -631,6 +634,9 @@ func consentCases(tl tools.Tool, base map[string]any) []consentCase {
 	}
 	sort.Strings(names)
 	for _, n := range names {
+		if consentWorlds[n].appliedPlan && tl.Name != "deploy_apply" {
+			continue
+		}
 		out = append(out, consentCase{name: "world: " + n, args: copyArgs(base), world: consentWorlds[n]})
 	}
 	return out
@@ -719,7 +725,27 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 	call := func(tl tools.Tool, c consentCase, confirmed bool) (map[string]any, bool, int) {
 		a := copyArgs(c.args)
 		done := func() {}
-		if setup := paritySetup[tl.Name]; setup != nil {
+		if c.world.appliedPlan {
+			const id = "plan-fabcdef01234"
+			path := state.DefaultPath(w.dir)
+			prior, err := state.Read(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			next := *prior
+			next.Deployments = append(slices.Clone(prior.Deployments), state.DeploymentRecord{
+				Source: state.SourceDeployApply, PlanID: id, VMID: parityVM, ProjectID: pvProject, Status: "running",
+			})
+			if err := state.Write(path, &next); err != nil {
+				t.Fatal(err)
+			}
+			done = func() {
+				if err := state.Write(path, prior); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a["plan_id"] = id
+		} else if setup := paritySetup[tl.Name]; setup != nil {
 			extra, teardown := setup(t, w)
 			for k, v := range extra {
 				if k != c.key {
@@ -883,7 +909,10 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 				continue
 			}
 			if slices.Contains(c.world.refusedBy, tl.Name) {
-				before, _, _ := call(tl, c, false)
+				before, beforeErr, preWrites := call(tl, c, false)
+				if c.world.appliedPlan && (!beforeErr || before["reason"] != clierrors.CodeNotFound || preWrites != 0) {
+					t.Errorf("%s: applied plan preview reason %v, isError %v, writes %d", key, before["reason"], beforeErr, preWrites)
+				}
 				msg := fmt.Sprint(before["error"], " ", before["hint"])
 				switch {
 				case before["status"] == "confirmation_required":
