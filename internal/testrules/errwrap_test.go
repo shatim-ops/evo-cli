@@ -29,17 +29,6 @@ var (
 	cyrillic  = regexp.MustCompile(`\p{Cyrillic}`)
 )
 
-// englishWraps are the packages whose wraps are still English only, each
-// with its part of the fix (1.3.1, owner's decision 25.10: internal/tools
-// first, then the clients of the services, then the rest) or why it stays.
-// The list only shrinks: a wrap elsewhere fails the test, and so does a
-// line whose package has none left.
-// Closes by 1.10: moved from 1.8 by the owner's decision of 13.11 (#1590,
-// question 19; release plan 1.9, «Просроченные убывающие списки»).
-var englishWraps = map[string]string{
-	"internal/mcp": "stays: the MCP server speaks English (internal/cli/mcp.go sets i18n.EN; D6)",
-}
-
 // copiedWraps are the wraps whose ru in i18n.T is the en copied —
 // "package<TAB>format" → the PR that fixes it. The list only shrinks.
 var copiedWraps = map[string]string{}
@@ -50,12 +39,14 @@ var copiedWraps = map[string]string{}
 // format is English in both languages: the format goes through i18n.T or
 // i18n.Tf instead — the English text stays as it is. In production code of
 // internal and cmd, a fmt.Errorf whose format is a string literal with %w
-// and a word of prose fails the test, outside englishWraps.
+// and a word of prose needs localization. MCP protocol errors keep the
+// reviewed English formats in englishWrapsFile, with the exact occurrence count.
 func TestErrorWrapsSpeakCLILanguage(t *testing.T) {
 	root := filepath.Join("..", "..")
 	n := 0
 	left := map[string]int{}
 	copied := map[string]bool{}
+	machine := recordedWraps(t)
 	for _, dir := range []string{"internal", "cmd"} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
@@ -100,7 +91,8 @@ func TestErrorWrapsSpeakCLILanguage(t *testing.T) {
 					n++
 					pkg := filepath.ToSlash(filepath.Dir(rel))
 					left[pkg]++
-					if englishWraps[pkg] != "" {
+					if key := pkg + "\t" + format; pkg == "internal/mcp" && !translated && machine[key] > 0 {
+						machine[key]--
 						return true
 					}
 					if translated && copiedWraps[pkg+"\t"+format] != "" {
@@ -123,9 +115,9 @@ func TestErrorWrapsSpeakCLILanguage(t *testing.T) {
 			t.Errorf("copiedWraps names %q, whose ru is Russian now: remove the line", k)
 		}
 	}
-	for pkg := range englishWraps {
-		if left[pkg] == 0 {
-			t.Errorf("englishWraps names %s, which has no English wrap left: remove the line", pkg)
+	for k, n := range machine {
+		if strings.HasPrefix(k, "internal/mcp\t") && n != 0 {
+			t.Errorf("missing English protocol wrap %q (%d)", k, n)
 		}
 	}
 	t.Logf("%d wraps in English only, in %d packages", n, len(left))
@@ -201,7 +193,8 @@ func wrapFormats(t *testing.T) map[string]int {
 // the en of i18n.T, as many times as before. A wrap removed or reworded on
 // purpose takes its line out of the file in the same PR, for the reviewer
 // to see.
-func TestErrorWrapsKeepTheirEnglish(t *testing.T) {
+func recordedWraps(t *testing.T) map[string]int {
+	t.Helper()
 	b, err := os.ReadFile(englishWrapsFile)
 	if err != nil {
 		t.Fatal(err)
@@ -215,6 +208,11 @@ func TestErrorWrapsKeepTheirEnglish(t *testing.T) {
 	if len(want) == 0 {
 		t.Fatalf("%s is empty", englishWrapsFile)
 	}
+	return want
+}
+
+func TestErrorWrapsKeepTheirEnglish(t *testing.T) {
+	want := recordedWraps(t)
 	got := wrapFormats(t)
 	if len(got) == 0 {
 		t.Fatal("no wrap found: the walk of the code is broken")
