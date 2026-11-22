@@ -59,11 +59,7 @@ var unquotedCloudSteps = map[string]int{
 // C — tools_deploy, made.go, tools_stack, opanswer.go,
 // engine/create_preview.go, delete_preview.go, tools.go. Closes by 1.9
 // (owner's decision 17.11: before the tag, not a condition of rc.1).
-var unquotedCloudLocals = map[string]int{
-	"internal/engine/create_preview.go|ShowCreatePreview":  1,
-	"internal/tools/delete_preview.go|Registry.deletePlan": 1,
-	"internal/tools/tools.go|destroyTargetPreview":         1,
-}
+var unquotedCloudLocals = map[string]int{}
 
 // unquotedCloudLocalSteps: the same for the steps of progress. The list only
 // shrinks. Closes by 1.9 (owner's decision 17.11).
@@ -84,7 +80,6 @@ var unquotedCloudFlows = map[string]int{
 	"internal/cli/project.go|resolveProjectArg":                   1,
 	"internal/deployplan/apply.go|ApplyWithTimeout":               2,
 	"internal/deployplan/apply.go|finishApply":                    1,
-	"internal/engine/create_preview.go|ShowCreatePreview":         1,
 	"internal/engine/create_preview.go|flavorNotFound":            1,
 	"internal/engine/deploy.go|Engine.Deploy":                     1,
 	"internal/engine/deploy.go|Engine.awaitCreated":               5,
@@ -115,7 +110,7 @@ var unquotedCloudFlows = map[string]int{
 	"internal/tools/tools.go|Registry.planProvision":              2,
 	"internal/tools/tools.go|Registry.provisionVM":                10,
 	"internal/tools/tools.go|destroyDeleting":                     3,
-	"internal/tools/tools.go|destroyTargetPreview":                5,
+	"internal/tools/tools.go|destroyTargetPreview":                3,
 	"internal/tools/tools.go|destroyUnconfirmed":                  6,
 	"internal/tools/tools.go|fipLeftAnswer":                       1,
 	"internal/tools/tools_backup.go|Registry.planBackupCreate":    2,
