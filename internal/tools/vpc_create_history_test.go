@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,14 +21,21 @@ func TestVPCCreateIntentAtSend(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			const name = "vpc-test"
 			var root string
-			var gets, posts int
+			var gets, cards, posts int
+			var sentID string
 			f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
-				if r.URL.Host != "vpc.api.cloud.ru" || r.URL.Path != "/v1/vpcs" {
+				if r.URL.Host != "vpc.api.cloud.ru" {
 					t.Fatalf("unexpected request %s %s", r.Method, r.URL)
 				}
 				pending := intent.Pending(intent.Dir(root))
-				switch r.Method {
-				case http.MethodGet:
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/v1/vpcs/"+auditUUID && r.URL.RawQuery == "" && mode == "created":
+					cards++
+					if posts != 1 || len(pending) != 1 || pending[0].ID != sentID || pending[0].ProjectID != dbaasProject || !pending[0].Sent {
+						t.Fatalf("resource read outside the accepted create: posts=%d pending=%+v", posts, pending)
+					}
+					fmt.Fprintf(w, `{"id":%q,"name":%q,"projectId":%q}`, auditUUID, name, dbaasProject)
+				case r.Method == http.MethodGet && r.URL.Path == "/v1/vpcs" && r.URL.Query().Get("project_id") == dbaasProject:
 					gets++
 					if len(pending) != 0 {
 						t.Errorf("name lookup already has an intent: %+v", pending)
@@ -37,14 +45,19 @@ func TestVPCCreateIntentAtSend(t *testing.T) {
 					} else {
 						fmt.Fprint(w, `{"vpcs":[]}`)
 					}
-				case http.MethodPost:
+				case r.Method == http.MethodPost && r.URL.Path == "/v1/vpcs" && r.URL.RawQuery == "":
+					var body struct{ Name, ProjectID string }
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name != name || body.ProjectID != dbaasProject {
+						t.Fatalf("unexpected VPC create body: %+v err=%v", body, err)
+					}
 					posts++
 					if len(pending) != 1 || pending[0].Tool != "vpc_create" || pending[0].Name != name || !pending[0].Sent {
-						t.Errorf("POST without exactly one sent VPC intent: %+v", pending)
+						t.Fatalf("POST without exactly one sent VPC intent: %+v", pending)
 					}
+					sentID = pending[0].ID
 					fmt.Fprintf(w, `{"id":"op-1","resourceId":%q}`, auditUUID)
 				default:
-					t.Fatalf("unexpected method %s", r.Method)
+					t.Fatalf("unexpected request %s %s", r.Method, r.URL)
 				}
 				return true
 			}}
@@ -62,16 +75,16 @@ func TestVPCCreateIntentAtSend(t *testing.T) {
 			answer, raw, fail := callNamed(t, r, "vpc_create", map[string]any{"name": name, "confirmed": true})
 			lines, _ := historyOf(t, root)
 			if mode == "created" {
-				if fail || gets != 1 || posts != 1 || len(lines) != 1 || lines[0].Outcome != history.Created || lines[0].ResourceID != auditUUID || lines[0].OperationID != "op-1" {
-					t.Fatalf("GET=%d POST=%d history=%+v answer=%s", gets, posts, lines, raw)
+				if fail || gets != 1 || cards != 1 || posts != 1 || len(lines) != 1 || lines[0].IntentID != sentID || lines[0].ProjectID != dbaasProject || lines[0].Outcome != history.Created || lines[0].ResourceID != auditUUID || lines[0].OperationID != "op-1" {
+					t.Fatalf("list=%d card=%d POST=%d history=%+v answer=%s", gets, cards, posts, lines, raw)
 				}
 			} else {
 				want := "USAGE"
 				if mode == "unwritable" {
 					want = "CONFIG_INVALID"
 				}
-				if !fail || answer["reason"] != want || gets < 1 || posts != 0 || len(lines) != 0 {
-					t.Fatalf("GET=%d POST=%d history=%+v answer=%s", gets, posts, lines, raw)
+				if !fail || answer["reason"] != want || gets < 1 || cards != 0 || posts != 0 || len(lines) != 0 {
+					t.Fatalf("list=%d card=%d POST=%d history=%+v answer=%s", gets, cards, posts, lines, raw)
 				}
 			}
 			if pending := intent.Pending(intent.Dir(root)); len(pending) != 0 {
