@@ -417,7 +417,10 @@
     }
   },
   "secret_add_version": {
-    "destructive": false
+    "destructive": false,
+    "creates": {
+      "none": "a version belongs to its secret; read it with secret_get, deleting the secret removes every version"
+    }
   },
   "secret_create": {
     "destructive": false,

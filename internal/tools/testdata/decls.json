@@ -1000,6 +1000,7 @@
   },
   "secret_add_version": {
     "project": true,
+    "created": "{id: lost: arg: none:a version belongs to its secret; read it with secret_get, deleting the secret removes every version list: field: listArgs:[] read: delete:}",
     "nameless": "a version of a secret that is there",
     "untrusted": "{fields:[version] whole:false own:[] workload:false deep:false}"
   },

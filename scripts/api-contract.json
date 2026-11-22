@@ -5,9 +5,8 @@
     "s3_put": "Object Storage — S3 API (minio), его спецификации нет среди скачиваемых cloudru-specs.py"
   },
   "writes_without_creates": {
-    "_comment": "Записи (POST, PUT, PATCH) описи без creates: «не создаёт: …» — запись, которой нечего объявлять; «создаёт: …» — пробел объявления с работой бэклога. Новая запись без creates и без строки здесь роняет TestWorkflows_WritesDeclareCreates (internal/workflows); локальная команда объявляет созданное в creates своим путём, «evo login» (TestLocalCommands_CreatesAreCommands, internal/cli).",
+    "_comment": "Записи (POST, PUT, PATCH) описи без creates: «не создаёт: …» — запись, которой нечего объявлять; создание описывается в creates и impact. Новая запись без creates и без строки здесь роняет TestWorkflows_WritesDeclareCreates (internal/workflows); локальная команда объявляет созданное в creates своим путём, «evo login» (TestLocalCommands_CreatesAreCommands, internal/cli).",
     "iam POST /api/v1/permissions/bulk-evaluate": "не создаёт: проверка прав — чтение по смыслу, метод POST",
-    "compute POST /api/v1/floating-ips": "создаёт: floating IP (deploy, provision, выделение адреса) — цена; creates/impact не объявлены — бэклог процесса, 1.9",
     "compute PUT /api/v1/floating-ips/{floating_ip_id}": "не создаёт: меняет имя и привязку существующего floating IP",
     "compute POST /api/v1/disks/{disk_id}/attach": "не создаёт: подключает существующий диск к ВМ",
     "compute POST /api/v1/vms/{vm_id}/set-power": "не создаёт: меняет питание существующей ВМ",
@@ -19,10 +18,8 @@
     "mk8s POST /v3/clusters/{clusterId}:getKubeConfig": "не создаёт: выдаёт kubeconfig существующего кластера — чтение по смыслу, метод POST",
     "mk8s POST /v3/clusters/{clusterId}:upgrade": "не создаёт ресурс: запускает обновление версии существующего ресурса",
     "mk8s POST /v3/nodePools/{nodePoolId}:upgrade": "не создаёт ресурс: запускает обновление версии существующего ресурса",
-    "mk8s POST /v3/clusterAddons": "создаёт: плагин кластера (установка плагина) — работа; creates/impact не объявлены — бэклог процесса, 1.9",
     "containers POST /v2/containers/{name}:start": "не создаёт: запускает существующий контейнер",
     "containers POST /v2/containers/{name}:stop": "не создаёт: останавливает существующий контейнер",
-    "secretmanager POST /v2/version": "создаёт: новую версию существующего секрета (добавление версии) — безопасность; creates/impact не объявлены — бэклог процесса, 1.9",
     "certificatemanager POST /v1/certificate/{certificateId}:renew": "не создаёт: продлевает существующий сертификат",
     "iam POST /api/v1/auth/token": "не создаёт: обмен ключа доступа на токен IAM",
     "oidc POST /auth/system/openid/token": "не создаёт: обмен ключа сервисного аккаунта на JWT для kube-apiserver (и кода входа на токены человека — evo login)"
@@ -66,7 +63,7 @@
          "body": ["project_id", "name", "display_name", "description", "disk_id", "min_cpu", "min_ram", "min_disk", "user_data_template", "image_metadata[].name", "image_metadata[].display_name", "image_metadata[].display_position", "image_metadata[].field_type", "image_metadata[].default_value", "image_metadata[].sensitive", "image_metadata[].mandatory_group", "availability_zones[].availability_zone_id"],
          "reads": ["id", "availability_zones[].state"], "statuses": [409, 422]},
         {"method": "DELETE", "path": "/api/v1/images/{image_id}", "code": "internal/provision/image.go:108", "query": ["project_id"], "statuses": [404]},
-        {"method": "POST", "path": "/api/v1/floating-ips", "code": "internal/provision/adapter.go:304",
+        {"method": "POST", "path": "/api/v1/floating-ips", "code": "internal/provision/adapter.go:304", "creates": ["deploy", "deploy_apply", "provision"], "impact": {"name": "работа", "project_id": "безопасность", "interface_id": "работа", "availability_zone_id": "работа"},
          "body": ["name", "project_id", "interface_id", "availability_zone_id"], "reads": ["id", "name", "ip_address", "state", "interface", "vm", "nat_gateway"],
          "enums": {"state": ["available", "in_use"]}, "statuses": [422]},
         {"method": "GET", "path": "/api/v1/floating-ips/{floating_ip_id}", "code": "internal/provision/adapter.go:319",
@@ -242,7 +239,7 @@
          "reads": ["addons[].name", "addons[].displayName", "addons[].description", "addons[].categories", "addons[].isBillable", "addons[].createdAt", "addons[].updatedAt", "nextPageToken"]},
         {"method": "GET", "path": "/v3/addons/{addonName}", "code": "internal/mk8s/addons.go:119", "query": ["projectId", "pageSize=100", "pageToken"], "paginates": true,
          "reads": ["releases[].addonVersion", "releases[].appVersion", "releases[].addonNamespace", "releases[].configurationSchema", "releases[].mode", "releases[].requirements.kubeVersions", "releases[].requirements.readyWorkers", "releases[].createdAt", "releases[].updatedAt", "nextPageToken"]},
-        {"method": "POST", "path": "/v3/clusterAddons", "code": "internal/mk8s/addons.go:227", "query": ["projectId"],
+        {"method": "POST", "path": "/v3/clusterAddons", "code": "internal/mk8s/addons.go:227", "creates": ["k8s_add_addon"], "impact": {"clusterId": "безопасность", "name": "работа", "appVersion": "работа", "addonConfiguration": "работа", "resolveMode": "работа"}, "query": ["projectId"],
          "_note": "resolveMode обязателен (живое API 16.10.2026: 400 «resolveMode: must be specified»); код шлёт RESOLVE_CONFLICTS_MODE_NONE по умолчанию или _OVERWRITE (mk8s.ResolveModeValue)",
          "body": ["clusterId", "name", "appVersion", "addonConfiguration", "resolveMode"],
          "reads": ["id", "resourceId", "done", "status", "error", "clusterId", "appVersion", "name"],
@@ -351,7 +348,7 @@
         {"method": "GET", "path": "/v2/secret/{path}", "code": "internal/secret/client.go:137", "query": ["projectId"], "reads": ["secret.id", "secret.path"]},
         {"method": "POST", "path": "/v2/secret", "code": "internal/secret/client.go:157", "creates": ["secret_create"], "impact": {"payload": "безопасность", "kmsKeyId": "безопасность"}, "query": ["projectId"], "body": ["projectId", "path", "payload", "description", "kmsKeyId"], "reads": ["secret.id"],
          "accepted": {"query-unknown:projectId": "do() добавляет projectId ко всем запросам"}},
-        {"method": "POST", "path": "/v2/version", "code": "internal/secret/client.go:171", "query": ["projectId"], "body": ["projectId", "path", "payload"], "reads": ["version.id"],
+        {"method": "POST", "path": "/v2/version", "code": "internal/secret/client.go:171", "creates": ["secret_add_version"], "impact": {"projectId": "безопасность", "path": "безопасность", "payload": "безопасность"}, "query": ["projectId"], "body": ["projectId", "path", "payload"], "reads": ["version.id"],
          "accepted": {"query-unknown:projectId": "см. POST /v2/secret"}},
         {"method": "GET", "path": "/v2/version/{path}", "code": "internal/secret/client.go:190", "query": ["projectId", "version"], "reads": ["payload"]},
         {"method": "DELETE", "path": "/v2/secret/{path}", "code": "internal/secret/client.go:212", "query": ["projectId", "force"]}

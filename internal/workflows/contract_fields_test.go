@@ -205,7 +205,7 @@ func TestWorkflows_WritesDeclareCreates(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := map[string]bool{}
-	writes, gaps := 0, 0
+	writes := 0
 	for _, svc := range contract.Services {
 		for _, r := range svc.Requests {
 			if r.Method != "POST" && r.Method != "PUT" && r.Method != "PATCH" {
@@ -224,7 +224,7 @@ func TestWorkflows_WritesDeclareCreates(t *testing.T) {
 				t.Errorf("writes_without_creates %s: a reason, not %q", key, why)
 			}
 			if listed && strings.HasPrefix(why, "создаёт") {
-				gaps++
+				t.Errorf("%s creates a resource: declare creates and impact", key)
 			}
 		}
 	}
@@ -236,17 +236,4 @@ func TestWorkflows_WritesDeclareCreates(t *testing.T) {
 	if writes < 20 {
 		t.Fatalf("%d writes in the inventory: the check sees nothing", writes)
 	}
-	switch {
-	case gaps > createsUndeclared:
-		t.Errorf("%d writes create a resource and do not declare it («создаёт…» in writes_without_creates), %d allowed: declare creates and impact instead of a new line", gaps, createsUndeclared)
-	case gaps < createsUndeclared:
-		t.Errorf("%d writes create a resource undeclared, createsUndeclared says %d: lower it", gaps, createsUndeclared)
-	}
 }
-
-// createsUndeclared is the number of writes of the inventory that create a
-// resource of a tool without declaring it (floating IP, a rule of a security
-// group, a cluster addon, a secret version): it only shrinks. Closes by 1.10
-// (release plan 1.9, «Сроки храповиков «к 1.7–1.9»», #1590 question 19 (c));
-// process backlog, #990.
-const createsUndeclared = 3
