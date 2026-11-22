@@ -252,7 +252,11 @@ func (a *CloudRuAdapter) DeleteVMInProject(ctx context.Context, id, projectID st
 	if projectID != "" {
 		path += "?project_id=" + url.QueryEscape(projectID)
 	}
-	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
+	// A lost reply can follow a successful removal. A second DELETE
+	// could turn that outcome into an incorrect "never existed" answer.
+	policy := computeRetry
+	policy.DropMethods = nil
+	resp, err := a.doWithPolicy(ctx, http.MethodDelete, path, nil, policy)
 	if err != nil {
 		return err
 	}
@@ -350,7 +354,11 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 // rule is gone, which the adapter reports as CodeNotFound).
 func (a *CloudRuAdapter) DeleteSecurityGroupRule(ctx context.Context, sgID, ruleID string) error {
 	path := fmt.Sprintf("/api/v1/security-groups/%s/rules/%s", seg(sgID), seg(ruleID))
-	resp, err := a.doWithRetry(ctx, http.MethodDelete, path, nil)
+	// A lost reply can follow a successful removal. A second DELETE
+	// could turn that outcome into an incorrect "never existed" answer.
+	policy := computeRetry
+	policy.DropMethods = nil
+	resp, err := a.doWithPolicy(ctx, http.MethodDelete, path, nil, policy)
 	if err != nil {
 		return err
 	}
