@@ -58,6 +58,7 @@ while IFS= read -r p; do
 	internal/secret/* | internal/certmanager/* | internal/tools/tools_secret.go | internal/tools/tools_certmanager.go) area secrets ;;
 	internal/vpc/* | internal/nlb/* | internal/tools/tools_vpc.go | internal/tools/tools_nlb.go | internal/tools/tools_snat.go | \
 		internal/tools/tools_sg*.go | internal/tools/tools_subnet.go) area net ;;
+	internal/tools/tools_backup.go) area opsevo ;;
 	internal/images/* | internal/tools/tools_disk.go | internal/tools/tools_image*.go) area disk ;;
 	internal/containerapp/* | internal/artifact/* | internal/tools/tools_ca.go | internal/tools/tools_ar.go) area ca ;;
 	internal/stack/* | internal/tools/tools_stack.go) area stack ;;

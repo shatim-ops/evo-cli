@@ -38,14 +38,6 @@ var toolFilesWithoutArea = map[string]string{
 	"internal/tools/tools_monitoring.go":  "reads of the monitoring",
 }
 
-// toolFilesAreaPending are the files of tools whose live area does not exist
-// yet: cloud-e2e has no area that calls their tools. Only shrinks. Closes by
-// 1.9, before rc.1 (release plan 1.9, «Сроки храповиков «к 1.7–1.9»»; the
-// area is «Процесс»'s).
-var toolFilesAreaPending = map[string]string{
-	"internal/tools/tools_backup.go": "backups (wave В5): the area ops makes backups through the API, not through evo's tools; an area of its own comes with backup_delete",
-}
-
 // classifyAreaClause is a clause of classify.sh that names an area: the
 // patterns before ") area <name> ;;".
 var classifyAreaClause = regexp.MustCompile(`(?s)([^;]*?)\)\s*area\s+([a-z0-9]+)\s*;;`)
@@ -100,20 +92,17 @@ func TestClassify_EveryToolFileHasALiveArea(t *testing.T) {
 		rel = filepath.ToSlash(rel)
 		seen[rel] = true
 		_, declared := toolFilesWithoutArea[rel]
-		_, pending := toolFilesAreaPending[rel]
 		switch has := area(rel); {
-		case !has && !declared && !pending:
+		case !has && !declared:
 			t.Errorf("%s: classify.sh names no area of cloud-e2e for it — a pull request that changes its tools gets no live check in its checklist; add the file to an area (.github/scripts/classify.sh), or to toolFilesWithoutArea with the reason", rel)
-		case has && (declared || pending):
+		case has && declared:
 			t.Errorf("%s has an area in classify.sh now: remove its line from the list of the test", rel)
 		}
 	}
 	var gone []string
-	for _, list := range []map[string]string{toolFilesWithoutArea, toolFilesAreaPending} {
-		for rel := range list {
-			if !seen[rel] {
-				gone = append(gone, rel)
-			}
+	for rel := range toolFilesWithoutArea {
+		if !seen[rel] {
+			gone = append(gone, rel)
 		}
 	}
 	sort.Strings(gone)
