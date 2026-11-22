@@ -19,3 +19,9 @@
 | `list_flavors` | `evo vm flavors` | reads |  |
 
 Filters of the lists (the rule of the `evo` skill): `vm_list` — zone, state, name, flavor, public_ip, images, ids, states; `list_flavors` — name, cpu, ram, share, zone, gpu, spot.
+
+## Notes
+
+- Use `deploy` for Compose. For `provision`, the default flavor is the smallest lowcost flavor outside free-tier. The region defaults to CLOUDRU_REGION, the subnet to the zone's, and the boot disk to 10 GB or the image minimum.
+- Use `image_get` for fields_required. Supply missing mandatory image_metadata; supplied fields override evo's SSH key, VM name, login and generated password. Unknown fields, an unavailable image or missing required inputs are refused before creation.
+- Ports use TCP by default and open from cidr in the shared security group; `destroy` removes the rules it created. Keep the returned SSH details and state_dir (key and state). For wait=true, allow the client enough time to wait for the VM.
