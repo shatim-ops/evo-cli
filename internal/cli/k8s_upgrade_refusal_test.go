@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
 func TestUpgradeSubmissionRefusal(t *testing.T) {
@@ -258,5 +260,67 @@ func TestUpgradeLocalFailureBeforeSubmission(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// ENOTDIR is reproducible even under root. The upgrade's D92 record and
+// Sent bit must be visible together at the first resource POST.
+func TestUpgradeSentRecordBeforePost(t *testing.T) {
+	for _, r := range []upgradeResource{
+		{tool: "k8s_upgrade", argument: "cluster_id", id: upgradeParityCluster},
+		{tool: "k8s_nodepool_upgrade", argument: "nodepool_id", id: upgradeParityPool},
+	} {
+		t.Run(r.tool, func(t *testing.T) {
+			w, _ := withJSONWorld(t)
+			text, _ := r.call(t, "stdio", upgradeTo, false)
+			if r.previewID == "" {
+				t.Fatal(text)
+			}
+			dir := intent.Dir(w.dir)
+			if err := os.MkdirAll(filepath.Dir(dir), 0700); err != nil {
+				t.Fatal(err)
+			}
+			// A preview may already have caused a reader to create the empty directory.
+			if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(dir, []byte("blocked"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			old := w.rt.extra
+			posts := 0
+			w.rt.extra = func(req *http.Request) (*http.Response, error) {
+				if req.Method == http.MethodPost {
+					posts++
+					records := intent.Pending(dir)
+					if len(records) != 1 || !records[0].Sent || records[0].Tool != r.tool {
+						t.Fatalf("POST without sent receipt: %+v", records)
+					}
+				}
+				return old(req)
+			}
+			text, failed := r.call(t, "stdio", upgradeTo, true)
+			if !failed || posts != 0 {
+				t.Fatal(posts, text)
+			}
+			if err := os.Remove(dir); err != nil {
+				t.Fatal(err)
+			}
+			code, out, stderr := runCLI(t, "", "history", "--json")
+			var h struct{ Lines, Live []json.RawMessage }
+			if code != 0 || json.Unmarshal([]byte(out), &h) != nil || len(h.Lines) != 0 || len(h.Live) != 0 {
+				t.Fatal(out, stderr)
+			}
+			r.stdio = nil
+			r.previewID = ""
+			text, _ = r.call(t, "stdio", upgradeTo, false)
+			if r.previewID == "" || posts != 0 {
+				t.Fatal(text, posts)
+			}
+			text, failed = r.call(t, "stdio", upgradeTo, true)
+			if failed || posts != 1 || parseObject(text)["status"] != "submitted" {
+				t.Fatal(text, posts)
+			}
+		})
 	}
 }
