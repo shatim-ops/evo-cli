@@ -62,7 +62,7 @@ func showWhoami(p *output.Printer, text string) error {
 		ProjectID       string    `json:"project_id"`
 		ProjectFrom     string    `json:"project_from"`
 		TokenExpiresAt  time.Time `json:"token_expires_at"`
-		TokenTTLSeconds int       `json:"token_ttl_seconds"`
+		TokenTTLSeconds *int      `json:"token_ttl_seconds"`
 		TokenSource     string    `json:"token_source"`
 		VisibleProjects *int      `json:"visible_projects"`
 		Roles           *[]struct {
@@ -92,9 +92,14 @@ func showWhoami(p *output.Printer, text string) error {
 	fmt.Fprintf(w, i18n.T("Key ID:      %s (from %s)\n", "Key ID:      %s (источник: %s)\n"), a.KeyID, a.CredentialsFrom)
 	fmt.Fprintf(w, i18n.T("Project ID:  %s\n", "Проект:      %s\n"), project)
 	fmt.Fprintf(w, i18n.T("Projects:    %s\n", "Проекты:     %s\n"), scope)
-	fmt.Fprintf(w, i18n.T("Token:       valid until %s (%s left, %s)\n", "Токен:       действует до %s (осталось %s, %s)\n"),
-		a.TokenExpiresAt.Local().Format("2006-01-02 15:04:05 MST"),
-		(time.Duration(a.TokenTTLSeconds) * time.Second).Truncate(time.Minute), tokenSourceText(a.TokenSource))
+	expires := a.TokenExpiresAt.Local().Format("2006-01-02 15:04:05 MST")
+	if a.TokenTTLSeconds == nil {
+		fmt.Fprintf(w, i18n.T("Token:       valid until %s (%s)\n", "Токен:       действует до %s (%s)\n"), expires, tokenSourceText(a.TokenSource))
+	} else {
+		fmt.Fprintf(w, i18n.T("Token:       valid until %s (%s left, %s)\n", "Токен:       действует до %s (осталось %s, %s)\n"),
+			expires, (time.Duration(*a.TokenTTLSeconds) * time.Second).Truncate(time.Minute), tokenSourceText(a.TokenSource))
+	}
+
 	// The roles as IAM names them: the cloud's names, quoted (A0-2).
 	roles := a.RolesNote
 	if a.Roles != nil {
