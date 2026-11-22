@@ -889,8 +889,13 @@ func TestConsent_RefusalWithoutWriteComesBeforeTheQuestion(t *testing.T) {
 			if slices.Contains(c.world.alreadyFor, tl.Name) {
 				// A repeat of a change the world has: the answer of the
 				// repeat, the same with confirmed, and no write either way.
-				before, beforeErr, _ := call(tl, c, false)
+				before, beforeErr, previewWrites := call(tl, c, false)
 				after, afterErr, writes := call(tl, c, true)
+				if tl.Name == "open_ports" && c.name == "world: ports open already" {
+					if !beforeErr || before["status"] != "confirmation_required" || previewWrites != 0 || afterErr || writes != 0 {
+						t.Errorf("%s: existing-rule repeat: before %v (%d writes), after %v (%d writes)", key, before, previewWrites, after, writes)
+					}
+				}
 				switch {
 				case before["status"] == "confirmation_required":
 					already[key] = "asks for consent to a change the world already has: " + clipLine(fmt.Sprint(before))

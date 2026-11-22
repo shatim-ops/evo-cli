@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,13 +32,26 @@ func TestK8sAddAddon_QuestionSaysWhatHappensToTheInstalled(t *testing.T) {
 		if c.mode != "" {
 			args["resolve_mode"] = c.mode
 		}
-		m, text, _ := callNamed(t, addonRegistry(t, f), "k8s_add_addon", args)
+		r := addonRegistry(t, f)
+		m, text, _ := callNamed(t, r, "k8s_add_addon", args)
 		warnings := fmt.Sprint(m["warnings"])
 		if m["status"] != "confirmation_required" || (c.says != "" && !strings.Contains(warnings, c.says)) || strings.Contains(warnings, c.not) {
 			t.Errorf("mode %q, installed %s: warnings %s\n%s", c.mode, c.installed, warnings, text)
 		}
 		if len(f.posts) != 0 {
-			t.Errorf("the question wrote: %v", f.posts)
+			t.Fatalf("the question wrote: %v", f.posts)
+		}
+		args["confirmed"] = true
+		m, text, failed := callNamed(t, r, "k8s_add_addon", args)
+		if failed || m["operation_id"] != "op-1" || len(f.posts) != 1 {
+			t.Fatalf("after consent: %s, %d posts", text, len(f.posts))
+		}
+		var sent map[string]any
+		if err := json.Unmarshal([]byte(f.posts[0]), &sent); err != nil {
+			t.Fatal(err)
+		}
+		if sent["clusterId"] != addonCluster || sent["name"] != "cert-manager" || (c.mode == "overwrite") != (sent["resolveMode"] == "RESOLVE_CONFLICTS_MODE_OVERWRITE") {
+			t.Errorf("unexpected addon installation: %v", sent)
 		}
 	}
 }
@@ -49,7 +63,11 @@ func TestK8sAddAddon_QuestionSaysWhatHappensToTheInstalled(t *testing.T) {
 // as it was (release plan 1.9, «Повтор у выпущенных инструментов», п. 4).
 func TestCaStartStop_QuestionNamesTheStateOfTheApp(t *testing.T) {
 	for _, tool := range []string{"ca_start", "ca_stop"} {
-		status, body := http.StatusOK, `{"name":"app-1","status":"running"}`
+		appState := "running"
+		if tool == "ca_stop" {
+			appState = "stopped"
+		}
+		status, body := http.StatusOK, fmt.Sprintf(`{"name":"app-1","status":%q}`, appState)
 		f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
 			if r.Method != http.MethodGet {
 				// An operation done: a call with consent reads the app
@@ -63,7 +81,7 @@ func TestCaStartStop_QuestionNamesTheStateOfTheApp(t *testing.T) {
 		}}
 		r := apiFakeRegistry(t, f)
 		m, text, _ := callNamed(t, r, tool, map[string]any{"name": "app-1"})
-		if m["status"] != "confirmation_required" || m["app_status"] != "running" || m["app_status_note"] != nil {
+		if m["status"] != "confirmation_required" || m["app_status"] != appState || m["app_status_note"] != nil {
 			t.Errorf("%s: the question does not name the state: %s", tool, text)
 		}
 		for _, q := range f.calls {
@@ -99,6 +117,9 @@ func TestCaStartStop_QuestionNamesTheStateOfTheApp(t *testing.T) {
 		status = http.StatusOK
 		if _, text, isErr := callNamed(t, r, tool, map[string]any{"name": "app-1", "confirmed": true}); isErr {
 			t.Errorf("%s with consent: %s", tool, text)
+		}
+		if len(f.calls) != 1 || !strings.HasPrefix(f.calls[0], "POST ") || !strings.HasSuffix(f.calls[0], "/v2/containers/app-1:"+strings.TrimPrefix(tool, "ca_")) {
+			t.Errorf("%s: want one addressed action after consent, got %v", tool, f.calls)
 		}
 		for _, q := range f.calls {
 			if strings.HasPrefix(q, "GET ") {
