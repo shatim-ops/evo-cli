@@ -325,6 +325,13 @@ type OrphanRef struct {
 	Resources []string `json:"resources"`
 }
 
+// addResource appends the key=id wire value used by existing_jobs.resources.
+func (r *OrphanRef) addResource(key, id string) {
+	if id != "" {
+		r.Resources = append(r.Resources, key+"="+id)
+	}
+}
+
 // FindResourcefulJobs scans persisted jobs for OTHER jobs of the same stack name
 // that still hold created resources (status != destroyed). Re-planning while one
 // exists risks duplicate billable resources (a failed job leaves e.g. a Postgres
@@ -352,14 +359,12 @@ func FindResourcefulJobs(name, excludeID string) []OrphanRef {
 		if err != nil || j.Manifest.Name != name || j.Destroyed() {
 			continue
 		}
-		var res []string
+		ref := OrphanRef{JobID: id, Status: j.Status}
 		for _, st := range j.Steps {
-			if st.ResourceID != "" {
-				res = append(res, st.Key+"="+st.ResourceID)
-			}
+			ref.addResource(st.Key, st.ResourceID)
 		}
-		if len(res) > 0 {
-			out = append(out, OrphanRef{JobID: id, Status: j.Status, Resources: res})
+		if len(ref.Resources) > 0 {
+			out = append(out, ref)
 		}
 	}
 	return out

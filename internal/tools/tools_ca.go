@@ -342,7 +342,7 @@ func (s *Registry) planCaStartStop(action string) Planner {
 					"приложение с таким именем не найдено: платформа откажет вызову; приложения показывает ca_list")
 			case err != nil:
 				reason, _, _ := errReason(err, nil)
-				out["app_status_note"] = i18n.Tf("the state of the app could not be read (%s): ca_get shows it", "состояние приложения прочитать не удалось (%s): его показывает ca_get", reason)
+				out["app_status_note"] = i18n.Tf("the state of the app could not be read (%q): ca_get shows it", "состояние приложения прочитать не удалось (%q): его показывает ca_get", reason)
 			case state != "":
 				out["app_status"] = state
 			}

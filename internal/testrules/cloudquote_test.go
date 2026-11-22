@@ -72,15 +72,7 @@ var unquotedCloudLocalSteps = map[string]int{}
 // fixed by quoteCloud leaves it in the same PR. Closes by 1.10 (owner's
 // decision 17.11: the places of the detector made before the tag 1.9
 // close in 1.10).
-var unquotedCloudFlows = map[string]int{
-	"internal/stack/store.go|FindResourcefulJobs":          1,
-	"internal/tools/intent.go|Registry.checkByID":          1,
-	"internal/tools/tools.go|Registry.planDestroyTargeted": 1,
-	"internal/tools/tools.go|destroyDeleting":              1,
-	"internal/tools/tools_ca.go|Registry.planCaStartStop":  1,
-	"internal/tools/tools_vm_diagnose.go|vmDiagnosis":      5,
-	"internal/tools/tools_vm_diagnose.go|vmGroupsOnRows":   1,
-}
+var unquotedCloudFlows = map[string]int{}
 
 // unquotedCloudFlowSteps are the steps of progress of unquotedCloudFlows.
 // The list only shrinks. Closes by 1.10.

@@ -1436,8 +1436,8 @@ func (r *Registry) checkByID(ctx context.Context, in intent.Intent, k *ownerKind
 			"чтение ресурса «%s» %s по id ключом, который отправил удаление, отвечает, что его нет: удаление прошло; запись закрыта", k.what, what), true, ""
 	}
 	reason, _, _ := errReason(err, nil)
-	return i18n.Tf("could not read %s %s by id (%s): not checked — run doctor again",
-		"не удалось прочитать ресурс «%s» %s по id (%s): не проверено — повторите doctor", k.what, what, reason), false, ""
+	return i18n.Tf("could not read %s %s by id (%q): not checked — run doctor again",
+		"не удалось прочитать ресурс «%s» %s по id (%q): не проверено — повторите doctor", k.what, what, reason), false, ""
 }
 
 // readSkip is why a read by id was not sent.
