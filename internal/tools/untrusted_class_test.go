@@ -127,20 +127,6 @@ var classLocal = map[string]string{
 	"stack_plan":  "the plan of a manifest, a job on disk",
 }
 
-// classUnreachedPending are the tools the world of the class does not yet
-// bring to the cloud: each needs what an earlier call leaves in the folder
-// (a deployment, a plan, a job of a stack, a compose file). Only shrinks.
-// Closes by 1.9, before the tag (#2434).
-var classUnreachedPending = map[string]string{
-	"deploy":        "a compose file in the folder",
-	"deploy_apply":  "a plan of deploy_plan",
-	"logs":          "a deployment of the folder",
-	"status":        "a deployment of the folder",
-	"stack_apply":   "a job of stack_plan",
-	"stack_destroy": "a job of stack_plan",
-	"stack_status":  "a job of stack_plan",
-}
-
 // countingRT counts the requests of the world.
 type countingRT struct {
 	http.RoundTripper
@@ -255,13 +241,19 @@ func TestUntrustedClass_CloudValueMarkedOrQuoted(t *testing.T) {
 			}
 		}
 	}
+	// Saved plans, jobs and deployments survive between invocations. The
+	// folder controls use real stored state and their public handlers.
+	for _, tool := range []string{"deploy", "deploy_apply", "status", "logs", "stack_apply", "stack_status", "stack_destroy"} {
+		if t.Run("folder/"+tool, func(t *testing.T) { checkFolderCloudValue(t, tool) }) {
+			reached[tool] = true
+		}
+	}
 	for _, tl := range raRegistry(t, nil, nil, nil).Tools() {
 		_, local := classLocal[tl.Name]
-		_, pending := classUnreachedPending[tl.Name]
 		switch {
-		case reached[tl.Name] && (local || pending):
-			t.Errorf("%s reaches the cloud now: remove its line of classLocal or classUnreachedPending", tl.Name)
-		case !reached[tl.Name] && !local && !pending:
+		case reached[tl.Name] && local:
+			t.Errorf("%s reaches the cloud now: remove its line of classLocal", tl.Name)
+		case !reached[tl.Name] && !local:
 			t.Errorf("%s sent no request to the cloud in any call of the world: the check read its refusals only — give it the arguments it acts on (requiredCalls, classWorldArgs)", tl.Name)
 		}
 	}
