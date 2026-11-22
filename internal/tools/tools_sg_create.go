@@ -225,7 +225,7 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 		will["deleting_rules"] = going
 	}
 	message := i18n.Tf("sg_rule_create adds the rule %s %s %s %s to security group %s.", "sg_rule_create добавляет правило %s %s %s %s в группу безопасности %s.",
-		direction, proto, ports, wanted["source"], quoteCloud(group.Name))
+		direction, proto, ports, quoteCloud(stringArg(wanted, "source")), quoteCloud(group.Name))
 	return &Plan{Preview: map[string]any{"message": message, "preview": will}, Execute: func(ctx context.Context) (string, bool) {
 		made, err := eng.Cloud.AddSecurityGroupRule(ctx, group.ID, eng.Config.ProjectID, want)
 		id := ""
