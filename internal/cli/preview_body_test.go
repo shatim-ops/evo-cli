@@ -43,51 +43,150 @@ var secretBodyFields = map[string]bool{
 // «Сроки bodyUnnamed и humanUnnamed»). Risk reviews the remaining reasons.
 var bodyUnnamed = map[string]struct{ class, why string }{
 
-	"deploy availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"backup_restore action":       {unnamedNoise, "постоянное действие запроса (restore), не значение ресурса; принято «Риском», 203"},
-	"deploy interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
-	"deploy name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
-	"deploy description":          {unnamedNoise, "подпись правила «evo: port N»"},
-	"deploy direction":            {unnamedNoise, "правило входящее"},
-	"deploy ether_type":           {unnamedNoise, "IPv4"},
-	"deploy ip_protocol":          {unnamedWork, "порты compose открываются только как TCP"},
-	"deploy port_range":           {unnamedNoise, "порты compose в форме API"},
+	"deploy interface_id": {unnamedNoise, "интерфейс созданной ВМ"},
+	"deploy name":         {unnamedNoise, "имя floating IP, которое evo даёт само"},
+	"deploy description":  {unnamedNoise, "подпись правила «evo: port N»"},
+	"deploy direction":    {unnamedNoise, "правило входящее"},
+	"deploy ether_type":   {unnamedNoise, "IPv4"},
+	"deploy ip_protocol":  {unnamedWork, "порты compose открываются только как TCP"},
+	"deploy port_range":   {unnamedNoise, "порты compose в форме API"},
 
-	"deploy_apply availability_zone_id": {unnamedNoise, "id зоны плана"},
-	"deploy_apply interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
-	"deploy_apply name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
-
-	"disk_create availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"disk_create size":                 {unnamedNoise, "size_gb в форме API"},
-	"disk_resize size":                 {unnamedNoise, "size_gb в форме API"},
+	"deploy_apply interface_id": {unnamedNoise, "интерфейс созданной ВМ"},
+	"deploy_apply name":         {unnamedNoise, "имя floating IP, которое evo даёт само"},
 
 	"fip_attach interface_id": {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
 	"fip_attach name":         {unnamedNoise, "имя адреса при привязке"},
-
-	"image_create availability_zones.availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
-
-	"k8s_add_addon resolveMode": {unnamedNoise, "превью называет то же значение resolve_mode без префикса RESOLVE_CONFLICTS_MODE_; принято «Риском», 203"},
-
-	"k8s_add_nodepool machineConfiguration.flavorId": {unnamedNoise, "id flavor, который превью называет по имени, vCPU и RAM; принято «Риском», 203"},
-
-	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": {unnamedNoise, "id flavor мастеров, который превью называет по имени, vCPU и RAM; принято «Риском», 203"},
-	"k8s_create controlPlaneConfiguration.zones":                        {unnamedNoise, "id зоны, которую превью называет по имени; принято «Риском», 203"},
-
-	"lb_create rules.listeners.name":        {unnamedNoise, "имя listener, которое evo даёт само (lst-<порт>) из названного превью порта; принято «Риском», 294"},
-	"lb_create rules.listeners.target_port": {unnamedWork, "превью называет порт цели в listener («443→8443») и строкой target_port, по умолчанию он равен порту listener; принято «Риском», 294"},
-	"lb_create rules.name":                  {unnamedNoise, "имя правила, которое evo даёт само (rule-<имя>) из названного превью имени; принято «Риском», 294"},
 
 	"open_ports description": {unnamedNoise, "подпись правила"},
 	"open_ports direction":   {unnamedNoise, "правило входящее"},
 	"open_ports ether_type":  {unnamedNoise, "IPv4"},
 	"open_ports port_range":  {unnamedNoise, "порты в форме API"},
 
-	"provision availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
-	"provision interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
-	"provision name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
+	"provision interface_id": {unnamedNoise, "интерфейс созданной ВМ"},
+	"provision name":         {unnamedNoise, "имя floating IP, которое evo даёт само"},
+}
 
-	"vpc_route_create nextHop.virtualMachine.interface.id":      {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
-	"vpc_route_create nextHop.virtualMachine.virtualMachine.id": {unnamedNoise, "id ВМ, которую превью называет по имени"},
+// Each API field here must match its own preview field, even when a
+// different argument, resource or nested ID has the same value.
+var bodyPreviewPaths = map[string]string{
+	"image_create availability_zones.availability_zone_id":              "preview.zone.id",
+	"k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId": "preview.params.flavor",
+	"k8s_add_nodepool machineConfiguration.flavorId":                    "preview.params.flavor",
+	"k8s_create controlPlaneConfiguration.zones":                        "preview.zone.name",
+
+	"deploy availability_zone_id":                               "preview.vm.zone.id",
+	"deploy_apply availability_zone_id":                         "preview.vm.zone.id",
+	"provision availability_zone_id":                            "preview.vm.zone.id",
+	"disk_create size":                                          "preview.disk.size_gb",
+	"disk_resize size":                                          "preview.disk.size_gb",
+	"disk_create availability_zone_id":                          "preview.zone.id",
+	"vpc_route_create nextHop.virtualMachine.interface.id":      "preview.params.next_hop_interface_id",
+	"vpc_route_create nextHop.virtualMachine.virtualMachine.id": "preview.params.next_hop_vm_id",
+	"lb_create rules.name":                                      "will_create.name",
+	"lb_create rules.listeners.name":                            "will_create.listener",
+	"lb_create rules.listeners.target_port":                     "will_create.listener",
+	"backup_restore action":                                     "will_create.backup_id",
+	"k8s_add_addon resolveMode":                                 "preview.params.resolve_mode",
+}
+
+func previewField(obj map[string]any, path string) string {
+	var value any = obj
+	for _, key := range strings.Split(path, ".") {
+		switch current := value.(type) {
+		case map[string]any:
+			value = current[key]
+		case []any:
+			value = nil
+			for _, entry := range current {
+				param, _ := entry.(map[string]any)
+				if param["key"] == key {
+					value = param["value"]
+					break
+				}
+			}
+		default:
+			return ""
+		}
+	}
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprint(value)
+}
+
+func bodyMatchesPreview(key, field, value, write string) bool {
+	if field == "" || value == "" {
+		return false
+	}
+	switch key {
+	case "k8s_create controlPlaneConfiguration.sizingConfiguration.flavorId", "k8s_add_nodepool machineConfiguration.flavorId":
+		return k8sCataloguePair("flavors", "flavorId", field, value)
+	case "k8s_create controlPlaneConfiguration.zones":
+		return k8sCataloguePair("zones", "zoneId", field, value)
+	case "backup_restore action":
+		method, rest, _ := strings.Cut(write, " ")
+		target, _, _ := strings.Cut(rest, " ")
+		u, err := url.Parse("//" + target)
+		return err == nil && method == "POST" && u.Path == "/api/v1/backups/"+field+"/action" && value == "restore"
+	case "k8s_add_addon resolveMode":
+		return value == "RESOLVE_CONFLICTS_MODE_"+field
+	case "lb_create rules.name":
+		return value == "rule-"+field
+	case "lb_create rules.listeners.name", "lb_create rules.listeners.target_port":
+		listen, target, ok := strings.Cut(field, "→")
+		if !ok || listen == "" || target == "" {
+			return false
+		}
+		if key == "lb_create rules.listeners.name" {
+			return value == "lst-"+listen
+		}
+		return value == target
+	}
+	return field == value
+}
+
+// Resolve the human name against the same platform catalogue that the
+// parity transport served. The selected name and ID must belong to one row.
+func k8sCataloguePair(collection, idKey, name, id string) bool {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal([]byte(k8sProductConfiguration), &raw) != nil {
+		return false
+	}
+	var rows []map[string]any
+	if json.Unmarshal(raw[collection], &rows) != nil {
+		return false
+	}
+	for _, row := range rows {
+		if row["name"] == name && row[idKey] == id {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBodyMatchesOnlySelectedPreviewField(t *testing.T) {
+	fields := map[string]any{"preview": map[string]any{"vm": map[string]any{"zone": map[string]any{"id": "az-one"}}}, "unrelated": map[string]any{"id": "az-two"}}
+	field := previewField(fields, bodyPreviewPaths["deploy availability_zone_id"])
+	if !bodyMatchesPreview("deploy availability_zone_id", field, "az-one", "") || bodyMatchesPreview("deploy availability_zone_id", field, "az-two", "") {
+		t.Fatal(fields)
+	}
+	for _, tc := range []struct{ key, field, correct, wrong string }{
+		{"lb_create rules.listeners.name", "443→8443", "lst-443", "lst-8443"},
+		{"lb_create rules.listeners.target_port", "443→8443", "8443", "443"},
+		{"lb_create rules.name", "web", "rule-web", "rule-other"},
+		{"k8s_add_addon resolveMode", "NONE", "RESOLVE_CONFLICTS_MODE_NONE", "NONE"},
+		{"backup_restore action", "backup-1", "restore", "delete"},
+		{"k8s_create controlPlaneConfiguration.zones", "ru.AZ-1", pvZone, pvFlavor},
+		{"k8s_add_nodepool machineConfiguration.flavorId", "gen-2-4", pvFlavor, pvZone},
+	} {
+		const write = "POST compute.api.cloud.ru/api/v1/backups/backup-1/action {}"
+		if !bodyMatchesPreview(tc.key, tc.field, tc.correct, write) || bodyMatchesPreview(tc.key, tc.field, tc.wrong, write) {
+			t.Fatal(tc)
+		}
+	}
+	if bodyMatchesPreview("backup_restore action", "other-backup", "restore", "POST compute.api.cloud.ru/api/v1/backups/backup-1/action {}") {
+		t.Fatal("wrong backup")
+	}
 }
 
 // bodyNamedAs are the values the preview names under the argument of the
@@ -181,7 +280,8 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 			return text, writes
 		}
 		preview, _ := call(false)
-		previewID, _ = parseObject(preview)["preview_id"].(string)
+		previewObject := parseObject(preview)
+		previewID, _ = previewObject["preview_id"].(string)
 		_, writes := call(true)
 		named := namedValues(preview, c.args)
 		for _, wr := range writes {
@@ -199,6 +299,13 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 					}
 					if strings.Contains(preview, value) || strings.Contains(preview, string(plain)) {
 						bad = append(bad, key+": the secret value is in the preview")
+					}
+					continue
+				}
+				if field, ok := bodyPreviewPaths[key]; ok {
+					seen[key] = true
+					if !bodyMatchesPreview(key, previewField(previewObject, field), value, wr) {
+						bad = append(bad, fmt.Sprintf("%s = %q does not match preview field %s", key, value, field))
 					}
 					continue
 				}
@@ -230,6 +337,11 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 	for _, tl := range reg.Tools() {
 		if tl.Mutating && !tools[tl.Name] {
 			bad = append(bad, tl.Name+": a mutating tool without a case in parityArgs")
+		}
+	}
+	for key := range bodyPreviewPaths {
+		if !seen[key] {
+			bad = append(bad, key+": preview field never checked against a write")
 		}
 	}
 	for key := range secretBodyFields {

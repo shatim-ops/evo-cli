@@ -157,10 +157,12 @@ func (s *Registry) planImageCreate(ctx context.Context, args map[string]any) (*P
 		return nil, err
 	}
 	req.AvailZones = []provision.ImageAZTarget{{AvailabilityZoneID: zoneID}}
+	imagePreview := willPreview(engine.ResourceImage, name, firstNonEmptyStr(zoneName, zoneID), withCloudInit(args, req.UserDataTemplate != ""), []string{"disk_id", "min_cpu", "min_ram", "min_disk", "has_user_data_template"})
+	imagePreview.Zone.ID = zoneID
 	preview := map[string]any{
 		"message": i18n.T("image_create makes a billable image from a disk.",
 			"image_create создаёт платный образ из диска."),
-		"preview": willPreview(engine.ResourceImage, name, firstNonEmptyStr(zoneName, zoneID), withCloudInit(args, req.UserDataTemplate != ""), []string{"disk_id", "min_cpu", "min_ram", "min_disk", "has_user_data_template"}),
+		"preview": imagePreview,
 		"will_create": map[string]any{
 			"name": name, "from_disk": diskID,
 			"zone":    firstNonEmptyStr(zoneRef, zoneName, zoneID),
