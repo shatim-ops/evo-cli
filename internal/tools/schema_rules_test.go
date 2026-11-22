@@ -165,7 +165,7 @@ const (
 	// still got a raw 422 on a UUID that is not version 4 (live run 27.10);
 	// which version a service takes is for the api-probe of 1.4.
 	idUndeclared = "description says UUID, schema does not"
-	idFilter     = "a filter of a list (listSpecs): a UUID or a name, resolved through the project's list before the read"
+
 	// The description does not say what the id is, though cert_delete.id
 	// is a UUID (G13-21): which form the service takes is for the
 	// api-probe of 1.4.
@@ -180,69 +180,60 @@ const (
 // Closes by 1.10: moved from 1.8 by the owner's decision of 13.11 (#1590,
 // question 19; release plan 1.9, «Просроченные убывающие списки»).
 var idWithoutFormat = map[string]string{
-	"cert_get.id":                     idUnknown,
-	"cert_operation.operation_id":     idUnknown,
-	"k8s_operation.operation_id":      idUnknown,
-	"cert_private_key.certificate_id": idUnknown,
-	"cert_renew.certificate_id":       idUnknown,
-	"cert_usage.id":                   idUnknown,
-	"cert_versions.certificate_id":    idUnknown,
-	"secret_create.kms_key_id":        idUnknown,
 
-	"ar_get.id":                                 idUndeclared,
-	"ar_operation.operation_id":                 idUndeclared,
-	"billing_consumption.project_id":            idUndeclared,
-	"billing_finops.project_id":                 idUndeclared,
-	"deploy.image_id":                           idUndeclared,
-	"deploy.project_id":                         idUndeclared,
-	"dns_operation.operation_id":                idUndeclared,
-	"dns_record_create.zone_id":                 idUndeclared,
-	"dns_record_get.record_id":                  idUndeclared,
-	"dns_records.zone_id":                       idUndeclared,
-	"dns_zone_get.id":                           idUndeclared,
-	"iam_service_accounts.project_id":           idUndeclared,
-	"image_create.disk_id":                      idUndeclared,
-	"image_get.image_id":                        idUndeclared,
-	"k8s_add_addon.cluster_id":                  idUndeclared,
-	"k8s_add_nodepool.cluster_id":               idUndeclared,
-	"k8s_add_nodepool.nodes_subnet_id":          idUndeclared,
-	"k8s_add_nodepool.security_group_id":        idUndeclared,
-	"k8s_apply.cluster_id":                      idUndeclared,
-	"k8s_create.cluster_sa_id":                  idUndeclared,
-	"k8s_create.subnet_id":                      idUndeclared,
-	"k8s_get.cluster_id":                        idUndeclared,
-	"k8s_helm.cluster_id":                       idUndeclared,
-	"k8s_kubeconfig.cluster_id":                 idUndeclared,
-	"k8s_kubectl.cluster_id":                    idUndeclared,
-	"k8s_nodepools.cluster_id":                  idUndeclared,
-	"k8s_plan.cluster_sa_id":                    idUndeclared,
-	"k8s_plan.subnet_id":                        idUndeclared,
-	"kafka_create.specification_id":             idUndeclared,
-	"kafka_create.subnet_id":                    idUndeclared,
-	"kafka_create.version_id":                   idUndeclared,
-	"kafka_operation.operation_id":              idUndeclared,
-	"kafka_specs.version_id":                    idUndeclared,
-	"lb_create.subnet_id":                       idUndeclared,
-	"lb_create.target_group_id":                 idUndeclared,
-	"lb_get.id":                                 idUndeclared,
-	"lb_operation.operation_id":                 idUndeclared,
-	"org_quotas.project_id":                     idUndeclared,
-	"pg_backup_create.cluster_id":               idUndeclared,
-	"pg_backups.cluster_id":                     idUndeclared,
-	"pg_create.specification_id":                idUndeclared,
-	"pg_create.subnet_id":                       idUndeclared,
-	"pg_databases.cluster_id":                   idUndeclared,
-	"pg_db_create.cluster_id":                   idUndeclared,
-	"pg_operation.operation_id":                 idUndeclared,
-	"pg_user_create.cluster_id":                 idUndeclared,
-	"pg_users.cluster_id":                       idUndeclared,
-	"provision.image_id":                        idUndeclared,
-	"provision.project_id":                      idUndeclared,
-	"provision.subnet_id":                       idUndeclared,
-	"list_subnets.vpc_id":                       idFilter,
-	"backup_list.resource_id":                   idFilter,
-	"lb_list.vpc_id":                            idFilter,
-	"tg_list.vpc_id":                            idFilter,
+	"secret_create.kms_key_id": idUnknown,
+
+	"ar_get.id":                          idUndeclared,
+	"ar_operation.operation_id":          idUndeclared,
+	"billing_consumption.project_id":     idUndeclared,
+	"billing_finops.project_id":          idUndeclared,
+	"deploy.image_id":                    idUndeclared,
+	"deploy.project_id":                  idUndeclared,
+	"dns_operation.operation_id":         idUndeclared,
+	"dns_record_create.zone_id":          idUndeclared,
+	"dns_record_get.record_id":           idUndeclared,
+	"dns_records.zone_id":                idUndeclared,
+	"dns_zone_get.id":                    idUndeclared,
+	"iam_service_accounts.project_id":    idUndeclared,
+	"image_create.disk_id":               idUndeclared,
+	"image_get.image_id":                 idUndeclared,
+	"k8s_add_addon.cluster_id":           idUndeclared,
+	"k8s_add_nodepool.cluster_id":        idUndeclared,
+	"k8s_add_nodepool.nodes_subnet_id":   idUndeclared,
+	"k8s_add_nodepool.security_group_id": idUndeclared,
+	"k8s_apply.cluster_id":               idUndeclared,
+	"k8s_create.cluster_sa_id":           idUndeclared,
+	"k8s_create.subnet_id":               idUndeclared,
+	"k8s_get.cluster_id":                 idUndeclared,
+	"k8s_helm.cluster_id":                idUndeclared,
+	"k8s_kubeconfig.cluster_id":          idUndeclared,
+	"k8s_kubectl.cluster_id":             idUndeclared,
+	"k8s_nodepools.cluster_id":           idUndeclared,
+	"k8s_plan.cluster_sa_id":             idUndeclared,
+	"k8s_plan.subnet_id":                 idUndeclared,
+	"kafka_create.specification_id":      idUndeclared,
+	"kafka_create.subnet_id":             idUndeclared,
+	"kafka_create.version_id":            idUndeclared,
+	"kafka_operation.operation_id":       idUndeclared,
+	"kafka_specs.version_id":             idUndeclared,
+	"lb_create.subnet_id":                idUndeclared,
+	"lb_create.target_group_id":          idUndeclared,
+	"lb_get.id":                          idUndeclared,
+	"lb_operation.operation_id":          idUndeclared,
+	"org_quotas.project_id":              idUndeclared,
+	"pg_backup_create.cluster_id":        idUndeclared,
+	"pg_backups.cluster_id":              idUndeclared,
+	"pg_create.specification_id":         idUndeclared,
+	"pg_create.subnet_id":                idUndeclared,
+	"pg_databases.cluster_id":            idUndeclared,
+	"pg_db_create.cluster_id":            idUndeclared,
+	"pg_operation.operation_id":          idUndeclared,
+	"pg_user_create.cluster_id":          idUndeclared,
+	"pg_users.cluster_id":                idUndeclared,
+	"provision.image_id":                 idUndeclared,
+	"provision.project_id":               idUndeclared,
+	"provision.subnet_id":                idUndeclared,
+
 	"redis_create.specification_id":             idUndeclared,
 	"redis_create.subnet_id":                    idUndeclared,
 	"redis_create.version_id":                   idUndeclared,
@@ -311,7 +302,7 @@ func TestArgs_IDsDeclareTheirFormat(t *testing.T) {
 				continue
 			}
 			key := tl.Name + "." + arg
-			if p["format"] != nil || p["pattern"] != nil || vpcNameArguments[tl.Name] == arg {
+			if p["format"] != nil || p["pattern"] != nil || declaredIDFilter(tl.Name, arg) || vpcNameArguments[tl.Name] == arg {
 				continue
 			}
 			seen[key] = true
@@ -346,6 +337,52 @@ func TestArgs_SavedPlanAndJobReferences(t *testing.T) {
 			err := CheckArgs(tl, map[string]any{tc.arg: bad})
 			if clierrors.Reason(err) != clierrors.CodeUsage {
 				t.Fatalf("%s.%s accepted invalid reference: %v", tc.tool, tc.arg, err)
+			}
+		}
+	}
+}
+
+// String filters follow their list's contract. The VPC filters resolve a
+// name or UUID; backup_list compares an exact resource ID in the result.
+func declaredIDFilter(tool, arg string) bool {
+	for _, f := range listSpecs[tool].filters {
+		if f.arg == arg && (f.kind == filterRef || tool == "backup_list" && arg == "resource_id" && f.kind == filterExact) {
+			return true
+		}
+	}
+	return false
+}
+func TestArgs_ListIDFiltersKeepExistingForms(t *testing.T) {
+	r := New(nil)
+	for tool, arg := range map[string]string{"list_subnets": "vpc_id", "lb_list": "vpc_id", "tg_list": "vpc_id", "backup_list": "resource_id"} {
+		tl, _ := r.Lookup(tool)
+		if !declaredIDFilter(tool, arg) {
+			t.Fatal(tool, arg)
+		}
+		for _, value := range []string{auditUUID, "network-name"} {
+			if err := CheckArgs(tl, map[string]any{arg: value}); err != nil {
+				t.Fatal(tool, err)
+			}
+		}
+		if err := CheckArgs(tl, map[string]any{arg: "  "}); clierrors.Reason(err) != clierrors.CodeUsage {
+			t.Fatal(tool, err)
+		}
+	}
+}
+
+func TestArgs_RequiredOpaqueServiceID(t *testing.T) {
+	r := New(nil)
+	for _, k := range []string{"cert_get.id", "cert_operation.operation_id", "cert_private_key.certificate_id", "cert_renew.certificate_id", "cert_usage.id", "cert_versions.certificate_id", "k8s_operation.operation_id"} {
+		name, arg, _ := strings.Cut(k, ".")
+		tl, _ := r.Lookup(name)
+		for _, id := range []string{auditUUID, "ref:legacy/a-1", "first version"} {
+			if err := CheckArgs(tl, map[string]any{arg: id}); err != nil {
+				t.Fatal(k, err)
+			}
+		}
+		for _, invalid := range []any{"", 3} {
+			if err := CheckArgs(tl, map[string]any{arg: invalid}); clierrors.Reason(err) != clierrors.CodeUsage {
+				t.Fatal(k, invalid, err)
 			}
 		}
 	}

@@ -463,7 +463,7 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_operation",
 			Description: "Poll a Managed Kubernetes async operation by id (from k8s_create, k8s_delete and the node pool changes). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
+				"operation_id": opaqueIDProp("Operation id, as the call that started it returned. Required."),
 				"wait_seconds": opWaitProp(),
 			}, "operation_id"),
 		},
@@ -1406,7 +1406,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "cert_get",
 			Description: "Get one certificate by id (metadata, primary version, expiry, status). Read-only.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Certificate id. Required.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": opaqueIDProp("Certificate id. Required.")}, "id"),
 		},
 		{
 			Name:        "cert_issue_le",
@@ -1433,7 +1433,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "cert_renew",
 			Description: "Ask Let's Encrypt to renew a certificate (async). Returns an operation id. Every call sends a renewal request: a repeat sends another.",
-			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
+			InputSchema: objSchema(map[string]any{"certificate_id": opaqueIDProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
 		},
 		{
 			Name:        "cert_delete",
@@ -1447,18 +1447,18 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "cert_usage",
 			Description: "List the resources that USE a certificate. Check before deleting it. Read-only.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Certificate id. Required.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": opaqueIDProp("Certificate id. Required.")}, "id"),
 		},
 		{
 			Name:        "cert_versions",
 			Description: "List a certificate's versions (id, CN, DNS names, status, expiry), all pages. Read-only.",
-			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required.")}, "certificate_id"),
+			InputSchema: objSchema(map[string]any{"certificate_id": opaqueIDProp("Certificate id. Required.")}, "certificate_id"),
 		},
 		{
 			Name:        "cert_private_key",
 			Description: "Return the SECRET private key of a certificate version: privateKey is PEM text, decoded from the API's Base64 (key_format: pem; base64 if the API's value is not a Base64 PEM). cert_import takes the key Base64-encoded.",
 			InputSchema: objSchema(map[string]any{
-				"certificate_id": strProp("Certificate id. Required."),
+				"certificate_id": opaqueIDProp("Certificate id. Required."),
 				"version_id":     intProp("Version number; 0 or omitted = latest version."),
 				"confirmed":      confirmedPropNote("The answer holds the plaintext private key."),
 			}, "certificate_id"),
@@ -1466,7 +1466,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "cert_operation",
 			Description: "Poll a certificate operation (issue/renew) by id until done=true. Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation id from cert_issue_le/cert_renew. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": opaqueIDProp("Operation id from cert_issue_le/cert_renew. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "s3_buckets",
@@ -3929,6 +3929,10 @@ func inRange(min, max int, p map[string]any) map[string]any {
 	p["minimum"], p["maximum"] = min, max
 	return p
 }
+
+// Required path parameters with an opaque service identifier take any
+// nonempty string, including IDs issued before the current version.
+func opaqueIDProp(desc string) map[string]any { return patternProp(desc, `[\s\S]`) }
 
 func patternProp(desc, pattern string) map[string]any {
 	p := strProp(desc)
