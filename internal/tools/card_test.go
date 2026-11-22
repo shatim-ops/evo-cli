@@ -69,22 +69,28 @@ func TestGroupCards_PrintTheirNotes(t *testing.T) {
 	if len(cardNotes) == 0 {
 		t.Fatal("no notes in cardNotes: the test sees nothing")
 	}
-	for g, notes := range cardNotes {
-		card, ok := GroupCard(g)
-		if !ok {
+	for g := range cardNotes {
+		if _, ok := GroupCard(g); !ok {
 			t.Errorf("cardNotes: %s is not a group", g)
-			continue
-		}
-		if !strings.Contains(card, "\n## Notes\n") {
-			t.Errorf("%s: the card has no Notes section:\n%s", g, card)
-		}
-		for _, n := range notes {
-			if !strings.Contains(card, "\n- "+n+"\n") {
-				t.Errorf("%s: the card does not print the note %q", g, n)
-			}
 		}
 	}
-	if card, _ := GroupCard("vm"); strings.Contains(card, "## Notes") {
-		t.Errorf("vm: a Notes section with no notes:\n%s", card)
+	for _, g := range Groups() {
+		notes := cardNotes[g]
+		card, _ := GroupCard(g)
+		_, section, present := strings.Cut(card, "\n## Notes\n")
+		if len(notes) == 0 {
+			if present {
+				t.Errorf("%s: a Notes section with no notes", g)
+			}
+			continue
+		}
+		for _, note := range notes {
+			if strings.TrimSpace(note) == "" {
+				t.Errorf("%s: blank note", g)
+			}
+		}
+		if !present || section != "\n- "+strings.Join(notes, "\n- ")+"\n" {
+			t.Errorf("%s: Notes section differs from its declared notes: %q", g, section)
+		}
 	}
 }
