@@ -362,14 +362,15 @@ func (s *Registry) dnsZoneLinked(ctx context.Context, zone map[string]any) error
 	linked := make([]string, 0, len(raw))
 	for _, v := range raw {
 		vid := fmt.Sprint(v)
+		label := quoteCloud(vid)
 		if n := names[vid]; n != "" {
-			vid = quoteCloud(n) + " (" + vid + ")"
+			label = quoteCloud(n) + " (" + label + ")"
 		}
-		linked = append(linked, vid)
+		linked = append(linked, label)
 	}
 	return clierrors.New(clierrors.CodeUsage,
 		i18n.Tf("DNS zone %v is linked to VPC %s: Cloud.ru does not delete a zone with links",
-			"зона DNS %v связана с VPC %s: Cloud.ru не удаляет зону со связями", zone["id"], strings.Join(linked, ", ")),
+			"зона DNS %v связана с VPC %s: Cloud.ru не удаляет зону со связями", quoteCloud(fmt.Sprint(zone["id"])), strings.Join(linked, ", ")),
 		i18n.T("Remove the zone's links in the console (Evolution DNS → the zone → Links), then delete it again.",
 			"Снимите связи зоны в личном кабинете (Evolution DNS → зона → Связи) и удалите её снова."))
 }

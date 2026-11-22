@@ -5,7 +5,11 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -27,5 +31,33 @@ func TestCloudWords_QuotedInEvoErrors(t *testing.T) {
 	}
 	if got := (&diskFailed{state: word}).Error(); strings.Contains(got, "\n") || !strings.Contains(got, quoteCloud(word)) {
 		t.Errorf("disk failed: the state is not quoted on one line: %q", got)
+	}
+}
+
+func TestDNSLinkedZoneQuotesCloudIDs(t *testing.T) {
+	const zoneID = "zone-\"example\nnext"
+	const vpcID = "vpc-\"example\nnext"
+	const vpcName = "net-\"example\nnext"
+	f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+		if r.Method != "GET" || r.URL.Path != "/v1/vpcs" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		fmt.Fprintf(w, `{"vpcs":[{"id":%q,"name":%q}],"total":1}`, vpcID, vpcName)
+		return true
+	}}
+	registry := apiFakeRegistry(t, f)
+	zone := map[string]any{"id": zoneID, "linkedVpcIds": []any{vpcID}}
+	err := registry.dnsZoneLinked(context.Background(), zone)
+	if err == nil || len(f.calls) != 1 {
+		t.Fatalf("error=%v requests=%v", err, f.calls)
+	}
+	text := err.Error()
+	for _, v := range []string{zoneID, vpcID, vpcName} {
+		if strings.Contains(text, v) || !strings.Contains(text, strconv.Quote(v)) {
+			t.Fatalf("bare or omitted value in %q", text)
+		}
+	}
+	if zone["id"] != zoneID || zone["linkedVpcIds"].([]any)[0] != vpcID {
+		t.Fatal("cloud card changed during presentation")
 	}
 }

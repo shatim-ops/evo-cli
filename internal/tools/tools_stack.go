@@ -507,7 +507,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 								failStep(job, st, clierrors.CodeAPIError, fmt.Sprintf("%s: cluster reached terminal status %s", st.Key, quoteCloud(status)))
 								return
 							default:
-								st.Detail = "status=" + status
+								st.Detail = "status=" + quoteCloud(status)
 							}
 						}
 					}
@@ -655,10 +655,10 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					switch {
 					case st.ResourceID == "":
 					case reason == clierrors.CodeVMNotFound:
-						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s of the step is gone; no new one was made)", st.Key, err.Error(), st.ResourceID))
+						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s of the step is gone; no new one was made)", st.Key, err.Error(), quoteCloud(st.ResourceID)))
 						return
 					case reason == clierrors.CodeNotFound:
-						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s of the step kept for stack_destroy; no new one was made)", st.Key, err.Error(), st.ResourceID))
+						failStep(job, st, reason, fmt.Sprintf("%s: %s (resource %s of the step kept for stack_destroy; no new one was made)", st.Key, err.Error(), quoteCloud(st.ResourceID)))
 						return
 					}
 					if ex := firstStr(res, "existing_id"); ex != "" && !resumed {
@@ -712,7 +712,7 @@ func (s *Registry) advance(ctx context.Context, job *stack.Job) {
 					// crank repeats provision, which adopts the VM and
 					// finishes it. No attempt is used.
 					st.ResourceID = firstStr(res, "vm_id")
-					st.Detail = fmt.Sprintf("VM %s is %s; the next stack_status finishes it", st.ResourceID, firstStr(res, "vm_status"))
+					st.Detail = fmt.Sprintf("VM %s is %s; the next stack_status finishes it", quoteCloud(st.ResourceID), quoteCloud(firstStr(res, "vm_status")))
 					continue
 				}
 				if st.ReadyKind == "" {
