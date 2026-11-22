@@ -30,13 +30,36 @@ import (
 // cobra keeps the functions of flags in a table of the process, and one
 // that held a registry would keep it for good.
 func completeValues(tool, arg string) cobra.CompletionFunc {
-	return func(cmd *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		ctx := cmd.Context()
 		if ctx == nil {
 			ctx = context.Background()
 		}
 		var out []cobra.Completion
-		for _, c := range registryOf(cmd).Complete(ctx, tool, arg, toComplete) {
+		reg := registryOf(cmd)
+		parent := ""
+		if name := tools.CompletionParent(tool, arg); name != "" {
+			tl, ok := reg.Lookup(tool)
+			if !ok {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			flag := tl.CLI.Rename[name]
+			if flag == "" {
+				flag = strings.ReplaceAll(name, "_", "-")
+			}
+			if f := cmd.Flags().Lookup(flag); f != nil && f.Changed {
+				parent = f.Value.String()
+			}
+			for i, pos := range parsePositionals(tl.CLI.Args) {
+				if i < len(args) && len(pos.names) == 1 && pos.names[0] == name {
+					if parent != "" && parent != args[i] {
+						return nil, cobra.ShellCompDirectiveNoFileComp
+					}
+					parent = args[i]
+				}
+			}
+		}
+		for _, c := range reg.CompleteFor(ctx, tool, arg, toComplete, parent) {
 			if c.Note == "" {
 				out = append(out, c.Value)
 				continue

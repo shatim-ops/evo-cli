@@ -103,6 +103,9 @@ func (r *Registry) listable(name string) bool {
 
 // Completes reports whether Complete has values for (tool, arg).
 func (r *Registry) Completes(tool, arg string) bool {
+	if CompletionParent(tool, arg) != "" {
+		return true
+	}
 	_, ok := r.completionOf(tool, arg)
 	return ok
 }
@@ -246,4 +249,45 @@ func writeCompletionCache(path string, items []map[string]string) {
 		return
 	}
 	_ = config.WriteFileAtomic(path, data, 0o600) // a link at path is replaced, not written through (R-67)
+}
+
+// CompletionParent is the argument that chooses the namespace for a
+// reference. An empty parent on the command line must produce no candidates.
+func CompletionParent(tool, arg string) string {
+	switch {
+	case tool == "tg_create" && arg == "interface_id":
+		return "vm_id"
+	case tool == "vpc_route_create" && arg == "next_hop_interface_id":
+		return "next_hop_vm_id"
+	}
+	return ""
+}
+
+// CompleteFor restricts VM-interface suggestions to the specified VM in
+// the active project. The project-wide catalogue also holds free interfaces.
+func (r *Registry) CompleteFor(ctx context.Context, tool, arg, prefix, parent string) []Candidate {
+	if CompletionParent(tool, arg) == "" {
+		return r.Complete(ctx, tool, arg, prefix)
+	}
+	if !isUUID(parent) {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(stepOf(ctx), CompletionTimeout)
+	defer cancel()
+	eng, err := r.localEngine(ctx, nil)
+	if err != nil || eng.Config.ProjectID == "" || eng.Config.KeyID == "" || authorize(ctx, eng) != nil {
+		return nil
+	}
+	nics, err := projectInterfaces(ctx, eng)
+	if err != nil {
+		return nil
+	}
+	var out []Candidate
+	for _, nic := range nics {
+		if nic.VM != nil && strings.EqualFold(nic.VM.ID, parent) && isUUID(nic.ID) && strings.HasPrefix(strings.ToLower(nic.ID), strings.ToLower(prefix)) {
+			out = append(out, Candidate{Value: nic.ID})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Value < out[j].Value })
+	return out
 }

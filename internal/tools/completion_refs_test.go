@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // refArg is an argument that names a resource or an entry of a catalogue:
@@ -46,14 +48,13 @@ var refUncompleted = map[string]struct{ why, item string }{
 
 	"cert_private_key version_id": {why: refParent},
 
-	"vpc_route_delete route_id":                 {why: refParent},
-	"s3_get key":                                {why: refParent},
-	"s3_put key":                                {why: refParent},
-	"s3_rm key":                                 {why: refParent},
-	"secret_create kms_key_id":                  {why: refNoList},
-	"backup_list resource_id":                   {why: refTwoKinds},
-	"tg_create interface_id":                    {why: refNoList},
-	"vpc_route_create next_hop_interface_id":    {why: refNoList},
+	"vpc_route_delete route_id": {why: refParent},
+	"s3_get key":                {why: refParent},
+	"s3_put key":                {why: refParent},
+	"s3_rm key":                 {why: refParent},
+	"secret_create kms_key_id":  {why: refNoList},
+	"backup_list resource_id":   {why: refTwoKinds},
+
 	"vpc_route_create next_hop_magic_router_id": {why: refNoList},
 	"vpc_route_create next_hop_vip_id":          {why: refNoList},
 }
@@ -217,5 +218,55 @@ func TestComplete_ChildWithoutParentInput(t *testing.T) {
 				t.Fatal("Tab picked a parent for", tool)
 			}
 		}
+	}
+}
+
+type tabInterfacesCloud struct {
+	cancelCloud
+	projects []string
+	foreign  bool
+}
+
+func (c *tabInterfacesCloud) ListInterfaces(_ context.Context, p string) ([]*provision.Interface, error) {
+	c.projects = append(c.projects, p)
+	rows := []*provision.Interface{{ID: zoneMine, ProjectID: p, VM: &provision.InterfaceVM{ID: resMine}}, {ID: zoneOther, ProjectID: p, VM: &provision.InterfaceVM{ID: resOther}}, {ID: zoneAZ, ProjectID: p}}
+	if c.foreign {
+		rows[0].ProjectID = ownForeign
+	}
+	return rows, nil
+}
+
+func TestComplete_InterfaceRequiresSelectedVM(t *testing.T) {
+	for _, tc := range []struct{ tool, arg, parent string }{
+		{"tg_create", "interface_id", "vm_id"}, {"vpc_route_create", "next_hop_interface_id", "next_hop_vm_id"},
+	} {
+		t.Run(tc.tool, func(t *testing.T) {
+			c := &tabInterfacesCloud{}
+			r := completionRegistry(t, c, completionCfg)
+			if CompletionParent(tc.tool, tc.arg) != tc.parent || !r.Completes(tc.tool, tc.arg) {
+				t.Fatal("parent source not registered")
+			}
+			for _, value := range []string{"", "not-a-uuid"} {
+				if got := r.CompleteFor(context.Background(), tc.tool, tc.arg, "", value); len(got) != 0 {
+					t.Fatal(got)
+				}
+			}
+			if len(c.projects) != 0 {
+				t.Fatal(c.projects)
+			}
+			for vm, nic := range map[string]string{resMine: zoneMine, resOther: zoneOther} {
+				got := r.CompleteFor(context.Background(), tc.tool, tc.arg, "", vm)
+				if len(got) != 1 || got[0].Value != nic {
+					t.Fatal(vm, got)
+				}
+			}
+			c.foreign = true
+			if got := r.CompleteFor(context.Background(), tc.tool, tc.arg, "", resMine); len(got) != 0 {
+				t.Fatal(got)
+			}
+			if !slices.Equal(c.projects, []string{completionCfg.ProjectID, completionCfg.ProjectID, completionCfg.ProjectID}) {
+				t.Fatal(c.projects)
+			}
+		})
 	}
 }
