@@ -394,15 +394,8 @@ func clusterOwnerCard(client func(*Registry, context.Context) (*dbaas.Client, *e
 			return nil, err
 		}
 		m, err := api.GetCluster(ctx, id)
-		if err != nil && notThere(err) && !dbaas.ConfirmedNotFound(err) {
-			return nil, unverifiedAbsence()
-		}
 		return identifiedCard(id, m, err)
 	}
-}
-
-func unverifiedAbsence() error {
-	return stderrors.New(i18n.T("The service did not establish that the resource is absent.", "Ответ сервиса не подтверждает отсутствие ресурса."))
 }
 
 // Public and private DNS have distinct address spaces. A refusal on either
@@ -420,11 +413,8 @@ func dnsOwnerCard(get func(*dns.Client, context.Context, string, string) (map[st
 				return identifiedCard(id, m, nil)
 			}
 			var ae *dns.APIError
-			if stderrors.As(err, &ae) && ae.Status == http.StatusNotFound && ae.Code == 5 {
+			if stderrors.As(err, &ae) && ae.Status == http.StatusNotFound {
 				continue
-			}
-			if notThere(err) {
-				err = unverifiedAbsence()
 			}
 			uncertain = err
 		}
