@@ -6,12 +6,15 @@ package tools
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -265,6 +268,9 @@ func TestComplete_BucketCertificateAndResourceType(t *testing.T) {
 				calls++
 				switch tc.source {
 				case "s3_ls":
+					if _, supplied := args["prefix"]; supplied {
+						t.Fatalf("bucket completion supplied a filter before any key was typed: %v", args)
+					}
 					if args["bucket"] != tc.parent {
 						return `{"objects":[]}`, false
 					}
@@ -319,5 +325,36 @@ func TestComplete_SecurityGroupAndRouteChildren(t *testing.T) {
 		if !strings.HasPrefix(req, "GET ") || strings.Contains(req, resForeign+"/routes") {
 			t.Fatal(req)
 		}
+	}
+}
+
+func TestComplete_S3BucketRootListsOnlyKeys(t *testing.T) {
+	cfg := completionCfg
+	cfg.S3.Endpoint = "https://objects.example.invalid"
+	cfg.S3.Region = "us-east-1"
+	cfg.S3.AccessKey = "synthetic-access"
+	cfg.S3.SecretKey = "synthetic-signing-fixture"
+	reg := completionRegistry(t, &zonesCloud{}, cfg)
+	original := httpretry.DefaultBase
+	t.Cleanup(func() { httpretry.DefaultBase = original })
+	for _, tool := range []string{"s3_get", "s3_put", "s3_rm"} {
+		t.Run(tool, func(t *testing.T) {
+			calls := 0
+			httpretry.DefaultBase = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				q := req.URL.Query()
+				if req.Method != http.MethodGet || req.URL.Host != "objects.example.invalid" ||
+					strings.Trim(req.URL.Path, "/") != "bucket-one" || q.Get("list-type") != "2" ||
+					q.Get("prefix") != "" || req.Header.Get("Authorization") == "" {
+					t.Fatalf("unexpected request %s %s", req.Method, req.URL.Redacted())
+				}
+				body := `<ListBucketResult><Name>bucket-one</Name><IsTruncated>false</IsTruncated><Contents><Key>docs/one</Key><Size>125</Size></Contents></ListBucketResult>`
+				return &http.Response{Request: req, StatusCode: 200, Header: http.Header{"Content-Type": {"application/xml"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+			})
+			got := reg.CompleteFor(context.Background(), tool, "key", "", "bucket-one")
+			if calls != 1 || !slices.Equal(got, []Candidate{{Value: "docs/one"}}) {
+				t.Fatalf("list requests %d, suggestions %v", calls, got)
+			}
+		})
 	}
 }
