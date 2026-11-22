@@ -57,7 +57,7 @@ func TestOwnerCard_ReadByIDForCutDelete(t *testing.T) {
 		{"dns_zone_delete", kindDNSZone, []string{"/v1/publicZones/", "/v1/privateZones/"}},
 		{"dns_record_delete", kindDNSRecord, []string{"/v1/publicRecordsSole/", "/v1/privateRecordsSole/"}},
 	} {
-		for _, world := range []string{"present", "wrong_id", "forbidden", "absent", "gateway_404", "other_key"} {
+		for _, world := range []string{"present", "wrong_id", "forbidden", "absent", "gateway_404", "routing_404", "other_key"} {
 			t.Run(tc.tool+"/"+world, func(t *testing.T) {
 				f := &ownerFake{}
 				r := ownerRegistry(t, f, true, ownProject)
@@ -88,6 +88,9 @@ func TestOwnerCard_ReadByIDForCutDelete(t *testing.T) {
 							if tc.kind == kindVM {
 								body = `[{"message":"not found"}]`
 							}
+						case "routing_404":
+							status = 404
+							body = `{"code":5,"message":"Not Found","details":[]}`
 						case "gateway_404":
 							status = 404
 							body = "route not found"

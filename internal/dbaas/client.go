@@ -14,7 +14,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -98,32 +97,16 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	return data, resp.StatusCode, nil
 }
 
-type serviceError struct {
-	status, code int
-	message      string
-}
-
-func (e *serviceError) Error() string { return fmt.Sprintf("dbaas API %d: %s", e.status, e.message) }
-
-// ConfirmedNotFound distinguishes a gRPC NOT_FOUND response from a gateway 404.
-func ConfirmedNotFound(err error) bool {
-	var e *serviceError
-	return errors.As(err, &e) && e.status == http.StatusNotFound && e.code == 5
-}
-
 func apiError(status int, body []byte) error {
 	var e struct {
-		Code    int    `json:"code"`
 		Message string `json:"message"`
 	}
-	if err := json.Unmarshal(body, &e); err != nil {
-		e.Code = 0
-	}
+	_ = json.Unmarshal(body, &e)
 	msg := e.Message
 	if msg == "" {
 		msg = string(body)
 	}
-	return &serviceError{status: status, code: e.Code, message: msg}
+	return fmt.Errorf("dbaas API %d: %s", status, msg)
 }
 
 func (c *Client) getList(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
