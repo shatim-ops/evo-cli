@@ -155,7 +155,7 @@ func (s *Registry) planVpcCreate(ctx context.Context, args map[string]any) (*Pla
 		return nil, fmt.Errorf(i18n.T("check the name is free: list VPCs: %w", "проверка, что имя свободно: список VPC: %w"), err)
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		return answered(nameTakenResult("VPC", name, id, st, "vpc_get id="+id)), nil
+		return answered(occupiedName("VPC", name, id, st, "vpc_get id="+id, "")), nil
 	}
 	preview := map[string]any{
 		"message": i18n.Tf("vpc_create creates a new VPC %q (async).",
@@ -200,7 +200,13 @@ func (s *Registry) planVpcDelete(ctx context.Context, args map[string]any) (*Pla
 	}
 	return s.deletePlan("vpc_delete", "vpc_delete deletes VPC %s (async). Its subnets/resources must be removed first.",
 		"vpc_delete удаляет VPC %s (асинхронно). Сначала нужно удалить его подсети и ресурсы.",
-		id, func() (map[string]any, error) { return cli.GetVPC(ctx, id) },
+		id, func() (map[string]any, error) {
+			card, err := cli.GetVPC(ctx, id)
+			if observed, _ := ctx.Value(vpcPreviewProjectKey{}).(*vpcPreviewProject); observed != nil && err == nil && stringArg(card, "id") == id {
+				observed.id, observed.project = id, projectField(card)
+			}
+			return card, err
+		},
 		func(ctx context.Context) (string, bool) {
 			op, err := cli.DeleteVPC(ctx, id)
 			if err != nil {

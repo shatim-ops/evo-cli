@@ -363,3 +363,29 @@ func TestConfirmedReadForms(t *testing.T) {
 		}
 	}
 }
+
+// Consent and recording policies belong to declarations. A family literal
+// in a dispatch comparison or switch would silently bypass that inventory.
+func TestGateDoesNotDispatchOnToolName(t *testing.T) {
+	tree, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "..", gateFile), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(tree, func(n ast.Node) bool {
+		switch e := n.(type) {
+		case *ast.BinaryExpr:
+			for _, v := range []ast.Expr{e.X, e.Y} {
+				if lit, ok := v.(*ast.BasicLit); ok && lit.Kind == token.STRING && strings.Contains(lit.Value, "_") {
+					t.Errorf("gate compares a tool literal %s", lit.Value)
+				}
+			}
+		case *ast.CaseClause:
+			for _, v := range e.List {
+				if lit, ok := v.(*ast.BasicLit); ok && strings.Contains(lit.Value, "_") {
+					t.Errorf("gate switches on a tool literal %s", lit.Value)
+				}
+			}
+		}
+		return true
+	})
+}

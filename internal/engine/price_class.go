@@ -95,8 +95,7 @@ var priceClasses = map[string]priceDecl{
 		whyRU: "у evo нет цены балансировщика"},
 	ResourceRedis: {why: "no price of Managed Redis before the calculator",
 		whyRU: "цены Managed Redis нет до калькулятора"},
-	ResourceSNAT: {why: "evo has no price of a SNAT gateway",
-		whyRU: "у evo нет цены шлюза SNAT"},
+	ResourceSNAT: {priceable: true},
 	ResourceDNSZone: {why: "evo has no price of Evolution DNS",
 		whyRU: "у evo нет цены Evolution DNS"},
 	ResourceDNSRecord: {why: "evo has no price of Evolution DNS",
@@ -111,8 +110,7 @@ var priceClasses = map[string]priceDecl{
 		whyRU: "в тарифах строки для него нет"},
 	ResourceSubnet: {why: "no line of the tariffs names it",
 		whyRU: "в тарифах строки для него нет"},
-	ResourceVPC: {why: "no line of the tariffs names it",
-		whyRU: "в тарифах строки для него нет"},
+	ResourceVPC: {zero: "Evolution VPC is free", zeroRU: "сервис Evolution VPC предоставляется бесплатно"},
 	ResourceVPCRoute: {why: "no line of the tariffs names it",
 		whyRU: "в тарифах строки для него нет"},
 	ResourceBackup: {why: "no line of the tariffs names it",
@@ -184,6 +182,8 @@ func share(r string, p CreatePreview) float64 {
 		return c.ComputeMonthlyRub
 	case ResourceDisk:
 		return c.DiskMonthlyRub
+	case ResourceSNAT:
+		return c.SNATGatewayMonthlyRub
 	case ResourceFloatingIP:
 		return c.FloatingIPMonthlyRub
 	}

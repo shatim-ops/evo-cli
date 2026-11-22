@@ -6,14 +6,18 @@ package tools
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 func TestVPCCreateIntentAtSend(t *testing.T) {
@@ -37,6 +41,18 @@ func TestVPCCreateIntentAtSend(t *testing.T) {
 					fmt.Fprintf(w, `{"id":%q,"name":%q,"projectId":%q}`, auditUUID, name, dbaasProject)
 				case r.Method == http.MethodGet && r.URL.Path == "/v1/vpcs" && r.URL.Query().Get("project_id") == dbaasProject:
 					gets++
+					// A second process must not pass planning before the first
+					// has opened its intent. Observe the real shared lock at GET.
+					if mode == "created" {
+						unlock, err := state.FileLock(filepath.Join(config.DataDir(root), "vpc_create.lock"), 10*time.Millisecond)
+						if err == nil {
+							unlock()
+							t.Fatal("unserialized VPC name lookup")
+						}
+						if !errors.Is(err, state.ErrFileLocked) {
+							t.Fatal(err)
+						}
+					}
 					if len(pending) != 0 {
 						t.Errorf("name lookup already has an intent: %+v", pending)
 					}
@@ -91,5 +107,30 @@ func TestVPCCreateIntentAtSend(t *testing.T) {
 				t.Fatalf("pending after definite outcome: %+v", pending)
 			}
 		})
+	}
+}
+
+func TestVPCDeletePreviewReadsOnceAndConfirmationReadsAgain(t *testing.T) {
+	var cards int
+	f := &apiFake{own: func(w http.ResponseWriter, req *http.Request) bool {
+		if req.Method != "GET" || req.URL.Path != "/v1/vpcs/"+auditUUID {
+			t.Fatalf("unexpected write or read: %s %s", req.Method, req.URL)
+		}
+		cards++
+		status := "ACTIVE"
+		if cards > 1 {
+			status = "DELETED"
+		}
+		fmt.Fprintf(w, `{"id":%q,"name":"net","projectId":%q,"status":%q}`, auditUUID, ownForeign, status)
+		return true
+	}}
+	r := apiFakeRegistry(t, f)
+	preview, text, refused := callNamed(t, r, "vpc_delete", map[string]any{"id": auditUUID})
+	if !refused || preview["status"] != "confirmation_required" || preview["project_id"] != ownForeign || cards != 1 {
+		t.Fatalf("card=%d preview=%s", cards, text)
+	}
+	after, text, failed := callNamed(t, r, "vpc_delete", map[string]any{"id": auditUUID, "confirmed": true})
+	if failed || after["status"] != "already_deleted" || cards != 2 {
+		t.Fatalf("card=%d outcome=%s", cards, text)
 	}
 }

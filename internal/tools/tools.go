@@ -3992,7 +3992,6 @@ var consentWords = map[string]string{
 	"secret_create":       consentBillable,
 	"subnet_create":       consentBillable,
 	"tg_create":           consentBillable,
-	"vpc_create":          consentBillable,
 	"vpc_route_create":    consentBillable,
 	"destroy":             consentDeletes,
 	"stack_destroy":       consentDeletes,

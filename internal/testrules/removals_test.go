@@ -25,22 +25,22 @@ import (
 // makes before it is joined. Not a list of misses: each line is a removal
 // whose path is evo's own, declared with why; a new one is a new line.
 var removals = map[string]directWrite{
-	"internal/tools/gate.go\tRegistry.planLbCreate":        {1, "the declared state directory, fixed lb-previews directory, and SHA-256 of the current caller/session and optional stack job scope plus .json; ReadFileNoFollow reads this same file and the stored offer supplies no path"},
-	"internal/tools/gate.go\treserveUpgrade":               {1, "the local preview slot derived from a SHA-256 of the transport session; no path read from a file"},
-	"internal/intent/manual.go\tManualSnapshot.Apply":      {1, "the private staging directory os.MkdirTemp made in this call under the verified decision directory"},
-	"internal/auth/cache.go\tFileCache.Delete":             {1, "the token cache's own path, set by evo from the configuration directory"},
-	"internal/cli/login.go\twritableConfigDir":             {1, "the probe file os.CreateTemp made in this call"},
-	"internal/config/profile.go\tMigrateLegacyDir":         {2, "the migration's own temporary directory: the configuration base and the pid, no name read"},
-	"internal/config/profile.go\tDeleteProfile":            {1, "the token cache of a profile whose name, read from the file, is checked by ValidateProfileName before the path"},
-	"internal/config/profile.go\twriteFileAtomic":          {1, "the temporary file os.CreateTemp made in this call"},
-	"internal/tools/made_repeat.go\tRegistry.repeatOfMade": {1, "the file madeKey names: a hash evo makes of the call, no name read"},
-	"internal/tools/made_repeat.go\tforgetMadeOf":          {1, "a file of made/ whose name has the form madeKey makes (madeName), not a symlink: no path read from a file"},
-	"internal/deployplan/store.go\tDelete":                 {1, "the plan id is checked by validPlanID (the form newPlanID makes) before the join"},
-	"internal/intent/intent.go\tremove":                    {1, "Close and Settle: the id is a record file's name, checked against begin's form (recordPath); never the content's"},
-	"internal/history/prune.go\tPrune":                     {2, "a file of a day of the journal: a name of the directory's listing that matches evo's form (fileForm, a date), never a line's content; the mark of a pruning put off (deferredName), a constant"},
-	"internal/kubetools/kubetools.go\trun":                 {1, "the temporary file os.CreateTemp made in this call"},
-	"internal/state/state.go\tWrite":                       {2, "the temporary file os.CreateTemp made in this call"},
-	"internal/tools/tools_kube.go\tRegistry.planK8sHelm":   {1, "the temporary values file os.CreateTemp made in this call"},
+	"internal/tools/preview_args.go\tRegistry.planLbCreate": {1, "the declared state directory, fixed lb-previews directory, and SHA-256 of the current caller/session and optional stack job scope plus .json; ReadFileNoFollow reads this same file and the stored offer supplies no path"},
+	"internal/tools/gate.go\treserveUpgrade":                {1, "the local preview slot derived from a SHA-256 of the transport session; no path read from a file"},
+	"internal/intent/manual.go\tManualSnapshot.Apply":       {1, "the private staging directory os.MkdirTemp made in this call under the verified decision directory"},
+	"internal/auth/cache.go\tFileCache.Delete":              {1, "the token cache's own path, set by evo from the configuration directory"},
+	"internal/cli/login.go\twritableConfigDir":              {1, "the probe file os.CreateTemp made in this call"},
+	"internal/config/profile.go\tMigrateLegacyDir":          {2, "the migration's own temporary directory: the configuration base and the pid, no name read"},
+	"internal/config/profile.go\tDeleteProfile":             {1, "the token cache of a profile whose name, read from the file, is checked by ValidateProfileName before the path"},
+	"internal/config/profile.go\twriteFileAtomic":           {1, "the temporary file os.CreateTemp made in this call"},
+	"internal/tools/made_repeat.go\tRegistry.repeatOfMade":  {1, "the file madeKey names: a hash evo makes of the call, no name read"},
+	"internal/tools/made_repeat.go\tforgetMadeOf":           {1, "a file of made/ whose name has the form madeKey makes (madeName), not a symlink: no path read from a file"},
+	"internal/deployplan/store.go\tDelete":                  {1, "the plan id is checked by validPlanID (the form newPlanID makes) before the join"},
+	"internal/intent/intent.go\tremove":                     {1, "Close and Settle: the id is a record file's name, checked against begin's form (recordPath); never the content's"},
+	"internal/history/prune.go\tPrune":                      {2, "a file of a day of the journal: a name of the directory's listing that matches evo's form (fileForm, a date), never a line's content; the mark of a pruning put off (deferredName), a constant"},
+	"internal/kubetools/kubetools.go\trun":                  {1, "the temporary file os.CreateTemp made in this call"},
+	"internal/state/state.go\tWrite":                        {2, "the temporary file os.CreateTemp made in this call"},
+	"internal/tools/tools_kube.go\tRegistry.planK8sHelm":    {1, "the temporary values file os.CreateTemp made in this call"},
 }
 
 // Full audit 1.8, FB180-1: the path a removal is joined from is not read
