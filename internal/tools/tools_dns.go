@@ -563,12 +563,19 @@ func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any)
 				if err == nil {
 					err = noID("operation")
 				}
-				return lostCreate(ctx, "dns_record_create", list, i18n.T("DNS record", "запись DNS"), key, nil, "dns_records zone_id="+zoneID, fmt.Errorf(i18n.T("create record: %w", "создание записи: %w"), err))
+				return lostCreateWithRead(ctx, "dns_record_create", list, i18n.T("DNS record", "запись DNS"), key, nil, "dns_records zone_id="+zoneID, fmt.Errorf(i18n.T("create record: %w", "создание записи: %w"), err), func(out map[string]any, id string) {
+					if id != "" {
+						nextStep(out, "dns_record_get", map[string]any{"record_id": id, "type": vis})
+					} else {
+						nextStep(out, "dns_records", map[string]any{"zone_id": zoneID, "type": vis})
+					}
+				})
 			}
 			out := map[string]any{"status": "creating", "operation_id": op.ID, "note": i18n.T("Async — poll dns_operation(operation_id).", "Асинхронно — опрашивайте evo dns operation <operation_id>.")}
 			if op.ResourceID != "" {
 				out["record_id"] = op.ResourceID
 			}
+			nextStep(out, "dns_operation", map[string]any{"operation_id": op.ID})
 			return toJSON(out), false
 		},
 	}, nil

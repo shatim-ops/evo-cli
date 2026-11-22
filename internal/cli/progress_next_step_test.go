@@ -62,23 +62,6 @@ var statusOver = map[string]bool{
 	"rebooted": true, "reboot_accepted": true,
 }
 
-// noNextStep are the tools shipped before the invariant whose answer says
-// the change is going on and names no next step for the machine: the agent
-// polls a list blindly (R-17). "tool" → what the answer has. It only
-// shrinks, and a new tool does not join it. Closes by 1.10 (release plan
-// 1.9, «Сроки храповиков «к 1.7–1.9»», #1590 question 19 (c)); release plan
-// 1.9, «Инварианты до новых изменяющих операций», Н3; R-17: next_tool and
-// next_args are additive, not breaking).
-var noNextStep = map[string]string{
-	"ca_deploy":         "deploying, operation_id",
-	"cert_issue_le":     "issuing, no operation_id",
-	"cert_renew":        "renewing, no operation_id",
-	"dns_record_create": "creating, operation_id: next is dns_operation",
-	"image_create":      "building, no operation_id",
-	"vpc_route_create":  "creating, operation_id: next is vpc_operation",
-	"vpc_route_delete":  "deleting, operation_id: next is vpc_operation",
-}
-
 // resourceStateNamed are the creates whose answer, while the cloud makes
 // the resource, names its state now (resource_status), beside the step
 // (release plan 1.9, «Честный ход», #1816; Астра, #1815).
@@ -114,6 +97,14 @@ func nextStepProblem(tool string, answer map[string]any, registry map[string]boo
 	mutating, known := registry[next]
 	if !known {
 		return "names next_tool " + next + ", which is not a tool of the registry"
+	}
+	// Container Apps returns a diagnostic operation ID, but exposes only
+	// the app card as a public read. Require the exact name of this app.
+	if tool == "ca_deploy" {
+		if next != "ca_get" || mutating || args["name"] == nil || args["name"] != answer["name"] {
+			return "must read the deployed app by its name"
+		}
+		return ""
 	}
 	if op, _ := answer["operation_id"].(string); op != "" {
 		if !strings.HasSuffix(next, "_operation") {
@@ -195,14 +186,7 @@ func TestProgress_ChangeGoingOnNamesTheNextStep(t *testing.T) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if noNextStep[name] == "" {
-			t.Errorf("%s: %s — put next_tool and next_args into the answer (nextStep): the read of the operation when the platform gives its id, else the same call, whose repeat reads the state and does not write (D99, П5)", name, found[name])
-		}
-	}
-	for name := range noNextStep {
-		if found[name] == "" {
-			t.Errorf("noNextStep names %s, whose answer names the next step now or is no longer going on: remove the line (the list only shrinks)", name)
-		}
+		t.Errorf("%s: %s", name, found[name])
 	}
 }
 
@@ -356,6 +340,102 @@ func TestProgress_AnOverAnswerIsOver(t *testing.T) {
 	for name := range overWhileGoingOn {
 		if !found[name] {
 			t.Errorf("overWhileGoingOn names %s, whose answer no longer says created with its resource being made: remove the line (the list only shrinks)", name)
+		}
+	}
+}
+
+// Follow the actual public answer in the same world. The operation ID differs
+// from the resource ID, so using the wrong UUID cannot satisfy the lookup.
+func TestProgressAsyncReadAfterSend(t *testing.T) {
+	const op = "00000000-0000-4000-8000-00000000a091"
+	for _, tc := range []struct{ tool, accepted, uncertain string }{
+		{"ca_deploy", "ca_get", "ca_get"},
+		{"cert_issue_le", "cert_operation", "cert_list"},
+		{"cert_renew", "cert_operation", "cert_get"},
+		{"dns_record_create", "dns_operation", "dns_records"},
+		{"image_create", "image_get", "image_list"},
+		{"vpc_route_create", "vpc_operation", "vpc_routes"},
+		{"vpc_route_delete", "vpc_operation", "vpc_routes"},
+	} {
+		for _, lost := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/lost=%t", tc.tool, lost), func(t *testing.T) {
+				w, _ := withJSONWorld(t)
+				old := w.rt.extra
+				writes := 0
+				following := false
+				var gets []string
+				w.rt.extra = func(req *http.Request) (*http.Response, error) {
+					if req.Method == http.MethodGet || req.Method == http.MethodHead {
+						if following {
+							gets = append(gets, req.URL.Host+req.URL.Path)
+						}
+						if strings.HasSuffix(req.URL.Path, "/"+op) {
+							return contractRT{status: 200, body: `{"id":"` + op + `","done":true}`}.RoundTrip(req)
+						}
+						return old(req)
+					}
+					writes++
+					if lost {
+						return nil, io.ErrUnexpectedEOF
+					}
+					id := op
+					if tc.tool == "image_create" {
+						id = parityVM
+					}
+					return contractRT{status: 200, body: `{"id":"` + id + `","resourceId":"` + parityVM + `","done":false}`}.RoundTrip(req)
+				}
+				s := parityServers(t).stdio
+				args := copyArgs(parityArgs[tc.tool])
+				args["confirmed"] = true
+				first, _ := roDecode(t, stdioRaw(t, s, tc.tool, args))
+				answer := parseObject(first.text)
+				want := tc.accepted
+				if lost {
+					want = tc.uncertain
+				}
+				next, _ := answer["next_tool"].(string)
+				readArgs, _ := answer["next_args"].(map[string]any)
+				if next != want || writes != 1 || first.isErr != lost || readArgs == nil || readArgs["confirmed"] != nil {
+					t.Fatal(first, writes)
+				}
+				if strings.HasSuffix(next, "_operation") && (answer["operation_id"] != op || readArgs["operation_id"] != op) {
+					t.Fatal(answer)
+				}
+				switch next {
+				case "ca_get", "cert_list":
+					if readArgs["name"] != args["name"] {
+						t.Fatal(readArgs)
+					}
+				case "image_get":
+					if readArgs["image_id"] != parityVM {
+						t.Fatal(readArgs)
+					}
+				case "image_list":
+					if readArgs["query"] != args["name"] || readArgs["type"] != "private" || readArgs["all"] != true {
+						t.Fatal(readArgs)
+					}
+				case "vpc_routes":
+					if readArgs["vpc_id"] != args["vpc_id"] {
+						t.Fatal(readArgs)
+					}
+				case "dns_records":
+					if readArgs["zone_id"] != args["zone_id"] || readArgs["type"] == nil {
+						t.Fatal(readArgs)
+					}
+				case "cert_get":
+					if readArgs["id"] != args["certificate_id"] {
+						t.Fatal(readArgs)
+					}
+				}
+				following = true
+				result, _ := roDecode(t, stdioRaw(t, s, next, readArgs))
+				if result.rpcErr != "" || result.isErr || writes != 1 {
+					t.Fatal(next, readArgs, result, writes, gets)
+				}
+				if strings.HasSuffix(next, "_operation") && (len(gets) == 0 || !strings.HasSuffix(gets[0], "/"+op)) {
+					t.Fatal(next, gets)
+				}
+			})
 		}
 	}
 }

@@ -126,29 +126,39 @@ func noReceipt(err error, read string) error {
 // may have given for a backend that applied the request — and a success
 // without an id are reconciled by name.
 func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]map[string]any, error), kind, name string, created map[string]any, getHint string, createErr error) (string, bool) {
+	return lostCreateWithRead(ctx, tool, list, kind, name, created, getHint, createErr, nil)
+}
+
+func lostCreateWithRead(ctx context.Context, tool string, list func(context.Context) ([]map[string]any, error), kind, name string, created map[string]any, getHint string, createErr error, read func(map[string]any, string)) (string, bool) {
 	c := decls[tool].Created
 	idField, listTool := c.lostField(), c.list
 	if idField == "" || listTool == "" {
 		panic("tools: lostCreate for " + tool + ", whose Decl.Created declare no id field or list")
 	}
-	if st := apiStatus(createErr); st >= 400 && st < 500 {
+	if st := apiStatus(createErr); st >= 400 && st < 500 && (st != 408 || read == nil) {
 		return errResult(createErr), true
+	}
+	fields := map[string]any{}
+	if read != nil {
+		read(fields, "")
 	}
 	items, err := list(ctx)
 	if err != nil {
-		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
+		fields["warning"] = i18n.Tf(
 			"the %s %q may have been made and be billed: check %s by its name before any repeat — a repeat while it is not listed there may make a second",
 			"%s %q мог быть создан и оплачиваться: до любого повтора проверьте %s по имени — повтор, пока его там нет, может создать второй",
-			kind, name, listTool)}), true
+			kind, name, listTool)
+		return errAnswer(createErr, fields), true
 	}
 	id, status, ok := takenName(items, name)
 	if !ok {
 		// The request went out and the list does not show what it may
 		// have made: the answer sends to the read, not to a repeat.
-		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
+		fields["warning"] = i18n.Tf(
 			"the create request was sent and got no answer: the %s %q may have been made though %s does not show it now — check %s again before any repeat",
 			"запрос на создание отправлен, ответ не получен: %s %q мог быть создан, хотя %s сейчас его не показывает — до любого повтора проверьте %s ещё раз",
-			kind, name, listTool, listTool)}), true
+			kind, name, listTool, listTool)
+		return errAnswer(createErr, fields), true
 	}
 	answer := "creating"
 	if resourceFailed(status) {
@@ -161,6 +171,9 @@ func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]
 	// The state is the list's word, the service's: marked as goingOn marks
 	// it (Астра, #1952).
 	cloudText(out, "resource_status")
+	if read != nil {
+		read(out, id)
+	}
 	return toJSON(out), false
 }
 
