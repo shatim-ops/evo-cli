@@ -57,8 +57,9 @@ type Estimate struct {
 	Source          string  `json:"source"`
 
 	// TotalHourlyRub is the API's total per hour (compute, disk, floating IP).
-	TotalHourlyRub       float64 `json:"total_hourly_rub,omitempty"`
-	FloatingIPMonthlyRub float64 `json:"floating_ip_monthly_rub,omitempty"`
+	TotalHourlyRub        float64 `json:"total_hourly_rub,omitempty"`
+	SNATGatewayMonthlyRub float64 `json:"snat_gateway_monthly_rub,omitempty"`
+	FloatingIPMonthlyRub  float64 `json:"floating_ip_monthly_rub,omitempty"`
 	// Breakdown is the API's answer as given.
 	Breakdown *Breakdown `json:"breakdown,omitempty"`
 	// PriceAPIError is why the price-calculation API gave no price (an HTTP
@@ -350,5 +351,5 @@ const snatSource = "estimate: public SNAT rental, Evolution Compute tariff 26101
 // tariff 261014, including VAT. Attached resources have their own prices.
 func EstimatePublicSNAT() Estimate {
 	const hourly = 0.2074
-	return Estimate{Currency: "RUB", TotalHourlyRub: hourly, TotalMonthlyRub: round2(hourly * hoursPerMonth), Source: snatSource}
+	return Estimate{Currency: "RUB", TotalHourlyRub: hourly, SNATGatewayMonthlyRub: round2(hourly * hoursPerMonth), TotalMonthlyRub: round2(hourly * hoursPerMonth), Source: snatSource}
 }

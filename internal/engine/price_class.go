@@ -182,6 +182,8 @@ func share(r string, p CreatePreview) float64 {
 		return c.ComputeMonthlyRub
 	case ResourceDisk:
 		return c.DiskMonthlyRub
+	case ResourceSNAT:
+		return c.SNATGatewayMonthlyRub
 	case ResourceFloatingIP:
 		return c.FloatingIPMonthlyRub
 	}
