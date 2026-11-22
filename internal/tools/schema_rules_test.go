@@ -300,7 +300,7 @@ func TestArgs_IDsDeclareTheirFormat(t *testing.T) {
 				continue
 			}
 			key := tl.Name + "." + arg
-			if p["format"] != nil || p["pattern"] != nil || declaredIDFilter(tl.Name, arg) || vpcNameArguments[tl.Name] == arg {
+			if p["format"] != nil || p["pattern"] != nil || takesName(tl.Name, arg) || declaredIDFilter(tl.Name, arg) || vpcNameArguments[tl.Name] == arg {
 				continue
 			}
 			seen[key] = true
@@ -399,7 +399,14 @@ func TestArgs_ResourceReferencesKeepIDOrName(t *testing.T) {
 				t.Fatal(k, ref, err)
 			}
 		}
-		if err := CheckArgs(tl, map[string]any{arg: "  "}); clierrors.Reason(err) != clierrors.CodeUsage {
+		err := CheckArgs(tl, map[string]any{arg: "  "})
+		if takesName(name, arg) {
+			// D57 passes the raw name through project lookup and preserves the
+			// handler's own diagnostics and defaults for an unmatched value.
+			if err != nil {
+				t.Fatal(k, err)
+			}
+		} else if clierrors.Reason(err) != clierrors.CodeUsage {
 			t.Fatal(k, err)
 		}
 	}

@@ -88,7 +88,7 @@ var toolsRU = map[string]toolRU{
 		Args: map[string]string{
 			"diagnose": "Прочитать и правила групп безопасности ВМ и ответить проверками, доступом, итогом и not_checked",
 			"name":     "Имя ВМ (вместо vm_id)",
-			"vm_id":    "UUID ВМ (из ответа 'evo vm create', выходных данных стека или 'evo vm list'). Нужен vm_id или name",
+			"vm_id":    "UUID или имя ВМ (из evo vm list). Укажите vm_id или name",
 		},
 	},
 	"vm_start": {
@@ -238,7 +238,7 @@ var toolsRU = map[string]toolRU{
 		Args: map[string]string{
 			"full":     "Вывести и значок SVG, и шаблон cloud-init user_data_template (большой объём)",
 			"image":    "Имя, отображаемое имя или UUID образа (поиск: evo image list). Нужен image или image_id",
-			"image_id": "UUID образа (поиск: evo image list); image принимает и имя",
+			"image_id": "UUID, имя или отображаемое имя образа (из evo image list). Укажите image_id или image",
 		},
 	},
 
