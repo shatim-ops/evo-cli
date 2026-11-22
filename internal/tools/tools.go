@@ -212,7 +212,7 @@ func (s *Registry) registerTools() {
 				"A Marketplace image needs user_data_template and image_metadata for every {{ var }}. Async: poll image_get until ready=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":               strProp("Unique image name."),
-				"disk_id":            strProp("Source disk UUID."),
+				"disk_id":            uuidProp("Source disk UUID."),
 				"display_name":       strProp("Console name."),
 				"description":        strProp("At most 255 characters."),
 				"zone":               strProp("Zone name or UUID; must be the disk's."),
@@ -404,7 +404,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "k8s_get",
 			Description: "Get a Managed Kubernetes cluster by id (full details incl. status). Read-only.",
-			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (from k8s_list).")}, "cluster_id"),
+			InputSchema: objSchema(map[string]any{"cluster_id": uuidProp("Cluster UUID (from k8s_list).")}, "cluster_id"),
 		},
 		{
 			Name:        "k8s_options",
@@ -445,7 +445,7 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_kubeconfig",
 			Description: "Get the kubeconfig of a Managed Kubernetes cluster. By default it embeds a static bearer token (TTL ~1h): the raw Cloud.ru kubeconfig needs the 'cloudlogin' exec plugin. The answer holds that token: a secret — do not print it or pass it on. embed_token=false gives the raw one.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id":  strProp("Cluster UUID."),
+				"cluster_id":  uuidProp("Cluster UUID."),
 				"network":     enumProp("NETWORK_TYPE_PUBLIC or NETWORK_TYPE_PRIVATE (default: cluster default).", "NETWORK_TYPE_PUBLIC", "NETWORK_TYPE_PRIVATE"),
 				"embed_token": boolPropTrue("Embed a static bearer token (default true)."),
 			}, "cluster_id"),
@@ -470,7 +470,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "k8s_nodepools",
 			Description: "List node pools of one Managed Kubernetes cluster (name, state, desired/ready nodes). Read-only. The API has no list across clusters: get cluster_id from k8s_list.",
-			InputSchema: objSchema(map[string]any{"cluster_id": strProp("Cluster UUID (from k8s_list). Required.")}, "cluster_id"),
+			InputSchema: objSchema(map[string]any{"cluster_id": uuidProp("Cluster UUID (from k8s_list). Required.")}, "cluster_id"),
 		},
 		{
 			Name:        "k8s_nodepool_get",
@@ -501,7 +501,7 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_add_nodepool",
 			Description: "Add a worker node pool to a Managed Kubernetes cluster (pods need workers; a fresh cluster has none). Async. A 503 'no healthy upstream' of the node-pool backend is transient: retry.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id":        strProp("Cluster UUID."),
+				"cluster_id":        uuidProp("Cluster UUID."),
 				"name":              strProp("Pool name, 4-60 (default nodepool-1)."),
 				"count":             atLeast(1, intProp("Worker nodes, fixed (default 2).")),
 				"flavor":            strProp("Node flavor (k8s_options); overrides cpu/ram_gb."),
@@ -535,7 +535,7 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_add_addon",
 			Description: "Install a Managed Kubernetes addon release into a cluster. The preview only reads: the version picked, namespace, the release's requirements and the cluster checks (Kubernetes version, ready workers); what cannot be checked is in not_checked, a certain mismatch is refused. Async: status installing with operation_id; ready when the addon's pods run (k8s_kubectl get pods -n <namespace>). Pods in ImagePullBackOff may mean the cluster has no internet egress (snat_create).",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id":   strProp("Cluster UUID."),
+				"cluster_id":   uuidProp("Cluster UUID."),
 				"name":         strProp("Addon name (k8s_addons)."),
 				"version":      strProp("App version from k8s_addon_versions; an addon_version only if the newest of its app version. Default: newest ACTIVE."),
 				"config":       map[string]any{"type": "object", "description": "Configuration per the release's schema (k8s_addon_versions full=true), a JSON object or a string of one. Default: the addon's last configuration in the cluster, else its defaults."},
@@ -547,7 +547,7 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_kubectl",
 			Description: "Run any kubectl command on a cluster (the token is embedded). Read verbs (get/describe/logs/top/events/'rollout status'/explain/…) run freely. Mutating verbs (create/delete/patch/scale/label/'rollout restart'/exec/cordon/…) require confirmed=true after the user approves, and so does any verb with -f/--filename, -k/--kustomize, --output-directory, --cache-dir or an output format read from a file (-o go-template-file=…, jsonpath-file=…, custom-columns-file=…): they read local files or any URL, or write on the host. Every call runs the command again: a repeated mutating verb is a new change. Prefer k8s_apply and k8s_helm for manifests and charts. Example args: \"get pods -A\", \"-n db logs deploy/postgres\", \"create secret generic s --from-literal=k=v\".",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID."),
+				"cluster_id": uuidProp("Cluster UUID."),
 				"args":       strProp("kubectl arguments as a single string, e.g. \"get pods -A -o wide\"."),
 				"confirmed":  confirmedPropNote("Only for mutating verbs; read verbs need none."),
 			}, "cluster_id", "args"),
@@ -566,7 +566,7 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_helm",
 			Description: "Helm on a cluster: install/upgrade/uninstall require confirmed=true after the user approves. Every call runs helm again: a repeated install/upgrade upgrades the same release, not a second one; over MCP: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID."),
+				"cluster_id": uuidProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),
 				"release":    strProp("Release name (all but list)."),
 				"chart":      strProp("Chart ref, e.g. 'bitnami/nginx' (install/upgrade)."),
@@ -989,14 +989,14 @@ func (s *Registry) registerTools() {
 			Name:        "pg_databases",
 			Description: "List databases in a PostgreSQL cluster (name, owner, size). Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID (from pg_list). Required."),
+				"cluster_id": uuidProp("Cluster UUID (from pg_list). Required."),
 			}, "cluster_id"),
 		},
 		{
 			Name:        "pg_db_create",
 			Description: "Create a database in a PostgreSQL cluster. The preview does not check the name is free (pg_databases).",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID. Required."),
+				"cluster_id": uuidProp("Cluster UUID. Required."),
 				"name":       strProp("Database name. Required."),
 				"owner":      strProp("Owning user (from pg_users). Required."),
 				"lc_collate": strProp("Collation locale (optional, default C)."),
@@ -1017,14 +1017,14 @@ func (s *Registry) registerTools() {
 			Name:        "pg_users",
 			Description: "List users of a PostgreSQL cluster (name, granted roles). Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID (from pg_list). Required."),
+				"cluster_id": uuidProp("Cluster UUID (from pg_list). Required."),
 			}, "cluster_id"),
 		},
 		{
 			Name:        "pg_user_create",
 			Description: "Create a user in a PostgreSQL cluster. The preview does not check the name is free (pg_users). The password is never echoed back.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID. Required."),
+				"cluster_id": uuidProp("Cluster UUID. Required."),
 				"name":       strProp("User name. Required."),
 				"password":   strProp("User password. Required."),
 				"confirmed":  confirmedProp(),
@@ -1043,14 +1043,14 @@ func (s *Registry) registerTools() {
 			Name:        "pg_backups",
 			Description: "List backups of a PostgreSQL cluster (name, status, size, timestamps). Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID (from pg_list). Required."),
+				"cluster_id": uuidProp("Cluster UUID (from pg_list). Required."),
 			}, "cluster_id"),
 		},
 		{
 			Name:        "pg_backup_create",
 			Description: "Start a manual backup of a PostgreSQL cluster (async).",
 			InputSchema: objSchema(map[string]any{
-				"cluster_id": strProp("Cluster UUID. Required."),
+				"cluster_id": uuidProp("Cluster UUID. Required."),
 				"name":       strProp("Backup name (letters/digits/hyphens/dots; not starting/ending with - or .). Required."),
 				"confirmed":  confirmedProp(),
 			}, "cluster_id", "name"),
@@ -1063,7 +1063,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "lb_get",
 			Description: "Get full details of one load balancer by id (from lb_list): rules, listeners, addresses, AZs, status. Read-only.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Load balancer UUID (from lb_list). Required.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("Load balancer UUID (from lb_list). Required.")}, "id"),
 		},
 		{
 			Name:        "lb_operation",
@@ -1078,7 +1078,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "tg_get",
 			Description: "Get details of one target group by id (from tg_list): member VMs, vpc, status. Read-only.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Target group UUID (from tg_list). Required.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("Target group UUID (from tg_list). Required.")}, "id"),
 		},
 		{
 			Name:        "tg_create",
@@ -1102,7 +1102,7 @@ func (s *Registry) registerTools() {
 			InputSchema: objSchema(map[string]any{
 				"preview_id":      withMinLength(uuidProp("Approved preview UUID.")),
 				"name":            strProp("Balancer name."),
-				"target_group_id": strProp("Target group UUID."),
+				"target_group_id": uuidProp("Target group UUID."),
 				"port":            inRange(1, 65535, intProp("Listener port.")),
 				"target_port":     inRange(1, 65535, intProp("Target port (default: port).")),
 				"hc_port":         inRange(1, 65535, intProp("Health-check port (default: target_port).")),
@@ -1189,7 +1189,7 @@ func (s *Registry) registerTools() {
 			Name:        "dns_zone_get",
 			Description: "Get full details of one DNS zone by id (from dns_zones). Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"id":   strProp("Zone UUID (from dns_zones). Required."),
+				"id":   uuidProp("Zone UUID (from dns_zones). Required."),
 				"type": enumProp("Zone visibility. Optional: evo finds it by the id.", "public", "private"),
 			}, "id"),
 		},
@@ -1224,7 +1224,7 @@ func (s *Registry) registerTools() {
 			Name:        "dns_records",
 			Description: "List resource records of a DNS zone (id, name, type, values, ttl). Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"zone_id": strProp("Zone UUID (from dns_zones). Required."),
+				"zone_id": uuidProp("Zone UUID (from dns_zones). Required."),
 				"type":    enumProp("Zone visibility. Optional: evo finds it by the id.", "public", "private"),
 			}, "zone_id"),
 		},
@@ -1232,7 +1232,7 @@ func (s *Registry) registerTools() {
 			Name:        "dns_record_get",
 			Description: "Get one DNS record by id (from dns_records). Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"record_id": strProp("Record UUID (from dns_records). Required."),
+				"record_id": uuidProp("Record UUID (from dns_records). Required."),
 				"type":      enumProp("Zone visibility. Optional: evo finds it by the id.", "public", "private"),
 			}, "record_id"),
 		},
@@ -1240,7 +1240,7 @@ func (s *Registry) registerTools() {
 			Name:        "dns_record_create",
 			Description: "Add a DNS record to a zone (async).",
 			InputSchema: objSchema(map[string]any{
-				"zone_id":     strProp("Zone UUID (from dns_zones). Required."),
+				"zone_id":     uuidProp("Zone UUID (from dns_zones). Required."),
 				"name":        strProp("Record name/host (e.g. 'www' or '@'). Required."),
 				"record_type": enumProp("a, aaaa, cname, mx, ns, spf, txt, caa, srv (any case). Required.", dnsRecordTypes...),
 				"value":       strProp("Single record value (e.g. an IP for A). Use this or 'values', not both."),
@@ -1316,7 +1316,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "ar_get",
 			Description: "Get full details of one Artifact Registry registry by id (from ar_list). Read-only.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Registry UUID (from ar_list). Required.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": uuidProp("Registry UUID (from ar_list). Required.")}, "id"),
 		},
 		{
 			Name:        "ar_create",
