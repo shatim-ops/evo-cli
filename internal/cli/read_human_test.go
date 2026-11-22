@@ -431,15 +431,36 @@ func TestShownAsWritten_Forms(t *testing.T) {
 }
 
 func checkAddonReleaseCells(a addonVersionsAnswer, human string) error {
+	// tabwriter pads an empty ADDON VERSION with spaces. Splitting on
+	// whitespace merges that column with the gap before SUPPORT. Read the
+	// two required cells at the column boundaries of the rendered header.
+	lines := strings.Split(human, "\n")
+	versionEnd, schemaStart := -1, -1
+	header := i18n.T("VERSION", "ВЕРСИЯ")
+	for _, line := range lines {
+		if !strings.HasPrefix(line, header+"  ") {
+			continue
+		}
+		second := strings.Index(line, i18n.T("ADDON VERSION", "ВЕРСИЯ ПЛАГИНА"))
+		last := strings.Index(line, i18n.T("SETTINGS SCHEMA", "СХЕМА НАСТРОЕК"))
+		if second > 0 && last > second {
+			versionEnd = len([]rune(line[:second]))
+			schemaStart = len([]rune(line[:last]))
+			break
+		}
+	}
 	for _, release := range a.Releases {
 		version := release.Version
 		if release.Latest {
 			version += " *"
 		}
 		found := false
-		for _, line := range strings.Split(human, "\n") {
-			cells := zoneTableGap.Split(strings.TrimSpace(line), -1)
-			if len(cells) == 7 && cells[0] == version && cells[6] == schemaSize(release.HasSchema, release.SchemaBytes) {
+		for _, line := range lines {
+			cells := []rune(line)
+			if versionEnd < 0 || schemaStart >= len(cells) {
+				continue
+			}
+			if strings.TrimSpace(string(cells[:versionEnd])) == version && strings.TrimSpace(string(cells[schemaStart:])) == schemaSize(release.HasSchema, release.SchemaBytes) {
 				found = true
 				break
 			}
