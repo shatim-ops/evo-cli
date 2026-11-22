@@ -961,7 +961,7 @@ func createdLine(p CreatePreview) string {
 // the estimate, with its source), or why there is none.
 func createCostLines(p CreatePreview) []string {
 	if p.Resource == ResourceVPC {
-		return []string{previewLabel("cost", "цена") + i18n.Tf("0 RUB for Evolution VPC: %s", "0 ₽ за Evolution VPC: %s", p.TariffURL)}
+		return []string{previewLabel("cost", "цена") + i18n.Tf("0 RUB — %s: %s", "0 ₽ — %s: %s", classOf(ResourceVPC, p).Note, p.TariffURL)}
 	}
 	if p.Cost != nil {
 		if p.Resource == ResourceSNAT {

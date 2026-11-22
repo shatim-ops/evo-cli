@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/deployplan"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // Release plan 1.7, C (the owner's decision 31.10): every resource a
@@ -114,5 +115,27 @@ func TestPriceClasses_OneLinePerResource(t *testing.T) {
 	if line := strings.Join(createCostLines(p), "\n"); !strings.Contains(line, "billable") || strings.Contains(line, "free") ||
 		!strings.Contains(line, p.PriceClasses[0].Note) {
 		t.Errorf("subnet cost line %q: want billable and why (%q)", line, p.PriceClasses[0].Note)
+	}
+}
+
+func TestVPCPriceNoteInHumanPreview(t *testing.T) {
+	previous := i18n.Lang()
+	defer i18n.SetLang(previous)
+	for _, tc := range []struct{ lang, amount, note string }{
+		{i18n.EN, "0 RUB", "Evolution VPC is free"},
+		{i18n.RU, "0 ₽", "сервис Evolution VPC предоставляется бесплатно"},
+	} {
+		i18n.SetLang(tc.lang)
+		p := CreatePreview{Resource: ResourceVPC, Name: "test-vpc"}
+		p.Price()
+		if len(p.PriceClasses) != 1 || p.PriceClasses[0].Note != tc.note {
+			t.Fatalf("%s: %+v", tc.lang, p.PriceClasses)
+		}
+		text := strings.Join(ShowCreatePreview("vpc_create", p).Lines, "\n")
+		for _, want := range []string{tc.amount, tc.note, tariffs[ResourceVPC]} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s: missing %q in %q", tc.lang, want, text)
+			}
+		}
 	}
 }
