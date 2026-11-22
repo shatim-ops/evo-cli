@@ -325,13 +325,19 @@
     "delete": "{arg:record_id parent: what:DNS record whRU:DNS-запись statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
       "record_id why=\"\" target=true ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:true}"
-    ]
+    ],
+    "no_completion": {
+      "record_id": "dns_records requires zone_id; this command takes no zone_id"
+    }
   },
   "dns_record_get": {
     "id_args": [
       "record_id why=\"\" target=false ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
+    "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}",
+    "no_completion": {
+      "record_id": "dns_records requires zone_id; this command takes no zone_id"
+    }
   },
   "dns_records": {
     "id_args": [
@@ -549,20 +555,29 @@
     "id_args": [
       "nodepool_id why=\"\" target=true ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[preview target resource_status] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[preview target resource_status] whole:false own:[] workload:false deep:false}",
+    "no_completion": {
+      "nodepool_id": "k8s_nodepools requires cluster_id; this command takes no cluster_id"
+    }
   },
   "k8s_nodepool_get": {
     "id_args": [
       "nodepool_id why=\"\" target=false ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[id name cluster_name labels taints flavor version zone] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[id name cluster_name labels taints flavor version zone] whole:false own:[] workload:false deep:false}",
+    "no_completion": {
+      "nodepool_id": "k8s_nodepools requires cluster_id; this command takes no cluster_id"
+    }
   },
   "k8s_nodepool_scale": {
     "destructive": true,
     "id_args": [
       "nodepool_id why=\"\" target=true ids=false kind={what:\"node pool\" byName:false list:\"k8s_nodepools\" check:true project:true card:true}"
     ],
-    "untrusted": "{fields:[preview name details] whole:false own:[] workload:false deep:false}"
+    "untrusted": "{fields:[preview name details] whole:false own:[] workload:false deep:false}",
+    "no_completion": {
+      "nodepool_id": "k8s_nodepools requires cluster_id; this command takes no cluster_id"
+    }
   },
   "k8s_nodepool_upgrade": {
     "destructive": true,

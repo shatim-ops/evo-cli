@@ -7,7 +7,9 @@ package tools
 import (
 	"context"
 	"regexp"
+	"slices"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -40,14 +42,10 @@ const (
 // question 19; release plan 1.9, «Просроченные убывающие списки»).
 var refUncompleted = map[string]struct{ why, item string }{
 
-	"k8s_nodepool_delete nodepool_id": {why: refParent},
-	"k8s_nodepool_get nodepool_id":    {why: refParent},
-	"k8s_nodepool_scale nodepool_id":  {why: refParent},
-	"sg_rule_delete rule_id":          {why: refParent},
+	"sg_rule_delete rule_id": {why: refParent},
 
-	"cert_private_key version_id":               {why: refParent},
-	"dns_record_delete record_id":               {why: refParent},
-	"dns_record_get record_id":                  {why: refParent},
+	"cert_private_key version_id": {why: refParent},
+
 	"vpc_route_delete route_id":                 {why: refParent},
 	"s3_get key":                                {why: refParent},
 	"s3_put key":                                {why: refParent},
@@ -189,5 +187,35 @@ func TestComplete_ReturnedIDsUseTheirReceipt(t *testing.T) {
 				t.Fatal("offered an unrelated ID")
 			}
 		})
+	}
+}
+
+// These reads enumerate children only under a caller-selected parent. The
+// child commands have no parent argument; Tab must not pick one arbitrarily.
+func TestComplete_ChildWithoutParentInput(t *testing.T) {
+	r := New(nil)
+	for _, tc := range []struct {
+		tools               []string
+		arg, source, parent string
+	}{
+		{[]string{"k8s_nodepool_get", "k8s_nodepool_delete", "k8s_nodepool_scale"}, "nodepool_id", "k8s_nodepools", "cluster_id"},
+		{[]string{"dns_record_get", "dns_record_delete"}, "record_id", "dns_records", "zone_id"},
+	} {
+		src, ok := r.Lookup(tc.source)
+		req, _ := src.InputSchema["required"].([]string)
+		if !ok || src.Mutating || !slices.Contains(req, tc.parent) {
+			t.Fatal(tc.source, req)
+		}
+		for _, tool := range tc.tools {
+			target, _ := r.Lookup(tool)
+			props := target.InputSchema["properties"].(map[string]any)
+			reason := target.Decl.NoCompletion[tc.arg]
+			if props[tc.parent] != nil || !strings.Contains(reason, tc.source) || !strings.Contains(reason, tc.parent) {
+				t.Fatal(tool, reason)
+			}
+			if r.Completes(tool, tc.arg) || len(r.Complete(context.Background(), tool, tc.arg, "")) != 0 {
+				t.Fatal("Tab picked a parent for", tool)
+			}
+		}
 	}
 }

@@ -313,7 +313,7 @@ var decls = map[string]Decl{
 	"k8s_nodepools": {IDArgs: []idArg{{name: "cluster_id", kind: kindK8s}}},
 	// The name of a node pool and the labels and taints of its nodes:
 	// anyone with access to the project writes them.
-	"k8s_nodepool_get": {IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "cluster_name", "labels", "taints", "flavor", "version", "zone"}}},
+	"k8s_nodepool_get": {NoCompletion: map[string]string{"nodepool_id": "k8s_nodepools requires cluster_id; this command takes no cluster_id"}, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool}}, Untrusted: untrustedAnswer{fields: []string{"id", "name", "cluster_name", "labels", "taints", "flavor", "version", "zone"}}},
 	// A scale down deletes nodes with the data on their disks; the hint is
 	// the tool's, not the call's, so a scale up asks too (D99; conclusion
 	// 112 of «Риск»).
@@ -321,11 +321,11 @@ var decls = map[string]Decl{
 	// and the code of the platform in a failed operation (details).
 	"k8s_upgrade":          {intentGate: intentGatePolicy{beforeSend: intentBeforeWrite}, Destructive: true, NoCompletion: map[string]string{"preview_id": whyUpgradePreview}, IDArgs: []idArg{{name: "cluster_id", kind: kindK8s, target: true}, {name: "preview_id", why: whyUpgradePreview}}, Untrusted: untrustedAnswer{fields: []string{"preview", "current_version", "resource_status", "upgrade_phase"}, workload: true}},
 	"k8s_nodepool_upgrade": {intentGate: intentGatePolicy{beforeSend: intentBeforeWrite}, Destructive: true, NoCompletion: map[string]string{"preview_id": whyUpgradePreview, "nodepool_id": "node pools are listed within a cluster; use k8s_nodepools with its cluster_id"}, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}, {name: "preview_id", why: whyUpgradePreview}}, Untrusted: untrustedAnswer{fields: []string{"preview", "current_version", "resource_status", "upgrade_phase", "cluster_id", "cluster_name"}, workload: true}},
-	"k8s_nodepool_scale":   {Destructive: true, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
+	"k8s_nodepool_scale":   {NoCompletion: map[string]string{"nodepool_id": "k8s_nodepools requires cluster_id; this command takes no cluster_id"}, Destructive: true, IDArgs: []idArg{{name: "nodepool_id", kind: kindK8sNodePool, target: true}}, Untrusted: untrustedAnswer{fields: []string{"preview", "name", "details"}}},
 	// The cluster of the pool by its name, in the preview of the delete;
 	// the name of the pool, in the target (FB19I-9); its status in a
 	// refusal.
-	"k8s_nodepool_delete": {Delete: deleteTarget{arg: "nodepool_id", what: "node pool", whRU: "группа узлов", statePrefix: "OBJECT_STATUS_",
+	"k8s_nodepool_delete": {NoCompletion: map[string]string{"nodepool_id": "k8s_nodepools requires cluster_id; this command takes no cluster_id"}, Delete: deleteTarget{arg: "nodepool_id", what: "node pool", whRU: "группа узлов", statePrefix: "OBJECT_STATUS_",
 		// Probe Г-12: question 16 of docs/internal/briefs/k8s-nodepools.md.
 		creatingUnseen: "no run has deleted a node pool still being created: probe Г-12",
 		// Probe Г-12 (docs/internal/briefs/k8s-nodepools.md).
@@ -455,9 +455,9 @@ var decls = map[string]Decl{
 	"dns_zone_delete":   {Delete: deleteTarget{arg: "id", what: "DNS zone", whRU: "DNS-зона"}, IDArgs: []idArg{{name: "id", kind: kindDNSZone, target: true}}},
 	"dns_operation":     {NoCompletion: map[string]string{"operation_id": whyReceiptOperation}, IDArgs: []idArg{{name: "operation_id", kind: kindOperation}}, Untrusted: opReadUntrusted},
 	"dns_records":       {IDArgs: []idArg{{name: "zone_id", kind: kindDNSZone}}, Untrusted: untrustedAnswer{fields: []string{"records"}}},
-	"dns_record_get":    {IDArgs: []idArg{{name: "record_id", kind: kindDNSRecord}}, Untrusted: untrustedAnswer{whole: true}},
+	"dns_record_get":    {NoCompletion: map[string]string{"record_id": "dns_records requires zone_id; this command takes no zone_id"}, IDArgs: []idArg{{name: "record_id", kind: kindDNSRecord}}, Untrusted: untrustedAnswer{whole: true}},
 	"dns_record_create": {intentGate: intentGatePolicy{checkProjectFirst: true}, RequiredOneOf: [][]string{{"value", "values"}}, Created: created{id: "record_id", list: "dns_records", field: "records", listArgs: []string{"zone_id"}, delete: "dns_record_delete"}, CreateName: createName{args: []string{"name"}, what: "DNS record", whRU: "DNS-запись"}, IDArgs: []idArg{{name: "zone_id", kind: kindDNSZone, target: true}}},
-	"dns_record_delete": {Delete: deleteTarget{arg: "record_id", what: "DNS record", whRU: "DNS-запись"}, IDArgs: []idArg{{name: "record_id", kind: kindDNSRecord, target: true}}},
+	"dns_record_delete": {NoCompletion: map[string]string{"record_id": "dns_records requires zone_id; this command takes no zone_id"}, Delete: deleteTarget{arg: "record_id", what: "DNS record", whRU: "DNS-запись"}, IDArgs: []idArg{{name: "record_id", kind: kindDNSRecord, target: true}}},
 	"secret_list":       {Project: true, Untrusted: untrustedAnswer{fields: []string{"secrets"}}},
 	"secret_get":        {Project: true, Untrusted: untrustedAnswer{whole: true}},
 	"secret_value":      {Project: true, Sensitive: true},
