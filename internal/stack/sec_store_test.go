@@ -161,3 +161,25 @@ func TestJobs_NoHomeNeverRelative(t *testing.T) {
 		t.Errorf("files written into the working directory: %v", entries)
 	}
 }
+
+func TestOrphanResourcesPreserveRecordedIDs(t *testing.T) {
+	j := secJob(t)
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if refs := FindResourcefulJobs(j.Manifest.Name, ""); len(refs) != 0 {
+		t.Fatal(refs)
+	}
+	id := "resource=one\nsecond"
+	j.Steps[0].ResourceID = id
+	if err := j.Save(); err != nil {
+		t.Fatal(err)
+	}
+	refs := FindResourcefulJobs(j.Manifest.Name, "")
+	if len(refs) != 1 || len(refs[0].Resources) != 1 || refs[0].Resources[0] != j.Steps[0].Key+"="+id || refs[0].JobID != j.ID {
+		t.Fatalf("original resource ref: %+v", refs)
+	}
+	if other := FindResourcefulJobs(j.Manifest.Name, j.ID); len(other) != 0 {
+		t.Fatal(other)
+	}
+}

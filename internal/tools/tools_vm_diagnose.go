@@ -53,6 +53,12 @@ var stateVerdicts = map[string]map[string]string{
 		"attaching": checkProblem, "detaching": checkProblem},
 }
 
+// diagnosisCheckID is the machine key of one resource's check. The human
+// finding is the separate fact or why field, and labels quote cloud values.
+func diagnosisCheckID(kind, id string) string {
+	return kind + ":" + id
+}
+
 // stateCheck is the check of the state of what (stateVerdicts) named name.
 func stateCheck(check, what, name, state string) map[string]any {
 	verdict, known := stateVerdicts[what][state]
@@ -138,7 +144,7 @@ func vmGroupsOnRows(rows []map[string]any, det *provision.VMDetail, listed map[s
 	for i, in := range det.Interfaces {
 		li := listed[in.ID]
 		if li == nil {
-			missing = append(missing, map[string]any{"check": "security_groups:" + in.ID, "reason": "not_listed",
+			missing = append(missing, map[string]any{"check": diagnosisCheckID("security_groups", in.ID), "reason": "not_listed",
 				"why": i18n.T("the list of the project's interfaces does not name this interface",
 					"список интерфейсов проекта не называет этот интерфейс")})
 			continue
@@ -161,16 +167,16 @@ func vmDiagnosis(ctx context.Context, eng *engine.Engine, det *provision.VMDetai
 	hasPrimaryAddress := false
 	for _, in := range det.Interfaces {
 		name := i18n.Tf("interface %s", "интерфейс %s", quoteCloud(cmpName(in.Name, in.ID)))
-		checks = append(checks, stateCheck("interface_state:"+in.ID, "interface", name, in.State))
+		checks = append(checks, stateCheck(diagnosisCheckID("interface_state", in.ID), "interface", name, in.State))
 		if in.Primary && in.IPAddress != "" {
 			hasPrimaryAddress = true
 		}
 		if in.FloatingIP != nil && in.FloatingIP.ID != "" {
-			checks = append(checks, stateCheck("public_address_state:"+in.FloatingIP.ID, "floating_ip",
+			checks = append(checks, stateCheck(diagnosisCheckID("public_address_state", in.FloatingIP.ID), "floating_ip",
 				i18n.Tf("public address %s", "публичный адрес %s", in.FloatingIP.IPAddress), in.FloatingIP.State))
 		}
 		if li := listed[in.ID]; li != nil && li.Subnet != nil && li.Subnet.ID != "" {
-			checks = append(checks, stateCheck("subnet_state:"+li.Subnet.ID, "subnet",
+			checks = append(checks, stateCheck(diagnosisCheckID("subnet_state", li.Subnet.ID), "subnet",
 				i18n.Tf("subnet %s", "подсеть %s", quoteCloud(cmpName(li.Subnet.Name, li.Subnet.ID))), li.Subnet.State))
 		}
 	}
@@ -201,12 +207,12 @@ func vmDiagnosis(ctx context.Context, eng *engine.Engine, det *provision.VMDetai
 	var internet, port22 []map[string]any
 	for _, g := range order {
 		name := cmpName(g.Name, g.ID)
-		checks = append(checks, stateCheck("group_state:"+g.ID, "security_group",
+		checks = append(checks, stateCheck(diagnosisCheckID("group_state", g.ID), "security_group",
 			i18n.Tf("security group %s", "группа безопасности %s", quoteCloud(name)), g.State))
 		row := map[string]any{"id": g.ID, "name": g.Name, "state": g.State}
 		rules, err := eng.Cloud.ListSecurityGroupRules(ctx, g.ID)
 		if err != nil {
-			missing = append(missing, notChecked("rules:"+g.ID, err))
+			missing = append(missing, notChecked(diagnosisCheckID("rules", g.ID), err))
 			groups = append(groups, row)
 			continue
 		}

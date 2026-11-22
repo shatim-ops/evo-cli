@@ -3313,7 +3313,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	}
 	hasFIP := fipRec.HasPendingFloatingIP()
 
-	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
+	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned, uncheckedErr)
 	// What this delete leaves open to the internet in the VM's groups
 	// (engine.OpenLeft): the groups its records here name, else those of
 	// its interfaces.
@@ -3337,10 +3337,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 	}
 	preview["provenance"] = engine.ProvenanceOf(engine.ProvenanceVM, target.ID, target.CreatedAt, nil, sf, readErr)
-	if uncheckedErr != nil {
-		preview["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
-		preview["message"] = fmt.Sprint(preview["message"]) + "; " + engine.UncheckedRules(uncheckedErr)
-	}
+
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		// The wait for the VM to be gone (WaitVMGone) says the VM's state
 		// to whoever watches the call, as provision's wait does.
@@ -3591,7 +3588,7 @@ func addrLabel(ip, id string) string {
 // rules evo opened for it (release audit, R-04). The person approving sees
 // which VM goes, not only an instruction.
 func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID string, releaseIP, hasFIP bool,
-	fipRec *state.DeploymentRecord, keptFIP, keptWhy string, rules []sgrules.Planned) map[string]any {
+	fipRec *state.DeploymentRecord, keptFIP, keptWhy string, rules []sgrules.Planned, uncheckedErr error) map[string]any {
 	tgt := map[string]any{"id": target.ID, "name": target.Name, "zone": vmZone(target), "status": target.Status,
 		"public_ip": firstNonEmptyStr(target.FloatingIP, target.PublicIP, fipRec.VMIP)}
 	if !target.CreatedAt.IsZero() {
@@ -3639,6 +3636,10 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 			"any other address on the VM is kept unless release_ip=true",
 			"evo освобождает floating IP, который сам создал для этой ВМ (записан здесь или назван fip-<id>, fip-<name>-…, <name>-fip); "+
 				"любой другой адрес ВМ сохраняется, если не указан release_ip=true (в команде — --release-ip)"),
+	}
+	if uncheckedErr != nil {
+		out["labelled_rules_unchecked"] = clierrors.Reason(uncheckedErr)
+		out["message"] = msg + "; " + engine.UncheckedRules(uncheckedErr)
 	}
 	var ports []string
 	for _, p := range rules {
@@ -3740,9 +3741,9 @@ func destroyDeleting(ctx context.Context, eng *engine.Engine, statePath, project
 	if vm, err := eng.Cloud.GetVM(ctx, target.ID); err == nil && vm.Status != "" {
 		vmStatus = vm.Status
 	}
-	out := map[string]any{"status": "deleting", "vm_id": target.ID, "name": target.Name, "vm_status": vmStatus,
-		"next": i18n.Tf("Cloud.ru is deleting VM %s; it is billed until it is gone. Call destroy with vm_id %s and confirmed=true again: it waits for the VM, then releases its floating IP and port rules and drops the record.",
-			"Cloud.ru удаляет ВМ %s; пока она не удалена, она оплачивается. Повторите evo vm delete %s с подтверждением: команда дождётся удаления ВМ, затем освободит её floating IP, удалит правила портов и запись.", quoteCloud(target.ID), quoteCloud(target.ID))}
+	next := i18n.Tf("Cloud.ru is deleting VM %s; it is billed until it is gone. Call destroy with vm_id %s and confirmed=true again: it waits for the VM, then releases its floating IP and port rules and drops the record.",
+		"Cloud.ru удаляет ВМ %s; пока она не удалена, она оплачивается. Повторите evo vm delete %s с подтверждением: команда дождётся удаления ВМ, затем освободит её floating IP, удалит правила портов и запись.", quoteCloud(target.ID), quoteCloud(target.ID))
+	out := map[string]any{"status": "deleting", "vm_id": target.ID, "name": target.Name, "vm_status": vmStatus}
 	if keepFIP {
 		out["floating_ip"] = i18n.T("kept until the VM is gone: ", "сохранён до удаления ВМ: ") + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	}
@@ -3754,8 +3755,9 @@ func destroyDeleting(ctx context.Context, eng *engine.Engine, statePath, project
 	// billed: the way out of DeleteWayOut, the one for every delete.
 	if _, way := engine.DeleteWayOut(target.Status, target.ID); way != "" && strings.EqualFold(target.Status, "deleting") {
 		out["way_out"] = way
-		out["next"] = out["next"].(string) + " " + way
+		next += " " + way
 	}
+	out["next"] = next
 	repeat := map[string]any{"vm_id": target.ID, "confirmed": true}
 	if v, ok := args["release_ip"]; ok {
 		repeat["release_ip"] = v

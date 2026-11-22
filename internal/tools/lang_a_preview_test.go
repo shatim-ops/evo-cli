@@ -5,12 +5,16 @@
 package tools
 
 import (
+	"context"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -28,7 +32,7 @@ func TestLangA_DestroyPreviewSpeaksTheCLILanguage(t *testing.T) {
 	}
 	preview := func() map[string]any {
 		return destroyTargetPreview(&provision.VM{ID: faultID(0x41), Name: "web"}, false, "p", false, true,
-			&state.DeploymentRecord{VMIP: "203.0.113.10"}, "203.0.113.10", i18n.T("evo did not make it", "его создал не evo"), rules)
+			&state.DeploymentRecord{VMIP: "203.0.113.10"}, "203.0.113.10", i18n.T("evo did not make it", "его создал не evo"), rules, nil)
 	}
 	i18n.SetLang(i18n.RU)
 	ru := preview()
@@ -48,7 +52,7 @@ func TestDestroyTargetPreview_QuotesIDAndKeepsRawTarget(t *testing.T) {
 	id := "vm-\"one\nnext"
 	for _, name := range []string{"", "web"} {
 		for _, gone := range []bool{true, false} {
-			m := destroyTargetPreview(&provision.VM{ID: id, Name: name}, gone, "p", false, false, &state.DeploymentRecord{}, "", "", nil)
+			m := destroyTargetPreview(&provision.VM{ID: id, Name: name}, gone, "p", false, false, &state.DeploymentRecord{}, "", "", nil, nil)
 			msg := m["message"].(string)
 			if strings.Contains(msg, id) || !strings.Contains(msg, strconv.Quote(id)) || m["target"].(map[string]any)["id"] != id {
 				t.Errorf("name=%q gone=%v, preview %q, target %v", name, gone, msg, m["target"])
@@ -61,7 +65,7 @@ func TestDestroyTargetPreview_QuotesRuleAndGroupSeparately(t *testing.T) {
 	groupID, ruleID := "sg-\"new\nline", "rule-\"new\nline"
 	rule := state.SGRule{ID: ruleID, SecurityGroupID: groupID}
 	for _, kept := range []string{"", "another-deployment"} {
-		m := destroyTargetPreview(&provision.VM{ID: "target"}, false, "p", false, false, &state.DeploymentRecord{}, "", "", []sgrules.Planned{{Rule: rule, KeptFor: kept}})
+		m := destroyTargetPreview(&provision.VM{ID: "target"}, false, "p", false, false, &state.DeploymentRecord{}, "", "", []sgrules.Planned{{Rule: rule, KeptFor: kept}}, nil)
 		lines := m["port_rules"].([]string)
 		if len(lines) != 1 || !strings.Contains(lines[0], strconv.Quote(groupID)) || strings.Contains(lines[0], "\n") || (kept == "") != strings.Contains(lines[0], strconv.Quote(ruleID)) {
 			t.Fatalf("kept=%q lines=%q", kept, lines)
@@ -89,5 +93,42 @@ func TestResourceReadHintOnlyCopiesUUID(t *testing.T) {
 	got := resourceReadHint("vpc_get", "id", id)
 	if !strings.Contains(got, "vpc_get") || !strings.Contains(got, "id") || strings.Contains(got, id) {
 		t.Fatalf("unusual id in read hint: %q", got)
+	}
+}
+
+func TestDestroyPreviewComposesCheckedText(t *testing.T) {
+	id := "vm-\"\nline"
+	preview := func(err error) map[string]any {
+		return destroyTargetPreview(&provision.VM{ID: id}, false, "p", false, false, &state.DeploymentRecord{}, "", "", nil, err)
+	}
+	plain := preview(nil)
+	with := preview(clierrors.New(clierrors.CodeAPIError, "untrusted\nline", ""))
+	msg := with["message"].(string)
+	if !strings.HasPrefix(msg, plain["message"].(string)+"; ") || !strings.Contains(msg, strconv.Quote(id)) || strings.Contains(msg, "\n") || with["labelled_rules_unchecked"] != clierrors.CodeAPIError || plain["labelled_rules_unchecked"] != nil {
+		t.Fatalf("composed preview %q, code %v", msg, with["labelled_rules_unchecked"])
+	}
+}
+
+func TestHeldSinceMatchesPreviouslyWrittenVMTarget(t *testing.T) {
+	r, root := faultToolsRegistry(t, &faultCloud{})
+	eng, err := r.authedEngine(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "old-id-\"\nsecond"
+	const tool = "vm_resize"
+	start := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+	_, err = intent.Open(intent.Dir(root), intent.Intent{Tool: tool, Target: "vm_id=" + id, Held: true, StartedAt: start, Key: eng.Maker()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := persistedIDTarget("vm_id", id)
+	if at, ok := r.heldSince(eng, tool, target); !ok || !at.Equal(start) {
+		t.Fatalf("previous receipt: %v, %v", at, ok)
+	}
+	for _, wrong := range []string{persistedIDTarget("vm_id", id+"x"), persistedIDTarget("vm_id", strconv.Quote(id))} {
+		if _, ok := r.heldSince(eng, tool, wrong); ok {
+			t.Fatalf("matched another target %q", wrong)
+		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -277,5 +278,31 @@ func TestVMGet_NamesTheAllowedAddressPairs(t *testing.T) {
 	m, text = diagCall(t, w, map[string]any{"vm_id": w.vmID})
 	if pairs, ok := firstRow(t, m)["allowed_address_pairs"].([]any); !ok || len(pairs) != 0 {
 		t.Errorf("an interface with no pairs: %s, want an empty allowed_address_pairs", text)
+	}
+}
+
+func TestDiagnosisIDInDataAndInFinding(t *testing.T) {
+	w := newDiagWorld(t)
+	id := "group-\"\nline"
+	group := &w.ifaces[0].SecurityGroups[0]
+	group.ID, group.Name = id, ""
+	w.rulesErr[id] = clierrors.New(clierrors.CodeAPIError, "read failed", "")
+	m, _ := diagnosis(t, w)
+	for field, want := range map[string]string{"checks": "group_state:" + id, "not_checked": "rules:" + id} {
+		found := false
+		rows, _ := m[field].([]any)
+		for _, v := range rows {
+			row := v.(map[string]any)
+			if row["check"] != want {
+				continue
+			}
+			found = true
+			if fact, ok := row["fact"].(string); ok && (!strings.Contains(fact, strconv.Quote(id)) || strings.Contains(fact, id)) {
+				t.Errorf("finding %q for %q", fact, id)
+			}
+		}
+		if !found {
+			t.Errorf("%s lacks original machine key %q: %v", field, want, rows)
+		}
 	}
 }
