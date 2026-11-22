@@ -1057,6 +1057,7 @@
       "kms_key_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false"
     ],
     "no_completion": {
+      "kms_key_id": "the registry has no KMS key catalogue; a secret ID or a secret value does not identify a KMS key",
       "path": "the path of a new secret: an existing one is refused"
     }
   },
@@ -1366,7 +1367,11 @@
     ],
     "echoed_args": [
       "description"
-    ]
+    ],
+    "no_completion": {
+      "next_hop_magic_router_id": "no Magic Router catalogue is registered; a VPC or NAT gateway ID does not identify a Magic Router",
+      "next_hop_vip_id": "no virtual IP catalogue is registered; floating IP IDs and network interface IDs identify other resource types"
+    }
   },
   "vpc_route_delete": {
     "delete": "{arg:route_id parent:vpc_id what:route whRU:маршрут statePrefix: creatingUnseen: failedUnseen:}",
