@@ -10,6 +10,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,7 +85,8 @@ func TestInstallSh_CompletionFilesAndUninstall(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	home := filepath.Join(tmp, "home")
-	rel := filepath.Join(tmp, "release")
+	rel := filepath.Join(tmp, "local release")
+	releaseURL := url.URL{Scheme: "file", Path: rel}
 	fakeRelease(t, rel)
 	// fish is found by its configuration directory; zsh is a fake whose
 	// $fpath holds ~/.zfunc (a directory of the home it may write).
@@ -111,7 +113,7 @@ func TestInstallSh_CompletionFilesAndUninstall(t *testing.T) {
 		cmd.Env = append(os.Environ(),
 			"HOME="+home, "XDG_DATA_HOME=", "XDG_CONFIG_HOME=",
 			"INSTALL_DIR="+filepath.Join(tmp, "bin"),
-			"CLOUDRU_VM_VERSION=v9.9.9", "CLOUDRU_VM_BASE_URL=file://"+rel,
+			"CLOUDRU_VM_VERSION=v9.9.9", "CLOUDRU_VM_BASE_URL="+releaseURL.String(),
 			"PATH="+shims+string(os.PathListSeparator)+os.Getenv("PATH"))
 		out, err := cmd.CombinedOutput()
 		if err != nil {
