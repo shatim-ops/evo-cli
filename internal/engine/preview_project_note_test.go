@@ -5,7 +5,10 @@
 package engine
 
 import (
+	"strconv"
 	"strings"
+
+	"github.com/shatim-ops/evo-cli/internal/deployplan"
 	"testing"
 )
 
@@ -36,6 +39,28 @@ func TestShowCreatePreview_ProjectOfTheResource(t *testing.T) {
 			if !strings.Contains(lines, w) {
 				t.Errorf("%s: the human preview lacks %q:\n%s", c.name, w, lines)
 			}
+		}
+	}
+}
+
+func TestShowCreatePreview_QuotesNetworkValues(t *testing.T) {
+	const name = "name\nsecond"
+	const id = "sub-\"one"
+	cases := []CreatePreview{
+		{SubnetID: id},
+		{SubnetID: id, SubnetName: name},
+		{SubnetID: id, SecurityGroup: &NetworkRef{ID: name}},
+		{SubnetName: name, SecurityGroup: &NetworkRef{Name: id}},
+	}
+	for _, p := range cases {
+		p.Resource = ResourceVM
+		p.VM = &deployplan.VMSpec{}
+		lines := strings.Join(ShowCreatePreview("create", p).Lines, "\n")
+		if !strings.Contains(lines, strconv.Quote(id)) || strings.Contains(lines, name) {
+			t.Errorf("unquoted network in preview: %q", lines)
+		}
+		if (p.SubnetName != "" || p.SecurityGroup != nil) && !strings.Contains(lines, strconv.Quote(name)) {
+			t.Errorf("missing subnet or security group: %q", lines)
 		}
 	}
 }

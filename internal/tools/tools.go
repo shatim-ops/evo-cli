@@ -3600,9 +3600,10 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 	}
 	// The name and the zone are the cloud's: quoted on one line in evo's
 	// words, as the target beside them is marked (#2427, #2463).
-	label := target.ID
+	id := quoteCloud(target.ID)
+	label := id
 	if target.Name != "" {
-		label = quoteCloud(target.Name) + " (" + target.ID + ")"
+		label = quoteCloud(target.Name) + " (" + id + ")"
 	}
 	if z := vmZone(target); z != "" {
 		label += i18n.T(" in zone ", " в зоне ") + quoteCloud(z)
@@ -3615,7 +3616,7 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 		msg = i18n.Tf("VM %s is recorded here but is no longer in the cloud: destroy cleans up its local record and releases what is listed below. "+
 			"Get the user's approval, then call again with confirmed=true.",
 			"ВМ %s записана здесь, но в облаке её уже нет: destroy удаляет её локальную запись и освобождает перечисленное ниже. "+
-				"Получите согласие пользователя, затем вызовите снова с confirmed=true.", target.ID)
+				"Получите согласие пользователя, затем вызовите снова с confirmed=true.", id)
 	}
 	fip := i18n.T("none: no floating IP of this VM is known", "нет: floating IP этой ВМ не известен")
 	switch {

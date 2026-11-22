@@ -30,3 +30,14 @@ func TestDeletePreview_WarnsWhileBeingCreated(t *testing.T) {
 		}
 	}
 }
+
+func TestDeletePreview_GoneStateWithWhitespace(t *testing.T) {
+	for _, status := range []string{"ERASED", "\nERASED\r"} {
+		p := New(nil).deletePlan("kafka_delete", "delete %s", "удалить %s", "id-1", func() (map[string]any, error) {
+			return map[string]any{"name": "cloud-name", "status": status}, nil
+		}, nil)
+		if p.answerErr || p.Execute != nil || !strings.Contains(p.answer, `"already_deleted"`) || strings.Contains(p.answer, "ERASED") {
+			t.Fatalf("%q: expected the existing already_deleted answer, got %q", status, p.answer)
+		}
+	}
+}
