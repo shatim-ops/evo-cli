@@ -19,7 +19,9 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/images"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/spf13/cobra"
 )
 
 // readForm are the keys of a read answer that are its form, not a value
@@ -37,14 +39,7 @@ var readForm = map[string]string{
 // value the answer no longer has, fails the test. Closes by 1.10: what
 // stays is an exception declared with a reason «Риск» accepted (plan 1.9,
 // phase 0, И1).
-var readUnnamed = map[string]struct{ class, why string }{
-	"doctor checks.http_status":           {unnamedNoise, "код ответа пробы; человеку — «reachable» в строке проверки"},
-	"image_get create.tool":               {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"image_get fields.role":               {unnamedNoise, "роль поля; человеку — «evo: the SSH key» в FILLED BY"},
-	"k8s_addon_versions deploy_with.tool": {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"k8s_addons addons.deploy_with.tool":  {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"marketplace_list items.deploy.tool":  {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-}
+var readUnnamed = map[string]struct{ class, why string }{}
 
 // Release plan 1.9, phase 0, И1 («человек видит каждое поле карточки»):
 // what the agent reads in a card or a list (--json, the same as MCP), the
@@ -68,6 +63,7 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 	lang := i18n.Lang()
 	i18n.SetLang(i18n.EN)
 	defer i18n.SetLang(lang)
+	root := newRootCmd()
 	for _, c := range cases {
 		if c.tool.Mutating || c.state != "" || textAnswer[c.tool.Name] != "" {
 			continue
@@ -121,11 +117,25 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 		}
 		if obj, ok := answer.(map[string]any); ok {
 			switch c.tool.Name {
+			case "doctor":
+				code, verbose, errOut := run("--verbose")
+				if code != 0 {
+					bad = append(bad, errOut)
+				} else if err := checkDoctorHTTP(obj, human, verbose); err != nil {
+					bad = append(bad, err.Error())
+				}
+			case "image_get", "k8s_addon_versions", "k8s_addons":
+				if err := checkDeployRoutes(root, c.tool.Name, obj, human); err != nil {
+					bad = append(bad, err.Error())
+				}
 			case "metrics_scrape":
 				if err := checkScrapeAnswer(obj, out, pvProject, `{__name__=~".+"}`); err != nil {
 					bad = append(bad, err.Error())
 				}
 			case "marketplace_list":
+				if err := checkDeployRoutes(root, c.tool.Name, obj, human); err != nil {
+					bad = append(bad, err.Error())
+				}
 				if err := checkMarketFlags(obj, human); err != nil {
 					bad = append(bad, err.Error())
 				}
@@ -503,7 +513,7 @@ func TestRead_SelectedFieldsInBothLanguages(t *testing.T) {
 			{cmds["pg_specs"].cmd.show, `{"specifications":[{"id":"a","min_storage_gb":173},{"id":"b","min_storage_gb":349}]}`, `{"specifications":[{"id":"a"}]}`, []string{"173", "349"}},
 			{renderProjectList, `{"active":"kept-project","projects":[]}`, `{"projects":[]}`, []string{i18n.T("Active project: kept-project", "Активный проект: kept-project")}},
 			{statusView, `{"id":"d","project_id":"project-blue","ssh_user":"user-green"}`, `{"id":"d"}`, []string{"project-blue", "user-green"}},
-			{renderImageCard, `{"id":"img","name":"img","fields":[{"name":"ssh","field_type":"key","required":true,"mandatory_group":"auth-entry"}]}`, `{"id":"img","name":"img","fields":[{"name":"ssh","required":true}]}`, []string{i18n.T("group auth-entry", "группа auth-entry")}},
+			{renderImageCard, `{"image":{"id":"img","name":"img"},"fields":[{"name":"ssh","field_type":"key","required":true,"mandatory_group":"auth-entry"}]}`, `{"image":{"id":"img","name":"img"},"fields":[{"name":"ssh","required":true}]}`, []string{i18n.T("group auth-entry", "группа auth-entry")}},
 		} {
 			for _, raw := range []string{tc.present, tc.absent} {
 				var buf strings.Builder
@@ -726,6 +736,144 @@ func TestMarketplaceFlagsFollowTheirRows(t *testing.T) {
 		}
 		if checkMarketFlags(parseObject(strings.Replace(raw, "false", "true", 1)), buf.String()) == nil {
 			t.Fatal("changed price was accepted")
+		}
+	}
+}
+
+func checkDoctorHTTP(a map[string]any, plain, verbose string) error {
+	checks, _ := a["checks"].([]any)
+	for _, item := range checks {
+		row := item.(map[string]any)
+		status, ok := row["http_status"].(float64)
+		if !ok {
+			continue
+		}
+		if status < 100 || status > 599 || row["status"] != "ok" {
+			return fmt.Errorf("doctor: unexpected response %v", row)
+		}
+		detail, _ := row["detail"].(string)
+		host, _, _ := strings.Cut(detail, " ")
+		if host == "" {
+			return fmt.Errorf("doctor: missing probe host")
+		}
+		reachable := host + i18n.T(" reachable (", " доступен (")
+		if !strings.Contains(plain, reachable) || !strings.Contains(verbose, fmt.Sprintf("%sHTTP %.0f,", reachable, status)) {
+			return fmt.Errorf("doctor: HTTP %.0f for %s absent from verbose probe", status, host)
+		}
+		delete(row, "http_status")
+	}
+	return nil
+}
+
+// Verify the actual command annotation, as well as the spelling printed
+// to the terminal. A command for a different resource must not pass.
+func checkDeployRoutes(root *cobra.Command, name string, a map[string]any, human string) error {
+	check := func(obj map[string]any, key, command, context string) error {
+		action, _ := obj[key].(map[string]any)
+		if action == nil {
+			return nil
+		}
+		cmd, args, err := root.Find(strings.Fields(command))
+		if err != nil || len(args) != 0 || cmd.CommandPath() != "evo "+command || cmd.Annotations[toolAnnotation] != action["tool"] || !strings.Contains(context, "evo "+command+" ") {
+			return fmt.Errorf("%s: %v lacks matching CLI route %q", name, action["tool"], command)
+		}
+		delete(action, "tool")
+		return nil
+	}
+	switch name {
+	case "image_get":
+		if err := check(a, "create", "vm create", human); err != nil {
+			return err
+		}
+		fields, _ := a["fields"].([]any)
+		for _, entry := range fields {
+			f := entry.(map[string]any)
+			role, ok := f["role"].(string)
+			if !ok {
+				continue
+			}
+			label, ok := map[string]string{images.RoleKey: i18n.T("evo: the SSH key", "evo: ключ SSH"), images.RoleLogin: i18n.T("evo: the login", "evo: логин"), images.RoleHostname: i18n.T("evo: the VM name", "evo: имя ВМ"), images.RolePassword: i18n.T("evo: a random password", "evo: случайный пароль")}[role]
+			found := false
+			for _, line := range strings.Split(human, "\n") {
+				cells := zoneTableGap.Split(strings.TrimSpace(line), -1)
+				if len(cells) >= 2 && cells[0] == f["name"] && cells[len(cells)-1] == label {
+					found = true
+					break
+				}
+			}
+			if !ok || !found {
+				return fmt.Errorf("image field %v: missing role %s", f["name"], role)
+			}
+			delete(f, "role")
+		}
+	case "k8s_addon_versions":
+		return check(a, "deploy_with", "k8s add-addon", human)
+	case "k8s_addons":
+		rows, _ := a["addons"].([]any)
+		for _, v := range rows {
+			row := v.(map[string]any)
+			if err := check(row, "deploy_with", "k8s add-addon", human); err != nil {
+				return err
+			}
+		}
+	case "marketplace_list":
+		items, _ := a["items"].([]any)
+		for _, v := range items {
+			row := v.(map[string]any)
+			command := "vm create"
+			if row["kind"] == "k8s-addon" {
+				command = "k8s add-addon"
+			}
+			line := ""
+			for _, l := range strings.Split(human, "\n") {
+				cells := zoneTableGap.Split(strings.TrimSpace(l), -1)
+				if len(cells) >= 2 && cells[0] == row["kind"] && cells[1] == row["name"] {
+					line = l
+					break
+				}
+			}
+			if err := check(row, "deploy", command, line); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func TestDeploymentHintMustResolveToItsTool(t *testing.T) {
+	old := i18n.Lang()
+	defer i18n.SetLang(old)
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		root := newRootCmd()
+		const raw = `{"image":{"name":"test-os","id":"img"},"create":{"tool":"provision"},"fields":[{"name":"ssh","field_type":"key","filled_by":"evo","role":"ssh_key"}]}`
+		var buf strings.Builder
+		if err := renderImageCard(output.NewWithWriter(&buf, output.ModePlain, false), &buf, raw); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			input string
+			ok    bool
+		}{{raw, true}, {strings.Replace(raw, "provision", "k8s_add_addon", 1), false}, {strings.Replace(raw, "ssh_key", "login", 1), false}} {
+			if err := checkDeployRoutes(root, "image_get", parseObject(tc.input), buf.String()); (err == nil) != tc.ok {
+				t.Fatalf("%s: %v", lang, err)
+			}
+		}
+	}
+}
+
+func TestDoctorProbeMatchesHostInVerboseOutput(t *testing.T) {
+	old := i18n.Lang()
+	defer i18n.SetLang(old)
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		host := "test.invalid" + i18n.T(" reachable (", " доступен (")
+		raw := `{"checks":[{"status":"ok","detail":"test.invalid reachable","http_status":404}]}`
+		for _, code := range []string{"404", "200"} {
+			err := checkDoctorHTTP(parseObject(raw), host+"1ms)", host+"HTTP "+code+", 1ms)")
+			if (err == nil) != (code == "404") {
+				t.Fatal(code, err)
+			}
 		}
 	}
 }
