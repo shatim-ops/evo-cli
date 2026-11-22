@@ -7,6 +7,7 @@ package tools
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -83,6 +84,35 @@ func (w *lostDeleteWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 			return nil, errors.New("read tcp: connection reset by peer")
 		}
 	}
+	// The parent stays visible after the resource DELETE. Populate the
+	// same scoped collections the real callers consult on the repeat.
+	if r.Method == http.MethodGet {
+		switch {
+		case (w.tool == "sg_rule_delete" || w.tool == "close_ports") && r.URL.Path == "/api/v1/security-groups":
+			fmt.Fprintf(rec, `{"items":[{"id":%q,"name":"fixture-group"}],"total":1}`, lostDeleteParentID)
+			return rec.Result(), nil
+		case (w.tool == "sg_rule_delete" || w.tool == "close_ports") && r.URL.Path == "/api/v1/security-groups/"+lostDeleteParentID+"/rules":
+			if w.taken {
+				fmt.Fprint(rec, `{"items":[],"total":0}`)
+			} else {
+				fmt.Fprintf(rec, `{"items":[{"id":%q,"direction":"ingress","ether_type":"IPv4","ip_protocol":"tcp","port_range":"80:80","remote_ip_prefix":"0.0.0.0/0","state":"created"}],"total":1}`, liveID)
+			}
+			return rec.Result(), nil
+		case w.tool == "dns_zone_delete" && r.URL.Path == "/v1/publicZones":
+			if w.taken {
+				fmt.Fprint(rec, `{"zones":[]}`)
+			} else {
+				fmt.Fprintf(rec, `{"zones":[{"id":%q,"domain":"fixture.example."}]}`, liveID)
+			}
+			return rec.Result(), nil
+		case w.tool == "k8s_nodepool_delete" && r.URL.Path == "/v3/nodePools/"+liveID && !w.taken:
+			fmt.Fprintf(rec, `{"id":%q,"clusterId":%q,"status":"RUNNING"}`, liveID, lostDeleteParentID)
+			return rec.Result(), nil
+		case w.tool == "k8s_nodepool_delete" && r.URL.Path == "/v3/nodePools":
+			fmt.Fprintf(rec, `{"nodePools":[{"id":%q,"clusterId":%q,"status":"RUNNING"}]}`, liveID, lostDeleteParentID)
+			return rec.Result(), nil
+		}
+	}
 	if !w.taken {
 		if w.tool == "s3_bucket_delete" && r.Method == http.MethodGet && strings.HasSuffix(r.URL.Host, "s3.cloud.ru") {
 			goneWorld(rec, r) // existing, empty bucket
@@ -109,12 +139,7 @@ func (w *lostDeleteWorld) sent() []string {
 // lostDeleteUnreached are the deletes this world does not bring to their
 // request, each with why: the class says nothing of them yet. The list
 // only shrinks. Closes by 1.10.
-var lostDeleteUnreached = map[string]string{
-	"close_ports":         "the rule of a port is found in the list of rules of the group; liveWorld lists no rule of a port",
-	"dns_zone_delete":     "the zone is read from the list of zones; liveWorld lists none",
-	"k8s_nodepool_delete": "the node pool is read with its cluster in the body; liveWorld names no cluster there (unreachedDeletes, #1465)",
-	"sg_rule_delete":      "the group is found in the list of groups; the list of the world names liveID, and the rule and its group cannot both be it",
-}
+var lostDeleteUnreached = map[string]string{}
 
 // lostDeleteSaysNeverExisted are the deletes whose client sends the DELETE
 // again after the lost answer and reads the 404 to its own repeat as
@@ -186,6 +211,10 @@ func TestDeleteLostAnswer_TheRepeatConverges(t *testing.T) {
 		sent := w.sent()
 		again, againText, againErr := callNamed(t, r, name, args)
 		repeated := w.sent()[len(sent):]
+		t.Logf("%s first=%v status=%v reason=%v repeat=%v status=%v", name, sent, first["status"], first["reason"], repeated, again["status"])
+		if (name == "sg_rule_delete" || name == "close_ports") && (len(sent) != 1 || !strings.HasSuffix(sent[0], "/security-groups/"+lostDeleteParentID+"/rules/"+liveID)) {
+			t.Errorf("%s: wrong number or target of DELETE: %v", name, sent)
+		}
 		httpretry.DefaultBase = bare
 
 		if len(sent) == 0 {
