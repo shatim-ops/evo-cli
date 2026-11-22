@@ -12,8 +12,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 )
@@ -260,6 +262,18 @@ func CompletionParent(tool, arg string) string {
 	case tool == "vpc_route_create" && arg == "next_hop_interface_id":
 		return "next_hop_vm_id"
 	}
+	switch tool + " " + arg {
+	case "sg_rule_delete rule_id":
+		return "security_group"
+	case "cert_private_key version_id":
+		return "certificate_id"
+	case "vpc_route_delete route_id":
+		return "vpc_id"
+	case "s3_get key", "s3_put key", "s3_rm key":
+		return "bucket"
+	case "backup_list resource_id":
+		return "resource_type"
+	}
 	return ""
 }
 
@@ -269,14 +283,63 @@ func (r *Registry) CompleteFor(ctx context.Context, tool, arg, prefix, parent st
 	if CompletionParent(tool, arg) == "" {
 		return r.Complete(ctx, tool, arg, prefix)
 	}
-	if !isUUID(parent) {
+	if strings.TrimSpace(parent) == "" {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(stepOf(ctx), CompletionTimeout)
 	defer cancel()
+	switch CompletionParent(tool, arg) {
+	case "vm_id", "next_hop_vm_id":
+		if !isUUID(parent) {
+			return nil
+		}
+	case "bucket":
+		return r.parentListValues(ctx, "s3_ls", map[string]any{"bucket": parent, "prefix": prefix}, "objects", "key", prefix)
+	case "resource_type":
+		switch strings.ToLower(parent) {
+		case "disk":
+			return r.parentListValues(ctx, "disk_list", nil, "disks", "id", prefix)
+		case "virtual_machine":
+			return r.parentListValues(ctx, "vm_list", nil, "vms", "id", prefix)
+		default:
+			return nil
+		}
+	case "certificate_id":
+		// Certificate version reads are addressed globally. Establish membership
+		// in the active project before the read and never call the private-key tool.
+		for _, c := range r.parentListValues(ctx, "cert_list", nil, "certificates", "id", parent) {
+			if c.Value == parent {
+				return r.parentListValues(ctx, "cert_versions", map[string]any{"certificate_id": parent}, "versions", "id", prefix)
+			}
+		}
+		return nil
+	case "vpc_id":
+		vpc, err := r.vpcRef(ctx, parent)
+		if err != nil {
+			return nil
+		}
+		return r.parentListValues(ctx, "vpc_routes", map[string]any{"vpc_id": vpc.id}, "routes", "id", prefix)
+	}
 	eng, err := r.localEngine(ctx, nil)
 	if err != nil || eng.Config.ProjectID == "" || eng.Config.KeyID == "" || authorize(ctx, eng) != nil {
 		return nil
+	}
+	if tool == "sg_rule_delete" {
+		group, err := securityGroupByRef(ctx, eng, parent)
+		if err != nil {
+			return nil
+		}
+		rules, err := eng.Cloud.ListSecurityGroupRules(ctx, group.ID)
+		if err != nil {
+			return nil
+		}
+		var out []Candidate
+		for _, rule := range rules {
+			if rule != nil && isUUID(rule.ID) && strings.HasPrefix(strings.ToLower(rule.ID), strings.ToLower(prefix)) {
+				out = append(out, Candidate{Value: rule.ID})
+			}
+		}
+		return out
 	}
 	nics, err := projectInterfaces(ctx, eng)
 	if err != nil {
@@ -286,6 +349,44 @@ func (r *Registry) CompleteFor(ctx context.Context, tool, arg, prefix, parent st
 	for _, nic := range nics {
 		if nic.VM != nil && strings.EqualFold(nic.VM.ID, parent) && isUUID(nic.ID) && strings.HasPrefix(strings.ToLower(nic.ID), strings.ToLower(prefix)) {
 			out = append(out, Candidate{Value: nic.ID})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Value < out[j].Value })
+	return out
+}
+
+// Parent-specific lists are read on demand. Their contents (including S3
+// keys) stay out of the shared per-project completion cache.
+func (r *Registry) parentListValues(ctx context.Context, source string, args map[string]any, collection, field, prefix string) []Candidate {
+	tl, ok := r.Lookup(source)
+	if !ok || tl.Mutating || IsSensitive(tl) {
+		return nil
+	}
+	if args == nil {
+		args = map[string]any{}
+	}
+	text, failed := r.unchecked[source](ctx, args)
+	if failed {
+		return nil
+	}
+	_, rows, err := listRows(text, collection)
+	if err != nil {
+		return nil
+	}
+	var out []Candidate
+	for _, row := range rows {
+		m, _ := row.(map[string]any)
+		v := stringArg(m, field)
+		if source == "cert_versions" {
+			if n, ok := m[field].(json.Number); ok {
+				v = n.String()
+			}
+			if n, err := strconv.ParseInt(v, 10, 64); err != nil || n <= 0 {
+				continue
+			}
+		}
+		if v != "" && strings.IndexFunc(v, unicode.IsControl) < 0 && strings.HasPrefix(strings.ToLower(v), strings.ToLower(prefix)) {
+			out = append(out, Candidate{Value: v})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Value < out[j].Value })

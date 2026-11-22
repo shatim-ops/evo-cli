@@ -21,44 +21,9 @@ import (
 // the key of an object. A name of a new resource ("name") is not one.
 var refArg = regexp.MustCompile(`_ids?(_|$)|^(region|zone|flavor|image|bucket|path|key|cluster|registry|repository|secret)$`)
 
-// Why a reference is not completed, when it is not.
-const (
-	// Its list takes the argument beside it (a record of a zone, an object
-	// of a bucket): Tab has no value of the parent to read it with.
-	refParent = "its list needs another argument of the call"
-	// No tool lists it.
-	refNoList = "no tool lists it"
-	// A VM or a disk: two lists, and Tab has no kind to read one of them by.
-	refTwoKinds = "a VM or a disk, which no one list holds"
-	// A list without a required argument has it, and nothing declares it:
-	// the work item names who declares it.
-	refGap = "listed, not declared"
-)
-
-// refUncompleted are the references Tab does not complete, with why; for
-// refGap, the work item. The list only shrinks: a new reference without a
-// list and without a line here fails the build, and so does a line whose
-// argument is completed now or is gone (CLAUDE.md §0, rule 3: a new
-// surface, Tab, release plan 1.5).
-// Closes by 1.10: moved from 1.8 by the owner's decision of 13.11 (#1590,
-// question 19; release plan 1.9, «Просроченные убывающие списки»).
-var refUncompleted = map[string]struct{ why, item string }{
-
-	"sg_rule_delete rule_id": {why: refParent},
-
-	"cert_private_key version_id": {why: refParent},
-
-	"vpc_route_delete route_id": {why: refParent},
-	"s3_get key":                {why: refParent},
-	"s3_put key":                {why: refParent},
-	"s3_rm key":                 {why: refParent},
-
-	"backup_list resource_id": {why: refTwoKinds},
-}
-
 // Release plan 1.5, Tab in the whole CLI: an argument that references a
 // resource or an entry of a catalogue is completed (completionOf: valueRefs,
-// the kinds of Decl.IDArgs), or Decl.NoCompletion says why not, or refUncompleted
+// the kinds of Decl.IDArgs), or Decl.NoCompletion says why not
 // does. Escaped before the invariant (#478, «разработка»): a reference by
 // name in a new tool without a line in valueRefs or Decl.NoCompletion was left
 // without Tab, silently.
@@ -76,34 +41,16 @@ func TestCompletion_EveryReferenceIsCompletedOrSaysWhy(t *testing.T) {
 				continue
 			}
 			k := tl.Name + " " + arg
-			line, declared := refUncompleted[k]
-			switch completes := r.Completes(tl.Name, arg); {
-			case completes && declared:
-				t.Errorf("refUncompleted names %q, which Tab completes now: remove the line", k)
-			case !completes && !declared:
+			if !r.Completes(tl.Name, arg) {
 				missing = append(missing, k)
-			case declared && line.why == refGap && line.item == "":
-				t.Errorf("%q: a gap without its work item", k)
 			}
+
 			seen[k] = true
 		}
 	}
 	sort.Strings(missing)
 	for _, k := range missing {
-		t.Errorf("%s: a reference Tab does not complete — declare its list (valueRefs, Decl.IDArgs) or why not (Decl.NoCompletion, refUncompleted)", k)
-	}
-	for k, line := range refUncompleted {
-		if !seen[k] {
-			t.Errorf("refUncompleted names %q, which is no reference of a tool: remove the line", k)
-		}
-		switch line.why {
-		case refParent, refNoList, refTwoKinds, refGap:
-		default:
-			t.Errorf("refUncompleted[%q]: unknown reason %q", k, line.why)
-		}
-		if line.why != refGap && line.item != "" {
-			t.Errorf("refUncompleted[%q]: an item belongs to a gap only", k)
-		}
+		t.Errorf("%s: a reference Tab does not complete — declare its list (valueRefs, Decl.IDArgs) or why not (Decl.NoCompletion)", k)
 	}
 	if !seen["vm_get vm_id"] {
 		t.Fatal("vm_get vm_id is not among the references: refArg moved, update the test")
@@ -293,5 +240,84 @@ func TestComplete_ReferencesWithoutServiceCatalogue(t *testing.T) {
 				t.Fatal("explicit ID refused", err)
 			}
 		})
+	}
+}
+
+func TestComplete_BucketCertificateAndResourceType(t *testing.T) {
+	for _, tc := range []struct{ tool, arg, parent, source, collection, field, value string }{
+		{"s3_get", "key", "bucket-one", "s3_ls", "objects", "key", "docs/one"},
+		{"s3_put", "key", "bucket-one", "s3_ls", "objects", "key", "docs/one"},
+		{"s3_rm", "key", "bucket-one", "s3_ls", "objects", "key", "docs/one"},
+		{"cert_private_key", "version_id", resMine, "cert_versions", "versions", "id", "12"},
+		{"backup_list", "resource_id", "disk", "disk_list", "disks", "id", zoneMine},
+		{"backup_list", "resource_id", "virtual_machine", "vm_list", "vms", "id", resMine},
+	} {
+		t.Run(tc.tool+"/"+tc.parent, func(t *testing.T) {
+			r := New(nil)
+			calls := 0
+			if got := r.CompleteFor(context.Background(), tc.tool, tc.arg, "", ""); len(got) != 0 {
+				t.Fatal(got)
+			}
+			r.unchecked["cert_list"] = func(ctx context.Context, args map[string]any) (string, bool) {
+				return `{"certificates":[{"id":"` + resMine + `"}]}`, false
+			}
+			r.unchecked[tc.source] = func(_ context.Context, args map[string]any) (string, bool) {
+				calls++
+				switch tc.source {
+				case "s3_ls":
+					if args["bucket"] != tc.parent {
+						return `{"objects":[]}`, false
+					}
+				case "cert_versions":
+					if args["certificate_id"] != tc.parent {
+						t.Fatal(args)
+					}
+					return `{"versions":[{"id":12}]}`, false
+				}
+				return toJSON(map[string]any{tc.collection: []any{map[string]any{tc.field: tc.value}}}), false
+			}
+			if got := r.CompleteFor(context.Background(), tc.tool, tc.arg, "", tc.parent); len(got) != 1 || got[0].Value != tc.value || calls != 1 {
+				t.Fatal(got, calls)
+			}
+			if got := r.CompleteFor(context.Background(), tc.tool, tc.arg, "", resForeign); len(got) != 0 {
+				t.Fatal("cross-parent result", got)
+			}
+			if (tc.source == "cert_versions" || tc.tool == "backup_list") && calls != 1 {
+				t.Fatal("lookup for unverified parent", calls)
+			}
+			r.unchecked[tc.source] = func(context.Context, map[string]any) (string, bool) { return "unavailable", true }
+			if got := r.CompleteFor(context.Background(), tc.tool, tc.arg, "", tc.parent); len(got) != 0 {
+				t.Fatal("stale suggestions", got)
+			}
+		})
+	}
+}
+
+func TestComplete_SecurityGroupAndRouteChildren(t *testing.T) {
+	ctx := context.Background()
+	sg := &sgCloud{rules: []*provision.SGRule{{ID: zoneMine}}}
+	r := completionRegistry(t, sg, completionCfg)
+	if got := r.CompleteFor(ctx, "sg_rule_delete", "rule_id", "", "SSH-access_ru.AZ-1"); len(got) != 1 || got[0].Value != zoneMine {
+		t.Fatal(got)
+	}
+	if got := r.CompleteFor(ctx, "sg_rule_delete", "rule_id", "", resForeign); len(got) != 0 || len(sg.deleted) != 0 {
+		t.Fatal(got, sg.deleted)
+	}
+	f := &ownerFake{}
+	r = ownerRegistry(t, f, true, ownProject)
+	for _, parent := range []string{resMine, "res-a1", resForeign} {
+		got := r.CompleteFor(ctx, "vpc_route_delete", "route_id", "", parent)
+		if parent == resForeign {
+			if len(got) != 0 {
+				t.Fatal(parent, got)
+			}
+		} else if len(got) != 1 || got[0].Value != ownerRoute {
+			t.Fatal(parent, got, f.log())
+		}
+	}
+	for _, req := range f.log() {
+		if !strings.HasPrefix(req, "GET ") || strings.Contains(req, resForeign+"/routes") {
+			t.Fatal(req)
+		}
 	}
 }
