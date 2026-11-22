@@ -259,7 +259,7 @@ func TestComplete_BucketCertificateAndResourceType(t *testing.T) {
 				t.Fatal(got)
 			}
 			r.unchecked["cert_list"] = func(ctx context.Context, args map[string]any) (string, bool) {
-				return `{"certificates":[{"id":"` + resMine + `"}]}`, false
+				return `{"project":"fixture","certificates":[{"id":"` + resMine + `","projectId":"fixture"}]}`, false
 			}
 			r.unchecked[tc.source] = func(_ context.Context, args map[string]any) (string, bool) {
 				calls++
