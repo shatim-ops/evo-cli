@@ -39,9 +39,8 @@ var secretBodyFields = map[string]bool{
 // only shrinks: the preview of С4 («разработка», access first) names the
 // value and the line goes; a line whose value the preview names now, or
 // that is not sent any more, fails the test.
-// Closes by 1.9, before rc.1 (owner's decision 13.11, #1590, question 19,
-// (c); release plan 1.9, «Просроченные убывающие списки»): what stays is an
-// exception declared with a reason «Риск · 1.9» accepted.
+// Closes by 1.10 (owner's decision of 17.11, release plan 1.9,
+// «Сроки bodyUnnamed и humanUnnamed»). Risk reviews the remaining reasons.
 var bodyUnnamed = map[string]struct{ class, why string }{
 
 	"deploy availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
