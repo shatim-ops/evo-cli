@@ -68,6 +68,9 @@ func genToolsDoc() []byte {
 			switch tools.EffectOf(t) {
 			case tools.EffectDestructive:
 				changes = "удаляет"
+				if t.Name == "k8s_upgrade" || t.Name == "k8s_nodepool_upgrade" {
+					changes = "обновляет версию"
+				}
 			case tools.EffectMutating:
 				changes = "да"
 			case tools.EffectSecret:

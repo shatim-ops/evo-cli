@@ -23,6 +23,8 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/mk8s"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/stack"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -577,7 +579,8 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		// the limit of the repeats counts from («Риск», conclusion 177,
 		// У7).
 		var end func(string)
-		deferIntent := vpcCreate || t.Name == "lb_create" || t.Name == "snat_create"
+		deferIntent := vpcCreate || t.Name == "lb_create" || t.Name == "snat_create" ||
+			t.Name == "k8s_upgrade" || t.Name == "k8s_nodepool_upgrade"
 		if t.Name == "stack_apply" {
 			job, err := stack.LoadJob(stringArg(args, "job_id"))
 			deferIntent = err == nil && jobHasPendingLB(job)
@@ -653,4 +656,23 @@ func nextSameCall(answer map[string]any, tool string, args map[string]any) {
 	next := maps.Clone(args)
 	delete(next, "confirmed")
 	nextStep(answer, tool, next)
+}
+
+// submissionError runs under the project upgrade lock. Only the response to
+// this POST can retire its reservation. A fresh refusal ID invalidates offers
+// issued to all clients before the rejection, including unused offers.
+func (r upgradeReceipt) submissionError(path string, current upgradeCard, err error) (string, bool) {
+	var response *mk8s.UpgradeHTTPError
+	if !errors.As(err, &response) || !intent.DefiniteRefusal(response.Status) {
+		return errAnswer(err, upgradeResult(r, current, "outcome_unknown")), true
+	}
+	id, genErr := uuid.NewRandom()
+	if genErr != nil {
+		return errResult(errors.Join(err, genErr)), true
+	}
+	r.RejectionID = id.String()
+	if saveErr := r.save(path); saveErr != nil {
+		return errResult(errors.Join(err, saveErr)), true
+	}
+	return errAnswer(err, upgradeResult(r, current, "rejected")), true
 }

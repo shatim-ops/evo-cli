@@ -368,13 +368,19 @@ func (c *Client) UpgradeNodePool(ctx context.Context, id, version string) (*Oper
 	return c.upgrade(ctx, "/v3/nodePools/"+seg(id)+":upgrade", version)
 }
 
+// UpgradeHTTPError carries the status of the actual submission response.
+type UpgradeHTTPError struct {
+	Status int
+	error
+}
+
 func (c *Client) upgrade(ctx context.Context, path, version string) (*Operation, error) {
 	data, status, err := c.request(ctx, http.MethodPost, path, nil, map[string]string{"version": version}, true)
 	if err != nil {
 		return nil, err
 	}
 	if status != http.StatusOK {
-		return nil, apiError(status, data)
+		return nil, &UpgradeHTTPError{Status: status, error: apiError(status, data)}
 	}
 	var op Operation
 	if err := json.Unmarshal(data, &op); err != nil {
