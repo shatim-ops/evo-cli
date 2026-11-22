@@ -109,7 +109,7 @@ func (s *Registry) planSGRuleDelete(ctx context.Context, args map[string]any) (*
 		if other != nil {
 			return nil, clierrors.New(clierrors.CodeUsage,
 				i18n.Tf("rule %s is a rule of security group %s (%s), not of %s", "правило %s принадлежит группе безопасности %s (%s), а не %s",
-					ruleID, quoteCloud(other.Name), other.ID, quoteCloud(group.Name)),
+					ruleID, quoteCloud(other.Name), quoteCloud(other.ID), quoteCloud(group.Name)),
 				i18n.T("Name the group the rule is in, or check the rule id (list_security_groups with rules=true).",
 					"Назовите группу, в которой правило, или проверьте id правила (list_security_groups с rules=true)."))
 		}

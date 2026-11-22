@@ -636,7 +636,7 @@ func PickVMFlavor(flavors []*provision.Flavor, want string) (string, error) {
 func flavorNotFound(ref string, flavors []*provision.Flavor) error {
 	names := make([]string, len(flavors))
 	for i, f := range flavors {
-		names[i] = f.Name + " (" + f.ID + ")"
+		names[i] = f.Name + " (" + strconv.Quote(f.ID) + ")"
 	}
 	return clerrors.New(clerrors.CodeNotFound,
 		i18n.Tf("flavor %q not found. Available: %s", "flavor %q не найден. Есть: %s", ref, strings.Join(names, ", ")),

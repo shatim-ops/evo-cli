@@ -525,12 +525,12 @@ func (s *Registry) planVMPower(tool string) Planner {
 				// No question yet: the state, and the same call again.
 				ans := vmAnswer(vm, "waiting", last)
 				reads.put(ans)
-				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; it cannot be changed until its state settles. Call %s again when it settles: it shows the preview and asks before it sends the command.", vm.ID, last, tool)
+				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; it cannot be changed until its state settles. Call %s again when it settles: it shows the preview and asks before it sends the command.", quoteCloud(vm.ID), last, tool)
 				nextSameCall(ans, tool, vmRef(args, vm))
 				return answered(toJSON(ans), false), nil
 			case timedOut > 0:
 				return nil, clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("VM %s is in state %s: it cannot be changed until the state settles", "ВМ %s в состоянии %s: менять её можно, когда состояние устоится", vm.ID, quoteCloud(last)),
+					i18n.Tf("VM %s is in state %s: it cannot be changed until the state settles", "ВМ %s в состоянии %s: менять её можно, когда состояние устоится", quoteCloud(vm.ID), quoteCloud(last)),
 					i18n.T("Repeat the call when vm_get shows the VM running or stopped.", "Повторите вызов, когда vm_get покажет ВМ в running или stopped."))
 			}
 			state = last
@@ -550,7 +550,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			// the action starts is the step — with a preview and a
 			// question of its own (§5.1: a reboot is not a way to start).
 			err := clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, quoteCloud(state), i18n.T(act.verb[0], act.verb[1])),
+				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", quoteCloud(vm.ID), quoteCloud(state), i18n.T(act.verb[0], act.verb[1])),
 				i18n.Tf("It has to be %s first.", "Сначала она должна быть в %s.", act.from))
 			fields := map[string]any{"vm_id": vm.ID, "state": state}
 			if first := vmToolTo(act.from); first != "" {
@@ -559,7 +559,7 @@ func (s *Registry) planVMPower(tool string) Planner {
 			return answered(errAnswer(err, fields), true), nil
 		case vmNothingToChange[state]:
 			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", vm.ID, quoteCloud(state), i18n.T(act.verb[0], act.verb[1])),
+				i18n.Tf("VM %s is in state %s: there is nothing to %s", "ВМ %s в состоянии %s: %s нечего", quoteCloud(vm.ID), quoteCloud(state), i18n.T(act.verb[0], act.verb[1])),
 				i18n.T("vm_get shows the VM; what to do with it is the person's decision.", "ВМ показывает vm_get; что с ней делать — решает человек."))
 		}
 		// What the write sends and what it changes: the command, and the
@@ -656,7 +656,7 @@ func (s *Registry) vmPowerRefused(ctx context.Context, eng *engine.Engine, tool 
 		details["platform_code"] = code
 	}
 	return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-		i18n.Tf("the platform refused %s of VM %s in state %s", "платформа отказала: %s ВМ %s в состоянии %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, quoteCloud(now.State)), hint, cause),
+		i18n.Tf("the platform refused %s of VM %s in state %s", "платформа отказала: %s ВМ %s в состоянии %s", i18n.T(act.noun[0], act.noun[1]), quoteCloud(vm.ID), quoteCloud(now.State)), hint, cause),
 		map[string]any{"vm_id": vm.ID, "state": now.State, "details": details}), true
 }
 
@@ -705,7 +705,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		if limit = vmPowerTimeout - clock.Since(since); limit <= 0 {
 			ans := vmAnswer(vm, act.via, vm.State)
 			ans["since_start_sec"] = int(clock.Since(since).Seconds())
-			ans["next"] = fmt.Sprintf("VM %s is still %s %d s after %s began it; evo waits for it no more. vm_get shows its state.", vm.ID, vm.State, int(clock.Since(since).Seconds()), tool)
+			ans["next"] = fmt.Sprintf("VM %s is still %s %d s after %s began it; evo waits for it no more. vm_get shows its state.", quoteCloud(vm.ID), quoteCloud(vm.State), int(clock.Since(since).Seconds()), tool)
 			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
 			return toJSON(ans), false
 		}
@@ -733,7 +733,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 			ans["elapsed_sec"] = int(clock.Since(started).Seconds())
 			ans["warning"] = i18n.Tf("the platform accepted %s and evo did not see the state of the VM change: whether it took place, the uptime of the guest OS tells",
 				"платформа приняла команду «%s», а смены состояния ВМ evo не увидел: состоялась ли она, скажет время работы гостевой ОС", i18n.T(act.noun[0], act.noun[1]))
-			ans["next"] = fmt.Sprintf("vm_get shows VM %s. Calling %s again is a new %s, not a way to go on with this one.", vm.ID, tool, act.verb[0])
+			ans["next"] = fmt.Sprintf("vm_get shows VM %s. Calling %s again is a new %s, not a way to go on with this one.", quoteCloud(vm.ID), tool, act.verb[0])
 			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
 			return toJSON(ans), false
 		}
@@ -755,11 +755,11 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 			// would send the command again on the consent already given
 			// («Риск», conclusion 123, К2).
 			return true, clierrors.New(clierrors.CodeAPIError,
-				i18n.Tf("%s of VM %s did not take place: the VM was %s and is %s again", "%s ВМ %s не состоялся: ВМ была в %s и снова в %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, act.via, st),
+				i18n.Tf("%s of VM %s did not take place: the VM was %s and is %s again", "%s ВМ %s не состоялся: ВМ была в %s и снова в %s", i18n.T(act.noun[0], act.noun[1]), quoteCloud(vm.ID), act.via, st),
 				i18n.T("What to do with the VM is the person's decision; vm_get shows it.", "Что делать с ВМ — решает человек; её показывает vm_get."))
 		}
 		return true, clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("VM %s is in state %s after %s, not %s", "ВМ %s: состояние %s после команды «%s», а не %s", vm.ID, quoteCloud(st), i18n.T(act.noun[0], act.noun[1]), act.to),
+			i18n.Tf("VM %s is in state %s after %s, not %s", "ВМ %s: состояние %s после команды «%s», а не %s", quoteCloud(vm.ID), quoteCloud(st), i18n.T(act.noun[0], act.noun[1]), act.to),
 			i18n.T("vm_get shows the VM.", "ВМ показывает vm_get."))
 	})
 	elapsed := int(clock.Since(started).Seconds())
@@ -770,7 +770,7 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		// The platform took the command and the VM never left its state:
 		// not a change going on, and not one a repeat goes on with (К2).
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("the platform accepted %s of VM %s, and its state has not changed in %d s: still %s", "платформа приняла команду «%s» для ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", i18n.T(act.noun[0], act.noun[1]), vm.ID, elapsed, last),
+			i18n.Tf("the platform accepted %s of VM %s, and its state has not changed in %d s: still %s", "платформа приняла команду «%s» для ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", i18n.T(act.noun[0], act.noun[1]), quoteCloud(vm.ID), elapsed, last),
 			i18n.T("vm_get shows the VM; whether to send the command again is the person's decision.", "ВМ показывает vm_get; слать ли команду снова — решает человек.")),
 			readsPut(reads, map[string]any{"vm_id": vm.ID, "state": last, "elapsed_sec": elapsed})), true
 	case atLimit || timedOut > 0:
@@ -785,14 +785,14 @@ func (s *Registry) finishVMPower(ctx context.Context, eng *engine.Engine, tool s
 		if act.everySendIsAChange() {
 			// The same call, come after the end, would be the question of
 			// a second change: the step is the read.
-			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state. Calling %s again is a new %s, not a way to go on with this one.", vm.ID, last, tool, act.verb[0])
+			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state. Calling %s again is a new %s, not a way to go on with this one.", quoteCloud(vm.ID), last, tool, act.verb[0])
 			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
 		} else if atLimit && own {
-			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second command.", vm.ID, last, tool)
+			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second command.", quoteCloud(vm.ID), last, tool)
 			nextSameCall(ans, tool, vmRef(args, vm))
 		} else {
 			// Not this call's to go on with: the next step is the read.
-			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state.", vm.ID, last)
+			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state.", quoteCloud(vm.ID), last)
 			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
 		}
 		return toJSON(ans), false
@@ -831,7 +831,7 @@ func (s *Registry) waitVM(ctx context.Context, eng *engine.Engine, vm *provision
 			return d.State, waitObserved, nil
 		},
 		func(st string) string {
-			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), vm.ID, st)
+			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), quoteCloud(vm.ID), st)
 		}, done)
 }
 
@@ -944,12 +944,12 @@ func (s *Registry) planVMResize() Planner {
 			case atLimit:
 				ans := vmResizeAnswer(last, "waiting")
 				reads.put(ans)
-				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; its flavor cannot be changed until its state settles. Call %s again when it settles: it shows the preview and asks before it sends the change.", vm.ID, last.State, tool)
+				ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call; its flavor cannot be changed until its state settles. Call %s again when it settles: it shows the preview and asks before it sends the change.", quoteCloud(vm.ID), quoteCloud(last.State), tool)
 				nextSameCall(ans, tool, vmRef(args, vm))
 				return answered(toJSON(ans), false), nil
 			case timedOut > 0:
 				return nil, clierrors.New(clierrors.CodeUsage,
-					i18n.Tf("VM %s is in state %s: its flavor can be changed when the state settles", "ВМ %s в состоянии %s: менять её конфигурацию можно, когда состояние устоится", vm.ID, quoteCloud(last.State)),
+					i18n.Tf("VM %s is in state %s: its flavor can be changed when the state settles", "ВМ %s в состоянии %s: менять её конфигурацию можно, когда состояние устоится", quoteCloud(vm.ID), quoteCloud(last.State)),
 					i18n.T("Repeat the call when vm_get shows the VM running or stopped.", "Повторите вызов, когда vm_get покажет ВМ в running или stopped."))
 			}
 			vm = last
@@ -966,7 +966,7 @@ func (s *Registry) planVMResize() Planner {
 			return answered(toJSON(vmResizeAnswer(vm, "already_resized")), false), nil
 		case vmNothingToChange[vm.State]:
 			return nil, clierrors.New(clierrors.CodeUsage,
-				i18n.Tf("VM %s is in state %s: there is nothing to resize", "ВМ %s в состоянии %s: менять конфигурацию нечего", vm.ID, quoteCloud(vm.State)),
+				i18n.Tf("VM %s is in state %s: there is nothing to resize", "ВМ %s в состоянии %s: менять конфигурацию нечего", quoteCloud(vm.ID), quoteCloud(vm.State)),
 				i18n.T("vm_get shows the VM; what to do with it is the person's decision.", "ВМ показывает vm_get; что с ней делать — решает человек."))
 		}
 		// A known limit of the pair: the flavor is not given in the zone of
@@ -1201,7 +1201,7 @@ func (s *Registry) vmResizeRefused(ctx context.Context, eng *engine.Engine, vm *
 	}
 	fields["details"] = details
 	return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-		i18n.Tf("the platform refused to change the flavor of VM %s to %s in state %s", "платформа отказала в смене конфигурации ВМ %s на %s в состоянии %s", vm.ID, quoteCloud(target.Name), quoteCloud(now.State)),
+		i18n.Tf("the platform refused to change the flavor of VM %s to %s in state %s", "платформа отказала в смене конфигурации ВМ %s на %s в состоянии %s", quoteCloud(vm.ID), quoteCloud(target.Name), quoteCloud(now.State)),
 		hint, cause), fields), true
 }
 
@@ -1226,7 +1226,7 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 			s.followFlavor(eng, vm.ID, target)
 			ans := vmResizeAnswer(vm, "resizing")
 			ans["since_start_sec"] = int(clock.Since(since).Seconds())
-			ans["next"] = fmt.Sprintf("VM %s is still %s %d s after %s began the change; evo waits for it no more. vm_get shows its state.", vm.ID, vm.State, int(clock.Since(since).Seconds()), tool)
+			ans["next"] = fmt.Sprintf("VM %s is still %s %d s after %s began the change; evo waits for it no more. vm_get shows its state.", quoteCloud(vm.ID), quoteCloud(vm.State), int(clock.Since(since).Seconds()), tool)
 			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
 			return toJSON(ans), false
 		}
@@ -1256,11 +1256,11 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 			return false, nil
 		case vmStable[d.State]:
 			return true, clierrors.New(clierrors.CodeAPIError,
-				i18n.Tf("the change of flavor of VM %s did not take place: the VM left updating on flavor %s", "смена конфигурации ВМ %s не состоялась: ВМ вышла из updating с конфигурацией %s", vm.ID, flavorName(d)),
+				i18n.Tf("the change of flavor of VM %s did not take place: the VM left updating on flavor %s", "смена конфигурации ВМ %s не состоялась: ВМ вышла из updating с конфигурацией %s", quoteCloud(vm.ID), flavorName(d)),
 				i18n.T("What to do with the VM is the person's decision; vm_get shows it.", "Что делать с ВМ — решает человек; её показывает vm_get."))
 		}
 		return true, clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("VM %s is in state %s after the change of flavor", "ВМ %s: состояние %s после смены конфигурации", vm.ID, quoteCloud(d.State)),
+			i18n.Tf("VM %s is in state %s after the change of flavor", "ВМ %s: состояние %s после смены конфигурации", quoteCloud(vm.ID), quoteCloud(d.State)),
 			i18n.T("vm_get shows the VM.", "ВМ показывает vm_get."))
 	})
 	elapsed := int(clock.Since(started).Seconds())
@@ -1278,7 +1278,7 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 		// shows it, not a change that never began.
 	case (atLimit || timedOut > 0) && !moved:
 		return errAnswer(clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("the platform accepted the change of flavor of VM %s, and its state has not changed in %d s: still %s", "платформа приняла смену конфигурации ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", vm.ID, elapsed, last.State),
+			i18n.Tf("the platform accepted the change of flavor of VM %s, and its state has not changed in %d s: still %s", "платформа приняла смену конфигурации ВМ %s, а состояние за %d с не изменилось: по-прежнему %s", quoteCloud(vm.ID), elapsed, quoteCloud(last.State)),
 			i18n.T("vm_get shows the VM; whether to send the change again is the person's decision.", "ВМ показывает vm_get; слать ли смену снова — решает человек.")),
 			readsPut(reads, vmResizeFieldsElapsed(last, elapsed))), true
 	case atLimit || timedOut > 0:
@@ -1289,10 +1289,10 @@ func (s *Registry) finishVMResize(ctx context.Context, eng *engine.Engine, vm *p
 			ans["since_start_sec"] = int(clock.Since(since).Seconds())
 		}
 		if atLimit && own {
-			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second change.", vm.ID, last.State, tool)
+			ans["next"] = fmt.Sprintf("VM %s is %s at the time limit of an MCP call. Call %s to go on: it waits for the VM again and sends no second change.", quoteCloud(vm.ID), quoteCloud(last.State), tool)
 			nextSameCall(ans, tool, vmRef(args, vm))
 		} else {
-			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state.", vm.ID, last.State)
+			ans["next"] = fmt.Sprintf("VM %s is still %s. vm_get shows its state.", quoteCloud(vm.ID), quoteCloud(last.State))
 			nextStep(ans, "vm_get", map[string]any{"vm_id": vm.ID})
 		}
 		return toJSON(ans), false
@@ -1325,7 +1325,7 @@ func (s *Registry) waitVMDetail(ctx context.Context, eng *engine.Engine, vm *pro
 			return d.State, waitObserved, nil
 		},
 		func(st string) string {
-			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), vm.ID, st)
+			return fmt.Sprintf(i18n.T("VM %s: %s, waiting…", "ВМ %s: %s, жду…"), quoteCloud(vm.ID), st)
 		},
 		func(string) (bool, error) {
 			last = cur

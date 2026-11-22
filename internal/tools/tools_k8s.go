@@ -829,7 +829,7 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 					details["platform_code"] = code
 				}
 				return errAnswer(clierrors.New(clierrors.CodeAPIError,
-					i18n.Tf("the scale of node pool %s failed: its operation %s ended with the error %s", "изменение числа узлов группы %s не удалось: операция %s завершилась ошибкой %s", id, op.ID, quoteCloud(fmt.Sprint(msg))),
+					i18n.Tf("the scale of node pool %s failed: its operation %s ended with the error %s", "изменение числа узлов группы %s не удалось: операция %s завершилась ошибкой %s", id, quoteCloud(op.ID), quoteCloud(fmt.Sprint(msg))),
 					i18n.T("k8s_nodepool_get shows the pool as it is now.", "Группу, как она есть сейчас, показывает evo k8s nodepool-get.")),
 					map[string]any{"nodepool_id": id, "operation_id": op.ID, "details": details}), true
 			}

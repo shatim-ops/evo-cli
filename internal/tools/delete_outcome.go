@@ -113,16 +113,16 @@ func deleteRefusal(w deleteWatch, msg, code any) error {
 	hint := i18n.T(w.hintEN, w.hintRU)
 	if w.hintEN == "" {
 		hint = i18n.Tf("Delete it in the console; if Cloud.ru keeps refusing, contact Cloud.ru support with its id %s and the operation %s.",
-			"Удалите его в личном кабинете; если Cloud.ru снова откажет, обратитесь в поддержку Cloud.ru с его id %s и операцией %s.", quoteCloud(w.ref), w.opID)
+			"Удалите его в личном кабинете; если Cloud.ru снова откажет, обратитесь в поддержку Cloud.ru с его id %s и операцией %s.", quoteCloud(w.ref), quoteCloud(w.opID))
 	}
 	if code == nil {
 		return clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("Cloud.ru did not delete %s %s: %s (operation %s)", "Cloud.ru не удалил %s %s: %s (операция %s)",
-				what, w.ref, quoted, w.opID), hint)
+				what, w.ref, quoted, quoteCloud(w.opID)), hint)
 	}
 	return clierrors.New(clierrors.CodeAPIError,
 		i18n.Tf("Cloud.ru did not delete %s %s: %s (code %s, operation %s)", "Cloud.ru не удалил %s %s: %s (код %s, операция %s)",
-			what, w.ref, quoted, quoteCloud(fmt.Sprint(code)), w.opID), hint)
+			what, w.ref, quoted, quoteCloud(fmt.Sprint(code)), quoteCloud(w.opID)), hint)
 }
 
 // argsLine is args as a call's text: key=value, in the order of the keys.

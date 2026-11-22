@@ -217,7 +217,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			return clerrors.Wrap(clerrors.CodeConfigInvalid,
 				i18n.Tf("VM %s is recorded for project %s, not the active one (%s), and the active key does not see it; nothing was deleted and its record is kept",
 					"ВМ %s записана для проекта %s, а активный — %s, и ключ активного проекта её не видит; ничего не удалено, запись сохранена",
-					active.VMID, active.ProjectID, e.Config.ProjectID),
+					strconv.Quote(active.VMID), active.ProjectID, e.Config.ProjectID),
 				i18n.Tf("Switch to the record's project ('evo project use %s' or CLOUDRU_PROJECT_ID) and run 'evo destroy' again.",
 					"Переключитесь на проект записи ('evo project use %s' или CLOUDRU_PROJECT_ID) и повторите 'evo destroy'.",
 					active.ProjectID), err)

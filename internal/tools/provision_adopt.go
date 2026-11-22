@@ -56,7 +56,7 @@ func creatingVM(ctx context.Context, eng *engine.Engine, name string, drop bool)
 		return nil, nil, nil
 	case err != nil:
 		return nil, nil, fmt.Errorf(i18n.T("VM %s, which an earlier provision of %s left creating: %w",
-			"ВМ %s, которую прошлый provision с именем %s оставил создаваться: %w"), rec.VMID, name, err)
+			"ВМ %s, которую прошлый provision с именем %s оставил создаваться: %w"), quoteCloud(rec.VMID), name, err)
 	}
 	return rec, vm, nil
 }

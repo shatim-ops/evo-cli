@@ -134,7 +134,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		// Adopt only the plan's own VM: one with the same name in another
 		// zone is someone else's (QA r3 R8).
 		if z := existing.ZoneID(); z != "" && plan.VM.Zone.ID != "" && z != plan.VM.Zone.ID {
-			return nil, fmt.Errorf("a VM named %q already exists in another availability zone (%s); nothing was created — choose another name in deploy_plan", plan.VM.Name, z)
+			return nil, fmt.Errorf("a VM named %q already exists in another availability zone (%s); nothing was created — choose another name in deploy_plan", plan.VM.Name, strconv.Quote(z))
 		}
 		// The adopted VM goes the way of a new one: waited for while it is
 		// still being made, then its floating IP, SSH and the plan's ports.
@@ -240,7 +240,7 @@ func ApplyWithTimeout(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 					ElapsedSec: int(clock.Since(start).Seconds()),
 				}, fmt.Errorf("VM %s was created, but the create call failed; it is billed — "+
 					"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
-					"whether to delete it instead (destroy) — ask the person: %w", found.ID, err)
+					"whether to delete it instead (destroy) — ask the person: %w", strconv.Quote(found.ID), err)
 		}
 		return nil, fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err)
 	}
@@ -266,7 +266,7 @@ func finishApply(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vm *
 				ElapsedSec: int(clock.Since(start).Seconds()),
 			}, fmt.Errorf("VM %s was created, but deploy_apply was interrupted; it is still running — "+
 				"call deploy_apply again with the same plan_id to finish (the VM is adopted, not recreated), "+
-				"check it with vm_get; whether to delete it instead (destroy) — ask the person: %w", vm.ID, ctx.Err())
+				"check it with vm_get; whether to delete it instead (destroy) — ask the person: %w", strconv.Quote(vm.ID), ctx.Err())
 	}
 
 	// --- Poll until running ---

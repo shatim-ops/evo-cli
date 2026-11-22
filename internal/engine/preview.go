@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -354,13 +355,13 @@ func rulePreview(sf *state.File, ids []string, labeled []sgrules.Planned) ([]des
 			note := i18n.T("still needed by deployment ", "нужно развёртыванию ") + p.KeptFor
 			res = append(res, destroyResource{Type: "security_group_rule", ID: p.Rule.ID, Address: p.Rule.Port, Action: "keep", Note: note})
 			lines = append(lines, i18n.Tf("keep the rule for port %s in security group %s (%s)",
-				"оставить правило для порта %s в группе безопасности %s (%s)", label, p.Rule.SecurityGroupID, note))
+				"оставить правило для порта %s в группе безопасности %s (%s)", label, strconv.Quote(p.Rule.SecurityGroupID), note))
 			continue
 		}
 		deleting = true
 		r := destroyResource{Type: "security_group_rule", ID: p.Rule.ID, Address: p.Rule.Port, Action: "delete"}
 		line := i18n.Tf("delete the rule %s opening port %s in security group %s",
-			"удалить правило %s, которое открывает порт %s в группе безопасности %s", p.Rule.ID, label, p.Rule.SecurityGroupID)
+			"удалить правило %s, которое открывает порт %s в группе безопасности %s", strconv.Quote(p.Rule.ID), label, strconv.Quote(p.Rule.SecurityGroupID))
 		if p.RecordID == "" {
 			// Found by the VM's label (P6): opened for this VM from
 			// another folder, or kept by none.
@@ -533,5 +534,5 @@ func refText(r deployplan.RefSpec) string {
 	if r.Name == "" || r.Name == r.ID {
 		return r.ID
 	}
-	return fmt.Sprintf("%s (%s)", r.Name, r.ID)
+	return fmt.Sprintf("%s (%s)", r.Name, strconv.Quote(r.ID))
 }

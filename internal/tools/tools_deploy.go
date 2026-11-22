@@ -453,7 +453,7 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 		var fields map[string]any
 		if res != nil && res.VMID != "" {
 			if rerr := recordDeployment(eng.StateDir, eng.Maker(), plan, res, "creating"); rerr != nil {
-				err = fmt.Errorf(i18n.T("%w (VM %s is not in the state either: %v)", "%w (ВМ %s тоже нет в state: %v)"), err, res.VMID, rerr)
+				err = fmt.Errorf(i18n.T("%w (VM %s is not in the state either: %v)", "%w (ВМ %s тоже нет в state: %v)"), err, quoteCloud(res.VMID), rerr)
 			}
 			// The VM, the plan that finishes it and its password, which
 			// the repeat does not give (D69).
@@ -473,7 +473,7 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 		if err := recordDeployment(eng.StateDir, eng.Maker(), plan, res, res.Status); err != nil {
 			return errResult(fmt.Errorf("VM %s was created, but the state file could not be saved (%w); "+
 				"it is running and billed — call deploy_apply again with the same plan_id once the state is writable, "+
-				"whether to delete it instead (destroy vm_id %s, or the Cloud.ru console) — ask the person", res.VMID, err, res.VMID)), true
+				"whether to delete it instead (destroy vm_id %s, or the Cloud.ru console) — ask the person", quoteCloud(res.VMID), err, quoteCloud(res.VMID))), true
 		}
 	}
 	// The plan stays until the VM runs: a timeout or a VM still creating
@@ -501,26 +501,26 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 	case "error":
 		deployplan.Delete(eng.StateDir, planID)
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
-			i18n.Tf("VM %s is in an error state — %s", "ВМ %s в состоянии ошибки — %s", res.VMID, res.Note),
-			i18n.Tf("Whether to delete it (destroy vm_id %s) — ask the person; then run deploy_plan again (in another zone if it repeats).", "Удалять ли её (destroy vm_id %s) — спросите человека; затем снова выполните deploy_plan (при повторе — в другой зоне).", res.VMID)),
+			i18n.Tf("VM %s is in an error state — %s", "ВМ %s в состоянии ошибки — %s", quoteCloud(res.VMID), res.Note),
+			i18n.Tf("Whether to delete it (destroy vm_id %s) — ask the person; then run deploy_plan again (in another zone if it repeats).", "Удалять ли её (destroy vm_id %s) — спросите человека; затем снова выполните deploy_plan (при повторе — в другой зоне).", quoteCloud(res.VMID))),
 			map[string]any{"vm_id": res.VMID}), true
 	case "timeout":
 		// The password is made for this create and kept nowhere: the retry
 		// adopts the VM without it, so it goes out now (Grok, PR #87).
 		fields := map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}
-		hint := fmt.Sprintf("Call deploy_apply again with the same plan_id %s in a few minutes: it adopts the VM and finishes it (IP, SSH, ports); it is billed meanwhile; whether to delete it instead (destroy vm_id %s) — ask the person.", planID, res.VMID)
+		hint := fmt.Sprintf("Call deploy_apply again with the same plan_id %s in a few minutes: it adopts the VM and finishes it (IP, SSH, ports); it is billed meanwhile; whether to delete it instead (destroy vm_id %s) — ask the person.", planID, quoteCloud(res.VMID))
 		if res.Password != "" {
 			fields["password"] = res.Password
 			hint += passwordOnce()
 		}
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
-			i18n.Tf("VM %s is not running yet: %s", "ВМ %s ещё не запущена: %s", res.VMID, res.Note), hint), fields), true
+			i18n.Tf("VM %s is not running yet: %s", "ВМ %s ещё не запущена: %s", quoteCloud(res.VMID), res.Note), hint), fields), true
 	default:
 		// An adopted VM that is stopped (or stopping, shut off, …) does not
 		// start by itself: retrying the plan would answer the same.
 		return errAnswer(clierrors.New(clierrors.CodeVMProvisionFailed,
-			fmt.Sprintf("VM %s is %s: %s", res.VMID, quoteCloud(res.Status), res.Note),
-			fmt.Sprintf("Ask the user to start it in the Cloud.ru console, then call deploy_apply again with the same plan_id %s; whether to delete it instead (destroy vm_id %s) — ask the person. Retrying before it runs answers the same.", planID, res.VMID)),
+			fmt.Sprintf("VM %s is %s: %s", quoteCloud(res.VMID), quoteCloud(res.Status), res.Note),
+			fmt.Sprintf("Ask the user to start it in the Cloud.ru console, then call deploy_apply again with the same plan_id %s; whether to delete it instead (destroy vm_id %s) — ask the person. Retrying before it runs answers the same.", planID, quoteCloud(res.VMID))),
 			map[string]any{"vm_id": res.VMID, "vm_status": res.Status, "plan_id": planID}), true
 	}
 
@@ -1358,13 +1358,13 @@ func appliedPlan(stateDir, planID string) error {
 				i18n.Tf("plan %q is gone: the VM it made, %s, is in an error state and the plan went with it",
 					"плана %q больше нет: ВМ, которую он создал, %s, в состоянии ошибки, и план снят вместе с ней", planID, vm),
 				i18n.Tf("The VM may still be there and billed. Whether to delete it (destroy vm_id %s) — ask the person; a new VM is a new deploy_plan.",
-					"ВМ, возможно, осталась и оплачивается. Удалять ли её (destroy vm_id %s) — спросите человека; новая ВМ — новый deploy_plan.", d.VMID))
+					"ВМ, возможно, осталась и оплачивается. Удалять ли её (destroy vm_id %s) — спросите человека; новая ВМ — новый deploy_plan.", quoteCloud(d.VMID)))
 		}
 		return clierrors.New(clierrors.CodeNotFound,
 			i18n.Tf("plan %q is gone, and the VM it made, %s, was not finished (the record says %s)",
 				"плана %q больше нет, а ВМ, которую он создал, %s, не доведена (в записи — %s)", planID, vm, quoteCloud(d.Status)),
 			i18n.Tf("status and vm_get show the VM. It may still be there and billed: whether to delete it (destroy vm_id %s) — ask the person.",
-				"ВМ показывают status и vm_get. Она, возможно, ещё есть и оплачивается: удалять ли её (destroy vm_id %s) — спросите человека.", d.VMID))
+				"ВМ показывают status и vm_get. Она, возможно, ещё есть и оплачивается: удалять ли её (destroy vm_id %s) — спросите человека.", quoteCloud(d.VMID)))
 	}
 	return nil
 }

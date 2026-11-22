@@ -270,7 +270,7 @@ func (c *Client) CreateClusterAddon(ctx context.Context, req CreateClusterAddonR
 	if r.Done != nil || r.ResourceID != "" || (r.Status == "" && r.ClusterID == "" && r.AppVersion == "" && r.Name == "") {
 		res := &ClusterAddonResult{OperationID: r.ID, ID: r.ResourceID, Done: r.Done != nil && *r.Done}
 		if len(r.Error) > 0 && string(r.Error) != "null" {
-			return res, fmt.Errorf("mk8s operation %s failed: %s", r.ID, r.Error)
+			return res, fmt.Errorf("mk8s operation %s failed: %s", strconv.Quote(r.ID), r.Error)
 		}
 		return res, nil
 	}

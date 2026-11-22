@@ -7,6 +7,7 @@ package engine
 import (
 	"context"
 	stderrors "errors"
+	"strconv"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -82,7 +83,7 @@ func uncheckedRecord(rec state.DeploymentRecord, err error) error {
 		return err
 	}
 	prefix := i18n.Tf("could not check that VM %s was made by this folder's evo, so nothing was deleted and the record is kept: ",
-		"не удалось проверить, что ВМ %s создал evo этой папки, поэтому ничего не удалено, запись сохранена: ", rec.VMID)
+		"не удалось проверить, что ВМ %s создал evo этой папки, поэтому ничего не удалено, запись сохранена: ", strconv.Quote(rec.VMID))
 	retry := i18n.T("The check only reads the VM: run the same call again in a minute.",
 		"Проверка только читает ВМ: повторите тот же вызов через минуту.")
 	var ce *clerrors.CLIError
@@ -105,7 +106,7 @@ func AdoptedVM(rec state.DeploymentRecord, vm *provision.VM) error {
 	}
 	return clerrors.New(clerrors.CodeUsage,
 		i18n.Tf("VM %s was made before this folder recorded it: an evo before 1.7 adopted it by its name, it did not create it; nothing was deleted and the record is kept",
-			"ВМ %s создана раньше, чем эта папка её записала: evo до 1.7 взял её по имени, а не создал; ничего не удалено, запись сохранена", rec.VMID),
+			"ВМ %s создана раньше, чем эта папка её записала: evo до 1.7 взял её по имени, а не создал; ничего не удалено, запись сохранена", strconv.Quote(rec.VMID)),
 		i18n.Tf("Ask the person whose VM it is: if it is theirs and no longer needed, they delete it by its id (vm_delete %s), and destroy then drops the record; if it is not, leave it.",
 			"Спросите человека, чья это ВМ: если его и больше не нужна, он удаляет её по id ('evo vm delete %s'), после этого destroy уберёт запись; если нет — не трогайте её.", rec.VMID))
 }

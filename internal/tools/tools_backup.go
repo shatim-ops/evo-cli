@@ -514,7 +514,7 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 	}
 	kept, err := ofSource(ctx)
 	if err != nil {
-		return nil, fmt.Errorf(i18n.T("list the backups of %s: %w", "список копий %s: %w"), src.id, err)
+		return nil, fmt.Errorf(i18n.T("list the backups of %s: %w", "список копий %s: %w"), quoteCloud(src.id), err)
 	}
 	sizeMB := 0.0
 	for _, b := range kept {
@@ -539,7 +539,7 @@ func (s *Registry) planBackupCreate(ctx context.Context, args map[string]any) (*
 	will["wait"] = i18n.T("a disk's backup takes about a minute, a VM's about ten", "копия диска делается около минуты, ВМ — около десяти")
 	preview := map[string]any{
 		"message": i18n.Tf("backup_create makes a billable backup of %s %s (%s).", "backup_create делает платную резервную копию %s %s (%s).",
-			backupKindWord(src.kind), quoteCloud(src.name), src.id),
+			backupKindWord(src.kind), quoteCloud(src.name), quoteCloud(src.id)),
 		"preview":     willPreview(engine.ResourceBackup, name, src.zone, will, []string{"resource_type", "resource_state", "type", "resource_id", "resource_name", "resource_size_gb", "resource_disks", "backups_of_resource", "backups_of_resource_size_mb", "kept", "outlives", "description", "wait"}),
 		"will_create": will,
 	}
@@ -853,7 +853,7 @@ func (s *Registry) planBackupRestore(ctx context.Context, args map[string]any) (
 		// the person reads, not in the details only.
 		dp.Add("backup_id", id)
 		dp.Add("backup_name", b["name"])
-		dp.Add("source_disk", fmt.Sprintf("%s (%v)", srcName, r["resource_id"]))
+		dp.Add("source_disk", fmt.Sprintf("%s (%s)", quoteCloud(srcName), quoteCloud(fmt.Sprint(r["resource_id"]))))
 		dp.Add("source_exists", r["resource_exists"])
 		dp.Add("disk_type_from", typeFrom)
 		dp.Add("unchanged", i18n.T("the backup and the disk it was made of", "копия и диск, из которого она сделана"))
