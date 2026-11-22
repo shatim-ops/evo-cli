@@ -96,6 +96,13 @@ func testNetworkState(t *testing.T, tool, state, want string) {
 			if strings.HasPrefix(path, networkRoutePath) {
 				return reply(map[string]any{"id": faultID(32), "resourceId": subnetNew, "done": false})
 			}
+			if r.Method == http.MethodDelete {
+				rec.WriteHeader(http.StatusNoContent)
+				return rec.Result(), nil
+			}
+			if tool == "fip_attach" {
+				return reply(map[string]any{"id": subnetOld, "name": "old", "ip_address": "192.0.2.40", "state": "in_use"})
+			}
 			made = true
 			return reply(map[string]any{"id": subnetNew, "name": "old", "state": "created"})
 		}
@@ -149,6 +156,12 @@ func testNetworkState(t *testing.T, tool, state, want string) {
 				expectedWrites = 1
 				if failed || out["status"] != call.success {
 					t.Fatal(text)
+				}
+				if tool == "fip_attach" {
+					fip, _ := out["floating_ip"].(map[string]any)
+					if fip["id"] != subnetOld || out["vm_id"] != subnetVPC || out["interface_id"] != subnetNew {
+						t.Fatal(text)
+					}
 				}
 			} else if out["status"] != "confirmation_required" {
 				t.Fatal(text)
