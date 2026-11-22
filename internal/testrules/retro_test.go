@@ -35,24 +35,6 @@ const retroMaxWords = 150
 // retroOutcomes are the results an item may end in.
 var retroOutcomes = []string{"правило", "проверка", "бэклог", "пример"}
 
-// retroKnown are items written before the checks, each with what is to be
-// done about it: "<version> «<role>»: <check>" → the work item. The list
-// only shrinks: an item not here fails the test, and so does a line the
-// journals no longer give.
-// Closes by 1.10: moved from 1.8 by the owner's decision of 13.11 (#1590,
-// question 19; release plan 1.9, «Просроченные убывающие списки»).
-var retroKnown = map[string]string{
-	"1.3.1 «релиз»: R2 an item without a reference":                  "the first retro, written before R2; stays as it is",
-	"1.3.1 «Процесс»: R2 an outcome not in the list":                 "the first retro, written before R2; stays as it is",
-	"1.3.1 «разработка»: R2 an item without a reference":             "the first retro, written before R2; stays as it is",
-	"1.3.1 «разработка»: R2 an outcome not in the list":              "the first retro, written before R2; stays as it is",
-	"1.3.1 «разработка»: R2 a cost without a number":                 "the first retro, written before R2; stays as it is",
-	"1.4.0 «разработка»: R2 a cost without a number":                 "written before R2: «десятки пробуждений» is no number; stays as it is",
-	"1.4.0 «разработка»: R3 #396 again without the owner's decision": "two problems of one PR (a Qwen answer missed, the preview of stack_destroy), not a repeat",
-	"1.4.1 «разработка»: R2 a test that is not there":                "TestSkills_SayWhatTheCodeDoes and TestSkills_InventoryIsOnlyTheirs went with skills/ (D68, 1.7); the retro stays as it is",
-	"1.4.1 «Процесс»: R2 a test that is not there":                   "TestSkills_SayWhatTheCodeDoes and TestSkills_InventoryIsOnlyTheirs went with skills/ (D68, 1.7); the retro stays as it is",
-}
-
 var (
 	retroHeading = regexp.MustCompile(`^### Ретро «([^»·]+?) · ([^»]+)» \(`)
 	retroRef     = regexp.MustCompile(`#\d+|\brun \d+|\bTest[A-Z]\w*`)
@@ -133,12 +115,8 @@ func TestRetro_Rules(t *testing.T) {
 	all := retros(t, dir)
 	tests := testNames(t, root)
 	released := releasedVersions(t, root)
-	found := map[string]bool{}
 	flag := func(key, detail string) {
-		found[key] = true
-		if retroKnown[key] == "" {
-			t.Errorf("%s: %s", key, detail)
-		}
+		t.Errorf("%s: %s", key, detail)
 	}
 	versions := make([]string, 0, len(all))
 	for v := range all {
@@ -227,11 +205,6 @@ func TestRetro_Rules(t *testing.T) {
 		if got != want {
 			flag(v+": R5 the count in handoff/"+v+".md is not the journal's",
 				fmt.Sprintf("пунктов, правил, проверок, бэклог, примеров, повторов, текстом: %v, the journal gives %v", got, want))
-		}
-	}
-	for k := range retroKnown {
-		if !found[k] {
-			t.Errorf("retroKnown names %q, which the journals no longer give: remove the line", k)
 		}
 	}
 }
