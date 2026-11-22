@@ -26,25 +26,6 @@ var inventoryHosts = map[string]string{}
 // новых изменяющих операций», Н2).
 var bodiesNotInInventory = map[string]string{}
 
-// bodiesNotSent are the requests whose body the inventory lists and no
-// case of the JSON world sends: "METHOD service path" → why. Their fields
-// are compared with nothing here. It only shrinks: a new request with a
-// body comes with a case of the world that sends it. Closes by 1.10: the
-// bodies of the worlds of internal/login and internal/auth join the check
-// (backlog of the process, docs/internal/audits/process-handoff.md).
-var bodiesNotSent = map[string]string{
-	"POST compute /api/v1/projects/{project_id}/price-calculation":   "the price of a preview: no case with consent sends it as a write of the JSON world",
-	"POST dns /v1/privateRecordsSole":                                "no case of the JSON world creates a private record",
-	"POST dns /v1/privateZones":                                      "no case of the JSON world creates a private zone",
-	"POST iam /api/v1/auth/token":                                    "the exchange of the key for a token: the worlds of internal/auth, not the JSON world",
-	"POST iam /api/v1/permissions/bulk-evaluate":                     "evo login checks the permissions (internal/iamadmin): the world of internal/login",
-	"POST iam /api/v2/serviceAccounts":                               "evo login makes the service account: the world of internal/login",
-	"POST iam /api/v2/serviceAccounts/{serviceAccountId}/accessKeys": "evo login makes the key: the world of internal/login",
-	"POST iam /api/v3/permissions":                                   "evo login grants the role: the world of internal/login",
-	"POST oidc /auth/system/openid/token":                            "the exchange of a code or a refresh token: the worlds of internal/auth and internal/login",
-	"PUT iam /api/v3/permissions/{permissionId}":                     "evo login grants the role: the world of internal/login",
-}
-
 // inventoryRequest is a request of scripts/api-contract.json: the segments
 // of its path and the fields of its body.
 type inventoryRequest struct {
@@ -216,6 +197,7 @@ func TestContract_WorldBodiesInTheInventory(t *testing.T) {
 			t.Errorf("bodiesNotInInventory names %q, which is in the inventory now or is no longer sent: remove the line", k)
 		}
 	}
+	checkAdditionalInventoryBodies(t, inventory, seen)
 	unseen := map[string]bool{}
 	for i := range inventory {
 		if e := &inventory[i]; e.hasBody && len(e.body) > 0 && !seen[e] {
@@ -223,14 +205,7 @@ func TestContract_WorldBodiesInTheInventory(t *testing.T) {
 		}
 	}
 	for k := range unseen {
-		if bodiesNotSent[k] == "" {
-			t.Errorf("%s: the inventory lists its body, and no case of the JSON world sends the request — its fields are compared with nothing: give the tool a case of parity whose write goes through the HTTP world (a fake of CloudAPI alone sends no body)", k)
-		}
-	}
-	for k := range bodiesNotSent {
-		if !unseen[k] {
-			t.Errorf("bodiesNotSent names %q, which the world sends now or the inventory no longer has: remove the line", k)
-		}
+		t.Errorf("%s: the inventory lists its body, and no case of the JSON world sends the request — its fields are compared with nothing: give the tool a case of parity whose write goes through the HTTP world (a fake of CloudAPI alone sends no body)", k)
 	}
 	t.Logf("bodies compared: %d; requests of the inventory with a body the world does not send: %d", sent, len(unseen))
 }
