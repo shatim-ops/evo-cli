@@ -19,9 +19,6 @@ var refArg = regexp.MustCompile(`_ids?(_|$)|^(region|zone|flavor|image|bucket|pa
 
 // Why a reference is not completed, when it is not.
 const (
-	// The id is returned by the write that started it (an operation, a
-	// job, a plan): there is nothing to list it from.
-	refReturned = "returned by the call that made it"
 	// Its list takes the argument beside it (a record of a zone, an object
 	// of a bucket): Tab has no value of the parent to read it with.
 	refParent = "its list needs another argument of the call"
@@ -42,24 +39,12 @@ const (
 // Closes by 1.10: moved from 1.8 by the owner's decision of 13.11 (#1590,
 // question 19; release plan 1.9, «Просроченные убывающие списки»).
 var refUncompleted = map[string]struct{ why, item string }{
-	"ar_operation operation_id":                 {why: refReturned},
-	"cert_operation operation_id":               {why: refReturned},
-	"dns_operation operation_id":                {why: refReturned},
-	"k8s_nodepool_delete nodepool_id":           {why: refParent},
-	"k8s_nodepool_get nodepool_id":              {why: refParent},
-	"k8s_nodepool_scale nodepool_id":            {why: refParent},
-	"sg_rule_delete rule_id":                    {why: refParent},
-	"k8s_operation operation_id":                {why: refReturned},
-	"kafka_operation operation_id":              {why: refReturned},
-	"lb_operation operation_id":                 {why: refReturned},
-	"pg_operation operation_id":                 {why: refReturned},
-	"redis_operation operation_id":              {why: refReturned},
-	"vpc_operation operation_id":                {why: refReturned},
-	"stack_apply job_id":                        {why: refReturned},
-	"stack_destroy job_id":                      {why: refReturned},
-	"stack_status job_id":                       {why: refReturned},
-	"deploy_apply plan_id":                      {why: refReturned},
-	"deploy_plan base_plan_id":                  {why: refReturned},
+
+	"k8s_nodepool_delete nodepool_id": {why: refParent},
+	"k8s_nodepool_get nodepool_id":    {why: refParent},
+	"k8s_nodepool_scale nodepool_id":  {why: refParent},
+	"sg_rule_delete rule_id":          {why: refParent},
+
 	"cert_private_key version_id":               {why: refParent},
 	"dns_record_delete record_id":               {why: refParent},
 	"dns_record_get record_id":                  {why: refParent},
@@ -116,7 +101,7 @@ func TestCompletion_EveryReferenceIsCompletedOrSaysWhy(t *testing.T) {
 			t.Errorf("refUncompleted names %q, which is no reference of a tool: remove the line", k)
 		}
 		switch line.why {
-		case refReturned, refParent, refNoList, refTwoKinds, refGap:
+		case refParent, refNoList, refTwoKinds, refGap:
 		default:
 			t.Errorf("refUncompleted[%q]: unknown reason %q", k, line.why)
 		}
@@ -161,5 +146,48 @@ func TestRefArg_IDsAnywhereInTheName(t *testing.T) {
 		if got := refArg.MatchString(arg); got != want {
 			t.Errorf("refArg(%q) = %v, want %v", arg, got, want)
 		}
+	}
+}
+
+func TestComplete_ReturnedIDsUseTheirReceipt(t *testing.T) {
+	r := New(nil) // any attempt to build a client or read a catalogue fails.
+	for _, tc := range []struct {
+		tool, arg string
+		kind      *ownerKind
+		why       string
+	}{
+		{"ar_operation", "operation_id", kindOperation, whyReceiptOperation},
+		{"cert_operation", "operation_id", kindOperation, whyReceiptOperation},
+		{"dns_operation", "operation_id", kindOperation, whyReceiptOperation},
+		{"k8s_operation", "operation_id", kindOperation, whyReceiptOperation},
+		{"kafka_operation", "operation_id", kindOperation, whyReceiptOperation},
+		{"lb_operation", "operation_id", kindOperation, whyReceiptOperation},
+		{"pg_operation", "operation_id", kindOperation, whyReceiptOperation},
+		{"redis_operation", "operation_id", kindOperation, whyReceiptOperation},
+		{"vpc_operation", "operation_id", kindOperation, whyReceiptOperation},
+		{"stack_apply", "job_id", nil, whyReceiptJob},
+		{"stack_destroy", "job_id", nil, whyReceiptJob},
+		{"stack_status", "job_id", nil, whyReceiptJob},
+		{"deploy_apply", "plan_id", nil, whyReceiptPlan},
+		{"deploy_plan", "base_plan_id", nil, whyReceiptPlan},
+	} {
+		t.Run(tc.tool+"/"+tc.arg, func(t *testing.T) {
+			tl, ok := r.Lookup(tc.tool)
+			if !ok || tl.Decl.NoCompletion[tc.arg] != tc.why {
+				t.Fatalf("missing receipt source for %s", tc.arg)
+			}
+			found := false
+			for _, a := range tl.Decl.IDArgs {
+				if a.name == tc.arg && a.kind == tc.kind && (tc.kind != nil || a.why == whyLocal) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("expected an operation receipt or a local stored plan/job")
+			}
+			if r.Completes(tc.tool, tc.arg) || len(r.Complete(context.Background(), tc.tool, tc.arg, "")) != 0 {
+				t.Fatal("offered an unrelated ID")
+			}
+		})
 	}
 }
