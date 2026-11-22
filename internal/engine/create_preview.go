@@ -717,14 +717,14 @@ func ShowCreatePreview(action string, p CreatePreview) confirm.Preview {
 		switch {
 		case p.SecurityGroup != nil:
 			// deploy: the network it resolved, as its preview said it.
-			lines = append(lines, previewLabel("network", "сеть")+i18n.Tf("subnet %s, security group %s", "подсеть %s, группа безопасности %s",
+			lines = append(lines, previewLabel("network", "сеть")+i18n.Tf("subnet %q, security group %q", "подсеть %q, группа безопасности %q",
 				firstNonEmpty(p.SubnetName, p.SubnetID), firstNonEmpty(p.SecurityGroup.Name, p.SecurityGroup.ID)))
 		case p.SubnetID != "":
 			// deploy_apply: the subnet of the plan, by name when the plan
 			// kept it (Линия CLI).
-			subnet := p.SubnetID
+			subnet := strconv.Quote(p.SubnetID)
 			if p.SubnetName != "" && p.SubnetName != p.SubnetID {
-				subnet = p.SubnetName + " (" + p.SubnetID + ")"
+				subnet = strconv.Quote(p.SubnetName) + " (" + subnet + ")"
 			}
 			lines = append(lines, previewLabel("network", "сеть")+i18n.Tf("subnet %s", "подсеть %s", subnet))
 		}

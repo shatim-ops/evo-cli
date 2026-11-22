@@ -57,7 +57,7 @@ func (s *Registry) deletePlan(tool, en, ru, id string, get func() (map[string]an
 	}
 	if statusGone(state) {
 		return answered(s.deleteFailed(tool, id, clierrors.New(clierrors.CodeNotFound,
-			i18n.Tf("%s is %s", "%s в состоянии %s", label, status), "")))
+			i18n.Tf("%s is %q", "%s в состоянии %q", label, status), "")))
 	}
 	target := map[string]any{"id": id, "name": name, "status": status}
 	if refused := passingRefusal(label, id, state, target); refused != nil {

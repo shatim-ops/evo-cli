@@ -6,6 +6,7 @@ package tools
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -40,5 +41,18 @@ func TestLangA_DestroyPreviewSpeaksTheCLILanguage(t *testing.T) {
 	i18n.SetLang(i18n.EN)
 	if en := preview(); !strings.Contains(en["floating_ip"].(string), "release_ip=true") {
 		t.Errorf("English preview names the argument: %q", en["floating_ip"])
+	}
+}
+
+func TestDestroyTargetPreview_QuotesIDAndKeepsRawTarget(t *testing.T) {
+	id := "vm-\"one\nnext"
+	for _, name := range []string{"", "web"} {
+		for _, gone := range []bool{true, false} {
+			m := destroyTargetPreview(&provision.VM{ID: id, Name: name}, gone, "p", false, false, &state.DeploymentRecord{}, "", "", nil)
+			msg := m["message"].(string)
+			if strings.Contains(msg, id) || !strings.Contains(msg, strconv.Quote(id)) || m["target"].(map[string]any)["id"] != id {
+				t.Errorf("name=%q gone=%v, preview %q, target %v", name, gone, msg, m["target"])
+			}
+		}
 	}
 }
