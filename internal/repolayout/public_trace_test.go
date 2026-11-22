@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -36,8 +35,7 @@ import (
 //     top directories, outside the rules (CLAUDE.md, docs/RELEASING.md) and
 //     the briefs (docs/internal/briefs/).
 //
-// A trace already in the repository is a line of publicTraceMisses, which
-// only shrinks; a new one fails with its file, line and rule.
+// Each finding fails with the file, line and rule.
 
 // brandHost is a host under a domain of the brand: at least one label
 // before it, so the brand name «Cloud.ru» alone is not a host.
@@ -246,14 +244,123 @@ func publicTraceFindings(t *testing.T, root string, paths []string) []traceFindi
 	return out
 }
 
+// These probe templates contain shell variable names. Check their finite
+// source before treating the URL as an inventory endpoint. A change to the
+// source or a different literal host on the same line is still reported.
+var dbProbeBindings = regexp.MustCompile(`^[ \t]*case "\$kind" in
+[ \t]*pg\) g=Г-13 host=([a-z0-9-]+) ;;
+[ \t]*kafka\) g=Г-14 host=([a-z0-9-]+) ;;
+[ \t]*redis\) g=Г-15 host=([a-z0-9-]+) ;;
+[ \t]*\*\) bad dbchange "DB_KIND «\$kind» — не pg, kafka, redis"; return 1 ;;
+[ \t]*esac
+[ \t]*\[ -n "\$id" \] \|\| \{ bad dbchange "нет DB_CLUSTER_ID"; return 1; \}
+[ \t]*mask "\$id"
+[ \t]*iam_fresh \|\| \{ gap "\$g" "нет токена IAM \(KEY_ID, SECRET\)"; return 0; \}\z`)
+
+func probeLoopServices(header, variable string, services map[string]bool) bool {
+	names, ok := strings.CutPrefix(strings.TrimSpace(header), "for "+variable+" in ")
+	if !ok {
+		return false
+	}
+	names, ok = strings.CutSuffix(names, "; do")
+	if !ok || len(strings.Fields(names)) == 0 {
+		return false
+	}
+	for _, name := range strings.Fields(names) {
+		if !services[name] {
+			return false
+		}
+	}
+	return true
+}
+
+func publicProbeTemplate(file string, lines []string, row, start int, host string, services map[string]bool) bool {
+	line := lines[row]
+	if start == 0 || line[start-1] != '$' {
+		return false
+	}
+	variable, ok := strings.CutSuffix(host, ".api.cloud.ru")
+	if !ok {
+		return false
+	}
+	switch file {
+	case "internal/workflows/probe_hosts_test.go":
+		// A Go map key declaring the shell template used by cloud-live.sh.
+		return variable == "host" && strings.TrimSpace(line[:start]) == `"$` &&
+			strings.HasPrefix(line[start+len(host):], `":`)
+	case ".github/scripts/cloud-live.sh":
+		if variable != "host" || row < 9 || strings.TrimSpace(line) != `url="https://$host.api.cloud.ru/v1/clusters/$id"` {
+			return false
+		}
+		values := dbProbeBindings.FindStringSubmatch(strings.Join(lines[row-9:row], "\n"))
+		if values == nil {
+			return false
+		}
+		for _, value := range values[1:] {
+			if !services[value] {
+				return false
+			}
+		}
+		return true
+	case ".github/workflows/api-probe.yml":
+		switch strings.TrimSpace(line) {
+		case `D="https://$svc.api.cloud.ru/v1"`, `h=https://$svc.api.cloud.ru`:
+			return variable == "svc" && row > 0 && probeLoopServices(lines[row-1], variable, services)
+		case probeTLS12, probeTLS13:
+			init := row - 1
+			if strings.TrimSpace(line) == probeTLS12 {
+				if init < 0 || strings.TrimSpace(lines[init]) != probeTLS13 {
+					return false
+				}
+				init--
+			}
+			return variable == "h19" && init > 0 && strings.TrimSpace(lines[init]) == "t13=no; t12=no" &&
+				probeLoopServices(lines[init-1], variable, services)
+		}
+	}
+	return false
+}
+
+const (
+	probeTLS13 = `curl -sS -o /dev/null --tlsv1.3 -m 15 "https://$h19.api.cloud.ru/" 2>/dev/null && t13=yes`
+	probeTLS12 = `curl -sS -o /dev/null --tlsv1.2 --tls-max 1.2 -m 15 "https://$h19.api.cloud.ru/" 2>/dev/null && t12=yes`
+)
+
+// Four negative inputs exercise redaction or rejection. Only the complete
+// test statement, including its expected output, has this provenance.
+func negativeHostFixture(file string, lines []string, row int) bool {
+	switch file {
+	case ".github/scripts/redact_test.sh":
+		switch lines[row] {
+		case `check "server: https://abc123.mk8s.ru-central-1.cloud.ru:6443" "server: https://<host>:6443"`,
+			`check "db pg-123.private.cloud.ru:5432" "db <host>.cloud.ru:5432"`,
+			`check "хост x.compute.api.cloud.ru" "хост <host>.cloud.ru"`:
+			return true
+		}
+	case ".github/scripts/answers_catalogue_test.sh":
+		if row == 0 || lines[row-1] != `cat >"$work/hostile.jsonl" <<'J'` || lines[row] != `{"request":"GET https://SECRET_MARKER\uff1abad.api.cloud.ru/api/v1/vms/id","status":200,"paths":{}}` {
+			return false
+		}
+		// The inline fixture is read by the generator; it must produce an
+		// empty catalogue and keep the marker out of stderr.
+		block, _, _ := strings.Cut(strings.Join(lines[row:], "\n"), "\n\n")
+		return strings.Contains(block, `"$work/hostile.jsonl" 2>"$work/herr"`) &&
+			strings.Contains(block, `[ "$h" = "[]" ] ||`) &&
+			strings.Contains(block, `if grep -q SECRET_MARKER "$work/herr"; then`)
+	}
+	return false
+}
+
 // traceIn is the trace of one text: a file of the repository, or a message
 // of a commit or the description of a PR (file names it).
 func traceIn(file, text string, services map[string]bool) []traceFinding {
 	var out []traceFinding
-	for i, line := range strings.Split(text, "\n") {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
 		add := func(rule, m string) { out = append(out, traceFinding{file, i + 1, rule, m}) }
-		for _, h := range brandHost.FindAllString(line, -1) {
-			if !publicHost(h, services) {
+		for _, pos := range brandHost.FindAllStringIndex(line, -1) {
+			h := line[pos[0]:pos[1]]
+			if !publicHost(h, services) && !publicProbeTemplate(file, lines, i, pos[0], h, services) && !negativeHostFixture(file, lines, i) {
 				add("host", strings.ToLower(h))
 			}
 		}
@@ -276,20 +383,6 @@ func traceIn(file, text string, services map[string]bool) []traceFinding {
 	return out
 }
 
-// publicTraceMisses are the traces in the repository when the watch came
-// in: file → rule → count. It only shrinks — Closes by 1.10: a line goes
-// when its owner removes the trace (the file's owner by the rules of the
-// roles; examples a model sees — «разработка C», release plan «правки
-// вперёд по публичному следу»), or turns it into a synthetic form; a count
-// that falls is lowered here.
-var publicTraceMisses = map[string]map[string]int{
-	".github/scripts/answers_catalogue_test.sh": {"host": 1},
-	".github/scripts/cloud-live.sh":             {"host": 1},
-	".github/scripts/redact_test.sh":            {"host": 3},
-	".github/workflows/api-probe.yml":           {"host": 4},
-	"internal/workflows/probe_hosts_test.go":    {"host": 1},
-}
-
 func TestPublicTrace_HEAD(t *testing.T) {
 	root := filepath.Join("..", "..")
 	paths := files(t)
@@ -297,51 +390,77 @@ func TestPublicTrace_HEAD(t *testing.T) {
 		t.Fatalf("%d files: the walk sees nothing", len(paths))
 	}
 	found := publicTraceFindings(t, root, paths)
-	counts := map[string]map[string]int{}
-	byKey := map[string][]traceFinding{}
+	t.Logf("files read: %d; traces: %d", len(paths), len(found))
 	for _, f := range found {
-		if counts[f.file] == nil {
-			counts[f.file] = map[string]int{}
-		}
-		counts[f.file][f.rule]++
-		byKey[f.file+" "+f.rule] = append(byKey[f.file+" "+f.rule], f)
-	}
-	var bad []string
-	for file, rules := range counts {
-		for rule, n := range rules {
-			kept := publicTraceMisses[file][rule]
-			if n > kept {
-				for _, f := range byKey[file+" "+rule] {
-					bad = append(bad, fmt.Sprintf("%s:%d: %s %q", f.file, f.line, f.rule, f.match))
-				}
-				bad = append(bad, fmt.Sprintf("  %s: %d of rule %s, publicTraceMisses keeps %d — remove the trace, make it synthetic or, for what is public, add it to the list of the rule with why", file, n, rule, kept))
-			}
-		}
-	}
-	for file, rules := range publicTraceMisses {
-		for rule, kept := range rules {
-			if n := counts[file][rule]; n < kept {
-				bad = append(bad, fmt.Sprintf("publicTraceMisses: %s %s keeps %d, the file has %d — lower it", file, rule, kept, n))
-			}
-		}
-	}
-	t.Logf("files read: %d; traces: %d, of them kept by publicTraceMisses: %d", len(paths), len(found), len(found)-countBad(counts))
-	if len(bad) > 0 {
-		sort.Strings(bad)
-		t.Fatal(strings.Join(bad, "\n"))
+		t.Errorf("%s:%d: %s %q", f.file, f.line, f.rule, f.match)
 	}
 }
 
-func countBad(counts map[string]map[string]int) int {
-	n := 0
-	for file, rules := range counts {
-		for rule, c := range rules {
-			if c > publicTraceMisses[file][rule] {
-				n += c - publicTraceMisses[file][rule]
+// Exercise the same inputs the HEAD walk reads. Replacing a host inside
+// an otherwise valid test or probe must leave a finding, even in that file.
+func TestPublicTrace_ProbeAndFixtureProvenance(t *testing.T) {
+	root := filepath.Join("..", "..")
+	services := inventoryServices(t, root)
+	const foreign = "other-private.api.cloud.ru"
+	read := func(file string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(root, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	hasHost := func(file, text, host string) bool {
+		for _, f := range traceIn(file, text, services) {
+			if f.rule == "host" && f.match == host {
+				return true
 			}
 		}
+		return false
 	}
-	return n
+	for _, c := range []struct {
+		file, host string
+		count      int
+	}{
+		{".github/scripts/redact_test.sh", "abc123.mk8s.ru-central-1.cloud.ru", 1},
+		{".github/scripts/redact_test.sh", "pg-123.private.cloud.ru", 1},
+		{".github/scripts/redact_test.sh", "x.compute.api.cloud.ru", 1},
+		{".github/scripts/answers_catalogue_test.sh", "uff1abad.api.cloud.ru", 1},
+		{".github/scripts/cloud-live.sh", "host.api.cloud.ru", 1},
+		{".github/workflows/api-probe.yml", "svc.api.cloud.ru", 2},
+		{".github/workflows/api-probe.yml", "h19.api.cloud.ru", 2},
+		{"internal/workflows/probe_hosts_test.go", "host.api.cloud.ru", 1},
+	} {
+		t.Run(c.file+"/"+c.host, func(t *testing.T) {
+			text := read(c.file)
+			if strings.Count(text, c.host) != c.count || hasHost(c.file, text, c.host) {
+				t.Fatal("expected the reviewed occurrences only")
+			}
+			if !hasHost("unrelated.md", text, c.host) {
+				t.Fatal("the fixture was accepted outside its source")
+			}
+			replaced := strings.ReplaceAll(text, c.host, foreign)
+			if !hasHost(c.file, replaced, foreign) {
+				t.Fatal("an unrelated host passed in the same statement")
+			}
+			if !hasHost(c.file, text+"\n"+c.host, c.host) {
+				t.Fatal("a literal in the same file passed")
+			}
+		})
+	}
+	for _, c := range []struct{ file, old, replacement, host string }{
+		{".github/scripts/cloud-live.sh", "redis) g=Г-15 host=redis", "redis) g=Г-15 host=unlisted", "host.api.cloud.ru"},
+		{".github/workflows/api-probe.yml", "for svc in kafka redis; do", "for svc in kafka unlisted; do", "svc.api.cloud.ru"},
+		{".github/workflows/api-probe.yml", "for h19 in compute vpc", "for h19 in unlisted vpc", "h19.api.cloud.ru"},
+		{".github/scripts/redact_test.sh", `"server: https://<host>:6443"`, `"unexpected output"`, "abc123.mk8s.ru-central-1.cloud.ru"},
+		{".github/scripts/answers_catalogue_test.sh", `[ "$h" = "[]" ]`, `[ "$h" = "other" ]`, "uff1abad.api.cloud.ru"},
+	} {
+		text := read(c.file)
+		changed := strings.Replace(text, c.old, c.replacement, 1)
+		if changed == text || !hasHost(c.file, changed, c.host) {
+			t.Errorf("%s: a change to the source or its assertion passed: %s", c.file, c.old)
+		}
+	}
 }
 
 // Each rule finds what it names and leaves what is public or synthetic.
