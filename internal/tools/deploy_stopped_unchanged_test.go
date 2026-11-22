@@ -51,7 +51,7 @@ func TestDeploy_AStoppedVMIsRefusedWhenTheFileIsUnchangedToo(t *testing.T) {
 		}
 	}
 	// A running VM with the same file: «nothing to do», as it was.
-	r, _, _ := stoppedDeployment(t, "running")
+	r, cloud, vmID := stoppedDeployment(t, "running")
 	dir := r.stateDirOf
 	p, _ := compose.Parse(filepath.Join(dir, "docker-compose.yml"))
 	sf, _ := state.Read(state.DefaultPath(dir))
@@ -59,7 +59,17 @@ func TestDeploy_AStoppedVMIsRefusedWhenTheFileIsUnchangedToo(t *testing.T) {
 	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
 		t.Fatal(err)
 	}
-	if m, text, _ := callNamed(t, r, "deploy", map[string]any{}); m["unchanged"] != true {
-		t.Errorf("deploy of the same file to a running VM: %s, want unchanged as before", text)
+	writes := cloudWrites(cloud)
+	if m, text, failed := callNamed(t, r, "deploy", map[string]any{}); !failed || m["status"] != "confirmation_required" || m["unchanged"] != true || m["vm_id"] != vmID {
+		t.Fatalf("repeat preview on the running VM: %s", text)
+	}
+	if got := cloudWrites(cloud); got != writes {
+		t.Fatalf("repeat preview wrote: %d → %d", writes, got)
+	}
+	if m, text, failed := callNamed(t, r, "deploy", map[string]any{"confirmed": true}); failed || m["status"] != "ok" || m["deploy_action"] != "unchanged" || m["vm_id"] != vmID {
+		t.Fatalf("consented repeat on the same VM: %s", text)
+	}
+	if got := cloudWrites(cloud); got != writes {
+		t.Errorf("consented repeat wrote: %d → %d", writes, got)
 	}
 }
