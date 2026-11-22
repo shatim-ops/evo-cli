@@ -222,6 +222,8 @@ kubectl (`~/.kube/kuberc`: алиасы, значения флагов по ум
 JSON-RPC `-32602` с сообщением `Unknown tool: <имя>`, как требует MCP
 2025-06-18, а не результат с `isError`.
 
+У команды evo tools call глобальный флаг `--region` задаёт зону профиля и служит синонимом `--az`. Для выбора региона бакета используйте `evo tools call s3_bucket_create --arg bucket=my-bucket --arg region=ru-central-1`. Без аргумента инструмента S3 использует регион подключения.
+
 ## Цена
 
 Сама [Evolution VPC предоставляется бесплатно](https://cloud.ru/docs/evolution-vpc/ug/topics/pricing). Для публичного SNAT превью показывает стоимость одного шлюза с НДС: 0,2074 ₽/ч, около 151,40 ₽ за 730 часов. Та же оценка входит в сумму плана стека. [Тариф Evolution Compute, пункт 3](https://cloud.ru/documents/tariffs/evolution/evolution-compute).
