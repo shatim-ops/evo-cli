@@ -497,7 +497,9 @@ func (j *Job) redactSpent() {
 
 // jobIDRe matches the ids newID makes. The id comes from the caller (MCP
 // job_id) and becomes a file name: "../x" must not leave jobsDir.
-var jobIDRe = regexp.MustCompile(`^stk-[0-9a-f]{10}$`)
+const JobIDPattern = `^stk-[0-9a-f]{10}$`
+
+var jobIDRe = regexp.MustCompile(JobIDPattern)
 
 // uuidRe matches a UUID (vm.image by id goes to provision as image_id).
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)

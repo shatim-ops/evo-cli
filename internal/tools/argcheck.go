@@ -238,6 +238,11 @@ func ruleArg(k string, p map[string]any, v any) error {
 			i18n.Tf("Give %s a value or drop the argument: an empty value is not read as «not set».",
 				"Задайте %s значение или уберите аргумент: пустое значение не читается как «не задано».", k))
 	}
+	if pattern, ok := p["pattern"].(string); ok {
+		if matched, _ := regexp.MatchString(pattern, s); !matched {
+			return ruleErr(k, p, i18n.Tf("%s does not match the required ID pattern %s", "%s не соответствует формату ID %s", k, pattern))
+		}
+	}
 	if strings.TrimSpace(s) == "" {
 		return nil
 	}
