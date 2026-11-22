@@ -9,6 +9,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
 	"maps"
 	"net/url"
 	"slices"
@@ -41,30 +43,7 @@ var secretBodyFields = map[string]bool{
 // that is not sent any more, fails the test.
 // Closes by 1.10 (owner's decision of 17.11, release plan 1.9,
 // «Сроки bodyUnnamed и humanUnnamed»). Risk reviews the remaining reasons.
-var bodyUnnamed = map[string]struct{ class, why string }{
-
-	"deploy interface_id": {unnamedNoise, "интерфейс созданной ВМ"},
-	"deploy name":         {unnamedNoise, "имя floating IP, которое evo даёт само"},
-	"deploy description":  {unnamedNoise, "подпись правила «evo: port N»"},
-	"deploy direction":    {unnamedNoise, "правило входящее"},
-	"deploy ether_type":   {unnamedNoise, "IPv4"},
-	"deploy ip_protocol":  {unnamedWork, "порты compose открываются только как TCP"},
-	"deploy port_range":   {unnamedNoise, "порты compose в форме API"},
-
-	"deploy_apply interface_id": {unnamedNoise, "интерфейс созданной ВМ"},
-	"deploy_apply name":         {unnamedNoise, "имя floating IP, которое evo даёт само"},
-
-	"fip_attach interface_id": {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
-	"fip_attach name":         {unnamedNoise, "имя адреса при привязке"},
-
-	"open_ports description": {unnamedNoise, "подпись правила"},
-	"open_ports direction":   {unnamedNoise, "правило входящее"},
-	"open_ports ether_type":  {unnamedNoise, "IPv4"},
-	"open_ports port_range":  {unnamedNoise, "порты в форме API"},
-
-	"provision interface_id": {unnamedNoise, "интерфейс созданной ВМ"},
-	"provision name":         {unnamedNoise, "имя floating IP, которое evo даёт само"},
-}
+var bodyUnnamed = map[string]struct{ class, why string }{}
 
 // Each API field here must match its own preview field, even when a
 // different argument, resource or nested ID has the same value.
@@ -189,6 +168,121 @@ func TestBodyMatchesOnlySelectedPreviewField(t *testing.T) {
 	}
 }
 
+// Derived fields are only checked on their endpoint. Other writes by the
+// same operation (for example the VM's own name) still go through the
+// normal named-value check.
+var networkBodyFields = map[string]bool{
+	"deploy name":               true,
+	"deploy interface_id":       true,
+	"provision name":            true,
+	"provision interface_id":    true,
+	"deploy_apply name":         true,
+	"deploy_apply interface_id": true,
+	"fip_attach name":           true,
+	"fip_attach interface_id":   true,
+	"deploy description":        true,
+	"deploy direction":          true,
+	"deploy ether_type":         true,
+	"deploy port_range":         true,
+	"open_ports description":    true,
+	"open_ports direction":      true,
+	"open_ports ether_type":     true,
+	"open_ports port_range":     true,
+	"deploy ip_protocol":        true,
+}
+
+func networkWriteMatches(tool, key, value, write string, preview map[string]any) (handled, matches bool) {
+	method, rest, _ := strings.Cut(write, " ")
+	target, raw, _ := strings.Cut(rest, " ")
+	u, err := url.Parse("//" + target)
+	if err != nil || u.Host != "compute.api.cloud.ru" {
+		return false, false
+	}
+	if u.Path == "/api/v1/floating-ips" && method == "POST" || strings.HasPrefix(u.Path, "/api/v1/floating-ips/") && method == "PUT" {
+		vm := previewField(preview, "preview.vm.name")
+		if tool == "fip_attach" {
+			if previewField(preview, "will_attach.vm_id") != parityVM || method != "PUT" || u.Path != "/api/v1/floating-ips/"+parityVM {
+				return true, false
+			}
+			// The addressed VM's primary interface and its name, from
+			// the GET of this VM in jsonFake. Its available IP is unnamed.
+			if key == "interface_id" {
+				return true, value == parityNIC
+			}
+			return true, value == "fip-web"
+		}
+		if vm == "" || previewField(preview, "preview.public_ip") != "true" {
+			return true, false
+		}
+		if key == "interface_id" {
+			return true, value == parityNIC
+		}
+		if method == "PUT" {
+			return true, u.Path == "/api/v1/floating-ips/"+parityVM && value == provision.FitName("fip-"+parityVM, "")
+		}
+		if tool == "deploy_apply" {
+			return true, value == provision.FitName(vm, "-fip")
+		}
+		// A boot address is named before the VM exists. A reservation
+		// tied directly to its interface uses the eventual VM ID instead.
+		body := parseObject(raw)
+		if body["interface_id"] == parityNIC {
+			return true, value == "fip-"+parityVM
+		}
+		return true, provision.IsBootFIPOf(value, vm)
+	}
+	if method != "POST" || !strings.HasPrefix(u.Path, "/api/v1/security-groups/") || !strings.HasSuffix(u.Path, "/rules") {
+		return false, false
+	}
+	body := parseObject(raw)
+	port, end, ok := strings.Cut(fmt.Sprint(body["port_range"]), ":")
+	if !ok || port == "" || end != port {
+		return true, false
+	}
+	protocol, _ := body["ip_protocol"].(string)
+	label := port
+	if protocol == "udp" {
+		label += "/udp"
+	} else if protocol != "tcp" {
+		return true, false
+	}
+	description := "opened via open_ports"
+	if tool == "open_ports" {
+		ports, _ := preview["will_open"].([]any)
+		if !slices.Contains(ports, any(port)) || preview["protocol"] != protocol || preview["cidr"] != body["remote_ip_prefix"] {
+			return true, false
+		}
+	} else {
+		ports := strings.Split(previewField(preview, "preview.params.ports"), ",")
+		if !slices.Contains(ports, label) || previewField(preview, "preview.params.ports_source") != body["remote_ip_prefix"] {
+			return true, false
+		}
+		description = sgrules.RuleLabel(label, parityVM)
+	}
+	return true, body["description"] == description && body["direction"] == "ingress" && body["ether_type"] == "IPv4"
+}
+
+func TestNetworkBodyUsesSelectedPortAndInterface(t *testing.T) {
+	const wr = "POST compute.api.cloud.ru/api/v1/security-groups/sg/rules? {}"
+	preview := map[string]any{"will_open": []any{"443"}, "protocol": "tcp", "cidr": "192.0.2.0/24"}
+	rule := `{"description":"opened via open_ports","port_range":"443:443","ip_protocol":"tcp","ether_type":"IPv4","direction":"ingress","remote_ip_prefix":"192.0.2.0/24"}`
+	for _, tc := range []struct{ from, to string }{{"443:443", "443:444"}, {"tcp", "udp"}, {"ingress", "egress"}, {"IPv4", "IPv6"}, {"192.0.2.0/24", "0.0.0.0/0"}, {"opened via open_ports", "other"}} {
+		for _, raw := range []string{rule, strings.Replace(rule, tc.from, tc.to, 1)} {
+			handled, ok := networkWriteMatches("open_ports", "description", "", strings.Replace(wr, "{}", raw, 1), preview)
+			if !handled || ok != (raw == rule) {
+				t.Fatal(raw)
+			}
+		}
+	}
+	fip := map[string]any{"will_attach": map[string]any{"vm_id": parityVM}}
+	for _, id := range []string{parityNIC, parityVM} {
+		handled, ok := networkWriteMatches("fip_attach", "interface_id", id, "PUT compute.api.cloud.ru/api/v1/floating-ips/"+parityVM+"? {}", fip)
+		if !handled || ok != (id == parityNIC) {
+			t.Fatal(id)
+		}
+	}
+}
+
 // bodyNamedAs are the values the preview names under the argument of the
 // tool they come from, not under the API's word: "tool path" → the key.
 // The value must match, as for any key; a line no write reaches fails.
@@ -302,6 +396,15 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 					}
 					continue
 				}
+				if networkBodyFields[key] {
+					if handled, valid := networkWriteMatches(c.tool.Name, path, value, wr, previewObject); handled {
+						seen[key] = true
+						if !valid {
+							bad = append(bad, key+": request inconsistent with selected network resource")
+						}
+						continue
+					}
+				}
 				if field, ok := bodyPreviewPaths[key]; ok {
 					seen[key] = true
 					if !bodyMatchesPreview(key, previewField(previewObject, field), value, wr) {
@@ -337,6 +440,11 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 	for _, tl := range reg.Tools() {
 		if tl.Mutating && !tools[tl.Name] {
 			bad = append(bad, tl.Name+": a mutating tool without a case in parityArgs")
+		}
+	}
+	for key := range networkBodyFields {
+		if !seen[key] {
+			bad = append(bad, key+": no write checked on the network endpoint")
 		}
 	}
 	for key := range bodyPreviewPaths {
