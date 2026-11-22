@@ -56,3 +56,15 @@ func TestDestroyTargetPreview_QuotesIDAndKeepsRawTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestDestroyTargetPreview_QuotesRuleAndGroupSeparately(t *testing.T) {
+	groupID, ruleID := "sg-\"new\nline", "rule-\"new\nline"
+	rule := state.SGRule{ID: ruleID, SecurityGroupID: groupID}
+	for _, kept := range []string{"", "another-deployment"} {
+		m := destroyTargetPreview(&provision.VM{ID: "target"}, false, "p", false, false, &state.DeploymentRecord{}, "", "", []sgrules.Planned{{Rule: rule, KeptFor: kept}})
+		lines := m["port_rules"].([]string)
+		if len(lines) != 1 || !strings.Contains(lines[0], strconv.Quote(groupID)) || strings.Contains(lines[0], "\n") || (kept == "") != strings.Contains(lines[0], strconv.Quote(ruleID)) {
+			t.Fatalf("kept=%q lines=%q", kept, lines)
+		}
+	}
+}

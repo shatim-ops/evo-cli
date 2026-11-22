@@ -91,7 +91,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	// released) keeps the record for its retry; there is no VM to reuse.
 	if !isNewDeploy && existing.Status == "destroying" {
 		return clerrors.New(clerrors.CodeVMProvisionFailed,
-			i18n.Tf("deployment %s is being destroyed", "развёртывание %s в процессе удаления", existing.ID),
+			i18n.Tf("deployment %s is being destroyed", "развёртывание %s в процессе удаления", strconv.Quote(existing.ID)),
 			i18n.T("Ask the person whether to finish its delete ('evo destroy'), then deploy again.", "Спросите человека, завершить ли удаление ('evo destroy'), затем разверните заново."))
 	}
 	// A VM that went to error_creating is not reused: it never boots, and a
@@ -100,7 +100,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	// through the API).
 	if !isNewDeploy && existing.Status == "error" {
 		return clerrors.New(clerrors.CodeVMProvisionFailed,
-			i18n.Tf("VM %s of this deployment is in an error state", "ВМ %s этого развёртывания в состоянии ошибки", existing.VMID),
+			i18n.Tf("VM %s of this deployment is in an error state", "ВМ %s этого развёртывания в состоянии ошибки", strconv.Quote(existing.VMID)),
 			i18n.T("Ask the person whether to delete it ('evo destroy'), then deploy again (in another zone if it repeats).",
 				"Спросите человека, удалить ли её ('evo destroy'), и разверните заново (если повторится — в другой зоне)."))
 	}
@@ -109,7 +109,7 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	if !isNewDeploy && existing.ProjectID != "" && e.Config.ProjectID != "" && existing.ProjectID != e.Config.ProjectID {
 		return clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.Tf("this directory already has deployment %s in project %s, not in %s",
-				"в этом каталоге уже есть развёртывание %s в проекте %s, а не в %s", existing.ID, existing.ProjectID, e.Config.ProjectID),
+				"в этом каталоге уже есть развёртывание %s в проекте %s, а не в %s", strconv.Quote(existing.ID), existing.ProjectID, e.Config.ProjectID),
 			i18n.Tf("Update it with --project-id %s; to deploy to the new project instead, ask the person whether to delete it first ('evo destroy').",
 				"Обновите его с --project-id %s; чтобы развернуть в новом проекте, спросите человека, удалить ли его сначала ('evo destroy').", existing.ProjectID))
 	}
@@ -944,16 +944,16 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		// The VM exists and is billed; without its ID here nothing would
 		// point to it.
 		return rec, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
-			i18n.Tf("VM %s was created, but the state file could not be saved", "ВМ %s создана, но файл state не удалось сохранить", vm.ID),
+			i18n.Tf("VM %s was created, but the state file could not be saved", "ВМ %s создана, но файл state не удалось сохранить", strconv.Quote(vm.ID)),
 			i18n.Tf("VM %s is running and billed. Delete it in the Cloud.ru console, or fix the state file problem and record it there.",
-				"ВМ %s работает и тарифицируется. Удалите её в консоли Cloud.ru или устраните проблему с файлом state и запишите ВМ туда.", vm.ID),
+				"ВМ %s работает и тарифицируется. Удалите её в консоли Cloud.ru или устраните проблему с файлом state и запишите ВМ туда.", strconv.Quote(vm.ID)),
 			err)
 	}
 	if createErr != nil {
 		return rec, clerrors.Wrap(clerrors.CodeVMProvisionFailed,
-			i18n.Tf("VM %s was created, but the create call failed", "ВМ %s создана, но запрос на создание завершился ошибкой", vm.ID),
+			i18n.Tf("VM %s was created, but the create call failed", "ВМ %s создана, но запрос на создание завершился ошибкой", strconv.Quote(vm.ID)),
 			i18n.Tf("VM %s is billed and recorded in the state: run 'evo deploy' again to finish it; whether to delete it instead ('evo destroy') — ask the person.",
-				"ВМ %s тарифицируется и записана в state: повторите 'evo deploy', чтобы завершить развёртывание; удалять ли её ('evo destroy') — спросите человека.", vm.ID),
+				"ВМ %s тарифицируется и записана в state: повторите 'evo deploy', чтобы завершить развёртывание; удалять ли её ('evo destroy') — спросите человека.", strconv.Quote(vm.ID)),
 			createErr)
 	}
 
@@ -986,7 +986,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				// Deletion accepted but not confirmed: keep the record, or
 				// a VM stuck in deleting would be billed without a trace.
 				ferr = stderrors.New(i18n.Tf("deletion of VM %s is not confirmed yet; ask the person whether to finish it ('evo destroy')",
-					"удаление ВМ %s ещё не подтверждено; спросите человека, завершить ли его ('evo destroy')", vm.ID))
+					"удаление ВМ %s ещё не подтверждено; спросите человека, завершить ли его ('evo destroy')", strconv.Quote(vm.ID)))
 			}
 			if ferr != nil {
 				e.Printer.Warning(ferr.Error())
@@ -1021,7 +1021,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			return rec, &InProgress{Phase: "vm", Detail: vmState}
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
-				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", vm.ID, t.VMPollTimeout),
+				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", strconv.Quote(vm.ID), t.VMPollTimeout),
 				i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
 					"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", vm.ID))
 		case <-wait.C():
@@ -1038,9 +1038,9 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				if keyRefused {
 					return rec, clerrors.Wrap(clerrors.Reason(err),
 						i18n.Tf("VM %s was created, but checking it failed: the key was refused (%v)",
-							"ВМ %s создана, но проверить её не удалось: ключ отклонён (%v)", vm.ID, err),
+							"ВМ %s создана, но проверить её не удалось: ключ отклонён (%v)", strconv.Quote(vm.ID), err),
 						i18n.Tf("VM %s is billed and recorded in the state. Check the key ('evo whoami'), then run 'evo deploy' again to finish; whether to delete it instead ('evo destroy') — ask the person.",
-							"ВМ %s тарифицируется и записана в state. Проверьте ключ ('evo whoami') и повторите 'evo deploy', чтобы завершить; удалять ли её ('evo destroy') — спросите человека.", vm.ID),
+							"ВМ %s тарифицируется и записана в state. Проверьте ключ ('evo whoami') и повторите 'evo deploy', чтобы завершить; удалять ли её ('evo destroy') — спросите человека.", strconv.Quote(vm.ID)),
 						err)
 				}
 				e.Printer.Warning(i18n.Tf("poll error: %v", "ошибка опроса: %v", err))
@@ -1106,7 +1106,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 				// The record says the VM failed: so does the answer, whenever
 				// the bound comes (FB171-4).
 				return rec, e.writeDecided(statePath, stateFile, clerrors.New(clerrors.CodeVMProvisionFailed,
-					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", vm.ID, strconv.Quote(updated.Status)),
+					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", strconv.Quote(vm.ID), strconv.Quote(updated.Status)),
 					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru.")))
 			}
 		case <-ctx.Done():
@@ -1437,7 +1437,7 @@ func (e *Engine) settledBootFIP(ctx context.Context, fip *provision.FloatingIP, 
 	for poll := 0; poll < t.settlePolls() && !fip.Available() && !strings.HasPrefix(fip.State, "error"); poll++ {
 		if fip.State != last {
 			last = fip.State
-			e.Printer.Step(0, 0, i18n.Tf("Floating IP %s: %s, waiting until it is ready…", "Floating IP %s: %s, жду, пока он будет готов…", fip.IPAddress, fip.State))
+			e.Printer.Step(0, 0, i18n.Tf("Floating IP %s: %s, waiting until it is ready…", "Floating IP %s: %s, жду, пока он будет готов…", fip.IPAddress, strconv.Quote(fip.State)))
 		}
 		select {
 		case <-ctx.Done():
@@ -1530,7 +1530,7 @@ func (e *Engine) releaseBootFIP(fip *provision.FloatingIP, projectID string) err
 			}
 		}
 		e.Printer.Warning(i18n.Tf("floating IP %s (%s) was not released: %v; delete it in the Cloud.ru console",
-			"floating IP %s (%s) не освобождён: %v; удалите его в консоли Cloud.ru", fip.IPAddress, fip.ID, err))
+			"floating IP %s (%s) не освобождён: %v; удалите его в консоли Cloud.ru", fip.IPAddress, strconv.Quote(fip.ID), err))
 		return err
 	}
 }
@@ -1549,7 +1549,7 @@ func (e *Engine) waitBootFIP(ctx context.Context, fip *provision.FloatingIP, vmI
 		}
 		if fip.State != last {
 			last = fip.State
-			e.Printer.Step(0, 0, i18n.Tf("Floating IP %s: %s, waiting until it is attached to the VM…", "Floating IP %s: %s, жду, пока он привяжется к ВМ…", fip.IPAddress, fip.State))
+			e.Printer.Step(0, 0, i18n.Tf("Floating IP %s: %s, waiting until it is attached to the VM…", "Floating IP %s: %s, жду, пока он привяжется к ВМ…", fip.IPAddress, strconv.Quote(fip.State)))
 		}
 		select {
 		case <-ctx.Done():
@@ -1628,7 +1628,7 @@ func (e *Engine) recoverFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		// Never a second one next to the recorded FIP.
 		f, err := e.Cloud.GetFloatingIP(ctx, rec.FloatingIPID)
 		if err != nil {
-			e.Printer.Warning(i18n.Tf("floating IP %s: %v", "не удалось прочитать floating IP %s: %v", rec.FloatingIPID, err))
+			e.Printer.Warning(i18n.Tf("floating IP %s: %v", "не удалось прочитать floating IP %s: %v", strconv.Quote(rec.FloatingIPID), err))
 			return nil
 		}
 		rec.VMIP = f.IPAddress
@@ -1673,7 +1673,7 @@ func (e *Engine) awaitCreated(ctx context.Context, rec *state.DeploymentRecord, 
 			return ctx.Err()
 		case <-timeout:
 			return clerrors.New(clerrors.CodeVMProvisionFailed,
-				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", rec.VMID, t.VMPollTimeout),
+				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", strconv.Quote(rec.VMID), t.VMPollTimeout),
 				i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
 					"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", rec.VMID))
 		case <-tick:
@@ -1681,9 +1681,9 @@ func (e *Engine) awaitCreated(ctx context.Context, rec *state.DeploymentRecord, 
 			// One refused token is the sleep's; two, the key's (refusals).
 			if refused.keyRefused(err) {
 				return clerrors.Wrap(clerrors.Reason(err),
-					i18n.Tf("checking VM %s failed: the key was refused (%v)", "проверить ВМ %s не удалось: ключ отклонён (%v)", rec.VMID, err),
+					i18n.Tf("checking VM %s failed: the key was refused (%v)", "проверить ВМ %s не удалось: ключ отклонён (%v)", strconv.Quote(rec.VMID), err),
 					i18n.Tf("VM %s is billed and recorded in the state. Check the key ('evo whoami'), then run 'evo deploy' again to finish.",
-						"ВМ %s тарифицируется и записана в state. Проверьте ключ ('evo whoami') и повторите 'evo deploy', чтобы завершить.", rec.VMID),
+						"ВМ %s тарифицируется и записана в state. Проверьте ключ ('evo whoami') и повторите 'evo deploy', чтобы завершить.", strconv.Quote(rec.VMID)),
 					err)
 			}
 			if err != nil {
@@ -1708,7 +1708,7 @@ func (e *Engine) awaitCreated(ctx context.Context, rec *state.DeploymentRecord, 
 				stateFile.UpsertDeployment(*rec)
 				// As in provisionVM (FB171-4).
 				return e.writeDecided(statePath, stateFile, clerrors.New(clerrors.CodeVMProvisionFailed,
-					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", rec.VMID, strconv.Quote(vm.Status)),
+					i18n.Tf("VM %s entered state %s", "ВМ %s перешла в состояние %s", strconv.Quote(rec.VMID), strconv.Quote(vm.Status)),
 					i18n.T("Check Cloud.ru console for details.", "Подробности — в консоли Cloud.ru.")))
 			}
 		}
@@ -2299,7 +2299,7 @@ func (e *Engine) waitVMGone(ctx context.Context, vmID string) bool {
 			// The wait says the VM's state when it changes (CLAUDE.md §6,
 			// axis 2), not only that time passes.
 			last = vm.Status
-			e.Printer.Step(0, 0, i18n.Tf("VM %s: %s, waiting until it is deleted…", "ВМ %s: %s, жду, пока она удалится…", vmID, vm.Status))
+			e.Printer.Step(0, 0, i18n.Tf("VM %s: %s, waiting until it is deleted…", "ВМ %s: %s, жду, пока она удалится…", vmID, strconv.Quote(vm.Status)))
 		}
 		select {
 		case <-ctx.Done():

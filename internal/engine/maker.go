@@ -6,6 +6,7 @@ package engine
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -35,7 +36,7 @@ func (e *Engine) NotVisibleToThisKey(rec state.DeploymentRecord) error {
 	return clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("VM %s was recorded by another key (%s), and this key (%s) does not see it: Cloud.ru answers 404 for a VM a key does not see, as for a deleted one; nothing was deleted and its record is kept",
 			"ВМ %s записана другим ключом (%s), а этот ключ (%s) ее не видит: Cloud.ru отвечает 404 и на ВМ, которую ключ не видит, и на удаленную; ничего не удалено, запись сохранена",
-			rec.VMID, makerName(rec.CreatedBy), makerName(e.Maker())),
+			strconv.Quote(rec.VMID), makerName(rec.CreatedBy), makerName(e.Maker())),
 		i18n.T("Run it again with the key of the record (its profile or CLOUDRU_KEY_ID), or check the VM in the Cloud.ru console.",
 			"Повторите с ключом записи (его профиль или CLOUDRU_KEY_ID) или проверьте ВМ в личном кабинете Cloud.ru."))
 }
@@ -43,7 +44,7 @@ func (e *Engine) NotVisibleToThisKey(rec state.DeploymentRecord) error {
 // makerName names a key by its account, else by its Key ID.
 func makerName(m *state.Maker) string {
 	if m.ServiceAccountID != "" {
-		return i18n.Tf("service account %s", "сервисный аккаунт %s", m.ServiceAccountID)
+		return i18n.Tf("service account %s", "сервисный аккаунт %s", strconv.Quote(m.ServiceAccountID))
 	}
 	return m.KeyID
 }

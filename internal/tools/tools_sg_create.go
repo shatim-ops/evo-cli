@@ -185,7 +185,7 @@ func (s *Registry) planSGRuleCreate(ctx context.Context, args map[string]any) (*
 				return answered(toJSON(map[string]any{"status": "already_exists", "rule_id": r.ID, "rule": sgRuleFields(r),
 					"security_group": group.Name, "security_group_id": group.ID,
 					"message": i18n.Tf("security group %s has this rule already (%s): nothing was created",
-						"в группе безопасности %s такое правило уже есть (%s): ничего не создано", quoteCloud(group.Name), r.ID)}), false), nil
+						"в группе безопасности %s такое правило уже есть (%s): ничего не создано", quoteCloud(group.Name), quoteCloud(r.ID))}), false), nil
 			}
 		case sgrules.Wider(r, want):
 			coveredBy = append(coveredBy, sgRuleFields(r))

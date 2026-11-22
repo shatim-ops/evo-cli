@@ -2229,7 +2229,7 @@ func (s *Registry) planProvision(ctx context.Context, args map[string]any) (*Pla
 	if vm != nil {
 		answer["adopts"] = map[string]any{"vm_id": rec.VMID, "vm_status": vm.Status}
 		answer["message"] = i18n.Tf("provision finishes VM %s (%s), which an earlier call of this name left creating in this folder: no second VM is created; it waits for the VM, then gives it its public IP and ports. preview has the VM and its monthly cost.",
-			"provision доделывает ВМ %s (%s), которую прошлый вызов с этим именем оставил создаваться в этом каталоге: второй ВМ не будет; он дождётся ВМ и даст ей внешний IP и порты. В preview — ВМ и её цена в месяц.", rec.VMID, vm.Status)
+			"provision доделывает ВМ %s (%s), которую прошлый вызов с этим именем оставил создаваться в этом каталоге: второй ВМ не будет; он дождётся ВМ и даст ей внешний IP и порты. В preview — ВМ и её цена в месяц.", quoteCloud(rec.VMID), quoteCloud(vm.Status))
 	}
 	// The address an earlier call of this name asked for with no answer,
 	// not listed now: the question, with or without consent — a person
@@ -2542,7 +2542,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 
 	vm := adopted
 	if vm != nil {
-		pp.StepDone(i18n.Tf("VM %s (id %s), which an earlier call left creating, is adopted: no second VM", "ВМ %s (id %s), которую оставил создаваться прошлый вызов, подхвачена: второй ВМ не будет", vmName, vm.ID))
+		pp.StepDone(i18n.Tf("VM %s (id %s), which an earlier call left creating, is adopted: no second VM", "ВМ %s (id %s), которую оставил создаваться прошлый вызов, подхвачена: второй ВМ не будет", vmName, quoteCloud(vm.ID)))
 	} else {
 		createStart := time.Now()
 		created, err := provision.CreateVMChecked(ctx, eng.Cloud, req)
@@ -2570,7 +2570,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				serr := saveState(found.ID, "creating", "")
 				pp.Hint(vmLeftNote(found.ID, ""))
 				return errAnswer(fmt.Errorf("VM %s was created, but the create call failed (%v); it is billed and recorded in the state — "+
-					"check it with vm_get; whether to delete it (destroy vm_id %s), ask the person.%s", found.ID, err, found.ID, notInState(found.ID, serr)),
+					"check it with vm_get; whether to delete it (destroy vm_id %s), ask the person.%s", quoteCloud(found.ID), err, quoteCloud(found.ID), notInState(found.ID, serr)),
 					map[string]any{"vm_id": found.ID}), true
 			}
 			return fipLeftAnswer(fmt.Errorf(i18n.T("create VM: %w", "создание ВМ: %w"), err), bootFIP, eng.ReleaseBootFIP(bootFIP, projectID)), true
@@ -2580,7 +2580,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		// record (QA r3 R5). The later saves update it.
 		vm = created
 		_ = saveState(vm.ID, "creating", "")
-		pp.StepDone(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", vmName, vm.ID))
+		pp.StepDone(i18n.Tf("Request accepted: VM %s, id %s", "Запрос принят: ВМ %s, id %s", vmName, quoteCloud(vm.ID)))
 	}
 
 	// leftFields are the fields of an answer that leaves the VM coming up
@@ -2602,7 +2602,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		serr := saveState(vm.ID, "creating", publicIP)
 		pp.Hint(vmLeftNote(vm.ID, ""))
 		return errAnswer(fmt.Errorf("VM %s was created, but provision was interrupted (%w); it is still running and recorded in the state — "+
-			"check it with vm_get; whether to delete it (destroy vm_id %s), ask the person.%s", vm.ID, context.Canceled, vm.ID, notInState(vm.ID, serr)),
+			"check it with vm_get; whether to delete it (destroy vm_id %s), ask the person.%s", quoteCloud(vm.ID), context.Canceled, quoteCloud(vm.ID), notInState(vm.ID, serr)),
 			leftFields(map[string]any{})), true
 	}
 
@@ -2657,7 +2657,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
 			pp.Hint(vmLeftNote(vm.ID, "") + i18n.T("; to wait longer next time: CLOUDRU_TIMEOUT (seconds)", "; ждать дольше: CLOUDRU_TIMEOUT (в секундах)"))
-			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get; whether to delete it (destroy vm_id %s) — ask the person; to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
+			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get; whether to delete it (destroy vm_id %s) — ask the person; to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", quoteCloud(vm.ID), pollTimeout, quoteCloud(vm.ID), notInState(vm.ID, serr)),
 				leftFields(map[string]any{"status": "timeout"})), true
 		case <-wait.C():
 			wait.Show()
@@ -2723,7 +2723,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					engine.ShowOpenedPorts(pp, res, &ports, firstNonEmptyStr(sgName, sgIDs[0]))
 				}
 				if serr := saveState(vm.ID, "running", publicIP); serr != nil {
-					return errAnswer(fmt.Errorf("VM %s is active at %s and billed.%s", vm.ID, firstNonEmptyStr(publicIP, "no public address"), notInState(vm.ID, serr)),
+					return errAnswer(fmt.Errorf("VM %s is active at %s and billed.%s", quoteCloud(vm.ID), firstNonEmptyStr(publicIP, "no public address"), notInState(vm.ID, serr)),
 						map[string]any{"vm_id": vm.ID, "vm_ip": publicIP}), true
 				}
 
@@ -2814,7 +2814,7 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 					fipNote = fmt.Sprintf(" Its floating IP %s is attached and billed too; a destroy of the VM releases it — ask the person before deleting.", ip)
 				}
 				return errAnswer(fmt.Errorf("VM %s entered state %s. It is recorded in the state; whether to delete it (destroy vm_id %s) — ask the person.%s%s",
-					vm.ID, quoteCloud(updated.Status), vm.ID, fipNote, notInState(vm.ID, serr)),
+					quoteCloud(vm.ID), quoteCloud(updated.Status), quoteCloud(vm.ID), fipNote, notInState(vm.ID, serr)),
 					map[string]any{"vm_id": vm.ID, "floating_ip_id": fipID}), true
 			}
 		case <-ctx.Done():
@@ -3153,7 +3153,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		ids := make([]string, 0, len(byName))
 		for _, v := range byName {
 			cands = append(cands, map[string]any{"id": v.ID, "zone": vmZone(v), "status": v.Status})
-			ids = append(ids, fmt.Sprintf("%s (zone %s)", v.ID, firstNonEmptyStr(vmZone(v), "unknown")))
+			ids = append(ids, fmt.Sprintf("%s (zone %s)", quoteCloud(v.ID), firstNonEmptyStr(vmZone(v), "unknown")))
 		}
 		return answered(errAnswer(clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("%d VMs in this project are named %s: %s; nothing was deleted", "в проекте %d ВМ с именем %s: %s; ничего не удалено", len(byName), name, strings.Join(ids, ", ")),
@@ -3440,7 +3440,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					msg += i18n.Tf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
 						"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release",
 						"; ВНИМАНИЕ: floating IP %s НЕ освобождён и продолжает оплачиваться (%v) — "+
-							"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
+							"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, quoteCloud(target.ID))
 				}
 			} else {
 				if recordedHere && fipRec.ReleasedFloatingIPID != "" {
@@ -3645,10 +3645,10 @@ func destroyTargetPreview(target *provision.VM, alreadyGone bool, projectID stri
 	for _, p := range rules {
 		if p.KeptFor != "" {
 			ports = append(ports, i18n.Tf("keep port %s in security group %s (still needed by deployment %s)",
-				"сохранить порт %s в группе безопасности %s (он ещё нужен развёртыванию %s)", sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID, p.KeptFor))
+				"сохранить порт %s в группе безопасности %s (он ещё нужен развёртыванию %s)", sgrules.Label(p.Rule.Port), quoteCloud(p.Rule.SecurityGroupID), p.KeptFor))
 			continue
 		}
-		line := i18n.Tf("delete rule %s (port %s) in security group %s", "удалить правило %s (порт %s) в группе безопасности %s", p.Rule.ID, sgrules.Label(p.Rule.Port), p.Rule.SecurityGroupID)
+		line := i18n.Tf("delete rule %s (port %s) in security group %s", "удалить правило %s (порт %s) в группе безопасности %s", quoteCloud(p.Rule.ID), sgrules.Label(p.Rule.Port), quoteCloud(p.Rule.SecurityGroupID))
 		if p.RecordID == "" {
 			line += i18n.T(" (labelled for this VM, not recorded in this folder)", " (помечено для этой ВМ, в этой папке не записано)")
 		}
@@ -3682,7 +3682,7 @@ func fipLeftAnswer(err error, fip *provision.FloatingIP, fipErr error) string {
 		return errResult(err)
 	}
 	return errAnswer(fmt.Errorf(i18n.T("%w; the floating IP %s (%s) made for this VM was NOT released (%v) and is billed — ask the person whether to release it (release_floating_ip)", "%w; floating IP %s (%s), созданный для этой ВМ, НЕ освобождён (%v) и тарифицируется — спросите человека, освободить ли его (release_floating_ip)"),
-		err, fip.IPAddress, fip.ID, fipErr), map[string]any{"floating_ip_id": fip.ID, "floating_ip": fip.IPAddress})
+		err, fip.IPAddress, quoteCloud(fip.ID), fipErr), map[string]any{"floating_ip_id": fip.ID, "floating_ip": fip.IPAddress})
 }
 
 // destroyUnconfirmed answers destroy vm_id=/name= whose delete Cloud.ru
@@ -3699,10 +3699,10 @@ func fipLeftAnswer(err error, fip *provision.FloatingIP, fipErr error) string {
 func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRec *state.DeploymentRecord, keepFIP, keepAsked bool) string {
 	recorded, stateErr := markDestroying(statePath, projectID, target, fipRec, keepFIP)
 	msg := fmt.Sprintf("VM %s: Cloud.ru accepted the delete, but the VM is still listed, so the deletion is not confirmed; "+
-		"its floating IP and port rules are kept for now", target.ID)
-	hint := fmt.Sprintf("While the VM exists, it and its floating IP are billed. Check it with vm_get %s, then call destroy with vm_id %s again: once the VM is gone it releases the floating IP and closes the ports.", target.ID, target.ID)
+		"its floating IP and port rules are kept for now", quoteCloud(target.ID))
+	hint := fmt.Sprintf("While the VM exists, it and its floating IP are billed. Check it with vm_get %s, then call destroy with vm_id %s again: once the VM is gone it releases the floating IP and closes the ports.", quoteCloud(target.ID), quoteCloud(target.ID))
 	if keepAsked {
-		hint = fmt.Sprintf("While the VM exists, it is billed. Check it with vm_get %s, then call destroy with vm_id %s and release_ip=false again: once the VM is gone it closes the ports and keeps the floating IP.", target.ID, target.ID)
+		hint = fmt.Sprintf("While the VM exists, it is billed. Check it with vm_get %s, then call destroy with vm_id %s and release_ip=false again: once the VM is gone it closes the ports and keeps the floating IP.", quoteCloud(target.ID), quoteCloud(target.ID))
 	}
 	switch {
 	case stateErr != nil:
@@ -3712,7 +3712,7 @@ func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRe
 	default:
 		// Nothing recorded here and no FIP found: a re-run after the VM is
 		// gone would be VM_NOT_FOUND, there is nothing left to clean up.
-		hint = fmt.Sprintf("Check it with vm_get %s: once it is VM_NOT_FOUND the deletion is done, nothing else needs a destroy.", target.ID)
+		hint = fmt.Sprintf("Check it with vm_get %s: once it is VM_NOT_FOUND the deletion is done, nothing else needs a destroy.", quoteCloud(target.ID))
 	}
 	fields := map[string]any{"status": "partial", "vm_id": target.ID, "name": target.Name}
 	if keepFIP {
@@ -3734,7 +3734,7 @@ func destroyDeleting(ctx context.Context, eng *engine.Engine, statePath, project
 	}
 	out := map[string]any{"status": "deleting", "vm_id": target.ID, "name": target.Name, "vm_status": vmStatus,
 		"next": i18n.Tf("Cloud.ru is deleting VM %s; it is billed until it is gone. Call destroy with vm_id %s and confirmed=true again: it waits for the VM, then releases its floating IP and port rules and drops the record.",
-			"Cloud.ru удаляет ВМ %s; пока она не удалена, она оплачивается. Повторите evo vm delete %s с подтверждением: команда дождётся удаления ВМ, затем освободит её floating IP, удалит правила портов и запись.", target.ID, target.ID)}
+			"Cloud.ru удаляет ВМ %s; пока она не удалена, она оплачивается. Повторите evo vm delete %s с подтверждением: команда дождётся удаления ВМ, затем освободит её floating IP, удалит правила портов и запись.", quoteCloud(target.ID), quoteCloud(target.ID))}
 	if keepFIP {
 		out["floating_ip"] = i18n.T("kept until the VM is gone: ", "сохранён до удаления ВМ: ") + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	}

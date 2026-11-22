@@ -371,7 +371,7 @@ func caStartStopAnswer(ctx context.Context, cli *containerapp.Client, name, acti
 	if msg, code, failed := opFailure(op.Error); failed {
 		e := clierrors.New(clierrors.CodeAPIError,
 			i18n.Tf("Cloud.ru did not %s container app %q: %s (operation %s)", "Cloud.ru не выполнил %s приложения %q: %s (операция %s)",
-				action, name, quoteCloud(fmt.Sprint(msg)), op.ID),
+				action, name, quoteCloud(fmt.Sprint(msg)), quoteCloud(op.ID)),
 			i18n.T("ca_get shows the state of the app.", "Состояние приложения показывает ca_get."))
 		fields := map[string]any{"name": name, "action": action, "operation_id": op.ID}
 		if code != nil {

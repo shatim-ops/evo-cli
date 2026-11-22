@@ -304,7 +304,7 @@ func stepMissing(job *stack.Job, st *stack.Step, why, check, reason string) bool
 		"%s: resource %s of the step %s: %s, %d times since %s; no new one was made. "+
 			"Whether it is there, %s tells; stack_destroy of this job removes what the job made by id, and one that is not there any more is not an error to it — whether to remove it, ask the person; "+
 			"a new plan with the same names is refused while that resource is there",
-		st.Key, st.ResourceID, what, why, st.Missing, st.MissingSince.UTC().Format(time.RFC3339), check))
+		st.Key, quoteCloud(st.ResourceID), what, why, st.Missing, st.MissingSince.UTC().Format(time.RFC3339), check))
 	return true
 }
 

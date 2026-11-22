@@ -199,7 +199,7 @@ func (s *Registry) planSubnetCreate(ctx context.Context, args map[string]any) (*
 	if sn := subnetOverlap(subnets, vpcID, cidr); sn != nil {
 		return nil, clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("cidr %s overlaps subnet %s (%s, %s) of the same VPC", "cidr %s пересекается с подсетью %s (%s, %s) того же VPC",
-				cidr, quoteCloud(sn.Name), sn.SubnetAddress, sn.ID),
+				cidr, quoteCloud(sn.Name), sn.SubnetAddress, quoteCloud(sn.ID)),
 			i18n.T("Pick a network that does not overlap the VPC's subnets (list_subnets).",
 				"Выберите сеть, которая не пересекается с подсетями VPC (list_subnets)."))
 	}

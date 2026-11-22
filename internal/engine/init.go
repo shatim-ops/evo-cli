@@ -125,8 +125,8 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 		imageLine = "image_id: " + yamlComment(image.ID) + "  # " + yamlComment(image.Name)
 	}
 
-	e.Printer.StepDone(i18n.Tf("Zone: %s (%s)", "Зона: %s (%s)", zone.Name, zone.ID))
-	e.Printer.StepDone(i18n.Tf("Image: %s (%s)", "Образ: %s (%s)", image.Name, image.ID))
+	e.Printer.StepDone(i18n.Tf("Zone: %s (%s)", "Зона: %s (%s)", zone.Name, strconv.Quote(zone.ID)))
+	e.Printer.StepDone(i18n.Tf("Image: %s (%s)", "Образ: %s (%s)", image.Name, strconv.Quote(image.ID)))
 
 	projectLine := i18n.T("# project_id: <your-project-uuid>", "# project_id: <UUID вашего проекта>")
 	if e.Config.ProjectID != "" {
@@ -146,8 +146,8 @@ func (e *Engine) Init(ctx context.Context, opts InitOptions) error {
 		_, err := confirm.Ask(ctx, confirm.Preview{Action: "init",
 			Summary: i18n.Tf("create %s", "создать %s", opts.Path),
 			Lines: []string{
-				i18n.Tf("zone: %s (%s)", "зона: %s (%s)", zone.Name, zone.ID),
-				i18n.Tf("image: %s (%s)", "образ: %s (%s)", image.Name, image.ID),
+				i18n.Tf("zone: %s (%s)", "зона: %s (%s)", zone.Name, strconv.Quote(zone.ID)),
+				i18n.Tf("image: %s (%s)", "образ: %s (%s)", image.Name, strconv.Quote(image.ID)),
 				i18n.Tf("project: %s", "проект: %s", project),
 			}}, e.confirmOptions(false, true, true))
 		return err

@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -150,7 +151,7 @@ func (c *Client) consumptionError(status int, body []byte) error {
 	}
 	return clierrors.New(clierrors.CodeAPIError,
 		i18n.Tf("no access to the consumption of agreement %s: the key's role lacks it (billing API %d)",
-			"нет доступа к потреблению договора %s: у роли ключа нет прав (billing API %d)", c.agreementID, status),
+			"нет доступа к потреблению договора %s: у роли ключа нет прав (billing API %d)", strconv.Quote(c.agreementID), status),
 		i18n.T("Consumption of an agreement is read by the organization administrator (platform.customer.admin) or the cost administrator (platform.customer.expense-admin); a project administrator reads its project: unset CLOUDRU_AGREEMENT_ID, "+DocAPIStart+".",
 			"Потребление договора доступно администратору организации (platform.customer.admin) и администратору затрат (platform.customer.expense-admin); администратору проекта — потребление проекта: уберите CLOUDRU_AGREEMENT_ID, "+DocAPIStart+"."))
 }

@@ -6,6 +6,7 @@ package cli
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -145,7 +146,7 @@ func resolveProjectArg(cmd *cobra.Command, cfg config.Config, want string) (id, 
 	}
 	ids := make([]string, len(byName))
 	for i, p := range byName {
-		ids[i] = p.ID
+		ids[i] = strconv.Quote(p.ID)
 	}
 	return "", "", clerrors.New(clerrors.CodeConfigInvalid,
 		i18n.Tf("several projects are named %q: %s", "несколько проектов с именем %q: %s", want, strings.Join(ids, ", ")),

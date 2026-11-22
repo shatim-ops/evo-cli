@@ -460,7 +460,7 @@ func chooseProject(ctx context.Context, token, current string, con *console, pri
 		}
 		ids := make([]string, len(projects))
 		for i, p := range projects {
-			ids[i] = p.ID + " (" + p.Name + ")"
+			ids[i] = strconv.Quote(p.ID) + " (" + strconv.Quote(p.Name) + ")"
 		}
 		return "", clerrors.New(clerrors.CodeConfigInvalid, i18n.T("several projects available, none selected",
 			"доступно несколько проектов, ни один не выбран"),

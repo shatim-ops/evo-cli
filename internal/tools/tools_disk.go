@@ -82,7 +82,7 @@ func (s *Registry) listedVM(ctx context.Context, tool, ref, projectID string) (*
 	case len(found) > 1 && strict:
 		ids := make([]string, len(found))
 		for i, v := range found {
-			ids[i] = v.ID
+			ids[i] = quoteCloud(v.ID)
 		}
 		return nil, clierrors.New(clierrors.CodeUsage,
 			i18n.Tf("%d VMs of the project are named %q: %s", "в проекте %d ВМ с именем %q: %s", len(found), ref, strings.Join(ids, ", ")),
@@ -473,7 +473,7 @@ type diskAtLimit struct {
 }
 
 func (e *diskAtLimit) Error() string {
-	return fmt.Sprintf("the disk is %s at the time limit of the call", e.state)
+	return fmt.Sprintf("the disk is %s at the time limit of the call", quoteCloud(e.state))
 }
 
 // diskAtLimitAnswer is the answer of tool whose wait for disk diskID the

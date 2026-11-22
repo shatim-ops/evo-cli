@@ -7,6 +7,7 @@ package engine
 import (
 	"context"
 	stderrors "errors"
+	"strconv"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -72,9 +73,9 @@ func (e *Engine) vmStopped(ctx context.Context, rec *state.DeploymentRecord, cod
 	return "", &VMStoppedError{State: vm.Status, err: &clerrors.CLIError{
 		Code: code,
 		Message: i18n.Tf("VM %s of this deployment is %s: its SSH and its service do not answer until it is started",
-			"ВМ %s этого развёртывания в состоянии %s: её SSH и сервис не отвечают, пока она не запущена", rec.VMID, vm.Status),
+			"ВМ %s этого развёртывания в состоянии %s: её SSH и сервис не отвечают, пока она не запущена", strconv.Quote(rec.VMID), strconv.Quote(vm.Status)),
 		Hint: i18n.Tf("Start it: 'evo vm start %s' (MCP: vm_start with vm_id; a VM that is stopping is waited for first), then repeat. The VM, its disks and this record are intact: nothing here needs a delete.",
-			"Запустите её: 'evo vm start %s' (MCP: vm_start с vm_id; ВМ, которая останавливается, он сначала дождётся) и повторите. ВМ, её диски и эта запись целы: удалять здесь нечего.", rec.VMID),
+			"Запустите её: 'evo vm start %s' (MCP: vm_start с vm_id; ВМ, которая останавливается, он сначала дождётся) и повторите. ВМ, её диски и эта запись целы: удалять здесь нечего.", strconv.Quote(rec.VMID)),
 		Details: map[string]any{
 			"cause": "vm_stopped", "vm_id": rec.VMID, "vm_state": vm.Status,
 			"next_tool": "vm_start", "next_args": map[string]any{"vm_id": rec.VMID},
@@ -109,9 +110,9 @@ func inTransit(err error, rec *state.DeploymentRecord, transit string) error {
 		Code: ce.Code,
 		Message: i18n.Tf("%s (VM %s of this deployment was %s when the command began: SSH and its service may not answer until it is running)",
 			"%s (ВМ %s этого развёртывания была в состоянии %s, когда команда началась: SSH и сервис могут не отвечать, пока она не запущена)",
-			ce.Message, rec.VMID, transit),
+			ce.Message, strconv.Quote(rec.VMID), transit),
 		Hint: i18n.Tf("Wait until 'evo vm get %s' shows running (MCP: vm_get with vm_id), then repeat. The VM, its disks and this record are intact: nothing here needs a delete.",
-			"Дождитесь, пока 'evo vm get %s' покажет running (MCP: vm_get с vm_id), и повторите. ВМ, её диски и эта запись целы: удалять здесь нечего.", rec.VMID),
+			"Дождитесь, пока 'evo vm get %s' покажет running (MCP: vm_get с vm_id), и повторите. ВМ, её диски и эта запись целы: удалять здесь нечего.", strconv.Quote(rec.VMID)),
 		Err: err,
 		Details: map[string]any{
 			"cause": "vm_in_transition", "vm_id": rec.VMID, "vm_state": transit,
