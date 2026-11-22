@@ -23,3 +23,6 @@
 - One `deploy` at a time in a directory: another answers `STATE_LOCKED`; wait for the first.
 - The defaults of `deploy_plan` (flavor, zone, image) come from evo's configuration; the plan names what it picked.
 - `destroy` answers status `partial` (an error) when Cloud.ru accepted the deletion but did not confirm it, and over MCP `deleting` with `next_tool` when it still runs at ~45 s.
+- For `deploy_plan`, auto chooses a fitting flavor from cpu/ram_gb and defaults the boot disk to 10 GB. Manual accepts flavor, zone, image and disk_type. Without configured values, zone defaults to ru.AZ-2 and image to Ubuntu 24.04. The VM name defaults to the product and a timestamp.
+- With compose_file, Astra Linux, Alt and RED OS images are refused. Get required image metadata from `image_get`; values are saved in the plan. Without ssh_key, the directory's deploy public key is used; add the person's key afterwards.
+- Ports open in the zone's shared security group from cidr; `destroy` removes the rules it created. Use base_plan_id to copy an earlier plan with just the supplied changes.

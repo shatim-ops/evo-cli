@@ -99,7 +99,7 @@
 | `list` | `evo deploy list` | нет | — | List all recorded deployments for this project (VM IP, status, flavor, creation time). | Локальные записи развёртываний этого проекта |
 | `logs` | `evo logs` | нет | — | Retrieve container logs from the deployed VM via 'docker compose logs' over SSH. | Журналы контейнеров развёрнутой ВМ |
 | `destroy` | `evo vm delete` | удаляет | — | Permanently delete a VM and all data on it. | Удалить ВМ и все данные на ней (безвозвратно) |
-| `deploy_plan` | `evo deploy plan` | нет | — | Step 1 of the deploy wizard, read-only: resolves a VM configuration (flavor, image, zone, disk, network, SSH) with its monthly cost and a plan_id (cost.source … | Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая |
+| `deploy_plan` | `evo deploy plan` | нет | — | Plan a VM. | Шаг 1 мастера развёртывания: рассчитать ВМ и её цену, ничего не создавая |
 | `deploy_apply` | `evo deploy apply` | да | `plan_id` | Creates only the VM, without the application, from a plan of deploy_plan (STEP 2 of the deploy wizard): a compose project goes through deploy. | Создать только ВМ по плану, без приложения (шаг 2 мастера; compose запускает evo deploy) |
 | `open_ports` | `evo vpc open-ports` | да | `security_group`, `ports` | Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). | Открыть входящие порты в группе безопасности |
 | `close_ports` | `evo vpc close-ports` | да | `security_group`, `ports` | Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default). | Закрыть входящие порты в группе безопасности |
@@ -290,7 +290,7 @@
 
 | Инструмент | Команда CLI | Меняет | Обязательные аргументы | Описание | Описание (RU) |
 |---|---|---|---|---|---|
-| `provision` | `evo vm create` | да | — | Provision a bare VM (docker-compose: use 'deploy'). | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
+| `provision` | `evo vm create` | да | — | Provision a bare VM. | Создать ВМ (по умолчанию с floating IP; без внешнего адреса — --no-public-ip) |
 | `vm_get` | `evo vm get` | нет | `vm_id` или `name` | Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface with its security groups and subnet. | ВМ по ID или имени: внутренний и внешний IP, состояние, интерфейсы |
 | `vm_history` | `evo vm history` | нет | `vm_id` | Read the platform's Compute Tasks history for one VM UUID in the current project, including after deletion. | История задач Compute по UUID ВМ |
 | `vm_console` | `evo vm console` | нет | `vm_id` или `name` | Where a human opens the console of one VM, by vm_id or name: state, serial_ready and console_available (true only while the VM is running; a condition, not a … | Где человек открывает консоль ВМ и доступна ли она сейчас |

@@ -33,3 +33,4 @@ Filters of the lists (the rule of the `evo` skill): `pg_list` — status, name, 
 - A zone with no capacity refuses `pg_create` with `API_RATE_LIMITED` (`ResourceExhausted`): later or another zone (`subnet_id`), not the same call in a loop.
 - A cluster in FAILED cannot be deleted through the API: the answer is an error with `resource_status` and a hint (the console, Cloud.ru support), not a success; a repeat changes nothing.
 - `pg_backups` of a deleted cluster answers an error.
+- Without subnet_id, `pg_create` uses the main subnet of the profile's zone. Backups are enabled by default. Use `pg_db_create` to create a database with an owner.

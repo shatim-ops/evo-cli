@@ -144,6 +144,9 @@ var cardNotes = map[string][]string{
 		"One `deploy` at a time in a directory: another answers `STATE_LOCKED`; wait for the first.",
 		"The defaults of `deploy_plan` (flavor, zone, image) come from evo's configuration; the plan names what it picked.",
 		"`destroy` answers status `partial` (an error) when Cloud.ru accepted the deletion but did not confirm it, and over MCP `deleting` with `next_tool` when it still runs at ~45 s.",
+		"For `deploy_plan`, auto chooses a fitting flavor from cpu/ram_gb and defaults the boot disk to 10 GB. Manual accepts flavor, zone, image and disk_type. Without configured values, zone defaults to ru.AZ-2 and image to Ubuntu 24.04. The VM name defaults to the product and a timestamp.",
+		"With compose_file, Astra Linux, Alt and RED OS images are refused. Get required image metadata from `image_get`; values are saved in the plan. Without ssh_key, the directory's deploy public key is used; add the person's key afterwards.",
+		"Ports open in the zone's shared security group from cidr; `destroy` removes the rules it created. Use base_plan_id to copy an earlier plan with just the supplied changes.",
 	},
 	"image": {
 		"`image_create` takes a detached disk: one still attached to a stopped VM answers `invalid_disk_state_to_create_image`.",
@@ -166,6 +169,12 @@ var cardNotes = map[string][]string{
 		"A zone with no capacity refuses `pg_create` with `API_RATE_LIMITED` (`ResourceExhausted`): later or another zone (`subnet_id`), not the same call in a loop.",
 		"A cluster in FAILED cannot be deleted through the API: the answer is an error with `resource_status` and a hint (the console, Cloud.ru support), not a success; a repeat changes nothing.",
 		"`pg_backups` of a deleted cluster answers an error.",
+		"Without subnet_id, `pg_create` uses the main subnet of the profile's zone. Backups are enabled by default. Use `pg_db_create` to create a database with an owner.",
+	},
+	"vm": {
+		"Use `deploy` for Compose. For `provision`, the default flavor is the smallest lowcost flavor outside free-tier. The region defaults to CLOUDRU_REGION, the subnet to the zone's, and the boot disk to 10 GB or the image minimum.",
+		"Use `image_get` for fields_required. Supply missing mandatory image_metadata; supplied fields override evo's SSH key, VM name, login and generated password. Unknown fields, an unavailable image or missing required inputs are refused before creation.",
+		"Ports use TCP by default and open from cidr in the shared security group; `destroy` removes the rules it created. Keep the returned SSH details and state_dir (key and state). For wait=true, allow the client enough time to wait for the VM.",
 	},
 }
 

@@ -19,20 +19,6 @@ import (
 // the pull request (tools-list.yml), this one is the share of each tool.
 const toolBudget = 1500
 
-// toolsOverBudget are the tools whose entry is over toolBudget, each with
-// its ceiling: the bytes it takes now. A ceiling only goes down — an entry
-// above it fails, and so does one below it (lower the ceiling, the bytes
-// are not to be spent again). It only shrinks. Closes by 1.10 — moved from 1.8 by the
-// owner's decision of 13.11, #1590, question 19 (release plan
-// 1.7: P13, the shortening of the long descriptions inside D68, with a
-// budget of bytes per description; what P13 does not reach in 1.7 goes on
-// in 1.8).
-var toolsOverBudget = map[string]int{
-	"deploy_plan": 2748,
-	"pg_create":   1676,
-	"provision":   2350,
-}
-
 // P13 and D68 (release plan 1.7; agent runs of Grok on 1.6.0): D68 moves
 // what the scenario skills knew into the registry, P13 shortens the long
 // descriptions — without a budget each would undo the other. The budget
@@ -42,29 +28,14 @@ var toolsOverBudget = map[string]int{
 // invariant of coverage), not into a longer entry.
 func TestToolsList_EachToolWithinItsBudget(t *testing.T) {
 	var bad []string
-	seen := map[string]bool{}
 	for _, tl := range New(nil, "test").ListTools() {
 		b, err := json.Marshal(tl)
 		if err != nil {
 			t.Fatal(err)
 		}
 		n := len(b)
-		seen[tl.Name] = true
-		ceiling, over := toolsOverBudget[tl.Name]
-		switch {
-		case !over && n > toolBudget:
-			bad = append(bad, tl.Name+": "+strconv.Itoa(n)+" bytes in tools/list, over the budget of "+strconv.Itoa(toolBudget)+" — shorten it, or move what it says into the card or the built-in skill")
-		case over && n > ceiling:
-			bad = append(bad, tl.Name+": "+strconv.Itoa(n)+" bytes, over its ceiling of "+strconv.Itoa(ceiling)+" (toolsOverBudget) — the ceiling only goes down")
-		case over && n <= toolBudget:
-			bad = append(bad, tl.Name+": "+strconv.Itoa(n)+" bytes, within the budget: take its line out of toolsOverBudget")
-		case over && n < ceiling:
-			bad = append(bad, tl.Name+": "+strconv.Itoa(n)+" bytes, under its ceiling of "+strconv.Itoa(ceiling)+": lower the ceiling to "+strconv.Itoa(n))
-		}
-	}
-	for name := range toolsOverBudget {
-		if !seen[name] {
-			bad = append(bad, name+": in toolsOverBudget, no such tool in tools/list")
+		if n > toolBudget {
+			bad = append(bad, tl.Name+": "+strconv.Itoa(n)+" bytes in tools/list, over the budget of "+strconv.Itoa(toolBudget)+" — shorten it, or move detail to the group card")
 		}
 	}
 	sort.Strings(bad)
