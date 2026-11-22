@@ -155,6 +155,7 @@ var columnHeaderRU = map[string]string{
 	"state":           "Состояние",
 	"status":          "Состояние",
 	"zone":            "Зона",
+	"zones":           "Зоны",
 	"created_time":    "Создана",
 	"vcpus":           "vCPU",
 	"ram_gb":          "RAM, ГБ",

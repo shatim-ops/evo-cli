@@ -653,11 +653,18 @@ func renderProjectList(p *output.Printer, _ io.Writer, text string) error {
 	if err := json.Unmarshal([]byte(text), &answer); err != nil {
 		return err
 	}
+	activeListed := false
+	for _, project := range answer.Projects {
+		if project.ID == answer.Active {
+			activeListed = true
+			break
+		}
+	}
+	if answer.Active != "" && !activeListed {
+		p.Success(i18n.Tf("Active project: %s", "Активный проект: %s", answer.Active))
+	}
 	if answer.Projects == nil && answer.Note != "" {
 		p.Warning(i18n.Tf("project list: %s", "список проектов: %s", answer.Note))
-		if answer.Active != "" {
-			p.Success(i18n.Tf("Active project: %s", "Активный проект: %s", answer.Active))
-		}
 		return nil
 	}
 	if len(answer.Projects) == 0 {

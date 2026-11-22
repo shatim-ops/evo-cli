@@ -95,7 +95,7 @@ var cliSpecs = map[string]CLISpec{
 	"provision":    {Group: "vm", Verb: "create", Args: []string{"name"}, Rename: map[string]string{"image_metadata": "meta", "ports": "port"}, Pairs: map[string]bool{"image_metadata": true}, Render: "vm-created"},
 	"destroy":      {Group: "vm", Verb: "delete", Args: []string{"vm_id|name"}},
 	"list_zones":   {Group: "vm", Verb: "zones"},
-	"list_flavors": {Group: "vm", Verb: "flavors", Columns: []string{"name", "vcpus", "cpu_share", "ram_gb", "gpu", "spot", "est_monthly_rub", "free_tier"}},
+	"list_flavors": {Group: "vm", Verb: "flavors", Columns: []string{"name", "vcpus", "cpu_share", "ram_gb", "gpu", "spot", "est_monthly_rub", "free_tier", "zones"}},
 
 	// image
 	"image_list": {Group: "image", Verb: "list", Args: []string{"query?"}, Render: "image-list"},
@@ -165,7 +165,7 @@ var cliSpecs = map[string]CLISpec{
 	"pg_list":          {Group: "pg", Verb: "list"},
 	"pg_get":           {Group: "pg", Verb: "get", Args: []string{"cluster_id"}, Omit: map[string]bool{"id": true}},
 	"pg_versions":      {Group: "pg", Verb: "versions"},
-	"pg_specs":         {Group: "pg", Verb: "specs"},
+	"pg_specs":         {Group: "pg", Verb: "specs", Columns: []string{"id", "display_name", "cpu", "memory_gb", "deployment_mode", "flavor_type", "max_hosts", "min_storage_gb"}},
 	"pg_create":        {Group: "pg", Verb: "create", Args: []string{"name"}},
 	"pg_delete":        {Group: "pg", Verb: "delete", Args: []string{"cluster_id"}, Omit: map[string]bool{"id": true}},
 	"pg_operation":     {Group: "pg", Verb: "operation", Args: []string{"operation_id"}},

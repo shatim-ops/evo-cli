@@ -247,6 +247,9 @@ func renderImageCard(p *output.Printer, w io.Writer, text string) error {
 			if f.Required {
 				req = i18n.T("yes", "да")
 			}
+			if f.Group != "" {
+				req += i18n.Tf(" (group %s)", " (группа %s)", f.Group)
+			}
 			rows = append(rows, []string{"  " + f.Name, f.FieldType, req, fieldFiller(f)})
 		}
 		p.Table([]string{"  " + i18n.T("FIELD", "ПОЛЕ"), i18n.T("TYPE", "ТИП"), i18n.T("REQUIRED", "ОБЯЗАТЕЛЬНОЕ"), i18n.T("FILLED BY", "КТО ЗАПОЛНЯЕТ")}, rows)

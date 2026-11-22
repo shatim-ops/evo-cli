@@ -7,6 +7,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
 	"sort"
 	"strconv"
@@ -50,22 +51,16 @@ var readUnnamed = map[string]struct{ class, why string }{
 	"billing_finops vat.total_cost_with_nds":           {unnamedNoise, "пояснение суммы; человеку — «with VAT» у суммы"},
 	"doctor checks.http_status":                        {unnamedNoise, "код ответа пробы; человеку — «reachable» в строке проверки"},
 	"image_get create.tool":                            {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"image_get fields.mandatory_group":                 {unnamedWork, "группа обязательных полей образа; человеку — только REQUIRED"},
 	"image_get fields.role":                            {unnamedNoise, "роль поля; человеку — «evo: the SSH key» в FILLED BY"},
 	"k8s_addon_versions deploy_with.tool":              {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
 	"k8s_addons addons.deploy_with.tool":               {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
-	"list_flavors flavors.zones":                       {unnamedWork, "зоны, где есть конфигурация: таблица — не больше семи колонок"},
 	"marketplace_list items.available_in_project":      {unnamedWork, "доступен ли образ проекту"},
 	"marketplace_list items.billable":                  {unnamedPrice, "платный ли аддон"},
 	"marketplace_list items.deploy.tool":               {unnamedNoise, "инструмент MCP для агента; человеку — команда CLI"},
 	"metrics_scrape format":                            {unnamedNoise, "формат выгрузки; человеку — сама выгрузка"},
 	"metrics_scrape match":                             {unnamedWork, "отбор метрик, по которому сделана выгрузка"},
 	"metrics_scrape project":                           {unnamedNoise, "проект выгрузки: тот, что в профиле"},
-	"org_projects active":                              {unnamedWork, "текущий проект ключа: строка «The key sees no projects» его не называет"},
-	"pg_specs specifications.min_storage_gb":           {unnamedPrice, "минимум диска спецификации: таблица — не больше семи колонок"},
 	"status cloud_checked":                             {unnamedNoise, "сверено ли с облаком; человеку — строка «In the cloud»"},
-	"status project_id":                                {unnamedWork, "проект развёртывания"},
-	"status ssh_user":                                  {unnamedWork, "пользователь SSH ВМ развёртывания"},
 	"whoami token_ttl_seconds":                         {unnamedNoise, "срок токена; человеку — «1h0m0s left»"},
 }
 
@@ -460,6 +455,39 @@ func TestAddonReadValuesInBothLanguages(t *testing.T) {
 			want := i18n.T("Categories (--category): network, security.", "Категории (--category): network, security.")
 			if strings.Contains(buf.String(), want) != (categories != "") {
 				t.Fatal(buf.String())
+			}
+		}
+	}
+}
+
+func TestRead_SelectedFieldsInBothLanguages(t *testing.T) {
+	old := i18n.Lang()
+	defer i18n.SetLang(old)
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		cmds := commandsByTool()
+		statusView := func(p *output.Printer, _ io.Writer, text string) error { return showStatus(p, text, false) }
+		for _, tc := range []struct {
+			view            renderFunc
+			present, absent string
+			want            []string
+		}{
+			{cmds["list_flavors"].cmd.show, `{"flavors":[{"name":"a","zones":["az-red","az-blue"]},{"name":"b","zones":["az-green"]}]}`, `{"flavors":[{"name":"a"}]}`, []string{"az-red,az-blue", "az-green"}},
+			{cmds["pg_specs"].cmd.show, `{"specifications":[{"id":"a","min_storage_gb":173},{"id":"b","min_storage_gb":349}]}`, `{"specifications":[{"id":"a"}]}`, []string{"173", "349"}},
+			{renderProjectList, `{"active":"kept-project","projects":[]}`, `{"projects":[]}`, []string{i18n.T("Active project: kept-project", "Активный проект: kept-project")}},
+			{statusView, `{"id":"d","project_id":"project-blue","ssh_user":"user-green"}`, `{"id":"d"}`, []string{"project-blue", "user-green"}},
+			{renderImageCard, `{"id":"img","name":"img","fields":[{"name":"ssh","field_type":"key","required":true,"mandatory_group":"auth-entry"}]}`, `{"id":"img","name":"img","fields":[{"name":"ssh","required":true}]}`, []string{i18n.T("group auth-entry", "группа auth-entry")}},
+		} {
+			for _, raw := range []string{tc.present, tc.absent} {
+				var buf strings.Builder
+				if err := tc.view(output.NewWithWriter(&buf, output.ModePlain, false), &buf, raw); err != nil {
+					t.Fatal(err)
+				}
+				for _, want := range tc.want {
+					if strings.Contains(buf.String(), want) != (raw == tc.present) {
+						t.Fatalf("%s %s: expected field %q presence=%v in %q", lang, raw, want, raw == tc.present, buf.String())
+					}
+				}
 			}
 		}
 	}
