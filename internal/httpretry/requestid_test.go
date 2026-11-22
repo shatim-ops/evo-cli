@@ -375,7 +375,7 @@ func TestFailedRequest_TheWriteOverTheReadAfterIt(t *testing.T) {
 	ctx := TraceRequests(context.Background())
 	var sent []string
 	for _, m := range []string{http.MethodPost, http.MethodGet} {
-		req, _ := http.NewRequestWithContext(ctx, m, "https://dbaas.api.cloud.ru/v1/clusters", nil)
+		req, _ := http.NewRequestWithContext(ctx, m, "https://dbaas.example.invalid/v1/clusters", nil)
 		resp, err := UserAgent(f).RoundTrip(req)
 		if err != nil {
 			t.Fatal(err)
