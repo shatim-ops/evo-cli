@@ -877,3 +877,42 @@ func TestDoctorProbeMatchesHostInVerboseOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestReadTokenAndCloudStateInBothLanguages(t *testing.T) {
+	old := i18n.Lang()
+	defer i18n.SetLang(old)
+	for _, lang := range []string{i18n.EN, i18n.RU} {
+		i18n.SetLang(lang)
+		for _, tc := range []struct{ raw, value string }{
+			{`{"token_ttl_seconds":7481}`, i18n.T("2h4m0s left", "осталось 2h4m0s")},
+			{`{"token_ttl_seconds":0}`, i18n.T("0s left", "осталось 0s")},
+			{`{}`, ""},
+		} {
+			var buf strings.Builder
+			if err := showWhoami(output.NewWithWriter(&buf, output.ModePlain, false), tc.raw); err != nil {
+				t.Fatal(err)
+			}
+			if tc.value != "" && !strings.Contains(buf.String(), tc.value) || tc.value == "" && strings.Contains(buf.String(), i18n.T(" left", "осталось ")) {
+				t.Fatal(tc.raw, buf.String())
+			}
+		}
+		for _, tc := range []struct {
+			raw, want string
+			refresh   bool
+		}{
+			{`{"id":"d","cloud_checked":true,"cloud_state":"running"}`, "running", true},
+			{`{"id":"d","cloud_checked":false,"cloud_error":"offline"}`, i18n.T("not checked: offline", "не проверено: offline"), true},
+			{`{"id":"d","cloud_checked":false}`, "", false},
+		} {
+			var buf strings.Builder
+			if err := showStatus(output.NewWithWriter(&buf, output.ModePlain, false), tc.raw, tc.refresh); err != nil {
+				t.Fatal(err)
+			}
+			label := i18n.T("In the cloud", "В облаке")
+			flat := strings.Join(strings.Fields(buf.String()), " ")
+			if tc.refresh && !strings.Contains(flat, label+" "+tc.want) || !tc.refresh && strings.Contains(flat, label) {
+				t.Fatal(flat)
+			}
+		}
+	}
+}
