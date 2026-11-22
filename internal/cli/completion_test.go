@@ -7,8 +7,11 @@ package cli
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
 // oneDiskCloud is the preview world with one disk, data.
@@ -65,5 +68,36 @@ func TestTab_CompletesReferencesEverywhere(t *testing.T) {
 	// deploy --compose-file names a file: no completion of evo's own.
 	if out := complete(t, "deploy", "--compose-file", ""); strings.Contains(out, ":4") {
 		t.Errorf("--compose-file lost the shell's file completion:\n%s", out)
+	}
+}
+
+func (oneDiskCloud) ListInterfaces(_ context.Context, project string) ([]*provision.Interface, error) {
+	if project != pvProject {
+		return nil, nil
+	}
+	return []*provision.Interface{
+		{ID: "00000000-0000-4000-8000-00000000a111", VM: &provision.InterfaceVM{ID: parityVM}},
+		{ID: "00000000-0000-4000-8000-00000000a222", VM: &provision.InterfaceVM{ID: "00000000-0000-4000-8000-00000000b222"}},
+	}, nil
+}
+
+func TestTab_UsesOnlySuppliedVMForInterface(t *testing.T) {
+	for _, tc := range []struct {
+		cmd         []string
+		parent, arg string
+	}{
+		{[]string{"tg", "create", "web"}, "--vm-id", "--interface-id"},
+		{[]string{"vpc", "route-create", pvProject}, "--next-hop-vm-id", "--next-hop-interface-id"},
+	} {
+		for _, selected := range []bool{false, true} {
+			args := slices.Clone(tc.cmd)
+			if selected {
+				args = append(args, tc.parent, parityVM)
+			}
+			out := complete(t, append(args, tc.arg, "")...)
+			if strings.Contains(out, "00000000-0000-4000-8000-00000000a111") != selected || strings.Contains(out, "00000000-0000-4000-8000-00000000a222") || !strings.Contains(out, ":4") {
+				t.Fatalf("%v selected=%t: %s", tc.cmd, selected, out)
+			}
+		}
 	}
 }

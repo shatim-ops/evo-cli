@@ -80,7 +80,7 @@ func (s *Registry) registerTools() {
 					"description": "Shared SG ports, e.g. 53/udp."},
 				"cidr":         cidrProp(portsCidrDesc),
 				"disk_size":    atLeast(0, intProp("Boot GB.")),
-				"subnet_id":    strProp("UUID or name."),
+				"subnet_id":    patternProp("UUID or name.", `^$|\S`),
 				"no_public_ip": boolProp("Private VM."),
 				"confirmed":    confirmedProp(),
 				"wait":         boolProp("Default: MCP ~45s, CLI waits. False: return on acceptance; true: wait for running."),
@@ -103,7 +103,7 @@ func (s *Registry) registerTools() {
 			Name:        "vm_get",
 			Description: "Live details of one VM by vm_id or name: private_ip, public_ip (public or floating), state, every network interface with its security groups and subnet. Use it whenever you need a VM's IP: 'list' and 'status' read the local state and omit the private IP. Do not shell out to curl or ssh for it. diagnose: true also reads the rules of each group and answers checks (ok, problem or unknown, each with its fact), exposure (ports open to the internet and the sources of port 22, as facts) and one result: ok, problem or incomplete. What evo could not read is in not_checked with why, never counted as ok. The answer names facts; changing a rule is a separate call with consent.",
 			InputSchema: objSchema(map[string]any{
-				"vm_id":    strProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required."),
+				"vm_id":    patternProp("VM UUID (from a stack output, deploy_apply/provision result, or list). vm_id or name is required.", `^$|\S`),
 				"name":     strProp("VM name (alternative to vm_id)."),
 				"diagnose": boolProp("Also read the rules of each security group of the VM and answer checks, exposure, result and not_checked."),
 			}),
@@ -240,7 +240,7 @@ func (s *Registry) registerTools() {
 			Description: "Get one VM image by name, display name or UUID (exact name, exact display_name, then a unique substring; several matches: USAGE with candidates[]). Returns the image, ready and zones_ready, fields[] — each image_metadata field with filled_by: evo (SSH key, VM name, login, random password), default, user (mandatory, evo cannot fill it) or none — and create{cli, tool, args}. An image the project cannot use: available_in_project=false, a note, no create. The icon and the cloud-init user_data_template only with full=true. Read-only. Also polls an image build until ready=true.",
 			InputSchema: objSchema(map[string]any{
 				"image":    strProp("Image name, display name or UUID (from image_list). image or image_id is required."),
-				"image_id": strProp("Image UUID (from image_list); 'image' takes a name as well."),
+				"image_id": patternProp("Image UUID (from image_list); 'image' takes a name as well.", `^$|\S`),
 				"full":     boolProp("Also return the SVG icon and the cloud-init user_data_template (large)."),
 			}),
 		},
@@ -420,7 +420,7 @@ func (s *Registry) registerTools() {
 				"ram_gb":            intProp("Control-plane RAM, GB (default 4)."),
 				"master_count":      intProp("Control-plane nodes: 1, 3 or 5 (default 1)."),
 				"zone":              strProp("Control-plane zone, name or UUID (default: subnet_id's, else the platform's)."),
-				"subnet_id":         strProp("Subnet UUID or name of the cluster's zone, for the control-plane VIP (default: the zone's main subnet)."),
+				"subnet_id":         patternProp("Subnet UUID or name of the cluster's zone, for the control-plane VIP (default: the zone's main subnet).", `^$|\S`),
 				"cluster_sa_id":     strProp("Cluster service-account UUID (default: the agent's own)."),
 				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 			}),
@@ -433,7 +433,7 @@ func (s *Registry) registerTools() {
 				"version": strProp("Kubernetes version."), "flavor": strProp("Control-plane flavor name."),
 				"cpu": intProp("Control-plane vCPUs."), "ram_gb": intProp("Control-plane RAM GB."),
 				"master_count": intProp("1, 3 or 5 (default 1)."), "zone": strProp("Zone name or UUID (as in k8s_plan)."),
-				"subnet_id": strProp("Control-plane VIP subnet UUID or name, of the cluster's zone."), "cluster_sa_id": strProp("Cluster service-account UUID."),
+				"subnet_id": patternProp("Control-plane VIP subnet UUID or name, of the cluster's zone.", `^$|\S`), "cluster_sa_id": strProp("Cluster service-account UUID."),
 				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 				"confirmed":         confirmedProp(),
 			}),
@@ -460,7 +460,7 @@ func (s *Registry) registerTools() {
 			Name:        "k8s_operation",
 			Description: "Poll a Managed Kubernetes async operation by id (from k8s_create, k8s_delete and the node pool changes). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"operation_id": strProp("Operation id, as the call that started it returned. Required."),
+				"operation_id": opaqueIDProp("Operation id, as the call that started it returned. Required."),
 				"wait_seconds": opWaitProp(),
 			}, "operation_id"),
 		},
@@ -506,8 +506,8 @@ func (s *Registry) registerTools() {
 				"ram_gb":            atLeast(1, intProp("Node RAM, GB (default 4).")),
 				"disk_gb":           atLeast(10, intProp("Node disk, GB (default 20).")),
 				"zone":              strProp("Zone name (default: the control plane's; refused when the cluster does not report it)."),
-				"nodes_subnet_id":   strProp("Subnet UUID or name (default: one of the zone)."),
-				"security_group_id": strProp("Security group UUID or name (default: the zone's SSH-access)."),
+				"nodes_subnet_id":   patternProp("Subnet UUID or name (default: one of the zone).", `^$|\S`),
+				"security_group_id": patternProp("Security group UUID or name (default: the zone's SSH-access).", `^$|\S`),
 				"confirmed":         confirmedProp(),
 			}, "cluster_id"),
 		},
@@ -846,7 +846,7 @@ func (s *Registry) registerTools() {
 				"ram":                   intProp("RAM, GB."),
 				"storage_gb":            atLeast(1, intProp("GB; default spec minimum.")),
 				"instances":             atLeast(1, intProp("Default 1; standard 1-2, business 1-3.")),
-				"subnet_id":             strProp("Subnet UUID or name; sets zone."),
+				"subnet_id":             patternProp("Subnet UUID or name; sets zone.", `^$|\S`),
 				"initial_database":      strProp("Ownerless; default defaultdb."),
 				"description":           strProp("Cluster description."),
 				"no_backup":             boolProp("Disable backups; CANNOT be changed after creation."),
@@ -908,7 +908,7 @@ func (s *Registry) registerTools() {
 				"storage_gib":      atLeast(1, intProp("Disk, GiB. Default: the spec minimum.")),
 				"brokers":          intProp("Broker count, 3 for a replicated cluster; checked against the spec's min/max_brokers, if any."),
 				"ui_enabled":       boolProp("Kafka UI (default false)."),
-				"subnet_id":        strProp("Subnet UUID or name."),
+				"subnet_id":        patternProp("Subnet UUID or name.", `^$|\S`),
 				"description":      strProp("Description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),
@@ -963,7 +963,7 @@ func (s *Registry) registerTools() {
 				"shards":           intProp("Shards, 1-8 (default 1)."),
 				"replicas":         intProp("Replicas per shard WITHOUT the master: 2 for MASTER_REPLICA (default), 0 for STANDALONE; redis_get counts the master too."),
 				"type":             enumProp("Default: MASTER_REPLICA.", "MASTER_REPLICA", "STANDALONE"),
-				"subnet_id":        strProp("Subnet UUID or name."),
+				"subnet_id":        patternProp("Subnet UUID or name.", `^$|\S`),
 				"description":      strProp("Description."),
 				"confirmed":        confirmedProp(),
 			}, "name"),
@@ -1106,7 +1106,7 @@ func (s *Registry) registerTools() {
 				"external":        boolPropTrue("Allocate a public IP (default true); false: internal only."),
 				"vpc_id":          strProp("VPC UUID or name (default: the target group's)."),
 				"zone":            strProp("Zone name or UUID."),
-				"subnet_id":       strProp("Subnet UUID or name (default: the zone's main subnet of the VPC)."),
+				"subnet_id":       patternProp("Subnet UUID or name (default: the zone's main subnet of the VPC).", `^$|\S`),
 				"confirmed":       confirmedProp(),
 			}, "name", "target_group_id", "port"),
 		},
@@ -1403,7 +1403,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "cert_get",
 			Description: "Get one certificate by id (metadata, primary version, expiry, status). Read-only.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Certificate id. Required.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": opaqueIDProp("Certificate id. Required.")}, "id"),
 		},
 		{
 			Name:        "cert_issue_le",
@@ -1430,7 +1430,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "cert_renew",
 			Description: "Ask Let's Encrypt to renew a certificate (async). Returns an operation id. Every call sends a renewal request: a repeat sends another.",
-			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
+			InputSchema: objSchema(map[string]any{"certificate_id": opaqueIDProp("Certificate id. Required."), "confirmed": confirmedProp()}, "certificate_id"),
 		},
 		{
 			Name:        "cert_delete",
@@ -1444,18 +1444,18 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "cert_usage",
 			Description: "List the resources that USE a certificate. Check before deleting it. Read-only.",
-			InputSchema: objSchema(map[string]any{"id": strProp("Certificate id. Required.")}, "id"),
+			InputSchema: objSchema(map[string]any{"id": opaqueIDProp("Certificate id. Required.")}, "id"),
 		},
 		{
 			Name:        "cert_versions",
 			Description: "List a certificate's versions (id, CN, DNS names, status, expiry), all pages. Read-only.",
-			InputSchema: objSchema(map[string]any{"certificate_id": strProp("Certificate id. Required.")}, "certificate_id"),
+			InputSchema: objSchema(map[string]any{"certificate_id": opaqueIDProp("Certificate id. Required.")}, "certificate_id"),
 		},
 		{
 			Name:        "cert_private_key",
 			Description: "Return the SECRET private key of a certificate version: privateKey is PEM text, decoded from the API's Base64 (key_format: pem; base64 if the API's value is not a Base64 PEM). cert_import takes the key Base64-encoded.",
 			InputSchema: objSchema(map[string]any{
-				"certificate_id": strProp("Certificate id. Required."),
+				"certificate_id": opaqueIDProp("Certificate id. Required."),
 				"version_id":     intProp("Version number; 0 or omitted = latest version."),
 				"confirmed":      confirmedPropNote("The answer holds the plaintext private key."),
 			}, "certificate_id"),
@@ -1463,7 +1463,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "cert_operation",
 			Description: "Poll a certificate operation (issue/renew) by id until done=true. Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation id from cert_issue_le/cert_renew. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": opaqueIDProp("Operation id from cert_issue_le/cert_renew. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "s3_buckets",
@@ -3927,6 +3927,10 @@ func inRange(min, max int, p map[string]any) map[string]any {
 	p["minimum"], p["maximum"] = min, max
 	return p
 }
+
+// Required path parameters with an opaque service identifier take any
+// nonempty string, including IDs issued before the current version.
+func opaqueIDProp(desc string) map[string]any { return patternProp(desc, `[\s\S]`) }
 
 func patternProp(desc, pattern string) map[string]any {
 	p := strProp(desc)
