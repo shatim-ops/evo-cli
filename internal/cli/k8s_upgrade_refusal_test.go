@@ -183,3 +183,80 @@ func TestUpgradeRefusalHistory(t *testing.T) {
 		t.Fatal(code, out, stderr)
 	}
 }
+
+// Run this filesystem fault injection as an unprivileged Unix user. A
+// pre-existing writable lock file ensures the failure is at reservation
+// publication or offer unlink, after reading and matching the visible offer.
+func TestUpgradeLocalFailureBeforeSubmission(t *testing.T) {
+	for _, resource := range []upgradeResource{
+		{tool: "k8s_upgrade", verb: "upgrade", argument: "cluster_id", id: upgradeParityCluster},
+		{tool: "k8s_nodepool_upgrade", verb: "nodepool-upgrade", argument: "nodepool_id", id: upgradeParityPool},
+	} {
+		for _, fault := range []string{"reservation", "offer"} {
+			t.Run(resource.tool+"/"+fault, func(t *testing.T) {
+				w, _ := withJSONWorld(t)
+				r := resource
+				text, _ := r.call(t, "stdio", upgradeTo, false)
+				if r.previewID == "" || parseObject(text)["status"] != "confirmation_required" {
+					t.Fatal(text)
+				}
+				dir := filepath.Join(w.dir, "k8s-upgrades")
+				lock := filepath.Join(dir, fmt.Sprintf("%x.lock", sha256.Sum256([]byte(pvProject))))
+				f, err := os.OpenFile(lock, os.O_CREATE|os.O_RDWR, 0600)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = f.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if fault == "offer" {
+					dir = filepath.Join(dir, "previews")
+				}
+				if err := os.Chmod(dir, 0500); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { os.Chmod(dir, 0700) })
+				probe, err := os.CreateTemp(dir, "probe")
+				if err == nil {
+					probe.Close()
+					os.Remove(probe.Name())
+					t.Skip("directory permissions are not enforced for this identity; run unprivileged")
+				}
+				if !os.IsPermission(err) {
+					t.Fatalf("fault must be permission denied, got %v", err)
+				}
+				old := w.rt.extra
+				posts := 0
+				w.rt.extra = func(req *http.Request) (*http.Response, error) {
+					if req.Method == http.MethodPost {
+						posts++
+					}
+					return old(req)
+				}
+				text, failed := r.call(t, "stdio", upgradeTo, true)
+				if !failed || posts != 0 {
+					t.Fatal(posts, text)
+				}
+				if err := os.Chmod(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				code, out, stderr := runCLI(t, "", "history", "--json")
+				var h struct{ Lines, Live []json.RawMessage }
+				if code != 0 || json.Unmarshal([]byte(out), &h) != nil || len(h.Lines) != 0 || len(h.Live) != 0 {
+					t.Errorf("history after unsent change: %s %s", out, stderr)
+				}
+				// A fresh connection and a newly approved preview can submit once.
+				r.stdio = nil
+				r.previewID = ""
+				text, _ = r.call(t, "stdio", upgradeTo, false)
+				if parseObject(text)["status"] != "confirmation_required" || r.previewID == "" || posts != 0 {
+					t.Fatal("reservation blocked fresh preview", posts, text)
+				}
+				text, failed = r.call(t, "stdio", upgradeTo, true)
+				if failed || posts != 1 || parseObject(text)["status"] != "submitted" {
+					t.Fatal(posts, text)
+				}
+			})
+		}
+	}
+}
