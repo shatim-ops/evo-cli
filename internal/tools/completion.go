@@ -294,7 +294,11 @@ func (r *Registry) CompleteFor(ctx context.Context, tool, arg, prefix, parent st
 			return nil
 		}
 	case "bucket":
-		return r.parentListValues(ctx, "s3_ls", map[string]any{"bucket": parent, "prefix": prefix}, "objects", "key", prefix)
+		args := map[string]any{"bucket": parent}
+		if prefix != "" {
+			args["prefix"] = prefix
+		}
+		return r.parentListValues(ctx, "s3_ls", args, "objects", "key", prefix)
 	case "resource_type":
 		switch strings.ToLower(parent) {
 		case "disk":
