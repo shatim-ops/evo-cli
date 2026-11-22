@@ -425,7 +425,7 @@ var toolsRU = map[string]toolRU{
 			"'evo vpc route-create' и 'evo vpc route-delete': done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds " +
 			"команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
-			"operation_id": "UUID операции (обязательный)",
+			"operation_id": "Идентификатор операции из ответа на запрос (обязательный)",
 			"wait_seconds": opWaitDescRU,
 		},
 	},
@@ -807,7 +807,7 @@ var toolsRU = map[string]toolRU{
 			"'evo pg delete' и 'evo pg backup-create': done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds " +
 			"команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
-			"operation_id": "UUID операции (обязательный)",
+			"operation_id": "Идентификатор операции из ответа на запрос (обязательный)",
 			"wait_seconds": opWaitDescRU,
 		},
 	},
@@ -1040,7 +1040,7 @@ var toolsRU = map[string]toolRU{
 			"done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N " +
 			"секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
-			"operation_id": "UUID операции (обязательный)",
+			"operation_id": "Идентификатор операции из ответа на запрос (обязательный)",
 			"wait_seconds": opWaitDescRU,
 		},
 	},
@@ -1213,7 +1213,7 @@ var toolsRU = map[string]toolRU{
 			"балансировщиков и групп целей: done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds " +
 			"команда сама ждёт завершения до N секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
-			"operation_id": "UUID операции (обязательный)",
+			"operation_id": "Идентификатор операции из ответа на запрос (обязательный)",
 			"wait_seconds": opWaitDescRU,
 		},
 	},
@@ -1395,7 +1395,7 @@ var toolsRU = map[string]toolRU{
 			"done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N " +
 			"секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
-			"operation_id": "UUID операции (обязательный)",
+			"operation_id": "Идентификатор операции из ответа на запрос (обязательный)",
 			"wait_seconds": opWaitDescRU,
 		},
 	},
@@ -1461,7 +1461,7 @@ var toolsRU = map[string]toolRU{
 			"done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт завершения до N " +
 			"секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
-			"operation_id": "UUID операции (обязательный)",
+			"operation_id": "Идентификатор операции из ответа на запрос (обязательный)",
 			"wait_seconds": opWaitDescRU,
 		},
 	},
@@ -1509,7 +1509,7 @@ var toolsRU = map[string]toolRU{
 			"реестра: done — завершена ли операция, error — ошибка, elapsed_sec — сколько она идёт, resource_status — состояние её ресурса. С --wait-seconds команда сама ждёт " +
 			"завершения до N секунд и выводит итоговое состояние. Только чтение.",
 		Args: map[string]string{
-			"operation_id": "UUID операции (обязательный)",
+			"operation_id": "Идентификатор операции из ответа на запрос (обязательный)",
 			"wait_seconds": opWaitDescRU,
 		},
 	},

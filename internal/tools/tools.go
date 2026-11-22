@@ -869,7 +869,7 @@ func (s *Registry) registerTools() {
 			Name:        "pg_operation",
 			Description: "Poll a Managed PostgreSQL async operation by id (returned by pg_create/pg_delete/pg_backup_create). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
 			InputSchema: objSchema(map[string]any{
-				"operation_id": strProp("Operation UUID. Required."),
+				"operation_id": opaqueIDProp("Operation ID returned by the request. Required."),
 				"wait_seconds": opWaitProp(),
 			}, "operation_id"),
 		},
@@ -925,7 +925,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "kafka_operation",
 			Description: "Poll a Managed Kafka async operation by id (from kafka_create/kafka_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": opaqueIDProp("Operation ID returned by the request. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "redis_list",
@@ -980,7 +980,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "redis_operation",
 			Description: "Poll a Managed Redis async operation by id (from redis_create/redis_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": opaqueIDProp("Operation ID returned by the request. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "pg_databases",
@@ -1065,7 +1065,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "lb_operation",
 			Description: "Poll a Load Balancer async operation by id (from lb_create/lb_delete/tg_create/tg_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": opaqueIDProp("Operation ID returned by the request. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "tg_list",
@@ -1146,7 +1146,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "vpc_operation",
 			Description: "Poll a VPC async operation by id (from vpc_create/delete, vpc_route_create/delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": opaqueIDProp("Operation ID returned by the request. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "vpc_routes",
@@ -1215,7 +1215,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "dns_operation",
 			Description: "Poll a DNS async operation by id (from dns_zone_create/delete, dns_record_create/delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": opaqueIDProp("Operation ID returned by the request. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "dns_records",
@@ -1338,7 +1338,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "ar_operation",
 			Description: "Poll an Artifact Registry async operation by id (from ar_create/ar_delete). Returns {done, error, elapsed_sec, resource_status}. Read-only.",
-			InputSchema: objSchema(map[string]any{"operation_id": strProp("Operation UUID. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
+			InputSchema: objSchema(map[string]any{"operation_id": opaqueIDProp("Operation ID returned by the request. Required."), "wait_seconds": opWaitProp()}, "operation_id"),
 		},
 		{
 			Name:        "billing_balance",

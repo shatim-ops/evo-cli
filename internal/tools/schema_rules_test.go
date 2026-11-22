@@ -183,13 +183,13 @@ var idWithoutFormat = map[string]string{
 
 	"secret_create.kms_key_id": idUnknown,
 
-	"ar_get.id":                       idUndeclared,
-	"ar_operation.operation_id":       idUndeclared,
-	"billing_consumption.project_id":  idUndeclared,
-	"billing_finops.project_id":       idUndeclared,
-	"deploy.image_id":                 idUndeclared,
-	"deploy.project_id":               idUndeclared,
-	"dns_operation.operation_id":      idUndeclared,
+	"ar_get.id": idUndeclared,
+
+	"billing_consumption.project_id": idUndeclared,
+	"billing_finops.project_id":      idUndeclared,
+	"deploy.image_id":                idUndeclared,
+	"deploy.project_id":              idUndeclared,
+
 	"dns_record_create.zone_id":       idUndeclared,
 	"dns_record_get.record_id":        idUndeclared,
 	"dns_records.zone_id":             idUndeclared,
@@ -212,21 +212,21 @@ var idWithoutFormat = map[string]string{
 
 	"kafka_create.specification_id": idUndeclared,
 
-	"kafka_create.version_id":      idUndeclared,
-	"kafka_operation.operation_id": idUndeclared,
-	"kafka_specs.version_id":       idUndeclared,
+	"kafka_create.version_id": idUndeclared,
 
-	"lb_create.target_group_id":   idUndeclared,
-	"lb_get.id":                   idUndeclared,
-	"lb_operation.operation_id":   idUndeclared,
+	"kafka_specs.version_id": idUndeclared,
+
+	"lb_create.target_group_id": idUndeclared,
+	"lb_get.id":                 idUndeclared,
+
 	"org_quotas.project_id":       idUndeclared,
 	"pg_backup_create.cluster_id": idUndeclared,
 	"pg_backups.cluster_id":       idUndeclared,
 	"pg_create.specification_id":  idUndeclared,
 
-	"pg_databases.cluster_id":   idUndeclared,
-	"pg_db_create.cluster_id":   idUndeclared,
-	"pg_operation.operation_id": idUndeclared,
+	"pg_databases.cluster_id": idUndeclared,
+	"pg_db_create.cluster_id": idUndeclared,
+
 	"pg_user_create.cluster_id": idUndeclared,
 	"pg_users.cluster_id":       idUndeclared,
 	"provision.image_id":        idUndeclared,
@@ -234,15 +234,14 @@ var idWithoutFormat = map[string]string{
 
 	"redis_create.specification_id": idUndeclared,
 
-	"redis_create.version_id":          idUndeclared,
-	"redis_operation.operation_id":     idUndeclared,
+	"redis_create.version_id": idUndeclared,
+
 	"redis_specs.version_id":           idUndeclared,
 	"snat_create.availability_zone_id": idUndeclared,
 	"tg_create.interface_id":           idUndeclared,
 	"tg_create.vm_id":                  idUndeclared,
 	"tg_get.id":                        idUndeclared,
 
-	"vpc_operation.operation_id":                idUndeclared,
 	"vpc_route_create.next_hop_interface_id":    idUndeclared,
 	"vpc_route_create.next_hop_magic_router_id": idUndeclared,
 	"vpc_route_create.next_hop_vip_id":          idUndeclared,
@@ -370,7 +369,7 @@ func TestArgs_ListIDFiltersKeepExistingForms(t *testing.T) {
 
 func TestArgs_RequiredOpaqueServiceID(t *testing.T) {
 	r := New(nil)
-	for _, k := range []string{"cert_get.id", "cert_operation.operation_id", "cert_private_key.certificate_id", "cert_renew.certificate_id", "cert_usage.id", "cert_versions.certificate_id", "k8s_operation.operation_id"} {
+	for _, k := range []string{"ar_operation.operation_id", "dns_operation.operation_id", "kafka_operation.operation_id", "lb_operation.operation_id", "pg_operation.operation_id", "redis_operation.operation_id", "vpc_operation.operation_id", "cert_get.id", "cert_operation.operation_id", "cert_private_key.certificate_id", "cert_renew.certificate_id", "cert_usage.id", "cert_versions.certificate_id", "k8s_operation.operation_id"} {
 		name, arg, _ := strings.Cut(k, ".")
 		tl, _ := r.Lookup(name)
 		for _, id := range []string{auditUUID, "ref:legacy/a-1", "first version"} {
