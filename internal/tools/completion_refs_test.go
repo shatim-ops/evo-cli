@@ -52,11 +52,8 @@ var refUncompleted = map[string]struct{ why, item string }{
 	"s3_get key":                {why: refParent},
 	"s3_put key":                {why: refParent},
 	"s3_rm key":                 {why: refParent},
-	"secret_create kms_key_id":  {why: refNoList},
-	"backup_list resource_id":   {why: refTwoKinds},
 
-	"vpc_route_create next_hop_magic_router_id": {why: refNoList},
-	"vpc_route_create next_hop_vip_id":          {why: refNoList},
+	"backup_list resource_id": {why: refTwoKinds},
 }
 
 // Release plan 1.5, Tab in the whole CLI: an argument that references a
@@ -266,6 +263,34 @@ func TestComplete_InterfaceRequiresSelectedVM(t *testing.T) {
 			}
 			if !slices.Equal(c.projects, []string{completionCfg.ProjectID, completionCfg.ProjectID, completionCfg.ProjectID}) {
 				t.Fatal(c.projects)
+			}
+		})
+	}
+}
+
+func TestComplete_ReferencesWithoutServiceCatalogue(t *testing.T) {
+	r := New(nil)
+	for _, tc := range []struct{ tool, arg, missing, adjacent string }{
+		{"secret_create", "kms_key_id", "kms_keys", "secret_list"},
+		{"vpc_route_create", "next_hop_magic_router_id", "magic_router_list", "vpc_list"},
+		{"vpc_route_create", "next_hop_vip_id", "vip_list", "list_floating_ips"},
+	} {
+		t.Run(tc.arg, func(t *testing.T) {
+			tl, ok := r.Lookup(tc.tool)
+			if !ok || tl.Decl.NoCompletion[tc.arg] == "" {
+				t.Fatal(tc.tool)
+			}
+			if _, ok := r.Lookup(tc.missing); ok {
+				t.Fatalf("revisit completion: %s now exists", tc.missing)
+			}
+			if !r.listable(tc.adjacent) {
+				t.Fatalf("missing adjacent catalogue %s", tc.adjacent)
+			}
+			if r.Completes(tc.tool, tc.arg) || len(r.Complete(context.Background(), tc.tool, tc.arg, "")) != 0 {
+				t.Fatal("offered a resource of an unrelated catalogue")
+			}
+			if err := CheckArgs(tl, map[string]any{tc.arg: resMine}); err != nil {
+				t.Fatal("explicit ID refused", err)
 			}
 		})
 	}
