@@ -228,10 +228,18 @@ func vmCostLines(cost pricing.Estimate, sizeKnown bool) []string {
 				"не получена (%s), показана оценка", cost.PriceAPIError))
 		}
 	}
+	if cost.HourlyRub > 0 {
+		lines = append(lines, computeHourlyLine(cost))
+	}
 	if cost.LicenseNote != "" {
 		lines = append(lines, previewLabel("license", "лицензия")+cost.LicenseNote)
 	}
 	return lines
+}
+
+// HourlyRub is the compute component. TotalHourlyRub includes the other resources.
+func computeHourlyLine(cost pricing.Estimate) string {
+	return previewLabel("compute", "вычисления") + i18n.Tf("%g %s/hour", "%g %s в час", cost.HourlyRub, cost.Currency)
 }
 
 // apiCostLine is a price of the price-calculation API: the totals and, when
