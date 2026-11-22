@@ -48,7 +48,7 @@
     "created": "{id:backup_id lost: arg: none: list:backup_list field:backups listArgs:[] read:backup_get delete:backup_delete}",
     "create_name": "{args:[name] rule:provision.ValidName: the compute name pattern what: whRU:}",
     "id_args": [
-      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
+      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}",
       "disk_id why=\"\" target=false ids=false kind={what:\"disk\" byName:false list:\"disk_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[preview will_create backup name] whole:false own:[] workload:false deep:false}"
@@ -303,24 +303,24 @@
     "created": "{id:record_id lost: arg: none: list:dns_records field:records listArgs:[zone_id] read: delete:dns_record_delete}",
     "create_name": "{args:[name] rule: what:DNS record whRU:DNS-запись}",
     "id_args": [
-      "zone_id why=\"\" target=true ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
+      "zone_id why=\"\" target=true ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:true}"
     ]
   },
   "dns_record_delete": {
     "delete": "{arg:record_id parent: what:DNS record whRU:DNS-запись statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
-      "record_id why=\"\" target=true ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:false}"
+      "record_id why=\"\" target=true ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:true}"
     ]
   },
   "dns_record_get": {
     "id_args": [
-      "record_id why=\"\" target=false ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:false}"
+      "record_id why=\"\" target=false ids=false kind={what:\"DNS record\" byName:false list:\"dns_records\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
   "dns_records": {
     "id_args": [
-      "zone_id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
+      "zone_id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[records] whole:false own:[] workload:false deep:false}"
   },
@@ -341,12 +341,12 @@
   "dns_zone_delete": {
     "delete": "{arg:id parent: what:DNS zone whRU:DNS-зона statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
-      "id why=\"\" target=true ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
+      "id why=\"\" target=true ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:true}"
     ]
   },
   "dns_zone_get": {
     "id_args": [
-      "id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:false}"
+      "id why=\"\" target=false ids=false kind={what:\"DNS zone\" byName:false list:\"dns_zones\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
@@ -627,13 +627,13 @@
   "kafka_delete": {
     "delete": "{arg:cluster_id parent: what:Kafka cluster whRU:кластер Kafka statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
-      "cluster_id why=\"\" target=true ids=false kind={what:\"Kafka cluster\" byName:false list:\"kafka_list\" check:true project:true card:false}"
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Kafka cluster\" byName:false list:\"kafka_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false deep:false}"
   },
   "kafka_get": {
     "id_args": [
-      "cluster_id why=\"\" target=false ids=false kind={what:\"Kafka cluster\" byName:false list:\"kafka_list\" check:true project:true card:false}"
+      "cluster_id why=\"\" target=false ids=false kind={what:\"Kafka cluster\" byName:false list:\"kafka_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
@@ -929,13 +929,13 @@
   "redis_delete": {
     "delete": "{arg:cluster_id parent: what:Redis cluster whRU:кластер Redis statePrefix: creatingUnseen: failedUnseen:}",
     "id_args": [
-      "cluster_id why=\"\" target=true ids=false kind={what:\"Redis cluster\" byName:false list:\"redis_list\" check:true project:true card:false}"
+      "cluster_id why=\"\" target=true ids=false kind={what:\"Redis cluster\" byName:false list:\"redis_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[resource_status target] whole:false own:[] workload:false deep:false}"
   },
   "redis_get": {
     "id_args": [
-      "cluster_id why=\"\" target=false ids=false kind={what:\"Redis cluster\" byName:false list:\"redis_list\" check:true project:true card:false}"
+      "cluster_id why=\"\" target=false ids=false kind={what:\"Redis cluster\" byName:false list:\"redis_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[] whole:true own:[] workload:false deep:false}"
   },
@@ -1132,8 +1132,8 @@
     "created": "{id:tg_id lost: arg: none: list:tg_list field:target_groups listArgs:[] read: delete:tg_delete}",
     "create_name": "{args:[name] rule: what:target group whRU:целевая группа}",
     "id_args": [
-      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
-      "targets why=\"\" target=false ids=true kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
+      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}",
+      "targets why=\"\" target=false ids=true kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}",
       "interface_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false"
     ],
     "untrusted": "{fields:[targets] whole:false own:[] workload:false deep:false}"
@@ -1166,7 +1166,7 @@
       ]
     ],
     "id_args": [
-      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[name where note] whole:false own:[] workload:false deep:false}"
   },
@@ -1179,7 +1179,7 @@
       ]
     ],
     "id_args": [
-      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+      "vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[id name interfaces security_groups checks not_checked exposure image flavor_id flavor_name] whole:false own:[] workload:false deep:false}"
   },
@@ -1205,7 +1205,7 @@
     ],
     "destructive": true,
     "id_args": [
-      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false deep:false}"
   },
@@ -1219,7 +1219,7 @@
     ],
     "destructive": true,
     "id_args": [
-      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false deep:false}"
   },
@@ -1232,7 +1232,7 @@
       ]
     ],
     "id_args": [
-      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false deep:false}"
   },
@@ -1246,7 +1246,7 @@
     ],
     "destructive": true,
     "id_args": [
-      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}"
+      "vm_id why=\"\" target=true ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}"
     ],
     "untrusted": "{fields:[preview name state details] whole:false own:[] workload:false deep:false}"
   },
@@ -1300,7 +1300,7 @@
     "nameless": "a route is known by its destination, named by no argument",
     "id_args": [
       "vpc_id why=\"\" target=true ids=false kind={what:\"VPC\" byName:false list:\"vpc_list\" check:true project:true card:true}",
-      "next_hop_vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:false}",
+      "next_hop_vm_id why=\"\" target=false ids=false kind={what:\"VM\" byName:true list:\"vm_list\" check:true project:true card:true}",
       "next_hop_interface_id why=\"a part of the resource the call's other id argument names (checked): the API addresses it inside that resource\" target=false ids=false",
       "next_hop_vip_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false",
       "next_hop_magic_router_id why=\"a reference inside a request on a checked resource or a create in the call's project, which the service resolves within that project; evo has no lookup of its project\" target=false ids=false"

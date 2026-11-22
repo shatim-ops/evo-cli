@@ -1358,6 +1358,12 @@ func (r *Registry) checkPending(ctx context.Context, in intent.Intent, eng *engi
 		return i18n.T("VM absence alone cannot confirm cleanup of its floating IP and port rules. Check the deployment and ask the person whether to run destroy again to finish cleanup.", "Отсутствие ВМ не подтверждает уборку публичного адреса и портовых правил. Проверьте развёртывание и спросите человека, повторить ли destroy для завершения уборки."), false, ""
 	}
 	if _, k, id, ok := deleteByID(in); ok {
+		switch k {
+		case kindKafka, kindRedis, kindDNSZone, kindDNSRecord:
+			if !in.Key.Matches(eng.Maker()) || in.ProjectID == "" || in.ProjectID != eng.Config.ProjectID {
+				return i18n.T("Use the project and identity recorded for this deletion to verify the result.", "Проверьте результат в проекте и с учётными данными, указанными в квитанции удаления."), false, ""
+			}
+		}
 		if in.Tool == "snat_delete" {
 			cur := eng.Maker()
 			if in.Key == nil || cur == nil || in.Key.Other(cur) || in.ProjectID == "" || in.ProjectID != eng.Config.ProjectID {

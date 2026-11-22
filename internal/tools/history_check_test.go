@@ -271,7 +271,7 @@ func TestHistory_ErasedClusterIsAbsentFromCheckedInventory(t *testing.T) {
 
 func TestHistoryCardRequiresMatchingIdentity(t *testing.T) {
 	line := history.Line{ResourceID: resMine, ProjectID: ownProject}
-	for _, k := range []*ownerKind{kindPG, historyVMCard} {
+	for _, k := range []*ownerKind{kindPG, kindVM} {
 		for _, id := range []string{"", resOther} {
 			if historyCardMatches(k, line, map[string]any{"id": id, "project_id": ownProject}) {
 				t.Fatalf("accepted id %q for %s", id, line.ResourceID)
