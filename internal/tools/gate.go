@@ -579,8 +579,8 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		// the limit of the repeats counts from («Риск», conclusion 177,
 		// У7).
 		var end func(string)
-		deferIntent := vpcCreate || t.Name == "lb_create" || t.Name == "snat_create" ||
-			t.Name == "k8s_upgrade" || t.Name == "k8s_nodepool_upgrade"
+		upgrade := t.Name == "k8s_upgrade" || t.Name == "k8s_nodepool_upgrade"
+		deferIntent := vpcCreate || t.Name == "lb_create" || t.Name == "snat_create" || upgrade
 		if t.Name == "stack_apply" {
 			job, err := stack.LoadJob(stringArg(args, "job_id"))
 			deferIntent = err == nil && jobHasPendingLB(job)
@@ -590,13 +590,15 @@ func (r *Registry) recordedCall(t Tool, next Handler) Handler {
 		} else if deferIntent {
 			startBeforeWrite = sync.OnceValue(func() error {
 				var err error
-				end, err = r.beginIntent(ctx, t.Name, args)
+				end, err = r.openIntent(ctx, t.Name, args, upgrade)
 				if release != nil {
 					release()
 				}
 				return err
 			})
-			ctx = context.WithValue(ctx, placementIntentStartKey{}, startBeforeWrite)
+			if !upgrade {
+				ctx = context.WithValue(ctx, placementIntentStartKey{}, startBeforeWrite)
+			}
 		} else {
 			var err error
 			if end, err = r.beginIntent(ctx, t.Name, args); err != nil {
@@ -679,7 +681,7 @@ func (r upgradeReceipt) submissionError(path string, current upgradeCard, err er
 
 // Reserving the cloud write and consuming a matching offer happen under the
 // same local lock. A different client cannot use another client's preview.
-func reserveUpgrade(ctx context.Context, offerPath, receiptPath string, mcpCall, contextChanged bool, r upgradeReceipt, suppliedID string, preview map[string]any) (bool, error) {
+func reserveUpgrade(offerPath string, mcpCall, contextChanged bool, r upgradeReceipt, suppliedID string, preview map[string]any) (bool, error) {
 	unlock, err := state.FileLock(offerPath+".lock", 5*time.Second)
 	if err != nil {
 		return false, err
@@ -698,17 +700,37 @@ func reserveUpgrade(ctx context.Context, offerPath, receiptPath string, mcpCall,
 		return false, r.offer(offerPath, mcpCall, preview)
 	}
 
-	if err := startPlacementIntent(ctx); err != nil {
-		return false, err
-	}
-	r.RejectionID = "" // An interrupted submission must remain unknown.
-	if err := r.save(receiptPath); err != nil {
-		return false, err
-	}
+	// Consume the visible offer before publishing a reservation. An unlink
+	// failure leaves no submission to reconcile and opens no change intent.
 	if shown != nil {
 		if err := os.Remove(offerPath); err != nil {
 			return false, err
 		}
 	}
 	return true, nil
+}
+
+// Preserve the prior generation for a local failure before the wire send.
+func publishUpgradeReservation(path string, r upgradeReceipt) (*upgradeReceipt, error) {
+	previous, err := readUpgradeReceipt(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.save(path); err != nil {
+		return nil, errors.Join(err, restoreUnsentUpgrade(path, r, previous))
+	}
+	return previous, nil
+}
+
+// Restore only the slot this attempt may have published, while holding the
+// project lock. Durable publication can fail after rename (directory sync).
+func restoreUnsentUpgrade(path string, candidate upgradeReceipt, prior *upgradeReceipt) error {
+	saved, err := readUpgradeReceipt(path)
+	if err != nil || saved == nil || *saved != candidate {
+		return err
+	}
+	if prior != nil {
+		return prior.save(path)
+	}
+	return os.Remove(path)
 }

@@ -20,6 +20,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/mk8s"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -415,14 +416,18 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 			}
 		}
 		contextChanged := cardChanged || caller != nil && caller.upgradePreview != nil && *caller.upgradePreview != r
-		allowed, err := reserveUpgrade(ctx, offerPath, path, caller == nil, contextChanged, r, stringArg(args, "preview_id"), preview)
+		allowed, err := reserveUpgrade(offerPath, caller == nil, contextChanged, r, stringArg(args, "preview_id"), preview)
 		if err != nil {
 			return errResult(err), true
 		}
 		if !allowed {
 			return toJSON(preview), true
 		}
-		r.RejectionID = "" // This attempt is now reserved; no outcome is known.
+		r.RejectionID = ""
+		previous, err := publishUpgradeReservation(path, r)
+		if err != nil {
+			return errResult(err), true
+		}
 		var op *mk8s.Operation
 		if tool == "k8s_nodepool_upgrade" {
 			op, err = client.UpgradeNodePool(ctx, r.Resource, r.Target)
@@ -430,6 +435,9 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 			op, err = client.UpgradeCluster(ctx, r.Resource, r.Target)
 		}
 		if err != nil {
+			if n, counted := httpretry.Writes(ctx); counted && n == 0 {
+				return errResult(errors.Join(err, restoreUnsentUpgrade(path, r, previous))), true
+			}
 			return r.submissionError(path, current, err)
 		}
 		if !isUUID(op.ID) || op.ResourceID != r.Resource {
