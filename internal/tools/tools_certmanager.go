@@ -85,11 +85,19 @@ func (s *Registry) planCertIssueLE(ctx context.Context, args map[string]any) (*P
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "cert_issue_le", list, i18n.T("certificate", "сертификат"), name, nil, "cert_get id", fmt.Errorf(i18n.T("issue certificate: %w", "выпуск сертификата: %w"), err))
+			return lostCreateWithRead(ctx, "cert_issue_le", list, i18n.T("certificate", "сертификат"), name, nil, "cert_get id", fmt.Errorf(i18n.T("issue certificate: %w", "выпуск сертификата: %w"), err), func(out map[string]any, id string) {
+				if id != "" {
+					nextStep(out, "cert_get", map[string]any{"id": id})
+				} else {
+					nextStep(out, "cert_list", map[string]any{"name": name})
+				}
+			})
 		}
 		// Async: return the operation; the caller polls cert_operation until done.
 		out := map[string]any{"status": "issuing", "note": i18n.T("Let's Encrypt issuance is async — poll cert_operation with this operation id until done=true. Domains must have delegated zones in Evolution DNS.",
 			"Сертификат Let's Encrypt выпускается асинхронно — опрашивайте evo cert operation с id этой операции до done=true. Зоны доменов должны быть делегированы в Evolution DNS."), "operation": op}
+		out["operation_id"] = op["id"]
+		nextStep(out, "cert_operation", map[string]any{"operation_id": op["id"]})
 		// The operation does not name the certificate; the list does, at once
 		// (fault matrix, process audit 1.2.1).
 		if items, err := list(ctx); err == nil {
@@ -188,10 +196,21 @@ func (s *Registry) planCertRenew(ctx context.Context, args map[string]any) (*Pla
 			return errResult(err), true
 		}
 		op, err := cli.Renew(ctx, id)
+		out := map[string]any{}
 		if err != nil {
-			return errResult(err), true
+			if !definiteRefusal(err) {
+				nextStep(out, "cert_get", map[string]any{"id": id})
+			}
+			return errAnswer(err, out), true
 		}
-		return toJSON(map[string]any{"status": "renewing", "operation": op}), false
+		out["status"], out["operation"] = "renewing", op
+		if opID := stringArg(op, "id"); opID != "" {
+			out["operation_id"] = opID
+			nextStep(out, "cert_operation", map[string]any{"operation_id": opID})
+		} else {
+			nextStep(out, "cert_get", map[string]any{"id": id})
+		}
+		return toJSON(out), false
 	}}, nil
 }
 

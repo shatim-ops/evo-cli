@@ -223,15 +223,17 @@ func (s *Registry) planCaDeploy(ctx context.Context, args map[string]any) (*Plan
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "ca_deploy", cli.List, i18n.T("container app", "приложение"), name, nil, "ca_get name", err)
+			return lostCreateWithRead(ctx, "ca_deploy", cli.List, i18n.T("container app", "приложение"), name, nil, "ca_get name", err, func(out map[string]any, _ string) { nextStep(out, "ca_get", map[string]any{"name": name}) })
 		}
-		return toJSON(map[string]any{
+		out := map[string]any{
 			"status":       "deploying",
 			"name":         name,
 			"operation_id": op.ID,
 			"note": i18n.T("Container app is deploying (async). Use ca_get for status + public URL, ca_logs for logs. Scales to zero when idle.",
 				"Container App развёртывается (асинхронно). Состояние и публичный URL покажет evo ca get, журнал — evo ca logs. Без нагрузки приложение масштабируется до нуля."),
-		}), false
+		}
+		nextStep(out, "ca_get", map[string]any{"name": name})
+		return toJSON(out), false
 	}}, nil
 }
 

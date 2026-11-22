@@ -342,12 +342,13 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), routeDestination(args), nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf(i18n.T("create route: %w", "создание маршрута: %w"), err))
+			return lostCreateWithRead(ctx, "vpc_route_create", list, i18n.T("static route", "статический маршрут"), routeDestination(args), nil, "vpc_routes vpc_id="+vpcID, fmt.Errorf(i18n.T("create route: %w", "создание маршрута: %w"), err), func(out map[string]any, _ string) { nextStep(out, "vpc_routes", map[string]any{"vpc_id": vpcID}) })
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": i18n.T("Async — poll vpc_operation(operation_id).", "Асинхронно — опрашивайте evo vpc operation <operation_id>.")}
 		if op.ResourceID != "" {
 			out["route_id"] = op.ResourceID
 		}
+		nextStep(out, "vpc_operation", map[string]any{"operation_id": op.ID})
 		return toJSON(out), false
 	}}, nil
 }
@@ -387,8 +388,19 @@ func (s *Registry) planVpcRouteDelete(ctx context.Context, args map[string]any) 
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
 		op, err := cli.DeleteRoute(ctx, vpcID, routeID)
 		if err != nil {
+			if !definiteRefusal(err) {
+				out := map[string]any{}
+				nextStep(out, "vpc_routes", map[string]any{"vpc_id": vpcID})
+				return errAnswer(err, out), true
+			}
 			return s.deleteFailed("vpc_route_delete", routeID, fmt.Errorf(i18n.T("delete route: %w", "удаление маршрута: %w"), err))
 		}
-		return toJSON(map[string]any{"status": "deleting", "route_id": routeID, "operation_id": op.ID}), false
+		out := map[string]any{"status": "deleting", "route_id": routeID, "operation_id": op.ID}
+		if op.ID != "" {
+			nextStep(out, "vpc_operation", map[string]any{"operation_id": op.ID})
+		} else {
+			nextStep(out, "vpc_routes", map[string]any{"vpc_id": vpcID})
+		}
+		return toJSON(out), false
 	}}, nil
 }
