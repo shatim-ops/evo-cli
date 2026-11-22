@@ -6,6 +6,8 @@ package tools
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
 	"slices"
 	"sort"
 	"strings"
@@ -34,13 +36,12 @@ var bare404Kinds = []string{"404html", "404empty", "404text", "404errormsg", "40
 // and so does a line whose delete no longer does it.
 // Closes by 1.10: moved from 1.8 by the owner's decision of 13.11 (#1590,
 // question 19; release plan 1.9, «Просроченные убывающие списки»).
-var bare404Gone = map[string]bool{"s3_bucket_delete": true}
+var bare404Gone = map[string]bool{}
 
 // bare404Outside are the deletes D63 does not reach, each with why: their
 // 404 is not answered API_ERROR with the hint of the address.
 var bare404Outside = map[string]string{
-	"s3_bucket_delete": s3Outside,
-	"s3_rm":            s3Outside,
+	"s3_rm": s3Outside,
 }
 
 // s3Outside: S3 is not a client of httpretry.Transport — minio reads the
@@ -154,4 +155,28 @@ func byTargetOnly(tl Tool, args map[string]any) map[string]any {
 		}
 	}
 	return args
+}
+
+func TestBucketDeleteNeedsServiceEvidence(t *testing.T) {
+	for _, c := range []struct{ name, body, status, reason string }{
+		{"service", "<Error><Code>NoSuchBucket</Code></Error>", "already_deleted", ""},
+		{"gateway", "<html>missing route</html>", "error", "API_ERROR"},
+		{"empty", "", "error", "API_ERROR"},
+		{"other_code", "<Error><Code>AccessDenied</Code></Error>", "error", "API_ERROR"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := &apiFake{own: func(w http.ResponseWriter, req *http.Request) bool {
+				if req.Method != "GET" || req.URL.Host != "s3.cloud.ru" {
+					t.Fatalf("unexpected %s %s", req.Method, req.URL)
+				}
+				w.WriteHeader(404)
+				io.WriteString(w, c.body)
+				return true
+			}}
+			m, text, failed := callNamed(t, apiFakeS3Registry(t, f), "s3_bucket_delete", map[string]any{"bucket": "test-bucket", "confirmed": true})
+			if len(f.calls) != 1 || m["status"] != c.status || stringArg(m, "reason") != c.reason || failed != (c.reason != "") {
+				t.Fatalf("calls=%v result=%s", f.calls, text)
+			}
+		})
+	}
 }

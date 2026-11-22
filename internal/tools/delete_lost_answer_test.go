@@ -61,6 +61,7 @@ func stubDoctorIdentity(t *testing.T) {
 // then on the resource is gone, as in goneWorld — and its answer is lost.
 // The parent of the resource stays.
 type lostDeleteWorld struct {
+	tool   string
 	mu     sync.Mutex
 	taken  bool
 	writes []string
@@ -83,6 +84,10 @@ func (w *lostDeleteWorld) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 	}
 	if !w.taken {
+		if w.tool == "s3_bucket_delete" && r.Method == http.MethodGet && strings.HasSuffix(r.URL.Host, "s3.cloud.ru") {
+			goneWorld(rec, r) // existing, empty bucket
+			return rec.Result(), nil
+		}
 		liveWorld(rec, r)
 		return rec.Result(), nil
 	}
@@ -108,7 +113,6 @@ var lostDeleteUnreached = map[string]string{
 	"close_ports":         "the rule of a port is found in the list of rules of the group; liveWorld lists no rule of a port",
 	"dns_zone_delete":     "the zone is read from the list of zones; liveWorld lists none",
 	"k8s_nodepool_delete": "the node pool is read with its cluster in the body; liveWorld names no cluster there (unreachedDeletes, #1465)",
-	"s3_bucket_delete":    "the bucket must be empty before the question; liveWorld lists an object in it",
 	"sg_rule_delete":      "the group is found in the list of groups; the list of the world names liveID, and the rule and its group cannot both be it",
 }
 
@@ -159,7 +163,7 @@ func TestDeleteLostAnswer_TheRepeatConverges(t *testing.T) {
 		}
 		args["confirmed"] = true
 
-		w := &lostDeleteWorld{}
+		w := &lostDeleteWorld{tool: name}
 		stackHome(t)
 		bare := httpretry.DefaultBase
 		httpretry.DefaultBase = w

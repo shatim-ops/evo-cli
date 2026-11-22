@@ -122,6 +122,13 @@ func (c *Client) ListObjects(ctx context.Context, bucket, prefix string, maxKeys
 	var out []Object
 	for obj := range c.mc.ListObjects(ctx, bucket, opts) {
 		if obj.Err != nil {
+			// ListObjects is a GET. minio synthesizes NoSuchBucket for an
+			// undecodable 404, leaving XMLName empty. Only a service error
+			// naming the absent bucket establishes that a delete is done.
+			var response minio.ErrorResponse
+			if errors.As(obj.Err, &response) && response.StatusCode == http.StatusNotFound && (response.XMLName.Local != "Error" || response.Code != "NoSuchBucket") {
+				return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("S3 did not confirm that the bucket is absent", "S3 не подтвердил отсутствие бакета"), clierrors.RouteNotFoundHint())
+			}
 			return nil, notFound(fmt.Errorf(i18n.T("list objects: %w", "список объектов: %w"), obj.Err), bucket, prefix)
 		}
 		out = append(out, Object{Key: obj.Key, Size: obj.Size, LastModified: obj.LastModified.Format(time.RFC3339)})

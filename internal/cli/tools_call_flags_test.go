@@ -5,7 +5,10 @@
 package cli
 
 import (
+	"encoding/xml"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strings"
 	"testing"
@@ -29,9 +32,7 @@ var toolsCallFlagBridges = map[string]string{
 // It only shrinks. Closes by 1.10 (release plan 1.9, «Сроки храповиков «к
 // 1.7–1.9»», #1590 question 19 (c)); release plan 1.8, «инвариант флагов
 // tools call», Process · 1.8 (2); the fix is the development's).
-var toolsCallFlagMisses = map[string]string{
-	"s3_bucket_create.region": "the argument is the S3 region (ru-central-1); --region sets the profile's zone, and the bucket is made in the default S3 region",
-}
+var toolsCallFlagMisses = map[string]string{}
 
 // FB170-4, the class (release plan 1.8): an argument of a tool's schema
 // that shares its name with a flag of 'evo tools call' either gets the
@@ -70,6 +71,11 @@ func TestToolsCall_FlagsDoNotShadowSchemaArgs(t *testing.T) {
 				}
 				continue
 			}
+			// The global region is the documented alias for --az. S3
+			// placement is a distinct argument, tested on the actual PUT below.
+			if key == "s3_bucket_create.region" {
+				continue
+			}
 			if toolsCallFlagBridges[key] == "" && toolsCallFlagMisses[key] == "" {
 				bad = append(bad, key+": the argument shares its name with the flag --"+name+" of evo tools call; make the flag reach it (as applyWait does for wait) and add it to toolsCallFlagBridges, or name it otherwise")
 			}
@@ -92,4 +98,40 @@ func TestToolsCall_FlagsDoNotShadowSchemaArgs(t *testing.T) {
 		t.Error(strings.Join(bad, "\n"))
 	}
 	t.Logf("flags of tools call shared with schema arguments: %d (misses: %d)", len(seen), len(toolsCallFlagMisses))
+}
+
+func TestToolsCallS3RegionIsSeparateFromProfileZone(t *testing.T) {
+	for _, tc := range []struct{ name, arg, want string }{{"explicit", "ru-test-1", "ru-test-1"}, {"default", "", "ru-central-1"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, _ := withJSONWorld(t)
+			original := w.rt.extra
+			const zone = "ru.AZ-2"
+			var puts int
+			w.rt.extra = func(req *http.Request) (*http.Response, error) {
+				if req.URL.Host != "s3.cloud.ru" || req.Method != "PUT" {
+					return original(req)
+				}
+				puts++
+				data, err := io.ReadAll(req.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var location struct {
+					Region string `xml:"LocationConstraint"`
+				}
+				if err = xml.Unmarshal(data, &location); err != nil || location.Region != tc.want || flagRegion != zone {
+					t.Fatalf("S3 location %q, profile zone %q, error %v", location.Region, flagRegion, err)
+				}
+				return contractRT{status: 200, body: ""}.RoundTrip(req)
+			}
+			args := []string{"tools", "call", "s3_bucket_create", "--region", zone, "--arg", "bucket=test-region-audit", "--yes", "--json"}
+			if tc.arg != "" {
+				args = append(args, "--arg", "region="+tc.arg)
+			}
+			code, out, stderr := runCLI(t, "", args...)
+			if code != 0 || puts != 1 {
+				t.Fatalf("code=%d PUT=%d stdout=%s stderr=%s", code, puts, out, stderr)
+			}
+		})
+	}
 }
