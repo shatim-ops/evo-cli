@@ -48,13 +48,12 @@ type contractRT struct {
 	// it for a write (not GET or HEAD), when set.
 	body, writeBody string
 	targetGroupCard bool
+	s3Host          string
 }
 
 func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
-	return c.reply(r, false)
-}
-
-func (c *contractRT) reply(r *http.Request, s3BucketList bool) (*http.Response, error) {
+	// MinIO uses UserAgent(nil) and reaches DefaultBase directly.
+	s3BucketList := c.s3Host != "" && r.Host == c.s3Host && r.Method == http.MethodGet && r.URL.Query().Get("list-type") == "2"
 	if r.Body != nil {
 		_, _ = io.Copy(io.Discard, r.Body)
 	}
@@ -166,7 +165,7 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 	httpretry.DefaultBase = rt
 	t.Cleanup(func() { httpretry.DefaultBase = old })
 	s3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp, err := rt.reply(r, r.Method == http.MethodGet && r.URL.Query().Get("list-type") == "2")
+		resp, err := rt.RoundTrip(r)
 		if err != nil {
 			http.Error(w, "conn", http.StatusBadGateway)
 			return
@@ -181,6 +180,7 @@ func contractRegCfg(t *testing.T, rt *contractRT, edit func(*config.Config)) *Re
 		_, _ = io.Copy(w, resp.Body)
 	}))
 	t.Cleanup(s3.Close)
+	rt.s3Host = s3.Listener.Addr().String()
 	dir := t.TempDir()
 	cloud := provision.NewCloudRuAdapter(&http.Client{Transport: rt}, "")
 	cloud.Backoff = time.Millisecond

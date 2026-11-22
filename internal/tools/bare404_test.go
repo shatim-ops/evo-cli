@@ -5,13 +5,19 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
@@ -230,5 +236,32 @@ func TestS3BucketList_ServiceAndNonService404(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// Exercise the SDK before evo classifies the error. Its synthetic code is
+// identical for a non-S3 404; only the decoded service document has XMLName.
+func TestContractS3ListErrorDocument(t *testing.T) {
+	rt := &contractRT{}
+	contractReg(t, rt)
+	mc, err := minio.New(rt.s3Host, &minio.Options{
+		Creds: credentials.NewStaticV4("a", "b", ""), Region: "ru-central-1",
+		Transport: httpretry.UserAgent(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ kind, root string }{{"404", "Error"}, {"404json", ""}} {
+		rt.kind = tc.kind
+		var response minio.ErrorResponse
+		var listErr error
+		for obj := range mc.ListObjects(context.Background(), "bucket", minio.ListObjectsOptions{Recursive: true, MaxKeys: 1}) {
+			listErr = obj.Err
+		}
+		reqs := rt.take()
+		if !errors.As(listErr, &response) || response.StatusCode != http.StatusNotFound || response.Code != "NoSuchBucket" || response.XMLName.Local != tc.root || len(reqs) != 1 {
+			t.Fatalf("%s requests %v, SDK error %#v (%v)", tc.kind, reqs, response, listErr)
+		}
+		t.Logf("%s requests %v, SDK status=%d code=%s XMLName=%q", tc.kind, reqs, response.StatusCode, response.Code, response.XMLName.Local)
 	}
 }
