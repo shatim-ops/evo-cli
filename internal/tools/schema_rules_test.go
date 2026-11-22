@@ -183,67 +183,65 @@ var idWithoutFormat = map[string]string{
 
 	"secret_create.kms_key_id": idUnknown,
 
-	"ar_get.id":                          idUndeclared,
-	"ar_operation.operation_id":          idUndeclared,
-	"billing_consumption.project_id":     idUndeclared,
-	"billing_finops.project_id":          idUndeclared,
-	"deploy.image_id":                    idUndeclared,
-	"deploy.project_id":                  idUndeclared,
-	"dns_operation.operation_id":         idUndeclared,
-	"dns_record_create.zone_id":          idUndeclared,
-	"dns_record_get.record_id":           idUndeclared,
-	"dns_records.zone_id":                idUndeclared,
-	"dns_zone_get.id":                    idUndeclared,
-	"iam_service_accounts.project_id":    idUndeclared,
-	"image_create.disk_id":               idUndeclared,
-	"image_get.image_id":                 idUndeclared,
-	"k8s_add_addon.cluster_id":           idUndeclared,
-	"k8s_add_nodepool.cluster_id":        idUndeclared,
-	"k8s_add_nodepool.nodes_subnet_id":   idUndeclared,
-	"k8s_add_nodepool.security_group_id": idUndeclared,
-	"k8s_apply.cluster_id":               idUndeclared,
-	"k8s_create.cluster_sa_id":           idUndeclared,
-	"k8s_create.subnet_id":               idUndeclared,
-	"k8s_get.cluster_id":                 idUndeclared,
-	"k8s_helm.cluster_id":                idUndeclared,
-	"k8s_kubeconfig.cluster_id":          idUndeclared,
-	"k8s_kubectl.cluster_id":             idUndeclared,
-	"k8s_nodepools.cluster_id":           idUndeclared,
-	"k8s_plan.cluster_sa_id":             idUndeclared,
-	"k8s_plan.subnet_id":                 idUndeclared,
-	"kafka_create.specification_id":      idUndeclared,
-	"kafka_create.subnet_id":             idUndeclared,
-	"kafka_create.version_id":            idUndeclared,
-	"kafka_operation.operation_id":       idUndeclared,
-	"kafka_specs.version_id":             idUndeclared,
-	"lb_create.subnet_id":                idUndeclared,
-	"lb_create.target_group_id":          idUndeclared,
-	"lb_get.id":                          idUndeclared,
-	"lb_operation.operation_id":          idUndeclared,
-	"org_quotas.project_id":              idUndeclared,
-	"pg_backup_create.cluster_id":        idUndeclared,
-	"pg_backups.cluster_id":              idUndeclared,
-	"pg_create.specification_id":         idUndeclared,
-	"pg_create.subnet_id":                idUndeclared,
-	"pg_databases.cluster_id":            idUndeclared,
-	"pg_db_create.cluster_id":            idUndeclared,
-	"pg_operation.operation_id":          idUndeclared,
-	"pg_user_create.cluster_id":          idUndeclared,
-	"pg_users.cluster_id":                idUndeclared,
-	"provision.image_id":                 idUndeclared,
-	"provision.project_id":               idUndeclared,
-	"provision.subnet_id":                idUndeclared,
+	"ar_get.id":                       idUndeclared,
+	"ar_operation.operation_id":       idUndeclared,
+	"billing_consumption.project_id":  idUndeclared,
+	"billing_finops.project_id":       idUndeclared,
+	"deploy.image_id":                 idUndeclared,
+	"deploy.project_id":               idUndeclared,
+	"dns_operation.operation_id":      idUndeclared,
+	"dns_record_create.zone_id":       idUndeclared,
+	"dns_record_get.record_id":        idUndeclared,
+	"dns_records.zone_id":             idUndeclared,
+	"dns_zone_get.id":                 idUndeclared,
+	"iam_service_accounts.project_id": idUndeclared,
+	"image_create.disk_id":            idUndeclared,
 
-	"redis_create.specification_id":             idUndeclared,
-	"redis_create.subnet_id":                    idUndeclared,
-	"redis_create.version_id":                   idUndeclared,
-	"redis_operation.operation_id":              idUndeclared,
-	"redis_specs.version_id":                    idUndeclared,
-	"snat_create.availability_zone_id":          idUndeclared,
-	"tg_create.interface_id":                    idUndeclared,
-	"tg_create.vm_id":                           idUndeclared,
-	"tg_get.id":                                 idUndeclared,
-	"vm_get.vm_id":                              idUndeclared,
+	"k8s_add_addon.cluster_id":    idUndeclared,
+	"k8s_add_nodepool.cluster_id": idUndeclared,
+
+	"k8s_apply.cluster_id":     idUndeclared,
+	"k8s_create.cluster_sa_id": idUndeclared,
+
+	"k8s_get.cluster_id":        idUndeclared,
+	"k8s_helm.cluster_id":       idUndeclared,
+	"k8s_kubeconfig.cluster_id": idUndeclared,
+	"k8s_kubectl.cluster_id":    idUndeclared,
+	"k8s_nodepools.cluster_id":  idUndeclared,
+	"k8s_plan.cluster_sa_id":    idUndeclared,
+
+	"kafka_create.specification_id": idUndeclared,
+
+	"kafka_create.version_id":      idUndeclared,
+	"kafka_operation.operation_id": idUndeclared,
+	"kafka_specs.version_id":       idUndeclared,
+
+	"lb_create.target_group_id":   idUndeclared,
+	"lb_get.id":                   idUndeclared,
+	"lb_operation.operation_id":   idUndeclared,
+	"org_quotas.project_id":       idUndeclared,
+	"pg_backup_create.cluster_id": idUndeclared,
+	"pg_backups.cluster_id":       idUndeclared,
+	"pg_create.specification_id":  idUndeclared,
+
+	"pg_databases.cluster_id":   idUndeclared,
+	"pg_db_create.cluster_id":   idUndeclared,
+	"pg_operation.operation_id": idUndeclared,
+	"pg_user_create.cluster_id": idUndeclared,
+	"pg_users.cluster_id":       idUndeclared,
+	"provision.image_id":        idUndeclared,
+	"provision.project_id":      idUndeclared,
+
+	"redis_create.specification_id": idUndeclared,
+
+	"redis_create.version_id":          idUndeclared,
+	"redis_operation.operation_id":     idUndeclared,
+	"redis_specs.version_id":           idUndeclared,
+	"snat_create.availability_zone_id": idUndeclared,
+	"tg_create.interface_id":           idUndeclared,
+	"tg_create.vm_id":                  idUndeclared,
+	"tg_get.id":                        idUndeclared,
+
 	"vpc_operation.operation_id":                idUndeclared,
 	"vpc_route_create.next_hop_interface_id":    idUndeclared,
 	"vpc_route_create.next_hop_magic_router_id": idUndeclared,
@@ -384,6 +382,25 @@ func TestArgs_RequiredOpaqueServiceID(t *testing.T) {
 			if err := CheckArgs(tl, map[string]any{arg: invalid}); clierrors.Reason(err) != clierrors.CodeUsage {
 				t.Fatal(k, invalid, err)
 			}
+		}
+	}
+}
+
+func TestArgs_ResourceReferencesKeepIDOrName(t *testing.T) {
+	r := New(nil)
+	for _, k := range []string{"k8s_add_nodepool.nodes_subnet_id", "k8s_add_nodepool.security_group_id", "k8s_create.subnet_id", "k8s_plan.subnet_id", "kafka_create.subnet_id", "lb_create.subnet_id", "pg_create.subnet_id", "provision.subnet_id", "redis_create.subnet_id", "image_get.image_id", "vm_get.vm_id"} {
+		name, arg, _ := strings.Cut(k, ".")
+		tl, _ := r.Lookup(name)
+		if name != "image_get" && name != "vm_get" && !takesName(name, arg) {
+			t.Fatal(k, "missing project-name resolution")
+		}
+		for _, ref := range []string{auditUUID, "prod A", "сеть-1", ""} {
+			if err := CheckArgs(tl, map[string]any{arg: ref}); err != nil {
+				t.Fatal(k, ref, err)
+			}
+		}
+		if err := CheckArgs(tl, map[string]any{arg: "  "}); clierrors.Reason(err) != clierrors.CodeUsage {
+			t.Fatal(k, err)
 		}
 	}
 }
