@@ -676,3 +676,39 @@ func (r upgradeReceipt) submissionError(path string, current upgradeCard, err er
 	}
 	return errAnswer(err, upgradeResult(r, current, "rejected")), true
 }
+
+// Reserving the cloud write and consuming a matching offer happen under the
+// same local lock. A different client cannot use another client's preview.
+func reserveUpgrade(ctx context.Context, offerPath, receiptPath string, mcpCall, contextChanged bool, r upgradeReceipt, suppliedID string, preview map[string]any) (bool, error) {
+	unlock, err := state.FileLock(offerPath+".lock", 5*time.Second)
+	if err != nil {
+		return false, err
+	}
+	defer unlock()
+	shown, err := readUpgradeReceipt(offerPath)
+	if err != nil {
+		return false, err
+	}
+	validID := false
+	if shown != nil {
+		validID = suppliedID != "" && shown.PreviewID == suppliedID
+		shown.PreviewID = "" // Compare the transition separately from its one-time approval.
+	}
+	if contextChanged || (mcpCall && !validID) || (shown != nil && *shown != r) {
+		return false, r.offer(offerPath, mcpCall, preview)
+	}
+
+	if err := startPlacementIntent(ctx); err != nil {
+		return false, err
+	}
+	r.RejectionID = "" // An interrupted submission must remain unknown.
+	if err := r.save(receiptPath); err != nil {
+		return false, err
+	}
+	if shown != nil {
+		if err := os.Remove(offerPath); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
