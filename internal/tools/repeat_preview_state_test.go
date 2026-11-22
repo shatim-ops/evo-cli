@@ -50,7 +50,11 @@ func TestK8sAddAddon_QuestionSaysWhatHappensToTheInstalled(t *testing.T) {
 		if err := json.Unmarshal([]byte(f.posts[0]), &sent); err != nil {
 			t.Fatal(err)
 		}
-		if sent["clusterId"] != addonCluster || sent["name"] != "cert-manager" || (c.mode == "overwrite") != (sent["resolveMode"] == "RESOLVE_CONFLICTS_MODE_OVERWRITE") {
+		wantMode := "RESOLVE_CONFLICTS_MODE_NONE"
+		if c.mode == "overwrite" {
+			wantMode = "RESOLVE_CONFLICTS_MODE_OVERWRITE"
+		}
+		if sent["clusterId"] != addonCluster || sent["name"] != "cert-manager" || sent["resolveMode"] != wantMode {
 			t.Errorf("unexpected addon installation: %v", sent)
 		}
 	}
