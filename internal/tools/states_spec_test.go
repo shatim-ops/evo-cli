@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
+	"time"
 )
 
 // The world of a change carries its resource in every state of the
@@ -123,8 +125,8 @@ var stateRowsTwice []string
 // with no row for every state of the specification. Only shrinks, and a
 // new tool does not join it. Closes by 1.10.
 var stateWorldsPendingShipped = map[string]bool{
-	"ar_create": true, "ar_delete": true,
-	"cert_delete": true, "cert_import": true, "cert_issue_le": true, "cert_renew": true,
+	"ar_create":   true,
+	"cert_import": true, "cert_issue_le": true, "cert_renew": true,
 	"close_ports": true, "open_ports": true,
 	"deploy": true, "deploy_apply": true, "destroy": true, "provision": true,
 	"disk_attach": true, "disk_create": true, "disk_delete": true, "disk_detach": true, "disk_resize": true,
@@ -132,8 +134,8 @@ var stateWorldsPendingShipped = map[string]bool{
 	"snat_create": true, "snat_delete": true, "subnet_create": true, "subnet_delete": true,
 	"vpc_route_create": true, "vpc_route_delete": true,
 	"k8s_create": true, "k8s_add_nodepool": true, "k8s_add_addon": true,
-	"kafka_create": true, "kafka_delete": true, "redis_create": true, "redis_delete": true,
-	"pg_create": true, "pg_delete": true, "pg_db_create": true, "pg_db_delete": true,
+	"kafka_create": true, "redis_create": true,
+	"pg_create": true, "pg_db_create": true, "pg_db_delete": true,
 	"pg_user_create": true, "pg_user_delete": true, "pg_backup_create": true,
 	"lb_create": true, "tg_create": true,
 	"secret_create": true, "secret_delete": true, "secret_add_version": true,
@@ -224,4 +226,82 @@ func nameSetOf(m map[string]string) map[string]bool {
 		out[k] = true
 	}
 	return out
+}
+
+// All three managed database services publish the same cluster-state enum.
+// Keep the expectations independent of the production transition predicates.
+var managedDeleteStates = map[string]string{
+	"STATUS_UNSPECIFIED": "ask", "PENDING": "ask", "DEPLOYING": "refuse", "FAILED": "ask",
+	"UPDATING": "ask", "READY": "ask", "SUSPENDED": "ask", "SUSPENDING": "ask",
+	"ERASED": "gone", "ERASING": "in_progress", "ROLLING_BACK": "ask",
+}
+var serviceDeleteStates = map[string]map[string]string{
+	"kafka_delete": managedDeleteStates, "pg_delete": managedDeleteStates, "redis_delete": managedDeleteStates,
+	"ar_delete":   {"CREATING": "refuse", "ACTIVE": "ask", "ERROR": "ask"},
+	"cert_delete": {"CERTIFICATE_STATE_UNSPECIFIED": "ask", "CERTIFICATE_STATE_ACTIVE": "ask", "CERTIFICATE_STATE_EXPIRED": "ask"},
+}
+
+func init() { addStateRows(stateRowsOf, serviceDeleteStates) }
+
+func TestStates_ServiceDeleteObservesCardBeforeSend(t *testing.T) {
+	for tool, states := range serviceDeleteStates {
+		for status, want := range states {
+			for _, yes := range []bool{false, true} {
+				t.Run(tool+"/"+status+"/"+map[bool]string{false: "preview", true: "confirmed"}[yes], func(t *testing.T) {
+					body := toJSON(map[string]any{"id": contractID, "name": "fixture", "status": status, "state": status, "done": true})
+					rt := &contractRT{kind: "200", body: body, writeBody: `{"id":"operation-after-delete","done":false}`}
+					tl, _ := contractReg(t, rt).Lookup(tool)
+					args := contractArgs(tl)
+					args["confirmed"] = yes
+					text, failed, _ := contractCall(tl, args, 5*time.Second)
+					var out map[string]any
+					if err := json.Unmarshal([]byte(text), &out); err != nil {
+						t.Fatal(err, text)
+					}
+					wantWrites := 0
+					switch want {
+					case "ask":
+						if yes {
+							wantWrites = 1
+							if failed {
+								t.Fatal(text)
+							}
+						} else if out["status"] != "confirmation_required" {
+							t.Fatal(text)
+						}
+					case "refuse":
+						if !failed || out["reason"] != "USAGE" || out["resource_status"] != status {
+							t.Fatal(text)
+						}
+					case "gone":
+						if failed || out["status"] != "already_deleted" {
+							t.Fatal(text)
+						}
+					case "in_progress":
+						if failed || out["status"] != "deleting" || out["already_deleting"] != true || out["resource_status"] != status {
+							t.Fatal(text)
+						}
+					default:
+						t.Fatal(want)
+					}
+					reads, writes := 0, 0
+					for _, request := range rt.reqs {
+						if strings.HasPrefix(request, "GET ") {
+							if strings.HasSuffix(request, "/"+contractID) {
+								reads++
+							}
+							continue
+						}
+						if !strings.HasPrefix(request, "DELETE ") || !strings.HasSuffix(request, "/"+contractID) || reads == 0 {
+							t.Fatal(request, rt.reqs)
+						}
+						writes++
+					}
+					if reads == 0 || writes != wantWrites {
+						t.Fatal(reads, writes, rt.reqs, text)
+					}
+				})
+			}
+		}
+	}
 }
