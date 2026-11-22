@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
@@ -188,16 +188,12 @@ func Save(stateDir string, p *Plan) error {
 	return config.WriteFileAtomic(filepath.Join(dir, p.PlanID+".json"), data, 0o600)
 }
 
-// validPlanID reports whether id is what newPlanID makes. The id comes from
-// the MCP client and becomes a file name: nothing else may reach the path.
-func validPlanID(id string) bool {
-	const prefix = "plan-"
-	if !strings.HasPrefix(id, prefix) || len(id) != len(prefix)+12 {
-		return false
-	}
-	_, err := hex.DecodeString(id[len(prefix):])
-	return err == nil
-}
+// IDPattern is the form accepted by the store and the public tool schema.
+const IDPattern = "^plan-[0-9a-fA-F]{12}$"
+
+var planIDRe = regexp.MustCompile(IDPattern)
+
+func validPlanID(id string) bool { return planIDRe.MatchString(id) }
 
 // Load reads a plan by id, enforcing the TTL; a plan without one is
 // expired. It only reads: deploy_apply

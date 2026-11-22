@@ -166,9 +166,6 @@ const (
 	// which version a service takes is for the api-probe of 1.4.
 	idUndeclared = "description says UUID, schema does not"
 	idFilter     = "a filter of a list (listSpecs): a UUID or a name, resolved through the project's list before the read"
-	// evo's own id, not the cloud's: plan-<hex> (deployplan), stk-<hex>
-	// (stack, checked by its store).
-	idOfEvo = "evo's own id, not a UUID"
 	// The description does not say what the id is, though cert_delete.id
 	// is a UUID (G13-21): which form the service takes is for the
 	// api-probe of 1.4.
@@ -183,19 +180,15 @@ const (
 // Closes by 1.10: moved from 1.8 by the owner's decision of 13.11 (#1590,
 // question 19; release plan 1.9, «Просроченные убывающие списки»).
 var idWithoutFormat = map[string]string{
-	"cert_get.id":                               idUnknown,
-	"cert_operation.operation_id":               idUnknown,
-	"k8s_operation.operation_id":                idUnknown,
-	"cert_private_key.certificate_id":           idUnknown,
-	"cert_renew.certificate_id":                 idUnknown,
-	"cert_usage.id":                             idUnknown,
-	"cert_versions.certificate_id":              idUnknown,
-	"secret_create.kms_key_id":                  idUnknown,
-	"deploy_apply.plan_id":                      idOfEvo,
-	"deploy_plan.base_plan_id":                  idOfEvo,
-	"stack_apply.job_id":                        idOfEvo,
-	"stack_destroy.job_id":                      idOfEvo,
-	"stack_status.job_id":                       idOfEvo,
+	"cert_get.id":                     idUnknown,
+	"cert_operation.operation_id":     idUnknown,
+	"k8s_operation.operation_id":      idUnknown,
+	"cert_private_key.certificate_id": idUnknown,
+	"cert_renew.certificate_id":       idUnknown,
+	"cert_usage.id":                   idUnknown,
+	"cert_versions.certificate_id":    idUnknown,
+	"secret_create.kms_key_id":        idUnknown,
+
 	"ar_get.id":                                 idUndeclared,
 	"ar_operation.operation_id":                 idUndeclared,
 	"billing_consumption.project_id":            idUndeclared,
@@ -318,7 +311,7 @@ func TestArgs_IDsDeclareTheirFormat(t *testing.T) {
 				continue
 			}
 			key := tl.Name + "." + arg
-			if p["format"] != nil || vpcNameArguments[tl.Name] == arg {
+			if p["format"] != nil || p["pattern"] != nil || vpcNameArguments[tl.Name] == arg {
 				continue
 			}
 			seen[key] = true
@@ -330,6 +323,30 @@ func TestArgs_IDsDeclareTheirFormat(t *testing.T) {
 	for key := range idWithoutFormat {
 		if !seen[key] {
 			t.Errorf("idWithoutFormat names %s, which declares a format now or is gone: remove the line", key)
+		}
+	}
+}
+
+func TestArgs_SavedPlanAndJobReferences(t *testing.T) {
+	r := New(nil)
+	for _, tc := range []struct{ tool, arg, valid string }{
+		{"deploy_apply", "plan_id", "plan-aB0123456789"}, {"deploy_plan", "base_plan_id", "plan-aB0123456789"},
+		{"stack_apply", "job_id", "stk-0123abcdef"}, {"stack_destroy", "job_id", "stk-0123abcdef"}, {"stack_status", "job_id", "stk-0123abcdef"},
+	} {
+		tl, _ := r.Lookup(tc.tool)
+		if err := CheckArgs(tl, map[string]any{tc.arg: tc.valid}); err != nil {
+			t.Fatal(tc.tool, err)
+		}
+		if tc.arg == "base_plan_id" {
+			if err := CheckArgs(tl, map[string]any{tc.arg: ""}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, bad := range []string{"../" + tc.valid, tc.valid + "0", tc.valid[:len(tc.valid)-1], " ", "new-plan"} {
+			err := CheckArgs(tl, map[string]any{tc.arg: bad})
+			if clierrors.Reason(err) != clierrors.CodeUsage {
+				t.Fatalf("%s.%s accepted invalid reference: %v", tc.tool, tc.arg, err)
+			}
 		}
 	}
 }

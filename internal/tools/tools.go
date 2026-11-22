@@ -34,6 +34,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
+	"github.com/shatim-ops/evo-cli/internal/stack"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -258,7 +259,7 @@ func (s *Registry) registerTools() {
 			Name:        "deploy_plan",
 			Description: "Step 1 of the deploy wizard, read-only: resolves a VM configuration (flavor, image, zone, disk, network, SSH) with its monthly cost and a plan_id (cost.source: the Cloud.ru price API, else a rate-card estimate; an image license is never included). auto mode: pass the product's cpu/ram_gb/disk_gb, defaults fill the rest; manual: flavor, zone, image, disk_type. Show the plan and its cost to the person, then deploy_apply with the plan_id.",
 			InputSchema: objSchema(map[string]any{
-				"base_plan_id": strProp("A prior plan_id to change: its parameters with only the fields given here overlaid, as a new plan_id."),
+				"base_plan_id": patternProp("A prior plan_id to change: its parameters with only the fields given here overlaid, as a new plan_id.", "^$|"+deployplan.IDPattern),
 				"product":      strProp("Product (names the VM)."),
 				"mode":         strProp("'auto' (default) or 'manual'."),
 				"cpu":          intProp("vCPUs needed (auto picks the smallest fitting flavor)."),
@@ -283,7 +284,7 @@ func (s *Registry) registerTools() {
 			Name:        "deploy_apply",
 			Description: "Creates only the VM, without the application, from a plan of deploy_plan (STEP 2 of the deploy wizard): a compose project goes through deploy. Its own VM (in this folder's state, or made by this plan) is adopted, not duplicated; another VM with the plan's name is refused with existing_id. Returns vm_id, public_ip, ssh and (once) the generated password; a VM not running within ~45 s (MCP) gives status creating with vm_status, the password and next_tool/next_args: repeat the same call to finish it.",
 			InputSchema: objSchema(map[string]any{
-				"plan_id":      strProp("The plan_id returned by deploy_plan."),
+				"plan_id":      patternProp("The plan_id returned by deploy_plan.", deployplan.IDPattern),
 				"confirmed":    confirmedProp(),
 				"wait":         boolProp(waitDesc),
 				continuedVMArg: uuidProp(continuedVMDesc),
@@ -1539,7 +1540,7 @@ func (s *Registry) registerTools() {
 			Description: "Apply a planned stack (from stack_plan). Starts the steps that are ready and returns a compact status: over MCP within ~45 s — a VM still coming up stays pending (details: creating) and stack_status finishes it; the CLI waits for the VM. Postgres, Kafka, Redis, k8s and NLB only start. passwords{step} is the password evo generated for a step's VM, in that answer only. Then poll stack_status(job_id) until status=done; do not orchestrate the resources yourself.",
 			InputSchema: objSchema(map[string]any{
 				"preview_id": withMinLength(uuidProp("Approval of the displayed placement for a paused LB step.")),
-				"job_id":     strProp("Job id from stack_plan. Required."),
+				"job_id":     patternProp("Job id from stack_plan. Required.", stack.JobIDPattern),
 				"confirmed":  confirmedProp(),
 			}, "job_id"),
 		},
@@ -1547,7 +1548,7 @@ func (s *Registry) registerTools() {
 			Name:        "stack_status",
 			Description: "Poll a stack: compact progress {status, done[], running[], pending[], details{step: reason} of a step not done, error_reasons{step: reason code, e.g. USAGE, NOT_FOUND, API_ERROR} of a step in error, attempts{step: n}, outputs{postgres,vm,tg,lb,…; lb_external_ip once the balancer has a public address}, passwords{step} of a VM evo generated, in that answer only}. For a job started by stack_apply each call advances the deploy and waits (up to wait_seconds): a few calls cover a long deploy. A planned job (stack_plan without stack_apply) is reported, never started. Keep polling until status=done (then read outputs) or status=error. status=deleting (with deleting[]): a teardown not finished, which stack_status does not move — call stack_destroy again (next_tool) until destroyed. The job lives on disk: after a lost context poll the job_id again.",
 			InputSchema: objSchema(map[string]any{
-				"job_id":       strProp("Job id. Required."),
+				"job_id":       patternProp("Job id. Required.", stack.JobIDPattern),
 				"wait_seconds": inRange(1, stackStatusMaxWait, intProp("How long this call may block while advancing, in seconds (default and at most 20). Fewer calls for a long deploy.")),
 			}, "job_id"),
 		},
@@ -1555,7 +1556,7 @@ func (s *Registry) registerTools() {
 			Name:        "stack_destroy",
 			Description: "Tear down every resource of a stack, in reverse order. status=destroyed: everything is gone. status=deleting (exit 0): the VM, secrets and S3 objects are gone, the resources in 'deleting' (Postgres, Kafka, Redis, k8s, NLB, …) are still being deleted by the cloud for minutes — call stack_destroy with confirmed=true again (next_tool) until it answers destroyed. A destroyed job answers already_destroyed without the question; a deleting one is asked about again and re-checked.",
 			InputSchema: objSchema(map[string]any{
-				"job_id":    strProp("Job id. Required."),
+				"job_id":    patternProp("Job id. Required.", stack.JobIDPattern),
 				"confirmed": confirmedProp(),
 			}, "job_id"),
 		},
@@ -3927,6 +3928,12 @@ func opWaitProp() map[string]any {
 
 func inRange(min, max int, p map[string]any) map[string]any {
 	p["minimum"], p["maximum"] = min, max
+	return p
+}
+
+func patternProp(desc, pattern string) map[string]any {
+	p := strProp(desc)
+	p["pattern"] = pattern
 	return p
 }
 
