@@ -348,7 +348,7 @@ func (s *Registry) planK8sCreate(ctx context.Context, args map[string]any) (*Pla
 		return nil, fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)
 	}
 	if id, st, ok := takenName(listed, name); ok {
-		return answered(nameTakenResult(i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, id, st, "k8s_get cluster_id="+id)), nil
+		return answered(nameTakenResult(i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, id, st, resourceReadHint("k8s_get", "cluster_id", id))), nil
 	}
 	// The plan before the consent: the preview names the cluster that is
 	// made — the masters' flavor, version, zone, VIP subnet — and a plan
@@ -380,13 +380,18 @@ func (s *Registry) planK8sCreate(ctx context.Context, args map[string]any) (*Pla
 			}
 			return lostCreate(ctx, "k8s_create", list, i18n.T("Kubernetes cluster", "кластер Kubernetes"), name, nil, "k8s_get cluster_id", err)
 		}
+		ruNote := "Кластер создаётся (асинхронно, около 10 мин). Проверьте cluster_id из ответа через evo k8s get; когда статус станет running, используйте evo k8s kubeconfig."
+		clusterID := op.ResourceID
+		if isUUID(clusterID) {
+			ruNote = fmt.Sprintf("Кластер создаётся (асинхронно, около 10 мин). Проверяйте evo k8s get %[1]s, пока статус не станет running, затем — evo k8s kubeconfig %[1]s.", clusterID)
+		}
 		out := map[string]any{
 			"status":       "creating",
 			"cluster_id":   op.ResourceID,
 			"operation_id": op.ID,
 			"name":         req.Name,
 			"note": i18n.T("Cluster is provisioning (async, about 10 min). Poll k8s_get with this cluster_id until status is running, then k8s_kubeconfig.",
-				fmt.Sprintf("Кластер создаётся (асинхронно, около 10 мин). Проверяйте evo k8s get %[1]s, пока статус не станет running, затем — evo k8s kubeconfig %[1]s.", op.ResourceID)),
+				ruNote),
 		}
 		s.goingOn(ctx, out, "k8s_operation", op.ID, op.ResourceID, nil)
 		return toJSON(out), false
@@ -838,7 +843,7 @@ func (s *Registry) planK8sNodePoolScale(ctx context.Context, args map[string]any
 				return toJSON(ans), false
 			}
 		}
-		ans["next"] = fmt.Sprintf("k8s_operation operation_id=%s shows when the scale ends", op.ID)
+		ans["next"] = i18n.Tf("%s shows when the scale ends", "Завершение масштабирования показывает %s", resourceReadHint("k8s_operation", "operation_id", op.ID))
 		nextStep(ans, "k8s_operation", map[string]any{"operation_id": op.ID, "wait_seconds": opWaitMaxSeconds})
 		return toJSON(ans), false
 	}}, nil

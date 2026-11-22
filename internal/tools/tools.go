@@ -2790,8 +2790,8 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 				if !noPublicIP && bootFIP == nil {
 					note := i18n.T("the public IP could not be reserved before the VM was created; it was attached after boot, so the first boot can be slow",
 						"публичный IP не удалось зарезервировать до создания ВМ; он подключён после запуска, поэтому первый запуск может быть медленнее")
-					if w, ok := res["warning"].(string); ok {
-						note = w + "; " + note
+					if diskNote != "" {
+						note = diskNote + "; " + note
 					}
 					res["warning"] = note
 				}
@@ -2997,8 +2997,7 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 				return errResult(clierrors.New(clierrors.CodeUsage,
 					i18n.T("destroy without vm_id or name deletes nothing when confirmed without a terminal: name the target from the preview",
 						"destroy без vm_id или name с подтверждением без терминала ничего не удаляет: назовите цель из превью"),
-					i18n.Tf("Call destroy with vm_id %s and confirmed=true ('evo tools call destroy --arg vm_id=%s --yes'); destroy without arguments shows what it deletes.",
-						"Вызовите destroy с vm_id %s и confirmed=true ('evo tools call destroy --arg vm_id=%s --yes'); destroy без аргументов показывает, что он удалит.", vmID, vmID))), true
+					destroyRecordedHint(vmID))), true
 			}
 			var buf bytes.Buffer
 			eng.Printer = bufferPrinter(&buf)
@@ -3719,6 +3718,15 @@ func destroyUnconfirmed(statePath, projectID string, target *provision.VM, fipRe
 		fields["floating_ip"] = "kept until the VM is gone: " + addrLabel(fipRec.VMIP, fipRec.FloatingIPID)
 	}
 	return errAnswer(clierrors.New(clierrors.CodeAPIError, msg, hint), fields)
+}
+
+func destroyRecordedHint(vmID string) string {
+	if isUUID(vmID) {
+		return i18n.Tf("Call destroy with vm_id %s and confirmed=true ('evo tools call destroy --arg vm_id=%s --yes'); destroy without arguments shows what it deletes.",
+			"Вызовите destroy с vm_id %s и confirmed=true ('evo tools call destroy --arg vm_id=%s --yes'); destroy без аргументов показывает, что он удалит.", vmID, vmID)
+	}
+	return i18n.Tf("The recorded VM id %q has an unexpected format. Call destroy without arguments to review the target.",
+		"У записанного id ВМ %q неожиданная форма. Вызовите destroy без аргументов для просмотра цели.", vmID)
 }
 
 // destroyDeleting is the answer of destroy whose wait for the VM to go the

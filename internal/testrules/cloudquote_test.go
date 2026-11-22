@@ -73,31 +73,13 @@ var unquotedCloudLocalSteps = map[string]int{}
 // decision 17.11: the places of the detector made before the tag 1.9
 // close in 1.10).
 var unquotedCloudFlows = map[string]int{
-	"internal/engine/deploy.go|Engine.awaitCreated":             1,
-	"internal/engine/deploy.go|Engine.provisionVM":              3,
-	"internal/engine/own_record.go|AdoptedVM":                   1,
-	"internal/stack/store.go|FindResourcefulJobs":               1,
-	"internal/tools/intent.go|Registry.checkByID":               1,
-	"internal/tools/intent_targets.go|groupTarget":              1,
-	"internal/tools/intent_targets.go|vmTarget":                 1,
-	"internal/tools/tools.go|Registry.handleDestroy":            2,
-	"internal/tools/tools.go|Registry.planDestroyTargeted":      1,
-	"internal/tools/tools.go|Registry.provisionVM":              1,
-	"internal/tools/tools.go|destroyDeleting":                   1,
-	"internal/tools/tools_ca.go|Registry.planCaStartStop":       1,
-	"internal/tools/tools_certmanager.go|certNameTaken":         1,
-	"internal/tools/tools_k8s.go|Registry.planK8sCreate":        3,
-	"internal/tools/tools_k8s.go|Registry.planK8sNodePoolScale": 1,
-	"internal/tools/tools_kafka.go|Registry.planKafkaCreate":    1,
-	"internal/tools/tools_pg.go|Registry.planPgCreate":          1,
-	"internal/tools/tools_redis.go|Registry.planRedisCreate":    1,
-	"internal/tools/tools_stack.go|Registry.advance":            1,
-	"internal/tools/tools_stack.go|Registry.stepRead":           1,
-	"internal/tools/tools_vm.go|Registry.planVMPower":           1,
-	"internal/tools/tools_vm.go|Registry.planVMResize":          1,
-	"internal/tools/tools_vm_diagnose.go|vmDiagnosis":           5,
-	"internal/tools/tools_vm_diagnose.go|vmGroupsOnRows":        1,
-	"internal/tools/tools_vpc.go|Registry.planVpcCreate":        1,
+	"internal/stack/store.go|FindResourcefulJobs":          1,
+	"internal/tools/intent.go|Registry.checkByID":          1,
+	"internal/tools/tools.go|Registry.planDestroyTargeted": 1,
+	"internal/tools/tools.go|destroyDeleting":              1,
+	"internal/tools/tools_ca.go|Registry.planCaStartStop":  1,
+	"internal/tools/tools_vm_diagnose.go|vmDiagnosis":      5,
+	"internal/tools/tools_vm_diagnose.go|vmGroupsOnRows":   1,
 }
 
 // unquotedCloudFlowSteps are the steps of progress of unquotedCloudFlows.

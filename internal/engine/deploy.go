@@ -48,6 +48,15 @@ const (
 	dockerReadyCmd = "docker compose version && docker info >/dev/null"
 )
 
+func vmPollTimeoutHint(id string) string {
+	if isUUID(id) {
+		return i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
+			"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", id)
+	}
+	return i18n.T("Check the VM in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
+		"Проверьте ВМ в консоли Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).")
+}
+
 // Deploy orchestrates the full deploy lifecycle.
 func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) {
 	e.until, e.boundFrom, e.phase, e.decided = opts.Until, time.Now(), "", false
@@ -882,8 +891,14 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 			created := i18n.T("nothing was created", "ничего не создано")
 			if relErr != nil {
 				// Not "nothing": the address stays billed (break r3a R3A-2).
-				created = i18n.Tf("the VM was not created, but floating IP %s (%s) is left and billed: release it with 'evo vpc fip-release %s'; a later deploy of this directory reuses it",
-					"ВМ не создана, но floating IP %s (%s) остался и тарифицируется: освободите его ('evo vpc fip-release %s'); следующий deploy этого каталога использует его", bootFIP.IPAddress, bootFIP.ID, bootFIP.ID)
+				id := bootFIP.ID
+				if isUUID(id) {
+					created = i18n.Tf("the VM was not created, but floating IP %s (%s) is left and billed: release it with 'evo vpc fip-release %s'; a later deploy of this directory reuses it",
+						"ВМ не создана, но floating IP %s (%s) остался и тарифицируется: освободите его ('evo vpc fip-release %s'); следующий deploy этого каталога использует его", strconv.Quote(bootFIP.IPAddress), strconv.Quote(id), id)
+				} else {
+					created = i18n.Tf("the VM was not created, but floating IP %q (id %q) is left and billed; check the address in the Cloud.ru console before releasing it",
+						"ВМ не создана, но floating IP %q (id %q) остался и тарифицируется; проверьте адрес в консоли Cloud.ru перед его освобождением", bootFIP.IPAddress, id)
+				}
 			}
 			return state.DeploymentRecord{}, clerrors.Wrap(clerrors.CodeConfigInvalid,
 				i18n.Tf("a VM named %s already exists in the project (Cloud.ru answered 409); %s",
@@ -1022,8 +1037,7 @@ func (e *Engine) provisionVM(ctx context.Context, opts DeployOptions, stateFile 
 		case <-pollDeadline:
 			return rec, clerrors.New(clerrors.CodeVMProvisionFailed,
 				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", strconv.Quote(vm.ID), t.VMPollTimeout),
-				i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
-					"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", vm.ID))
+				vmPollTimeoutHint(vm.ID))
 		case <-wait.C():
 			wait.Show()
 		case <-pollTick:
@@ -1674,8 +1688,7 @@ func (e *Engine) awaitCreated(ctx context.Context, rec *state.DeploymentRecord, 
 		case <-timeout:
 			return clerrors.New(clerrors.CodeVMProvisionFailed,
 				i18n.Tf("VM %s did not become active within %s; it is still being created and is billed", "ВМ %s не стала активной за %s; она продолжает создаваться и оплачивается", strconv.Quote(rec.VMID), t.VMPollTimeout),
-				i18n.Tf("Check the VM with 'evo vm get %s' or in the Cloud.ru console; to wait longer, set CLOUDRU_TIMEOUT (seconds).",
-					"Проверьте ВМ: 'evo vm get %s' или консоль Cloud.ru; чтобы ждать дольше, задайте CLOUDRU_TIMEOUT (в секундах).", rec.VMID))
+				vmPollTimeoutHint(rec.VMID))
 		case <-tick:
 			vm, err := e.Cloud.GetVM(ctx, rec.VMID)
 			// One refused token is the sleep's; two, the key's (refusals).

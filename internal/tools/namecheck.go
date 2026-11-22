@@ -69,6 +69,15 @@ func nameFree(ctx context.Context, list func(context.Context) ([]map[string]any,
 	return "", false
 }
 
+// resourceReadHint includes a UUID verbatim for copying. With an unusual id,
+// the structured answer still carries the original value for the named read.
+func resourceReadHint(tool, arg, id string) string {
+	if isUUID(id) {
+		return tool + " " + arg + "=" + id
+	}
+	return i18n.Tf("%s with %s from the result", "%s с %s из результата", tool, arg)
+}
+
 // nameTakenResult is the answer of a create tool whose name is in use: USAGE
 // (the call is wrong, nothing was sent to create anything) with the existing
 // id in existing_id, so a stack step knows the resource is not its own.

@@ -205,6 +205,12 @@ func (r *Registry) settleNetworkConflict(ctx context.Context, mine []intent.Inte
 	}
 }
 
+// persistedIDTarget encodes the original intent key used both when recording
+// an operation and when looking up an earlier receipt for the same resource.
+func persistedIDTarget(arg, id string) string {
+	return arg + "=" + id
+}
+
 // vmTarget is the target of a call that names a VM by vm_id or by name
 // (changeRule.target): the VM's id, read as the plan of a power tool
 // reads it — an id as it is, a name through the one point names are
@@ -218,7 +224,7 @@ func vmTarget(tool string) func(ctx context.Context, r *Registry, args map[strin
 			return "", "", nil
 		}
 		if looksUUID(ref) {
-			return "", "vm_id=" + ref, nil
+			return "", persistedIDTarget("vm_id", ref), nil
 		}
 		eng, err := r.authedEngine(ctx, nil)
 		if err != nil {
@@ -228,7 +234,7 @@ func vmTarget(tool string) func(ctx context.Context, r *Registry, args map[strin
 		if err != nil {
 			return "", "", err
 		}
-		return "", "vm_id=" + vm.ID, nil
+		return "", persistedIDTarget("vm_id", vm.ID), nil
 	}
 }
 
@@ -279,7 +285,7 @@ func groupTarget(arg string, valid func(args map[string]any) error) func(ctx con
 			return "", "", nil
 		}
 		if valid(args) != nil {
-			return "", arg + "=" + ref, nil
+			return "", persistedIDTarget(arg, ref), nil
 		}
 		eng, err := r.authedEngine(ctx, nil)
 		if err != nil {
@@ -289,7 +295,7 @@ func groupTarget(arg string, valid func(args map[string]any) error) func(ctx con
 		if err != nil {
 			return "", "", err
 		}
-		return "", arg + "=" + group.ID, nil
+		return "", persistedIDTarget(arg, group.ID), nil
 	}
 }
 

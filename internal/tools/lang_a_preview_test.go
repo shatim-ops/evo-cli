@@ -68,3 +68,26 @@ func TestDestroyTargetPreview_QuotesRuleAndGroupSeparately(t *testing.T) {
 		}
 	}
 }
+
+func TestPersistedIDTargetMatchesOriginalReceiptBytes(t *testing.T) {
+	for _, arg := range []string{"vm_id", "security_group_id"} {
+		for _, id := range []string{faultID(41), "legacy-id", "legacy-\"\nline"} {
+			old := arg + "=" + id
+			if persistedIDTarget(arg, id) != old || persistedIDTarget(arg, id+"2") == old || persistedIDTarget("another", id) == old {
+				t.Fatalf("receipt key for %q and %q", arg, id)
+			}
+		}
+	}
+}
+
+func TestResourceReadHintOnlyCopiesUUID(t *testing.T) {
+	id := faultID(41)
+	if got := resourceReadHint("vpc_get", "id", id); got != "vpc_get id="+id {
+		t.Fatalf("UUID read: %q", got)
+	}
+	id = "altered-\"\nline"
+	got := resourceReadHint("vpc_get", "id", id)
+	if !strings.Contains(got, "vpc_get") || !strings.Contains(got, "id") || strings.Contains(got, id) {
+		t.Fatalf("unusual id in read hint: %q", got)
+	}
+}

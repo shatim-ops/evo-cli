@@ -7,6 +7,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,5 +123,18 @@ func TestDestroy_AnUnreadCheckRefusesTheDelete(t *testing.T) {
 				t.Errorf("the preview of destroy: %v, want the same refusal", perr)
 			}
 		})
+	}
+}
+
+func TestVMHintsOnlyPutUUIDsInCommands(t *testing.T) {
+	id := "11111111-1111-4111-8111-111111111111"
+	for _, hint := range []func(string) string{adoptedVMHint, vmPollTimeoutHint} {
+		if !strings.Contains(hint(id), id) {
+			t.Fatalf("UUID missing from hint: %s", hint(id))
+		}
+		odd := "bad-\"\nvalue"
+		if got := hint(odd); strings.Contains(got, odd) || !strings.Contains(got, "Cloud.ru") {
+			t.Fatalf("unexpected VM hint: %q", got)
+		}
 	}
 }

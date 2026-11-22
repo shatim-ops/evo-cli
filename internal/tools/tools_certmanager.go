@@ -168,7 +168,7 @@ func certNameTaken(ctx context.Context, cli *certmanager.Client, name string) (l
 		return list, errResult(fmt.Errorf(i18n.T("check the name is free: list certificates: %w", "проверка, что имя свободно: список сертификатов: %w"), err))
 	}
 	if id, st, ok := takenName(existing, name); ok {
-		taken, _ = nameTakenResult(i18n.T("certificate", "сертификат"), name, id, st, "cert_get id="+id)
+		taken, _ = nameTakenResult(i18n.T("certificate", "сертификат"), name, id, st, resourceReadHint("cert_get", "id", id))
 	}
 	return list, taken
 }
