@@ -117,7 +117,7 @@ install_dir() {
 completion_files() {
 	data=${XDG_DATA_HOME:-$HOME/.local/share}
 	conf=${XDG_CONFIG_HOME:-$HOME/.config}
-	if command -v fish >/dev/null 2>&1 || [ -d "$conf/fish" ]; then
+	if command -v fish >/dev/null 2>&1 || [ "${1:-}" = "--uninstall" ]; then
 		echo "fish $conf/fish/completions/$BINARY.fish"
 	fi
 	if command -v bash >/dev/null 2>&1; then
@@ -336,7 +336,7 @@ uninstall() {
 			say "Удалено: $dir/$b"
 		fi
 	done
-	completion_files | while read -r _ file; do
+	completion_files --uninstall | while read -r _ file; do
 		if [ -e "$file" ]; then
 			rm -f "$file"
 			say "Удалено: $file"

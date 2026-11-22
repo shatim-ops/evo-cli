@@ -68,6 +68,41 @@ func writeFile(t *testing.T, path, content string, mode os.FileMode) {
 	}
 }
 
+const fixtureVerifier = `#!/bin/sh
+test "$#" = 8 && test "$1" = verify-blob && test "$2" = --bundle &&
+test "$(cat "$3")" = fixture && test "$4" = --certificate-identity &&
+test "$5" = https://github.com/shatim-ops/evo-cli/.github/workflows/release.yml@refs/tags/v9.9.9 &&
+test "$6" = --certificate-oidc-issuer && test "$7" = https://token.actions.githubusercontent.com && test -s "$8"
+`
+
+func installerPath(t *testing.T, names string) string {
+	t.Helper()
+	shims := t.TempDir()
+	// Expose only installer dependencies. Optional programs on the host,
+	// including cosign and fish, must not affect the synthetic release.
+	for _, name := range strings.Fields(names) {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(path, filepath.Join(shims, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hash := "sha256sum"
+	if _, err := exec.LookPath(hash); err != nil {
+		hash = "shasum"
+	}
+	path, err := exec.LookPath(hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(path, filepath.Join(shims, hash)); err != nil {
+		t.Fatal(err)
+	}
+	return shims
+}
+
 // Release plan 1.5, «Установка автодополнения» (owner's decision 28.10):
 // install.sh puts the completion where each shell finds it without a
 // change to its configuration — fish, bash (bash-completion), zsh into a
@@ -88,35 +123,29 @@ func TestInstallSh_CompletionFilesAndUninstall(t *testing.T) {
 	rel := filepath.Join(tmp, "local release")
 	releaseURL := url.URL{Scheme: "file", Path: rel}
 	fakeRelease(t, rel)
-	// fish is found by its configuration directory; zsh is a fake whose
-	// $fpath holds ~/.zfunc (a directory of the home it may write).
-	// The fish file goes in with no fish binary on PATH: this pins the
-	// behaviour as it is, not as it should be — a completion for a shell
-	// that is not installed (#2038). The fix and this expectation change
-	// together, candidate 1.10 (release plan 1.9, Astra #2103).
 	if err := os.MkdirAll(filepath.Join(home, ".config", "fish"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(home, ".zfunc"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	shims := filepath.Join(tmp, "shims")
+	shims := installerPath(t, "sh tar gzip curl bash awk cut uname mkdir mktemp chmod mv cp rm dirname grep sed cat")
 	writeFile(t, filepath.Join(shims, "zsh"), "#!/bin/sh\necho \"$HOME/.zfunc\"\n", 0o755)
 	foreign := filepath.Join(home, ".config", "fish", "completions", "other.fish")
 	writeFile(t, foreign, "# not evo's\n", 0o644)
 
-	run := func(args ...string) string {
+	run := func(success bool, args ...string) string {
 		t.Helper()
 		// umask 0: the modes of the files are install.sh's, not the umask's.
 		cmd := exec.Command("sh", "-c", `umask 0; exec sh "$0" "$@"`, filepath.Join("..", "..", "install.sh"))
 		cmd.Args = append(cmd.Args, args...)
-		cmd.Env = append(os.Environ(),
-			"HOME="+home, "XDG_DATA_HOME=", "XDG_CONFIG_HOME=",
-			"INSTALL_DIR="+filepath.Join(tmp, "bin"),
-			"CLOUDRU_VM_VERSION=v9.9.9", "CLOUDRU_VM_BASE_URL="+releaseURL.String(),
-			"PATH="+shims+string(os.PathListSeparator)+os.Getenv("PATH"))
+		cmd.Env = []string{
+			"HOME=" + home, "XDG_DATA_HOME=", "XDG_CONFIG_HOME=",
+			"INSTALL_DIR=" + filepath.Join(tmp, "bin"),
+			"CLOUDRU_VM_VERSION=v9.9.9", "CLOUDRU_VM_BASE_URL=" + releaseURL.String(),
+			"PATH=" + shims, "SHELL=/bin/bash", "EVO_BASHRC=0", "EVO_ZSHRC=0"}
 		out, err := cmd.CombinedOutput()
-		if err != nil {
+		if (err == nil) != success {
 			t.Fatalf("install.sh %v: %v\n%s", args, err, out)
 		}
 		return string(out)
@@ -126,8 +155,27 @@ func TestInstallSh_CompletionFilesAndUninstall(t *testing.T) {
 		filepath.Join(home, ".local", "share", "bash-completion", "completions", "evo"): "bash",
 		filepath.Join(home, ".zfunc", "_evo"):                                           "zsh",
 	}
+	run(true)
+	fishFile := filepath.Join(home, ".config", "fish", "completions", "evo.fish")
+	if _, err := os.Stat(fishFile); !os.IsNotExist(err) {
+		t.Fatal("fish completion with no fish executable", err)
+	}
+	writeFile(t, filepath.Join(shims, "fish"), "#!/bin/sh\nexit 0\n", 0o755)
+	verifier := filepath.Join(shims, "cosign")
+	writeFile(t, filepath.Join(rel, "v9.9.9", "checksums.txt.sigstore.json"), "fixture", 0o644)
+	oldBinary := filepath.Join(tmp, "bin", "evo")
+	writeFile(t, oldBinary, "# previous installation", 0o755)
+	writeFile(t, verifier, "#!/bin/sh\nexit 1\n", 0o755)
+	if out := run(false); !strings.Contains(out, "подпись") {
+		t.Fatal(out)
+	}
+	if got, err := os.ReadFile(oldBinary); err != nil || string(got) != "# previous installation" {
+		t.Fatalf("failed verification changed existing evo: %q, %v", got, err)
+	}
+	// Model only the verifier interface. Pin its exact issuer and workflow.
+	writeFile(t, verifier, fixtureVerifier, 0o755)
 	for i := 0; i < 2; i++ { // a second run overwrites its own files
-		out := run()
+		out := run(true)
 		for path, sh := range files {
 			got, err := os.ReadFile(path)
 			if err != nil || string(got) != "# evo completion for "+sh+"\n" {
@@ -145,7 +193,10 @@ func TestInstallSh_CompletionFilesAndUninstall(t *testing.T) {
 		}
 	}
 
-	out := run("--uninstall")
+	if err := os.Remove(filepath.Join(shims, "fish")); err != nil {
+		t.Fatal(err)
+	}
+	out := run(true, "--uninstall")
 	for _, path := range append([]string{filepath.Join(tmp, "bin", "evo"), filepath.Join(tmp, "bin", "cloudru-vm")}, keys(files)...) {
 		if _, err := os.Stat(path); err == nil {
 			t.Errorf("--uninstall left %s\n%s", path, out)
@@ -156,6 +207,149 @@ func TestInstallSh_CompletionFilesAndUninstall(t *testing.T) {
 	}
 	if !strings.Contains(out, "evo.fish") {
 		t.Errorf("--uninstall does not say what it removed:\n%s", out)
+	}
+}
+
+// Execute the published POSIX instructions. The download shim serves only
+// local fixtures and the verifier models a trusted tool with a pinned identity.
+func agentInstallSnippet(t *testing.T, language string) string {
+	t.Helper()
+	doc, err := os.ReadFile("../../docs/agent-setup.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, found := strings.Cut(string(doc), "    ```"+language+"\n")
+	snippet, _, ended := strings.Cut(after, "    ```")
+	if !found || !ended {
+		t.Fatalf("missing %s installation instructions", language)
+	}
+	return snippet
+}
+
+func TestAgentInstall_VerifiesBeforeReplacingBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX instructions")
+	}
+	snippet := agentInstallSnippet(t, "sh")
+
+	for _, test := range []string{"no-verifier", "missing-signature", "invalid-signature", "corrupt-archive", "verified"} {
+		t.Run(test, func(t *testing.T) {
+			root := t.TempDir()
+			rel := filepath.Join(root, "release")
+			fakeRelease(t, rel)
+			shims := installerPath(t, "sh tar gzip awk uname mkdir mktemp install mv cp rm cat")
+			writeFile(t, filepath.Join(shims, "curl"), `#!/bin/sh
+test "$1 $2 $3 $4 $5" = "--proto =https --tlsv1.2 -fsSL -o" || exit 1
+case "$6" in
+/dev/null) printf '%s' https://github.com/shatim-ops/evo-cli/releases/tag/v9.9.9 ;;
+*) test "$7" = "https://github.com/shatim-ops/evo-cli/releases/download/v9.9.9/$6" && cp "$RELEASE/v9.9.9/$6" "$6" ;;
+esac
+`, 0o755)
+			if test != "no-verifier" {
+				writeFile(t, filepath.Join(shims, "cosign"), fixtureVerifier, 0o755)
+			}
+			if test != "missing-signature" {
+				bundle := "fixture"
+				if test == "invalid-signature" {
+					bundle = "untrusted"
+				}
+				writeFile(t, filepath.Join(rel, "v9.9.9", "checksums.txt.sigstore.json"), bundle, 0o644)
+			}
+			if test == "corrupt-archive" {
+				archive := "evo_9.9.9_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
+				writeFile(t, filepath.Join(rel, "v9.9.9", archive), "corrupt", 0o644)
+			}
+			dest := filepath.Join(root, "home", ".local", "bin")
+			writeFile(t, filepath.Join(dest, "evo"), "old", 0o755)
+			cmd := exec.Command("sh", "-c", snippet)
+			cmd.Env = []string{"PATH=" + shims, "HOME=" + filepath.Join(root, "home"), "TMPDIR=" + root, "RELEASE=" + rel}
+			out, err := cmd.CombinedOutput()
+			if (err == nil) != (test == "verified") {
+				t.Fatalf("exit %v: %s", err, out)
+			}
+			want := "old"
+			if test == "verified" {
+				want = fakeEvo
+			}
+			if b, err := os.ReadFile(filepath.Join(dest, "evo")); err != nil || string(b) != want {
+				t.Fatalf("installed evo: %q, %v", b, err)
+			}
+			_, err = os.Stat(filepath.Join(dest, "cloudru-vm"))
+			if test == "verified" && err != nil || test != "verified" && !os.IsNotExist(err) {
+				t.Fatalf("alias: %v", err)
+			}
+		})
+	}
+}
+
+func TestAgentInstall_WindowsSignedRelease(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows PowerShell instructions")
+	}
+	shell, err := exec.LookPath("powershell.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snippet := agentInstallSnippet(t, "powershell")
+	// Keep the existing PATH entry for this disposable install so the guide
+	// never needs to write the user's persistent PATH during this test.
+	setup := `
+$ErrorActionPreference = "Stop"
+$env:TEMP = $env:FIXTURE
+$env:LOCALAPPDATA = $env:FIXTURE
+$d = "$env:FIXTURE\Programs\evo"
+$env:PATH = "$env:FIXTURE;$d;$env:SystemRoot\System32"
+New-Item -ItemType Directory -Force $d | Out-Null
+Set-Content "$d\evo.exe" -Value "old"
+Set-Content "$env:FIXTURE\evo.exe" -Value "verified"
+$archive = "evo_9.9.9_windows_amd64.zip"
+Compress-Archive "$env:FIXTURE\evo.exe" "$env:FIXTURE\$archive"
+$sum = (Get-FileHash "$env:FIXTURE\$archive").Hash.ToLower()
+if ($env:SCENARIO -eq "corrupt-archive") { $sum = "0" * 64 }
+Set-Content "$env:FIXTURE\checksums.txt" "$sum  $archive"
+if ($env:SCENARIO -ne "missing-signature") { Set-Content "$env:FIXTURE\checksums.txt.sigstore.json" "fixture" }
+function Invoke-RestMethod($url) { if ($url -ne 'https://api.github.com/repos/shatim-ops/evo-cli/releases/latest') {throw "URL"}; @{tag_name="v9.9.9"} }
+function Invoke-WebRequest($url, $OutFile) {
+    $name = Split-Path -Leaf $OutFile
+    if ($url -ne "https://github.com/shatim-ops/evo-cli/releases/download/v9.9.9/$name") {throw "URL"}
+    Copy-Item -LiteralPath "$env:FIXTURE\$name" -Destination $OutFile
+}
+`
+	verifier := `@echo off
+if not "%~1"=="verify-blob" exit /b 1
+if not "%~2"=="--bundle" exit /b 1
+if not exist "%~3" exit /b 1
+if not "%~4"=="--certificate-identity" exit /b 1
+if not "%~5"=="https://github.com/shatim-ops/evo-cli/.github/workflows/release.yml@refs/tags/v9.9.9" exit /b 1
+if not "%~6"=="--certificate-oidc-issuer" exit /b 1
+if not "%~7"=="https://token.actions.githubusercontent.com" exit /b 1
+if not exist "%~8" exit /b 1
+if "%SCENARIO%"=="invalid-signature" exit /b 1
+exit /b 0
+`
+	for _, scenario := range []string{"no-verifier", "missing-signature", "invalid-signature", "corrupt-archive", "verified"} {
+		t.Run(scenario, func(t *testing.T) {
+			root := t.TempDir()
+			if scenario != "no-verifier" {
+				writeFile(t, filepath.Join(root, "cosign.cmd"), strings.ReplaceAll(verifier, "\n", "\r\n"), 0600)
+			}
+			script := filepath.Join(root, "test.ps1")
+			writeFile(t, script, setup+"\n"+snippet, 0600)
+			cmd := exec.Command(shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script)
+			cmd.Env = append(os.Environ(), "FIXTURE="+root, "SCENARIO="+scenario)
+			out, err := cmd.CombinedOutput()
+			if (err == nil) != (scenario == "verified") {
+				t.Fatalf("exit %v: %s", err, out)
+			}
+			want := "old"
+			if scenario == "verified" {
+				want = "verified"
+			}
+			got, err := os.ReadFile(filepath.Join(root, "Programs", "evo", "evo.exe"))
+			if err != nil || strings.TrimSpace(string(got)) != want {
+				t.Fatalf("installed binary: %q, %v", got, err)
+			}
+		})
 	}
 }
 

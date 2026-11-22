@@ -50,22 +50,75 @@ Gemini CLI, Codex) одну строку:
 
 Выполни `evo version`.
 
-- Печатает версию 1.9.0 или новее — переходи к шагу 2.
+- Печатает версию 1.9.0 или новее — используй уже установленный evo и переходи к шагу 2. Для этого шага cosign не требуется.
 - `evo` не найден или версия старше — установи его сам, сказав человеку,
-  что ставишь. Установщик скачивает последний стабильный выпуск, сверяет
-  sha256 архива (и подпись, если есть `cosign`) и кладёт бинарь в
-  `~/.local/bin`; прав администратора не нужно.
-  - Linux и macOS (с `EVO_ZSHRC=0` установщик не правит `~/.zshrc`: ставит
-    бинарь и файлы автодополнения evo и печатает строки для профиля — передай
-    их человеку):
-    `curl -fsSL https://raw.githubusercontent.com/shatim-ops/evo-cli/main/install.sh | EVO_ZSHRC=0 sh`
+  что ставишь. Для установки агентом нужен заранее установленный доверенный
+  cosign v3. Если его нет, остановись и попроси человека
+  установить cosign или самостоятельно установить evo по инструкции.
+  Проверь подпись списка сумм выпуска и SHA-256 архива перед распаковкой.
+  - Linux и macOS — выполни блок в локальной оболочке. Он ставит проверенные
+    бинарники в `~/.local/bin`. Настройки оболочки и автодополнение человек
+    может подключить отдельно по [инструкции установки](install.md).
+
+    ```sh
+    (
+      set -eu
+      command -v cosign >/dev/null || { echo 'Для установки нужен cosign v3' >&2; exit 1; }
+      fetch() { curl --proto '=https' --tlsv1.2 -fsSL "$@"; }
+      repo=https://github.com/shatim-ops/evo-cli
+      release=$(fetch -o /dev/null -w '%{url_effective}' "$repo/releases/latest")
+      tag=${release##*/}
+      case "$tag" in v[0-9]*) ;; *) exit 1 ;; esac
+      case "$(uname -s)" in Linux) os=linux ;; Darwin) os=darwin ;; *) exit 1 ;; esac
+      case "$(uname -m)" in x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;; *) exit 1 ;; esac
+      archive="evo_${tag#v}_${os}_${arch}.tar.gz"
+      base="$repo/releases/download/$tag"
+      tmp=$(mktemp -d)
+      trap 'rm -rf "$tmp"' EXIT
+      cd "$tmp"
+      for file in checksums.txt checksums.txt.sigstore.json "$archive"; do fetch -o "$file" "$base/$file"; done
+      cosign verify-blob --bundle checksums.txt.sigstore.json \
+        --certificate-identity "$repo/.github/workflows/release.yml@refs/tags/$tag" \
+        --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
+      want=$(awk -v file="$archive" '$2 == file {print $1}' checksums.txt)
+      if command -v sha256sum >/dev/null; then sum=$(sha256sum "$archive"); else sum=$(shasum -a 256 "$archive"); fi
+      [ "$want" = "${sum%% *}" ] || { echo 'sha256 mismatch' >&2; exit 1; }
+      tar -xzf "$archive" evo cloudru-vm
+      dest="$HOME/.local/bin"
+      mkdir -p "$dest"
+      for bin in evo cloudru-vm; do
+        staged=$(mktemp "$dest/.$bin.XXXXXX")
+        if install -m 0755 "$bin" "$staged" && mv -f "$staged" "$dest/$bin"; then :; else rm -f "$staged"; exit 1; fi
+      done
+    )
+    ```
   - Windows (PowerShell; для ARM — `$arch = "arm64"`):
 
     ```powershell
-    $v = (Invoke-RestMethod https://api.github.com/repos/shatim-ops/evo-cli/releases/latest).tag_name.TrimStart("v"); $arch = "amd64"; $dir = "$env:LOCALAPPDATA\Programs\evo"; $base = "https://github.com/shatim-ops/evo-cli/releases/download/v$v"; $zip = "evo_${v}_windows_$arch.zip"; $tmp = New-Item -ItemType Directory -Force "$env:TEMP\evo-$v"
-    Invoke-WebRequest "$base/$zip" -OutFile "$tmp\$zip"; Invoke-WebRequest "$base/checksums.txt" -OutFile "$tmp\checksums.txt"
-    $want = ((Select-String -Path "$tmp\checksums.txt" -Pattern $zip).Line -split '\s+')[0]; if ($want -ne (Get-FileHash "$tmp\$zip" -Algorithm SHA256).Hash.ToLower()) { throw "sha256 mismatch" }
-    Expand-Archive "$tmp\$zip" -DestinationPath $dir -Force
+    $ErrorActionPreference = "Stop"
+    $cosign = (Get-Command cosign -CommandType Application -ErrorAction Stop).Source
+    $repo = "https://github.com/shatim-ops/evo-cli"
+    $tag = (Invoke-RestMethod https://api.github.com/repos/shatim-ops/evo-cli/releases/latest).tag_name
+    $v = $tag.TrimStart("v")
+    $arch = "amd64"
+    $dir = "$env:LOCALAPPDATA\Programs\evo"
+    $base = "$repo/releases/download/$tag"
+    $zip = "evo_${v}_windows_$arch.zip"
+    $tmp = New-Item -ItemType Directory (Join-Path $env:TEMP ([guid]::NewGuid().ToString()))
+    try {
+      foreach ($file in @($zip, "checksums.txt", "checksums.txt.sigstore.json")) {
+        Invoke-WebRequest "$base/$file" -OutFile "$tmp\$file"
+      }
+      & $cosign verify-blob --bundle "$tmp\checksums.txt.sigstore.json" --certificate-identity "$repo/.github/workflows/release.yml@refs/tags/$tag" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$tmp\checksums.txt"
+      if ($LASTEXITCODE -ne 0) { throw "cosign verification failed" }
+      $entries = @(Select-String -Path "$tmp\checksums.txt" -Pattern ("^([0-9a-f]{64})  " + [regex]::Escape($zip) + "$"))
+      if ($entries.Count -ne 1) { throw "missing or duplicate archive checksum" }
+      $want = $entries[0].Matches[0].Groups[1].Value
+      if ($want -ne (Get-FileHash "$tmp\$zip" -Algorithm SHA256).Hash) { throw "sha256 mismatch" }
+      Expand-Archive "$tmp\$zip" -DestinationPath $dir -Force
+    } finally {
+      Remove-Item -LiteralPath $tmp.FullName -Recurse -Force
+    }
     if (($env:Path -split ';') -notcontains $dir) { [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User"); $env:Path += ";$dir" }
     ```
 

@@ -36,8 +36,13 @@ func TestBashCompletion_Readline(t *testing.T) {
 	generate("root", "__completeNoDesc", "v")
 	generate("vm", "__completeNoDesc", "vm", "")
 	test := `
+# Some minimal Bash builds omit programmable completion entirely.
+[[ $(type -t complete) == builtin && $(type -t compgen) == builtin ]] || exit 77
 touch_marker() { touch "$dir/executed"; }
-if [[ -n $2 ]]; then source "$2" || exit 1; fi
+if [[ -n $2 ]]; then
+    source "$2" || exit 1
+    declare -F _init_completion >/dev/null || declare -F _get_comp_words_by_ref >/dev/null || exit 77
+fi
 source "$1/script" && source "$1/script" || exit 2
 complete -p evo | grep -q __start_evo || exit 3
 dir=$1
@@ -54,7 +59,7 @@ evo() {
 run() {
     COMP_CWORD=$1; COMP_LINE=$2; COMP_POINT=$3; shift 3
     COMP_WORDS=("$@")
-    __start_evo
+    __start_evo "${COMP_WORDS[0]}" "${COMP_WORDS[COMP_CWORD]}" "${COMP_WORDS[COMP_CWORD-1]}"
 }
 has() {
     local item
@@ -113,6 +118,15 @@ for form in script descriptions; do
     done
 done
 `
+	locale := "C"
+	if locales, err := exec.Command("locale", "-a").Output(); err == nil {
+		for _, name := range strings.Fields(string(locales)) {
+			switch strings.ToLower(name) {
+			case "c.utf-8", "c.utf8", "en_us.utf-8", "en_us.utf8":
+				locale = name
+			}
+		}
+	}
 	loaders := []string{""}
 	for _, candidate := range []string{"/usr/share/bash-completion/bash_completion", "/etc/bash_completion", "/opt/homebrew/etc/profile.d/bash_completion.sh", "/usr/local/etc/profile.d/bash_completion.sh"} {
 		if _, err := os.Stat(candidate); err == nil {
@@ -121,10 +135,22 @@ done
 		}
 	}
 	for _, loader := range loaders {
-		cmd := exec.Command(bash, "--noprofile", "--norc", "-c", test, "bash", dir, loader)
-		cmd.Env = append(os.Environ(), "BASH_ENV=", "COMP_TYPE=9")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("%s loader %q: %v\n%s", bash, loader, err, strings.TrimSpace(string(out)))
+		name := "standalone"
+		if loader != "" {
+			name = "bash-completion"
 		}
+		t.Run(name, func(t *testing.T) {
+			// Model a fresh Bash session. Exported functions, shell options and
+			// the user's completion configuration must not supply our adapter.
+			cmd := exec.Command(bash, "--noprofile", "--norc", "-c", test, "bash", dir, loader)
+			cmd.Env = []string{"HOME=" + dir, "PATH=" + os.Getenv("PATH"), "LC_ALL=" + locale, "COMP_TYPE=9", "COMP_KEY=9"}
+			out, err := cmd.CombinedOutput()
+			if status, ok := err.(*exec.ExitError); ok && status.ExitCode() == 77 {
+				t.Skipf("programmable completion unavailable in %s with loader %q", bash, loader)
+			}
+			if err != nil {
+				t.Fatalf("%s loader %q: %v\n%s", bash, loader, err, strings.TrimSpace(string(out)))
+			}
+		})
 	}
 }
