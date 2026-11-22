@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/intent"
 )
 
 func TestUpgradeSubmissionRefusal(t *testing.T) {
@@ -181,5 +183,144 @@ func TestUpgradeRefusalHistory(t *testing.T) {
 	}
 	if code != 0 || json.Unmarshal([]byte(out), &h) != nil || len(h.Lines) != 1 || len(h.Live) != 0 || h.Lines[0].Tool != "k8s_upgrade" || h.Lines[0].Outcome != "error" || h.Lines[0].Reason != "API_ERROR" {
 		t.Fatal(code, out, stderr)
+	}
+}
+
+// Run this filesystem fault injection as an unprivileged Unix user. A
+// pre-existing writable lock file ensures the failure is at reservation
+// publication or offer unlink, after reading and matching the visible offer.
+func TestUpgradeLocalFailureBeforeSubmission(t *testing.T) {
+	for _, resource := range []upgradeResource{
+		{tool: "k8s_upgrade", verb: "upgrade", argument: "cluster_id", id: upgradeParityCluster},
+		{tool: "k8s_nodepool_upgrade", verb: "nodepool-upgrade", argument: "nodepool_id", id: upgradeParityPool},
+	} {
+		for _, fault := range []string{"reservation", "offer"} {
+			t.Run(resource.tool+"/"+fault, func(t *testing.T) {
+				w, _ := withJSONWorld(t)
+				r := resource
+				text, _ := r.call(t, "stdio", upgradeTo, false)
+				if r.previewID == "" || parseObject(text)["status"] != "confirmation_required" {
+					t.Fatal(text)
+				}
+				dir := filepath.Join(w.dir, "k8s-upgrades")
+				lock := filepath.Join(dir, fmt.Sprintf("%x.lock", sha256.Sum256([]byte(pvProject))))
+				f, err := os.OpenFile(lock, os.O_CREATE|os.O_RDWR, 0600)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = f.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if fault == "offer" {
+					dir = filepath.Join(dir, "previews")
+				}
+				if err := os.Chmod(dir, 0500); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { os.Chmod(dir, 0700) })
+				probe, err := os.CreateTemp(dir, "probe")
+				if err == nil {
+					probe.Close()
+					os.Remove(probe.Name())
+					t.Skip("directory permissions are not enforced for this identity; run unprivileged")
+				}
+				if !os.IsPermission(err) {
+					t.Fatalf("fault must be permission denied, got %v", err)
+				}
+				old := w.rt.extra
+				posts := 0
+				w.rt.extra = func(req *http.Request) (*http.Response, error) {
+					if req.Method == http.MethodPost {
+						posts++
+					}
+					return old(req)
+				}
+				text, failed := r.call(t, "stdio", upgradeTo, true)
+				if !failed || posts != 0 {
+					t.Fatal(posts, text)
+				}
+				if err := os.Chmod(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				code, out, stderr := runCLI(t, "", "history", "--json")
+				var h struct{ Lines, Live []json.RawMessage }
+				if code != 0 || json.Unmarshal([]byte(out), &h) != nil || len(h.Lines) != 0 || len(h.Live) != 0 {
+					t.Errorf("history after unsent change: %s %s", out, stderr)
+				}
+				// A fresh connection and a newly approved preview can submit once.
+				r.stdio = nil
+				r.previewID = ""
+				text, _ = r.call(t, "stdio", upgradeTo, false)
+				if parseObject(text)["status"] != "confirmation_required" || r.previewID == "" || posts != 0 {
+					t.Fatal("reservation blocked fresh preview", posts, text)
+				}
+				text, failed = r.call(t, "stdio", upgradeTo, true)
+				if failed || posts != 1 || parseObject(text)["status"] != "submitted" {
+					t.Fatal(posts, text)
+				}
+			})
+		}
+	}
+}
+
+// ENOTDIR is reproducible even under root. The upgrade's D92 record and
+// Sent bit must be visible together at the first resource POST.
+func TestUpgradeSentRecordBeforePost(t *testing.T) {
+	for _, r := range []upgradeResource{
+		{tool: "k8s_upgrade", argument: "cluster_id", id: upgradeParityCluster},
+		{tool: "k8s_nodepool_upgrade", argument: "nodepool_id", id: upgradeParityPool},
+	} {
+		t.Run(r.tool, func(t *testing.T) {
+			w, _ := withJSONWorld(t)
+			text, _ := r.call(t, "stdio", upgradeTo, false)
+			if r.previewID == "" {
+				t.Fatal(text)
+			}
+			dir := intent.Dir(w.dir)
+			if err := os.MkdirAll(filepath.Dir(dir), 0700); err != nil {
+				t.Fatal(err)
+			}
+			// A preview may already have caused a reader to create the empty directory.
+			if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(dir, []byte("blocked"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			old := w.rt.extra
+			posts := 0
+			w.rt.extra = func(req *http.Request) (*http.Response, error) {
+				if req.Method == http.MethodPost {
+					posts++
+					records := intent.Pending(dir)
+					if len(records) != 1 || !records[0].Sent || records[0].Tool != r.tool {
+						t.Fatalf("POST without sent receipt: %+v", records)
+					}
+				}
+				return old(req)
+			}
+			text, failed := r.call(t, "stdio", upgradeTo, true)
+			if !failed || posts != 0 {
+				t.Fatal(posts, text)
+			}
+			if err := os.Remove(dir); err != nil {
+				t.Fatal(err)
+			}
+			code, out, stderr := runCLI(t, "", "history", "--json")
+			var h struct{ Lines, Live []json.RawMessage }
+			if code != 0 || json.Unmarshal([]byte(out), &h) != nil || len(h.Lines) != 0 || len(h.Live) != 0 {
+				t.Fatal(out, stderr)
+			}
+			r.stdio = nil
+			r.previewID = ""
+			text, _ = r.call(t, "stdio", upgradeTo, false)
+			if r.previewID == "" || posts != 0 {
+				t.Fatal(text, posts)
+			}
+			text, failed = r.call(t, "stdio", upgradeTo, true)
+			if failed || posts != 1 || parseObject(text)["status"] != "submitted" {
+				t.Fatal(text, posts)
+			}
+		})
 	}
 }

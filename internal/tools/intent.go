@@ -54,6 +54,12 @@ func markDeleteUnsent(ctx context.Context, tool string) {
 // (intent.Settle), and the answer names it (namedKept). An intent that
 // cannot be written refuses the call before it goes out.
 func (r *Registry) beginIntent(ctx context.Context, name string, args map[string]any) (end func(answer string), err error) {
+	return r.openIntent(ctx, name, args, false)
+}
+
+// For the two upgrade submissions, the transport opens the record at
+// NoteWrite itself. Publish its Sent mark in the same file operation.
+func (r *Registry) openIntent(ctx context.Context, name string, args map[string]any, atSend bool) (end func(answer string), err error) {
 	if r.newEngine == nil {
 		return func(string) {}, nil
 	}
@@ -116,6 +122,10 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 		in.Zone = z
 	}
 	dir := intent.Dir(root)
+	if atSend {
+		in.Sent = true
+		in.Parties = r.partiesOf(ctx, name, args)
+	}
 	rec, err := intent.Open(dir, in)
 	if err != nil {
 		// The call would be refused for its own reason — no key, a

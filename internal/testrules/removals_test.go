@@ -27,6 +27,7 @@ import (
 var removals = map[string]directWrite{
 	"internal/tools/preview_args.go\tRegistry.planLbCreate": {1, "the declared state directory, fixed lb-previews directory, and SHA-256 of the current caller/session and optional stack job scope plus .json; ReadFileNoFollow reads this same file and the stored offer supplies no path"},
 	"internal/tools/gate.go\treserveUpgrade":                {1, "the local preview slot derived from a SHA-256 of the transport session; no path read from a file"},
+	"internal/tools/gate.go\trestoreUnsentUpgrade":          {1, "the fixed k8s-upgrades directory and SHA-256 of project, tool and resource ID plus .json; ReadFileNoFollow confirms this attempt's exact receipt under the project lock; no path comes from that receipt"},
 	"internal/intent/manual.go\tManualSnapshot.Apply":       {1, "the private staging directory os.MkdirTemp made in this call under the verified decision directory"},
 	"internal/auth/cache.go\tFileCache.Delete":              {1, "the token cache's own path, set by evo from the configuration directory"},
 	"internal/cli/login.go\twritableConfigDir":              {1, "the probe file os.CreateTemp made in this call"},
