@@ -283,29 +283,11 @@ func traceIn(file, text string, services map[string]bool) []traceFinding {
 // вперёд по публичному следу»), or turns it into a synthetic form; a count
 // that falls is lowered here.
 var publicTraceMisses = map[string]map[string]int{
-	".github/scripts/answers_catalogue_test.sh":         {"host": 1},
-	".github/scripts/cloud-live.sh":                     {"host": 1},
-	".github/scripts/redact_test.sh":                    {"host": 3},
-	".github/workflows/api-probe.yml":                   {"host": 4},
-	"docs/internal/archive/release-plan-1.2-1.8.md":     {"internal-path": 13},
-	"docs/internal/audits/blind-spots-1.5.md":           {"internal-path": 1},
-	"docs/internal/audits/full-1.8.md":                  {"internal-path": 2},
-	"docs/internal/audits/process-handoff.md":           {"internal-path": 6},
-	"docs/internal/audits/process-plan-1.7.md":          {"internal-path": 1},
-	"docs/internal/audits/process-test-strategy-1.6.md": {"internal-path": 1},
-	"docs/internal/audits/release-audit-1.8-ledger.md":  {"internal-path": 1},
-	"docs/internal/audits/runs-1.4.0-analysis.md":       {"internal-path": 1},
-	"docs/internal/dogfood-jira-template.md":            {"internal-path": 1},
-	"docs/internal/dogfood-protocol.md":                 {"internal-path": 1},
-	"docs/internal/feedback-triage.md":                  {"internal-path": 2},
-	"docs/internal/handoff/1.6.md":                      {"internal-path": 1},
-	"docs/internal/handoff/1.7.md":                      {"internal-path": 1},
-	"docs/internal/handoff/1.8.md":                      {"internal-path": 1},
-	"docs/internal/release-plan.md":                     {"internal-path": 14},
-	"docs/internal/risk/1.8.md":                         {"internal-path": 2},
-	"docs/internal/standalone/BACKLOG.md":               {"host": 2, "internal-path": 2},
-	"internal/httpretry/requestid_test.go":              {"host": 1},
-	"internal/workflows/probe_hosts_test.go":            {"host": 1},
+	".github/scripts/answers_catalogue_test.sh": {"host": 1},
+	".github/scripts/cloud-live.sh":             {"host": 1},
+	".github/scripts/redact_test.sh":            {"host": 3},
+	".github/workflows/api-probe.yml":           {"host": 4},
+	"internal/workflows/probe_hosts_test.go":    {"host": 1},
 }
 
 func TestPublicTrace_HEAD(t *testing.T) {
