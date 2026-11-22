@@ -419,12 +419,12 @@ func TestLbCreate_ZoneFromTargetGroup(t *testing.T) {
 
 	// Группа без ВМ и без региона в конфигурации — USAGE, ничего не создано.
 	f.targetVMs = ""
-	m, text, isErr := callNamed(t, r, "lb_create", with(map[string]any{"confirmed": true}))
+	m, text, _ = callNamed(t, r, "lb_create", with(map[string]any{"confirmed": true}))
 	if m["repeat_of"] == nil || f.postCount() != posts {
 		t.Fatalf("saved operation was not read before considering a new create: %s", text)
 	}
 	// A distinct create has no earlier submission to inspect.
-	m, text, isErr = callNamed(t, r, "lb_create", with(map[string]any{"name": "web-without-zone", "confirmed": true}))
+	m, text, isErr := callNamed(t, r, "lb_create", with(map[string]any{"name": "web-without-zone", "confirmed": true}))
 	if !isErr {
 		t.Errorf("no zone: accepted: %s", text)
 	}

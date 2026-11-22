@@ -24,11 +24,11 @@ evo version
 2. скачивает архив и `checksums.txt` нужного релиза;
 3. если в `PATH` есть [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/),
    проверяет подпись `checksums.txt` (identity — workflow `release.yml` этого
-   репозитория на теге релиза); без cosign пишет, что подпись не проверена;
+   репозитория на теге релиза); без cosign при ручном запуске пишет, что подпись не проверена. При установке по [инструкции для агента](agent-setup.md) проверка подписи обязательна;
 4. сверяет sha256 архива и кладёт бинарь в `~/.local/bin` (под root — в
    `/usr/local/bin`); если каталога нет в `PATH`, подскажет строку для профиля
    оболочки.
-5. ставит автодополнение по Tab туда, где оболочка находит его сама: fish —
+5. ставит автодополнение по Tab туда, где оболочка находит его сама: при установленном fish —
    `~/.config/fish/completions/evo.fish`, bash —
    `~/.local/share/bash-completion/completions/evo` (его подхватывает загрузчик
    bash-completion), zsh — каталог из `$fpath` в домашнем каталоге, если он
