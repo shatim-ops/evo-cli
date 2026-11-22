@@ -25,15 +25,20 @@ const (
 	unnamedPrice  = "цена"   // what is paid for: size, count, retention
 	unnamedWork   = "работа" // whether the resource works as meant
 	unnamedNoise  = "шум"    // a form of what the preview already says: an id of a named thing, a name evo makes
-	unnamedSecret = "секрет" // never in a preview: the test checks it is not there
 )
+
+// secretBodyFields names the payloads that must be sent but must never
+// appear in a preview, in plain text or in the API encoding (risk 294).
+var secretBodyFields = map[string]bool{
+	"secret_add_version payload": true,
+	"secret_create payload":      true,
+}
 
 // bodyUnnamed are the values the confirmed call sends the cloud that its
 // preview does not name — "tool path" with the class and why. The list
 // only shrinks: the preview of С4 («разработка», access first) names the
 // value and the line goes; a line whose value the preview names now, or
-// that is not sent any more, fails the test. Secret lines stay: the value
-// must not reach the preview.
+// that is not sent any more, fails the test.
 // Closes by 1.9, before rc.1 (owner's decision 13.11, #1590, question 19,
 // (c); release plan 1.9, «Просроченные убывающие списки»): what stays is an
 // exception declared with a reason «Риск · 1.9» accepted.
@@ -81,9 +86,6 @@ var bodyUnnamed = map[string]struct{ class, why string }{
 	"provision availability_zone_id": {unnamedNoise, "id зоны, которую превью называет по имени"},
 	"provision interface_id":         {unnamedNoise, "интерфейс созданной ВМ"},
 	"provision name":                 {unnamedNoise, "имя floating IP, которое evo даёт само"},
-
-	"secret_add_version payload": {unnamedSecret, "значение секрета; принято «Риском», 294"},
-	"secret_create payload":      {unnamedSecret, "значение секрета; принято «Риском», 294"},
 
 	"vpc_route_create nextHop.virtualMachine.interface.id":      {unnamedNoise, "интерфейс ВМ, которую превью называет по имени"},
 	"vpc_route_create nextHop.virtualMachine.virtualMachine.id": {unnamedNoise, "id ВМ, которую превью называет по имени"},
@@ -188,11 +190,15 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 				path, value := sv.path, sv.value
 				key := c.tool.Name + " " + path
 				last := path[strings.LastIndex(path, ".")+1:]
-				if d, ok := bodyUnnamed[key]; ok && d.class == unnamedSecret {
+				if secretBodyFields[key] {
 					seen[key] = true
 					// The API takes it base64: the preview has neither form.
-					plain, _ := base64.StdEncoding.DecodeString(value)
-					if strings.Contains(preview, value) || len(plain) > 0 && strings.Contains(preview, string(plain)) {
+					plain, err := base64.StdEncoding.DecodeString(value)
+					if err != nil || len(plain) == 0 {
+						bad = append(bad, key+": expected a non-empty base64 payload")
+						continue
+					}
+					if strings.Contains(preview, value) || strings.Contains(preview, string(plain)) {
 						bad = append(bad, key+": the secret value is in the preview")
 					}
 					continue
@@ -227,6 +233,11 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 			bad = append(bad, tl.Name+": a mutating tool without a case in parityArgs")
 		}
 	}
+	for key := range secretBodyFields {
+		if !seen[key] {
+			bad = append(bad, key+": secret payload never exercised")
+		}
+	}
 	for key, d := range bodyUnnamed {
 		switch {
 		case !seen[key]:
@@ -235,7 +246,7 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 			bad = append(bad, key+": a line without why")
 		}
 		switch d.class {
-		case unnamedAccess, unnamedPrice, unnamedWork, unnamedNoise, unnamedSecret:
+		case unnamedAccess, unnamedPrice, unnamedWork, unnamedNoise:
 		default:
 			bad = append(bad, fmt.Sprintf("%s: class %q", key, d.class))
 		}
