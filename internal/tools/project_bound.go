@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/shatim-ops/evo-cli/internal/dbaas"
+	"github.com/shatim-ops/evo-cli/internal/dns"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -373,6 +375,66 @@ func mapIDs(items []map[string]any) []string {
 	return out
 }
 
+// An addressable read used to reconcile an interrupted delete must identify
+// its target even when a proxy returns an unrelated or empty successful body.
+func identifiedCard(id string, m map[string]any, err error) (map[string]any, error) {
+	if err != nil {
+		return nil, err
+	}
+	if id == "" || stringArg(m, "id") != id {
+		return nil, stderrors.New(i18n.T("The service did not return the requested resource ID.", "Сервис не вернул запрошенный ID ресурса."))
+	}
+	return m, nil
+}
+
+func clusterOwnerCard(client func(*Registry, context.Context) (*dbaas.Client, *engine.Engine, error)) func(context.Context, *ownerCall, string) (map[string]any, error) {
+	return func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+		api, _, err := client(c.r, ctx)
+		if err != nil {
+			return nil, err
+		}
+		m, err := api.GetCluster(ctx, id)
+		if err != nil && notThere(err) && !dbaas.ConfirmedNotFound(err) {
+			return nil, unverifiedAbsence()
+		}
+		return identifiedCard(id, m, err)
+	}
+}
+
+func unverifiedAbsence() error {
+	return stderrors.New(i18n.T("The service did not establish that the resource is absent.", "Ответ сервиса не подтверждает отсутствие ресурса."))
+}
+
+// Public and private DNS have distinct address spaces. A refusal on either
+// one leaves absence unknown, but a matching card on either proves presence.
+func dnsOwnerCard(get func(*dns.Client, context.Context, string, string) (map[string]any, error)) func(context.Context, *ownerCall, string) (map[string]any, error) {
+	return func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+		api, err := c.r.dnsClient(ctx)
+		if err != nil {
+			return nil, err
+		}
+		var uncertain error
+		for _, vis := range []string{"public", "private"} {
+			m, err := get(api, ctx, vis, id)
+			if err == nil {
+				return identifiedCard(id, m, nil)
+			}
+			var ae *dns.APIError
+			if stderrors.As(err, &ae) && ae.Status == http.StatusNotFound && ae.Code == 5 {
+				continue
+			}
+			if notThere(err) {
+				err = unverifiedAbsence()
+			}
+			uncertain = err
+		}
+		if uncertain != nil {
+			return nil, uncertain
+		}
+		return nil, clierrors.New(clierrors.CodeNotFound, i18n.T("Both DNS APIs report the resource absent.", "Оба API DNS подтвердили отсутствие ресурса."), "")
+	}
+}
+
 var kindInterface = withCard(inProjectList("network interface", "interface_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 	items, err := projectInterfaces(ctx, eng)
 	if err != nil {
@@ -397,14 +459,14 @@ var kindInterface = withCard(inProjectList("network interface", "interface_list"
 })
 
 var (
-	kindVM = byName(inProjectList("VM", "vm_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	kindVM = withCard(byName(inProjectList("VM", "vm_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		vms, err := eng.Cloud.ListVMsInProject(ctx, eng.Config.ProjectID)
 		ids := make([]string, 0, len(vms))
 		for _, v := range vms {
 			ids = append(ids, v.ID)
 		}
 		return ids, err
-	})))
+	}))), vmOwnerCard)
 	// A backup's card names its project (project_id): the preview of its
 	// change names the project of a backup of another one, and evo doctor
 	// reads a cut delete by id (FB19I-20).
@@ -490,30 +552,30 @@ var (
 
 	// Kafka and Redis answer a cluster without its project
 	// (openapi-kafka.yaml, openapi-redis.yaml): the list of the project.
-	kindKafka = inProjectList("Kafka cluster", "kafka_list", func(ctx context.Context, c *ownerCall) ([]string, error) {
+	kindKafka = withCard(inProjectList("Kafka cluster", "kafka_list", func(ctx context.Context, c *ownerCall) ([]string, error) {
 		cli, _, err := c.r.kafkaClientEng(ctx)
 		if err != nil {
 			return nil, err
 		}
 		items, err := cli.ListClusters(ctx, kafkaQuery())
 		return mapIDs(items), err
-	})
-	kindRedis = inProjectList("Redis cluster", "redis_list", func(ctx context.Context, c *ownerCall) ([]string, error) {
+	}), clusterOwnerCard((*Registry).kafkaClientEng))
+	kindRedis = withCard(inProjectList("Redis cluster", "redis_list", func(ctx context.Context, c *ownerCall) ([]string, error) {
 		cli, _, err := c.r.redisClientEng(ctx)
 		if err != nil {
 			return nil, err
 		}
 		items, err := cli.ListClusters(ctx, url.Values{})
 		return mapIDs(items), err
-	})
+	}), clusterOwnerCard((*Registry).redisClientEng))
 
 	// A DNS zone: the project's public and private zones, as
 	// dnsZoneVisibility looks a zone up.
-	kindDNSZone = inProjectList("DNS zone", "dns_zones", dnsZoneIDs)
+	kindDNSZone = withCard(inProjectList("DNS zone", "dns_zones", dnsZoneIDs), dnsOwnerCard((*dns.Client).GetZone))
 	// A DNS record names its zone (publicZoneId, privateZoneId in
 	// dns/openapi.yaml), not its project: the zone must be the project's.
 	// The refusal names the record, not the zone of another project.
-	kindDNSRecord = &ownerKind{what: "DNS record", listTool: "dns_records",
+	kindDNSRecord = &ownerKind{card: dnsOwnerCard((*dns.Client).GetRecord), what: "DNS record", listTool: "dns_records",
 		check: func(ctx context.Context, c *ownerCall, k *ownerKind, id string) error {
 			zone, setup, err := dnsRecordZone(ctx, c, id)
 			if err != nil {

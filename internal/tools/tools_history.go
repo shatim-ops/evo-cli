@@ -422,7 +422,7 @@ func historyCardMatches(k *ownerKind, l history.Line, m map[string]any) bool {
 	case kindPG, kindRedis:
 		project := projectField(m)
 		return stringArg(m, "id") == l.ResourceID && project != "" && (l.ProjectID == "" || project == l.ProjectID)
-	case historyVMCard:
+	case kindVM:
 		return stringArg(m, "id") == l.ResourceID
 	default:
 		return true
@@ -492,7 +492,7 @@ func (r *redisHistoryRead) card(ctx context.Context, eng *engine.Engine, l histo
 	return m, false, nil
 }
 
-var historyVMCard = &ownerKind{card: func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+func vmOwnerCard(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
 	eng, err := c.engine(ctx)
 	if err != nil {
 		return nil, err
@@ -502,10 +502,10 @@ var historyVMCard = &ownerKind{card: func(ctx context.Context, c *ownerCall, id 
 		return nil, err
 	}
 	if vm == nil {
-		return nil, nil
+		return identifiedCard(id, nil, nil)
 	}
-	return map[string]any{"id": vm.ID, "state": vm.Status}, nil
-}}
+	return identifiedCard(id, map[string]any{"id": vm.ID, "state": vm.Status}, nil)
+}
 
 // cardOf is the kind of the resource tool makes or removes, as its delete
 // addresses it by id: its read by id tells whether the resource is there
@@ -519,7 +519,7 @@ func cardOf(tool string) *ownerKind {
 		return kindRedis
 	}
 	if del == "destroy" {
-		return historyVMCard
+		return kindVM
 	}
 	d, ok := deleteOf(del)
 	if !ok {
