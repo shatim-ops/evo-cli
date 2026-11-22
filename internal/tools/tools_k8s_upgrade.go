@@ -28,6 +28,9 @@ import (
 type upgradeReceipt struct {
 	Project, Subject, Tool, Resource, Parent, From, Target, Operation, Topology string
 	PreviewID                                                                   string `json:"preview_id,omitempty"`
+	// RejectionID in a receipt proves the latest submission was refused. In an
+	// offer it binds approval to the latest refusal observed during planning.
+	RejectionID string `json:"rejection_id,omitempty"`
 }
 
 type upgradeCard struct {
@@ -148,7 +151,13 @@ func verifyUpgradeParent(ctx context.Context, client *mk8s.Client, dir string, r
 	if err != nil || prior == nil {
 		return err
 	}
-	if prior.Project != parent.Project || prior.Tool != parent.Tool || prior.Resource != parent.Resource || prior.Target != r.Target || !isUUID(prior.Operation) {
+	if prior.Project != parent.Project || prior.Tool != parent.Tool || prior.Resource != parent.Resource {
+		return upgradeMismatch()
+	}
+	if prior.rejected() {
+		return nil // The parent card was checked against the target above.
+	}
+	if prior.Target != r.Target || !isUUID(prior.Operation) {
 		return upgradeMismatch()
 	}
 	op, err := client.GetOperation(ctx, prior.Operation)
@@ -166,6 +175,10 @@ func verifyUpgradeParent(ctx context.Context, client *mk8s.Client, dir string, r
 		return upgradeMismatch()
 	}
 	return nil
+}
+
+func (r upgradeReceipt) rejected() bool {
+	return r.Operation == "" && isUUID(r.RejectionID)
 }
 
 func (r upgradeReceipt) save(path string) error {
@@ -206,16 +219,17 @@ func upgradeResult(r upgradeReceipt, card upgradeCard, status string) map[string
 	}
 	switch status {
 	case "submitted", "upgrading", "version_unverified", "outcome_unknown":
-		idArg := "cluster_id"
+		idArg, read := "cluster_id", "k8s_get"
 		if r.Tool == "k8s_nodepool_upgrade" {
-			idArg = "nodepool_id"
+			idArg, read = "nodepool_id", "k8s_nodepool_get"
 		}
-		if r.Operation != "" {
-			nextStep(out, "k8s_operation", map[string]any{"operation_id": r.Operation})
+		if r.Operation == "" {
+			nextStep(out, read, map[string]any{idArg: r.Resource})
+			out["next"] = i18n.T("Read the current resource card in the same project.", "Прочитайте текущую карточку ресурса в том же проекте.")
 		} else {
-			nextStep(out, r.Tool, map[string]any{idArg: r.Resource, "version": r.Target})
+			nextStep(out, "k8s_operation", map[string]any{"operation_id": r.Operation})
+			out["next"] = i18n.T("Read this upgrade again to check its operation and the actual resource version.", "Повторите чтение этого обновления для проверки операции и фактической версии ресурса.")
 		}
-		out["next"] = i18n.T("Read this upgrade again to check its operation and the actual resource version.", "Повторите чтение этого обновления для проверки операции и фактической версии ресурса.")
 	}
 	return out
 }
@@ -265,7 +279,12 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 		if err != nil {
 			return card, nil, err
 		}
-		if prior != nil {
+		if prior != nil && prior.rejected() {
+			if prior.Project != r.Project || prior.Tool != tool || prior.Resource != r.Resource {
+				return card, nil, upgradeMismatch()
+			}
+			r.RejectionID = prior.RejectionID
+		} else if prior != nil {
 			if prior.Project != r.Project || prior.Resource != r.Resource || prior.Tool != tool || prior.Subject != subject || prior.Parent != card.parent || prior.Target == "" {
 				return card, nil, upgradeMismatch()
 			}
@@ -396,13 +415,14 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 			}
 		}
 		contextChanged := cardChanged || caller != nil && caller.upgradePreview != nil && *caller.upgradePreview != r
-		allowed, err := reserveUpgrade(offerPath, path, caller == nil, contextChanged, r, stringArg(args, "preview_id"), preview)
+		allowed, err := reserveUpgrade(ctx, offerPath, path, caller == nil, contextChanged, r, stringArg(args, "preview_id"), preview)
 		if err != nil {
 			return errResult(err), true
 		}
 		if !allowed {
 			return toJSON(preview), true
 		}
+		r.RejectionID = "" // This attempt is now reserved; no outcome is known.
 		var op *mk8s.Operation
 		if tool == "k8s_nodepool_upgrade" {
 			op, err = client.UpgradeNodePool(ctx, r.Resource, r.Target)
@@ -410,7 +430,7 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 			op, err = client.UpgradeCluster(ctx, r.Resource, r.Target)
 		}
 		if err != nil {
-			return errAnswer(err, upgradeResult(r, current, "outcome_unknown")), true
+			return r.submissionError(path, current, err)
 		}
 		if !isUUID(op.ID) || op.ResourceID != r.Resource {
 			return errAnswer(upgradeEvidenceError(), upgradeResult(r, current, "outcome_unknown")), true
@@ -428,7 +448,7 @@ func (s *Registry) planUpgrade(ctx context.Context, args map[string]any, tool, i
 
 // Reserving the cloud write and consuming a matching offer happen under the
 // same local lock. A different client cannot use another client's preview.
-func reserveUpgrade(offerPath, receiptPath string, mcpCall, contextChanged bool, r upgradeReceipt, suppliedID string, preview map[string]any) (bool, error) {
+func reserveUpgrade(ctx context.Context, offerPath, receiptPath string, mcpCall, contextChanged bool, r upgradeReceipt, suppliedID string, preview map[string]any) (bool, error) {
 	unlock, err := state.FileLock(offerPath+".lock", 5*time.Second)
 	if err != nil {
 		return false, err
@@ -447,6 +467,10 @@ func reserveUpgrade(offerPath, receiptPath string, mcpCall, contextChanged bool,
 		return false, r.offer(offerPath, mcpCall, preview)
 	}
 
+	if err := startPlacementIntent(ctx); err != nil {
+		return false, err
+	}
+	r.RejectionID = "" // An interrupted submission must remain unknown.
 	if err := r.save(receiptPath); err != nil {
 		return false, err
 	}

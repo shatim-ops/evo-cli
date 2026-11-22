@@ -22,6 +22,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/mk8s"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -158,6 +159,10 @@ func definiteRefusal(err error) bool {
 
 // apiStatus is the HTTP status of the API answer behind err, 0 without one.
 func apiStatus(err error) int {
+	var upgrade *mk8s.UpgradeHTTPError
+	if stderrors.As(err, &upgrade) {
+		return upgrade.Status
+	}
 	if st := provision.HTTPStatus(err); st != 0 {
 		return st
 	}

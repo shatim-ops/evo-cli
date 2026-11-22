@@ -5,8 +5,13 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -73,5 +78,108 @@ func TestUpgradeSubmissionRefusal(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestUpgradeLegacyUncertainReceipt(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	dir := filepath.Join(w.dir, "k8s-upgrades")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	key := sha256.Sum256([]byte(pvProject + "\x00k8s_upgrade\x00" + upgradeParityCluster))
+	// The pre-fix format cannot distinguish rejection from a lost reply.
+	legacy := map[string]string{"Project": pvProject, "Subject": "parity-test-actor", "Tool": "k8s_upgrade", "Resource": upgradeParityCluster, "From": upgradeFrom, "Target": upgradeTo, "Operation": ""}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, fmt.Sprintf("%x.json", key))
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r := upgradeResource{tool: "k8s_upgrade", verb: "upgrade", argument: "cluster_id", id: upgradeParityCluster}
+	for _, surface := range []string{"stdio", "CLI"} {
+		text, failed := r.call(t, surface, upgradeTo, true)
+		if !failed || len(w.rt.takeWrites()) != 0 {
+			t.Fatal(surface, text)
+		}
+		if surface == "stdio" {
+			answer := parseObject(text)
+			args, _ := answer["next_args"].(map[string]any)
+			if answer["status"] != "outcome_unknown" || answer["next_tool"] != "k8s_get" || args["cluster_id"] != r.id || len(args) != 1 {
+				t.Fatal(text)
+			}
+		}
+	}
+	saved, err := os.ReadFile(path)
+	if err != nil || string(saved) != string(data) {
+		t.Fatal("legacy receipt changed", err)
+	}
+}
+
+func TestUpgradeCLIRecoveryAndReturnedIDs(t *testing.T) {
+	for _, surface := range []string{"CLI", "stdio"} {
+		t.Run(surface, func(t *testing.T) {
+			w, _ := withJSONWorld(t)
+			r := upgradeResource{tool: "k8s_nodepool_upgrade", verb: "nodepool-upgrade", argument: "nodepool_id", id: upgradeParityPool}
+			old := w.rt.extra
+			posts := 0
+			w.rt.extra = func(req *http.Request) (*http.Response, error) {
+				if req.Method == http.MethodPost && req.URL.Path == "/v3/nodePools/"+r.id+":upgrade" {
+					posts++
+					if posts == 1 {
+						return contractRT{status: 409, body: `{"message":"another upgrade is in progress"}`}.RoundTrip(req)
+					}
+				}
+				return old(req)
+			}
+			if surface == "stdio" {
+				r.call(t, surface, upgradeTo, false)
+			}
+			text, failed := r.call(t, surface, upgradeTo, true)
+			if !failed || posts != 1 {
+				t.Fatal(posts, text)
+			}
+			if surface == "stdio" {
+				r.call(t, surface, upgradeTo, false)
+			}
+			text, failed = r.call(t, surface, upgradeTo, true)
+			answer := parseObject(text)
+			marks, _ := answer["_untrusted"].([]any)
+			if failed || posts != 2 || answer["operation_id"] != upgradePoolOp || answer["cluster_id"] != upgradeParityParent || !slices.Contains(marks, "operation_id") || !slices.Contains(marks, "cluster_id") || !slices.Contains(marks, "next_args") {
+				t.Fatal(posts, text)
+			}
+		})
+	}
+}
+
+func TestUpgradeRefusalHistory(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	old := w.rt.extra
+	posts := 0
+	w.rt.extra = func(req *http.Request) (*http.Response, error) {
+		if req.Method == http.MethodPost && req.URL.Path == "/v3/clusters/"+upgradeParityCluster+":upgrade" {
+			posts++
+			return contractRT{status: 409, body: `{"message":"resource busy"}`}.RoundTrip(req)
+		}
+		return old(req)
+	}
+	r := upgradeResource{tool: "k8s_upgrade", argument: "cluster_id", id: upgradeParityCluster}
+	r.call(t, "stdio", upgradeTo, false)
+	oldID := r.previewID
+	r.call(t, "stdio", upgradeTo, true)
+	r.previewID = oldID
+	text, _ := r.call(t, "stdio", upgradeTo, true)
+	if parseObject(text)["status"] != "confirmation_required" || posts != 1 {
+		t.Fatal(posts, text)
+	}
+	code, out, stderr := runCLI(t, "", "history", "--json")
+	var h struct {
+		Lines []struct{ Tool, Outcome, Reason string }
+		Live  []json.RawMessage
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &h) != nil || len(h.Lines) != 1 || len(h.Live) != 0 || h.Lines[0].Tool != "k8s_upgrade" || h.Lines[0].Outcome != "error" || h.Lines[0].Reason != "API_ERROR" {
+		t.Fatal(code, out, stderr)
 	}
 }
