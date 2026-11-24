@@ -21,6 +21,8 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/secretsent"
+
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const (
@@ -202,7 +204,7 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 
 	// Try paginated response first, then plain array.
 	var page paginatedResponse[AvailabilityZone]
-	if err := json.Unmarshal(body, &page); err == nil && len(page.Items) > 0 {
+	if err := json.Unmarshal(body, &page); err == nil && page.Items != nil {
 		result := make([]*AvailabilityZone, len(page.Items))
 		for i := range page.Items {
 			result[i] = &page.Items[i]
@@ -210,7 +212,7 @@ func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*Availabi
 		return result, nil
 	}
 
-	var zones []AvailabilityZone
+	var zones pager.Rows[AvailabilityZone]
 	if err := json.Unmarshal(body, &zones); err == nil {
 		result := make([]*AvailabilityZone, len(zones))
 		for i := range zones {
@@ -423,10 +425,30 @@ func (a *CloudRuAdapter) firstBackoff() time.Duration {
 // them.
 var computeRetry = httpretry.Policy{DropMethods: []string{http.MethodDelete}, ReadStatuses: []int{http.StatusInternalServerError}, BackoffOnly: true}
 
+type destroyRequestKey struct{}
+
+// DestroyRequests keeps the individual deletes of a VM, address and rules
+// from being replayed after a lost response during a destroy operation.
+func DestroyRequests(ctx context.Context) context.Context {
+	return context.WithValue(ctx, destroyRequestKey{}, true)
+}
+
+// IsDestroyRequest identifies the requests covered by DestroyRequests.
+func IsDestroyRequest(ctx context.Context) bool {
+	return ctx.Value(destroyRequestKey{}) == true
+}
+
 // doWithRetry sends one request through httpretry with computeRetry — the
 // one retry loop of evo (process audit 1.2.1, 6.1) — and turns the final
 // answer into evo's errors.
 func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
+	return a.doWithPolicy(ctx, method, path, body, computeRetry)
+}
+
+func (a *CloudRuAdapter) doWithPolicy(ctx context.Context, method, path string, body []byte, policy httpretry.Policy) (*http.Response, error) {
+	if method == http.MethodDelete && IsDestroyRequest(ctx) {
+		policy.DropMethods = nil
+	}
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
@@ -441,7 +463,7 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 	}
 
 	client := *a.client
-	client.Transport = &httpretry.Transport{Base: a.client.Transport, Backoff: a.firstBackoff(), Policy: computeRetry}
+	client.Transport = &httpretry.Transport{Base: a.client.Transport, Backoff: a.firstBackoff(), Policy: policy}
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {

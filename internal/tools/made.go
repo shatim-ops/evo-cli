@@ -74,20 +74,20 @@ func madeAnswer(ctx context.Context, eng *engine.Engine, res map[string]any, m m
 	// #1922).
 	listed := false
 	last, _, _, reads, err := waitState(ctx, eng, madeLimit,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			items, err := m.read(ctx)
 			if err != nil {
 				// A read that failed is no state: the wait reads again.
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			listed = false
 			for _, it := range items {
 				if iid, _ := it["id"].(string); iid == id {
 					item, listed = it, true
-					return madeState(it), true, nil
+					return madeState(it), waitObserved, nil
 				}
 			}
-			return "", false, nil
+			return "", waitNotListed, nil
 		},
 		func(st string) string {
 			return i18n.Tf("%s %s: %s, waiting until it is made…", "%s %s: %s, жду завершения создания…",

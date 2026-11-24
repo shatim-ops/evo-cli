@@ -157,6 +157,7 @@ func apiError(status int, body []byte) error {
 // without that field is one page.
 func (c *Client) getList(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
 	var items []map[string]any
+	var evidence pager.EvidencePages
 	err := pager.All("dns: "+field, func(token string) (string, error) {
 		q := url.Values{}
 		for k, v := range query {
@@ -172,13 +173,21 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 		if status < 200 || status >= 300 {
 			return "", apiError(status, data)
 		}
-		var out map[string]json.RawMessage
-		if err := json.Unmarshal(data, &out); err != nil {
+		page, out, err := pager.ObjectPage(data, field)
+		if err != nil {
 			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 		}
-		var page []map[string]any
-		if raw, ok := out[field]; ok {
-			_ = json.Unmarshal(raw, &page)
+		if field == "records" && pager.IsReconciliation(ctx) {
+			visibility := "public"
+			if query.Has(ZoneIDParam("private")) {
+				visibility = "private"
+			}
+			parent := ZoneIDParam(visibility)
+			id := query.Get(parent)
+			scope := map[string]string{"projectId": c.projectID, "project_id": c.projectID, parent: id, visibility + "ZoneId": id}
+			if err := evidence.Check(out, page, scope, "name", "type"); err != nil {
+				return "", err
+			}
 		}
 		items = append(items, page...)
 		var next string

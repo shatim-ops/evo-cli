@@ -182,10 +182,10 @@ func (c *Client) List(ctx context.Context) ([]map[string]any, error) {
 			return "", apiError(st, data)
 		}
 		var r struct {
-			Data          []map[string]any `json:"data"`
-			NextPageToken string           `json:"nextPageToken"`
+			Data          pager.Rows[map[string]any] `json:"data"`
+			NextPageToken string                     `json:"nextPageToken"`
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
+		if err := pager.DecodePage(data, &r); err != nil {
 			return "", fmt.Errorf(i18n.T("parse containers: %w", "разбор контейнеров: %w"), err)
 		}
 		all = append(all, r.Data...)

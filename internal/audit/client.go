@@ -29,6 +29,8 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://audit.api.cloud.ru"
@@ -160,19 +162,20 @@ func (c *Client) List(ctx context.Context, opts ListOptions) (*EventPage, error)
 	if status < 200 || status >= 300 {
 		return nil, apiError(status, data)
 	}
-	page := &EventPage{}
-	// Tolerate {events:[…],nextPageToken} or a bare array.
-	trimmed := strings.TrimSpace(string(data))
-	if strings.HasPrefix(trimmed, "[") {
-		_ = json.Unmarshal(data, &page.Events)
-		return page, nil
+	var wire struct {
+		Events        pager.Rows[map[string]any] `json:"events"`
+		Logs          pager.Rows[map[string]any] `json:"logs"`
+		NextPageToken string                     `json:"nextPageToken"`
 	}
-	if err := json.Unmarshal(data, page); err != nil {
+	if strings.HasPrefix(strings.TrimSpace(string(data)), "[") {
+		if err := json.Unmarshal(data, &wire.Events); err != nil {
+			return nil, err
+		}
+	} else if err := pager.DecodePage(data, &wire); err != nil {
 		return nil, fmt.Errorf(i18n.T("parse audit events: %w", "разбор событий аудита: %w"), err)
 	}
-	if len(page.Events) == 0 && len(page.Logs) > 0 {
-		page.Events = page.Logs
+	if len(wire.Events) == 0 && len(wire.Logs) > 0 {
+		wire.Events = wire.Logs
 	}
-	page.Logs = nil
-	return page, nil
+	return &EventPage{Events: wire.Events, NextPageToken: wire.NextPageToken}, nil
 }

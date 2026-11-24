@@ -155,7 +155,14 @@ func TestPgCreate_InterruptedRecordClosesByNameWithoutAnID(t *testing.T) {
 // list) and closes the record by the name, naming it (FB19I-24; «Риск»,
 // 191, У2). A record whose name the list does not have stays.
 func TestDoctor_ClosesInterruptedPgDbCreateByName(t *testing.T) {
-	r, dir := targetRegistryWith(t, &disksCloud{}, noKey)
+	stubDoctorIdentity(t)
+	cfg := provisionCfg
+	cfg.ServiceAccountID = "x"
+	r, dir := targetRegistryWith(t, &disksCloud{}, cfg)
+	eng, err := r.newEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
@@ -170,8 +177,8 @@ func TestDoctor_ClosesInterruptedPgDbCreateByName(t *testing.T) {
 	}
 	cluster := "cluster_id=00000000-0000-4000-8000-0000000000e1"
 	for _, in := range []intent.Intent{
-		{Tool: "pg_db_create", Name: "made", Target: cluster, ProjectID: "p"},
-		{Tool: "pg_db_create", Name: "not-yet", Target: cluster, ProjectID: "p"},
+		{Tool: "pg_db_create", Name: "made", Target: cluster, ProjectID: eng.Config.ProjectID, Key: eng.Maker()},
+		{Tool: "pg_db_create", Name: "not-yet", Target: cluster, ProjectID: eng.Config.ProjectID, Key: eng.Maker()},
 	} {
 		if _, err := intent.Begin(intent.Dir(dir), in); err != nil {
 			t.Fatal(err)

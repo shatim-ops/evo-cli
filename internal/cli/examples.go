@@ -257,6 +257,7 @@ var commandExamples = map[string]string{
   evo image create my-product-1.0 --disk-id <disk-id> --display-name 'My product 1.0' --min-disk 20 --yes`,
 	"evo image delete": `  evo image delete <image-id> --dry-run
   evo image delete <image-id> --yes`,
+	"evo vpc security-groups": `  evo vpc sg --rules`,
 	"evo vpc open-ports": `  evo vpc open-ports SSH-access_ru.AZ-2 --port 80 --port 443 --dry-run
   evo vpc open-ports SSH-access_ru.AZ-2 --port 80,443 --yes
   evo vpc open-ports <security-group-id> --port 53 --protocol udp --cidr 10.0.0.0/8 --yes`,

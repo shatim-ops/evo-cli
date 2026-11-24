@@ -179,11 +179,20 @@ func (c *disksCloud) ListDisks(context.Context, string) ([]map[string]any, error
 // list of what each intent names and closes the one whose outcome it shows
 // — a create whose resource is listed by its name; any other stays, with
 // what the list said. A delete addressed by id is not read in the list of
-// the call's project (R-82): a disk has no read by id evo can close it on,
-// so its record stays until the same delete settles it.
+// the call's project (R-82): a disk is read by id (disk_get, 110-09), and
+// with no key named by the record or the run the read does not close it
+// (checkByID): its record stays until a check with the key or the same
+// delete settles it.
 func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 	cloud := &disksCloud{}
-	r, dir := targetRegistryWith(t, cloud, noKey)
+	stubDoctorIdentity(t)
+	cfg := provisionCfg
+	cfg.ServiceAccountID = "x"
+	r, dir := targetRegistryWith(t, cloud, cfg)
+	eng, err := r.newEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 	oldIAM, oldCompute := auth.IAMEndpoint, ComputeBaseURL
@@ -195,8 +204,8 @@ func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	begin(intent.Intent{Tool: "disk_create", Name: "made"})
-	begin(intent.Intent{Tool: "disk_create", Name: "not-yet"})
+	begin(intent.Intent{Tool: "disk_create", Key: eng.Maker(), ProjectID: eng.Config.ProjectID, Name: "made"})
+	begin(intent.Intent{Tool: "disk_create", Key: eng.Maker(), ProjectID: eng.Config.ProjectID, Name: "not-yet"})
 	begin(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-gone"})
 	begin(intent.Intent{Tool: "disk_delete", Target: "disk_id=d-still"})
 	cloud.disks = []map[string]any{{"id": "d-made", "name": "made"}, {"id": "d-still", "name": "still"}}
@@ -211,7 +220,7 @@ func TestDoctor_ClosesAnIntentTheListAnswers(t *testing.T) {
 	}
 	// The record's values are quoted in doctor's words (FB180-2); JSON
 	// escapes the quotes.
-	for _, want := range []string{"the create took effect", `has no \"not-yet\" yet`, "no read by id"} {
+	for _, want := range []string{"the create took effect", `has no \"not-yet\" yet`, "names no key"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("doctor does not say %q:\n%s", want, text)
 		}

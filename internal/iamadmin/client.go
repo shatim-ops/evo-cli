@@ -79,7 +79,10 @@ func (c *Client) Permissions(ctx context.Context, resourceID, subjectID string) 
 	err := c.list(ctx, "permissions", "/api/v3/permissions", q, "permissions", func(m map[string]any) {
 		out = append(out, permissionOf(m))
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // AccessKey is an access key of a service account, without its secret:
@@ -99,6 +102,9 @@ func (c *Client) AccessKeys(ctx context.Context, serviceAccountID string) ([]Acc
 		return nil, err
 	}
 	var out []AccessKey
+	if err := pager.CheckObjectRows(m, "accessKeys", "access_keys"); err != nil {
+		return nil, err
+	}
 	for _, x := range items(m, "accessKeys") {
 		out = append(out, AccessKey{ID: str(x, "id"), KeyID: str(x, "keyId"), ExpiredAt: str(x, "expiredAt")})
 	}
@@ -155,6 +161,9 @@ func (c *Client) list(ctx context.Context, what, path string, q url.Values, key 
 		}
 		var m map[string]any
 		if err := c.do(ctx, path, pq, &m); err != nil {
+			return "", err
+		}
+		if err := pager.CheckObjectRows(m, key, snake(key)); err != nil {
 			return "", err
 		}
 		for _, x := range items(m, key) {

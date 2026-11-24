@@ -203,7 +203,13 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 		return nil, err
 	}
 	var card map[string]any
-	read := func(ctx context.Context) (map[string]any, error) { return api.GetBackup(ctx, id) }
+	read := func(ctx context.Context) (map[string]any, error) {
+		got, err := api.GetBackup(ctx, id)
+		if err == nil && got["id"] != id {
+			return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The backup response did not identify the requested backup.", "Ответ сервиса не подтвердил ID запрошенной резервной копии."), "")
+		}
+		return got, err
+	}
 	p := s.deletePlan(tool,
 		"backup_delete permanently deletes backup %s: what it holds cannot be restored after.",
 		"backup_delete безвозвратно удаляет резервную копию %s: восстановить из неё после этого нельзя.",
@@ -212,10 +218,34 @@ func (s *Registry) planBackupDelete(ctx context.Context, args map[string]any) (*
 			return card, err
 		},
 		func(ctx context.Context) (string, bool) {
-			if err := api.DeleteBackup(ctx, id); err != nil {
-				return backupDeleteRefused(ctx, tool, id, args, err, s, read)
+			sendCtx, unsent := deleteConnection(ctx, "backup_delete")
+			ident := map[string]any{"backup_id": id}
+			if err := api.DeleteBackup(sendCtx, id); err != nil {
+				if unsent(err) {
+					return unsentDeleteAnswer(err)
+				}
+				if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
+					return backupDeleteRefused(ctx, tool, id, args, err, s, read)
+				}
+				// Reconcile the one write against the backup read before consent.
+				observed, checkErr := read(ctx)
+				if checkErr != nil && isGone(checkErr) {
+					return toJSON(map[string]any{"status": "deleted", "backup_id": id, "message": deleteObservation()}), false
+				}
+				if checkErr != nil || observed["id"] != id || observed["state"] != "deleting" {
+					fields := backupGetNext(id)
+					message := i18n.T("No delete reply was received. The follow-up read did not confirm deletion.", "Ответ на удаление не получен. Повторное чтение не подтвердило удаление.")
+					if checkErr != nil {
+						reason := clierrors.Reason(checkErr)
+						fields["check_reason"] = reason
+						message = i18n.Tf("No delete reply was received. The follow-up read failed (%s), so the outcome is unknown.", "Ответ на удаление не получен. Проверка завершилась ошибкой (%s), поэтому исход удаления неизвестен.", reason)
+					}
+					return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message,
+						i18n.T("Check the backup with backup_get before retrying.", "Перед повтором проверьте копию через evo backup get."), err), fields), true
+				}
+				ident["message"] = i18n.T("The backup was observed in the deleting state. The service did not acknowledge this delete request.", "При проверке копия находилась в состоянии удаления. Ответ сервиса на запрос удаления не получен.")
 			}
-			return deleteOutcome(ctx, args, goneWatch(tool, id, map[string]any{"backup_id": id}, "", "backup_get", read))
+			return deleteOutcome(ctx, args, goneWatch(tool, id, ident, "", "backup_get", read))
 		})
 	if p.Execute == nil {
 		return p, nil
@@ -599,19 +629,19 @@ func (s *Registry) backupCreated(ctx context.Context, eng *engine.Engine, api pr
 	// (waitReads, #2216; #2338).
 	var reads *waitReads
 	if boolArg(args, "wait", true) && state != "created" {
-		read := func(ctx context.Context) (string, bool, error) {
+		read := func(ctx context.Context) (string, waitObservation, error) {
 			cur, err := api.GetBackup(ctx, id)
 			if err != nil {
 				// Only a backup that is gone ends the wait: a failed read
 				// (a 5xx, the network) is read again (the audit, С5).
 				if isGone(err) {
-					return "", false, err
+					return "", waitReadFailed, err
 				}
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			st, _ := cur["state"].(string)
 			b = cur
-			return st, true, nil
+			return st, waitObserved, nil
 		}
 		waiting := func(st string) string {
 			return i18n.Tf("backup %s: %s", "копия %s: %s", id, quoteCloud(st))
@@ -869,10 +899,10 @@ var backupRestoreWait = diskReadyTimeout
 // disk not found then may still come and be billed.
 func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args map[string]any, list func(context.Context) ([]map[string]any, error), backupID, name string, asked time.Time, sent error, wait bool) (string, bool) {
 	var found, before []map[string]any
-	read := func(ctx context.Context) (string, bool, error) {
+	read := func(ctx context.Context) (string, waitObservation, error) {
 		items, err := list(ctx)
 		if err != nil {
-			return "", false, nil
+			return "", waitReadFailed, nil
 		}
 		found, before = found[:0], before[:0]
 		for _, d := range items {
@@ -889,11 +919,14 @@ func (s *Registry) backupRestored(ctx context.Context, eng *engine.Engine, args 
 			}
 			found = append(found, d)
 		}
-		if len(found) != 1 {
-			return "", len(found) > 1, nil
+		if len(found) == 0 {
+			return "", waitNotListed, nil
+		}
+		if len(found) > 1 {
+			return "", waitObserved, nil
 		}
 		st, _ := found[0]["state"].(string)
-		return st, true, nil
+		return st, waitObserved, nil
 	}
 	waiting := func(st string) string { return i18n.Tf("disk %s: %s", "диск %s: %s", name, quoteCloud(st)) }
 	announced := false

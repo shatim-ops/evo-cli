@@ -163,7 +163,7 @@ func (r *Registry) boundToProjects(t Tool, next Handler) Handler {
 		if !r.projectBound {
 			return next(ctx, args)
 		}
-		c := &ownerCall{r: r, args: args, group: t.Group}
+		c := &ownerCall{r: r, args: args, group: t.Group, tool: t.Name}
 		for _, a := range checks {
 			for _, id := range a.values(args) {
 				if err := a.kind.check(ctx, c, a.kind, id); err != nil {
@@ -185,6 +185,7 @@ type ownerCall struct {
 	r     *Registry
 	args  map[string]any
 	group string
+	tool  string
 	eng   *engine.Engine
 }
 
@@ -307,6 +308,12 @@ func byProjectField(what, listTool string, get func(ctx context.Context, c *owne
 // inProjectList is a kind whose answer by id names no project: the list of
 // the call's project (admitted by the factory when its engine was built)
 // must hold the id.
+// withCard is k that reads its resource by id with card.
+func withCard(k *ownerKind, card func(ctx context.Context, c *ownerCall, id string) (map[string]any, error)) *ownerKind {
+	k.card = card
+	return k
+}
+
 func inProjectList(what, listTool string, list func(ctx context.Context, c *ownerCall) ([]string, error)) *ownerKind {
 	k := &ownerKind{what: what, listTool: listTool}
 	// held: the call's project holds id (a name is the handler's to find
@@ -364,6 +371,29 @@ func mapIDs(items []map[string]any) []string {
 	return out
 }
 
+var kindInterface = withCard(inProjectList("network interface", "interface_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	items, err := projectInterfaces(ctx, eng)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, len(items))
+	for i, nic := range items {
+		ids[i] = nic.ID
+	}
+	return ids, nil
+})), func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+	eng, err := c.engine(ctx)
+	if err != nil {
+		return nil, err
+	}
+	nic, err := eng.Cloud.GetInterface(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// Doctor and history use the actual resource card to establish existence.
+	return map[string]any{"id": nic.ID, "name": nic.Name, "state": nic.State}, nil
+})
+
 var (
 	kindVM = byName(inProjectList("VM", "vm_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		vms, err := eng.Cloud.ListVMsInProject(ctx, eng.Config.ProjectID)
@@ -387,10 +417,33 @@ var (
 		}
 		return api.GetBackup(ctx, id)
 	})
-	kindDisk = inProjectList("disk", "disk_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	// A disk by id: disk_get, and evo doctor checks a cut disk_delete with
+	// it (FB19I-20).
+	kindDisk = withCard(inProjectList("disk", "disk_list", func(ctx context.Context, c *ownerCall) ([]string, error) {
+		eng, err := c.engine(ctx)
+		if err != nil {
+			return nil, err
+		}
 		disks, err := eng.Cloud.ListDisks(ctx, eng.Config.ProjectID)
-		return mapIDs(disks), err
-	}))
+		if err != nil {
+			return nil, err
+		}
+		if c.tool == "disk_delete" {
+			id := stringArg(c.args, "disk_id")
+			for _, disk := range disks {
+				if disk["id"] == id && conflictingDiskProject(disk, eng.Config.ProjectID) {
+					return nil, nil
+				}
+			}
+		}
+		return mapIDs(disks), nil
+	}), func(ctx context.Context, c *ownerCall, id string) (map[string]any, error) {
+		eng, err := c.engine(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return eng.Cloud.GetDisk(ctx, id)
+	})
 	kindFIP = inProjectList("floating IP", "list_floating_ips", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		fips, err := eng.Cloud.ListFloatingIPs(ctx, eng.Config.ProjectID)
 		ids := make([]string, 0, len(fips))
@@ -400,7 +453,7 @@ var (
 		return ids, err
 	}))
 	kindNAT = inProjectList("SNAT gateway", "snat_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
-		gws, err := eng.Cloud.ListNATGateways(ctx, eng.Config.ProjectID)
+		gws, err := provision.NATDeleteInventory(ctx, eng.Cloud, eng.Config.ProjectID)
 		return mapIDs(gws), err
 	}))
 	kindSG = inProjectList("security group", "list_security_groups", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
@@ -411,14 +464,27 @@ var (
 		}
 		return ids, err
 	}))
-	kindSubnet = inProjectList("subnet", "list_subnets", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
+	kindSubnet = inProjectList("subnet", "list_subnets", func(ctx context.Context, c *ownerCall) ([]string, error) {
+		eng, err := c.engine(ctx)
+		if err != nil {
+			return nil, err
+		}
 		subs, err := eng.Cloud.ListSubnets(ctx, eng.Config.ProjectID)
+		if err != nil {
+			return nil, err
+		}
 		ids := make([]string, 0, len(subs))
 		for _, sn := range subs {
+			if sn == nil {
+				continue
+			}
+			if c.tool == "subnet_delete" && sn.ID == stringArg(c.args, "subnet_id") && sn.ProjectID != "" && sn.ProjectID != eng.Config.ProjectID {
+				return nil, nil
+			}
 			ids = append(ids, sn.ID)
 		}
-		return ids, err
-	}))
+		return ids, nil
+	})
 
 	// Kafka and Redis answer a cluster without its project
 	// (openapi-kafka.yaml, openapi-redis.yaml): the list of the project.

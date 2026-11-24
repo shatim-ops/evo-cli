@@ -25,18 +25,6 @@ import (
 // request is known for one (the disk of a restore, two runs of Г-16); for
 // the others it is a hypothesis, and so is each line found here.
 
-// listLagsUnknown is what is known of every line of listLagsPending today.
-const listLagsUnknown = "a second of the name after a lost answer: whether the service lists later than it takes the request is not known (no run)"
-
-// listLagsPending are the creates whose repeat, after a lost answer and a
-// list that lags, leaves more billable resources than one clean call —
-// each with what is known. Only shrinks. Closes by 1.10.
-var listLagsPending = map[string]string{
-	"dns_record_create": listLagsUnknown,
-	"snat_create":       listLagsUnknown,
-	"vpc_route_create":  listLagsUnknown,
-}
-
 func TestFault_Matrix_ListBehindALostCreate(t *testing.T) {
 	const lag = 3
 	found := map[string]string{}
@@ -74,14 +62,7 @@ func TestFault_Matrix_ListBehindALostCreate(t *testing.T) {
 	}
 	sort.Strings(tools)
 	for _, tool := range tools {
-		if listLagsPending[tool] == "" {
-			t.Errorf("%s: %s", tool, found[tool])
-		}
-	}
-	for tool := range listLagsPending {
-		if found[tool] == "" {
-			t.Errorf("listLagsPending names %s, whose repeat makes no second resource now: remove the line (the list only shrinks)", tool)
-		}
+		t.Errorf("%s: %s", tool, found[tool])
 	}
 	if ran < 15 {
 		t.Errorf("%d lost writes were repeated: the matrix no longer reaches the creates of faultAPI", ran)

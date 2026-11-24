@@ -147,6 +147,13 @@ func TestMadeRepeat_NoCreateRunsAWriteStepWithoutConsent(t *testing.T) {
 			continue
 		}
 		for _, args := range requiredCalls(tl) {
+			// The HTTP world has no default SNAT zone or public DNS zone.
+			switch name {
+			case "dns_record_create":
+				args["type"] = "public"
+			case "snat_create":
+				args["availability_zone_id"] = zoneAZ1
+			}
 			resource, target, err := r.resourceOf(context.Background(), name, args)
 			if err != nil || (resource == "" && target == "") {
 				continue

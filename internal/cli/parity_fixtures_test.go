@@ -53,6 +53,7 @@ var parityArgs = map[string]map[string]any{
 	"list":         {},
 	"logs":         {"tail": float64(100)},
 	"vm_get":       {"vm_id": parityVM},
+	"vm_history":   {"vm_id": parityVM},
 	"vm_console":   {"vm_id": parityVM},
 	"vm_start":     {"vm_id": parityStoppedVM},
 	"vm_stop":      {"vm_id": parityRunningVM},
@@ -73,6 +74,9 @@ var parityArgs = map[string]map[string]any{
 	"disk_attach":     {"disk_id": parityVM, "vm": "web"},
 	"disk_detach":     {"disk_id": parityAttachedDisk, "vm": "web"},
 	"disk_resize":     {"disk_id": parityVM, "size_gb": float64(50)},
+	"interface_list":  {},
+	"interface_get":   {"interface_id": parityNIC},
+	"disk_get":        {"disk_id": parityAttachedDisk},
 	"disk_delete":     {"disk_id": parityVM},
 	"disk_list":       {},
 	"backup_list":     {},
@@ -647,6 +651,7 @@ var parityAnswers = map[string]string{
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}:usage":                 `{"usage":[]}`,
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/version/0:private_key": `{"private_key":"-----BEGIN PRIVATE KEY-----\nparity\n-----END PRIVATE KEY-----\n"}`,
 	"GET certificatemanager.api.cloud.ru/v1/operation/{id}":                         jsonOp,
+	"GET compute.api.cloud.ru/api/v1/tasks":                                         `{"items":[{"id":"` + parityNIC + `","entity_id":"` + parityVM + `","entity_type":"vm","name":"Create VM","status":"complete","created_time":"2026-11-12T10:00:00Z"}],"total":1}`,
 	"GET compute.api.cloud.ru/api/v1/backups/{id}": `{"id":"` + parityVM + `","project_id":"` + pvProject + `","name":"web-copy","state":"created","type":"full","size":20480,"created_at":"2026-11-12T10:00:00Z","tags":[],` +
 		`"resource":{"resource_id":"` + parityVM + `","resource_type":"virtual_machine","resource_exists":true,"resource_state":{"name":"web"}}}`,
 	"GET compute.api.cloud.ru/api/v1/disks/{id}":        `{"id":"` + parityVM + `","name":"old","size":20,"state":"available"}`,
@@ -704,7 +709,6 @@ var parityEmptyLists = map[string]string{
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/versions": "no versions: cert_get lists none",
 	"GET compute.api.cloud.ru/api/v1/images":                           "no private image: image_create's name is free, image_list empty",
 	"GET compute.api.cloud.ru/api/v1/security-groups/{id}/rules":       "a group without rules: open_ports adds them all",
-	"GET compute.api.cloud.ru/api/v1/interfaces":                       "no interface listed: the zone's group is shared as the default one, open_ports says 0 interfaces",
 	"GET containers.api.cloud.ru/v2/containers":                        "no container app yet: ca_deploy's name is free",
 	"GET containers.api.cloud.ru/v2/containers/app/logs":               "no log lines",
 	"GET dns.api.cloud.ru/v1/privateZones":                             "no private zone: the zone of dns_record_create is public",
@@ -785,6 +789,8 @@ func resizeVMJSON(state, flavor string) string {
 		parityResizeVM, state, id, flavor, cpu, ram, pvZone, parityNIC)
 }
 
+const parityFreeInterface = `{"id":"` + parityNIC + `","name":"spare","vm":null,"security_groups":[]}`
+
 // computeParity: the compute API beyond previewCloud — the VM with its
 // interface (tg_create picks it), the project's disks and SNAT gateway
 // (disk_delete and snat_delete look them up; image_create takes the zone
@@ -792,6 +798,16 @@ func resizeVMJSON(state, flavor string) string {
 func computeParity(r *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	switch r.URL.Path {
+	case "/api/v1/interfaces":
+		if r.Method != http.MethodGet {
+			return nil
+		}
+		_, _ = io.WriteString(w, `{"items":[`+parityFreeInterface+`],"total":1}`)
+	case "/api/v1/interfaces/" + parityNIC:
+		if r.Method != http.MethodGet {
+			return nil
+		}
+		_, _ = io.WriteString(w, parityFreeInterface)
 	case "/api/v1/vms/" + parityVM:
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"web","state":"running","interfaces":[{"id":"`+parityNIC+`","name":"eth0","type":"regular","ip_address":"192.0.2.5"}]}`)
 	case "/api/v1/vms/" + parityStoppedVM:
@@ -926,4 +942,9 @@ type freeFIPCloud struct{ provision.CloudAPI }
 
 func (freeFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
 	return []*provision.FloatingIP{{ID: parityVM, IPAddress: "203.0.113.10", State: "available"}}, nil
+}
+
+// Use the same filtered HTTP reader in the CLI and MCP parity worlds.
+func (p parityCloud) VMTasks(ctx context.Context, project, vm string, offset, limit int) (*provision.VMTaskPage, error) {
+	return p.CloudAPI.(provision.VMTaskReader).VMTasks(ctx, project, vm, offset, limit)
 }

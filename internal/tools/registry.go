@@ -244,6 +244,8 @@ type callRecords struct {
 	// open is the record the call opened (beginIntent), with hasOpen.
 	open    intent.Intent
 	hasOpen bool
+	// ID of the open receipt whose delete was proved unsent.
+	deleteUnsentID string
 
 	// resolved is what the call has resolved of the cloud by a read that
 	// more than one of its layers needs (onceACall).
@@ -407,11 +409,24 @@ func New(factory EngineFactory) *Registry {
 				h = r.filtered(spec, h)
 			}
 			// Inside requireProject: the check's engine sees its mark.
-			h = r.boundToProjects(*t, h)
+			// DNS record identity uses its parent zone before the planner.
+			// Its ownership check therefore wraps the intent handler below.
+			if t.Name != "dns_record_create" {
+				h = r.boundToProjects(*t, h)
+			}
 			// Inside requireProject too: the list of a name is the call's
 			// project's; outside boundToProjects: it checks the id.
-			if refs := decls[t.Name].RefArgs; refs != nil {
-				h = r.resolveRefs(refs, h)
+			var vpcArg string
+			var innerRefs []nameRef
+			for _, ref := range t.Decl.RefArgs {
+				if ref.kind == refVPC {
+					vpcArg = ref.arg
+				} else {
+					innerRefs = append(innerRefs, ref)
+				}
+			}
+			if len(innerRefs) > 0 {
+				h = r.resolveRefs(innerRefs, h)
 			}
 			if t.Decl.Project {
 				h = r.requireProject(h)
@@ -428,7 +443,11 @@ func New(factory EngineFactory) *Registry {
 			if r.unchecked == nil {
 				r.unchecked = map[string]Handler{}
 			}
-			r.unchecked[t.Name] = checkedCreateName(t.Name, r.intended(*t, h))
+			h = r.intended(*t, h)
+			if vpcArg != "" {
+				h = r.resolveVPCArg(vpcArg, h)
+			}
+			r.unchecked[t.Name] = checkedCreateName(t.Name, h)
 			// Outermost: the fields every answer marks (markAlways), over
 			// the answer every surface shows.
 			r.handlers[t.Name] = markAlways(r.budgeted(t.Name, outer(t.Name, t.InputSchema, r.unchecked[t.Name])))
@@ -610,11 +629,15 @@ type needsProject struct{}
 // preview or an argument refused before any engine stays as it was.
 func (r *Registry) requireProject(next Handler) Handler {
 	return func(ctx context.Context, args map[string]any) (string, bool) {
-		if stringArg(args, "project_id") == "" {
-			ctx = context.WithValue(ctx, needsProject{}, true)
-		}
-		return next(ctx, args)
+		return next(projectContext(ctx, args), args)
 	}
+}
+
+func projectContext(ctx context.Context, args map[string]any) context.Context {
+	if stringArg(args, "project_id") == "" {
+		return context.WithValue(ctx, needsProject{}, true)
+	}
+	return ctx
 }
 
 // engineFor builds the engine of a handler, as newEngine does; for a

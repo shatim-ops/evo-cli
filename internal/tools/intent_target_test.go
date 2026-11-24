@@ -219,3 +219,29 @@ func TestIntent_ACallWithNoEngineIsToldItsOwnReasonFirst(t *testing.T) {
 		t.Errorf("the refusal: %v, want the reason no engine was built for", err)
 	}
 }
+
+func TestDeleteEvidenceBelongsToOpenReceipt(t *testing.T) {
+	const tool = "release_floating_ip"
+	const address = "192.0.2.4"
+	const original = "ip_address=" + address
+	for _, tc := range []struct {
+		name, owner string
+		open        bool
+		wantTarget  string
+		wantUnsent  string
+	}{
+		{"no open receipt", tool, false, original, ""},
+		{"another tool", "destroy", true, original, ""},
+		{"own receipt", tool, true, "id=" + auditUUID, "receipt-A"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &callRecords{hasOpen: tc.open, open: intent.Intent{ID: "receipt-A", Tool: tc.owner, Target: original}}
+			ctx := context.WithValue(context.Background(), callRecordsKey{}, c)
+			bindFloatingIPReleaseTarget(ctx, address, auditUUID)
+			markDeleteUnsent(ctx, tool)
+			if c.open.Target != tc.wantTarget || c.deleteUnsentID != tc.wantUnsent {
+				t.Fatalf("target %q, unsent receipt %q", c.open.Target, c.deleteUnsentID)
+			}
+		})
+	}
+}

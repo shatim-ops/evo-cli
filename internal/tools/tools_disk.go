@@ -6,6 +6,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -125,6 +126,108 @@ func (s *Registry) handleDiskList(ctx context.Context, args map[string]any) (str
 		out = append(out, row)
 	}
 	return toJSON(map[string]any{"disks": out}), false
+}
+
+// diskCardFacts are the fields of the card of a disk that disk_get shows
+// as the platform reports them, each with the one type it has: a field
+// its answer does not carry, or carries with another type, is absent from
+// the answer and named in not_checked — its type never changed by what the
+// platform sent or evo would imply («Риск», conclusions 333, Д3, and 336,
+// У1).
+var diskCardFacts = []struct {
+	field, as string
+	ok        func(any) bool
+}{
+	{"size", "size_gb", isNumber},
+	{"bootable", "bootable", isBool},
+	{"encrypted", "encrypted", isBool},
+	{"readonly", "readonly", isBool},
+	{"shared", "shared", isBool},
+	{"serial_id", "serial_id", isString},
+}
+
+func isBool(v any) bool   { _, ok := v.(bool); return ok }
+func isString(v any) bool { _, ok := v.(string); return ok }
+func isNumber(v any) bool {
+	switch v.(type) {
+	case float64, json.Number:
+		return true
+	}
+	return false
+}
+
+// handleDiskGet answers the card of one disk by its id, by one read
+// (110-09). The id is the call's: the card's own id is not shown.
+func (s *Registry) handleDiskGet(ctx context.Context, args map[string]any) (string, bool) {
+	id := stringArg(args, "disk_id")
+	if id == "" {
+		return usageT("'disk_id' is required", "нужен 'disk_id'"), true
+	}
+	eng, err := s.authedEngine(ctx, nil)
+	if err != nil {
+		return errResult(err), true
+	}
+	d, err := eng.Cloud.GetDisk(ctx, id)
+	if err != nil {
+		return errResult(err), true
+	}
+	out := map[string]any{"id": id, "name": d["name"], "state": d["state"]}
+	if dt, ok := d["disk_type"].(map[string]any); ok {
+		out["disk_type"] = dt["name"]
+	}
+	if az, ok := d["availability_zone"].(map[string]any); ok {
+		out["zone"] = az["name"]
+	}
+	var missing []map[string]any
+	for _, f := range diskCardFacts {
+		v, has := d[f.field]
+		switch {
+		case !has || v == nil:
+			missing = append(missing, map[string]any{"check": f.as,
+				"why": i18n.T("the answer of Cloud.ru does not carry it", "в ответе Cloud.ru этого поля нет")})
+		case !f.ok(v):
+			missing = append(missing, map[string]any{"check": f.as,
+				"why": i18n.T("the answer of Cloud.ru carries it with another type", "в ответе Cloud.ru у этого поля другой тип")})
+		default:
+			out[f.as] = v
+		}
+	}
+	vms, complete := diskCardVMs(d["vms"])
+	if len(vms) > 0 || complete {
+		out["attached_vms"] = vms
+	}
+	if !complete {
+		why := i18n.T("the answer of Cloud.ru does not carry it", "в ответе Cloud.ru этого поля нет")
+		if d["vms"] != nil {
+			why = i18n.T("the answer of Cloud.ru does not identify all attached VMs", "по ответу Cloud.ru нельзя определить все привязанные ВМ")
+		}
+		missing = append(missing, map[string]any{"check": "attached_vms", "why": why})
+	}
+	if len(missing) > 0 {
+		out["not_checked"] = missing
+	}
+	return toJSON(out), false
+}
+
+// A missing or unusable attachment list cannot establish that the disk is free.
+func diskCardVMs(raw any) ([]map[string]any, bool) {
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, false
+	}
+	vms := make([]map[string]any, 0, len(list))
+	complete := true
+	for _, entry := range list {
+		vm, _ := entry.(map[string]any)
+		id, _ := vm["id"].(string)
+		name, _ := vm["name"].(string)
+		if strings.TrimSpace(id) == "" && strings.TrimSpace(name) == "" {
+			complete = false
+			continue
+		}
+		vms = append(vms, map[string]any{"id": vm["id"], "name": vm["name"], "primary": vm["primary"], "state": vm["state"]})
+	}
+	return vms, complete
 }
 
 // planDiskCreate plans the create of a disk. If attach_to (a VM) is given, the disk is
@@ -336,18 +439,18 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string, limit time.Duration,
 	waiting string, done func(state string) (bool, error)) (last string, timedOut time.Duration, err error) {
 	last, timedOut, atLimit, reads, err := waitState(ctx, eng, limit,
-		func(ctx context.Context) (string, bool, error) {
+		func(ctx context.Context) (string, waitObservation, error) {
 			disks, err := eng.Cloud.ListDisks(ctx, projectID)
 			if err != nil {
-				return "", false, nil
+				return "", waitReadFailed, nil
 			}
 			for _, d := range disks {
 				if id, _ := d["id"].(string); id == diskID {
 					st, _ := d["state"].(string)
-					return st, true, nil
+					return st, waitObserved, nil
 				}
 			}
-			return "", false, nil
+			return "", waitNotListed, nil
 		},
 		func(st string) string { return fmt.Sprintf(waiting, diskID, st) }, done)
 	if atLimit {
@@ -718,6 +821,13 @@ func resizedNote(disk map[string]any) string {
 		"Диск увеличен. На ВМ найдите его устройство через `lsblk`, расширьте раздел, если он есть (`growpart <device> <n>`), затем файловую систему (`resize2fs` для ext4, `xfs_growfs` для XFS).")
 }
 
+// The project list proves membership when ownership is omitted. An explicit
+// different owner contradicts that proof, even when the resource ID matches.
+func conflictingDiskProject(card map[string]any, projectID string) bool {
+	owner := projectField(card)
+	return owner != "" && owner != projectID
+}
+
 // planDiskDelete plans the delete of a disk by id (gate.go).
 func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Plan, error) {
 	diskID := stringArg(args, "disk_id")
@@ -734,14 +844,39 @@ func (s *Registry) planDiskDelete(ctx context.Context, args map[string]any) (*Pl
 	if err != nil {
 		return answered(s.deleteFailed("disk_delete", diskID, err)), nil
 	}
+	if disk["id"] != diskID {
+		return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The disk response did not identify the requested resource.", "Ответ сервиса не подтвердил ID запрошенного диска."), "")
+	}
+	if s.projectBound && conflictingDiskProject(disk, eng.Config.ProjectID) {
+		return nil, notInProject(kindDisk, diskID)
+	}
 	if vms, err := diskAttachedError(diskID, disk); err != nil {
 		return answered(errAnswer(err, map[string]any{"disk_id": diskID, "attached_vms": vms}), true), nil
 	}
 	preview := map[string]any{"message": i18n.Tf("disk_delete permanently destroys disk %s and its data.",
 		"disk_delete безвозвратно удаляет диск %s и его данные.", diskID)}
 	return &Plan{Preview: preview, Execute: func(ctx context.Context) (string, bool) {
-		if err := eng.Cloud.DeleteDisk(ctx, diskID, eng.Config.ProjectID); err != nil {
-			return s.deleteFailed("disk_delete", diskID, fmt.Errorf(i18n.T("delete disk: %w", "удаление диска: %w"), err))
+		sendCtx, unsent := deleteConnection(ctx, "disk_delete")
+		if err := eng.Cloud.DeleteDisk(sendCtx, diskID, eng.Config.ProjectID); err != nil {
+			if unsent(err) {
+				return unsentDeleteAnswer(err)
+			}
+			if clierrors.Reason(err) != clierrors.CodeAPIUnreachable || ctx.Err() != nil || clierrors.TLSUntrusted(err) {
+				return s.deleteFailed("disk_delete", diskID, fmt.Errorf(i18n.T("delete disk: %w", "удаление диска: %w"), err))
+			}
+			_, checkErr := eng.Cloud.GetDisk(ctx, diskID)
+			if checkErr == nil || !isGone(checkErr) {
+				fields := map[string]any{"disk_id": diskID, "next_tool": "doctor", "next_args": map[string]any{}}
+				message := i18n.T("No delete reply was received. The follow-up read did not confirm deletion.", "Ответ на удаление не получен. Повторное чтение не подтвердило удаление.")
+				if checkErr != nil {
+					reason := clierrors.Reason(checkErr)
+					fields["check_reason"] = reason
+					message = i18n.Tf("No delete reply was received. The follow-up read failed (%s), so the outcome is unknown.", "Ответ на удаление не получен. Проверка завершилась ошибкой (%s), поэтому исход удаления неизвестен.", reason)
+				}
+				return errAnswer(clierrors.Wrap(clierrors.CodeAPIUnreachable, message,
+					i18n.T("Check the disk in the Cloud.ru console before retrying. doctor shows the interrupted call.", "Перед повтором проверьте диск в консоли Cloud.ru. Запись прерванного вызова показывает evo doctor."), err), fields), true
+			}
+			return toJSON(map[string]any{"status": "deleted", "disk_id": diskID, "message": deleteObservation()}), false
 		}
 		return toJSON(map[string]any{"status": "deleted", "disk_id": diskID}), false
 	}}, nil

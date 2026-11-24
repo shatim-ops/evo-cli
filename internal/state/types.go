@@ -12,6 +12,8 @@ type DeploymentRecord struct {
 	VMID         string `json:"vm_id"`
 	VMIP         string `json:"vm_ip"`
 	FloatingIPID string `json:"floating_ip_id,omitempty"` // released by destroy
+	// ReleasedFloatingIPID records a completed destroy step while other cleanup is pending.
+	ReleasedFloatingIPID string `json:"released_floating_ip_id,omitempty"`
 	// ProjectID is the Cloud.ru project the VM was created in: destroy and
 	// a re-run of deploy work there, whatever project the config now names.
 	// Empty in records from before this field existed.
@@ -95,6 +97,14 @@ type SSHWait struct {
 	Limit    int `json:"limit"`
 }
 
+// HasPendingFloatingIP reports whether destroy still has a recorded address to release.
+func (d DeploymentRecord) HasPendingFloatingIP() bool {
+	if d.FloatingIPID != "" {
+		return d.ReleasedFloatingIPID != d.FloatingIPID
+	}
+	return d.VMIP != ""
+}
+
 // SGRule is a security-group rule created by a deployment.
 type SGRule struct {
 	ID              string `json:"id"`
@@ -143,6 +153,18 @@ type LostFloatingIP struct {
 type Maker struct {
 	ServiceAccountID string `json:"service_account_id,omitempty"`
 	KeyID            string `json:"key_id,omitempty"`
+}
+
+// Matches requires comparable owner evidence on both sides. A rotated key
+// of the same identified service account has the same owner.
+func (m *Maker) Matches(cur *Maker) bool {
+	if m == nil || cur == nil {
+		return false
+	}
+	if m.ServiceAccountID != "" && cur.ServiceAccountID != "" {
+		return m.ServiceAccountID == cur.ServiceAccountID
+	}
+	return m.KeyID != "" && m.KeyID != "****" && m.KeyID == cur.KeyID
 }
 
 // Other tells that cur is surely not the key that made the record: by the

@@ -1035,6 +1035,22 @@ func (c *faultCloud) ListInterfaces(context.Context, string) ([]*provision.Inter
 	if err := c.gate("ListInterfaces"); err != nil {
 		return nil, err
 	}
+	return c.interfaces(), nil
+}
+
+func (c *faultCloud) GetInterface(_ context.Context, id string) (*provision.Interface, error) {
+	if err := c.gate("GetInterface"); err != nil {
+		return nil, err
+	}
+	for _, nic := range c.interfaces() {
+		if nic.ID == id {
+			return nic, nil
+		}
+	}
+	return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+}
+
+func (c *faultCloud) interfaces() []*provision.Interface {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var out []*provision.Interface
@@ -1045,7 +1061,7 @@ func (c *faultCloud) ListInterfaces(context.Context, string) ([]*provision.Inter
 		out = append(out, &provision.Interface{ID: faultID(0x40 + i), VM: &provision.InterfaceVM{ID: vm.ID, Name: vm.Name},
 			SecurityGroups: []provision.InterfaceGroup{{ID: faultSG, Name: "SSH-access_ru.AZ-1"}}})
 	}
-	return out, nil
+	return out
 }
 
 func (c *faultCloud) GetVMDetail(_ context.Context, id string) (*provision.VMDetail, error) {

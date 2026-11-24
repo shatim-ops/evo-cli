@@ -475,8 +475,9 @@ func TestGetTools_NonUUIDIsUsage(t *testing.T) {
 		tool string
 		args map[string]any
 	}{
-		{"vpc_get", map[string]any{"id": "nope"}},
-		{"vpc_routes", map[string]any{"vpc_id": "nope"}},
+		// VPC references also accept names, but still require strings before lookup.
+		{"vpc_get", map[string]any{"id": float64(42)}},
+		{"vpc_routes", map[string]any{"vpc_id": float64(42)}},
 		{"pg_get", map[string]any{"id": "nope"}},
 		{"kafka_get", map[string]any{"cluster_id": "nope"}},
 		{"redis_get", map[string]any{"cluster_id": "nope"}},

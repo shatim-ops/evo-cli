@@ -126,7 +126,7 @@ of a group before its first change.
 | `ca` | `evo ca …` | 7 | 4 |
 | `cert` | `evo cert …` | 10 | 4 |
 | `deploy` | `evo deploy`, `evo deploy apply`, `evo deploy list`, `evo deploy plan`, `evo destroy`, `evo logs`, `evo status`, `evo vm delete`, `evo vpc close-ports`, `evo vpc open-ports` | 9 | 5 |
-| `disk` | `evo disk …` | 7 | 5 |
+| `disk` | `evo disk …` | 8 | 5 |
 | `dns` | `evo dns …` | 9 | 4 |
 | `iam` | `evo iam …` | 1 | 0 |
 | `image` | `evo image create`, `evo image delete`, `evo image get`, `evo image list`, `evo marketplace list` | 6 | 2 |
@@ -141,8 +141,8 @@ of a group before its first change.
 | `secret` | `evo secret …` | 6 | 3 |
 | `snat` | `evo snat …` | 3 | 2 |
 | `stack` | `evo stack …` | 4 | 2 |
-| `vm` | `evo vm …` | 10 | 5 |
-| `vpc` | `evo vpc …` | 17 | 10 |
+| `vm` | `evo vm …` | 11 | 5 |
+| `vpc` | `evo vpc …` | 19 | 10 |
 
 ## Examples
 

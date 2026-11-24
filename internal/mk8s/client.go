@@ -220,10 +220,10 @@ func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
 			return "", apiError(st, data)
 		}
 		var r struct {
-			Clusters      []Cluster `json:"clusters"`
-			NextPageToken string    `json:"nextPageToken"`
+			Clusters      pager.Rows[Cluster] `json:"clusters"`
+			NextPageToken string              `json:"nextPageToken"`
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
+		if err := pager.DecodePage(data, &r); err != nil {
 			return "", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), err)
 		}
 		all = append(all, r.Clusters...)

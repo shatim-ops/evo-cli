@@ -117,13 +117,9 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 	if status < 200 || status >= 300 {
 		return nil, apiError(status, data)
 	}
-	var out map[string]json.RawMessage
-	if err := json.Unmarshal(data, &out); err != nil {
+	items, _, err := pager.ObjectPage(data, field)
+	if err != nil {
 		return nil, fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
-	}
-	var items []map[string]any
-	if raw, ok := out[field]; ok {
-		_ = json.Unmarshal(raw, &items)
 	}
 	return items, nil
 }
@@ -158,15 +154,6 @@ func (c *Client) doOperation(ctx context.Context, method, path string, query url
 	return &op, nil
 }
 
-// listPageSize is the page_size of ListClusters. The specifications
-// (openapi-kafka.yaml, openapi-redis.yaml) name no range; Redis rejects
-// page_size<=0. cloud-e2e readonly #23 got API_ERROR from the Kafka and
-// Redis lists with page_size=1000 (the HTTP status was not logged; an
-// out-of-range page_size is a suspect, not a proven cause), so a page is
-// kept to a common maximum and the rest is read by next_page_token, which
-// the old code ignored.
-const listPageSize = 100
-
 // maxListPages bounds the page loop against a server that never ends it.
 const maxListPages = 50
 
@@ -176,8 +163,18 @@ const maxListPages = 50
 // maxListPages pages are errors: the list is not complete (break r4, R4-8;
 // the cut list was a success).
 func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[string]any, error) {
+	items, _, err := c.ListClustersWithin(ctx, extra, maxListPages)
+	return items, err
+}
+
+// ListClustersWithin returns a complete list and the number of pages requested.
+// An incomplete list cannot establish membership in a project.
+func (c *Client) ListClustersWithin(ctx context.Context, extra url.Values, limit int) ([]map[string]any, int, error) {
+	limit = min(limit, maxListPages)
+	pages := 0
 	var all []map[string]any
-	more, err := pager.Upto(maxListPages, func(token string) (string, error) {
+	more, err := pager.Upto(limit, func(token string) (string, error) {
+		pages++
 		q := url.Values{}
 		for k, v := range extra {
 			q[k] = v
@@ -185,7 +182,12 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 		if c.projectID != "" {
 			q.Set("project_id", c.projectID)
 		}
-		q.Set("page_size", strconv.Itoa(listPageSize))
+		// Kafka accepts at most 50 clusters per page (#2632).
+		pageSize := 100
+		if extra.Get("product_type") == "kafka" {
+			pageSize = 50
+		}
+		q.Set("page_size", strconv.Itoa(pageSize))
 		if token != "" {
 			q.Set("page_token", token)
 		}
@@ -196,23 +198,31 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 		if status < 200 || status >= 300 {
 			return "", apiError(status, data)
 		}
-		var page struct {
+		var page *struct {
 			Clusters      []map[string]any `json:"clusters"`
 			NextPageToken string           `json:"next_page_token"`
 		}
 		if err := json.Unmarshal(data, &page); err != nil {
 			return "", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), err)
 		}
+		if page == nil {
+			return "", pager.Incomplete(i18n.T("parse clusters: null page", "разбор кластеров: страница равна null"))
+		}
+		for _, cluster := range page.Clusters {
+			if cluster == nil {
+				return "", pager.Incomplete(i18n.T("parse clusters: null cluster in list", "разбор кластеров: элемент списка равен null"))
+			}
+		}
 		all = append(all, page.Clusters...)
 		return page.NextPageToken, nil
 	})
 	if err != nil {
-		return nil, pager.Named("dbaas: clusters", err)
+		return nil, pages, pager.Named("dbaas: clusters", err)
 	}
 	if more {
-		return nil, pager.Named("dbaas: clusters", pager.TooManyPages(maxListPages))
+		return nil, pages, pager.Named("dbaas: clusters", pager.TooManyPages(limit))
 	}
-	return all, nil
+	return all, pages, nil
 }
 
 // GetCluster returns one cluster by id.

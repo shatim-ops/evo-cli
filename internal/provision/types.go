@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // VM represents a Cloud.ru virtual machine.
@@ -153,6 +155,8 @@ type InterfaceReq struct {
 
 // Subnet represents a Cloud.ru subnet (GET /api/v1/subnets).
 type Subnet struct {
+	// ProjectID comes from project.id and is used to verify a scoped delete.
+	ProjectID          string `json:"-"`
 	ID                 string `json:"id"`
 	Name               string `json:"name"`
 	AvailabilityZoneID string `json:"availability_zone_id"`
@@ -190,12 +194,16 @@ func (s *Subnet) UnmarshalJSON(b []byte) error {
 	type plain Subnet
 	var r struct {
 		plain
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
 		AvailabilityZone *ZoneRef `json:"availability_zone"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
 		return err
 	}
 	*s = Subnet(r.plain)
+	s.ProjectID = r.Project.ID
 	if s.AvailabilityZoneID == "" && r.AvailabilityZone != nil {
 		s.AvailabilityZoneID = r.AvailabilityZone.ID
 	}
@@ -227,7 +235,17 @@ type SecurityGroup struct {
 // (GET /api/v1/interfaces): the VM it belongs to and the security groups
 // it is in — what a rule of a group acts on.
 type Interface struct {
-	ID             string           `json:"id"`
+	ID string `json:"id"`
+	// ProjectID is optional: Compute normally scopes the list by its query only.
+	ProjectID  string           `json:"project_id,omitempty"`
+	Name       string           `json:"name,omitempty"`
+	IPAddress  string           `json:"ip_address,omitempty"`
+	Type       string           `json:"type,omitempty"`
+	State      string           `json:"state,omitempty"`
+	Primary    *bool            `json:"primary,omitempty"`
+	FloatingIP *IfaceFloatingIP `json:"floating_ip,omitempty"`
+	// VMReported distinguishes an explicit null (unassigned) from missing binding data.
+	VMReported     bool             `json:"-"`
 	VM             *InterfaceVM     `json:"vm,omitempty"`
 	SecurityGroups []InterfaceGroup `json:"security_groups,omitempty"`
 	// Subnet is the subnet of the interface (vm_get): the card of a VM
@@ -768,8 +786,8 @@ type IfaceFloatingIP struct {
 
 // paginatedResponse wraps paginated API responses.
 type paginatedResponse[T any] struct {
-	Items  []T `json:"items"`
-	Total  int `json:"total"`
-	Offset int `json:"offset"`
-	Limit  int `json:"limit"`
+	Items  pager.Rows[T] `json:"items"`
+	Total  int           `json:"total"`
+	Offset int           `json:"offset"`
+	Limit  int           `json:"limit"`
 }

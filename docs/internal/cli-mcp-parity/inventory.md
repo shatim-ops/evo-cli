@@ -75,6 +75,7 @@
 | disk | `disk_create` | да | дерево | `evo disk create` | да/да |
 | disk | `disk_delete` | да | дерево | `evo disk delete` | да/да |
 | disk | `disk_detach` | да | дерево | `evo disk detach` | да/да |
+| disk | `disk_get` | нет | дерево | `evo disk get` | да/да |
 | disk | `disk_list` | нет | дерево | `evo disk list` | да/да |
 | disk | `disk_resize` | да | дерево | `evo disk resize` | да/да |
 | disk | `list_disk_types` | нет | дерево | `evo disk types` | да/да |
@@ -180,12 +181,15 @@
 | vm | `provision` | да | дерево | `evo vm create` | да/да |
 | vm | `vm_console` | нет | дерево | `evo vm console` | да/да |
 | vm | `vm_get` | нет | дерево | `evo vm get` | да/да |
+| vm | `vm_history` | нет | дерево | `evo vm history` | да/да |
 | vm | `vm_list` | нет | дерево | `evo vm list` | да/да |
 | vm | `vm_reboot` | да | дерево | `evo vm reboot` | да/да |
 | vm | `vm_resize` | да | дерево | `evo vm resize` | да/да |
 | vm | `vm_start` | да | дерево | `evo vm start` | да/да |
 | vm | `vm_stop` | да | дерево | `evo vm stop` | да/да |
 | vpc | `fip_attach` | да | дерево | `evo vpc fip-attach` | да/да |
+| vpc | `interface_get` | нет | дерево | `evo vpc interface-get` | да/да |
+| vpc | `interface_list` | нет | дерево | `evo vpc interfaces` | да/да |
 | vpc | `list_floating_ips` | нет | дерево | `evo vpc fips` | да/да |
 | vpc | `list_security_groups` | нет | дерево | `evo vpc security-groups` | да/да |
 | vpc | `list_subnets` | нет | дерево | `evo vpc subnets` | да/да |
@@ -255,6 +259,7 @@
 | `evo disk create` | `disk_create` | name | — | — | confirmed | — |
 | `evo disk delete` | `disk_delete` | disk_id | — | — | confirmed | — |
 | `evo disk detach` | `disk_detach` | disk_id | — | — | confirmed | — |
+| `evo disk get` | `disk_get` | disk_id | — | — | — | — |
 | `evo disk list` | `disk_list` | — | — | — | — | — |
 | `evo disk resize` | `disk_resize` | disk_id | — | — | confirmed | — |
 | `evo disk types` | `list_disk_types` | — | — | — | — | — |
@@ -359,6 +364,7 @@
 | `evo vm delete` | `destroy` | vm_id\|name | — | — | confirmed | — |
 | `evo vm flavors` | `list_flavors` | — | — | — | — | — |
 | `evo vm get` | `vm_get` | vm_id\|name | — | — | — | render |
+| `evo vm history` | `vm_history` | vm_id | — | — | — | — |
 | `evo vm list` | `vm_list` | — | — | — | — | — |
 | `evo vm reboot` | `vm_reboot` | vm_id\|name | — | — | confirmed | — |
 | `evo vm resize` | `vm_resize` | vm_id\|name | — | — | confirmed | — |
@@ -372,6 +378,8 @@
 | `evo vpc fip-release` | `release_floating_ip` | id? | — | — | confirmed | — |
 | `evo vpc fips` | `list_floating_ips` | — | — | — | — | — |
 | `evo vpc get` | `vpc_get` | id | — | — | — | — |
+| `evo vpc interface-get` | `interface_get` | interface_id | — | — | — | — |
+| `evo vpc interfaces` | `interface_list` | — | — | — | — | — |
 | `evo vpc list` | `vpc_list` | — | — | — | — | — |
 | `evo vpc open-ports` | `open_ports` | security_group | ports→--port | — | confirmed | — |
 | `evo vpc operation` | `vpc_operation` | operation_id | — | — | — | — |
@@ -408,6 +416,8 @@
 | `evo diag status` | локальная | — | да | читает файл журнала сессии |
 | `evo help` | локальная | — | нет, справка cobra | справка cobra |
 | `evo init` | локальная | — | да | интерактивно выбирает зону и образ и пишет .evo.yaml в текущий каталог |
+| `evo intent` | локальная | — | да | локальные квитанции рабочей папки и решение человека у терминала |
+| `evo intent close` | локальная | — | да | ручное решение оператора об одной версии квитанции на его машине |
 | `evo list-zones` | алиас | `list_zones` | нет, скрыта | скрытый устаревший алиас evo vm zones: его --json — массив зон, а не ответ инструмента; удаляется в v2.0 |
 | `evo login` | локальная | — | да | вход человека в браузере и страница согласия на loopback-порту его машины; ключ записывается в профиль на диске; у MCP-сервера инструмента нет — браузер и порт на машине человека |
 | `evo logout` | локальная | — | да | удаляет ключ, созданный evo login, его же токеном, и профиль на диске той машины, где стоит evo |

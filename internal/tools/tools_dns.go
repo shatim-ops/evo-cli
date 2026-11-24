@@ -54,6 +54,12 @@ func dnsDelegationWarning(vis string) string {
 // and a private zone answered 403 there (live run 18.10: dns_zone_delete
 // left the zone). A zone in neither list is NOT_FOUND.
 func dnsZoneVisibility(ctx context.Context, cli *dns.Client, args map[string]any, zoneID string) (string, error) {
+	return onceACall(ctx, "dns_visibility:"+zoneID+":"+stringArg(args, "type"), func() (string, error) {
+		return readDNSVisibility(ctx, cli, args, zoneID)
+	})
+}
+
+func readDNSVisibility(ctx context.Context, cli *dns.Client, args map[string]any, zoneID string) (string, error) {
 	if stringArg(args, "type") != "" {
 		return dnsVisibility(args), nil
 	}
@@ -475,6 +481,30 @@ func (s *Registry) handleDnsRecordGet(ctx context.Context, args map[string]any) 
 // audit, L-16); the schema's enum matches any case and passes it on lower.
 var dnsRecordTypes = []string{"a", "aaaa", "cname", "mx", "ns", "spf", "txt", "caa", "srv"}
 
+func dnsRecordKey(name, recordType string) string {
+	if name == "" || recordType == "" {
+		return ""
+	}
+	return strings.ToLower(name) + " " + strings.ToLower(recordType)
+}
+
+func listedDNSRecordKey(row map[string]any) string {
+	return dnsRecordKey(stringArg(row, "name"), stringArg(row, "type"))
+}
+
+func validateDNSRecordCreate(args map[string]any, zoneID, name, rtype string) error {
+	if err := recordValueArgs(args); err != nil {
+		return err
+	}
+	if zoneID == "" || name == "" || rtype == "" || len(recordValues(args)) == 0 {
+		return usageErr("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required", "нужны 'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) и 'value' или 'values'")
+	}
+	if !slices.Contains(dnsRecordTypes, rtype) {
+		return usageErr("record_type: the value is not one of %s", "record_type: значение не входит в список: %s", strings.Join(dnsRecordTypes, ", "))
+	}
+	return nil
+}
+
 // planDnsRecordCreate plans dns_record_create (D35): the zone and its
 // records are read before the question — a zone that is not there is
 // NOT_FOUND and a record of the same name and type is the taken name, both
@@ -483,16 +513,10 @@ func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any)
 	zoneID := stringArg(args, "zone_id")
 	name := stringArg(args, "name")
 	rtype := strings.ToLower(stringArg(args, "record_type"))
-	if err := recordValueArgs(args); err != nil {
+	if err := validateDNSRecordCreate(args, zoneID, name, rtype); err != nil {
 		return nil, err
 	}
 	vals := recordValues(args)
-	if zoneID == "" || name == "" || rtype == "" || len(vals) == 0 {
-		return nil, usageErr("'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) and 'value'/'values' are required", "нужны 'zone_id', 'name', 'record_type' (a/aaaa/cname/mx/ns/spf/txt/caa/srv) и 'value' или 'values'")
-	}
-	if !slices.Contains(dnsRecordTypes, rtype) {
-		return nil, usageErr("record_type: the value is not one of %s", "record_type: значение не входит в список: %s", strings.Join(dnsRecordTypes, ", "))
-	}
 	ttl := pgInt(args, "ttl", 300)
 	cli, err := s.dnsClient(ctx)
 	if err != nil {
@@ -504,12 +528,12 @@ func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any)
 	}
 	// A record is known by its name and type in the zone: a repeat after a
 	// lost answer added a second one (fault matrix, process audit 1.2.1).
-	key := name + " " + rtype
+	key := dnsRecordKey(name, rtype)
 	list := func(ctx context.Context) ([]map[string]any, error) {
 		records, err := cli.ListRecords(ctx, vis, zoneID)
 		listed := make([]map[string]any, 0, len(records))
 		for _, r := range records {
-			listed = append(listed, map[string]any{"id": r["id"], "name": fmt.Sprint(r["name"]) + " " + strings.ToLower(fmt.Sprint(r["type"]))})
+			listed = append(listed, map[string]any{"id": r["id"], "name": listedDNSRecordKey(r)})
 		}
 		return listed, err
 	}

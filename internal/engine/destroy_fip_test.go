@@ -48,8 +48,12 @@ func runningRecord() state.DeploymentRecord {
 func TestDestroy_ReleasesFloatingIPFromState(t *testing.T) {
 	eng, cloud, out := destroyFixture(t, runningRecord())
 
-	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+	var result DestroyResult
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result}); err != nil {
 		t.Fatalf("Destroy: %v", err)
+	}
+	if result.VMID != "vm-1" || result.CleanupPending {
+		t.Fatalf("destroy result: %+v", result)
 	}
 	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-9" {
 		t.Errorf("released FIPs = %v, want [fip-9]", cloud.deletedFIPs)
@@ -215,5 +219,73 @@ func TestDestroy_RecordOfAnotherProject404Refused(t *testing.T) {
 	}
 	if a := readActive(t, eng.StateDir); a != nil {
 		t.Errorf("deployment left in state: %+v", a)
+	}
+}
+
+func TestDestroy_ExtraAddressRefusalKeepsTargetUntilRetry(t *testing.T) {
+	rec := runningRecord()
+	eng, cloud, _ := destroyFixture(t, rec)
+	path := state.DefaultPath(eng.StateDir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf.LostFloatingIPs = []state.LostFloatingIP{{Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
+		return []*provision.FloatingIP{{ID: "fip-extra", Name: "extra"}}, nil
+	}
+	var deny bool
+	attempts := 0
+	cloud.deleteFloatingIPFn = func(_ context.Context, id, _ string) error {
+		if id == "fip-extra" {
+			attempts++
+			if deny {
+				return stderrors.New("release refused")
+			}
+		}
+		return nil
+	}
+	for i, pending := range []bool{true, true, false} {
+		deny = pending
+		var result DestroyResult
+		if err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result}); err != nil {
+			t.Fatal(err)
+		}
+		sf, err = state.Read(path)
+		if err != nil || result.VMID != rec.VMID || result.CleanupPending != pending || (sf.ActiveDeployment() != nil) != pending || (len(sf.LostFloatingIPs) != 0) != pending || attempts != i+1 {
+			t.Fatalf("attempt %d: result=%+v state=%+v releases=%d err=%v", i, result, sf, attempts, err)
+		}
+	}
+}
+
+// A lost VM reply is verified before any dependent cleanup. Retrying
+// partial cleanup of an absent VM must never issue a second VM delete.
+func TestDestroy_LostVMReplyAndPartialRelease(t *testing.T) {
+	eng, cloud, out := destroyFixture(t, runningRecord())
+	var vmDeletes, addressDeletes int
+	lost := clerrors.New(clerrors.CodeAPIUnreachable, "connection lost after send", "")
+	cloud.deleteVMFn = func(context.Context, string) error {
+		vmDeletes++
+		return lost
+	}
+	cloud.deleteFloatingIPFn = func(context.Context, string, string) error {
+		addressDeletes++
+		if addressDeletes == 1 {
+			return lost
+		}
+		return nil
+	}
+	var result DestroyResult
+	err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result})
+	if clerrors.Reason(err) != clerrors.CodeAPIUnreachable || !result.VMReplyLost || !result.CleanupPending || vmDeletes != 1 || addressDeletes != 1 || !strings.Contains(out.String(), "did not acknowledge") {
+		t.Fatalf("partial: %v result=%+v writes=%d/%d output=%s", err, result, vmDeletes, addressDeletes, out)
+	}
+	result = DestroyResult{}
+	err = eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result})
+	if err != nil || result.CleanupPending || vmDeletes != 1 || addressDeletes != 2 || readActive(t, eng.StateDir) != nil {
+		t.Fatalf("retry: %v result=%+v writes=%d/%d", err, result, vmDeletes, addressDeletes)
 	}
 }
