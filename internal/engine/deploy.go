@@ -126,6 +126,9 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	// an SSH or Docker failure, or a deploy cut before compose up, the hash
 	// is already recorded, and a plain re-run must retry.
 	if !isNewDeploy && existing.UpToDate(project.Hash) && !opts.Force {
+		if opts.Result != nil {
+			*opts.Result = DeployResult{Record: *existing, Action: "unchanged"}
+		}
 		if e.Printer.IsJSON() {
 			return e.Printer.JSON(map[string]any{"status": "unchanged", "vm_id": existing.VMID, "vm_ip": existing.VMIP})
 		}
@@ -226,6 +229,13 @@ func (e *Engine) Deploy(ctx context.Context, opts DeployOptions) (retErr error) 
 	}
 
 	var rec state.DeploymentRecord
+	if opts.Result != nil {
+		action := "updated"
+		if isNewDeploy {
+			action = "created"
+		}
+		defer func() { *opts.Result = DeployResult{Record: rec, Action: action} }()
+	}
 	if isNewDeploy {
 		// Step 3: Provision.
 		rec, err = e.provisionVM(ctx, opts, stateFile, statePath, project, region)

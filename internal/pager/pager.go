@@ -124,9 +124,9 @@ func Named(what string, err error) error {
 // them by it.
 var errIncomplete = stderrors.New("the list is not complete")
 
-// incomplete is the error of a list read only in part: API_ERROR, as
+// Incomplete is the error of a list read only in part: API_ERROR, as
 // billing answered a broken page sequence before (QA-2).
-func incomplete(why string) *clierrors.CLIError {
+func Incomplete(why string) *clierrors.CLIError {
 	return clierrors.Wrap(clierrors.CodeAPIError,
 		i18n.Tf("the list is not complete: %s", "список не полон: %s", why),
 		i18n.T("Cloud.ru answered a broken page sequence, and evo does not act on a part of a list. Retry later; if it repeats, report it to Cloud.ru support.",
@@ -136,12 +136,12 @@ func incomplete(why string) *clierrors.CLIError {
 
 // RepeatedToken: the answer names a page token already followed.
 func RepeatedToken(token string) *clierrors.CLIError {
-	return incomplete(i18n.Tf("the answer repeats page token %q", "ответ повторяет токен страницы %q", token))
+	return Incomplete(i18n.Tf("the answer repeats page token %q", "ответ повторяет токен страницы %q", token))
 }
 
 // TooManyPages: max pages were read and the list still goes on.
 func TooManyPages(max int) *clierrors.CLIError {
-	e := incomplete(i18n.Tf("more than %d pages", "больше %d страниц", max))
+	e := Incomplete(i18n.Tf("more than %d pages", "больше %d страниц", max))
 	e.Hint = i18n.T("Narrow the list (another project, a filter, a shorter period); if the list cannot be that long, Cloud.ru answers a page sequence without an end — report it to Cloud.ru support.",
 		"Сузьте список (другой проект, фильтр, период короче); если список не может быть таким длинным, Cloud.ru отдаёт страницы без конца — сообщите в поддержку Cloud.ru.")
 	return e
@@ -150,16 +150,16 @@ func TooManyPages(max int) *clierrors.CLIError {
 // EmptyPage: an empty page while read is still below the total the
 // answer gives.
 func EmptyPage(read, total int) *clierrors.CLIError {
-	return incomplete(i18n.Tf("an empty page after %d of %d items", "пустая страница после %d из %d объектов", read, total))
+	return Incomplete(i18n.Tf("an empty page after %d of %d items", "пустая страница после %d из %d объектов", read, total))
 }
 
 // NoNewItems: a page holds only items already read, the server ignores
 // the offset or the page token. total < 0 is a list without a total.
 func NoNewItems(read, total int) *clierrors.CLIError {
 	if total < 0 {
-		return incomplete(i18n.Tf("a page repeats items already read (%d), the server ignores the offset or the page token",
+		return Incomplete(i18n.Tf("a page repeats items already read (%d), the server ignores the offset or the page token",
 			"страница повторяет уже прочитанные объекты (%d): сервер игнорирует offset или токен страницы", read))
 	}
-	return incomplete(i18n.Tf("a page repeats items already read (%d of %d), the server ignores the offset or the page token",
+	return Incomplete(i18n.Tf("a page repeats items already read (%d of %d), the server ignores the offset or the page token",
 		"страница повторяет уже прочитанные объекты (%d из %d): сервер игнорирует offset или токен страницы", read, total))
 }

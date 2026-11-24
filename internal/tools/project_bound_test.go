@@ -108,10 +108,12 @@ type ownerFake struct {
 	// (a detach needs a disk that is attached to reach its preview).
 	diskOn string
 	// goneStatus is the status of a read of resGone by id; 0 — 404.
-	goneStatus int
+	goneStatus    int
+	clusterStatus string
 	// refuseWrites answers every write with this body and 422; "" — the
 	// write is taken.
 	refuseWrites string
+	forbidDelete bool
 	// flavors serves a flavor of the catalogue (gen-2-4); false — the
 	// catalogue is empty.
 	flavors bool
@@ -177,6 +179,10 @@ func ownerObject(id string) map[string]any {
 }
 
 func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete && f.forbidDelete {
+		http.Error(w, `{"message":"permission denied"}`, http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodGet {
 		if f.refuseWrites != "" {
 			http.Error(w, f.refuseWrites, http.StatusUnprocessableEntity)
@@ -212,6 +218,9 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 	for id := range projectOf {
 		if strings.Contains(r.URL.Path, id) {
 			o := ownerObject(id)
+			if f.clusterStatus != "" && (r.URL.Host == "postgresql.api.cloud.ru" || r.URL.Host == "redis.api.cloud.ru") {
+				o["status"] = f.clusterStatus
+			}
 			if strings.HasPrefix(r.URL.Path, "/api/v1/backups/") {
 				// A backup is a disk's, created: what a restore reads
 				// before its question.
