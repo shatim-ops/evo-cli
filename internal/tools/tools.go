@@ -1747,7 +1747,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			}
 			answer, err := s.deployAnswer(ctx, args, eng)
 			if err != nil {
-				return errAnswer(err, deployFields(err, nil)), true
+				return s.deployRefusal(eng, err, nil), true
 			}
 			return answer, true
 		},
@@ -1789,7 +1789,7 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 			}
 
 			result := map[string]any{"log": buf.String()}
-			if record := deployment.Record; record.VMID != "" {
+			if record := &deployment.Record; record.VMID != "" {
 				result["deploy_action"] = deployment.Action
 				result["deployment"] = record
 				result["vm_id"] = record.VMID
@@ -1801,11 +1801,28 @@ func (s *Registry) handleDeploy(ctx context.Context, args map[string]any) (strin
 				return toJSON(deployInProgress(result, going, args)), false
 			}
 			if deployErr != nil {
-				return errAnswer(deployErr, deployFields(deployErr, result)), true
+				return s.deployRefusal(eng, deployErr, result), true
 			}
 			result["status"] = "ok"
 			return toJSON(result), false
 		})
+}
+
+// A refusal before the engine returns a VM can still describe the existing
+// Compose deployment. Only the engine result identifies work done by this call.
+func (s *Registry) deployRefusal(eng *engine.Engine, err error, fields map[string]any) string {
+	if fields == nil {
+		fields = map[string]any{}
+	}
+	if fields["deployment"] == nil {
+		if sf, readErr := state.Read(state.DefaultPath(eng.StateDir)); readErr == nil {
+			rec := sf.ActiveComposeDeployment()
+			if rec != nil && (!s.projectBound || (rec.ProjectID != "" && rec.ProjectID == eng.Config.ProjectID)) {
+				fields["deployment"] = rec
+			}
+		}
+	}
+	return errAnswer(err, deployFields(err, fields))
 }
 
 // deployPortsOnlyFromGroups puts into the answer of deploy the ports the
@@ -1854,7 +1871,7 @@ func (s *Registry) composeChangedSinceConsent(ctx context.Context, args map[stri
 	}
 	answer, err := s.deployAnswer(ctx, args, eng)
 	if err != nil {
-		return errAnswer(err, deployFields(err, nil)), true
+		return s.deployRefusal(eng, err, nil), true
 	}
 	var m map[string]any
 	if json.Unmarshal([]byte(answer), &m) != nil {

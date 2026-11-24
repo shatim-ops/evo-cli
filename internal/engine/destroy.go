@@ -286,12 +286,17 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		return err
 	}
 
+	cleanupPending := extraErr != nil || len(rules.Failed) > 0 || uncheckedErr != nil || len(lostMissing) > 0
 	if opts.Result != nil {
-		opts.Result.CleanupPending = extraErr != nil || len(rules.Failed) > 0 || uncheckedErr != nil || len(lostMissing) > 0
+		opts.Result.CleanupPending = cleanupPending
 	}
 
 	if e.Printer.IsJSON() {
-		out := map[string]any{"status": "destroyed", "vm_id": vmID, "vm_ip": vmIP}
+		status := "destroyed"
+		if cleanupPending {
+			status = "partial"
+		}
+		out := map[string]any{"status": status, "cleanup_pending": cleanupPending, "vm_id": vmID, "vm_ip": vmIP}
 		if shown.VMName != "" {
 			out["vm_name"] = shown.VMName
 		}
@@ -534,15 +539,16 @@ func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, st
 	if err := state.Write(statePath, sf); err != nil {
 		return err
 	}
+	cleanupPending := len(rules.Failed) > 0
 	if opts.Result != nil {
-		opts.Result.CleanupPending = len(rules.Failed) > 0
+		opts.Result.CleanupPending = cleanupPending
 	}
 	if e.Printer.IsJSON() {
 		status := "destroyed"
-		if len(rules.Failed) > 0 {
+		if cleanupPending {
 			status = "rules_pending"
 		}
-		return e.Printer.JSON(map[string]any{"status": status, "security_group_rules": rules})
+		return e.Printer.JSON(map[string]any{"status": status, "cleanup_pending": cleanupPending, "security_group_rules": rules})
 	}
 	if len(rules.Failed) == 0 {
 		e.Printer.Success(i18n.T("Security group rules deleted.", "Правила группы безопасности удалены."))

@@ -7,7 +7,9 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	stderrors "errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -224,7 +226,8 @@ func TestDestroy_RecordOfAnotherProject404Refused(t *testing.T) {
 
 func TestDestroy_ExtraAddressRefusalKeepsTargetUntilRetry(t *testing.T) {
 	rec := runningRecord()
-	eng, cloud, _ := destroyFixture(t, rec)
+	eng, cloud, out := destroyFixture(t, rec)
+	eng.Printer = output.NewWithWriters(out, io.Discard, output.ModeJSON, false)
 	path := state.DefaultPath(eng.StateDir)
 	sf, err := state.Read(path)
 	if err != nil {
@@ -250,9 +253,21 @@ func TestDestroy_ExtraAddressRefusalKeepsTargetUntilRetry(t *testing.T) {
 	}
 	for i, pending := range []bool{true, true, false} {
 		deny = pending
+		out.Reset()
 		var result DestroyResult
 		if err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result}); err != nil {
 			t.Fatal(err)
+		}
+		var answer map[string]any
+		if err := json.Unmarshal(out.Bytes(), &answer); err != nil {
+			t.Fatal(err)
+		}
+		wantStatus := "destroyed"
+		if pending {
+			wantStatus = "partial"
+		}
+		if answer["status"] != wantStatus || answer["cleanup_pending"] != pending || answer["vm_id"] != rec.VMID {
+			t.Fatalf("attempt %d: destroy --json = %v", i, answer)
 		}
 		sf, err = state.Read(path)
 		if err != nil || result.VMID != rec.VMID || result.CleanupPending != pending || (sf.ActiveDeployment() != nil) != pending || (len(sf.LostFloatingIPs) != 0) != pending || attempts != i+1 {
