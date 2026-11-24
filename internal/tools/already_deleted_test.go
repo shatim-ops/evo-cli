@@ -6,10 +6,13 @@ package tools
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -394,5 +397,229 @@ func TestAlreadyDeleted_DescriptionNamesTheBoundAnswer(t *testing.T) {
 				t.Errorf("%s (%s): promises already_deleted, not what a server with --allow-project answers (NOT_FOUND)", tl.Name, lang)
 			}
 		}
+	}
+}
+
+// Some services expose a card; others establish absence by listing the
+// correct collection in the target's project, bucket or parent. DNS must
+// check both visibilities. Keep this oracle independent of the handlers.
+func TestDeleteReadsAbsenceBeforeWriting(t *testing.T) {
+	const (
+		compute   = "compute.api.cloud.ru/api/v1/"
+		pg        = "postgresql.api.cloud.ru/v1/clusters/"
+		dns       = "dns.api.cloud.ru/v1/"
+		rules     = compute + "security-groups/" + liveID + "/rules"
+		project   = "?project_id=" + dbaasProject
+		projectID = "?projectId=" + dbaasProject
+	)
+	lookups := map[string][]string{
+		"destroy":             {compute + "vms" + project},
+		"image_delete":        {compute + "images/" + goneID},
+		"disk_delete":         {compute + "disks/" + goneID},
+		"subnet_delete":       {compute + "subnets/" + goneID},
+		"release_floating_ip": {compute + "floating-ips/" + goneID},
+		"backup_delete":       {compute + "backups/" + goneID},
+		"snat_delete":         {compute + "nat-gateways" + project},
+		"sg_rule_delete":      {rules},
+		"close_ports":         {rules},
+		"pg_delete":           {pg + goneID},
+		"pg_db_delete":        {pg + liveID + "/databases"},
+		"pg_user_delete":      {pg + liveID + "/users"},
+		"cert_delete":         {"certificatemanager.api.cloud.ru/v1/certificate/" + goneID},
+		"kafka_delete":        {"kafka.api.cloud.ru/v1/clusters/" + goneID},
+		"redis_delete":        {"redis.api.cloud.ru/v1/clusters/" + goneID},
+		"vpc_delete":          {"vpc.api.cloud.ru/v1/vpcs/" + goneID},
+		"vpc_route_delete":    {"vpc.api.cloud.ru/v1/vpcs/" + liveID + "/routes/static"},
+		"dns_zone_delete":     {dns + "publicZones" + project, dns + "privateZones" + project},
+		"dns_record_delete":   {dns + "publicRecordsSole/" + goneID, dns + "privateRecordsSole/" + goneID},
+		"secret_delete":       {"secretmanager.api.cloud.ru/v2/secret/" + goneName + projectID},
+		"k8s_delete":          {"mk8s.api.cloud.ru/v3/clusters/" + goneID + project},
+		"k8s_nodepool_delete": {"mk8s.api.cloud.ru/v3/nodePools/" + goneID + project},
+		"ca_delete":           {"containers.api.cloud.ru/v2/containers/" + goneName + projectID},
+		"tg_delete":           {"nlb.api.cloud.ru/v2/targetGroups/" + goneID},
+		"lb_delete":           {"nlb.api.cloud.ru/v2/networkLoadBalancers/" + goneID},
+		"ar_delete":           {"ar.api.cloud.ru/v1/registries/" + goneID + projectID},
+		"s3_bucket_delete":    {"s3.cloud.ru/" + goneName + "/?list-type=2&prefix="},
+		"s3_rm":               {"s3.cloud.ru/" + liveName + "/?list-type=2&prefix=" + goneName},
+	}
+	for name, target := range allDeletes() {
+		t.Run(name, func(t *testing.T) {
+			want := lookups[name]
+			if len(want) == 0 {
+				t.Fatal("missing target lookup in fixture")
+			}
+			for _, deny := range []bool{false, true} {
+				stackHome(t)
+				seen := map[string]bool{}
+				fake := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+					key := deleteReadKey(r)
+					if r.Method == http.MethodGet && slices.Contains(want, key) {
+						seen[key] = true
+						if deny {
+							http.Error(w, "target lookup requires authentication", http.StatusUnauthorized)
+							return true
+						}
+					}
+					return goneWorld(w, r)
+				}}
+				reg := apiFakeS3Registry(t, fake)
+				args := goneArgs(name, target)
+				args["confirmed"] = true
+				result, text, failed := callNamed(t, reg, name, args)
+				if contractWrites(fake.calls) != 0 {
+					t.Fatalf("wrote while checking absence: %v", fake.calls)
+				}
+				if deny {
+					if len(seen) == 0 || !failed || result["status"] == "already_deleted" {
+						t.Fatalf("denied target lookup must fail: %s, requests %v", text, fake.calls)
+					}
+				} else if failed || result["status"] != "already_deleted" || len(seen) != len(want) {
+					t.Fatalf("expected absence from %v, observed %v: %s", want, seen, text)
+				}
+			}
+		})
+	}
+}
+
+// A page size does not change which collection is read. Keep all scope
+// and target filters, including S3's key prefix, in the lookup identity.
+func deleteReadKey(r *http.Request) string {
+	q := r.URL.Query()
+	q.Del("limit")
+	if q.Get("offset") == "0" {
+		q.Del("offset")
+	}
+	if r.URL.Host == "s3.cloud.ru" {
+		q.Del("encoding-type")
+		q.Del("fetch-owner")
+		q.Del("max-keys")
+		if q.Get("delimiter") == "" {
+			q.Del("delimiter")
+		}
+	}
+	key := r.URL.Host + r.URL.Path
+	if query := q.Encode(); query != "" {
+		key += "?" + query
+	}
+	return key
+}
+
+// Where the specification has a terminal or deleting state, absence alone
+// does not exercise D61. Keep the target present. The healthy control must
+// reach the write; stop at that boundary without polling an operation.
+// Plan 2.3 (docs/internal/audits/1.10-phase0/plan.md): pending is the
+// known extra DELETE on main. Flip it to false when the zero-write control
+// passes; keep both the healthy and the terminal case.
+func TestDeleteTerminalStateOnlyShrinks(t *testing.T) {
+	for _, tc := range []struct {
+		tool, healthy, terminal, deletePath string
+		pending                             bool
+	}{
+		{"destroy", "running", "deleting", "/api/v1/vms/" + liveID, false},
+		{"pg_db_delete", "READY", "ERASING", "/v1/clusters/" + liveID + "/databases/" + liveName, true},
+		{"pg_user_delete", "READY", "ERASING", "/v1/clusters/" + liveID + "/users/" + liveName, true},
+		{"secret_delete", "ENABLED", "DESTROYED", "/v2/secret/" + liveName, true},
+	} {
+		t.Run(tc.tool, func(t *testing.T) {
+			for _, state := range []string{tc.healthy, tc.terminal} {
+				stackHome(t)
+				issued := false
+				fake := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+					w.Header().Set("Content-Type", "application/json")
+					if r.Method != "GET" && r.Method != "HEAD" {
+						if r.Method != "DELETE" || r.URL.Path != tc.deletePath {
+							t.Errorf("unexpected write %s %s", r.Method, r.URL.Path)
+						}
+						issued = true
+						w.WriteHeader(http.StatusBadRequest)
+						_, _ = w.Write([]byte(`{"message":"test stopped at DELETE"}`))
+						return true
+					}
+					// The VM list reports deletion in progress. Its next card
+					// read completes the wait without a wall-clock delay.
+					if tc.tool == "destroy" && state == tc.terminal && r.URL.Path == "/api/v1/vms/"+liveID {
+						w.WriteHeader(http.StatusNotFound)
+						_, _ = w.Write([]byte(`{"message":"not found"}`))
+						return true
+					}
+
+					item := map[string]any{"id": liveID, "name": liveName, "state": state, "status": state, "project_id": dbaasProject, "projectId": dbaasProject, "path": liveName}
+					card := maps.Clone(item)
+					for _, key := range []string{"items", "databases", "users"} {
+						card[key] = []any{item}
+					}
+					card["total"] = 1
+					_ = json.NewEncoder(w).Encode(card)
+					return true
+				}}
+				reg := apiFakeS3Registry(t, fake)
+				target := decls[tc.tool].Delete
+				args := map[string]any{target.arg: liveID, "confirmed": true}
+				if target.arg == "name" || target.arg == "path" {
+					args[target.arg] = liveName
+				}
+				if target.parent != "" {
+					args[target.parent] = liveID
+				}
+				out, text, failed := callNamed(t, reg, tc.tool, args)
+				if state == tc.healthy {
+					if !issued {
+						t.Fatalf("healthy control never attempted deletion: %v %s", fake.calls, text)
+					}
+					continue
+				}
+				stateRefusal := failed && out["reason"] == "USAGE" && strings.Contains(strings.ToUpper(text), strings.ToUpper(state))
+				if !issued && (len(fake.calls) == 0 || !(stateRefusal || !failed && deleteSettledInTest(out))) {
+					t.Fatalf("terminal control inconclusive: %v %s", fake.calls, text)
+				}
+				if issued != tc.pending {
+					t.Errorf("state %s: DELETE=%t, recorded exception=%t; update shrinking baseline after fixing the delete: %s", state, issued, tc.pending, strings.Join(fake.calls, ", "))
+				}
+			}
+		})
+	}
+}
+
+// When a delete no longer sends, it must also give a terminal or ongoing
+// outcome. A malformed fixture or an unrelated refusal is inconclusive.
+func deleteSettledInTest(out map[string]any) bool {
+	switch out["status"] {
+	case "deleted", "already_deleted", "deleting", "already_deleting":
+		return true
+	case "ok":
+		return out["deleted_vm"] == liveID
+	}
+	return false
+}
+
+// stack_destroy delegates its cloud writes. Observe the delegate at the
+// registry boundary as well as the state read from the stored job.
+func TestStackDeleteReadsJobBeforeDelegating(t *testing.T) {
+	for _, status := range []string{"done", "destroyed"} {
+		t.Run(status, func(t *testing.T) {
+			stackHome(t)
+			r := newTestServer(t)
+			job := planJob(t, `{"name":"fixture","secrets":[{"path":"fixture","value":"example"}]}`)
+			step := job.Steps[0].Key
+			job.Steps[0].Status = "done"
+			job.Status = status
+			job.Outputs[step] = "ok"
+			if err := job.Save(); err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			r.handlers["secret_delete"] = func(context.Context, map[string]any) (string, bool) {
+				calls++
+				return toJSON(map[string]any{"status": "deleted"}), false
+			}
+			out, text, failed := callNamed(t, r, "stack_destroy", map[string]any{"job_id": job.ID, "confirmed": true})
+			wantCalls, wantStatus := 1, "destroyed"
+			if status == "destroyed" {
+				wantCalls, wantStatus = 0, "already_destroyed"
+			}
+			if failed || out["status"] != wantStatus || calls != wantCalls {
+				t.Fatalf("job %s: %d child deletes, want %d; %s", status, calls, wantCalls, text)
+			}
+		})
 	}
 }
