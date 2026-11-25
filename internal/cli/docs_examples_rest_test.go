@@ -427,6 +427,7 @@ func checkMCPJSON(root *cobra.Command, body string) error {
 // TestDocsExamples_Links checks relative links and heading anchors between
 // the user docs. Generated command pages are targets only.
 func TestDocsExamples_Links(t *testing.T) {
+	checkReadmeMigrationLinks(t, string(mustReadRepo(t, "README.md")), string(mustReadRepo(t, "CHANGELOG.md")))
 	anchors := map[string]map[string]bool{}
 	headingAnchors := func(rel string) map[string]bool {
 		if a, ok := anchors[rel]; ok {
@@ -456,6 +457,11 @@ func TestDocsExamples_Links(t *testing.T) {
 				continue
 			}
 			if frag == "" {
+				label := strings.ToLower(lnk.label)
+				if rel == "README.md" && target == "CHANGELOG.md" &&
+					(strings.Contains(label, "миграц") || strings.Contains(label, "migration")) {
+					t.Errorf("%s:%d: migration link %q has no CHANGELOG heading", rel, lnk.line, lnk.label)
+				}
 				continue
 			}
 			if !strings.HasSuffix(target, ".md") {
@@ -473,11 +479,12 @@ func TestDocsExamples_Links(t *testing.T) {
 }
 
 type docLink struct {
-	raw  string
-	line int
+	label string
+	raw   string
+	line  int
 }
 
-var mdLink = regexp.MustCompile(`\[[^\]\n]*\]\(([^)\n]+)\)`)
+var mdLink = regexp.MustCompile(`\[([^\]\n]*)\]\(([^)\n]+)\)`)
 
 func markdownLinks(src string) []docLink {
 	src = strings.ReplaceAll(src, "\r\n", "\n")
@@ -512,8 +519,9 @@ func linksIn(src string, start int) []docLink {
 	var out []docLink
 	for _, m := range mdLink.FindAllStringSubmatchIndex(src, -1) {
 		out = append(out, docLink{
-			raw:  strings.TrimSpace(src[m[2]:m[3]]),
-			line: start + strings.Count(src[:m[2]], "\n"),
+			label: src[m[2]:m[3]],
+			raw:   strings.TrimSpace(src[m[4]:m[5]]),
+			line:  start + strings.Count(src[:m[0]], "\n"),
 		})
 	}
 	return out
@@ -548,8 +556,13 @@ func resolveDocLink(from, raw string) (path, frag string) {
 }
 
 func anchorSet(src string) map[string]bool {
-	seen := map[string]int{}
 	out := map[string]bool{}
+	walkHeadingAnchors(src, func(_, slug string) { out[slug] = true })
+	return out
+}
+
+func walkHeadingAnchors(src string, visit func(heading, slug string)) {
+	seen := map[string]int{}
 	for _, h := range atxHeadings(src) {
 		base := githubAnchor(h)
 		n := seen[base]
@@ -558,9 +571,8 @@ func anchorSet(src string) map[string]bool {
 		if n > 0 {
 			slug = fmt.Sprintf("%s-%d", base, n)
 		}
-		out[slug] = true
+		visit(h, slug)
 	}
-	return out
 }
 
 func atxHeadings(src string) []string {
@@ -616,6 +628,65 @@ func githubAnchor(h string) string {
 		}
 	}
 	return b.String()
+}
+
+var changelogRelease = regexp.MustCompile(`^\[([^\]]+)\](?:\s|$)`)
+var readmeMigrationBlock = regexp.MustCompile(`\n(?:[ \t]*\n|[ \t]*[-*+] )`)
+var readmeMigrationVersion = regexp.MustCompile(`(?:«Миграция» версии|При переходе на)\s+(\d+\.\d+\.\d+)`)
+
+// A link to an existing “Миграция” heading can still land in the wrong
+// release. Resolve the heading under its release, including GitHub's suffix
+// for repeated headings, and require the link in the corresponding README note.
+func checkReadmeMigrationLinks(t *testing.T, readme, changelog string) {
+	t.Helper()
+	byVersion := map[string]string{}
+	version := ""
+	walkHeadingAnchors(changelog, func(heading, slug string) {
+		if m := changelogRelease.FindStringSubmatch(heading); m != nil {
+			version = m[1]
+			byVersion[version] = ""
+		} else if heading == "Миграция" {
+			byVersion[version] = slug
+		}
+	})
+
+	// The README shipped with 1.9.1 promises these four migration sections.
+	// Check the changelog independently so removing a whole note cannot pass.
+	_, released := byVersion["1.9.1"]
+	found := map[string]bool{"1.9.0": false, "1.8.0": false, "1.8.1": false, "1.9.1": false}
+	for _, block := range readmeMigrationBlock.Split(strings.ReplaceAll(readme, "\r\n", "\n"), -1) {
+		m := readmeMigrationVersion.FindStringSubmatch(block)
+		if m == nil {
+			continue
+		}
+		version := m[1]
+		if _, required := found[version]; !required {
+			continue
+		}
+		expected := byVersion[version]
+		found[version] = true
+		linked := false
+		for _, link := range markdownLinks(block) {
+			target, frag := resolveDocLink("README.md", link.raw)
+			if version == "1.9.1" && link.label != "Миграция в CHANGELOG" {
+				continue
+			}
+			if target == "CHANGELOG.md" && expected != "" && frag == expected {
+				linked = true
+				break
+			}
+		}
+		if !linked {
+			t.Errorf("README.md: migration note for %s must link to its Миграция heading in CHANGELOG.md (expected #%s)", version, expected)
+		}
+	}
+	if released {
+		for version, seen := range found {
+			if !seen {
+				t.Errorf("README.md: missing migration note with CHANGELOG link for %s", version)
+			}
+		}
+	}
 }
 
 // TestDocsExamples_Offline runs the commands the docs describe as usable
