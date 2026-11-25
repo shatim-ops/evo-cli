@@ -56,7 +56,7 @@ jobs:
       # Cloud.ru против снимка internal/pricing/testdata (план 1.6, «Цена
       # PostgreSQL до согласия», #570). Только по расписанию и вручную —
       # перед rc запускается workflow_dispatch: смена тарифа — не вина PR.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         with:
           go-version: "1.26.11"
