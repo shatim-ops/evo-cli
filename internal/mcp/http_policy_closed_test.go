@@ -5,6 +5,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"go/ast"
@@ -12,12 +13,14 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
 // secretKey reports whether a string under key k is masked in any tool's
@@ -62,14 +65,70 @@ func restrictionsFor(s *Server, http, allowSecretExport, readOnly bool) []string
 	return out
 }
 
-// handlerPointers is the code pointer of every tool's handler, in the
-// registry and in the tools/call dispatch table.
-func handlerPointers(s *Server) map[string][2]uintptr {
-	out := map[string][2]uintptr{}
-	for _, t := range s.reg.Tools() {
-		out[t.Name] = [2]uintptr{reflect.ValueOf(t.Handler).Pointer(), reflect.ValueOf(s.handlers[t.Name]).Pointer()}
+// Probe both entry points with a tool-specific response. Refused calls must
+// stop before the tool; successful calls must return its response, with the
+// credential masked exactly in the modes specified by H7.
+func checkPolicyCalls(t *testing.T, s *Server, http, allow, readOnly bool, reached map[string]int) {
+	t.Helper()
+	for _, tool := range s.reg.Tools() {
+		args := map[string]any{}
+		switch tool.Name {
+		case "deploy":
+			args["compose_file"] = "../outside.yml" // H2
+		case "k8s_kubectl":
+			args["args"] = "-n example get pods" // H3: command must come first
+		case "k8s_helm":
+			args["action"], args["chart"] = "list", "./local-chart" // H4
+		}
+
+		reason, detail := clierrors.CodeUsage, ""
+		switch {
+		case readOnly && tools.NeedsConsent(tool, args):
+			detail = "this server runs with --read-only" // H11 is outermost
+		case http && tool.Name == "k8s_apply":
+			reason, detail = clierrors.CodeConfigInvalid, "kubectl is not installed" // H1
+		case http && tool.Name == "deploy":
+			detail = "outside the server's working directory"
+		case (http || readOnly) && tool.Name == "k8s_kubectl":
+			detail = "put the kubectl command first"
+		case http && tool.Name == "k8s_helm":
+			detail = "chart is a path on the MCP server"
+		case http && !allow && slices.Contains(restriction("H5").Tools, tool.Name):
+			detail = "is disabled over HTTP"
+		case (readOnly || http && !allow) && tool.Name == "k8s_kubeconfig":
+			detail = "with an embedded token is disabled" // H6 defaults to embed_token=true
+		case http && tool.Name == "doctor":
+			detail = "doctor is disabled over HTTP" // H10
+		}
+
+		for _, route := range []struct {
+			name string
+			call tools.Handler
+		}{{"registry", tool.Handler}, {"tools/call", tools.Handler(s.handlers[tool.Name])}} {
+			before := reached[tool.Name]
+			text, isErr := route.call(t.Context(), args)
+			var result struct{ Probe, Password, Status, Reason, Error string }
+			if err := json.Unmarshal([]byte(text), &result); err != nil {
+				t.Errorf("%s/%s: %v", route.name, tool.Name, err)
+				continue
+			}
+			if detail != "" {
+				if !isErr || reached[tool.Name] != before || result.Status != "error" || result.Reason != reason || !strings.Contains(result.Error, detail) {
+					t.Errorf("%s/%s: want refusal %s (%s) before tool, got %s", route.name, tool.Name, reason, detail, text)
+				}
+				continue
+			}
+			password := "policy-probe-value"
+			if readOnly {
+				password = readOnlyWording.mask
+			} else if http && !allow {
+				password = httpWording.mask
+			}
+			if isErr || reached[tool.Name] != before+1 || result.Probe != tool.Name || result.Password != password {
+				t.Errorf("%s/%s: expected tool response with password %q, got %s", route.name, tool.Name, password, text)
+			}
+		}
 	}
-	return out
 }
 
 // REQ-9 (spec.md): HTTP mode differs from stdio only as HTTPRestrictions
@@ -112,35 +171,39 @@ func TestHTTPPolicy_ClosedList(t *testing.T) {
 	// The handlers: exactly the listed wraps are applied, and no other tool's
 	// handler changes, over the whole HTTP setup (NewHTTPHandler), and with
 	// --read-only (SetReadOnly) on either transport.
+	originalBinaryAvailable := binaryAvailable
+	binaryAvailable = func(string) bool { return false }
+	t.Cleanup(func() { binaryAvailable = originalBinaryAvailable })
 	for _, setup := range []struct{ http, allow, readOnly bool }{
-		{true, false, false}, {true, true, false}, {false, false, true}, {true, false, true},
+		{false, false, false}, {true, false, false}, {true, true, false},
+		{false, false, true}, {true, false, true}, {true, true, true},
 	} {
 		name := fmt.Sprintf("http=%v allow-secret-export=%v read-only=%v", setup.http, setup.allow, setup.readOnly)
-		s := newTestServer(t)
-		before := handlerPointers(s)
-		if setup.readOnly {
-			s.SetReadOnly()
-		}
-		if setup.http {
-			h := NewHTTPHandler(s, HTTPOptions{AllowSecretExport: setup.allow})
-			h.Close()
-		}
-		got := slices.Clone(s.httpApplied)
-		slices.Sort(got)
-		if want := restrictionsFor(s, setup.http, setup.allow, setup.readOnly); !slices.Equal(got, want) {
-			t.Errorf("%s: applied\n%v\nwant\n%v", name, got, want)
-		}
-		wrapped := map[string]bool{}
-		for _, a := range got {
-			_, tool, _ := strings.Cut(a, " ")
-			wrapped[tool] = true
-		}
-		after := handlerPointers(s)
-		for tool, p := range before {
-			if changed := after[tool] != p; changed != wrapped[tool] {
-				t.Errorf("%s: %s handler changed=%v, listed=%v", name, tool, changed, wrapped[tool])
+		t.Run(name, func(t *testing.T) {
+			s := newTestServer(t)
+			reached := map[string]int{}
+			for _, tool := range s.reg.Tools() {
+				s.wrapHandler(tool.Name, func(tools.Handler) tools.Handler {
+					return func(context.Context, map[string]any) (string, bool) {
+						reached[tool.Name]++
+						return fmt.Sprintf(`{"probe":%q,"password":"policy-probe-value"}`, tool.Name), false
+					}
+				})
 			}
-		}
+			if setup.readOnly {
+				s.SetReadOnly()
+			}
+			if setup.http {
+				h := NewHTTPHandler(s, HTTPOptions{AllowSecretExport: setup.allow})
+				h.Close()
+			}
+			got := slices.Clone(s.httpApplied)
+			slices.Sort(got)
+			if want := restrictionsFor(s, setup.http, setup.allow, setup.readOnly); !slices.Equal(got, want) {
+				t.Errorf("applied\n%v\nwant\n%v", got, want)
+			}
+			checkPolicyCalls(t, s, setup.http, setup.allow, setup.readOnly, reached)
+		})
 	}
 
 	// In the code, handlers are wrapped only through restrict, and results
@@ -162,6 +225,18 @@ func TestHTTPPolicy_ClosedList(t *testing.T) {
 				continue
 			}
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				// A direct replacement in the dispatch table would bypass restrict,
+				// even if a probe happened to get the same answer from the new handler.
+				if a, ok := n.(*ast.AssignStmt); ok && fn.Name.Name != "New" && fn.Name.Name != "wrapHandler" {
+					for _, lhs := range a.Lhs {
+						if index, ok := lhs.(*ast.IndexExpr); ok {
+							lhs = index.X
+						}
+						if field, ok := lhs.(*ast.SelectorExpr); ok && field.Sel.Name == "handlers" {
+							t.Errorf("%s: %s assigns the dispatch table outside New/wrapHandler", fset.Position(lhs.Pos()), fn.Name.Name)
+						}
+					}
+				}
 				c, ok := n.(*ast.CallExpr)
 				if !ok {
 					return true
