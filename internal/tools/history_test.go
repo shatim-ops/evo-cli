@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
@@ -461,5 +462,26 @@ func TestDoctor_SaysLinesOfLiveNotReadAreNotAnothers(t *testing.T) {
 	}
 	if !strings.Contains(c.Detail, "lines not read") || !strings.Contains(c.Detail, "is not to be moved or removed whatever the counts") {
 		t.Errorf("doctor: %s; want the lines of %s said not read, and it never to be removed", c.Detail, history.LiveName)
+	}
+}
+
+func TestHistory_DeployRecordsResultRegion(t *testing.T) {
+	cfg := config.Config{ProjectID: "p", Region: "configured-zone", KeyID: "k", Secret: "s"}
+	r, dir := targetRegistryWith(t, &goneCloud{}, cfg)
+	tool, _ := r.Lookup("deploy")
+	deploy := r.intended(tool, func(context.Context, map[string]any) (string, bool) {
+		return `{"status":"ok","deploy_action":"created","vm_id":"vm-1","region":"deployed-zone"}`, false
+	})
+	answer, failed := deploy(context.Background(), map[string]any{"confirmed": true})
+	if failed {
+		t.Fatal(answer)
+	}
+	lines, _ := historyOf(t, dir)
+	if len(lines) != 1 {
+		t.Fatalf("deploy journal: %+v", lines)
+	}
+	line := lines[0]
+	if line.Tool != "deploy" || line.Outcome != history.Created || line.ResourceID != "vm-1" || line.Zone != "deployed-zone" {
+		t.Fatalf("deploy recorded %+v", line)
 	}
 }

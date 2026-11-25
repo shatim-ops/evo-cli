@@ -254,6 +254,7 @@ func TestProvenanceOf_TheRule(t *testing.T) {
 
 func TestJournalProvenanceDeletePreview(t *testing.T) {
 	for _, c := range []struct{ name, create, project, answer, want string }{
+		{"PostgreSQL create receipt", "pg_create", ownProject, `{"status":"creating","operation_id":"op","cluster_id":"ID"}`, "unknown"},
 		{"Redis create receipt", "redis_create", ownProject, `{"status":"creating","operation_id":"op","cluster_id":"ID"}`, "yes"},
 		{"subnet create receipt", "subnet_create", ownProject, `{"status":"created","subnet_id":"ID","subnet":{"id":"ID"}}`, "yes"},
 		{"subnet found after lost response", "subnet_create", ownProject, `{"status":"creating","subnet_id":"ID","warning":"lost"}`, "unknown"},
@@ -279,6 +280,12 @@ func TestJournalProvenanceDeletePreview(t *testing.T) {
 			before, err := history.ReadAll(hdir, nil)
 			if err != nil || len(before.Lines) != 1 {
 				t.Fatalf("journal: %+v %v", before, err)
+			}
+			if c.create == "pg_create" {
+				line := before.Lines[0]
+				if line.Outcome != history.Created || line.OperationID != "op" || line.ResourceID != resMine || line.ProjectID != ownProject {
+					t.Fatalf("missing PostgreSQL creation receipt: %+v", line)
+				}
 			}
 			del := decls[c.create].Created.delete
 			m, text, _ := callNamed(t, r, del, map[string]any{decls[del].Delete.arg: resMine})

@@ -6,6 +6,8 @@ package tools
 
 import (
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/compose"
@@ -85,5 +87,53 @@ func TestDeploy_RefusalWithAllowProjectKeepsOtherRecordsPrivate(t *testing.T) {
 		if !isErr || m["deployment"] != nil || m["deploy_action"] != nil {
 			t.Fatalf("project %q: unexpected refusal: %s", project, text)
 		}
+	}
+}
+
+func TestDeploy_StaleHashRefusalIdentifiesOnlyOwnDeployment(t *testing.T) {
+	for _, tc := range []struct {
+		name, project string
+		visible       bool
+	}{
+		{"own project", "p", true},
+		{"another project", "other", false},
+		{"no project", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, cloud, id := stoppedDeployment(t, "stopped")
+			r.SetProjectBound()
+			path := state.DefaultPath(r.stateDirOf)
+			sf, err := state.Read(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sf.Deployments[0].ProjectID = tc.project
+			if err := state.Write(path, sf); err != nil {
+				t.Fatal(err)
+			}
+			writes := cloudWrites(cloud)
+			args := map[string]any{"confirmed": true, "project_id": "p", "compose_hash": strings.Repeat("0", 64)}
+			m, text, failed := callNamed(t, r, "deploy", args)
+			if !failed {
+				t.Fatalf("expected failed preview after stale consent: %s", text)
+			}
+			deployment, present := m["deployment"]
+			if present != tc.visible {
+				t.Fatalf("deployment present=%t: %s", present, text)
+			}
+			if tc.visible {
+				record, _ := deployment.(map[string]any)
+				if record["vm_id"] != id || m["cause"] != "vm_stopped" {
+					t.Fatalf("expected stopped recorded VM: %s", text)
+				}
+			}
+			after, err := state.Read(path)
+			if err != nil || !reflect.DeepEqual(sf.Deployments, after.Deployments) {
+				t.Fatalf("deploy changed its saved deployment: %+v, %v", after, err)
+			}
+			if _, acted := m["deploy_action"]; acted || cloudWrites(cloud) != writes {
+				t.Fatalf("deploy claimed or attempted a change: %s", text)
+			}
+		})
 	}
 }

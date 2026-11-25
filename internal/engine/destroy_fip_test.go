@@ -299,3 +299,55 @@ func TestDestroy_ExtraAddressRefusalKeepsTargetUntilRetry(t *testing.T) {
 		}
 	}
 }
+
+func TestDestroy_JSONIdentifiesEachIncompleteCleanup(t *testing.T) {
+	for _, cause := range []string{"rule delete", "rule list", "missing extra IP"} {
+		t.Run(cause, func(t *testing.T) {
+			rec := rulesRecord()
+			eng, cloud, out := destroyFixture(t, rec)
+			eng.Printer = output.NewWithWriters(out, io.Discard, output.ModeJSON, false)
+			switch cause {
+			case "rule delete":
+				cloud.deleteRuleFn = func(_ context.Context, _, id string) error {
+					if id == "rule-53" {
+						return stderrors.New("rule in use")
+					}
+					return nil
+				}
+			case "rule list":
+				cloud.listSecurityGroupsFn = func(context.Context, string) ([]*provision.SecurityGroup, error) {
+					return nil, clerrors.New(clerrors.CodeAPIError, "rule list unavailable", "")
+				}
+			case "missing extra IP":
+				path := state.DefaultPath(eng.StateDir)
+				sf := readState(t, eng.StateDir)
+				sf.LostFloatingIPs = []state.LostFloatingIP{{Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
+				if err := state.Write(path, sf); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+				t.Fatal(err)
+			}
+			var got struct {
+				Status    string
+				Pending   bool                      `json:"cleanup_pending"`
+				VMID      string                    `json:"vm_id"`
+				Rules     struct{ Failed []string } `json:"security_group_rules"`
+				Unchecked string                    `json:"labelled_rules_unchecked"`
+				Missing   []string                  `json:"lost_floating_ips_not_found"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+				t.Fatal(err, out)
+			}
+			if got.Status != "partial" || !got.Pending || got.VMID != rec.VMID {
+				t.Fatalf("partial cleanup of %s: %s", rec.VMID, out)
+			}
+			if (len(got.Rules.Failed) == 1) != (cause == "rule delete") ||
+				(got.Unchecked == "API_ERROR") != (cause == "rule list") ||
+				(strings.Join(got.Missing, ",") == "extra") != (cause == "missing extra IP") {
+				t.Fatalf("unexpected cleanup details: %s", out)
+			}
+		})
+	}
+}

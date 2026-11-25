@@ -175,6 +175,9 @@ func TestDestroy_RuleDeleteFailureWarnsAndRetries(t *testing.T) {
 	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
+	if !strings.HasSuffix(strings.TrimSpace(errBuf.String()), "Resource cleanup is incomplete.") || strings.Contains(out.String(), "Deployment destroyed successfully.") {
+		t.Fatalf("destroy with failed rule: stdout %q, stderr %q", out, &errBuf)
+	}
 	if !strings.Contains(errBuf.String(), "Could not delete the security group rules for ports 53/udp") ||
 		!strings.Contains(errBuf.String(), "re-run 'evo destroy'") {
 		t.Errorf("warning:\n%s", errBuf.String())
@@ -330,6 +333,9 @@ func TestDestroy_AnUnreadRuleListIsSaid(t *testing.T) {
 	}
 	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
 		t.Fatalf("Destroy: %v", err)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(out.String()), "Resource cleanup is incomplete.") || strings.Contains(out.String(), "Deployment destroyed successfully.") {
+		t.Fatalf("destroy with unread rules: %s", out)
 	}
 	if strings.Join(cloud.deletedRules, ",") != "sg-1/rule-80,sg-1/rule-53" {
 		t.Errorf("the record's own rules: deleted %v", cloud.deletedRules)

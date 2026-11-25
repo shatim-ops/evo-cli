@@ -116,7 +116,8 @@ type ownerFake struct {
 	forbidDelete bool
 	// flavors serves a flavor of the catalogue (gen-2-4); false — the
 	// catalogue is empty.
-	flavors bool
+	flavors     bool
+	clusterList func(http.ResponseWriter, *http.Request)
 }
 
 // ownerChild is the name of the database and of the user every cluster of
@@ -189,6 +190,10 @@ func (f *ownerFake) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": "op-new", "done": false, "resource_id": resMine})
+		return
+	}
+	if f.clusterList != nil && r.URL.Path == "/v1/clusters" {
+		f.clusterList(w, r)
 		return
 	}
 	if strings.Contains(r.URL.Path, "operation") {
@@ -680,5 +685,38 @@ func TestProjectBound_ListedForeignResourceRefused(t *testing.T) {
 		if answers[resForeign] != answers[resGone] {
 			t.Errorf("%s: a foreign resource answers\n%s\na gone one\n%s", key, answers[resForeign], answers[resGone])
 		}
+	}
+}
+
+func TestProjectBound_IncompleteClusterListRefusesConfirmedDelete(t *testing.T) {
+	for _, service := range []string{"redis", "kafka"} {
+		t.Run(service, func(t *testing.T) {
+			var tokens []string
+			f := &ownerFake{clusterList: func(w http.ResponseWriter, req *http.Request) {
+				if req.URL.Host != service+".api.cloud.ru" || req.URL.Query().Get("project_id") != ownProject {
+					t.Errorf("unexpected cluster list %s", req.URL)
+				}
+				token := req.URL.Query().Get("page_token")
+				tokens = append(tokens, token)
+				if token == "" {
+					_, _ = w.Write([]byte(`{"clusters":[{"id":"` + resMine + `"}],"next_page_token":"second"}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"clusters":[null]}`))
+			}}
+			r := ownerRegistry(t, f, true, ownProject)
+			m, answer, failed := callOwned(t, r, service+"_delete", map[string]any{"cluster_id": resMine}, true)
+			if !failed || m["reason"] != clierrors.CodeAPIError {
+				t.Fatalf("confirmed delete with incomplete membership: %s", answer)
+			}
+			if !slices.Equal(tokens, []string{"", "second"}) {
+				t.Fatalf("membership read tokens %q", tokens)
+			}
+			for _, req := range f.log() {
+				if !strings.HasPrefix(req, "GET ") {
+					t.Fatalf("confirmed delete sent %s", req)
+				}
+			}
+		})
 	}
 }
