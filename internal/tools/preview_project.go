@@ -56,8 +56,8 @@ func (r *Registry) namedProject(t Tool, next Handler) Handler {
 				continue
 			}
 			project, note := r.targetProject(ctx, t, a, ids[0], args)
-			if t.Name == "redis_delete" || t.Name == "subnet_delete" {
-				at["provenance"] = r.journalProvenance(t.Name, project, ids[0])
+			if provenance := r.journalProvenance(t.Name, project, ids[0]); provenance != nil {
+				at["provenance"] = provenance
 			}
 			delete(at, "project_id")
 			delete(at, "project_from")

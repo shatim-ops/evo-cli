@@ -148,7 +148,7 @@ state: шаг, упавший незадолго до границы, отвеч
 маскированием секретов; `evo agent setup` подключает сервер к клиенту одной
 командой и ставит правила для агента.
 
-**При переходе на 1.9.1.** Если API Redis или Kafka вернул `null` вместо страницы или внутри массива `clusters`, команды `evo redis list` и `evo kafka list` завершаются с кодом 5 (`API_ERROR`). Проверяйте код выхода, в MCP — `result.isError`. Та же ошибка останавливает `evo redis create` и `evo kafka create` при проверке имени и вызовы MCP с `--allow-project`, которым нужен список для проверки проекта кластера. [Миграция в CHANGELOG](CHANGELOG.md) · [Анонс 1.9.1](docs/release-notes/v1.9.1.md).
+**При переходе на 1.9.1.** Если API Redis или Kafka вернул `null` вместо страницы или внутри массива `clusters`, команды `evo redis list` и `evo kafka list` завершаются с кодом 5 (`API_ERROR`). Проверяйте код выхода, в MCP — `result.isError`. Та же ошибка останавливает `evo redis create` и `evo kafka create` при проверке имени и вызовы MCP с `--allow-project`, которым нужен список для проверки проекта кластера. После удаления ВМ `evo destroy --json` при неполной уборке возвращает `status: partial` и `cleanup_pending: true` с кодом 0. В скрипте проверяйте `status == "destroyed"`. [Миграция в CHANGELOG](CHANGELOG.md#миграция) · [Анонс 1.9.1](docs/release-notes/v1.9.1.md).
 
 ## Что понадобится
 

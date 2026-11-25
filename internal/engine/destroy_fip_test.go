@@ -60,7 +60,8 @@ func TestDestroy_ReleasesFloatingIPFromState(t *testing.T) {
 	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-9" {
 		t.Errorf("released FIPs = %v, want [fip-9]", cloud.deletedFIPs)
 	}
-	if !strings.Contains(out.String(), "Floating IP 198.51.100.10 (fip-9) released") {
+	if !strings.Contains(out.String(), "Floating IP 198.51.100.10 (fip-9) released") ||
+		!strings.HasSuffix(strings.TrimSpace(out.String()), "Deployment destroyed successfully.") {
 		t.Errorf("output:\n%s", out.String())
 	}
 	if a := readActive(t, eng.StateDir); a != nil {
@@ -221,6 +222,29 @@ func TestDestroy_RecordOfAnotherProject404Refused(t *testing.T) {
 	}
 	if a := readActive(t, eng.StateDir); a != nil {
 		t.Errorf("deployment left in state: %+v", a)
+	}
+}
+
+// A missing extra address leaves cleanup unconfirmed even after the VM record
+// is retired. A terminal user needs that outcome in the last line.
+func TestDestroy_TextReportsPartialCleanup(t *testing.T) {
+	rec := runningRecord()
+	eng, _, out := destroyFixture(t, rec)
+	path := state.DefaultPath(eng.StateDir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf.LostFloatingIPs = []state.LostFloatingIP{{Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(out.String()), "Resource cleanup is incomplete.") ||
+		strings.Contains(out.String(), "Deployment destroyed successfully.") {
+		t.Fatalf("partial destroy output:\n%s", out)
 	}
 }
 

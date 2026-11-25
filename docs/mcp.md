@@ -37,7 +37,7 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 | Команда | `--json` команды | Ответ инструмента | Почему |
 |---|---|---|---|
 | `evo deploy` | `status: deployed` или `unchanged`, `vm_id`, `vm_ip`, `vm_name`, `zone_name`, `flavor`, `ports`, `verify` | `deploy`: `status: ok`, `deployment` (запись развёртывания), `log` | форма CLI — с v1.0, инструмента — с v1.1; ключ `status` у обоих с разными значениями, свести без потери ключа нельзя |
-| `evo destroy` | `status: destroyed`, `vm_id`, `vm_ip`, `vm_name` | `destroy`: `status: ok`, `deleted_vm`; без развёртывания у обоих `status: none` | то же |
+| `evo destroy` | После удаления ВМ — `status: destroyed` или `partial`, `cleanup_pending`, `vm_id`, `vm_ip`, имя `vm_name`, если известно. При уборке одних правил — `destroyed` или `rules_pending`. | `destroy`: `status: ok`, `deleted_vm`, `cleanup_pending`. Без развёртывания и оставшихся правил у обоих `status: none`. | В обоих ответах `cleanup_pending: true` означает, что уборка не завершена или не подтверждена. |
 | `evo doctor` | проверки машины, где запущена команда (версия evo, файлы настроек и их права, `kubectl` и `helm`), плюс проверки связи; нет связи — `reason: ERROR`, код 1 | `doctor`: только проверки связи; нет связи — `API_UNREACHABLE`, код 1; по HTTP инструмент отключён (H10) | по MCP проверки машины были бы путями и программами сервера |
 | `evo list-zones` | массив `zones` | `list_zones`: объект с `zones` | устаревший алиас `evo vm zones`, форма v1.0, до v2.0 |
 | `evo list-images` | массив `images`, пустой — без вывода | `list_images`: объект с `images` | устаревший алиас `evo image list`, форма v1.0, до v2.0 |

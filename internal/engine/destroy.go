@@ -317,6 +317,10 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		}
 		return e.Printer.JSON(out)
 	}
+	if cleanupPending {
+		e.Printer.Warning(i18n.T("Resource cleanup is incomplete.", "Уборка ресурсов не завершена."))
+		return nil
+	}
 	e.Printer.Success(i18n.T("Deployment destroyed successfully.", "Развёртывание удалено."))
 	return nil
 }

@@ -317,10 +317,27 @@ func (r *Registry) journalCheck(dir string) (DoctorCheck, bool) {
 	return c, true
 }
 
+// Each supported delete names the journal evidence required for its preview.
+// Redis creation recorded both IDs in 1.9.0; recovery by name has no
+// operation ID. For subnets only the receipt distinguishes a POST response.
+var journalCreationProof = map[string]func(history.Line) bool{
+	"redis_delete": func(l history.Line) bool {
+		return l.Tool == "redis_create" && l.OperationID != ""
+	},
+	"subnet_delete": func(l history.Line) bool {
+		return l.Tool == "subnet_create" && l.CreateReceipt
+	},
+}
+
 // journalProvenance uses the project independently resolved for this preview.
+// An unsupported delete has no journal provenance field.
 // The configuration journal and other state directories are outside its scope.
-func (r *Registry) journalProvenance(del, project, id string) engine.Provenance {
-	unknown := engine.Provenance{CreatedByEvo: engine.ProvenanceUnknown, Note: i18n.T("this folder's journal does not confirm creation of this resource in its project", "журнал этой папки не подтверждает создание ресурса в его проекте")}
+func (r *Registry) journalProvenance(del, project, id string) *engine.Provenance {
+	provesCreation := journalCreationProof[del]
+	if provesCreation == nil {
+		return nil
+	}
+	unknown := &engine.Provenance{CreatedByEvo: engine.ProvenanceUnknown, Note: i18n.T("this folder's journal does not confirm creation of this resource in its project", "журнал этой папки не подтверждает создание ресурса в его проекте")}
 	root, ok := r.stateDir()
 	if !ok || project == "" || id == "" {
 		return unknown
@@ -333,12 +350,8 @@ func (r *Registry) journalProvenance(del, project, id string) engine.Provenance 
 		if l.Outcome != history.Created || l.Kind != resourceKind(del) || l.ProjectID != project || l.ResourceID != id || l.Parent != "" || l.StateDir == "" || filepath.Clean(l.StateDir) != filepath.Clean(root) {
 			continue
 		}
-		// Redis already recorded both IDs from CreateCluster in 1.9.0.
-		// Recovery by name carries no operation ID. Older subnet lines
-		// cannot distinguish the POST response from that recovery.
-		if (del == "redis_delete" && l.Tool == "redis_create" && l.OperationID != "") ||
-			(del == "subnet_delete" && l.Tool == "subnet_create" && l.CreateReceipt) {
-			return engine.Provenance{CreatedByEvo: engine.ProvenanceYes, Note: i18n.T("this folder's journal records the cloud ID returned by creation in this project", "журнал этой папки содержит облачный ID из ответа на создание ресурса в этом проекте")}
+		if provesCreation(l) {
+			return &engine.Provenance{CreatedByEvo: engine.ProvenanceYes, Note: i18n.T("this folder's journal records the cloud ID returned by creation in this project", "журнал этой папки содержит облачный ID из ответа на создание ресурса в этом проекте")}
 		}
 	}
 	return unknown
