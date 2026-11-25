@@ -185,10 +185,18 @@ fake_evo_answer s3_buckets 0 0 '{"buckets":[{"name":"evo-e2e-s3-r185a1-aa"},{"na
 fake_evo_answer s3_buckets 1 0 '{"buckets":[{"name":"evo-e2e-s3-r185a1-aa"}]}'
 fake_evo_answer s3_ls 0 0 '{"objects":[]}'
 fake_evo_answer s3_bucket_delete 0 0 '{"status":"deleted"}'
+# При работающем net прогоне уборка бакетов не должна даже искать правила
+# или маршруты. Записываем также прямые вызовы API, не пропуская их в сеть.
+# shellcheck disable=SC2329 # вызывается из проверяемого скрипта через export -f
+curl() { echo "$*" >>"$RUNS/http"; return 1; }
+export -f curl
 rc=0
-"$here/cloud-live.sh" sweep evo-e2e- s3 >"$tmp/out" 2>&1 || rc=$?
+KEY_ID=test SECRET=test "$here/cloud-live.sh" sweep evo-e2e- s3 >"$tmp/out" 2>&1 || rc=$?
+unset -f curl
 want "sweep evo-e2e- рядом с живым запуском: код" "$rc" 0
-grep -q 'правило и маршрут тестовой сети не трогаю' "$tmp/out" || { echo "FAIL: идёт запуск, а правило и маршрут тестовой сети не оставлены"; sed 's/^/  | /' "$tmp/out"; fail=1; }
+if [ -e "$RUNS/http" ] || grep -Eq '^(list_security_groups|vpc_list|vpc_routes|vpc_route_delete|sg_delete|sg_rule_delete|close_ports) ' "$FAKE_DIR/evo-calls"; then
+	echo "FAIL: уборка бакета обратилась к сетевым ресурсам"; fail=1
+fi
 want "sweep evo-e2e-: одно удаление бакета" "$(grep -c 's3_bucket_delete yes=1' "$FAKE_DIR/evo-calls")" 1
 if grep -q 'r185a1' "$tmp/out"; then echo "FAIL: бакет живого запуска назван в уборке"; sed 's/^/  | /' "$tmp/out"; fail=1; fi
 

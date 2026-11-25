@@ -19,10 +19,12 @@ import (
 func TestScripts_CloudRequestsHaveTimeLimits(t *testing.T) {
 	// The sweep of the stand (e2e_stand.sh) sends the same token for up to
 	// half an hour: its requests had no limit (review of #1658).
+	// cloud-live uses five cloud curl sites: IAM, AR, DNS and the two
+	// branches of api_once, which also handle the network cleanup.
 	for _, f := range []struct {
 		name string
 		min  int
-	}{{"cloud-live.sh", 6}, {"e2e_stand.sh", 3}} {
+	}{{"cloud-live.sh", 5}, {"e2e_stand.sh", 3}} {
 		cloudRequestsHaveTimeLimits(t, f.name, f.min)
 	}
 }

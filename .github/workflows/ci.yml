@@ -358,6 +358,10 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 300 .github/scripts/cloud_live_ops_test.sh
 
+      - name: Уборка сети сохраняет чужие ресурсы
+        if: runner.os == 'Linux'
+        run: timeout 120 .github/scripts/cloud_live_net_cleanup_test.sh
+
       # Проба повтора создания пользователя и базы PostgreSQL
       # (pg-repeat-probe.sh) на заглушке curl: запись — только когда оба
       # есть, ответ платформы записан, шаг не падает, секретов в журнале нет.
