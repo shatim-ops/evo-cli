@@ -98,6 +98,7 @@ func TestOrgQuotas_CompletePagesAndFirstPageScope(t *testing.T) {
 		{"explicit empty", `{"usages":[]}`, "", 200, 0, 0, false},
 		{"protobuf empty", "{}", "", 200, 0, 0, false},
 		{"empty intermediate", `{"usages":[],"next_page_token":"p2"}`, second, 200, 200, 1, false},
+		{"first 404", `{"message":"not found"}`, "", 404, 0, -1, false},
 		{"first actual 403", `{"message":"refused"}`, "", 403, 0, 0, true},
 		{"400 mentioning permission and 403", `{"message":"permission lookup 403"}`, "", 400, 0, -1, false},
 		{"same 403 later", first, `{"message":"no permission"}`, 200, 403, -1, false},
@@ -145,7 +146,11 @@ func TestOrgQuotas_CompletePagesAndFirstPageScope(t *testing.T) {
 				t.Fatalf("pages=%d, want %d: %s", pages, wantPages, text)
 			}
 			if tc.wantRows < 0 {
-				if !bad || result["reason"] != "API_ERROR" || result["quota_usages"] != nil || catalog != 0 {
+				reason := "API_ERROR"
+				if tc.firstStatus == http.StatusNotFound {
+					reason = "NOT_FOUND"
+				}
+				if !bad || result["reason"] != reason || result["quota_usages"] != nil || catalog != 0 {
 					t.Fatalf("partial quotas or wrong reason: %s (catalog=%d)", text, catalog)
 				}
 				return

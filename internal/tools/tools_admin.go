@@ -366,7 +366,9 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 				"detail": err.Error(),
 			}), false
 		}
-		if errors.As(err, &he) {
+		// Preserve the service refusal on the first request. A missing
+		// continuation was already classified as an incomplete list.
+		if !firstPage && errors.As(err, &he) {
 			err = orgHTTPError(he)
 		}
 		return errResult(err), true
