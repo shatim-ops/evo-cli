@@ -50,7 +50,7 @@ func TestDiskWait_SaysTheStateWhileWaiting(t *testing.T) {
 	var lines []string
 	ctx := WithProgress(context.Background(), func(l string) { mu.Lock(); lines = append(lines, l); mu.Unlock() })
 	eng := &engine.Engine{Cloud: &slowDiskCloud{}, Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: time.Second}}
-	if err := waitDiskAvailable(ctx, eng, "d-1", "p"); err != nil {
+	if _, err := waitDiskAvailable(ctx, eng, "d-1", "p"); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
@@ -90,7 +90,7 @@ func TestDiskWait_TheStateItSaysIsCleaned(t *testing.T) {
 	var lines []string
 	ctx := WithProgress(context.Background(), func(l string) { mu.Lock(); lines = append(lines, l); mu.Unlock() })
 	eng := &engine.Engine{Cloud: &dirtyDiskCloud{}, Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: time.Second}}
-	if err := waitDiskAvailable(ctx, eng, "d-1", "p"); err != nil {
+	if _, err := waitDiskAvailable(ctx, eng, "d-1", "p"); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()

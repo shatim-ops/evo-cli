@@ -115,3 +115,111 @@ func TestDiskCreate_PartialLanguage(t *testing.T) {
 		}
 	}
 }
+
+type diskWaitReadCloud struct {
+	partialDiskCloud
+	rows           []map[string]any
+	readError      bool
+	hasStatusAlias bool
+}
+
+func (c *diskWaitReadCloud) CreateDisk(ctx context.Context, req provision.CreateDiskReq) (map[string]any, error) {
+	disk, err := c.partialDiskCloud.CreateDisk(ctx, req)
+	if c.hasStatusAlias {
+		disk["status"] = "creating"
+	}
+	return disk, err
+}
+
+func (c *diskWaitReadCloud) ListDisks(context.Context, string) ([]map[string]any, error) {
+	if c.creates == 0 {
+		return nil, nil
+	}
+	if c.readError {
+		return nil, &provision.StatusError{Status: http.StatusForbidden}
+	}
+	return c.rows, nil
+}
+
+func TestDiskCreate_PartialLastRead(t *testing.T) {
+	ru(t)
+	const otherDisk = "00000000-0000-4000-8000-0000000000d2"
+	for _, tc := range []struct {
+		name           string
+		rows           []map[string]any
+		readError      bool
+		wantState      string
+		wantAttaches   int
+		hasStatusAlias bool
+	}{
+		{name: "creation-failed", rows: []map[string]any{{"id": partialDiskID, "name": "data", "state": "error_creating"}}, wantState: "error_creating"},
+		{name: "attach-refused", rows: []map[string]any{{"id": partialDiskID, "name": "data", "state": "available"}}, wantState: "available", wantAttaches: 1},
+		{name: "status-alias", rows: []map[string]any{{"id": partialDiskID, "name": "data", "status": "available"}}, wantState: "available", wantAttaches: 1, hasStatusAlias: true},
+		{name: "list-refused", readError: true, hasStatusAlias: true},
+		{name: "no-state-for-this-id", rows: []map[string]any{{"id": otherDisk, "name": "other", "state": "available"}, {"id": partialDiskID, "name": "data"}}},
+	} {
+		for _, mode := range []string{"json", "text"} {
+			t.Run(tc.name+"/"+mode, func(t *testing.T) {
+				setupCLI(t)
+				saveProfile(t, "default", pvProject)
+				t.Setenv("CLOUDRU_TIMEOUT", "1")
+				i18n.SetLang(i18n.RU)
+				c := &diskWaitReadCloud{rows: tc.rows, readError: tc.readError, hasStatusAlias: tc.hasStatusAlias}
+				withCloud(t, c)
+				args := []string{"disk", "create", "data", "--size-gb", "10", "--disk-type", "SSD", "--attach-to", "web", "--yes"}
+				if mode == "json" {
+					args = append(args, "--json")
+				}
+				code, stdout, stderr := runCLI(t, "", args...)
+				if code != clerrors.ExitAPI || stdout != "" || c.creates != 1 || c.attaches != tc.wantAttaches {
+					t.Fatalf("exit %d, stdout %q, creates %d, attaches %d: %s", code, stdout, c.creates, c.attaches, stderr)
+				}
+				message, _ := personText(stderr)
+				if mode == "json" {
+					var envelope struct {
+						Error output.ErrorBody `json:"error"`
+					}
+					if err := json.Unmarshal([]byte(lastLine(stderr)), &envelope); err != nil {
+						t.Fatal(err)
+					}
+					e := envelope.Error
+					if e.Reason != clerrors.CodeAPIError || e.Details["status"] != "partial" || e.Details["disk_id"] != partialDiskID {
+						t.Fatalf("wrong partial: %+v", e)
+					}
+					disk, ok := e.Details["disk"].(map[string]any)
+					if !ok || disk["id"] != partialDiskID {
+						t.Fatalf("wrong disk identity: %#v", disk)
+					}
+					state, hasState := disk["state"]
+					alias, hasAlias := disk["status"]
+					wantState := tc.wantState != ""
+					if hasState != wantState || (hasState && state != tc.wantState) {
+						t.Errorf("disk state %v (present %t), want %q: %#v", state, hasState, tc.wantState, disk)
+					}
+					if hasAlias != (wantState && tc.hasStatusAlias) || (hasAlias && alias != tc.wantState) {
+						t.Errorf("disk status alias disagrees with last read or receipt: %#v", disk)
+					}
+					message = e.Message
+				}
+				var want string
+				switch {
+				case tc.wantState != "":
+					want = `"` + tc.wantState + `"`
+				case mode == "json":
+					want = "disk state could not be read"
+				default:
+					want = "состояние диска прочитать не удалось"
+				}
+				if !strings.Contains(strings.ToLower(message), want) || !strings.Contains(message, partialDiskID) {
+					t.Errorf("message %q lacks %q or disk ID", message, want)
+				}
+				if tc.wantState != "" {
+					code, _, stderr = runCLI(t, "", args...)
+					if code == 0 || c.creates != 1 || c.attaches != tc.wantAttaches {
+						t.Fatalf("repeat: exit %d, creates %d, attaches %d: %s", code, c.creates, c.attaches, stderr)
+					}
+				}
+			})
+		}
+	}
+}
