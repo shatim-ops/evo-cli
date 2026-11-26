@@ -98,7 +98,9 @@ func parityLabelCounts(label string, smallNumbers []string) []string {
 	words := token.FindAllString(strings.ToLower(label), -1)
 	largerNumber := `\p{L}+надцат[ьи]|(?:двад|трид)цат[ьи]|сорок(?:а)?|\p{L}+десят(?:и)?|девяност[оа]|сто|ста|двести|(?:три|четыре)ста|\p{L}+сот`
 	number := regexp.MustCompile(`^(?:[0-9]+|` + strings.Join(smallNumbers, "|") + "|" + largerNumber + `)$`)
-	subject := `(?:команд(?:а|ы|у|ой|е|ам|ами|ах)?|исключени(?:е|й|я|ю|ем|ям|ями|ях)|случа(?:й|и|я|е|ев|ях))`
+	// The tokenizer separates «CLI-команд» into three tokens, including the hyphen.
+	command := `(?:cli [-‐‑] )?команд(?:а|ы|у|ой|е|ам|ами|ах)?`
+	subject := `(?:` + command + `|исключени(?:е|й|я|ю|ем|ям|ями|ях)|случа(?:й|и|я|е|ев|ях))`
 	adjective := `(?:\p{L}+(?:ых|их|ые|ие|ая|ой|ого|его|ый|ий) )*`
 	followingSubject := regexp.MustCompile(`^` + adjective + subject + `(?: |$)`)
 	precedingSubject := regexp.MustCompile(`(?:^| )` + subject + `(?: (?::|—|–|-|всего|ровно|в таблице))*$`)
