@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 )
 
 // A long call shows its stages to an MCP client that asked for them with a
@@ -59,6 +60,9 @@ func checkProgress(t *testing.T, msgs []rpcMessage, token, password string) {
 	for _, m := range msgs[:len(msgs)-1] {
 		if m.Method != "notifications/progress" || string(m.Params.ProgressToken) != token || m.Params.Progress <= prev || m.Params.Message == "" {
 			t.Errorf("not a progress notification of %s: %+v", token, m)
+		}
+		if strings.ContainsFunc(m.Params.Message, func(r rune) bool { return unicode.Is(unicode.Cyrillic, r) }) {
+			t.Errorf("machine progress used the human locale: %q", m.Params.Message)
 		}
 		prev = m.Params.Progress
 		stages = append(stages, m.Params.Message)

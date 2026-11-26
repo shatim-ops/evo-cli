@@ -13,6 +13,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // A resource that stays in one state for the whole wait is not a silent
@@ -32,35 +33,29 @@ func TestWaitState_SaysTheTimeWhileTheStateStays(t *testing.T) {
 	}
 	t.Cleanup(func() { clock.Now = old })
 
-	var mu sync.Mutex
-	var lines []string
-	ctx := WithProgress(context.Background(), func(l string) { mu.Lock(); lines = append(lines, l); mu.Unlock() })
-	eng := &engine.Engine{Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: time.Second, VMProgressInterval: 30 * time.Second}}
-	polls := 0
-	last, _, _, _, err := waitState(ctx, eng, time.Second,
-		func(context.Context) (string, bool, error) {
-			polls++
-			if polls > 8 {
-				return "ready", true, nil
+	was := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(was) })
+	for _, lang := range []string{i18n.RU, i18n.EN} {
+		t.Run(lang, func(t *testing.T) {
+			i18n.SetLang(lang)
+			var lines []string
+			ctx := WithProgress(context.Background(), func(line string) { lines = append(lines, line) })
+			cloud := &diskCloud{readyAt: 9}
+			eng := &engine.Engine{Cloud: cloud, Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: time.Second, VMProgressInterval: 30 * time.Second}}
+			last, err := waitDiskAvailable(ctx, eng, cloud.made(), "project")
+			if err != nil || last != "available" || len(lines) < 3 {
+				t.Fatalf("disk wait: state %q, progress %q, error %v", last, lines, err)
 			}
-			return "creating", true, nil
-		},
-		func(st string) string { return "disk d-1: " + st + ", waiting…" },
-		func(st string) (bool, error) { return st == "ready", nil })
-	if err != nil || last != "ready" {
-		t.Fatalf("waitState: %q, %v", last, err)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(lines) < 3 {
-		t.Fatalf("one line for the state and then lines with the time waited, got %d: %q", len(lines), lines)
-	}
-	if strings.Contains(lines[0], "so far") {
-		t.Errorf("the first line is the state, as before: %q", lines[0])
-	}
-	for _, l := range lines[1:] {
-		if !strings.Contains(l, "disk d-1: creating") || !strings.Contains(l, "so far") {
-			t.Errorf("a repeated line names the state and the time waited: %q", l)
-		}
+			waiting, elapsed := "waiting until it is available", "so far"
+			if lang == i18n.RU {
+				waiting, elapsed = "жду, пока он станет доступен", "прошло"
+			}
+			for i, line := range lines {
+				if !strings.Contains(line, waiting) || !strings.Contains(line, cloud.made()) || !strings.Contains(line, "creating") || strings.Contains(line, elapsed) != (i > 0) ||
+					answerLanguageIssue(lang, "", "progress", line, nil) != "" {
+					t.Errorf("progress line %d: %q", i, line)
+				}
+			}
+		})
 	}
 }

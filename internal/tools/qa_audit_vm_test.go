@@ -18,6 +18,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -60,7 +61,7 @@ func (*fipAttachFailsCloud) GetVMDetail(context.Context, string) (*provision.VMD
 	return &provision.VMDetail{Interfaces: []provision.VMInterface{{ID: "if-1", Primary: true}}}, nil
 }
 func (*fipAttachFailsCloud) AttachFloatingIP(context.Context, string, string, string, string) (*provision.FloatingIP, error) {
-	return nil, clerrors.New(clerrors.CodeAPIError, "API returned status 422: interface_can_not_be_changed", "")
+	return nil, &provision.StatusError{Status: 422, Body: "interface_can_not_be_changed"}
 }
 
 // R-02: FIP не привязан — ответ partial с ошибкой, без «SSH: ssh user@IP»
@@ -82,6 +83,34 @@ func TestAudit_Provision_FIPAttachFailsIsPartial(t *testing.T) {
 	rec := stateHasVM(t, dir, "vm-made")
 	if rec.FloatingIPID != "fip-boot" || rec.VMIP != "" {
 		t.Errorf("record = %+v, want floating_ip_id fip-boot and no address", rec)
+	}
+}
+
+// A partial result with a reason still has a message and a recovery hint.
+func TestProvision_FIPAttachPartialLanguage(t *testing.T) {
+	was := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(was) })
+	for _, lang := range []string{i18n.RU, i18n.EN} {
+		t.Run(lang, func(t *testing.T) {
+			i18n.SetLang(lang)
+			cloud := &fipAttachFailsCloud{}
+			r, dir := fastRegistry(t, cloud, provisionCfg)
+			cloud.dir = dir
+			m, text, failed := callNamed(t, r, "provision", map[string]any{"name": "web", "confirmed": true})
+			if !failed || m["status"] != "partial" || m["reason"] != clerrors.CodeAPIError || m["vm_ip"] != "" {
+				t.Fatalf("expected the failed attachment, got %s", text)
+			}
+			want := map[string]string{"message": "billed", "error": "not attached", "hint": "fip_attach"}
+			if lang == i18n.RU {
+				want = map[string]string{"message": "тарифицируется", "error": "не привязан", "hint": "evo vpc fip-attach"}
+			}
+			for field, word := range want {
+				v, _ := m[field].(string)
+				if !strings.Contains(v, word) || answerLanguageIssue(lang, clerrors.CodeAPIError, field, v, nil) != "" {
+					t.Errorf("%s: expected %q in the surface's language, got %q", field, word, v)
+				}
+			}
+		})
 	}
 }
 
