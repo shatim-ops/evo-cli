@@ -385,7 +385,7 @@ func pickImage(ctx context.Context, cloud provision.CloudAPI, projectID, want st
 		// a completed search, without retaining its URL, body or error chain.
 		return provision.Image{}, false, clierrors.New(clierrors.CodeNotFound,
 			i18n.T("Image not found.", "Образ не найден."),
-			i18n.T("Check the image name or ID with evo image list.", "Проверьте имя или ID образа через evo image list."))
+			i18n.T("Check the image name or ID in the list of available images.", "Проверьте имя или ID в списке доступных образов."))
 	}
 	// Default: prefer ubuntu 24.04 non-gpu.
 	for _, img := range images {
