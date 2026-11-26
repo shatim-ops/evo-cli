@@ -6,6 +6,8 @@ package cli
 
 import (
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -31,7 +33,42 @@ func TestParity_JSONExceptionsAreInTheGuide(t *testing.T) {
 	if !ok {
 		t.Fatalf("%d exceptions: add the word for it", len(jsonAliasCompat))
 	}
+	readme, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(readme), "Исключений "+want) {
+		t.Errorf("README.md must give the registered exception count (%d)", len(jsonAliasCompat))
+	}
 	if !strings.Contains(doc, "Исключений "+want+",") {
 		t.Errorf("docs/mcp.md does not say «Исключений %s,»: the code keeps %d", want, len(jsonAliasCompat))
+	}
+}
+
+// The README introduces the JSON contract before linking to the full
+// exception table. Check the number if it repeats it, allowing a direct
+// reference to the table without duplicating the count.
+func TestParity_ReadmeExceptionCount(t *testing.T) {
+	b, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	readme := strings.Join(strings.Fields(string(b)), " ")
+	const link = "docs/mcp.md#ответ-инструмента-и---json-команды"
+	paragraph, _, ok := strings.Cut(readme, link)
+	if !ok {
+		t.Fatal("README: missing link to the JSON parity exception table")
+	}
+	if start := strings.LastIndex(paragraph, "- **"); start >= 0 {
+		paragraph = paragraph[start:]
+	}
+	count := regexp.MustCompile(`(?i)(?:кроме|за исключением) (\p{L}+|[0-9]+) (?:команд|исключени|случа)`).FindStringSubmatch(paragraph)
+	if count == nil {
+		return
+	}
+	words := []string{"нуля", "одной", "двух", "трёх", "четырёх", "пяти", "шести", "семи", "восьми", "девяти", "десяти"}
+	n := len(jsonAliasCompat)
+	if count[1] != strconv.Itoa(n) && (n >= len(words) || count[1] != words[n]) {
+		t.Errorf("README says %q, registry has %d JSON exceptions", count[0], n)
 	}
 }
