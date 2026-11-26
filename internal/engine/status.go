@@ -206,6 +206,15 @@ func ShowStatus(p *output.Printer, st DeploymentStatus, refreshed bool) {
 	rows = append(rows,
 		[]string{i18n.T("VM ID", "ID ВМ"), shown.VMID},
 		[]string{i18n.T("VM IP", "IP ВМ"), shown.VMIP},
+	)
+	if shown.FloatingIPID != "" {
+		value := fipLabel(shown.VMIP, shown.FloatingIPID)
+		if shown.VMIP == "" {
+			value = i18n.Tf("ID %s (address not recorded)", "ID %s (адрес не записан)", shown.FloatingIPID)
+		}
+		rows = append(rows, []string{i18n.T("Floating IP", "Плавающий IP"), value})
+	}
+	rows = append(rows,
 		[]string{"Flavor", recordFlavorText(&shown)},
 		[]string{i18n.T("Region", "Зона"), recordZoneText(&shown)},
 		[]string{i18n.T("Status", "Состояние"), shown.Status},

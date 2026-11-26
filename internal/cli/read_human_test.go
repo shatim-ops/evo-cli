@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // readForm are the keys of a read answer that are its form, not a value
@@ -301,5 +302,68 @@ func TestShownAsWritten_Forms(t *testing.T) {
 		if got := shownAsWritten(c.value, c.human); got != c.want {
 			t.Errorf("shownAsWritten(%q, %q) = %v, want %v", c.value, c.human, got, c.want)
 		}
+	}
+}
+
+// A recorded floating IP is a resource distinct from the VM. The human
+// row pairs the saved address and ID and explains receipts without an address.
+func TestStatus_FloatingIPOfRecordedDeployment(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	_, cleanup := recordDeployment(t, w)
+	defer cleanup()
+	defer i18n.SetLang(i18n.Lang())
+	path := state.DefaultPath(w.dir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := sf.ActiveDeployment()
+	id, ip := rec.FloatingIPID, rec.VMIP
+	if id == "" || id == rec.VMID || ip == "" {
+		t.Fatal("fixture must have distinct VM and address IDs and a saved address")
+	}
+	for _, lang := range []struct{ code, label, missing string }{
+		{"en", "Floating IP", "address not recorded"},
+		{"ru", "Плавающий IP", "адрес не записан"},
+	} {
+		t.Run(lang.code, func(t *testing.T) {
+			t.Setenv("EVO_LANG", lang.code)
+			i18n.SetLang(lang.code)
+			for _, tc := range []struct{ name, address, id, want string }{
+				{"address and ID", ip, id, lang.label + " " + ip + " (" + id + ")"},
+				{"ID only", "", id, lang.label + " ID " + id + " (" + lang.missing + ")"},
+				{"legacy without ID", ip, "", ""},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					rec.VMIP, rec.FloatingIPID = tc.address, tc.id
+					if err := state.Write(path, sf); err != nil {
+						t.Fatal(err)
+					}
+					code, out, errOut := runCLI(t, "", "status", "--no-refresh")
+					if code != 0 {
+						t.Fatal(code, errOut)
+					}
+					var rows []string
+					for _, line := range strings.Split(out, "\n") {
+						line = strings.Join(strings.Fields(line), " ")
+						if strings.HasPrefix(line, lang.label+" ") {
+							rows = append(rows, line)
+						}
+					}
+					if strings.Join(rows, "\n") != tc.want {
+						t.Fatalf("floating IP row: %q, want %q", rows, tc.want)
+					}
+					code, out, errOut = runCLI(t, "", "status", "--no-refresh", "--json")
+					var answer map[string]any
+					if err := json.Unmarshal([]byte(out), &answer); code != 0 || err != nil {
+						t.Fatal(code, err, errOut)
+					}
+					fip, present := answer["floating_ip_id"]
+					if answer["vm_id"] != rec.VMID || answer["vm_ip"] != tc.address || present != (tc.id != "") || (present && fip != tc.id) {
+						t.Fatalf("status JSON does not match the receipt: %+v", answer)
+					}
+				})
+			}
+		})
 	}
 }
