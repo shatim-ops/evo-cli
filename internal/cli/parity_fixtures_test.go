@@ -640,8 +640,8 @@ const parityObject = `{"id":"` + parityVM + `","name":"web","status":"ACTIVE","s
 // 1.2.3). A request neither here, in the fixtures nor in parityEmptyLists
 // fails the test that made it (withParityWorld).
 var parityAnswers = map[string]string{
-	"GET audit.api.cloud.ru/events/list/{id}":            `{"logs":[]}`,
-	"GET monitoring.api.cloud.ru/v1/{id}/export_metrics": `[]`,
+	"GET audit.api.cloud.ru/events/list/{id}":            `{"logs":[{"eventId":"event-1","eventType":"create","eventSource":"compute","eventTime":"2026-10-15T11:00:00Z"}]}`,
+	"GET monitoring.api.cloud.ru/v1/{id}/export_metrics": `{"metric":{"__name__":"up","instance":"test-vm"},"values":[0,1],"timestamps":[1000,2000]}`,
 	"GET monitoring.api.cloud.ru/v2/{id}/scrape_metrics": "up 0\n",
 	// Reachability probes of doctor and whoami.
 	"GET compute.api.cloud.ru/": `{}`,
@@ -848,13 +848,15 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 	case "/api/v1/disks":
 		if r.Method != http.MethodPost {
 			items := `{"id":"` + parityVM + `","name":"old","size":20,"availability_zone":{"id":"` + pvZone + `"}}`
+			total := 1
 			parityRestored.Lock()
 			if parityRestored.name != "" {
+				total++
 				items += `,{"id":"` + parityDiskBackup + `","name":"` + parityRestored.name + `","size":20,"state":"available"}`
 				parityRestored.name = ""
 			}
 			parityRestored.Unlock()
-			_, _ = io.WriteString(w, `{"items":[`+items+`],"total":1}`)
+			_, _ = fmt.Fprintf(w, `{"items":[%s],"total":%d}`, items, total)
 			break
 		}
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"data","size":20,"status":"creating"}`)

@@ -35,6 +35,7 @@ type listBudget struct{ n, perObject int }
 // fields or rows without a word («Риск», conclusion 49, Р3).
 var answerBudget = map[string]listBudget{
 	// "tool key": {n, budget}, // measured bytes per object
+	"audit_events events":                  {1, 110}, // 87
 	"backup_list backups":                  {2, 330}, // 263
 	"disk_list disks":                      {1, 140}, // 112
 	"dns_zones zones":                      {1, 220}, // 172
@@ -57,6 +58,7 @@ var answerBudget = map[string]listBudget{
 	"list_subnets subnets":                 {1, 210}, // 167
 	"list_zones zones":                     {1, 80},  // 62
 	"marketplace_list items":               {4, 260}, // 208
+	"metrics_history series":               {1, 120}, // 89
 	"pg_databases databases":               {1, 20},  // 14
 	"pg_specs specifications":              {1, 180}, // 137
 	"pg_users users":                       {1, 20},  // 14
