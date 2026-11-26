@@ -163,8 +163,14 @@ func TestDestroyContinuationAcrossClients(t *testing.T) {
 					t.Fatalf("pending=%t did not match the local receipt: %s", pending, a.text)
 				}
 				if surface == "CLI text" {
-					if pending && !strings.Contains(strings.ToLower(a.text), "evo ") {
-						t.Errorf("no executable CLI continuation: %s", a.text)
+					if pending {
+						command := "evo destroy"
+						if scenario == "receipt_needs_person" {
+							command = "evo cleanup receipts"
+						}
+						if !strings.Contains(a.text, command) {
+							t.Errorf("missing runnable continuation %q: %s", command, a.text)
+						}
 					}
 				} else {
 					id := a.body["vm_id"]
@@ -173,6 +179,9 @@ func TestDestroyContinuationAcrossClients(t *testing.T) {
 					}
 					if id != parityVM {
 						t.Errorf("missing or incorrect known VM ID: %v", a.body)
+					}
+					if wantFailed && !strings.HasPrefix(surface, "CLI") && (a.body["status"] != "partial" || a.body["reason"] != "API_ERROR") {
+						t.Errorf("uncertain deletion lost its error/partial outcome: %v", a.body)
 					}
 					if pending && a.body["cleanup_pending"] != true {
 						t.Errorf("unsettled cleanup lacks cleanup_pending=true: %v", a.body)
@@ -191,7 +200,7 @@ func TestDestroyContinuationAcrossClients(t *testing.T) {
 					return
 				}
 				if surface == "stdio" || surface == "HTTP" {
-					hint := fmt.Sprint(a.body["hint"], " ", a.body["next_step"], " ", a.body["next_call"])
+					hint := fmt.Sprint(a.body["hint"], " ", a.body["next_step"], " ", a.body["next_call"], " ", a.body["next_tool"], " ", a.body["next_args"])
 					var names []string
 					wires := roServers{roHTTP: servers.http}
 					if surface == "stdio" {
