@@ -28,9 +28,9 @@ const toolBudget = 1500
 // budget of bytes per description; what P13 does not reach in 1.7 goes on
 // in 1.8).
 var toolsOverBudget = map[string]int{
-	"deploy_plan": 2748,
-	"pg_create":   1676,
-	"provision":   2350,
+	"deploy_plan": 2712,
+	"pg_create":   1674,
+	"provision":   2346,
 }
 
 // P13 and D68 (release plan 1.7; agent runs of Grok on 1.6.0): D68 moves

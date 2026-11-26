@@ -48,16 +48,16 @@ func (s *Registry) registerTools() {
 	s.tools = []Tool{
 		{
 			Name:        "deploy",
-			Description: "Deploy the local compose project to a VM evo-<project_name> (billable when created) with a public floating IP: uploads the compose files over SSH, runs them; ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: server's). Updates ask too (preview: compose_changed).",
+			Description: "Deploy the local compose project to a VM evo-<project_name> (billed on creation) with a public floating IP. It uploads the compose files over SSH and runs them. Ports open from cidr in the zone's shared security group. Works in evo's directory (MCP: server's). Updates ask too (compose_changed).",
 			InputSchema: objSchema(map[string]any{
 				"compose_file": strProp("Default: docker-compose.yml."),
-				"flavor":       strProp("Flavor or 'auto' (default)."),
+				"flavor":       strProp("Default: 'auto'."),
 				"region":       strProp("Zone UUID."),
 				"project_id":   strProp("Project UUID."),
 				"image_id":     strProp("Image UUID."),
-				"image":        strProp("Image, Ubuntu or Debian (not Astra, Alt, RED OS)."),
-				"disk_size":    atLeast(0, intProp("Boot disk, GB (default 10 or min_disk).")),
-				"force":        boolProp("Redeploy unchanged compose."),
+				"image":        strProp("Ubuntu or Debian; excludes Astra, Alt, RED OS."),
+				"disk_size":    atLeast(0, intProp("Boot disk GB (default 10 or min_disk).")),
+				"force":        boolProp("Redeploy unchanged files."),
 				"cidr":         cidrProp(portsCidrDesc),
 				"compose_hash": strProp("next_args: consented hash"),
 				"confirmed":    confirmedProp(),
@@ -66,8 +66,8 @@ func (s *Registry) registerTools() {
 		{
 			Name: "provision",
 			Description: "Provision a bare VM (docker-compose: use 'deploy'). Public floating IP unless no_public_ip. " +
-				"evo fills the image metadata (SSH key, VM name, login, random password); a mandatory field it cannot fill (image_get: fields_required) goes in image_metadata. " +
-				"Refused before any create: no image or region ('missing' names it), an image the project cannot use, a required field not given. " +
+				"evo fills the image metadata (SSH key, VM name, login, random password); supply other required fields in image_metadata (image_get: fields_required). " +
+				"Refused before create: no image or region (see 'missing'), inaccessible image or missing required field. " +
 				"Returns ssh, password (generated; this answer only), state_dir (key, state).",
 			InputSchema: objSchema(map[string]any{
 				"name":       strProp("VM name."),
@@ -202,11 +202,11 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name: "image_create",
-			Description: "Create a VM image from a bootable disk. The disk must be detached (disk_detach; disk_list state 'available'). " +
+			Description: "Create a VM image from a detached bootable disk (disk_detach; disk_list: 'available'). " +
 				"A Marketplace image needs user_data_template and image_metadata for every {{ var }}. Async: poll image_get until ready=true.",
 			InputSchema: objSchema(map[string]any{
 				"name":               strProp("Unique image name."),
-				"disk_id":            strProp("Source disk UUID."),
+				"disk_id":            strProp("Disk UUID."),
 				"display_name":       strProp("Console name."),
 				"description":        strProp("At most 255 characters."),
 				"zone":               strProp("Zone name or UUID; must be the disk's."),
@@ -251,12 +251,12 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "deploy_plan",
-			Description: "Step 1 of the deploy wizard, read-only: resolves a VM configuration (flavor, image, zone, disk, network, SSH) with its monthly cost and a plan_id (cost.source: the Cloud.ru price API, else a rate-card estimate; an image license is never included). auto mode: pass the product's cpu/ram_gb/disk_gb, defaults fill the rest; manual: flavor, zone, image, disk_type. Show the plan and its cost to the person, then deploy_apply with the plan_id.",
+			Description: "Read-only VM plan: flavor, image, zone, disk, network, SSH, monthly cost and plan_id (cost.source: the Cloud.ru price API, else a rate-card estimate; an image license is never included). auto mode: pass the product's cpu/ram_gb/disk_gb, defaults fill the rest; manual: flavor, zone, image, disk_type. Show the plan and its cost to the person, then deploy_apply with the plan_id.",
 			InputSchema: objSchema(map[string]any{
-				"base_plan_id": strProp("A prior plan_id to change: its parameters with only the fields given here overlaid, as a new plan_id."),
+				"base_plan_id": strProp("Patch a prior plan_id with these fields, yielding a new plan_id."),
 				"product":      strProp("Product (names the VM)."),
 				"mode":         strProp("'auto' (default) or 'manual'."),
-				"cpu":          intProp("vCPUs needed (auto picks the smallest fitting flavor)."),
+				"cpu":          intProp("vCPUs. Auto picks the smallest fitting flavor."),
 				"ram_gb":       intProp("RAM needed, GB."),
 				"disk_gb":      intProp("Boot disk, GB (default 10)."),
 				"ports":        map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports deploy_apply opens from cidr in the zone's shared security group, e.g. [80,443]; destroy deletes the rules it created."},
@@ -343,7 +343,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "open_ports",
-			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). Use to make a service reachable (e.g. 80,443 for a web server). Identify the group by 'security_group' (name or UUID). Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group. Each rule added is billable, price unknown.",
+			Description: "Open inbound ports on a Cloud.ru security group (add ingress rules, tcp, from 0.0.0.0/0 by default). For web access, use e.g. 80,443. Pass the group name or UUID in 'security_group'. Skips ports already open. NOTE: security groups are shared per availability zone — opening a port affects every VM in that group; the preview says how many. A source that is the whole internet (shorter than /8) on a shared group is refused without allow_internet_on_shared_group. Each rule added is billable, price unknown.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group name (e.g. 'SSH-access_ru.AZ-2') or UUID (see list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to open, e.g. [80,443]."},
@@ -355,7 +355,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "close_ports",
-			Description: "Close inbound ports on a Cloud.ru security group: delete the ingress rules of the ports given (tcp, from 0.0.0.0/0 by default). Only rules of exactly that port, protocol and source go — one from before the task too: not an undo of open_ports. To close what an open_ports call added, pass only the ports of its opened, with its protocol and cidr. Ports with no such rule are already closed (already_deleted when none is open; NOT_FOUND on a server with --allow-project). A zone's group is shared: every VM in it is affected. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh.",
+			Description: "Delete ingress rules for the given ports in a Cloud.ru security group (defaults: tcp, 0.0.0.0/0). Only rules of exactly that port, protocol and source go — one from before the task too: not an undo of open_ports. To close what an open_ports call added, pass only the ports of its opened, with its protocol and cidr. Ports with no such rule are already closed (already_deleted when none is open; NOT_FOUND on a server with --allow-project). A zone's group is shared: every VM in it is affected. The last rule letting TCP 22 in to a group with a deployment of this folder is refused, the call whole, without allow_cut_ssh.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Security group: name or UUID (list_security_groups)."),
 				"ports":          map[string]any{"type": "array", "items": map[string]any{"type": "integer"}, "description": "Ports to close."},
@@ -367,7 +367,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "sg_rule_create",
-			Description: "Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). The preview names the rule, the group and the VMs it acts on. Ingress from the whole internet on a shared group is refused without allow_internet_on_shared_group. The same rule there answers already_exists. Billable, price unknown.",
+			Description: "Add one rule to a Cloud.ru security group: direction, protocol, ports and source (CIDR or another group; no default — ask the person). Preview: rule, group and affected VMs. Ingress from the whole internet on a shared group is refused without allow_internet_on_shared_group. Duplicate rule: already_exists. Billable, price unknown.",
 			InputSchema: objSchema(map[string]any{
 				"security_group": strProp("Name or UUID (list_security_groups)."),
 				"direction":      enumProp("ingress or egress", "ingress", "egress"),
@@ -407,7 +407,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_plan",
-			Description: "Step 1 for Managed Kubernetes: resolve a cluster config (version, control-plane flavor, master count, subnet, service account) without creating anything. Show it to the person, then k8s_create with the same args.",
+			Description: "Preview Managed Kubernetes version, control-plane flavor, master count, subnet and service account. Show the plan to the person, then call k8s_create with the same args.",
 			InputSchema: objSchema(map[string]any{
 				"product":           strProp("What the cluster is for (names it)."),
 				"name":              strProp("Cluster name, 3-60 (default k8s-<product>)."),
@@ -416,8 +416,8 @@ func (s *Registry) registerTools() {
 				"cpu":               intProp("Control-plane vCPUs (default 2)."),
 				"ram_gb":            intProp("Control-plane RAM, GB (default 4)."),
 				"master_count":      intProp("Control-plane nodes: 1, 3 or 5 (default 1)."),
-				"zone":              strProp("Control-plane zone, name or UUID (default: subnet_id's, else the platform's)."),
-				"subnet_id":         strProp("Subnet UUID or name of the cluster's zone, for the control-plane VIP (default: the zone's main subnet)."),
+				"zone":              strProp("Control-plane zone name or UUID (default: subnet's, else platform's)."),
+				"subnet_id":         strProp("Control-plane VIP subnet in the cluster's zone: UUID or name (default: main subnet)."),
 				"cluster_sa_id":     strProp("Cluster service-account UUID (default: the agent's own)."),
 				"kube_api_internet": boolPropTrue("Publish kube-apiserver to the internet (default true)."),
 			}),
@@ -525,7 +525,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_add_addon",
-			Description: "Install a Managed Kubernetes addon release into a cluster. The preview only reads: the version picked, namespace, the release's requirements and the cluster checks (Kubernetes version, ready workers); what cannot be checked is in not_checked, a certain mismatch is refused. Async: status installing with operation_id; ready when the addon's pods run (k8s_kubectl get pods -n <namespace>). Pods in ImagePullBackOff may mean the cluster has no internet egress (snat_create).",
+			Description: "Install a Managed Kubernetes addon. Read-only preview: chosen version, namespace, release requirements and cluster checks (Kubernetes version, ready workers); what cannot be checked is in not_checked, a certain mismatch is refused. Async: status installing with operation_id; ready when the addon's pods run (k8s_kubectl get pods -n <namespace>). Pods in ImagePullBackOff may mean the cluster has no internet egress (snat_create).",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id":   strProp("Cluster UUID."),
 				"name":         strProp("Addon name (k8s_addons)."),
@@ -556,13 +556,13 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "k8s_helm",
-			Description: "Helm on a cluster: install/upgrade/uninstall require confirmed=true after the user approves. Every call runs helm again: a repeated install/upgrade upgrades the same release, not a second one; over MCP: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
+			Description: "Helm on a cluster: install/upgrade/uninstall require confirmed=true after the user approves. Every call runs helm again; repeated install/upgrade updates the same release; over MCP: status deploying, then action=status. Nodes need egress (snat_create) to pull images; size the node pool for the chart.",
 			InputSchema: objSchema(map[string]any{
 				"cluster_id": strProp("Cluster UUID."),
 				"action":     strProp("install | upgrade | uninstall | list | status."),
 				"release":    strProp("Release name (all but list)."),
 				"chart":      strProp("Chart ref, e.g. 'bitnami/nginx' (install/upgrade)."),
-				"repo_url":   strProp("Chart repo URL to add first, named by the chart's prefix."),
+				"repo_url":   strProp("Chart repo URL to add under the chart's prefix."),
 				"namespace":  strProp("Namespace (created on install/upgrade)."),
 				"version":    strProp("Chart version (default latest: a repeat may change it)."),
 				"values":     strProp("Inline values.yaml."),
@@ -677,9 +677,9 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "ca_deploy",
-			Description: "Deploy a serverless Container App from an image; the preview lists every setting, root included. Async: ca_get gives its status and URL.",
+			Description: "Deploy a serverless Container App from an image. Preview: all settings, including root. Async: ca_get shows status and URL.",
 			InputSchema: objSchema(map[string]any{
-				"name":          strProp("App name, unique: an RFC 1123 label."),
+				"name":          strProp("Unique RFC 1123 label."),
 				"image":         strProp("Image URI (this project's Artifact Registry or public), linux/amd64, listening on 0.0.0.0:$PORT."),
 				"cpu":           strProp("CPU, e.g. '1' (default 0.1)."),
 				"memory":        strProp("Memory, e.g. '1Gi' (default 256Mi)."),
@@ -748,7 +748,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "history",
-			Description: "What evo changed in the cloud from this folder of state: the journal of changes (.evo/history/, a line for each end of a call that changes the cloud). Read-only, local: no API call unless check. Answers lines (the last 30 days or since, at most 500: time, tool, project_id, name or target, resource_id, outcome, reason, intent_id) and live: what may still be in the cloud, made and not removed or with an outcome unknown, with check, the read that tells it. A line names a resource as the call did: it does not prove the resource is there or is evo's — read it before acting on it. journal_of is the base name of the folder of state of this evo (of the server, over MCP), not a path to read. check reads live lines by id with this key (at most 50) and writes nothing: would_close is what it does not see now, check_result why a line was not read. Codes: the auth group card.",
+			Description: "Local cloud change journal (.evo/history/): one line per completed call that changes the cloud. Read-only, local: no API call unless check. Answers lines (the last 30 days or since, at most 500: time, tool, project_id, name or target, resource_id, outcome, reason, intent_id) and live: what may still be in the cloud, made and not removed or with an outcome unknown, with check, the read that tells it. A line names a resource as the call did: it does not prove the resource is there or is evo's — read it before acting on it. journal_of is the state folder's base name (the server's over MCP), not a path to read. check reads live lines by id with this key (at most 50) and writes nothing: would_close is what it does not see now, check_result why a line was not read. Codes: the auth group card.",
 
 			InputSchema: objSchema(map[string]any{
 				"since":      withMinLength(strProp("Lines from this date (2026-11-01) or time (2026-11-01T10:00:00Z); default: 30 days back.")),
@@ -815,7 +815,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "pg_create",
-			Description: "Create a Managed PostgreSQL cluster. Refuses a taken name. No subnet_id: the main subnet of the profile's zone. No public access (no API parameter).",
+			Description: "Create a Managed PostgreSQL cluster. Refuses a taken name. No subnet_id: the main subnet of the profile's zone. Private only (no API flag).",
 			InputSchema: objSchema(map[string]any{
 				"name":                  strProp("Cluster name."),
 				"version":               strProp("Version. Default: latest."),
@@ -825,7 +825,7 @@ func (s *Registry) registerTools() {
 				"storage_gb":            atLeast(1, intProp("Disk, GB. Default: the spec minimum.")),
 				"instances":             atLeast(1, intProp("Nodes: 1-2 standard, 1-3 business (default 1).")),
 				"subnet_id":             strProp("Subnet UUID or name; sets the zone."),
-				"initial_database":      strProp("Database made with the cluster (default 'defaultdb'), ownerless; pg_db_create makes an owned one."),
+				"initial_database":      strProp("Ownerless initial DB (default 'defaultdb'); pg_db_create makes an owned DB."),
 				"description":           strProp("Description."),
 				"no_backup":             boolProp("true: no automatic backups (they are on by default); CANNOT be changed after creation."),
 				"backup_schedule":       strProp("Backup CRON (default '0 3 * * 0'; every 6h at most)."),
@@ -876,7 +876,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "kafka_create",
-			Description: "Create a Managed Kafka cluster. Refuses a taken name. Default subnet: the main subnet of the configured zone, else of the first zone with one (ru.AZ-2 first); the cluster goes to the subnet's zone. Default brokers: the spec's min_brokers, else 1, with no replication. Controllers: combined; dedicated (controller_spec): Cloud.ru console only.",
+			Description: "Create a Managed Kafka cluster. Refuses a taken name. Default subnet: the main subnet of the configured zone, else of the first zone with one (ru.AZ-2 first); its zone hosts the cluster. Default brokers: spec min_brokers, else 1 (no replication). Controllers: combined; dedicated (controller_spec): Cloud.ru console only.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name, 2-63 characters."),
 				"version_id":       strProp("Kafka version UUID. Default: latest."),
@@ -930,7 +930,7 @@ func (s *Registry) registerTools() {
 		},
 		{
 			Name:        "redis_create",
-			Description: "Create a Managed Redis cluster. Refuses a taken name. All hosts go to the subnet's zone (default: the zone's main subnet, else another zone's). MASTER_REPLICA (default): a master and two replicas, three billed hosts per shard; STANDALONE: one host.",
+			Description: "Create a Managed Redis cluster. Refuses a taken name. All hosts use the subnet's zone. Default: zone's main subnet, else another zone's. MASTER_REPLICA (default): a master and two replicas, three billed hosts per shard; STANDALONE: one host.",
 			InputSchema: objSchema(map[string]any{
 				"name":             strProp("Cluster name."),
 				"version_id":       strProp("Version UUID. Default: latest."),
@@ -939,7 +939,7 @@ func (s *Registry) registerTools() {
 				"ram":              intProp("RAM GB, with cpu."),
 				"storage_gb":       atLeast(1, intProp("Disk, GB. Default: the spec minimum.")),
 				"shards":           intProp("Shards, 1-8 (default 1)."),
-				"replicas":         intProp("Replicas per shard WITHOUT the master: 2 for MASTER_REPLICA (default), 0 for STANDALONE; redis_get counts the master too."),
+				"replicas":         intProp("Replicas/shard, master excluded: MASTER_REPLICA 2 (default), STANDALONE 0. redis_get counts it."),
 				"type":             enumProp("Default: MASTER_REPLICA.", "MASTER_REPLICA", "STANDALONE"),
 				"subnet_id":        strProp("Subnet UUID or name."),
 				"description":      strProp("Description."),
