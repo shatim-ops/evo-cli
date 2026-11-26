@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/intent"
@@ -197,7 +199,15 @@ func TestHistory_CheckOnABoundServerReadsOnlyWhatItShows(t *testing.T) {
 	}
 	hdir := history.DirOf(intent.Dir(eng.StateDir))
 	key := &state.Maker{KeyID: config.MaskKeyID("k")}
-	for i, project := range []string{"00000000-0000-4000-8000-0000000000bb", ""} {
+	const unresolved = "00000000-0000-4000-8000-0000000000cc"
+	factory := r.newEngine
+	r.newEngine = func(over map[string]any) (*engine.Engine, error) {
+		if over["ProjectID"] == unresolved {
+			return nil, errors.New("profile unavailable")
+		}
+		return factory(over)
+	}
+	for i, project := range []string{"00000000-0000-4000-8000-0000000000bb", unresolved, ""} {
 		l := history.Line{Time: "2026-11-17T10:00:00Z", Tool: "pg_create", ProjectID: project, Kind: resourceKind("pg_create"),
 			ResourceID: resGone, Outcome: history.Created, IntentID: "b00000000000000" + string(rune('1'+i)), Key: key}
 		if err := history.Append(hdir, l); err != nil {

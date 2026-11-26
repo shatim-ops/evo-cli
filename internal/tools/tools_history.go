@@ -86,10 +86,15 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 		}
 	}
 	project := stringArg(args, "project_id")
+	allowed := map[string]bool{}
 	if project != "" {
-		if _, err := s.newEngine(map[string]any{"ProjectID": project}); stderrors.Is(err, ErrProjectNotAllowed) {
+		// An unbound local journal is readable without a cloud profile. On a
+		// bound server the factory must finish the project check successfully.
+		_, err := s.newEngine(map[string]any{"ProjectID": project})
+		if err != nil && (s.projectBound || stderrors.Is(err, ErrProjectNotAllowed)) {
 			return failed(ctx, err, nil), true
 		}
+		allowed[project] = err == nil
 	}
 
 	var j history.Journal
@@ -102,7 +107,6 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 	}
 	sort.SliceStable(j.Lines, func(a, b int) bool { return j.Lines[a].Time < j.Lines[b].Time })
 
-	allowed := map[string]bool{}
 	hidden := map[string]bool{}
 	shown := func(l history.Line) bool {
 		if project != "" && l.ProjectID != project {
@@ -118,7 +122,7 @@ func (s *Registry) handleHistory(ctx context.Context, args map[string]any) (stri
 		ok, seen := allowed[l.ProjectID]
 		if !seen {
 			_, err := s.newEngine(map[string]any{"ProjectID": l.ProjectID})
-			ok = !stderrors.Is(err, ErrProjectNotAllowed)
+			ok = err == nil
 			allowed[l.ProjectID] = ok
 		}
 		return ok
