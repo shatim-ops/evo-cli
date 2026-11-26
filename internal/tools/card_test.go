@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -86,5 +87,42 @@ func TestGroupCards_PrintTheirNotes(t *testing.T) {
 	}
 	if card, _ := GroupCard("vm"); strings.Contains(card, "## Notes") {
 		t.Errorf("vm: a Notes section with no notes:\n%s", card)
+	}
+}
+
+// The operator and the agent both need to interpret a history row without
+// consulting another document. Inspect the note containing the actual status.
+func TestAuthCard_ExplainsUnconfirmedCleanup(t *testing.T) {
+	action := regexp.MustCompile(`(?i)\b(retry|repeat|rerun|re-run|run|call|use)\b[^.;\n]{0,65}\b(destroy|vm_delete|receipts?|cleanup)\b|\b(check|verify|inspect|review)\b[^.;\n]{0,65}\b(address|ip|rules?|receipts?|billing|cleanup)\b`)
+	for _, terminal := range []bool{true, false} {
+		card, ok := groupCard("auth", terminal, nil, false)
+		if !ok {
+			t.Fatal("missing auth card")
+		}
+		var note string
+		for _, line := range strings.Split(card, "\n") {
+			if strings.Contains(line, "cleanup_unconfirmed") {
+				note = strings.ToLower(line)
+				break
+			}
+		}
+		if note == "" {
+			t.Errorf("terminal=%t: missing cleanup_unconfirmed", terminal)
+			continue
+		}
+		for _, term := range []string{"live", "rule"} {
+			if !strings.Contains(note, term) {
+				t.Errorf("terminal=%t: cleanup note must explain %s: %s", terminal, term, note)
+			}
+		}
+		if !strings.Contains(note, "address") && !strings.Contains(note, "floating ip") {
+			t.Errorf("terminal=%t: missing remaining address: %s", terminal, note)
+		}
+		// 'history --check' is also mentioned for other outcomes; it is not a
+		// recovery action for this pending destroy.
+		detail, _, _ := strings.Cut(note, "other values:")
+		if !action.MatchString(detail) {
+			t.Errorf("terminal=%t: missing recovery action and target for cleanup_unconfirmed: %s", terminal, detail)
+		}
 	}
 }
