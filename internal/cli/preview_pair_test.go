@@ -56,6 +56,10 @@ func TestPreview_AnotherWriteIsAnotherPreview(t *testing.T) {
 			flagJSON, flagDryRun, flagYes = false, false, false
 			text, _ := tl.Handler(context.Background(), args)
 			writes := fake.takeWrites()
+			for i := range writes {
+				writes[i] = sameFIPReceipt(writes[i])
+			}
+			sort.Strings(writes)
 			end()
 			forgetRun(w)
 			return text, strings.Join(writes, "\n")

@@ -326,8 +326,9 @@ func runJSONCase(t *testing.T, c jsonCase, w parityWorld, fake *jsonFake) jsonRu
 	reset, takeWrites := fake.reset, func() []string {
 		ws := fake.takeWrites()
 		for i := range ws {
-			ws[i] = sameVolatile(ws[i])
+			ws[i] = sameVolatile(sameFIPReceipt(ws[i]))
 		}
+		sort.Strings(ws)
 		return ws
 	}
 	var r jsonRun

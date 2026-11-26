@@ -9,12 +9,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -75,6 +77,62 @@ func (f *jsonFake) takeWrites() []string {
 	out := append([]string(nil), f.writes...)
 	sort.Strings(out)
 	return out
+}
+
+// Only the random description of a floating IP create identifies this
+// execution. Keep it in the recorded request and normalize it just when
+// comparing two independently confirmed executions of the same intent.
+const fipCreateWrite = "POST compute.api.cloud.ru/api/v1/floating-ips?"
+
+var fipReceiptValue = regexp.MustCompile(`^evo-fip-[A-Z2-7]{26}$`)
+
+func sameFIPReceipt(write string) string {
+	if !strings.HasPrefix(write, fipCreateWrite) {
+		return write
+	}
+	target, body, ok := strings.Cut(strings.TrimPrefix(write, fipCreateWrite), " ")
+	var request struct {
+		Description string `json:"description"`
+	}
+	if !ok || json.Unmarshal([]byte(body), &request) != nil || !fipReceiptValue.MatchString(request.Description) {
+		return write
+	}
+	// The actual POST encodes a flat struct. Leave ambiguous bodies intact.
+	field := `"description":"` + request.Description + `"`
+	if strings.Count(body, field) != 1 {
+		return write
+	}
+	return fipCreateWrite + target + " " + strings.Replace(body, field, `"description":"<FIP create receipt>"`, 1)
+}
+
+func TestSameFIPReceipt_OnlyGeneratedDescription(t *testing.T) {
+	const first = "evo-fip-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	const second = "evo-fip-BCDEFGHIJKLMNOPQRSTUVWXYZA"
+	write := fipCreateWrite + ` {"name":"address","description":"` + first + `","interface_id":"nic-a"}`
+	if sameFIPReceipt(write) != sameFIPReceipt(strings.Replace(write, first, second, 1)) {
+		t.Fatal("two receipts of the same requested change compare differently")
+	}
+	for _, changed := range []string{
+		strings.Replace(write, "nic-a", "nic-b", 1),
+		strings.Replace(write, "address", "another", 1),
+		strings.Replace(write, first, "operator description", 1),
+		strings.Replace(write, first, first+"-extra", 1),
+		strings.Replace(write, "?", "?project_id=other", 1),
+	} {
+		if sameFIPReceipt(write) == sameFIPReceipt(changed) {
+			t.Fatalf("lost a change to the request: %s", changed)
+		}
+	}
+	for _, other := range []string{
+		strings.Replace(write, "POST ", "PUT ", 1),
+		strings.Replace(write, "floating-ips?", "security-groups?", 1),
+		strings.Replace(write, `"description":`, `"name_of_other_field":`, 1),
+		fipCreateWrite + ` {"nested":{"description":"` + first + `"}}`,
+	} {
+		if sameFIPReceipt(other) != other {
+			t.Fatalf("normalized outside the receipt field: %s", other)
+		}
+	}
 }
 
 // record notes a write: method, URL and body (put back for the fixture).
