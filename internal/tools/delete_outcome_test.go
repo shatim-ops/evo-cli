@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -118,6 +119,72 @@ func TestDeleteOutcome_ContainerAppReadsTheApp(t *testing.T) {
 		if c.status == "deleting" && m["next_tool"] != "ca_get" {
 			t.Errorf("%s: want ca_get as the next step, got %s", c.name, text)
 		}
+	}
+}
+
+// Once the DELETE is accepted, a cancelled read is an interrupted wait.
+// A broken response with the caller still present only leaves the outcome pending.
+func TestDeleteOutcome_ContainerAppPartialResponse(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cancel bool
+	}{
+		{"caller cancelled", true},
+		{"broken response with live caller", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			deletes, polls := 0, 0
+			rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path != "/v2/containers/web" {
+					t.Fatalf("unexpected route %s", r.URL.Path)
+				}
+				var body io.ReadCloser
+				switch r.Method {
+				case http.MethodDelete:
+					deletes++
+					body = io.NopCloser(strings.NewReader(`{"id":"op-delete","done":false}`))
+				case http.MethodGet:
+					body = io.NopCloser(strings.NewReader(`{"name":"web","status":"RUNNING"}`))
+					if deletes > 0 {
+						polls++
+						reader, writer := io.Pipe()
+						body = reader
+						go func() {
+							// Write returns after the client has consumed the prefix.
+							_, _ = io.WriteString(writer, `{"name":`)
+							if tc.cancel {
+								cancel()
+								_ = writer.CloseWithError(context.Canceled)
+							} else {
+								_ = writer.CloseWithError(io.ErrUnexpectedEOF)
+							}
+						}()
+					}
+				default:
+					t.Fatalf("unexpected method %s", r.Method)
+				}
+				return &http.Response{StatusCode: http.StatusOK, Body: body, Request: r}, nil
+			})
+			reg := waitingRegistry(t, rt)
+			tool, _ := reg.Lookup("ca_delete")
+			text, isErr := tool.Handler(ctx, map[string]any{"name": "web", "confirmed": true, "wait": true})
+			var got map[string]any
+			if err := json.Unmarshal([]byte(text), &got); err != nil {
+				t.Fatal(err)
+			}
+			if deletes != 1 || polls != 1 || got["name"] != "web" || got["operation_id"] != "op-delete" {
+				t.Fatalf("started delete: %d DELETE, %d polls: %s", deletes, polls, text)
+			}
+			if tc.cancel {
+				if !isErr || got["reason"] != "INTERRUPTED" {
+					t.Errorf("caller cancelled after headers: %s", text)
+				}
+			} else if isErr || got["status"] != "deleting" || got["next_tool"] != "ca_get" {
+				t.Errorf("unreadable card: %s", text)
+			}
+		})
 	}
 }
 

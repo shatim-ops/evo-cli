@@ -73,7 +73,12 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return nil, 0, fmt.Errorf(i18n.T("container-apps request failed: %w", "запрос к container-apps не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	// A cancelled GET may already have headers and part of the JSON.
+	// Let the waiter see the cancellation instead of a JSON syntax error.
+	if err != nil && method == http.MethodGet && ctx.Err() != nil {
+		return nil, resp.StatusCode, ctx.Err()
+	}
 	return data, resp.StatusCode, nil
 }
 
