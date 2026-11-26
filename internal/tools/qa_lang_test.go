@@ -53,6 +53,10 @@ var foreignRE = regexp.MustCompile(`json: cannot unmarshal .*|unexpected end of 
 // kebab-case, CamelCase, UPPER, with digits or dots) breaks the run, and so
 // does punctuation: "tcp, udp, icmp" is a list of values, not a phrase.
 func englishPhrase(s string) string {
+	return englishWordRun(s, 3)
+}
+
+func englishWordRun(s string, minimum int) string {
 	s = quotedRE.ReplaceAllString(foreignRE.ReplaceAllString(s, " · "), " · ")
 	var run []string
 	for _, tok := range strings.Fields(s) {
@@ -63,7 +67,7 @@ func englishPhrase(s string) string {
 		trimmed := strings.TrimRight(core, ",.;:!?)]}…")
 		if plainWord(trimmed) {
 			run = append(run, trimmed)
-			if len(run) >= 3 {
+			if len(run) >= minimum {
 				return strings.Join(run, " ")
 			}
 		} else {
@@ -109,10 +113,11 @@ func apiErrorPrefix(msg string) string {
 		seg = strings.TrimSpace(seg)
 		// Some clients return an unwrapped SDK or Go error. Recognize
 		// its complete text, without relying on the first letter.
+		quotedBody := strings.HasPrefix(msg, "«") && strings.HasSuffix(msg, "»")
 		rawJSON := (strings.HasPrefix(msg, "{") || strings.HasPrefix(msg, "[")) && json.Valid([]byte(msg))
 		libraryError := msg == io.EOF.Error() || msg == "Object name cannot be empty" ||
 			(msg != "" && foreignRE.FindString(msg) == msg)
-		if cloudSegment.MatchString(seg) || rawJSON || libraryError {
+		if cloudSegment.MatchString(seg) || rawJSON || quotedBody || libraryError {
 			break
 		}
 		// A nested CLIError code or a service name may precede more
@@ -155,7 +160,7 @@ func latinSegment(prefix string) string {
 		if !hasCyrillic(seg) {
 			return seg
 		}
-		if phrase := englishPhrase(seg); phrase != "" {
+		if phrase := englishWordRun(seg, 2); phrase != "" {
 			return phrase
 		}
 	}
@@ -210,7 +215,12 @@ func TestQA11_APIErrorFrame(t *testing.T) {
 		{"framed-ru", i18n.RU, "Не удалось загрузить пример: " + bare, ""},
 		{"english-ru", i18n.RU, "Cannot load example: " + bare, "Cannot load example"},
 		{"lowercase-ru", i18n.RU, "cannot load example: " + bare, "cannot load example"},
-		{"mixed-ru", i18n.RU, "Ошибка Cannot load example: " + bare, "Cannot load example"},
+		{"mixed-ru", i18n.RU, "Ошибка Cannot load example: " + bare, "Cannot load"},
+		{"untranslated", i18n.RU, "Request failed: HTTP 500: fixture", "Request failed"},
+		{"mixed-short", i18n.RU, "Ошибка Request failed: HTTP 500: fixture", "Request failed"},
+		{"http-body", i18n.RU, "Не удалось выполнить запрос: HTTP 500: Request failed", ""},
+		{"service-quote", i18n.RU, "Сервис ответил: «Request failed»", ""},
+		{"bare-quote", i18n.RU, "«Request failed»", "missing Russian context"},
 		{"quoted-ru", i18n.RU, "Cloud.ru отклонил запрос (test API 500). Ответ облака: «Cannot load example»", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
