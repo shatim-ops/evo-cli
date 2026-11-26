@@ -223,12 +223,14 @@ const orgNoProjectHint = "No project is set, and this key cannot list projects (
 // AUTH_FAILED, 429 — API_RATE_LIMITED, the rest — API_ERROR (not
 // NOT_FOUND from a "not found" in the body).
 func orgHTTPError(he *adminHTTPError) error {
-	code, hint := clierrors.CodeAPIError, "Cloud.ru Organization API failed; retry later. The key still works in the active project (whoami)."
+	code, hint := clierrors.CodeAPIError, i18n.T("Cloud.ru Organization API failed; retry later. The key still works in the active project (whoami).",
+		"Ошибка Organization API Cloud.ru. Повторите запрос позже. Ключ по-прежнему работает в активном проекте (evo whoami).")
 	switch {
 	case he.Status == http.StatusUnauthorized:
-		code, hint = clierrors.CodeAuthFailed, "Check the key (evo whoami); re-create it in the Cloud.ru console if it was revoked."
+		code, hint = clierrors.CodeAuthFailed, i18n.T("Check the key (evo whoami); re-create it in the Cloud.ru console if it was revoked.",
+			"Проверьте ключ командой evo whoami. Если ключ отозван, создайте новый в консоли Cloud.ru.")
 	case he.Status == http.StatusTooManyRequests:
-		code, hint = clierrors.CodeAPIRateLimited, "Too many requests; retry in a minute."
+		code, hint = clierrors.CodeAPIRateLimited, i18n.T("Too many requests; retry in a minute.", "Слишком много запросов. Повторите через минуту.")
 	}
 	return clierrors.Wrap(code, "Organization API: "+he.Error(), hint, he)
 }

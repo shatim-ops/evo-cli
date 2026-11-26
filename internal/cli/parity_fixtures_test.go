@@ -393,7 +393,7 @@ func recordDeployment(t *testing.T, w parityWorld) (map[string]any, func()) {
 	compose := filepath.Join(w.dir, "docker-compose.yml")
 	writeFile(t, compose, "services:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"80:80\"\n")
 	path := state.DefaultPath(w.dir)
-	f := &state.File{Deployments: []state.DeploymentRecord{{ID: "dep-parity", VMID: parityVM, VMIP: "203.0.113.10",
+	f := &state.File{Deployments: []state.DeploymentRecord{{ID: "dep-parity", VMID: parityVM, VMIP: "203.0.113.10", FloatingIPID: parityVM,
 		ProjectID: pvProject, Region: pvZone, VMName: "evo-web", Status: "running", ComposeHash: "0000", SSHUser: "user1"}}}
 	if err := state.Write(path, f); err != nil {
 		t.Fatal(err)

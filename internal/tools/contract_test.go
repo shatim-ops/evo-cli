@@ -67,6 +67,9 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	body := `{"error":"refused"}`
 	code := 200
 	switch kind {
+	case "500empty":
+		code = http.StatusInternalServerError
+		body = ""
 	case "500text":
 		code = http.StatusInternalServerError
 		hdr.Set("Content-Type", "text/plain")

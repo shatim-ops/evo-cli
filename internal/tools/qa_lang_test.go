@@ -278,6 +278,15 @@ func TestQA11_RefusalWorlds(t *testing.T) {
 				}
 				check(t, text, failed, clerrors.CodeAPIError)
 			})
+			t.Run("organization-empty-body", func(t *testing.T) {
+				rt := &contractRT{kind: "500empty"}
+				r := contractReg(t, rt)
+				_, text, failed := callNamed(t, r, "org_projects", nil)
+				if reqs := rt.take(); len(reqs) == 0 || contractWrites(reqs) != 0 || !strings.Contains(text, "Organization API: HTTP 500") {
+					t.Fatalf("expected the organization's empty 500 on the project list: %v, %s", reqs, text)
+				}
+				check(t, text, failed, clerrors.CodeAPIError)
+			})
 			t.Run("container-apps-499", func(t *testing.T) {
 				rt := &contractRT{kind: "ca499"}
 				r := contractReg(t, rt)
