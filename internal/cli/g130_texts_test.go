@@ -18,28 +18,39 @@ import (
 // G130-27: when the zone has no subnet, the provision hint names subnet_id
 // and list_subnets; evo vm create words the same with --subnet-id.
 func TestVMCreate_NoSubnetHintNamesSubnetID(t *testing.T) {
-	withCloud(t, noSubnetCloud{previewCloud{}})
-	code, out, errOut := runCLI(t, "", "vm", "create", "web", "--json")
-	if code == 0 {
-		t.Fatalf("want refusal, got ok:\n%s%s", out, errOut)
-	}
-	var env struct {
-		Error struct {
-			Reason string `json:"reason"`
-			Hint   string `json:"hint"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(errOut), &env); err != nil {
-		t.Fatalf("stderr %q: %v", errOut, err)
-	}
-	if env.Error.Reason != clerrors.CodeConfigInvalid {
-		t.Errorf("reason %q, want CONFIG_INVALID; stderr:\n%s", env.Error.Reason, errOut)
-	}
-	if !strings.Contains(env.Error.Hint, "--subnet-id") {
-		t.Errorf("CLI hint without --subnet-id: %q", env.Error.Hint)
-	}
-	if strings.Contains(env.Error.Hint, "inputSchema") {
-		t.Errorf("CLI hint names inputSchema: %q", env.Error.Hint)
+	for _, profile := range []string{"empty", "configured"} {
+		t.Run(profile, func(t *testing.T) {
+			setupCLI(t)
+			for _, key := range []string{"EVOLUTION_PROJECT_ID", "EVOLUTION_SERVICE_ACCOUNT_KEY_ID", "EVOLUTION_SERVICE_ACCOUNT_KEY_SECRET"} {
+				t.Setenv(key, "")
+			}
+			if profile == "configured" {
+				// withCloud selects a different project and the CLI emits a JSON warning.
+				saveProfile(t, "default", "00000000-0000-4000-8000-000000000099")
+			}
+			withCloud(t, noSubnetCloud{previewCloud{}})
+			code, out, stderr := runCLI(t, "", "vm", "create", "web", "--json")
+			if code != clerrors.ExitAuth || out != "" {
+				t.Fatalf("exit %d, stdout %q, stderr %s", code, out, stderr)
+			}
+			if why := jsonImpure(out, stderr); why != "" {
+				t.Fatalf("invalid JSON output: %s", why)
+			}
+			if profile == "configured" {
+				var notice struct{ Warning string }
+				line, _, found := strings.Cut(strings.TrimSpace(stderr), "\n")
+				if !found || json.Unmarshal([]byte(line), &notice) != nil || notice.Warning == "" {
+					t.Fatalf("expected a profile warning before the final error: %s", stderr)
+				}
+			}
+			final := lastJSONError(t, stderr)
+			if final.Reason != clerrors.CodeConfigInvalid || final.Code != code {
+				t.Errorf("final error %+v, want CONFIG_INVALID with code %d", final, code)
+			}
+			if !strings.Contains(final.Hint, "--subnet-id") || !strings.Contains(final.Hint, "evo vpc subnets") || strings.Contains(final.Hint, "inputSchema") {
+				t.Errorf("expected CLI subnet hint in final error, got %q", final.Hint)
+			}
+		})
 	}
 }
 
