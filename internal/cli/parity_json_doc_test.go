@@ -45,30 +45,51 @@ func TestParity_JSONExceptionsAreInTheGuide(t *testing.T) {
 	}
 }
 
-// The README introduces the JSON contract before linking to the full
-// exception table. Check the number if it repeats it, allowing a direct
-// reference to the table without duplicating the count.
+// The prose introduces the exception count. The link to the registry may
+// have a neutral label, but a count in that label is a separate claim.
 func TestParity_ReadmeExceptionCount(t *testing.T) {
-	b, err := os.ReadFile("../../README.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	readme := strings.Join(strings.Fields(string(b)), " ")
-	const link = "docs/mcp.md#ответ-инструмента-и---json-команды"
-	paragraph, _, ok := strings.Cut(readme, link)
-	if !ok {
-		t.Fatal("README: missing link to the JSON parity exception table")
-	}
-	if start := strings.LastIndex(paragraph, "- **"); start >= 0 {
-		paragraph = paragraph[start:]
-	}
-	count := regexp.MustCompile(`(?i)(?:кроме|за исключением) (\p{L}+|[0-9]+) (?:команд|исключени|случа)`).FindStringSubmatch(paragraph)
-	if count == nil {
-		return
-	}
-	words := []string{"нуля", "одной", "двух", "трёх", "четырёх", "пяти", "шести", "семи", "восьми", "девяти", "десяти"}
+	readme := string(mustReadRepo(t, "README.md"))
+	const target = "docs/mcp.md#ответ-инструмента-и---json-команды"
 	n := len(jsonAliasCompat)
-	if count[1] != strconv.Itoa(n) && (n >= len(words) || count[1] != words[n]) {
-		t.Errorf("README says %q, registry has %d JSON exceptions", count[0], n)
+	// Russian uses different cases in «Исключений семь» and «всех семи команд».
+	forms := []string{"ноль|нуль|нуля", "один|одна|одно|одной|одного", "два|две|двух", "три|трёх", "четыре|четырёх", "пять|пяти", "шесть|шести", "семь|семи", "восемь|восьми", "девять|девяти", "десять|десяти"}
+	if n >= len(forms) {
+		t.Fatalf("%d exceptions: add the word forms for this count", n)
+	}
+	want := regexp.MustCompile(`^(?:` + strconv.Itoa(n) + "|" + forms[n] + `)$`)
+	mainCount := regexp.MustCompile(`(?i)исключений ([0-9]+|\p{L}+)`)
+	extraCount := regexp.MustCompile(`(?i)(?:кроме|за исключением) (\p{L}+|[0-9]+) (?:команд|исключени|случа)`)
+	// Counts can appear after the noun or before an adjective in a link.
+	// Treat a dotted version as a single token, separate from cardinal numbers.
+	labelWords := regexp.MustCompile(`[\p{L}\p{N}]+(?:\.[\p{L}\p{N}]+)*`)
+	numeral := regexp.MustCompile(`^(?:[0-9]+|` + strings.Join(forms, "|") + `|\p{L}+надцат[ьи])$`)
+	found := false
+	for bullet := range strings.SplitSeq(readme, "\n- ") {
+		text := strings.Join(strings.Fields(bullet), " ")
+		for _, link := range markdownLinks(text) {
+			if link.raw != target {
+				continue
+			}
+			found = true
+			prose, _, _ := strings.Cut(text, "["+link.label+"]("+target+")")
+			counts := mainCount.FindAllStringSubmatch(prose, -1)
+			if len(counts) == 0 {
+				t.Error("README: missing registered exception count in the paragraph linking to the parity table")
+			}
+			counts = append(counts, extraCount.FindAllStringSubmatch(prose, -1)...)
+			for _, count := range counts {
+				if !want.MatchString(strings.ToLower(count[1])) {
+					t.Errorf("README says %q, registry has %d JSON exceptions", count[0], n)
+				}
+			}
+			for _, word := range labelWords.FindAllString(strings.ToLower(link.label), -1) {
+				if numeral.MatchString(word) && !want.MatchString(word) {
+					t.Errorf("README link %q says %q, registry has %d JSON exceptions", link.label, word, n)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("README: missing link to the JSON parity exception table")
 	}
 }

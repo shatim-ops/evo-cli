@@ -105,7 +105,11 @@ func TestGroupCards_PrintTheirNotes(t *testing.T) {
 // The operator and the agent both need to interpret a history row without
 // consulting another document. Inspect the note containing the actual status.
 func TestAuthCard_ExplainsUnconfirmedCleanup(t *testing.T) {
-	action := regexp.MustCompile(`(?i)\b(retry|repeat|rerun|re-run|run|call|use)\b[^.;\n]{0,65}\b(destroy|vm_delete|receipts?|cleanup)\b|\b(check|verify|inspect|review)\b[^.;\n]{0,65}\b(address|ip|rules?|receipts?|billing|cleanup)\b`)
+	// Test the positive relationship between the history row and the live
+	// collection. Seeing either word elsewhere does not describe retention.
+	row := `(?:(?:partial destroy|history) (?:row|entry)|partial destroy|row|entry)`
+	retained := regexp.MustCompile(`^(?:(?:keeps|retains) (?:a|the) ` + row + `|(?:a|the) ` + row + ` (?:remains|stays)) in live\b`)
+	action := regexp.MustCompile(`(?:^|[.;:])\s*(?:(?:retry|repeat|rerun|re-run|run|call|use)\b[^.;\n]{0,65}\b(?:destroy|vm_delete|receipts?|cleanup)\b|(?:check|verify|inspect|review)\b[^.;\n]{0,65}\b(?:address|ip|rules?|receipts?|billing|cleanup)\b)`)
 	for _, terminal := range []bool{true, false} {
 		card, ok := groupCard("auth", terminal, nil, false)
 		if !ok {
@@ -113,8 +117,11 @@ func TestAuthCard_ExplainsUnconfirmedCleanup(t *testing.T) {
 		}
 		var note string
 		for _, line := range strings.Split(card, "\n") {
-			if strings.Contains(line, "cleanup_unconfirmed") {
-				note = strings.ToLower(line)
+			if _, clause, found := strings.Cut(strings.ToLower(line), "`check_result: cleanup_unconfirmed`"); found {
+				// The surrounding PostgreSQL example and advice for other
+				// statuses must not satisfy a pending destroy's requirements.
+				note, _, _ = strings.Cut(clause, "other values:")
+				note = strings.TrimSpace(strings.ReplaceAll(note, "`", ""))
 				break
 			}
 		}
@@ -122,19 +129,17 @@ func TestAuthCard_ExplainsUnconfirmedCleanup(t *testing.T) {
 			t.Errorf("terminal=%t: missing cleanup_unconfirmed", terminal)
 			continue
 		}
-		for _, term := range []string{"live", "rule"} {
-			if !strings.Contains(note, term) {
-				t.Errorf("terminal=%t: cleanup note must explain %s: %s", terminal, term, note)
-			}
+		if !retained.MatchString(note) {
+			t.Errorf("terminal=%t: cleanup_unconfirmed must say the partial destroy is kept in live: %s", terminal, note)
+		}
+		if !strings.Contains(note, "rule") {
+			t.Errorf("terminal=%t: missing remaining rule: %s", terminal, note)
 		}
 		if !strings.Contains(note, "address") && !strings.Contains(note, "floating ip") {
 			t.Errorf("terminal=%t: missing remaining address: %s", terminal, note)
 		}
-		// 'history --check' is also mentioned for other outcomes; it is not a
-		// recovery action for this pending destroy.
-		detail, _, _ := strings.Cut(note, "other values:")
-		if !action.MatchString(detail) {
-			t.Errorf("terminal=%t: missing recovery action and target for cleanup_unconfirmed: %s", terminal, detail)
+		if !action.MatchString(note) {
+			t.Errorf("terminal=%t: missing recovery action and target for cleanup_unconfirmed: %s", terminal, note)
 		}
 	}
 }
