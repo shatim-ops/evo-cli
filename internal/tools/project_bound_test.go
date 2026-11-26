@@ -22,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // Fictitious projects and resources of the --allow-project tests (REL12-3):
@@ -685,6 +686,28 @@ func TestProjectBound_ListedForeignResourceRefused(t *testing.T) {
 		if answers[resForeign] != answers[resGone] {
 			t.Errorf("%s: a foreign resource answers\n%s\na gone one\n%s", key, answers[resForeign], answers[resGone])
 		}
+	}
+}
+
+func TestProjectBound_DestroyKeepsUnlistedVMReceipt(t *testing.T) {
+	for _, id := range []string{resForeign, resGone} {
+		t.Run(id, func(t *testing.T) {
+			f := &ownerFake{}
+			r := ownerRegistry(t, f, true, ownProject)
+			writeRecords(t, r.stateDirOf, state.DeploymentRecord{
+				ID: id, VMID: id, Status: "destroying", CreatedBy: &state.Maker{KeyID: "previous-key"},
+			})
+			m, answer, failed := callOwned(t, r, "destroy", map[string]any{"vm_id": id}, true)
+			if !failed || m["reason"] != clierrors.CodeNotFound {
+				t.Fatalf("unlisted VM with a local receipt: %s", answer)
+			}
+			if got := f.log(); !slices.Equal(got, []string{"GET compute.api.cloud.ru/api/v1/vms"}) {
+				t.Fatalf("expected only project membership to be read: %v", got)
+			}
+			if ok, rec := recordedVM(state.DefaultPath(r.stateDirOf), id); !ok || rec.Status != "destroying" {
+				t.Fatalf("local receipt changed: %+v", rec)
+			}
+		})
 	}
 }
 

@@ -3118,17 +3118,6 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		return nil, err
 	}
 	eng.Cloud.SetToken(tok.Value)
-	// A VM another key recorded: its 404 is no proof it is gone, and the
-	// refusal comes before the question (L3, «Риск» 43). A record of
-	// another project is the project rule's below: it names the project.
-	if vmID != "" {
-		if recorded, rec := recordedVM(state.DefaultPath(eng.StateDir), vmID); recorded && (rec.ProjectID == "" || rec.ProjectID == projectID) {
-			if err := eng.VisibleToThisKey(ctx, rec); err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	vms, err := eng.Cloud.ListVMsInProject(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -3162,12 +3151,24 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		target = byName[0]
 	}
 	statePath := state.DefaultPath(eng.StateDir)
+	// A VM another key recorded: its 404 is no proof it is gone, and the
+	// refusal comes before the question (L3, «Риск» 43). A record of
+	// another project is the project rule's below: it names the project.
+	if vmID != "" && (target != nil || !s.projectBound) {
+		if recorded, rec := recordedVM(statePath, vmID); recorded && (rec.ProjectID == "" || rec.ProjectID == projectID) {
+			if err := eng.VisibleToThisKey(ctx, rec); err != nil {
+				return nil, err
+			}
+		}
+	}
 	// alreadyGone: the VM was deleted outside evo (console, another tool)
 	// but this directory still records it. The cloud confirms it is gone
 	// (404), so the record, its FIP and port rules are cleaned up as after
 	// a delete; "no VM matching" left the record for status to show forever.
 	alreadyGone := false
-	if target == nil {
+	// Without a listed VM a project-bound server cannot establish membership.
+	// Only an unrestricted call can recover by record or rule label.
+	if target == nil && !s.projectBound {
 		recorded, rec := false, state.DeploymentRecord{}
 		if vmID != "" {
 			recorded, rec = recordedVM(statePath, vmID)
@@ -3202,18 +3203,17 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				}
 			}
 		}
-		if target == nil {
-			// Neither the cloud nor this directory has the VM: already
-			// deleted, exit 0, as any repeated delete (D26; it was
-			// VM_NOT_FOUND, exit 4, as vm_get — A-004).
-			key, ref := "vm_id", vmID
-			if vmID == "" {
-				key, ref = "name", name
-			}
-			return answered(s.deleteFailedAs("destroy", key, ref, clierrors.New(clierrors.CodeVMNotFound,
-				i18n.Tf("no VM %s in project %s; nothing was deleted", "ВМ %s в проекте %s нет; ничего не удалено", ref, projectID),
-				i18n.T("List the project's VMs with vm_list (evo vm list).", "ВМ проекта — в выводе vm_list (evo vm list).")))), nil
+	}
+	if target == nil {
+		// D26: an unrestricted repeat answers already_deleted. With
+		// --allow-project, a missing member always answers NOT_FOUND.
+		key, ref := "vm_id", vmID
+		if vmID == "" {
+			key, ref = "name", name
 		}
+		return answered(s.deleteFailedAs("destroy", key, ref, clierrors.New(clierrors.CodeVMNotFound,
+			i18n.Tf("no VM %s in project %s; nothing was deleted", "ВМ %s в проекте %s нет; ничего не удалено", ref, projectID),
+			i18n.T("List the project's VMs with vm_list (evo vm list).", "ВМ проекта — в выводе vm_list (evo vm list).")))), nil
 	}
 
 	// The VM's floating IP, found before the VM goes: the record deploy or
@@ -3462,7 +3462,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			}
 			if ferr != nil {
 				fipLeft = true
-				msg += i18n.Tf("; WARNING: release of floating IP %s is unconfirmed; charges may continue (%v) — "+
+				msg += i18n.Tf("; WARNING: release of floating IP %s is unconfirmed; if it was NOT released, charges may continue (%v) — "+
 					"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release",
 					"; ВНИМАНИЕ: освобождение floating IP %s не подтверждено; начисления могут продолжаться (%v) — "+
 						"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
