@@ -163,6 +163,9 @@ func TestDestroy_VMDeleteFailsKeepsRules(t *testing.T) {
 // (not active) with the rule marked, and the next destroy finishes it.
 func TestDestroy_RuleDeleteFailureWarnsAndRetries(t *testing.T) {
 	eng, cloud, out := destroyFixture(t, rulesRecord())
+	cloud.listSecurityGroupsFn = func(context.Context, string) ([]*provision.SecurityGroup, error) {
+		return []*provision.SecurityGroup{{ID: "sg-1", Rules: []provision.SGRule{{ID: "rule-80"}, {ID: "rule-53"}}}}, nil
+	}
 	var errBuf bytes.Buffer
 	eng.Printer = output.NewWithWriters(out, &errBuf, output.ModePlain, false)
 	cloud.deleteRuleFn = func(_ context.Context, _, id string) error {
@@ -314,7 +317,7 @@ func TestDestroy_ClosesTheVMsLabelledRules(t *testing.T) {
 	if strings.Join(cloud.deletedRules, ",") != "sg-1/rule-80,sg-1/rule-53,sg-1/rule-b" {
 		t.Errorf("deleted = %v", cloud.deletedRules)
 	}
-	if !strings.Contains(out.String(), "Closed the security group rules labelled for the VM: ports 8443 (vm "+rec.VMID+")") {
+	if !strings.Contains(out.String(), "Closed the security group rules labelled for the VM: ports 8443 (vm \""+rec.VMID+"\")") {
 		t.Errorf("output:\n%s", out.String())
 	}
 }

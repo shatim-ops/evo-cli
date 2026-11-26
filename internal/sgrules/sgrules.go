@@ -414,7 +414,7 @@ func (r OpenResult) NotOurs(rec *state.DeploymentRecord) []string {
 
 func addRule(rec *state.DeploymentRecord, r state.SGRule) {
 	for _, have := range rec.OpenedRules {
-		if have.ID == r.ID {
+		if have.ID == r.ID && have.SecurityGroupID == r.SecurityGroupID {
 			return
 		}
 	}
@@ -509,9 +509,10 @@ func Plan(sf *state.File, recIDs ...string) []Planned {
 
 // CloseResult says what Close did, by port label.
 type CloseResult struct {
-	Closed []string `json:"closed,omitempty"`
-	Kept   []string `json:"kept,omitempty"`   // "80 (needed by deployment vm-2)"
-	Failed []string `json:"failed,omitempty"` // "80: <error>"
+	LabeledClosed []string `json:"-"` // subset of Closed, for the human-readable summary
+	Closed        []string `json:"closed,omitempty"`
+	Kept          []string `json:"kept,omitempty"`   // "80 (needed by deployment vm-2)"
+	Failed        []string `json:"failed,omitempty"` // "80: <error>"
 }
 
 // Empty reports whether there was nothing to do.
@@ -520,8 +521,63 @@ func (r CloseResult) Empty() bool { return len(r.Closed)+len(r.Kept)+len(r.Faile
 // Add appends another result.
 func (r *CloseResult) Add(o CloseResult) {
 	r.Closed = append(r.Closed, o.Closed...)
+	r.LabeledClosed = append(r.LabeledClosed, o.LabeledClosed...)
 	r.Kept = append(r.Kept, o.Kept...)
 	r.Failed = append(r.Failed, o.Failed...)
+}
+
+// readOwnedRule checks the exact group and rule IDs without filtering out
+// transitional states. A rule in "deleting" can still allow traffic.
+func readOwnedRule(ctx context.Context, cloud provision.CloudAPI, r state.SGRule) (*provision.SGRule, error) {
+	rows, err := provision.ReadSecurityGroupRulesForCleanup(ctx, cloud, r.SecurityGroupID)
+	if err != nil {
+		return nil, err
+	}
+	var found *provision.SGRule
+	for _, row := range rows {
+		if row == nil || row.ID == "" || row.ID == r.ID && found != nil {
+			return nil, clerrors.New(clerrors.CodeAPIError, i18n.T("The rule list is incomplete.", "Список правил получен не полностью."), "")
+		}
+		if row.ID == r.ID {
+			found = row
+		}
+	}
+	return found, nil
+}
+
+// deleteOwnedRule verifies a previous request before retrying it, and any
+// new accepted DELETE by a complete read. A port or a CIDR cannot identify it.
+func deleteOwnedRule(ctx context.Context, cloud provision.CloudAPI, r state.SGRule) error {
+	if r.DeleteError != "" || r.LabelVMID != "" {
+		current, err := readOwnedRule(ctx, cloud, r)
+		if err != nil || current == nil {
+			return err
+		}
+		if current.State == "deleting" {
+			return clerrors.New(clerrors.CodeAPIError, i18n.T("The rule is still being deleted.", "Правило ещё удаляется."), "")
+		}
+		if r.LabelVMID != "" && (current.Direction != "ingress" || current.Description != RuleLabel(Label(r.Port), r.LabelVMID)) {
+			return clerrors.New(clerrors.CodeAPIError, i18n.T("The rule no longer carries this VM's ingress label.", "У входящего правила больше нет метки этой ВМ."), "")
+		}
+	}
+	err := cloud.DeleteSecurityGroupRule(ctx, r.SecurityGroupID, r.ID)
+	var cliErr *clerrors.CLIError
+	if err != nil && !(stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound)) {
+		return err
+	}
+	current, err := readOwnedRule(ctx, cloud, r)
+	if err != nil {
+		return err
+	}
+	if current != nil {
+		return clerrors.New(clerrors.CodeAPIError, i18n.T("The rule is still present after the delete request.", "После запроса удаления правило ещё есть в группе."), "")
+	}
+	return nil
+}
+
+// RuleRetryHint explains where the operation can be safely continued.
+func RuleRetryHint() string {
+	return i18n.T("Run 'evo destroy' again in the same directory to check the saved rule IDs.", "Повторите 'evo destroy' в том же каталоге, чтобы проверить сохранённые ID правил.")
 }
 
 // Close deletes the rules deployment recID created, in sf. A rule another
@@ -552,11 +608,15 @@ func Close(ctx context.Context, cloud provision.CloudAPI, sf *state.File, recID 
 			res.Failed = append(res.Failed, label+": no rule or group ID in state — delete it in the Cloud.ru console")
 			continue
 		}
-		err := cloud.DeleteSecurityGroupRule(ctx, r.SecurityGroupID, r.ID)
-		var cliErr *clerrors.CLIError
-		// 404 — the rule is gone: NOT_FOUND (VM_NOT_FOUND before QA-10).
-		if err == nil || (stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound)) {
+		err := deleteOwnedRule(ctx, cloud, r)
+		if r.LabelVMID != "" {
+			label += fmt.Sprintf(" (vm %q)", r.LabelVMID)
+		}
+		if err == nil {
 			res.Closed = append(res.Closed, label)
+			if r.LabelVMID != "" {
+				res.LabeledClosed = append(res.LabeledClosed, label)
+			}
 			continue
 		}
 		r.DeleteError = err.Error()

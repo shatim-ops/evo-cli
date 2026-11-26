@@ -24,6 +24,7 @@ import (
 	"time"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/product"
 )
 
@@ -370,7 +371,8 @@ func RouteNotFoundAsBadGateway(req *http.Request, resp *http.Response) *http.Res
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	resp.Body.Close()
-	return badGateway(resp, `{"message":"Cloud.ru answered 404 without the service's answer: `+routeNotFound+`"}`)
+	message := i18n.T(routeNotFoundEN, routeNotFoundRU)
+	return badGateway(resp, `{"message":"`+message+`"}`)
 }
 
 // peek reads the first n bytes of body at most. It returns them and the
@@ -395,14 +397,21 @@ type brokenBody struct{ err error }
 
 func (b brokenBody) Read([]byte) (int, error) { return 0, b.err }
 
-// routeNotFound is how the 502 of RouteNotFoundAsBadGateway says what it is.
-const routeNotFound = "the route or the address of the service is not there, and the resource was not checked"
+// Only the transport writes these messages. A service body passes through unchanged.
+const (
+	routeNotFoundEN = "Cloud.ru answered 404 without the service's answer: the route or the address of the service is not there, and the resource was not checked"
+	routeNotFoundRU = "Шлюз Cloud.ru вернул 404 без ответа сервиса. Маршрут или адрес сервиса недоступен. Ресурс не проверен."
+)
 
 // RouteNotFound reports whether err carries the answer of
 // RouteNotFoundAsBadGateway: whatever the client wrapped it in, its message
 // keeps the body.
 func RouteNotFound(err error) bool {
-	return err != nil && strings.Contains(err.Error(), routeNotFound)
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, routeNotFoundEN) || strings.Contains(message, routeNotFoundRU)
 }
 
 // Replaced is the header of an answer the transport wrote in place of the

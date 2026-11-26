@@ -91,14 +91,18 @@ type DeploymentRecord struct {
 
 // FloatingIPResolution records a local reconciliation, not a cloud deletion.
 type FloatingIPResolution struct {
-	ProjectID string    `json:"project_id"`
-	ReceiptID string    `json:"receipt_id"`
-	Kind      string    `json:"kind"`
-	Name      string    `json:"name,omitempty"`
-	Outcome   string    `json:"outcome"`
-	AddressID string    `json:"address_id,omitempty"`
-	Evidence  string    `json:"evidence"`
-	At        time.Time `json:"at"`
+	// A later verified or ambiguous VM binding invalidates this decision.
+	Contradicted bool `json:"contradicted,omitempty"`
+	// The address observed when the binding identified one exact resource.
+	ConflictingAddressID string    `json:"conflicting_address_id,omitempty"`
+	ProjectID            string    `json:"project_id"`
+	ReceiptID            string    `json:"receipt_id"`
+	Kind                 string    `json:"kind"`
+	Name                 string    `json:"name,omitempty"`
+	Outcome              string    `json:"outcome"`
+	AddressID            string    `json:"address_id,omitempty"`
+	Evidence             string    `json:"evidence"`
+	At                   time.Time `json:"at"`
 }
 
 // SSHWait is a wait of deploy for SSH on the VM of a record.
@@ -113,6 +117,9 @@ type SSHWait struct {
 
 // SGRule is a security-group rule created by a deployment.
 type SGRule struct {
+	// LabelVMID is set when the rule was discovered by its deployment label.
+	// A retry must not delete the ID if that label has changed.
+	LabelVMID       string `json:"label_vm_id,omitempty"`
 	ID              string `json:"id"`
 	SecurityGroupID string `json:"security_group_id"`
 	Port            string `json:"port"` // "80/tcp", "53/udp"

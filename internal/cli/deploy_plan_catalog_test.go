@@ -287,16 +287,10 @@ func checkPlanCatalogPages(t *testing.T, c *planImageCatalog, surface string) {
 			t.Errorf("neutral refusal exposed the service 404: %s", hidden)
 		}
 	})
-	if surface == "CLI text" {
-		t.Run("service_page_2_ru", func(t *testing.T) {
-			t.Setenv("EVO_LANG", "ru")
-			ru(t)
-			fields, _ := run(t, []imageCatalogPage{row(catalogMatchID, target, 2), service}, "API_ERROR", 5)
-			if fields["error"] != "не удалось дочитать каталог" {
-				t.Errorf("unexpected Russian diagnostic: %v", fields)
-			}
-		})
-	}
+	const incompleteEN = "Could not finish reading the image catalogue."
+	const incompleteRU = "Не удалось дочитать каталог образов."
+	const routeEN = "Cloud.ru answered 404 without the service's answer: the route or the address of the service is not there, and the resource was not checked"
+	const routeRU = "Шлюз Cloud.ru вернул 404 без ответа сервиса. Маршрут или адрес сервиса недоступен. Ресурс не проверен."
 	for _, tc := range []struct {
 		name    string
 		pages   []imageCatalogPage
@@ -309,17 +303,46 @@ func checkPlanCatalogPages(t *testing.T, c *planImageCatalog, surface string) {
 		{"gateway_page_2", []imageCatalogPage{row(catalogMatchID, other, 2), gateway}, true},
 		{"gateway_page_3_after_match", []imageCatalogPage{row(catalogMatchID, target, 3), row(secondID, other, 3), gateway}, true},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		check := func(t *testing.T, incomplete, routing, hint string) {
+			t.Helper()
 			fields, public := run(t, tc.pages, "API_ERROR", 5)
 			if tc.gateway {
-				if fields["hint"] != clierrors.RouteNotFoundHint() {
-					t.Errorf("lost D63 routing hint: %v", fields)
+				msg, _ := fields["error"].(string)
+				if !strings.Contains(msg, routing) || fields["hint"] != hint {
+					t.Errorf("gateway diagnostic or routing hint changed: %v", fields)
 				}
-			} else if fields["error"] != "Could not finish reading the image catalogue." || strings.Contains(public, clierrors.RouteNotFoundHint()) {
-				t.Errorf("incomplete catalogue not explained: %s", public)
+			} else if fields["error"] != incomplete || strings.Contains(public, hint) {
+				t.Errorf("incomplete catalogue not explained: %v", fields)
+			}
+		}
+		enHint := clierrors.RouteNotFoundHint()
+		t.Run(tc.name, func(t *testing.T) { check(t, incompleteEN, routeEN, enHint) })
+		if surface == "CLI text" || surface == "CLI" {
+			t.Run(tc.name+"_ru", func(t *testing.T) {
+				t.Setenv("EVO_LANG", "ru")
+				ru(t)
+				if surface == "CLI text" {
+					check(t, incompleteRU, routeRU, clierrors.RouteNotFoundHint())
+				} else {
+					check(t, incompleteEN, routeEN, enHint)
+				}
+			})
+		}
+	}
+	if surface == "CLI text" {
+		t.Run("service_quote_ru", func(t *testing.T) {
+			t.Setenv("EVO_LANG", "ru")
+			ru(t)
+			const quote = "Service temporarily unavailable on this backend"
+			c.status, c.body, c.gets = 502, `{"message":"`+quote+`"}`, 0
+			fields, _ := planImageRefusal(t, surface, target, 5)
+			msg, _ := fields["error"].(string)
+			if !strings.Contains(msg, quote) || strings.Contains(msg, routeRU) || fields["hint"] == clierrors.RouteNotFoundHint() {
+				t.Errorf("service's own words were replaced by a gateway diagnostic: %v", fields)
 			}
 		})
 	}
+
 	// Completing the promised page makes exactly the same early match usable.
 	// A separate directory keeps actual saved plans out of the refusal cases.
 	t.Run("complete_after_match", func(t *testing.T) {

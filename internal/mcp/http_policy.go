@@ -94,7 +94,7 @@ var HTTPRestrictions = []Restriction{
 	// H14: D69.
 	{ID: "H14", StdioToo: true,
 		Where: "internal/mcp/server.go", Symbol: "SetCallBudget(tools.MCPCallBudget)",
-		Summary: "a call waits for the cloud at most ~45 s (MCPCallBudget): what is not done by then answers with its state so far and the next step (status creating, next, next_tool, next_args), wait_seconds takes at most 45; wait=true lifts it; ca_delete waits for the app to disappear, and ca_get follows a deleting result; the CLI waits as before"},
+		Summary: "by default the MCP cloud wait budget is ~45 s (MCPCallBudget). Continue with next_tool and next_args. wait_seconds takes at most 45. For async deletes (including dns_zone_delete and k8s_nodepool_delete), wait=false skips the outcome read and wait=true still waits at most 45 s, except ca_delete: wait=true polls until the app disappears. After deleting, follow the read tool without repeating the delete. An interrupted wait keeps the started operation ID. The CLI has no MCP budget"},
 	{ID: "H15", StdioToo: true,
 		Where: "internal/tools/tools.go", Symbol: "recordedTarget(eng.StateDir)",
 		Summary: "destroy confirmed without vm_id or name, with a deployment recorded in the server's folder, deletes nothing: USAGE with the recorded vm_id; the preview names the target as before; evo destroy in a terminal is as before"},

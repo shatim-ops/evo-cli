@@ -9,9 +9,9 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/billing"
+	"github.com/shatim-ops/evo-cli/internal/clock"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
@@ -280,7 +280,7 @@ const maxFinopsDays = 366
 
 func (s *Registry) handleBillingFinops(ctx context.Context, args map[string]any) (string, bool) {
 	const layout = "2006-01-02"
-	now := time.Now().UTC()
+	now := clock.Now().UTC()
 	today := now.Format(layout)
 	// days is 1-366 by the schema (D36): -1 became 30, 10^9 went into the
 	// date arithmetic as it was (QA-14, release audit REL-15).

@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -124,17 +125,21 @@ func TestDeleteOutcome_ContainerAppReadsTheApp(t *testing.T) {
 
 // Once the DELETE is accepted, a cancelled read is an interrupted wait.
 // A broken response with the caller still present only leaves the outcome pending.
-func TestDeleteOutcome_ContainerAppPartialResponse(t *testing.T) {
+func TestDeleteOutcome_ContainerAppInterruptedRead(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		cancel bool
+		name          string
+		beforeHeaders bool
+		cancel        bool
 	}{
-		{"caller cancelled", true},
-		{"broken response with live caller", false},
+		{"caller cancelled before headers", true, true},
+		{"caller cancelled during body", false, true},
+		{"broken response with live caller", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
+			ctx, cancel := context.WithCancelCause(t.Context())
+			defer cancel(nil)
+			// MCP notifications and disconnects cancel with a transport-specific cause.
+			cause := errors.New("client cancelled this request")
 			deletes, polls := 0, 0
 			rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if r.URL.Path != "/v2/containers/web" {
@@ -149,14 +154,18 @@ func TestDeleteOutcome_ContainerAppPartialResponse(t *testing.T) {
 					body = io.NopCloser(strings.NewReader(`{"name":"web","status":"RUNNING"}`))
 					if deletes > 0 {
 						polls++
+						if tc.beforeHeaders {
+							cancel(cause)
+							return nil, context.Cause(r.Context())
+						}
 						reader, writer := io.Pipe()
 						body = reader
 						go func() {
 							// Write returns after the client has consumed the prefix.
 							_, _ = io.WriteString(writer, `{"name":`)
 							if tc.cancel {
-								cancel()
-								_ = writer.CloseWithError(context.Canceled)
+								cancel(cause)
+								_ = writer.CloseWithError(cause)
 							} else {
 								_ = writer.CloseWithError(io.ErrUnexpectedEOF)
 							}
@@ -179,7 +188,7 @@ func TestDeleteOutcome_ContainerAppPartialResponse(t *testing.T) {
 			}
 			if tc.cancel {
 				if !isErr || got["reason"] != "INTERRUPTED" {
-					t.Errorf("caller cancelled after headers: %s", text)
+					t.Errorf("caller cancelled: %s", text)
 				}
 			} else if isErr || got["status"] != "deleting" || got["next_tool"] != "ca_get" {
 				t.Errorf("unreadable card: %s", text)

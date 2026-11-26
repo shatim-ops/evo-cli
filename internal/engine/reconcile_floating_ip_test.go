@@ -346,3 +346,52 @@ func TestCleanup_LegacyReceiptProject(t *testing.T) {
 		})
 	}
 }
+
+// The owner may have previewed a resolution before an addressed destroy
+// observed another binding. Validate the current receipt under the state lock.
+func TestReconcileFloatingIP_ConflictingBindingAfterPreview(t *testing.T) {
+	e, c, dir := unfinishedAddress(t, "legacy address")
+	assertAddressStillPending(t, e, c, dir)
+	rs, err := e.PendingFloatingIPReceipts(oldReceiptVM)
+	if err != nil || len(rs) != 1 {
+		t.Fatalf("receipts: %v %v", rs, err)
+	}
+	original := FloatingIPReconciliation{DeploymentID: oldReceiptVM, ReceiptID: rs[0].ReceiptID, Outcome: "released", AddressID: oldReceiptAddress, Evidence: "provider investigation 101"}
+	if err := e.ReconcileFloatingIP(t.Context(), original); err != nil {
+		t.Fatal(err)
+	}
+	// This is a different address ID, now bound to the exact VM and carrying
+	// its recorded public address. Later it detaches, but remains live and billed.
+	c.fips[0].VMID = oldReceiptVM
+	assertAddressStillPending(t, e, c, dir)
+	c.fips[0].VMID = ""
+	assertAddressStillPending(t, e, c, dir)
+	for _, tc := range []struct{ name, outcome, id, evidence, reason string }{
+		{"same evidence", "released", foreignReceiptAddress, original.Evidence, clerrors.CodeUsage},
+		{"stale verified ID", "released", oldReceiptAddress, "new case 102", clerrors.CodeAPIError},
+		{"known address cannot be treated as never created", "not_created", "", "new case 102", clerrors.CodeAPIError},
+		{"observed address still exists", "released", foreignReceiptAddress, "new case 102", clerrors.CodeAPIError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := original
+			r.Outcome, r.AddressID, r.Evidence = tc.outcome, tc.id, tc.evidence
+			if err := e.ReconcileFloatingIP(t.Context(), r); clerrors.Reason(err) != tc.reason {
+				t.Fatalf("rechecked old preview: want %s, got %v", tc.reason, err)
+			}
+			d := faultState(t, dir).ActiveDeployment()
+			if d == nil || len(d.FloatingIPResolutions) != 1 || !d.FloatingIPResolutions[0].Contradicted || d.FloatingIPResolutions[0].Evidence != original.Evidence || len(c.deletes) != 0 {
+				t.Fatalf("rejected proof changed the audit or released an address: %+v DELETE=%v", d, c.deletes)
+			}
+		})
+	}
+	c.fips[0].deleted = true // provider records the externally verified release
+	verified := original
+	verified.AddressID, verified.Evidence = foreignReceiptAddress, "new operation 103"
+	if err := e.ReconcileFloatingIP(t.Context(), verified); err != nil {
+		t.Fatal(err)
+	}
+	d := faultState(t, dir).ActiveDeployment()
+	if len(d.FloatingIPResolutions) != 2 || !d.FloatingIPResolutions[0].Contradicted || d.FloatingIPResolutions[1].Contradicted {
+		t.Fatalf("old and new decisions: %+v", d.FloatingIPResolutions)
+	}
+}

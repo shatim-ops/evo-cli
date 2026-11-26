@@ -169,3 +169,45 @@ func TestDeleteSecurityGroupRule_EscapesIDs(t *testing.T) {
 		t.Errorf("path %s", raw)
 	}
 }
+
+func TestSecurityGroupRuleCleanupRequiresCompleteListing(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		pages  []string
+		valid  bool
+	}{
+		{"empty", 200, []string{`{"items":[],"total":0}`}, true},
+		{"two pages", 200, []string{`{"items":[{"id":"a"}],"total":2}`, `{"items":[{"id":"b"}],"total":2,"offset":1}`}, true},
+		{"partial HTTP response", 206, []string{`{"items":[],"total":0}`}, false},
+		{"null", 200, []string{`null`}, false},
+		{"missing items", 200, []string{`{"total":0}`}, false},
+		{"null items", 200, []string{`{"items":null,"total":0}`}, false},
+		{"missing total", 200, []string{`{"items":[]}`}, false},
+		{"unidentified rule", 200, []string{`{"items":[null],"total":1}`}, false},
+		{"padded rule ID", 200, []string{`{"items":[{"id":" a "}],"total":1}`}, false},
+		{"extra data", 200, []string{`{"items":[],"total":0}{}`}, false},
+		{"shrinking total", 200, []string{`{"items":[{"id":"a"}],"total":2}`, `{"items":[],"total":1}`}, false},
+		{"wrong offset", 200, []string{`{"items":[{"id":"a"}],"total":2}`, `{"items":[{"id":"b"}],"total":2,"offset":0}`}, false},
+		{"overlap", 200, []string{`{"items":[{"id":"a"}],"total":3}`, `{"items":[{"id":"a"},{"id":"b"}],"total":3}`}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := 0
+			server, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if n >= len(tc.pages) {
+					t.Errorf("unexpected request %s", r.URL.Path)
+					http.Error(w, "extra request", http.StatusBadRequest)
+					return
+				}
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.pages[n])
+				n++
+			})
+			defer server.Close()
+			items, err := ReadSecurityGroupRulesForCleanup(context.Background(), adapter, "sg-1")
+			if n != len(tc.pages) || (err == nil) != tc.valid || (err != nil && (items != nil || clierrors.Reason(err) != clierrors.CodeAPIError)) {
+				t.Fatalf("read %d pages, items=%v, err=%v", n, items, err)
+			}
+		})
+	}
+}

@@ -578,8 +578,10 @@ func newProjectListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: i18n.T("List the projects the key sees (* — the active one)", "Проекты, которые видит ключ (* — активный)"),
+		Long: i18n.T("List visible projects. If the Organization API returns an HTTP error, this command exits 0 with projects: null and the locally selected project in active. Scripts that need the cloud list should check that projects is an array.",
+			"Проекты, которые видит ключ. При HTTP-ошибке Organization API команда возвращает код 0, projects: null и локально выбранный проект в active. Если скрипту нужен список из облака, проверьте, что projects — массив."),
 		Example: `  evo project list
-  evo project list --json | jq -r '.projects[].id'`,
+  evo project list --json | jq -e '(.projects | type) == "array"'`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)

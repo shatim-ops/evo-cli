@@ -68,6 +68,11 @@ func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (str
 		wait = opWaitUntilGone
 	}
 	m, err := waitForOpJSON(ctx, wait, w.read)
+	// A transport can return the MCP cancellation cause instead of context.Canceled.
+	// Only the caller's cancellation interrupts a started delete; a read timeout leaves it pending.
+	if err != nil && ctx.Err() == context.Canceled {
+		err = context.Canceled
+	}
 	if errors.Is(err, context.Canceled) {
 		// The delete is started: the answer names it (FB160-14).
 		return errAnswer(err, fields), true

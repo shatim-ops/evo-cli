@@ -6,10 +6,9 @@ package sgrules
 
 import (
 	"context"
-	stderrors "errors"
+
 	"strings"
 
-	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -53,11 +52,11 @@ func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID,
 	if vmID == "" || cloud == nil {
 		return nil, nil
 	}
-	held := map[string]bool{}
+	held := map[[2]string]bool{}
 	if sf != nil {
 		for _, d := range sf.Deployments {
 			for _, r := range d.OpenedRules {
-				held[r.ID] = true
+				held[[2]string{r.SecurityGroupID, r.ID}] = true
 			}
 		}
 	}
@@ -71,7 +70,7 @@ func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID,
 		if g == nil || !inZone(g, zoneID, zoneName) {
 			continue
 		}
-		rules, err := cloud.ListSecurityGroupRules(ctx, g.ID)
+		rules, err := provision.ReadSecurityGroupRulesForCleanup(ctx, cloud, g.ID)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -79,7 +78,7 @@ func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID,
 			continue
 		}
 		for _, r := range rules {
-			if r == nil || r.ID == "" || held[r.ID] || r.Direction != "ingress" || labelVM(r.Description) != vmID || inactive[r.State] {
+			if r == nil || r.ID == "" || held[[2]string{g.ID, r.ID}] || r.Direction != "ingress" || labelVM(r.Description) != vmID {
 				continue
 			}
 			lo, _, _ := portRange(r.PortRange)
@@ -102,23 +101,29 @@ func inZone(g *provision.SecurityGroup, zoneID, zoneName string) bool {
 		(zoneName != "" && (strings.EqualFold(g.AvailabilityZoneName, zoneName) || g.AvailabilityZoneID == zoneName))
 }
 
-// CloseLabeled deletes the rules FindLabeled found, once their VM is gone
-// or deleted by this call. A rule already gone (404) counts as closed; a
-// failed delete is reported: no record holds it, and the next delete of the
-// same VM finds it again by its label.
-func CloseLabeled(ctx context.Context, cloud provision.CloudAPI, rules []Planned) CloseResult {
-	var res CloseResult
+// TrackLabeled adds only the approved exact IDs, before issuing a DELETE.
+// The target keeps failed receipts even if its VM came from another folder.
+func TrackLabeled(sf *state.File, rec *state.DeploymentRecord, rules []Planned) {
 	for _, p := range rules {
-		// The port and the VM of its label: the agent of another folder
-		// whose port went finds why (P6).
-		label := Label(p.Rule.Port) + " (vm " + p.VMID + ")"
-		err := cloud.DeleteSecurityGroupRule(ctx, p.Rule.SecurityGroupID, p.Rule.ID)
-		var cliErr *clerrors.CLIError
-		if err == nil || (stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound)) {
-			res.Closed = append(res.Closed, label)
+		if p.VMID == "" || p.VMID != rec.VMID || p.Rule.ID == "" || p.Rule.SecurityGroupID == "" {
 			continue
 		}
-		res.Failed = append(res.Failed, label+": "+err.Error())
+		held := false
+		for _, d := range sf.Deployments {
+			for _, r := range d.OpenedRules {
+				if r.ID == p.Rule.ID && r.SecurityGroupID == p.Rule.SecurityGroupID {
+					held = true
+					break
+				}
+			}
+			if held {
+				break
+			}
+		}
+		if !held {
+			rule := p.Rule
+			rule.LabelVMID = p.VMID
+			addRule(rec, rule)
+		}
 	}
-	return res
 }

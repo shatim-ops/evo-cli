@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // A 404 the service did not write is a route that is not there, not a
@@ -54,7 +56,7 @@ func TestRouteNotFoundAsBadGateway(t *testing.T) {
 		if c.want == 404 && string(body) != c.body {
 			t.Errorf("%s: the service's body did not pass whole (%d of %d bytes)", c.name, len(body), len(c.body))
 		}
-		if c.want == 502 && !strings.Contains(string(body), "route or the address") {
+		if c.want == 502 && !strings.Contains(string(body), i18n.T("route or the address", "Маршрут или адрес сервиса недоступен.")) {
 			t.Errorf("%s: body %s", c.name, body)
 		}
 	}

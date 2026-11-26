@@ -57,18 +57,25 @@ func TestFindLabeled_OnlyTheVMsRulesNoRecordHolds(t *testing.T) {
 	for _, r := range found {
 		ports = append(ports, Label(r.Rule.Port))
 	}
-	if strings.Join(ports, ",") != "80,53/udp" {
-		t.Fatalf("found %+v; want the VM's own 80 and 53/udp only", found)
+	if strings.Join(ports, ",") != "80,53/udp,81" {
+		t.Fatalf("found %+v; want the VM's own 80, 53/udp and deleting 81 only", found)
 	}
 
 	f.deleteErr[found[1].Rule.ID] = errors.New("API 503")
-	res := CloseLabeled(context.Background(), f, found)
-	if strings.Join(res.Closed, ",") != "80 (vm vm-1)" || len(res.Failed) != 1 || !strings.HasPrefix(res.Failed[0], "53/udp (vm vm-1): ") {
+	owned := &state.File{Deployments: []state.DeploymentRecord{{ID: "r", VMID: "vm-1"}}}
+	TrackLabeled(owned, &owned.Deployments[0], found)
+	res := Close(context.Background(), f, owned, "r")
+	if strings.Join(res.Closed, ",") != "80 (vm \"vm-1\")" || len(res.Failed) != 2 || !strings.HasPrefix(res.Failed[0], "53/udp (vm \"vm-1\"): ") || !strings.HasPrefix(res.Failed[1], "81 (vm \"vm-1\"): ") {
 		t.Errorf("closed %v, failed %v; want 80 closed and 53/udp reported", res.Closed, res.Failed)
 	}
 	// A rule gone meanwhile is closed, as Close counts it.
-	gone := CloseLabeled(context.Background(), f, []Planned{{Rule: state.SGRule{SecurityGroupID: "sg-a", ID: "no-such", Port: "9/tcp"}, VMID: "vm-1"}})
-	if strings.Join(gone.Closed, ",") != "9 (vm vm-1)" {
+	if len(owned.Deployments[0].OpenedRules) != 2 || owned.Deployments[0].OpenedRules[0].ID != found[1].Rule.ID || owned.Deployments[0].OpenedRules[1].ID != "dying" {
+		t.Fatal("unconfirmed label receipt was lost")
+	}
+	missing := &state.File{Deployments: []state.DeploymentRecord{{ID: "r", VMID: "vm-1"}}}
+	TrackLabeled(missing, &missing.Deployments[0], []Planned{{Rule: state.SGRule{SecurityGroupID: "sg-a", ID: "no-such", Port: "9/tcp"}, VMID: "vm-1"}})
+	gone := Close(context.Background(), f, missing, "r")
+	if strings.Join(gone.Closed, ",") != "9 (vm \"vm-1\")" {
 		t.Errorf("a rule already gone: %+v, want closed", gone)
 	}
 }

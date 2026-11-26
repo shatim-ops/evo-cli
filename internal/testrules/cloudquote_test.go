@@ -103,7 +103,6 @@ var unquotedCloudFlows = map[string]int{
 	"internal/engine/vm_stopped.go|Engine.vmStopped":              3,
 	"internal/engine/vm_stopped.go|inTransit":                     2,
 	"internal/mk8s/addons.go|Client.CreateClusterAddon":           1,
-	"internal/sgrules/labels.go|CloseLabeled":                     1,
 	"internal/stack/store.go|FindResourcefulJobs":                 1,
 	"internal/tools/delete_outcome.go|deleteRefusal":              3,
 	"internal/tools/intent.go|Registry.checkByID":                 1,

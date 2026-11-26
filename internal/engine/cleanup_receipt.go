@@ -25,19 +25,21 @@ import (
 // FloatingIPReceipt identifies one attempt in the current directory. Its digest
 // binds the preview to the deployment, original request and available evidence.
 type FloatingIPReceipt struct {
-	ReceiptID            string    `json:"receipt_id"`
-	Kind                 string    `json:"kind"`
-	ProjectID            string    `json:"project_id"`
-	DeploymentID         string    `json:"deployment_id"`
-	VMID                 string    `json:"vm_id,omitempty"`
-	VMName               string    `json:"vm_name,omitempty"`
-	Name                 string    `json:"name,omitempty"`
-	Attempt              string    `json:"attempt,omitempty"`
-	AddressID            string    `json:"address_id,omitempty"`
-	RequestedAt          time.Time `json:"requested_at"`
-	Address              string    `json:"address,omitempty"`
-	NeedsEvidenceProject bool      `json:"needs_evidence_project,omitempty"`
-	index                int       // position of the exact lost request in the locked snapshot
+	ReceiptID               string    `json:"receipt_id"`
+	Kind                    string    `json:"kind"`
+	ProjectID               string    `json:"project_id"`
+	DeploymentID            string    `json:"deployment_id"`
+	VMID                    string    `json:"vm_id,omitempty"`
+	VMName                  string    `json:"vm_name,omitempty"`
+	Name                    string    `json:"name,omitempty"`
+	Attempt                 string    `json:"attempt,omitempty"`
+	AddressID               string    `json:"address_id,omitempty"`
+	RequestedAt             time.Time `json:"requested_at"`
+	Address                 string    `json:"address,omitempty"`
+	NeedsEvidenceProject    bool      `json:"needs_evidence_project,omitempty"`
+	ConflictsWithResolution bool      `json:"conflicts_with_resolution,omitempty"`
+	index                   int       // position of the exact lost request in the locked snapshot
+	contradictedEvidence    []string  // private references: never include them in a listing or preview
 }
 
 type FloatingIPReconciliation struct {
@@ -63,12 +65,25 @@ func makeIPReceipt(project string, d *state.DeploymentRecord, m *state.LostFloat
 	return r
 }
 
-func legacyReceiptResolved(project string, d *state.DeploymentRecord) bool {
+// Last resolution for exactly this legacy receipt, including an outcome later
+// contradicted by a binding. Older decisions are retained in the audit trail.
+func legacyIPResolution(project string, d *state.DeploymentRecord) *state.FloatingIPResolution {
 	if len(d.FloatingIPResolutions) == 0 {
-		return false
+		return nil
 	}
 	id := makeIPReceipt(project, d, nil, -1).ReceiptID
-	return slices.ContainsFunc(d.FloatingIPResolutions, func(v state.FloatingIPResolution) bool { return v.Kind == "legacy_deployment" && v.ReceiptID == id })
+	for i := len(d.FloatingIPResolutions) - 1; i >= 0; i-- {
+		r := &d.FloatingIPResolutions[i]
+		if r.Kind == "legacy_deployment" && r.ReceiptID == id {
+			return r
+		}
+	}
+	return nil
+}
+
+func legacyReceiptResolved(project string, d *state.DeploymentRecord) bool {
+	r := legacyIPResolution(project, d)
+	return r != nil && !r.Contradicted
 }
 
 func noIPReceipt() error {
@@ -108,11 +123,18 @@ func recordedReceiptProject(sf *state.File, d *state.DeploymentRecord) (string, 
 			if m.VMName == "" || m.VMName != d.VMName {
 				continue
 			}
+			// An addressed destroy also checks a copy of the selected record.
+			// Count that record once, by its stored identity, not its address.
+			found := false
 			for i := range sf.Deployments {
 				other := &sf.Deployments[i]
-				if other != d && other.VMName == m.VMName && (other.ProjectID == "" || other.ProjectID == m.ProjectID) {
+				if other.VMName != m.VMName || other.ProjectID != "" && other.ProjectID != m.ProjectID {
+					continue
+				}
+				if found || d.ID == "" || other.ID != d.ID || other.VMID != d.VMID {
 					return "", false
 				}
+				found = true
 			}
 		}
 		if project != "" && project != m.ProjectID {
@@ -173,10 +195,16 @@ func (e *Engine) cleanupDeployment(sf *state.File, id string) (*state.Deployment
 	return rec, nil
 }
 
+// HasLegacyFloatingIPResolution reports whether a previous decision about this
+// exact deployment must be checked before its local receipt can be retired.
+func (e *Engine) HasLegacyFloatingIPResolution(d *state.DeploymentRecord) bool {
+	return legacyIPResolution(e.projectOf(d), d) != nil
+}
+
 // HasUnresolvedLegacyFloatingIP reports a remaining old address receipt,
 // including after the previous destroy found only an ambiguous namesake.
 func (e *Engine) HasUnresolvedLegacyFloatingIP(d *state.DeploymentRecord) bool {
-	return d.FloatingIPID == "" && (d.LegacyFloatingIPPending || recordedExternalIP(d.VMIP)) && !legacyReceiptResolved(e.projectOf(d), d)
+	return d.FloatingIPID == "" && (d.LegacyFloatingIPPending || recordedExternalIP(d.VMIP) && !legacyReceiptResolved(e.projectOf(d), d))
 }
 
 func (e *Engine) receipts(sf *state.File, d *state.DeploymentRecord) ([]FloatingIPReceipt, error) {
@@ -186,6 +214,16 @@ func (e *Engine) receipts(sf *state.File, d *state.DeploymentRecord) ([]Floating
 		r := makeIPReceipt(project, d, nil, -1)
 		recorded, _ := recordedReceiptProject(sf, d)
 		r.NeedsEvidenceProject = recorded == ""
+		if resolution := legacyIPResolution(project, d); resolution != nil && (resolution.Contradicted || d.LegacyFloatingIPPending) {
+			r.ConflictsWithResolution = true
+			r.AddressID = resolution.ConflictingAddressID
+			for i := range d.FloatingIPResolutions {
+				past := &d.FloatingIPResolutions[i]
+				if past.Kind == r.Kind && past.ReceiptID == r.ReceiptID && (past.Contradicted || past == resolution) {
+					r.contradictedEvidence = append(r.contradictedEvidence, strings.TrimSpace(past.Evidence))
+				}
+			}
+		}
 		out = append(out, r)
 	}
 	for i := range sf.LostFloatingIPs {
@@ -222,22 +260,38 @@ func invalidIPProof() error {
 	return clerrors.New(clerrors.CodeUsage, i18n.T("Use released with the address ID, or not_created without an address ID, and reference the independent record for this request.", "Выберите released с ID адреса или not_created без ID адреса и укажите независимую запись о результате этой попытки."), "")
 }
 
-// The human verifies the referenced record. Reject the target's own
-// identifiers and empty/list output offered as independent evidence.
-func independentIPReference(ref string, r *FloatingIPReceipt, ipID string) bool {
-	if r.Kind == "legacy_deployment" && provision.IsEvoFIPOf(ref, r.VMID, r.VMName) {
-		return false
+// CheckEvidence rejects a receipt's own identifiers and list output before
+// consent and again against the receipt selected under the state lock. The
+// human verifies the independent record itself.
+func (req FloatingIPReconciliation) CheckEvidence(r *FloatingIPReceipt) error {
+	ref := strings.TrimSpace(req.Evidence)
+	if slices.Contains(r.contradictedEvidence, ref) {
+		return clerrors.New(clerrors.CodeUsage,
+			i18n.T("This reference has already been contradicted for this receipt.", "Это свидетельство для данной квитанции уже опровергнуто."),
+			i18n.T("Check the original operation again and supply a new independent reference.", "Снова проверьте результат операции и укажите новое независимое свидетельство."))
 	}
-	for _, same := range []string{r.Name, r.VMID, r.VMName, r.ProjectID, r.ReceiptID, r.Attempt, r.Address, r.AddressID, r.DeploymentID, ipID, "null", "none", "empty", "not_created", "released"} {
+	if r.Kind == "legacy_deployment" && provision.IsEvoFIPOf(ref, r.VMID, r.VMName) {
+		return invalidIPProof()
+	}
+	for _, same := range []string{r.Name, r.VMID, r.VMName, r.ProjectID, r.ReceiptID, r.Attempt, r.Address, r.AddressID, r.DeploymentID, req.AddressID, "receipt_id", "null", "none", "empty", "not_created", "released"} {
 		if strings.EqualFold(ref, same) {
-			return false
+			return invalidIPProof()
 		}
 	}
-	return strings.IndexFunc(ref, func(c rune) bool { return unicode.IsLetter(c) || unicode.IsDigit(c) }) >= 0 && !strings.HasPrefix(ref, "[") && !strings.HasPrefix(ref, "{")
+	if strings.IndexFunc(ref, func(c rune) bool { return unicode.IsLetter(c) || unicode.IsDigit(c) }) < 0 || strings.HasPrefix(ref, "[") || strings.HasPrefix(ref, "{") {
+		return invalidIPProof()
+	}
+	return nil
 }
 
 func contradictoryIPProof() error {
 	return clerrors.New(clerrors.CodeAPIError, i18n.T("The address evidence conflicts with the reported outcome. The receipt is still pending.", "Данные об адресе противоречат указанному исходу. Квитанция остаётся незакрытой."), "")
+}
+
+func listsReleasedAddress(ips []*provision.FloatingIP, resolution *state.FloatingIPResolution) bool {
+	return resolution != nil && resolution.Outcome == "released" && resolution.AddressID != "" && slices.ContainsFunc(ips, func(ip *provision.FloatingIP) bool {
+		return ip != nil && ip.ID == resolution.AddressID
+	})
 }
 
 func (e *Engine) checkIPProof(ctx context.Context, d *state.DeploymentRecord, m *state.LostFloatingIP, req FloatingIPReconciliation) error {
@@ -283,8 +337,9 @@ func (e *Engine) checkIPProof(ctx context.Context, d *state.DeploymentRecord, m 
 				return contradictoryIPProof()
 			}
 		}
-		proved, _, ambiguous := legacyBinding(d, vm, ips, nil)
-		if proved != nil || ambiguous {
+		resolution := legacyIPResolution(e.projectOf(d), d)
+		proved, _, ambiguous := legacyBinding(d, vm, ips, nil, resolution)
+		if proved != nil || ambiguous || listsReleasedAddress(ips, resolution) {
 			return contradictoryIPProof()
 		}
 	}
@@ -352,8 +407,11 @@ func (e *Engine) ReconcileFloatingIP(ctx context.Context, req FloatingIPReconcil
 	if selected == nil {
 		return noIPReceipt()
 	}
-	if !independentIPReference(req.Evidence, selected, req.AddressID) {
-		return invalidIPProof()
+	if err := req.CheckEvidence(selected); err != nil {
+		return err
+	}
+	if selected.ConflictsWithResolution && selected.AddressID != "" && (req.Outcome != "released" || req.AddressID != selected.AddressID) {
+		return contradictoryIPProof()
 	}
 	if (selected.NeedsEvidenceProject || req.EvidenceProjectID != "") && req.EvidenceProjectID != selected.ProjectID {
 		return clerrors.New(clerrors.CodeConfigInvalid, i18n.T("Confirm the exact project from the independent record and select that project.", "Подтвердите точный проект из независимой записи и выберите этот проект."), "")

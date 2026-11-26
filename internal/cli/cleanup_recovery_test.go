@@ -5,12 +5,15 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
@@ -112,5 +115,151 @@ func TestCleanup_ReceiptToRedeploy(t *testing.T) {
 	sf, err = state.Read(path)
 	if err != nil || created != 1 || sf.ActiveDeployment() == nil || sf.ActiveDeployment().Status != "running" {
 		t.Fatalf("same-directory deploy: new VMs %d, state %v, error %v", created, sf, err)
+	}
+}
+
+// A preview and a consent request both advertise a locally valid action.
+// Neither may be shown for a reference the locked action would refuse.
+func TestCleanup_InvalidEvidenceBeforeConsent(t *testing.T) {
+	fc := setupCLI(t)
+	oldClient := httpClient
+	httpClient = &http.Client{Transport: contractRT{status: http.StatusForbidden, body: `{"message":"no cloud access"}`}}
+	t.Cleanup(func() { httpClient = oldClient })
+	const project = "11111111-1111-1111-1111-111111111111"
+	saveProfile(t, "default", project)
+	fixture := localReceiptArgs(t)
+	const address = "00000000-0000-4000-8000-000000000077"
+	before, err := os.ReadFile(state.DefaultPath("."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldTTY, oldIn := confirm.StdinIsTTY, confirm.Stdin
+	t.Cleanup(func() { confirm.StdinIsTTY, confirm.Stdin = oldTTY, oldIn })
+	for _, mode := range []struct {
+		name  string
+		flags []string
+		tty   bool
+	}{
+		{"dry_run", []string{"--json", "--dry-run"}, false},
+		{"no_terminal", []string{"--json"}, false},
+		{"terminal", nil, true},
+		{"yes", []string{"--json", "--yes"}, false},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			confirm.StdinIsTTY = func() bool { return mode.tty }
+			for _, tc := range []struct{ name, ref string }{
+				{"missing", ""}, {"empty_value", ""}, {"blank", "   "}, {"control", "case\n123"},
+				{"too_long", strings.Repeat("x", 1025)}, {"list", "[123]"}, {"object", `{"items":[]}`},
+				{"punctuation", "..."}, {"sentinel", "  EmPtY  "}, {"null", "null"}, {"none", "none"}, {"outcome", "released"},
+				{"receipt", fixture[0]}, {"field_label", "receipt_id"}, {"deployment", fixture[2]}, {"vm", "test-vm"},
+				{"cloud_name", "pending-test-address"}, {"project", project}, {"address_id", address},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					args := []string{"cleanup", "resolve", fixture[0], "--deployment-id", fixture[2]}
+					if tc.name == "address_id" {
+						args = append(args, "--outcome", "released", "--address-id", address)
+					} else {
+						args = append(args, "--outcome", "not_created")
+					}
+					if tc.name != "missing" {
+						args = append(args, "--evidence", tc.ref)
+					}
+					answer := strings.NewReader("n\n")
+					confirm.Stdin = answer
+					exit, out, stderr := runCLI(t, "", append(args, mode.flags...)...)
+					if exit != 1 || out != "" || answer.Len() != 2 || strings.Contains(stderr, confirm.Prompt()) || strings.Contains(stderr, `"preview"`) {
+						t.Fatalf("invalid evidence: exit=%d, read answer=%t, stdout=%q, stderr=%q", exit, answer.Len() != 2, out, stderr)
+					}
+					if !mode.tty {
+						if e, ok := errorEnvelope(stderr); !ok || e.Reason != "USAGE" || e.Code != 1 {
+							t.Fatalf("expected USAGE/1, got %q", stderr)
+						}
+					}
+				})
+			}
+		})
+	}
+	// A reference to an independent operation still reaches the human prompt.
+	confirm.StdinIsTTY = func() bool { return true }
+	answer := strings.NewReader("n\n")
+	confirm.Stdin = answer
+	exit, _, stderr := runCLI(t, "", append([]string{"cleanup", "resolve"}, fixture...)...)
+	if exit != 3 || answer.Len() != 0 || !strings.Contains(stderr, confirm.Prompt()) {
+		t.Fatalf("valid reference should prompt and respect a decline: exit=%d, stderr=%q", exit, stderr)
+	}
+	after, err := os.ReadFile(state.DefaultPath("."))
+	if err != nil || !bytes.Equal(before, after) || fc.iamCalls.Load() != 0 {
+		t.Fatalf("receipt state changed or cloud credentials used: read=%v, IAM calls=%d", err, fc.iamCalls.Load())
+	}
+}
+
+// A reopened receipt can have more than one disproved decision. Their
+// references stay in the local audit, never in the listing or consent preview.
+func TestCleanup_ContradictedEvidenceBeforeConsent(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	_, done := recordDeployment(t, w)
+	t.Cleanup(done)
+	path := state.DefaultPath(w.dir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := sf.ActiveDeployment()
+	d.Status, d.FloatingIPID, d.LegacyFloatingIPPending = "destroying", "", true
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	eng, err := toolEngine(map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts, err := eng.PendingFloatingIPReceipts(d.ID)
+	if err != nil || len(receipts) != 1 {
+		t.Fatalf("initial receipts: %v, %v", receipts, err)
+	}
+	id := receipts[0].ReceiptID
+	const first, last, other = "independent case 301", "independent case 305", "other case 408"
+	decision := state.FloatingIPResolution{Kind: "legacy_deployment", ProjectID: d.ProjectID, ReceiptID: id, Contradicted: true, Outcome: "not_created"}
+	for _, ref := range []string{first, last, other} {
+		decision.Evidence = ref
+		if ref == other {
+			decision.ReceiptID = "different-receipt"
+		}
+		d.FloatingIPResolutions = append(d.FloatingIPResolutions, decision)
+	}
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exit, out, stderr := runCLI(t, "", "cleanup", "receipts", "--json")
+	if exit != 0 || !strings.Contains(out, id) || strings.Contains(out+stderr, first) || strings.Contains(out+stderr, last) {
+		t.Fatalf("reopened receipt should be visible without prior evidence: exit %d, %s %s", exit, out, stderr)
+	}
+	args := []string{"cleanup", "resolve", id, "--deployment-id", d.ID, "--outcome", "not_created", "--json", "--evidence"}
+	prevTTY, prevIn := confirm.StdinIsTTY, confirm.Stdin
+	t.Cleanup(func() { confirm.StdinIsTTY, confirm.Stdin = prevTTY, prevIn })
+	confirm.StdinIsTTY = func() bool { return true }
+	for _, ref := range []string{first, " " + last + " "} {
+		for _, flags := range [][]string{nil, {"--dry-run"}} {
+			answer := strings.NewReader("n\n")
+			confirm.Stdin = answer
+			exit, out, stderr := runCLI(t, "", append(append(args, ref), flags...)...)
+			e, ok := errorEnvelope(stderr)
+			if exit != 1 || !ok || e.Reason != "USAGE" || out != "" || answer.Len() != 2 || strings.Contains(stderr, confirm.Prompt()) {
+				t.Errorf("reused evidence %q: flags %v, exit %d, stdout %q, stderr %q", ref, flags, exit, out, stderr)
+			}
+		}
+	}
+	// A different receipt's evidence is not automatically disqualified here.
+	exit, out, stderr = runCLI(t, "", append(args, other, "--dry-run")...)
+	if exit != 0 || parseObject(out)["status"] != "dry_run" || strings.Contains(out+stderr, first) || strings.Contains(out+stderr, last) {
+		t.Errorf("fresh evidence preview: exit %d, %s %s", exit, out, stderr)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("evidence validation or preview changed the local audit", err)
 	}
 }

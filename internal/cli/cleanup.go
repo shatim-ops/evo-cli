@@ -54,6 +54,9 @@ func newCleanupCmd() *cobra.Command {
 						rows = append(rows, field)
 					}
 				}
+				if r.ConflictsWithResolution {
+					rows = append(rows, []string{"conflicts_with_resolution", i18n.T("A later binding conflicts with the recorded outcome. Check whether the address is still billed and obtain fresh evidence for this receipt.", "Новая привязка противоречит записанному исходу. Проверьте, оплачивается ли адрес, и получите новое свидетельство для этой квитанции.")})
+				}
 				if r.NeedsEvidenceProject {
 					rows = append(rows, []string{"--evidence-project", i18n.T("Required: identify the project from the independent record.", "Нужен ID проекта из независимого свидетельства.")})
 				}
@@ -78,8 +81,8 @@ func newCleanupResolveCmd() *cobra.Command {
 		Use: "resolve <receipt-id>", Args: cobra.ExactArgs(1),
 		Short: i18n.T("Record an independently verified outcome for one floating IP receipt",
 			"Записать независимо проверенный исход одной квитанции плавающего IP"),
-		Long: i18n.T("The owner checks the original operation for this exact receipt. Use not_created when it confirms that no address was allocated, or released with the independently identified address ID. For released, evo reads that ID and requires the service to confirm its absence. This action records the outcome locally. It only reads cloud resources. Run evo destroy again to complete the remaining cleanup.",
-			"Владелец проверяет результат исходной операции для выбранной квитанции. Выберите not_created, если операция подтверждает, что адрес не выделялся. Для released укажите независимо установленный ID освобождённого адреса: evo проверит отсутствие адреса по ответу сервиса на чтение этого ID. Команда записывает результат на этой машине. К облачным ресурсам она обращается только для чтения. Затем повторите evo destroy для завершения уборки."),
+		Long: i18n.T("For --evidence, supply an independent operation or audit reference, including for --dry-run. A receipt that reopens after a conflicting address binding needs fresh evidence. Use not_created when it confirms that no address was allocated, or released with the independently identified address ID. For released, evo reads that ID and requires the service to confirm its absence. This action records the outcome locally. It only reads cloud resources. Run evo destroy again to complete the remaining cleanup.",
+			"Для --evidence укажите ссылку или номер независимой записи о результате исходной операции. Это нужно и для --dry-run. Если квитанция вновь открылась из-за противоречия в привязке адреса, получите новое свидетельство. Выберите not_created, если операция подтверждает, что адрес не выделялся. Для released укажите независимо установленный ID освобождённого адреса: evo проверит отсутствие адреса по ответу сервиса на чтение этого ID. Команда записывает результат на этой машине. К облачным ресурсам она обращается только для чтения. Затем повторите evo destroy для завершения уборки."),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			req.ReceiptID = args[0]
 			if err := req.Validate(); err != nil {
@@ -93,6 +96,10 @@ func newCleanupResolveCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := req.CheckEvidence(item); err != nil {
+				return err
+			}
+
 			if item.NeedsEvidenceProject && req.EvidenceProjectID == "" || req.EvidenceProjectID != "" && req.EvidenceProjectID != item.ProjectID {
 				return clerrors.New(clerrors.CodeConfigInvalid, i18n.T("The project in the independent evidence must match the selected project.",
 					"Проект из независимого свидетельства должен совпадать с выбранным проектом."), i18n.T("Check the original operation and supply its project with --evidence-project.", "Укажите проект исходной операции через --evidence-project."))

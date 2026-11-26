@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -38,8 +39,9 @@ type DestroyOptions struct {
 }
 
 type DestroyResult struct {
-	VMID           string
-	CleanupPending bool
+	VMID               string
+	CleanupPending     bool
+	RuleCleanupPending bool
 }
 
 // gate asks for consent to p: through opts.Gate, else confirm.Ask.
@@ -170,6 +172,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// Older receipts may lack the address ID. Capture a proven binding while
 	// the VM still exists, and persist it before deletion detaches the IP.
 	fipErr := e.RecordLegacyFloatingIP(ctx, active, vm, floatingip.Of(stateFile, e.projectOf(active), active.VMName, active.VMID)...)
+	// Persist the labelled IDs with the target while the approval is current.
+	// A retry can reconcile them even if discovery omits a deleting rule.
+	sgrules.TrackLabeled(stateFile, active, labeled)
 	prevStatus := active.Status
 	active.Status = "destroying"
 	active.UpdatedAt = time.Now()
@@ -290,9 +295,6 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		}
 		sgrules.Retire(stateFile, id)
 	}
-	// The rules labelled for the VM that the preview named and no record
-	// here holds (P6): opened for it from another folder.
-	rules.Add(e.closeLabeled(ctx, labeled))
 	if uncheckedErr != nil {
 		e.Printer.Warning(UncheckedRules(uncheckedErr))
 	}
@@ -303,6 +305,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	cleanupPending := ipPending || extraErr != nil || len(rules.Failed) > 0 || uncheckedErr != nil || len(lostMissing) > 0
 	if opts.Result != nil {
 		opts.Result.CleanupPending = cleanupPending
+		opts.Result.RuleCleanupPending = len(rules.Failed) > 0
 	}
 
 	if e.Printer.IsJSON() {
@@ -317,6 +320,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		if ipPending {
 			out["floating_ip_unconfirmed"] = fipID
 			out["floating_ip_warning"] = fipErr.Error()
+		}
+		if len(rules.Failed) > 0 {
+			out["hint"] = sgrules.RuleRetryHint()
 		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
@@ -505,20 +511,6 @@ func (e *Engine) labeledRules(ctx context.Context, sf *state.File, rec *state.De
 	return e.LabeledRules(ctx, sf, e.projectOf(rec), rec.VMID, rec.Region, rec.ZoneName)
 }
 
-// closeLabeled deletes the rules labeledRules found, once their VM is gone,
-// and says it as closeRules does.
-func (e *Engine) closeLabeled(ctx context.Context, labeled []sgrules.Planned) sgrules.CloseResult {
-	res := sgrules.CloseLabeled(ctx, e.Cloud, labeled)
-	if len(res.Closed) > 0 {
-		e.Printer.StepDone(i18n.Tf("Closed the security group rules labelled for the VM: ports %s", "Закрыты правила группы безопасности, помеченные для ВМ: порты %s", strings.Join(res.Closed, ", ")))
-	}
-	if len(res.Failed) > 0 {
-		e.Printer.Warning(i18n.Tf("Could not delete the security group rules labelled for the VM for ports %s: delete them in the Cloud.ru console, or call destroy with this VM's id again.",
-			"Не удалось удалить правила группы безопасности, помеченные для ВМ, для портов %s: удалите их в консоли Cloud.ru или повторите destroy с id этой ВМ.", strings.Join(res.Failed, "; ")))
-	}
-	return res
-}
-
 // closeRules deletes the port rules the given deployments created and
 // reports it; see sgrules.Close.
 func (e *Engine) closeRules(ctx context.Context, sf *state.File, ids []string) sgrules.CloseResult {
@@ -526,9 +518,14 @@ func (e *Engine) closeRules(ctx context.Context, sf *state.File, ids []string) s
 	for _, id := range ids {
 		res.Add(sgrules.Close(ctx, e.Cloud, sf, id))
 	}
-	if len(res.Closed) > 0 {
-		e.Printer.StepDone(i18n.Tf("Closed ports %s in the security group", "Закрыты порты %s в группе безопасности", strings.Join(res.Closed, ",")))
+	plain := slices.DeleteFunc(slices.Clone(res.Closed), func(label string) bool { return slices.Contains(res.LabeledClosed, label) })
+	if len(plain) > 0 {
+		e.Printer.StepDone(i18n.Tf("Closed ports %s in the security group", "Закрыты порты %s в группе безопасности", strings.Join(plain, ",")))
 	}
+	if len(res.LabeledClosed) > 0 {
+		e.Printer.StepDone(i18n.Tf("Closed the security group rules labelled for the VM: ports %s", "Закрыты правила группы безопасности, помеченные для ВМ: порты %s", strings.Join(res.LabeledClosed, ", ")))
+	}
+
 	for _, k := range res.Kept {
 		e.Printer.StepDone(i18n.T("Kept port ", "Оставлен порт ") + k)
 	}
@@ -573,13 +570,18 @@ func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, st
 	cleanupPending := len(rules.Failed) > 0
 	if opts.Result != nil {
 		opts.Result.CleanupPending = cleanupPending
+		opts.Result.RuleCleanupPending = len(rules.Failed) > 0
 	}
 	if e.Printer.IsJSON() {
 		status := "destroyed"
 		if cleanupPending {
 			status = "rules_pending"
 		}
-		return e.Printer.JSON(map[string]any{"status": status, "cleanup_pending": cleanupPending, "security_group_rules": rules})
+		out := map[string]any{"status": status, "cleanup_pending": cleanupPending, "security_group_rules": rules}
+		if cleanupPending {
+			out["hint"] = sgrules.RuleRetryHint()
+		}
+		return e.Printer.JSON(out)
 	}
 	if len(rules.Failed) == 0 {
 		e.Printer.Success(i18n.T("Security group rules deleted.", "Правила группы безопасности удалены."))
@@ -602,11 +604,29 @@ func (e *Engine) RecordLegacyFloatingIP(ctx context.Context, rec *state.Deployme
 	fips, err := e.Cloud.ListFloatingIPs(ctx, e.projectOf(rec))
 	if err != nil {
 		return clerrors.Wrap(clerrors.CodeAPIError,
-			i18n.T("Could not check the recorded floating IP. Re-run 'evo destroy --yes'.",
-				"Не удалось проверить записанный floating IP. Повторите 'evo destroy --yes'."), "", errFloatingIPReleaseUnconfirmed)
+			i18n.T("Could not check the recorded floating IP. It may still be billed.",
+				"Не удалось проверить записанный floating IP. Он может оставаться платным."), "", errFloatingIPReleaseUnconfirmed)
 	}
-	proved, matched, ambiguous := legacyBinding(rec, vm, fips, lost)
-	if ambiguous || (proved != nil && legacyReceiptResolved(e.projectOf(rec), rec)) {
+	resolution := legacyIPResolution(e.projectOf(rec), rec)
+	proved, matched, ambiguous := legacyBinding(rec, vm, fips, lost, resolution)
+	// A previously released ID that still exists is itself a contradiction,
+	// even after a rename or detachment. It supplies no authority to DELETE.
+	releasedStillListed := listsReleasedAddress(fips, resolution)
+	if resolution != nil && (resolution.Contradicted || rec.LegacyFloatingIPPending || releasedStillListed || proved != nil || ambiguous) {
+		resolution.Contradicted = true
+		if resolution.ConflictingAddressID == "" {
+			if releasedStillListed {
+				resolution.ConflictingAddressID = resolution.AddressID
+			} else if proved != nil {
+				resolution.ConflictingAddressID = proved.ID
+			}
+		}
+		rec.LegacyFloatingIPPending = true
+		return clerrors.Wrap(clerrors.CodeAPIError,
+			i18n.T("Current cloud evidence contradicted the recorded outcome. The floating IP may still be billed. Check the receipt and provide fresh independent evidence.",
+				"Данные облака опровергли записанный исход. Плавающий IP может оставаться платным. Проверьте квитанцию и укажите новое независимое свидетельство."), "", errFloatingIPReleaseUnconfirmed)
+	}
+	if ambiguous {
 		rec.LegacyFloatingIPPending = true
 		return clerrors.Wrap(clerrors.CodeAPIError, i18n.T("Conflicting evidence for the deployment's floating IP. The receipt was kept.", "Данные об адресе развёртывания расходятся. Квитанция сохранена."), "", errFloatingIPReleaseUnconfirmed)
 	}
@@ -615,7 +635,7 @@ func (e *Engine) RecordLegacyFloatingIP(ctx context.Context, rec *state.Deployme
 		rec.FloatingIPID, rec.VMIP = proved.ID, proved.IPAddress
 		return nil
 	}
-	if legacyReceiptResolved(e.projectOf(rec), rec) {
+	if resolution != nil {
 		return nil
 	}
 	if matched || rec.LegacyFloatingIPPending || rec.ID != "" && recordedExternalIP(rec.VMIP) {
@@ -627,8 +647,7 @@ func (e *Engine) RecordLegacyFloatingIP(ctx context.Context, rec *state.Deployme
 	return nil
 }
 
-func legacyBinding(rec *state.DeploymentRecord, vm *provision.VM, fips []*provision.FloatingIP, lost []state.LostFloatingIP) (proved *provision.FloatingIP, matched, ambiguous bool) {
-
+func legacyBinding(rec *state.DeploymentRecord, vm *provision.VM, fips []*provision.FloatingIP, lost []state.LostFloatingIP, resolution *state.FloatingIPResolution) (proved *provision.FloatingIP, matched, ambiguous bool) {
 	// The oldest records have no VM name. An actual VM card read by
 	// the recorded ID may supply the name for candidate selection only.
 	vmName := rec.VMName
@@ -639,7 +658,11 @@ func legacyBinding(rec *state.DeploymentRecord, vm *provision.VM, fips []*provis
 		if f == nil {
 			continue
 		}
-		if !(rec.VMIP != "" && f.IPAddress == rec.VMIP) && !provision.IsEvoFIPOf(f.Name, rec.VMID, vmName) {
+		// A legacy decision may predate the first observation of the address
+		// on the VM. Never rewrite that receipt's identity with a live value.
+		fromDecision := resolution != nil && ((resolution.AddressID != "" && resolution.AddressID == f.ID) ||
+			(vm != nil && vm.ID == rec.VMID && vm.FloatingIP != "" && vm.FloatingIP == f.IPAddress))
+		if !fromDecision && !(rec.VMIP != "" && f.IPAddress == rec.VMIP) && !provision.IsEvoFIPOf(f.Name, rec.VMID, vmName) {
 			continue
 		}
 		// A name-only candidate of an explicitly tracked create belongs to

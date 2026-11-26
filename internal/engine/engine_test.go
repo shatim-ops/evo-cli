@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -845,11 +846,15 @@ func (m *mockCloudAPI) ListSecurityGroupRules(ctx context.Context, sgID string) 
 	if err != nil {
 		return nil, err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var out []*provision.SGRule
 	for _, g := range sgs {
 		if g.ID == sgID {
 			for i := range g.Rules {
-				out = append(out, &g.Rules[i])
+				if !slices.Contains(m.deletedRules, sgID+"/"+g.Rules[i].ID) {
+					out = append(out, &g.Rules[i])
+				}
 			}
 		}
 	}

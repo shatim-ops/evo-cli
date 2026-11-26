@@ -242,7 +242,13 @@ func (a *CloudRuAdapter) ListImagesInProject(ctx context.Context, projectID stri
 		return nil, nil
 	}
 	complete, _ := ctx.Value(imageSelectionKey{}).(bool)
-	return listPages[Image](a, ctx, "/api/v1/images", url.Values{"project_id": {projectID}}, true, complete)
+	items, err := listPages[Image](a, ctx, "/api/v1/images", url.Values{"project_id": {projectID}}, true, complete)
+	if errors.Is(err, errMissingListPage) {
+		return nil, clierrors.New(clierrors.CodeAPIError,
+			i18n.T("Could not finish reading the image catalogue.", "Не удалось дочитать каталог образов."),
+			i18n.T("Retry reading the catalogue.", "Повторите чтение каталога."))
+	}
+	return items, err
 }
 
 type imageSelectionKey struct{}
