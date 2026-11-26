@@ -73,6 +73,7 @@ func TestAuthCard_HandsLocalReceiptToTheOwner(t *testing.T) {
 	check := `(?:check|verify|inspect|review|confirm|resolve) (?:it|(?:the |that )?(?:local )?receipt)\b`
 	handoff := regexp.MustCompile(`(?:^|[,;:])\s*(?:(?:ask|tell|have) ` + person + ` (?:to )?|(?:only )?` + person + ` (?:must|should|may|can) )` + check + ` (?:in|from) (?:the )?(?:original|same) state (?:directory|folder)\b`)
 	selfCheck := regexp.MustCompile(`\b(?:agent|assistant) (?:may |can |should |must |also |independently |itself )*` + check)
+	bypass := regexp.MustCompile(`^\s*(?:otherwise[, ]+)?(?:proceed|continue|follow (?:its|the) cleanup hint) without (?:it|` + person + `'s (?:approval|consent)|(?:approval|consent))\b`)
 	for _, terminal := range []bool{false, true} {
 		card, ok := groupCard("auth", terminal, nil, false)
 		if !ok {
@@ -86,19 +87,23 @@ func TestAuthCard_HandsLocalReceiptToTheOwner(t *testing.T) {
 		}
 		// Checking the VM's address and rules is an ordinary read. Approval for
 		// following the cleanup hint does not delegate local evidence to the agent.
-		approved, ownerChecks := false, false
+		approved, ownerChecks, previousReceipt := false, false, false
 		for _, sentence := range strings.FieldsFunc(note, func(r rune) bool { return r == '.' || r == ';' }) {
 			if strings.Contains(sentence, "cleanup hint") && approval.MatchString(sentence) {
 				approved = true
 			}
-			if strings.Contains(sentence, "receipt") {
-				if selfCheck.MatchString(sentence) {
-					t.Errorf("terminal=%t: the card assigns the local receipt to the agent: %s", terminal, sentence)
-				}
-				if handoff.MatchString(sentence) {
-					ownerChecks = true
-				}
+			if bypass.MatchString(sentence) {
+				t.Errorf("terminal=%t: cleanup may proceed without consent: %s", terminal, sentence)
 			}
+			mentionsReceipt := strings.Contains(sentence, "receipt")
+			// “The agent may check it” can refer to the preceding sentence's receipt.
+			if (mentionsReceipt || previousReceipt) && selfCheck.MatchString(sentence) {
+				t.Errorf("terminal=%t: the card assigns the local receipt to the agent: %s", terminal, sentence)
+			}
+			if mentionsReceipt && handoff.MatchString(sentence) {
+				ownerChecks = true
+			}
+			previousReceipt = mentionsReceipt
 		}
 		if !approved {
 			t.Errorf("terminal=%t: following the cleanup hint must require the person's approval", terminal)
