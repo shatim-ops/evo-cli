@@ -437,6 +437,7 @@ func newRootCmd() *cobra.Command {
 		newStatusCmd(),
 		newLogsCmd(),
 		newDestroyCmd(),
+		newCleanupCmd(),
 		newVerifyCmd(),
 		newInitCmd(),
 		newVersionCmd(),

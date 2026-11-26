@@ -56,6 +56,9 @@
     - [evo cert renew](#evo-cert-renew)
     - [evo cert usage](#evo-cert-usage)
     - [evo cert versions](#evo-cert-versions)
+  - [evo cleanup](#evo-cleanup)
+    - [evo cleanup receipts](#evo-cleanup-receipts)
+    - [evo cleanup resolve](#evo-cleanup-resolve)
   - [evo completion](#evo-completion)
     - [evo completion bash](#evo-completion-bash)
     - [evo completion fish](#evo-completion-fish)
@@ -293,6 +296,7 @@ evo [flags]
 * [evo billing](#evo-billing)	 - Биллинг: баланс, потребление, отчёт FinOps
 * [evo ca](#evo-ca)	 - Container Apps: бессерверные контейнеры
 * [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+* [evo cleanup](#evo-cleanup)	 - Просмотр и сверка незакрытых квитанций плавающих IP в этом каталоге
 * [evo completion](#evo-completion)	 - Скрипт автодополнения для оболочки
 * [evo configure](#evo-configure)	 - Ключ доступа, проект и зона по умолчанию для профиля
 * [evo deploy](#evo-deploy)	 - Развернуть docker-compose проект на ВМ Cloud.ru
@@ -2288,6 +2292,119 @@ evo cert versions <certificate-id> [flags]
 ### SEE ALSO
 
 * [evo cert](#evo-cert)	 - Certificate Manager: TLS-сертификаты
+
+## evo cleanup
+
+> Локальная команда: локальная сверка квитанций незавершённой уборки в текущем каталоге.
+
+Просмотр и сверка незакрытых квитанций плавающих IP в этом каталоге
+
+```
+evo cleanup [flags]
+```
+
+### Options
+
+```
+  -h, --help   Справка по cleanup
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo](#evo)	 - evo CMCP: CLI и MCP-сервер для ВМ, сетей, k8s, PostgreSQL и deploy compose-проектов
+* [evo cleanup receipts](#evo-cleanup-receipts)	 - Показать точные квитанции плавающих IP, исход которых нужно проверить
+* [evo cleanup resolve](#evo-cleanup-resolve)	 - Записать независимо проверенный исход одной квитанции плавающего IP
+
+## evo cleanup receipts
+
+> Локальная команда: читает квитанции плавающих IP в каталоге владельца.
+
+Показать точные квитанции плавающих IP, исход которых нужно проверить
+
+```
+evo cleanup receipts [flags]
+```
+
+### Options
+
+```
+      --deployment-id string   ID локального развёртывания (при одном незавершённом можно опустить)
+  -h, --help                   Справка по receipts
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo cleanup](#evo-cleanup)	 - Просмотр и сверка незакрытых квитанций плавающих IP в этом каталоге
+
+## evo cleanup resolve
+
+> Локальная команда: владелец подтверждает исход конкретного запроса по независимому свидетельству и записывает его в локальный state.
+
+Записать независимо проверенный исход одной квитанции плавающего IP
+
+### Synopsis
+
+```text
+Владелец проверяет результат исходной операции для выбранной квитанции. Выберите not_created, если операция подтверждает, что адрес не выделялся. Для released укажите независимо установленный ID освобождённого адреса: evo проверит отсутствие адреса по ответу сервиса на чтение этого ID. Команда записывает результат на этой машине. К облачным ресурсам она обращается только для чтения. Затем повторите evo destroy для завершения уборки.
+```
+
+```
+evo cleanup resolve <receipt-id> [flags]
+```
+
+### Options
+
+```
+      --address-id string         Независимо установленный ID плавающего IP для released
+      --deployment-id string      ID развёртывания из cleanup receipts
+      --evidence string           Номер или ссылка на операцию либо аудит, подтверждающие исход этой квитанции, без секретов
+      --evidence-project string   ID проекта из независимого свидетельства, если в квитанции проект не записан
+  -h, --help                      Справка по resolve
+      --outcome string            Подтверждённый исход: not_created или released
+```
+
+### Options inherited from parent commands
+
+```
+      --dry-run             Показать, что будет создано или удалено (с оценкой цены), и выйти
+      --json                Вывод в формате JSON
+      --no-color            Без цвета
+      --profile string      Профиль с ключом доступа (по умолчанию $CLOUDRU_PROFILE или "default")
+      --project-id string   UUID проекта Cloud.ru (по умолчанию из профиля или $CLOUDRU_PROJECT_ID)
+      --region string       UUID зоны доступности (по умолчанию из профиля или $CLOUDRU_REGION)
+      --verbose             Подробный журнал
+  -y, --yes                 Согласие человека, данное заранее, на операции, которые создают платные ресурсы или удаляют данные: без вопроса. Агент сам его не ставит
+```
+
+### SEE ALSO
+
+* [evo cleanup](#evo-cleanup)	 - Просмотр и сверка незакрытых квитанций плавающих IP в этом каталоге
 
 ## evo completion
 

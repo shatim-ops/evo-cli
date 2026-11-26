@@ -10,6 +10,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -72,6 +73,9 @@ func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, err
 	case len(sf.ActiveDeployments()) > 1:
 		return confirm.Preview{}, false, severalDeployments(sf.ActiveDeployments())
 	}
+	if err := e.CheckFloatingIPReceiptProject(sf, active); err != nil {
+		return confirm.Preview{}, false, err
+	}
 	// A VM evo did not make is refused before the question (D73).
 	vm, passed, err := e.checkedRecord(ctx, *active)
 	if err != nil {
@@ -119,6 +123,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		return severalDeployments(all)
 	}
 
+	if err := e.CheckFloatingIPReceiptProject(stateFile, active); err != nil {
+		return err
+	}
 	// A VM evo did not make is refused before the question (D73).
 	vm, passed, err := e.checkedRecord(ctx, *active)
 	if err != nil {
@@ -162,7 +169,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	e.Printer.Step(3, 3, i18n.T("Deleting VM, floating IP and port rules...", "Удаление ВМ, floating IP и правил портов..."))
 	// Older receipts may lack the address ID. Capture a proven binding while
 	// the VM still exists, and persist it before deletion detaches the IP.
-	fipErr := e.RecordLegacyFloatingIP(ctx, active, vm)
+	fipErr := e.RecordLegacyFloatingIP(ctx, active, vm, floatingip.Of(stateFile, e.projectOf(active), active.VMName, active.VMID)...)
 	prevStatus := active.Status
 	active.Status = "destroying"
 	active.UpdatedAt = time.Now()
@@ -323,6 +330,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		if len(lostReleased) > 0 {
 			out["lost_floating_ips_released"] = lostReleased
 		}
+		if ipPending || extraErr != nil {
+			out["cleanup_hint"] = FloatingIPReceiptHint()
+		}
 		if extraErr != nil {
 			out["warning"] = extraErr.Error()
 		}
@@ -333,6 +343,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 	if ipPending {
 		e.Printer.Warning(fipErr.Error())
+	}
+	if ipPending || extraErr != nil {
+		e.Printer.Warning(FloatingIPReceiptHint())
 	}
 	if cleanupPending {
 		e.Printer.Warning(i18n.T("Resource cleanup is incomplete.", "Уборка ресурсов не завершена."))
@@ -580,9 +593,10 @@ const fipReleaseAttempts = 5
 
 // RecordLegacyFloatingIP resolves an old receipt before the VM is deleted.
 // A matching name or recorded address selects candidates. Only the current
-// VM binding proves which ID can be released. An empty list has no target.
-func (e *Engine) RecordLegacyFloatingIP(ctx context.Context, rec *state.DeploymentRecord, vm *provision.VM) error {
-	if rec.FloatingIPID != "" || rec.VMID == "" && rec.VMIP == "" {
+// VM binding proves which ID can be released. An empty list cannot retire
+// a receipt for a previously recorded external address or ambiguous candidate.
+func (e *Engine) RecordLegacyFloatingIP(ctx context.Context, rec *state.DeploymentRecord, vm *provision.VM, lost ...state.LostFloatingIP) error {
+	if rec.FloatingIPID != "" || rec.VMID == "" && rec.VMIP == "" && !rec.LegacyFloatingIPPending {
 		return nil
 	}
 	fips, err := e.Cloud.ListFloatingIPs(ctx, e.projectOf(rec))
@@ -591,16 +605,49 @@ func (e *Engine) RecordLegacyFloatingIP(ctx context.Context, rec *state.Deployme
 			i18n.T("Could not check the recorded floating IP. Re-run 'evo destroy --yes'.",
 				"Не удалось проверить записанный floating IP. Повторите 'evo destroy --yes'."), "", errFloatingIPReleaseUnconfirmed)
 	}
-	var proved *provision.FloatingIP
-	matched := false
+	proved, matched, ambiguous := legacyBinding(rec, vm, fips, lost)
+	if ambiguous || (proved != nil && legacyReceiptResolved(e.projectOf(rec), rec)) {
+		rec.LegacyFloatingIPPending = true
+		return clerrors.Wrap(clerrors.CodeAPIError, i18n.T("Conflicting evidence for the deployment's floating IP. The receipt was kept.", "Данные об адресе развёртывания расходятся. Квитанция сохранена."), "", errFloatingIPReleaseUnconfirmed)
+	}
+	if proved != nil {
+		rec.LegacyFloatingIPPending = false
+		rec.FloatingIPID, rec.VMIP = proved.ID, proved.IPAddress
+		return nil
+	}
+	if legacyReceiptResolved(e.projectOf(rec), rec) {
+		return nil
+	}
+	if matched || rec.LegacyFloatingIPPending || rec.ID != "" && recordedExternalIP(rec.VMIP) {
+		rec.LegacyFloatingIPPending = true
+		return clerrors.Wrap(clerrors.CodeAPIError,
+			i18n.T("The floating IP's binding to this VM could not be verified. Check the address in the Cloud.ru console before releasing it.",
+				"Не удалось подтвердить привязку floating IP к этой ВМ. До освобождения проверьте адрес в консоли Cloud.ru."), "", errFloatingIPReleaseUnconfirmed)
+	}
+	return nil
+}
+
+func legacyBinding(rec *state.DeploymentRecord, vm *provision.VM, fips []*provision.FloatingIP, lost []state.LostFloatingIP) (proved *provision.FloatingIP, matched, ambiguous bool) {
+
+	// The oldest records have no VM name. An actual VM card read by
+	// the recorded ID may supply the name for candidate selection only.
+	vmName := rec.VMName
+	if vmName == "" && vm != nil && rec.VMID != "" && vm.ID == rec.VMID {
+		vmName = vm.Name
+	}
 	for _, f := range fips {
 		if f == nil {
 			continue
 		}
-		if !(rec.VMIP != "" && f.IPAddress == rec.VMIP) && !provision.IsEvoFIPOf(f.Name, rec.VMID, rec.VMName) {
+		if !(rec.VMIP != "" && f.IPAddress == rec.VMIP) && !provision.IsEvoFIPOf(f.Name, rec.VMID, vmName) {
 			continue
 		}
-		matched = true
+		// A name-only candidate of an explicitly tracked create belongs to
+		// that receipt. Counting its unbound namesake once again here
+		// would manufacture a second receipt after reconciliation.
+		if rec.VMIP != "" || !nameOfLostRequest(rec, lost, f.Name) {
+			matched = true
+		}
 		var bound struct{ ID string }
 		_ = json.Unmarshal(f.VM, &bound)
 		onVM := rec.VMID != "" && bound.ID == rec.VMID
@@ -612,21 +659,39 @@ func (e *Engine) RecordLegacyFloatingIP(ctx context.Context, rec *state.Deployme
 			continue
 		}
 		if proved != nil && proved.ID != f.ID {
-			proved = nil
-			break
+			return nil, matched, true
 		}
 		proved = f
 	}
-	if proved != nil {
-		rec.FloatingIPID, rec.VMIP = proved.ID, proved.IPAddress
-		return nil
+	return proved, matched, false
+}
+
+// A private-only VM may have its private address in VMIP. Emptiness or a
+// non-routable address alone is not a receipt for a billed floating IP.
+func recordedExternalIP(address string) bool {
+	if address == "" {
+		return false
 	}
-	if matched {
-		return clerrors.Wrap(clerrors.CodeAPIError,
-			i18n.T("The floating IP's binding to this VM could not be verified. Check the address in the Cloud.ru console before releasing it.",
-				"Не удалось подтвердить привязку floating IP к этой ВМ. До освобождения проверьте адрес в консоли Cloud.ru."), "", errFloatingIPReleaseUnconfirmed)
+	ip, err := netip.ParseAddr(address)
+	if err != nil {
+		return true
+	} // keep ambiguous old data for reconciliation
+	ip = ip.Unmap()
+	return ip.IsGlobalUnicast() && !ip.IsPrivate()
+}
+
+func nameOfLostRequest(rec *state.DeploymentRecord, lost []state.LostFloatingIP, name string) bool {
+	for _, m := range lost {
+		if name != "" && m.Name == name {
+			return true
+		}
 	}
-	return nil
+	for _, r := range rec.FloatingIPResolutions {
+		if name != "" && r.Kind == "lost_request" && r.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // releaseFloatingIP releases only a recorded or verified ID.

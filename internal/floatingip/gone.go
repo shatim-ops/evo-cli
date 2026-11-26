@@ -21,6 +21,14 @@ func NotFound(err error) bool {
 		(errors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound))
 }
 
+// ServiceNotFound requires the adapter's classified resource-not-found.
+// A generic API error carrying 404 may refer to a missing gateway route.
+func ServiceNotFound(err error) bool {
+	reason := clerrors.Reason(err)
+	status := provision.HTTPStatus(err)
+	return (reason == clerrors.CodeNotFound || reason == clerrors.CodeVMNotFound) && (status == 0 || status == http.StatusNotFound)
+}
+
 // Gone confirms that the address in a receipt is gone by reading its own
 // card. A successful DELETE, an incomplete response or a failed read do
 // not settle a billed resource.

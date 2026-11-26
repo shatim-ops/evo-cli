@@ -12,6 +12,10 @@ type DeploymentRecord struct {
 	VMID         string `json:"vm_id"`
 	VMIP         string `json:"vm_ip"`
 	FloatingIPID string `json:"floating_ip_id,omitempty"` // released by destroy
+	// A legacy receipt that was ambiguous stays pending across empty lists.
+	LegacyFloatingIPPending bool `json:"legacy_floating_ip_pending,omitempty"`
+	// Each entry records the human's independent evidence for one exact receipt.
+	FloatingIPResolutions []FloatingIPResolution `json:"floating_ip_resolutions,omitempty"`
 	// ProjectID is the Cloud.ru project the VM was created in: destroy and
 	// a re-run of deploy work there, whatever project the config now names.
 	// Empty in records from before this field existed.
@@ -83,6 +87,18 @@ type DeploymentRecord struct {
 	SSHWait   *SSHWait  `json:"ssh_wait,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// FloatingIPResolution records a local reconciliation, not a cloud deletion.
+type FloatingIPResolution struct {
+	ProjectID string    `json:"project_id"`
+	ReceiptID string    `json:"receipt_id"`
+	Kind      string    `json:"kind"`
+	Name      string    `json:"name,omitempty"`
+	Outcome   string    `json:"outcome"`
+	AddressID string    `json:"address_id,omitempty"`
+	Evidence  string    `json:"evidence"`
+	At        time.Time `json:"at"`
 }
 
 // SSHWait is a wait of deploy for SSH on the VM of a record.

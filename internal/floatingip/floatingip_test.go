@@ -277,3 +277,25 @@ func TestNameFor_AnotherNameAfterAYes(t *testing.T) {
 		t.Fatalf("with the mark: %s, want another name", got)
 	}
 }
+
+// A read-modify-write started before a human resolution must neither
+// resurrect the receipt nor overwrite a new request that reused its name.
+func TestApply_PreservesNewerReconciliation(t *testing.T) {
+	old := state.LostFloatingIP{Name: "same", ProjectID: "project", VMID: "vm", RequestedAt: time.Unix(123, 0)}
+	answered := old
+	answered.Answered = true
+	gone := &state.File{}
+	Apply(gone, []state.LostFloatingIP{old}, []state.LostFloatingIP{answered})
+	if len(gone.LostFloatingIPs) != 0 {
+		t.Fatal("stale update restored the resolved receipt")
+	}
+	newer := old
+	newer.RequestedAt = time.Unix(456, 0)
+	for _, after := range [][]state.LostFloatingIP{nil, {answered}} {
+		disk := &state.File{LostFloatingIPs: []state.LostFloatingIP{newer}}
+		Apply(disk, []state.LostFloatingIP{old}, after)
+		if len(disk.LostFloatingIPs) != 1 || !sameMark(disk.LostFloatingIPs[0], newer) {
+			t.Fatal("stale update changed the new request")
+		}
+	}
+}

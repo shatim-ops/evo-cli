@@ -3004,7 +3004,13 @@ func (s *Registry) handleDestroy(ctx context.Context, args map[string]any) (stri
 				}
 				return errAnswer(err, fields), true
 			}
-			return toJSON(map[string]any{"status": "ok", "log": buf.String(), "deleted_vm": result.VMID, "cleanup_pending": result.CleanupPending}), false
+			out := map[string]any{"status": "ok", "log": buf.String(), "deleted_vm": result.VMID, "cleanup_pending": result.CleanupPending}
+			if result.CleanupPending {
+				if pending, _ := eng.PendingFloatingIPReceipts(""); len(pending) > 0 {
+					out["hint"] = engine.FloatingIPReceiptHint()
+				}
+			}
+			return toJSON(out), false
 		})
 }
 
@@ -3208,17 +3214,32 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	// empty (BACKLOG [04]), which used to leave the FIP billed (QA H4).
 	fipRec := state.DeploymentRecord{VMID: target.ID, VMName: target.Name, ProjectID: projectID}
 	recordedHere := false
+	var matchedRecords int
+	var trackedRequests []state.LostFloatingIP
 	var rulesPlanned []sgrules.Planned
 	sf, readErr := state.Read(statePath)
 	if readErr == nil {
 		var ids []string
+		var original state.DeploymentRecord
+		hasResolution, otherMaker := false, false
 		for _, d := range sf.Deployments {
 			if d.VMID == target.ID {
+				if d.ProjectID != "" && d.ProjectID != projectID {
+					return nil, clierrors.New(clierrors.CodeConfigInvalid,
+						i18n.T("The active project does not own this deployment record.", "Выбранный проект не соответствует записи развёртывания."),
+						i18n.T("Select the deployment's original project.", "Выберите исходный проект развёртывания."))
+				}
+				if err := eng.CheckFloatingIPReceiptProject(sf, &d); err != nil {
+					return nil, err
+				}
+				otherMaker = otherMaker || d.CreatedBy.Other(eng.Maker())
 				// A record of a VM evo did not make is not destroy's (D73).
 				if err := engine.AdoptedVM(d, target); err != nil {
 					return nil, err
 				}
 				recordedHere = true
+				original = d
+				hasResolution = hasResolution || d.LegacyFloatingIPPending || len(d.FloatingIPResolutions) > 0
 				ids = append(ids, d.ID)
 				if d.FloatingIPID != "" {
 					fipRec.FloatingIPID = d.FloatingIPID
@@ -3228,6 +3249,19 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					fipRec.VMIP = d.VMIP
 				}
 			}
+		}
+		matchedRecords = len(ids)
+		if matchedRecords == 1 {
+			// A reconciliation applies only to this exact deployment, including
+			// its saved name and creation time when the VM no longer exists.
+			fipRec = original
+		}
+		trackedRequests = floatingip.Of(sf, projectID, firstNonEmptyStr(fipRec.VMName, target.Name), target.ID)
+		if otherMaker && (alreadyGone || hasResolution || len(trackedRequests) > 0 || fipRec.Status == "destroying" && eng.HasUnresolvedLegacyFloatingIP(&fipRec)) {
+			return nil, cleanupProfileMismatch()
+		}
+		if matchedRecords > 1 && (hasResolution || len(trackedRequests) > 0) {
+			return nil, ambiguousCleanupTarget()
 		}
 		rulesPlanned = sgrules.Plan(sf, ids...)
 	}
@@ -3276,7 +3310,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	}
 	var identifyErr error
 	if releaseIP && keptFIP == "" {
-		identifyErr = eng.RecordLegacyFloatingIP(ctx, &fipRec, target)
+		identifyErr = eng.RecordLegacyFloatingIP(ctx, &fipRec, target, trackedRequests...)
+		if matchedRecords > 1 && fipRec.LegacyFloatingIPPending {
+			return nil, ambiguousCleanupTarget()
+		}
 	}
 	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != "" || identifyErr != nil
 
@@ -3385,7 +3422,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release",
 					"; ВНИМАНИЕ: floating IP %s НЕ освобождён и продолжает оплачиваться (%v) — "+
 						"повторите evo vm delete %s: запись хранит адрес, и команда повторит освобождение", firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID), ferr, target.ID)
-			} else {
+			} else if fipRec.FloatingIPID != "" {
 				msg += i18n.T("; released floating IP ", "; освобождён floating IP ") + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 			}
 		}
@@ -3395,7 +3432,13 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		if releaseIP {
 			var rel, miss []state.LostFloatingIP
 			lerr, werr := withAddressMarks(statePath, func(sf *state.File) (err error) {
-				rel, miss, err = floatingip.Release(ctx, eng.Cloud, sf, projectID, target.Name, target.ID, fipRec.FloatingIPID)
+				vmName := firstNonEmptyStr(fipRec.VMName, target.Name)
+				scoped := fipRec
+				scoped.VMName = vmName
+				if err := eng.CheckFloatingIPReceiptProject(sf, &scoped); err != nil {
+					return err
+				}
+				rel, miss, err = floatingip.Release(ctx, eng.Cloud, sf, projectID, vmName, target.ID, fipRec.FloatingIPID)
 				return err
 			})
 			for _, m := range rel {
@@ -3420,18 +3463,30 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		// code as the CLI destroy) and drop the record — unless its FIP is still
 		// billed: then it stays "destroying" with the FIP, for the next destroy.
 		var rules sgrules.CloseResult
+		var receiptPending bool
 		stateErr := state.Update(statePath, stateLockWait, func(sf *state.File) error {
+			// release_ip=false cannot settle a previous create or its receipt.
+			// Re-read under the lock before retiring the deployment.
+			legacyPending := fipRec.LegacyFloatingIPPending
 			var ids []string
 			for _, d := range sf.Deployments {
 				if d.VMID == target.ID {
+					if err := eng.CheckFloatingIPReceiptProject(sf, &d); err != nil {
+						return err
+					}
 					ids = append(ids, d.ID)
+					if fipRec.ID == d.ID && (legacyPending || !releaseIP && d.Status == "destroying") {
+						d.LegacyFloatingIPPending = d.LegacyFloatingIPPending || legacyPending
+						legacyPending = eng.HasUnresolvedLegacyFloatingIP(&d)
+					}
 				}
 			}
+			receiptPending = legacyPending || len(floatingip.Of(sf, projectID, firstNonEmptyStr(fipRec.VMName, target.Name), target.ID)) > 0
 			for _, id := range ids {
 				rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id))
 			}
-			if fipLeft || extraPending {
-				rec := state.DeploymentRecord{ID: target.ID, VMID: target.ID, CreatedAt: time.Now()}
+			if fipLeft || extraPending || receiptPending {
+				rec := state.DeploymentRecord{ID: target.ID, VMID: target.ID, VMName: target.Name, ProjectID: projectID, CreatedAt: time.Now()}
 				for _, d := range sf.Deployments {
 					if d.VMID == target.ID {
 						rec = d
@@ -3439,10 +3494,9 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					}
 				}
 				rec.Status = "destroying"
-				rec.VMName = firstNonEmptyStr(rec.VMName, target.Name)
+				rec.LegacyFloatingIPPending = legacyPending
 				rec.FloatingIPID = firstNonEmptyStr(fipRec.FloatingIPID, rec.FloatingIPID)
 				rec.VMIP = firstNonEmptyStr(fipRec.VMIP, rec.VMIP)
-				rec.ProjectID = firstNonEmptyStr(rec.ProjectID, fipRec.ProjectID, projectID)
 				rec.UpdatedAt = time.Now()
 				sf.UpsertDeployment(rec)
 				return nil
@@ -3459,7 +3513,11 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			"deleted_vm": target.ID,
 			"name":       target.Name,
 		}
-		if fipLeft || extraPending || len(rules.Failed) > 0 || stateErr != nil || uncheckedErr != nil || len(lostMissing) > 0 {
+		if receiptPending {
+			out["hint"] = engine.FloatingIPReceiptHint()
+			msg += ". " + engine.FloatingIPReceiptHint()
+		}
+		if fipLeft || extraPending || receiptPending || len(rules.Failed) > 0 || stateErr != nil || uncheckedErr != nil || len(lostMissing) > 0 {
 			out["cleanup_pending"] = true
 		}
 		if alreadyGone {
@@ -3494,6 +3552,20 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		out["message"] = msg
 		return toJSON(out), false
 	}}, nil
+}
+
+func cleanupProfileMismatch() error {
+	return clierrors.New(clierrors.CodeConfigInvalid,
+		i18n.T("The current profile cannot confirm the original deployment's cleanup.", "Текущий профиль не может подтвердить уборку исходного развёртывания."),
+		i18n.T("Select the deployment's original profile.", "Выберите исходный профиль развёртывания."))
+}
+
+func ambiguousCleanupTarget() error {
+	return clierrors.New(clierrors.CodeConfigInvalid,
+		i18n.T("Several local deployments record this VM. The floating IP receipt cannot be attributed to one deployment.",
+			"Эта ВМ записана у нескольких развёртываний. Квитанцию плавающего IP нельзя однозначно отнести к одному из них."),
+		i18n.T("Inspect each deployment with evo cleanup receipts --deployment-id <id>.",
+			"Проверьте квитанции каждого развёртывания через evo cleanup receipts --deployment-id <id>."))
 }
 
 // vmZone is the VM's zone for an answer: its name when the list gave it,
@@ -3695,6 +3767,7 @@ func markDestroying(statePath, projectID string, target *provision.VM, fipRec *s
 			}
 			d.Status, d.UpdatedAt = "destroying", now
 			if keepFIP {
+				d.LegacyFloatingIPPending = fipRec.LegacyFloatingIPPending
 				d.FloatingIPID = firstNonEmptyStr(fipRec.FloatingIPID, d.FloatingIPID)
 				d.VMIP = firstNonEmptyStr(fipRec.VMIP, d.VMIP)
 			}
@@ -3705,7 +3778,8 @@ func markDestroying(statePath, projectID string, target *provision.VM, fipRec *s
 			// Not recorded here, but its FIP was found: recorded now, so a
 			// re-run releases it even once the VM is out of the list.
 			sf.UpsertDeployment(state.DeploymentRecord{ID: target.ID, VMID: target.ID, Status: "destroying",
-				FloatingIPID: fipRec.FloatingIPID, VMIP: fipRec.VMIP, ProjectID: projectID, CreatedAt: now, UpdatedAt: now})
+				FloatingIPID: fipRec.FloatingIPID, VMIP: fipRec.VMIP, ProjectID: projectID, CreatedAt: now, UpdatedAt: now,
+				LegacyFloatingIPPending: fipRec.LegacyFloatingIPPending})
 		}
 		recorded = marked || keepFIP
 		return nil

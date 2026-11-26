@@ -191,8 +191,22 @@ func FreeOrOf(ids ...string) func(provision.FloatingIP) bool {
 }
 
 // A name may be reused by another attempt, including by another process.
-func receiptKey(m state.LostFloatingIP) [3]string {
-	return [3]string{m.ProjectID, m.Name, m.Attempt}
+type requestKey struct {
+	project, name, attempt         string
+	legacyVM, legacyName, legacyID string
+	legacyTime                     time.Time
+	legacyMaker                    state.Maker
+}
+
+func receiptKey(m state.LostFloatingIP) requestKey {
+	k := requestKey{project: m.ProjectID, name: m.Name, attempt: m.Attempt}
+	if m.Attempt == "" {
+		k.legacyVM, k.legacyName, k.legacyID, k.legacyTime = m.VMID, m.VMName, m.ID, m.RequestedAt.UTC()
+		if m.CreatedBy != nil {
+			k.legacyMaker = *m.CreatedBy
+		}
+	}
+	return k
 }
 
 // Note records evidence for this attempt, preserving evidence already saved.
@@ -302,29 +316,51 @@ func addressOfMark(fips []*provision.FloatingIP, m state.LostFloatingIP, own fun
 // state, changed its marks in memory and writes them back under the lock
 // keeps the marks another process wrote in between.
 func Apply(f *state.File, before, after []state.LostFloatingIP) {
-	now := map[[3]string]bool{}
-	for _, m := range after {
-		now[receiptKey(m)] = true
+	// Changes from an old snapshot apply only while the same receipt is
+	// still on disk. A concurrent manual resolution must not be undone, nor
+	// may an old close erase a newer legacy request with the same name.
+	disk := make(map[requestKey]state.LostFloatingIP)
+	duplicates := make(map[requestKey]bool)
+	for _, m := range f.LostFloatingIPs {
+		k := receiptKey(m)
+		_, duplicates[k] = disk[k]
+		disk[k] = m
 	}
-	for _, m := range before {
-		if !now[receiptKey(m)] {
-			Forget(f, m)
-		}
-	}
-	was := map[[3]string]state.LostFloatingIP{}
+	was := make(map[requestKey]state.LostFloatingIP)
 	for _, m := range before {
 		was[receiptKey(m)] = m
 	}
+	now := make(map[requestKey]bool)
 	for _, m := range after {
-		if old, ok := was[receiptKey(m)]; !ok || !sameMark(old, m) {
+		k := receiptKey(m)
+		now[k] = true
+		old, existed := was[k]
+		current, present := disk[k]
+		if duplicates[k] || existed && (!present || !sameMark(old, current)) {
+			continue
+		}
+		if !existed && !present || existed && !sameMark(old, m) {
 			Note(f, m)
+		}
+	}
+	for _, m := range before {
+		k := receiptKey(m)
+		if current, present := disk[k]; !now[k] && !duplicates[k] && present && sameMark(m, current) {
+			Forget(f, m)
 		}
 	}
 }
 
 func sameMark(a, b state.LostFloatingIP) bool {
 	return a.Name == b.Name && a.ProjectID == b.ProjectID && a.VMName == b.VMName && a.VMID == b.VMID &&
-		a.RequestedAt.Equal(b.RequestedAt) && a.Answered == b.Answered && a.Attempt == b.Attempt && a.ID == b.ID
+		a.RequestedAt.Equal(b.RequestedAt) && a.Answered == b.Answered && a.Attempt == b.Attempt && a.ID == b.ID && sameMaker(a.CreatedBy, b.CreatedBy)
+}
+
+func sameMaker(a, b *state.Maker) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // Release cleans up addresses identified by the create attempt. Once an ID is
