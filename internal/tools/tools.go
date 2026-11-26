@@ -2522,7 +2522,8 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 		if err == nil {
 			return ""
 		}
-		return fmt.Sprintf(" WARNING: the state file could not be saved (%v), so VM %s is NOT in the state and destroy will not find it by this folder; whether and when to delete it (by its id, or in the Cloud.ru console) — ask the person.", err, vmID)
+		return i18n.Tf(" WARNING: the state file could not be saved (%v), so VM %s is NOT in the state and destroy will not find it by this folder; whether and when to delete it (by its id, or in the Cloud.ru console) — ask the person.",
+			" Не удалось сохранить файл состояния (%v). Запись о ВМ %s отсутствует, поэтому destroy из этой папки её не найдёт. Спросите человека, нужно ли удалить ВМ по ID или в консоли Cloud.ru.", err, vmID)
 	}
 
 	vm := adopted
@@ -2642,8 +2643,13 @@ func (s *Registry) provisionVM(ctx context.Context, eng *engine.Engine, args map
 			// Billed whatever its state: keep it where destroy finds it.
 			serr := saveState(vm.ID, "creating", "")
 			pp.Hint(vmLeftNote(vm.ID, "") + i18n.T("; to wait longer next time: CLOUDRU_TIMEOUT (seconds)", "; ждать дольше: CLOUDRU_TIMEOUT (в секундах)"))
-			return errAnswer(fmt.Errorf("VM %s created but did not become active within %s; it is still being created and is billed, and it is recorded in the state — check it with vm_get; whether to delete it (destroy vm_id %s) — ask the person; to wait longer, set CLOUDRU_TIMEOUT (seconds).%s", vm.ID, pollTimeout, vm.ID, notInState(vm.ID, serr)),
-				leftFields(map[string]any{"status": "timeout"})), true
+			saved := ""
+			if serr == nil {
+				saved = i18n.T(", and it is recorded in the state", ". Запись о ВМ сохранена в файле состояния")
+			}
+			msg := i18n.Tf("VM %[1]s created but did not become active within %[2]s; it is still being created and is billed%[3]s — check it with vm_get; whether to delete it (destroy vm_id %[1]s) — ask the person; to wait longer, set CLOUDRU_TIMEOUT (seconds).%[4]s",
+				"ВМ %[1]s не стала активной за %[2]s. Создание продолжается, ВМ оплачивается%[3]s. Проверьте её через vm_get. Спросите человека, нужно ли удалить ВМ (destroy vm_id %[1]s). Чтобы ждать дольше, задайте CLOUDRU_TIMEOUT в секундах.%[4]s", vm.ID, pollTimeout, saved, notInState(vm.ID, serr))
+			return errAnswer(stderrors.New(msg), leftFields(map[string]any{"status": "timeout"})), true
 		case <-wait.C():
 			wait.Show()
 		case <-ticker.C:
@@ -4388,6 +4394,9 @@ func errReason(err error, fields map[string]any) (reason, msg, hint string) {
 		}
 		f["error"] = msg
 		reason = uncodedReason(err, f)
+	}
+	if i18n.Lang() == i18n.RU && bareServiceStatus.MatchString(msg) {
+		msg = "Сервис вернул ошибку: " + msg
 	}
 	return reason, msg, hint
 }

@@ -156,6 +156,10 @@ func definiteRefusal(err error) bool {
 	return intent.DefiniteRefusal(apiStatus(err))
 }
 
+// Some clients return only a service label, an HTTP status and the body.
+// Match that label at the beginning, before any text supplied by the service.
+var bareServiceStatus = regexp.MustCompile(`^(?:[A-Za-z0-9_.-]+ API(?:: HTTP)?|HTTP) [1-5][0-9]{2}(?::|$)`)
+
 // apiStatus is the HTTP status of the API answer behind err, 0 without one.
 func apiStatus(err error) int {
 	if st := provision.HTTPStatus(err); st != 0 {

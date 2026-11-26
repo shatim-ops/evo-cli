@@ -88,7 +88,8 @@ func nameTakenResult(kind, name, id, status, getHint string) (string, bool) {
 // of what it made (operation or resource): the API's fault, API_ERROR, not
 // the caller's.
 func noID(what string) error {
-	return clierrors.New(clierrors.CodeAPIError, "the API answered no "+what+" id", "")
+	return clierrors.New(clierrors.CodeAPIError,
+		i18n.Tf("the API answered no %s id", "в ответе API нет идентификатора (тип «%s»)", what), "")
 }
 
 // noReceipt gives err, when it is a 2xx with no receipt (receipt.ErrUnusable:
