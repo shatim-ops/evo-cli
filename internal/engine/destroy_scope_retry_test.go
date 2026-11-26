@@ -141,7 +141,7 @@ func TestDestroy_OneProvenScopeForAllResources(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, offered, previewErr := eng.DestroyPreview(context.Background())
+			preview, offered, previewErr := eng.DestroyPreview(context.Background())
 			var result DestroyResult
 			runErr := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result})
 			if tc.differentOwner || (tc.differentProject && runErr != nil) {
@@ -157,6 +157,9 @@ func TestDestroy_OneProvenScopeForAllResources(t *testing.T) {
 				}
 				return
 			}
+			if preview.TargetArgs["project_id"] != rec.ProjectID || preview.TargetArgs["vm_id"] != rec.VMID {
+				t.Errorf("approved target = %v, want recorded project and VM", preview.TargetArgs)
+			}
 			addressReleased := slices.Equal(cloud.deletedFIPs, []string{rec.FloatingIPID})
 			rulesRemoved := slices.Equal(cloud.deletedRules, []string{"sg-1/rule-80", "sg-1/rule-53"})
 			receipt := readState(t, eng.StateDir).FindDeployment(rec.ID)
@@ -164,6 +167,46 @@ func TestDestroy_OneProvenScopeForAllResources(t *testing.T) {
 				vmDeletes != 1 || !addressReleased || !rulesRemoved || receipt != nil {
 				t.Fatalf("one-scope cleanup: offered=%t preview_error=%v run_error=%v partial=%t deletes VM/IP/rule=%d/%d/%d",
 					offered, previewErr, runErr, result.CleanupPending, vmDeletes, len(cloud.deletedFIPs), len(cloud.deletedRules))
+			}
+		})
+	}
+}
+
+// A scoped 404 can settle a known deployment. A receipt that predates
+// project recording has no such proof, even when a previous call left it
+// in the destroying state.
+func TestDestroy_LegacyVMReceiptNeedsProjectEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name, project, status string
+	}{
+		{"known-project", projectA, "running"},
+		{"legacy-running", "", "running"},
+		{"legacy-destroying", "", "destroying"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := runningRecord()
+			rec.ProjectID, rec.Status = tc.project, tc.status
+			rec.FloatingIPID, rec.VMIP = "", ""
+			eng, cloud, _ := destroyFixture(t, rec)
+			eng.Config.ProjectID = projectA
+			cloud.deleteVMFn = func(_ context.Context, id string) error {
+				if id != rec.VMID {
+					t.Fatalf("unexpected VM %q", id)
+				}
+				return clerrors.New(clerrors.CodeVMNotFound, "VM not visible", "")
+			}
+			var outcome DestroyResult
+			err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &outcome})
+			saved := readState(t, eng.StateDir).FindDeployment(rec.ID)
+			if tc.project != "" {
+				if err != nil || outcome.CleanupPending || saved != nil {
+					t.Fatalf("confirmed absence in recorded project: err=%v partial=%t saved=%t", err, outcome.CleanupPending, saved != nil)
+				}
+				return
+			}
+			if saved == nil || saved.VMID != rec.VMID || saved.ProjectID != "" ||
+				(err == nil && !outcome.CleanupPending) {
+				t.Fatalf("unconfirmed absence: err=%v partial=%t saved=%+v", err, outcome.CleanupPending, saved)
 			}
 		})
 	}
