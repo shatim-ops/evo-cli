@@ -28,6 +28,18 @@ func checkAt(t *testing.T) {
 	t.Cleanup(func() { clock.Now = old })
 }
 
+// Every check_result returned in a live line must be documented in the
+// auth card used by the CLI and MCP, including the reasons for skipped reads.
+func assertHistoryCardResults(t *testing.T, live []historyLine) {
+	t.Helper()
+	card, _ := GroupCard("auth")
+	for _, line := range live {
+		if line.CheckResult == "" || !strings.Contains(card, "`"+line.CheckResult+"`") {
+			t.Errorf("auth card is missing the live check_result %q", line.CheckResult)
+		}
+	}
+}
+
 // history with check reads by id each live line it can (readByID, the rule
 // of doctor) and says what it found; it writes nothing, the journal
 // included («Риск», conclusion 315, У4). Only «not found», answered to
@@ -96,6 +108,7 @@ func TestHistory_CheckSaysWhatAReadByIDDoesNotSee(t *testing.T) {
 			if err := json.Unmarshal([]byte(text), &a); err != nil {
 				t.Fatal(err)
 			}
+			assertHistoryCardResults(t, a.Live)
 			if len(a.Live) != 1 || a.Live[0].CheckResult != c.says || a.Checked.Read != c.reads {
 				t.Errorf("live %+v, %d reads; want the line live with check_result %q, %d reads\n%s", a.Live, a.Checked.Read, c.says, c.reads, text)
 			}
@@ -153,6 +166,7 @@ func TestHistory_CheckReadsTheLaterLineAndKeepsItsBudget(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &a); err != nil {
 		t.Fatal(err)
 	}
+	assertHistoryCardResults(t, a.Live)
 	if a.Live[0].CheckResult != checkLater || a.Live[1].CheckResult != checkThere {
 		t.Errorf("the two lines of one resource: %q, %q; want later_line, then there", a.Live[0].CheckResult, a.Live[1].CheckResult)
 	}
