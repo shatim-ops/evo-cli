@@ -122,7 +122,7 @@ func TestDestroyTargeted_ClosesTheVMsLabelledRulesFromAnotherFolder(t *testing.T
 					Closed []string `json:"closed"`
 				} `json:"security_group_rules"`
 			}
-			if json.Unmarshal([]byte(text), &a) != nil || strings.Join(a.Rules.Closed, ",") != "8080 (vm \""+labelVMID+"\")" {
+			if json.Unmarshal([]byte(text), &a) != nil || strings.Join(a.Rules.Closed, ",") != "8080 (vm "+labelVMID+")" {
 				t.Errorf("the answer does not say port 8080 of the VM was closed: %s", text)
 			}
 		})

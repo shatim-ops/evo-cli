@@ -19,6 +19,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -39,6 +40,17 @@ func PortKey(proto string, port int) string {
 // Label is the short form shown to people: "80" for tcp, "53/udp".
 func Label(key string) string {
 	return strings.TrimSuffix(key, "/tcp")
+}
+
+var plainVMID = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+// displayVMID preserves the 1.9.0 label for ordinary IDs and quotes other
+// values so a cloud-supplied ID cannot add a line or a terminal escape.
+func displayVMID(id string) string {
+	if plain := plainVMID.FindString(id); plain != "" {
+		return plain
+	}
+	return strconv.Quote(id)
 }
 
 func splitKey(key string) (proto string, port int) {
@@ -633,7 +645,7 @@ func Close(ctx context.Context, cloud provision.CloudAPI, sf *state.File, recID,
 			err = deleteOwnedRule(ctx, cloud, r, projectID)
 		}
 		if r.LabelVMID != "" {
-			label += fmt.Sprintf(" (vm %q)", r.LabelVMID)
+			label += " (vm " + displayVMID(r.LabelVMID) + ")"
 		}
 		if err == nil {
 			res.Closed = append(res.Closed, label)
