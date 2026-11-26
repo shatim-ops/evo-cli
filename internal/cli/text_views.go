@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf16"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/monitoring"
@@ -114,8 +116,7 @@ func renderMetricSeries(p *output.Printer, w io.Writer, text string) error {
 		fmt.Fprintln(w, i18n.T("No metric series.", "Рядов метрик нет."))
 	}
 	for _, series := range a.Series {
-		labels, _ := json.Marshal(series.Metric)
-		fmt.Fprintf(w, "\n%s %s\n", i18n.T("Labels:", "Метки:"), output.SanitizeCell(string(labels)))
+		fmt.Fprintf(w, "\n%s %s\n", i18n.T("Labels:", "Метки:"), metricLabelsJSON(series.Metric))
 		if len(series.Values) == 0 {
 			fmt.Fprintln(w, i18n.T("No samples.", "Измерений нет."))
 			continue
@@ -127,4 +128,24 @@ func renderMetricSeries(p *output.Printer, w io.Writer, text string) error {
 		}
 	}
 	return nil
+}
+
+// json.Marshal sorts the label keys and escapes quotes, backslashes and ASCII
+// controls. Escape the remaining non-printable runes as JSON Unicode escapes:
+// replacing them with a printable character would merge distinct label sets.
+func metricLabelsJSON(labels map[string]string) string {
+	data, _ := json.Marshal(labels)
+	var out strings.Builder
+	out.Grow(len(data))
+	for _, r := range string(data) {
+		if unicode.IsPrint(r) {
+			out.WriteRune(r)
+			continue
+		}
+		var pair [2]uint16
+		for _, unit := range utf16.AppendRune(pair[:0], r) {
+			fmt.Fprintf(&out, `\u%04x`, unit)
+		}
+	}
+	return out.String()
 }

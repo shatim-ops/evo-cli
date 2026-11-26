@@ -6,9 +6,13 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
+	"maps"
 	"strings"
 	"testing"
+	"unicode"
 
+	"github.com/shatim-ops/evo-cli/internal/monitoring"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -130,5 +134,52 @@ func TestRenderMetricSeries_EmptyAndMalformed(t *testing.T) {
 				t.Fatalf("output %q, error %v", b.String(), err)
 			}
 		})
+	}
+}
+
+// Two series sampled at the same instant must still be distinguishable. Even
+// label keys that contain format characters round-trip from the human line.
+func TestMetricSeriesLabels_RoundTripInHumanOutput(t *testing.T) {
+	first := map[string]string{"instance": "node\u200bblue", "ключ": "Москва", "k\x7f\u202e": "\x1b\u0085\u2028\U000e0001", `"\`: `\u200b`}
+	second := maps.Clone(first)
+	second["instance"] = "node?blue"
+	raw, err := json.Marshal(map[string]any{"count": 2, "series": []monitoring.Series{
+		{Metric: first, Timestamps: []int64{1}, Values: []float64{11}},
+		{Metric: second, Timestamps: []int64{1}, Values: []float64{22}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := renderMetricSeries(output.NewWithWriter(&out, output.ModePlain, false), &out, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+	var labels []map[string]string
+	var samples []string
+	for line := range strings.SplitSeq(out.String(), "\n") {
+		if text, ok := strings.CutPrefix(line, "Labels: "); ok {
+			for _, r := range text {
+				if !unicode.IsPrint(r) {
+					t.Fatalf("label line contains raw %U: %q", r, text)
+				}
+			}
+			if !strings.Contains(text, "Москва") {
+				t.Fatalf("printable Unicode is not legible: %q", text)
+			}
+			var got map[string]string
+			if err := json.Unmarshal([]byte(text), &got); err != nil {
+				t.Fatal(err)
+			}
+			labels = append(labels, got)
+		}
+		if value, ok := strings.CutPrefix(line, "1970-01-01T00:00:00.001Z  "); ok {
+			if len(labels) != len(samples)+1 {
+				t.Fatal("timestamp without labels for this series")
+			}
+			samples = append(samples, value)
+		}
+	}
+	if len(labels) != 2 || !maps.Equal(labels[0], first) || !maps.Equal(labels[1], second) || strings.Join(samples, ",") != "11,22" {
+		t.Fatalf("labels, samples: %q %v", labels, samples)
 	}
 }
