@@ -52,17 +52,13 @@ func TestParity_ReadmeExceptionCount(t *testing.T) {
 	const target = "docs/mcp.md#ответ-инструмента-и---json-команды"
 	n := len(jsonAliasCompat)
 	// Russian uses different cases in «Исключений семь» and «всех семи команд».
-	forms := []string{"ноль|нуль|нуля", "один|одна|одно|одной|одного", "два|две|двух", "три|трёх", "четыре|четырёх", "пять|пяти", "шесть|шести", "семь|семи", "восемь|восьми", "девять|девяти", "десять|десяти"}
+	forms := []string{"ноль|нуль|нуля", "один|одна|одно|одной|одного", "два|две|двух", "три|тр[её]х", "четыре|четыр[её]х", "пять|пяти", "шесть|шести", "семь|семи", "восемь|восьми", "девять|девяти", "десять|десяти"}
 	if n >= len(forms) {
 		t.Fatalf("%d exceptions: add the word forms for this count", n)
 	}
 	want := regexp.MustCompile(`^(?:` + strconv.Itoa(n) + "|" + forms[n] + `)$`)
 	mainCount := regexp.MustCompile(`(?i)исключений ([0-9]+|\p{L}+)`)
 	extraCount := regexp.MustCompile(`(?i)(?:кроме|за исключением) (\p{L}+|[0-9]+) (?:команд|исключени|случа)`)
-	// Counts can appear after the noun or before an adjective in a link.
-	// Treat a dotted version as a single token, separate from cardinal numbers.
-	labelWords := regexp.MustCompile(`[\p{L}\p{N}]+(?:\.[\p{L}\p{N}]+)*`)
-	numeral := regexp.MustCompile(`^(?:[0-9]+|` + strings.Join(forms, "|") + `|\p{L}+надцат[ьи])$`)
 	found := false
 	for bullet := range strings.SplitSeq(readme, "\n- ") {
 		text := strings.Join(strings.Fields(bullet), " ")
@@ -82,9 +78,9 @@ func TestParity_ReadmeExceptionCount(t *testing.T) {
 					t.Errorf("README says %q, registry has %d JSON exceptions", count[0], n)
 				}
 			}
-			for _, word := range labelWords.FindAllString(strings.ToLower(link.label), -1) {
-				if numeral.MatchString(word) && !want.MatchString(word) {
-					t.Errorf("README link %q says %q, registry has %d JSON exceptions", link.label, word, n)
+			for _, count := range parityLabelCounts(link.label, forms) {
+				if !want.MatchString(count) {
+					t.Errorf("README link %q says %q, registry has %d JSON exceptions", link.label, count, n)
 				}
 			}
 		}
@@ -92,4 +88,38 @@ func TestParity_ReadmeExceptionCount(t *testing.T) {
 	if !found {
 		t.Fatal("README: missing link to the JSON parity exception table")
 	}
+}
+
+// A bare number labels the table itself. In a longer caption, count only
+// commands, exceptions or cases. The same caption can also count interfaces.
+func parityLabelCounts(label string, smallNumbers []string) []string {
+	// Keep a version such as 1.9.1 together; keep punctuation between claims.
+	token := regexp.MustCompile(`[\p{L}\p{N}]+(?:\.[\p{L}\p{N}]+)*|[^\p{L}\p{N}\s]`)
+	words := token.FindAllString(strings.ToLower(label), -1)
+	largerNumber := `\p{L}+надцат[ьи]|(?:двад|трид)цат[ьи]|сорок(?:а)?|\p{L}+десят(?:и)?|девяност[оа]|сто|ста|двести|(?:три|четыре)ста|\p{L}+сот`
+	number := regexp.MustCompile(`^(?:[0-9]+|` + strings.Join(smallNumbers, "|") + "|" + largerNumber + `)$`)
+	subject := `(?:команд(?:а|ы|у|ой|е|ам|ами|ах)?|исключени(?:е|й|я|ю|ем|ям|ями|ях)|случа(?:й|и|я|е|ев|ях))`
+	adjective := `(?:\p{L}+(?:ых|их|ые|ие|ая|ой|ого|его|ый|ий) )*`
+	followingSubject := regexp.MustCompile(`^` + adjective + subject + `(?: |$)`)
+	precedingSubject := regexp.MustCompile(`(?:^| )` + subject + `(?: (?::|—|–|-|всего|ровно|в таблице))*$`)
+	// In «команд двух интерфейсов», the following noun owns the second count.
+	endOfClaim := regexp.MustCompile(`^(?:$|[^\p{L}\p{N}]|(?:в|во|для|на|из|по|и|при)(?: |$))`)
+	var counts []string
+	for i := 0; i < len(words); {
+		if !number.MatchString(words[i]) {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < len(words) && number.MatchString(words[i]) {
+			i++
+		}
+		before, after := strings.Join(words[:start], " "), strings.Join(words[i:], " ")
+		bare := after == "" && (before == "" || before == "всего" || before == "все" || before == "всех")
+		if bare || followingSubject.MatchString(after) || (precedingSubject.MatchString(before) && endOfClaim.MatchString(after)) {
+			counts = append(counts, strings.Join(words[start:i], " "))
+		}
+	}
+	return counts
 }
