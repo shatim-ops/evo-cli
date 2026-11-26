@@ -1412,7 +1412,7 @@ evo ca delete <name> [flags]
 
 ```
   -h, --help   Справка по delete
-      --wait   Без параметра — ждать до ~45 с. true — ждать исчезновения приложения, false — вернуть deleting сразу после принятия запроса. При deleting вызывайте ca_get с next_args до NOT_FOUND.
+      --wait   Без параметра — ждать до ~45 с. true — ждать исчезновения приложения, false — вернуть deleting сразу после принятия запроса. При deleting проверяйте приложение командой evo ca get <имя> до NOT_FOUND.
 ```
 
 ### Options inherited from parent commands
