@@ -59,7 +59,7 @@ func TestDiskCreate_PartialLanguage(t *testing.T) {
 		{"attach-forbidden", "available", "HTTP 403: fixture denied", 1},
 	} {
 		for _, surface := range []struct{ lang, mode string }{
-			{"ru", "text"}, {"en", "text"}, {"ru", "json"}, {"en", "json"},
+			{"ru", "text"}, {"en", "text"}, {"ru", "json"}, {"en", "json"}, {"en", "stdio"}, {"en", "http"},
 		} {
 			t.Run(failure.name+"/"+surface.lang+"/"+surface.mode, func(t *testing.T) {
 				setupCLI(t)
@@ -68,6 +68,25 @@ func TestDiskCreate_PartialLanguage(t *testing.T) {
 				c := &partialDiskCloud{state: failure.state}
 				withCloud(t, c)
 				i18n.SetLang(surface.lang)
+				if surface.mode == "stdio" || surface.mode == "http" {
+					mcp := parityServers(t)
+					args := map[string]any{"name": "data", "size_gb": 10, "disk_type": "SSD", "attach_to": "web", "confirmed": true}
+					var reply map[string]any
+					if surface.mode == "stdio" {
+						reply = stdioDetails(t, mcp.stdio, "disk_create", args)
+					} else {
+						reply = httpDetails(t, mcp.http, "disk_create", args)
+					}
+					message, _ := reply["error"].(string)
+					hint, _ := reply["hint"].(string)
+					if reply["reason"] != clerrors.CodeAPIError || reply["status"] != "partial" || reply["disk_id"] != partialDiskID ||
+						c.creates != 1 || c.attaches != failure.attaches || !strings.Contains(message, "billed") ||
+						!strings.Contains(message, failure.cause) || !strings.Contains(hint, "disk_attach") ||
+						hasCyrillicText(message+hint) {
+						t.Errorf("unexpected machine partial response: %v", reply)
+					}
+					return
+				}
 				args := []string{"disk", "create", "data", "--size-gb", "10", "--disk-type", "SSD", "--attach-to", "web", "--yes"}
 				jsonMode := surface.mode == "json"
 				if jsonMode {

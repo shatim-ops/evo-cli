@@ -30,11 +30,11 @@ import (
 // both» + «Проверьте аргументы»), а в части — и hint («1 — a zonal control
 // plane…»). docs/exit-codes.md: сообщения и подсказки — на языке CLI.
 //
-// Обход: каждый из 152 инструментов вызывается с пустыми, неполными и
+// Обход: каждый инструмент реестра вызывается с пустыми, неполными и
 // неверными аргументами и с каждым значением enum (облако — транспорт,
 // отвечающий 500, 404 и 200 с пустыми списками; ещё раз — без ключей S3,
-// образа и проекта). В ответах USAGE, CONFIG_INVALID и NOT_FOUND в режиме
-// ru нет английской фразы (englishPhrase), в режиме en — кириллицы. Текст
+// образа и проекта). Проверяются сообщения и подсказки отказов, поля
+// частичного результата и пояснения успешных ответов. Текст
 // ответа API, Go и библиотеки S3 (foreignRE) остаётся как есть.
 
 // quotedRE is what a message may keep in another language: a command or a
@@ -48,12 +48,23 @@ var foreignRE = regexp.MustCompile(`json: cannot unmarshal .*|unexpected end of 
 	`Bucket name (cannot be empty|cannot be longer than \d+ characters|cannot be shorter than \d+ characters|contains invalid characters)|` +
 	`Last-Modified time format is invalid.*`)
 
-// englishPhrase returns the first run of three or more Latin words in s
-// outside quotes, or "". A word is letters only; an identifier (snake_case,
-// kebab-case, CamelCase, UPPER, with digits or dots) breaks the run, and so
-// does punctuation: "tcp, udp, icmp" is a list of values, not a phrase.
+// Normalize contractions before tokenization; their internal apostrophe is not a quotation mark.
+var contraction = strings.NewReplacer("n't", "nt", "n’t", "nt")
+
+// Tool schemas label service fields with the product and key. These
+// names and the literal invocations also appear verbatim in Russian.
+var languageLiterals = regexp.MustCompile(`\b(?:Managed Kubernetes|Certificate Manager|Object Storage|Container Apps?|Redis name|Kafka name|docker login|helm install)\b`)
+
+// A quote can contain an actual product instruction. A command or a
+// quoted name remains valid in Russian; check quoted imperative clauses.
+var quotedInstruction = regexp.MustCompile(`(?i)['"«]((?:cannot|can['’]t|please|retry|check|unable to) [a-z][a-z -]+)['"»]`)
+
 func englishPhrase(s string) string {
-	return englishWordRun(s, 3)
+	s = languageLiterals.ReplaceAllString(s, " · ")
+	if instruction := quotedInstruction.FindStringSubmatch(s); len(instruction) != 0 {
+		return instruction[1]
+	}
+	return englishWordRun(contraction.Replace(s), 2)
 }
 
 func englishWordRun(s string, minimum int) string {
@@ -80,6 +91,18 @@ func englishWordRun(s string, minimum int) string {
 	return ""
 }
 
+// A complete short instruction is also user-facing prose. Keep registered
+// product names, literal values and commands out of the word count.
+func fieldLanguageIssue(lang, text string) string {
+	if lang != i18n.RU {
+		if hasCyrillic(text) {
+			return "cyrillic"
+		}
+		return ""
+	}
+	return englishPhrase(text)
+}
+
 // apiErrorEnglishLeft are the tools whose API_ERROR still starts with
 // English words of evo in the Russian CLI (1.3.1; prefixes left are from
 // service clients — part 2 of englishWraps). The list only shrinks: a
@@ -101,8 +124,6 @@ var successEnglishLeft = map[string]string{}
 // body following it is exempt from the language check.
 var cloudSegment = regexp.MustCompile(`^(?:[\w.-]+ API \d{3}|HTTP \d{3})$`)
 
-// This registered product name occurs verbatim in the Russian marketplace error.
-var apiProductName = regexp.MustCompile(`\bManaged Kubernetes\b`)
 var serviceLabel = regexp.MustCompile(`^[\w.-]+ API$`)
 var requestIDSuffix = regexp.MustCompile(requestIDNamed.String() + "$")
 var transportStatus = regexp.MustCompile(`^API (?:returned status \d{3}(?: after \d+ retries)?|вернул статус \d{3}(?: после \d+ повторов)?)$`)
@@ -163,8 +184,17 @@ func latinSegment(prefix string) string {
 		if !hasCyrillic(seg) {
 			return seg
 		}
-		if phrase := englishWordRun(apiProductName.ReplaceAllString(seg, " · "), 2); phrase != "" {
+		if phrase := englishPhrase(seg); phrase != "" {
 			return phrase
+		}
+		// A generic Russian label alone does not localize the diagnosis.
+		if rest, ok := strings.CutPrefix(seg, "Ошибка "); ok && !hasCyrillic(rest) {
+			words := quotedRE.ReplaceAllString(languageLiterals.ReplaceAllString(rest, ""), "")
+			for _, word := range strings.Fields(words) {
+				if plainWord(word) {
+					return word
+				}
+			}
 		}
 	}
 	return ""
@@ -215,6 +245,9 @@ func TestQA11_APIErrorFrame(t *testing.T) {
 	for _, tc := range []struct{ name, lang, msg, want string }{
 		{"bare-ru", i18n.RU, bare, "missing Russian context"},
 		{"bare-en", i18n.EN, bare, ""},
+		{"status-code", i18n.RU, "Ошибка HTTP 503: HTTP 503: Request failed", ""},
+		{"resource-name", i18n.RU, "Ошибка «Blue Rocket»: HTTP 503: Request failed", ""},
+		{"service-diagnostic", i18n.RU, "Сервис отклонил запрос: HTTP 500: 'cannot delete resource now'", ""},
 		{"framed-ru", i18n.RU, "Не удалось загрузить пример: " + bare, ""},
 		{"english-ru", i18n.RU, "Cannot load example: " + bare, "Cannot load example"},
 		{"lowercase-ru", i18n.RU, "cannot load example: " + bare, "cannot load example"},
@@ -263,7 +296,7 @@ func TestQA11_RefusalWorlds(t *testing.T) {
 				if issue := apiLanguageIssue(lang, apiErrorPrefix(r.Error)); issue != "" {
 					t.Errorf("%s error %q: %s", r.Reason, r.Error, issue)
 				}
-				if r.Hint != "" && (lang == i18n.RU) != hasCyrillic(r.Hint) {
+				if issue := fieldLanguageIssue(lang, r.Hint); issue != "" {
 					t.Errorf("%s hint in wrong language: %q", r.Reason, r.Hint)
 				}
 			}
@@ -310,6 +343,21 @@ func TestQA11_RefusalWorlds(t *testing.T) {
 				}
 				check(t, text, failed, "")
 			})
+			t.Run("partial-provision", func(t *testing.T) {
+				cloud := &fipAttachFailsCloud{}
+				r, dir := fastRegistry(t, cloud, provisionCfg)
+				cloud.dir = dir
+				m, text, failed := callNamed(t, r, "provision", map[string]any{"name": "web", "confirmed": true})
+				if !failed || m["reason"] != clerrors.CodeAPIError || m["status"] != "partial" || m["vm_ip"] != "" {
+					t.Fatalf("expected a running VM without its public IP: %s", text)
+				}
+				for _, field := range []string{"error", "message", "hint"} {
+					value, _ := m[field].(string)
+					if value == "" || (lang == i18n.RU) != hasCyrillic(value) || fieldLanguageIssue(lang, value) != "" {
+						t.Errorf("partial provision, %s/%s: %q", lang, field, value)
+					}
+				}
+			})
 			t.Run("vm-timeout", func(t *testing.T) {
 				text, failed, _, _ := provisionRun(t, context.Background(), &progressCloud{states: []string{"creating"}}, false, output.ModeJSON, 20*time.Millisecond, nil)
 				var r struct{ Status string }
@@ -327,6 +375,52 @@ func TestQA11_RefusalWorlds(t *testing.T) {
 				_, text, failed := callNamed(t, r, "deploy", map[string]any{"compose_file": path})
 				check(t, text, failed, clerrors.CodeComposeInvalid)
 			})
+		})
+	}
+}
+
+// These cases exercise the same two detectors as the normal tool walk.
+// An unquoted service body belongs to the provider only after the status marker.
+func TestQA11_OwnDiagnosticsInRussian(t *testing.T) {
+	for _, text := range []string{
+		"Не удалось выполнить запрос: Request failed",
+		"Ошибка invalid state при проверке диска",
+		"Не удалось: disk_id is invalid",
+		"Повторы не помогли: failed after 3 retries",
+		"Не удалось: can't open file",
+		"Неверный ввод: non-empty value required",
+		"Не удалось: 'cannot delete resource now'",
+	} {
+		if englishPhrase(text) == "" {
+			t.Errorf("missed untranslated words in %q", text)
+		}
+	}
+	for _, prefix := range []string{"Ошибка can't load", "Ошибка vm_id missing", "Ошибка timeout", "Ошибка Request failed"} {
+		text := prefix + ": HTTP 500: body"
+		if apiLanguageIssue(i18n.RU, apiErrorPrefix(text)) == "" {
+			t.Errorf("missed untranslated frame in %q", text)
+		}
+	}
+}
+
+func TestQA11_ShortInstructionsAndVerbatimValues(t *testing.T) {
+	for _, tc := range []struct {
+		name, lang, text string
+		reject           bool
+	}{
+		{"short-hint", i18n.RU, "Проверьте конфигурацию. Retry now.", true},
+		{"different-error", i18n.RU, "Создание прервано: access denied", true},
+		{"short-next", i18n.RU, "Reconnect later!", true},
+		{"resource-name", i18n.RU, "Диск «Blue Rocket» уже существует.", false},
+		{"product-name", i18n.RU, "Каталог Managed Kubernetes недоступен.", false},
+		{"command", i18n.RU, "Запустите `evo vm list` и повторите.", false},
+		{"machine-english", i18n.EN, "Retry now.", false},
+		{"wrong-machine-hint", i18n.EN, "Retry now. Попробуйте снова.", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if issue := fieldLanguageIssue(tc.lang, tc.text); (issue != "") != tc.reject {
+				t.Errorf("locale %s, issue %q for %q, want rejected=%t", tc.lang, issue, tc.text, tc.reject)
+			}
 		})
 	}
 }
@@ -449,7 +543,18 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 			msg, _ := m["message"].(string)
 			warn, _ := m["warning"].(string)
 			fields = map[string]string{"message": msg, "warning": warn}
-		case reason == clerrors.CodeUsage || reason == clerrors.CodeConfigInvalid || reason == clerrors.CodeNotFound:
+		case reason == clerrors.CodeAPIError || m["status"] == "partial":
+			msg, _ := m["error"].(string)
+			fields = map[string]string{}
+			if msg != "" || reason == clerrors.CodeAPIError {
+				fields["error prefix"] = apiErrorPrefix(msg)
+			}
+			for _, key := range []string{"hint", "message", "note", "next", "warning", "resource_status_note"} {
+				if text, ok := m[key].(string); ok {
+					fields[key] = text
+				}
+			}
+		case reason != "":
 			msg, _ := m["error"].(string)
 			hint, _ := m["hint"].(string)
 			fields = map[string]string{"error": msg, "hint": hint}
@@ -461,33 +566,30 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 			fields = map[string]string{}
 			for _, f := range []string{"note", "next", "warning", "resource_status_note"} {
 				if v, ok := m[f].(string); ok {
-					// The caller's own words (a name it passed) are not
-					// evo's text: «Container Apps web отсутствует».
-					for _, a := range c.args {
-						if w, ok := a.(string); ok && w != "" {
-							v = strings.ReplaceAll(v, w, "")
-						}
-					}
 					fields[f] = v
 				}
 			}
-		case reason == clerrors.CodeAPIError:
-			// The cloud's own text is the cloud's; what evo puts
-			// before it is evo's (#319, D6).
-			msg, _ := m["error"].(string)
-			fields = map[string]string{"error prefix": apiErrorPrefix(msg)}
 		default:
 			return
 		}
 		for field, s := range fields {
+			// A multi-word value or list echoed by a tool is caller data.
+			// Do not suppress individual short words or substrings of prose.
+			for _, arg := range c.args {
+				value := fmt.Sprint(arg)
+				if list, ok := arg.(string); ok && strings.Contains(list, ",") {
+					s = strings.ReplaceAll(s, fmt.Sprint(strings.Split(list, ",")), " · ")
+				}
+				if len(strings.Fields(value)) > 1 {
+					s = strings.ReplaceAll(s, value, " · ")
+				}
+			}
 			what := ""
 			switch {
 			case field == "error prefix":
 				what = apiLanguageIssue(lang, s)
-			case lang == i18n.RU:
-				what = englishPhrase(s)
-			case hasCyrillic(s):
-				what = "cyrillic"
+			default:
+				what = fieldLanguageIssue(lang, s)
 			}
 			if what == "" {
 				continue
