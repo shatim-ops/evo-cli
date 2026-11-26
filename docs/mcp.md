@@ -37,7 +37,7 @@ PostgreSQL, Kafka, Redis, S3, секреты, сертификаты, Artifact R
 | Команда | `--json` команды | Ответ инструмента | Почему |
 |---|---|---|---|
 | `evo deploy` | `status: deployed` или `unchanged`, `vm_id`, `vm_ip`, `vm_name`, `zone_name`, `flavor`, `ports`, `verify` | `deploy`: `status: ok`, `deployment` (запись развёртывания), `log` | форма CLI — с v1.0, инструмента — с v1.1; ключ `status` у обоих с разными значениями, свести без потери ключа нельзя |
-| `evo destroy` | После удаления ВМ — `status: destroyed` или `partial`, `cleanup_pending`, `vm_id`, `vm_ip`, имя `vm_name`, если известно. При уборке одних правил — `destroyed` или `rules_pending`. | `destroy`: `status: ok`, `deleted_vm`, `cleanup_pending`. Без развёртывания и оставшихся правил у обоих `status: none`. | В обоих ответах `cleanup_pending: true` означает, что уборка не завершена или не подтверждена. |
+| `evo destroy` | После удаления ВМ — `status: destroyed` или `partial`, `cleanup_pending`, `vm_id`, `vm_ip`, имя `vm_name`, если известно. При уборке одних правил — `destroyed` или `rules_pending`. | `destroy`: `status: ok`, `deleted_vm`, `cleanup_pending`. Без развёртывания и оставшихся правил у обоих `status: none`. | В обоих ответах `cleanup_pending: true` означает, что уборка не завершена или не подтверждена. Освобождение плавающего IP подтверждает GET по его ID с ответом 404. |
 | `evo doctor` | проверки машины, где запущена команда (версия evo, файлы настроек и их права, `kubectl` и `helm`), плюс проверки связи; нет связи — `reason: ERROR`, код 1 | `doctor`: только проверки связи; нет связи — `API_UNREACHABLE`, код 1; по HTTP инструмент отключён (H10) | по MCP проверки машины были бы путями и программами сервера |
 | `evo list-zones` | массив `zones` | `list_zones`: объект с `zones` | устаревший алиас `evo vm zones`, форма v1.0, до v2.0 |
 | `evo list-images` | массив `images`, пустой — без вывода | `list_images`: объект с `images` | устаревший алиас `evo image list`, форма v1.0, до v2.0 |
@@ -422,11 +422,11 @@ CLI. Шаг `stack_apply`, прерванный на создании, не тр
 ## Только нужные группы инструментов
 
 По умолчанию сервер предлагает агенту все инструменты (их более 150). Это
-около 135 КБ `tools/list`, и агент читает их в каждой сессии. Если нужен только deploy и
+около 150 КБ `tools/list`, и агент читает их в каждой сессии. Если нужен только deploy и
 работа с ВМ и сетью, оставьте эти группы:
 
 ```sh
-evo mcp --toolsets deploy,vm,vpc     # около 40 инструментов, ~35 КБ
+evo mcp --toolsets deploy,vm,vpc     # около 40 инструментов, ~40 КБ
 ```
 
 Группы перечислены в столбце ГРУППА вывода `evo tools list`: deploy, vm,
@@ -471,7 +471,7 @@ evo mcp --http 127.0.0.1:8080 --read-only    # HTTP
 
 - Инструменты, которым согласие нужно при каждом вызове, — все изменяющие,
   `secret_value` и `cert_private_key` — в `tools/list` не попадают:
-  остаётся около 100 инструментов (~65 КБ). Вызов такого инструмента по имени —
+  остаётся около 100 инструментов (~75 КБ). Вызов такого инструмента по имени —
   ошибка `USAGE` до превью и до облака: `deploy is refused:
   this server runs with --read-only, and the call needs the user's consent
   (confirmed=true), as it changes the cloud or reveals a secret; a read-only
@@ -581,11 +581,11 @@ evo mcp --http 127.0.0.1:8080 --auth bearer --read-only --toolsets vm,vpc,disk,i
 ([Streamable HTTP](#streamable-http)).
 
 **`--toolsets` обязателен.** Без него агент получает все инструменты (с
-`--read-only` — около 90, ~65 КБ схем; без него — более 150, ~135 КБ) в каждой
+`--read-only` — около 90, ~75 КБ схем; без него — более 150, ~150 КБ) в каждой
 сессии. У клиентов есть и предел числа: VS Code с GitHub Copilot принимает не
 больше 128 инструментов в одном запросе чата и сверх этого отвечает ошибкой
 ([документация VS Code](https://code.visualstudio.com/docs/copilot/agents/agent-tools)).
-Оставьте группы задачи: `vm,vpc,disk,image` — 18 инструментов на чтение, ~16 КБ.
+Оставьте группы задачи: `vm,vpc,disk,image` — 18 инструментов на чтение, ~18 КБ.
 
 **Тайм-аут вызова.** Часть инструментов ждёт внутри вызова: `*_operation` с
 `wait_seconds` (до 45 с), `stack_status` (до 20 с за вызов), `k8s_kubectl`
