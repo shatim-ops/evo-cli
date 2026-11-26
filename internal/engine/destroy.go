@@ -229,7 +229,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			stateFile.UpsertDeployment(*active)
 			_ = state.Write(statePath, stateFile)
 			if st := provision.HTTPStatus(err); st == http.StatusConflict || st == http.StatusUnprocessableEntity {
-				return e.RefusedVMDelete(ctx, active.VMID, fipRef(active), err, i18n.T(" The deployment record is kept.", " Запись развёртывания сохранена."),
+				return e.RefusedVMDelete(ctx, active, err, i18n.T(" The deployment record is kept.", " Запись развёртывания сохранена."),
 					i18n.Tf("Check VM %q with 'evo vm get' and re-run 'evo destroy' once deletion is possible.", "Проверьте ВМ %q командой 'evo vm get' и повторите 'evo destroy', когда удаление будет возможно.", active.VMID), "evo vpc fip-release")
 			}
 			return err
@@ -932,10 +932,10 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID, projectID string) (e
 // the VM is read in now and the way out of it (DeleteWayOut, one place with
 // the deletes of the tools), not a guess (release plan 1.6, #558: a VM read
 // in deleting was answered «probably still being created»). In a state it
-// does not leave by itself, the hint names its floating IP fip (id or
-// address, "" for none), which stays billed until released (E11, Grok
-// rc.1). kept is what the caller keeps, appended to the hint.
-func (e *Engine) RefusedVMDelete(ctx context.Context, vmID, fip string, err error, kept, retry, releaseTool string) error {
+// does not leave by itself, identify the address from the receipt. A VM
+// refusal alone does not establish its current binding or charges.
+func (e *Engine) RefusedVMDelete(ctx context.Context, rec *state.DeploymentRecord, err error, kept, retry, releaseTool string) error {
+	vmID := rec.VMID
 	status := ""
 	if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
 		status = vm.Status
@@ -944,20 +944,27 @@ func (e *Engine) RefusedVMDelete(ctx context.Context, vmID, fip string, err erro
 	}
 	if status == "" {
 		return clerrors.Wrap(clerrors.CodeAPIError,
-			i18n.Tf("VM %s cannot be deleted in its current state, and its state could not be read", "ВМ %s нельзя удалить в её текущем состоянии, а её состояние прочитать не удалось", vmID),
+			i18n.Tf("VM %q cannot be deleted in its current state, and its state could not be read", "ВМ %q нельзя удалить в её текущем состоянии, а её состояние прочитать не удалось", vmID),
 			retry+kept,
 			err)
 	}
 	_, hint := DeleteWayOut(status, vmID)
-	if fip != "" && FinalDeleteState(status) {
-		hint += i18n.Tf(" Its floating IP %s stays bound and billed. After the VM is gone, ask the person whether to release the address by its verified ID with %s.",
-			"Её floating IP %s остаётся привязанным и оплачивается. После удаления ВМ спросите человека, освобождать ли адрес по проверенному ID через %s.", fip, releaseTool)
+	address, _ := netip.ParseAddr(rec.VMIP)
+	address = address.Unmap()
+	if FinalDeleteState(status) && (rec.FloatingIPID != "" || address.IsGlobalUnicast() && !address.IsPrivate()) {
+		hint += i18n.Tf(" This call stopped before releasing the floating IP %q. If the address is still allocated, it may incur charges.",
+			" Вызов остановился до освобождения floating IP %q. Если адрес всё ещё выделен, за него может начисляться плата.", fipRef(rec))
+		if releaseTool != "" {
+			hint += i18n.Tf(" After the VM is gone, ask the person whether to release the address by its verified ID with %s.",
+				" После удаления ВМ спросите человека, освобождать ли адрес по проверенному ID через %s.", releaseTool)
+		}
 	}
+
 	if !FinalDeleteState(status) {
 		hint = strings.TrimSpace(hint + " " + retry)
 	}
 	return clerrors.Wrap(clerrors.CodeAPIError,
-		i18n.Tf("VM %s cannot be deleted in state %q", "ВМ %s нельзя удалить в состоянии %q", vmID, status),
+		i18n.Tf("VM %q cannot be deleted in state %q", "ВМ %q нельзя удалить в состоянии %q", vmID, status),
 		hint+kept, err)
 }
 

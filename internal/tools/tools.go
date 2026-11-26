@@ -3532,12 +3532,14 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				// reads in and the way out, as the CLI destroy (QA H1/H4,
 				// #558), API_ERROR as docs/exit-codes.md has it (QA-6).
 				releaseTool := "release_floating_ip"
-				if callerOf(ctx) != nil {
+				if !releaseIP {
+					releaseTool = "" // the caller explicitly chose to keep the address
+				} else if callerOf(ctx) != nil {
 					releaseTool = "evo vpc fip-release"
 				} else if s.served != nil && !s.served(releaseTool) {
 					releaseTool = i18n.T("the Cloud.ru console", "консоль Cloud.ru")
 				}
-				refused := eng.RefusedVMDelete(ctx, target.ID, firstNonEmptyStr(fipRec.FloatingIPID, fipRec.VMIP), err,
+				refused := eng.RefusedVMDelete(ctx, &fipRec, err,
 					i18n.T(" Nothing was deleted.", " Ничего не удалено."), s.checkVMHint(ctx, target.ID)+" "+destroyRetry(ctx, target.ID, args, false), releaseTool)
 				fields["status"], fields["message"] = "not_deletable_yet", refused.Error()
 				return errAnswer(refused, fields), true

@@ -325,8 +325,8 @@ func TestDestroyTargeted_RecordOfAnotherProject(t *testing.T) {
 // created or changing state … call again in a minute» for a VM read in
 // error_deleting, which will not go by itself. The answer names the state
 // it read and the way out (engine.DeleteWayOut, as the CLI destroy), and
-// the floating IP that stays billed: released with evo vpc fip-release
-// once the VM is gone. The VM's FIP is not touched.
+// the floating IP that may still be billed. The MCP path uses the release
+// tool after checking the outcome. The VM's FIP is not touched.
 func TestDestroyTargeted_RefusedForGoodNamesTheWayOutAndTheFIP(t *testing.T) {
 	cloud := &targetCloud{vmStatus: "error_deleting", deleteErr: clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
 		&provision.StatusError{Status: 409, Body: `{"code":"vm_can_not_be_deleted"}`})}
@@ -343,4 +343,11 @@ func TestDestroyTargeted_RefusedForGoodNamesTheWayOutAndTheFIP(t *testing.T) {
 	if cloud.fipTries != 0 {
 		t.Errorf("FIP touched while the VM still exists")
 	}
+	// An explicit decision to keep the address still applies on refusal.
+	args := map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true, "release_ip": false}
+	text, isErr = r.handlers["destroy"](context.Background(), args)
+	if !isErr || !strings.Contains(text, "fip-1") || strings.Contains(text, "release_floating_ip") || cloud.fipTries != 0 {
+		t.Errorf("refused VM deletion with release_ip=false: %s, address deletes=%d", text, cloud.fipTries)
+	}
+
 }

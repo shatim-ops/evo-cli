@@ -65,6 +65,22 @@ func TestDestroy_RefusedDeleteNamesTheStateAndTheWayOut(t *testing.T) {
 	}
 }
 
+// VMIP in older local records can be the VM's private SSH address. There
+// is no billed floating address to identify from that value alone.
+func TestRefusedVMDelete_PrivateAddressIsNotAFloatingIP(t *testing.T) {
+	rec := runningRecord()
+	rec.VMIP, rec.FloatingIPID = "10.0.0.1", ""
+	eng, cloud, _ := destroyFixture(t, rec)
+	cloud.getVMFn = func(context.Context, string) (*provision.VM, error) {
+		return &provision.VM{ID: rec.VMID, Status: "error_deleting"}, nil
+	}
+	err := eng.RefusedVMDelete(t.Context(), &rec, clerrors.New(clerrors.CodeAPIError, "delete refused", ""), "", "", "evo vpc fip-release")
+	var ce *clerrors.CLIError
+	if !stderrors.As(err, &ce) || !strings.Contains(ce.Hint, "support") || strings.Contains(ce.Hint, "fip-release") || strings.Contains(ce.Hint, rec.VMIP) {
+		t.Fatalf("unverified legacy address in refusal: %+v", ce)
+	}
+}
+
 // The read after the wait fails (5xx): the refusal names the last state the
 // wait read, not «could not be read» after minutes of waiting (review of
 // #565).
