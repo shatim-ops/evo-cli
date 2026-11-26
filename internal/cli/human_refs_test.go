@@ -9,6 +9,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -136,7 +137,7 @@ func TestHuman_NoBareReferenceUUID(t *testing.T) {
 	for i, cl := range calls {
 		out, _, _ := run(cl, "--json")
 		_ = json.Unmarshal([]byte(out), &answers[i])
-		_, n, _ := refIndex(cl.c.tool.Name, answers[i])
+		_, n, _ := refIndex(answers[i])
 		for id, name := range n {
 			names[id] = append(names[id], name)
 		}
@@ -145,7 +146,7 @@ func TestHuman_NoBareReferenceUUID(t *testing.T) {
 	declared := map[string]bool{} // the lines of unnamedRefs some output carries
 	for i, cl := range calls {
 		_, human, given := run(cl)
-		own, _, field := refIndex(cl.c.tool.Name, answers[i])
+		own, _, field := refIndex(answers[i])
 		for _, l := range strings.Split(human, "\n") {
 			if strings.Contains(l, "evo ") {
 				continue
@@ -153,6 +154,13 @@ func TestHuman_NoBareReferenceUUID(t *testing.T) {
 		ids:
 			for _, id := range uuidInPath.FindAllString(l, -1) {
 				if own[id] || given[id] {
+					continue
+				}
+				// status can have the old IP receipt after the VM switches
+				// addresses. Its own labelled receipt row identifies the ID
+				// without claiming it belongs to the currently displayed IP.
+				if cl.c.tool.Name == "status" && slices.Contains(field[id], "floating_ip_id") &&
+					strings.Join(strings.Fields(l), " ") == "Recorded floating IP ID "+strconv.Quote(id)+" (address not verified)" {
 					continue
 				}
 				for _, n := range names[id] {
@@ -224,7 +232,7 @@ func TestHuman_NoBareReferenceUUID(t *testing.T) {
 // refIndex reads the JSON answer of a call: the ids of its objects (a key
 // "id"), the name each id has in the answer ("name" beside "id", "<x>_name"
 // beside "<x>_id") and the key each UUID is the value of.
-func refIndex(tool string, answer any) (own map[string]bool, names map[string]string, field map[string][]string) {
+func refIndex(answer any) (own map[string]bool, names map[string]string, field map[string][]string) {
 	own, names, field = map[string]bool{}, map[string]string{}, map[string][]string{}
 	var walk func(key string, v any)
 	walk = func(key string, v any) {
@@ -287,17 +295,6 @@ func refIndex(tool string, answer any) (own map[string]bool, names map[string]st
 		}
 	}
 	walk("", answer)
-	// The top-level deployment in the status answer stores its floating
-	// address as vm_ip, not floating_ip_name. Only that address can label
-	// this resource ID; seeing the ID alone still fails the human check.
-	if tool == "status" {
-		rec, _ := answer.(map[string]any)
-		id, _ := rec["floating_ip_id"].(string)
-		address, _ := rec["vm_ip"].(string)
-		if id != "" && address != "" {
-			names[id] = address
-		}
-	}
 	return own, names, field
 }
 
@@ -312,7 +309,7 @@ func TestRefIndex_NameOfACatalogueRowOnly(t *testing.T) {
 		"source":      map[string]any{"disk_id": disk, "disk_name": "data"},
 	}
 	for range 50 {
-		_, names, _ := refIndex("", answer)
+		_, names, _ := refIndex(answer)
 		if names[zone] != "" {
 			t.Fatalf("the zone is named %q after the object it is a field of", names[zone])
 		}

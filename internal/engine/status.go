@@ -208,11 +208,12 @@ func ShowStatus(p *output.Printer, st DeploymentStatus, refreshed bool) {
 		[]string{i18n.T("VM IP", "IP ВМ"), shown.VMIP},
 	)
 	if shown.FloatingIPID != "" {
-		value := fipLabel(shown.VMIP, shown.FloatingIPID)
-		if shown.VMIP == "" {
-			value = i18n.Tf("ID %s (address not recorded)", "ID %s (адрес не записан)", shown.FloatingIPID)
-		}
-		rows = append(rows, []string{i18n.T("Floating IP", "Плавающий IP"), value})
+		// VMIP can describe a replacement address while FloatingIPID still
+		// names the original resource awaiting cleanup.
+		rows = append(rows, []string{
+			i18n.T("Recorded floating IP", "Плавающий IP по квитанции"),
+			i18n.Tf("ID %q (address not verified)", "ID %q (адрес не проверен)", shown.FloatingIPID),
+		})
 	}
 	rows = append(rows,
 		[]string{"Flavor", recordFlavorText(&shown)},

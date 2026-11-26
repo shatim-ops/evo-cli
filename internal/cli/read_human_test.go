@@ -306,7 +306,7 @@ func TestShownAsWritten_Forms(t *testing.T) {
 }
 
 // A recorded floating IP is a resource distinct from the VM. The human
-// row pairs the saved address and ID and explains receipts without an address.
+// row identifies the receipt; the VM address may belong to a different IP.
 func TestStatus_FloatingIPOfRecordedDeployment(t *testing.T) {
 	w, _ := withJSONWorld(t)
 	_, cleanup := recordDeployment(t, w)
@@ -322,20 +322,25 @@ func TestStatus_FloatingIPOfRecordedDeployment(t *testing.T) {
 	if id == "" || id == rec.VMID || ip == "" {
 		t.Fatal("fixture must have distinct VM and address IDs and a saved address")
 	}
-	for _, lang := range []struct{ code, label, missing string }{
-		{"en", "Floating IP", "address not recorded"},
-		{"ru", "Плавающий IP", "адрес не записан"},
+	const controlID = "value\"-with\ntwo\tlines"
+	const escapedID = `"value\"-with\ntwo\tlines"`
+	for _, lang := range []struct{ code, label, vmLabel, note string }{
+		{"en", "Recorded floating IP", "VM IP", "address not verified"},
+		{"ru", "Плавающий IP по квитанции", "IP ВМ", "адрес не проверен"},
 	} {
 		t.Run(lang.code, func(t *testing.T) {
 			t.Setenv("EVO_LANG", lang.code)
 			i18n.SetLang(lang.code)
-			for _, tc := range []struct{ name, address, id, want string }{
-				{"address and ID", ip, id, lang.label + " " + ip + " (" + id + ")"},
-				{"ID only", "", id, lang.label + " ID " + id + " (" + lang.missing + ")"},
-				{"legacy without ID", ip, "", ""},
+			for _, tc := range []struct{ name, status, address, id, quotedID string }{
+				{"address and ID", "running", ip, id, strconv.Quote(id)},
+				{"replacement address during cleanup", "destroying", "203.0.113.11", id, strconv.Quote(id)},
+				{"ID only", "creating", "", id, strconv.Quote(id)},
+				{"control characters with address", "running", ip, controlID, escapedID},
+				{"control characters without address", "destroying", "", controlID, escapedID},
+				{"legacy without ID", "running", ip, "", ""},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
-					rec.VMIP, rec.FloatingIPID = tc.address, tc.id
+					rec.Status, rec.VMIP, rec.FloatingIPID = tc.status, tc.address, tc.id
 					if err := state.Write(path, sf); err != nil {
 						t.Fatal(err)
 					}
@@ -344,14 +349,22 @@ func TestStatus_FloatingIPOfRecordedDeployment(t *testing.T) {
 						t.Fatal(code, errOut)
 					}
 					var rows []string
+					vmRowSeen := false
 					for _, line := range strings.Split(out, "\n") {
 						line = strings.Join(strings.Fields(line), " ")
+						if line == strings.TrimSpace(lang.vmLabel+" "+tc.address) {
+							vmRowSeen = true
+						}
 						if strings.HasPrefix(line, lang.label+" ") {
 							rows = append(rows, line)
 						}
 					}
-					if strings.Join(rows, "\n") != tc.want {
-						t.Fatalf("floating IP row: %q, want %q", rows, tc.want)
+					want := ""
+					if tc.id != "" {
+						want = lang.label + " ID " + tc.quotedID + " (" + lang.note + ")"
+					}
+					if !vmRowSeen || strings.Join(rows, "\n") != want {
+						t.Fatalf("VM address row present: %v, receipt row: %q, want %q", vmRowSeen, rows, want)
 					}
 					code, out, errOut = runCLI(t, "", "status", "--no-refresh", "--json")
 					var answer map[string]any
