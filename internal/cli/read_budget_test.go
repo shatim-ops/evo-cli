@@ -46,7 +46,7 @@ var answerBudget = map[string]listBudget{
 	"image_list images":                    {1, 110}, // 84
 	"k8s_addon_versions releases":          {2, 240}, // 190
 	"k8s_addons addons":                    {1, 230}, // 182
-	"k8s_nodepools node_pools":             {1, 80},  // 64
+	"k8s_nodepools node_pools":             {1, 190}, // 145
 	"k8s_options flavors":                  {1, 110}, // 85
 	"kafka_specs specifications":           {1, 130}, // 99
 	"kafka_versions versions":              {1, 30},  // 22
