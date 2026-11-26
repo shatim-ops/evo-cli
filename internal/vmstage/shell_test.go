@@ -198,6 +198,60 @@ func TestStage_KilledIsLost(t *testing.T) {
 	})
 }
 
+// Тест сам владеет дочерним процессом и вызывает Wait только при уборке.
+// Поэтому завершившийся владелец блокировки остаётся в /proc и на машине
+// с init, который сразу забирает осиротевшие процессы.
+func TestStage_UnreapedOwnerIsLost(t *testing.T) {
+	forEachLock(t, func(t *testing.T, vm localVM) {
+		const name = "compose-up"
+		d := filepath.Join(vm.home, ".evo", "stage", name)
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		owner := exec.Command("sh", "-ec", `
+cd "$1"
+if command -v flock >/dev/null; then
+	exec 9>>lock
+	flock -n 9
+else
+	mkdir lockdir
+	printf '%s %s %s\n' "$$" "$(cat /proc/sys/kernel/random/boot_id)" "$(awk '{print $22}' "/proc/$$/stat")" >lockdir/owner
+fi
+echo running >state
+exec sleep 120
+`, "sh", d)
+		owner.Env = []string{"HOME=" + vm.home, "PATH=" + vm.path}
+		if err := owner.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			_ = owner.Process.Kill()
+			_ = owner.Wait()
+		})
+		r := Over(vm)
+		waitFor(t, "работающий владелец блокировки", func() bool { return read(t, r, name).State == "running" })
+		if err := owner.Process.Kill(); err != nil {
+			t.Fatal(err)
+		}
+		stat := fmt.Sprintf("/proc/%d/stat", owner.Process.Pid)
+		waitFor(t, "завершение до Wait", func() bool {
+			b, err := os.ReadFile(stat)
+			return err == nil && strings.Contains(string(b), ") Z ")
+		})
+		if st := read(t, r, name); st.State != "lost" {
+			t.Fatalf("завершившийся владелец: %+v, ожидалось lost", st)
+		}
+		started, err := r.Start(t.Context(), name, "повтор", "echo resumed")
+		if err != nil || !started {
+			t.Fatalf("повтор: started=%v, err=%v", started, err)
+		}
+		waitFor(t, "завершение повтора", func() bool { return read(t, r, name).State == "done" })
+		if st := read(t, r, name); st.Input != "повтор" || st.Exit != 0 || !strings.Contains(st.LogTail, "resumed") {
+			t.Fatalf("итог повтора: %+v", st)
+		}
+	})
+}
+
 // The lock directory names its owner by pid, boot and start time: a live
 // process that took the pid of a stage the VM lost (a reboot) is not its
 // owner — the stage reads lost («Процесс · 1.7»).
