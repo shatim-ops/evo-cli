@@ -183,7 +183,7 @@ func (c *Client) List(ctx context.Context) ([]map[string]any, error) {
 		}
 		items, next, err := pager.ObjectPage[map[string]any](data, "data", "nextPageToken")
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf(i18n.T("parse containers: %w", "разбор контейнеров: %w"), err)
 		}
 		if err := pager.CheckProgress(&progress, items, next, pager.ObjectID); err != nil {
 			return "", err
@@ -352,7 +352,7 @@ func (c *Client) logsPage(ctx context.Context, path string, q url.Values) (*logs
 	}
 	items, next, err := pager.ObjectPage[map[string]any](data, "data", "nextPageToken")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(i18n.T("parse logs: %w", "разбор логов: %w"), err)
 	}
 	r := logsPage{Data: items, NextPageToken: next}
 	if b, err := json.Marshal(r.Data); err == nil {

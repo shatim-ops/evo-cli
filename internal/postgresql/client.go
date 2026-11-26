@@ -140,7 +140,7 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 		}
 		page, next, err := pager.ObjectPage[map[string]any](data, field, "next_page_token")
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 		}
 		if field == "clusters" {
 			for _, cluster := range page {

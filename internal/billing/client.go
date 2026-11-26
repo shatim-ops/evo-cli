@@ -212,7 +212,7 @@ func (c *Client) Consumption(ctx context.Context, startISO, endISO string) ([]ma
 		}
 		items, next, err := pager.ObjectPage[map[string]any](data, "consumptions", "next_page_token")
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf(i18n.T("parse consumption: %w", "разбор потребления: %w"), err)
 		}
 		all = append(all, items...)
 		return next, nil

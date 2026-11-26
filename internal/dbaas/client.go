@@ -146,7 +146,11 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 		return nil, err
 	}
 	// Kafka/Redis version and specification endpoints have no page_token parameter.
-	return pager.UnpagedObjects[map[string]any](data, field)
+	items, err := pager.UnpagedObjects[map[string]any](data, field)
+	if err != nil {
+		return nil, fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
+	}
+	return items, nil
 }
 
 func (c *Client) getObject(ctx context.Context, path string, query url.Values) (map[string]any, error) {
@@ -220,7 +224,7 @@ func (c *Client) ListClustersWithin(ctx context.Context, extra url.Values, limit
 		}
 		page, next, err := pager.ObjectPage[map[string]any](data, "clusters", "next_page_token")
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), err)
 		}
 		if err := pager.CheckProgress(&progress, page, next, pager.ObjectID); err != nil {
 			return "", err

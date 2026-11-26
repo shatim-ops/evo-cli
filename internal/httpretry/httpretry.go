@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"mime"
 	"net"
 	"net/http"
@@ -609,11 +610,11 @@ func readComplete(resp *http.Response, limit int64) ([]byte, error) {
 	if resp.StatusCode == http.StatusPartialContent || (resp.StatusCode >= 200 && resp.StatusCode < 300 && resp.Header.Get("Content-Range") != "") {
 		return nil, io.ErrUnexpectedEOF
 	}
-	var reader io.Reader = resp.Body
-	if limit > 0 {
-		reader = io.LimitReader(reader, limit+1)
+	n := int64(math.MaxInt64)
+	if limit > 0 && limit < n {
+		n = limit + 1
 	}
-	data, err := io.ReadAll(reader)
+	data, _, err := peek(resp.Body, n)
 	if err != nil {
 		return nil, err
 	}

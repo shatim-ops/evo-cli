@@ -170,7 +170,7 @@ func (c *Client) List(ctx context.Context, opts ListOptions) (*EventPage, error)
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(i18n.T("parse audit events: %w", "разбор событий аудита: %w"), err)
 	}
 	if page.NextPageToken != "" && page.NextPageToken == opts.PageToken {
 		return nil, pager.RepeatedToken(page.NextPageToken)

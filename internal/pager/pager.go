@@ -18,6 +18,7 @@ package pager
 import (
 	"encoding/json"
 	stderrors "errors"
+	"fmt"
 	"net/http"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -170,7 +171,11 @@ func Named(what string, err error) error {
 	if what == "" || !stderrors.Is(err, errIncomplete) {
 		return err
 	}
-	return clierrors.Prefix(what+": ", err)
+	if _, direct := err.(*clierrors.CLIError); direct {
+		return clierrors.Prefix(what+": ", err)
+	}
+	// Prefix on the inner CLIError would discard the service's parse context.
+	return fmt.Errorf("%s: %w", what, err)
 }
 
 // errIncomplete is the cause of every error of this package: Named knows
@@ -241,8 +246,11 @@ type PageFields struct {
 // type. Pass an empty tokenField for an endpoint without a cursor.
 func ObjectPage[T any](data []byte, field, tokenField string, aliases ...PageFields) ([]T, string, error) {
 	var page map[string]json.RawMessage
-	if err := json.Unmarshal(data, &page); err != nil || page == nil {
-		return nil, "", Incomplete(i18n.T("expected a page object, not an empty body or null page", "ожидался объект страницы, получено пустое тело, неверное значение или страница null"))
+	if err := json.Unmarshal(data, &page); err != nil {
+		return nil, "", Incomplete(i18n.T("expected a JSON page object", "ожидался JSON-объект страницы"))
+	}
+	if page == nil {
+		return nil, "", Incomplete(i18n.T("null page", "страница равна null"))
 	}
 	for _, alias := range aliases {
 		var err error

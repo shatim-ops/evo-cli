@@ -6,6 +6,7 @@ package pager
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -212,5 +213,17 @@ func TestItemProgress_PreservesPartialOverlapAndUnknownKeys(t *testing.T) {
 	err := CheckProgress(&progress, ids("new", "old"), "5", ObjectID)
 	if !errors.Is(err, errIncomplete) {
 		t.Fatalf("fresh token with no new IDs: %v", err)
+	}
+}
+
+func TestNamedKeepsParseContextAndCause(t *testing.T) {
+	cause := Incomplete("null page")
+	err := Named("service: clusters", fmt.Errorf("parse clusters: %w", cause))
+	if !strings.Contains(err.Error(), "service: clusters: parse clusters:") || !errors.Is(err, cause) {
+		t.Fatalf("lost parse context or cause: %v", err)
+	}
+	var coded *clierrors.CLIError
+	if !errors.As(err, &coded) || coded.Code != cause.Code || coded.Hint != cause.Hint {
+		t.Fatalf("lost reason or hint: %v", err)
 	}
 }
