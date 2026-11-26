@@ -257,16 +257,19 @@ func (s *Registry) planDiskCreate(ctx context.Context, args map[string]any) (*Pl
 			res["status"] = "partial"
 			// A command names the id only in the form of an id; another is
 			// said in quotes, with no command («Риск», 291-2, 314).
-			hint := "Attach it with disk_attach once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person."
+			hint := i18n.T("Attach it with disk_attach once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.",
+				"Когда disk_list покажет состояние available, подключите диск через disk_attach. Об удалении через disk_delete спросите человека.")
 			if isUUID(diskID) {
-				hint = fmt.Sprintf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.", diskID, attachTo)
+				hint = i18n.Tf("Attach it with disk_attach disk_id=%s vm=%s once disk_list shows it available; whether to delete it instead (disk_delete) — ask the person.",
+					"Когда disk_list покажет состояние available, подключите диск через disk_attach disk_id=%s vm=%s. Об удалении через disk_delete спросите человека.", diskID, attachTo)
 			}
 			return errAnswer(clierrors.Wrap(clierrors.CodeAPIError,
-				fmt.Sprintf("disk %s %s was created (it is billed), but not attached to VM %s: %v", name, quoteCloud(diskID), attachTo, err),
+				i18n.Tf("disk %s %s was created (it is billed), but not attached to VM %s: %v",
+					"диск %s %s создан, за него начисляется оплата. Диск не подключён к ВМ %s: %v", name, quoteCloud(diskID), attachTo, err),
 				hint, err), res), true
 		}
 		if diskID == "" {
-			return partial(fmt.Errorf("the create response has no disk id"))
+			return partial(errors.New(i18n.T("the create response has no disk id", "в ответе на создание нет ID диска")))
 		}
 		if err := waitDiskAvailable(ctx, eng, diskID, pid); err != nil {
 			var lim *diskAtLimit
@@ -322,7 +325,7 @@ func waitDiskAvailable(ctx context.Context, eng *engine.Engine, diskID, projectI
 			return false, nil
 		})
 	if timeout > 0 {
-		return fmt.Errorf("the disk did not become available within %s (state %s)", timeout, quoteCloud(last))
+		return fmt.Errorf(i18n.T("the disk did not become available within %s (state %s)", "диск не стал доступен за %s (состояние %s)"), timeout, quoteCloud(last))
 	}
 	return err
 }
@@ -359,7 +362,9 @@ func waitDisk(ctx context.Context, eng *engine.Engine, diskID, projectID string,
 // diskFailed ends a wait for a disk the platform put in an error state.
 type diskFailed struct{ state string }
 
-func (e *diskFailed) Error() string { return "the disk is in state " + quoteCloud(e.state) }
+func (e *diskFailed) Error() string {
+	return i18n.Tf("the disk is in state %s", "состояние диска %s", quoteCloud(e.state))
+}
 
 // diskAtLimit ends a wait for a disk at the limit of an MCP call (D69):
 // the disk goes on in the cloud, the answer says its state and the step

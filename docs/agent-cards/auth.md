@@ -7,9 +7,9 @@
 | Tool | Command | Does | Ids from |
 |---|---|---|---|
 | `agent_skill` | `evo agent skill` | reads |  |
-| `whoami` |  | reads |  |
-| `doctor` |  | reads |  |
-| `history` |  | reads |  |
+| `whoami` | `evo whoami` | reads |  |
+| `doctor` | `evo doctor` | reads |  |
+| `history` | `evo history` | reads |  |
 
 ## Notes
 

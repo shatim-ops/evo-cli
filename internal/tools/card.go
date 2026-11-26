@@ -50,12 +50,8 @@ func groupCard(group string, terminal bool, served func(string) bool, bound bool
 		if t.Group != group {
 			continue
 		}
-		command := ""
-		if t.CLI.Group != "" {
-			command = "`evo " + t.CLI.Group + " " + t.CLI.Verb + "`"
-		}
 		if terminal {
-			rows = append(rows, fmt.Sprintf("| `%s` | %s | %s | %s |", t.Name, command, cardDoes(t, bound), cardIDs(t.Name)))
+			rows = append(rows, fmt.Sprintf("| `%s` | `%s` | %s | %s |", t.Name, cliCommand(t.Name), cardDoes(t, bound), cardIDs(t.Name)))
 		} else {
 			name := "`" + t.Name + "`"
 			if served != nil && !served(t.Name) {

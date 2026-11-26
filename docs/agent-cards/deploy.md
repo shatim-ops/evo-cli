@@ -6,10 +6,10 @@
 
 | Tool | Command | Does | Ids from |
 |---|---|---|---|
-| `deploy` |  | creates: id in `vm_id`; deleted with `destroy` | `image` ← `image_list`, `image_id` ← `image_list` |
-| `status` |  | reads |  |
+| `deploy` | `evo deploy` | creates: id in `vm_id`; deleted with `destroy` | `image` ← `image_list`, `image_id` ← `image_list` |
+| `status` | `evo status` | reads |  |
 | `list` | `evo deploy list` | reads |  |
-| `logs` |  | reads |  |
+| `logs` | `evo logs` | reads |  |
 | `destroy` | `evo vm delete` | deletes; a repeat answers `already_deleted` |  |
 | `deploy_plan` | `evo deploy plan` | reads | `image` ← `image_list` |
 | `deploy_apply` | `evo deploy apply` | creates: id in `vm_id`; deleted with `destroy` |  |

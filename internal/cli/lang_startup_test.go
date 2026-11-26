@@ -5,12 +5,14 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
@@ -154,6 +156,52 @@ func TestHelp_EnglishUseHasNoRussian(t *testing.T) {
 	for _, line := range strings.Split(out, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "evo project use") && cyrillic.MatchString(line) {
 			t.Errorf("Russian in the English usage: %q", line)
+		}
+	}
+}
+
+func TestToolsCall_HelpResultAndErrorLanguage(t *testing.T) {
+	setupCLI(t)
+	for _, lang := range []string{i18n.RU, i18n.EN} {
+		old := i18n.Lang()
+		t.Cleanup(func() { i18n.SetLang(old) })
+		i18n.SetLang(lang)
+		for _, path := range [][]string{{"tools", "--help"}, {"tools", "call", "--help"}} {
+			code, out, errOut := runCLI(t, "", path...)
+			if code != 0 || !strings.Contains(out, "EVO_LANG=en") || !strings.Contains(out, "--json") ||
+				!strings.Contains(out, map[string]string{i18n.RU: "диагност", i18n.EN: "diagnostic"}[lang]) {
+				t.Errorf("%s %v: language of tool answers and diagnostics missing: %s%s", lang, path, out, errOut)
+			}
+		}
+		for _, machine := range []bool{false, true} {
+			args := []string{"tools", "call", "history"}
+			if machine {
+				args = append(args, "--json")
+			}
+			code, out, errOut := runCLI(t, "", args...)
+			var history struct{ Note string }
+			if code != 0 || json.Unmarshal([]byte(out), &history) != nil || history.Note == "" ||
+				cyrillic.MatchString(history.Note) != (lang == i18n.RU && !machine) {
+				t.Errorf("%s %v: history note in result: %q, stderr %q", lang, args, history.Note, errOut)
+			}
+			args = []string{"tools", "call", "vm_get", "--arg", "vm_id=" + parityVM, "--arg", "name=web"}
+			if machine {
+				args = append(args, "--json")
+			}
+			code, out, errOut = runCLI(t, "", args...)
+			if code != clerrors.ExitGeneral || errOut == "" || (machine && out != "") {
+				t.Fatalf("%s %v exit %d out=%q stderr=%q", lang, args, code, out, errOut)
+			}
+			if !machine {
+				var answer struct{ Error, Hint, Reason string }
+				if json.Unmarshal([]byte(out), &answer) != nil || answer.Reason != clerrors.CodeUsage || answer.Hint == "" || answer.Error == "" ||
+					cyrillic.MatchString(answer.Error) != (lang == i18n.RU) || cyrillic.MatchString(answer.Hint) != (lang == i18n.RU) {
+					t.Errorf("%s %v: tool error body %q", lang, args, out)
+				}
+			}
+			if cyrillic.MatchString(errOut) != (lang == i18n.RU && !machine) {
+				t.Errorf("%s %v: diagnostic %q", lang, args, errOut)
+			}
 		}
 	}
 }
