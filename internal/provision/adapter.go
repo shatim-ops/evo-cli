@@ -242,7 +242,11 @@ func (a *CloudRuAdapter) ListImagesInProject(ctx context.Context, projectID stri
 		return nil, nil
 	}
 	complete, _ := ctx.Value(imageSelectionKey{}).(bool)
-	items, err := listPages[Image](a, ctx, "/api/v1/images", url.Values{"project_id": {projectID}}, true, complete)
+	shape := listCompatible
+	if complete {
+		shape = listComplete
+	}
+	items, err := listPages[Image](a, ctx, "/api/v1/images", url.Values{"project_id": {projectID}}, true, shape)
 	if errors.Is(err, errMissingListPage) {
 		return nil, clierrors.New(clierrors.CodeAPIError,
 			i18n.T("Could not finish reading the image catalogue.", "Не удалось дочитать каталог образов."),
@@ -503,9 +507,16 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			clierrors.NoRoleHint(), cause)
 
 	case resp.StatusCode == http.StatusNotFound:
-		resp.Body.Close()
-		return nil, clierrors.New(notFoundCode(path), i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
-			i18n.T("Verify the resource ID and API endpoint", "Проверьте ID ресурса и адрес API"))
+		var evidence error
+		if projectID, _ := ctx.Value(cleanupRuleReadKey{}).(string); projectID != "" && strings.HasSuffix(req.URL.Path, "/rules") {
+			if ruleGroupMissingReply(resp) {
+				evidence = errRuleGroupMissing
+			}
+		} else {
+			resp.Body.Close()
+		}
+		return nil, clierrors.Wrap(notFoundCode(path), i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
+			i18n.T("Verify the resource ID and API endpoint", "Проверьте ID ресурса и адрес API"), evidence)
 
 	case resp.StatusCode >= 500 && resp.StatusCode < 600 && method == http.MethodGet && resp.Header.Get(httpretry.Replaced) == "":
 		// A read the transport repeated (computeRetry) and still failed.

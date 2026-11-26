@@ -70,7 +70,7 @@ func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID,
 		if g == nil || !inZone(g, zoneID, zoneName) {
 			continue
 		}
-		rules, err := provision.ReadSecurityGroupRulesForCleanup(ctx, cloud, g.ID)
+		rules, err := provision.ReadSecurityGroupRulesForCleanup(ctx, cloud, g.ID, projectID)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err

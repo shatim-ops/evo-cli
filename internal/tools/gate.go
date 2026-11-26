@@ -8,6 +8,7 @@ import (
 	"context"
 	"maps"
 
+	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -100,11 +101,21 @@ func (r *Registry) engineGated(ctx context.Context, name string, args map[string
 		// confirmed has it from intended already.
 		var end func(string)
 		prev := c.consent
-		c.consent = func() error {
+		c.consent = func(p *confirm.Preview) error {
 			if confirmed, _ := args["confirmed"].(bool); end != nil || confirmed {
 				return nil
 			}
-			e, err := r.beginIntent(ctx, name, args)
+			// Record the target the engine actually showed under its lock.
+			// Use the same identity and settlement rules as an addressed call.
+			journalArgs := args
+			if p != nil && len(p.TargetArgs) > 0 {
+				journalArgs = make(map[string]any, len(args)+len(p.TargetArgs))
+				maps.Copy(journalArgs, args)
+				for key, value := range p.TargetArgs {
+					journalArgs[key] = value
+				}
+			}
+			e, err := r.beginIntent(ctx, name, journalArgs)
 			end = e
 			return err
 		}

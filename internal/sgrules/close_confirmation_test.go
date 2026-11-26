@@ -49,7 +49,7 @@ func TestClose_ConfirmExactRuleAfterAcceptedDelete(t *testing.T) {
 			cloud := provision.NewCloudRuAdapter(srv.Client(), srv.URL)
 			cloud.Backoff = time.Millisecond
 			sf := &state.File{Deployments: []state.DeploymentRecord{{ID: "vm", OpenedRules: []state.SGRule{{ID: "owned", SecurityGroupID: "group", Port: "80/tcp"}}}}}
-			got := Close(t.Context(), cloud, sf, "vm")
+			got := Close(t.Context(), cloud, sf, "vm", "", nil)
 			Retire(sf, "vm")
 			if scenario == "removed" {
 				if len(got.Closed) != 1 || len(got.Failed) != 0 || sf.FindDeployment("vm") != nil || reads == 0 || deletes != 1 {
@@ -62,7 +62,7 @@ func TestClose_ConfirmExactRuleAfterAcceptedDelete(t *testing.T) {
 				t.Fatalf("unconfirmed after 202: closed=%v failed=%v receipt=%+v reads=%d", got.Closed, got.Failed, rec, reads)
 			}
 			refused, visible = false, false
-			got = Close(t.Context(), cloud, sf, "vm")
+			got = Close(t.Context(), cloud, sf, "vm", "", nil)
 			Retire(sf, "vm")
 			if len(got.Closed) != 1 || len(got.Failed) != 0 || sf.FindDeployment("vm") != nil || deletes != 1 {
 				t.Fatalf("retry after disappearance: closed=%v failed=%v DELETE=%d", got.Closed, got.Failed, deletes)

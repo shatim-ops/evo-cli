@@ -9,6 +9,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -260,12 +262,45 @@ func invalidIPProof() error {
 	return clerrors.New(clerrors.CodeUsage, i18n.T("Use released with the address ID, or not_created without an address ID, and reference the independent record for this request.", "Выберите released с ID адреса или not_created без ID адреса и укажите независимую запись о результате этой попытки."), "")
 }
 
+// A labelled case number (for example, "provider case 123" or "OPS-123")
+// and a UUID retain their identity when the letters change case.
+var numberedEvidence = regexp.MustCompile(`^[\p{L}]+([ _-][\p{L}]+)*([_-]| #?)[0-9]+$`)
+var escapedOctet = regexp.MustCompile(`%[[:xdigit:]]{2}`)
+
+func sameEvidenceReference(ref, previous string) bool {
+	if ref == previous {
+		return true
+	}
+	if !strings.EqualFold(ref, previous) {
+		return false
+	}
+	if isUUID(ref) || numberedEvidence.MatchString(ref) {
+		return true
+	}
+	return evidenceLinkKey(ref) == evidenceLinkKey(previous)
+}
+
+func evidenceLinkKey(ref string) string {
+	u, err := url.Parse(ref)
+	if err != nil || u.Scheme == "" && !strings.ContainsAny(ref, "/?#") {
+		return ref
+	}
+	// Parse already folds the scheme. Only the hostname and the hex digits
+	// of escapes fold, not an IPv6 zone, user, path, query or fragment.
+	host, zone, scoped := strings.Cut(u.Host, "%")
+	u.Host = strings.ToLower(host)
+	if scoped {
+		u.Host += "%" + zone
+	}
+	return escapedOctet.ReplaceAllStringFunc(u.String(), strings.ToUpper)
+}
+
 // CheckEvidence rejects a receipt's own identifiers and list output before
 // consent and again against the receipt selected under the state lock. The
 // human verifies the independent record itself.
 func (req FloatingIPReconciliation) CheckEvidence(r *FloatingIPReceipt) error {
 	ref := strings.TrimSpace(req.Evidence)
-	if slices.Contains(r.contradictedEvidence, ref) {
+	if slices.ContainsFunc(r.contradictedEvidence, func(past string) bool { return sameEvidenceReference(ref, past) }) {
 		return clerrors.New(clerrors.CodeUsage,
 			i18n.T("This reference has already been contradicted for this receipt.", "Это свидетельство для данной квитанции уже опровергнуто."),
 			i18n.T("Check the original operation again and supply a new independent reference.", "Снова проверьте результат операции и укажите новое независимое свидетельство."))

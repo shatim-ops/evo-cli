@@ -516,7 +516,7 @@ func (e *Engine) labeledRules(ctx context.Context, sf *state.File, rec *state.De
 func (e *Engine) closeRules(ctx context.Context, sf *state.File, ids []string) sgrules.CloseResult {
 	var res sgrules.CloseResult
 	for _, id := range ids {
-		res.Add(sgrules.Close(ctx, e.Cloud, sf, id))
+		res.Add(sgrules.Close(ctx, e.Cloud, sf, id, e.Config.ProjectID, e.Maker()))
 	}
 	plain := slices.DeleteFunc(slices.Clone(res.Closed), func(label string) bool { return slices.Contains(res.LabeledClosed, label) })
 	if len(plain) > 0 {

@@ -82,3 +82,42 @@ func TestDeployApply_OnlyClosesMatchedFIPReceipt(t *testing.T) {
 		t.Fatalf("recovery did not preserve the other receipt: %v, %v", sf, err)
 	}
 }
+
+func TestRecordDeployment_RetainsRuleOwner(t *testing.T) {
+	const id = "vm"
+	original, next := state.NewMaker("", "abcd-source-wxyz"), state.NewMaker("", "abcd-second-wxyz")
+	for _, tc := range []struct {
+		name, vm, project string
+		maker             *state.Maker
+		conflict          bool
+	}{
+		{"same deployment", "vm", "project", original, false},
+		{"older receipt", "vm", "", nil, false},
+		{"other VM", "another", "project", original, true},
+		{"other project", "vm", "other", original, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeRecords(t, dir, state.DeploymentRecord{ID: id, VMID: tc.vm, ProjectID: tc.project, CreatedBy: tc.maker,
+				OpenedRules: []state.SGRule{{ID: "own-rule", SecurityGroupID: "own-sg", Port: "80/tcp"}}})
+			err := recordDeployment(dir, next, &deployplan.Plan{ProjectID: "project"}, &deployplan.ApplyResult{VMID: id}, "running")
+			if (err != nil) != tc.conflict {
+				t.Fatalf("conflicting target: %v", err)
+			}
+			sf, err := state.Read(state.DefaultPath(dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := sf.FindDeployment(id)
+			if d == nil || d.ProjectID != tc.project || d.VMID != tc.vm || len(d.OpenedRules) != 1 || d.OpenedRules[0].ID != "own-rule" {
+				t.Fatalf("receipt changed: %+v", d)
+			}
+			if same, _ := d.CreatedBy.MatchRuleOwner(next); same {
+				t.Fatal("retrying principal gained ownership of old rules")
+			}
+			if same, _ := d.CreatedBy.MatchRuleOwner(original); same != (tc.maker != nil) {
+				t.Fatal("original evidence changed")
+			}
+		})
+	}
+}

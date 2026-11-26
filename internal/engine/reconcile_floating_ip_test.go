@@ -356,7 +356,7 @@ func TestReconcileFloatingIP_ConflictingBindingAfterPreview(t *testing.T) {
 	if err != nil || len(rs) != 1 {
 		t.Fatalf("receipts: %v %v", rs, err)
 	}
-	original := FloatingIPReconciliation{DeploymentID: oldReceiptVM, ReceiptID: rs[0].ReceiptID, Outcome: "released", AddressID: oldReceiptAddress, Evidence: "provider investigation 101"}
+	original := FloatingIPReconciliation{DeploymentID: oldReceiptVM, ReceiptID: rs[0].ReceiptID, Outcome: "released", AddressID: oldReceiptAddress, Evidence: "https://Records.example/Reports/AbC"}
 	if err := e.ReconcileFloatingIP(t.Context(), original); err != nil {
 		t.Fatal(err)
 	}
@@ -368,6 +368,7 @@ func TestReconcileFloatingIP_ConflictingBindingAfterPreview(t *testing.T) {
 	assertAddressStillPending(t, e, c, dir)
 	for _, tc := range []struct{ name, outcome, id, evidence, reason string }{
 		{"same evidence", "released", foreignReceiptAddress, original.Evidence, clerrors.CodeUsage},
+		{"same host and scheme", "released", foreignReceiptAddress, "HTTPS://RECORDS.EXAMPLE/Reports/AbC", clerrors.CodeUsage},
 		{"stale verified ID", "released", oldReceiptAddress, "new case 102", clerrors.CodeAPIError},
 		{"known address cannot be treated as never created", "not_created", "", "new case 102", clerrors.CodeAPIError},
 		{"observed address still exists", "released", foreignReceiptAddress, "new case 102", clerrors.CodeAPIError},
@@ -386,12 +387,38 @@ func TestReconcileFloatingIP_ConflictingBindingAfterPreview(t *testing.T) {
 	}
 	c.fips[0].deleted = true // provider records the externally verified release
 	verified := original
-	verified.AddressID, verified.Evidence = foreignReceiptAddress, "new operation 103"
+	verified.AddressID, verified.Evidence = foreignReceiptAddress, "https://records.example/Reports/abc"
 	if err := e.ReconcileFloatingIP(t.Context(), verified); err != nil {
 		t.Fatal(err)
 	}
 	d := faultState(t, dir).ActiveDeployment()
-	if len(d.FloatingIPResolutions) != 2 || !d.FloatingIPResolutions[0].Contradicted || d.FloatingIPResolutions[1].Contradicted {
+	if len(d.FloatingIPResolutions) != 2 || !d.FloatingIPResolutions[0].Contradicted || d.FloatingIPResolutions[0].Evidence != original.Evidence ||
+		d.FloatingIPResolutions[1].Contradicted || d.FloatingIPResolutions[1].Evidence != verified.Evidence {
 		t.Fatalf("old and new decisions: %+v", d.FloatingIPResolutions)
+	}
+}
+
+func TestFloatingIPEvidenceReferenceIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name, previous, ref string
+		same                bool
+	}{
+		{"number", "audit-operation-7341", "AUDIT-OPERATION-7341", true},
+		{"UUID", "feed0000-0000-4000-8000-000000000001", "FEED0000-0000-4000-8000-000000000001", true},
+		{"opaque record ID", "AbCZ42", "abcz42", false},
+		{"escaped octet", "https://records.example/A%2fB?record=%4A", "https://records.example/A%2FB?record=%4a", true},
+		{"escaped slash differs from separator", "https://records.example/A%2FB", "https://records.example/A/B", false},
+		{"user", "https://Reviewer@records.example/1", "https://reviewer@records.example/1", false},
+		{"IPv6 zone", "https://[fe80::1%25ethA]/1", "https://[fe80::1%25etha]/1", false},
+		{"relative link", "reports/AbC", "reports/abc", false},
+		{"relative path with numbered fragment", "Evidence#123", "evidence#123", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := FloatingIPReconciliation{Evidence: tc.ref}
+			err := req.CheckEvidence(&FloatingIPReceipt{contradictedEvidence: []string{tc.previous}})
+			if tc.same && clerrors.Reason(err) != clerrors.CodeUsage || !tc.same && err != nil {
+				t.Fatalf("previous %q, supplied %q, same=%t: %v", tc.previous, tc.ref, tc.same, err)
+			}
+		})
 	}
 }

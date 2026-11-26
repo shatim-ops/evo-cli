@@ -49,6 +49,10 @@ type Preview struct {
 	Lines []string `json:"-"`
 	// Details is the machine-readable form of the same details (for --json).
 	Details any `json:"details,omitempty"`
+	// TargetArgs are the non-secret identifiers the engine resolved for
+	// this preview. The consent journal records them even when the caller
+	// selected the target implicitly (for example, the current deployment).
+	TargetArgs map[string]string `json:"-"`
 }
 
 // Options control how Ask obtains consent.

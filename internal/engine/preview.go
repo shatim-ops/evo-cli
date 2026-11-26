@@ -380,8 +380,15 @@ func rulePreview(sf *state.File, ids []string, labeled []sgrules.Planned) ([]des
 // rules an earlier destroy could not delete.
 func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
 	res, lines := rulePreview(sf, pending, nil)
+	var targetArgs map[string]string
+	if len(pending) == 1 {
+		if rec := sf.FindDeployment(pending[0]); rec != nil {
+			targetArgs = destroyTargetArgs(rec.VMID, rec.ProjectID)
+		}
+	}
 	return confirm.Preview{
-		Action: "destroy",
+		TargetArgs: targetArgs,
+		Action:     "destroy",
 		Summary: i18n.T("delete security group rules left by an earlier destroy",
 			"удалить правила группы безопасности, оставшиеся от прошлого destroy"),
 		Lines:   lines,
@@ -441,11 +448,19 @@ func destroyPreview(rec *state.DeploymentRecord, sf *state.File, pending []strin
 		summary += i18n.T(" in ", " в зоне ") + z
 	}
 	return confirm.Preview{
-		Action:  "destroy",
-		Summary: summary,
-		Lines:   lines,
-		Details: destroyDetails(project, from, res, prov, left),
+		TargetArgs: destroyTargetArgs(rec.VMID, project),
+		Action:     "destroy",
+		Summary:    summary,
+		Lines:      lines,
+		Details:    destroyDetails(project, from, res, prov, left),
 	}
+}
+
+func destroyTargetArgs(vmID, project string) map[string]string {
+	if vmID == "" || project == "" {
+		return nil
+	}
+	return map[string]string{"vm_id": vmID, "project_id": project}
 }
 
 // destroyDetails are the details of destroy's preview; what stays open to

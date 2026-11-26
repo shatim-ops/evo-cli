@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // Every origin a preview's project_from can carry is said in words on the
@@ -27,5 +28,22 @@ func TestProjectText_SaysEveryOriginInWords(t *testing.T) {
 	}
 	if got := projectText("", config.OriginDefault); !strings.Contains(got, "not set") && !strings.Contains(got, "не задан") {
 		t.Errorf("no project: %q", got)
+	}
+}
+
+func TestPendingRulesPreview_OnlyOneRecordedProjectAndVMIdentifiesTheIntent(t *testing.T) {
+	sf := &state.File{Deployments: []state.DeploymentRecord{
+		{ID: "one", ProjectID: "project", VMID: "vm"},
+		{ID: "other", ProjectID: "project", VMID: "another-vm"},
+		{ID: "no-project", VMID: "vm"},
+		{ID: "no-vm", ProjectID: "project"},
+	}}
+	if got := pendingRulesPreview(sf, []string{"one"}).TargetArgs; got["vm_id"] != "vm" || got["project_id"] != "project" {
+		t.Fatalf("single known receipt: %+v", got)
+	}
+	for _, ids := range [][]string{{"one", "other"}, {"no-project"}, {"no-vm"}, {"unknown"}} {
+		if got := pendingRulesPreview(sf, ids).TargetArgs; len(got) != 0 {
+			t.Errorf("ambiguous or missing receipt %v claimed target %+v", ids, got)
+		}
 	}
 }

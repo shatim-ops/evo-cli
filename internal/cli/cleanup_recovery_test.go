@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -80,6 +81,37 @@ func TestCleanup_ReceiptToRedeploy(t *testing.T) {
 		if answer.isErr || json.Unmarshal([]byte(answer.text), &report) != nil || report["cleanup_pending"] != true || !strings.Contains(answer.text, "evo cleanup receipts") {
 			t.Fatalf("MCP release_ip=%t must show how to inspect the pending receipt: %s", release, raw)
 		}
+	}
+
+	// The restricted server can no longer match the VM in the project. Neither
+	// transport exposes a local receipt. The owner finishes from this directory.
+	agent.SetProjectBound()
+	handler := mcp.NewHTTPHandler(agent, mcp.HTTPOptions{BearerToken: "parity-token"})
+	defer handler.Close()
+	wires := roServers{roHTTP: httptest.NewServer(handler)}
+	defer wires.roHTTP.Close()
+	params := map[string]any{"name": "destroy", "arguments": map[string]any{"vm_id": d.VMID, "confirmed": true}}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.rt.takeWrites()
+	stdio, _ := wires.stdio(t, agent, "tools/call", params)
+	httpAnswer, _ := wires.http(t, "tools/call", params)
+	for _, answer := range []roAnswer{stdio, httpAnswer} {
+		var report map[string]any
+		if !answer.isErr || json.Unmarshal([]byte(answer.text), &report) != nil || report["reason"] != "NOT_FOUND" ||
+			report["cleanup_pending"] != nil || strings.Contains(answer.text, "evo cleanup receipts") {
+			t.Fatalf("restricted destroy after the VM disappeared: %s", answer.text)
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) || len(w.rt.takeWrites()) != 0 {
+		t.Fatalf("restricted destroy changed cloud or local state: %v", err)
+	}
+	exit, out, errOut := runCLI(t, "", "destroy", "--yes")
+	if exit != 0 || !strings.Contains(out+errOut, "evo cleanup receipts") {
+		t.Fatalf("same-directory terminal retry: exit %d, %s%s", exit, out, errOut)
 	}
 
 	receipts := list()
@@ -218,10 +250,12 @@ func TestCleanup_ContradictedEvidenceBeforeConsent(t *testing.T) {
 		t.Fatalf("initial receipts: %v, %v", receipts, err)
 	}
 	id := receipts[0].ReceiptID
-	const first, last, other = "independent case 301", "independent case 305", "other case 408"
+	const first, last, other = "independent case 301", "https://records.example/Case?rev=A#Final", "other case 408"
 	decision := state.FloatingIPResolution{Kind: "legacy_deployment", ProjectID: d.ProjectID, ReceiptID: id, Contradicted: true, Outcome: "not_created"}
 	for _, ref := range []string{first, last, other} {
 		decision.Evidence = ref
+		// Older state can mark the deployment pending without flagging its latest resolution.
+		decision.Contradicted = ref != last
 		if ref == other {
 			decision.ReceiptID = "different-receipt"
 		}
@@ -242,8 +276,8 @@ func TestCleanup_ContradictedEvidenceBeforeConsent(t *testing.T) {
 	prevTTY, prevIn := confirm.StdinIsTTY, confirm.Stdin
 	t.Cleanup(func() { confirm.StdinIsTTY, confirm.Stdin = prevTTY, prevIn })
 	confirm.StdinIsTTY = func() bool { return true }
-	for _, ref := range []string{first, " " + last + " "} {
-		for _, flags := range [][]string{nil, {"--dry-run"}} {
+	for _, ref := range []string{first, strings.ToUpper(first), " " + last + " ", "HTTPS://RECORDS.EXAMPLE/Case?rev=A#Final"} {
+		for _, flags := range [][]string{nil, {"--dry-run"}, {"--yes"}} {
 			answer := strings.NewReader("n\n")
 			confirm.Stdin = answer
 			exit, out, stderr := runCLI(t, "", append(append(args, ref), flags...)...)
@@ -253,10 +287,12 @@ func TestCleanup_ContradictedEvidenceBeforeConsent(t *testing.T) {
 			}
 		}
 	}
-	// A different receipt's evidence is not automatically disqualified here.
-	exit, out, stderr = runCLI(t, "", append(args, other, "--dry-run")...)
-	if exit != 0 || parseObject(out)["status"] != "dry_run" || strings.Contains(out+stderr, first) || strings.Contains(out+stderr, last) {
-		t.Errorf("fresh evidence preview: exit %d, %s %s", exit, out, stderr)
+	// A different receipt or a different document in the same service can supply fresh evidence.
+	for _, ref := range []string{other, "https://records.example/case?rev=A#Final", "https://records.example/Case?rev=a#Final", "https://records.example/Case?rev=A#final"} {
+		exit, out, stderr = runCLI(t, "", append(args, ref, "--dry-run")...)
+		if exit != 0 || parseObject(out)["status"] != "dry_run" || strings.Contains(out+stderr, first) || strings.Contains(out+stderr, last) {
+			t.Errorf("fresh evidence %q preview: exit %d, %s %s", ref, exit, out, stderr)
+		}
 	}
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(before, after) {

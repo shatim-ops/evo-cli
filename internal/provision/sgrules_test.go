@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -204,9 +205,59 @@ func TestSecurityGroupRuleCleanupRequiresCompleteListing(t *testing.T) {
 				n++
 			})
 			defer server.Close()
-			items, err := ReadSecurityGroupRulesForCleanup(context.Background(), adapter, "sg-1")
+			items, err := ReadSecurityGroupRulesForCleanup(context.Background(), adapter, "sg-1", "")
 			if n != len(tc.pages) || (err == nil) != tc.valid || (err != nil && (items != nil || clierrors.Reason(err) != clierrors.CodeAPIError)) {
 				t.Fatalf("read %d pages, items=%v, err=%v", n, items, err)
+			}
+		})
+	}
+}
+
+// The old emulator used only message. The Compute group-not-found schema
+// supplies code and message. Neither alone proves the project is accessible.
+func TestCleanupRuleRead_ProvesMissingParent(t *testing.T) {
+	const base = "/api/v1/security-groups"
+	const service = `[{"code":"security_group_not_found","message":"Security group with this id is not found"}]`
+	const inventory = `{"items":[{"id":"other","project_id":"project"}],"total":1}`
+	for _, tc := range []struct {
+		name, body, groups    string
+		short, wantRead, gone bool
+	}{
+		{name: "documented service error", body: service, groups: inventory, wantRead: true, gone: true},
+		{name: "contradictory service code", body: `{"code":"access_denied","message":"security group not found"}`},
+		{name: "wrong resource", body: `[{"code":"security_group_rule_not_found","message":"security group rule with this id is not found"}]`},
+		{name: "ambiguous message", body: `{"message":"not found"}`},
+		{name: "truncated valid JSON", body: service, short: true},
+		{name: "oversized valid JSON", body: service + strings.Repeat(" ", maxErrorBody)},
+		{name: "mixed project inventory", body: service, groups: `{"items":[{"id":"other","project_id":"elsewhere"}],"total":1}`, wantRead: true},
+		{name: "inventory without total", body: service, groups: `{"items":[]}`, wantRead: true},
+		{name: "bare inventory", body: service, groups: `[]`, wantRead: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			read := false
+			srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case base + "/sg-1/rules":
+					if tc.short {
+						w.Header().Set("Content-Length", strconv.Itoa(len(tc.body)+20))
+					}
+					w.WriteHeader(http.StatusNotFound)
+					_, _ = w.Write([]byte(tc.body))
+				case base:
+					read = true
+					if r.URL.Query().Get("project_id") != "project" || r.URL.Query().Has("name") || r.URL.Query().Has("availability_zone_id") {
+						t.Errorf("inventory must be complete and scoped: %s", r.URL.RawQuery)
+					}
+					_, _ = w.Write([]byte(tc.groups))
+				default:
+					t.Errorf("unexpected request %s", r.URL.Path)
+				}
+			})
+			defer srv.Close()
+			ctx := Narrowed(t.Context(), base, "name", "other")
+			got, err := ReadSecurityGroupRulesForCleanup(ctx, a, "sg-1", "project")
+			if read != tc.wantRead || (err == nil) != tc.gone || len(got) != 0 {
+				t.Fatalf("inventory read=%v, rules=%v, error=%v", read, got, err)
 			}
 		})
 	}

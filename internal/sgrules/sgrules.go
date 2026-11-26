@@ -455,11 +455,14 @@ func (r OpenResult) Note() string {
 // neededBy returns another live deployment in sf that needs port key in
 // group sgID. A record written before security_group_id existed may be in
 // any group: its tcp exposed_ports count.
-func neededBy(sf *state.File, exceptID, sgID, key string) *state.DeploymentRecord {
+func neededBy(sf *state.File, record *state.DeploymentRecord, sgID, key string) *state.DeploymentRecord {
 	proto, port := splitKey(key)
 	for i := range sf.Deployments {
 		d := &sf.Deployments[i]
-		if d.ID == exceptID || d.Status == "destroyed" || d.Status == "destroying" {
+		if d.ID == record.ID || d.Status == "destroyed" || d.Status == "destroying" {
+			continue
+		}
+		if record.ProjectID != "" && d.ProjectID != "" && d.ProjectID != record.ProjectID {
 			continue
 		}
 		if d.SecurityGroupID == sgID {
@@ -498,7 +501,7 @@ func Plan(sf *state.File, recIDs ...string) []Planned {
 		}
 		for _, r := range rec.OpenedRules {
 			p := Planned{Rule: r, RecordID: id}
-			if other := neededBy(sf, id, r.SecurityGroupID, r.Port); other != nil {
+			if other := neededBy(sf, rec, r.SecurityGroupID, r.Port); other != nil {
 				p.KeptFor = other.ID
 			}
 			out = append(out, p)
@@ -528,8 +531,8 @@ func (r *CloseResult) Add(o CloseResult) {
 
 // readOwnedRule checks the exact group and rule IDs without filtering out
 // transitional states. A rule in "deleting" can still allow traffic.
-func readOwnedRule(ctx context.Context, cloud provision.CloudAPI, r state.SGRule) (*provision.SGRule, error) {
-	rows, err := provision.ReadSecurityGroupRulesForCleanup(ctx, cloud, r.SecurityGroupID)
+func readOwnedRule(ctx context.Context, cloud provision.CloudAPI, r state.SGRule, projectID string) (*provision.SGRule, error) {
+	rows, err := provision.ReadSecurityGroupRulesForCleanup(ctx, cloud, r.SecurityGroupID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -547,9 +550,9 @@ func readOwnedRule(ctx context.Context, cloud provision.CloudAPI, r state.SGRule
 
 // deleteOwnedRule verifies a previous request before retrying it, and any
 // new accepted DELETE by a complete read. A port or a CIDR cannot identify it.
-func deleteOwnedRule(ctx context.Context, cloud provision.CloudAPI, r state.SGRule) error {
+func deleteOwnedRule(ctx context.Context, cloud provision.CloudAPI, r state.SGRule, projectID string) error {
 	if r.DeleteError != "" || r.LabelVMID != "" {
-		current, err := readOwnedRule(ctx, cloud, r)
+		current, err := readOwnedRule(ctx, cloud, r, projectID)
 		if err != nil || current == nil {
 			return err
 		}
@@ -565,7 +568,7 @@ func deleteOwnedRule(ctx context.Context, cloud provision.CloudAPI, r state.SGRu
 	if err != nil && !(stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound)) {
 		return err
 	}
-	current, err := readOwnedRule(ctx, cloud, r)
+	current, err := readOwnedRule(ctx, cloud, r, projectID)
 	if err != nil {
 		return err
 	}
@@ -586,29 +589,49 @@ func RuleRetryHint() string {
 // a rule already gone (404) counts as closed. Call it once the VM is
 // deleted: closing first would cut a running app off if the VM delete
 // then failed.
-func Close(ctx context.Context, cloud provision.CloudAPI, sf *state.File, recID string) CloseResult {
+func Close(ctx context.Context, cloud provision.CloudAPI, sf *state.File, recID, projectID string, maker *state.Maker) CloseResult {
 	var res CloseResult
 	rec := sf.FindDeployment(recID)
 	if rec == nil || len(rec.OpenedRules) == 0 {
 		return res
 	}
+	// A successful exact read still works for old records. A missing parent
+	// needs additional proof that this is the original project and principal.
+	sameOwner, knownOwner := rec.CreatedBy.MatchRuleOwner(maker)
+	wrongScope := knownOwner && !sameOwner || rec.ProjectID != "" && projectID != "" && rec.ProjectID != projectID || rec.CreatedBy.Other(maker)
+	if rec.ProjectID != projectID || !sameOwner {
+		projectID = ""
+	}
 	rules := rec.OpenedRules
 	var left []state.SGRule
 	for _, r := range rules {
 		label := Label(r.Port)
-		if other := neededBy(sf, recID, r.SecurityGroupID, r.Port); other != nil {
+		if r.ID == "" || r.SecurityGroupID == "" {
+			// An incomplete legacy receipt cannot identify a rule to delete.
+			r.DeleteError = i18n.T("no rule or group ID in state", "в записи нет ID правила или группы")
+			left = append(left, r)
+			res.Failed = append(res.Failed, label+": "+r.DeleteError)
+			continue
+		}
+		if other := neededBy(sf, rec, r.SecurityGroupID, r.Port); !wrongScope && other != nil {
 			r.DeleteError = ""
-			addRule(other, r)
+			sameOwner, _ := rec.CreatedBy.MatchRuleOwner(other.CreatedBy)
+			// Keep a shared port open even when the deployments use different
+			// profiles. Only transfer its receipt if that preserves its scope.
+			if rec.ProjectID == other.ProjectID && (sameOwner || rec.CreatedBy == nil && other.CreatedBy == nil) {
+				addRule(other, r)
+			} else {
+				left = append(left, r)
+			}
 			res.Kept = append(res.Kept, fmt.Sprintf("%s (needed by deployment %s)", label, other.ID))
 			continue
 		}
-		if r.ID == "" || r.SecurityGroupID == "" {
-			// Only a hand-edited state has these: DELETE .../rules/ with an
-			// empty ID is not this rule. Nothing to retry.
-			res.Failed = append(res.Failed, label+": no rule or group ID in state — delete it in the Cloud.ru console")
-			continue
+		var err error
+		if wrongScope {
+			err = clerrors.New(clerrors.CodeConfigInvalid, i18n.T("Select the project and profile of the saved security group rule.", "Выберите проект и профиль сохранённого правила группы безопасности."), "")
+		} else {
+			err = deleteOwnedRule(ctx, cloud, r, projectID)
 		}
-		err := deleteOwnedRule(ctx, cloud, r)
 		if r.LabelVMID != "" {
 			label += fmt.Sprintf(" (vm %q)", r.LabelVMID)
 		}

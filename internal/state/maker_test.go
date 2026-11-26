@@ -4,7 +4,12 @@
 
 package state
 
-import "testing"
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"testing"
+)
 
 // Release plan 1.8, L3: «another key» only when it is sure — by the account
 // when both know it (a new key of the same account sees the same), else by
@@ -27,5 +32,48 @@ func TestMaker_Other(t *testing.T) {
 		if got := c.rec.Other(c.cur); got != c.other {
 			t.Errorf("%s: Other %v, want %v", c.name, got, c.other)
 		}
+	}
+}
+
+func TestMaker_RuleOwnerSurvivesOnlyInLocalState(t *testing.T) {
+	const source, other = "abcd-source-wxyz", "abcd-second-wxyz"
+	maker, collision := NewMaker("", source), NewMaker("", other)
+	if maker.KeyID != collision.KeyID {
+		t.Fatal("test requires the same display mask")
+	}
+	sf := &File{Deployments: []DeploymentRecord{{ID: "new", CreatedBy: maker}, {ID: "old", CreatedBy: &Maker{KeyID: maker.KeyID}}}}
+	path := DefaultPath(t.TempDir())
+	if err := Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || !bytes.Contains(data, []byte(maker.ruleKeyDigest)) || bytes.Contains(data, []byte(source)) {
+		t.Fatal("local state must contain only the digest besides the masked key ID", err)
+	}
+	state, err := Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, err := json.Marshal(state)
+	if err != nil || bytes.Contains(public, []byte(maker.ruleKeyDigest)) || bytes.Contains(public, []byte(source)) {
+		t.Fatal("public serialization exposed local evidence", err)
+	}
+	stored := state.FindDeployment("new").CreatedBy
+	if same, known := stored.MatchRuleOwner(NewMaker("", source)); !known || !same {
+		t.Fatal("original key was not recognized")
+	}
+	if same, known := stored.MatchRuleOwner(collision); !known || same {
+		t.Fatal("another key with the same mask was accepted")
+	}
+	if same, known := state.FindDeployment("old").CreatedBy.MatchRuleOwner(maker); known || same {
+		t.Fatal("legacy mask became proof")
+	}
+	state.RemoveDeployment("new")
+	if err := Write(path, state); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile(path)
+	if err != nil || bytes.Contains(data, []byte("rule_owner_keys")) {
+		t.Fatal("retired owner's digest retained", err)
 	}
 }

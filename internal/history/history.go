@@ -74,6 +74,9 @@ func Known(outcome string) bool { return outcomes[outcome] }
 // Outcome is what the end of a call says of it: the part of a line the
 // caller knows and the record of the intent does not.
 type Outcome struct {
+	// CleanupPending means this result cannot settle an earlier interrupted
+	// operation: its resource cleanup still awaits confirmation.
+	CleanupPending bool
 	// CreateReceipt distinguishes an ID returned by create from a match by name.
 	CreateReceipt bool
 	Result        string

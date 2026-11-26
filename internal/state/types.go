@@ -4,7 +4,13 @@
 
 package state
 
-import "time"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/config"
+)
 
 // DeploymentRecord is the persisted form of a deployment.
 type DeploymentRecord struct {
@@ -166,6 +172,37 @@ type LostFloatingIP struct {
 type Maker struct {
 	ServiceAccountID string `json:"service_account_id,omitempty"`
 	KeyID            string `json:"key_id,omitempty"`
+	// Used only by SG cleanup. Write/Read keep it in the local state file,
+	// outside publicly serialized deployment records, history and receipts.
+	ruleKeyDigest string
+}
+
+// NewMaker keeps the public key ID masked. A deployment recorded with a raw
+// access key can later establish the same principal even without an account ID.
+func NewMaker(account, keyID string) *Maker {
+	if keyID == "" {
+		return nil
+	}
+	m := &Maker{ServiceAccountID: account, KeyID: config.MaskKeyID(keyID)}
+	if account == "" {
+		sum := sha256.Sum256([]byte(keyID))
+		m.ruleKeyDigest = hex.EncodeToString(sum[:])
+	}
+	return m
+}
+
+// MatchRuleOwner compares exact principals. Matching display masks alone
+// leave same and known false, as do missing makers in legacy records.
+func (m *Maker) MatchRuleOwner(cur *Maker) (same, known bool) {
+	if m != nil && cur != nil {
+		if m.ServiceAccountID != "" && cur.ServiceAccountID != "" {
+			return m.ServiceAccountID == cur.ServiceAccountID, true
+		}
+		if m.ruleKeyDigest != "" && cur.ruleKeyDigest != "" {
+			return m.ruleKeyDigest == cur.ruleKeyDigest, true
+		}
+	}
+	return false, false
 }
 
 // Other tells that cur is surely not the key that made the record: by the

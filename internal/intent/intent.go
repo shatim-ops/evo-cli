@@ -473,7 +473,7 @@ func scan(dir string) (out []Intent, foreign []string) {
 // line out: what the call that settled it says of the cut one — the
 // caller's to tell (found with the id it made, removed, unknown).
 func Settle(dir string, done Intent, out history.Outcome) (kept []Intent) {
-	if done.Name == "" && done.Target == "" {
+	if out.CleanupPending || (done.Name == "" && done.Target == "") {
 		return nil
 	}
 	for _, in := range Pending(dir) {

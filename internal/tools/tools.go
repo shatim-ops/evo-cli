@@ -3543,7 +3543,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			}
 			receiptPending = legacyPending || len(floatingip.Of(sf, projectID, firstNonEmptyStr(fipRec.VMName, target.Name), target.ID)) > 0
 			for _, id := range ids {
-				rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id))
+				rules.Add(sgrules.Close(ctx, eng.Cloud, sf, id, eng.Config.ProjectID, eng.Maker()))
 			}
 			if fipLeft || extraPending || receiptPending {
 				rec := state.DeploymentRecord{ID: target.ID, VMID: target.ID, VMName: target.Name, ProjectID: projectID, CreatedAt: time.Now()}

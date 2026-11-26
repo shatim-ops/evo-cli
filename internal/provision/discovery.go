@@ -109,7 +109,7 @@ func projectNotVisible(err error, projectID string) error {
 // whole list. paged=false sends neither limit nor offset (disk-types has
 // no such parameters).
 func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged bool) ([]*T, error) {
-	return listPages[T](a, ctx, path, q, paged, false)
+	return listPages[T](a, ctx, path, q, paged, listCompatible)
 }
 
 var errMissingListPage = errors.New("a promised list page was not found")
@@ -120,7 +120,16 @@ func invalidListPage(path string) error {
 
 // A caller that requires completeness needs whole HTTP 200 pages with
 // consistent totals and no overlap. It validates the returned rows itself.
-func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged, complete bool) ([]*T, error) {
+type listShape int
+
+const (
+	listCompatible listShape = iota
+	listComplete
+	listCompleteEnvelope
+)
+
+func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged bool, shape listShape) ([]*T, error) {
+	complete := shape != listCompatible
 	var out []*T
 	seen := map[string]bool{}
 	offset := 0
@@ -207,7 +216,7 @@ func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url
 		}
 		var arr []T
 		if err := json.Unmarshal(body, &arr); err == nil {
-			if complete && (arr == nil || offset != 0) {
+			if shape == listCompleteEnvelope || complete && (arr == nil || offset != 0) {
 				return nil, invalidListPage(path)
 			}
 			for i := range arr {
@@ -341,8 +350,10 @@ type cleanupRuleReadKey struct{}
 // ReadSecurityGroupRulesForCleanup requires a complete listing before using
 // the absence of a rule as proof. Forwarding the context keeps the same
 // contract through CloudAPI decorators.
-func ReadSecurityGroupRulesForCleanup(ctx context.Context, cloud CloudAPI, sgID string) ([]*SGRule, error) {
-	return cloud.ListSecurityGroupRules(context.WithValue(ctx, cleanupRuleReadKey{}, true), sgID)
+// projectID is set only when the caller has established the group's project.
+// Without it a 404 cannot confirm that the group and its rules are gone.
+func ReadSecurityGroupRulesForCleanup(ctx context.Context, cloud CloudAPI, sgID, projectID string) ([]*SGRule, error) {
+	return cloud.ListSecurityGroupRules(context.WithValue(ctx, cleanupRuleReadKey{}, projectID), sgID)
 }
 
 // ListSecurityGroupRules lists a group's rules via
@@ -353,7 +364,7 @@ func ReadSecurityGroupRulesForCleanup(ctx context.Context, cloud CloudAPI, sgID 
 // complete — an error: deploy and destroy decide from it which rule to add
 // or delete (break r4, R4-4, R4-5).
 func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string) ([]*SGRule, error) {
-	strict, _ := ctx.Value(cleanupRuleReadKey{}).(bool)
+	projectID, strict := ctx.Value(cleanupRuleReadKey{}).(string)
 	expectedTotal := -1
 	var out []*SGRule
 	seen := map[string]bool{}
@@ -363,6 +374,17 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 		path := fmt.Sprintf("%s?offset=%d&limit=%d", base, offset, sgRulesPageSize)
 		resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
 		if err != nil {
+			// A missing later page contradicts a previously visible group.
+			// A first-page service 404 can also mean the group is hidden.
+			if offset == 0 && projectID != "" && errors.Is(err, errRuleGroupMissing) {
+				absent, checkErr := a.groupAbsentInProject(ctx, projectID, sgID)
+				if checkErr != nil {
+					return nil, checkErr
+				}
+				if absent {
+					return nil, nil
+				}
+			}
 			return nil, err
 		}
 		body, err := readListPage(resp, base, strict)
@@ -413,6 +435,77 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 		}
 	}
 	return nil, pager.Named(base, pager.TooManyPages(sgRulesMaxPages))
+}
+
+var errRuleGroupMissing = errors.New("compute reported a missing security group")
+
+// Compute uses both JSON objects and arrays for resource errors. Only an
+// explicit not-found message can trigger the independent inventory read.
+func ruleGroupMissingReply(resp *http.Response) bool {
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody+1))
+	if err != nil || len(body) > maxErrorBody || (resp.ContentLength > 0 && int64(len(body)) != resp.ContentLength) {
+		return false
+	}
+	type refusal struct {
+		Code    json.RawMessage `json:"code"`
+		Message string          `json:"message"`
+	}
+	var entries []refusal
+	if json.Unmarshal(body, &entries) != nil {
+		var entry refusal
+		if json.Unmarshal(body, &entry) != nil {
+			return false
+		}
+		entries = []refusal{entry}
+	}
+	if len(entries) != 1 {
+		return false
+	}
+	if entries[0].Code != nil {
+		var code string
+		if json.Unmarshal(entries[0].Code, &code) != nil || code != "security_group_not_found" {
+			return false
+		}
+	}
+	switch strings.ToLower(strings.TrimSpace(entries[0].Message)) {
+	case "security group not found", "security group with this id is not found":
+		return true
+	}
+	return false
+}
+
+// groupAbsentInProject requires an unfiltered, complete list of the recorded
+// project, distinct IDs, and a matching project on every row that supplies it.
+func (a *CloudRuAdapter) groupAbsentInProject(ctx context.Context, projectID, sgID string) (bool, error) {
+	const path = "/api/v1/security-groups"
+	type identity struct {
+		ID        string          `json:"id"`
+		ProjectID json.RawMessage `json:"project_id"`
+	}
+	groups, err := listPages[identity](a, ctx, path, url.Values{"project_id": {projectID}}, true, listCompleteEnvelope)
+	if errors.Is(err, errMissingListPage) {
+		return false, invalidListPage(path)
+	}
+	if err != nil {
+		return false, err
+	}
+	found := false
+	for _, group := range groups {
+		if group == nil || group.ID == "" || strings.TrimSpace(group.ID) != group.ID {
+			return false, invalidListPage(path)
+		}
+		if group.ProjectID != nil {
+			var owner string
+			if json.Unmarshal(group.ProjectID, &owner) != nil || owner != projectID {
+				return false, invalidListPage(path)
+			}
+		}
+		if group.ID == sgID {
+			found = true
+		}
+	}
+	return !found, nil
 }
 
 // DeleteSecurityGroupRule deletes one rule via

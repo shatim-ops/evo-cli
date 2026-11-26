@@ -121,6 +121,7 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 	}
 	switch reason := answerReason(answer); {
 	case name == "destroy" && (status == "partial" || boolArg(res, "cleanup_pending", false)):
+		out.CleanupPending = true
 		out.Result, out.ResourceID, out.Reason = history.Unknown, deleteID, reason
 	case reason != "" && intent.OutcomeUnknown(reason, answerHTTPStatus(answer)):
 		// Cut after it sent — the network, a time limit, Ctrl-C: what it

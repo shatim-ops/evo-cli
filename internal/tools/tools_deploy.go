@@ -287,6 +287,14 @@ func recordDeployment(stateDir string, maker *state.Maker, plan *deployplan.Plan
 		// An adopted VM opens nothing now: the rules an earlier apply
 		// created stay with it, so destroy still deletes them.
 		if old := sf.FindDeployment(res.VMID); old != nil {
+			if len(old.OpenedRules) > 0 {
+				if old.VMID != rec.VMID || old.ProjectID != "" && old.ProjectID != rec.ProjectID {
+					return clierrors.New(clierrors.CodeConfigInvalid, i18n.T("The saved port rules belong to another VM or project.", "Сохранённые правила портов относятся к другой ВМ или проекту."), "")
+				}
+				// An apply retry does not change who opened the saved rules
+				// or establish the missing project of a legacy receipt.
+				rec.CreatedBy, rec.ProjectID = old.CreatedBy, old.ProjectID
+			}
 			rec.CreatedAt = old.CreatedAt
 			// A retry that could not read the VM's interface returns no
 			// floating IP: the one recorded before stays, else destroy

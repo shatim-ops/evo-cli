@@ -99,12 +99,18 @@ func testDestroyPaidAddressOnRetry(t *testing.T, extra bool) {
 		before := reads
 		code, out, errOut := runCLI(t, "", "--json", "destroy", "--yes")
 		var result struct {
-			Status  string `json:"status"`
-			Pending *bool  `json:"cleanup_pending"`
+			Status      string  `json:"status"`
+			Pending     *bool   `json:"cleanup_pending"`
+			Hint        *string `json:"hint"`
+			CleanupHint *string `json:"cleanup_hint"`
 		}
 		if code != 0 || json.Unmarshal([]byte(out), &result) != nil || result.Status != want ||
 			result.Pending == nil || *result.Pending == gone || reads == before {
 			t.Fatalf("%s: exit %d, reads %d, %s%s", want, code, reads-before, out, errOut)
+		}
+		if result.Hint != nil || (!gone && (result.CleanupHint == nil || !strings.Contains(*result.CleanupHint, "evo cleanup receipts"))) ||
+			(gone && result.CleanupHint != nil) {
+			t.Fatalf("%s: expected only the pending address to have a cleanup_hint, got %s", want, out)
 		}
 		sf, err := state.Read(state.DefaultPath(w.dir))
 		if err != nil {
@@ -118,5 +124,40 @@ func testDestroyPaidAddressOnRetry(t *testing.T, extra bool) {
 		if (!gone && (rec == nil || rec.FloatingIPID != parityVM)) || (gone && rec != nil) {
 			t.Fatalf("%s: receipt %+v", want, rec)
 		}
+	}
+}
+
+// A rule retry and a receipt check are independent actions on the same destroy.
+func TestDestroyJSON_RuleAndAddressHints(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	_, done := recordDeployment(t, w)
+	t.Cleanup(done)
+	path := state.DefaultPath(w.dir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := sf.ActiveDeployment()
+	d.OpenedRules = []state.SGRule{{ID: "pending-rule", SecurityGroupID: "own-group", Port: "8081/tcp"}}
+	sf.LostFloatingIPs = []state.LostFloatingIP{{Name: "unconfirmed-address", VMID: d.VMID, ProjectID: d.ProjectID}}
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	previous := w.rt.extra
+	w.rt.extra = func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodDelete && r.URL.Path == "/api/v1/security-groups/own-group/rules/pending-rule" {
+			return contractRT{status: http.StatusForbidden, body: `{"message":"forbidden"}`}.RoundTrip(r)
+		}
+		return previous(r)
+	}
+	exit, out, stderr := runCLI(t, "", "--json", "destroy", "--yes")
+	var result struct {
+		Status      string
+		Hint        string
+		CleanupHint string `json:"cleanup_hint"`
+	}
+	if exit != 0 || json.Unmarshal([]byte(out), &result) != nil || result.Status != "partial" ||
+		!strings.Contains(result.Hint, "evo destroy") || !strings.Contains(result.CleanupHint, "evo cleanup receipts") {
+		t.Fatalf("expected both recovery actions: exit %d, %s%s", exit, out, stderr)
 	}
 }
