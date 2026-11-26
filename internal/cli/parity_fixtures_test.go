@@ -124,7 +124,7 @@ var parityArgs = map[string]map[string]any{
 	"k8s_addons":          {"query": "cert"},
 	"k8s_addon_versions":  {"name": "cert-manager"},
 	"k8s_delete":          {"cluster_id": addonClusterID},
-	"k8s_add_nodepool":    {"cluster_id": addonClusterID, "name": "pool-1", "zone": pvZone},
+	"k8s_add_nodepool":    {"cluster_id": addonClusterID, "name": "pool-2", "zone": pvZone},
 	"k8s_add_addon":       {"cluster_id": addonClusterID, "name": "cert-manager"},
 	// A verb that changes the cluster: a read verb runs without consent.
 	"k8s_kubectl": {"cluster_id": addonClusterID, "args": "delete pod web"},
