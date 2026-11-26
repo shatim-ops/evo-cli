@@ -75,6 +75,9 @@ func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (str
 	}
 	if errors.Is(err, context.Canceled) {
 		// The delete is started: the answer names it (FB160-14).
+		if w.tool == "ca_delete" {
+			nextStep(fields, w.next, w.nextArgs)
+		}
 		return errAnswer(err, fields), true
 	}
 	if err == nil && m != nil {
