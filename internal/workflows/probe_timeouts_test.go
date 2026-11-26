@@ -5,10 +5,14 @@
 package workflows
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A request of cloud-live.sh to an API of Cloud.ru — the token, a probe,
@@ -58,5 +62,61 @@ func cloudRequestsHaveTimeLimits(t *testing.T, name string, min int) {
 	}
 	if checked < min {
 		t.Fatalf("%s: %d requests to the cloud read, want at least %d: the scan sees too few", name, checked, min)
+	}
+}
+
+// The net cleanup fixture uses Linux CI tooling. Dropping its runner guard
+// or running the shell without a deadline changes the environment contract.
+func TestWorkflows_NetCleanupFixture(t *testing.T) {
+	const script = ".github/scripts/cloud_live_net_cleanup_test.sh"
+	found := false
+	for _, step := range readWorkflows(t)["ci.yml"].Jobs["test"].Steps {
+		if !strings.Contains(step.Run, script) {
+			continue
+		}
+		found = true
+		if step.If != "runner.os == 'Linux'" || strings.TrimSpace(step.Run) != "timeout 120 "+script || step.ContinueOnError {
+			t.Errorf("net cleanup fixture must run on Linux with a 120s deadline and propagate failure: if=%q run=%q continue-on-error=%t", step.If, step.Run, step.ContinueOnError)
+		}
+	}
+	if !found {
+		t.Error("net cleanup fixture missing from ci test job")
+	}
+}
+
+// Exercise the local entry point without cloud access or waiting 120s. The
+// tool that enforces the deadline must receive the real fixture and its exit
+// status must reach the caller; an unsupported kernel exits before any probe.
+func TestNetCleanup_LocalPreflight(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("standalone check uses a POSIX shell")
+	}
+	for _, tc := range []struct {
+		kernel string
+		exit   int
+	}{
+		{"Linux", 124}, {"Darwin", 77},
+	} {
+		t.Run(tc.kernel, func(t *testing.T) {
+			bin := t.TempDir()
+			for name, body := range map[string]string{
+				"uname":   "echo " + tc.kernel,
+				"bash":    "exit 1",
+				"jq":      "exit 1",
+				"timeout": "[ \"$*\" = '-k 5 120 .github/scripts/cloud_live_net_cleanup_test.sh' ] && [ -x \"$4\" ] || exit 2\nexit 124",
+			} {
+				if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body+"\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "sh", "../../scripts/test-net-cleanup.sh")
+			out, err := cmd.CombinedOutput()
+			if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != tc.exit {
+				t.Errorf("exit %v, want %d: %s", err, tc.exit, out)
+			}
+		})
 	}
 }
