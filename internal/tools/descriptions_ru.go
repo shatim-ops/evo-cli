@@ -1532,7 +1532,7 @@ var toolsRU = map[string]toolRU{
 		Short: "Удалить приложение Container Apps (асинхронно)",
 		Long:  "Удалить приложение Container Apps по имени. Операция асинхронная.",
 		Args: map[string]string{
-			"wait": deleteWaitRU,
+			"wait": "Без параметра — ждать до ~45 с. true — ждать исчезновения приложения, false — вернуть deleting сразу после принятия запроса. При deleting вызывайте ca_get с next_args до NOT_FOUND.",
 			"name": "Имя приложения",
 		},
 	},

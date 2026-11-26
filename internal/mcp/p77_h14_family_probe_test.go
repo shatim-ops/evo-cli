@@ -82,6 +82,7 @@ func TestP77H14Families(t *testing.T) {
 					}
 					args := map[string]any{"operation_id": id, "wait_seconds": 45}
 					first := h14AuditCall(t, server, handler, tool, args)
+					// wall-clock: виртуальные часы synctest проверяют предел H14 — 45 с на ожидание операции облака.
 					if first["done"] != false || first["still_running"] != true || first["id"] != id || time.Since(start) > 45*time.Second {
 						t.Fatalf("first %s, got %v", time.Since(start), first)
 					}

@@ -94,7 +94,7 @@ var HTTPRestrictions = []Restriction{
 	// H14: D69.
 	{ID: "H14", StdioToo: true,
 		Where: "internal/mcp/server.go", Symbol: "SetCallBudget(tools.MCPCallBudget)",
-		Summary: "a call waits for the cloud at most ~45 s (MCPCallBudget): what is not done by then answers with its state so far and the next step (status creating, next, next_tool, next_args), wait_seconds takes at most 45; wait=true lifts it; the CLI waits as before"},
+		Summary: "a call waits for the cloud at most ~45 s (MCPCallBudget): what is not done by then answers with its state so far and the next step (status creating, next, next_tool, next_args), wait_seconds takes at most 45; wait=true lifts it; ca_delete waits for the app to disappear, and ca_get follows a deleting result; the CLI waits as before"},
 	{ID: "H15", StdioToo: true,
 		Where: "internal/tools/tools.go", Symbol: "recordedTarget(eng.StateDir)",
 		Summary: "destroy confirmed without vm_id or name, with a deployment recorded in the server's folder, deletes nothing: USAGE with the recorded vm_id; the preview names the target as before; evo destroy in a terminal is as before"},

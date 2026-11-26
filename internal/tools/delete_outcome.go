@@ -61,7 +61,13 @@ func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (str
 	if waitOff(args) {
 		return deleting(fields, w)
 	}
-	m, err := waitForOpJSON(ctx, deleteOutcomeWait, w.read)
+	// У Container Apps нет операции для следующего *_operation. По явному
+	// wait=true читаем ту же карточку до исчезновения, не повторяя DELETE.
+	wait := deleteOutcomeWait
+	if w.tool == "ca_delete" && boolArg(args, "wait", false) {
+		wait = opWaitUntilGone
+	}
+	m, err := waitForOpJSON(ctx, wait, w.read)
 	if errors.Is(err, context.Canceled) {
 		// The delete is started: the answer names it (FB160-14).
 		return errAnswer(err, fields), true
