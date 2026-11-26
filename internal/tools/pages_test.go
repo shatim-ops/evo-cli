@@ -217,3 +217,76 @@ func TestOrgProjects_EmptyPagesWithATokenEndTheList(t *testing.T) {
 		t.Fatalf("org_projects with empty pages after the items: %d requests, %s", calls, text)
 	}
 }
+
+func TestPgListAndCreate_RequireACompleteClusterList(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tool string
+		args map[string]any
+	}{
+		{"list", "pg_list", nil},
+		{"preview", "pg_create", map[string]any{"name": "new", "specification_id": "std"}},
+		{"confirmed", "pg_create", map[string]any{"name": "new", "specification_id": "std", "confirmed": true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var pages int
+			f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Host != "postgresql.api.cloud.ru" || r.Method != http.MethodGet || r.URL.Path != "/v1/clusters" {
+					return pgFake(w, r)
+				}
+				pages++
+				if r.URL.Query().Get("page_token") == "" {
+					_, _ = io.WriteString(w, `{"clusters":[{"id":"one","name":"other","project_id":"proj","version":"17","specification_id":"std","storage":{"pg_data_gb":20}}],"next_page_token":"second"}`)
+				} else {
+					_, _ = io.WriteString(w, `{"clusters":{}}`)
+				}
+				return true
+			}}
+			r := apiFakeRegistry(t, f)
+			m, text, failed := callNamed(t, r, tc.tool, tc.args)
+			_, posted := f.posted("postgresql.api.cloud.ru/v1/clusters")
+			if posted || !failed || m["reason"] != "API_ERROR" || pages != 2 || m["clusters"] != nil || m["will_create"] != nil {
+				t.Fatalf("bad second page: %d pages, POST = %v, answer %s", pages, posted, text)
+			}
+		})
+	}
+}
+
+func TestPgListAndCreate_ValidateClusterPage(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want int // -1 means the page is malformed.
+	}{
+		{"omitted array", `{}`, 0},
+		{"empty array", `{"clusters":[]}`, 0},
+		{"cluster", `{"clusters":[{"name":"other","id":"pg","project_id":"proj","version":"17","specification_id":"std","storage":{"pg_data_gb":20}}]}`, 1},
+		{"object", `{"clusters":{}}`, -1},
+		{"string", `{"clusters":"invalid"}`, -1},
+		{"null", `{"clusters":null}`, -1},
+		{"null element", `{"clusters":[null]}`, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Host == "postgresql.api.cloud.ru" && r.Method == http.MethodGet && r.URL.Path == "/v1/clusters" {
+					_, _ = io.WriteString(w, tc.body)
+					return true
+				}
+				return pgFake(w, r)
+			}}
+			r := apiFakeRegistry(t, f)
+			list, listText, failed := callNamed(t, r, "pg_list", nil)
+			preview, previewText, _ := callNamed(t, r, "pg_create", map[string]any{"name": "new", "specification_id": "std"})
+			if tc.want < 0 {
+				if !failed || list["reason"] != "API_ERROR" || preview["reason"] != "API_ERROR" || preview["will_create"] != nil {
+					t.Fatalf("malformed list: %s; create: %s", listText, previewText)
+				}
+			} else if clusters, ok := list["clusters"].([]any); !ok || failed || len(clusters) != tc.want || preview["status"] != "confirmation_required" {
+				t.Fatalf("valid list: %s; create: %s", listText, previewText)
+			}
+			if _, posted := f.posted("postgresql.api.cloud.ru/v1/clusters"); posted {
+				t.Fatal("preview sent a create")
+			}
+		})
+	}
+}
