@@ -241,7 +241,28 @@ func (a *CloudRuAdapter) ListImagesInProject(ctx context.Context, projectID stri
 	if projectID == "" {
 		return nil, nil
 	}
-	return listAll[Image](a, ctx, "/api/v1/images", url.Values{"project_id": {projectID}}, true)
+	complete, _ := ctx.Value(imageSelectionKey{}).(bool)
+	return listPages[Image](a, ctx, "/api/v1/images", url.Values{"project_id": {projectID}}, true, complete)
+}
+
+type imageSelectionKey struct{}
+
+// ProjectImagesForSelection reads a complete list before a deploy plan
+// declares an explicitly requested image absent. The context carries this
+// requirement through CloudAPI wrappers to the project catalogue reader.
+func ProjectImagesForSelection(ctx context.Context, cloud CloudAPI, projectID string) ([]*Image, error) {
+	items, err := cloud.ListImagesInProject(context.WithValue(ctx, imageSelectionKey{}, true), projectID)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(items))
+	for _, img := range items {
+		if img == nil || img.ID == "" || img.Name == "" || seen[img.ID] {
+			return nil, invalidListPage("/api/v1/images")
+		}
+		seen[img.ID] = true
+	}
+	return items, nil
 }
 
 // GetImage retrieves image details including metadata fields via GET /api/v1/images/{id}.

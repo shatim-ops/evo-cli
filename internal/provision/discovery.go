@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 
@@ -107,9 +108,20 @@ func projectNotVisible(err error, projectID string) error {
 // whole list. paged=false sends neither limit nor offset (disk-types has
 // no such parameters).
 func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged bool) ([]*T, error) {
+	return listPages[T](a, ctx, path, q, paged, false)
+}
+
+func invalidListPage(path string) error {
+	return clierrors.New(clierrors.CodeAPIError, i18n.Tf("incomplete or invalid list response for %s", "неполный или некорректный список %s", path), hintUnexpectedFormatVerbose())
+}
+
+// A caller that requires completeness needs whole HTTP 200 pages with
+// consistent totals and no overlap. It validates the returned rows itself.
+func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged, complete bool) ([]*T, error) {
 	var out []*T
 	seen := map[string]bool{}
 	offset := 0
+	expectedTotal := -1
 	for range listMaxPages {
 		pq := url.Values{}
 		for k, v := range q {
@@ -129,21 +141,31 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 		if err != nil {
 			return nil, err
 		}
-		body, err := io.ReadAll(io.LimitReader(resp.Body, maxListBody))
-		resp.Body.Close()
+		body, err := readListPage(resp, path, complete)
 		if err != nil {
-			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.Tf("failed to read response for %s", "не удалось прочитать ответ %s", path), hintUnexpectedFormat(), err)
+			return nil, err
 		}
-
 		var page paginatedResponse[T]
 		if err := json.Unmarshal(body, &page); err == nil && page.Items != nil {
 			// The ids of the page, to drop items already read: a server
 			// that ignores offset answers the first page again and again
 			// (QA-9: 300 items, 100 distinct).
-			var ids paginatedResponse[struct {
-				ID string `json:"id"`
-			}]
-			_ = json.Unmarshal(body, &ids)
+			var ids struct {
+				Items []struct {
+					ID string `json:"id"`
+				} `json:"items"`
+				Total  *int `json:"total"`
+				Offset *int `json:"offset"`
+			}
+			idsErr := json.Unmarshal(body, &ids)
+			if complete {
+				if idsErr != nil || ids.Total == nil || page.Total < offset+len(page.Items) ||
+					(expectedTotal >= 0 && expectedTotal != page.Total) ||
+					(ids.Offset != nil && *ids.Offset != offset) {
+					return nil, invalidListPage(path)
+				}
+				expectedTotal = page.Total
+			}
 			fresh := 0
 			for i := range page.Items {
 				id := ""
@@ -158,6 +180,9 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 				}
 				fresh++
 				out = append(out, &page.Items[i])
+			}
+			if complete && fresh != len(page.Items) {
+				return nil, invalidListPage(path)
 			}
 			offset += len(page.Items)
 			if !paged {
@@ -174,6 +199,9 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 		}
 		var arr []T
 		if err := json.Unmarshal(body, &arr); err == nil {
+			if complete && (arr == nil || offset != 0) {
+				return nil, invalidListPage(path)
+			}
 			for i := range arr {
 				out = append(out, &arr[i])
 			}
@@ -184,6 +212,31 @@ func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.V
 	// Past listMaxPages the list is cut short: an error, as pager.All
 	// gives, not a partial list without a word (QA-9).
 	return nil, pager.Named(path, pager.TooManyPages(listMaxPages))
+}
+
+func readListPage(resp *http.Response, path string, complete bool) ([]byte, error) {
+	defer resp.Body.Close()
+	limit := int64(maxListBody)
+	if complete {
+		limit++ // distinguish an exactly full response from one cut off at the limit
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	if err != nil {
+		if complete && errors.Is(err, context.Canceled) {
+			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("request cancelled", "запрос отменён"), hintCancelled(), err)
+		}
+		var timeout net.Error
+		if complete && errors.As(err, &timeout) && timeout.Timeout() {
+			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("timed out reading the catalogue", "истекло время ожидания ответа каталога"),
+				i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите"), err)
+		}
+		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.Tf("failed to read response for %s", "не удалось прочитать ответ %s", path), hintUnexpectedFormat(), err)
+	}
+
+	if complete && (resp.StatusCode != http.StatusOK || len(body) > maxListBody) {
+		return nil, invalidListPage(path)
+	}
+	return body, nil
 }
 
 // offsetPageEnd decides after a page of an offset walk whether the list is

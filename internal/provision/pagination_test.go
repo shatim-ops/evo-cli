@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
@@ -276,5 +278,83 @@ func TestGetVM_FullLiveShape(t *testing.T) {
 		if vm != nil && vm.CreatedAt.IsZero() {
 			t.Errorf("created_time %q not parsed", created)
 		}
+	}
+}
+
+// A plan can rely on absence only after reading the entire project catalogue.
+// Pass the real adapter through an interface wrapper, as CloudAPI callers may do.
+func TestProjectImagesForSelection_CompletePages(t *testing.T) {
+	const rowA = `{"id":"one","name":"first"}`
+	const rowB = `{"id":"two","name":"second"}`
+	const first = `{"items":[` + rowA + `],"total":2,"offset":0}`
+	for _, tc := range []struct {
+		name  string
+		pages []string
+		want  int // -1: no list, API_ERROR
+	}{
+		{"empty", []string{`{"items":[],"total":0}`}, 0},
+		{"legacy_array", []string{`[` + rowA + `,` + rowB + `]`}, 2},
+		{"two_pages", []string{first, `{"items":[` + rowB + `],"total":2,"offset":1}`}, 2},
+		{"missing_total", []string{`{"items":[]}`}, -1},
+		{"null_total", []string{`{"items":[],"total":null}`}, -1},
+		{"null_row", []string{`{"items":[null],"total":1}`}, -1},
+		{"null_bare_list", []string{`null`}, -1},
+		{"bare_duplicate", []string{`[` + rowA + `,` + rowA + `]`}, -1},
+		{"total_changed", []string{first, `{"items":[],"total":0}`}, -1},
+		{"wrong_offset", []string{first, `{"items":[` + rowB + `],"total":2,"offset":0}`}, -1},
+		{"page_replaced_by_array", []string{first, `[` + rowB + `]`}, -1},
+		{"pages_overlap", []string{`{"items":[` + rowA + `],"total":3}`, `{"items":[` + rowA + `,` + rowB + `],"total":3}`}, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			srv, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if calls >= len(tc.pages) {
+					t.Error("request after last page")
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				_, _ = io.WriteString(w, tc.pages[calls])
+				calls++
+			})
+			cloud := struct{ CloudAPI }{adapter}
+			items, err := ProjectImagesForSelection(context.Background(), cloud, "project-for-test")
+			srv.Close()
+			if calls != len(tc.pages) {
+				t.Errorf("read %d pages of %d", calls, len(tc.pages))
+			}
+			if tc.want == -1 {
+				if items != nil || clierrors.Reason(err) != clierrors.CodeAPIError || clierrors.ExitCode(err) != clierrors.ExitAPI {
+					t.Fatalf("invalid list returned %d images, %v", len(items), err)
+				}
+			} else if err != nil || len(items) != tc.want {
+				t.Fatalf("read %d images, %v; want %d", len(items), err, tc.want)
+			}
+		})
+	}
+}
+
+func TestProjectImagesForSelection_StrictBodyBoundary(t *testing.T) {
+	const empty = `{"items":[],"total":0}`
+	exact := empty + strings.Repeat(" ", maxListBody-len(empty))
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   io.Reader
+		reason string
+	}{
+		{"whole_page_at_limit", 200, strings.NewReader(exact), ""},
+		{"valid_prefix_truncated", 200, strings.NewReader(exact + "!"), clierrors.CodeAPIError},
+		{"partial_content", 206, strings.NewReader(empty), clierrors.CodeAPIError},
+		{"read_timeout", 200, iotest.ErrReader(context.DeadlineExceeded), clierrors.CodeAPIUnreachable},
+		{"read_cancelled", 200, iotest.ErrReader(context.Canceled), clierrors.ReasonInterrupted},
+		{"read_error_after_valid_json", 200, io.MultiReader(strings.NewReader(empty), iotest.ErrReader(io.ErrUnexpectedEOF)), clierrors.CodeAPIError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &http.Response{StatusCode: tc.status, Body: io.NopCloser(tc.body)}
+			data, err := readListPage(r, "/api/v1/images", true)
+			if clierrors.Reason(err) != tc.reason || (tc.reason != "" && data != nil) {
+				t.Fatalf("read %d bytes, %v; want reason %q", len(data), err, tc.reason)
+			}
+		})
 	}
 }
