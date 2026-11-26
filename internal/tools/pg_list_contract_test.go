@@ -21,6 +21,8 @@ func TestPGListAndCreateRequireCompleteClusterPages(t *testing.T) {
 		{"empty", []string{`{"clusters":[]}`}, 0},
 		{"nonempty", []string{`{"clusters":[` + cluster + `]}`}, 1},
 		{"null root", []string{`null`}, -1},
+		{"null collection", []string{`{"clusters":null}`}, -1},
+		{"string as collection", []string{`{"clusters":"not a collection"}`}, -1},
 		{"object as collection", []string{`{"clusters":{}}`}, -1},
 		{"null row", []string{`{"clusters":[null]}`}, -1},
 		{"invalid continuation", []string{`{"clusters":[` + cluster + `],"next_page_token":12}`}, -1},
