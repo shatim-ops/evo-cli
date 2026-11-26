@@ -83,7 +83,16 @@ func TestCreate_NeverTakesWhatWasThereBefore(t *testing.T) {
 	}
 	var parts []string
 	for f := range fields {
-		parts = append(parts, fmt.Sprintf("%q:[%s]", f, obj))
+		// The DNS record's key includes its type; a route is keyed by
+		// destination, which need not appear in the other service rows.
+		row := obj
+		switch f {
+		case "records":
+			row = fmt.Sprintf(`{"id":%q,"name":"web","type":"a"}`, takenBefore)
+		case "routes":
+			row = fmt.Sprintf(`{"id":%q,"subnet":"192.0.2.0/24"}`, takenBefore)
+		}
+		parts = append(parts, fmt.Sprintf("%q:[%s]", f, row))
 	}
 	sort.Strings(parts)
 	// The answer to the write is cut short: the create cannot read what it
