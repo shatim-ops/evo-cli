@@ -60,7 +60,7 @@ func FindLabeled(ctx context.Context, cloud provision.CloudAPI, projectID, vmID,
 			}
 		}
 	}
-	groups, err := cloud.ListSecurityGroups(ctx, projectID)
+	groups, err := provision.ReadSecurityGroupsForCleanup(ctx, cloud, projectID)
 	if err != nil {
 		return nil, err
 	}

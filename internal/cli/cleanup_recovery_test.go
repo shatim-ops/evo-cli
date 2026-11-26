@@ -15,7 +15,10 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
@@ -80,6 +83,10 @@ func TestCleanup_ReceiptToRedeploy(t *testing.T) {
 		var report map[string]any
 		if answer.isErr || json.Unmarshal([]byte(answer.text), &report) != nil || report["cleanup_pending"] != true || !strings.Contains(answer.text, "evo cleanup receipts") {
 			t.Fatalf("MCP release_ip=%t must show how to inspect the pending receipt: %s", release, raw)
+		}
+		hint, _ := report["hint"].(string)
+		if !strings.Contains(hint, "Ask the person") || !strings.Contains(hint, "MCP host") || !strings.Contains(hint, "evo cleanup receipts") {
+			t.Fatalf("agent must hand local receipt verification to the owner: %s", raw)
 		}
 	}
 
@@ -297,5 +304,221 @@ func TestCleanup_ContradictedEvidenceBeforeConsent(t *testing.T) {
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatal("evidence validation or preview changed the local audit", err)
+	}
+}
+
+type receiptAnswer struct {
+	*strings.Reader
+	atQuestion func()
+}
+
+func (a receiptAnswer) Read(p []byte) (int, error) {
+	a.atQuestion()
+	return a.Reader.Read(p)
+}
+
+// Both snapshots use the real Compute adapter and the same receipt and ID.
+// The project's list is empty even when GET by ID still finds the address.
+func TestCleanup_ReleasedAddressBeforeConsentAndAtWrite(t *testing.T) {
+	const address = "00000000-0000-4000-8000-000000000077"
+	for _, tc := range []struct {
+		name, mode string
+		statuses   []int
+		wantCode   int
+	}{
+		{"visible dry run", "dry", []int{200}, 5},
+		{"gone dry run", "dry", []int{404}, 0},
+		{"visible interactive", "decline", []int{200}, 5},
+		{"gone declined", "decline", []int{404}, 3},
+		{"gone accepted", "accept", []int{404, 404}, 0},
+		{"reappeared at acceptance", "accept", []int{404, 200}, 5},
+		{"inaccessible", "yes", []int{403}, 2},
+		{"incomplete card", "dry", []int{200}, 5},
+		{"visible confirmed", "yes", []int{200}, 5},
+		{"reappeared", "yes", []int{404, 200}, 5},
+		{"gone confirmed", "yes", []int{404, 404}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := withParityWorld(t)
+			path := state.DefaultPath(w.dir)
+			d := state.DeploymentRecord{ID: "dep", ProjectID: pvProject, VMID: parityVM, Status: "destroying"}
+			m := state.LostFloatingIP{Name: "first", Attempt: "first", ProjectID: pvProject, VMID: parityVM}
+			n := m
+			n.Name, n.Attempt = "other", "other"
+			if err := state.Write(path, &state.File{Deployments: []state.DeploymentRecord{d}, LostFloatingIPs: []state.LostFloatingIP{m, n}}); err != nil {
+				t.Fatal(err)
+			}
+			var steps []string
+			gets := 0
+			w.rt.extra = func(r *http.Request) (*http.Response, error) {
+				if r.Method != http.MethodGet {
+					t.Fatalf("unexpected %s", r.Method)
+				}
+				switch r.URL.Path {
+				case "/api/v1/floating-ips":
+					if r.URL.Query().Get("project_id") != pvProject {
+						t.Fatal("unscoped read")
+					}
+					steps = append(steps, "project")
+					return consentJSON(200, `{"items":[],"total":0}`), nil
+				case "/api/v1/floating-ips/" + address:
+					if gets >= len(tc.statuses) {
+						t.Fatal("unexpected repeated GET")
+					}
+					status := tc.statuses[gets]
+					gets++
+					steps = append(steps, "address")
+					body := `{"message":"forbidden"}`
+					if status == 200 {
+						body = `{"id":"` + address + `"}`
+						if tc.name == "incomplete card" {
+							body = `{}`
+						}
+					} else if status == 404 {
+						body = `[{"message":"floating IP not found"}]`
+					}
+					return consentJSON(status, body), nil
+				default:
+					t.Fatalf("unexpected read %s", r.URL.Path)
+					return nil, nil
+				}
+			}
+			prev := toolEngine
+			toolEngine = func(o map[string]any) (*engine.Engine, error) {
+				e, err := prev(o)
+				if err == nil {
+					e.Cloud = provision.NewCloudRuAdapter(&http.Client{Transport: w.rt}, "")
+				}
+				return e, err
+			}
+			t.Cleanup(func() { toolEngine = prev })
+			code, out, stderr := runCLI(t, "", "--json", "cleanup", "receipts", "--deployment-id", d.ID)
+			if code != 0 {
+				t.Fatal(stderr)
+			}
+			var listing struct{ Receipts []engine.FloatingIPReceipt }
+			if err := json.Unmarshal([]byte(out), &listing); err != nil || len(listing.Receipts) != 2 {
+				t.Fatalf("invalid receipts %s", out)
+			}
+			args := []string{"--json", "cleanup", "resolve", listing.Receipts[0].ReceiptID, "--deployment-id", d.ID, "--outcome", "released", "--evidence", "audit-case-741", "--address-id", address}
+			oldIn, oldTTY := confirm.Stdin, confirm.StdinIsTTY
+			t.Cleanup(func() { confirm.Stdin, confirm.StdinIsTTY = oldIn, oldTTY })
+			input := "n\n"
+			if tc.mode == "accept" {
+				input = "y\n"
+			}
+			answer := strings.NewReader(input)
+			confirm.Stdin = receiptAnswer{answer, func() {
+				if strings.Join(steps, " ") != "project address" {
+					t.Errorf("the operator was asked after %v; want a scoped address check first", steps)
+				}
+			}}
+			interactive := tc.mode == "decline" || tc.mode == "accept"
+			confirm.StdinIsTTY = func() bool { return interactive }
+			switch tc.mode {
+			case "dry":
+				args = append(args, "--dry-run")
+			case "yes":
+				args = append(args, "--yes")
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, out, stderr = runCLI(t, "", args...)
+			if code != tc.wantCode || gets != len(tc.statuses) {
+				t.Fatalf("got exit %d, steps %v: %s %s", code, steps, out, stderr)
+			}
+			if strings.Join(steps, " ") != strings.TrimSpace(strings.Repeat("project address ", gets)) {
+				t.Fatalf("out of scope or out of order: %v", steps)
+			}
+			prompt := interactive && tc.statuses[0] == 404
+			if strings.Contains(stderr, confirm.Prompt()) != prompt || (answer.Len() == 0) != prompt {
+				t.Fatalf("wrong consent for %v: %s", steps, stderr)
+			}
+			if tc.name == "incomplete card" && !strings.Contains(stderr, "release is unconfirmed") {
+				t.Fatalf("incomplete response reported a definite outcome: %s", stderr)
+			}
+			if tc.statuses[0] != 404 && (strings.Contains(out+stderr, `"preview"`) || strings.Contains(out+stderr, `"confirmed"`)) {
+				t.Fatalf("invalid preview: %s %s", out, stderr)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (tc.mode == "yes" || tc.mode == "accept") && code == 0 {
+				sf, err := state.Read(path)
+				if err != nil || len(sf.LostFloatingIPs) != 1 || sf.LostFloatingIPs[0].Name != n.Name || len(sf.Deployments[0].FloatingIPResolutions) != 1 || sf.Deployments[0].FloatingIPResolutions[0].ReceiptID != listing.Receipts[0].ReceiptID {
+					t.Fatalf("incorrect applied receipt: %+v (%v)", sf, err)
+				}
+			} else if !bytes.Equal(before, after) {
+				t.Fatal("pending receipt changed")
+			}
+			if writes := w.rt.takeWrites(); len(writes) != 0 {
+				t.Fatalf("cloud writes: %v", writes)
+			}
+		})
+	}
+}
+
+func TestCleanup_SelectDeploymentFromLocalError(t *testing.T) {
+	w := withParityWorld(t)
+	path := state.DefaultPath(w.dir)
+	t.Setenv("CLOUDRU_KEY_ID", "00000000000000000000000000000001")
+	t.Setenv("CLOUDRU_SECRET", "fixture")
+	var sf state.File
+	for _, id := range []string{"one", "two", "foreign-project", "foreign-key", "duplicate", "duplicate"} {
+		project := pvProject
+		if id == "foreign-project" {
+			project = "other-project"
+		}
+		d := state.DeploymentRecord{ID: id, VMID: "vm-" + id, ProjectID: project, Status: "destroying"}
+		if id == "foreign-key" {
+			d.CreatedBy = state.NewMaker("", "ffffffffffffffffffffffffffffffff")
+		}
+		sf.Deployments = append(sf.Deployments, d)
+		sf.LostFloatingIPs = append(sf.LostFloatingIPs, state.LostFloatingIP{Name: "pending-" + id, ProjectID: project, VMID: "vm-" + id})
+	}
+	if err := state.Write(path, &sf); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.rt.extra = func(r *http.Request) (*http.Response, error) {
+		t.Fatalf("local selection reached cloud: %s", r.URL.Path)
+		return nil, nil
+	}
+	for _, lang := range []string{"ru", "en"} {
+		t.Run(lang, func(t *testing.T) {
+			oldLang := i18n.Lang()
+			t.Setenv("EVO_LANG", lang)
+			i18n.SetLang(lang)
+			t.Cleanup(func() { i18n.SetLang(oldLang) })
+			for _, flags := range [][]string{nil, {"--json"}} {
+				code, out, stderr := runCLI(t, "", append([]string{"cleanup", "receipts"}, flags...)...)
+				if code != 1 || out != "" || !strings.Contains(stderr, "cleanup receipts --deployment-id") || !strings.Contains(stderr, "vm-one") || !strings.Contains(stderr, "vm-two") || strings.Contains(stderr, "foreign") || strings.Contains(stderr, "duplicate") {
+					t.Fatalf("selection hint: %d %s %s", code, out, stderr)
+				}
+				localized := "Выберите"
+				if lang == "en" || len(flags) != 0 {
+					localized = "Select"
+				}
+				if !strings.Contains(stderr, localized) {
+					t.Errorf("%s hint: %s", lang, stderr)
+				}
+				for _, id := range []string{"one", "two"} {
+					code, out, stderr = runCLI(t, "", append([]string{"cleanup", "receipts", "--deployment-id", id}, flags...)...)
+					if code != 0 || !strings.Contains(out, "pending-"+id) || strings.Contains(out, "foreign") {
+						t.Fatalf("selected %s: %d %s %s", id, code, out, stderr)
+					}
+				}
+			}
+		})
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("selection changed local state", err)
 	}
 }

@@ -103,7 +103,7 @@ func recordedReceiptProject(sf *state.File, d *state.DeploymentRecord) (string, 
 	if d.ProjectID != "" {
 		return d.ProjectID, true
 	}
-	project := ""
+	project := d.CleanupProjectID
 	for _, r := range d.FloatingIPResolutions {
 		if r.ProjectID == "" {
 			continue
@@ -172,12 +172,44 @@ func FloatingIPReceiptHint() string {
 		"Выполните здесь 'evo cleanup receipts'. Попросите пользователя сверить исходную операцию и закрыть эту квитанцию через 'evo cleanup resolve'. Спросите человека, завершить ли уборку через 'evo destroy'.")
 }
 
+func (e *Engine) chooseCleanupDeployment(sf *state.File) error {
+	// A duplicate ID cannot select a single record, even when only one of
+	// those records belongs to the current project.
+	counts := make(map[string]int)
+	for _, d := range sf.Deployments {
+		if d.Status == "destroying" {
+			counts[d.ID]++
+		}
+	}
+	var choices []string
+	for i := range sf.Deployments {
+		d := &sf.Deployments[i]
+		if d.Status != "destroying" || d.ID == "" || counts[d.ID] != 1 {
+			continue
+		}
+		if e.checkCleanupOwner(sf, d) == nil {
+			choices = append(choices, i18n.Tf("%q (VM %q)", "%q (ВМ %q)", d.ID, d.VMID))
+		}
+	}
+	if len(choices) == 0 {
+		return clerrors.New(clerrors.CodeUsage, i18n.T("No pending deployment can be selected by ID with this profile.", "В этом профиле нельзя выбрать незавершённое развёртывание по ID."),
+			i18n.T("Select the project and profile that own the receipt, then run 'evo cleanup receipts'.", "Выберите проект и профиль нужной квитанции и выполните 'evo cleanup receipts'."))
+	}
+	return clerrors.New(clerrors.CodeUsage,
+		i18n.T("Select a local deployment to list its receipts.", "Выберите локальное развёртывание для просмотра его квитанций."),
+		i18n.Tf("Use 'evo cleanup receipts --deployment-id <ID>' for the matching deployment. Available deployment IDs and VMs: %s.",
+			"Выполните 'evo cleanup receipts --deployment-id <ID>' для нужного развёртывания. Доступные ID развёртываний и ВМ: %s.", strings.Join(choices, ", ")))
+}
+
 func (e *Engine) cleanupDeployment(sf *state.File, id string) (*state.DeploymentRecord, error) {
 	var rec *state.DeploymentRecord
 	for i := range sf.Deployments {
 		d := &sf.Deployments[i]
 		if id != "" && d.ID != id || d.Status != "destroying" {
 			continue
+		}
+		if id == "" && (rec != nil || d.ID == "") {
+			return nil, e.chooseCleanupDeployment(sf)
 		}
 		if rec != nil || d.ID == "" {
 			return nil, ambiguousIPReceipt()
@@ -187,14 +219,21 @@ func (e *Engine) cleanupDeployment(sf *state.File, id string) (*state.Deployment
 	if rec == nil {
 		return nil, noIPReceipt()
 	}
-	if err := e.CheckFloatingIPReceiptProject(sf, rec); err != nil {
+	if err := e.checkCleanupOwner(sf, rec); err != nil {
 		return nil, err
+	}
+	return rec, nil
+}
+
+func (e *Engine) checkCleanupOwner(sf *state.File, rec *state.DeploymentRecord) error {
+	if err := e.CheckFloatingIPReceiptProject(sf, rec); err != nil {
+		return err
 	}
 	project, _ := recordedReceiptProject(sf, rec)
 	if e.Config.ProjectID == "" || project != "" && project != e.Config.ProjectID || rec.CreatedBy.Other(e.Maker()) {
-		return nil, clerrors.New(clerrors.CodeConfigInvalid, i18n.T("Select the project and profile that own this receipt.", "Выберите проект и профиль этой квитанции."), "")
+		return clerrors.New(clerrors.CodeConfigInvalid, i18n.T("Select the project and profile that own this receipt.", "Выберите проект и профиль этой квитанции."), "")
 	}
-	return rec, nil
+	return nil
 }
 
 // HasLegacyFloatingIPResolution reports whether a previous decision about this
@@ -344,6 +383,22 @@ func (e *Engine) checkIPProof(ctx context.Context, d *state.DeploymentRecord, m 
 	if err != nil {
 		return err
 	}
+	if req.Outcome == "released" {
+		card, err := e.Cloud.GetFloatingIP(ctx, req.AddressID)
+		if err == nil {
+			if card == nil || card.ID != req.AddressID {
+				return clerrors.New(clerrors.CodeAPIError,
+					i18n.T("The service did not identify the requested address. Its release is unconfirmed.", "Сервис не вернул карточку с указанным ID адреса. Освобождение не подтверждено."),
+					i18n.T("The receipt is still pending. Check the original operation.", "Квитанция остаётся незакрытой. Сверьте исходную операцию."))
+			}
+			return clerrors.New(clerrors.CodeAPIError,
+				i18n.T("The service still returns the address by its ID. Its release cannot be recorded.", "Сервис всё ещё возвращает адрес по его ID. Записать освобождение адреса нельзя."),
+				i18n.T("The receipt is still pending. Check the original operation.", "Квитанция остаётся незакрытой. Сверьте исходную операцию."))
+		}
+		if !floatingip.ServiceNotFound(err) {
+			return err
+		}
+	}
 	for _, f := range ips {
 		if f == nil {
 			return contradictoryIPProof()
@@ -378,15 +433,6 @@ func (e *Engine) checkIPProof(ctx context.Context, d *state.DeploymentRecord, m 
 			return contradictoryIPProof()
 		}
 	}
-	if req.Outcome == "released" {
-		_, err := e.Cloud.GetFloatingIP(ctx, req.AddressID)
-		if err == nil {
-			return contradictoryIPProof()
-		}
-		if !floatingip.ServiceNotFound(err) {
-			return err
-		}
-	}
 	return ctx.Err()
 }
 
@@ -401,6 +447,84 @@ func (req FloatingIPReconciliation) Validate() error {
 		return invalidIPProof()
 	}
 	return nil
+}
+
+type ipReceiptSelection struct {
+	deployment *state.DeploymentRecord
+	receipt    *FloatingIPReceipt
+	mark       *state.LostFloatingIP
+}
+
+func (e *Engine) selectIPReceipt(sf *state.File, req FloatingIPReconciliation) (*ipReceiptSelection, error) {
+	d, err := e.cleanupDeployment(sf, req.DeploymentID)
+	if err != nil {
+		return nil, err
+	}
+	var selected *FloatingIPReceipt
+	receipts, err := e.receipts(sf, d)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range receipts {
+		if r.ReceiptID != req.ReceiptID {
+			continue
+		}
+		if selected != nil {
+			return nil, ambiguousIPReceipt()
+		}
+		selected = &r
+	}
+	if selected == nil {
+		return nil, noIPReceipt()
+	}
+	if err := req.CheckEvidence(selected); err != nil {
+		return nil, err
+	}
+	if (selected.NeedsEvidenceProject || req.EvidenceProjectID != "") && req.EvidenceProjectID != selected.ProjectID {
+		return nil, clerrors.New(clerrors.CodeConfigInvalid, i18n.T("Confirm the exact project from the independent record and select that project.", "Подтвердите точный проект из независимой записи и выберите этот проект."), "")
+	}
+	var mark *state.LostFloatingIP
+	if selected.index >= 0 {
+		mark = &sf.LostFloatingIPs[selected.index]
+		// A pre-VM mark can match multiple historical deployments by name.
+		// Neither a caller's choice of deployment nor a 404 resolves that tie.
+		for i := range sf.Deployments {
+			other := &sf.Deployments[i]
+			if other == d || e.projectOf(other) != selected.ProjectID {
+				continue
+			}
+			if (mark.VMID != "" && other.VMID == mark.VMID) || (mark.VMID == "" && other.VMName == mark.VMName) {
+				return nil, ambiguousIPReceipt()
+			}
+		}
+	}
+	return &ipReceiptSelection{deployment: d, receipt: selected, mark: mark}, nil
+}
+
+// PreviewFloatingIPReconciliation checks local evidence first. A released
+// address must also have a confirmed service-level absence before consent.
+func (e *Engine) PreviewFloatingIPReconciliation(ctx context.Context, req FloatingIPReconciliation) (*FloatingIPReceipt, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	sf, err := state.Read(state.DefaultPath(e.StateDir))
+	if err != nil {
+		return nil, err
+	}
+	sel, err := e.selectIPReceipt(sf, req)
+	if err != nil {
+		return nil, err
+	}
+	if sel.receipt.AddressID != "" && sel.receipt.AddressID != req.AddressID {
+		return nil, clerrors.New(clerrors.CodeUsage, i18n.T("The supplied outcome or address ID conflicts with the receipt.",
+			"Указанный исход или ID адреса расходится с квитанцией."), i18n.T("Check the receipt and the independent evidence.", "Сверьте квитанцию и независимое свидетельство."))
+	}
+	if req.Outcome == "released" {
+		if err := e.checkIPProof(ctx, sel.deployment, sel.mark, req); err != nil {
+			return nil, err
+		}
+	}
+	return sel.receipt, nil
 }
 
 // ReconcileFloatingIP runs after the CLI consent gate. It rechecks and updates
@@ -421,50 +545,13 @@ func (e *Engine) ReconcileFloatingIP(ctx context.Context, req FloatingIPReconcil
 	if err != nil {
 		return err
 	}
-	d, err := e.cleanupDeployment(sf, req.DeploymentID)
+	sel, err := e.selectIPReceipt(sf, req)
 	if err != nil {
 		return err
 	}
-	var selected *FloatingIPReceipt
-	receipts, err := e.receipts(sf, d)
-	if err != nil {
-		return err
-	}
-	for _, r := range receipts {
-		if r.ReceiptID != req.ReceiptID {
-			continue
-		}
-		if selected != nil {
-			return ambiguousIPReceipt()
-		}
-		selected = &r
-	}
-	if selected == nil {
-		return noIPReceipt()
-	}
-	if err := req.CheckEvidence(selected); err != nil {
-		return err
-	}
+	d, selected, mark := sel.deployment, sel.receipt, sel.mark
 	if selected.ConflictsWithResolution && selected.AddressID != "" && (req.Outcome != "released" || req.AddressID != selected.AddressID) {
 		return contradictoryIPProof()
-	}
-	if (selected.NeedsEvidenceProject || req.EvidenceProjectID != "") && req.EvidenceProjectID != selected.ProjectID {
-		return clerrors.New(clerrors.CodeConfigInvalid, i18n.T("Confirm the exact project from the independent record and select that project.", "Подтвердите точный проект из независимой записи и выберите этот проект."), "")
-	}
-	var mark *state.LostFloatingIP
-	if selected.index >= 0 {
-		mark = &sf.LostFloatingIPs[selected.index]
-		// A pre-VM mark can match multiple historical deployments by name.
-		// Neither a caller's choice of deployment nor a 404 resolves that tie.
-		for i := range sf.Deployments {
-			other := &sf.Deployments[i]
-			if other == d || e.projectOf(other) != selected.ProjectID {
-				continue
-			}
-			if (mark.VMID != "" && other.VMID == mark.VMID) || (mark.VMID == "" && other.VMName == mark.VMName) {
-				return ambiguousIPReceipt()
-			}
-		}
 	}
 	if err := e.checkIPProof(ctx, d, mark, req); err != nil {
 		return err

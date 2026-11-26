@@ -27,9 +27,10 @@ import (
 // sgCloud is a project with one VM and one group with rules.
 type sgCloud struct {
 	provision.CloudAPI
-	vm      *provision.VM
-	rules   []*provision.SGRule
-	deleted []string
+	vm        *provision.VM
+	rules     []*provision.SGRule
+	deleted   []string
+	vmDeletes int
 }
 
 // ListInterfaces: the world has no list of interfaces — the use of a group
@@ -42,7 +43,7 @@ func (*sgCloud) SetToken(string) {}
 func (c *sgCloud) ListVMsInProject(context.Context, string) ([]*provision.VM, error) {
 	return []*provision.VM{c.vm}, nil
 }
-func (*sgCloud) DeleteVMInProject(context.Context, string, string) error { return nil }
+func (c *sgCloud) DeleteVMInProject(context.Context, string, string) error { c.vmDeletes++; return nil }
 
 // GetVM: the deleted VM is gone at once (destroy waits for that before it
 // closes the ports).
@@ -201,9 +202,8 @@ func TestDeployApply_StateNotWritable_NamesVMAndKeepsPlan(t *testing.T) {
 	}
 }
 
-// The VM is deleted but the state cannot be updated: the answer says the
-// record and the port rules were left behind instead of staying silent.
-func TestDestroyTargeted_StateNotWritable_Warns(t *testing.T) {
+// A corrupt state cannot establish who owns the cleanup. Refuse before any DELETE.
+func TestDestroyTargeted_UnreadableStateRefusesBeforeDelete(t *testing.T) {
 	cloud := &sgCloud{vm: &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Name: "wiki-1", Status: "running"}}
 	r, dir := sgRegistry(t, cloud)
 	if err := os.MkdirAll(filepath.Dir(state.DefaultPath(dir)), 0o700); err != nil {
@@ -212,9 +212,11 @@ func TestDestroyTargeted_StateNotWritable_Warns(t *testing.T) {
 	if err := os.WriteFile(state.DefaultPath(dir), []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	text := callSGTool(t, r, "destroy", map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true, "release_ip": false})
-	if !strings.Contains(text, "local state was not updated") {
-		t.Fatalf("answer does not warn about the state: %s", text)
+	for _, confirmed := range []bool{false, true} {
+		text, failed := r.handlers["destroy"](t.Context(), map[string]any{"vm_id": cloud.vm.ID, "confirmed": confirmed, "release_ip": false})
+		if !failed || !strings.Contains(text, clerrors.CodeStateCorrupted) || cloud.vmDeletes != 0 {
+			t.Fatalf("confirmed=%v: state could not be checked, VM deletes=%d, answer=%s", confirmed, cloud.vmDeletes, text)
+		}
 	}
 }
 

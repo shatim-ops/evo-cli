@@ -124,6 +124,10 @@ func (m *mockCloudAPI) GetVM(ctx context.Context, id string) (*provision.VM, err
 	}, nil
 }
 
+func (m *mockCloudAPI) DeleteVMInProject(ctx context.Context, id, projectID string) error {
+	return m.DeleteVM(ctx, id)
+}
+
 func (m *mockCloudAPI) DeleteVM(ctx context.Context, id string) error {
 	if m.deleteVMFn != nil {
 		return m.deleteVMFn(ctx, id)

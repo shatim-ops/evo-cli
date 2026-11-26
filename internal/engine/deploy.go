@@ -2231,7 +2231,7 @@ func (e *Engine) handleInterrupt(sig string, vmID string, nonInteractive bool) (
 		// does instead of leaving it behind (QA H2).
 		deleteCtx, cancel := context.WithTimeout(context.Background(), e.timings().DeletableWaitTimeout+time.Minute)
 		defer cancel()
-		if err := e.deleteVMWhenDeletable(deleteCtx, vmID); err != nil {
+		if err := e.deleteVMWhenDeletable(deleteCtx, vmID, ""); err != nil {
 			e.Printer.Warning(i18n.Tf("Failed to delete VM: %v", "Не удалось удалить ВМ: %v", err))
 		} else {
 			e.Printer.StepDone(i18n.T("VM deleted", "ВМ удалена"))

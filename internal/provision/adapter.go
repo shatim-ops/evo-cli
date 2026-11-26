@@ -189,37 +189,7 @@ func (a *CloudRuAdapter) ListFlavors(ctx context.Context) ([]*Flavor, error) {
 
 // ListAvailabilityZones lists available zones via GET /api/v1/availability-zones.
 func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*AvailabilityZone, error) {
-	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/availability-zones", nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to read availability zones response", "не удалось прочитать список зон доступности"), hintUnexpectedFormat(), err)
-	}
-
-	// Try paginated response first, then plain array.
-	var page paginatedResponse[AvailabilityZone]
-	if err := json.Unmarshal(body, &page); err == nil && len(page.Items) > 0 {
-		result := make([]*AvailabilityZone, len(page.Items))
-		for i := range page.Items {
-			result[i] = &page.Items[i]
-		}
-		return result, nil
-	}
-
-	var zones []AvailabilityZone
-	if err := json.Unmarshal(body, &zones); err == nil {
-		result := make([]*AvailabilityZone, len(zones))
-		for i := range zones {
-			result[i] = &zones[i]
-		}
-		return result, nil
-	}
-
-	return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("failed to decode availability zones response", "не удалось разобрать список зон доступности"), hintUnexpectedFormatVerbose())
+	return listAll[AvailabilityZone](a, ctx, "/api/v1/availability-zones", nil, false)
 }
 
 // ListImages lists boot images via GET /api/v1/images, every page. A bare

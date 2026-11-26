@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
@@ -26,14 +27,14 @@ func destroyEngineWithVM(t *testing.T) (*Engine, *bytes.Buffer) {
 	dir := t.TempDir()
 	sf := &state.File{Version: 1}
 	sf.UpsertDeployment(state.DeploymentRecord{
-		ID: "vm-1", VMID: "vm-1", Status: "running",
+		ID: "vm-1", VMID: "vm-1", ProjectID: "project", Status: "running",
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	})
 	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	return &Engine{Printer: output.NewWithWriter(&buf, output.ModePlain, false), StateDir: dir}, &buf
+	return &Engine{Config: config.Config{ProjectID: "project"}, Printer: output.NewWithWriter(&buf, output.ModePlain, false), StateDir: dir}, &buf
 }
 
 func withPromptStdin(t *testing.T, r io.Reader, tty bool) {

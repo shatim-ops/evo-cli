@@ -92,7 +92,8 @@ func TestProvenance_DestroyPreviews(t *testing.T) {
 		}
 	})
 	t.Run("targeted, the state cannot be read: unknown with the class, the preview stays", func(t *testing.T) {
-		r, dir := provenanceRegistry(t, &provenanceCloud{sgCloud{vm: vm}})
+		cloud := &provenanceCloud{sgCloud{vm: vm}}
+		r, dir := provenanceRegistry(t, cloud)
 		if err := os.MkdirAll(filepath.Dir(state.DefaultPath(dir)), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -102,6 +103,20 @@ func TestProvenance_DestroyPreviews(t *testing.T) {
 		text, _ := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": vm.ID})
 		if p := provenanceOf(t, "destroy vm_id", text); p.CreatedByEvo != engine.ProvenanceUnknown || !strings.Contains(p.Note, clerrors.CodeStateCorrupted) {
 			t.Errorf("an unread state: %+v", p)
+		}
+
+		text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": vm.ID, "confirmed": true})
+		if !isErr || !strings.Contains(text, clerrors.CodeStateCorrupted) {
+			t.Fatalf("confirmed call with unreadable state: %s", text)
+		}
+		r.SetProjectBound()
+		text, isErr = r.handlers["destroy"](context.Background(), map[string]any{"vm_id": vm.ID})
+		if !isErr || !strings.Contains(text, clerrors.CodeNotFound) || strings.Contains(text, clerrors.CodeStateCorrupted) {
+			t.Fatalf("bound call revealed the unreadable state: %s", text)
+		}
+		body, err := os.ReadFile(state.DefaultPath(dir))
+		if err != nil || string(body) != "{not json" || cloud.vmDeletes != 0 || len(cloud.deleted) != 0 {
+			t.Fatalf("state changed or cloud write: %q %v, vm deletes=%d, rules=%v", body, err, cloud.vmDeletes, cloud.deleted)
 		}
 	})
 }

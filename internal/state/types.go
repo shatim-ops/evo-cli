@@ -82,6 +82,13 @@ type DeploymentRecord struct {
 	// OpenedRules are the rules this deployment created (never ones that
 	// were there before it); destroy deletes them.
 	OpenedRules []SGRule `json:"opened_rules,omitempty"`
+	// PendingRuleScan keeps the VM identity after deletion until the labelled
+	// rule search has completed, even when it has not yielded a single ID.
+	PendingRuleScan *RuleScanReceipt `json:"pending_rule_scan,omitempty"`
+	// CleanupProjectID is set on an older deployment when its VM or its
+	// remaining security groups are positively identified in the project.
+	// Keeping ProjectID unchanged preserves the original address receipt ID.
+	CleanupProjectID string `json:"cleanup_project_id,omitempty"`
 	// PortsAlreadyOpen are ports ("80/tcp") a rule this deployment did not
 	// create already opened when deploy came to them: deploy created and
 	// recorded none, and destroy says it leaves them.
@@ -93,6 +100,19 @@ type DeploymentRecord struct {
 	SSHWait   *SSHWait  `json:"ssh_wait,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// RuleScanReceipt identifies the project and principal of an unfinished search.
+type RuleScanReceipt struct {
+	ProjectID string `json:"project_id"`
+	StartedBy *Maker `json:"started_by,omitempty"`
+}
+
+// NoteRuleScan keeps the original scope until a full scan of that target succeeds.
+func (d *DeploymentRecord) NoteRuleScan(project string, maker *Maker) {
+	if d.PendingRuleScan == nil {
+		d.PendingRuleScan = &RuleScanReceipt{ProjectID: project, StartedBy: maker}
+	}
 }
 
 // FloatingIPResolution records a local reconciliation, not a cloud deletion.

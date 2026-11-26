@@ -262,3 +262,35 @@ func TestCleanupRuleRead_ProvesMissingParent(t *testing.T) {
 		})
 	}
 }
+
+func TestSecurityGroupDiscoveryRequiresCompleteProjectInventory(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		valid  bool
+	}{
+		{"empty", 200, `{"items":[],"total":0}`, true},
+		{"known group", 200, `{"items":[{"id":"g","project_id":"p"}],"total":1}`, true},
+		{"partial", 206, `{"items":[],"total":0}`, false},
+		{"incomplete", 200, `{"items":[],"total":1}`, false},
+		{"null", 200, `null`, false},
+		{"foreign scope", 200, `{"items":[{"id":"g","project_id":"other"}],"total":1}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" || r.URL.Path != "/api/v1/security-groups" || r.URL.Query().Get("project_id") != "p" || r.URL.Query().Has("name") {
+					t.Fatalf("unexpected request %s %s", r.Method, r.URL)
+				}
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			})
+			defer server.Close()
+			ctx := Narrowed(t.Context(), "/api/v1/security-groups", "name", "other")
+			groups, err := ReadSecurityGroupsForCleanup(ctx, adapter, "p")
+			if (err == nil) != tc.valid || err != nil && groups != nil {
+				t.Fatalf("groups=%v err=%v", groups, err)
+			}
+		})
+	}
+}

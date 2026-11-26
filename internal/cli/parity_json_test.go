@@ -47,9 +47,6 @@ type jsonCompat struct {
 	// an error the command gives as the tool does; why is "" when the
 	// command gives that. nil: every error is the tool's.
 	onError func(code int, cmdOut, cmdErr, text string) (why string, applies bool)
-	// queryFree says why the command and the tool may write the same
-	// requests with other query strings; "": they write the same bytes.
-	queryFree string
 }
 
 // jsonAliasCompat are the commands whose --json is not the answer of their
@@ -154,8 +151,7 @@ var jsonAliasCompat = map[string]jsonCompat{
 				return fmt.Sprintf("status %v is not the VM the tool deleted", cmd["status"])
 			}
 			return ""
-		},
-		queryFree: "движок удаляет ВМ записи без project_id (DELETE /vms/{id}), удаление по vm_id — с ним: те же ресурсы, тот же порядок"},
+		}},
 	"evo doctor": {
 		reason: "проверки машины, где запущена команда, — версия evo, файлы настроек и их права, kubectl и helm в PATH — часть ответа только в CLI " +
 			"(tools.Caller.Doctor): по MCP это были бы пути и программы сервера (REQ-11). Не прошли только проверки связи — код 1 и reason ERROR, " +
@@ -431,14 +427,7 @@ func TestParity_JSONEqualsTool(t *testing.T) {
 			bad = append(bad, "the command fails where the tool does not: "+what)
 			continue
 		}
-		cliWrites, toolWrites := r.cliWrites, r.toolWrites
-		if ca, ok := jsonAliasCompat[c.path]; ok && ca.queryFree != "" && len(cliWrites) > 0 {
-			if reflect.DeepEqual(cliWrites, toolWrites) {
-				bad = append(bad, name+": queryFree, but the command and the tool write the same bytes: drop it")
-			}
-			cliWrites, toolWrites = withoutQuery(cliWrites), withoutQuery(toolWrites)
-		}
-		if !reflect.DeepEqual(cliWrites, toolWrites) {
+		if !reflect.DeepEqual(r.cliWrites, r.toolWrites) {
 			// The same input makes the same change: what the command and
 			// the tool send the cloud, beyond the reads of a preview.
 			bad = append(bad, fmt.Sprintf("%s: the command and the tool write other things to the cloud:\n  command: %s\n  tool:    %s",
@@ -485,15 +474,6 @@ func TestParity_JSONEqualsTool(t *testing.T) {
 		sort.Strings(bad)
 		t.Fatal(strings.Join(bad, "\n"))
 	}
-}
-
-// withoutQuery is writes without their query strings.
-func withoutQuery(writes []string) []string {
-	out := make([]string, len(writes))
-	for i, w := range writes {
-		out[i], _, _ = strings.Cut(w, "?")
-	}
-	return out
 }
 
 // jsonDiff names the keys whose values differ between two JSON objects.

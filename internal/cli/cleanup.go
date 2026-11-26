@@ -11,7 +11,6 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/engine"
-	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
@@ -92,21 +91,9 @@ func newCleanupResolveCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			item, err := cleanupReceipt(eng, req)
+			item, err := eng.PreviewFloatingIPReconciliation(cmd.Context(), req)
 			if err != nil {
 				return err
-			}
-			if err := req.CheckEvidence(item); err != nil {
-				return err
-			}
-
-			if item.NeedsEvidenceProject && req.EvidenceProjectID == "" || req.EvidenceProjectID != "" && req.EvidenceProjectID != item.ProjectID {
-				return clerrors.New(clerrors.CodeConfigInvalid, i18n.T("The project in the independent evidence must match the selected project.",
-					"Проект из независимого свидетельства должен совпадать с выбранным проектом."), i18n.T("Check the original operation and supply its project with --evidence-project.", "Укажите проект исходной операции через --evidence-project."))
-			}
-			if item.AddressID != "" && item.AddressID != req.AddressID {
-				return clerrors.New(clerrors.CodeUsage, i18n.T("The supplied outcome or address ID conflicts with the receipt.",
-					"Указанный исход или ID адреса расходится с квитанцией."), i18n.T("Check the receipt and the independent evidence.", "Сверьте квитанцию и независимое свидетельство."))
 			}
 			summary := i18n.Tf("Record %s for receipt %q in deployment %q.", "Записать исход %s для квитанции %q развёртывания %q.", req.Outcome, output.SanitizeCell(item.ReceiptID), output.SanitizeCell(item.DeploymentID))
 			details := map[string]any{"receipt": item, "outcome": req.Outcome, "evidence": req.Evidence, "_untrusted": []string{"receipt", "evidence", "address_id", "evidence_project"}}
@@ -117,7 +104,7 @@ func newCleanupResolveCmd() *cobra.Command {
 			}
 			if req.AddressID != "" {
 				details["address_id"] = req.AddressID
-				lines = append(lines, i18n.Tf("Read the released address by ID: %q", "Проверить освобождённый адрес по ID: %q", output.SanitizeCell(req.AddressID)))
+				lines = append(lines, i18n.Tf("The service confirms that address %q is absent. It will be checked again before recording the outcome.", "Сервис подтвердил отсутствие адреса %q. Перед записью исхода evo повторит проверку.", output.SanitizeCell(req.AddressID)))
 			}
 			ok, err := confirm.Ask(cmd.Context(), confirm.Preview{Action: "cleanup resolve", Summary: summary, Lines: lines, Details: details}, confirm.Options{
 				Yes: flagYes, DryRun: flagDryRun, JSON: flagJSON, Out: cmd.OutOrStdout(), Err: cmd.ErrOrStderr(),
@@ -143,24 +130,4 @@ func newCleanupResolveCmd() *cobra.Command {
 	cmd.Flags().StringVar(&req.EvidenceProjectID, "evidence-project", "", i18n.T("Project ID from independent evidence when the receipt has no recorded project", "ID проекта из независимого свидетельства, если в квитанции проект не записан"))
 	cmd.Flags().StringVar(&req.Evidence, "evidence", "", i18n.T("Non-secret operation or audit reference proving this receipt's outcome", "Номер или ссылка на операцию либо аудит, подтверждающие исход этой квитанции, без секретов"))
 	return cmd
-}
-
-func cleanupReceipt(eng *engine.Engine, req engine.FloatingIPReconciliation) (*engine.FloatingIPReceipt, error) {
-	items, err := eng.PendingFloatingIPReceipts(req.DeploymentID)
-	if err != nil {
-		return nil, err
-	}
-	var selected *engine.FloatingIPReceipt
-	for i := range items {
-		if items[i].ReceiptID == req.ReceiptID {
-			if selected != nil {
-				return nil, clerrors.New(clerrors.CodeConfigInvalid, i18n.T("More than one pending receipt has this ID.", "Такой ID имеют несколько незакрытых квитанций."), "")
-			}
-			selected = &items[i]
-		}
-	}
-	if selected == nil {
-		return nil, clerrors.New(clerrors.CodeNotFound, i18n.T("No pending receipt matches this receipt ID and deployment.", "Незакрытой квитанции с таким ID у этого развёртывания нет."), i18n.T("List pending receipts with 'evo cleanup receipts'.", "Проверьте список командой «evo cleanup receipts»."))
-	}
-	return selected, nil
 }

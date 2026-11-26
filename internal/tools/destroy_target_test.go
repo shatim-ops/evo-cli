@@ -215,6 +215,15 @@ func (c *goneCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 func TestDestroyTargeted_AlreadyGoneCleansState(t *testing.T) {
 	cloud := &goneCloud{}
 	r, dir := targetRegistry(t, cloud)
+	path := state.DefaultPath(dir)
+	initial, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial.Deployments[0].ProjectID = "p"
+	if err := state.Write(path, initial); err != nil {
+		t.Fatal(err)
+	}
 	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if isErr || !strings.Contains(text, `"status": "already_deleted"`) || !strings.Contains(text, "already deleted") {
 		t.Fatalf("answer = %s", text)
@@ -323,7 +332,7 @@ func TestDestroyTargeted_RefusedForGoodNamesTheWayOutAndTheFIP(t *testing.T) {
 		&provision.StatusError{Status: 409, Body: `{"code":"vm_can_not_be_deleted"}`})}
 	r, _ := targetRegistry(t, cloud)
 	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
-	for _, want := range []string{"error_deleting", "support", "fip-release", "fip-1"} {
+	for _, want := range []string{"error_deleting", "support", "release_floating_ip", "fip-1"} {
 		if !isErr || !strings.Contains(text, want) {
 			t.Errorf("answer does not say %q: %s", want, text)
 		}

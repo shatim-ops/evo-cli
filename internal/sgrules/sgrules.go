@@ -668,7 +668,7 @@ func Close(ctx context.Context, cloud provision.CloudAPI, sf *state.File, recID,
 func Pending(sf *state.File) []string {
 	var ids []string
 	for _, d := range sf.Deployments {
-		if d.Status == "destroyed" && len(d.OpenedRules) > 0 {
+		if d.Status == "destroyed" && (len(d.OpenedRules) > 0 || d.PendingRuleScan != nil) {
 			ids = append(ids, d.ID)
 		}
 	}
@@ -683,7 +683,7 @@ func Retire(sf *state.File, recID string) {
 	if rec == nil {
 		return
 	}
-	if len(rec.OpenedRules) == 0 {
+	if len(rec.OpenedRules) == 0 && rec.PendingRuleScan == nil {
 		sf.RemoveDeployment(recID)
 		return
 	}

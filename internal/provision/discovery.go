@@ -109,7 +109,11 @@ func projectNotVisible(err error, projectID string) error {
 // whole list. paged=false sends neither limit nor offset (disk-types has
 // no such parameters).
 func listAll[T any](a *CloudRuAdapter, ctx context.Context, path string, q url.Values, paged bool) ([]*T, error) {
-	return listPages[T](a, ctx, path, q, paged, listCompatible)
+	items, err := listPages[T](a, ctx, path, q, paged, listCompatible)
+	if errors.Is(err, errMissingListPage) {
+		return nil, invalidListPage(path)
+	}
+	return items, err
 }
 
 var errMissingListPage = errors.New("a promised list page was not found")
@@ -153,16 +157,19 @@ func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url
 		if err != nil {
 			// A service 404 after a page that promised more rows leaves the
 			// list incomplete. A gateway failure already carries API_ERROR.
-			if complete && offset > 0 && clierrors.Reason(err) == clierrors.CodeNotFound {
+			if offset > 0 && (clierrors.Reason(err) == clierrors.CodeNotFound || clierrors.Reason(err) == clierrors.CodeVMNotFound) {
 				return nil, errMissingListPage
 			}
 			return nil, err
 		}
-		body, err := readListPage(resp, path, complete)
+		body, err := readListPage(resp, path)
 		if err != nil {
 			return nil, err
 		}
-		var page paginatedResponse[T]
+		var page struct {
+			Items []*T `json:"items"`
+			Total int  `json:"total"`
+		}
 		if err := json.Unmarshal(body, &page); err == nil && page.Items != nil {
 			// The ids of the page, to drop items already read: a server
 			// that ignores offset answers the first page again and again
@@ -175,16 +182,22 @@ func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url
 				Offset *int `json:"offset"`
 			}
 			idsErr := json.Unmarshal(body, &ids)
-			if complete {
-				if idsErr != nil || ids.Total == nil || page.Total < offset+len(page.Items) ||
-					(expectedTotal >= 0 && expectedTotal != page.Total) ||
-					(ids.Offset != nil && *ids.Offset != offset) {
+			if idsErr != nil || complete && ids.Total == nil || ids.Offset != nil && *ids.Offset != offset {
+				return nil, invalidListPage(path)
+			}
+			if ids.Total != nil {
+				if page.Total < offset+len(page.Items) || expectedTotal >= 0 && expectedTotal != page.Total {
 					return nil, invalidListPage(path)
 				}
 				expectedTotal = page.Total
+			} else if expectedTotal >= 0 {
+				return nil, invalidListPage(path)
 			}
 			fresh := 0
 			for i := range page.Items {
+				if page.Items[i] == nil {
+					return nil, invalidListPage(path)
+				}
 				id := ""
 				if i < len(ids.Items) {
 					id = ids.Items[i].ID
@@ -196,13 +209,16 @@ func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url
 					seen[id] = true
 				}
 				fresh++
-				out = append(out, &page.Items[i])
+				out = append(out, page.Items[i])
 			}
-			if complete && fresh != len(page.Items) {
+			if fresh != len(page.Items) && fresh != 0 {
 				return nil, invalidListPage(path)
 			}
 			offset += len(page.Items)
 			if !paged {
+				if expectedTotal >= 0 && len(out) != expectedTotal {
+					return nil, invalidListPage(path)
+				}
 				return out, nil
 			}
 			done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, page.Total, listPageSize)
@@ -214,15 +230,17 @@ func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url
 			}
 			continue
 		}
-		var arr []T
+		var arr []*T
 		if err := json.Unmarshal(body, &arr); err == nil {
-			if shape == listCompleteEnvelope || complete && (arr == nil || offset != 0) {
+			if shape == listCompleteEnvelope || arr == nil || offset != 0 {
 				return nil, invalidListPage(path)
 			}
-			for i := range arr {
-				out = append(out, &arr[i])
+			for _, item := range arr {
+				if item == nil {
+					return nil, invalidListPage(path)
+				}
 			}
-			return out, nil
+			return arr, nil
 		}
 		return nil, clierrors.New(clierrors.CodeAPIError, i18n.Tf("failed to decode list response for %s", "не удалось разобрать список %s", path), hintUnexpectedFormatVerbose())
 	}
@@ -231,26 +249,22 @@ func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url
 	return nil, pager.Named(path, pager.TooManyPages(listMaxPages))
 }
 
-func readListPage(resp *http.Response, path string, complete bool) ([]byte, error) {
+func readListPage(resp *http.Response, path string) ([]byte, error) {
 	defer resp.Body.Close()
-	limit := int64(maxListBody)
-	if complete {
-		limit++ // distinguish an exactly full response from one cut off at the limit
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxListBody+1))
 	if err != nil {
-		if complete && errors.Is(err, context.Canceled) {
+		if errors.Is(err, context.Canceled) {
 			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.T("request cancelled", "запрос отменён"), hintCancelled(), err)
 		}
 		var timeout net.Error
-		if complete && errors.As(err, &timeout) && timeout.Timeout() {
+		if errors.As(err, &timeout) && timeout.Timeout() {
 			return nil, clierrors.Wrap(clierrors.CodeAPIUnreachable, i18n.Tf("timed out reading %s", "истекло время ожидания ответа %s", path),
 				i18n.T("Check your network connection and try again", "Проверьте подключение к сети и повторите"), err)
 		}
 		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.Tf("failed to read response for %s", "не удалось прочитать ответ %s", path), hintUnexpectedFormat(), err)
 	}
 
-	if complete && (resp.StatusCode != http.StatusOK || len(body) > maxListBody) {
+	if resp.StatusCode != http.StatusOK || len(body) > maxListBody || resp.ContentLength > 0 && int64(len(body)) != resp.ContentLength {
 		return nil, invalidListPage(path)
 	}
 	return body, nil
@@ -376,6 +390,9 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 		if err != nil {
 			// A missing later page contradicts a previously visible group.
 			// A first-page service 404 can also mean the group is hidden.
+			if offset > 0 && clierrors.Reason(err) == clierrors.CodeNotFound {
+				return nil, invalidListPage(base)
+			}
 			if offset == 0 && projectID != "" && errors.Is(err, errRuleGroupMissing) {
 				absent, checkErr := a.groupAbsentInProject(ctx, projectID, sgID)
 				if checkErr != nil {
@@ -387,14 +404,14 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 			}
 			return nil, err
 		}
-		body, err := readListPage(resp, base, strict)
+		body, err := readListPage(resp, base)
 		if err != nil {
 			return nil, err
 		}
 		var page struct {
-			Items  []SGRule `json:"items"`
-			Total  *int     `json:"total"`
-			Offset *int     `json:"offset"`
+			Items  []*SGRule `json:"items"`
+			Total  *int      `json:"total"`
+			Offset *int      `json:"offset"`
 		}
 		if err := json.Unmarshal(body, &page); err != nil {
 			return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode security group rules", "не удалось разобрать правила группы безопасности"), hintUnexpectedFormatVerbose(), err)
@@ -403,8 +420,11 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 		if page.Total != nil {
 			total = *page.Total
 		}
-		if strict {
-			if page.Items == nil || page.Total == nil || total < offset+len(page.Items) ||
+		if page.Items == nil {
+			return nil, invalidListPage(base)
+		}
+		if strict || page.Total != nil {
+			if page.Total == nil || total < offset+len(page.Items) ||
 				(expectedTotal >= 0 && total != expectedTotal) || (page.Offset != nil && *page.Offset != offset) {
 				return nil, invalidListPage(base)
 			}
@@ -412,8 +432,11 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 		}
 		fresh := 0
 		for i := range page.Items {
+			if page.Items[i] == nil {
+				return nil, invalidListPage(base)
+			}
 			id := page.Items[i].ID
-			if strict && (id == "" || strings.TrimSpace(id) != id || seen[id]) {
+			if id == "" || strings.TrimSpace(id) != id || strict && seen[id] {
 				return nil, invalidListPage(base)
 			}
 			if id != "" {
@@ -423,7 +446,7 @@ func (a *CloudRuAdapter) ListSecurityGroupRules(ctx context.Context, sgID string
 				seen[id] = true
 			}
 			fresh++
-			out = append(out, &page.Items[i])
+			out = append(out, page.Items[i])
 		}
 		offset += len(page.Items)
 		done, err := offsetPageEnd(len(page.Items), fresh, len(out), offset, total, sgRulesPageSize)
@@ -478,34 +501,50 @@ func ruleGroupMissingReply(resp *http.Response) bool {
 // groupAbsentInProject requires an unfiltered, complete list of the recorded
 // project, distinct IDs, and a matching project on every row that supplies it.
 func (a *CloudRuAdapter) groupAbsentInProject(ctx context.Context, projectID, sgID string) (bool, error) {
-	const path = "/api/v1/security-groups"
-	type identity struct {
-		ID        string          `json:"id"`
-		ProjectID json.RawMessage `json:"project_id"`
-	}
-	groups, err := listPages[identity](a, ctx, path, url.Values{"project_id": {projectID}}, true, listCompleteEnvelope)
-	if errors.Is(err, errMissingListPage) {
-		return false, invalidListPage(path)
-	}
+	groups, err := a.completeSecurityGroups(ctx, projectID)
 	if err != nil {
 		return false, err
 	}
-	found := false
 	for _, group := range groups {
-		if group == nil || group.ID == "" || strings.TrimSpace(group.ID) != group.ID {
-			return false, invalidListPage(path)
-		}
-		if group.ProjectID != nil {
-			var owner string
-			if json.Unmarshal(group.ProjectID, &owner) != nil || owner != projectID {
-				return false, invalidListPage(path)
-			}
-		}
 		if group.ID == sgID {
-			found = true
+			return false, nil
 		}
 	}
-	return !found, nil
+	return true, nil
+}
+
+// ReadSecurityGroupsForCleanup ignores narrowed list filters. A JSON null,
+// a truncated response or a row of another project cannot settle a receipt.
+func ReadSecurityGroupsForCleanup(ctx context.Context, cloud CloudAPI, projectID string) ([]*SecurityGroup, error) {
+	return cloud.ListSecurityGroups(context.WithValue(ctx, cleanupGroupsKey{}, true), projectID)
+}
+
+type cleanupGroupsKey struct{}
+
+func (a *CloudRuAdapter) completeSecurityGroups(ctx context.Context, projectID string) ([]*SecurityGroup, error) {
+	const path = "/api/v1/security-groups"
+	if projectID == "" {
+		return nil, clierrors.ProjectRequired()
+	}
+	groups, err := listPages[SecurityGroup](a, ctx, path, url.Values{"project_id": {projectID}}, true, listCompleteEnvelope)
+	if errors.Is(err, errMissingListPage) {
+		return nil, invalidListPage(path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	for _, group := range groups {
+		if group == nil || group.ID == "" || strings.TrimSpace(group.ID) != group.ID {
+			return nil, invalidListPage(path)
+		}
+		if group.projectID != nil {
+			var owner string
+			if json.Unmarshal(group.projectID, &owner) != nil || owner != projectID {
+				return nil, invalidListPage(path)
+			}
+		}
+	}
+	return groups, nil
 }
 
 // DeleteSecurityGroupRule deletes one rule via
@@ -537,6 +576,9 @@ func (a *CloudRuAdapter) ListSubnets(ctx context.Context, projectID string) ([]*
 
 // ListSecurityGroups lists security groups via GET /api/v1/security-groups.
 func (a *CloudRuAdapter) ListSecurityGroups(ctx context.Context, projectID string) ([]*SecurityGroup, error) {
+	if strict, _ := ctx.Value(cleanupGroupsKey{}).(bool); strict {
+		return a.completeSecurityGroups(ctx, projectID)
+	}
 	return listProjectScoped[SecurityGroup](a, ctx, "/api/v1/security-groups", projectID)
 }
 

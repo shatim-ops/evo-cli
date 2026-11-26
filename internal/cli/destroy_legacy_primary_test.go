@@ -230,7 +230,7 @@ func TestDestroyLegacyPrimary_CheckpointAtFirstVMDelete(t *testing.T) {
 				t.Fatalf("first VM DELETE must carry its original intent: %+v", atDeleteIntents)
 			}
 			original := atDeleteIntents[0]
-			if original.Target != "vm_id="+parityVM || surface == "CLI" && original.ProjectID != pvProject {
+			if original.Target != "vm_id="+parityVM || original.ProjectID != pvProject {
 				t.Errorf("original intent has no approved VM or project: %+v", original)
 			}
 			if test.partial {

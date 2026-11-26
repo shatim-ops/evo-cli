@@ -16,7 +16,9 @@
 package pager
 
 import (
+	"encoding/json"
 	stderrors "errors"
+	"net/http"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -109,6 +111,57 @@ func Upto(max int, fetch func(token string) (next string, err error), opts ...Op
 	return true, nil
 }
 
+// UnpagedObjects reads an endpoint whose API returns all rows in one
+// response. An unexpected continuation means the response is not the list.
+func UnpagedObjects[T any](data []byte, field string) ([]T, error) {
+	items, next, err := ObjectPage[T](data, field, "nextPageToken", PageFields{Token: "next_page_token"})
+	if err != nil {
+		return nil, err
+	}
+	if next != "" {
+		return nil, Incomplete(i18n.T("the endpoint returned a continuation for a single-page list", "API вернул продолжение для списка без поддержки страниц"))
+	}
+	return items, nil
+}
+
+// ItemProgress records the stable identities encountered on successive pages.
+type ItemProgress struct {
+	seen      map[string]bool
+	lastToken string
+}
+
+// CheckProgress rejects a nonempty page consisting entirely of identities
+// already seen. A row with no known identity cannot prove a repeat.
+func CheckProgress[T any](p *ItemProgress, items []T, next string, key func(T) string) error {
+	if next != "" && next == p.lastToken {
+		return RepeatedToken(next)
+	}
+	p.lastToken = next
+	if p.seen == nil {
+		p.seen = map[string]bool{}
+	}
+	fresh := false
+	for _, item := range items {
+		id := key(item)
+		if id == "" || !p.seen[id] {
+			fresh = true
+		}
+		if id != "" {
+			p.seen[id] = true
+		}
+	}
+	if len(items) != 0 && !fresh {
+		return NoNewItems(len(p.seen), -1)
+	}
+	return nil
+}
+
+// ObjectID identifies a service resource by its string id on a list page.
+func ObjectID(row map[string]any) string {
+	id, _ := row["id"].(string)
+	return id
+}
+
 // Named puts the name of the list in front of an error of this package
 // ("vpc: subnets: "), keeping its code and hint. Any other error (the
 // page's own: an API status, a body that does not parse) is returned as it
@@ -162,4 +215,87 @@ func NoNewItems(read, total int) *clierrors.CLIError {
 	}
 	return Incomplete(i18n.Tf("a page repeats items already read (%d of %d), the server ignores the offset or the page token",
 		"страница повторяет уже прочитанные объекты (%d из %d): сервер игнорирует offset или токен страницы", read, total))
+}
+
+// PageStatus accepts a complete page only at HTTP 200. On a continuation,
+// 404 is a broken page sequence rather than evidence of resource absence.
+// The service keeps its own error classification for all other refusals.
+func PageStatus(status int, data []byte, continuation bool, serviceError func(int, []byte) error) error {
+	if status == http.StatusOK {
+		return nil
+	}
+	if (status >= 200 && status < 300) || (continuation && status == http.StatusNotFound) {
+		return Incomplete(i18n.Tf("expected a complete page (status 200), got status %d", "ожидалась полная страница (код 200), получен код %d", status))
+	}
+	return serviceError(status, data)
+}
+
+// PageFields names alternative spellings accepted by a service.
+type PageFields struct {
+	Items string
+	Token string
+}
+
+// ObjectPage decodes a protobuf JSON list with an optional array of objects
+// and optional string cursor. A field that is present must have its declared
+// type. Pass an empty tokenField for an endpoint without a cursor.
+func ObjectPage[T any](data []byte, field, tokenField string, aliases ...PageFields) ([]T, string, error) {
+	var page map[string]json.RawMessage
+	if err := json.Unmarshal(data, &page); err != nil || page == nil {
+		return nil, "", Incomplete(i18n.T("expected a page object, not an empty body or null page", "ожидался объект страницы, получено пустое тело, неверное значение или страница null"))
+	}
+	for _, alias := range aliases {
+		var err error
+		if field, err = pageField(page, field, alias.Items); err != nil {
+			return nil, "", err
+		}
+		if tokenField, err = pageField(page, tokenField, alias.Token); err != nil {
+			return nil, "", err
+		}
+	}
+	var items []T
+	if raw, ok := page[field]; ok {
+		var err error
+		if items, err = ObjectRows[T](raw, field); err != nil {
+			return nil, "", err
+		}
+	}
+	var next string
+	if tokenField != "" {
+		if raw, ok := page[tokenField]; ok {
+			if len(raw) == 0 || raw[0] != '"' || json.Unmarshal(raw, &next) != nil {
+				return nil, "", Incomplete(i18n.Tf("%s must be a string", "%s должен быть строкой", tokenField))
+			}
+		}
+	}
+	return items, next, nil
+}
+
+func pageField(page map[string]json.RawMessage, primary, alias string) (string, error) {
+	if alias == "" || alias == primary || page[alias] == nil {
+		return primary, nil
+	}
+	if page[primary] != nil {
+		return "", Incomplete(i18n.Tf("the page contains both %s and %s", "страница содержит одновременно %s и %s", primary, alias))
+	}
+	return alias, nil
+}
+
+// ObjectRows decodes an actual array and validates every item before
+// returning it. It also serves endpoints that document a bare array.
+func ObjectRows[T any](raw []byte, field string) ([]T, error) {
+	var rows []json.RawMessage
+	if err := json.Unmarshal(raw, &rows); err != nil || rows == nil {
+		return nil, Incomplete(i18n.Tf("%s must be an array of objects", "%s должен быть массивом объектов", field))
+	}
+	items := make([]T, len(rows))
+	for i, row := range rows {
+		if len(row) == 0 || row[0] != '{' {
+			return nil, Incomplete(i18n.Tf("null %s entry or non-object item", "элемент %s равен null либо не является объектом", field))
+		}
+		if err := json.Unmarshal(row, &items[i]); err != nil {
+			return nil, Incomplete(i18n.Tf("an item in %s has an invalid field type", "у элемента %s неверный тип поля", field))
+		}
+	}
+	return items, nil
 }

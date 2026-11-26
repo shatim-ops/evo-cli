@@ -29,6 +29,7 @@ func DefaultPath(root string) string {
 type diskFile struct {
 	*File
 	RuleOwnerKeys map[string]string `json:"rule_owner_keys,omitempty"`
+	RuleScanKeys  map[string]string `json:"rule_scan_keys,omitempty"`
 }
 
 // Read reads the state file. Returns empty File (version=1) if file doesn't exist.
@@ -87,6 +88,9 @@ func Read(path string) (*File, error) {
 		if d.CreatedBy != nil && d.CreatedBy.ServiceAccountID == "" {
 			d.CreatedBy.ruleKeyDigest = disk.RuleOwnerKeys[d.ID]
 		}
+		if r := d.PendingRuleScan; r != nil && r.StartedBy != nil && r.StartedBy.ServiceAccountID == "" {
+			r.StartedBy.ruleKeyDigest = disk.RuleScanKeys[d.ID]
+		}
 	}
 	if f.Deployments == nil {
 		f.Deployments = []DeploymentRecord{}
@@ -118,6 +122,12 @@ func Write(path string, f *File) error {
 				disk.RuleOwnerKeys = map[string]string{}
 			}
 			disk.RuleOwnerKeys[d.ID] = d.CreatedBy.ruleKeyDigest
+		}
+		if r := d.PendingRuleScan; d.ID != "" && r != nil && r.StartedBy != nil && r.StartedBy.ruleKeyDigest != "" {
+			if disk.RuleScanKeys == nil {
+				disk.RuleScanKeys = map[string]string{}
+			}
+			disk.RuleScanKeys[d.ID] = r.StartedBy.ruleKeyDigest
 		}
 	}
 	data, err := json.MarshalIndent(disk, "", "  ")

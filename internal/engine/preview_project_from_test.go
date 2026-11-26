@@ -38,11 +38,11 @@ func TestPendingRulesPreview_OnlyOneRecordedProjectAndVMIdentifiesTheIntent(t *t
 		{ID: "no-project", VMID: "vm"},
 		{ID: "no-vm", ProjectID: "project"},
 	}}
-	if got := pendingRulesPreview(sf, []string{"one"}).TargetArgs; got["vm_id"] != "vm" || got["project_id"] != "project" {
+	if got := pendingRulesPreview(sf, []string{"one"}, nil).TargetArgs; got["vm_id"] != "vm" || got["project_id"] != "project" {
 		t.Fatalf("single known receipt: %+v", got)
 	}
 	for _, ids := range [][]string{{"one", "other"}, {"no-project"}, {"no-vm"}, {"unknown"}} {
-		if got := pendingRulesPreview(sf, ids).TargetArgs; len(got) != 0 {
+		if got := pendingRulesPreview(sf, ids, nil).TargetArgs; len(got) != 0 {
 			t.Errorf("ambiguous or missing receipt %v claimed target %+v", ids, got)
 		}
 	}

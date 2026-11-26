@@ -40,7 +40,7 @@ func destroyFixture(t *testing.T, rec state.DeploymentRecord) (*Engine, *mockClo
 
 func runningRecord() state.DeploymentRecord {
 	return state.DeploymentRecord{
-		ID: "vm-1", VMID: "vm-1", VMIP: "198.51.100.10", FloatingIPID: "fip-9",
+		ID: "vm-1", VMID: "vm-1", ProjectID: "00000000-0000-0000-0000-000000000001", VMIP: "198.51.100.10", FloatingIPID: "fip-9",
 		SSHUser: "user1", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 }

@@ -209,6 +209,8 @@ func (s *Subnet) UnmarshalJSON(b []byte) error {
 // The documented list response has no rules, only their counts: read them
 // with ListSecurityGroupRules.
 type SecurityGroup struct {
+	// Only the complete cleanup inventory checks an explicitly returned scope.
+	projectID          json.RawMessage
 	ID                 string `json:"id"`
 	Name               string `json:"name"`
 	AvailabilityZoneID string `json:"availability_zone_id,omitempty"`
@@ -275,12 +277,14 @@ func (g *SecurityGroup) UnmarshalJSON(b []byte) error {
 	type plain SecurityGroup
 	var r struct {
 		plain
-		AvailabilityZone *ZoneRef `json:"availability_zone"`
+		AvailabilityZone *ZoneRef        `json:"availability_zone"`
+		ProjectID        json.RawMessage `json:"project_id"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
 		return err
 	}
 	*g = SecurityGroup(r.plain)
+	g.projectID = r.ProjectID
 	if g.AvailabilityZoneID == "" && r.AvailabilityZone != nil {
 		g.AvailabilityZoneID = r.AvailabilityZone.ID
 	}

@@ -378,12 +378,16 @@ func rulePreview(sf *state.File, ids []string, labeled []sgrules.Planned) ([]des
 
 // pendingRulesPreview is the preview of a destroy that only finishes the
 // rules an earlier destroy could not delete.
-func pendingRulesPreview(sf *state.File, pending []string) confirm.Preview {
+func pendingRulesPreview(sf *state.File, pending []string, unchecked error) confirm.Preview {
 	res, lines := rulePreview(sf, pending, nil)
+	if unchecked != nil {
+		res = append(res, destroyResource{Type: "security_group_rule", Action: "unchecked", Note: clerrors.Reason(unchecked)})
+		lines = append(lines, UncheckedRules(unchecked))
+	}
 	var targetArgs map[string]string
 	if len(pending) == 1 {
 		if rec := sf.FindDeployment(pending[0]); rec != nil {
-			targetArgs = destroyTargetArgs(rec.VMID, rec.ProjectID)
+			targetArgs = destroyTargetArgs(rec.VMID, RecordedCleanupProject(sf, rec))
 		}
 	}
 	return confirm.Preview{
@@ -527,7 +531,7 @@ func originLabel(from string) string {
 // projectFrom is the origin of the project a deployment works in: its
 // state record, else the configuration.
 func (e *Engine) projectFrom(rec *state.DeploymentRecord) string {
-	if rec != nil && rec.ProjectID != "" {
+	if rec != nil && (rec.ProjectID != "" || rec.CleanupProjectID != "" || rec.PendingRuleScan != nil) {
 		return originRecord
 	}
 	return e.Config.ProjectOrigin

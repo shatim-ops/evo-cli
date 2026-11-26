@@ -13,8 +13,10 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -599,4 +601,55 @@ func retryAfter(v string) (time.Duration, bool) {
 		d = maxRetryAfter
 	}
 	return d, true
+}
+
+// readComplete permits at most limit bytes when a client caps response size.
+// One extra byte distinguishes a complete response at the cap from a prefix.
+func readComplete(resp *http.Response, limit int64) ([]byte, error) {
+	if resp.StatusCode == http.StatusPartialContent || (resp.StatusCode >= 200 && resp.StatusCode < 300 && resp.Header.Get("Content-Range") != "") {
+		return nil, io.ErrUnexpectedEOF
+	}
+	var reader io.Reader = resp.Body
+	if limit > 0 {
+		reader = io.LimitReader(reader, limit+1)
+	}
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	if limit > 0 && int64(len(data)) > limit {
+		return nil, io.ErrShortBuffer
+	}
+	if resp.ContentLength > 0 && int64(len(data)) != resp.ContentLength {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return data, nil
+}
+
+// ReadAPIResponse supplies the complete body and HTTP status to a service
+// client. A nonzero limit bounds the read. When the body of a refusal is
+// incomplete, the status alone still carries the refusal, but a partial
+// GET or DELETE 404 cannot establish that the addressed resource is gone.
+// No body bytes are returned for an incomplete response, and the caller
+// remains responsible for closing it.
+func ReadAPIResponse(req *http.Request, resp *http.Response, limit int64) ([]byte, int, error) {
+	data, err := readComplete(resp, limit)
+	status := resp.StatusCode
+	if err == nil {
+		return data, status, nil
+	}
+	if ctxErr := req.Context().Err(); ctxErr != nil {
+		return nil, status, ctxErr
+	}
+	// http.Client.Timeout sets a deadline on its own copy of req. Its body
+	// can time out while the caller's context is still live.
+	var timeout net.Error
+	if errors.Is(err, context.Canceled) || errors.As(err, &timeout) && timeout.Timeout() {
+		return nil, status, err
+	}
+	if status >= 400 && (status != http.StatusNotFound || (req.Method != http.MethodGet && req.Method != http.MethodDelete)) {
+		return nil, status, nil
+	}
+	return nil, status, clerrors.Wrap(clerrors.CodeAPIError,
+		i18n.T("Could not read the complete API response.", "Не удалось полностью прочитать ответ API."), "", err)
 }

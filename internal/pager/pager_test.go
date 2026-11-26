@@ -189,3 +189,28 @@ func TestAll_EmptyPageMidListIsNotTheEnd(t *testing.T) {
 		t.Fatalf("got %q, err %v; want a,b — All stopped at the empty page and cut the list", got, err)
 	}
 }
+
+func TestItemProgress_PreservesPartialOverlapAndUnknownKeys(t *testing.T) {
+	var progress ItemProgress
+	ids := func(ids ...string) []map[string]any {
+		var rows []map[string]any
+		for _, id := range ids {
+			rows = append(rows, map[string]any{"id": id})
+		}
+		return rows
+	}
+	for _, page := range []struct {
+		token string
+		rows  []map[string]any
+	}{
+		{"1", ids("old")}, {"2", nil}, {"3", ids("old", "new")}, {"4", ids("new", "")},
+	} {
+		if err := CheckProgress(&progress, page.rows, page.token, ObjectID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := CheckProgress(&progress, ids("new", "old"), "5", ObjectID)
+	if !errors.Is(err, errIncomplete) {
+		t.Fatalf("fresh token with no new IDs: %v", err)
+	}
+}
