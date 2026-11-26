@@ -43,7 +43,8 @@ var quotedRE = regexp.MustCompile("`[^`]*`|'[^']*'|\"[^\"]*\"|«[^»]*»|https?:
 
 // foreignRE is the text of the API, of Go and of the S3 library a message
 // passes on as it is (the cause after "…: ").
-var foreignRE = regexp.MustCompile(`json: cannot unmarshal .*|unexpected end of JSON input|illegal base64 data at input byte \d+|` +
+var foreignRE = regexp.MustCompile(regexp.QuoteMeta(context.DeadlineExceeded.Error()) + "|" + regexp.QuoteMeta(context.Canceled.Error()) + "|" +
+	`json: cannot unmarshal .*|unexpected end of JSON input|illegal base64 data at input byte \d+|` +
 	`open \S+ no such file or directory|The specified (bucket|key) does not exist\.|` +
 	`Bucket name (cannot be empty|cannot be longer than \d+ characters|cannot be shorter than \d+ characters|contains invalid characters)|` +
 	`Last-Modified time format is invalid.*`)
@@ -60,11 +61,25 @@ var languageLiterals = regexp.MustCompile(`\b(?:Managed Kubernetes|Certificate M
 var quotedInstruction = regexp.MustCompile(`(?i)['"«]((?:cannot|can['’]t|please|retry|check|unable to) [a-z][a-z -]+)['"»]`)
 
 func englishPhrase(s string) string {
-	s = languageLiterals.ReplaceAllString(s, " · ")
+	s = languageLiterals.ReplaceAllString(apiErrorPrefix(s), " · ")
 	if instruction := quotedInstruction.FindStringSubmatch(s); len(instruction) != 0 {
 		return instruction[1]
 	}
-	return englishWordRun(contraction.Replace(s), 2)
+	if phrase := englishWordRun(contraction.Replace(s), 2); phrase != "" {
+		return phrase
+	}
+	for _, seg := range strings.Split(s, ": ") {
+		// A generic Russian label alone does not localize the diagnosis.
+		if rest, ok := strings.CutPrefix(seg, "Ошибка "); ok && !hasCyrillic(rest) {
+			words := quotedRE.ReplaceAllString(rest, "")
+			for _, word := range strings.Fields(words) {
+				if plainWord(word) {
+					return word
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func englishWordRun(s string, minimum int) string {
@@ -187,15 +202,7 @@ func latinSegment(prefix string) string {
 		if phrase := englishPhrase(seg); phrase != "" {
 			return phrase
 		}
-		// A generic Russian label alone does not localize the diagnosis.
-		if rest, ok := strings.CutPrefix(seg, "Ошибка "); ok && !hasCyrillic(rest) {
-			words := quotedRE.ReplaceAllString(languageLiterals.ReplaceAllString(rest, ""), "")
-			for _, word := range strings.Fields(words) {
-				if plainWord(word) {
-					return word
-				}
-			}
-		}
+
 	}
 	return ""
 }
@@ -390,16 +397,20 @@ func TestQA11_OwnDiagnosticsInRussian(t *testing.T) {
 		"Не удалось: can't open file",
 		"Неверный ввод: non-empty value required",
 		"Не удалось: 'cannot delete resource now'",
+		"Не удалось: cannot delete resource now",
+		"Ошибка Request failed: HTTP 500: body",
+		"Ошибка can't load: HTTP 500: body",
+		"Ошибка vm_id missing: HTTP 500: body",
+		"Ошибка timeout: HTTP 500: body",
 	} {
-		if englishPhrase(text) == "" {
-			t.Errorf("missed untranslated words in %q", text)
-		}
-	}
-	for _, prefix := range []string{"Ошибка can't load", "Ошибка vm_id missing", "Ошибка timeout", "Ошибка Request failed"} {
-		text := prefix + ": HTTP 500: body"
-		if apiLanguageIssue(i18n.RU, apiErrorPrefix(text)) == "" {
-			t.Errorf("missed untranslated frame in %q", text)
-		}
+		t.Run(text, func(t *testing.T) {
+			if englishPhrase(text) == "" {
+				t.Errorf("missed untranslated words in %q", text)
+			}
+			if apiLanguageIssue(i18n.RU, apiErrorPrefix(text)) == "" {
+				t.Errorf("missed untranslated frame in %q", text)
+			}
+		})
 	}
 }
 
