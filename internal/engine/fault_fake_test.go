@@ -193,12 +193,13 @@ type faultVM struct {
 }
 
 type faultFIP struct {
-	ID      string
-	Name    string
-	IP      string
-	State   string
-	VMID    string
-	deleted bool
+	Description string
+	ID          string
+	Name        string
+	IP          string
+	State       string
+	VMID        string
+	deleted     bool
 	// settle and untilVM: see faultCloud.fipSettle. Until they run out
 	// reads show "creating"; State is the state once settled.
 	settle  int
@@ -740,7 +741,7 @@ func (c *faultCloud) CreateFloatingIP(ctx context.Context, req provision.CreateF
 	if err == errFaultNameless {
 		name = ""
 	}
-	fip := faultFIP{ID: id, Name: name, IP: faultIP(n), State: "available", settle: c.fipSettle, untilVM: c.fipSettleUntilVM}
+	fip := faultFIP{ID: id, Name: name, Description: req.Description, IP: faultIP(n), State: "available", settle: c.fipSettle, untilVM: c.fipSettleUntilVM}
 	// interface_id on the create binds the address (the request field the
 	// spec documents). A later GetVMDetail then shows it, so a retry does
 	// not reserve a second one.
@@ -772,7 +773,7 @@ func (c *faultCloud) CreateFloatingIP(ctx context.Context, req provision.CreateF
 	if errors.Is(err, errFaultEmpty) {
 		return &provision.FloatingIP{Name: name, IPAddress: ip, State: st}, nil
 	}
-	return &provision.FloatingIP{ID: id, Name: req.Name, IPAddress: ip, State: st}, nil
+	return &provision.FloatingIP{ID: id, Name: req.Name, Description: req.Description, IPAddress: ip, State: st}, nil
 }
 
 func (c *faultCloud) GetFloatingIP(_ context.Context, id string) (*provision.FloatingIP, error) {
@@ -788,7 +789,7 @@ func (c *faultCloud) GetFloatingIP(_ context.Context, id string) (*provision.Flo
 			if c.fipDown {
 				st = "down"
 			}
-			return &provision.FloatingIP{ID: f.ID, Name: f.Name, IPAddress: f.IP, State: st}, nil
+			return &provision.FloatingIP{ID: f.ID, Name: f.Name, Description: f.Description, IPAddress: f.IP, State: st}, nil
 		}
 	}
 	return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")
@@ -806,7 +807,7 @@ func (c *faultCloud) ListFloatingIPs(context.Context, string) ([]*provision.Floa
 		if f.deleted || !c.listed(f.ID) {
 			continue
 		}
-		fip := &provision.FloatingIP{ID: f.ID, Name: f.Name, IPAddress: f.IP, State: c.readStateLocked(f)}
+		fip := &provision.FloatingIP{ID: f.ID, Name: f.Name, Description: f.Description, IPAddress: f.IP, State: c.readStateLocked(f)}
 		if f.VMID != "" {
 			// The VM it is bound to, as the API's list names it: an object
 			// (vm.id, vm.name, vm.state; api-probe 28, 29, P40).

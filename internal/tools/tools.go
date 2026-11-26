@@ -3200,7 +3200,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 	// provision wrote (floating_ip_id), else an address on the VM, else the
 	// one boot FIP named for it. The list's flat floating_ip field is often
 	// empty (BACKLOG [04]), which used to leave the FIP billed (QA H4).
-	fipRec := state.DeploymentRecord{VMID: target.ID}
+	fipRec := state.DeploymentRecord{VMID: target.ID, VMName: target.Name, ProjectID: projectID}
 	recordedHere := false
 	var rulesPlanned []sgrules.Planned
 	sf, readErr := state.Read(statePath)
@@ -3268,28 +3268,11 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		fipRec.VMIP = addr
 	}
-	if releaseIP && fipRec.FloatingIPID == "" && fipRec.VMIP == "" && target.Name != "" {
-		if fips, e := eng.Cloud.ListFloatingIPs(ctx, projectID); e == nil {
-			// Named exactly for this VM (not "web-2" for "web"); of several
-			// such, the one the answer binds to this VM.
-			var named, bound []*provision.FloatingIP
-			for _, f := range fips {
-				if provision.IsEvoFIPOf(f.Name, target.ID, target.Name) {
-					named = append(named, f)
-					if f.BoundTo(target.ID) {
-						bound = append(bound, f)
-					}
-				}
-			}
-			if len(named) != 1 {
-				named = bound
-			}
-			if len(named) == 1 {
-				fipRec.FloatingIPID, fipRec.VMIP = named[0].ID, named[0].IPAddress
-			}
-		}
+	var identifyErr error
+	if releaseIP && keptFIP == "" {
+		identifyErr = eng.RecordLegacyFloatingIP(ctx, &fipRec, target)
 	}
-	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != ""
+	hasFIP := fipRec.FloatingIPID != "" || fipRec.VMIP != "" || identifyErr != nil
 
 	preview := destroyTargetPreview(target, alreadyGone, projectID, releaseIP, hasFIP, &fipRec, keptFIP, keptWhy, rulesPlanned)
 	// What this delete leaves open to the internet in the VM's groups
@@ -3386,7 +3369,11 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		fipLeft := false
 		if releaseIP && hasFIP {
-			if ferr := eng.ReleaseFloatingIP(ctx, &fipRec); ferr != nil {
+			ferr := identifyErr
+			if ferr == nil {
+				ferr = eng.ReleaseFloatingIP(ctx, &fipRec)
+			}
+			if ferr != nil {
 				fipLeft = true
 				msg += i18n.Tf("; WARNING: the floating IP %s was NOT released and is still billed (%v) — "+
 					"call destroy with vm_id %s again: the record keeps the floating IP, and destroy retries the release",
@@ -3396,9 +3383,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 				msg += i18n.T("; released floating IP ", "; освобождён floating IP ") + firstNonEmptyStr(fipRec.VMIP, fipRec.FloatingIPID)
 			}
 		}
-		// The addresses asked for this VM with no answer (floatingip):
-		// released when listed by their name, else named — the marks close
-		// either way (D107; «Риск», conclusion 180, Т3 and Т4).
+		// An unresolved create stays on the deployment until its own address is gone.
 		var lostReleased, lostMissing []string
 		var extraPending bool
 		if releaseIP {
@@ -3414,14 +3399,14 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			}
 			for _, m := range miss {
 				lostMissing = append(lostMissing, m.Name)
-				msg += i18n.Tf("; floating IP %s, requested %s with no answer, is not listed: if list_floating_ips shows it later, it is billed — whether to release it (release_floating_ip), ask the person",
+				msg += i18n.Tf("; floating IP %s, requested %s with no answer, is not listed. The receipt was kept. Check the request and address ID in the cloud before deciding whether to release it",
 					"; floating IP %s, запрошенного %s без ответа, нет в списке: если evo vpc fips покажет его позже, он оплачивается — освобождать ли его (evo vpc fip-release), решает человек",
 					m.Name, m.RequestedAt.UTC().Format(time.RFC3339))
 			}
 			if lerr = stderrors.Join(lerr, werr); lerr != nil {
 				extraPending = true
-				msg += i18n.Tf("; the floating IPs requested with no answer were not checked (%v): destroy checks them again",
-					"; floating IP, запрошенные без ответа, не проверены (%v): повтор evo vm delete проверит их снова", lerr)
+				msg += i18n.Tf("; cleanup of the floating IPs requested with no answer is unconfirmed (%v); destroy checks the saved receipts again",
+					"; уборка floating IP, запрошенных без ответа облака, не подтверждена (%v). Повтор evo vm delete проверит сохранённые квитанции", lerr)
 			}
 		}
 
@@ -3448,6 +3433,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 					}
 				}
 				rec.Status = "destroying"
+				rec.VMName = firstNonEmptyStr(rec.VMName, target.Name)
 				rec.FloatingIPID = firstNonEmptyStr(fipRec.FloatingIPID, rec.FloatingIPID)
 				rec.VMIP = firstNonEmptyStr(fipRec.VMIP, rec.VMIP)
 				rec.ProjectID = firstNonEmptyStr(rec.ProjectID, fipRec.ProjectID, projectID)

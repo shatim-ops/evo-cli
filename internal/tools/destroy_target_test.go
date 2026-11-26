@@ -53,6 +53,12 @@ func (c *targetCloud) GetVM(context.Context, string) (*provision.VM, error) {
 	}
 	return &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Status: firstNonEmptyStr(c.vmStatus, "creating")}, nil
 }
+func (c *targetCloud) GetFloatingIP(_ context.Context, id string) (*provision.FloatingIP, error) {
+	if id == c.releasedFIP {
+		return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+	}
+	return &provision.FloatingIP{ID: id}, nil
+}
 func (c *targetCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	c.fipTries++
 	if c.fipTries < 2 {

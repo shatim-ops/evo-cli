@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ type fakeCloud struct {
 
 func (c *fakeCloud) CreateFloatingIP(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
 	c.creates++
-	f := &provision.FloatingIP{ID: "fip-" + req.Name, Name: req.Name, IPAddress: "203.0.113.5", State: "available"}
+	f := &provision.FloatingIP{ID: "fip-" + req.Name, Name: req.Name, Description: req.Description, IPAddress: "203.0.113.5", State: "available"}
 	if c.err != nil {
 		if c.made {
 			c.fips = append(c.fips, f)
@@ -56,6 +57,15 @@ func (c *fakeCloud) ListFloatingIPs(context.Context, string) ([]*provision.Float
 func (c *fakeCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	c.deleted = append(c.deleted, id)
 	return nil
+}
+
+func (c *fakeCloud) GetFloatingIP(_ context.Context, id string) (*provision.FloatingIP, error) {
+	for _, f := range c.fips {
+		if f.ID == id && !slices.Contains(c.deleted, id) {
+			return f, nil
+		}
+	}
+	return nil, status(404)
 }
 
 func status(code int) error {
@@ -126,7 +136,7 @@ func TestFind_ExactNameAndOwner(t *testing.T) {
 // goes; not listed — the question, until a person answered; answered —
 // the call goes on and the mark stays (Т4).
 func TestSettle_FindsThenAsks(t *testing.T) {
-	mark := state.LostFloatingIP{Name: "fip-web-1", ProjectID: "p", VMName: "web", RequestedAt: time.Unix(1, 0)}
+	mark := state.LostFloatingIP{Name: "fip-web-1", Attempt: "this-call", ProjectID: "p", VMName: "web", RequestedAt: time.Unix(1, 0)}
 	sf := &state.File{}
 	Note(sf, mark)
 	c := &fakeCloud{}
@@ -139,7 +149,7 @@ func TestSettle_FindsThenAsks(t *testing.T) {
 	if f, err := Settle(context.Background(), c, sf, "p", "web", "", Free); f != nil || err != nil || len(sf.LostFloatingIPs) != 1 {
 		t.Fatalf("answered: f %v err %v marks %v; want nothing and the mark kept", f, err, sf.LostFloatingIPs)
 	}
-	c.fips = []*provision.FloatingIP{{ID: "fip-1", Name: "fip-web-1", State: "available"}}
+	c.fips = []*provision.FloatingIP{{ID: "fip-1", Name: "fip-web-1", Description: "this-call", State: "available"}}
 	if f, err := Settle(context.Background(), c, sf, "p", "web", "", Free); err != nil || f == nil || f.ID != "fip-1" || len(sf.LostFloatingIPs) != 0 {
 		t.Fatalf("listed: f %v err %v marks %v; want fip-1 and no mark", f, err, sf.LostFloatingIPs)
 	}
@@ -152,16 +162,16 @@ func TestSettle_FindsThenAsks(t *testing.T) {
 // mark closes (Т3, Т4).
 func TestRelease_ReleasesOrNames(t *testing.T) {
 	sf := &state.File{}
-	Note(sf, state.LostFloatingIP{Name: "fip-a", ProjectID: "p", VMName: "web", VMID: "vm-1"})
+	Note(sf, state.LostFloatingIP{Name: "fip-a", Attempt: "this-call", ProjectID: "p", VMName: "web", VMID: "vm-1"})
 	Note(sf, state.LostFloatingIP{Name: "fip-b", ProjectID: "p", VMName: "web"})
 	Note(sf, state.LostFloatingIP{Name: "fip-c", ProjectID: "p", VMName: "other"})
-	c := &fakeCloud{fips: []*provision.FloatingIP{{ID: "id-a", Name: "fip-a", State: "available"}}}
+	c := &fakeCloud{fips: []*provision.FloatingIP{{ID: "id-a", Name: "fip-a", Description: "this-call", State: "available"}}}
 	rel, miss, err := Release(context.Background(), c, sf, "p", "web", "vm-1", "")
-	if err != nil || len(rel) != 1 || rel[0].Name != "fip-a" || len(miss) != 1 || miss[0].Name != "fip-b" {
+	if err == nil || len(rel) != 1 || rel[0].Name != "fip-a" || len(miss) != 1 || miss[0].Name != "fip-b" {
 		t.Fatalf("released %v missing %v err %v", rel, miss, err)
 	}
-	if len(c.deleted) != 1 || c.deleted[0] != "id-a" || len(sf.LostFloatingIPs) != 1 || sf.LostFloatingIPs[0].Name != "fip-c" {
-		t.Fatalf("deleted %v, marks %v; want id-a and only the other VM's mark", c.deleted, sf.LostFloatingIPs)
+	if len(c.deleted) != 1 || c.deleted[0] != "id-a" || len(sf.LostFloatingIPs) != 2 || sf.LostFloatingIPs[0].Name != "fip-b" || sf.LostFloatingIPs[1].Name != "fip-c" {
+		t.Fatalf("deleted %v, marks %v; want id-a and the unresolved and the other VM's marks", c.deleted, sf.LostFloatingIPs)
 	}
 }
 
@@ -187,28 +197,71 @@ func TestApply_KeepsOthers(t *testing.T) {
 	}
 }
 
-// Conclusion 205: after a person's yes two addresses may bear the name of
-// a mark — one on the VM, one free. Whatever the order of the list,
-// destroy releases the free one and keeps the VM's own (keep), and the
-// repeat takes the VM's without closing the mark of the free one.
+func TestApply_KeepsConcurrentAttemptOfSameName(t *testing.T) {
+	first := state.LostFloatingIP{Name: "shared", ProjectID: "p", Attempt: "first"}
+	second := state.LostFloatingIP{Name: "shared", ProjectID: "p", Attempt: "second"}
+	disk := &state.File{LostFloatingIPs: []state.LostFloatingIP{first}}
+	Note(disk, second)
+	Apply(disk, []state.LostFloatingIP{first}, nil)
+	if len(disk.LostFloatingIPs) != 1 || disk.LostFloatingIPs[0].Attempt != second.Attempt {
+		t.Fatalf("closing the first attempt lost the second: %+v", disk.LostFloatingIPs)
+	}
+}
+
+// A single request proves ownership of one address. When names collide,
+// neither cleanup nor adoption depends on the order in the cloud list.
 func TestTwoOfOneName_BothOrders(t *testing.T) {
 	bound := &provision.FloatingIP{ID: "on-vm", Name: "fip-vm-1", State: "in_use", VM: json.RawMessage(`{"id":"vm-1"}`)}
-	free := &provision.FloatingIP{ID: "free", Name: "fip-vm-1", State: "available"}
-	mark := state.LostFloatingIP{Name: "fip-vm-1", ProjectID: "p", VMName: "web", VMID: "vm-1", Answered: true}
+	free := &provision.FloatingIP{ID: "free", Name: "fip-vm-1", Description: "this-call", State: "available"}
+	mark := state.LostFloatingIP{Name: "fip-vm-1", Attempt: "this-call", ProjectID: "p", VMName: "web", VMID: "vm-1", Answered: true}
 	for _, order := range [][]*provision.FloatingIP{{bound, free}, {free, bound}} {
 		sf := &state.File{}
 		Note(sf, mark)
 		c := &fakeCloud{fips: order}
 		rel, miss, err := Release(context.Background(), c, sf, "p", "web", "vm-1", "on-vm")
-		if err != nil || len(rel) != 1 || len(miss) != 0 || len(c.deleted) != 1 || c.deleted[0] != "free" {
-			t.Fatalf("order %s first: released %v, missing %v, deleted %v, err %v; want the free one deleted", order[0].ID, rel, miss, c.deleted, err)
+		if err != nil || len(rel) != 1 || len(miss) != 0 || !slices.Equal(c.deleted, []string{"free"}) {
+			t.Fatalf("released %v, missing %v, deleted %v, err %v", rel, miss, c.deleted, err)
 		}
 		sf = &state.File{}
 		Note(sf, mark)
 		f, err := Settle(context.Background(), c, sf, "p", "web", "vm-1", FreeOrOf("vm-1"))
-		if err != nil || f == nil || f.ID != "on-vm" || len(sf.LostFloatingIPs) != 1 {
-			t.Fatalf("order %s first: took %v (%v), marks %v; want the VM's taken and the mark kept", order[0].ID, f, err, sf.LostFloatingIPs)
+		if err != nil || f == nil || f.ID != "free" || len(sf.LostFloatingIPs) != 0 {
+			t.Fatalf("took %v (%v), marks %v; want precisely the address of this attempt", f, err, sf.LostFloatingIPs)
 		}
+	}
+}
+
+func TestRelease_PreservesPreexistingFreeAddressAfterUnknownCreate(t *testing.T) {
+	for _, attempt := range []string{"", "this-call"} {
+		c := &fakeCloud{fips: []*provision.FloatingIP{{ID: "earlier", Name: "shared", State: "available"}}}
+		sf := &state.File{}
+		Note(sf, state.LostFloatingIP{Name: "shared", Attempt: attempt, ProjectID: "p", VMName: "web"})
+		rel, miss, err := Release(context.Background(), c, sf, "p", "web", "", "")
+		if err == nil || len(rel) != 0 || len(miss) != 0 || len(c.deleted) != 0 || len(sf.LostFloatingIPs) != 1 {
+			t.Fatalf("attempt %q: released %v, missing %v, err %v, deleted %v, marks %v", attempt, rel, miss, err, c.deleted, sf.LostFloatingIPs)
+		}
+		if f, err := Settle(context.Background(), c, sf, "p", "web", "", Free); f != nil || err == nil {
+			t.Fatalf("adopted unproven address %v: %v", f, err)
+		}
+	}
+}
+
+func TestRelease_KeepsUnlistedAttemptThroughRepeatedDestroy(t *testing.T) {
+	ctx := context.Background()
+	c := &fakeCloud{}
+	sf := &state.File{}
+	mark := state.LostFloatingIP{Name: "shared", Attempt: "this-call", ProjectID: "p", VMName: "web"}
+	Note(sf, mark)
+	for range 2 {
+		rel, miss, err := Release(ctx, c, sf, "p", "web", "", "")
+		if err == nil || len(rel) != 0 || len(miss) != 1 || len(sf.LostFloatingIPs) != 1 || len(c.deleted) != 0 {
+			t.Fatalf("unresolved request: released %v, missing %v, err %v, state %v, deleted %v", rel, miss, err, sf, c.deleted)
+		}
+	}
+	c.fips = []*provision.FloatingIP{{Name: "shared", ID: "earlier"}, {Name: "shared", ID: "own", Description: "this-call"}}
+	rel, miss, err := Release(ctx, c, sf, "p", "web", "", "")
+	if err != nil || len(rel) != 1 || len(miss) != 0 || len(sf.LostFloatingIPs) != 0 || !slices.Equal(c.deleted, []string{"own"}) {
+		t.Fatalf("confirmed request: released %v, missing %v, err %v, state %v, deleted %v", rel, miss, err, sf, c.deleted)
 	}
 }
 

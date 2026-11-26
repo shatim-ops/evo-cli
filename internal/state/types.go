@@ -110,19 +110,19 @@ type File struct {
 	Version     int                `json:"version"`
 	Project     string             `json:"project,omitempty"`
 	Deployments []DeploymentRecord `json:"deployments"`
-	// LostFloatingIPs are the floating IPs a deploy asked the cloud for
-	// with no answer to tell whether it made them: each may exist and be
-	// billed. A mark stays until the address is found by its name (taken
-	// for its VM, or released by destroy) or destroy names it as not
-	// found (D107; «Риск», conclusion 180).
+	// LostFloatingIPs are requests whose addresses may exist and be billed.
+	// Keep the receipt until its own address is identified and adopted or
+	// confirmed gone.
 	LostFloatingIPs []LostFloatingIP `json:"lost_floating_ips,omitempty"`
 }
 
-// LostFloatingIP is the mark of a floating IP whose create got no answer
-// from the cloud: the request may have been accepted. It holds the exact
-// name the create gave the address — the one thing the address is found
-// by, before it is known to exist.
+// LostFloatingIP records a create that may have reached the cloud.
 type LostFloatingIP struct {
+	// Attempt is the unique description sent in the create request. Older records
+	// only identify a name and require manual reconciliation.
+	Attempt string `json:"attempt,omitempty"`
+	// ID was verified against Attempt before the first release.
+	ID        string `json:"id,omitempty"`
 	Name      string `json:"name"`
 	ProjectID string `json:"project_id,omitempty"`
 	// VMName is the VM the address was for; VMID, once that VM exists

@@ -19,6 +19,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -84,6 +85,7 @@ type mockCloudAPI struct {
 	createReq    provision.CreateVMRequest
 	getCalls     int
 	deletedFIPs  []string
+	releasedFIPs map[string]bool
 }
 
 func (m *mockCloudAPI) SetToken(t string) {
@@ -221,6 +223,11 @@ func (m *mockCloudAPI) GetFloatingIP(ctx context.Context, id string) (*provision
 	if m.getFloatingIPFn != nil {
 		return m.getFloatingIPFn(ctx, id)
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.releasedFIPs[id] {
+		return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+	}
 	return &provision.FloatingIP{
 		ID:        id,
 		IPAddress: "127.0.0.1",
@@ -246,10 +253,19 @@ func (m *mockCloudAPI) DeleteFloatingIP(ctx context.Context, fipID, projectID st
 	m.mu.Lock()
 	m.deletedFIPs = append(m.deletedFIPs, fipID)
 	m.mu.Unlock()
+	var err error
 	if m.deleteFloatingIPFn != nil {
-		return m.deleteFloatingIPFn(ctx, fipID, projectID)
+		err = m.deleteFloatingIPFn(ctx, fipID, projectID)
 	}
-	return nil
+	if err == nil || clerrors.Reason(err) == clerrors.CodeNotFound || clerrors.Reason(err) == clerrors.CodeVMNotFound {
+		m.mu.Lock()
+		if m.releasedFIPs == nil {
+			m.releasedFIPs = make(map[string]bool)
+		}
+		m.releasedFIPs[fipID] = true
+		m.mu.Unlock()
+	}
+	return err
 }
 
 func (m *mockCloudAPI) ListDiskTypes(ctx context.Context, projectID string) ([]*provision.DiskType, error) {

@@ -636,12 +636,13 @@ type ImageMetadataField struct {
 // Interface/VM are raw because the list endpoint may return them as nested
 // objects, strings, or omit them; presence is what signals "in use".
 type FloatingIP struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	IPAddress string          `json:"ip_address"`
-	State     string          `json:"state"`
-	Interface json.RawMessage `json:"interface,omitempty"`
-	VM        json.RawMessage `json:"vm,omitempty"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	IPAddress   string          `json:"ip_address"`
+	State       string          `json:"state"`
+	Interface   json.RawMessage `json:"interface,omitempty"`
+	VM          json.RawMessage `json:"vm,omitempty"`
+	Description string          `json:"description,omitempty"`
 	// NATGateway: the SNAT gateway the address belongs to
 	// (PublicFloatingIpResponse.nat_gateway). Such an address is the
 	// gateway's: it cannot be released on its own (DELETE answers 422
@@ -704,6 +705,7 @@ func isEmptyRaw(r json.RawMessage) bool {
 
 // CreateFloatingIPRequest contains parameters for floating IP creation.
 type CreateFloatingIPRequest struct {
+	Description        string `json:"description,omitempty"`
 	Name               string `json:"name"`
 	ProjectID          string `json:"project_id"`
 	InterfaceID        string `json:"interface_id,omitempty"` // empty: a free FIP, attached later

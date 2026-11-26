@@ -7,9 +7,12 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	stderrors "errors"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -150,14 +153,16 @@ func TestDeploy_RerunAfterFIPFailure_AssignsFIP(t *testing.T) {
 // CreateFloatingIP failed on the transport after the platform made the
 // FIP: it is attached to the VM and billed, so it must land in state.
 func TestAssignFloatingIP_LostResponseRecoversFIPByName(t *testing.T) {
+	var attempt string
 	cloud := &mockCloudAPI{
-		createFloatingIPFn: func(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+		createFloatingIPFn: func(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+			attempt = req.Description
 			return nil, clerrors.New(clerrors.CodeAPIUnreachable, "cannot reach Cloud.ru API", "")
 		},
 		listFloatingIPsFn: func(context.Context, string) ([]*provision.FloatingIP, error) {
 			return []*provision.FloatingIP{
 				{ID: "fip-other", Name: "fip-vm-0", IPAddress: "198.51.100.1"},
-				{ID: "fip-made", Name: "fip-vm-1", IPAddress: "198.51.100.2", State: "in_use"},
+				{ID: "fip-made", Description: attempt, Name: "fip-vm-1", IPAddress: "198.51.100.2", State: "in_use"},
 			}, nil
 		},
 	}
@@ -262,7 +267,7 @@ func TestDestroy_NoFIPIDNoAddress_FindsFIPByName(t *testing.T) {
 	rec.FloatingIPID, rec.VMIP = "", ""
 	eng, cloud, _ := destroyFixture(t, rec)
 	cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
-		return []*provision.FloatingIP{{ID: "fip-x", Name: "fip-vm-1", IPAddress: "198.51.100.7"}}, nil
+		return []*provision.FloatingIP{{ID: "fip-x", Name: "fip-vm-1", IPAddress: "198.51.100.7", VM: json.RawMessage(`{"id":"vm-1"}`)}}, nil
 	}
 	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
 		t.Fatalf("Destroy: %v", err)
@@ -306,5 +311,41 @@ func TestDestroy_VM405_RelatedEntities(t *testing.T) {
 	}
 	if len(cloud.deletedFIPs) != 0 {
 		t.Error("FIP released while the VM still exists")
+	}
+}
+
+func TestDestroy_LostCreateKeepsReceiptAndEarlierSameNameAddressOnRepeat(t *testing.T) {
+	rec := runningRecord()
+	eng, cloud, out := destroyFixture(t, rec)
+	eng.Printer = output.NewWithWriters(out, io.Discard, output.ModeJSON, false)
+	sf := readState(t, eng.StateDir)
+	sf.LostFloatingIPs = []state.LostFloatingIP{{Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
+	if err := state.Write(state.DefaultPath(eng.StateDir), sf); err != nil {
+		t.Fatal(err)
+	}
+	// The earlier, unrelated address enters the list after the first check.
+	for _, listed := range []bool{false, true, true} {
+		cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
+			if !listed {
+				return nil, nil
+			}
+			return []*provision.FloatingIP{{Name: "extra", ID: "earlier", State: "available"}}, nil
+		}
+		out.Reset()
+		if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+			t.Fatal(err)
+		}
+		var answer struct {
+			Status  string `json:"status"`
+			Pending bool   `json:"cleanup_pending"`
+			Warning string `json:"warning"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &answer); err != nil {
+			t.Fatal(err)
+		}
+		sf = readState(t, eng.StateDir)
+		if answer.Status != "partial" || !answer.Pending || !strings.Contains(answer.Warning, "extra") || len(sf.LostFloatingIPs) != 1 || sf.ActiveDeployment() == nil || slices.Contains(cloud.deletedFIPs, "earlier") {
+			t.Fatalf("listed=%v, reply=%+v, active=%v, receipts=%v, DELETE=%v", listed, answer, sf.ActiveDeployment(), sf.LostFloatingIPs, cloud.deletedFIPs)
+		}
 	}
 }

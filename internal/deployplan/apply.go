@@ -46,9 +46,10 @@ type ApplyResult struct {
 	// LostFloatingIP is the name of the VM's floating IP whose create got
 	// no answer: it may exist and be billed (floatingip.LostError). The
 	// tool keeps its mark in the state.
-	LostFloatingIP string `json:"lost_floating_ip,omitempty"`
-	SSH            string `json:"ssh,omitempty"`
-	Password       string `json:"password,omitempty"` // shown ONCE; not persisted
+	LostFloatingIP string               `json:"lost_floating_ip,omitempty"`
+	FIPReceipt     state.LostFloatingIP `json:"-"` // the attempt that was lost or recovered
+	SSH            string               `json:"ssh,omitempty"`
+	Password       string               `json:"password,omitempty"` // shown ONCE; not persisted
 	// VMStatus is the VM's state when the apply stopped waiting for it
 	// (Status "creating", D69).
 	VMStatus   string `json:"vm_status,omitempty"`
@@ -339,8 +340,12 @@ poll:
 	show.done(i18n.Tf("VM %s is running", "ВМ %s запущена", plan.VM.Name))
 
 	// --- Floating IP ---
-	var lostFIP string
+	var lostFIP state.LostFloatingIP
 	ip, fipID, fipNote := ensureFloatingIP(ctx, cloud, plan, vm.ID, &lostFIP)
+	var lostName string
+	if lostFIP.ID == "" {
+		lostName = lostFIP.Name
+	}
 	if ip != "" {
 		show.done(i18n.Tf("Public IP %s", "Публичный IP %s", ip))
 	}
@@ -349,7 +354,7 @@ poll:
 		// report a half-done VM as "running".
 		r, err := interrupted(ip, fipID)
 		if r != nil {
-			r.LostFloatingIP = lostFIP
+			r.LostFloatingIP, r.FIPReceipt = lostName, lostFIP
 		}
 		return r, err
 	}
@@ -385,7 +390,8 @@ poll:
 		Status:         status,
 		PublicIP:       ip,
 		FloatingIPID:   fipID,
-		LostFloatingIP: lostFIP,
+		LostFloatingIP: lostName,
+		FIPReceipt:     lostFIP,
 		SSH:            sshString(plan.SSH.Login, ip),
 		Password:       password,
 		ElapsedSec:     int(clock.Since(start).Seconds()),
@@ -505,8 +511,8 @@ func attachedFloatingIP(ctx context.Context, cloud provision.CloudAPI, vmID stri
 	return detail.AttachedFloatingIP()
 }
 
-// lostName is set to the name of an address whose create got no answer.
-func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vmID string, lostName *string) (ip, fipID, note string) {
+// lostMark records the attempt when its create got no answer.
+func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan, vmID string, lostMark *state.LostFloatingIP) (ip, fipID, note string) {
 	if !plan.Network.FloatingIP {
 		return "", "", ""
 	}
@@ -541,9 +547,24 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 	own := func(x provision.FloatingIP) bool { return x.BoundTo(vmID) || x.BoundTo(ifaceID) || x.Pending() }
 	// One an earlier apply asked for with no answer, listed now, is taken:
 	// not a second create (D107; «Риск», conclusion 180, У2).
-	if x := floatingip.Find(ctx, cloud, plan.ProjectID, provision.FitName(plan.VM.Name, "-fip"), own); x != nil {
-		return x.IPAddress, x.ID, i18n.T("public IP attached (found the floating IP an earlier apply asked for by its name)",
-			"публичный IP подключён (найден по имени floating IP, запрошенный прошлым применением плана)")
+	var x *provision.FloatingIP
+	if len(plan.LostFIPs) != 0 {
+		sf := &state.File{LostFloatingIPs: append([]state.LostFloatingIP(nil), plan.LostFIPs...)}
+		x, err = floatingip.Settle(ctx, cloud, sf, plan.ProjectID, plan.VM.Name, vmID, own)
+		if err != nil {
+			return "", "", err.Error()
+		}
+		if x != nil {
+			*lostMark = state.LostFloatingIP{Name: x.Name, Attempt: x.Description, ID: x.ID}
+		}
+	} else {
+		x = floatingip.Find(ctx, cloud, plan.ProjectID, provision.FitName(plan.VM.Name, "-fip"), func(f provision.FloatingIP) bool {
+			return f.BoundTo(vmID) || f.BoundTo(ifaceID)
+		})
+	}
+	if x != nil {
+		return x.IPAddress, x.ID, i18n.T("public IP attached (matched the requested floating IP)",
+			"публичный IP подключён (подтверждён запрошенный floating IP)")
 	}
 	// One create: with no answer it is looked for by its name, and not
 	// sent again (floatingip.Reserve; conclusion 180, У1).
@@ -560,7 +581,7 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 		return "", "", "⚠️ Floating-IP quota exhausted — the VM was created WITHOUT a public IP. Increase the floating-IP quota in the Cloud.ru console, then attach an IP to this VM manually."
 	}
 	if lost, ok := floatingip.AsLost(e); ok {
-		*lostName = lost.Name
+		lostMark.Name, lostMark.Attempt = lost.Name, lost.Attempt
 		return "", "", lostFIPNote(lost.Name, lost.Err)
 	}
 	// A refusal: no address came of it. deploy_apply again adopts the VM
@@ -573,7 +594,7 @@ func ensureFloatingIP(ctx context.Context, cloud provision.CloudAPI, plan *Plan,
 // was requested (ApplyResult.LostFloatingIP names it).
 func lostFIPNote(name string, err error) string {
 	return "the create of floating IP " + name + " got no answer from the cloud (" + err.Error() + "): the request may have been accepted, and the address billed. No second address was requested. Check list_floating_ips for the name " + name +
-		"; deploy_apply again with the same plan takes that address if the list shows it on this VM; if the list does not show it, it asks first — whether to reserve another address is the person's to answer"
+		"; deploy_apply again with the same plan takes that address if the list identifies this request and its address on the VM; otherwise it asks first — whether to reserve another address is the person's to answer"
 }
 
 // FloatingIPName is the name the plan's VM's floating IP is created by:

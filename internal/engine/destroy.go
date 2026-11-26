@@ -6,6 +6,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"net/http"
@@ -159,11 +160,16 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Delete VM, then its floating IP and the port rules deploy created.
 	e.Printer.Step(3, 3, i18n.T("Deleting VM, floating IP and port rules...", "Удаление ВМ, floating IP и правил портов..."))
+	// Older receipts may lack the address ID. Capture a proven binding while
+	// the VM still exists, and persist it before deletion detaches the IP.
+	fipErr := e.RecordLegacyFloatingIP(ctx, active, vm)
 	prevStatus := active.Status
 	active.Status = "destroying"
 	active.UpdatedAt = time.Now()
 	stateFile.UpsertDeployment(*active)
-	_ = state.Write(statePath, stateFile)
+	if err := state.Write(statePath, stateFile); err != nil {
+		return err
+	}
 
 	if active.VMID == "" {
 		// No ID to delete by: DELETE /vms/ with an empty ID is not a VM.
@@ -245,7 +251,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// The VM is gone but its floating IP is billed until released. On failure
 	// the record stays ("destroying"), so re-running destroy retries.
 	stateFile.UpsertDeployment(*active)
-	fipErr := e.releaseFloatingIP(ctx, active)
+	if fipErr == nil {
+		fipErr = e.releaseFloatingIP(ctx, active)
+	}
 
 	// Port rules only now that the VM is gone: had its delete failed, the
 	// app would still be serving and must keep its ports. A failed rule
@@ -256,22 +264,21 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	if len(left) > 0 {
 		e.Printer.StepDone(notOursText(left))
 	}
-	if fipErr != nil {
+	ipPending := stderrors.Is(fipErr, errFloatingIPReleaseUnconfirmed)
+	if fipErr != nil && !ipPending {
 		_ = state.Write(statePath, stateFile)
 		return fipErr
 	}
 
-	// The addresses asked for this VM with no answer (floatingip): released
-	// when listed by their name, else named in the answer — their marks
-	// close either way, so nothing billed stays unnamed (D107; «Риск»,
-	// conclusion 180, Т3 and Т4).
+	// A lost create stays on the deployment until its own address is
+	// identified and the final GET confirms its removal.
 	lostReleased, lostMissing, extraErr := e.releaseLostAddresses(ctx, stateFile, active)
 
 	// Clean up state. Retire moves records: active points into the slice.
-	recID, vmID, vmIP := active.ID, active.VMID, active.VMIP
+	recID, vmID, vmIP, fipID := active.ID, active.VMID, active.VMIP, fipRef(active)
 	for _, id := range append([]string{active.ID}, pending...) {
-		if extraErr != nil && id == recID {
-			// The receipt and VM ID are needed to retry the extra address.
+		if (ipPending || extraErr != nil) && id == recID {
+			// The receipt and VM ID are needed to retry the address.
 			continue
 		}
 		sgrules.Retire(stateFile, id)
@@ -286,7 +293,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		return err
 	}
 
-	cleanupPending := extraErr != nil || len(rules.Failed) > 0 || uncheckedErr != nil || len(lostMissing) > 0
+	cleanupPending := ipPending || extraErr != nil || len(rules.Failed) > 0 || uncheckedErr != nil || len(lostMissing) > 0
 	if opts.Result != nil {
 		opts.Result.CleanupPending = cleanupPending
 	}
@@ -300,6 +307,10 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		if shown.VMName != "" {
 			out["vm_name"] = shown.VMName
 		}
+		if ipPending {
+			out["floating_ip_unconfirmed"] = fipID
+			out["floating_ip_warning"] = fipErr.Error()
+		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
 		}
@@ -312,10 +323,16 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		if len(lostReleased) > 0 {
 			out["lost_floating_ips_released"] = lostReleased
 		}
+		if extraErr != nil {
+			out["warning"] = extraErr.Error()
+		}
 		if len(lostMissing) > 0 {
 			out["lost_floating_ips_not_found"] = lostMissing
 		}
 		return e.Printer.JSON(out)
+	}
+	if ipPending {
+		e.Printer.Warning(fipErr.Error())
 	}
 	if cleanupPending {
 		e.Printer.Warning(i18n.T("Resource cleanup is incomplete.", "Уборка ресурсов не завершена."))
@@ -325,10 +342,7 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	return nil
 }
 
-// releaseLostAddresses releases the floating IPs asked for the VM of rec
-// with no answer (floatingip.Release) and says what it did: released by
-// destroy itself; not listed — named, with where to release it if it comes.
-// A list that cannot be read keeps the marks, with a warning.
+// releaseLostAddresses reports released addresses and unresolved create receipts.
 func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) (released, missing []string, releaseErr error) {
 	rel, miss, err := floatingip.Release(ctx, e.Cloud, sf, e.projectOf(rec), rec.VMName, rec.VMID, rec.FloatingIPID)
 	for _, m := range rel {
@@ -337,12 +351,12 @@ func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *
 	}
 	for _, m := range miss {
 		missing = append(missing, m.Name)
-		e.Printer.Warning(i18n.Tf("floating IP %s, requested %s with no answer, is not listed: if list_floating_ips shows it later, it is billed — whether to release it (release_floating_ip), ask the person",
-			"floating IP %s, запрошенный %s без ответа облака, в списке не найден: если 'evo vpc fips' покажет его позже, он тарифицируется — освобождать ли его ('evo vpc fip-release'), спросите человека", m.Name, m.RequestedAt.Local().Format("02.01.2006 15:04")))
+		e.Printer.Warning(i18n.Tf("floating IP %s, requested %s with no answer, is not listed. The receipt was kept. Check the request and address ID in the cloud before deciding whether to release it",
+			"floating IP %s, запрошенный %s без ответа облака, в списке не найден. Квитанция сохранена. Перед решением об освобождении сверьте запрос и ID адреса в облаке", m.Name, m.RequestedAt.Local().Format("02.01.2006 15:04")))
 	}
 	if err != nil {
-		e.Printer.Warning(i18n.Tf("the floating IPs requested with no answer were not checked (%v); the next destroy checks them again",
-			"floating IP, запрошенные без ответа облака, не проверены (%v); следующий destroy проверит их снова", err))
+		e.Printer.Warning(i18n.Tf("cleanup of the floating IPs requested with no answer is unconfirmed (%v); the next destroy checks the receipts again",
+			"уборка floating IP, запрошенных без ответа облака, не подтверждена (%v). Повтор destroy проверит сохранённые квитанции", err))
 	}
 	return released, missing, err
 }
@@ -564,52 +578,75 @@ func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, st
 // deleted the platform may still report the FIP as attached.
 const fipReleaseAttempts = 5
 
-// releaseFloatingIP deletes the deployment's floating IP. The ID comes from
-// state; records written before floating_ip_id existed fall back to looking
-// the address up in list_floating_ips. Nothing to release is not an error.
-func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRecord) error {
-	projectID := e.projectOf(rec)
-	fipID := rec.FloatingIPID
-	// Without an ID: by address, else by the name deploy gives it (its
-	// create response may have been lost, leaving neither in state).
-	if fipID == "" && (rec.VMIP != "" || rec.VMID != "") {
-		fips, err := e.Cloud.ListFloatingIPs(ctx, projectID)
-		if err != nil {
-			return clerrors.Wrap(clerrors.CodeAPIError,
-				i18n.Tf("cannot look up floating IP %s", "не удалось найти floating IP %s", fipLabel(rec.VMIP, fipName(rec.VMID))),
-				i18n.T("The VM is deleted. Re-run 'evo destroy --yes' to release the floating IP, or release it in the Cloud.ru console.",
-					"ВМ удалена. Чтобы освободить floating IP, повторите 'evo destroy --yes' или освободите его в консоли Cloud.ru."),
-				err)
-		}
-		for _, f := range fips {
-			if (rec.VMIP != "" && f.IPAddress == rec.VMIP) || (rec.VMID != "" && f.Name == fipName(rec.VMID)) {
-				fipID = f.ID
-				break
-			}
-		}
+// RecordLegacyFloatingIP resolves an old receipt before the VM is deleted.
+// A matching name or recorded address selects candidates. Only the current
+// VM binding proves which ID can be released. An empty list has no target.
+func (e *Engine) RecordLegacyFloatingIP(ctx context.Context, rec *state.DeploymentRecord, vm *provision.VM) error {
+	if rec.FloatingIPID != "" || rec.VMID == "" && rec.VMIP == "" {
+		return nil
 	}
+	fips, err := e.Cloud.ListFloatingIPs(ctx, e.projectOf(rec))
+	if err != nil {
+		return clerrors.Wrap(clerrors.CodeAPIError,
+			i18n.T("Could not check the recorded floating IP. Re-run 'evo destroy --yes'.",
+				"Не удалось проверить записанный floating IP. Повторите 'evo destroy --yes'."), "", errFloatingIPReleaseUnconfirmed)
+	}
+	var proved *provision.FloatingIP
+	matched := false
+	for _, f := range fips {
+		if f == nil {
+			continue
+		}
+		if !(rec.VMIP != "" && f.IPAddress == rec.VMIP) && !provision.IsEvoFIPOf(f.Name, rec.VMID, rec.VMName) {
+			continue
+		}
+		matched = true
+		var bound struct{ ID string }
+		_ = json.Unmarshal(f.VM, &bound)
+		onVM := rec.VMID != "" && bound.ID == rec.VMID
+		// Old responses may name the bound IP only on the VM itself.
+		if !f.Bound() && vm != nil && vm.ID == rec.VMID && vm.FloatingIP != "" && vm.FloatingIP == f.IPAddress {
+			onVM = true
+		}
+		if !onVM || f.ID == "" || f.OnNATGateway() {
+			continue
+		}
+		if proved != nil && proved.ID != f.ID {
+			proved = nil
+			break
+		}
+		proved = f
+	}
+	if proved != nil {
+		rec.FloatingIPID, rec.VMIP = proved.ID, proved.IPAddress
+		return nil
+	}
+	if matched {
+		return clerrors.Wrap(clerrors.CodeAPIError,
+			i18n.T("The floating IP's binding to this VM could not be verified. Check the address in the Cloud.ru console before releasing it.",
+				"Не удалось подтвердить привязку floating IP к этой ВМ. До освобождения проверьте адрес в консоли Cloud.ru."), "", errFloatingIPReleaseUnconfirmed)
+	}
+	return nil
+}
+
+// releaseFloatingIP releases only a recorded or verified ID.
+func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRecord) error {
+	projectID, fipID := e.projectOf(rec), rec.FloatingIPID
 	if fipID == "" {
 		return nil
 	}
-
 	t := e.timings()
 	var lastErr error
 	for attempt := 0; attempt < fipReleaseAttempts; attempt++ {
 		err := e.Cloud.DeleteFloatingIP(ctx, fipID, projectID)
-		if err == nil {
-			e.Printer.StepDone(i18n.Tf("Floating IP %s released", "Floating IP %s освобождён", fipLabel(rec.VMIP, fipID)))
-			return nil
-		}
-		// 404 — already released: NOT_FOUND (VM_NOT_FOUND before QA-10).
-		var cliErr *clerrors.CLIError
-		if stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound) {
-			e.Printer.StepDone(i18n.T("Floating IP already released", "Floating IP уже освобождён"))
-			return nil
+		if err == nil || floatingip.NotFound(err) {
+			return e.confirmFloatingIPReleased(ctx, fipID, rec.VMIP, err != nil)
 		}
 		lastErr = err
 		if attempt == fipReleaseAttempts-1 {
 			break
 		}
+		e.Printer.StepDone(i18n.Tf("Waiting to release floating IP %s after a refused request", "Ожидание освобождения floating IP %s после отказа", fipLabel(rec.VMIP, fipID)))
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -621,6 +658,29 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		i18n.T("The floating IP is still billed. Re-run 'evo destroy --yes' or release it in the Cloud.ru console.",
 			"Floating IP по-прежнему тарифицируется. Повторите 'evo destroy --yes' или освободите его в консоли Cloud.ru."),
 		lastErr)
+}
+
+var errFloatingIPReleaseUnconfirmed = stderrors.New("floating IP release not confirmed")
+
+// An accepted DELETE can leave the address billed. A definite GET 404 on
+// its recorded ID confirms release. An uncertain read keeps it for retry.
+func (e *Engine) confirmFloatingIPReleased(ctx context.Context, id, ip string, alreadyGone bool) error {
+	gone, _ := floatingip.Gone(ctx, e.Cloud, id)
+	if gone {
+		if alreadyGone {
+			e.Printer.StepDone(i18n.T("Floating IP already released", "Floating IP уже освобождён"))
+		} else {
+			e.Printer.StepDone(i18n.Tf("Floating IP %s released", "Floating IP %s освобождён", fipLabel(ip, id)))
+		}
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return clerrors.Wrap(clerrors.CodeAPIError,
+		i18n.Tf("Floating IP %s: release not confirmed; it may still be billed. Re-run 'evo destroy --yes'.",
+			"Floating IP %s: освобождение не подтверждено, начисления могут продолжаться. Повторите 'evo destroy --yes'.", fipLabel(ip, id)),
+		"", errFloatingIPReleaseUnconfirmed)
 }
 
 // projectOf is the project a deployment lives in: the one recorded at

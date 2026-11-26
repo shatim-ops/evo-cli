@@ -122,6 +122,8 @@ type Plan struct {
 	// one — a person said yes to one more while the first may still come
 	// (floatingip.NameFor). Not saved: the folder's state tells it.
 	FloatingIPName string `json:"-"`
+	// LostFIPs are the unresolved create receipts of this VM in the folder.
+	LostFIPs []state.LostFloatingIP `json:"-"`
 
 	// Internal fields needed by Apply (persisted, no secrets).
 	ComposeFile string            `json:"compose_file,omitempty"`

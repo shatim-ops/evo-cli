@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	stderrors "errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +43,13 @@ func (c *interruptCloud) GetVM(context.Context, string) (*provision.VM, error) {
 // The public IP is reserved before the VM is created.
 func (c *interruptCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
 	return &provision.FloatingIP{ID: "fip-boot", IPAddress: "203.0.113.7", State: "available"}, nil
+}
+
+func (c *interruptCloud) GetFloatingIP(_ context.Context, id string) (*provision.FloatingIP, error) {
+	if slices.Contains(c.deletedFIPs, id) {
+		return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+	}
+	return &provision.FloatingIP{ID: id}, nil
 }
 
 func (c *interruptCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {

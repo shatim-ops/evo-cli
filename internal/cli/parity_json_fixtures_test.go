@@ -54,15 +54,16 @@ type jsonFake struct {
 	// it took.
 	vmRebooting int
 	// vmResized: parityResizeVM took the change to lowcost10-4-8.
-	vmResized bool
-	fipBound  bool     // the floating IP was attached to the VM
-	writes    []string // every request that is not a read, with its body
+	vmResized   bool
+	fipReleased bool     // a successful DELETE makes the following address GET return 404
+	fipBound    bool     // the floating IP was attached to the VM
+	writes      []string // every request that is not a read, with its body
 }
 
 func (f *jsonFake) reset() {
 	f.mu.Lock()
 	f.vmGone, f.vmStarted, f.vmStopped, f.fipBound, f.writes = false, false, false, false, nil
-	f.vmRebooting, f.vmResized = 0, false
+	f.vmRebooting, f.vmResized, f.fipReleased = 0, false, false
 	f.mu.Unlock()
 }
 
@@ -190,16 +191,28 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 		case p == "/api/v1/images" && r.Method == http.MethodPost:
 			return write(`{"id":"` + parityVM + `","name":"golden"}`)
 		case p == "/api/v1/floating-ips" && r.Method == http.MethodPost:
+			f.mu.Lock()
+			f.fipReleased = false
+			f.mu.Unlock()
 			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`)
 		case p == "/api/v1/floating-ips/"+parityVM && r.Method == http.MethodPut:
 			f.mu.Lock()
 			f.fipBound = true
 			f.mu.Unlock()
 			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"in_use"}`)
+		case p == "/api/v1/floating-ips/"+parityVM && r.Method == http.MethodDelete:
+			f.mu.Lock()
+			f.fipReleased = true
+			f.mu.Unlock()
+			return write(`{}`)
 		case p == "/api/v1/floating-ips/"+parityVM && get:
 			f.mu.Lock()
-			bound := f.fipBound
+			bound, released := f.fipBound, f.fipReleased
 			f.mu.Unlock()
+			if released {
+				w.WriteHeader(http.StatusNotFound)
+				return write(`{"message":"floating IP not found"}`)
+			}
 			if bound {
 				return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"in_use","vm":{"id":"` + parityVM + `"}}`)
 			}

@@ -54,3 +54,31 @@ func TestDeployApply_RecordIsNotYoungerThanItsVM(t *testing.T) {
 		t.Errorf("a repeat moved the record's date: %s, was %s", again.CreatedAt, rec.CreatedAt)
 	}
 }
+
+// A VM can already have an address while a different request has an
+// unknown outcome. Only the receipt matched by this apply may be closed.
+func TestDeployApply_OnlyClosesMatchedFIPReceipt(t *testing.T) {
+	dir := t.TempDir()
+	path := state.DefaultPath(dir)
+	plan := &deployplan.Plan{ProjectID: "p", VM: deployplan.VMSpec{Name: "web"}}
+	mark := state.LostFloatingIP{Name: "requested", Attempt: "this-call", ProjectID: "p", VMID: "my-vm", VMName: "web"}
+	other := state.LostFloatingIP{Name: "earlier", ProjectID: "p", VMID: "my-vm", VMName: "web"}
+	if err := state.Write(path, &state.File{LostFloatingIPs: []state.LostFloatingIP{mark, other}}); err != nil {
+		t.Fatal(err)
+	}
+	res := &deployplan.ApplyResult{VMID: "my-vm", Status: "running", FloatingIPID: "attached"}
+	if err := recordDeployment(dir, nil, plan, res, res.Status); err != nil {
+		t.Fatal(err)
+	}
+	if sf, err := state.Read(path); err != nil || len(sf.LostFloatingIPs) != 2 {
+		t.Fatalf("unrelated attachment cleared a receipt: %v, %v", sf, err)
+	}
+	res.FIPReceipt = mark
+	res.FIPReceipt.ID, res.FloatingIPID = "own-address", "own-address"
+	if err := recordDeployment(dir, nil, plan, res, res.Status); err != nil {
+		t.Fatal(err)
+	}
+	if sf, err := state.Read(path); err != nil || len(sf.LostFloatingIPs) != 1 || sf.LostFloatingIPs[0].Name != other.Name {
+		t.Fatalf("recovery did not preserve the other receipt: %v, %v", sf, err)
+	}
+}

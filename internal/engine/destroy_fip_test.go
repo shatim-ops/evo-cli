@@ -69,7 +69,7 @@ func TestDestroy_ReleasesFloatingIPFromState(t *testing.T) {
 	}
 }
 
-// State written before floating_ip_id existed: the FIP is found by address.
+// Old state: the recorded address and a verified VM binding recover its ID.
 func TestDestroy_OldStateFindsFloatingIPByAddress(t *testing.T) {
 	rec := runningRecord()
 	rec.FloatingIPID = ""
@@ -77,8 +77,16 @@ func TestDestroy_OldStateFindsFloatingIPByAddress(t *testing.T) {
 	cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
 		return []*provision.FloatingIP{
 			{ID: "fip-other", IPAddress: "198.51.100.99"},
-			{ID: "fip-old", IPAddress: "198.51.100.10"},
+			{ID: "fip-old", IPAddress: "198.51.100.10", VM: json.RawMessage(`{"id":"vm-1"}`)},
 		}, nil
+	}
+
+	cloud.deleteVMFn = func(context.Context, string) error {
+		active := readActive(t, eng.StateDir)
+		if active == nil || active.FloatingIPID != "fip-old" {
+			t.Fatalf("the verified ID must be saved before VM deletion: %+v", active)
+		}
+		return nil
 	}
 
 	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
@@ -86,6 +94,39 @@ func TestDestroy_OldStateFindsFloatingIPByAddress(t *testing.T) {
 	}
 	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-old" {
 		t.Errorf("released FIPs = %v, want [fip-old]", cloud.deletedFIPs)
+	}
+}
+
+// The VM's old address or generated name may have been reused since this
+// receipt was written. Preserve the unresolved target on every retry.
+func TestDestroy_LegacyFloatingIPNeedsCurrentBinding(t *testing.T) {
+	rec := runningRecord()
+	rec.FloatingIPID = ""
+	eng, cloud, out := destroyFixture(t, rec)
+	eng.Printer = output.NewWithWriters(out, io.Discard, output.ModeJSON, false)
+	cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
+		return []*provision.FloatingIP{
+			{ID: "foreign", IPAddress: rec.VMIP, VM: json.RawMessage(`{"id":"other","name":"vm-1"}`)},
+			{ID: "unbound", Name: fipName(rec.VMID)},
+		}, nil
+	}
+	for i := 0; i < 2; i++ {
+		out.Reset()
+		if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+			t.Fatal(err)
+		}
+		var result struct {
+			Status  string
+			Pending bool `json:"cleanup_pending"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		active := readActive(t, eng.StateDir)
+		if result.Status != "partial" || !result.Pending || len(cloud.deletedFIPs) != 0 ||
+			active == nil || active.VMID != rec.VMID || active.FloatingIPID != "" {
+			t.Fatalf("attempt %d: response=%s, releases=%v, receipt=%+v", i+1, out, cloud.deletedFIPs, active)
+		}
 	}
 }
 
@@ -257,12 +298,16 @@ func TestDestroy_ExtraAddressRefusalKeepsTargetUntilRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sf.LostFloatingIPs = []state.LostFloatingIP{{Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
+	sf.LostFloatingIPs = []state.LostFloatingIP{{ID: "fip-extra", Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
 	if err := state.Write(path, sf); err != nil {
 		t.Fatal(err)
 	}
-	cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
-		return []*provision.FloatingIP{{ID: "fip-extra", Name: "extra"}}, nil
+	released := false
+	cloud.getFloatingIPFn = func(_ context.Context, id string) (*provision.FloatingIP, error) {
+		if id == "fip-extra" && !released {
+			return &provision.FloatingIP{ID: id, Name: "extra", State: "available"}, nil
+		}
+		return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
 	}
 	var deny bool
 	attempts := 0
@@ -272,6 +317,7 @@ func TestDestroy_ExtraAddressRefusalKeepsTargetUntilRetry(t *testing.T) {
 			if deny {
 				return stderrors.New("release refused")
 			}
+			released = true
 		}
 		return nil
 	}
@@ -347,6 +393,74 @@ func TestDestroy_JSONIdentifiesEachIncompleteCleanup(t *testing.T) {
 				(got.Unchecked == "API_ERROR") != (cause == "rule list") ||
 				(strings.Join(got.Missing, ",") == "extra") != (cause == "missing extra IP") {
 				t.Fatalf("unexpected cleanup details: %s", out)
+			}
+		})
+	}
+}
+
+// The API accepts release asynchronously. Only the final read of this
+// particular address can retire its billing receipt.
+func TestDestroy_OwnFloatingIPNeedsFinalRead(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		address *provision.FloatingIP
+		readErr error
+	}{
+		{"still visible", &provision.FloatingIP{ID: "fip-9", State: "deleting"}, nil},
+		{"read refused", nil, clerrors.New(clerrors.CodeAPIError, "read refused", "")},
+		{"empty response", nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := runningRecord()
+			eng, cloud, out := destroyFixture(t, rec)
+			eng.Printer = output.NewWithWriters(out, io.Discard, output.ModeJSON, false)
+			readAfterDelete := 0
+			gone := false
+			cloud.getFloatingIPFn = func(_ context.Context, id string) (*provision.FloatingIP, error) {
+				if id != rec.FloatingIPID {
+					t.Fatalf("read %q, want the recorded address %q", id, rec.FloatingIPID)
+				}
+				if len(cloud.deletedFIPs) > 0 {
+					readAfterDelete++
+				}
+				if gone {
+					return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+				}
+				return tc.address, tc.readErr
+			}
+			for _, status := range []string{"partial", "destroyed"} {
+				gone = status == "destroyed"
+				out.Reset()
+				previousReads := readAfterDelete
+				var result DestroyResult
+				err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result})
+				if code := clerrors.ExitCode(err); code != 0 {
+					t.Fatalf("%s: exit %d (%v), want 0", status, code, err)
+				}
+				var response struct {
+					Status  string `json:"status"`
+					Pending *bool  `json:"cleanup_pending"`
+				}
+				if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+				wantPending := !gone
+				if response.Status != status || response.Pending == nil || *response.Pending != wantPending ||
+					result.CleanupPending != wantPending || readAfterDelete == previousReads {
+					t.Fatalf("want %s/%v after GET, got %s, result=%+v, reads=%d", status, wantPending, out, result, readAfterDelete)
+				}
+				active := readActive(t, eng.StateDir)
+				if wantPending && (active == nil || active.Status != "destroying" || active.FloatingIPID != rec.FloatingIPID) {
+					t.Fatalf("pending receipt: %+v", active)
+				}
+				if !wantPending && active != nil {
+					t.Fatalf("receipt after confirmed release: %+v", active)
+				}
+				for _, id := range cloud.deletedFIPs {
+					if id != rec.FloatingIPID {
+						t.Fatalf("released %q, want %q", id, rec.FloatingIPID)
+					}
+				}
 			}
 		})
 	}

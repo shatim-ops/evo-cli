@@ -6,6 +6,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"strings"
 	"testing"
@@ -61,7 +62,7 @@ func TestDestroy_LooksUpFIPInRecordedProject(t *testing.T) {
 	var listed string
 	cloud.listFloatingIPsFn = func(_ context.Context, projectID string) ([]*provision.FloatingIP, error) {
 		listed = projectID
-		return []*provision.FloatingIP{{ID: "fip-a", IPAddress: rec.VMIP}}, nil
+		return []*provision.FloatingIP{{ID: "fip-a", IPAddress: rec.VMIP, VM: json.RawMessage(`{"id":"vm-1"}`)}}, nil
 	}
 	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
 		t.Fatalf("Destroy: %v", err)
