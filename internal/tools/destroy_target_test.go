@@ -7,6 +7,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -127,6 +129,47 @@ func TestDestroyTargeted_ReleasesFIPFromState(t *testing.T) {
 	}
 	if !strings.Contains(text, "released floating IP 203.0.113.5") {
 		t.Errorf("answer does not name the released FIP: %s", text)
+	}
+}
+
+// The destroy message explains how to verify a missing floating-IP receipt
+// in either language. The receipt remains available for that check.
+func TestDestroyTargeted_MissingAddressReceiptInBothLanguages(t *testing.T) {
+	original := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(original) })
+	const vmID = "0000a1a1-0000-4000-8000-000000000001"
+	for _, tc := range []struct{ lang, guidance string }{
+		{i18n.EN, "The receipt was kept. Check the request and address ID in the cloud"},
+		{i18n.RU, "Квитанция сохранена. Перед решением об освобождении сверьте запрос и ID адреса в облаке"},
+	} {
+		t.Run(tc.lang, func(t *testing.T) {
+			i18n.SetLang(tc.lang)
+			cloud := &fipNameCloud{}
+			r, dir := targetRegistry(t, cloud)
+			path := state.DefaultPath(dir)
+			receipt := state.LostFloatingIP{Name: "missing-address", ProjectID: "p", VMID: vmID, VMName: "web", RequestedAt: time.Unix(1792000000, 0).UTC()}
+			foreign := receipt
+			foreign.Name, foreign.ProjectID = "foreign-address", "other"
+			if err := state.Write(path, &state.File{LostFloatingIPs: []state.LostFloatingIP{receipt, foreign}}); err != nil {
+				t.Fatal(err)
+			}
+			text, failed := r.handlers["destroy"](t.Context(), map[string]any{"vm_id": vmID, "confirmed": true})
+			var answer struct {
+				Message        string
+				CleanupPending bool `json:"cleanup_pending"`
+			}
+			if err := json.Unmarshal([]byte(text), &answer); err != nil || failed || !answer.CleanupPending {
+				t.Fatalf("expected outstanding address cleanup, got %s", text)
+			}
+			if !strings.Contains(answer.Message, tc.guidance) || !strings.Contains(answer.Message, receipt.Name) ||
+				strings.Contains(text, foreign.Name) || cloud.releasedFIP != "" {
+				t.Errorf("expected verification of the missing address before release: %s", text)
+			}
+			sf, err := state.Read(path)
+			if err != nil || len(sf.LostFloatingIPs) != 2 || sf.LostFloatingIPs[0] != receipt || sf.LostFloatingIPs[1] != foreign {
+				t.Errorf("receipts after destroy: %v (%v)", sf, err)
+			}
+		})
 	}
 }
 

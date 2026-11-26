@@ -3406,7 +3406,7 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 			for _, m := range miss {
 				lostMissing = append(lostMissing, m.Name)
 				msg += i18n.Tf("; floating IP %s, requested %s with no answer, is not listed. The receipt was kept. Check the request and address ID in the cloud before deciding whether to release it",
-					"; floating IP %s, запрошенного %s без ответа, нет в списке: если evo vpc fips покажет его позже, он оплачивается — освобождать ли его (evo vpc fip-release), решает человек",
+					"; floating IP %s, запрошенный %s без ответа облака, в списке не найден. Квитанция сохранена. Перед решением об освобождении сверьте запрос и ID адреса в облаке",
 					m.Name, m.RequestedAt.UTC().Format(time.RFC3339))
 			}
 			if lerr = stderrors.Join(lerr, werr); lerr != nil {
@@ -4395,8 +4395,8 @@ func errReason(err error, fields map[string]any) (reason, msg, hint string) {
 		f["error"] = msg
 		reason = uncodedReason(err, f)
 	}
-	if i18n.Lang() == i18n.RU && bareServiceStatus.MatchString(msg) {
-		msg = "Сервис вернул ошибку: " + msg
+	if bareServiceStatus.MatchString(msg) {
+		msg = i18n.Tf("%s", "Сервис вернул ошибку: %s", msg)
 	}
 	return reason, msg, hint
 }

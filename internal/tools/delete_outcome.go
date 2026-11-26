@@ -61,8 +61,8 @@ func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (str
 	if waitOff(args) {
 		return deleting(fields, w)
 	}
-	// У Container Apps нет операции для следующего *_operation. По явному
-	// wait=true читаем ту же карточку до исчезновения, не повторяя DELETE.
+	// Container Apps has no operation ID to poll. With explicit wait=true,
+	// poll the same app until it disappears, sending DELETE only once.
 	wait := deleteOutcomeWait
 	if w.tool == "ca_delete" && boolArg(args, "wait", false) {
 		wait = opWaitUntilGone
@@ -135,7 +135,7 @@ func deleteRefusal(w deleteWatch, msg, code any) error {
 // A value is the cloud's — the id of an operation — and goes into evo's
 // text only in the form of one word (plainField); for any other, ok is
 // false and the value stays in next_args, a field "_untrusted" names
-// (#2392; «Риск», 362).
+// (#2392, risk review 362).
 func argsLine(args map[string]any) (line string, ok bool) {
 	parts := make([]string, 0, len(args))
 	for _, k := range slices.Sorted(maps.Keys(args)) {

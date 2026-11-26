@@ -278,6 +278,20 @@ func TestQA11_RefusalWorlds(t *testing.T) {
 				}
 				check(t, text, failed, clerrors.CodeAPIError)
 			})
+			t.Run("container-read-status", func(t *testing.T) {
+				rt := &contractRT{kind: "500text"}
+				r := contractReg(t, rt)
+				_, text, failed := callNamed(t, r, "ca_get", map[string]any{"name": "web"})
+				check(t, text, failed, clerrors.CodeAPIError)
+				var result struct{ Error string }
+				want := "container-apps API 500: Request failed"
+				if lang == i18n.RU {
+					want = "Сервис вернул ошибку: " + want
+				}
+				if err := json.Unmarshal([]byte(text), &result); err != nil || !strings.HasPrefix(result.Error, want) {
+					t.Errorf("service error %q, want prefix %q", result.Error, want)
+				}
+			})
 			t.Run("organization-empty-body", func(t *testing.T) {
 				rt := &contractRT{kind: "500empty"}
 				r := contractReg(t, rt)

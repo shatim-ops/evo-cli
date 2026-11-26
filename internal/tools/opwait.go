@@ -28,8 +28,8 @@ import (
 // budget of an MCP call (MCPCallBudget), in the schema (opWaitProp).
 const opWaitMaxSeconds = int(MCPCallBudget / time.Second)
 
-// Только для явного ожидания ca_delete. Значение wait_seconds клиента сюда
-// не попадает: инструменты *_operation передают положительное число секунд.
+// opWaitUntilGone is internal to ca_delete with wait=true.
+// The *_operation tools pass a positive wait_seconds value here.
 const opWaitUntilGone = -1
 
 // opWaitDescRU is wait_seconds of the *_operation tools in the CLI's
@@ -92,9 +92,9 @@ func opToMap(v any) map[string]any {
 	return m
 }
 
-// waitForOpJSON читает состояние операции с нарастающей паузой.
-// При opWaitUntilGone ожидает до конца, иначе действует лимит wait_seconds
-// и оставшийся бюджет MCP. Отмена запроса прерывает чтения и ожидание.
+// waitForOpJSON polls with backoff. With opWaitUntilGone it waits for a
+// terminal state. Other calls stop at wait_seconds or the remaining MCP
+// budget, whichever comes first. Cancellation interrupts both reads and waits.
 func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Context) (map[string]any, error)) (map[string]any, error) {
 	// Within the budget of the call (D69): an MCP call answers with the
 	// operation's state so far, and the agent asks again. Its reads end
@@ -256,7 +256,7 @@ func readsPut(w waitReads, fields map[string]any) map[string]any {
 // goes on in the cloud, and the caller answers its state and the next
 // step, not an error — and what it knows of its reads (reads): the last
 // state may be old, and an answer at the limit says so (waitReads.put).
-// One loop for the waits on a state: a disk's, a VM's (D99, П4 and П5).
+// One loop for disk and VM state changes (D99, items 4 and 5).
 func waitState(ctx context.Context, eng *engine.Engine, limit time.Duration,
 	read func(context.Context) (state string, seen bool, err error), waiting func(state string) string,
 	done func(state string) (bool, error)) (last string, timedOut time.Duration, atLimit bool, reads waitReads, err error) {
