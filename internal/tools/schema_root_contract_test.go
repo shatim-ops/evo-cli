@@ -15,11 +15,17 @@ func TestRootSchemaMatchesArgumentCheck(t *testing.T) {
 			if tool.InputSchema["additionalProperties"] != false {
 				t.Error("root schema permits undeclared properties")
 			}
-			if err := CheckArgs(tool, map[string]any{"undeclared_test_argument": true}); err == nil {
-				t.Error("argument check accepted an undeclared property")
+			values := contractArgs(tool)
+			args := map[string]any{"confirmed": true}
+			for _, required := range schemaRequired(tool) {
+				args[required] = values[required]
 			}
-			if err := CheckArgs(tool, map[string]any{"confirmed": true}); err != nil {
-				t.Errorf("argument check rejected reserved confirmed=true: %v", err)
+			if err := CheckArgs(tool, args); err != nil {
+				t.Fatalf("argument check rejected the valid sample: %v", err)
+			}
+			args["undeclared_test_argument"] = true
+			if err := CheckArgs(tool, args); err == nil {
+				t.Error("argument check accepted the same sample with an undeclared property")
 			}
 		})
 	}
