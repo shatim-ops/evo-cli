@@ -67,6 +67,10 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	body := `{"error":"refused"}`
 	code := 200
 	switch kind {
+	case "500text":
+		code = http.StatusInternalServerError
+		hdr.Set("Content-Type", "text/plain")
+		body = "Request failed"
 	case "ca499":
 		// The CA name preflight succeeds. The create itself is refused.
 		body = `{"items":[]}`
