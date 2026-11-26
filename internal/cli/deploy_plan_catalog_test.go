@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +27,11 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
+type imageCatalogPage struct {
+	status int
+	body   string
+}
+
 // previewCloud supplies the ordinary preview reads and fails on any cloud write.
 // Only the project catalogue is delegated to the production adapter and pager.
 type planImageCatalog struct {
@@ -35,6 +41,7 @@ type planImageCatalog struct {
 	status  int
 	body    string
 	readErr error
+	pages   []imageCatalogPage
 	gets    int
 	details int
 }
@@ -52,7 +59,20 @@ func (c *planImageCatalog) RoundTrip(r *http.Request) (*http.Response, error) {
 	if c.readErr != nil {
 		return nil, c.readErr
 	}
-	return &http.Response{StatusCode: c.status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(c.body)), Request: r}, nil
+	page := imageCatalogPage{status: c.status, body: c.body}
+	if c.pages != nil {
+		index := c.gets - 1
+		offset := r.URL.Query().Get("offset")
+		if offset == "" {
+			offset = "0"
+		}
+		if index >= len(c.pages) || offset != strconv.Itoa(index) {
+			c.t.Errorf("unexpected page %d with offset %q", index+1, offset)
+			return nil, fmt.Errorf("unexpected catalogue page")
+		}
+		page = c.pages[index]
+	}
+	return &http.Response{StatusCode: page.status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(page.body)), Request: r}, nil
 }
 
 const privatePlanImage = "00000000-0000-0000-0000-0000000000f9"
@@ -67,9 +87,20 @@ func (c *planImageCatalog) GetImage(_ context.Context, id string) (*provision.Im
 
 func planImageRefusal(t *testing.T, surface, image string, wantExit int) (map[string]any, string) {
 	t.Helper()
-	if surface == "CLI" {
+	if surface == "CLI" || surface == "CLI text" {
 		newProcess()
-		exit, stdout, stderr := runCLI(t, "", "deploy", "plan", "--mode", "manual", "--image", image, "--zone", pvZone, "--flavor", "lowcost10-2-4", "--ssh-key", "fixture", "--json")
+		args := []string{"deploy", "plan", "--mode", "manual", "--image", image, "--zone", pvZone, "--flavor", "lowcost10-2-4", "--ssh-key", "fixture"}
+		if surface == "CLI" {
+			args = append(args, "--json")
+		}
+		exit, stdout, stderr := runCLI(t, "", args...)
+		if surface == "CLI text" {
+			message, hint := personText(stderr)
+			if exit != wantExit || stdout != "" || message == "" {
+				t.Errorf("exit=%d, want %d, stdout=%q, stderr=%s", exit, wantExit, stdout, stderr)
+			}
+			return map[string]any{"error": message, "hint": hint}, stderr
+		}
 		var result struct{ Error output.ErrorBody }
 		if err := json.Unmarshal([]byte(stderr), &result); err != nil || stdout != "" || exit != wantExit || result.Error.Code != exit {
 			t.Errorf("exit=%d, want %d, stdout=%q, stderr=%s", exit, wantExit, stdout, stderr)
@@ -125,7 +156,7 @@ func planImageRefusal(t *testing.T, surface, image string, wantExit int) (map[st
 func TestDeployPlan_ProjectImageCatalog(t *testing.T) {
 	const empty = `{"items":[],"total":0}`
 	const privateBody = `{"message":"private-service-message"}`
-	for _, surface := range []string{"CLI", "stdio", "HTTP"} {
+	for _, surface := range []string{"CLI", "CLI text", "stdio", "HTTP"} {
 		t.Run(surface, func(t *testing.T) {
 			dir := t.TempDir()
 			t.Chdir(dir)
@@ -139,6 +170,15 @@ func TestDeployPlan_ProjectImageCatalog(t *testing.T) {
 			c.adapter.SetToken("fixture")
 			c.adapter.Backoff = time.Millisecond
 			withCloud(t, c)
+			t.Cleanup(func() {
+				if files, err := filepath.Glob(filepath.Join(config.DataDir(dir), "plans", "*")); err != nil || len(files) != 0 {
+					t.Errorf("refused plans persisted files: %v (%v)", files, err)
+				}
+			})
+			t.Run("paged_404", func(t *testing.T) { checkPlanCatalogPages(t, c, surface) })
+			if surface == "CLI text" {
+				return
+			}
 			for _, tc := range []struct {
 				name   string
 				status int
@@ -148,8 +188,6 @@ func TestDeployPlan_ProjectImageCatalog(t *testing.T) {
 				exit   int
 			}{
 				{"empty", 200, empty, nil, "NOT_FOUND", 4},
-				{"masked_404", 404, privateBody, nil, "NOT_FOUND", 4},
-				{"gateway_404", 404, `{"error_msg":"Not Found"}`, nil, "API_ERROR", 5},
 				{"authenticated_403", 403, privateBody, nil, "AUTH_FAILED", 2},
 				{"expired_401", 401, privateBody, nil, "AUTH_EXPIRED", 2},
 				{"rate_429", 429, privateBody, nil, "API_RATE_LIMITED", 5},
@@ -164,32 +202,12 @@ func TestDeployPlan_ProjectImageCatalog(t *testing.T) {
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					c.status, c.body, c.readErr, c.gets = tc.status, tc.body, tc.err, 0
-					fields, public := planImageRefusal(t, surface, "selected-image", tc.exit)
+					fields, _ := planImageRefusal(t, surface, "selected-image", tc.exit)
 					if fields["reason"] != tc.reason || c.gets == 0 || c.details != 0 {
 						t.Errorf("got %v, want %s from project catalogue, reads=%d details=%d", fields, tc.reason, c.gets, c.details)
 					}
 					if tc.status == http.StatusForbidden && (fields["access_denied"] != true || fields["http_status"] != float64(403)) {
 						t.Errorf("403 lost its access_denied or http_status: %v", fields)
-					}
-					if tc.name == "gateway_404" && fields["hint"] != clierrors.RouteNotFoundHint() {
-						t.Errorf("gateway refusal lost the routing hint: %v", fields)
-					}
-					if tc.name == "masked_404" {
-						for _, k := range []string{"access_denied", "http_status"} {
-							if _, ok := fields[k]; ok {
-								t.Errorf("masked catalogue answer includes %s", k)
-							}
-						}
-						c.status, c.body = http.StatusOK, empty
-						_, absent := planImageRefusal(t, surface, "selected-image", 4)
-						if public != absent {
-							t.Errorf("masked lookup and complete absence must give the same public answer: %s vs %s", public, absent)
-						}
-						for _, hidden := range []string{pvProject, "/api/v1/images", "fixture.invalid", "404", "private-service-message"} {
-							if strings.Contains(public, hidden) {
-								t.Errorf("neutral absence includes %q: %s", hidden, public)
-							}
-						}
 					}
 				})
 			}
@@ -202,8 +220,81 @@ func TestDeployPlan_ProjectImageCatalog(t *testing.T) {
 					}
 				})
 			}
-			if files, err := filepath.Glob(filepath.Join(config.DataDir(dir), "plans", "*")); err != nil || len(files) != 0 {
-				t.Errorf("refused plans persisted files: %v (%v)", files, err)
+		})
+	}
+}
+
+func checkPlanCatalogPages(t *testing.T, c *planImageCatalog, surface string) {
+	t.Helper()
+	const target = "selected-image"
+	const other = "private-unrelated-image"
+	const firstID = "00000000-0000-4000-8000-000000000021"
+	const secondID = "00000000-0000-4000-8000-000000000022"
+	row := func(id, name string, total int) imageCatalogPage {
+		return imageCatalogPage{200, fmt.Sprintf(`{"items":[{"id":%q,"name":%q}],"total":%d}`, id, name, total)}
+	}
+	service := imageCatalogPage{404, `{"message":"private-service-message"}`}
+	gateway := imageCatalogPage{404, `{"error_msg":"Not Found"}`}
+	run := func(t *testing.T, pages []imageCatalogPage, reason string, exit int) (map[string]any, string) {
+		t.Helper()
+		c.pages, c.gets, c.details = pages, 0, 0
+		defer func() { c.pages = nil }()
+		fields, public := planImageRefusal(t, surface, target, exit)
+		if c.gets != len(pages) || c.details != 0 {
+			t.Errorf("read %d pages, want %d; detail lookups=%d", c.gets, len(pages), c.details)
+		}
+		if surface != "CLI text" && fields["reason"] != reason {
+			t.Errorf("reason=%v, want %s: %s", fields["reason"], reason, public)
+		}
+		for _, hidden := range []string{pvProject, fakeKeyID, fakeSecret, "Bearer fixture", "/api/v1/images", "fixture.invalid", "private-service-message", firstID, secondID, other} {
+			if strings.Contains(public, hidden) {
+				t.Errorf("public answer contains catalogue data %q: %s", hidden, public)
+			}
+		}
+		return fields, public
+	}
+	t.Run("neutral_absence", func(t *testing.T) {
+		fields, hidden := run(t, []imageCatalogPage{service}, "NOT_FOUND", 4)
+		_, empty := run(t, []imageCatalogPage{{200, `{"items":[],"total":0}`}}, "NOT_FOUND", 4)
+		_, complete := run(t, []imageCatalogPage{row(firstID, other, 2), row(secondID, other+"-2", 2)}, "NOT_FOUND", 4)
+		if hidden != empty || hidden != complete {
+			t.Errorf("first service 404 and complete searches differ: %q / %q / %q", hidden, empty, complete)
+		}
+		_, denied := fields["access_denied"]
+		_, status := fields["http_status"]
+		if denied || status || strings.Contains(hidden, "404") {
+			t.Errorf("neutral refusal exposed the service 404: %s", hidden)
+		}
+	})
+	if surface == "CLI text" {
+		t.Run("service_page_2_ru", func(t *testing.T) {
+			t.Setenv("EVO_LANG", "ru")
+			ru(t)
+			fields, _ := run(t, []imageCatalogPage{row(firstID, target, 2), service}, "API_ERROR", 5)
+			if fields["error"] != "не удалось дочитать каталог" {
+				t.Errorf("unexpected Russian diagnostic: %v", fields)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name    string
+		pages   []imageCatalogPage
+		gateway bool
+	}{
+		{"service_page_2", []imageCatalogPage{row(firstID, other, 2), service}, false},
+		{"service_page_3_after_match", []imageCatalogPage{row(firstID, target, 3), row(secondID, other, 3), service}, false},
+		{"gateway_page_1", []imageCatalogPage{gateway}, true},
+		{"gateway_page_2", []imageCatalogPage{row(firstID, other, 2), gateway}, true},
+		{"gateway_page_3_after_match", []imageCatalogPage{row(firstID, target, 3), row(secondID, other, 3), gateway}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fields, public := run(t, tc.pages, "API_ERROR", 5)
+			if tc.gateway {
+				if fields["hint"] != clierrors.RouteNotFoundHint() {
+					t.Errorf("lost D63 routing hint: %v", fields)
+				}
+			} else if fields["error"] != "Could not finish reading the image catalogue." || strings.Contains(public, clierrors.RouteNotFoundHint()) {
+				t.Errorf("incomplete catalogue not explained: %s", public)
 			}
 		})
 	}

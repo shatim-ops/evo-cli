@@ -139,6 +139,13 @@ func listPages[T any](a *CloudRuAdapter, ctx context.Context, path string, q url
 		}
 		resp, err := a.doWithRetry(ctx, http.MethodGet, full, nil)
 		if err != nil {
+			// A previous page promised more images. A service 404 here
+			// leaves the search incomplete. Gateway failures already carry API_ERROR.
+			if complete && offset > 0 && clierrors.Reason(err) == clierrors.CodeNotFound {
+				return nil, clierrors.New(clierrors.CodeAPIError,
+					i18n.T("Could not finish reading the image catalogue.", "не удалось дочитать каталог"),
+					i18n.T("Retry reading the catalogue.", "Повторите чтение каталога."))
+			}
 			return nil, err
 		}
 		body, err := readListPage(resp, path, complete)

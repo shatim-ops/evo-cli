@@ -381,8 +381,8 @@ func pickImage(ctx context.Context, cloud provision.CloudAPI, projectID, want st
 				}
 			}
 		}
-		// A catalogue can hide resources with a 404. Use the same answer as
-		// a completed search, without retaining its URL, body or error chain.
+		// The project catalogue can be hidden on its first page. Use the same
+		// answer as a completed search, without its URL, body or error chain.
 		return provision.Image{}, false, clierrors.New(clierrors.CodeNotFound,
 			i18n.T("Image not found.", "Образ не найден."),
 			i18n.T("Check the image name or ID in the list of available images.", "Проверьте имя или ID в списке доступных образов."))
