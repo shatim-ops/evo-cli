@@ -4,13 +4,27 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
+
+// The normal parity world returns an empty project FIP list. Here an
+// extra address can still be listed after an accepted cleanup request.
+type destroyExtraAddressWorld struct {
+	provision.CloudAPI
+	id string
+}
+
+func (w destroyExtraAddressWorld) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
+	return []*provision.FloatingIP{{ID: w.id, Name: "extra", State: "available"}}, nil
+}
 
 // Exercise both D127 answers through the CLI with a real saved deployment.
 // An accepted DELETE is followed first by a still-visible paid address,
@@ -34,6 +48,15 @@ func testDestroyPaidAddressOnRetry(t *testing.T, extra bool) {
 	addressID := parityVM
 	if extra {
 		addressID = "00000000-0000-4000-8000-000000000008"
+		base := toolEngine
+		toolEngine = func(o map[string]any) (*engine.Engine, error) {
+			e, err := base(o)
+			if err == nil {
+				e.Cloud = destroyExtraAddressWorld{e.Cloud, addressID}
+			}
+			return e, err
+		}
+		defer func() { toolEngine = base }()
 		path := state.DefaultPath(w.dir)
 		sf, err := state.Read(path)
 		if err != nil {
@@ -49,9 +72,6 @@ func testDestroyPaidAddressOnRetry(t *testing.T, extra bool) {
 	var deletes, reads int
 	gone := false
 	w.rt.extra = func(r *http.Request) (*http.Response, error) {
-		if extra && r.Method == http.MethodGet && r.URL.Path == "/api/v1/floating-ips" {
-			return contractRT{status: http.StatusOK, body: `{"items":[{"name":"extra","id":"` + addressID + `","state":"available"}],"total":1}`}.RoundTrip(r)
-		}
 		if r.URL.Path == "/api/v1/floating-ips/"+addressID {
 			switch r.Method {
 			case http.MethodDelete:
