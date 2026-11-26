@@ -95,7 +95,7 @@ func (c *provisionCloud) password() string {
 
 // provisionServer is an MCP server whose provision runs on cloud in a
 // project directory of its own.
-func provisionServer(t *testing.T, cloud *provisionCloud) *Server {
+func provisionServer(t *testing.T, cloud provision.CloudAPI) *Server {
 	t.Helper()
 	dir := t.TempDir()
 	s := New(func(map[string]any) (*engine.Engine, error) {
