@@ -121,9 +121,10 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 			code, out, errOut := runCLI(t, c.stdin, append(append([]string{"--yes"}, extra...), line...)...)
 			done()
 			forgetRun(w)
-			return code, readVolatile(out), readVolatile(errOut)
+			return code, out, errOut
 		}
 		code, jsonOut, jsonErr := run("--json")
+		jsonOut = readVolatile(jsonOut)
 		var answer any
 		if code != 0 || json.Unmarshal([]byte(jsonOut), &answer) != nil {
 			bad = append(bad, fmt.Sprintf("%s: --json fails or is no JSON: exit %d, %s %s", c.path, code, clipLine(jsonOut), clipLine(jsonErr)))
@@ -134,7 +135,7 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 			bad = append(bad, fmt.Sprintf("%s: the human output fails: exit %d, %s", c.path, code, clipLine(errOut)))
 			continue
 		}
-		human := out + errOut
+		human := readVolatile(out) + readVolatile(errOut)
 		// What a stale line of readUnnamed is checked against: when the
 		// line is not seen, the answer and the human output say why — the
 		// value gone from the answer (a probe of doctor cut by its time
@@ -145,6 +146,17 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 			key := c.tool.Name + " " + miss.path
 			if shownAsWritten(miss.value, human) {
 				continue
+			}
+			if key == "metrics_history series.timestamps" {
+				// The JSON stores Unix milliseconds; the text prints each
+				// sample in UTC, including the milliseconds.
+				ms, err := strconv.ParseFloat(miss.value, 64)
+				if err == nil && ms == float64(int64(ms)) {
+					stamp := time.UnixMilli(int64(ms)).UTC().Format("2006-01-02T15:04:05.000Z")
+					if strings.Contains(out, "\n"+stamp+" ") {
+						continue
+					}
+				}
 			}
 			if namedBySibling(answer, miss.path, miss.value, human) {
 				verified[key] = true

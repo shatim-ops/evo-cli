@@ -274,7 +274,7 @@ var cliSpecs = map[string]CLISpec{
 
 	// metrics: the command is the prefix of the tool's name, not its group
 	// (monitoring, which --toolsets keeps): owner's decision Q4.
-	"metrics_history": {Group: "metrics", Verb: "history", Args: []string{"match"}},
+	"metrics_history": {Group: "metrics", Verb: "history", Args: []string{"match"}, Render: "metric-series"},
 	"metrics_scrape":  {Group: "metrics", Verb: "scrape", Args: []string{"match?"}, Render: "exposition"},
 
 	// stack

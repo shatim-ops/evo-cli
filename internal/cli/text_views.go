@@ -6,11 +6,15 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/monitoring"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -82,6 +86,45 @@ func renderExposition(_ *output.Printer, w io.Writer, text string) error {
 	}
 	for _, line := range strings.Split(strings.TrimSuffix(*a.Exposition, "\n"), "\n") {
 		fmt.Fprintln(w, output.SanitizeCell(line))
+	}
+	return nil
+}
+
+// renderMetricSeries shows the labels once per series and streams each
+// sample with its time. The Monitoring API timestamps are Unix milliseconds.
+func renderMetricSeries(p *output.Printer, w io.Writer, text string) error {
+	var a struct {
+		Project, Match, Window string
+		Count                  int
+		Series                 []monitoring.Series
+	}
+	if err := json.Unmarshal([]byte(text), &a); err != nil || a.Series == nil {
+		// Preserve a diagnostic that is not a series answer.
+		fmt.Fprintln(w, output.SanitizeCell(text))
+		return nil
+	}
+	for _, series := range a.Series {
+		if len(series.Values) != len(series.Timestamps) {
+			return errors.New(i18n.T("The metric series has different numbers of timestamps and values.", "В ряду метрики разное число отметок времени и значений."))
+		}
+	}
+	p.Table([]string{i18n.T("PROJECT", "ПРОЕКТ"), i18n.T("MATCH", "СЕЛЕКТОР"), i18n.T("WINDOW", "ПЕРИОД"), i18n.T("SERIES", "РЯДЫ")},
+		[][]string{{a.Project, a.Match, a.Window, strconv.Itoa(a.Count)}})
+	if len(a.Series) == 0 {
+		fmt.Fprintln(w, i18n.T("No metric series.", "Рядов метрик нет."))
+	}
+	for _, series := range a.Series {
+		labels, _ := json.Marshal(series.Metric)
+		fmt.Fprintf(w, "\n%s %s\n", i18n.T("Labels:", "Метки:"), output.SanitizeCell(string(labels)))
+		if len(series.Values) == 0 {
+			fmt.Fprintln(w, i18n.T("No samples.", "Измерений нет."))
+			continue
+		}
+		fmt.Fprintln(w, i18n.T("TIME (UTC)                VALUE", "ВРЕМЯ (UTC)               ЗНАЧЕНИЕ"))
+		for i, value := range series.Values {
+			stamp := time.UnixMilli(series.Timestamps[i]).UTC().Format("2006-01-02T15:04:05.000Z")
+			fmt.Fprintf(w, "%s  %s\n", stamp, strconv.FormatFloat(value, 'g', -1, 64))
+		}
 	}
 	return nil
 }

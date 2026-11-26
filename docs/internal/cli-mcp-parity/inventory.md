@@ -304,7 +304,7 @@
 | `evo lb list` | `lb_list` | — | — | — | — | — |
 | `evo lb operation` | `lb_operation` | operation_id | — | — | — | — |
 | `evo marketplace list` | `marketplace_list` | query? | — | — | — | render |
-| `evo metrics history` | `metrics_history` | match | — | — | — | — |
+| `evo metrics history` | `metrics_history` | match | — | — | — | render |
 | `evo metrics scrape` | `metrics_scrape` | match? | — | — | — | render |
 | `evo org projects` | `org_projects` | — | — | — | — | render |
 | `evo org quotas` | `org_quotas` | — | project_id→--project-id | — | — | — |
