@@ -100,6 +100,7 @@ var successEnglishLeft = map[string]string{}
 // The transport's localized status phrase is itself evo text; only the
 // body following it is exempt from the language check.
 var cloudSegment = regexp.MustCompile(`^(?:[\w.-]+ API \d{3}|HTTP \d{3})$`)
+
 // This registered product name occurs verbatim in the Russian marketplace error.
 var apiProductName = regexp.MustCompile(`\bManaged Kubernetes\b`)
 var serviceLabel = regexp.MustCompile(`^[\w.-]+ API$`)
@@ -267,17 +268,17 @@ func TestQA11_RefusalWorlds(t *testing.T) {
 				}
 			}
 			t.Run("dns-service-body", func(t *testing.T) {
-			rt := &contractRT{kind: "500text"}
-			r := contractReg(t, rt)
-			_, text, failed := callNamed(t, r, "dns_record_create", map[string]any{
-				"zone_id": contractID, "name": "web", "record_type": "a", "value": "192.0.2.1", "type": "public",
+				rt := &contractRT{kind: "500text"}
+				r := contractReg(t, rt)
+				_, text, failed := callNamed(t, r, "dns_record_create", map[string]any{
+					"zone_id": contractID, "name": "web", "record_type": "a", "value": "192.0.2.1", "type": "public",
+				})
+				if reqs := rt.take(); len(reqs) == 0 || contractWrites(reqs) != 0 || !strings.Contains(text, "dns API 500: Request failed") {
+					t.Fatalf("expected the preflight read and its verbatim service response: %v, %s", reqs, text)
+				}
+				check(t, text, failed, clerrors.CodeAPIError)
 			})
-			if reqs := rt.take(); len(reqs) == 0 || contractWrites(reqs) != 0 || !strings.Contains(text, "dns API 500: Request failed") {
-				t.Fatalf("expected the preflight read and its verbatim service response: %v, %s", reqs, text)
-			}
-			check(t, text, failed, clerrors.CodeAPIError)
-		})
-		t.Run("container-apps-499", func(t *testing.T) {
+			t.Run("container-apps-499", func(t *testing.T) {
 				rt := &contractRT{kind: "ca499"}
 				r := contractReg(t, rt)
 				_, text, failed := callNamed(t, r, "ca_deploy", map[string]any{"name": "web", "image": "example.invalid/app", "confirmed": true})
