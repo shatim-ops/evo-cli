@@ -67,6 +67,17 @@ func (c *contractRT) RoundTrip(r *http.Request) (*http.Response, error) {
 	body := `{"error":"refused"}`
 	code := 200
 	switch kind {
+	case "500text":
+		code = http.StatusInternalServerError
+		hdr.Set("Content-Type", "text/plain")
+		body = "Request failed"
+	case "ca499":
+		// The CA name preflight succeeds. The create itself is refused.
+		body = `{"items":[]}`
+		if r.Method == http.MethodPost {
+			code = 499
+			body = `{"message":"Instance type by resources not found"}`
+		}
 	case "html":
 		hdr.Set("Content-Type", "text/html")
 		body = "<html><body>gateway</body></html>"

@@ -5,8 +5,12 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -18,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
 // QA-11 (QA 20.10): при русском языке CLI в половине ошибок message был
@@ -48,6 +53,10 @@ var foreignRE = regexp.MustCompile(`json: cannot unmarshal .*|unexpected end of 
 // kebab-case, CamelCase, UPPER, with digits or dots) breaks the run, and so
 // does punctuation: "tcp, udp, icmp" is a list of values, not a phrase.
 func englishPhrase(s string) string {
+	return englishWordRun(s, 3)
+}
+
+func englishWordRun(s string, minimum int) string {
 	s = quotedRE.ReplaceAllString(foreignRE.ReplaceAllString(s, " · "), " · ")
 	var run []string
 	for _, tok := range strings.Fields(s) {
@@ -58,7 +67,7 @@ func englishPhrase(s string) string {
 		trimmed := strings.TrimRight(core, ",.;:!?)]}…")
 		if plainWord(trimmed) {
 			run = append(run, trimmed)
-			if len(run) >= 3 {
+			if len(run) >= minimum {
 				return strings.Join(run, " ")
 			}
 		} else {
@@ -87,29 +96,65 @@ var apiErrorEnglishLeft = map[string]bool{}
 // line «Язык CLI: весь перевод — в 1.9»).
 var successEnglishLeft = map[string]string{}
 
-// cloudSegment marks where an API_ERROR leaves evo's words for the
-// cloud's: the service and status the client names («dns API 500»,
-// «HTTP 500», «Organization API»), the transport's «API returned status»
-// in either language, an error code (API_ERROR), the body itself, or a
-// sentence of a client library («Object name cannot be empty», minio):
-// evo's own segments start with a lower-case word.
-var cloudSegment = regexp.MustCompile(`^(?:[\w.-]+ API(?: \d{3})?|HTTP \d{3}|API (?:returned|вернул)\b.*|[A-Z_]+|[{\[].*|[A-Z][a-z].*)$`)
+// A service/status marker or a raw response body starts a verbatim quote.
+// The transport's localized status phrase is itself evo text; only the
+// body following it is exempt from the language check.
+var cloudSegment = regexp.MustCompile(`^(?:[\w.-]+ API \d{3}|HTTP \d{3})$`)
 
-// apiErrorPrefix is the part of an API_ERROR message evo wrote: the
-// segments («a: b: …») before the first of the cloud's.
+// This registered product name occurs verbatim in the Russian marketplace error.
+var apiProductName = regexp.MustCompile(`\bManaged Kubernetes\b`)
+var serviceLabel = regexp.MustCompile(`^[\w.-]+ API$`)
+var requestIDSuffix = regexp.MustCompile(requestIDNamed.String() + "$")
+var transportStatus = regexp.MustCompile(`^API (?:returned status \d{3}(?: after \d+ retries)?|вернул статус \d{3}(?: после \d+ повторов)?)$`)
+
 func apiErrorPrefix(msg string) string {
+	// withRequestID appends this metadata to the final response body.
+	msg = requestIDSuffix.ReplaceAllString(msg, "")
 	var own []string
-	for _, seg := range strings.Split(msg, ": ") {
-		if cloudSegment.MatchString(strings.TrimSpace(seg)) {
+	for {
+		seg, rest, more := strings.Cut(msg, ": ")
+		seg = strings.TrimSpace(seg)
+		// Some clients return an unwrapped SDK or Go error. Recognize
+		// its complete text, without relying on the first letter.
+		quotedBody := strings.HasPrefix(msg, "«") && strings.HasSuffix(msg, "»")
+		rawJSON := (strings.HasPrefix(msg, "{") || strings.HasPrefix(msg, "[")) && json.Valid([]byte(msg))
+		libraryError := msg == io.EOF.Error() || msg == "Object name cannot be empty" ||
+			(msg != "" && foreignRE.FindString(msg) == msg)
+		if cloudSegment.MatchString(seg) || rawJSON || quotedBody || libraryError {
 			break
 		}
-		own = append(own, seg)
+		// A nested CLIError code or a service name may precede more
+		// text written by evo. Skip the label but keep checking its tail.
+		if !clerrors.IsCode(seg) && !serviceLabel.MatchString(seg) {
+			own = append(own, seg)
+		}
+		quotedReply := strings.HasSuffix(seg, "Ответ облака") && strings.HasPrefix(rest, "«") && strings.HasSuffix(rest, "»")
+		if !more || quotedReply || transportStatus.MatchString(seg) {
+			break
+		}
+		msg = rest
 	}
 	return strings.Join(own, ": ")
 }
 
-// latinSegment is the first segment of an evo prefix with no Cyrillic in
-// it — a phrase of the English CLI («create zone»), or "".
+// apiLanguageIssue checks the words surrounding a service response. Dropping
+// the whole message at an HTTP marker must not turn a missing Russian frame
+// into a successful check.
+func apiLanguageIssue(lang, prefix string) string {
+	if lang == i18n.RU {
+		if prefix == "" {
+			return "missing Russian context"
+		}
+		return latinSegment(prefix)
+	}
+	if hasCyrillic(prefix) {
+		return "cyrillic"
+	}
+	return ""
+}
+
+// latinSegment finds a wholly untranslated segment («create zone») or an
+// English phrase left inside the Russian text that introduces a service quote.
 func latinSegment(prefix string) string {
 	if prefix == "" {
 		return ""
@@ -117,6 +162,9 @@ func latinSegment(prefix string) string {
 	for _, seg := range strings.Split(prefix, ": ") {
 		if !hasCyrillic(seg) {
 			return seg
+		}
+		if phrase := englishWordRun(apiProductName.ReplaceAllString(seg, " · "), 2); phrase != "" {
+			return phrase
 		}
 	}
 	return ""
@@ -135,6 +183,129 @@ func plainWord(w string) bool {
 		}
 	}
 	return true
+}
+
+func TestQA11_APIErrorLanguageBoundary(t *testing.T) {
+	for _, tc := range []struct{ message, wantEnglish string }{
+		{"Cannot load example: HTTP 500: fixture", "Cannot load example"},
+		{"cannot load example: HTTP 500: fixture", "cannot load example"},
+		{"Не удалось загрузить: Cannot load example: dns API 500: fixture", "Cannot load example"},
+		{"[evo] Cannot load example: HTTP 500: fixture", "[evo] Cannot load example"},
+		{`Не удалось прочитать: {"message": "Cannot load example"}`, ""},
+		{`Не удалось прочитать: {"error":"refused"} (X-Request-Id example)`, ""},
+		{"Organization API: Cannot load example: HTTP 500: fixture", "Cannot load example"},
+		{"Не удалось прочитать ответ: EOF", ""},
+		{"API_ERROR: Cannot load example: HTTP 500: fixture", "Cannot load example"},
+		{"API returned status 500: fixture", "API returned status 500"},
+		{"API returned unexpected format: HTTP 500: fixture", "API returned unexpected format"},
+		{"Не удалось загрузить пример: HTTP 500: Cannot load example", ""},
+		{"Не удалось загрузить пример: dns API 500: Cannot load example", ""},
+		{"Не удалось загрузить пример: API вернул статус 500: Cannot load example", ""},
+		{"Не удалось прочитать объект: Object name cannot be empty", ""},
+		{"Не удалось прочитать объект: Object name cannot be shown", "Object name cannot be shown"},
+	} {
+		if got := latinSegment(apiErrorPrefix(tc.message)); got != tc.wantEnglish {
+			t.Errorf("English in API error %q = %q, want %q", tc.message, got, tc.wantEnglish)
+		}
+	}
+}
+
+func TestQA11_APIErrorFrame(t *testing.T) {
+	const bare = "HTTP 500: Cannot load example"
+	for _, tc := range []struct{ name, lang, msg, want string }{
+		{"bare-ru", i18n.RU, bare, "missing Russian context"},
+		{"bare-en", i18n.EN, bare, ""},
+		{"framed-ru", i18n.RU, "Не удалось загрузить пример: " + bare, ""},
+		{"english-ru", i18n.RU, "Cannot load example: " + bare, "Cannot load example"},
+		{"lowercase-ru", i18n.RU, "cannot load example: " + bare, "cannot load example"},
+		{"mixed-ru", i18n.RU, "Ошибка Cannot load example: " + bare, "Cannot load"},
+		{"untranslated", i18n.RU, "Request failed: HTTP 500: fixture", "Request failed"},
+		{"mixed-short", i18n.RU, "Ошибка Request failed: HTTP 500: fixture", "Request failed"},
+		{"product-name", i18n.RU, "Каталог Managed Kubernetes не прочитан: " + bare, ""},
+		{"product-name-and-english", i18n.RU, "Каталог Managed Kubernetes Request failed: " + bare, "Request failed"},
+		{"http-body", i18n.RU, "Не удалось выполнить запрос: HTTP 500: Request failed", ""},
+		{"service-quote", i18n.RU, "Сервис ответил: «Request failed»", ""},
+		{"bare-quote", i18n.RU, "«Request failed»", "missing Russian context"},
+		{"quoted-ru", i18n.RU, "Cloud.ru отклонил запрос (test API 500). Ответ облака: «Cannot load example»", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Read the same error field a caller receives from an API_ERROR.
+			var response struct{ Error, Reason string }
+			if err := json.Unmarshal([]byte(errResult(clerrors.New(clerrors.CodeAPIError, tc.msg, ""))), &response); err != nil {
+				t.Fatal(err)
+			}
+			got := apiLanguageIssue(tc.lang, apiErrorPrefix(response.Error))
+			if response.Reason != clerrors.CodeAPIError || got != tc.want {
+				t.Errorf("%s/%s %q: got %q, want %q", tc.lang, response.Reason, response.Error, got, tc.want)
+			}
+			t.Logf("%s/%s %q: finding=%q", tc.lang, response.Reason, response.Error, got)
+		})
+	}
+}
+
+// Each world runs a tool with a local failure and checks the resulting error,
+// including tools that classify a service refusal as something besides API_ERROR.
+func TestQA11_RefusalWorlds(t *testing.T) {
+	old := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(old) })
+	for _, lang := range []string{i18n.RU, i18n.EN} {
+		t.Run(lang, func(t *testing.T) {
+			i18n.SetLang(lang)
+			check := func(t *testing.T, text string, failed bool, code string) {
+				t.Helper()
+				var r struct{ Reason, Error, Hint string }
+				if err := json.Unmarshal([]byte(text), &r); err != nil {
+					t.Fatal(err)
+				}
+				if !failed || r.Reason == "" || (code != "" && r.Reason != code) || r.Error == "" {
+					t.Fatalf("unexpected tool response: %s", text)
+				}
+				if issue := apiLanguageIssue(lang, apiErrorPrefix(r.Error)); issue != "" {
+					t.Errorf("%s error %q: %s", r.Reason, r.Error, issue)
+				}
+				if r.Hint != "" && (lang == i18n.RU) != hasCyrillic(r.Hint) {
+					t.Errorf("%s hint in wrong language: %q", r.Reason, r.Hint)
+				}
+			}
+			t.Run("dns-service-body", func(t *testing.T) {
+				rt := &contractRT{kind: "500text"}
+				r := contractReg(t, rt)
+				_, text, failed := callNamed(t, r, "dns_record_create", map[string]any{
+					"zone_id": contractID, "name": "web", "record_type": "a", "value": "192.0.2.1", "type": "public",
+				})
+				if reqs := rt.take(); len(reqs) == 0 || contractWrites(reqs) != 0 || !strings.Contains(text, "dns API 500: Request failed") {
+					t.Fatalf("expected the preflight read and its verbatim service response: %v, %s", reqs, text)
+				}
+				check(t, text, failed, clerrors.CodeAPIError)
+			})
+			t.Run("container-apps-499", func(t *testing.T) {
+				rt := &contractRT{kind: "ca499"}
+				r := contractReg(t, rt)
+				_, text, failed := callNamed(t, r, "ca_deploy", map[string]any{"name": "web", "image": "example.invalid/app", "confirmed": true})
+				if writes := contractWrites(rt.take()); writes != 1 || !strings.Contains(text, "Instance type by resources not found") {
+					t.Fatalf("expected the quoted 499 from the create, writes=%d: %s", writes, text)
+				}
+				check(t, text, failed, "")
+			})
+			t.Run("vm-timeout", func(t *testing.T) {
+				text, failed, _, _ := provisionRun(t, context.Background(), &progressCloud{states: []string{"creating"}}, false, output.ModeJSON, 20*time.Millisecond, nil)
+				var r struct{ Status string }
+				if err := json.Unmarshal([]byte(text), &r); err != nil || r.Status != "timeout" {
+					t.Fatalf("expected VM timeout, got %s", text)
+				}
+				check(t, text, failed, clerrors.CodeVMProvisionFailed)
+			})
+			t.Run("invalid-compose", func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "compose.yaml")
+				if err := os.WriteFile(path, []byte("services: ["), 0600); err != nil {
+					t.Fatal(err)
+				}
+				r := contractRegCfg(t, &contractRT{kind: "200"}, func(c *config.Config) { c.ComposeFile = path })
+				_, text, failed := callNamed(t, r, "deploy", map[string]any{"compose_file": path})
+				check(t, text, failed, clerrors.CodeComposeInvalid)
+			})
+		})
+	}
 }
 
 func TestEnglishPhrase(t *testing.T) {
@@ -288,8 +459,8 @@ func walkLang(t *testing.T, lang, kind string, edit func(*config.Config)) (bad m
 		for field, s := range fields {
 			what := ""
 			switch {
-			case field == "error prefix" && lang == i18n.RU:
-				what = latinSegment(s)
+			case field == "error prefix":
+				what = apiLanguageIssue(lang, s)
 			case lang == i18n.RU:
 				what = englishPhrase(s)
 			case hasCyrillic(s):
