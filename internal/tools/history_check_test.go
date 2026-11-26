@@ -236,6 +236,9 @@ func TestHistory_ErasedClusterIsAbsentFromCheckedInventory(t *testing.T) {
 					line.ProjectID = ""
 					line.Outcome = history.Unknown
 					line.Target = "cluster_id=" + resMine
+					if svc == "pg" { // old pg_delete stored the ID only in target
+						line.ResourceID = ""
+					}
 				}
 				if err := history.Append(dir, line); err != nil {
 					t.Fatal(err)
@@ -259,14 +262,23 @@ func TestHistoryCardRequiresMatchingIdentity(t *testing.T) {
 	line := history.Line{ResourceID: resMine, ProjectID: ownProject}
 	for _, k := range []*ownerKind{kindPG, historyVMCard} {
 		for _, id := range []string{"", resOther} {
-			if historyCardMatches(k, line, map[string]any{"id": id, "project_id": ownProject}) {
+			if historyCardMatches(k, line, map[string]any{"id": id, "project_id": ownProject}, ownProject) {
 				t.Fatalf("accepted id %q for %s", id, line.ResourceID)
 			}
 		}
 	}
 	for _, project := range []string{"", ownOther} {
-		if historyCardMatches(kindPG, line, map[string]any{"id": resMine, "project_id": project}) {
+		if historyCardMatches(kindPG, line, map[string]any{"id": resMine, "project_id": project}, ownProject) {
 			t.Fatalf("accepted project %q for %s", project, line.ProjectID)
+		}
+	}
+	line.ProjectID = ""
+	for _, k := range []*ownerKind{kindPG, kindRedis} {
+		card := map[string]any{"id": resMine, "project_id": ownProject}
+		for _, active := range []string{"", ownOther} {
+			if historyCardMatches(k, line, card, active) {
+				t.Errorf("projectless line matched card of %q when active project was %q", ownProject, active)
+			}
 		}
 	}
 }
@@ -282,6 +294,7 @@ func TestHistoryRedisProjectMembership(t *testing.T) {
 		{"found", "{}", 200, 2, true},
 		{"missing", "{}", 200, 2, false},
 		{"late-null", "null", 200, 2, false},
+		{"unidentified member", `{"clusters":[{"name":"unidentified"}]}`, 200, 2, false},
 		{"forbidden", "{}", 403, 2, false},
 		{"list-404", "{}", 404, 2, false},
 		{"budget", "{}", 200, historyCheckMax - 1, false},
@@ -311,6 +324,8 @@ func TestHistoryRedisProjectMembership(t *testing.T) {
 						id := resMine
 						if tc.name == "missing" {
 							id = resOther
+						} else if pages > 1 {
+							id = fmt.Sprintf("00000000-0000-4000-8000-%012d", pages)
 						}
 						fmt.Fprintf(w, `{"clusters":[{"id":%q}],"next_page_token":"%d"}`, id, pages)
 					} else {
@@ -331,5 +346,130 @@ func TestHistoryRedisProjectMembership(t *testing.T) {
 				t.Fatalf("pages=%d checked=%+v results=%v", pages, out, results)
 			}
 		})
+	}
+}
+
+// An invalid membership page cannot establish the project for either card.
+// Both checks share one failed inventory read, so uncertainty costs no retry.
+func TestHistoryRedisCachesIncompleteMembership(t *testing.T) {
+	checkAt(t)
+	r := ownerRegistry(t, &ownerFake{}, false, ownProject)
+	eng, err := r.newEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := history.Line{Format: history.Format, Time: "2026-11-17T10:00:00Z", Tool: "redis_create", Kind: resourceKind("redis_create"), ProjectID: ownProject, Key: eng.Maker(), Outcome: history.Created}
+	lines := []history.Line{line, line}
+	lines[0].ResourceID = resMine
+	lines[1].ResourceID = resOther
+	pages, cards := 0, 0
+	httpr := &apiFake{own: func(w http.ResponseWriter, req *http.Request) bool {
+		if req.Method != http.MethodGet {
+			t.Fatalf("unexpected method %s", req.Method)
+		}
+		switch req.URL.Path {
+		case "/v1/clusters/" + resMine, "/v1/clusters/" + resOther:
+			cards++
+			fmt.Fprintf(w, `{"id":%q,"status":"ERASED"}`, strings.TrimPrefix(req.URL.Path, "/v1/clusters/"))
+		case "/v1/clusters":
+			pages++
+			fmt.Fprintf(w, `{"clusters":[{"id":%q},{"id":%q},{"name":"unidentified"}]}`, resMine, resOther)
+		default:
+			t.Fatalf("unexpected %s", req.URL.Path)
+		}
+		return true
+	}}
+	httpretry.DefaultBase = httpr
+	out, result := r.checkLive(context.Background(), lines, []int{0, 1}, eng)
+	if cards != 2 || pages != 1 || result[0] != checkReadFailed || result[1] != checkReadFailed || out.WouldClose != 0 {
+		t.Fatalf("cards=%d membership=%d checks=%v results=%v", cards, pages, out, result)
+	}
+}
+
+// The terminal card must belong to the same project even when an old
+// deletion entry has no project of its own. An earlier entry for that
+// resource inherits only a terminal result whose scope was verified.
+func TestHistory_LegacyClusterDeletionScope(t *testing.T) {
+	for _, tool := range []string{"pg_delete", "redis_delete"} {
+		for _, tc := range []struct {
+			name, recorded, card                   string
+			bound                                  bool
+			entries, wantLive, wantGone, wantReads int
+		}{
+			{"legacy-own", "", ownProject, false, 1, 0, 1, 1},
+			{"legacy-other", "", ownOther, false, 1, 1, 0, 1},
+			{"legacy-unknown", "", "", false, 1, 1, 0, 1},
+			{"legacy-other-supersedes", "", ownOther, false, 2, 2, 0, 1},
+			{"recorded-own", ownProject, ownProject, false, 1, 0, 1, 1},
+			{"recorded-other", ownProject, ownOther, false, 1, 1, 0, 1},
+			{"bounded-legacy", "", ownOther, true, 1, 0, 0, 0},
+		} {
+			t.Run(tool+"/"+tc.name, func(t *testing.T) {
+				checkAt(t)
+				r := ownerRegistry(t, &ownerFake{}, tc.bound, ownProject)
+				eng, err := r.newEngine(nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				hdir := history.DirOf(intent.Dir(eng.StateDir))
+				for i := 0; i < tc.entries; i++ {
+					line := history.Line{
+						Time: fmt.Sprintf("2026-11-17T10:0%d:00Z", i), Tool: tool, Kind: resourceKind(tool),
+						ResourceID: resMine, ProjectID: tc.recorded, Outcome: history.Unknown,
+						Key: eng.Maker(), IntentID: fmt.Sprintf("%016x", i+1),
+					}
+					// Older PostgreSQL entries stored the ID in the target only.
+					if tool == "pg_delete" && tc.recorded == "" && i == 0 {
+						line.Target = "cluster_id=" + resMine
+						line.ResourceID = ""
+					}
+					if err := history.Append(hdir, line); err != nil {
+						t.Fatal(err)
+					}
+				}
+				reads := 0
+				httpretry.DefaultBase = &apiFake{own: func(w http.ResponseWriter, req *http.Request) bool {
+					if req.Method != http.MethodGet {
+						t.Fatalf("unexpected %s", req.Method)
+					}
+					switch req.URL.Path {
+					case "/v1/clusters/" + resMine:
+						reads++
+						fmt.Fprintf(w, `{"id":%q,"project_id":%q,"status":"DELETED"}`, resMine, tc.card)
+					case "/v1/clusters":
+						// The fallback project list for a legacy Redis card
+						// contains no matching resource.
+						if tool != "redis_delete" || req.URL.Query().Get("project_id") != ownProject {
+							t.Fatalf("unexpected scoped list %v", req.URL)
+						}
+						fmt.Fprint(w, `{"clusters":[]}`)
+					default:
+						t.Fatalf("unexpected read %s", req.URL)
+					}
+					return true
+				}}
+				text, failed := r.handlers["history"](context.Background(), map[string]any{"check": true, "since": "2026-11-01"})
+				if failed {
+					t.Fatal(text)
+				}
+				var got struct {
+					Live    []historyLine
+					Checked historyChecked
+				}
+				if err := json.Unmarshal([]byte(text), &got); err != nil {
+					t.Fatal(err)
+				}
+				if reads != tc.wantReads || got.Checked.Gone != tc.wantGone || got.Checked.WouldClose != 0 || len(got.Live) != tc.wantLive {
+					t.Fatalf("GET by ID=%d, gone=%d, would_close=%d, live=%d; want %d, %d, 0, %d",
+						reads, got.Checked.Gone, got.Checked.WouldClose, len(got.Live), tc.wantReads, tc.wantGone, tc.wantLive)
+				}
+				if len(got.Live) > 0 && got.Live[len(got.Live)-1].CheckResult != checkReadFailed {
+					t.Fatalf("latest live result=%q; want %q", got.Live[len(got.Live)-1].CheckResult, checkReadFailed)
+				}
+				if len(got.Live) == 2 && got.Live[0].CheckResult != checkLater {
+					t.Fatalf("earlier live result=%q; want %q", got.Live[0].CheckResult, checkLater)
+				}
+			})
+		}
 	}
 }

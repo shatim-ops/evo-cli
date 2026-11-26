@@ -5,14 +5,26 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	"github.com/shatim-ops/evo-cli/internal/history"
+	"github.com/shatim-ops/evo-cli/internal/intent"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+	"github.com/shatim-ops/evo-cli/internal/sgrules"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // An empty since is not «the last 30 days»: it is refused USAGE, as an
@@ -116,9 +128,19 @@ func TestContract_HistoryAfterAsyncClusterDelete(t *testing.T) {
 		{"redis", "redis.api.cloud.ru", []string{"--cpu", "2", "--ram", "4"}},
 	} {
 		t.Run(tc.service, func(t *testing.T) {
+			// The restricted MCP factory obtains a token from IAM.
+			oldClient := httpClient
+			httpClient = &http.Client{Transport: contractRT{status: 200, body: `{"access_token":"model","expires_in":3600}`}}
+			t.Cleanup(func() { httpClient = oldClient })
 			w, _ := withJSONWorld(t)
+			// A new process must also check the journal written in the legacy data directory.
+			if err := os.Mkdir(filepath.Join(w.dir, config.LegacyDataDirName), 0700); err != nil {
+				t.Fatal(err)
+			}
 			old := w.rt.extra
-			phase := "READY"
+			cardProject, cardID, phase := "", parityVM, "READY"
+			listed, absent := true, false
+			reads := 0
 			created := false
 			w.rt.extra = func(r *http.Request) (*http.Response, error) {
 				if !created || r.Method != "GET" || r.URL.Host != tc.host {
@@ -126,9 +148,13 @@ func TestContract_HistoryAfterAsyncClusterDelete(t *testing.T) {
 				}
 				switch r.URL.Path {
 				case "/v1/clusters/" + parityVM:
-					card := map[string]string{"id": parityVM, "status": phase}
-					if tc.service == "pg" {
-						card["project_id"] = pvProject
+					reads++
+					if absent {
+						return contractRT{status: 404, body: `{"message":"cluster not found"}`}.RoundTrip(r)
+					}
+					card := map[string]string{"id": cardID, "status": phase}
+					if cardProject != "" {
+						card["project_id"] = cardProject
 					}
 					body, err := json.Marshal(card)
 					if err != nil {
@@ -138,6 +164,9 @@ func TestContract_HistoryAfterAsyncClusterDelete(t *testing.T) {
 				case "/v1/clusters":
 					if r.URL.Query().Get("project_id") != pvProject {
 						t.Errorf("unexpected list query: %s", r.URL)
+					}
+					if !listed {
+						return contractRT{status: 200, body: `{"clusters":[]}`}.RoundTrip(r)
 					}
 					return contractRT{status: 200, body: fmt.Sprintf(`{"clusters":[{"id":%q}]}`, parityVM)}.RoundTrip(r)
 				}
@@ -151,6 +180,9 @@ func TestContract_HistoryAfterAsyncClusterDelete(t *testing.T) {
 				t.Fatalf("create: %s%s", out, stderr)
 			}
 			created = true
+			if tc.service == "pg" {
+				cardProject = pvProject
+			}
 			newProcess()
 			code, out, stderr = runCLI(t, "", "--json", "--yes", tc.service, "delete", id, "--wait=false")
 			if code != 0 || parseObject(out)["status"] != "deleting" {
@@ -158,26 +190,194 @@ func TestContract_HistoryAfterAsyncClusterDelete(t *testing.T) {
 			}
 			later := clock.Now().Add(time.Hour)
 			clock.Now = func() time.Time { return later }
-			for _, status := range []string{"ERASING", "ERASED"} {
-				phase = status
-				a := callStdioTool(t, "history", map[string]any{"check": true}, "--read-only")
-				var view struct {
-					Live []struct {
-						ID string `json:"resource_id"`
+			type line struct {
+				ID      string `json:"resource_id"`
+				Project string `json:"project_id"`
+				Result  string `json:"check_result"`
+			}
+			// The bound transports must skip the projectless delete before any
+			// cloud read. The unbound CLI checks both this line and the create.
+			calls := mcpTransports(t, nil)
+			for name, call := range mcpTransports(t, []string{pvProject}) {
+				calls["restricted "+name] = call
+			}
+			calls["CLI"] = func(_ string, _ map[string]any) roAnswer {
+				newProcess()
+				code, out, stderr := runCLI(t, "", "history", "--check", "--json")
+				if code != 0 {
+					t.Fatal(out, stderr)
+				}
+				return roAnswer{text: out}
+			}
+			w.rt.takeWrites() // create and delete above are the only mutations
+			for _, c := range []struct {
+				name, status, project, id, result string
+				listed, absent                    bool
+			}{
+				{"own active", "ERASING", cardProject, id, "there", true, false},
+				{"own terminal", "ERASED", cardProject, id, "gone", true, false},
+				{"foreign terminal", "DELETED", pvImage, id, "read_failed", true, false},
+				{"unknown project", "ERASED", "", id, "read_failed", false, false},
+				{"wrong ID", "ERASED", pvProject, pvImage, "read_failed", true, false},
+				{"absent without project evidence", "", "", id, "not_seen", false, true},
+			} {
+				t.Run(c.name, func(t *testing.T) {
+					cardProject, cardID, phase, listed, absent = c.project, c.id, c.status, c.listed, c.absent
+					for surface, call := range calls {
+						reads = 0
+						answer := call("history", map[string]any{"check": true})
+						var view struct {
+							Live       []line
+							WouldClose []line `json:"would_close"`
+							Hidden     int    `json:"hidden_without_project"`
+							Checked    struct{ Read, Gone int }
+						}
+						if answer.isErr || answer.rpcErr != "" || json.Unmarshal([]byte(answer.text), &view) != nil {
+							t.Fatal(surface, answer)
+						}
+						rows, hidden := 2, 0
+						bound := strings.HasPrefix(surface, "restricted ")
+						if bound {
+							rows, hidden = 1, 1
+						}
+						if reads != rows || view.Checked.Read != rows || view.Hidden != hidden {
+							t.Errorf("%s: %d reads, hidden=%d, checked=%+v; want %d reads and %d hidden", surface, reads, view.Hidden, view.Checked, rows, hidden)
+						}
+						if c.result == "gone" {
+							if view.Checked.Gone != rows || len(view.Live) != 0 || len(view.WouldClose) != 0 {
+								t.Errorf("%s: %s", surface, answer.text)
+							}
+							continue
+						}
+						if view.Checked.Gone != 0 || len(view.Live) != rows {
+							t.Errorf("%s: %s", surface, answer.text)
+						}
+						for _, l := range view.Live {
+							want := c.result
+							if c.absent && l.Project == "" {
+								want = "read_failed"
+							}
+							if l.ID != id || l.Result != want || (bound && l.Project != pvProject) {
+								t.Errorf("%s: live %+v; want %s", surface, l, want)
+							}
+						}
+						if c.absent {
+							if len(view.WouldClose) != 1 || view.WouldClose[0].Project != pvProject {
+								t.Errorf("%s: would_close %+v", surface, view.WouldClose)
+							}
+						} else if len(view.WouldClose) != 0 {
+							t.Errorf("%s: unexpected would_close %+v", surface, view.WouldClose)
+						}
 					}
-					Checked struct{ Gone int }
-				}
-				if a.isErr || json.Unmarshal([]byte(a.text), &view) != nil {
-					t.Fatal(a.text)
-				}
-				if status == "ERASING" {
-					if len(view.Live) != 2 || view.Live[0].ID != id || view.Live[1].ID != id || view.Checked.Gone != 0 {
-						t.Fatalf("in progress: %s", a.text)
-					}
-				} else if len(view.Live) != 0 || view.Checked.Gone == 0 {
-					t.Fatalf("after deletion: %s", a.text)
-				}
+				})
+			}
+			if writes := w.rt.takeWrites(); len(writes) != 0 {
+				t.Fatalf("history modified cloud resources: %v", writes)
 			}
 		})
+	}
+}
+
+// After a lost VM response, inventory of rules is the only way to
+// reconcile the original operation. The rule ID was never in state.
+type labelInventoryCloud struct {
+	provision.CloudAPI
+	available bool
+	present   bool
+	deletes   int
+}
+
+func (c *labelInventoryCloud) ListSecurityGroups(_ context.Context, _ string) ([]*provision.SecurityGroup, error) {
+	if !c.available {
+		return nil, errors.New("test inventory unavailable")
+	}
+	return []*provision.SecurityGroup{{ID: "sg-test"}}, nil
+}
+func (c *labelInventoryCloud) ListSecurityGroupRules(_ context.Context, group string) ([]*provision.SGRule, error) {
+	if group != "sg-test" || !c.available {
+		return nil, errors.New("test inventory unavailable")
+	}
+	if !c.present {
+		return nil, nil
+	}
+	return []*provision.SGRule{{
+		ID: "label-test", Direction: "ingress", IPProtocol: "tcp",
+		PortRange: "8081:8081", Description: sgrules.RuleLabel("8081", parityVM),
+	}}, nil
+}
+func (c *labelInventoryCloud) DeleteSecurityGroupRule(_ context.Context, group, id string) error {
+	if group != "sg-test" || id != "label-test" || !c.present {
+		return errors.New("unexpected cleanup")
+	}
+	c.present = false
+	c.deletes++
+	return nil
+}
+
+func TestDestroy_LabelInventoryResumesOriginalJournalEntry(t *testing.T) {
+	w, fake := withJSONWorld(t)
+	inventory := &labelInventoryCloud{present: true}
+	base := toolEngine
+	toolEngine = func(over map[string]any) (*engine.Engine, error) {
+		e, err := base(over)
+		if err == nil {
+			inventory.CloudAPI = e.Cloud
+			e.Cloud = inventory
+		}
+		return e, err
+	}
+	t.Cleanup(func() { toolEngine = base })
+	eng, err := toolEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := state.DeploymentRecord{ID: "dep-with-label", VMID: parityVM, ProjectID: pvProject, Status: "running", CreatedBy: eng.Maker()}
+	if err := state.Write(state.DefaultPath(w.dir), &state.File{Deployments: []state.DeploymentRecord{rec}}); err != nil {
+		t.Fatal(err)
+	}
+	previous := w.rt.extra
+	w.rt.extra = func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodDelete && r.URL.Path == "/api/v1/vms/"+parityVM {
+			fake.mu.Lock()
+			fake.vmGone = true
+			fake.mu.Unlock()
+			return nil, io.ErrUnexpectedEOF
+		}
+		return previous(r)
+	}
+	if _, failed := destroyLegacyPrimary(t, "CLI", false); !failed {
+		t.Fatal("first VM response should be lost")
+	}
+	w.rt.extra = previous
+	dir := intent.Dir(w.dir)
+	pending := intent.Pending(dir)
+	if len(pending) != 1 {
+		t.Fatalf("lost response should leave one intent, got %d", len(pending))
+	}
+	original := pending[0].ID
+	for _, available := range []bool{false, true} {
+		inventory.available = available
+		answer, failed := destroyLegacyPrimary(t, "CLI", false)
+		var result struct{ Status string }
+		if failed || json.Unmarshal([]byte(answer), &result) != nil {
+			t.Fatalf("destroy failed: %s", answer)
+		}
+		pending = intent.Pending(dir)
+		log, err := history.ReadAll(history.DirOf(dir), func(l history.Line) bool {
+			return l.IntentID == original && l.Outcome == history.Deleted && l.ResourceID == parityVM
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !available {
+			if result.Status != "partial" || len(pending) != 1 || pending[0].ID != original ||
+				len(log.Lines) != 0 || !inventory.present || inventory.deletes != 0 {
+				t.Errorf("unavailable: status=%s original pending=%v confirmed=%d rule present=%t deletes=%d",
+					result.Status, pending, len(log.Lines), inventory.present, inventory.deletes)
+			}
+		} else if result.Status != "destroyed" || len(pending) != 0 || len(log.Lines) != 1 || inventory.present || inventory.deletes != 1 {
+			t.Errorf("restored: status=%s pending=%d original confirmed=%d rule present=%t deletes=%d",
+				result.Status, len(pending), len(log.Lines), inventory.present, inventory.deletes)
+		}
 	}
 }

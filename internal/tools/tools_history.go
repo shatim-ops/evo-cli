@@ -376,10 +376,11 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 			m, notSeen, _, err = s.readByID(ctx, k, l.ResourceID, l.Key, cur)
 		}
 		switch {
-		case notSeen:
+		// A missing card cannot establish the project of a legacy delete.
+		case notSeen && (!terminalCluster || l.ProjectID != ""):
 			results[i] = checkNotSeen
 			out.WouldClose++
-		case err == nil && !historyCardMatches(k, l, m):
+		case err == nil && !historyCardMatches(k, l, m, eng.Config.ProjectID):
 			results[i] = checkReadFailed
 			out.NotChecked[checkReadFailed]++
 		case err == nil && terminalCluster && statusGone(firstNonEmptyStr(stringArg(m, "status"), stringArg(m, "state"))):
@@ -405,11 +406,13 @@ func (s *Registry) checkLive(ctx context.Context, live []history.Line, visible [
 }
 
 // historyCardMatches verifies the identity used to interpret VM and cluster reads.
-func historyCardMatches(k *ownerKind, l history.Line, m map[string]any) bool {
+func historyCardMatches(k *ownerKind, l history.Line, m map[string]any, activeProject string) bool {
 	switch k {
 	case kindPG, kindRedis:
-		project := projectField(m)
-		return stringArg(m, "id") == l.ResourceID && project != "" && (l.ProjectID == "" || project == l.ProjectID)
+		// For older deletes recorded by ID alone, the checking profile is
+		// the only project available to compare with the returned card.
+		expectedProject := firstNonEmptyStr(l.ProjectID, activeProject)
+		return expectedProject != "" && projectField(m) == expectedProject && stringArg(m, "id") == l.ResourceID
 	case historyVMCard:
 		return stringArg(m, "id") == l.ResourceID
 	default:
@@ -438,9 +441,10 @@ func historyIDReadable(l history.Line) bool {
 // Redis often omits project_id from GET by ID. Resolve it only through the
 // complete list of the selected project, once per check, using the same key.
 type redisHistoryRead struct {
-	client  *dbaas.Client
-	members map[string]bool
-	pages   int // project-list GETs consume budget but are not reads by ID
+	client        *dbaas.Client
+	members       map[string]bool
+	membershipErr error
+	pages         int // project-list GETs consume budget but are not reads by ID
 }
 
 func (r *redisHistoryRead) card(ctx context.Context, eng *engine.Engine, l history.Line, remaining int) (map[string]any, bool, error) {
@@ -457,22 +461,24 @@ func (r *redisHistoryRead) card(ctx context.Context, eng *engine.Engine, l histo
 		return nil, notThere(err), err
 	}
 	cardProject := projectField(m)
-	if l.ProjectID == "" && cardProject != "" && cardProject != project {
-		return nil, false, nil
-	}
 	if stringArg(m, "id") != l.ResourceID || cardProject != "" || project == "" || (l.ProjectID != "" && l.ProjectID != project) {
 		return m, false, nil
 	}
-	if r.members == nil {
-		r.members = map[string]bool{}
+	if r.members == nil && r.membershipErr == nil {
 		items, pages, err := r.client.ListClustersWithin(ctx, nil, remaining)
 		r.pages += pages
+		ids, err := clusterIDs(items, err)
 		if err != nil {
-			return nil, false, err
+			r.membershipErr = err
+		} else {
+			r.members = make(map[string]bool, len(ids))
+			for _, id := range ids {
+				r.members[id] = true
+			}
 		}
-		for _, item := range items {
-			r.members[stringArg(item, "id")] = true
-		}
+	}
+	if r.membershipErr != nil {
+		return nil, false, r.membershipErr
 	}
 	if r.members[l.ResourceID] {
 		m["project_id"] = project

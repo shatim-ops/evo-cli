@@ -718,6 +718,10 @@ func eOrgStatus(status int, path string) string {
 	return i18n.Tf("the Organization API returned %d (%s)", "Organization API вернул %d (%s)", status, path)
 }
 
+func eOrgMissingID(collection string) string {
+	return i18n.Tf("entry without an ID in %s", "запись без ID в %s", collection)
+}
+
 // The items of «created / undone / left».
 func tUndoAccount(account string) string {
 	return i18n.Tf("service account %s", "сервисный аккаунт %s", account)

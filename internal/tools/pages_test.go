@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -288,5 +289,188 @@ func TestPgListAndCreate_ValidateClusterPage(t *testing.T) {
 				t.Fatal("preview sent a create")
 			}
 		})
+	}
+}
+
+func TestIAMServiceAccounts_OnlyReturnsFullAccountList(t *testing.T) {
+	const first = `{"serviceAccounts":[{"id":"first-account","name":"first"}],"nextPageToken":"p2"}`
+	for _, tc := range []struct {
+		name, second string
+		status       int
+		ok           bool
+	}{
+		{"live spelling", `{"service_accounts":[{"id":"second-account","name":"second","secret":"PRIVATE-FIELD"}]}`, 200, true},
+		{"invalid continuation", `{"message":"account not found"}`, 404, false},
+		{"partial HTTP", `{"serviceAccounts":[]}`, 206, false},
+		{"null array", `{"service_accounts":null}`, 200, false},
+		{"null item", `{"service_accounts":[null]}`, 200, false},
+		{"missing identity", `{"service_accounts":[{"name":"second"}]}`, 200, false},
+		{"wrong token", `{"serviceAccounts":[],"next_page_token":false}`, 200, false},
+		{"ignored cursor", `{"service_accounts":[{"id":"first-account","name":"first"}]}`, 200, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			r := apiFakeRegistry(t, &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Host+r.URL.Path != "iam.api.cloud.ru/api/v2/serviceAccounts" {
+					return false
+				}
+				calls++
+				switch r.URL.Query().Get("pageToken") {
+				case "":
+					io.WriteString(w, first)
+				case "p2":
+					w.WriteHeader(tc.status)
+					io.WriteString(w, tc.second)
+				default:
+					t.Errorf("unexpected token %q", r.URL.Query().Get("pageToken"))
+					w.WriteHeader(404)
+				}
+				return true
+			}})
+			got, text, isErr := callNamed(t, r, "iam_service_accounts", nil)
+			if calls != 2 {
+				t.Fatalf("%d requests: %s", calls, text)
+			}
+			if tc.ok {
+				if isErr || !strings.Contains(text, "first-account") || !strings.Contains(text, "second-account") || strings.Contains(text, "PRIVATE-FIELD") {
+					t.Fatalf("unexpected result: %s", text)
+				}
+			} else if !isErr || got["reason"] != "API_ERROR" || got["service_accounts"] != nil || strings.Contains(text, "first-account") {
+				t.Fatalf("incomplete list is not a clean API_ERROR: %s", text)
+			}
+		})
+	}
+}
+
+func TestIAMServiceAccounts_DisplayNameCanBeOmitted(t *testing.T) {
+	for _, tc := range []struct {
+		name, item string
+		ok         bool
+	}{
+		{"no display name", `{"id":"id-only","enabled":true}`, true},
+		{"name is object", `{"id":"id-only","name":{}}`, false},
+		{"null reference ID", `{"id":null,"name":"label"}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := apiFakeRegistry(t, &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Host+r.URL.Path != "iam.api.cloud.ru/api/v2/serviceAccounts" {
+					return false
+				}
+				io.WriteString(w, `{"serviceAccounts":[`+tc.item+`]}`)
+				return true
+			}})
+			got, text, isErr := callNamed(t, r, "iam_service_accounts", nil)
+			if !tc.ok {
+				if !isErr || got["reason"] != "API_ERROR" || got["service_accounts"] != nil {
+					t.Fatalf("bad row: %s", text)
+				}
+				return
+			}
+			rows, _ := got["service_accounts"].([]any)
+			if isErr || len(rows) != 1 {
+				t.Fatalf("missing account: %s", text)
+			}
+			account := rows[0].(map[string]any)
+			name, present := account["name"]
+			if account["id"] != "id-only" || !present || name != nil || account["enabled"] != true {
+				t.Errorf("changed account: %s", text)
+			}
+		})
+	}
+}
+
+// A protobuf collection omitted from an object defaults to empty. A null
+// collection, row or continuation is not evidence that the list is empty.
+// Exercise the public tools so an apparent success or a different error code
+// cannot hide a broken page. Field and token names vary between providers.
+func TestListToolsDistinguishEmptyAndMalformedPages(t *testing.T) {
+	for _, service := range []struct {
+		tool, endpoint, field, token, result string
+		args                                 map[string]any
+	}{
+		{"kafka_list", "kafka.api.cloud.ru/v1/clusters", "clusters", "next_page_token", "clusters", nil},
+		{"redis_list", "redis.api.cloud.ru/v1/clusters", "clusters", "next_page_token", "clusters", nil},
+		{"pg_list", "postgresql.api.cloud.ru/v1/clusters", "clusters", "next_page_token", "clusters", nil},
+		{"lb_list", "nlb.api.cloud.ru/v2/networkLoadBalancers", "balancers", "next_page_token", "load_balancers", nil},
+		{"vpc_list", "vpc.api.cloud.ru/v1/vpcs", "vpcs", "nextPageToken", "vpcs", nil},
+		{"dns_zones", "dns.api.cloud.ru/v1/privateZones", "zones", "nextPageToken", "zones", nil},
+		{"k8s_list", "mk8s.api.cloud.ru/v3/clusters", "clusters", "nextPageToken", "clusters", nil},
+		{"ca_list", "containers.api.cloud.ru/v2/containers", "data", "nextPageToken", "containers", nil},
+		{"ar_list", "ar.api.cloud.ru/v1/registries", "registries", "nextPageToken", "registries", nil},
+		{"cert_list", "certificatemanager.api.cloud.ru/v1/certificate", "certificates", "", "count", nil},
+		{"iam_service_accounts", "iam.api.cloud.ru/api/v2/serviceAccounts", "service_accounts", "next_page_token", "service_accounts", nil},
+		{"org_projects", "organization.api.cloud.ru/v3/projects", "projects", "next_page_token", "projects", nil},
+		{"billing_consumption", "organization.api.cloud.ru/v2/consumption", "consumptions", "next_page_token", "records", map[string]any{"start": "2026-01-01"}},
+	} {
+		type reply struct {
+			name, body string
+			status     int
+			valid      bool
+		}
+		array := func(value string) string { return fmt.Sprintf("{%q:%s}", service.field, value) }
+		cases := []reply{
+			{"omitted collection", "{}", 200, true},
+			{"empty collection", array("[]"), 200, true},
+			{"empty body", "", 200, false},
+			{"no content", "", 204, false},
+			{"partial content", array("[]"), 206, false},
+			{"null object", "null", 200, false},
+			{"null collection", array("null"), 200, false},
+			{"object as collection", array("{}"), 200, false},
+			{"null row", array("[null]"), 200, false},
+		}
+		if service.token != "" {
+			page := func(token string) string { return fmt.Sprintf("{%q:[],%q:%s}", service.field, service.token, token) }
+			cases = append(cases,
+				reply{"empty token", page(`""`), 200, true},
+				reply{"null token", page("null"), 200, false},
+				reply{"number as token", page("7"), 200, false},
+			)
+		}
+		for _, tc := range cases {
+			t.Run(service.tool+"/"+tc.name, func(t *testing.T) {
+				fake := &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+					if service.tool == "dns_zones" && r.Method == http.MethodGet && r.URL.Path == "/v1/publicZones" {
+						_, _ = io.WriteString(w, `{"zones":[]}`)
+						return true
+					}
+					if r.Method != http.MethodGet || r.URL.Host+r.URL.Path != service.endpoint {
+						t.Fatalf("unexpected %s %s", r.Method, r.URL)
+					}
+					w.WriteHeader(tc.status)
+					_, _ = io.WriteString(w, tc.body)
+					return true
+				}}
+				result, raw, failed := callNamed(t, apiFakeRegistry(t, fake), service.tool, service.args)
+				expectedRequests := 1
+				if service.tool == "dns_zones" {
+					expectedRequests++
+				}
+				if fake.count() != expectedRequests {
+					t.Fatalf("made %d requests, want %d: %s", fake.count(), expectedRequests, raw)
+				}
+				if !tc.valid {
+					if !failed || result["reason"] != "API_ERROR" || result[service.result] != nil {
+						t.Fatalf("invalid page returned %s", raw)
+					}
+					return
+				}
+				if failed {
+					t.Fatalf("valid empty page refused: %s", raw)
+				}
+				switch rows := result[service.result].(type) {
+				case []any:
+					if len(rows) != 0 {
+						t.Fatalf("unexpected rows: %s", raw)
+					}
+				case float64:
+					if rows != 0 {
+						t.Fatalf("unexpected count: %s", raw)
+					}
+				default:
+					t.Fatalf("missing empty collection or count: %s", raw)
+				}
+			})
+		}
 	}
 }

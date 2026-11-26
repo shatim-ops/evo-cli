@@ -84,3 +84,81 @@ func TestOrgQuotas_UnavailableNoteSpeaksCLILanguage(t *testing.T) {
 		t.Errorf("note in Russian CLI: %q", note)
 	}
 }
+
+func TestOrgQuotas_CompletePagesAndFirstPageScope(t *testing.T) {
+	const one = `{"resource_type_code":"compute.vcpu","subject_id":"a","individual_limit":"8","individual_usage":"3"}`
+	const first = `{"usages":[` + one + `],"next_page_token":"p2"}`
+	const second = `{"usages":[{"resource_type_code":"compute.vcpu","subject_id":"b","individual_limit":"16","individual_usage":"1"}]}`
+	for _, tc := range []struct {
+		name, initial, last               string
+		firstStatus, lastStatus, wantRows int
+		unavailable                       bool
+	}{
+		{"same type distinct owners", first, second, 200, 200, 2, false},
+		{"explicit empty", `{"usages":[]}`, "", 200, 0, 0, false},
+		{"protobuf empty", "{}", "", 200, 0, 0, false},
+		{"empty intermediate", `{"usages":[],"next_page_token":"p2"}`, second, 200, 200, 1, false},
+		{"first actual 403", `{"message":"refused"}`, "", 403, 0, 0, true},
+		{"400 mentioning permission and 403", `{"message":"permission lookup 403"}`, "", 400, 0, -1, false},
+		{"same 403 later", first, `{"message":"no permission"}`, 200, 403, -1, false},
+		{"later 404", first, `{"message":"not found"}`, 200, 404, -1, false},
+		{"missing continuation HTTP representation", first, "", 200, 204, -1, false},
+		{"bad later token", first, `{"usages":[],"next_page_token":false}`, 200, 200, -1, false},
+		{"null later array", first, `{"usages":null}`, 200, 200, -1, false},
+		{"null mix", first, `{"usages":[{},null]}`, 200, 200, -1, false},
+		{"ignored token", first, `{"usages":[` + one + `]}`, 200, 200, -1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var pages, catalog int
+			r := apiFakeRegistry(t, &apiFake{own: func(w http.ResponseWriter, r *http.Request) bool {
+				if r.URL.Host != "organization.api.cloud.ru" {
+					return false
+				}
+				switch r.URL.Path {
+				case "/v3/quotas/resourceTypes":
+					catalog++
+					http.Error(w, "unavailable", http.StatusForbidden)
+				case "/v3/quotas/usages":
+					pages++
+					switch r.URL.Query().Get("page_token") {
+					case "":
+						w.WriteHeader(tc.firstStatus)
+						io.WriteString(w, tc.initial)
+					case "p2":
+						w.WriteHeader(tc.lastStatus)
+						io.WriteString(w, tc.last)
+					default:
+						t.Errorf("wrong continuation: %v", r.URL.Query())
+						w.WriteHeader(400)
+					}
+				default:
+					return false
+				}
+				return true
+			}})
+			result, text, bad := callNamed(t, r, "org_quotas", nil)
+			wantPages := 1
+			if tc.lastStatus != 0 {
+				wantPages++
+			}
+			if pages != wantPages {
+				t.Fatalf("pages=%d, want %d: %s", pages, wantPages, text)
+			}
+			if tc.wantRows < 0 {
+				if !bad || result["reason"] != "API_ERROR" || result["quota_usages"] != nil || catalog != 0 {
+					t.Fatalf("partial quotas or wrong reason: %s (catalog=%d)", text, catalog)
+				}
+				return
+			}
+			rows, ok := result["quota_usages"].([]any)
+			if bad || !ok || len(rows) != tc.wantRows || (result["status"] == "unavailable") != tc.unavailable {
+				t.Fatalf("wrong quota result: %s", text)
+			}
+			if len(rows) > 0 {
+				if catalog != 1 || rows[len(rows)-1].(map[string]any)["usage"] != "1" {
+					t.Fatalf("usage lost with optional catalog refused: %s (catalog=%d)", text, catalog)
+				}
+			}
+		})
+	}
+}

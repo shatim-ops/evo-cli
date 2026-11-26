@@ -81,8 +81,7 @@ func (s *Registry) alreadyDeleted(tool, key, ref string, err error) (out string,
 	}
 	what := i18n.T(t.what, t.whRU)
 	if s.projectBound {
-		return errResult(notInProject(&ownerKind{what: what,
-			listTool: i18n.T("the list of the project's resources", "списка ресурсов проекта")}, ref)), true, true
+		return errResult(boundDeleteNotFound(tool, ref)), true, true
 	}
 	return toJSON(map[string]any{
 		"status":  "already_deleted",
@@ -92,6 +91,12 @@ func (s *Registry) alreadyDeleted(tool, key, ref string, err error) (out string,
 			"%s %s отсутствует: удаление уже выполнено раньше или %s указан неверно — проверьте по списку, прежде чем на это полагаться",
 			what, ref, key),
 	}), false, true
+}
+
+func boundDeleteNotFound(tool, ref string) error {
+	t, _ := deleteOf(tool)
+	return notInProject(&ownerKind{what: i18n.T(t.what, t.whRU),
+		listTool: i18n.T("the list of the project's resources", "списка ресурсов проекта")}, ref)
 }
 
 // deleteFailed answers a delete tool's call that failed on its resource:

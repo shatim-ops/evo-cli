@@ -91,8 +91,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return nil, 0, fmt.Errorf(i18n.T("vpc request failed: %w", "запрос к vpc не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	return data, resp.StatusCode, nil
+	return httpretry.ReadAPIResponse(req, resp, 0)
 }
 
 func apiError(status int, body []byte) error {
@@ -143,6 +142,7 @@ func (c *Client) ListVPCs(ctx context.Context) ([]map[string]any, error) {
 // listPages reads every page of a list whose items are in field.
 func (c *Client) listPages(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
 	var all []map[string]any
+	var progress pager.ItemProgress
 	err := pager.All("vpc: "+field, func(token string) (string, error) {
 		q := url.Values{}
 		for k, v := range query {
@@ -155,24 +155,17 @@ func (c *Client) listPages(ctx context.Context, path string, query url.Values, f
 		if err != nil {
 			return "", err
 		}
-		if status < 200 || status >= 300 {
-			return "", apiError(status, data)
+		if err := pager.PageStatus(status, data, token != "", apiError); err != nil {
+			return "", err
 		}
-		var out map[string]json.RawMessage
-		if err := json.Unmarshal(data, &out); err != nil {
-			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
+		page, next, err := pager.ObjectPage[map[string]any](data, field, "nextPageToken")
+		if err != nil {
+			return "", err
 		}
-		var page []map[string]any
-		if raw, ok := out[field]; ok {
-			if err := json.Unmarshal(raw, &page); err != nil {
-				return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
-			}
+		if err := pager.CheckProgress(&progress, page, next, pager.ObjectID); err != nil {
+			return "", err
 		}
 		all = append(all, page...)
-		var next string
-		if raw, ok := out["nextPageToken"]; ok {
-			_ = json.Unmarshal(raw, &next)
-		}
 		return next, nil
 	})
 	if err != nil {

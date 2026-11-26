@@ -6,6 +6,7 @@ package postgresql
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -144,5 +145,35 @@ func TestListClusters_ShortHTTPBody(t *testing.T) {
 	got, err := New("token", "proj", srv.URL).ListClusters(context.Background())
 	if got != nil || clierrors.Reason(err) != clierrors.CodeAPIError {
 		t.Fatalf("incomplete HTTP body: clusters=%v, err=%v", got, err)
+	}
+}
+
+func TestNamedResourcesUseTheirNameToDetectRepeatedPages(t *testing.T) {
+	for _, tc := range []struct {
+		field string
+		list  func(*Client, context.Context, string) ([]map[string]any, error)
+	}{
+		{"databases", (*Client).ListDatabases},
+		{"users", (*Client).ListUsers},
+		{"versions", func(c *Client, ctx context.Context, _ string) ([]map[string]any, error) {
+			return c.ListVersions(ctx)
+		}},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			var reads atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reads.Add(1)
+				next := ""
+				if r.URL.Query().Get("page_token") == "" {
+					next = "next"
+				}
+				fmt.Fprintf(w, `{%q:[{"name":"member"}],"next_page_token":%q}`, tc.field, next)
+			}))
+			defer srv.Close()
+			got, err := tc.list(New("t", "project", srv.URL), context.Background(), "cluster")
+			if got != nil || clierrors.Reason(err) != clierrors.CodeAPIError || reads.Load() != 2 {
+				t.Fatalf("repeated %s: result=%v, error=%v, reads=%d", tc.field, got, err, reads.Load())
+			}
+		})
 	}
 }

@@ -713,33 +713,44 @@ func TestProjectBound_DestroyKeepsUnlistedVMReceipt(t *testing.T) {
 
 func TestProjectBound_IncompleteClusterListRefusesConfirmedDelete(t *testing.T) {
 	for _, service := range []string{"redis", "kafka"} {
-		t.Run(service, func(t *testing.T) {
-			var tokens []string
-			f := &ownerFake{clusterList: func(w http.ResponseWriter, req *http.Request) {
-				if req.URL.Host != service+".api.cloud.ru" || req.URL.Query().Get("project_id") != ownProject {
-					t.Errorf("unexpected cluster list %s", req.URL)
+		for _, failure := range []string{"null row", "incomplete HTTP body", "missing ID"} {
+			t.Run(service+"/"+failure, func(t *testing.T) {
+				var tokens []string
+				f := &ownerFake{clusterList: func(w http.ResponseWriter, req *http.Request) {
+					if req.URL.Host != service+".api.cloud.ru" || req.URL.Query().Get("project_id") != ownProject {
+						t.Errorf("unexpected cluster list %s", req.URL)
+					}
+					token := req.URL.Query().Get("page_token")
+					tokens = append(tokens, token)
+					if token == "" {
+						_, _ = w.Write([]byte(`{"clusters":[{"id":"` + resMine + `"}],"next_page_token":"second"}`))
+						return
+					}
+					if failure == "incomplete HTTP body" {
+						w.Header().Set("Content-Length", "100")
+						_, _ = w.Write([]byte(`{"clusters":[]}`))
+						return
+					}
+					if failure == "missing ID" {
+						_, _ = w.Write([]byte(`{"clusters":[{"name":"unnamed-id"}]}`))
+						return
+					}
+					_, _ = w.Write([]byte(`{"clusters":[null]}`))
+				}}
+				r := ownerRegistry(t, f, true, ownProject)
+				m, answer, failed := callOwned(t, r, service+"_delete", map[string]any{"cluster_id": resMine}, true)
+				if !failed || m["reason"] != clierrors.CodeAPIError {
+					t.Fatalf("confirmed delete with incomplete membership: %s", answer)
 				}
-				token := req.URL.Query().Get("page_token")
-				tokens = append(tokens, token)
-				if token == "" {
-					_, _ = w.Write([]byte(`{"clusters":[{"id":"` + resMine + `"}],"next_page_token":"second"}`))
-					return
+				if !slices.Equal(tokens, []string{"", "second"}) {
+					t.Fatalf("membership read tokens %q", tokens)
 				}
-				_, _ = w.Write([]byte(`{"clusters":[null]}`))
-			}}
-			r := ownerRegistry(t, f, true, ownProject)
-			m, answer, failed := callOwned(t, r, service+"_delete", map[string]any{"cluster_id": resMine}, true)
-			if !failed || m["reason"] != clierrors.CodeAPIError {
-				t.Fatalf("confirmed delete with incomplete membership: %s", answer)
-			}
-			if !slices.Equal(tokens, []string{"", "second"}) {
-				t.Fatalf("membership read tokens %q", tokens)
-			}
-			for _, req := range f.log() {
-				if !strings.HasPrefix(req, "GET ") {
-					t.Fatalf("confirmed delete sent %s", req)
+				for _, req := range f.log() {
+					if !strings.HasPrefix(req, "GET ") {
+						t.Fatalf("confirmed delete sent %s", req)
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }

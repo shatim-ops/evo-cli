@@ -718,3 +718,194 @@ func TestFaultAPI_DeletesWhatItKeeps(t *testing.T) {
 		t.Errorf("kept %v, want the VPC, the bucket and x", got)
 	}
 }
+
+// A checklist/preview GET can deliver valid JSON before its HTTP body ends.
+// Exercise the confirmed entry points: only a complete name check permits
+// the write. A cut after a POST belongs to recovery, never another POST.
+func TestCreatesRequireCompleteServiceResponses(t *testing.T) {
+	lists := map[string]string{
+		"vpc_create": "/v1/vpcs", "lb_create": "/v2/networkLoadBalancers",
+		"tg_create": "/v2/targetGroups", "k8s_create": "/v3/clusters",
+		"dns_zone_create": "/v1/publicZones", "ar_create": "/v1/registries",
+		"cert_issue_le": "/v1/certificate", "cert_import": "/v1/certificate",
+		"dns_record_create": "/v1/publicRecordsSole", "k8s_add_nodepool": "/v3/nodePools",
+		"vpc_route_create": "/v1/vpcs/" + faultVPC + "/routes/static",
+		"secret_create":    "/v2/secret", "pg_backup_create": "/v1/clusters/" + faultPGCluster + "/backups",
+	}
+	for _, c := range faultMatrixCases {
+		path, ok := lists[c.tool]
+		if !ok {
+			continue
+		}
+		delete(lists, c.tool)
+		endings := []string{"complete", "incomplete list"}
+		// DBaaS has its own page-shape controls. Certificates and secrets
+		// have no cursor on their name-list endpoints.
+		paged := c.tool != "cert_issue_le" && c.tool != "cert_import" && c.tool != "secret_create" && c.tool != "pg_backup_create"
+		if c.tool != "pg_backup_create" {
+			endings = append(endings, "204", "empty body", "null root", "null collection", "wrong collection type", "null entry", "missing name", "missing ID", "omitted collection", "null cursor", "wrong cursor type")
+		}
+		if paged {
+			endings = append(endings, "late 404", "repeated objects")
+		} else if c.tool != "pg_backup_create" {
+			endings = append(endings, "unexpected continuation")
+		}
+		if c.tool == "dns_record_create" {
+			endings = append(endings, "missing record type")
+		}
+		if c.tool == "vpc_create" {
+			endings = append(endings, "incomplete create and recovery", "definite refusal")
+		}
+		for _, ending := range endings {
+			t.Run(c.tool+"/"+ending, func(t *testing.T) {
+				w, r, _ := c.world(t, func() {})
+				base := w.(*faultAPI)
+				posts, reads := 0, 0
+				httpretry.DefaultBase = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					post := req.Method == http.MethodPost
+					if post {
+						posts++
+					}
+					if post && ending == "definite refusal" {
+						// Only the diagnostic was lost; the service refused the POST.
+						return &http.Response{StatusCode: 403, ContentLength: 7,
+							Body: io.NopCloser(strings.NewReader("{}")), Header: http.Header{}, Request: req}, nil
+					}
+					resp, err := base.RoundTrip(req)
+					if err != nil {
+						return nil, err
+					}
+					list := req.Method == http.MethodGet && req.URL.Path == path
+					if list {
+						reads++
+						page := faultCollections[path].field
+						cursor := "nextPageToken"
+						if c.tool == "lb_create" || c.tool == "tg_create" {
+							cursor = "next_page_token"
+						}
+						body := ""
+						switch ending {
+						case "204":
+							resp.StatusCode = http.StatusNoContent
+						case "empty body":
+							body = " "
+						case "null root":
+							body = "null"
+						case "null collection":
+							body = fmt.Sprintf(`{%q:null}`, page)
+						case "wrong collection type":
+							body = fmt.Sprintf(`{%q:{}}`, page)
+						case "null entry":
+							body = fmt.Sprintf(`{%q:[null]}`, page)
+						case "missing name":
+							body = fmt.Sprintf(`{%q:[{"id":"earlier"}]}`, page)
+						case "missing record type":
+							body = fmt.Sprintf(`{%q:[{"name":"www"}]}`, page)
+						case "missing ID":
+							body = fmt.Sprintf(`{%q:[{"name":"taken","path":"taken","type":"a","subnet":"192.0.2.0/24"}]}`, page)
+						case "omitted collection":
+							body = "{}"
+						case "null cursor":
+							body = fmt.Sprintf(`{%q:[],%q:null}`, page, cursor)
+						case "unexpected continuation":
+							body = fmt.Sprintf(`{%q:[],%q:"more"}`, page, cursor)
+						case "wrong cursor type":
+							body = fmt.Sprintf(`{%q:[],%q:5}`, page, cursor)
+						case "repeated objects":
+							if reads < 2 {
+								body = fmt.Sprintf(`{%q:[{"id":"old","name":"other"}],%q:"first-token"}`, page, cursor)
+							} else {
+								body = fmt.Sprintf(`{%q:[{"id":"old","name":"other"}],%q:"second-token"}`, page, cursor)
+							}
+						case "late 404":
+							if reads == 1 {
+								body = fmt.Sprintf(`{%q:[{"id":"old","name":"other"}],%q:"more"}`, page, cursor)
+							} else {
+								resp.StatusCode, body = http.StatusNotFound, `{"message":"not found"}`
+							}
+						}
+						if body != "" {
+							resp.Body.Close()
+							resp.Body = io.NopCloser(strings.NewReader(body))
+							resp.ContentLength = int64(len(body))
+						}
+					}
+					if (list && ending == "incomplete list") || (posts > 0 && ending == "incomplete create and recovery" && (list || post)) {
+						// The fixture body fits in memory. A larger declared size
+						// leaves the JSON untouched but invalidates the response.
+						resp.ContentLength = 1 << 22
+					}
+					return resp, nil
+				})
+				text, failed := r.handlers[c.tool](context.Background(), c.args)
+				var answer struct{ Reason, Warning string }
+				if err := json.Unmarshal([]byte(text), &answer); err != nil || reads == 0 {
+					t.Fatalf("reads=%d, result=%s", reads, text)
+				}
+				made := len(base.billed())
+				if c.tool == "ar_create" && ending == "repeated objects" {
+					// Artifact legitimately ends on a repeated last page with a fresh token.
+					if failed || posts != 1 || made != 1 {
+						t.Fatalf("POST=%d, created=%d: %s", posts, made, text)
+					}
+					return
+				}
+				switch ending {
+				case "complete", "omitted collection", "missing ID":
+					// A known, different name remains different even without an ID.
+					if failed || posts != 1 || made != 1 {
+						t.Fatalf("POST=%d, created=%d: %s", posts, made, text)
+					}
+				case "incomplete create and recovery":
+					if !failed || answer.Reason != "API_ERROR" || answer.Warning == "" || posts != 1 || made != 1 || reads != 2 {
+						t.Fatalf("POST=%d, created=%d, reads=%d: %s", posts, made, reads, text)
+					}
+				case "definite refusal":
+					if !failed || answer.Reason != "API_ERROR" || answer.Warning != "" || posts != 1 || made != 0 || reads != 1 {
+						t.Fatalf("POST=%d, created=%d, reads=%d: %s", posts, made, reads, text)
+					}
+				default:
+					if !failed || answer.Reason != "API_ERROR" || posts != 0 || made != 0 {
+						t.Fatalf("POST=%d, created=%d: %s", posts, made, text)
+					}
+				}
+			})
+		}
+	}
+	if len(lists) != 0 {
+		t.Fatal("missing confirmed tool cases", lists)
+	}
+}
+
+// A matching zone on page one does not establish ownership until the whole
+// project list, including the ID of every zone, has been read.
+func TestProjectBound_IncompleteDNSListRefusesConfirmedDelete(t *testing.T) {
+	stackHome(t)
+	for _, last := range []string{`{"zones":[{}]}`, `{"zones":[{"id":false}]}`, `{"zones":null}`} {
+		t.Run(last, func(t *testing.T) {
+			world := &ownerFake{}
+			r := ownerRegistry(t, world, true, ownProject)
+			reads, writes := 0, 0
+			httpretry.DefaultBase = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodGet {
+					writes++
+				}
+				if req.Method == http.MethodGet && req.URL.Path == "/v1/publicZones" {
+					reads++
+					body := last
+					if reads == 1 {
+						body = fmt.Sprintf(`{"zones":[{"id":%q}],"nextPageToken":"next"}`, zoneMine)
+					}
+					rec := httptest.NewRecorder()
+					fmt.Fprint(rec, body)
+					return rec.Result(), nil
+				}
+				return world.RoundTrip(req)
+			})
+			answer, text, failed := callOwned(t, r, "dns_zone_delete", map[string]any{"id": zoneMine}, true)
+			if !failed || answer["reason"] != "API_ERROR" || reads != 2 || writes != 0 || strings.Contains(text, ownProject) {
+				t.Fatalf("reads=%d writes=%d answer=%s", reads, writes, text)
+			}
+		})
+	}
+}

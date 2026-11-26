@@ -22,6 +22,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/history"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/iamadmin"
 	"github.com/shatim-ops/evo-cli/internal/intent"
 	"github.com/shatim-ops/evo-cli/internal/pager"
@@ -512,21 +513,28 @@ func (s *session) orgList(ctx context.Context, path string, q url.Values, key st
 				eOrgUnreachable(),
 				clierrors.NetworkHint(err, eRetry()), err)
 		}
-		var m map[string]any
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &m) != nil {
-			return "", 0, withStatus(clierrors.New(clierrors.CodeAPIError,
-				eOrgStatus(resp.StatusCode, path), eRetry()), resp.StatusCode)
+		defer resp.Body.Close()
+		body, status, err := httpretry.ReadAPIResponse(req, resp, 4<<20)
+		if err != nil {
+			return "", 0, err
 		}
-		xs, _ := m[key].([]any)
-		for _, x := range xs {
-			if o, ok := x.(map[string]any); ok {
-				out = append(out, o)
+		err = pager.PageStatus(status, body, token != "", func(status int, _ []byte) error {
+			return withStatus(clierrors.New(clierrors.CodeAPIError, eOrgStatus(status, path), eRetry()), status)
+		})
+		if err != nil {
+			return "", 0, err
+		}
+		items, next, err := pager.ObjectPage[map[string]any](body, key, "next_page_token")
+		if err != nil {
+			return "", 0, err
+		}
+		for _, item := range items {
+			if strings.TrimSpace(str(item, "id")) == "" {
+				return "", 0, pager.Incomplete(eOrgMissingID(key))
 			}
 		}
-		next, _ := m["next_page_token"].(string)
-		return next, len(xs), nil
+		out = append(out, items...)
+		return next, len(items), nil
 	})
 	if err != nil {
 		return nil, err

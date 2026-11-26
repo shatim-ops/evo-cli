@@ -121,3 +121,37 @@ func TestBalance_NoAgreement(t *testing.T) {
 		t.Errorf("%d requests", n)
 	}
 }
+
+// A complete first page does not authorize a partial result if continuation fails.
+func TestConsumption_RejectsIncompleteContinuation(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"missing continuation", 404, `{}`},
+		{"unexpected success", 201, `{"consumptions":[]}`},
+		{"null page", 200, `null`},
+		{"null items", 200, `{"consumptions":null}`},
+		{"null row", 200, `{"consumptions":[null]}`},
+		{"invalid cursor", 200, `{"consumptions":[],"next_page_token":null}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("page_filter.page_token") == "" {
+					_, _ = io.WriteString(w, `{"consumptions":[{"id":"first"}],"next_page_token":"second"}`)
+					return
+				}
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+
+			items, err := New("tok", "", "", srv.URL).WithProject("p").Consumption(context.Background(), "start", "end")
+			var typed *clierrors.CLIError
+			if !errors.As(err, &typed) || typed.Code != clierrors.CodeAPIError || items != nil {
+				t.Fatalf("partial items %v, error %v", items, err)
+			}
+		})
+	}
+}

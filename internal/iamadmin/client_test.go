@@ -7,6 +7,7 @@ package iamadmin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -258,5 +259,172 @@ func TestPermissions_FilterSpacesAreNotPlus(t *testing.T) {
 		if strings.Contains(raw, "+") || !strings.Contains(raw, "filter=resource_id%3D"+project+"%20AND%20subject_id%3D"+saID) {
 			t.Errorf("raw query %q: the spaces of the filter are not %%20", raw)
 		}
+	}
+}
+
+func TestPermissionsRequireCompleteBoundedResponse(t *testing.T) {
+	const limit = 4 << 20
+	const permissions = `{"permissions":[]}`
+	for _, n := range []int{limit, limit + 1} {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				// Flush first: the body limit must work with no Content-Length.
+				w.(http.Flusher).Flush()
+				fmt.Fprint(w, permissions, strings.Repeat(" ", n-len(permissions)))
+			}))
+			defer srv.Close()
+			_, err := New(staticToken{}, srv.URL).Permissions(context.Background(), project, saID)
+			if (err == nil) != (n == limit) {
+				t.Fatalf("body length %d: %v", n, err)
+			}
+		})
+	}
+}
+
+func TestServiceAccounts_DoesNotReturnPartialIdentityList(t *testing.T) {
+	const first = `{"service_accounts":[{"id":"one","name":"first"}],"next_page_token":"p2"}`
+	for _, tc := range []struct {
+		name, last    string
+		status, count int
+	}{
+		{"camel continuation", `{"serviceAccounts":[{"id":"two","name":"second"}]}`, 200, 2},
+		{"omitted empty", `{}`, 200, 1}, {"explicit empty", `{"serviceAccounts":[]}`, 200, 1},
+		{"null root", "null", 200, -1}, {"empty root", "", 200, -1}, {"null explicit", `{"service_accounts":null}`, 200, -1},
+		{"wrong token", `{"serviceAccounts":[],"next_page_token":false}`, 200, -1},
+		{"item null", `{"serviceAccounts":[null]}`, 200, -1},
+		{"missing id", `{"serviceAccounts":[{"name":"second"}]}`, 200, -1},
+		{"malformed name", `{"serviceAccounts":[{"id":"two","name":null}]}`, 200, -1},
+		{"ignored token", `{"serviceAccounts":[{"id":"one","name":"first"}]}`, 200, -1},
+		{"loop", `{"serviceAccounts":[{"id":"two","name":"second"}],"nextPageToken":"p2"}`, 200, -1},
+		{"lost continuation", "{}", 404, -1}, {"partial HTTP", "{}", 206, -1},
+		{"empty intermediate then success", `{"service_accounts":[],"next_page_token":"p3"}`, 200, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Query().Get("pageToken") {
+				case "":
+					fmt.Fprint(w, first)
+				case "p2":
+					w.WriteHeader(tc.status)
+					fmt.Fprint(w, tc.last)
+				case "p3":
+					fmt.Fprint(w, `{"service_accounts":[{"id":"two","name":"second"}]}`)
+				default:
+					t.Error("unexpected token")
+					w.WriteHeader(404)
+				}
+			}))
+			defer srv.Close()
+			got, err := New(staticToken{}, srv.URL).ServiceAccounts(t.Context(), project, "")
+			if tc.count < 0 {
+				var ce *clerrors.CLIError
+				if !errors.As(err, &ce) || ce.Code != clerrors.CodeAPIError || got != nil {
+					t.Fatalf("accounts=%v, err=%v", got, err)
+				}
+				return
+			}
+			if err != nil || len(got) != tc.count || got[0].Name != "first" || tc.count == 2 && got[1].ID != "two" {
+				t.Fatalf("accounts=%v, err=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestLists_RefuseRowsThatCannotIdentifyTheKeyPermissionRoleOrAction(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		call       func(*Client) error
+	}{
+		{"permissions", `{"permissions":[{}]}`, func(c *Client) error { _, e := c.RolePermissions(t.Context(), project, saID, "viewer"); return e }},
+		{"access keys", `{"accessKeys":[{"id":"one","key_id":null}]}`, func(c *Client) error { _, e := c.AccessKeys(t.Context(), saID); return e }},
+		{"access-key continuation", `{"accessKeys":[],"next_page_token":"later"}`, func(c *Client) error { _, e := c.AccessKeys(t.Context(), saID); return e }},
+		{"actions", `{"actions":[{"name":" "}]}`, func(c *Client) error { _, e := c.Actions(t.Context()); return e }},
+		{"role lookup", `{"roles":[{"name":"viewer","id":" "}]}`, func(c *Client) error { _, e := c.RoleID(t.Context(), "customer", "viewer"); return e }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, tc.body) }))
+			defer srv.Close()
+			var ce *clerrors.CLIError
+			if err := tc.call(New(staticToken{}, srv.URL)); !errors.As(err, &ce) || ce.Code != clerrors.CodeAPIError {
+				t.Fatalf("err=%v", err)
+			}
+		})
+	}
+}
+
+func TestIAMReadProjections_OnlyRequireTheIdentityUsed(t *testing.T) {
+	// These are three independent list projections. Privileged login and
+	// read-only key inspection use different fields of the same APIs.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/serviceAccounts":
+			if r.URL.Query().Get("filter") == "name=unexpected" {
+				fmt.Fprint(w, `{"service_accounts":[{"id":"another-account","name":"another"}]}`)
+			} else {
+				fmt.Fprint(w, `{"service_accounts":[{"id":"account-without-name"}]}`)
+			}
+		case "/api/v3/permissions":
+			fmt.Fprint(w, `{"permissions":[{"role_name":"viewer","enabled":true},{"roleName":"reader","enabled":true}]}`)
+		case "/api/v2/serviceAccounts/" + saID + "/accessKeys":
+			fmt.Fprint(w, `{"access_keys":[{"key_id":"key","expired_at":"sample-time"}]}`)
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	c := New(staticToken{}, srv.URL)
+	accounts, err := c.ServiceAccounts(t.Context(), project, "")
+	if err != nil || len(accounts) != 1 || accounts[0] != (ServiceAccount{ID: "account-without-name"}) {
+		t.Errorf("list account: %+v, %v", accounts, err)
+	}
+	roles, err := c.Permissions(t.Context(), project, saID)
+	if err != nil || len(roles) != 2 || roles[0].RoleName != "viewer" || roles[1].RoleName != "reader" {
+		t.Errorf("inspect roles: %+v, %v", roles, err)
+	}
+	keys, err := c.AccessKeys(t.Context(), saID)
+	if err != nil || len(keys) != 1 || keys[0] != (AccessKey{KeyID: "key", ExpiredAt: "sample-time"}) {
+		t.Errorf("inspect key term: %+v, %v", keys, err)
+	}
+	var ce *clerrors.CLIError
+	if got, err := c.ServiceAccounts(t.Context(), project, "by-name"); !errors.As(err, &ce) || ce.Code != clerrors.CodeAPIError || got != nil {
+		t.Errorf("account name check: %+v, %v", got, err)
+	}
+	if got, err := c.ServiceAccounts(t.Context(), project, "unexpected"); !errors.As(err, &ce) || ce.Code != clerrors.CodeAPIError || got != nil {
+		t.Errorf("ignored name filter: %+v, %v", got, err)
+	}
+	if got, err := c.RolePermissions(t.Context(), project, saID, "viewer"); !errors.As(err, &ce) || ce.Code != clerrors.CodeAPIError || got != nil {
+		t.Errorf("permission ID for grant: %+v, %v", got, err)
+	}
+}
+
+// A client deadline can expire after the HTTP header and complete-looking
+// JSON arrive, while the caller's original context remains live.
+func TestPermissionsClientTimeoutWhileReadingBody(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			sent := make(chan struct{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				fmt.Fprint(w, `{"permissions":[]}`)
+				w.(http.Flusher).Flush()
+				close(sent)
+				<-r.Context().Done()
+			}))
+			defer srv.Close()
+			c := New(staticToken{}, srv.URL)
+			c.http.Timeout = time.Second
+			ctx := context.Background()
+			_, err := c.Permissions(ctx, project, saID)
+			select {
+			case <-sent:
+			default:
+				t.Fatal("request timed out before the response body")
+			}
+			var apiErr *clerrors.CLIError
+			if ctx.Err() != nil || !errors.Is(err, context.DeadlineExceeded) || errors.As(err, &apiErr) || StatusOf(err) != 0 {
+				t.Fatalf("client deadline during body read: %T %v", err, err)
+			}
+		})
 	}
 }

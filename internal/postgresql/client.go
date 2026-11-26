@@ -18,10 +18,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/dbaas"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
@@ -74,22 +74,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return nil, 0, fmt.Errorf(i18n.T("postgresql request failed: %w", "запрос к postgresql не удался: %w"), err)
 	}
-	defer resp.Body.Close()
-	data, readErr := io.ReadAll(resp.Body)
-	// Even syntactically complete JSON can arrive short of Content-Length.
-	// A truncated project list cannot establish that a name is available.
-	if readErr != nil && method == http.MethodGet && path == "/v1/clusters" && resp.StatusCode == http.StatusOK {
-		return nil, resp.StatusCode, pager.Incomplete(i18n.T("the cluster page was not fully received", "страница кластеров получена не полностью"))
-	}
-	// grpc-gateway returns 4xx/5xx with an EMPTY body and the real reason in the
-	// `grpc-message` response header (e.g. "backup disabled"). Surface it so the
-	// error isn't a blank "postgresql API 400:".
-	if len(data) == 0 {
-		if gm := resp.Header.Get("grpc-message"); gm != "" {
-			data = []byte(`{"message":` + strconv.Quote(gm) + `}`)
-		}
-	}
-	return data, resp.StatusCode, nil
+	return dbaas.ReadAPIResponse(req, resp)
 }
 
 func apiError(status int, body []byte) error {
@@ -127,6 +112,17 @@ type OperationError struct {
 // without that field is one page.
 func (c *Client) getList(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
 	var items []map[string]any
+	var progress pager.ItemProgress
+	key := pager.ObjectID
+	// Databases and users are addressed by name within a cluster. A version
+	// is also selected by its name when requesting specifications.
+	switch field {
+	case "databases", "users", "versions":
+		key = func(row map[string]any) string {
+			name, _ := row["name"].(string)
+			return name
+		}
+	}
 	err := pager.All("postgresql: "+field, func(token string) (string, error) {
 		q := url.Values{}
 		for k, v := range query {
@@ -139,66 +135,30 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 		if err != nil {
 			return "", err
 		}
-		if status < 200 || status >= 300 {
-			return "", apiError(status, data)
+		if err := pager.PageStatus(status, data, token != "", apiError); err != nil {
+			return "", err
+		}
+		page, next, err := pager.ObjectPage[map[string]any](data, field, "next_page_token")
+		if err != nil {
+			return "", err
 		}
 		if field == "clusters" {
-			if status != http.StatusOK {
-				return "", pager.Incomplete(i18n.Tf("the cluster list returned HTTP %d instead of 200", "для списка кластеров получен HTTP %d вместо 200", status))
+			for _, cluster := range page {
+				if name, _ := cluster["name"].(string); strings.TrimSpace(name) == "" {
+					return "", pager.Incomplete(i18n.T("a cluster has no name to check", "у кластера нет имени для проверки"))
+				}
 			}
-			page, next, err := decodeClusterPage(data)
-			if err == nil {
-				items = append(items, page...)
-			}
-			return next, err
 		}
-		var out map[string]json.RawMessage
-		if err := json.Unmarshal(data, &out); err != nil {
-			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
-		}
-		var page []map[string]any
-		if raw, ok := out[field]; ok {
-			_ = json.Unmarshal(raw, &page)
+		if err := pager.CheckProgress(&progress, page, next, key); err != nil {
+			return "", err
 		}
 		items = append(items, page...)
-		var next string
-		if raw, ok := out["next_page_token"]; ok {
-			_ = json.Unmarshal(raw, &next)
-		}
 		return next, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	return items, nil
-}
-
-// ListClustersResponse in openapi-postgresql.yaml permits an omitted array
-// and token, but a present value must have its declared, non-null type.
-// The create preview uses every cluster name to decide whether it can write.
-func decodeClusterPage(data []byte) ([]map[string]any, string, error) {
-	var page map[string]json.RawMessage
-	if err := json.Unmarshal(data, &page); err != nil || page == nil {
-		return nil, "", pager.Incomplete(i18n.T("expected a cluster page object", "ожидался объект страницы кластеров"))
-	}
-	var clusters []map[string]any
-	if raw, ok := page["clusters"]; ok {
-		if err := json.Unmarshal(raw, &clusters); err != nil || clusters == nil {
-			return nil, "", pager.Incomplete(i18n.T("clusters must be an array of cluster objects", "clusters должен быть массивом объектов кластеров"))
-		}
-		for _, cluster := range clusters {
-			if name, _ := cluster["name"].(string); strings.TrimSpace(name) == "" {
-				return nil, "", pager.Incomplete(i18n.T("a cluster has no name to check", "у кластера нет имени для проверки"))
-			}
-		}
-	}
-	var next string
-	if raw, ok := page["next_page_token"]; ok {
-		if err := json.Unmarshal(raw, &next); err != nil || string(raw) == "null" {
-			return nil, "", pager.Incomplete(i18n.T("next_page_token must be a string", "next_page_token должен быть строкой"))
-		}
-	}
-	return clusters, next, nil
 }
 
 func (c *Client) getObject(ctx context.Context, path string, query url.Values) (map[string]any, error) {

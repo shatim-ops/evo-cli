@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"time"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
@@ -85,16 +86,28 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return nil, 0, fmt.Errorf(i18n.T("dbaas request failed: %w", "запрос к dbaas не удался: %w"), err)
 	}
+	return ReadAPIResponse(req, resp)
+}
+
+// ReadAPIResponse closes the response and returns a complete representation, including
+// the gRPC message carried by the gateway header on an otherwise empty body.
+func ReadAPIResponse(req *http.Request, resp *http.Response) ([]byte, int, error) {
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	// grpc-gateway returns 4xx/5xx with an EMPTY body and the reason in the
-	// grpc-message header — surface it (same pattern as postgresql).
+	data, status, err := httpretry.ReadAPIResponse(req, resp, 0)
+	if err != nil {
+		// Keep cancellation and timeout intact. Only an incomplete body
+		// at a successful status gets the cluster list's diagnostic.
+		if clierrors.Reason(err) == clierrors.CodeAPIError && req.Method == http.MethodGet && req.URL.Path == "/v1/clusters" && status >= 200 && status < 300 {
+			return nil, status, pager.Incomplete(i18n.T("the cluster page was not fully received", "страница кластеров получена не полностью"))
+		}
+		return nil, status, err
+	}
 	if len(data) == 0 {
-		if gm := resp.Header.Get("grpc-message"); gm != "" {
-			data = []byte(`{"message":` + strconv.Quote(gm) + `}`)
+		if message := resp.Header.Get("grpc-message"); message != "" {
+			data = []byte(`{"message":` + strconv.Quote(message) + `}`)
 		}
 	}
-	return data, resp.StatusCode, nil
+	return data, status, nil
 }
 
 func apiError(status int, body []byte) error {
@@ -109,23 +122,31 @@ func apiError(status int, body []byte) error {
 	return fmt.Errorf("dbaas API %d: %s", status, msg)
 }
 
-func (c *Client) getList(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
-	data, status, err := c.do(ctx, http.MethodGet, path, query, nil)
+func (c *Client) listData(ctx context.Context, path string, query url.Values, token string) ([]byte, error) {
+	q := url.Values{}
+	for key, values := range query {
+		q[key] = values
+	}
+	if token != "" {
+		q.Set("page_token", token)
+	}
+	data, status, err := c.do(ctx, http.MethodGet, path, q, nil)
 	if err != nil {
 		return nil, err
 	}
-	if status < 200 || status >= 300 {
-		return nil, apiError(status, data)
+	if err := pager.PageStatus(status, data, token != "", apiError); err != nil {
+		return nil, err
 	}
-	var out map[string]json.RawMessage
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
+	return data, nil
+}
+
+func (c *Client) getList(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
+	data, err := c.listData(ctx, path, query, "")
+	if err != nil {
+		return nil, err
 	}
-	var items []map[string]any
-	if raw, ok := out[field]; ok {
-		_ = json.Unmarshal(raw, &items)
-	}
-	return items, nil
+	// Kafka/Redis version and specification endpoints have no page_token parameter.
+	return pager.UnpagedObjects[map[string]any](data, field)
 }
 
 func (c *Client) getObject(ctx context.Context, path string, query url.Values) (map[string]any, error) {
@@ -175,50 +196,37 @@ func (c *Client) ListClusters(ctx context.Context, extra url.Values) ([]map[stri
 // An incomplete list cannot establish membership in a project.
 func (c *Client) ListClustersWithin(ctx context.Context, extra url.Values, limit int) ([]map[string]any, int, error) {
 	limit = min(limit, maxListPages)
+	q := url.Values{}
+	for key, values := range extra {
+		q[key] = values
+	}
+	if c.projectID != "" {
+		q.Set("project_id", c.projectID)
+	}
+	// Kafka accepts at most 50 clusters per page.
+	pageSize := 100
+	if extra.Get("product_type") == "kafka" {
+		pageSize = 50
+	}
+	q.Set("page_size", strconv.Itoa(pageSize))
 	pages := 0
 	var all []map[string]any
+	var progress pager.ItemProgress
 	more, err := pager.Upto(limit, func(token string) (string, error) {
 		pages++
-		q := url.Values{}
-		for k, v := range extra {
-			q[k] = v
-		}
-		if c.projectID != "" {
-			q.Set("project_id", c.projectID)
-		}
-		// Kafka accepts at most 50 clusters per page (#2632).
-		pageSize := 100
-		if extra.Get("product_type") == "kafka" {
-			pageSize = 50
-		}
-		q.Set("page_size", strconv.Itoa(pageSize))
-		if token != "" {
-			q.Set("page_token", token)
-		}
-		data, status, err := c.do(ctx, http.MethodGet, "/v1/clusters", q, nil)
+		data, err := c.listData(ctx, "/v1/clusters", q, token)
 		if err != nil {
 			return "", err
 		}
-		if status < 200 || status >= 300 {
-			return "", apiError(status, data)
+		page, next, err := pager.ObjectPage[map[string]any](data, "clusters", "next_page_token")
+		if err != nil {
+			return "", err
 		}
-		var page *struct {
-			Clusters      []map[string]any `json:"clusters"`
-			NextPageToken string           `json:"next_page_token"`
+		if err := pager.CheckProgress(&progress, page, next, pager.ObjectID); err != nil {
+			return "", err
 		}
-		if err := json.Unmarshal(data, &page); err != nil {
-			return "", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), err)
-		}
-		if page == nil {
-			return "", pager.Incomplete(i18n.T("parse clusters: null page", "разбор кластеров: страница равна null"))
-		}
-		for _, cluster := range page.Clusters {
-			if cluster == nil {
-				return "", pager.Incomplete(i18n.T("parse clusters: null cluster in list", "разбор кластеров: элемент списка равен null"))
-			}
-		}
-		all = append(all, page.Clusters...)
-		return page.NextPageToken, nil
+		all = append(all, page...)
+		return next, nil
 	})
 	if err != nil {
 		return nil, pages, pager.Named("dbaas: clusters", err)

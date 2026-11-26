@@ -12,9 +12,24 @@ import (
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/receipt"
 )
+
+// namedResources requires a name on every row before deciding that a name
+// is available. A display list may otherwise include an unnamed resource.
+func namedResources(items []map[string]any, err error) ([]map[string]any, error) {
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if strings.TrimSpace(stringArg(item, "name")) == "" {
+			return nil, pager.Incomplete(i18n.T("a resource in the list has no name to check", "у ресурса в списке нет имени для проверки"))
+		}
+	}
+	return items, nil
+}
 
 // takenName finds a listed resource (cluster, registry) named name that is
 // not gone. kafka_create with a name in use made a second billable cluster
@@ -136,13 +151,19 @@ func lostCreate(ctx context.Context, tool string, list func(context.Context) ([]
 		return errResult(createErr), true
 	}
 	items, err := list(ctx)
-	if err != nil {
+	var id, status string
+	var ok bool
+	if err == nil {
+		id, status, ok = takenName(items, name)
+	}
+	// A server-assigned identity must actually be in the recovered row.
+	// A resource keyed by its input (such as a secret path) is identified by that match.
+	if err != nil || (ok && c.arg == "" && strings.TrimSpace(id) == "") {
 		return errAnswer(createErr, map[string]any{"warning": i18n.Tf(
 			"the %s %q may have been made and be billed: check %s by its name before any repeat — a repeat while it is not listed there may make a second",
 			"%s %q мог быть создан и оплачиваться: до любого повтора проверьте %s по имени — повтор, пока его там нет, может создать второй",
 			kind, name, listTool)}), true
 	}
-	id, status, ok := takenName(items, name)
 	if !ok {
 		// The request went out and the list does not show what it may
 		// have made: the answer sends to the read, not to a repeat.

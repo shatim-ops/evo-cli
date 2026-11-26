@@ -377,7 +377,7 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 	if err != nil {
 		return nil, err
 	}
-	existing, err := cli.ListClusters(ctx, kafkaQuery())
+	existing, err := namedResources(cli.ListClusters(ctx, kafkaQuery()))
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("check the name is free: list clusters: %w", "проверка, что имя свободно: список кластеров: %w"), err)
 	}
@@ -471,7 +471,9 @@ func (s *Registry) planKafkaCreate(ctx context.Context, args map[string]any) (*P
 			if err == nil {
 				err = noID("operation")
 			}
-			list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListClusters(ctx, kafkaQuery()) }
+			list := func(ctx context.Context) ([]map[string]any, error) {
+				return namedResources(cli.ListClusters(ctx, kafkaQuery()))
+			}
 			return lostCreate(ctx, "kafka_create", list, i18n.T("Kafka cluster", "кластер Kafka"), name, willCreate, "kafka_get cluster_id", fmt.Errorf(i18n.T("create cluster: %w", "создание кластера: %w"), err))
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "cluster_id": op.ResourceID,

@@ -12,6 +12,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 	"github.com/shatim-ops/evo-cli/internal/secret"
 )
 
@@ -110,7 +111,11 @@ func (s *Registry) planSecretCreate(ctx context.Context, args map[string]any) (*
 	list := func(ctx context.Context) ([]map[string]any, error) {
 		items, err := cli.List(ctx)
 		for _, it := range items {
-			it["name"] = it["path"]
+			path := stringArg(it, "path")
+			if strings.TrimSpace(path) == "" {
+				return nil, pager.Incomplete(i18n.T("a secret in the list has no path to check", "у секрета в списке нет пути для проверки"))
+			}
+			it["name"] = path
 		}
 		return items, err
 	}

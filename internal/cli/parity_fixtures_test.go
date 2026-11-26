@@ -640,6 +640,9 @@ const parityObject = `{"id":"` + parityVM + `","name":"web","status":"ACTIVE","s
 // 1.2.3). A request neither here, in the fixtures nor in parityEmptyLists
 // fails the test that made it (withParityWorld).
 var parityAnswers = map[string]string{
+	"GET audit.api.cloud.ru/events/list/{id}":            `{"logs":[]}`,
+	"GET monitoring.api.cloud.ru/v1/{id}/export_metrics": `[]`,
+	"GET monitoring.api.cloud.ru/v2/{id}/scrape_metrics": "up 0\n",
 	// Reachability probes of doctor and whoami.
 	"GET compute.api.cloud.ru/": `{}`,
 	"GET iam.api.cloud.ru/":     `{}`,
@@ -702,7 +705,6 @@ var parityAnswers = map[string]string{
 // is no {id} and no :action, TestParityWorld_EmptyListsAreLists).
 var parityEmptyLists = map[string]string{
 	"GET ar.api.cloud.ru/v1/registries":                                "the project has no registry yet: ar_create's name is free",
-	"GET audit.api.cloud.ru/events/list/{id}":                          "no audit events: the answer is the empty page on both surfaces",
 	"GET certificatemanager.api.cloud.ru/v1/certificate":               "no certificate yet: cert_import and cert_issue_le names are free",
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/versions": "no versions: cert_get lists none",
 	"GET compute.api.cloud.ru/api/v1/images":                           "no private image: image_create's name is free, image_list empty",
@@ -713,8 +715,6 @@ var parityEmptyLists = map[string]string{
 	"GET dns.api.cloud.ru/v1/privateZones":                             "no private zone: the zone of dns_record_create is public",
 	"GET dns.api.cloud.ru/v1/publicRecordsSole":                        "the zone has no records yet: dns_record_create's name is free",
 	"GET iam.api.cloud.ru/api/v2/serviceAccounts":                      "no service account: sa_list empty",
-	"GET monitoring.api.cloud.ru/v1/{id}/export_metrics":               "no metrics",
-	"GET monitoring.api.cloud.ru/v2/{id}/scrape_metrics":               "no metrics",
 	"GET nlb.api.cloud.ru/v2/networkLoadBalancers":                     "no balancer yet: lb_create's name is free",
 	"GET nlb.api.cloud.ru/v2/targetGroups":                             "no target group yet: tg_create's name is free",
 	"GET organization.api.cloud.ru/v2/consumption":                     "no consumption in the period",

@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	neturl "net/url"
 	"strings"
@@ -34,32 +33,55 @@ func (s *Registry) adminGET(ctx context.Context, rawurl string) (map[string]any,
 	return tokenGET(ctx, eng.Auth, rawurl)
 }
 
+// adminGETRaw preserves the HTTP status and page structure for list readers.
+func (s *Registry) adminGETRaw(ctx context.Context, rawurl string) ([]byte, int, error) {
+	eng, err := s.engineFor(ctx, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	return tokenGETRaw(ctx, eng.Auth, rawurl)
+}
+
 // tokenGET is adminGET with the token of tp.
 func tokenGET(ctx context.Context, tp auth.TokenProvider, rawurl string) (map[string]any, error) {
-	tok, err := tp.Token(ctx)
+	data, status, err := tokenGETRaw(ctx, tp, rawurl)
 	if err != nil {
 		return nil, err
 	}
+	if err := pager.PageStatus(status, data, false, adminStatusError); err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil || m == nil {
+		return nil, pager.Incomplete(i18n.T("invalid administration API response", "неверный ответ API администрирования"))
+	}
+	return m, nil
+}
+
+func tokenGETRaw(ctx context.Context, tp auth.TokenProvider, rawurl string) ([]byte, int, error) {
+	tok, err := tp.Token(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawurl, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok.Value)
 	resp, err := OrgClient(30 * time.Second).Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	var m map[string]any
-	if e := json.Unmarshal(data, &m); e != nil {
-		return nil, &adminHTTPError{Status: resp.StatusCode, Msg: string(data[:min(len(data), 300)])}
+	return httpretry.ReadAPIResponse(req, resp, 0)
+}
+
+func adminStatusError(status int, data []byte) error {
+	var msg struct{ Message string }
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return &adminHTTPError{Status: status, Msg: string(data[:min(len(data), 300)])}
 	}
-	if resp.StatusCode != 200 {
-		msg, _ := m["message"].(string)
-		return nil, &adminHTTPError{Status: resp.StatusCode, Msg: msg}
-	}
-	return m, nil
+	return &adminHTTPError{Status: status, Msg: msg.Message}
 }
 
 // adminHTTPError is an answer of the API other than 200 (or not JSON): the
@@ -89,40 +111,51 @@ func (s *Registry) handleIamServiceAccounts(ctx context.Context, args map[string
 	// (serviceAccounts/nextPageToken in the spec, service_accounts/
 	// next_page_token live, IAM-2). Only one spelling of the query is
 	// sent: a parameter the API does not know can fail the call (AUD-2).
-	var raw []any
+	out := make([]map[string]any, 0)
+	seen := make(map[string]bool)
 	err := pager.All("iam: service accounts", func(token string) (string, error) {
 		u := "https://iam.api.cloud.ru/api/v2/serviceAccounts?target.projectId=" + neturl.QueryEscape(pid)
 		if token != "" {
 			u += "&pageToken=" + neturl.QueryEscape(token)
 		}
-		m, err := s.adminGET(ctx, u)
+		data, status, err := s.adminGETRaw(ctx, u)
 		if err != nil {
 			return "", err
 		}
-		page, _ := m["service_accounts"].([]any)
-		if page == nil {
-			page, _ = m["serviceAccounts"].([]any)
+		if err := pager.PageStatus(status, data, token != "", adminStatusError); err != nil {
+			return "", err
 		}
-		raw = append(raw, page...)
-		next, _ := m["next_page_token"].(string)
-		if next == "" {
-			next, _ = m["nextPageToken"].(string)
+		page, next, err := pager.ObjectPage[map[string]any](data, "serviceAccounts", "nextPageToken",
+			pager.PageFields{Items: "service_accounts", Token: "next_page_token"})
+		if err != nil {
+			return "", err
+		}
+		previous := len(seen)
+		for _, account := range page {
+			id, _ := account["id"].(string)
+			if strings.TrimSpace(id) == "" {
+				return "", pager.Incomplete(i18n.T("service account has no ID", "у сервисного аккаунта нет ID"))
+			}
+			if name, present := account["name"]; present {
+				if _, ok := name.(string); !ok {
+					return "", pager.Incomplete(i18n.T("service account name must be a string", "имя сервисного аккаунта должно быть строкой"))
+				}
+			}
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, map[string]any{
+					"id": id, "name": account["name"], "email": account["email"],
+					"type": account["type"], "enabled": account["enabled"],
+				})
+			}
+		}
+		if token != "" && len(page) > 0 && previous == len(seen) {
+			return "", pager.NoNewItems(previous, -1)
 		}
 		return next, nil
 	})
 	if err != nil {
 		return errResult(err), true
-	}
-	out := make([]map[string]any, 0, len(raw))
-	for _, x := range raw {
-		sa, _ := x.(map[string]any)
-		if sa == nil {
-			continue
-		}
-		out = append(out, map[string]any{
-			"id": sa["id"], "name": sa["name"], "email": sa["email"],
-			"type": sa["type"], "enabled": sa["enabled"],
-		})
 	}
 	return toJSON(map[string]any{"service_accounts": out}), false
 }
@@ -172,11 +205,14 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 		return failed(ctx, err, nil), true
 	}
 	out := make([]map[string]any, 0, len(raw))
-	for _, x := range raw {
-		p, _ := x.(map[string]any)
+	for _, p := range raw {
 		// Bound to its project (SetProjectBound), the registry names no
 		// other project of the organization.
-		if p == nil || s.projectBound && p["id"] != active {
+		id, _ := p["id"].(string)
+		if s.projectBound && strings.TrimSpace(id) == "" {
+			return failed(ctx, pager.Incomplete(i18n.T("project without an ID", "проект без ID")), nil), true
+		}
+		if s.projectBound && id != active {
 			continue
 		}
 		out = append(out, map[string]any{
@@ -193,24 +229,32 @@ func (s *Registry) handleOrgProjects(ctx context.Context, args map[string]any) (
 // API with the token of tp (#98): api.op.v3.yaml answers next_page_token
 // and takes page_token. laterPage: err is the failure of a page after the
 // first.
-func orgProjectPages(ctx context.Context, tp auth.TokenProvider) (raw []any, laterPage bool, err error) {
+func orgProjectPages(ctx context.Context, tp auth.TokenProvider) (raw []map[string]any, laterPage bool, err error) {
 	// An empty page ends the list of the Organization API (IAM-10).
 	err = pager.AllUntilEmpty("organization: projects", pager.MaxPages, func(token string) (string, int, error) {
 		u := OrgProjectsURL
 		if token != "" {
 			u += "?page_token=" + neturl.QueryEscape(token)
 		}
-		m, err := tokenGET(ctx, tp, u)
+		laterPage = token != ""
+		body, status, err := tokenGETRaw(ctx, tp, u)
 		if err != nil {
-			laterPage = token != ""
 			return "", 0, err
 		}
-		page, _ := m["projects"].([]any)
+		if err := pager.PageStatus(status, body, laterPage, adminStatusError); err != nil {
+			return "", 0, err
+		}
+		page, next, err := pager.ObjectPage[map[string]any](body, "projects", "next_page_token")
+		if err != nil {
+			return "", 0, err
+		}
 		raw = append(raw, page...)
-		next, _ := m["next_page_token"].(string)
 		return next, len(page), nil
 	})
-	return raw, laterPage, err
+	if err != nil {
+		return nil, laterPage, err
+	}
+	return raw, false, nil
 }
 
 // orgNoProjectHint is the hint of org_projects when the key cannot list
@@ -260,31 +304,57 @@ func QuotaProbe(ctx context.Context, tp auth.TokenProvider, projectID string) er
 // handleOrgQuotas lists quota usages (limits vs usage) — useful for capacity
 // planning. Requires the caller to have customer/project quota permissions.
 func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (string, bool) {
-	url := quotaUsagesURL(stringArg(args, "project_id"))
-	// Every page (#98): next_page_token in the answer, page_token in the
-	// next request (api.op.v3.yaml).
-	var raw []any
+	projectID := stringArg(args, "project_id")
+	url := quotaUsagesURL(projectID)
+	var raw []map[string]any
+	firstPage := true
+	// The same resource type is a distinct quota for each subject. Across
+	// projects a row without its subject cannot prove repetition.
+	type quotaKey struct{ customer, kind, subject, resource string }
+	seen := make(map[quotaKey]bool)
 	err := pager.All("organization: quota usages", func(token string) (string, error) {
+		firstPage = token == ""
 		u := url
-		if token != "" {
+		if !firstPage {
 			u += "&page_token=" + neturl.QueryEscape(token)
 		}
-		m, err := s.adminGET(ctx, u)
+		body, status, err := s.adminGETRaw(ctx, u)
 		if err != nil {
 			return "", err
 		}
-		page, _ := m["usages"].([]any)
-		raw = append(raw, page...)
-		next, _ := m["next_page_token"].(string)
+		if err := pager.PageStatus(status, body, !firstPage, adminStatusError); err != nil {
+			return "", err
+		}
+		page, next, err := pager.ObjectPage[map[string]any](body, "usages", "next_page_token")
+		if err != nil {
+			return "", err
+		}
+		previous := len(raw)
+		for _, row := range page {
+			code, _ := row["resource_type_code"].(string)
+			if strings.TrimSpace(code) == "" {
+				return "", pager.Incomplete(i18n.T("quota has no resource type code", "у квоты нет кода вида ресурса"))
+			}
+			subject, _ := row["subject_id"].(string)
+			if subject = firstNonEmptyStr(subject, projectID); subject != "" {
+				customer, _ := row["customer_id"].(string)
+				kind, _ := row["subject_type_code"].(string)
+				key := quotaKey{customer, kind, subject, code}
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+			}
+			raw = append(raw, row)
+		}
+		if !firstPage && len(page) != 0 && len(raw) == previous {
+			return "", pager.NoNewItems(previous, -1)
+		}
 		return next, nil
 	})
 	if err != nil {
-		// The org quota endpoint needs a customer/organization scope a service
-		// account typically lacks (403 "dont have permissions to customers").
-		// That's an expected limitation, not a failure — degrade to a soft
-		// "unavailable" so it doesn't read as a hard error on an early turn.
-		low := strings.ToLower(err.Error())
-		if strings.Contains(low, "403") || strings.Contains(low, "permission") {
+		var he *adminHTTPError
+		if firstPage && errors.As(err, &he) && he.Status == http.StatusForbidden {
 			// reason is a code, as everywhere else; the phrase is the note
 			// (QA 20.10, QA-6).
 			return toJSON(map[string]any{
@@ -296,15 +366,14 @@ func (s *Registry) handleOrgQuotas(ctx context.Context, args map[string]any) (st
 				"detail": err.Error(),
 			}), false
 		}
+		if errors.As(err, &he) {
+			err = orgHTTPError(he)
+		}
 		return errResult(err), true
 	}
 	types := s.quotaTypes(ctx)
 	out := make([]map[string]any, 0, len(raw))
-	for _, x := range raw {
-		u, _ := x.(map[string]any)
-		if u == nil {
-			continue
-		}
+	for _, u := range raw {
 		row := map[string]any{
 			"resource": u["resource_type_code"], "limit": u["individual_limit"], "usage": u["individual_usage"],
 		}

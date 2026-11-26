@@ -6,6 +6,8 @@ package cli
 
 import (
 	"context"
+	"errors"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -113,5 +115,42 @@ func TestListProjects_EmptyPagesWithATokenEndTheList(t *testing.T) {
 	got, err := listProjects(context.Background(), "tok")
 	if err != nil || len(got) != 1 || calls.Load() != 2 {
 		t.Fatalf("projects %+v after %d requests, err %v; want p1 after 2", got, calls.Load(), err)
+	}
+}
+
+// A complete first page does not authorize a partial result if continuation fails.
+func TestListProjects_RejectsIncompleteContinuation(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"missing continuation", 404, `{}`},
+		{"unexpected success", 201, `{"projects":[]}`},
+		{"null page", 200, `null`},
+		{"null items", 200, `{"projects":null}`},
+		{"null row", 200, `{"projects":[null]}`},
+		{"missing project identity", 200, `{"projects":[{"name":"p"}]}`},
+		{"invalid cursor", 200, `{"projects":[],"next_page_token":null}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("page_token") == "" {
+					_, _ = io.WriteString(w, `{"projects":[{"id":"first"}],"next_page_token":"second"}`)
+					return
+				}
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+			saved := orgProjectsURL
+			orgProjectsURL = srv.URL
+			defer func() { orgProjectsURL = saved }()
+			items, err := listProjects(context.Background(), "token")
+			var typed *clierrors.CLIError
+			if !errors.As(err, &typed) || typed.Code != clierrors.CodeAPIError || items != nil {
+				t.Fatalf("partial items %v, error %v", items, err)
+			}
+		})
 	}
 }

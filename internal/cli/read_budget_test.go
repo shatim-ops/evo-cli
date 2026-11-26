@@ -265,7 +265,8 @@ func TestHistoryRedisReadBudgetOnEachSurface(t *testing.T) {
 			return contractRT{status: 200, body: fmt.Sprintf(`{"id":%q,"status":"ERASED"}`, parityVM)}.RoundTrip(r)
 		case "/v1/clusters":
 			pages++
-			return contractRT{status: 200, body: fmt.Sprintf(`{"clusters":[{"id":%q}],"next_page_token":"%d"}`, parityVM, pages)}.RoundTrip(r)
+			id := fmt.Sprintf("00000000-0000-4000-8000-%012d", pages)
+			return contractRT{status: 200, body: fmt.Sprintf(`{"clusters":[{"id":%q}],"next_page_token":"%d"}`, id, pages)}.RoundTrip(r)
 		default:
 			return old(r)
 		}

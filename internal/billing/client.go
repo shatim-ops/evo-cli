@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -95,8 +94,7 @@ func (c *Client) get(ctx context.Context, u string) ([]byte, int, error) {
 		return nil, 0, fmt.Errorf(i18n.T("billing request failed: %w", "запрос к billing не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	return data, resp.StatusCode, nil
+	return httpretry.ReadAPIResponse(req, resp, 0)
 }
 
 func apiError(status int, body []byte) error {
@@ -209,18 +207,15 @@ func (c *Client) Consumption(ctx context.Context, startISO, endISO string) ([]ma
 		if err != nil {
 			return "", err
 		}
-		if status < 200 || status >= 300 {
-			return "", c.consumptionError(status, data)
+		if err := pager.PageStatus(status, data, pageToken != "", c.consumptionError); err != nil {
+			return "", err
 		}
-		var out struct {
-			Consumptions  []map[string]any `json:"consumptions"`
-			NextPageToken string           `json:"next_page_token"`
+		items, next, err := pager.ObjectPage[map[string]any](data, "consumptions", "next_page_token")
+		if err != nil {
+			return "", err
 		}
-		if err := json.Unmarshal(data, &out); err != nil {
-			return "", fmt.Errorf(i18n.T("parse consumption: %w", "разбор потребления: %w"), err)
-		}
-		all = append(all, out.Consumptions...)
-		return out.NextPageToken, nil
+		all = append(all, items...)
+		return next, nil
 	})
 	what := i18n.T("billing API: consumption", "billing API: потребление")
 	if err != nil {
