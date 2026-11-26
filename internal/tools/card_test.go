@@ -55,13 +55,56 @@ func TestGroupCards_CoverEveryToolFromTheDeclarations(t *testing.T) {
 	}
 }
 
+// Scope checks to this status. Neither the preceding VM/DB examples nor
+// the other history outcomes assign work on a local cleanup receipt.
+func unconfirmedCleanupNote(card string) string {
+	for _, line := range strings.Split(card, "\n") {
+		if _, clause, found := strings.Cut(strings.ToLower(line), "`check_result: cleanup_unconfirmed`"); found {
+			note, _, _ := strings.Cut(clause, "other values:")
+			return strings.TrimSpace(strings.ReplaceAll(note, "`", ""))
+		}
+	}
+	return ""
+}
+
 func TestAuthCard_HandsLocalReceiptToTheOwner(t *testing.T) {
+	person := `(?:the )?(?:person|owner|user|operator)`
+	approval := regexp.MustCompile(`\b(?:with ` + person + `'s (?:approval|consent)|(?:after|once) ` + person + ` (?:approves|consents)|with (?:approval|consent) from ` + person + `)\b`)
+	check := `(?:check|verify|inspect|review|confirm|resolve) (?:it|(?:the |that )?(?:local )?receipt)\b`
+	handoff := regexp.MustCompile(`(?:^|[,;:])\s*(?:(?:ask|tell|have) ` + person + ` (?:to )?|(?:only )?` + person + ` (?:must|should|may|can) )` + check + ` (?:in|from) (?:the )?(?:original|same) state (?:directory|folder)\b`)
+	selfCheck := regexp.MustCompile(`\b(?:agent|assistant) (?:may |can |should |must |also |independently |itself )*` + check)
 	for _, terminal := range []bool{false, true} {
 		card, ok := groupCard("auth", terminal, nil, false)
-		for _, want := range []string{"cleanup_unconfirmed", "floating IP", "port rule", "live", "cleanup hint", "person", "original state directory"} {
-			if !ok || !strings.Contains(card, want) {
-				t.Fatalf("terminal=%t: auth card omits %q", terminal, want)
+		if !ok {
+			t.Fatal("missing auth card")
+		}
+		note := unconfirmedCleanupNote(card)
+		for _, want := range []string{"floating ip", "port rule", "live"} {
+			if !strings.Contains(note, want) {
+				t.Errorf("terminal=%t: cleanup note omits %q", terminal, want)
 			}
+		}
+		// Checking the VM's address and rules is an ordinary read. Approval for
+		// following the cleanup hint does not delegate local evidence to the agent.
+		approved, ownerChecks := false, false
+		for _, sentence := range strings.FieldsFunc(note, func(r rune) bool { return r == '.' || r == ';' }) {
+			if strings.Contains(sentence, "cleanup hint") && approval.MatchString(sentence) {
+				approved = true
+			}
+			if strings.Contains(sentence, "receipt") {
+				if selfCheck.MatchString(sentence) {
+					t.Errorf("terminal=%t: the card assigns the local receipt to the agent: %s", terminal, sentence)
+				}
+				if handoff.MatchString(sentence) {
+					ownerChecks = true
+				}
+			}
+		}
+		if !approved {
+			t.Errorf("terminal=%t: following the cleanup hint must require the person's approval", terminal)
+		}
+		if !ownerChecks {
+			t.Errorf("terminal=%t: the person must check the local receipt in the original state directory", terminal)
 		}
 	}
 }
@@ -115,16 +158,7 @@ func TestAuthCard_ExplainsUnconfirmedCleanup(t *testing.T) {
 		if !ok {
 			t.Fatal("missing auth card")
 		}
-		var note string
-		for _, line := range strings.Split(card, "\n") {
-			if _, clause, found := strings.Cut(strings.ToLower(line), "`check_result: cleanup_unconfirmed`"); found {
-				// The surrounding PostgreSQL example and advice for other
-				// statuses must not satisfy a pending destroy's requirements.
-				note, _, _ = strings.Cut(clause, "other values:")
-				note = strings.TrimSpace(strings.ReplaceAll(note, "`", ""))
-				break
-			}
-		}
+		note := unconfirmedCleanupNote(card)
 		if note == "" {
 			t.Errorf("terminal=%t: missing cleanup_unconfirmed", terminal)
 			continue
