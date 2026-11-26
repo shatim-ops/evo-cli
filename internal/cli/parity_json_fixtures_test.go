@@ -56,16 +56,16 @@ type jsonFake struct {
 	// it took.
 	vmRebooting int
 	// vmResized: parityResizeVM took the change to lowcost10-4-8.
-	vmResized   bool
-	fipReleased bool     // a successful DELETE makes the following address GET return 404
-	fipBound    bool     // the floating IP was attached to the VM
-	writes      []string // every request that is not a read, with its body
+	vmResized    bool
+	releasedFIPs map[string]bool // a successful DELETE makes the GET for that ID return 404
+	fipBound     bool            // the floating IP was attached to the VM
+	writes       []string        // every request that is not a read, with its body
 }
 
 func (f *jsonFake) reset() {
 	f.mu.Lock()
 	f.vmGone, f.vmStarted, f.vmStopped, f.fipBound, f.writes = false, false, false, false, nil
-	f.vmRebooting, f.vmResized, f.fipReleased = 0, false, false
+	f.vmRebooting, f.vmResized, f.releasedFIPs = 0, false, nil
 	f.mu.Unlock()
 }
 
@@ -172,6 +172,8 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 	}
 	switch r.URL.Host {
 	case "compute.api.cloud.ru":
+		fipID := strings.TrimPrefix(p, "/api/v1/floating-ips/")
+		knownFIP := fipID == parityVM || fipID == parityRecordedFIP
 		switch {
 		case p == "/api/v1/vms/"+parityVM && get && !f.gone():
 			// The VM of parityVM with its primary interface, ready: the
@@ -250,7 +252,7 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			return write(`{"id":"` + parityVM + `","name":"golden"}`)
 		case p == "/api/v1/floating-ips" && r.Method == http.MethodPost:
 			f.mu.Lock()
-			f.fipReleased = false
+			delete(f.releasedFIPs, parityVM)
 			f.mu.Unlock()
 			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`)
 		case p == "/api/v1/floating-ips/"+parityVM && r.Method == http.MethodPut:
@@ -258,23 +260,26 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 			f.fipBound = true
 			f.mu.Unlock()
 			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"in_use"}`)
-		case p == "/api/v1/floating-ips/"+parityVM && r.Method == http.MethodDelete:
+		case knownFIP && r.Method == http.MethodDelete:
 			f.mu.Lock()
-			f.fipReleased = true
+			if f.releasedFIPs == nil {
+				f.releasedFIPs = make(map[string]bool)
+			}
+			f.releasedFIPs[fipID] = true
 			f.mu.Unlock()
 			return write(`{}`)
-		case p == "/api/v1/floating-ips/"+parityVM && get:
+		case knownFIP && get:
 			f.mu.Lock()
-			bound, released := f.fipBound, f.fipReleased
+			bound, released := f.fipBound || fipID == parityRecordedFIP, f.releasedFIPs[fipID]
 			f.mu.Unlock()
 			if released {
 				w.WriteHeader(http.StatusNotFound)
 				return write(`{"message":"floating IP not found"}`)
 			}
 			if bound {
-				return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"in_use","vm":{"id":"` + parityVM + `"}}`)
+				return write(`{"id":"` + fipID + `","ip_address":"203.0.113.10","state":"in_use","vm":{"id":"` + parityVM + `"}}`)
 			}
-			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`)
+			return write(`{"id":"` + fipID + `","ip_address":"203.0.113.10","state":"available"}`)
 		case strings.HasPrefix(p, "/api/v1/security-groups/") && strings.HasSuffix(p, "/rules") && r.Method == http.MethodPost:
 			return write(`{"id":"` + parityVM + `","direction":"ingress","ip_protocol":"tcp","state":"created"}`)
 		}

@@ -386,6 +386,9 @@ var paritySetup = map[string]func(t *testing.T, w parityWorld) (map[string]any, 
 	},
 }
 
+// The address recorded in state has its own resource ID.
+const parityRecordedFIP = "00000000-0000-4000-8000-0000000000f6"
+
 // recordDeployment is deploy's other state: the directory has a running
 // deployment, which deploy updates (no new VM, nothing priced).
 func recordDeployment(t *testing.T, w parityWorld) (map[string]any, func()) {
@@ -393,7 +396,7 @@ func recordDeployment(t *testing.T, w parityWorld) (map[string]any, func()) {
 	compose := filepath.Join(w.dir, "docker-compose.yml")
 	writeFile(t, compose, "services:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"80:80\"\n")
 	path := state.DefaultPath(w.dir)
-	f := &state.File{Deployments: []state.DeploymentRecord{{ID: "dep-parity", VMID: parityVM, VMIP: "203.0.113.10", FloatingIPID: parityVM,
+	f := &state.File{Deployments: []state.DeploymentRecord{{ID: "dep-parity", VMID: parityVM, VMIP: "203.0.113.10", FloatingIPID: parityRecordedFIP,
 		ProjectID: pvProject, Region: pvZone, VMName: "evo-web", Status: "running", ComposeHash: "0000", SSHUser: "user1"}}}
 	if err := state.Write(path, f); err != nil {
 		t.Fatal(err)
