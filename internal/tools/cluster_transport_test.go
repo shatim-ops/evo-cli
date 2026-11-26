@@ -19,13 +19,18 @@ func TestClusterListAndCreateRequireCompleteHTTPBody(t *testing.T) {
 	for _, service := range []string{"kafka", "redis", "pg"} {
 		for _, action := range []string{"list", "create"} {
 			for _, tc := range []struct {
-				name   string
-				pages  int
-				broken int // one-based; zero means clean EOF
+				name     string
+				pages    int
+				broken   int    // one-based; zero means clean EOF
+				lastBody string // explicit wire representation of the last page
+				invalid  bool
 			}{
-				{"empty first page cut short", 1, 1},
-				{"empty final page cut short", 2, 2},
-				{"complete two pages", 2, 0},
+				{name: "empty first page cut short", pages: 1, broken: 1, invalid: true},
+				{name: "empty final page cut short", pages: 2, broken: 2, invalid: true},
+				{name: "complete two pages", pages: 2},
+				{name: "omitted collection on final page", pages: 2, lastBody: `{}`},
+				{name: "null collection on final page", pages: 2, lastBody: `{"clusters":null}`, invalid: true},
+				{name: "null continuation on final page", pages: 2, lastBody: `{"clusters":[],"next_page_token":null}`, invalid: true},
 			} {
 				t.Run(service+"/"+action+"/"+tc.name, func(t *testing.T) {
 					var pages, writes int
@@ -44,7 +49,11 @@ func TestClusterListAndCreateRequireCompleteHTTPBody(t *testing.T) {
 						case pages == 1 && tc.pages == 2 && token == "":
 							io.WriteString(w, `{"clusters":[{"id":"existing-id","name":"existing"}],"next_page_token":"second"}`)
 						case pages == 1 && tc.pages == 1 && token == "", pages == 2 && token == "second":
-							io.WriteString(w, `{"clusters":[]}`)
+							body := tc.lastBody
+							if body == "" {
+								body = `{"clusters":[]}`
+							}
+							io.WriteString(w, body)
 						default:
 							t.Fatalf("unexpected cluster page %d, token %q", pages, token)
 						}
@@ -75,7 +84,7 @@ func TestClusterListAndCreateRequireCompleteHTTPBody(t *testing.T) {
 					if pages != tc.pages {
 						t.Errorf("read %d cluster pages, want %d", pages, tc.pages)
 					}
-					if tc.broken != 0 {
+					if tc.invalid {
 						if !failed || result["reason"] != "API_ERROR" || result["clusters"] != nil || writes != 0 {
 							t.Errorf("incomplete HTTP page: failed=%t, writes=%d, result=%s", failed, writes, raw)
 						}
