@@ -1,0 +1,469 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Review-only program for a one-address check. Build inside the pinned evo module.
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/floatingip"
+	"github.com/shatim-ops/evo-cli/internal/provision"
+)
+
+const (
+	collection = "/api/v1/floating-ips"
+	zones      = "/api/v1/availability-zones"
+	zoneName   = "ru.AZ-2"
+)
+
+var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+var runNumber = regexp.MustCompile(`^[1-9][0-9]{0,19}$`)
+var rejected = errors.New("request outside review scope")
+var notConfirmed = errors.New("verification incomplete")
+
+// The receipt contains private resource metadata. It contains no token or IP address.
+type receipt struct {
+	Run, Attempt, Project, Zone, ZoneID, Name, Marker, ID                  string
+	PostSent, PostMarkerPresent, PostMarkerMatch                           bool
+	CardMarkerPresent, CardMarkerMatch, ListMarkerPresent, ListMarkerMatch bool
+	DeleteSent, Gone                                                       bool
+}
+type job struct {
+	path                                          string
+	r                                             receipt
+	transport                                     http.RoundTripper
+	interval                                      time.Duration
+	cardHTTP                                      int
+	allowPost, allowDelete, service404, cardClear bool
+}
+
+func validID(s string) bool {
+	return s != "00000000-0000-0000-0000-000000000000" && uuid.MatchString(s)
+}
+
+func (j *job) save() error {
+	dir := filepath.Dir(j.path)
+	f, err := os.CreateTemp(dir, ".receipt-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if err = json.NewEncoder(f).Encode(j.r); err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err = os.Rename(f.Name(), j.path); err != nil {
+		return err
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
+func (j *job) adapter(token string) *provision.CloudRuAdapter {
+	httpClient := &http.Client{Timeout: 12 * time.Second, Transport: j, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	a := provision.NewCloudRuAdapter(httpClient, "")
+	a.SetToken(token)
+	return a
+}
+func readSmall(body io.ReadCloser) ([]byte, error) {
+	defer body.Close()
+	const limit = 64 << 10
+	data, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if err != nil || len(data) > limit {
+		return nil, notConfirmed
+	}
+	return data, nil
+}
+
+// GET /api/v1/floating-ips/{floating_ip_id}, OpenAPI FloatingIpNotFoundExceptionSchema:
+// accept the documented example only. Extra errors, duplicate keys and unknown
+// forms cannot certify the absence of the billed address.
+func floatingIPNotFoundBody(data []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	delim := func(want json.Delim) bool {
+		t, err := dec.Token()
+		return err == nil && t == want
+	}
+	if !delim('[') || !delim('{') {
+		return false
+	}
+	fields := map[string]string{"code": "floating_ip_not_found", "message": "FloatingIp with this id is not found"}
+	for dec.More() {
+		t, err := dec.Token()
+		key, ok := t.(string)
+		expected, allowed := fields[key]
+		var value string
+		if err != nil || !ok || !allowed || dec.Decode(&value) != nil || value != expected {
+			return false
+		}
+		delete(fields, key)
+	}
+	if len(fields) != 0 || !delim('}') || !delim(']') {
+		return false
+	}
+	_, err := dec.Token()
+	return err == io.EOF
+}
+
+func (j *job) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Scheme != "https" || r.URL.Host != "compute.api.cloud.ru" || r.URL.User != nil {
+		return nil, rejected
+	}
+	path := r.URL.EscapedPath()
+	card := j.r.ID != "" && path == collection+"/"+j.r.ID
+	switch r.Method {
+	case http.MethodGet:
+		switch {
+		case path == zones && r.URL.RawQuery == "":
+		case path == collection && r.URL.Query().Get("project_id") == j.r.Project:
+			for k := range r.URL.Query() {
+				if k != "project_id" && k != "limit" && k != "offset" {
+					return nil, rejected
+				}
+			}
+		case card && r.URL.RawQuery == "":
+			j.cardHTTP = 0
+			j.service404 = false
+			j.cardClear = false
+		default:
+			return nil, rejected
+		}
+	case http.MethodPost:
+		if !j.allowPost || j.r.PostSent || path != collection || r.URL.RawQuery != "" || r.Body == nil {
+			return nil, rejected
+		}
+		data, err := readSmall(r.Body)
+		if err != nil {
+			return nil, rejected
+		}
+		var req provision.CreateFloatingIPRequest
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&req) != nil || req.Name != j.r.Name || req.ProjectID != j.r.Project || req.AvailabilityZoneID != j.r.ZoneID || req.InterfaceID != "" || req.Description == "" {
+			return nil, rejected
+		}
+		// Description is the actual field on the wire, generated by the candidate.
+		j.r.Marker = req.Description
+		j.r.PostSent = true
+		if err = j.save(); err != nil {
+			return nil, err
+		}
+		r = r.Clone(r.Context())
+		r.Body = io.NopCloser(bytes.NewReader(data))
+	case http.MethodDelete:
+		if !j.allowDelete || j.r.DeleteSent || !card || r.URL.RawQuery != "project_id="+j.r.Project || r.Body != nil {
+			return nil, rejected
+		}
+		j.r.DeleteSent = true
+		if err := j.save(); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, rejected
+	}
+	resp, err := j.transport.RoundTrip(r)
+	if err != nil {
+		return nil, err
+	}
+	if r.Method == http.MethodGet && card {
+		j.cardHTTP = resp.StatusCode
+	}
+	isCreate := r.Method == http.MethodPost && resp.StatusCode >= 200 && resp.StatusCode < 300
+	isCard := r.Method == http.MethodGet && card && (resp.StatusCode == 200 || resp.StatusCode == 404)
+	if !isCreate && !isCard {
+		return resp, nil
+	}
+	data, err := readSmall(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(data))
+	if isCreate {
+		var obj struct {
+			ID          string  `json:"id"`
+			Description *string `json:"description"`
+		}
+		// Only a directly received successful POST response can authorize this ID.
+		if json.Unmarshal(data, &obj) == nil && validID(obj.ID) {
+			j.r.ID = obj.ID
+			j.r.PostMarkerPresent = obj.Description != nil
+			j.r.PostMarkerMatch = obj.Description != nil && *obj.Description == j.r.Marker
+			if err = j.save(); err != nil {
+				return nil, err
+			}
+		}
+	} else if resp.StatusCode == 404 {
+		media, _, parseErr := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		j.service404 = parseErr == nil && media == "application/json" && resp.Header.Get("Content-Range") == "" &&
+			(resp.ContentLength < 0 || int64(len(data)) == resp.ContentLength) && floatingIPNotFoundBody(data)
+	} else {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(data, &fields) == nil && fields != nil {
+			j.cardClear = true
+			for _, field := range []string{"interface_id", "vm_id", "nat_gateway_id"} {
+				v := string(bytes.TrimSpace(fields[field]))
+				if v != "" && v != "null" && v != `""` {
+					j.cardClear = false
+				}
+			}
+			for field, want := range map[string]string{"project_id": j.r.Project, "availability_zone_id": j.r.ZoneID} {
+				if raw, ok := fields[field]; ok {
+					var got string
+					if json.Unmarshal(raw, &got) != nil || got != want {
+						j.cardClear = false
+					}
+				}
+			}
+		}
+	}
+	return resp, nil
+}
+func (j *job) pause(ctx context.Context) bool {
+	t := time.NewTimer(j.interval)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}
+
+func (j *job) probe(ctx context.Context, a *provision.CloudRuAdapter) error {
+	if j.r.PostSent || j.r.ID != "" || !validID(j.r.Project) || j.r.Zone != zoneName || !runNumber.MatchString(j.r.Run) || j.r.Attempt != "1" || j.r.Name != "evo-g10-"+j.r.Run+"-"+j.r.Attempt {
+		return rejected
+	}
+	azs, err := a.ListAvailabilityZones(ctx)
+	if err != nil {
+		return notConfirmed
+	}
+	for _, z := range azs {
+		if z != nil && z.Name == j.r.Zone {
+			if j.r.ZoneID != "" || !validID(z.ID) || (z.Enabled != nil && !*z.Enabled) {
+				return rejected
+			}
+			j.r.ZoneID = z.ID
+		}
+	}
+	if j.r.ZoneID == "" {
+		return rejected
+	}
+	if err = j.save(); err != nil {
+		return err
+	}
+	j.allowPost = true
+	f, err := floatingip.Reserve(ctx, a, provision.CreateFloatingIPRequest{Name: j.r.Name, ProjectID: j.r.Project, AvailabilityZoneID: j.r.ZoneID}, floatingip.Free, j.interval, nil)
+	j.allowPost = false
+	// Reserve can return an address recovered through a list after a lost POST.
+	// Such a result is evidence for a person, never an authority to delete here.
+	if err != nil || f == nil || j.r.ID == "" || f.ID != j.r.ID {
+		return notConfirmed
+	}
+	for ctx.Err() == nil {
+		card, ce := a.GetFloatingIP(ctx, j.r.ID)
+		items, le := a.ListFloatingIPs(ctx, j.r.Project)
+		j.r.CardMarkerPresent, j.r.CardMarkerMatch = false, false
+		j.r.ListMarkerPresent, j.r.ListMarkerMatch = false, false
+		if ce == nil && card != nil && card.ID == j.r.ID && card.Name == j.r.Name {
+			j.r.CardMarkerPresent = card.Description != ""
+			j.r.CardMarkerMatch = card.Description == j.r.Marker
+		}
+		if le == nil {
+			own, matching := 0, 0
+			otherID := false
+			for _, item := range items {
+				if item == nil {
+					continue
+				}
+				if item.ID == j.r.ID && item.Name == j.r.Name {
+					own++
+					j.r.ListMarkerPresent = item.Description != ""
+				}
+				if item.Name == j.r.Name && item.Description == j.r.Marker {
+					matching++
+					if item.ID != j.r.ID {
+						otherID = true
+					}
+				}
+			}
+			j.r.ListMarkerMatch = own == 1 && matching == 1 && !otherID
+		}
+		if err = j.save(); err != nil {
+			return err
+		}
+		if j.r.CardMarkerMatch && j.r.ListMarkerMatch {
+			return nil
+		}
+		if !j.pause(ctx) {
+			break
+		}
+	}
+	return notConfirmed
+}
+func (j *job) cleanup(ctx context.Context, a *provision.CloudRuAdapter) error {
+	if !j.r.PostSent || j.r.Gone {
+		return nil
+	}
+	if !validID(j.r.ID) || j.r.Marker == "" {
+		return notConfirmed
+	}
+	for ctx.Err() == nil {
+		card, err := a.GetFloatingIP(ctx, j.r.ID)
+		// ID is from the direct POST scoped to this project; DeleteSent was
+		// persisted only after a 200 read of this exact card and a scope check.
+		// With that provenance only the documented address-specific 404 settles it.
+		if j.r.DeleteSent && j.cardHTTP == http.StatusNotFound {
+			if !j.service404 || !floatingip.ServiceNotFound(err) {
+				return notConfirmed
+			}
+			j.r.Gone = true
+			return j.save()
+		}
+		if err == nil && !j.r.DeleteSent {
+			if card == nil || card.ID != j.r.ID || card.Name != j.r.Name || !j.cardClear || !floatingip.Free(*card) ||
+				(card.Zone != nil && ((card.Zone.ID != "" && card.Zone.ID != j.r.ZoneID) || (card.Zone.Name != "" && card.Zone.Name != j.r.Zone))) {
+				return rejected
+			}
+			if card.State == "available" {
+				j.allowDelete = true
+				_ = a.DeleteFloatingIP(ctx, j.r.ID, j.r.Project)
+				j.allowDelete = false
+				if !j.r.DeleteSent {
+					return notConfirmed
+				}
+				// A lost DELETE response is followed by reads only.
+				continue
+			}
+			if card.State != "creating" {
+				return notConfirmed
+			}
+		}
+		if !j.pause(ctx) {
+			break
+		}
+	}
+	return notConfirmed
+}
+
+// A fresh HTTP/1.1 connection cannot transparently replay a mutation after
+// the response is lost. HTTP/2 has an independent stream-retry loop.
+func probeTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Protocols = new(http.Protocols)
+	transport.Protocols.SetHTTP1(true)
+	transport.DisableKeepAlives = true
+	return transport
+}
+
+func execute(mode string) error {
+	if mode != "probe" && mode != "cleanup" {
+		return rejected
+	}
+	run, attempt := os.Getenv("GITHUB_RUN_ID"), os.Getenv("GITHUB_RUN_ATTEMPT")
+	project, zone := os.Getenv("CLOUDRU_PROJECT_ID"), os.Getenv("G10_ZONE")
+	path, temp := os.Getenv("G10_RECEIPT"), os.Getenv("RUNNER_TEMP")
+	if !runNumber.MatchString(run) || attempt != "1" || !validID(project) || zone != zoneName ||
+		!filepath.IsAbs(temp) || !filepath.IsAbs(path) || filepath.Clean(path) != path || !strings.HasPrefix(path, filepath.Clean(temp)+string(os.PathSeparator)) {
+		return rejected
+	}
+	dir := filepath.Dir(path)
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
+		return rejected
+	}
+	// Both stages share this private directory. The OS drops the lock if a stage is killed.
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return rejected
+	}
+	defer lock.Close()
+	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		return rejected
+	}
+	name := "evo-g10-" + run + "-" + attempt
+	transport := probeTransport()
+	defer transport.CloseIdleConnections()
+	j := job{path: path, r: receipt{Run: run, Attempt: attempt, Project: project, Zone: zone, Name: name}, transport: transport, interval: 3 * time.Second}
+	existing, err := os.Lstat(path)
+	if mode == "probe" && !os.IsNotExist(err) {
+		return rejected
+	}
+	if mode == "cleanup" {
+		if os.IsNotExist(err) {
+			fmt.Println("cleanup: no local receipt; cloud outcome cannot be established from this job")
+			return notConfirmed
+		}
+		if err != nil || !existing.Mode().IsRegular() || existing.Mode().Perm() != 0600 {
+			return rejected
+		}
+		data, err := os.ReadFile(path)
+		if err != nil || json.Unmarshal(data, &j.r) != nil || j.r.Run != run || j.r.Attempt != attempt || j.r.Project != project || j.r.Zone != zone || j.r.Name != name {
+			return rejected
+		}
+		if !j.r.PostSent || j.r.Gone {
+			fmt.Printf("cleanup: post_dispatched=%t service_404_confirmed=%t\n", j.r.PostSent, j.r.Gone)
+			return nil
+		}
+	}
+	if mode == "probe" {
+		if err = j.save(); err != nil {
+			return rejected
+		}
+	}
+	if mode == "cleanup" && (!validID(j.r.ID) || !validID(j.r.ZoneID) || j.r.Marker == "") {
+		return notConfirmed
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	key, secret := os.Getenv("CLOUDRU_KEY_ID"), os.Getenv("CLOUDRU_SECRET")
+	if key == "" || secret == "" {
+		return rejected
+	}
+	iamClient := &http.Client{Timeout: 12 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	token, err := auth.NewIAMProvider(auth.Credentials{KeyID: key, Secret: secret}, iamClient, nil).Token(ctx)
+	if err != nil || token.Value == "" {
+		return notConfirmed
+	}
+	a := j.adapter(token.Value)
+	if mode == "probe" {
+		err = j.probe(ctx, a)
+	} else {
+		err = j.cleanup(ctx, a)
+	}
+	fmt.Printf("stage=%s post_dispatched=%t post_id_received=%t post_marker_present=%t post_marker_exact=%t card_marker_present=%t card_marker_exact=%t list_marker_present=%t list_marker_exact=%t delete_dispatched=%t service_404_confirmed=%t\n",
+		mode, j.r.PostSent, j.r.ID != "", j.r.PostMarkerPresent, j.r.PostMarkerMatch, j.r.CardMarkerPresent, j.r.CardMarkerMatch, j.r.ListMarkerPresent, j.r.ListMarkerMatch, j.r.DeleteSent, j.r.Gone)
+	return err
+}
+func main() {
+	if len(os.Args) != 2 || execute(os.Args[1]) != nil {
+		fmt.Fprintln(os.Stderr, "incomplete: verify the private receipt; do not create another address")
+		os.Exit(1)
+	}
+}
