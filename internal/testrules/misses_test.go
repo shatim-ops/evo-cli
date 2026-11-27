@@ -43,11 +43,9 @@ type missList struct {
 // only when someone closes a line, and a line nobody closes lives forever.
 // Each list says by which version its lines are gone («Closes by 1.N» in
 // its doc comment; a line may name an earlier one in its text), at most two
-// versions on from the one it is written in. Every PR: each list has a
-// deadline, and the count of lines is logged. The weekly run
-// (EVO_MISS_DEADLINE=1, weekly-misses.yml): a line whose deadline a
-// released version (CHANGELOG.md) has reached fails — a red weekly run and
-// an issue, not a red PR.
+// versions on from the one it is written in. Each list must have a deadline.
+// Pull requests and the weekly run (EVO_MISS_DEADLINE=1) fail if a line
+// survives until its deadline in CHANGELOG.md.
 func TestMisses_HaveADeadline(t *testing.T) {
 	root := filepath.Join("..", "..")
 	lists := missLists(t, root)
@@ -55,7 +53,7 @@ func TestMisses_HaveADeadline(t *testing.T) {
 		t.Fatalf("%d lists of misses found: the scan sees nothing, update missLists", len(lists))
 	}
 	released := latestReleased(t, root)
-	strict := os.Getenv("EVO_MISS_DEADLINE") == "1"
+	strict := os.Getenv("GITHUB_EVENT_NAME") == "pull_request" || os.Getenv("EVO_MISS_DEADLINE") == "1"
 	total, overdue := 0, 0
 	for _, l := range lists {
 		total += l.lines
@@ -79,7 +77,7 @@ func TestMisses_HaveADeadline(t *testing.T) {
 			if strict {
 				t.Error(msg)
 			} else {
-				t.Log(msg + " (fails the weekly run)")
+				t.Log(msg + " (fails pull requests and the weekly run)")
 			}
 		}
 		t.Logf("%-28s %3d line(s), closes by %s", l.name, l.lines, versionText(l.deadline))
