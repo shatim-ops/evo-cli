@@ -6,6 +6,7 @@ package postgresql
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
 
 // openapi-postgresql.yaml: GET /v1/clusters answers clusters and
@@ -80,5 +83,97 @@ func TestListClusters_EndlessPagesFail(t *testing.T) {
 	defer srv.Close()
 	if _, err := New("t", "proj", srv.URL).ListClusters(context.Background()); err == nil {
 		t.Fatalf("endless list read without an error after %d calls", calls.Load())
+	}
+}
+
+func TestListClusters_PageShape(t *testing.T) {
+	const valid = `{"id":"one","name":"app","project_id":"proj","version":"17","specification_id":"std","storage":{"pg_data_gb":20}}`
+	for _, tc := range []struct {
+		name string
+		body string
+		want int // -1 means an incomplete list.
+	}{
+		{"omitted optional fields", `{}`, 0},
+		{"empty array", `{"clusters":[],"next_page_token":""}`, 0},
+		{"one cluster", `{"clusters":[` + valid + `]}`, 1},
+		{"null envelope", `null`, -1},
+		{"top-level array", `[]`, -1},
+		{"malformed JSON", `{"clusters":`, -1},
+		{"null array", `{"clusters":null}`, -1},
+		{"wrong array type", `{"clusters":{}}`, -1},
+		{"null row", `{"clusters":[null]}`, -1},
+		{"scalar row", `{"clusters":[1]}`, -1},
+		{"row without name", `{"clusters":[{"id":"one"}]}`, -1},
+		{"null token", `{"clusters":[],"next_page_token":null}`, -1},
+		{"numeric token", `{"clusters":[],"next_page_token":12}`, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+			got, err := New("token", "proj", srv.URL).ListClusters(context.Background())
+			if tc.want < 0 {
+				if got != nil || clierrors.Reason(err) != clierrors.CodeAPIError {
+					t.Fatalf("malformed page: clusters=%v, err=%v", got, err)
+				}
+			} else if err != nil || len(got) != tc.want {
+				t.Fatalf("valid page: clusters=%v, err=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestListClusters_PartialHTTPStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = io.WriteString(w, `{"clusters":[]}`)
+	}))
+	defer srv.Close()
+	got, err := New("token", "proj", srv.URL).ListClusters(context.Background())
+	if got != nil || clierrors.Reason(err) != clierrors.CodeAPIError {
+		t.Fatalf("partial HTTP response: clusters=%v, err=%v", got, err)
+	}
+}
+
+func TestListClusters_ShortHTTPBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		_, _ = io.WriteString(w, `{"clusters":[]}`)
+	}))
+	defer srv.Close()
+	got, err := New("token", "proj", srv.URL).ListClusters(context.Background())
+	if got != nil || clierrors.Reason(err) != clierrors.CodeAPIError {
+		t.Fatalf("incomplete HTTP body: clusters=%v, err=%v", got, err)
+	}
+}
+
+func TestNamedResourcesUseTheirNameToDetectRepeatedPages(t *testing.T) {
+	for _, tc := range []struct {
+		field string
+		list  func(*Client, context.Context, string) ([]map[string]any, error)
+	}{
+		{"databases", (*Client).ListDatabases},
+		{"users", (*Client).ListUsers},
+		{"versions", func(c *Client, ctx context.Context, _ string) ([]map[string]any, error) {
+			return c.ListVersions(ctx)
+		}},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			var reads atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reads.Add(1)
+				next := ""
+				if r.URL.Query().Get("page_token") == "" {
+					next = "next"
+				}
+				fmt.Fprintf(w, `{%q:[{"name":"member"}],"next_page_token":%q}`, tc.field, next)
+			}))
+			defer srv.Close()
+			got, err := tc.list(New("t", "project", srv.URL), context.Background(), "cluster")
+			if got != nil || clierrors.Reason(err) != clierrors.CodeAPIError || reads.Load() != 2 {
+				t.Fatalf("repeated %s: result=%v, error=%v, reads=%d", tc.field, got, err, reads.Load())
+			}
+		})
 	}
 }

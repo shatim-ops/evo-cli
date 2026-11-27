@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -19,6 +18,7 @@ import (
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/images"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -364,6 +364,23 @@ func mapIDs(items []map[string]any) []string {
 	return out
 }
 
+// A project list containing an unidentified cluster cannot establish either
+// membership or absence for an operation restricted to that project.
+func clusterIDs(items []map[string]any, err error) ([]string, error) {
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		id, _ := item["id"].(string)
+		if strings.TrimSpace(id) == "" {
+			return nil, pager.Incomplete(i18n.T("a cluster has no ID to check", "у кластера нет ID для проверки"))
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
 var (
 	kindVM = byName(inProjectList("VM", "vm_list", computeList(func(ctx context.Context, eng *engine.Engine) ([]string, error) {
 		vms, err := eng.Cloud.ListVMsInProject(ctx, eng.Config.ProjectID)
@@ -427,16 +444,14 @@ var (
 		if err != nil {
 			return nil, err
 		}
-		items, err := cli.ListClusters(ctx, kafkaQuery())
-		return mapIDs(items), err
+		return clusterIDs(cli.ListClusters(ctx, kafkaQuery()))
 	})
 	kindRedis = inProjectList("Redis cluster", "redis_list", func(ctx context.Context, c *ownerCall) ([]string, error) {
 		cli, _, err := c.r.redisClientEng(ctx)
 		if err != nil {
 			return nil, err
 		}
-		items, err := cli.ListClusters(ctx, url.Values{})
-		return mapIDs(items), err
+		return clusterIDs(cli.ListClusters(ctx, url.Values{}))
 	})
 
 	// A DNS zone: the project's public and private zones, as
@@ -689,7 +704,11 @@ func dnsZoneIDs(ctx context.Context, c *ownerCall) ([]string, error) {
 			return nil, err
 		}
 		for _, z := range zones {
-			ids = append(ids, fmt.Sprint(z["id"]))
+			id := stringArg(z, "id")
+			if strings.TrimSpace(id) == "" {
+				return nil, pager.Incomplete(i18n.T("a DNS zone has no ID to check", "у зоны DNS нет ID для проверки"))
+			}
+			ids = append(ids, id)
 		}
 	}
 	return ids, nil

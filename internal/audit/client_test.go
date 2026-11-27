@@ -99,3 +99,44 @@ func TestList_429IsRateLimited(t *testing.T) {
 		t.Errorf("error = %#v", err)
 	}
 }
+
+func TestList_CompleteEventPage(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, inputToken, next string
+		status, count                int
+	}{
+		{"empty logs", `{"logs":[]}`, "", "", 200, 0},
+		{"array", `[{"id":"sample"}]`, "", "", 200, 1},
+		{"events with cursor", `{"events":[{"id":"sample"}],"nextPageToken":"p2"}`, "", "p2", 200, 1},
+		{"empty with cursor", `{"events":[],"nextPageToken":"p3"}`, "p2", "p3", 200, 0},
+		{"absent list", "{}", "", "", 200, -1}, {"empty body", "", "", "", 200, -1},
+		{"root null", "null", "", "", 200, -1}, {"null item", `[{"id":"sample"}, null]`, "", "", 200, -1},
+		{"malformed bare array", `[{"id":"sample"},`, "", "", 200, -1},
+		{"null array", `{"logs":null}`, "", "", 200, -1}, {"invalid token", `{"logs":[],"nextPageToken":null}`, "", "", 200, -1},
+		{"repeat", `{"logs":[{}],"nextPageToken":"p2"}`, "p2", "", 200, -1},
+		{"continuation missing", `{"message":"not found"}`, "p2", "", 404, -1},
+		{"partial HTTP", `{"logs":[]}`, "", "", 206, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("nextPageToken") != tc.inputToken {
+					t.Errorf("query=%v", r.URL.Query())
+				}
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			page, err := New("tok", "project", srv.URL).List(t.Context(), ListOptions{PageToken: tc.inputToken})
+			if tc.count < 0 {
+				var ce *clierrors.CLIError
+				if !errors.As(err, &ce) || ce.Code != clierrors.CodeAPIError || page != nil {
+					t.Fatalf("page=%v, err=%v", page, err)
+				}
+				return
+			}
+			if err != nil || len(page.Events) != tc.count || page.NextPageToken != tc.next || tc.count == 1 && page.Events[0]["id"] != "sample" {
+				t.Fatalf("page=%v, err=%v", page, err)
+			}
+		})
+	}
+}

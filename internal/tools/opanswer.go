@@ -69,7 +69,7 @@ func (s *Registry) operation(ctx context.Context, tool string, args map[string]a
 	var m map[string]any
 	var err error
 	if w := pgInt(args, "wait_seconds", 0); w > 0 {
-		m, err = waitForOpJSON(ctx, w, fetch)
+		m, err = waitForOpJSON(ctx, min(w, opWaitMaxSeconds), fetch)
 	} else {
 		m, err = fetch(ctx)
 	}

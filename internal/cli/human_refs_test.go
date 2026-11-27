@@ -9,6 +9,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -153,6 +154,13 @@ func TestHuman_NoBareReferenceUUID(t *testing.T) {
 		ids:
 			for _, id := range uuidInPath.FindAllString(l, -1) {
 				if own[id] || given[id] {
+					continue
+				}
+				// status can have the old IP receipt after the VM switches
+				// addresses. Its own labelled receipt row identifies the ID
+				// without claiming it belongs to the currently displayed IP.
+				if cl.c.tool.Name == "status" && slices.Contains(field[id], "floating_ip_id") &&
+					strings.Join(strings.Fields(l), " ") == "Recorded floating IP ID "+strconv.Quote(id)+" (address not verified)" {
 					continue
 				}
 				for _, n := range names[id] {

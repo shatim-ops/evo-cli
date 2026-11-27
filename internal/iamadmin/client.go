@@ -75,11 +75,9 @@ func (c *Client) Permissions(ctx context.Context, resourceID, subjectID string) 
 	if err := setFilter(q, "resource_id", resourceID, "subject_id", subjectID); err != nil {
 		return nil, err
 	}
-	var out []Permission
-	err := c.list(ctx, "permissions", "/api/v3/permissions", q, "permissions", func(m map[string]any) {
-		out = append(out, permissionOf(m))
+	return list(ctx, c, "permissions", "/api/v3/permissions", q, "permissions", "id", func(row map[string]any) (Permission, error) {
+		return readPermission(row, false)
 	})
-	return out, err
 }
 
 // AccessKey is an access key of a service account, without its secret:
@@ -94,13 +92,22 @@ func (c *Client) AccessKeys(ctx context.Context, serviceAccountID string) ([]Acc
 	if !pathID.MatchString(serviceAccountID) {
 		return nil, badValue("serviceAccountId", serviceAccountID)
 	}
-	var m map[string]any
-	if err := c.do(ctx, "/api/v2/serviceAccounts/"+serviceAccountID+"/accessKeys", nil, &m); err != nil {
+	rows, next, err := c.page(ctx, "/api/v2/serviceAccounts/"+serviceAccountID+"/accessKeys", nil, "accessKeys")
+	if err != nil {
 		return nil, err
 	}
-	var out []AccessKey
-	for _, x := range items(m, "accessKeys") {
-		out = append(out, AccessKey{ID: str(x, "id"), KeyID: str(x, "keyId"), ExpiredAt: str(x, "expiredAt")})
+	if next != "" {
+		// The access-key list has no pageToken parameter in the IAM API.
+		return nil, pager.Incomplete(i18n.T("unexpected access-key continuation", "список ключей вернул непредусмотренное продолжение"))
+	}
+	out := make([]AccessKey, 0, len(rows))
+	for _, row := range rows {
+		// whoami matches the public keyId. The row's own ID is not
+		// required to read its expiry.
+		if err := stringFields(row, []string{"keyId"}, "id", "expiredAt"); err != nil {
+			return nil, err
+		}
+		out = append(out, AccessKey{ID: str(row, "id"), KeyID: str(row, "keyId"), ExpiredAt: str(row, "expiredAt")})
 	}
 	return out, nil
 }
@@ -142,9 +149,10 @@ func badValue(key, v string) error {
 			"Передайте идентификатор или имя: буквы, цифры, «.», «_», «-», «:», «*»."))
 }
 
-// list reads every page of a list, at most MaxPages of them, handing each
-// item to add.
-func (c *Client) list(ctx context.Context, what, path string, q url.Values, key string, add func(map[string]any)) error {
+// list returns only the projected fields, and only once every page is read.
+func list[T any](ctx context.Context, c *Client, what, path string, q url.Values, key, identity string, itemOf func(map[string]any) (T, error)) ([]T, error) {
+	var out []T
+	seen := make(map[string]bool)
 	more, err := pager.Upto(MaxPages, func(tok string) (string, error) {
 		pq := url.Values{}
 		for k, v := range q {
@@ -153,22 +161,85 @@ func (c *Client) list(ctx context.Context, what, path string, q url.Values, key 
 		if tok != "" {
 			pq.Set("pageToken", tok)
 		}
-		var m map[string]any
-		if err := c.do(ctx, path, pq, &m); err != nil {
+		rows, next, err := c.page(ctx, path, pq, key)
+		if err != nil {
 			return "", err
 		}
-		for _, x := range items(m, key) {
-			add(x)
+		previous := len(out)
+		for _, row := range rows {
+			item, err := itemOf(row)
+			if err != nil {
+				return "", err
+			}
+			if id := str(row, identity); id != "" {
+				if seen[id] {
+					continue
+				}
+				seen[id] = true
+			}
+			out = append(out, item)
 		}
-		return str(m, "nextPageToken"), nil
+		if tok != "" && len(rows) > 0 && previous == len(out) {
+			return "", pager.NoNewItems(previous, -1)
+		}
+		return next, nil
 	})
 	if err == nil && more {
 		err = pager.TooManyPages(MaxPages)
 	}
 	if err != nil {
-		return pager.Named("iam: "+what, err)
+		return nil, pager.Named("iam: "+what, err)
+	}
+	return out, nil
+}
+
+// stringFields checks the fields a reader uses without treating omitted
+// display data as a broken resource identity.
+func stringFields(row map[string]any, required []string, optional ...string) error {
+	for _, key := range required {
+		if strings.TrimSpace(str(row, key)) == "" {
+			return pager.Incomplete(i18n.Tf("IAM list item has no %s", "у элемента списка IAM нет поля %s", key))
+		}
+	}
+	for _, key := range optional {
+		if value, ok := lookup(row, key); ok {
+			if _, ok := value.(string); !ok {
+				return pager.Incomplete(i18n.Tf("IAM field %s must be a string", "поле IAM %s должно быть строкой", key))
+			}
+		}
 	}
 	return nil
+}
+
+func readPermission(row map[string]any, grant bool) (Permission, error) {
+	p := permissionOf(row)
+	var required []string
+	if grant {
+		required = append(required, "id") // used by ExtendPermission
+	} else if p.Enabled {
+		required = append(required, "roleName") // shown as an active role by whoami
+	}
+	if err := stringFields(row, required, "id", "roleName", "expiresAt"); err != nil {
+		return Permission{}, err
+	}
+	if enabled, present := lookup(row, "enabled"); present {
+		if _, ok := enabled.(bool); !ok {
+			return Permission{}, pager.Incomplete(i18n.T("IAM field enabled must be a boolean", "поле IAM enabled должно быть логическим"))
+		}
+	}
+	return p, nil
+}
+
+// page reads one protobuf page using both spellings used by the IAM gateway.
+func (c *Client) page(ctx context.Context, path string, q url.Values, key string) ([]map[string]any, string, error) {
+	data, status, err := c.request(ctx, http.MethodGet, path, q, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := pager.PageStatus(status, data, q.Get("pageToken") != "", apiError); err != nil {
+		return nil, "", err
+	}
+	return pager.ObjectPage[map[string]any](data, key, "nextPageToken", pager.PageFields{Items: snake(key), Token: "next_page_token"})
 }
 
 // do sends one GET with the token and decodes a 2xx answer into out.
@@ -181,9 +252,27 @@ func (c *Client) do(ctx context.Context, path string, q url.Values, out any) err
 // is an error of the API (StatusOf names its status) that never carries the
 // token.
 func (c *Client) send(ctx context.Context, method, path string, q url.Values, body, out any) error {
-	tok, err := c.token.Token(ctx)
+	data, status, err := c.request(ctx, method, path, q, body)
 	if err != nil {
 		return err
+	}
+	if status < 200 || status >= 300 {
+		return apiError(status, data)
+	}
+	if out == nil || len(bytes.TrimSpace(data)) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(data, out); err != nil {
+		return clierrors.New(clierrors.CodeAPIError,
+			i18n.Tf("iam: the answer to %s %s is not JSON", "iam: ответ на %s %s — не JSON", method, path), "")
+	}
+	return nil
+}
+
+func (c *Client) request(ctx context.Context, method, path string, q url.Values, body any) ([]byte, int, error) {
+	tok, err := c.token.Token(ctx)
+	if err != nil {
+		return nil, 0, err
 	}
 	u := c.base + path
 	if len(q) > 0 {
@@ -196,13 +285,13 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return err
+			return nil, 0, err
 		}
 		rd = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u, rd)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok.Value)
 	req.Header.Set("Accept", "application/json")
@@ -211,21 +300,10 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf(i18n.T("iam request failed: %w", "запрос к iam не удался: %w"), err)
+		return nil, 0, fmt.Errorf(i18n.T("iam request failed: %w", "запрос к iam не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return apiError(resp.StatusCode, data)
-	}
-	if out == nil || len(bytes.TrimSpace(data)) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(data, out); err != nil {
-		return clierrors.New(clierrors.CodeAPIError,
-			i18n.Tf("iam: the answer to %s %s is not JSON", "iam: ответ на %s %s — не JSON", method, path), "")
-	}
-	return nil
+	return httpretry.ReadAPIResponse(req, resp, 4<<20)
 }
 
 // StatusError is a non-2xx answer of the API: its status and message. A
@@ -273,10 +351,16 @@ func apiError(status int, body []byte) error {
 // field is m's value under key in the spec's camelCase or, failing that,
 // the live API's snake_case (IAM-2).
 func field(m map[string]any, key string) any {
-	if v, ok := m[key]; ok {
-		return v
+	v, _ := lookup(m, key)
+	return v
+}
+
+func lookup(m map[string]any, key string) (any, bool) {
+	v, ok := m[key]
+	if !ok {
+		v, ok = m[snake(key)]
 	}
-	return m[snake(key)]
+	return v, ok
 }
 
 func snake(k string) string {

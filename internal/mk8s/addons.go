@@ -99,33 +99,38 @@ func (c *Client) projectQuery() url.Values {
 // ListAddons returns the whole addon catalogue, following nextPageToken.
 func (c *Client) ListAddons(ctx context.Context) ([]Addon, error) {
 	var out []Addon
+	var progress pager.ItemProgress
 	err := c.pages(ctx, "/v3/addons", nil, func(data []byte) (string, error) {
-		var r struct {
-			Addons        []Addon `json:"addons"`
-			NextPageToken string  `json:"nextPageToken"`
+		page, next, err := pager.ObjectPage[Addon](data, "addons", "nextPageToken")
+		if err != nil {
+			return "", err
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf(i18n.T("parse addons: %w", "разбор аддонов: %w"), err)
+		if err := pager.CheckProgress(&progress, page, next, func(a Addon) string { return a.Name }); err != nil {
+			return "", err
 		}
-		out = append(out, r.Addons...)
-		return r.NextPageToken, nil
+		out = append(out, page...)
+		return next, nil
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // GetAddonReleases returns the releases of one addon, in the server's order
 // (which is not defined: sort with SortReleases).
 func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRelease, error) {
 	var out []AddonRelease
+	var progress pager.ItemProgress
 	err := c.pages(ctx, "/v3/addons/"+seg(name), nil, func(data []byte) (string, error) {
-		var r struct {
-			Releases      []AddonRelease `json:"releases"`
-			NextPageToken string         `json:"nextPageToken"`
+		page, next, err := pager.ObjectPage[AddonRelease](data, "releases", "nextPageToken")
+		if err != nil {
+			return "", err
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf(i18n.T("parse addon releases: %w", "разбор релизов аддона: %w"), err)
+		if err := pager.CheckProgress(&progress, page, next, func(r AddonRelease) string { return r.AddonVersion }); err != nil {
+			return "", err
 		}
-		for _, rel := range r.Releases {
+		for _, rel := range page {
 			// The live API (16.10.2026) puts the addon version into
 			// addonNamespace too ("1.21.1-sbc.0" for cert-manager): a value
 			// that is not a namespace name (DNS-1123 label) is left out —
@@ -141,9 +146,12 @@ func (c *Client) GetAddonReleases(ctx context.Context, name string) ([]AddonRele
 			}
 			out = append(out, rel)
 		}
-		return r.NextPageToken, nil
+		return next, nil
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // pages GETs path page by page; page decodes one body and returns the next
@@ -173,8 +181,8 @@ func (c *Client) walk(ctx context.Context, path string, query func() url.Values,
 		if err != nil {
 			return "", err
 		}
-		if st != 200 {
-			return "", apiError(st, data)
+		if err := pager.PageStatus(st, data, token != "", apiError); err != nil {
+			return "", err
 		}
 		return page(data)
 	})
@@ -277,20 +285,28 @@ func (c *Client) CreateClusterAddon(ctx context.Context, req CreateClusterAddonR
 // Callers treat an error as "unknown", never as "none installed".
 func (c *Client) ListClusterAddons(ctx context.Context, clusterID string) ([]map[string]any, error) {
 	var out []map[string]any
+	var progress pager.ItemProgress
 	err := c.pages(ctx, "/v3/clusterAddons", url.Values{"clusterId": {clusterID}}, func(data []byte) (string, error) {
-		var r struct {
-			ClusterAddons []map[string]any `json:"clusterAddons"`
-			Items         []map[string]any `json:"items"`
-			NextPageToken string           `json:"nextPageToken"`
+		page, next, err := pager.ObjectPage[map[string]any](data, "clusterAddons", "nextPageToken")
+		if err != nil {
+			return "", err
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf(i18n.T("parse cluster addons: %w", "разбор аддонов кластера: %w"), err)
+		// Both response field names are used by this endpoint.
+		items, _, err := pager.ObjectPage[map[string]any](data, "items", "")
+		if err != nil {
+			return "", err
 		}
-		out = append(out, r.ClusterAddons...)
-		out = append(out, r.Items...)
-		return r.NextPageToken, nil
+		page = append(page, items...)
+		if err := pager.CheckProgress(&progress, page, next, func(a map[string]any) string { name, _ := a["addonName"].(string); return name }); err != nil {
+			return "", err
+		}
+		out = append(out, page...)
+		return next, nil
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // namespaceRE is a Kubernetes namespace name (a DNS-1123 label).

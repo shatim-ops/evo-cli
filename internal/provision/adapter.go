@@ -189,37 +189,7 @@ func (a *CloudRuAdapter) ListFlavors(ctx context.Context) ([]*Flavor, error) {
 
 // ListAvailabilityZones lists available zones via GET /api/v1/availability-zones.
 func (a *CloudRuAdapter) ListAvailabilityZones(ctx context.Context) ([]*AvailabilityZone, error) {
-	resp, err := a.doWithRetry(ctx, http.MethodGet, "/api/v1/availability-zones", nil)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to read availability zones response", "не удалось прочитать список зон доступности"), hintUnexpectedFormat(), err)
-	}
-
-	// Try paginated response first, then plain array.
-	var page paginatedResponse[AvailabilityZone]
-	if err := json.Unmarshal(body, &page); err == nil && len(page.Items) > 0 {
-		result := make([]*AvailabilityZone, len(page.Items))
-		for i := range page.Items {
-			result[i] = &page.Items[i]
-		}
-		return result, nil
-	}
-
-	var zones []AvailabilityZone
-	if err := json.Unmarshal(body, &zones); err == nil {
-		result := make([]*AvailabilityZone, len(zones))
-		for i := range zones {
-			result[i] = &zones[i]
-		}
-		return result, nil
-	}
-
-	return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("failed to decode availability zones response", "не удалось разобрать список зон доступности"), hintUnexpectedFormatVerbose())
+	return listAll[AvailabilityZone](a, ctx, "/api/v1/availability-zones", nil, false)
 }
 
 // ListImages lists boot images via GET /api/v1/images, every page. A bare
@@ -241,7 +211,38 @@ func (a *CloudRuAdapter) ListImagesInProject(ctx context.Context, projectID stri
 	if projectID == "" {
 		return nil, nil
 	}
-	return listAll[Image](a, ctx, "/api/v1/images", url.Values{"project_id": {projectID}}, true)
+	complete, _ := ctx.Value(imageSelectionKey{}).(bool)
+	shape := listCompatible
+	if complete {
+		shape = listComplete
+	}
+	items, err := listPages[Image](a, ctx, "/api/v1/images", url.Values{"project_id": {projectID}}, true, shape)
+	if errors.Is(err, errMissingListPage) {
+		return nil, clierrors.New(clierrors.CodeAPIError,
+			i18n.T("Could not finish reading the image catalogue.", "Не удалось дочитать каталог образов."),
+			i18n.T("Retry reading the catalogue.", "Повторите чтение каталога."))
+	}
+	return items, err
+}
+
+type imageSelectionKey struct{}
+
+// ProjectImagesForSelection reads a complete list before a deploy plan
+// declares an explicitly requested image absent. The context carries this
+// requirement through CloudAPI wrappers to the project catalogue reader.
+func ProjectImagesForSelection(ctx context.Context, cloud CloudAPI, projectID string) ([]*Image, error) {
+	items, err := cloud.ListImagesInProject(context.WithValue(ctx, imageSelectionKey{}, true), projectID)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(items))
+	for _, img := range items {
+		if img == nil || img.ID == "" || img.Name == "" || seen[img.ID] {
+			return nil, invalidListPage("/api/v1/images")
+		}
+		seen[img.ID] = true
+	}
+	return items, nil
 }
 
 // GetImage retrieves image details including metadata fields via GET /api/v1/images/{id}.
@@ -321,20 +322,78 @@ func (a *CloudRuAdapter) CreateFloatingIP(ctx context.Context, req CreateFloatin
 	return &fip, nil
 }
 
+type cleanupIPReadKey struct{}
+
+// ReadFloatingIPForCleanup requests proof for retiring a persisted receipt.
+// An ordinary lookup can report that a resource was not found without
+// establishing that a billed address in local state has been released.
+func ReadFloatingIPForCleanup(ctx context.Context, cloud CloudAPI, id string) (*FloatingIP, error) {
+	return cloud.GetFloatingIP(context.WithValue(ctx, cleanupIPReadKey{}, true), id)
+}
+
 // GetFloatingIP retrieves a floating IP by ID via GET /api/v1/floating-ips/{id}.
 func (a *CloudRuAdapter) GetFloatingIP(ctx context.Context, id string) (*FloatingIP, error) {
 	path := fmt.Sprintf("/api/v1/floating-ips/%s", seg(id))
-	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
+	resp, err := a.computeRequest(ctx, http.MethodGet, path, nil, verifyFloatingIPMissing)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	body, status, err := httpretry.ReadAPIResponse(resp.Request, resp, maxListBody)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The service did not return a complete floating IP card.", "Сервис не вернул полную карточку плавающего IP."), hintUnexpectedFormat())
+	}
 	var fip FloatingIP
-	if err := json.NewDecoder(resp.Body).Decode(&fip); err != nil {
+	if err := json.Unmarshal(body, &fip); err != nil {
 		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode floating IP response", "не удалось разобрать ответ с данными floating IP"), hintUnexpectedFormat(), err)
 	}
+	if fip.ID == "" || fip.ID != id {
+		return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The service did not return the requested floating IP ID. Its release is unconfirmed.", "Сервис не вернул запрошенный ID плавающего IP. Освобождение не подтверждено."), hintUnexpectedFormat())
+	}
 	return &fip, nil
+}
+
+func verifyFloatingIPMissing(req *http.Request, resp *http.Response) error {
+	defer resp.Body.Close()
+	body, _, err := httpretry.ReadAPIResponse(req, resp, maxErrorBody)
+	if err != nil {
+		return err
+	}
+	strict, _ := req.Context().Value(cleanupIPReadKey{}).(bool)
+	if resp.Header.Get("Content-Range") != "" || strict && !floatingIPMissingReply(body) {
+		return clierrors.New(clierrors.CodeAPIError, i18n.T("The service did not confirm this floating IP is absent.", "Сервис не подтвердил отсутствие этого плавающего IP."), hintUnexpectedFormat())
+	}
+	return nil
+}
+
+// A complete 404 on GET of the recorded address must describe a missing
+// resource. A gateway route, a different resource code, or an ambiguous
+// body cannot settle a potentially billed address.
+func floatingIPMissingReply(body []byte) bool {
+	code, message, ok := computeRefusal(body)
+	if !ok {
+		return false
+	}
+	// Code 5 with "Not Found" comes from the gateway. Only the service's
+	// resource-specific form of that numeric error can settle the address.
+	if string(code) == "5" {
+		return message == "resource not found"
+	}
+	if code != nil {
+		var value string
+		if json.Unmarshal(code, &value) != nil || value != "floating_ip_not_found" {
+			return false
+		}
+	}
+	switch message {
+	case "floating ip not found", "floating ip with this id is not found", "floatingip with this id is not found", "gone":
+		return true
+	}
+	return false
 }
 
 // maxErrorBody bounds how much of an error response is read into a message.
@@ -427,6 +486,11 @@ var computeRetry = httpretry.Policy{DropMethods: []string{http.MethodDelete}, Re
 // one retry loop of evo (process audit 1.2.1, 6.1) — and turns the final
 // answer into evo's errors.
 func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
+	return a.computeRequest(ctx, method, path, body, nil)
+}
+
+// verifyMissing is set by callers that use a 404 as proof of absence.
+func (a *CloudRuAdapter) computeRequest(ctx context.Context, method, path string, body []byte, verifyMissing func(*http.Request, *http.Response) error) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
@@ -459,6 +523,9 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		if resp.Request == nil {
+			resp.Request = req
+		}
 		return resp, nil
 
 	case resp.StatusCode == http.StatusTooManyRequests:
@@ -476,9 +543,20 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 			clierrors.NoRoleHint(), cause)
 
 	case resp.StatusCode == http.StatusNotFound:
-		resp.Body.Close()
-		return nil, clierrors.New(notFoundCode(path), i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
-			i18n.T("Verify the resource ID and API endpoint", "Проверьте ID ресурса и адрес API"))
+		var evidence error
+		if verifyMissing != nil {
+			if err := verifyMissing(req, resp); err != nil {
+				return nil, err
+			}
+		} else if projectID, _ := ctx.Value(cleanupRuleReadKey{}).(string); projectID != "" && strings.HasSuffix(req.URL.Path, "/rules") {
+			if ruleGroupMissingReply(resp) {
+				evidence = errRuleGroupMissing
+			}
+		} else {
+			resp.Body.Close()
+		}
+		return nil, clierrors.Wrap(notFoundCode(path), i18n.Tf("resource not found: %s %s", "ресурс не найден: %s %s", method, path),
+			i18n.T("Verify the resource ID and API endpoint", "Проверьте ID ресурса и адрес API"), evidence)
 
 	case resp.StatusCode >= 500 && resp.StatusCode < 600 && method == http.MethodGet && resp.Header.Get(httpretry.Replaced) == "":
 		// A read the transport repeated (computeRetry) and still failed.

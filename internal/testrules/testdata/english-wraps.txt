@@ -2,7 +2,6 @@ internal/agentconf	encode: %w
 internal/artifact	artifact-registry request failed: %w
 internal/artifact	parse operation: %w
 internal/artifact	parse operation: %w
-internal/artifact	parse registries: %w
 internal/artifact	parse registry: %w
 internal/audit	audit request failed: %w
 internal/audit	parse audit events: %w
@@ -64,7 +63,6 @@ internal/deployplan	list security groups: %w
 internal/deployplan	list subnets: %w
 internal/deployplan	plan %q is corrupt: %w
 internal/dns	dns request failed: %w
-internal/dns	parse %s: %w
 internal/dns	parse operation: %w
 internal/dns	parse operation: %w
 internal/dns	parse response: %w
@@ -76,14 +74,9 @@ internal/mcp	k8s_helm over HTTP: repo_url: %w
 internal/mcp	resolve %s: %w
 internal/mcp	write response: %w
 internal/mk8s	mk8s request failed: %w
-internal/mk8s	parse addon releases: %w
-internal/mk8s	parse addons: %w
 internal/mk8s	parse cluster addon: %w
-internal/mk8s	parse cluster addons: %w
 internal/mk8s	parse cluster: %w
-internal/mk8s	parse clusters: %w
 internal/mk8s	parse kubeconfig: %w
-internal/mk8s	parse node pools: %w
 internal/mk8s	parse oidc token: %w
 internal/mk8s	parse operation: %w
 internal/mk8s	parse operation: %w
@@ -91,7 +84,6 @@ internal/mk8s	parse operation: %w
 internal/mk8s	parse product configuration: %w
 internal/monitoring	monitoring request failed: %w
 internal/nlb	nlb request failed: %w
-internal/nlb	parse %s: %w
 internal/nlb	parse operation: %w
 internal/nlb	parse operation: %w
 internal/nlb	parse response: %w
@@ -111,7 +103,6 @@ internal/s3	remove bucket: %w
 internal/s3	remove object: %w
 internal/secret	parse payload: %w
 internal/secret	parse secret: %w
-internal/secret	parse secrets: %w
 internal/secret	secret request failed: %w
 internal/stack	job %s not found: %w
 internal/stack	lock job %s: %w
@@ -224,8 +215,6 @@ internal/tools	validate vm.zone: list availability zones: %w
 internal/tools	validate vm: %w
 internal/tools	values file: %w
 internal/tools	values file: %w
-internal/vpc	parse %s: %w
-internal/vpc	parse %s: %w
 internal/vpc	parse operation: %w
 internal/vpc	parse operation: %w
 internal/vpc	parse vpc: %w

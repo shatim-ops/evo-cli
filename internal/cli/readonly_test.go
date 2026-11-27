@@ -8,6 +8,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/shatim-ops/evo-cli/internal/auth"
+	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/mcp"
@@ -452,6 +456,36 @@ func roCase(t *testing.T, srv roServers, w parityWorld, tl tools.Tool, args map[
 // stdioInit is the initialize a client sends first on stdio (D89): the
 // worlds put it before their call and drop its answer.
 const stdioInit = `{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"protocolVersion":"2025-06-18"}}` + "\n"
+
+// callStdioTool starts evo mcp against the world's state directory and cached test token.
+func callStdioTool(t *testing.T, name string, args map[string]any, flags ...string) roAnswer {
+	t.Helper()
+	newProcess()
+	defer i18n.SetLang(i18n.Lang())
+	eng, err := toolEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := auth.FileCache{Path: config.TokenCachePath(eng.Config.Profile)}
+	key := auth.CacheKey(auth.Credentials{KeyID: eng.Config.KeyID, Secret: eng.Config.Secret})
+	if err := cache.Store(key, auth.Token{Value: "fake-token", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	body := roRequest("tools/call", map[string]any{"name": name, "arguments": args})
+	code, out, stderr := runCLI(t, stdioInit+string(body)+"\n", append([]string{"mcp"}, flags...)...)
+	if code != 0 {
+		t.Fatalf("evo mcp: exit %d: %s", code, stderr)
+	}
+	_, reply, ok := strings.Cut(out, "\n")
+	if !ok {
+		t.Fatalf("missing initialize response: %s", out)
+	}
+	a, _ := roDecode(t, []byte(reply))
+	if a.rpcErr != "" {
+		t.Fatal(a.rpcErr)
+	}
+	return a
+}
 
 // runStdio runs one stdio session of s — initialize, then body — and is
 // the answers after initialize's.

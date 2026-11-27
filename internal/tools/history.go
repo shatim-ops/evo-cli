@@ -6,10 +6,12 @@ package tools
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/history"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -110,7 +112,17 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		}
 		return out
 	}
+	deleteID := stringArg(args, d.arg)
+	if name == "destroy" {
+		deleteID = firstNonEmptyStr(stringArg(res, "deleted_vm"), stringArg(res, "vm_id"), deleteID)
+	}
+	if name == "pg_delete" {
+		deleteID = firstNonEmptyStr(deleteID, stringArg(args, "cluster_id"))
+	}
 	switch reason := answerReason(answer); {
+	case name == "destroy" && (status == "partial" || boolArg(res, "cleanup_pending", false)):
+		out.CleanupPending = true
+		out.Result, out.ResourceID, out.Reason = history.Unknown, deleteID, reason
 	case reason != "" && intent.OutcomeUnknown(reason, answerHTTPStatus(answer)):
 		// Cut after it sent — the network, a time limit, Ctrl-C: what it
 		// made may be there, named by its argument too («Риск», conclusion
@@ -126,12 +138,12 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 	case status == "already_deleted":
 		out.Result = history.AlreadyDeleted
 		if isDelete {
-			out.ResourceID = stringArg(args, d.arg)
+			out.ResourceID = deleteID
 		}
 	case isDelete:
 		// The id the delete takes: the same createdRef wrote in the line
 		// of the create, so the two meet (history.Live).
-		out.ResourceID = stringArg(args, d.arg)
+		out.ResourceID = deleteID
 		// A delete that goes on — its status a doing («deleting»), or a
 		// next step to read — has not removed its resource yet.
 		if strings.HasSuffix(status, "ing") || stringArg(res, "next_tool") != "" {
@@ -144,10 +156,18 @@ func historyOutcome(name string, args map[string]any, answer string) history.Out
 		switch {
 		case id == "":
 			out.Result = history.Unknown
-		case strings.HasPrefix(status, "already_"):
+		case name == "deploy" && stringArg(res, "deploy_action") == "updated":
+			out.Result, out.ResourceID = history.Changed, id
+		case strings.HasPrefix(status, "already_") || (name == "deploy" && stringArg(res, "deploy_action") == "unchanged"):
 			out.Result, out.ResourceID = history.Found, id
 		default:
 			out.Result, out.ResourceID = history.Created, id
+			// Both lostCreate and the create can return subnet_id. Only the
+			// latter carries the subnet object from POST.
+			if name == "subnet_create" {
+				subnet, _ := res["subnet"].(map[string]any)
+				out.CreateReceipt = stringArg(subnet, "id") == id
+			}
 		}
 	default:
 		out.Result = history.Changed
@@ -296,4 +316,44 @@ func (r *Registry) journalCheck(dir string) (DoctorCheck, bool) {
 			"; одни живые строки больше потолка 64 МБ: ни одна не удаляется, и журнал растёт — строка закрывается, когда ресурс удалён через evo")
 	}
 	return c, true
+}
+
+// Each supported delete names the journal evidence required for its preview.
+// Redis creation recorded both IDs in 1.9.0; recovery by name has no
+// operation ID. For subnets only the receipt distinguishes a POST response.
+var journalCreationProof = map[string]func(history.Line) bool{
+	"redis_delete": func(l history.Line) bool {
+		return l.Tool == "redis_create" && l.OperationID != ""
+	},
+	"subnet_delete": func(l history.Line) bool {
+		return l.Tool == "subnet_create" && l.CreateReceipt
+	},
+}
+
+// journalProvenance uses the project independently resolved for this preview.
+// An unsupported delete has no journal provenance field.
+// The configuration journal and other state directories are outside its scope.
+func (r *Registry) journalProvenance(del, project, id string) *engine.Provenance {
+	provesCreation := journalCreationProof[del]
+	if provesCreation == nil {
+		return nil
+	}
+	unknown := &engine.Provenance{CreatedByEvo: engine.ProvenanceUnknown, Note: i18n.T("this folder's journal does not confirm creation of this resource in its project", "журнал этой папки не подтверждает создание ресурса в его проекте")}
+	root, ok := r.stateDir()
+	if !ok || project == "" || id == "" {
+		return unknown
+	}
+	j, err := history.ReadAll(history.DirOf(intent.Dir(root)), r.historyCheck)
+	if err != nil || j.Skipped > 0 {
+		return unknown
+	}
+	for _, l := range history.Live(j.Lines) {
+		if l.Outcome != history.Created || l.Kind != resourceKind(del) || l.ProjectID != project || l.ResourceID != id || l.Parent != "" || l.StateDir == "" || filepath.Clean(l.StateDir) != filepath.Clean(root) {
+			continue
+		}
+		if provesCreation(l) {
+			return &engine.Provenance{CreatedByEvo: engine.ProvenanceYes, Note: i18n.T("this folder's journal records the cloud ID returned by creation in this project", "журнал этой папки содержит облачный ID из ответа на создание ресурса в этом проекте")}
+		}
+	}
+	return unknown
 }

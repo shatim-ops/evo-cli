@@ -9,6 +9,9 @@ import (
 	stderrors "errors"
 	"fmt"
 	"maps"
+	"net/http"
+	"slices"
+	"strings"
 	"testing"
 
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -97,5 +100,52 @@ func TestToolError_UncodedLocalErrorIsUsage(t *testing.T) {
 		if !stderrors.As(err, &ce) || ce.Code != tt.code || clerrors.ExitCode(err) != tt.exit {
 			t.Errorf("%v: %v exit %d, want %s exit %d", tt.err, err, clerrors.ExitCode(err), tt.code, tt.exit)
 		}
+	}
+}
+
+func TestRedisIncompletePageErrorContract(t *testing.T) {
+	for _, page := range []string{"null", `{"clusters":[null]}`} {
+		t.Run(page, func(t *testing.T) {
+			w, _ := withJSONWorld(t)
+			t.Setenv("EVO_LANG", "ru")
+			defer i18n.SetLang(i18n.Lang())
+			i18n.SetLang(i18n.RU)
+			var pages []string
+			old := w.rt.extra
+			w.rt.extra = func(r *http.Request) (*http.Response, error) {
+				if r.Method != http.MethodGet || r.URL.Host != "redis.api.cloud.ru" || r.URL.Path != "/v1/clusters" {
+					return old(r)
+				}
+				token := r.URL.Query().Get("page_token")
+				pages = append(pages, token)
+				body := page
+				if token == "" {
+					body = `{"clusters":[{"id":"first"}],"next_page_token":"second"}`
+				}
+				return contractRT{status: 200, body: body}.RoundTrip(r)
+			}
+			newProcess()
+			code, out, stderr := runCLI(t, "", "redis", "list", "--json")
+			var result struct {
+				Error struct{ Reason, Message string }
+			}
+			if err := json.Unmarshal([]byte(out+stderr), &result); err != nil {
+				t.Fatal(err, out, stderr)
+			}
+			if code != 5 || result.Error.Reason != "API_ERROR" || !strings.Contains(result.Error.Message, "the list is not complete") || len(w.rt.takeWrites()) != 0 {
+				t.Fatal(code, out, stderr)
+			}
+			pages = nil
+			a := callStdioTool(t, "redis_create", map[string]any{"name": "cache", "cpu": 2, "ram": 4, "confirmed": true})
+			if !a.isErr || parseObject(a.text)["reason"] != "API_ERROR" {
+				t.Fatalf("confirmed Redis create: %s", a.text)
+			}
+			if !slices.Equal(pages, []string{"", "second"}) {
+				t.Fatalf("confirmed create read page tokens %q", pages)
+			}
+			if writes := w.rt.takeWrites(); len(writes) != 0 {
+				t.Fatalf("confirmed create sent %v", writes)
+			}
+		})
 	}
 }

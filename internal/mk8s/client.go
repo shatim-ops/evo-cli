@@ -83,8 +83,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return nil, 0, fmt.Errorf(i18n.T("mk8s request failed: %w", "запрос к mk8s не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	return data, resp.StatusCode, nil
+	return httpretry.ReadAPIResponse(req, resp, 0)
 }
 
 // apiError extracts a readable message from a gRPC-gateway error body.
@@ -207,6 +206,7 @@ type Flavor struct {
 // next request).
 func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
 	var all []Cluster
+	var progress pager.ItemProgress
 	err := pager.All("mk8s: clusters", func(token string) (string, error) {
 		var q url.Values
 		if token != "" {
@@ -216,18 +216,18 @@ func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
 		if err != nil {
 			return "", err
 		}
-		if st != 200 {
-			return "", apiError(st, data)
+		if err := pager.PageStatus(st, data, token != "", apiError); err != nil {
+			return "", err
 		}
-		var r struct {
-			Clusters      []Cluster `json:"clusters"`
-			NextPageToken string    `json:"nextPageToken"`
+		page, next, err := pager.ObjectPage[Cluster](data, "clusters", "nextPageToken")
+		if err != nil {
+			return "", err
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf(i18n.T("parse clusters: %w", "разбор кластеров: %w"), err)
+		if err := pager.CheckProgress(&progress, page, next, func(cluster Cluster) string { return cluster.ID }); err != nil {
+			return "", err
 		}
-		all = append(all, r.Clusters...)
-		return r.NextPageToken, nil
+		all = append(all, page...)
+		return next, nil
 	})
 	if err != nil {
 		return nil, err

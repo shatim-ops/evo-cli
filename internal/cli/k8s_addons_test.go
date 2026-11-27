@@ -26,6 +26,12 @@ import (
 
 const addonClusterID = "00000000-0000-0000-0000-0000000000e1"
 
+// The list and get endpoints return the same node pool; the tools project
+// a summary or a detailed card from it.
+const addonNodePool = `{"id":"` + parityVM + `","clusterId":"` + addonClusterID + `","name":"pool-1","zone":"ru.AZ-1","version":"v1.31.4","status":"OBJECT_STATUS_RUNNING",
+			"scalePolicy":{"fixedScale":{"count":2}},"machineConfiguration":{"flavor":{"name":"k8s-2-4","cpu":2,"ram":4},"disk":{"size":20,"typeName":"SSD"}},
+			"networkConfiguration":{"nodesSubnetId":"00000000-0000-4000-8000-0000000005b1","securityGroupId":"00000000-0000-4000-8000-0000000005c1"},"autoRepair":{"enabled":true}}`
+
 // addonAPI отвечает вместо mk8s.api.cloud.ru и запоминает тела POST.
 type addonAPI struct {
 	mu    sync.Mutex
@@ -61,11 +67,9 @@ func (a *addonAPI) RoundTrip(r *http.Request) (*http.Response, error) {
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","resourceId":"`+parityVM+`","done":false}`)
 	case r.URL.Path == "/v3/nodePools/"+parityVM:
 		// The node pool k8s_nodepool_get reads.
-		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","clusterId":"`+addonClusterID+`","name":"pool-1","zone":"ru.AZ-1","version":"v1.31.4","status":"OBJECT_STATUS_RUNNING",
-			"scalePolicy":{"fixedScale":{"count":2}},"machineConfiguration":{"flavor":{"name":"k8s-2-4","cpu":2,"ram":4},"disk":{"size":20,"typeName":"SSD"}},
-			"networkConfiguration":{"nodesSubnetId":"00000000-0000-4000-8000-0000000005b1","securityGroupId":"00000000-0000-4000-8000-0000000005c1"},"autoRepair":{"enabled":true}}`)
-	case r.URL.Path == "/v3/nodePools":
-		_, _ = io.WriteString(w, `{"nodePools":[{"scalePolicy":{"fixedScale":{"count":2}}}]}`)
+		_, _ = io.WriteString(w, addonNodePool)
+	case r.URL.Path == "/v3/nodePools" && r.Method == http.MethodGet:
+		_, _ = io.WriteString(w, `{"nodePools":[`+addonNodePool+`]}`)
 	case r.URL.Path == "/v3/clusterAddons" && r.Method == http.MethodGet:
 		http.Error(w, `{"message":"bad request"}`, 400)
 	case r.URL.Path == "/v3/clusterAddons" && r.Method == http.MethodPost:
@@ -96,6 +100,31 @@ func withAddonAPI(t *testing.T) *addonAPI {
 	}
 	t.Cleanup(func() { toolEngine, httpretry.DefaultBase = old, oldRT })
 	return api
+}
+
+func TestK8sNodePools_ListAndGetDescribeSamePool(t *testing.T) {
+	withAddonAPI(t)
+	out, errOut, code := execCLI(t, "--json", "k8s", "nodepools", addonClusterID)
+	var list struct {
+		Pools []map[string]any `json:"node_pools"`
+	}
+	if code != 0 || json.Unmarshal([]byte(out), &list) != nil || len(list.Pools) != 1 {
+		t.Fatalf("nodepools: exit %d, %s %s", code, out, errOut)
+	}
+	id, _ := list.Pools[0]["id"].(string)
+	out, errOut, code = execCLI(t, "--json", "k8s", "nodepool-get", id)
+	var card map[string]any
+	if code != 0 || json.Unmarshal([]byte(out), &card) != nil {
+		t.Fatalf("nodepool-get: exit %d, %s %s", code, out, errOut)
+	}
+	for field, want := range map[string]any{
+		"id": parityVM, "name": "pool-1", "status": "OBJECT_STATUS_RUNNING",
+		"version": "v1.31.4", "desired": float64(2), "flavor": "k8s-2-4",
+	} {
+		if list.Pools[0][field] != want || card[field] != want {
+			t.Errorf("%s: list=%v card=%v want=%v", field, list.Pools[0][field], card[field], want)
+		}
+	}
 }
 
 func TestK8sAddons_RussianTable(t *testing.T) {

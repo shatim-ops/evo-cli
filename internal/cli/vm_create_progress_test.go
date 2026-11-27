@@ -13,8 +13,11 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/engine"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
+	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -105,6 +108,11 @@ func TestVMCreate_TextStagesOnStderrTableOnStdout(t *testing.T) {
 		}
 		at += i + len(w)
 	}
+	for _, line := range strings.Split(strings.TrimSpace(errOut), "\n") {
+		if stage := strings.TrimSpace(line); stage != "" && !hasCyrillicText(stage) {
+			t.Errorf("untranslated progress line: %q", stage)
+		}
+	}
 	if strings.ContainsAny(errOut, "\r\x1b") {
 		t.Errorf("control characters on a stderr that is not a terminal: %q", errOut)
 	}
@@ -149,5 +157,86 @@ func TestVMCreate_MCPProgressIsTheStderrStages(t *testing.T) {
 	}
 	if len(mcp) == 0 || strings.Join(mcp, "\n") != strings.Join(cli, "\n") {
 		t.Errorf("MCP progress is not the stderr stages:\nMCP:\n%s\nstderr:\n%s", strings.Join(mcp, "\n"), strings.Join(cli, "\n"))
+	}
+}
+
+type unattachedIPCloud struct{ *vmCreateCloud }
+
+func (c unattachedIPCloud) GetFloatingIP(context.Context, string) (*provision.FloatingIP, error) {
+	return c.fip, nil
+}
+func (c unattachedIPCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, error) {
+	return &provision.VMDetail{Interfaces: []provision.VMInterface{{ID: vcSubnet, Primary: true}}}, nil
+}
+func (c unattachedIPCloud) AttachFloatingIP(context.Context, string, string, string, string) (*provision.FloatingIP, error) {
+	return nil, &provision.StatusError{Status: 422, Body: "fixture denied"}
+}
+
+func TestVMCreate_UnattachedIPLanguage(t *testing.T) {
+	for _, mode := range []string{"ru-text", "json", "stdio", "http"} {
+		t.Run(mode, func(t *testing.T) {
+			setupCLI(t)
+			cloud := withVMCreateCloud(t)
+			cloud.fip = &provision.FloatingIP{ID: "00000000-0000-0000-0000-00000000b004", IPAddress: "203.0.113.7", State: "available"}
+			base := toolEngine
+			toolEngine = func(opts map[string]any) (*engine.Engine, error) {
+				e, err := base(opts)
+				if err == nil {
+					e.Cloud, e.Timings = unattachedIPCloud{cloud}, parityTimings
+				}
+				return e, err
+			}
+
+			var msg, hint string
+			if mode == "stdio" || mode == "http" {
+				servers := parityServers(t)
+				args := map[string]any{"name": "web", "image": "Ubuntu-24.04", "confirmed": true}
+				var reply map[string]any
+				if mode == "stdio" {
+					reply = stdioDetails(t, servers.stdio, "provision", args)
+				} else {
+					reply = httpDetails(t, servers.http, "provision", args)
+				}
+				if reply["status"] != "partial" || reply["reason"] != clerrors.CodeAPIError {
+					t.Fatalf("expected partial creation: %v", reply)
+				}
+				msg, _ = reply["error"].(string)
+				hint, _ = reply["hint"].(string)
+				if summary, _ := reply["message"].(string); !strings.Contains(summary, "billed") || hasCyrillicText(summary) {
+					t.Errorf("partial machine summary: %q", summary)
+				}
+			} else {
+				ru(t)
+				args := []string{"vm", "create", "web", "--image", "Ubuntu-24.04", "--yes"}
+				if mode == "json" {
+					args = append(args, "--json")
+				}
+				code, _, errOut := runCLI(t, "", args...)
+				if code != clerrors.ExitAPI {
+					t.Fatalf("expected partial creation, exit %d: %s", code, errOut)
+				}
+				if mode == "json" {
+					e := lastJSONError(t, errOut)
+					if e.Reason != clerrors.CodeAPIError {
+						t.Fatalf("wrong reason: %+v", e)
+					}
+					msg, hint = e.Message, e.Hint
+				} else {
+					msg, hint = personText(errOut)
+				}
+			}
+			if !strings.Contains(msg, vcVM) || !strings.Contains(msg, "fixture denied") || hint == "" {
+				t.Fatalf("missing VM, service cause or next action: %q / %q", msg, hint)
+			}
+			if mode == "ru-text" {
+				// The localized cause alone cannot translate the product's frame.
+				beforeCause, _, _ := strings.Cut(msg, "(")
+				if !hasCyrillicText(beforeCause) || !hasCyrillicText(hint) || strings.Contains(hint, "Attach a free") {
+					t.Errorf("untranslated partial error or hint: %q / %q", msg, hint)
+				}
+			} else if hasCyrillicText(msg+hint) || !strings.Contains(msg, "not attached") {
+				t.Errorf("machine error or hint is not English: %q / %q", msg, hint)
+			}
+		})
 	}
 }

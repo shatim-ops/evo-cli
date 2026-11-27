@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shatim-ops/evo-cli/internal/state"
+
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"time"
 )
@@ -44,19 +46,21 @@ func TestQAr3_Apply_AdoptUsesAttachedFIP(t *testing.T) {
 
 // lostFIPCloud: the VM has no FIP; the create answer is lost, the FIP exists.
 type lostFIPCloud struct {
+	attempt string
 	adoptFIPCloud
 }
 
 func (c *lostFIPCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, error) {
 	return &provision.VMDetail{ID: "vm-old", Interfaces: []provision.VMInterface{{ID: "if-1", Primary: true, Type: "regular"}}}, nil
 }
-func (c *lostFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+func (c *lostFIPCloud) CreateFloatingIP(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	c.attempt = req.Description
 	c.fipCreates++
 	return nil, context.DeadlineExceeded
 }
 func (c *lostFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
 	return []*provision.FloatingIP{{ID: "fip-user", Name: "my-reserved", IPAddress: "198.51.100.1", State: "available"},
-		{ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "in_use", VM: json.RawMessage(`{"id":"vm-old"}`)}}, nil
+		{ID: "fip-made", Description: c.attempt, Name: "x-fip", IPAddress: "203.0.113.7", State: "in_use", VM: json.RawMessage(`{"id":"vm-old"}`)}}, nil
 }
 
 // R2/R9: the lost create is found by its name and recorded; a free FIP of
@@ -76,7 +80,8 @@ func TestQAr3_Apply_LostFIPCreateFoundByName(t *testing.T) {
 // under its name.
 type noIDFIPCloud struct{ lostFIPCloud }
 
-func (c *noIDFIPCloud) CreateFloatingIP(context.Context, provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+func (c *noIDFIPCloud) CreateFloatingIP(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
+	c.attempt = req.Description
 	c.fipCreates++
 	return &provision.FloatingIP{Name: "x-fip", IPAddress: "203.0.113.7", State: "available"}, nil
 }
@@ -117,7 +122,7 @@ func (c *unlistedFIPCloud) ListFloatingIPs(context.Context, string) ([]*provisio
 // adopts the VM with the address on it, never to the console, where a
 // second billed address would be attached (Qwen review of #211).
 func TestApply_LostFIPUnlistedRetryNotConsole(t *testing.T) {
-	_, _, note := ensureFloatingIP(context.Background(), &unlistedFIPCloud{}, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old", new(string))
+	_, _, note := ensureFloatingIP(context.Background(), &unlistedFIPCloud{}, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old", new(state.LostFloatingIP))
 	if !strings.Contains(note, "deploy_apply again") || strings.Contains(note, "console") {
 		t.Fatalf("note %q: want deploy_apply again, not the console", note)
 	}
@@ -236,7 +241,7 @@ func (c *orphanOnlyFIPCloud) ListFloatingIPs(context.Context, string) ([]*provis
 // the note sends the user to deploy_apply again, which adopts the VM with
 // the address it has.
 func TestApply_LostFIPOrphanByNameNotTaken(t *testing.T) {
-	ip, id, note := ensureFloatingIP(context.Background(), &orphanOnlyFIPCloud{}, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old", new(string))
+	ip, id, note := ensureFloatingIP(context.Background(), &orphanOnlyFIPCloud{}, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old", new(state.LostFloatingIP))
 	if ip != "" || id != "" || !strings.Contains(note, "deploy_apply again") {
 		t.Errorf("orphan taken: ip %q id %q note %q", ip, id, note)
 	}
@@ -251,6 +256,7 @@ type ownLostFIPCloud struct {
 
 func (c *ownLostFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
 	f := c.fip
+	f.Description = c.attempt
 	return []*provision.FloatingIP{&f}, nil
 }
 
@@ -267,7 +273,7 @@ func TestApply_LostFIPOwnTakenInEveryForm(t *testing.T) {
 		"being created":  {ID: "fip-made", Name: "x-fip", IPAddress: "203.0.113.7", State: "creating"},
 	} {
 		c := &ownLostFIPCloud{fip: f}
-		ip, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old", new(string))
+		ip, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old", new(state.LostFloatingIP))
 		if id != "fip-made" || ip != "203.0.113.7" {
 			t.Errorf("%s: ip %q id %q, want fip-made recorded", label, ip, id)
 		}
@@ -275,7 +281,7 @@ func TestApply_LostFIPOwnTakenInEveryForm(t *testing.T) {
 	// Bound to another VM's interface: not this VM's.
 	c := &ownLostFIPCloud{fip: provision.FloatingIP{ID: "fip-other", Name: "x-fip", IPAddress: "203.0.113.8", State: "in_use",
 		Interface: json.RawMessage(`{"id":"if-9"}`), VM: json.RawMessage(`{"id":"vm-9"}`)}}
-	if _, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old", new(string)); id != "" {
+	if _, id, _ := ensureFloatingIP(context.Background(), c, &Plan{ProjectID: "p-1", Owned: ownedOld, VM: VMSpec{Name: "x"}, Network: NetworkSpec{FloatingIP: true}}, "vm-old", new(state.LostFloatingIP)); id != "" {
 		t.Errorf("another VM's address taken: %q", id)
 	}
 }

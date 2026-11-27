@@ -6,6 +6,7 @@ package sgrules
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
@@ -57,19 +58,75 @@ func TestFindLabeled_OnlyTheVMsRulesNoRecordHolds(t *testing.T) {
 	for _, r := range found {
 		ports = append(ports, Label(r.Rule.Port))
 	}
-	if strings.Join(ports, ",") != "80,53/udp" {
-		t.Fatalf("found %+v; want the VM's own 80 and 53/udp only", found)
+	if strings.Join(ports, ",") != "80,53/udp,81" {
+		t.Fatalf("found %+v; want the VM's own 80, 53/udp and deleting 81 only", found)
 	}
 
 	f.deleteErr[found[1].Rule.ID] = errors.New("API 503")
-	res := CloseLabeled(context.Background(), f, found)
-	if strings.Join(res.Closed, ",") != "80 (vm vm-1)" || len(res.Failed) != 1 || !strings.HasPrefix(res.Failed[0], "53/udp (vm vm-1): ") {
+	owned := &state.File{Deployments: []state.DeploymentRecord{{ID: "r", VMID: "vm-1"}}}
+	TrackLabeled(owned, &owned.Deployments[0], found)
+	res := Close(context.Background(), f, owned, "r", "", nil)
+	if strings.Join(res.Closed, ",") != "80 (vm vm-1)" || len(res.Failed) != 2 || !strings.HasPrefix(res.Failed[0], "53/udp (vm vm-1): ") || !strings.HasPrefix(res.Failed[1], "81 (vm vm-1): ") {
 		t.Errorf("closed %v, failed %v; want 80 closed and 53/udp reported", res.Closed, res.Failed)
 	}
 	// A rule gone meanwhile is closed, as Close counts it.
-	gone := CloseLabeled(context.Background(), f, []Planned{{Rule: state.SGRule{SecurityGroupID: "sg-a", ID: "no-such", Port: "9/tcp"}, VMID: "vm-1"}})
+	if len(owned.Deployments[0].OpenedRules) != 2 || owned.Deployments[0].OpenedRules[0].ID != found[1].Rule.ID || owned.Deployments[0].OpenedRules[1].ID != "dying" {
+		t.Fatal("unconfirmed label receipt was lost")
+	}
+	missing := &state.File{Deployments: []state.DeploymentRecord{{ID: "r", VMID: "vm-1"}}}
+	TrackLabeled(missing, &missing.Deployments[0], []Planned{{Rule: state.SGRule{SecurityGroupID: "sg-a", ID: "no-such", Port: "9/tcp"}, VMID: "vm-1"}})
+	gone := Close(context.Background(), f, missing, "r", "", nil)
 	if strings.Join(gone.Closed, ",") != "9 (vm vm-1)" {
 		t.Errorf("a rule already gone: %+v, want closed", gone)
+	}
+}
+
+// These display strings are part of the JSON contract: ordinary VM IDs keep
+// their original spelling, and unusual IDs stay quoted after JSON decoding.
+func TestCloseLabeled_JSONDisplay(t *testing.T) {
+	for _, tc := range []struct{ name, vm, display string }{
+		{"plain", "vm-1", "vm-1"},
+		{"UUID", "0000a1a1-0000-4000-8000-000000000001", "0000a1a1-0000-4000-8000-000000000001"},
+		{"safe ASCII", "Az_09.vm-X", "Az_09.vm-X"},
+		{"space", "vm 1", `"vm 1"`},
+		{"double quote", `vm"1`, `"vm\"1"`},
+		{"backslash", `vm\1`, `"vm\\1"`},
+		{"newline", "vm\n1", `"vm\n1"`},
+		{"quoted newline", "vm-\"1\n", `"vm-\"1\n"`},
+		{"closing parenthesis", "vm)1", `"vm)1"`},
+		{"non-ASCII", "vm-я", `"vm-я"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFake()
+			f.rules["group"] = []provision.SGRule{
+				{ID: "web", Direction: "ingress", Description: RuleLabel("80", tc.vm)},
+				{ID: "dns", Direction: "ingress", Description: RuleLabel("53/udp", tc.vm)},
+			}
+			f.deleteErr["dns"] = errors.New("service unavailable")
+			planned := []Planned{
+				{Rule: state.SGRule{SecurityGroupID: "group", ID: "web", Port: "80/tcp"}, VMID: tc.vm},
+				{Rule: state.SGRule{SecurityGroupID: "group", ID: "dns", Port: "53/udp"}, VMID: tc.vm},
+			}
+			sf := &state.File{Deployments: []state.DeploymentRecord{{ID: "deployment", VMID: tc.vm}}}
+			TrackLabeled(sf, &sf.Deployments[0], planned)
+			result := Close(context.Background(), f, sf, "deployment", "", nil)
+			raw, err := json.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string][]string
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				t.Fatal(err)
+			}
+			for key, want := range map[string]string{
+				"closed": "80 (vm " + tc.display + ")",
+				"failed": "53/udp (vm " + tc.display + "): service unavailable",
+			} {
+				if got := fields[key]; len(got) != 1 || got[0] != want {
+					t.Errorf("%s = %q, want one element %q", key, got, want)
+				}
+			}
+		})
 	}
 }
 

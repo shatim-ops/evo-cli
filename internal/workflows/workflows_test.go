@@ -1323,17 +1323,10 @@ func TestWorkflows_PGBackupProbeAfterDeleteChangesNothing(t *testing.T) {
 // already_deleted (D26, D37); os-smoke reads the rule of vm create --port
 // before vm delete and refuses its check after delete without it.
 func TestWorkflows_RuleSeenBeforeItIsCheckedGone(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "scripts", "cloud-live.sh"))
-	if err != nil {
-		t.Fatal(err)
+	if !strings.Contains(scriptFuncs(t, "area_net"), `net_ports "$zid"`) {
+		t.Fatal("cloud-live.sh area_net: the network smoke omits net_ports")
 	}
-	script := string(b)
-	start := strings.Index(script, "\narea_net() {")
-	end := strings.Index(script[start+1:], "\n}\n")
-	if start < 0 || end < 0 {
-		t.Fatal("cloud-live.sh: no area_net")
-	}
-	net := script[start : start+1+end]
+	net := scriptFuncs(t, "net_ports")
 	at := func(s string) int { return strings.Index(net, s) }
 	open, seen, closeP, again := at("must open_ports open_ports"), at(`"правило $RULE_PORT видно до close_ports"`),
 		at("must close_ports close_ports"), at("= already_deleted ]")
@@ -1344,7 +1337,7 @@ func TestWorkflows_RuleSeenBeforeItIsCheckedGone(t *testing.T) {
 	if !strings.Contains(net, "cov close_ports") {
 		t.Error("cloud-live.sh area_net: close_ports is not counted as covered")
 	}
-	if !strings.Contains(net[seen:], "$(port_ranges)") {
+	if seen >= 0 && !strings.Contains(net[seen:], "$(port_ranges)") {
 		t.Error("cloud-live.sh area_net: a rule not seen does not print the port_range the API gave (port_ranges)")
 	}
 

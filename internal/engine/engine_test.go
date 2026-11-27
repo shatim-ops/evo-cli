@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/auth"
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/deploy"
+	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -84,6 +86,7 @@ type mockCloudAPI struct {
 	createReq    provision.CreateVMRequest
 	getCalls     int
 	deletedFIPs  []string
+	releasedFIPs map[string]bool
 }
 
 func (m *mockCloudAPI) SetToken(t string) {
@@ -119,6 +122,10 @@ func (m *mockCloudAPI) GetVM(ctx context.Context, id string) (*provision.VM, err
 		Status:   "active",
 		PublicIP: "127.0.0.1",
 	}, nil
+}
+
+func (m *mockCloudAPI) DeleteVMInProject(ctx context.Context, id, projectID string) error {
+	return m.DeleteVM(ctx, id)
 }
 
 func (m *mockCloudAPI) DeleteVM(ctx context.Context, id string) error {
@@ -221,6 +228,11 @@ func (m *mockCloudAPI) GetFloatingIP(ctx context.Context, id string) (*provision
 	if m.getFloatingIPFn != nil {
 		return m.getFloatingIPFn(ctx, id)
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.releasedFIPs[id] {
+		return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+	}
 	return &provision.FloatingIP{
 		ID:        id,
 		IPAddress: "127.0.0.1",
@@ -246,10 +258,19 @@ func (m *mockCloudAPI) DeleteFloatingIP(ctx context.Context, fipID, projectID st
 	m.mu.Lock()
 	m.deletedFIPs = append(m.deletedFIPs, fipID)
 	m.mu.Unlock()
+	var err error
 	if m.deleteFloatingIPFn != nil {
-		return m.deleteFloatingIPFn(ctx, fipID, projectID)
+		err = m.deleteFloatingIPFn(ctx, fipID, projectID)
 	}
-	return nil
+	if err == nil || clerrors.Reason(err) == clerrors.CodeNotFound || clerrors.Reason(err) == clerrors.CodeVMNotFound {
+		m.mu.Lock()
+		if m.releasedFIPs == nil {
+			m.releasedFIPs = make(map[string]bool)
+		}
+		m.releasedFIPs[fipID] = true
+		m.mu.Unlock()
+	}
+	return err
 }
 
 func (m *mockCloudAPI) ListDiskTypes(ctx context.Context, projectID string) ([]*provision.DiskType, error) {
@@ -502,7 +523,8 @@ func TestDeploy_NewDeploy(t *testing.T) {
 
 	composePath := writeComposeFile(t, tmpDir)
 
-	opts := DeployOptions{
+	var result DeployResult
+	opts := DeployOptions{Result: &result,
 		ComposeFile:    composePath,
 		Flavor:         "small",
 		Region:         "az-1",
@@ -513,6 +535,10 @@ func TestDeploy_NewDeploy(t *testing.T) {
 	err := eng.Deploy(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("Deploy returned error: %v", err)
+	}
+
+	if result.Action != "created" || result.Record.VMID != "vm-123" || result.Record.Region == "" {
+		t.Fatalf("deploy result: %+v", result)
 	}
 
 	// Verify stages were called.
@@ -608,7 +634,8 @@ func TestDeploy_UpdateDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	opts := DeployOptions{
+	var result DeployResult
+	opts := DeployOptions{Result: &result,
 		ComposeFile:    composePath,
 		Flavor:         "small",
 		Region:         "az-1",
@@ -621,6 +648,9 @@ func TestDeploy_UpdateDeploy(t *testing.T) {
 		t.Fatalf("Deploy returned error: %v", err)
 	}
 
+	if result.Action != "updated" || result.Record.VMID != "vm-existing" {
+		t.Fatalf("update result: %+v", result)
+	}
 	// Provision should NOT have been called — reusing existing VM.
 	if cloud.createCalled {
 		t.Error("expected CreateVM NOT to be called on update deploy")
@@ -820,11 +850,15 @@ func (m *mockCloudAPI) ListSecurityGroupRules(ctx context.Context, sgID string) 
 	if err != nil {
 		return nil, err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var out []*provision.SGRule
 	for _, g := range sgs {
 		if g.ID == sgID {
 			for i := range g.Rules {
-				out = append(out, &g.Rules[i])
+				if !slices.Contains(m.deletedRules, sgID+"/"+g.Rules[i].ID) {
+					out = append(out, &g.Rules[i])
+				}
 			}
 		}
 	}

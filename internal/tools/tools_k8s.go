@@ -341,7 +341,7 @@ func (s *Registry) planK8sCreate(ctx context.Context, args map[string]any) (*Pla
 		for _, c := range clusters {
 			listed = append(listed, map[string]any{"id": c.ID, "name": c.Name, "status": c.Status})
 		}
-		return listed, err
+		return namedResources(listed, err)
 	}
 	listed, err := list(ctx)
 	if err != nil {
@@ -1063,7 +1063,7 @@ func (s *Registry) planK8sAddNodePool(ctx context.Context, args map[string]any) 
 	// a second billable pool (fault matrix, process audit 1.2.1).
 	name := nodePoolName(args)
 	list := func(ctx context.Context) ([]map[string]any, error) {
-		return cli.ListNodePools(ctx, clusterID)
+		return namedResources(cli.ListNodePools(ctx, clusterID))
 	}
 	listed, err := list(ctx)
 	if err != nil {

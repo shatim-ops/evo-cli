@@ -69,37 +69,61 @@ var toolsCallRE = regexp.MustCompile(`evo tools (call|describe) [a-z0-9_]+`)
 // entry needs a reason a reviewer accepts (a command for machines only).
 var russianHelpExceptions = map[string]string{}
 
-// englishStopWords mark a line of English prose: commands, flags, values
-// and quoted API messages have few of them.
+// Ignore only a delimited quotation attributed to a service. The help on
+// either side of the quotation is still evo's own prose.
+var serviceHelpQuote = regexp.MustCompile(`(?i)(?:ответ (?:API|сервиса|платформы|[45][0-9]{2})|(?:API|сервис|платформа) отвечает)[: \t]*(?:«[^»\n]*»|'[^'\n]*'|"[^"\n]*")`)
+
+// Most help sentences have function words. A short instruction such as
+// "Select available profiles" also has a sentence-case verb followed by
+// ordinary lower-case words. Command paths and product names can stay Latin.
+var helpInstruction = regexp.MustCompile(`\b[A-Z][a-z]+[ \t]+[a-z]+[ \t]+[a-z]+\b`)
+
 var englishStopWords = map[string]bool{
 	"the": true, "a": true, "an": true, "to": true, "of": true, "is": true, "are": true, "and": true,
 	"for": true, "with": true, "by": true, "in": true, "on": true, "or": true, "it": true, "from": true,
 	"this": true, "that": true, "be": true, "as": true, "its": true, "when": true, "only": true,
 }
 
-// englishProse returns the first line of s that reads as English prose:
-// no Cyrillic, four words or more, two of them English stop words.
 func englishProse(s string) string {
 	for _, line := range strings.Split(s, "\n") {
-		if hasCyrillic(line) {
-			continue
-		}
-		words, stop := 0, 0
-		for _, w := range strings.Fields(line) {
-			w = strings.ToLower(strings.Trim(w, ".,:;()'\"`"))
-			if w == "" || strings.IndexFunc(w, func(r rune) bool { return !unicode.IsLetter(r) }) >= 0 {
-				continue
+		line = serviceHelpQuote.ReplaceAllString(line, " ")
+		// Count words within a Latin passage. A Russian introduction or
+		// explanation on the same line cannot hide the passage.
+		for _, passage := range strings.FieldsFunc(line, func(r rune) bool { return unicode.Is(unicode.Cyrillic, r) }) {
+			words, stop := 0, 0
+			for _, w := range strings.Fields(passage) {
+				w = strings.ToLower(strings.Trim(w, ".,:;()'\"`«»"))
+				if w == "" || strings.IndexFunc(w, func(r rune) bool { return !unicode.IsLetter(r) }) >= 0 {
+					continue
+				}
+				words++
+				if englishStopWords[w] {
+					stop++
+				}
 			}
-			words++
-			if englishStopWords[w] {
-				stop++
+			if (words >= 4 && stop >= 2) || helpInstruction.MatchString(passage) {
+				return strings.Trim(passage, " \t.,:;!?«»")
 			}
-		}
-		if words >= 4 && stop >= 2 {
-			return strings.TrimSpace(line)
 		}
 	}
 	return ""
+}
+
+func TestHelp_EnglishProseAndServiceQuotes(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		bad  bool
+	}{
+		{"Описание. Выберите профиль для продолжения. Ответ API: «Choose a profile to continue».", false},
+		{"Описание. Choose a profile to continue. Ответ API: «Choose a profile to continue».", true},
+		{"API отвечает 'Choose a profile to continue'. Select available profiles.", true},
+		{"Подсказка evo: «Choose a profile to continue».", true},
+		{"Команда 'evo tools list' выводит список.", false},
+	} {
+		if got := englishProse(tc.text); (got != "") != tc.bad {
+			t.Errorf("%q: English passage %q, want finding %t", tc.text, got, tc.bad)
+		}
+	}
 }
 
 // productNames reports whether title is a list of product names of
@@ -148,7 +172,7 @@ func TestHelp_RussianEverywhere(t *testing.T) {
 	// A group may be titled by products of Cloud.ru under their official
 	// names (#597, item 30), Latin by design; any other title is Russian.
 	for _, g := range root.Groups() {
-		if !hasCyrillic(g.Title) && !productNames(g.Title) {
+		if (!hasCyrillic(g.Title) && !productNames(g.Title)) || englishProse(g.Title) != "" {
 			t.Errorf("group %s: English title %q", g.ID, g.Title)
 		}
 	}

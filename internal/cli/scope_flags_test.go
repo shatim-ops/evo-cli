@@ -5,13 +5,20 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http/httptest"
+	"os"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/shatim-ops/evo-cli/internal/mcp"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // scopeFlagUnmarked are the flags of the command tree that name where a call
@@ -104,4 +111,59 @@ func TestScopeFlags_EveryOneRefusesAnEmptyValue(t *testing.T) {
 		}
 	}
 	t.Logf("scope flags in the command tree: %d", seen)
+}
+
+// The same public invocation has the same complete answer when this directory
+// is empty, has a known foreign deployment, or has an old unverified receipt.
+func TestDestroyBound_UnverifiedDirectoryIsOpaque(t *testing.T) {
+	w, fake := withJSONWorld(t)
+	srv := mcp.New(toolEngine, "fixture")
+	declareStateDir(srv)
+	srv.SetProjectBound()
+	handler := mcp.NewHTTPHandler(srv, mcp.HTTPOptions{BearerToken: "parity-token"})
+	defer handler.Close()
+	wires := roServers{roHTTP: httptest.NewServer(handler)}
+	defer wires.roHTTP.Close()
+	path := state.DefaultPath(w.dir)
+	const absentVM = "00000000-0000-4000-8000-00000000abcd"
+	for _, args := range []map[string]any{{}, {"confirmed": true}, {"vm_id": absentVM}, {"vm_id": absentVM, "confirmed": true}} {
+		var emptyReply string
+		for _, world := range []string{"empty", "foreign", "legacy"} {
+			sf := &state.File{Version: 1}
+			if world != "empty" {
+				rec := state.DeploymentRecord{ID: "directory-marker", VMID: absentVM, VMName: "private-name", Status: "destroying"}
+				if world == "foreign" {
+					rec.ProjectID = "foreign-project"
+				}
+				sf.UpsertDeployment(rec)
+			}
+			if err := state.Write(path, sf); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fake.takeWrites()
+			params := map[string]any{"name": "destroy", "arguments": args}
+			stdio, _ := wires.stdio(t, srv, "tools/call", params)
+			stream, _ := wires.http(t, "tools/call", params)
+			for _, answer := range []roAnswer{stdio, stream} {
+				var result map[string]any
+				if !answer.isErr || json.Unmarshal([]byte(answer.text), &result) != nil || result["reason"] != "NOT_FOUND" || strings.Contains(answer.text, "directory-marker") || strings.Contains(answer.text, "private-name") || strings.Contains(answer.text, "foreign-project") {
+					t.Fatalf("world=%s, args=%v: %s", world, args, answer.text)
+				}
+				if emptyReply == "" {
+					emptyReply = answer.text
+				}
+				if answer.text != emptyReply {
+					t.Fatalf("world=%s args=%v: got %s, want %s", world, args, answer.text, emptyReply)
+				}
+			}
+			after, err := os.ReadFile(path)
+			if writes := fake.takeWrites(); err != nil || !bytes.Equal(before, after) || len(writes) != 0 {
+				t.Fatalf("world=%s args=%v state unchanged=%t writes=%v error=%v", world, args, bytes.Equal(before, after), writes, err)
+			}
+		}
+	}
 }

@@ -74,7 +74,12 @@ func Known(outcome string) bool { return outcomes[outcome] }
 // Outcome is what the end of a call says of it: the part of a line the
 // caller knows and the record of the intent does not.
 type Outcome struct {
-	Result string
+	// CleanupPending means this result cannot settle an earlier interrupted
+	// operation: its resource cleanup still awaits confirmation.
+	CleanupPending bool
+	// CreateReceipt distinguishes an ID returned by create from a match by name.
+	CreateReceipt bool
+	Result        string
 	// Kind is the kind of the resource ("disk"): with ResourceID it tells
 	// one resource from another of the same id or name.
 	Kind string
@@ -93,6 +98,7 @@ const Format = 1
 
 // Line is one line of the journal.
 type Line struct {
+	CreateReceipt bool `json:"create_receipt,omitempty"`
 	// Format is the form of the line (Format); Append sets it.
 	Format int `json:"format"`
 	// Time is when the line was written, by internal/clock: a value

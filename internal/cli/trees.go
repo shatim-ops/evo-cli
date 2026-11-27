@@ -71,6 +71,7 @@ var treeRenders = map[string]renderFunc{
 	"addon-versions":   renderAddonVersions,
 	"log-lines":        renderLogLines,
 	"exposition":       renderExposition,
+	"metric-series":    renderMetricSeries,
 	"project-list":     renderProjectList,
 	"billing-balance":  renderBillingBalance,
 	"billing-usage":    renderBillingConsumption,

@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 )
@@ -276,5 +278,152 @@ func TestGetVM_FullLiveShape(t *testing.T) {
 		if vm != nil && vm.CreatedAt.IsZero() {
 			t.Errorf("created_time %q not parsed", created)
 		}
+	}
+}
+
+// A plan can rely on absence only after reading the entire project catalogue.
+// Pass the real adapter through an interface wrapper, as CloudAPI callers may do.
+func TestProjectImagesForSelection_CompletePages(t *testing.T) {
+	const rowA = `{"id":"one","name":"first"}`
+	const rowB = `{"id":"two","name":"second"}`
+	const first = `{"items":[` + rowA + `],"total":2,"offset":0}`
+	for _, tc := range []struct {
+		name  string
+		pages []string
+		want  int // -1: no list, API_ERROR
+	}{
+		{"empty", []string{`{"items":[],"total":0}`}, 0},
+		{"legacy_array", []string{`[` + rowA + `,` + rowB + `]`}, 2},
+		{"two_pages", []string{first, `{"items":[` + rowB + `],"total":2,"offset":1}`}, 2},
+		{"missing_total", []string{`{"items":[]}`}, -1},
+		{"null_total", []string{`{"items":[],"total":null}`}, -1},
+		{"null_row", []string{`{"items":[null],"total":1}`}, -1},
+		{"null_bare_list", []string{`null`}, -1},
+		{"bare_duplicate", []string{`[` + rowA + `,` + rowA + `]`}, -1},
+		{"total_changed", []string{first, `{"items":[],"total":0}`}, -1},
+		{"wrong_offset", []string{first, `{"items":[` + rowB + `],"total":2,"offset":0}`}, -1},
+		{"page_replaced_by_array", []string{first, `[` + rowB + `]`}, -1},
+		{"pages_overlap", []string{`{"items":[` + rowA + `],"total":3}`, `{"items":[` + rowA + `,` + rowB + `],"total":3}`}, -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			srv, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if calls >= len(tc.pages) {
+					t.Error("request after last page")
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				_, _ = io.WriteString(w, tc.pages[calls])
+				calls++
+			})
+			cloud := struct{ CloudAPI }{adapter}
+			items, err := ProjectImagesForSelection(context.Background(), cloud, "project-for-test")
+			srv.Close()
+			if calls != len(tc.pages) {
+				t.Errorf("read %d pages of %d", calls, len(tc.pages))
+			}
+			if tc.want == -1 {
+				if items != nil || clierrors.Reason(err) != clierrors.CodeAPIError || clierrors.ExitCode(err) != clierrors.ExitAPI {
+					t.Fatalf("invalid list returned %d images, %v", len(items), err)
+				}
+			} else if err != nil || len(items) != tc.want {
+				t.Fatalf("read %d images, %v; want %d", len(items), err, tc.want)
+			}
+		})
+	}
+}
+
+func TestProjectImagesForSelection_StrictBodyBoundary(t *testing.T) {
+	const empty = `{"items":[],"total":0}`
+	exact := empty + strings.Repeat(" ", maxListBody-len(empty))
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   io.Reader
+		reason string
+	}{
+		{"whole_page_at_limit", 200, strings.NewReader(exact), ""},
+		{"valid_prefix_truncated", 200, strings.NewReader(exact + "!"), clierrors.CodeAPIError},
+		{"partial_content", 206, strings.NewReader(empty), clierrors.CodeAPIError},
+		{"read_timeout", 200, iotest.ErrReader(context.DeadlineExceeded), clierrors.CodeAPIUnreachable},
+		{"read_cancelled", 200, iotest.ErrReader(context.Canceled), clierrors.ReasonInterrupted},
+		{"read_error_after_valid_json", 200, io.MultiReader(strings.NewReader(empty), iotest.ErrReader(io.ErrUnexpectedEOF)), clierrors.CodeAPIError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &http.Response{StatusCode: tc.status, Body: io.NopCloser(tc.body)}
+			data, err := readListPage(r, "/api/v1/images")
+			if clierrors.Reason(err) != tc.reason || (tc.reason != "" && data != nil) {
+				t.Fatalf("read %d bytes, %v; want reason %q", len(data), err, tc.reason)
+			}
+		})
+	}
+}
+
+func TestCompute_OrdinaryInventoryRejectsIncompletePages(t *testing.T) {
+	const good = `{"items":[],"total":0}`
+	const first = `{"items":[{"id":"a"}],"total":2}`
+	for _, tc := range []struct {
+		name          string
+		status        int
+		initial, last string
+		ok            bool
+	}{
+		{"empty envelope", 200, "", good, true}, {"empty array", 200, "", `[]`, true},
+		{"empty body", 200, "", "", false}, {"null", 200, "", `null`, false}, {"null items", 200, "", `{"items":null,"total":0}`, false},
+		{"null row", 200, "", `{"items":[null],"total":1}`, false}, {"null array row", 200, "", `[null]`, false},
+		{"206", 206, "", good, false}, {"204", 204, "", "", false}, {"too long", 200, "", good + strings.Repeat(" ", maxListBody), false},
+		{"missing continuation", 404, first, `{"message":"not found"}`, false}, {"array on continuation", 200, first, `[]`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			srv, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if calls == 1 && tc.initial != "" {
+					io.WriteString(w, tc.initial)
+					return
+				}
+				w.WriteHeader(tc.status)
+				io.WriteString(w, tc.last)
+			})
+			defer srv.Close()
+			vms, err := adapter.ListVMsInProject(t.Context(), "p")
+			if tc.ok && err != nil || !tc.ok && (vms != nil || clierrors.Reason(err) != clierrors.CodeAPIError) {
+				t.Fatalf("rows=%v err=%v", vms, err)
+			}
+		})
+	}
+}
+
+// These catalog endpoints do not support a next offset. The compatibility
+// envelope must therefore contain its entire declared result in one response.
+func TestUnpagedComputeCatalogRequiresAllRows(t *testing.T) {
+	for _, catalog := range []struct {
+		name string
+		read func(*CloudRuAdapter) (int, error)
+	}{
+		{"zones", func(a *CloudRuAdapter) (int, error) {
+			v, err := a.ListAvailabilityZones(t.Context())
+			return len(v), err
+		}},
+		{"disk types", func(a *CloudRuAdapter) (int, error) {
+			v, err := a.ListDiskTypes(t.Context(), "p")
+			return len(v), err
+		}},
+	} {
+		t.Run(catalog.name, func(t *testing.T) {
+			for _, tc := range []struct {
+				total, rows int
+				reason      string
+			}{{1, 1, ""}, {2, 0, clierrors.CodeAPIError}} {
+				srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprintf(w, `{"items":[{"id":"first"}],"total":%d}`, tc.total)
+				})
+				n, err := catalog.read(a)
+				srv.Close()
+				if n != tc.rows || clierrors.Reason(err) != tc.reason {
+					t.Errorf("total=%d: rows=%d error=%v", tc.total, n, err)
+				}
+			}
+		})
 	}
 }

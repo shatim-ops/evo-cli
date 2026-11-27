@@ -11,6 +11,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -18,8 +19,8 @@ import (
 
 // A delete answers how it ended, not only that it started (D74, as D66 for
 // dns_zone_delete; axis 3: «deleted» is a resource that is gone). The
-// delete reads its operation for up to opWaitMaxSeconds, within the call's
-// budget (D69), the same in the CLI and in MCP: done is deleted, an error is
+// delete reads its operation within the call's budget (D69):
+// done is deleted, an error is
 // a refusal with Cloud.ru's text, a wait the caller cancelled is
 // INTERRUPTED naming the delete already started, an operation still
 // running — or one that cannot be read — is deleting with the tool that
@@ -61,9 +62,30 @@ func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (str
 	if waitOff(args) {
 		return deleting(fields, w)
 	}
-	m, err := waitForOpJSON(ctx, deleteOutcomeWait, w.read)
+	wait := deleteOutcomeWait
+	readCtx := ctx
+	if w.tool == "ca_delete" && boolArg(args, "wait", false) {
+		wait = int(2 * time.Minute / time.Second)
+		if _, mcp := budgetLeft(ctx); mcp {
+			wait = opWaitMaxSeconds
+		}
+		// A GET started near the end of the polling window must end with it.
+		// Only the outcome reads inherit this deadline; DELETE has already returned.
+		var cancel context.CancelFunc
+		readCtx, cancel = context.WithTimeout(ctx, time.Duration(wait)*time.Second)
+		defer cancel()
+	}
+	m, err := waitForOpJSON(readCtx, wait, w.read)
+	// A transport can return the MCP cancellation cause instead of context.Canceled.
+	// Only the caller's cancellation interrupts a started delete; a read timeout leaves it pending.
+	if err != nil && ctx.Err() == context.Canceled {
+		err = context.Canceled
+	}
 	if errors.Is(err, context.Canceled) {
 		// The delete is started: the answer names it (FB160-14).
+		if w.tool == "ca_delete" {
+			nextStep(fields, w.next, w.nextArgs)
+		}
 		return errAnswer(err, fields), true
 	}
 	if err == nil && m != nil {
@@ -129,7 +151,7 @@ func deleteRefusal(w deleteWatch, msg, code any) error {
 // A value is the cloud's — the id of an operation — and goes into evo's
 // text only in the form of one word (plainField); for any other, ok is
 // false and the value stays in next_args, a field "_untrusted" names
-// (#2392; «Риск», 362).
+// (#2392, risk review 362).
 func argsLine(args map[string]any) (line string, ok bool) {
 	parts := make([]string, 0, len(args))
 	for _, k := range slices.Sorted(maps.Keys(args)) {

@@ -124,7 +124,7 @@ var parityArgs = map[string]map[string]any{
 	"k8s_addons":          {"query": "cert"},
 	"k8s_addon_versions":  {"name": "cert-manager"},
 	"k8s_delete":          {"cluster_id": addonClusterID},
-	"k8s_add_nodepool":    {"cluster_id": addonClusterID, "name": "pool-1", "zone": pvZone},
+	"k8s_add_nodepool":    {"cluster_id": addonClusterID, "name": "pool-2", "zone": pvZone},
 	"k8s_add_addon":       {"cluster_id": addonClusterID, "name": "cert-manager"},
 	// A verb that changes the cluster: a read verb runs without consent.
 	"k8s_kubectl": {"cluster_id": addonClusterID, "args": "delete pod web"},
@@ -386,6 +386,9 @@ var paritySetup = map[string]func(t *testing.T, w parityWorld) (map[string]any, 
 	},
 }
 
+// The address recorded in state has its own resource ID.
+const parityRecordedFIP = "00000000-0000-4000-8000-0000000000f6"
+
 // recordDeployment is deploy's other state: the directory has a running
 // deployment, which deploy updates (no new VM, nothing priced).
 func recordDeployment(t *testing.T, w parityWorld) (map[string]any, func()) {
@@ -393,7 +396,7 @@ func recordDeployment(t *testing.T, w parityWorld) (map[string]any, func()) {
 	compose := filepath.Join(w.dir, "docker-compose.yml")
 	writeFile(t, compose, "services:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"80:80\"\n")
 	path := state.DefaultPath(w.dir)
-	f := &state.File{Deployments: []state.DeploymentRecord{{ID: "dep-parity", VMID: parityVM, VMIP: "203.0.113.10",
+	f := &state.File{Deployments: []state.DeploymentRecord{{ID: "dep-parity", VMID: parityVM, VMIP: "203.0.113.10", FloatingIPID: parityRecordedFIP,
 		ProjectID: pvProject, Region: pvZone, VMName: "evo-web", Status: "running", ComposeHash: "0000", SSHUser: "user1"}}}
 	if err := state.Write(path, f); err != nil {
 		t.Fatal(err)
@@ -637,6 +640,9 @@ const parityObject = `{"id":"` + parityVM + `","name":"web","status":"ACTIVE","s
 // 1.2.3). A request neither here, in the fixtures nor in parityEmptyLists
 // fails the test that made it (withParityWorld).
 var parityAnswers = map[string]string{
+	"GET audit.api.cloud.ru/events/list/{id}":            `{"logs":[{"eventId":"event-1","eventType":"create","eventSource":"compute","eventTime":"2026-10-15T11:00:00Z"}]}`,
+	"GET monitoring.api.cloud.ru/v1/{id}/export_metrics": `{"metric":{"__name__":"up","instance":"test-vm"},"values":[0,1],"timestamps":[1000,2000]}`,
+	"GET monitoring.api.cloud.ru/v2/{id}/scrape_metrics": "up 0\n",
 	// Reachability probes of doctor and whoami.
 	"GET compute.api.cloud.ru/": `{}`,
 	"GET iam.api.cloud.ru/":     `{}`,
@@ -699,7 +705,6 @@ var parityAnswers = map[string]string{
 // is no {id} and no :action, TestParityWorld_EmptyListsAreLists).
 var parityEmptyLists = map[string]string{
 	"GET ar.api.cloud.ru/v1/registries":                                "the project has no registry yet: ar_create's name is free",
-	"GET audit.api.cloud.ru/events/list/{id}":                          "no audit events: the answer is the empty page on both surfaces",
 	"GET certificatemanager.api.cloud.ru/v1/certificate":               "no certificate yet: cert_import and cert_issue_le names are free",
 	"GET certificatemanager.api.cloud.ru/v1/certificate/{id}/versions": "no versions: cert_get lists none",
 	"GET compute.api.cloud.ru/api/v1/images":                           "no private image: image_create's name is free, image_list empty",
@@ -710,8 +715,6 @@ var parityEmptyLists = map[string]string{
 	"GET dns.api.cloud.ru/v1/privateZones":                             "no private zone: the zone of dns_record_create is public",
 	"GET dns.api.cloud.ru/v1/publicRecordsSole":                        "the zone has no records yet: dns_record_create's name is free",
 	"GET iam.api.cloud.ru/api/v2/serviceAccounts":                      "no service account: sa_list empty",
-	"GET monitoring.api.cloud.ru/v1/{id}/export_metrics":               "no metrics",
-	"GET monitoring.api.cloud.ru/v2/{id}/scrape_metrics":               "no metrics",
 	"GET nlb.api.cloud.ru/v2/networkLoadBalancers":                     "no balancer yet: lb_create's name is free",
 	"GET nlb.api.cloud.ru/v2/targetGroups":                             "no target group yet: tg_create's name is free",
 	"GET organization.api.cloud.ru/v2/consumption":                     "no consumption in the period",
@@ -845,13 +848,15 @@ func computeParity(r *http.Request) *httptest.ResponseRecorder {
 	case "/api/v1/disks":
 		if r.Method != http.MethodPost {
 			items := `{"id":"` + parityVM + `","name":"old","size":20,"availability_zone":{"id":"` + pvZone + `"}}`
+			total := 1
 			parityRestored.Lock()
 			if parityRestored.name != "" {
+				total++
 				items += `,{"id":"` + parityDiskBackup + `","name":"` + parityRestored.name + `","size":20,"state":"available"}`
 				parityRestored.name = ""
 			}
 			parityRestored.Unlock()
-			_, _ = io.WriteString(w, `{"items":[`+items+`],"total":1}`)
+			_, _ = fmt.Fprintf(w, `{"items":[%s],"total":%d}`, items, total)
 			break
 		}
 		_, _ = io.WriteString(w, `{"id":"`+parityVM+`","name":"data","size":20,"status":"creating"}`)

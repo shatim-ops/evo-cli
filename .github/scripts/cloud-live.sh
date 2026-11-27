@@ -25,8 +25,7 @@
 #
 # Окружение: ZONE (имя зоны), IMAGE, FLAVOR, RUN (уникальный суффикс, по
 # умолчанию GITHUB_RUN_ID); для правил групп безопасности — KEY_ID, SECRET
-# (правило закрывает close_ports; что он оставил, уборка удаляет API
-# напрямую, как job cleanup).
+# и PROJECT (net проверяет open_ports и close_ports в отдельной группе).
 #
 # Код выхода: 0 — все проверки области прошли и остатков нет; 1 — нет.
 # A && ok || bad — ok всегда 0; фильтры jq — в одинарных кавычках; функции
@@ -40,9 +39,21 @@ ZONE=${ZONE:-ru.AZ-2}
 IMAGE=${IMAGE:-ubuntu-22.04}
 FLAVOR=${FLAVOR:-lowcost10-2-4}
 RUN=${RUN:-${GITHUB_RUN_ID:-local}}
+if [[ $area == net || ($area == sweep && (${2:-} == evo-e2e-net-* || ${3:-} == net)) ]]; then
+	# Метка сети должна сохраняться целиком, включая номер попытки.
+	if [[ ! $RUN =~ ^r[0-9]+a[0-9]+$ || ${#RUN} -gt 16 ]]; then
+		echo "::error::для net нужен полный RUN вида r<номер>a<попытка> длиной до 16" >&2
+		exit 1
+	fi
+	if [[ $area == sweep && ${2:-} != "evo-e2e-net-$RUN" ]]; then
+		echo "::error::префикс уборки сети не совпал с текущим RUN" >&2
+		exit 1
+	fi
+fi
 RUN=$(printf '%s' "$RUN" | tr -cd 'a-z0-9' | cut -c1-16)
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 tmp=$(mktemp -d)
+net_sg_receipt="${RUNNER_TEMP:-$tmp}/evo-e2e-net-$RUN.sg.json"
 failed=0
 covered=()
 
@@ -189,6 +200,58 @@ gone() {
 	[ -z "$o" ]
 }
 
+# Записываем намерение перед POST и затем квитанцию именно этого POST.
+# RUNNER_TEMP общий для основного и страховочного шагов одного job.
+route_receipt=${RUNNER_TEMP:-$tmp}/evo-e2e-net-$RUN-route.json
+record_route_receipt() {
+	jq -nc --arg v "$1" --arg op "$2" --arg id "$3" --argjson seen "${4:-false}" \
+		'{vpc:$v, operation:$op, route:$id, seen:$seen}' >"$route_receipt.new" &&
+		mv "$route_receipt.new" "$route_receipt"
+}
+route_unknown() {
+	jq -nc --arg m "$1" '{error:{reason:"API_ERROR",message:$m}}' >"$tmp/lst.err"
+	return 1
+}
+# Только ID из ответа create или из принятой им операции. Восстановленный
+# evo после обрыва ID по совпадению подсети не доказывает принадлежность.
+lst_run_route() {
+	[ "$1" = "evo-e2e-net-$RUN" ] && [ -e "$route_receipt" ] || return 0
+	local fields vpc op rid seen out op_rid other
+	fields=$(jq -er 'select((.seen | type) == "boolean" and
+		all(.vpc, .operation, .route; type == "string" and test("^[A-Za-z0-9-]*$"))) |
+		[.vpc, .operation, .route, (.seen | tostring)] | join("|")' "$route_receipt") ||
+		{ route_unknown "квитанция маршрута не читается"; return 1; }
+	IFS='|' read -r vpc op rid seen <<<"$fields"
+	if [[ -z $vpc || -z $op ]]; then route_unknown "нет квитанции создания маршрута; остаток не подтверждён"; return 1; fi
+	if [ "$seen" != true ]; then
+		out=$(evo tools call vpc_operation --arg operation_id="$op" --arg wait_seconds=45 --json 2>"$tmp/lst.err") || return 1
+		jq -e '.done == true and .error == null' <<<"$out" >/dev/null || { route_unknown "успех операции создания не подтверждён"; return 1; }
+		op_rid=$(jq -r '.resourceId // .resource_id // empty' <<<"$out") || return 1
+		if [[ -n $rid && -n $op_rid && $rid != "$op_rid" ]]; then
+			route_unknown "ID из операции отличается от квитанции создания"; return 1
+		fi
+		rid=${rid:-$op_rid}
+		[ -n "$rid" ] || { route_unknown "операция создания не дала ID маршрута"; return 1; }
+	fi
+	[[ $rid =~ ^[A-Za-z0-9-]+$ ]] || { route_unknown "некорректный ID в квитанции маршрута"; return 1; }
+	out=$(evo tools call vpc_routes --arg vpc_id="$vpc" --json 2>"$tmp/lst.err") || return 1
+	jq -e '.routes | type == "array"' <<<"$out" >/dev/null || { route_unknown "нет списка маршрутов"; return 1; }
+	if [ ! -e "$tmp/other-routes-reported" ]; then
+		other=$(jq --arg id "$rid" --arg cidrs "$ROUTE_CIDRS" '($cidrs | split(" ")) as $cs |
+			[.routes[] | select(.id != $id and (.subnet as $s | $cs | index($s)))] | length' <<<"$out") || return 1
+		if [ "$other" -gt 0 ]; then
+			printf 'Чужих маршрутов с тестовой подсетью: %s. Пропущены.\n' "$other" >>"$summary"
+			touch "$tmp/other-routes-reported"
+		fi
+	fi
+	if jq -e --arg id "$rid" 'any(.routes[]; .id == $id)' <<<"$out" >/dev/null; then
+		[ "$seen" = true ] || record_route_receipt "$vpc" "$op" "$rid" true || return 1
+		printf '%s %s\t%s-route\n' "$vpc" "$rid" "$1"
+	elif [ "$seen" != true ]; then
+		route_unknown "маршрут из квитанции ещё не был виден; остаток не подтверждён"
+	fi
+}
+
 # --- Поиск и удаление ресурсов по префиксу имени ---------------------------
 # lst ВИД ПРЕФИКС — строки «id<TAB>имя» ресурсов вида с именем ПРЕФИКС*.
 # Список не прочитан — код 1 (вид пропускается, но не считается чистым).
@@ -213,15 +276,7 @@ lst() {
 		jq -r --arg p "$p" '.disks[]? | select(((.name // "") | startswith($p)) and (((.attached_to // []) | length) == 0)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	image) out=$(evo tools call image_list --arg type=private --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.images[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	route)
-		# маршруты без имени: свои — по тестовому CIDR, в любом VPC
-		local v r
-		out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") || return 1
-		for v in $(jq -r '.vpcs[]?.id' <<<"$out"); do
-			# маршруты VPC не прочитаны — список не прочитан, не «маршрутов нет»
-			r=$(evo tools call vpc_routes --arg vpc_id="$v" --json 2>"$tmp/lst.err") || return 1
-			jq -r --arg v "$v" --arg c "$ROUTE_CIDRS" '($c | split(" ")) as $cs | .routes[]? | select(.subnet as $n | $cs | index($n)) | "\($v) \(.id)\troute \(.subnet)"' <<<"$r"
-		done ;;
+	route) lst_run_route "$p" ;;
 	subnet) out=$(evo tools call list_subnets --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.subnets[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	vpc) out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") &&
@@ -239,7 +294,7 @@ lst() {
 		jq -r --arg p "$p" '.certificates[]? | select((.name // .displayName // "") | startswith($p)) | "\(.id)\t\(.name // .displayName)"' <<<"$out" ;;
 	# Группы безопасности проб (область ops): только свои, по префиксу.
 	sg) out=$(evo tools call list_security_groups --json 2>"$tmp/lst.err") &&
-		jq -r --arg p "$p" '.security_groups[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
+		jq -r --arg p "$p" '.security_groups[]? | select((.name // "") | startswith($p) and (startswith("evo-e2e-net-") | not)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	# Копии и планы защиты проб (область ops): у evo их нет — список прямо.
 	backup) lst_api backups "$p" ;;
 	pplan) lst_api protection-plans "$p" ;;
@@ -386,7 +441,13 @@ area_kinds() {
 # запуски живы, неизвестно — список считается непрочитанным: код 1.
 done_only=0
 lst_done() {
-	lst "$1" "$2" >"$tmp/l.all" 2>/dev/null || return 1
+	local p=$2
+	# Имена ресурсов сети продолжаются через дефис. Например, попытка a1
+	# не владеет ВМ попытки a10.
+	if [[ $p == "evo-e2e-net-$RUN" && $1 != route && $1 != sg ]]; then
+		p+=-
+	fi
+	lst "$1" "$p" >"$tmp/l.all" 2>/dev/null || return 1
 	# Ресурсы пробы цены Г-20 переживают свой запуск: уборка области их не
 	# трогает, общая — только со словом g20 (e2e_live_runs.sh).
 	if [ "$done_only" = 1 ]; then
@@ -508,37 +569,110 @@ probe_dns_op() {
 	echo "probe dns operation: http $code, ключи $(jq -c 'keys' "$tmp/dop" 2>/dev/null), done $(jq -c '.done' "$tmp/dop" 2>/dev/null), состояние $(jq -c '{status, state, metadata: (.metadata | if type == "object" then keys else . end), error: (.error | if . == null then null else (tostring | .[0:120]) end)}' "$tmp/dop" 2>/dev/null | redact)"
 }
 
-# Правило группы безопасности на порт RULE_PORT из RULE_CIDR (open_ports):
-# закрывает его close_ports в области net; если правило осталось (close_ports
-# упал или не дошёл), уборка удаляет его DELETE в API, как шаг cleanup.
-delete_test_rules() {
-	local sg r code n=0
-	[ -n "${KEY_ID:-}" ] && [ -n "${SECRET:-}" ] || { echo "::warning::нет KEY_ID/SECRET — правило $RULE_PORT не удалено"; return 1; }
-	evo tools call list_security_groups --arg rules=true --json >"$tmp/sg.json" || return 1
-	jq -r --arg pr "$RULE_PORT:$RULE_PORT" --arg c "$RULE_CIDR" '.security_groups[] | .id as $g | .rules[]? | select(.direction == "ingress" and .port_range == $pr and .remote_ip_prefix == $c) | "\($g) \(.id)"' "$tmp/sg.json" >"$tmp/rules"
-	[ -s "$tmp/rules" ] || return 0
-	iam_token || { echo "::warning::нет токена — правило $RULE_PORT не удалено"; return 1; }
-	while read -r sg r; do
-		mask "$sg" "$r"
-		code=$(curl -sS --connect-timeout 10 --max-time 120 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
-			"https://compute.api.cloud.ru/api/v1/security-groups/$sg/rules/$r")
-		echo "правило $RULE_PORT: DELETE http=$code"
-		n=$((n + 1))
-	done <"$tmp/rules"
-	return 0
-}
-rules_left() {
-	evo tools call list_security_groups --arg rules=true --json |
-		jq --arg pr "$RULE_PORT:$RULE_PORT" --arg c "$RULE_CIDR" '[.security_groups[] | .rules[]? | select(.direction == "ingress" and .port_range == $pr and .remote_ip_prefix == $c and (.state // "") != "deleting")] | length'
+# У open_ports в ответе есть порт, но нет ID правила. Поэтому для этой
+# проверки создаём отдельную группу, не подключая к ней интерфейсы.
+# Квитанция в каталоге runner переживает обрыв шага и доступна его always.
+net_create_group() {
+	local zid=$1 rules
+	[ ! -e "$net_sg_receipt" ] || { bad "группа сети" "у попытки уже есть квитанция"; return 1; }
+	iam_fresh && [ -n "${PROJECT:-}" ] || { bad "группа сети" "нет доступа к созданию группы"; return 1; }
+	# Если POST принят, а ответ потерян, оставляем сигнал об остатке. По
+	# похожему имени или порту принадлежность восстанавливать нельзя.
+	printf '{}\n' >"$net_sg_receipt" || return 1
+	api POST "$C1/security-groups" "$(jq -nc --arg p "$PROJECT" --arg n "$prefix-sg" --arg z "$zid" \
+		'{project_id: $p, name: $n, availability_zone_id: $z, description: $n}')"
+	if [[ $code != 2?? ]] || ! jq -e 'select(.id | type == "string" and test("^[A-Za-z0-9-]{1,64}$"))
+		| {group: .id, defaults: []}' "$tmp/api.json" >"$net_sg_receipt.new"; then
+		bad "группа сети" "HTTP $code, нет квитанции создания"; return 1
+	fi
+	mv "$net_sg_receipt.new" "$net_sg_receipt" || return 1
+	sg=$(jq -er .group "$net_sg_receipt") || return 1
+	mask "$sg"
+	cp "$tmp/api.json" "$tmp/created-sg.json" || return 1
+	ops_settle "$C1/security-groups/$sg" 120 && net_group_detached || { bad "группа сети" "не подтверждена готовность"; return 1; }
+	# POST возвращает число начальных правил по направлениям. Их ID получаем
+	# первым полным чтением своей группы, до первого open_ports. Если счётчика
+	# нет, подтверждаем только ноль; тестового порта среди исходных быть не должно.
+	rules=$(net_group_rules) && jq -e --argjson rules "$rules" --arg p "$RULE_PORT:$RULE_PORT" --arg c "$RULE_CIDR" '
+		def counted($field; $n): if has($field) then .[$field] == $n else $n == 0 end;
+		select(all($rules[]; .direction == "ingress" or .direction == "egress"))
+		| select(counted("ingress_rules_count"; [$rules[] | select(.direction == "ingress")] | length))
+		| select(counted("egress_rules_count"; [$rules[] | select(.direction == "egress")] | length))
+		| select(all($rules[]; (.direction == "ingress" and .port_range == $p and .remote_ip_prefix == $c) | not))
+		| {group: .id, defaults: [$rules[].id]}' "$tmp/created-sg.json" >"$net_sg_receipt.new" &&
+		mv "$net_sg_receipt.new" "$net_sg_receipt" || { bad "группа сети" "исходные правила не подтверждены"; return 1; }
 }
 
-no_rules() { [ "$(rules_left)" = 0 ]; }
-# port_ranges — значения port_range всех правил ingress из RULE_CIDR (адрес
-# одинаков во всех прогонах, правила с него ставит только область net), в
-# любом формате: что отдал API (без ID).
+# В одной выделенной группе ожидается одно тестовое правило. Как в
+# provision.ListSecurityGroupRules — offset/limit и items/total. Если первая
+# страница не содержит весь список, группу оставляем.
+net_group_rules() {
+	api GET "$C1/security-groups/$sg/rules?offset=0&limit=100"
+	[ "$code" = 200 ] || return 1
+	jq -ce '
+		def uint($field): (has($field) | not) or (.[$field] | type == "number" and . >= 0 and . == floor);
+		select(uint("offset") and uint("total") and uint("limit"))
+		| .items as $rules | ($rules | length) as $n | (.limit // 100) as $limit
+		| select(($rules | type) == "array" and (.offset // 0) == 0)
+		| select($limit > 0 and $n <= $limit and $n <= 100)
+		| select(.total == $n or ((.total // 0) == 0 and $n < $limit and $n < 100))
+		| select(all($rules[]; .id | type == "string" and test("^[A-Za-z0-9-]{1,64}$")))
+		| select(([$rules[].id] | unique | length) == $n) | $rules' "$tmp/api.json"
+}
+
+net_port_rules() {
+	net_group_rules | jq -ce --arg pr "$RULE_PORT:$RULE_PORT" --arg c "$RULE_CIDR" '
+		[.[] | select(.direction == "ingress" and .ip_protocol == "tcp" and .port_range == $pr and .remote_ip_prefix == $c)]'
+}
+
+net_port_visible() { net_port_rules >"$tmp/net-port.json" && jq -e 'length > 0' "$tmp/net-port.json" >/dev/null; }
+net_record_opened_rule() {
+	local rule
+	poll 120 5 net_port_visible || return 1
+	# Несколько совпадений или иной автор правила — исход неоднозначен.
+	# Квитанцию не создаём даже если одно из совпадений позже исчезнет.
+	rule=$(jq -er 'select(length == 1) | .[0] | select(.description == "opened via open_ports")
+		| .id | strings | select(test("^[A-Za-z0-9-]{1,64}$"))' "$tmp/net-port.json") || return 1
+	mask "$rule"
+	jq -e --arg r "$rule" 'select(.defaults | index($r) == null) | .rule = $r' "$net_sg_receipt" >"$net_sg_receipt.new" &&
+		mv "$net_sg_receipt.new" "$net_sg_receipt"
+}
+
+no_rules() { [ "$(net_port_rules)" = '[]' ]; }
+
 port_ranges() {
-	evo tools call list_security_groups --arg rules=true --json |
-		jq -c --arg c "$RULE_CIDR" '[.security_groups[] | .rules[]? | select(.direction == "ingress" and .remote_ip_prefix == $c) | .port_range] | unique'
+	net_group_rules | jq -c --arg c "$RULE_CIDR" '[.[] | select(.direction == "ingress" and .remote_ip_prefix == $c) | .port_range] | unique'
+}
+
+net_group_detached() {
+	api GET "$C1/security-groups/$sg"
+	[ "$code" = 200 ] && jq -e --arg g "$sg" --arg n "evo-e2e-net-$RUN-sg" \
+		'.id == $g and .name == $n and .has_interfaces == false' "$tmp/api.json" >/dev/null
+}
+
+cleanup_net_group() {
+	local sg rules owned
+	[ -e "$net_sg_receipt" ] || return 0
+	sg=$(jq -er '.group | strings | select(test("^[A-Za-z0-9-]{1,64}$"))' "$net_sg_receipt") || {
+		echo "::error::нет ID из ответа создания группы; требуется сверка остатка"; return 1;
+	}
+	mask "$sg"
+	iam_fresh || return 1
+	if ! net_group_detached; then
+		[ "$code" = 404 ] && return 0
+		echo "::error::не подтверждены ID, метка и отсутствие интерфейсов группы; уборка остановлена"; return 1
+	fi
+	# Уборка удаляет только созданную группу. Допустимы правило прогона и
+	# подтверждённые исходные правила этой группы; любое иное оставляем.
+	owned=$(jq -ce '(.defaults // []) + [.rule | strings]' "$net_sg_receipt") || return 1
+	rules=$(net_group_rules) || { echo "::error::список правил группы не подтверждён; группа оставлена"; return 1; }
+	if ! jq -e --argjson owned "$owned" '([.[].id] - $owned) == []' <<<"$rules" >/dev/null; then
+		echo "::error::в группе есть правила вне квитанции; группа оставлена"; return 1
+	fi
+	net_group_detached || return 1
+	api DELETE "$C1/security-groups/$sg"
+	[[ $code == 2?? || $code == 404 ]] || { echo "::error::удаление своей группы: HTTP $code"; return 1; }
+	ops_settle "$C1/security-groups/$sg" 120 gone && [ "$code" = 404 ] || { echo "::error::удаление группы не подтверждено"; return 1; }
 }
 
 prefix="evo-e2e-$area-$RUN"
@@ -548,12 +682,9 @@ finish() {
 	bound_stop
 	if [ "$area" != sweep ]; then
 		echo "== уборка $prefix*"
-		[ "$area" != net ] || delete_test_rules
+		[ "$area" != net ] || cleanup_net_group || failed=1
 		# Области без своих видов ресурсов (dbchange, k8schange) убирать нечего.
 		[ -z "$(area_kinds "$area")" ] || sweep "$prefix" "$(area_kinds "$area")" || failed=1
-		if [ "$area" = net ]; then
-			if poll 120 10 no_rules; then ok "правило $RULE_PORT удалено"; else bad "правило $RULE_PORT удалено" "осталось после уборки"; fi
-		fi
 		echo "прошли изменяющие инструменты (${#covered[@]}): ${covered[*]:-}"
 		printf '| %s | покрыто | %s | %s |\n' "$area" "${#covered[@]}" "${covered[*]:-—}" >>"$summary"
 	fi
@@ -1244,8 +1375,105 @@ subnet_steps() {
 }
 
 # Сеть: VPC, ВМ без публичного IP за балансировщиком, FIP, правило, маршрут, SNAT.
+# Жизненный цикл маршрута в общем VPC. Потеря квитанции оставляет
+# диагностику для уборки: другой маршрут с той же подсетью не удаляем.
+route_steps() {
+	local vpc=$1 vm=$2 iface=$3 cidr op rid owned
+	if [[ -z $vpc || -z $vm || -z $iface || -e $route_receipt ]]; then
+		bad vpc_route_create "нет цели маршрута или уже начато создание в этом запуске"
+		return 1
+	fi
+	for cidr in $ROUTE_CIDRS; do
+		record_route_receipt "$vpc" '' '' || return 1
+		tc vpc_route_create --arg vpc_id="$vpc" --arg subnet="$cidr" --arg next_hop_vm_id="$vm" --arg next_hop_interface_id="$iface" --arg description="evo-e2e-net-$RUN-route"
+		if [ "$rc" != 0 ]; then
+			row vpc_route_create отказ "код $rc, $reason"
+			# Коллизия до записи либо явный 4xx от VPC: POST не принят.
+			if [[ ${reason%%,*} == USAGE || $why =~ ^(create\ route:\ |создание\ маршрута:\ )?vpc\ API\ 4[0-9]{2}: ]]; then
+				rm -f "$route_receipt"
+				continue
+			fi
+			bad vpc_route_create "исход запроса неизвестен; повтор не отправлен"
+			return 1
+		fi
+		op=$(j -r '.operation_id // empty')
+		[ -n "$op" ] || { bad vpc_route_create "нет квитанции операции; совпадения по подсети не удалены"; return 1; }
+		rid=$(j -r '.route_id // empty')
+		record_route_receipt "$vpc" "$op" "$rid" || return 1
+		opwait vpc "$op" 600 || { bad vpc_route_create "$why"; return 1; }
+		if [[ -n $rid && -n $res_id && $rid != "$res_id" ]]; then
+			record_route_receipt "$vpc" '' '' || return 1
+			bad vpc_route_create "ID из операции отличается от квитанции создания"
+			return 1
+		fi
+		rid=${rid:-$res_id}
+		[ -n "$rid" ] || { bad vpc_route_create "нет подтверждённого ID маршрута"; return 1; }
+		record_route_receipt "$vpc" "$op" "$rid" || return 1
+		ok "vpc_route_create $cidr" "операция done"
+		cov vpc_route_create
+		route_visible() { owned=$(lst_run_route "evo-e2e-net-$RUN") && [ -n "$owned" ]; }
+		poll 300 15 route_visible || { bad vpc_route_delete "свой маршрут не подтверждён списком"; return 1; }
+		must vpc_route_delete vpc_route_delete --arg vpc_id="$vpc" --arg route_id="$rid" || return 1
+		if opwait vpc "$(j -r .operation_id)" 600 && poll 300 15 gone route "evo-e2e-net-$RUN"; then
+			ok vpc_route_delete "маршрута нет"
+			cov vpc_route_delete
+			return 0
+		fi
+		bad vpc_route_delete "$why"
+		return 1
+	done
+	row vpc_route_create отказ "ни одна тестовая сеть не принята"
+}
+
+net_ports() {
+	local zid=$1 sg n
+	# open_ports: правило с тестового адреса, повтор — already_open.
+	net_create_group "$zid" || return 1
+	# До работы с портом в выделенной группе не должно быть ни одного
+	# совпадения. Уже имеющееся правило не попадает в квитанцию.
+	if net_group_detached && no_rules && must open_ports open_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"; then
+		# порты в ответе — строки ("18085")
+		if [ "$(j -c '(.opened // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ]; then
+			if ! net_record_opened_rule; then
+				bad open_ports "ID одного нового правила не подтверждён"; return 1
+			fi
+			tc open_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"
+			if [ "$rc" = 0 ] && [ "$(j -c '(.already_open // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ]; then
+				ok open_ports "opened, повтор — already_open"
+				cov open_ports
+			else bad "open_ports повтор" "код $rc, already_open=$(j -c .already_open)"; fi
+		else bad open_ports "opened=$(j -c .opened), failed=$(j -c .failed)"; fi
+	else bad open_ports "группа занята, правило уже есть или порт не открыт"; fi
+
+	# close_ports (D37): правило open_ports видно в формате, который сверяет
+	# close_ports ("P:P"), закрывается, повтор — already_deleted (D26). Без
+	# «видно до закрытия» отсутствие правила после ничего не доказывает: при
+	# другом формате port_range close_ports ответил бы already_deleted при
+	# открытом порте (Qwen на #315). Подписи проверок «видно до close_ports»
+	# и вызовы ниже читает TestWorkflows_RuleSeenBeforeItIsCheckedGone:
+	# правка подписи — вместе с тестом.
+	if [ -n "$sg" ] && printf '%s\n' "${covered[@]}" | grep -qx open_ports; then
+		n=$(net_port_rules | jq -ce 'map(.id)') || return 1
+		if net_group_detached && [ "$n" = "$(jq -c '[.rule]' "$net_sg_receipt")" ]; then
+			ok "правило $RULE_PORT видно до close_ports" "port_range $RULE_PORT:$RULE_PORT, одно правило из квитанции; port_range правил из $RULE_CIDR: $(port_ranges)"
+			if must close_ports close_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"; then
+				if [ "$(j -c '(.closed // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ] && poll 120 10 no_rules; then
+					# При появлении другого правила повтор возвращает превью;
+					# --dry-run гарантирует, что повтор его не удалит.
+					if evo --dry-run tools call close_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR" --json >"$tmp/r.json" 2>"$tmp/err" && [ "$(j -r '.status // empty')" = already_deleted ]; then
+						ok close_ports "closed, правила нет, повтор — already_deleted"
+						cov close_ports
+					else bad "close_ports повтор" "нет ответа already_deleted"; fi
+				else bad close_ports "closed=$(j -c .closed), список правил отличается от ожидаемого"; fi
+			fi
+		else
+			bad "правило $RULE_PORT видно до close_ports" "ID правила отличается от квитанции или группа занята; port_range правил из $RULE_CIDR: $(port_ranges) — закрытие пропущено"
+		fi
+	fi
+}
+
 area_net() {
-	local zid a b fip fip_ip tg lb sg vpc dvpc ifc op n
+	local zid a b fip fip_ip tg lb vpc dvpc ifc op n
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/net" && cd "$tmp/net"
@@ -1356,33 +1584,7 @@ area_net() {
 	dvpc=$(evo tools call vpc_list --json | jq -r '[.vpcs[] | select(.default == true)][0].id // empty')
 	ifc=$(evo tools call vm_get --arg name="$b" --json | jq -r '([.interfaces[] | select(.primary == true)] + .interfaces)[0].id // empty')
 	mask "$dvpc" "$ifc"
-	local cidr rid routed=
-	if [ -z "$dvpc" ] || [ -z "$ifc" ]; then bad vpc_route_create "нет дефолтного VPC или интерфейса ВМ"; fi
-	for cidr in $ROUTE_CIDRS; do
-		[ -n "$dvpc" ] && [ -n "$ifc" ] || break
-		tc vpc_route_create --arg vpc_id="$dvpc" --arg subnet="$cidr" \
-			--arg next_hop_vm_id="$(evo tools call vm_get --arg name="$b" --json | jq -r .id)" --arg next_hop_interface_id="$ifc" --arg description="evo e2e live run"
-		if [ "$rc" != 0 ]; then
-			row "vpc_route_create $cidr" отказ "код $rc, $reason: $(printf '%s' "$why" | cut -c1-160)"
-			continue
-		fi
-		if opwait vpc "$(j -r .operation_id)" 600; then
-			ok "vpc_route_create $cidr" "операция done"
-			cov vpc_route_create
-			routed=$cidr
-			break
-		else bad "vpc_route_create $cidr" "$why"; fi
-	done
-	if [ -n "$routed" ]; then
-		rid=$(evo tools call vpc_routes --arg vpc_id="$dvpc" --json | jq -r --arg c "$routed" '[.routes[] | select(.subnet == $c)][0].id // empty')
-		mask "$rid"
-		if [ -n "$rid" ] && must vpc_route_delete vpc_route_delete --arg vpc_id="$dvpc" --arg route_id="$rid"; then
-			if opwait vpc "$(j -r .operation_id)" 600 && poll 300 15 gone route x; then
-				ok vpc_route_delete "маршрута нет"
-				cov vpc_route_delete
-			else bad vpc_route_delete "$why"; fi
-		elif [ -z "$rid" ]; then bad vpc_route_create "маршрута $routed нет в vpc_routes"; fi
-	fi
+	route_steps "$dvpc" "$(evo tools call vm_get --arg name="$b" --json | jq -r '.id // empty')" "$ifc" || return 1
 
 	# FIP ВМ A → ВМ B.
 	if must fip_attach fip_attach --arg fip="$fip" --arg vm="$b"; then
@@ -1392,44 +1594,7 @@ area_net() {
 		else bad fip_attach "public_ip ВМ не тот за 3 мин"; fi
 	fi
 
-	# open_ports: правило с тестового адреса, повтор — already_open.
-	sg=$(evo tools call list_security_groups --json | jq -r --arg z "$zid" --arg n "SSH-access_$ZONE" '([.security_groups[] | select(.name == $n)] + [.security_groups[] | select(.availability_zone_id == $z)])[0].id // empty')
-	mask "$sg"
-	if [ -n "$sg" ] && must open_ports open_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"; then
-		# порты в ответе — строки ("18085")
-		if [ "$(j -c '(.opened // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ]; then
-			tc open_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"
-			if [ "$rc" = 0 ] && [ "$(j -c '(.already_open // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ]; then
-				ok open_ports "opened, повтор — already_open"
-				cov open_ports
-			else bad "open_ports повтор" "код $rc, already_open=$(j -c .already_open)"; fi
-		else bad open_ports "opened=$(j -c .opened), failed=$(j -c .failed)"; fi
-	fi
-
-	# close_ports (D37): правило open_ports видно в формате, который сверяет
-	# close_ports ("P:P"), закрывается, повтор — already_deleted (D26). Без
-	# «видно до закрытия» отсутствие правила после ничего не доказывает: при
-	# другом формате port_range close_ports ответил бы already_deleted при
-	# открытом порте (Qwen на #315). Подписи проверок «видно до close_ports»
-	# и вызовы ниже читает TestWorkflows_RuleSeenBeforeItIsCheckedGone:
-	# правка подписи — вместе с тестом.
-	if [ -n "$sg" ] && printf '%s\n' "${covered[@]}" | grep -qx open_ports; then
-		n=$(rules_left)
-		if [ "$n" != 0 ]; then
-			ok "правило $RULE_PORT видно до close_ports" "port_range $RULE_PORT:$RULE_PORT, правил $n; port_range правил из $RULE_CIDR: $(port_ranges)"
-			if must close_ports close_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"; then
-				if [ "$(j -c '(.closed // []) | map(tostring)')" = "[\"$RULE_PORT\"]" ] && poll 120 10 no_rules; then
-					tc close_ports --arg security_group="$sg" --arg ports="[$RULE_PORT]" --arg cidr="$RULE_CIDR"
-					if [ "$rc" = 0 ] && [ "$(j -r '.status // empty')" = already_deleted ]; then
-						ok close_ports "closed, правила нет, повтор — already_deleted"
-						cov close_ports
-					else bad "close_ports повтор" "код $rc, status $(j -r '.status // empty'), $reason"; fi
-				else bad close_ports "closed=$(j -c .closed), правил $RULE_PORT:$RULE_PORT осталось $(rules_left)"; fi
-			fi
-		else
-			bad "правило $RULE_PORT видно до close_ports" "правил $RULE_PORT:$RULE_PORT нет; port_range правил из $RULE_CIDR: $(port_ranges) — close_ports их не найдёт (в реестр расхождений)"
-		fi
-	fi
+	net_ports "$zid" || return 1
 
 	# SNAT: только если в зоне шлюза нет (один на зону; чужой не трогаем).
 	n=$(evo tools call snat_list --json | jq --arg z "$zid" --arg n "$ZONE" '[.nat_gateways[]? | select(.availability_zone_id == $z or .availability_zone == $n)] | length')
@@ -4191,30 +4356,9 @@ sweep)
 	area=sweep
 	p=${2:?нужен префикс, например evo-e2e-}
 	# sweep ПРЕФИКС [ОБЛАСТЬ]: с областью — только её виды; без — все.
-	# Маршрут и правило тестовой сети — общие для всех прогонов: их убирает
-	# только net и общая уборка (evo-e2e-), не страховка другой области.
 	if [ -n "${3:-}" ]; then kinds=$(area_kinds "$3"); else kinds=$KINDS; fi
-	# Префикс без номера прогона — уборка всех прогонов: только завершённых.
 	case "$p" in *-r[0-9]*a[0-9]*) ;; *) done_only=1 ;; esac
-	# Правило и маршрут тестовой сети — без номера прогона в имени: рядом с
-	# другим живым запуском (e2e_live_runs.sh others) общая уборка их не
-	# трогает — их снимет область net этого запуска или следующая уборка.
-	others=0
-	if [ "$done_only" = 1 ]; then
-		others=$("$here/e2e_live_runs.sh" others) || { others=-1; failed=1; }
-	fi
-	case "$p" in
-	evo-e2e- | evo-e2e-net-*)
-		case "$others" in
-		0) delete_test_rules || failed=1 ;;
-		-1) kinds=${kinds/route /} ;; # список запусков не прочитан: ошибка уже названа
-		*)
-			echo "::notice::идёт запуск cloud-e2e — правило и маршрут тестовой сети не трогаю"
-			kinds=${kinds/route /}
-			;;
-		esac ;;
-	*) kinds=${kinds/route /} ;;
-	esac
+	if [ "$p" = "evo-e2e-net-$RUN" ]; then cleanup_net_group || failed=1; fi
 	sweep "$p" "$kinds" || failed=1
 	;;
 *)

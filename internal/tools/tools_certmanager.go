@@ -161,7 +161,7 @@ func pemArg(args map[string]any, key string) string {
 // offline, so the check is the confirmed call's. list is for lostCreate.
 func certNameTaken(ctx context.Context, cli *certmanager.Client, name string) (list func(context.Context) ([]map[string]any, error), taken string) {
 	list = func(ctx context.Context) ([]map[string]any, error) {
-		return cli.List(ctx, certmanager.ListOptions{Name: name})
+		return namedResources(cli.List(ctx, certmanager.ListOptions{Name: name}))
 	}
 	existing, err := list(ctx)
 	if err != nil {

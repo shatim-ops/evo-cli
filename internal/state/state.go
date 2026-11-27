@@ -24,6 +24,14 @@ func DefaultPath(root string) string {
 	return filepath.Join(config.DataDir(root), "state.json")
 }
 
+// diskFile stores exact-key evidence only alongside its deployment in this
+// directory. JSON answers expose File, DeploymentRecord or Maker directly.
+type diskFile struct {
+	*File
+	RuleOwnerKeys map[string]string `json:"rule_owner_keys,omitempty"`
+	RuleScanKeys  map[string]string `json:"rule_scan_keys,omitempty"`
+}
+
 // Read reads the state file. Returns empty File (version=1) if file doesn't exist.
 // Returns CLIError(STATE_CORRUPTED) if JSON is invalid.
 func Read(path string) (*File, error) {
@@ -47,7 +55,8 @@ func Read(path string) (*File, error) {
 	}
 
 	var f File
-	if err := json.Unmarshal(data, &f); err != nil {
+	disk := diskFile{File: &f}
+	if err := json.Unmarshal(data, &disk); err != nil {
 		// Deleting the file forgets VMs and floating IPs that keep being
 		// billed: say so before suggesting it.
 		return nil, clierr.Wrap(
@@ -74,6 +83,15 @@ func Read(path string) (*File, error) {
 		)
 	}
 
+	for i := range f.Deployments {
+		d := &f.Deployments[i]
+		if d.CreatedBy != nil && d.CreatedBy.ServiceAccountID == "" {
+			d.CreatedBy.ruleKeyDigest = disk.RuleOwnerKeys[d.ID]
+		}
+		if r := d.PendingRuleScan; r != nil && r.StartedBy != nil && r.StartedBy.ServiceAccountID == "" {
+			r.StartedBy.ruleKeyDigest = disk.RuleScanKeys[d.ID]
+		}
+	}
 	if f.Deployments == nil {
 		f.Deployments = []DeploymentRecord{}
 	}
@@ -97,7 +115,22 @@ func Write(path string, f *File) error {
 		)
 	}
 
-	data, err := json.MarshalIndent(f, "", "  ")
+	disk := diskFile{File: f}
+	for _, d := range f.Deployments {
+		if d.ID != "" && d.CreatedBy != nil && d.CreatedBy.ruleKeyDigest != "" {
+			if disk.RuleOwnerKeys == nil {
+				disk.RuleOwnerKeys = map[string]string{}
+			}
+			disk.RuleOwnerKeys[d.ID] = d.CreatedBy.ruleKeyDigest
+		}
+		if r := d.PendingRuleScan; d.ID != "" && r != nil && r.StartedBy != nil && r.StartedBy.ruleKeyDigest != "" {
+			if disk.RuleScanKeys == nil {
+				disk.RuleScanKeys = map[string]string{}
+			}
+			disk.RuleScanKeys[d.ID] = r.StartedBy.ruleKeyDigest
+		}
+	}
+	data, err := json.MarshalIndent(disk, "", "  ")
 	if err != nil {
 		return clierr.Wrap(
 			clierr.CodeStateCorrupted,

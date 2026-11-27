@@ -28,7 +28,7 @@ func (*lostFIPCloud) GetVMDetail(context.Context, string) (*provision.VMDetail, 
 
 func (c *lostFIPCloud) CreateFloatingIP(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
 	c.mu.Lock()
-	c.made = append(c.made, &provision.FloatingIP{ID: "fip-lost", Name: req.Name, IPAddress: "203.0.113.7", State: "down"})
+	c.made = append(c.made, &provision.FloatingIP{ID: "fip-lost", Name: req.Name, Description: req.Description, IPAddress: "203.0.113.7", State: "down"})
 	c.mu.Unlock()
 	<-ctx.Done()
 	return nil, ctx.Err()

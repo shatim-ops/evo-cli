@@ -13,6 +13,7 @@ import (
 	"net/url"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // --- Node pool types (v3) ---
@@ -94,16 +95,17 @@ func (c *Client) ListNodePools(ctx context.Context, clusterID string) ([]map[str
 	// it (api-probe 17.10). A repeated token and more than maxAddonPages
 	// pages are errors (c.walk).
 	query := func() url.Values { return url.Values{"clusterId": {clusterID}} }
+	var progress pager.ItemProgress
 	err := c.walk(ctx, "/v3/nodePools", query, func(data []byte) (string, error) {
-		var r struct {
-			NodePools     []map[string]any `json:"nodePools"`
-			NextPageToken string           `json:"nextPageToken"`
+		page, next, err := pager.ObjectPage[map[string]any](data, "nodePools", "nextPageToken")
+		if err != nil {
+			return "", err
 		}
-		if err := json.Unmarshal(data, &r); err != nil {
-			return "", fmt.Errorf(i18n.T("parse node pools: %w", "разбор групп узлов: %w"), err)
+		if err := pager.CheckProgress(&progress, page, next, pager.ObjectID); err != nil {
+			return "", err
 		}
-		out = append(out, r.NodePools...)
-		return r.NextPageToken, nil
+		out = append(out, page...)
+		return next, nil
 	})
 	if err != nil {
 		return nil, err

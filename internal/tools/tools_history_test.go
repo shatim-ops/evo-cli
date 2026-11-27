@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -168,5 +169,21 @@ func TestHistory_AServerBoundToProjects(t *testing.T) {
 	tl, _ := r.Lookup("history")
 	if text, isErr := tl.Handler(context.Background(), map[string]any{"project_id": "00000000-0000-4000-8000-0000000000aa"}); !isErr {
 		t.Errorf("a project outside the server's: %s", text)
+	}
+}
+
+// Selecting a project in the local journal does not require a cloud profile.
+func TestHistory_LocalProjectFilterWithoutProfile(t *testing.T) {
+	r, dir := historyRegistry(t, false)
+	r.newEngine = func(map[string]any) (*engine.Engine, error) { return nil, errors.New("no profile") }
+	const project = "00000000-0000-4000-8000-000000000001"
+	line := history.Line{Time: "2026-11-17T10:00:00Z", Tool: "disk_create", ProjectID: project,
+		Outcome: history.Created, ResourceID: "local-disk", IntentID: "aa00000000000001"}
+	if err := journalLine(dir, line); err != nil {
+		t.Fatal(err)
+	}
+	ans, _ := callHistory(t, r, map[string]any{"since": "2026-11-01", "project_id": project})
+	if len(ans.Lines) != 1 || ans.Lines[0].ResourceID != "local-disk" {
+		t.Errorf("local journal: %+v", ans.Lines)
 	}
 }

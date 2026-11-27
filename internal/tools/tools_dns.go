@@ -16,6 +16,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // dnsClient builds an authenticated Evolution DNS client (standalone → newEngine token).
@@ -208,7 +209,7 @@ func (s *Registry) planDnsZoneCreate(ctx context.Context, args map[string]any) (
 	}
 	// A name taken before the call is refused before the question (D49),
 	// so a lost answer's zone found by the name is the call's own.
-	list := func(ctx context.Context) ([]map[string]any, error) { return cli.ListZones(ctx, vis) }
+	list := func(ctx context.Context) ([]map[string]any, error) { return namedResources(cli.ListZones(ctx, vis)) }
 	if ans, refused := nameFree(ctx, list, i18n.T("DNS zone", "зона DNS"), name, "dns_zones"); refused {
 		return answered(ans, true), nil
 	}
@@ -509,7 +510,11 @@ func (s *Registry) planDnsRecordCreate(ctx context.Context, args map[string]any)
 		records, err := cli.ListRecords(ctx, vis, zoneID)
 		listed := make([]map[string]any, 0, len(records))
 		for _, r := range records {
-			listed = append(listed, map[string]any{"id": r["id"], "name": fmt.Sprint(r["name"]) + " " + strings.ToLower(fmt.Sprint(r["type"]))})
+			recordName, recordType := stringArg(r, "name"), stringArg(r, "type")
+			if strings.TrimSpace(recordName) == "" || strings.TrimSpace(recordType) == "" {
+				return nil, pager.Incomplete(i18n.T("a DNS record has no name or type to check", "у записи DNS нет имени или типа для проверки"))
+			}
+			listed = append(listed, map[string]any{"id": r["id"], "name": recordName + " " + strings.ToLower(recordType)})
 		}
 		return listed, err
 	}

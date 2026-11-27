@@ -17,10 +17,10 @@
 package monitoring
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -28,6 +28,7 @@ import (
 
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 const defaultBaseURL = "https://monitoring.api.cloud.ru"
@@ -67,8 +68,7 @@ func (c *Client) do(ctx context.Context, path string, q url.Values) ([]byte, int
 		return nil, 0, fmt.Errorf(i18n.T("monitoring request failed: %w", "запрос к monitoring не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	return data, resp.StatusCode, nil
+	return httpretry.ReadAPIResponse(req, resp, 0)
 }
 
 func apiError(status int, body []byte) error {
@@ -110,56 +110,86 @@ func (c *Client) ExportMetrics(ctx context.Context, match string, startMs, endMs
 	if err != nil {
 		return nil, err
 	}
-	if status < 200 || status >= 300 {
-		return nil, apiError(status, data)
+	if err := pager.PageStatus(status, data, false, apiError); err != nil {
+		return nil, err
 	}
-	return parseSeries(data), nil
+	// An export with no matching series can have a complete, zero-byte body.
+	if len(data) == 0 {
+		return []Series{}, nil
+	}
+	return parseSeries(data)
 }
 
-// parseSeries tolerates a JSON array, a top-level {series|data|result:[…]}, or
-// newline-delimited JSON objects (Prometheus-style streaming export).
-func parseSeries(data []byte) []Series {
-	trimmed := strings.TrimSpace(string(data))
-	if trimmed == "" {
-		return nil
-	}
-	if trimmed[0] == '[' {
-		var arr []Series
-		if json.Unmarshal(data, &arr) == nil {
-			return arr
+// parseSeries accepts an array, a wrapped array, or one JSON object per
+// line. A broken line cannot turn a truncated export into successful history.
+func parseSeries(data []byte) ([]Series, error) {
+	data = bytes.TrimSpace(data)
+	invalid := pager.Incomplete(i18n.T("invalid metrics export", "некорректный экспорт метрик"))
+	var rows []json.RawMessage
+	switch {
+	case len(data) == 0:
+		return nil, invalid
+	case data[0] == '[':
+		if err := json.Unmarshal(data, &rows); err != nil {
+			return nil, invalid
 		}
-	}
-	if trimmed[0] == '{' {
-		var wrap struct {
-			Series []Series `json:"series"`
-			Data   []Series `json:"data"`
-			Result []Series `json:"result"`
-		}
+	case data[0] == '{':
+		var wrap struct{ Series, Data, Result json.RawMessage }
 		if json.Unmarshal(data, &wrap) == nil {
-			if len(wrap.Series) > 0 {
-				return wrap.Series
+			// A standalone series (also the one-line streaming format).
+			rows = []json.RawMessage{data}
+			for _, raw := range []json.RawMessage{wrap.Series, wrap.Data, wrap.Result} {
+				if raw == nil {
+					continue
+				}
+				if bytes.Equal(raw, []byte("null")) || json.Unmarshal(raw, &rows) != nil {
+					return nil, invalid
+				}
+				break
 			}
-			if len(wrap.Data) > 0 {
-				return wrap.Data
+		} else {
+			for line := range bytes.SplitSeq(data, []byte("\n")) {
+				if line = bytes.TrimSpace(line); len(line) != 0 {
+					rows = append(rows, line)
+				}
 			}
-			if len(wrap.Result) > 0 {
-				return wrap.Result
-			}
+		}
+	default:
+		return nil, invalid
+	}
+	out := make([]Series, len(rows))
+	for i, raw := range rows {
+		if !decodeSeries(raw, &out[i]) {
+			return nil, invalid
 		}
 	}
-	// newline-delimited objects
-	var out []Series
-	for _, line := range strings.Split(trimmed, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var s Series
-		if json.Unmarshal([]byte(line), &s) == nil && (len(s.Values) > 0 || len(s.Metric) > 0) {
-			out = append(out, s)
-		}
+	return out, nil
+}
+
+func decodeSeries(raw json.RawMessage, series *Series) bool {
+	var row struct {
+		Metric             map[string]*string
+		Values, Timestamps json.RawMessage
 	}
-	return out
+	if json.Unmarshal(raw, &row) != nil || row.Metric == nil ||
+		json.Unmarshal(row.Values, &series.Values) != nil || json.Unmarshal(row.Timestamps, &series.Timestamps) != nil ||
+		len(series.Values) != len(series.Timestamps) {
+		return false
+	}
+	// encoding/json accepts null as a float64 or int64 zero. In a valid
+	// numeric array the literal can occur only as a null sample. Check the
+	// raw arrays so a large export needs no separate allocation per sample.
+	if bytes.Contains(row.Values, []byte("null")) || bytes.Contains(row.Timestamps, []byte("null")) {
+		return false
+	}
+	series.Metric = make(map[string]string, len(row.Metric))
+	for key, value := range row.Metric {
+		if value == nil {
+			return false
+		}
+		series.Metric[key] = *value
+	}
+	return true
 }
 
 // ScrapeMetrics returns current metric values in Prometheus text exposition
@@ -173,8 +203,8 @@ func (c *Client) ScrapeMetrics(ctx context.Context, match string) (string, error
 	if err != nil {
 		return "", err
 	}
-	if status < 200 || status >= 300 {
-		return "", apiError(status, data)
+	if err := pager.PageStatus(status, data, false, apiError); err != nil {
+		return "", err
 	}
 	return string(data), nil
 }

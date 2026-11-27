@@ -18,9 +18,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
+	"strings"
 	"time"
 
+	"github.com/shatim-ops/evo-cli/internal/dbaas"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/pager"
@@ -73,17 +74,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return nil, 0, fmt.Errorf(i18n.T("postgresql request failed: %w", "запрос к postgresql не удался: %w"), err)
 	}
-	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	// grpc-gateway returns 4xx/5xx with an EMPTY body and the real reason in the
-	// `grpc-message` response header (e.g. "backup disabled"). Surface it so the
-	// error isn't a blank "postgresql API 400:".
-	if len(data) == 0 {
-		if gm := resp.Header.Get("grpc-message"); gm != "" {
-			data = []byte(`{"message":` + strconv.Quote(gm) + `}`)
-		}
-	}
-	return data, resp.StatusCode, nil
+	return dbaas.ReadAPIResponse(req, resp)
 }
 
 func apiError(status int, body []byte) error {
@@ -121,6 +112,17 @@ type OperationError struct {
 // without that field is one page.
 func (c *Client) getList(ctx context.Context, path string, query url.Values, field string) ([]map[string]any, error) {
 	var items []map[string]any
+	var progress pager.ItemProgress
+	key := pager.ObjectID
+	// Databases and users are addressed by name within a cluster. A version
+	// is also selected by its name when requesting specifications.
+	switch field {
+	case "databases", "users", "versions":
+		key = func(row map[string]any) string {
+			name, _ := row["name"].(string)
+			return name
+		}
+	}
 	err := pager.All("postgresql: "+field, func(token string) (string, error) {
 		q := url.Values{}
 		for k, v := range query {
@@ -133,22 +135,24 @@ func (c *Client) getList(ctx context.Context, path string, query url.Values, fie
 		if err != nil {
 			return "", err
 		}
-		if status < 200 || status >= 300 {
-			return "", apiError(status, data)
+		if err := pager.PageStatus(status, data, token != "", apiError); err != nil {
+			return "", err
 		}
-		var out map[string]json.RawMessage
-		if err := json.Unmarshal(data, &out); err != nil {
+		page, next, err := pager.ObjectPage[map[string]any](data, field, "next_page_token")
+		if err != nil {
 			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
 		}
-		var page []map[string]any
-		if raw, ok := out[field]; ok {
-			_ = json.Unmarshal(raw, &page)
+		if field == "clusters" {
+			for _, cluster := range page {
+				if name, _ := cluster["name"].(string); strings.TrimSpace(name) == "" {
+					return "", pager.Incomplete(i18n.T("a cluster has no name to check", "у кластера нет имени для проверки"))
+				}
+			}
+		}
+		if err := pager.CheckProgress(&progress, page, next, key); err != nil {
+			return "", err
 		}
 		items = append(items, page...)
-		var next string
-		if raw, ok := out["next_page_token"]; ok {
-			_ = json.Unmarshal(raw, &next)
-		}
 		return next, nil
 	})
 	if err != nil {

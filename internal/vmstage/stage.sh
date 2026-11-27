@@ -22,10 +22,10 @@ name=$2
 d="$HOME/.evo/stage/$name"
 mkdir -p "$d"
 
-# starttime of process $1: field 22 of /proc/PID/stat, counted after the
-# command name, which may hold spaces.
+# Start time of a live process: field 22 after parsing the command name.
+# An exited owner may retain a PID and start time until its parent waits.
 starttime() {
-	sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | awk '{print $20}'
+	sed 's/^.*) //' "/proc/$1/stat" 2>/dev/null | awk '$1 != "Z" && $1 != "X" && $1 != "x" {print $20}'
 }
 
 # owner_alive DIR: the process named in the lock directory DIR runs — the

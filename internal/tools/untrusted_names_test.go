@@ -42,9 +42,13 @@ func hostileBodyIn(status, state string, extra ...map[string]any) []byte {
 	if state != "running" {
 		body["state"] = state
 	}
-	for _, k := range []string{"items", "clusters", "registries", "zones", "records", "secrets", "certificates", "containers", "data", "vms", "results"} {
+	for _, k := range []string{"items", "clusters", "registries", "zones", "secrets", "certificates", "containers", "data", "vms", "results"} {
 		body[k] = items
 	}
+	// A DNS record is identified within its zone by both name and type.
+	record := maps.Clone(item)
+	record["type"] = "a"
+	body["records"] = []any{record}
 	body["total"] = 1
 	for _, e := range extra {
 		for k, v := range e {

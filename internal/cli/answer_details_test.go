@@ -24,7 +24,7 @@ func TestEngineError_CarriesTheAnswersUntrustedFields(t *testing.T) {
 	ce := clerrors.New(clerrors.CodeSSHTimeout, "docker compose up failed", "")
 	ce.Details = map[string]any{"output": "pull access denied"}
 	text := `{"status":"error","reason":"SSH_TIMEOUT","log":"==> deploy","output":"pull access denied","_untrusted":["log","output"]}`
-	err := withAnswerDetails(ce, text)
+	err := withAnswerDetails(ce, text, "deploy")
 	var got *clerrors.CLIError
 	if !stderrors.As(err, &got) {
 		t.Fatalf("err = %v", err)

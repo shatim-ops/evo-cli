@@ -39,10 +39,10 @@ func FuzzClose(f *testing.F) {
 		if before != nil {
 			owned = append(owned, before.OpenedRules...)
 		}
-		_ = Close(context.Background(), cloud, &sf, id)
+		_ = Close(context.Background(), cloud, &sf, id, "", nil)
 		for _, del := range cloud.deleted {
 			for _, r := range owned {
-				if r.ID == del && neededBy(&sf, id, r.SecurityGroupID, r.Port) != nil {
+				if r.ID == del && neededBy(&sf, before, r.SecurityGroupID, r.Port) != nil {
 					t.Fatalf("deleted %s although another deployment needs %s", del, r.Port)
 				}
 			}

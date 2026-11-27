@@ -9,12 +9,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -54,15 +56,16 @@ type jsonFake struct {
 	// it took.
 	vmRebooting int
 	// vmResized: parityResizeVM took the change to lowcost10-4-8.
-	vmResized bool
-	fipBound  bool     // the floating IP was attached to the VM
-	writes    []string // every request that is not a read, with its body
+	vmResized    bool
+	releasedFIPs map[string]bool // a successful DELETE makes the GET for that ID return 404
+	fipBound     bool            // the floating IP was attached to the VM
+	writes       []string        // every request that is not a read, with its body
 }
 
 func (f *jsonFake) reset() {
 	f.mu.Lock()
 	f.vmGone, f.vmStarted, f.vmStopped, f.fipBound, f.writes = false, false, false, false, nil
-	f.vmRebooting, f.vmResized = 0, false
+	f.vmRebooting, f.vmResized, f.releasedFIPs = 0, false, nil
 	f.mu.Unlock()
 }
 
@@ -74,6 +77,62 @@ func (f *jsonFake) takeWrites() []string {
 	out := append([]string(nil), f.writes...)
 	sort.Strings(out)
 	return out
+}
+
+// Only the random description of a floating IP create identifies this
+// execution. Keep it in the recorded request and normalize it just when
+// comparing two independently confirmed executions of the same intent.
+const fipCreateWrite = "POST compute.api.cloud.ru/api/v1/floating-ips?"
+
+var fipReceiptValue = regexp.MustCompile(`^evo-fip-[A-Z2-7]{26}$`)
+
+func sameFIPReceipt(write string) string {
+	if !strings.HasPrefix(write, fipCreateWrite) {
+		return write
+	}
+	target, body, ok := strings.Cut(strings.TrimPrefix(write, fipCreateWrite), " ")
+	var request struct {
+		Description string `json:"description"`
+	}
+	if !ok || json.Unmarshal([]byte(body), &request) != nil || !fipReceiptValue.MatchString(request.Description) {
+		return write
+	}
+	// The actual POST encodes a flat struct. Leave ambiguous bodies intact.
+	field := `"description":"` + request.Description + `"`
+	if strings.Count(body, field) != 1 {
+		return write
+	}
+	return fipCreateWrite + target + " " + strings.Replace(body, field, `"description":"<FIP create receipt>"`, 1)
+}
+
+func TestSameFIPReceipt_OnlyGeneratedDescription(t *testing.T) {
+	const first = "evo-fip-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	const second = "evo-fip-BCDEFGHIJKLMNOPQRSTUVWXYZA"
+	write := fipCreateWrite + ` {"name":"address","description":"` + first + `","interface_id":"nic-a"}`
+	if sameFIPReceipt(write) != sameFIPReceipt(strings.Replace(write, first, second, 1)) {
+		t.Fatal("two receipts of the same requested change compare differently")
+	}
+	for _, changed := range []string{
+		strings.Replace(write, "nic-a", "nic-b", 1),
+		strings.Replace(write, "address", "another", 1),
+		strings.Replace(write, first, "operator description", 1),
+		strings.Replace(write, first, first+"-extra", 1),
+		strings.Replace(write, "?", "?project_id=other", 1),
+	} {
+		if sameFIPReceipt(write) == sameFIPReceipt(changed) {
+			t.Fatalf("lost a change to the request: %s", changed)
+		}
+	}
+	for _, other := range []string{
+		strings.Replace(write, "POST ", "PUT ", 1),
+		strings.Replace(write, "floating-ips?", "security-groups?", 1),
+		strings.Replace(write, `"description":`, `"name_of_other_field":`, 1),
+		fipCreateWrite + ` {"nested":{"description":"` + first + `"}}`,
+	} {
+		if sameFIPReceipt(other) != other {
+			t.Fatalf("normalized outside the receipt field: %s", other)
+		}
+	}
 }
 
 // record notes a write: method, URL and body (put back for the fixture).
@@ -113,6 +172,8 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 	}
 	switch r.URL.Host {
 	case "compute.api.cloud.ru":
+		fipID := strings.TrimPrefix(p, "/api/v1/floating-ips/")
+		knownFIP := fipID == parityVM || fipID == parityRecordedFIP
 		switch {
 		case p == "/api/v1/vms/"+parityVM && get && !f.gone():
 			// The VM of parityVM with its primary interface, ready: the
@@ -190,20 +251,35 @@ func (f *jsonFake) answer(r *http.Request) *http.Response {
 		case p == "/api/v1/images" && r.Method == http.MethodPost:
 			return write(`{"id":"` + parityVM + `","name":"golden"}`)
 		case p == "/api/v1/floating-ips" && r.Method == http.MethodPost:
+			f.mu.Lock()
+			delete(f.releasedFIPs, parityVM)
+			f.mu.Unlock()
 			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`)
 		case p == "/api/v1/floating-ips/"+parityVM && r.Method == http.MethodPut:
 			f.mu.Lock()
 			f.fipBound = true
 			f.mu.Unlock()
 			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"in_use"}`)
-		case p == "/api/v1/floating-ips/"+parityVM && get:
+		case knownFIP && r.Method == http.MethodDelete:
 			f.mu.Lock()
-			bound := f.fipBound
-			f.mu.Unlock()
-			if bound {
-				return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"in_use","vm":{"id":"` + parityVM + `"}}`)
+			if f.releasedFIPs == nil {
+				f.releasedFIPs = make(map[string]bool)
 			}
-			return write(`{"id":"` + parityVM + `","ip_address":"203.0.113.10","state":"available"}`)
+			f.releasedFIPs[fipID] = true
+			f.mu.Unlock()
+			return write(`{}`)
+		case knownFIP && get:
+			f.mu.Lock()
+			bound, released := f.fipBound || fipID == parityRecordedFIP, f.releasedFIPs[fipID]
+			f.mu.Unlock()
+			if released {
+				w.WriteHeader(http.StatusNotFound)
+				return write(`{"message":"floating IP not found"}`)
+			}
+			if bound {
+				return write(`{"id":"` + fipID + `","ip_address":"203.0.113.10","state":"in_use","vm":{"id":"` + parityVM + `"}}`)
+			}
+			return write(`{"id":"` + fipID + `","ip_address":"203.0.113.10","state":"available"}`)
 		case strings.HasPrefix(p, "/api/v1/security-groups/") && strings.HasSuffix(p, "/rules") && r.Method == http.MethodPost:
 			return write(`{"id":"` + parityVM + `","direction":"ingress","ip_protocol":"tcp","state":"created"}`)
 		}
