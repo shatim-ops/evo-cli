@@ -5,11 +5,14 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -395,14 +398,21 @@ func TestHistory_LegacyClusterDeletionScope(t *testing.T) {
 			name, recorded, card                   string
 			bound                                  bool
 			entries, wantLive, wantGone, wantReads int
+			cardStatus                             int
+			wantResult                             string
 		}{
-			{"legacy-own", "", ownProject, false, 1, 0, 1, 1},
-			{"legacy-other", "", ownOther, false, 1, 1, 0, 1},
-			{"legacy-unknown", "", "", false, 1, 1, 0, 1},
-			{"legacy-other-supersedes", "", ownOther, false, 2, 2, 0, 1},
-			{"recorded-own", ownProject, ownProject, false, 1, 0, 1, 1},
-			{"recorded-other", ownProject, ownOther, false, 1, 1, 0, 1},
-			{"bounded-legacy", "", ownOther, true, 1, 0, 0, 0},
+			{"legacy-own", "", ownProject, false, 1, 0, 1, 1, http.StatusOK, ""},
+			{"legacy-other", "", ownOther, false, 1, 1, 0, 1, http.StatusOK, "read_failed"},
+			{"legacy-unknown", "", "", false, 1, 1, 0, 1, http.StatusOK, "read_failed"},
+			{"legacy-other-supersedes", "", ownOther, false, 2, 2, 0, 1, http.StatusOK, "read_failed"},
+			{"recorded-own", ownProject, ownProject, false, 1, 0, 1, 1, http.StatusOK, ""},
+			{"recorded-other", ownProject, ownOther, false, 1, 1, 0, 1, http.StatusOK, "read_failed"},
+			{"bounded-legacy", "", ownOther, true, 1, 0, 0, 0, http.StatusOK, ""},
+			// A service 404 from the same key cannot establish the project
+			// of a legacy receipt. A refusal cannot establish absence either.
+			{"legacy-404", "", "", false, 1, 1, 0, 1, http.StatusNotFound, "read_failed"},
+			{"recorded-404", ownProject, "", false, 1, 1, 0, 1, http.StatusNotFound, "not_seen"},
+			{"recorded-forbidden", ownProject, "", false, 1, 1, 0, 1, http.StatusForbidden, "read_failed"},
 		} {
 			t.Run(tool+"/"+tc.name, func(t *testing.T) {
 				checkAt(t)
@@ -427,6 +437,11 @@ func TestHistory_LegacyClusterDeletionScope(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				file := filepath.Join(hdir, "2026-11-17.jsonl")
+				before, err := os.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
 				reads := 0
 				httpretry.DefaultBase = &apiFake{own: func(w http.ResponseWriter, req *http.Request) bool {
 					if req.Method != http.MethodGet {
@@ -435,6 +450,16 @@ func TestHistory_LegacyClusterDeletionScope(t *testing.T) {
 					switch req.URL.Path {
 					case "/v1/clusters/" + resMine:
 						reads++
+						if tc.cardStatus != http.StatusOK {
+							w.Header().Set("Content-Type", "application/json")
+							w.WriteHeader(tc.cardStatus)
+							if tc.cardStatus == http.StatusNotFound {
+								fmt.Fprint(w, `{"code":5,"message":"cluster not found"}`)
+							} else {
+								fmt.Fprint(w, `{"code":7,"message":"permission denied"}`)
+							}
+							return true
+						}
 						fmt.Fprintf(w, `{"id":%q,"project_id":%q,"status":"DELETED"}`, resMine, tc.card)
 					case "/v1/clusters":
 						// The fallback project list for a legacy Redis card
@@ -453,18 +478,36 @@ func TestHistory_LegacyClusterDeletionScope(t *testing.T) {
 					t.Fatal(text)
 				}
 				var got struct {
-					Live    []historyLine
-					Checked historyChecked
+					Live       []historyLine
+					WouldClose []historyLine `json:"would_close"`
+					Checked    historyChecked
 				}
 				if err := json.Unmarshal([]byte(text), &got); err != nil {
 					t.Fatal(err)
 				}
-				if reads != tc.wantReads || got.Checked.Gone != tc.wantGone || got.Checked.WouldClose != 0 || len(got.Live) != tc.wantLive {
-					t.Fatalf("GET by ID=%d, gone=%d, would_close=%d, live=%d; want %d, %d, 0, %d",
-						reads, got.Checked.Gone, got.Checked.WouldClose, len(got.Live), tc.wantReads, tc.wantGone, tc.wantLive)
+				wantClose := 0
+				if tc.wantResult == "not_seen" {
+					wantClose = 1
 				}
-				if len(got.Live) > 0 && got.Live[len(got.Live)-1].CheckResult != checkReadFailed {
-					t.Fatalf("latest live result=%q; want %q", got.Live[len(got.Live)-1].CheckResult, checkReadFailed)
+				if reads != tc.wantReads || got.Checked.Read != tc.wantReads || got.Checked.Gone != tc.wantGone ||
+					got.Checked.WouldClose != wantClose || len(got.WouldClose) != wantClose || len(got.Live) != tc.wantLive {
+					t.Fatalf("GETs=%d checked=%+v would_close=%+v live=%+v", reads, got.Checked, got.WouldClose, got.Live)
+				}
+				if len(got.Live) > 0 {
+					line := got.Live[len(got.Live)-1]
+					if line.CheckResult != tc.wantResult || line.IntentID != fmt.Sprintf("%016x", tc.entries) {
+						t.Errorf("live: got intent %s with %q, want original with %q", line.IntentID, line.CheckResult, tc.wantResult)
+					}
+					if wantClose == 1 && got.WouldClose[0].IntentID != line.IntentID {
+						t.Errorf("would_close names another intent: %+v", got.WouldClose)
+					}
+				}
+				if tc.cardStatus != http.StatusOK && got.Checked.NotChecked["read_failed"] != 1-wantClose {
+					t.Errorf("not_checked reasons: %v", got.Checked.NotChecked)
+				}
+				after, err := os.ReadFile(file)
+				if err != nil || !bytes.Equal(before, after) {
+					t.Fatalf("history check changed journal bytes: %v", err)
 				}
 				if len(got.Live) == 2 && got.Live[0].CheckResult != checkLater {
 					t.Fatalf("earlier live result=%q; want %q", got.Live[0].CheckResult, checkLater)

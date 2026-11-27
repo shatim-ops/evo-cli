@@ -28,10 +28,6 @@ import (
 // budget of an MCP call (MCPCallBudget), in the schema (opWaitProp).
 const opWaitMaxSeconds = int(MCPCallBudget / time.Second)
 
-// opWaitUntilGone is internal to ca_delete with wait=true.
-// The *_operation tools pass a positive wait_seconds value here.
-const opWaitUntilGone = -1
-
 // opWaitDescRU is wait_seconds of the *_operation tools in the CLI's
 // Russian (opWaitProp).
 var opWaitDescRU = fmt.Sprintf("Ждать итогового состояния до N секунд (не больше %d), опрашивая операцию с нарастающим интервалом. "+
@@ -92,24 +88,14 @@ func opToMap(v any) map[string]any {
 	return m
 }
 
-// waitForOpJSON polls with backoff. With opWaitUntilGone it waits for a
-// terminal state. Other calls stop at wait_seconds or the remaining MCP
-// budget, whichever comes first. Cancellation interrupts both reads and waits.
+// waitForOpJSON polls for the caller's time limit or the remaining MCP budget,
+// whichever comes first. The *_operation tools cap their wait_seconds argument.
 func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Context) (map[string]any, error)) (map[string]any, error) {
-	// Within the budget of the call (D69): an MCP call answers with the
-	// operation's state so far, and the agent asks again. Its reads end
-	// with the call too (callCtx): the last one had no bound.
-	pollCtx := ctx
-	var deadline time.Time
-	if waitSeconds != opWaitUntilGone {
-		waitSeconds = min(waitSeconds, opWaitMaxSeconds)
-		deadline = time.Now().Add(time.Duration(waitSeconds) * time.Second)
-		var cancel context.CancelFunc
-		pollCtx, cancel = callCtx(ctx)
-		defer cancel()
-		if until, bounded := pollCtx.Deadline(); bounded && until.Before(deadline) {
-			deadline = until
-		}
+	pollCtx, cancel := callCtx(ctx)
+	defer cancel()
+	deadline := time.Now().Add(time.Duration(waitSeconds) * time.Second)
+	if until, bounded := pollCtx.Deadline(); bounded && until.Before(deadline) {
+		deadline = until
 	}
 	// cut: the budget, not the caller, ended a read or the sleep.
 	cut := func() bool { return ctx.Err() == nil && pollCtx.Err() != nil }
@@ -133,13 +119,11 @@ func waitForOpJSON(ctx context.Context, waitSeconds int, fetch func(context.Cont
 			return m, nil
 		}
 		wait.State(opState(m))
-		if !deadline.IsZero() {
-			remaining := time.Until(deadline)
-			if remaining <= 0 {
-				return stillRunning(m, waitSeconds), nil
-			}
-			delay = min(delay, remaining)
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return stillRunning(m, waitSeconds), nil
 		}
+		delay = min(delay, remaining)
 		if err := sleepShowing(pollCtx, delay, wait); err != nil {
 			if cut() {
 				return stillRunning(last, waitSeconds), nil

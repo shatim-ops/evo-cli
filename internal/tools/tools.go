@@ -697,7 +697,7 @@ func (s *Registry) registerTools() {
 		{
 			Name:        "ca_delete",
 			Description: "Delete a Container App by name. Async.",
-			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp(), "wait": boolProp("Omit to wait up to ~45 s. true waits until the app disappears; false returns deleting upon acceptance. On deleting, poll ca_get with next_args until NOT_FOUND.")}, "name"),
+			InputSchema: objSchema(map[string]any{"name": strProp("Container app name."), "confirmed": confirmedProp(), "wait": boolProp("Default: 45 s. true: up to 45 s in MCP or 2 min in the CLI. false skips the wait. On deleting, use ca_get with next_args or evo ca get <name> until NOT_FOUND.")}, "name"),
 		},
 		{
 			Name:        "ca_logs",
