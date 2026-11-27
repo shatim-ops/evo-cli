@@ -63,6 +63,16 @@ esac
 	prefix=${name%\*}
 	;;
 esac
+# Локальный ID берётся только из исходной операции pg_create.
+owned_id=
+if (( $# > 2 )); then
+	[[ $# == 4 && $kind == pg && $3 == --id && -z $prefix &&
+		$4 =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || {
+		echo "::error::некорректная квитанция удаления PostgreSQL"
+		exit 2
+	}
+	owned_id=$4
+fi
 redact_sed="$(dirname "$0")/redact.sed"
 redact() { sed -E -f "$redact_sed"; }
 say() { printf '%s%s\n' "${LOG_PREFIX:-}" "$*"; }
@@ -120,6 +130,17 @@ repeat_deleted() {
 # кластеров незавершённых запусков cloud-e2e: e2e_live_runs.sh; какие
 # запуски живы, неизвестно — список считается непрочитанным, удалений нет.
 clusters() {
+	if [ -n "$owned_id" ]; then
+		# A same-name entry never supplies an ID, including during recovery.
+		evo tools call pg_list --json 2>/dev/null |
+			jq -ce --arg id "$owned_id" --arg n "$name" '
+				if (.clusters | type) != "array" or any(.clusters[]; (.id | type) != "string")
+				then error("incomplete inventory") else
+					[.clusters[] | select(.id == $id)] |
+					if length > 1 or any(.[]; .name != $n or (.status | type) != "string")
+					then error("identity mismatch") else map({id, status:(.status | ascii_upcase)}) end end' 2>/dev/null
+		return
+	fi
 	local live='^$'
 	if [ -n "$prefix" ]; then live=$("$(dirname "$0")/e2e_live_runs.sh") || return 1; fi
 	evo tools call "${kind}_list" --json 2>/dev/null |
@@ -139,6 +160,7 @@ wait_until=0                  # после того как все удалени
 read_ok=0                     # список хоть раз прочитан
 declare -A accepted=()
 declare -A seen=()  # id всех кластеров с этим именем, виденных в списке
+[ -z "$owned_id" ] || seen[$owned_id]=1
 declare -A stuck=() # id кластеров в FAILED: Cloud.ru их не удаляет (DB-21)
 while :; do
 	now=$(date +%s)
@@ -211,6 +233,10 @@ while :; do
 		if [ "${DBAAS_ONCE:-}" = true ]; then
 			if [ "$pending" = 0 ] && [ "${#stuck[@]}" = 0 ]; then
 				say "прогон отменён: одна попытка — удаление принято, ожидания нет"
+				if [ -n "$owned_id" ]; then
+					echo "::error::исчезновение своего кластера не подтверждено"
+					exit 1
+				fi
 				exit 0
 			fi
 			echo "::error::прогон отменён: одна попытка удаления $name, не принято: $pending, FAILED: ${#stuck[@]} — остаток уберёт cleanup_only"

@@ -33,7 +33,7 @@ def on_int(*_):
     sys.exit(int(os.environ.get("INT_CODE", "130")))
 signal.signal(signal.SIGINT, on_int)
 os.makedirs(".evo", exist_ok=True)
-json.dump({"deployments": [{"vm_ip": "203.0.113.7", "vm_id": "00000000-0000-4000-8000-0000000000aa", "ssh_user": "ubuntu"}]}, open(".evo/state.json", "w"))
+json.dump({"deployments": [{"vm_ip": "203.0.113.7", "vm_id": "00000000-0000-4000-8000-0000000000aa", "floating_ip_id":"own-ip", "ssh_user": "ubuntu"}]}, open(".evo/state.json", "w"))
 open(".evo/id_ed25519", "w").write("key")
 if n == 1 and mode != "fast":
     open(f + "/stage", "w").write("running")
@@ -91,5 +91,72 @@ grep -q '::warning::deploy с обрывом: deploy кончился' "$work/de
 ! grep -q '203.0.113.7' "$work/cut-and-repeat/out" ||
 	grep -q '::add-mask::203.0.113.7' "$work/cut-and-repeat/out" ||
 	{ echo "FAIL cut-and-repeat: IP без маски"; fail=1; }
+for kind in vm floating_ip; do
+	id=00000000-0000-4000-8000-0000000000aa; [ "$kind" = vm ] || id=own-ip
+	grep -qF "owned $kind sha256=$(printf '%s' "$id" | sha256sum | cut -d' ' -f1)" "$work/cut-and-repeat/out" ||
+		{ echo "FAIL cut-and-repeat: нет подтверждения ID $kind"; fail=1; }
+done
+
+# До deploy допускается только группа без интерфейсов. Подмена ID,
+# неполный ответ и занятая группа в том числе запрещают прямую запись MCP.
+cat >"$work/bin/curl" <<'CURL'
+#!/usr/bin/env bash
+while [ "$1" != "-o" ]; do shift; done
+out=$2
+id=${!#}; id=${id##*/}
+echo "$id" >>"$SG_FIX/calls"
+cat "$SG_FIX/$id" >"$out" || exit 1
+printf '%s' "${SG_HTTP:-200}"
+CURL
+chmod +x "$work/bin/curl"
+export SG_FIX="$work/groups"
+mkdir -p "$SG_FIX"
+sgcheck() { printf '%s' test | PATH="$work/bin:$PATH" "$here/deploy_sg_detached.sh" "$@"; }
+printf '%s' '{"id":"primary","has_interfaces":true}' > "$SG_FIX/primary"
+printf '%s' '{"id":"alternate","has_interfaces":false}' > "$SG_FIX/alternate"
+jq -n '
+	def safe: [{direction:"ingress",ip_protocol:"tcp",port_range:"22:22",remote_ip_prefix:"0.0.0.0/0"},{direction:"egress",ip_protocol:"any",port_range:"",remote_ip_prefix:"0.0.0.0/0"}];
+	{security_groups:[{id:"primary",availability_zone_id:"zone"},{id:"foreign",availability_zone_id:"different",rules:safe},
+		{id:"no-ssh",availability_zone_id:"zone",rules:[]},{id:"alternate",availability_zone_id:"zone",rules:safe}]}' >"$SG_FIX/catalog"
+if sgcheck primary > /dev/null 2>&1; then echo "FAIL: разрешена занятая группа"; fail=1; fi
+[ "$(sgcheck primary "$SG_FIX/catalog")" = alternate ] || { echo "FAIL: не выбрана свободная группа своей зоны"; fail=1; }
+if grep -Eq '^(foreign|no-ssh)$' "$SG_FIX/calls"; then echo "FAIL: проверялась непригодная группа"; fail=1; fi
+for body in '{"id":"other","has_interfaces":false}' '{"id":"primary"}' 'null'; do
+	printf '%s' "$body" >"$SG_FIX/primary"
+	if sgcheck primary "$SG_FIX/catalog" >/dev/null 2>&1; then echo "FAIL: неполный ответ открыл deploy"; fail=1; fi
+done
+if SG_HTTP=403 sgcheck alternate >/dev/null 2>&1; then echo "FAIL: 403 открыл deploy"; fail=1; fi
+# Реальные формы правил Compute API: верхний регистр, дефис 0-65535, диапазон с 22,
+# опущенный remote_ip_prefix на IPv4-egress. IPv6, remote_security_group и deleting не годятся.
+printf '%s' '{"id":"alt-range","has_interfaces":false}' > "$SG_FIX/alt-range"
+printf '%s' '{"id":"busy-good","has_interfaces":true}' > "$SG_FIX/busy-good"
+: >"$SG_FIX/calls"
+jq -n '{security_groups:[
+	{id:"primary",availability_zone_id:"zone"},
+	{id:"ipv6-only",availability_zone_id:"zone",rules:[
+		{direction:"ingress",ether_type:"IPv6",ip_protocol:"tcp",port_range:"22:22"},
+		{direction:"egress",ether_type:"IPv6",ip_protocol:"any",port_range:"0:65535"}]},
+	{id:"group-src",availability_zone_id:"zone",rules:[
+		{direction:"ingress",ether_type:"IPv4",ip_protocol:"tcp",port_range:"22:22",remote_security_group:{id:"other"}},
+		{direction:"egress",ether_type:"IPv4",ip_protocol:"any",port_range:"0:65535",remote_ip_prefix:"0.0.0.0/0"}]},
+	{id:"deleting-rule",availability_zone_id:"zone",rules:[
+		{direction:"ingress",ether_type:"IPv4",ip_protocol:"tcp",port_range:"22:22",remote_ip_prefix:"0.0.0.0/0",state:"deleting"},
+		{direction:"egress",ether_type:"IPv4",ip_protocol:"any",port_range:"0:65535",remote_ip_prefix:"0.0.0.0/0"}]},
+	{id:"busy-good",availability_zone_id:"zone",rules:[
+		{direction:"INGRESS",ether_type:"IPv4",ip_protocol:"TCP",port_range:"1:1024",remote_ip_prefix:"0.0.0.0/0"},
+		{direction:"EGRESS",ether_type:"IPv4",ip_protocol:"ANY",port_range:"0-65535"}]},
+	{id:"alt-range",availability_zone_id:"zone",rules:[
+		{direction:"INGRESS",ether_type:"IPv4",ip_protocol:"TCP",port_range:"20-25",remote_ip_prefix:"0.0.0.0/0"},
+		{direction:"EGRESS",ether_type:"IPv4",ip_protocol:"ANY",port_range:"1-65535"}]}
+]}' >"$SG_FIX/catalog-rules"
+printf '%s' '{"id":"primary","has_interfaces":true}' > "$SG_FIX/primary"
+[ "$(sgcheck primary "$SG_FIX/catalog-rules")" = alt-range ] || { echo "FAIL: не выбрана alt-range с валидными правилами"; fail=1; }
+if grep -Eq '^(ipv6-only|group-src|deleting-rule)$' "$SG_FIX/calls"; then echo "FAIL: проверялась группа с непригодными правилами"; fail=1; fi
+# Если все подходящие группы заняты интерфейсами — отказ с безопасными счётчиками.
+printf '%s' '{"id":"alt-range","has_interfaces":true}' > "$SG_FIX/alt-range"
+sg_err=$(sgcheck primary "$SG_FIX/catalog-rules" 2>&1 >/dev/null || true)
+if sgcheck primary "$SG_FIX/catalog-rules" >/dev/null 2>&1; then echo "FAIL: разрешена занятая запасная группа"; fail=1; fi
+grep -qF 'других в зоне: 5, прошли правила TCP/22+IPv4 egress: 2, заняты интерфейсами: 2, не подтверждены GET: 0' <<<"$sg_err" ||
+	{ echo "FAIL: диагностика счётчиков неверна: $sg_err"; fail=1; }
 [ "$fail" = 0 ] && echo "deploy_cut: ok"
 exit "$fail"

@@ -41,7 +41,14 @@ evo() {
 	local group answer
 	case " $* " in
 	*' vpc_route_create '*)
-		touch "$FAKE_DIR/own-route"
+		echo "$*" >>"$FAKE_DIR/route-creates"
+		if command evo "$@"; then
+			if [ ! -f "$FAKE_DIR/route-create-no-create" ]; then
+				touch "$FAKE_DIR/own-route"
+			fi
+			return 0
+		fi
+		return $?
 		;;
 	*' vpc_routes '*)
 		local routes='[{"id":"foreign-route","subnet":"198.18.255.0/24"}]'
@@ -156,8 +163,11 @@ export -f evo curl rule_page
 # Настоящие функции и EXIT trap cloud-live.sh; заменён только выбор
 # большой области, чтобы проверить один шаг без моделирования ВМ и балансировщика.
 net_steps() {
-	bash -c '
-		. <(sed '\''/^case "\$area" in$/,$d'\'' "$0")
+	local trimmed="$work/cloud-live-trimmed.sh"
+	sed '/^case "\$area" in$/,$d' "$here/cloud-live.sh" >"$trimmed"
+	CLOUD_LIVE_TRIMMED=$trimmed bash -c '
+		# shellcheck disable=SC1090
+		. "$CLOUD_LIVE_TRIMMED"
 		shift
 		if [ "$1" = interrupted ]; then
 			# Исходный процесс остановился до его EXIT trap. Постоянные квитанции
@@ -248,4 +258,67 @@ for pagination_error in incomplete-page invalid-total; do
 	fi
 	check_actions ''
 done
+# Подтверждённый отказ VPC API HTTP 400 с префиксом инструмента (evo tools call):
+# квитанция очищается, второй CIDR пробуется и проходит; после подтверждения
+# удаления маршрута квитанция закрывается, чтобы удаление VPC прогона не давало 404 в sweep.
+world route-400-then-ok
+fake_evo_answer vpc_route_create 0 5 '{"error":{"reason":"API_ERROR","message":"vpc_route_create: create route: vpc API 400: invalid subnet"}}'
+fake_evo_answer vpc_route_create 1 0 '{"status":"creating","operation_id":"create-op","route_id":"own-route"}'
+net_steps normal route_steps shared-vpc vm-owned iface-owned >"$FAKE_DIR/out" 2>&1
+[ "$(wc -l <"$FAKE_DIR/route-creates")" -eq 2 ] || { echo 'ждали 2 попытки после подтверждённого 400'; exit 1; }
+[ ! -e "$RUNNER_TEMP/$prefix-route.json" ] || { echo 'квитанция маршрута должна быть закрыта после подтверждённого удаления'; exit 1; }
+grep -Fq 'подтверждённый отказ сервиса' "$FAKE_DIR/out"
+grep -Fq 'invalid subnet' "$FAKE_DIR/out"
+check_actions "$own_route_delete"$'\n'
+# Имитируем уже удалённый VPC прогона (404 на vpc_routes): sweep не должен падать.
+fake_evo_answer vpc_routes 0 5 '{"error":{"reason":"NOT_FOUND","message":"vpc_routes: vpc API 404: NotFound"}}'
+: >"$FAKE_DIR/actions"
+"$here/cloud-live.sh" sweep "$prefix" net >>"$FAKE_DIR/out" 2>&1
+check_actions ''
+
+# Подтверждённый HTTP 400 на обе тестовые сети: квитанция очищена, sweep проходит чисто.
+world route-400-both
+touch "$FAKE_DIR/route-create-no-create"
+fake_evo_answer vpc_route_create 0 5 '{"error":{"reason":"API_ERROR","message":"vpc_route_create: create route: vpc API 400: invalid field vpcId"}}'
+net_steps normal route_steps shared-vpc vm-owned iface-owned >"$FAKE_DIR/out" 2>&1
+[ "$(wc -l <"$FAKE_DIR/route-creates")" -eq 2 ] || { echo 'ждали проверку обеих подсетей при 400'; exit 1; }
+[ ! -e "$RUNNER_TEMP/$prefix-route.json" ] || { echo 'квитанция должна быть удалена после подтверждённого 400'; exit 1; }
+grep -Fq 'invalid field vpcId' "$FAKE_DIR/out"
+"$here/cloud-live.sh" sweep "$prefix" net >>"$FAKE_DIR/out" 2>&1
+check_actions ''
+
+# Неопределённый исход (500, 408, 429, потерянный ответ с warning, обрыв сети):
+# повторный POST запрещён (ровно 1 вызов), квитанция остаётся для диагностики sweep.
+for kind in 500 408 429 lostwarn unreachable; do
+	world "route-uncertain-$kind"
+	touch "$FAKE_DIR/route-create-no-create"
+	case "$kind" in
+	500) err='{"error":{"reason":"API_ERROR","message":"vpc_route_create: create route: vpc API 500: internal error"}}' ;;
+	408) err='{"error":{"reason":"API_ERROR","message":"vpc_route_create: create route: vpc API 408: request timeout"}}' ;;
+	429) err='{"error":{"reason":"API_RATE_LIMITED","message":"vpc_route_create: create route: vpc API 429: too many requests"}}' ;;
+	lostwarn) err='{"error":{"reason":"API_ERROR","message":"vpc_route_create: create route: vpc API 400: proxy","details":{"warning":"the static route may have been made"}}}' ;;
+	unreachable) err='{"error":{"reason":"API_UNREACHABLE","message":"vpc_route_create: create route: vpc request failed: EOF"}}' ;;
+	esac
+	fake_evo_answer vpc_route_create 0 5 "$err"
+	if net_steps normal route_steps shared-vpc vm-owned iface-owned >"$FAKE_DIR/out" 2>&1; then
+		echo "ждали отказ при неопределённом исходе: $kind"; exit 1
+	fi
+	[ "$(wc -l <"$FAKE_DIR/route-creates")" -eq 1 ] || { echo "повторный POST при неопределённом исходе: $kind"; exit 1; }
+	[ -e "$RUNNER_TEMP/$prefix-route.json" ] || { echo "квитанция пропала при неопределённом исходе: $kind"; exit 1; }
+	grep -Fq 'исход запроса неизвестен; повтор не отправлен' "$FAKE_DIR/out"
+	check_actions ''
+done
+
+# Отказ чтения списка до POST: повтор не нужен, пустая квитанция убирается.
+world route-prepost
+touch "$FAKE_DIR/route-create-no-create"
+fake_evo_answer vpc_route_create 0 5 '{"error":{"reason":"API_ERROR","message":"vpc_route_create: check the destination is free: list routes: vpc API 500: unavailable"}}'
+if net_steps normal route_steps shared-vpc vm-owned iface-owned >"$FAKE_DIR/out" 2>&1; then
+	echo 'ждали отказ при ошибке чтения списка до POST'; exit 1
+fi
+[ "$(wc -l <"$FAKE_DIR/route-creates")" -eq 1 ] || { echo 'ждали ровно 1 вызов при ошибке чтения списка до POST'; exit 1; }
+[ ! -e "$RUNNER_TEMP/$prefix-route.json" ] || { echo 'пустая квитанция осталась после ошибки до POST'; exit 1; }
+grep -Fq 'до POST не прочитан список маршрутов' "$FAKE_DIR/out"
+check_actions ''
+
 echo 'cloud-live net cleanup: ok'

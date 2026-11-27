@@ -139,5 +139,25 @@ grep -q 'одна попытка' "$FAKE_DIR/out" || { echo "FAIL once: нет �
 fresh once-accepted
 ONCE=true run once-accepted 0 1 "$running" "$running"
 
+# В точечном прогоне у одноимённого чужого кластера другой ID.
+# Проверяет сами аргументы обоих вызовов pg_delete (с --yes и без него).
+fresh pg-receipt
+own=00000000-0000-4000-8000-000000000001
+other=00000000-0000-4000-8000-000000000002
+cluster=evo-e2e-pg-r9a1
+rows=$(jq -cn --arg n "$cluster" --arg i "$own" --arg j "$other" '[{id:$i,name:$n,status:"RUNNING"}, {id:$j,name:$n,status:"RUNNING"}]')
+fake_evo_answer pg_list 0 0 "$(jq -c '{clusters:.}' <<< "$rows")"
+fake_evo_answer pg_list 1 0 "$(jq -c '{clusters:[.[1]]}' <<< "$rows")"
+fake_evo_answer pg_delete.yes 0 0 '{"status":"deleting"}'
+fake_evo_answer pg_delete 0 0 '{"status":"already_deleted","existed":false}'
+PATH="$work/bin:$PATH" RUNNER_TEMP="$FAKE_DIR" DBAAS_POLL=0 \
+	bash -x "$here/dbaas-delete.sh" pg "$cluster" --id "$own" >"$FAKE_DIR/out" 2>"$FAKE_DIR/trace"
+if ! grep -Fq "+ evo --yes tools call pg_delete --arg cluster_id=$own --json" "$FAKE_DIR/trace" ||
+	grep -Fq "tools call pg_delete --arg cluster_id=$other" "$FAKE_DIR/trace"; then
+	echo "FAIL pg-receipt: неверная цель удаления"
+	fail=1
+fi
+[ "$(grep -c 'pg_delete yes=1' "$FAKE_DIR/evo-calls")" = 1 ] || { echo "FAIL pg-receipt"; fail=1; }
+python3 "$here/pg_backup_receipts_test.py" || fail=1
 [ "$fail" = 0 ] && echo "dbaas-delete: ok"
 exit "$fail"

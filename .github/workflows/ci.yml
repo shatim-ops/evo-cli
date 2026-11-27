@@ -362,6 +362,10 @@ jobs:
         if: runner.os == 'Linux'
         run: timeout 120 .github/scripts/cloud_live_net_cleanup_test.sh
 
+      - name: Уборка Container Apps сохраняет чужое приложение
+        if: runner.os == 'Linux'
+        run: timeout 120 .github/scripts/cloud_live_ca_receipts_test.sh
+
       # Проба повтора создания пользователя и базы PostgreSQL
       # (pg-repeat-probe.sh) на заглушке curl: запись — только когда оба
       # есть, ответ платформы записан, шаг не падает, секретов в журнале нет.

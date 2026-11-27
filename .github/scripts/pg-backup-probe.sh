@@ -3,23 +3,10 @@
 # PostgreSQL после его удаления. Документация Cloud.ru: при удалении кластера
 # удаляются «а также резервные копии кластера»
 # (https://cloud.ru/docs/paas-postgresql/ug/topics/guides__deleting-cluster).
-# Ожидание — копий нет; расхождение с документацией — копия найдена; ответ
-# не 200 и не 404 на список — отдельное расхождение API. Начисления проба не
-# видит. Вызывает job dbaas-pg в cloud-e2e.yml
-# после шага удаления кластера; окружение: CLUSTER_ID (кластер прогона,
-# уже замаскирован), BACKUP_NAME (копия, сделанная pg_backup_create; нет —
-# проба не проводится),
-# KEY_ID, SECRET — ключ прогона.
-#
-# Проба, не проверка: итог — строка «DB-22 проба: …» для реестра, код выхода
-# всегда 0, кроме неверного вызова. Ничего не создаёт и не удаляет: evo
-# pg_backups и два GET API. По спецификации PostgreSQL (BackupService) у
-# копии нет ни DELETE, ни списка по проекту — только список и чтение по
-# имени внутри кластера; восстановление в новый кластер (recovery_spec.
-# backup_id в создании) создало бы платный кластер и здесь не проверяется.
-#
-# Лог публичный: печатаются коды HTTP, reason, имена полей и количества,
-# текст ошибки API — через redact.sed и обрезанным. ID и токен не печатаются.
+# Отдельный GET по каждой сохранённой паре (ID, имя) после удаления родителя.
+# Общий ответ 404 или отсутствие родителя не доказывают удаление копии.
+# Имена и исходные ID остаются на раннере. Публичная строка связывает номер
+# копии с сохранённым отпечатком без раскрытия её идентификатора.
 set -euo pipefail
 
 : "${CLUSTER_ID:?нужен CLUSTER_ID}"
@@ -31,22 +18,19 @@ api=https://postgresql.api.cloud.ru
 out="${RUNNER_TEMP:-/tmp}/pg-backup-probe.json"
 err="${RUNNER_TEMP:-/tmp}/pg-backup-probe.err"
 trap 'rm -f "$out" "$err"' EXIT
-[ -z "${BACKUP_NAME:-}" ] || echo "::add-mask::$BACKUP_NAME"
-
-# Копии не было (pg_backup_create упал раньше): вопрос DB-22 не задан.
-if [ -z "${BACKUP_NAME:-}" ]; then
-	echo "DB-22 проба: не проведена — ручной копии в прогоне нет"
-	exit 0
-fi
-
-# Кластер обязан быть удалён: иначе проба отвечает не на вопрос DB-22.
-if ! evo tools call pg_list --json >"$out" 2>/dev/null; then
-	echo "DB-22 проба: не проведена — pg_list не прочитан"
-	exit 0
-fi
-if jq -e --arg id "$CLUSTER_ID" 'any(.clusters[]?; .id == $id)' "$out" >/dev/null; then
-	st=$(jq -r --arg id "$CLUSTER_ID" '[.clusters[] | select(.id == $id) | .status][0]' "$out")
-	echo "DB-22 проба: не проведена — кластер ещё в pg_list ($st)"
+receipts="$(dirname "$0")/pg-backup-receipts.py"
+targets="$RUNNER_TEMP/pg-backup-targets"
+umask 077
+python3 "$receipts" paths > "$targets"
+unknown() {
+	while read -r n _; do
+		echo "DB-22: копия №$n, исход неизвестен ($1)"
+	done < "$targets"
+}
+if ! evo tools call pg_list --json >"$out" 2>/dev/null || ! jq -e --arg id "$CLUSTER_ID" '
+	(.clusters | type) == "array" and all(.clusters[]; (.id | type) == "string") and
+	all(.clusters[] | select(.id == $id); .status == "ERASED" or .status == "DELETED")' "$out" >/dev/null; then
+	unknown "удаление родительского кластера не подтверждено"
 	exit 0
 fi
 
@@ -65,17 +49,17 @@ echo "evo pg_backups: код $evo_rc, reason ${evo_reason:--}, копий ${evo_
 
 # 2. Те же копии прямым GET API: список и копия по имени.
 if [ -z "${KEY_ID:-}" ] || [ -z "${SECRET:-}" ]; then
-	echo "DB-22 проба: evo pg_backups — код $evo_rc (${evo_reason:--}, копий $evo_n); API не проверен: нет ключа"
+	unknown "нет ключа для адресного чтения"
 	exit 0
 fi
 # Тело запроса токена — через stdin, не в argv.
 token=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k, secret:$s}' |
-	curl -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
+	curl --max-time 30 -sS -X POST https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- 2>/dev/null |
 	jq -r '.access_token // .accessToken // empty') || token=
 [ -n "$token" ] && echo "::add-mask::$token"
 get() { # ПУТЬ → тело в $out, код HTTP на stdout; 000 — запрос не дошёл
 	# stderr curl — в никуда: его текст об ошибке может нести URL с ID.
-	curl -sS -o "$out" -w '%{http_code}' -H "Authorization: Bearer $token" "$api$1" 2>/dev/null || echo 000
+	curl --max-time 30 -sS -o "$out" -w '%{http_code}' -H "Authorization: Bearer $token" "$api$1" 2>/dev/null || true
 }
 show() { # КОД — что ответил API: поля и текст ошибки; тело не JSON — его
 	# начало (на rc.2 список ответил 400 не JSON, и проба не показала ничего)
@@ -91,23 +75,29 @@ show() { # КОД — что ответил API: поля и текст ошиб
 	echo "http=$1, поля $keys${msg:+, «$msg»}"
 }
 if [ -z "$token" ]; then
-	echo "DB-22 проба: evo pg_backups — код $evo_rc (${evo_reason:--}, копий $evo_n); API не проверен: нет токена"
+	unknown "нет токена для адресного чтения"
+	exit 0
+fi
+cluster_code=$(get "/v1/clusters/$CLUSTER_ID")
+if { [ "$cluster_code" = 404 ] && jq -e '
+	(.message | strings | ascii_downcase) as $msg |
+	(.code == 5 or .code == "5" or .code == "NOT_FOUND") and
+	(["cluster not found", "cluster does not exist", "postgresql cluster not found"] | index($msg) != null)
+	' "$out" >/dev/null 2>&1; } ||
+	{ [ "$cluster_code" = 200 ] && jq -e --arg id "$CLUSTER_ID" '.id == $id and
+		(.status == "ERASED" or .status == "DELETED")' "$out" >/dev/null; }; then
+	echo "PostgreSQL: отсутствие своего кластера подтверждено адресной проверкой (HTTP $cluster_code)"
+else
+	echo "::warning::PostgreSQL: отсутствие своего кластера не подтверждено (HTTP ${cluster_code:-000})"
+	unknown "исход удаления родительского кластера не установлен"
 	exit 0
 fi
 list_code=$(get "/v1/clusters/$CLUSTER_ID/backups")
 list_n=$(jq -r 'if (.backups | type) == "array" then (.backups | length) else "-" end' "$out" 2>/dev/null || echo '?')
 echo "GET /v1/clusters/{id}/backups: $(show "$list_code"), копий $list_n"
-one_code=$(get "/v1/clusters/$CLUSTER_ID/backups/$BACKUP_NAME")
-echo "GET /v1/clusters/{id}/backups/{name}: $(show "$one_code"), статус $(jq -r '.status // "-"' "$out" 2>/dev/null || echo '?')"
-
-# Итог под гипотезу документации: копии уходят вместе с кластером. Копия,
-# которая читается по имени, существует — расхождение при любом ответе списка.
-if { [ "$list_code" = 200 ] && [ "$list_n" != 0 ] && [ "$list_n" != "-" ]; } || [ "$one_code" = 200 ]; then
-	verdict="РАСХОЖДЕНИЕ с документацией: копия удалённого кластера найдена"
-elif { [ "$list_code" = 200 ] && [ "$list_n" = 0 ]; } || [ "$list_code" = 404 ]; then
-	verdict="как в документации: копий нет"
-else
-	verdict="копий не видно, но список отвечает $list_code вместо пустого списка или 404 — расхождение API"
-fi
-echo "DB-22 проба: $verdict (API: список — $list_code, копий $list_n; копия по имени — $one_code;" \
-	"evo pg_backups — код $evo_rc, ${evo_reason:--}). DELETE копии и списка по проекту в спецификации нет; начисления не проверялись"
+inventory="$RUNNER_TEMP/pg-after-delete-list.json"
+if [ "$list_code" = 200 ]; then cp "$out" "$inventory"; else : > "$inventory"; fi
+while read -r n encoded; do
+	one_code=$(get "/v1/clusters/$CLUSTER_ID/backups/$encoded")
+	python3 "$receipts" result "$n" "${one_code:-000}" "$out" "$inventory"
+done < "$targets"

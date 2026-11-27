@@ -167,6 +167,8 @@ permissions:
 # и VM повторяют это выражение (TestWorkflows_E2ENamesCarryTheRun).
 env:
   RUN: r${{ github.run_number }}a${{ github.run_attempt }}
+  E2E_PRODUCT_SHA: d7645da5efea04122f984cfd8cb9a28408d08177
+  E2E_OWNED_ONLY: "true"
   # Каждый ответ API, который получил evo, — строка формы в этот файл
   # (httpretry, #1714); в конце job его разбирает .github/actions/answers и
   # удаляет: наружу — только выход генератора (заключение «Риска» 206, У2).
@@ -195,6 +197,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
+      - name: Проверка кандидата и параметров прогона 1.9.1
+        env:
+          PATCH_SCOPE: >-
+            ${{ (inputs.e2e_core || inputs.k8s_smoke || inputs.dbaas_smoke ||
+                 inputs.disk_smoke || inputs.net_smoke || inputs.dns_smoke ||
+                 inputs.secrets_smoke || inputs.ca_smoke || inputs.mcp_smoke) &&
+                (!inputs.dbaas_smoke || inputs.dbaas_services == 'pg') &&
+                !inputs.os_smoke && !inputs.k8s_pod_chart &&
+                !inputs.stack_smoke && !inputs.s3_smoke && !inputs.redis_standalone_probe && !inputs.probes }}
+        run: |
+          [[ "$GITHUB_REF" == 'refs/heads/claude/live-runs-191-standard-d7645da5' && "$GITHUB_RUN_ATTEMPT" == 1 && "$PATCH_SCOPE" == true ]]
+          [[ "$(git rev-parse HEAD^)" == "$E2E_PRODUCT_SHA" ]]
+          git diff --exit-code --quiet "$E2E_PRODUCT_SHA" HEAD -- . ':(exclude).github/workflows/cloud-e2e.yml' ':(exclude).github/workflows/ci.yml' ':(exclude).github/scripts/**'
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -256,6 +272,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -359,6 +376,7 @@ jobs:
         with:
           # Токен GITHUB_TOKEN не остаётся в .git/config для следующих шагов.
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -426,20 +444,28 @@ jobs:
 
       - name: deploy --dry-run (ничего не создаёт)
         working-directory: e2e-app
+        env:
+          KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          SECRET: ${{ secrets.CLOUDRU_SECRET }}
         run: |
-          evo deploy --dry-run 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"
+          evo deploy --dry-run --json > "$RUNNER_TEMP/core-preview.json"
+          sg=$(jq -er 'select(.status == "dry_run") | .preview.details.security_group.id | strings | select(test("^[A-Za-z0-9_-]{1,128}$"))' "$RUNNER_TEMP/core-preview.json")
+          evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-before.json"
+          picked=$(jq -n --arg k "$KEY_ID" --arg s "$SECRET" '{keyId:$k,secret:$s}' |
+            curl -fsS --connect-timeout 10 --max-time 60 https://iam.api.cloud.ru/api/v1/auth/token -H 'Content-Type: application/json' --data-binary @- |
+            jq -er '.access_token // .accessToken | strings | select(length > 0)' |
+            "$GITHUB_WORKSPACE/.github/scripts/deploy_sg_detached.sh" "$sg" "$RUNNER_TEMP/sg-before.json")
+          # Реальный deploy и повтор используют ровно проверенную группу.
+          sed -i '/^security_group:/d' .evo.yaml
+          printf 'security_group: "%s"\n' "$picked" >> .evo.yaml
+          evo deploy --dry-run --json | jq -e --arg id "$picked" '.status == "dry_run" and .preview.details.security_group.id == $id' >/dev/null
           [ ! -s .evo/state.json ] || ! jq -e '.deployments | length > 0' .evo/state.json
-
-      # Группа безопасности зоны общая: правило для порта приложения могло
-      # быть в ней и до deploy (его destroy не трогает). Запоминаем, что было.
-      - name: Правила групп безопасности до deploy
-        working-directory: e2e-app
-        run: evo tools call list_security_groups --arg rules=true --json > "$RUNNER_TEMP/sg-before.json"
 
       # Путь CLI тоже идёт через этапы на ВМ (D69, вариант C): deploy
       # обрывается посреди этапа, этап на ВМ жив, повтор доделывает
       # (строка плана 1.7 «cloud-e2e deploy на rc.1 обязателен»).
       - name: deploy --yes с обрывом посреди этапа и повтором
+        id: deploy
         working-directory: e2e-app
         run: |
           "$GITHUB_WORKSPACE/.github/scripts/deploy_cut.sh"
@@ -505,41 +531,47 @@ jobs:
           [ "$rc" = 130 ] || { echo "::error::logs -f: код $rc, ожидался 130"; exit 1; }
 
       - name: destroy --yes (всегда)
-        if: always()
+        if: always() && steps.deploy.outcome != 'skipped'
         run: |
-          cd e2e-app 2>/dev/null && [ -f .evo/state.json ] || { echo "нечего удалять"; exit 0; }
+          cd e2e-app && [ -s .evo/state.json ] || { echo "::error::нет state прогона для адресной уборки; исход deploy не подтверждён"; exit 1; }
+          umask 077
+          jq -e '{vms: [.deployments[]?.vm_id | strings | select(length > 0)],
+            ips: [(.deployments[]?.floating_ip_id, .lost_floating_ips[]?.id) | strings | select(length > 0)]}' \
+            .evo/state.json > "$RUNNER_TEMP/deploy-ids.json"
+          while read -r kind id; do
+            echo "owned $kind sha256=$(printf '%s' "$id" | sha256sum | cut -d' ' -f1)"
+          done < <(jq -r '(.vms[] | "vm " + .), (.ips[] | "floating_ip " + .)' "$RUNNER_TEMP/deploy-ids.json")
           # destroy сам ждёт до 10 мин, пока ВМ в creating станет удаляемой.
-          for _ in 1 2; do evo destroy --yes 2>&1 | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" && break; sleep 30; done
-          jq -e '.deployments | length == 0' .evo/state.json
+          for i in 1 2; do
+            if evo destroy --yes --json > "$RUNNER_TEMP/destroy.json" &&
+              jq -e '(.status == "destroyed" or .status == "none") and .cleanup_pending != true' "$RUNNER_TEMP/destroy.json" >/dev/null; then break; fi
+            [ "$i" != 2 ] || { echo "::error::destroy не подтвердил завершение уборки"; exit 1; }
+            sleep 30
+          done
+          jq -e '(.deployments | length == 0) and ((.lost_floating_ips // []) | length == 0)' .evo/state.json
 
-      # Страховка: ВМ evo-e2e-app-$RUN и её floating IP («fip-evo-e2e-app-$RUN-…») не
-      # должны пережить прогон, даже если state потерян (15.10.2026 ВМ
-      # зависла в creating, destroy сдался, раннер унёс state — ВМ и FIP
-      # остались платными). Ищет по имени в проекте, удаляет, при остатке —
-      # ошибка с ID, чтобы удалить вручную.
+      # После адресного destroy читаем списки повторно. Совпадение имени
+      # без ID из state можно показать только как возможный остаток.
       - name: Сирот evo-e2e-app-<прогон> нет (всегда)
-        if: always()
+        if: always() && steps.deploy.outcome != 'skipped'
         run: |
-          cd e2e-app 2>/dev/null || { echo "проект не создан"; exit 0; }
-          vms() { evo tools call vm_list --json | jq -r --arg n "evo-e2e-app-$RUN" '[.vms[]? | select(.name==$n) | .id] | join(" ")'; }
+          cd e2e-app
+          ids="$RUNNER_TEMP/deploy-ids.json"
+          [ -s "$ids" ] || { echo "::error::не сохранены ID deploy, остаток не установлен"; exit 1; }
           for i in 1 2 3 4 5 6; do
-            ids=$(vms)
-            [ -z "$ids" ] && break
-            for id in $ids; do echo "::add-mask::$id"; done
-            echo "осталась ВМ evo-e2e-app-$RUN — удаляю (попытка $i)"
-            for id in $ids; do
-              evo --yes tools call destroy --arg vm_id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring)}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | cut -c1-260 || true
-            done
-            sleep 60
+            vms=$(evo tools call vm_list --json | jq --slurpfile own "$ids" --arg n "evo-e2e-app-$RUN" \
+              '[.vms[] | select(.name == $n or (.id as $id | $own[0].vms | index($id) != null))] | length')
+            ips=$(evo tools call list_floating_ips --json | jq --slurpfile own "$ids" --arg p "fip-evo-e2e-app-$RUN-" \
+              '[.floating_ips[] | select(((.name // "") | startswith($p)) or (.id as $id | $own[0].ips | index($id) != null))] | length')
+            echo "После destroy: ВМ $vms, плавающих IP $ips"
+            if [ "$vms" = 0 ] && [ "$ips" = 0 ]; then
+              jq -e '(.vms | length > 0) and (.ips | length > 0)' "$ids" >/dev/null ||
+                { echo "::error::списки пусты, но не все ID создания получены; исход неподтверждённой операции неизвестен"; exit 1; }
+              exit 0
+            fi
+            [ "$i" = 6 ] || sleep 60
           done
-          for id in $(evo tools call list_floating_ips --json |
-            jq -r --arg p "fip-evo-e2e-app-$RUN-" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .available) | .id'); do
-            echo "::add-mask::$id"
-            echo "освобождаю floating IP"
-            evo --yes tools call release_floating_ip --arg id="$id" --json 2>&1 | jq -c "{status, error: ((.error // null) | tostring)}" 2>/dev/null | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" | cut -c1-260 || true
-          done
-          left=$(vms)
-          [ -z "$left" ] || { echo "::error::после прогона осталась ВМ evo-e2e-app-$RUN ($left) — удалите её в консоли Cloud.ru"; exit 1; }
+          echo "::error::после destroy в проекте остались совпадения; нужна сверка с ID этого прогона"; exit 1
 
       # Загрузочный диск ВМ (evo-e2e-app-$RUN-boot) после destroy: DELETE ВМ идёт
       # без delete_attachments, а документация говорит, что диски можно
@@ -667,6 +699,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -794,6 +827,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -993,7 +1027,7 @@ jobs:
   # аудитора — audit-*. ID и IP маскируются.
   cleanup:
     environment: cloud-e2e
-    if: ${{ inputs.cleanup_only }}
+    if: ${{ inputs.cleanup_only && github.ref != 'refs/heads/claude/live-runs-191-standard-d7645da5' }}
     runs-on: ubuntu-24.04
     # Кластер DBaaS, который ещё создаётся, Cloud.ru удалять отказывается:
     # повтор до 120 мин и ожидание до 30 (dbaas-delete.sh) поверх ВМ и mk8s.
@@ -1014,6 +1048,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -1210,8 +1245,7 @@ jobs:
   # Managed Kubernetes вживую (до 16.10.2026 не проверялся ни разу): кластер
   # с одним мастером → пул из одного узла → плагин cert-manager → поды
   # плагина через kubectl → удаление кластера. Платно (~40–60 мин работы
-  # кластера), только по входу k8s_smoke; кластер удаляется всегда, в том
-  # числе по имени, если прогон потерял его ID. ID маскируются.
+  # кластера), только по входу k8s_smoke; уборка использует ID из ответа создания.
   k8s-smoke:
     needs: preflight
     environment: cloud-e2e
@@ -1234,6 +1268,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -1304,15 +1339,18 @@ jobs:
         run: .github/scripts/k8s-footprint.sh save "$RUNNER_TEMP/footprint"
 
       - name: k8s plan, затем create (1 мастер)
+        id: create_cluster
         run: |
           # warnings плана называют каталог (flavor, зона): через redact.sed.
           evo --json k8s plan --name "$CLUSTER" --zone "$ZONE" --master-count 1 ${K8S_VERSION:+--version "$K8S_VERSION"} |
             jq '{version, master_count, kube_api_internet, warnings}' |
             sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed" || true
           evo --json --yes k8s create --name "$CLUSTER" --zone "$ZONE" --master-count 1 ${K8S_VERSION:+--version "$K8S_VERSION"} > "$RUNNER_TEMP/create.json"
-          id=$(jq -r '.cluster_id // empty' "$RUNNER_TEMP/create.json")
-          [ -n "$id" ] || { jq -c '{status, error}' "$RUNNER_TEMP/create.json" | sed -E -f "$GITHUB_WORKSPACE/.github/scripts/redact.sed"; echo "::error::k8s create без cluster_id"; exit 1; }
+          id=$(jq -er --arg n "$CLUSTER" 'select(.status == "creating" and .name == $n)
+            | select(.operation_id | strings | length > 0) | .cluster_id | strings | select(test("^[A-Za-z0-9._-]{1,128}$"))' "$RUNNER_TEMP/create.json") ||
+            { echo "::error::нет ID кластера из ответа операции создания; исход не подтверждён"; exit 1; }
           echo "::add-mask::$id"
+          echo "owned k8s_cluster sha256=$(printf '%s' "$id" | sha256sum | cut -d' ' -f1)"
           echo "CLUSTER_ID=$id" >> "$GITHUB_ENV"
           jq '{status}' "$RUNNER_TEMP/create.json"
 
@@ -1563,12 +1601,12 @@ jobs:
       # (k8s-delete.sh). С пробой Г-12 ожидание длиннее — на обновление
       # версии (заключение «Риска» 189, У2).
       - name: Удаление кластера (всегда)
-        if: always()
+        if: always() && steps.create_cluster.outcome != 'skipped'
         env:
           # Отмена прогона — одна попытка удаления, без ожидания.
           K8S_DEL_ONCE: ${{ job.status == 'cancelled' }}
           K8S_DEL_WAIT: ${{ contains(format(' {0} ', inputs.probes), ' g12 ') && '4200' || '1800' }}
-        run: .github/scripts/k8s-delete.sh "$CLUSTER"
+        run: .github/scripts/k8s-delete.sh "$CLUSTER" "${CLUSTER_ID:-}"
 
       - name: След кластера в проекте после удаления (Г-12)
         if: always() && contains(format(' {0} ', inputs.probes), ' g12 ')
@@ -1610,6 +1648,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -1646,7 +1685,7 @@ jobs:
           echo "::add-mask::$zid"
           echo "ZONE_ID=$zid" >> "$GITHUB_ENV"
           n=$(evo tools call "${KIND}_list" --json | jq -e --arg n "$CLUSTER" '[.clusters[] | select(.name == $n)] | length')
-          [ "$n" = 0 ] || { echo "::error::кластер $CLUSTER уже есть — сначала cleanup_only"; exit 1; }
+          [ "$n" = 0 ] || { echo "::error::имя кластера $CLUSTER занято, создание пропущено"; exit 1; }
           echo "зона $ZONE открыта, кластера $CLUSTER нет"
 
       # Самая дешёвая спецификация standard (pg_specs отдаёт дешёвые первыми),
@@ -1683,6 +1722,8 @@ jobs:
             esac
           done
           [ "${#extra[@]}" = 0 ] || echo "пункт Б: узлов 2, хранилище $(jq -r '[(.min_storage_gb // 0), 100] | max' <<<"$spec") ГБ, create в $(date -u +%H:%M) UTC"
+          # If the response is lost, cleanup must report the unresolved POST.
+          touch "$RUNNER_TEMP/pg-create-attempted"
           set +e
           evo --yes tools call pg_create --arg name="$CLUSTER" --arg specification_id="$spec_id" --arg subnet_id="$subnet" \
             ${extra[@]+"${extra[@]}"} --json > "$RUNNER_TEMP/create.json" 2>"$RUNNER_TEMP/create.err"
@@ -1700,15 +1741,25 @@ jobs:
             echo "::error::pg_create: код $rc"
             exit 1
           fi
+          uuid='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+          [[ "$op" =~ $uuid ]] && jq -e '.status == "creating"' "$RUNNER_TEMP/create.json" >/dev/null ||
+            { echo "::error::нет квитанции операции создания PostgreSQL"; exit 1; }
+          printf 'PostgreSQL create operation, ID SHA-256 %s\n' "$(printf %s "$op" | sha256sum | cut -d' ' -f1)"
           echo "OP_ID=$op" >> "$GITHUB_ENV"
-          # Без resource_id у операции cluster_id в ответе нет: ID — по имени.
-          for _ in $(seq 1 10); do
-            [ -z "$id" ] || break
-            sleep 30
-            id=$(evo tools call pg_list --json | jq -r --arg n "$CLUSTER" '[.clusters[]? | select(.name == $n) | .id][0] // empty')
-            [ -z "$id" ] || echo "::add-mask::$id"
-          done
-          [ -n "$id" ] || { echo "::error::кластер $CLUSTER не появился в pg_list за 5 мин"; exit 1; }
+          # Only the original POST or its addressed operation can identify the cluster.
+          if [ -z "$id" ]; then
+            for _ in $(seq 1 10); do
+              evo tools call pg_operation --arg operation_id="$op" --arg wait_seconds=30 --json > "$RUNNER_TEMP/pg-create-op.json"
+              jq -e --arg op "$op" '.id == $op and .error == null' "$RUNNER_TEMP/pg-create-op.json" >/dev/null ||
+                { echo "::error::ответ операции создания не подтверждён"; exit 1; }
+              id=$(jq -r '.resource_id // empty' "$RUNNER_TEMP/pg-create-op.json")
+              [ -z "$id" ] || break
+              jq -e '.done != true' "$RUNNER_TEMP/pg-create-op.json" >/dev/null || break
+            done
+          fi
+          [[ "$id" =~ $uuid ]] || { echo "::error::исход создания неизвестен, нет ID из квитанции"; exit 1; }
+          echo "::add-mask::$id"
+          printf 'PostgreSQL cluster, ID SHA-256 %s\n' "$(printf %s "$id" | sha256sum | cut -d' ' -f1)"
           echo "CLUSTER_ID=$id" >> "$GITHUB_ENV"
 
       # Реестр L-32: второй кластер с тем же именем — второй счёт. Вызов без
@@ -1821,6 +1872,7 @@ jobs:
 
           call pg_backups --arg cluster_id="$CLUSTER_ID"
           echo "pg_backups: резервных копий $(jq '.backups // [] | length' "$RUNNER_TEMP/r.json")"
+          python3 .github/scripts/pg-backup-receipts.py record "$RUNNER_TEMP/r.json"
 
           if [ -n "${OP_ID:-}" ]; then
             call pg_operation --arg operation_id="$OP_ID" --arg wait_seconds=30
@@ -1875,7 +1927,9 @@ jobs:
           has() { # ИНСТРУМЕНТ КЛЮЧ ИМЯ — ИМЯ есть в списке
             evo tools call "$1" --arg cluster_id="$CLUSTER_ID" --json 2>/dev/null | jq -e --arg k "$2" --arg n "$3" 'any(.[$k][]?; .name == $n)' >/dev/null
           }
+          python3 .github/scripts/pg-backup-receipts.py intend-manual
           call pg_backup_create --arg cluster_id="$CLUSTER_ID" --arg name=evo-e2e-backup
+          python3 .github/scripts/pg-backup-receipts.py created-manual "$RUNNER_TEMP/r.json"
           jq -c '{status}' "$RUNNER_TEMP/r.json"
           op=$(jq -r '.operation_id // empty' "$RUNNER_TEMP/r.json")
           if [ -n "$op" ]; then
@@ -1886,12 +1940,11 @@ jobs:
               [ "$(jq -r .done "$RUNNER_TEMP/r.json")" = true ] && break
             done
             jq -c '{done, error: (.error != null)}' "$RUNNER_TEMP/r.json"
-            jq -e '.done == true and .error == null' "$RUNNER_TEMP/r.json" >/dev/null || { echo "::error::резервная копия не завершилась за 10 мин"; exit 1; }
+            jq -e --arg op "$op" '.id == $op and .done == true and .error == null' "$RUNNER_TEMP/r.json" >/dev/null || { echo "::error::резервная копия не завершилась за 10 мин"; exit 1; }
           fi
           call pg_backups --arg cluster_id="$CLUSTER_ID"
           echo "pg_backups: резервных копий $(jq '.backups // [] | length' "$RUNNER_TEMP/r.json")"
-          jq -e '(.backups // []) | length > 0' "$RUNNER_TEMP/r.json" >/dev/null || { echo "::error::pg_backups: копии нет после pg_backup_create"; exit 1; }
-          echo "BACKUP_NAME=evo-e2e-backup" >> "$GITHUB_ENV" # для пробы DB-22 после удаления
+          python3 .github/scripts/pg-backup-receipts.py record "$RUNNER_TEMP/r.json" --expect-manual
           call pg_db_delete --arg cluster_id="$CLUSTER_ID" --arg name=evo_e2e_db
           jq -c '{status}' "$RUNNER_TEMP/r.json"
           for i in $(seq 1 10); do has pg_databases databases evo_e2e_db || break; [ "$i" -lt 10 ] || { echo "::error::база осталась через 5 мин"; exit 1; }; sleep 30; done
@@ -1917,12 +1970,23 @@ jobs:
           DB_RETURN_WAIT: 600
         run: DB_KIND="$KIND" DB_CLUSTER_ID="$CLUSTER_ID" .github/scripts/cloud-live.sh dbchange
 
+      - name: Последний список копий своего кластера
+        if: always() && env.CLUSTER_ID != ''
+        run: |
+          evo tools call pg_backups --arg cluster_id="$CLUSTER_ID" --json > "$RUNNER_TEMP/pg-before-delete.json"
+          python3 .github/scripts/pg-backup-receipts.py record "$RUNNER_TEMP/pg-before-delete.json"
+
       - name: Удаление кластера (всегда)
         if: always()
         env:
           # Отмена прогона — одна попытка удаления (dbaas-delete.sh).
           DBAAS_ONCE: ${{ job.status == 'cancelled' }}
-        run: .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER"
+        run: |
+          if [ -z "${CLUSTER_ID:-}" ]; then
+            [ ! -e "$RUNNER_TEMP/pg-create-attempted" ] || { echo "::error::исход создания PostgreSQL неизвестен, ID не установлен, уборка по имени запрещена"; exit 1; }
+            exit 0
+          fi
+          .github/scripts/dbaas-delete.sh "$KIND" "$CLUSTER" --id "$CLUSTER_ID"
 
       # Реестр DB-22 (G13-27): что отвечают список копий evo и API после
       # удаления кластера, у которого была ручная копия. Проба: итог —
@@ -1971,6 +2035,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -2147,6 +2212,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"
@@ -2326,6 +2392,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.11"

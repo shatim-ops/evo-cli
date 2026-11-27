@@ -20,6 +20,7 @@ fresh() {
 	n=$((n + 1))
 	export FAKE_DIR="$work/w$n"
 	mkdir -p "$FAKE_DIR"
+	fake_evo_answer k8s_get 0 4 '{"error":{"code":4,"reason":"NOT_FOUND","message":"mk8s API 404: cluster not found"}}'
 	fake_evo_answer k8s_nodepools 0 0 '{"node_pools":[{"id":"np1","status":"OBJECT_STATUS_RUNNING"},{"id":"np2","status":"OBJECT_STATUS_DELETING"}]}'
 }
 cl() { printf '{"clusters":[{"id":"c1","name":"%s","status":"%s"}]}' "$N" "$1"; }
@@ -34,7 +35,7 @@ fake_evo_answer k8s_list 1 0 "$(cl OBJECT_STATUS_DELETING)"
 fake_evo_answer k8s_list 2 0 "$none"
 fake_evo_answer k8s_delete 0 0 '{"status":"deleting"}'
 rc=0
-"$here/k8s-delete.sh" "$N" >"$work/out" 2>&1 || rc=$?
+"$here/k8s-delete.sh" "$N" c1 >"$work/out" 2>&1 || rc=$?
 want "принято: код" "$rc" 0
 want "принято: попыток" "$(dels)" 1
 grep -q 'кластер удалён' "$work/out" || { echo "FAIL: принято: нет «кластер удалён»"; sed 's/^/  | /' "$work/out"; fail=1; }
@@ -49,7 +50,7 @@ fake_evo_answer k8s_list 4 0 "$none"
 fake_evo_answer k8s_delete 0 1 '{"error":{"code":5,"reason":"API_ERROR","message":"cluster is upgrading"}}'
 fake_evo_answer k8s_delete 1 0 '{"status":"deleting"}'
 rc=0
-"$here/k8s-delete.sh" "$N" >"$work/out" 2>&1 || rc=$?
+"$here/k8s-delete.sh" "$N" c1 >"$work/out" 2>&1 || rc=$?
 want "отказ, затем смена состояния: код" "$rc" 0
 want "отказ, затем смена состояния: попыток" "$(dels)" 2
 grep -q 'удаление отвергнуто.*API_ERROR' "$work/out" || { echo "FAIL: отказ не назван"; sed 's/^/  | /' "$work/out"; fail=1; }
@@ -60,7 +61,7 @@ fresh
 fake_evo_answer k8s_list 0 0 "$(cl OBJECT_STATUS_UPGRADING)"
 fake_evo_answer k8s_delete 0 1 '{"error":{"code":5,"reason":"API_ERROR","message":"cluster is upgrading"}}'
 rc=0
-K8S_DEL_WAIT=0 "$here/k8s-delete.sh" "$N" >"$work/out" 2>&1 || rc=$?
+K8S_DEL_WAIT=0 "$here/k8s-delete.sh" "$N" c1 >"$work/out" 2>&1 || rc=$?
 want "остаток: код" "$rc" 1
 want "остаток: попыток" "$(dels)" 1
 grep -q "::error::.*$N.*OBJECT_STATUS_UPGRADING.*групп узлов: 2" "$work/out" || { echo "FAIL: остаток не назван поимённо"; sed 's/^/  | /' "$work/out"; fail=1; }
@@ -71,20 +72,46 @@ fresh
 fake_evo_answer k8s_list 0 0 "$(cl OBJECT_STATUS_RUNNING)"
 fake_evo_answer k8s_delete 0 0 '{"status":"deleting"}'
 rc=0
-K8S_DEL_ONCE=true "$here/k8s-delete.sh" "$N" >"$work/out" 2>&1 || rc=$?
-want "отмена: код" "$rc" 0
+K8S_DEL_ONCE=true "$here/k8s-delete.sh" "$N" c1 >"$work/out" 2>&1 || rc=$?
+want "отмена: исход неизвестен" "$rc" 1
 want "отмена: чтений списка" "$(grep -c '^k8s_list' "$FAKE_DIR/evo-calls")" 1
 
-# Кластера нет — код 0, удалений нет; чужое имя — отказ.
+# ID ещё ни разу не появился после асинхронного CREATE — исход неизвестен.
 fresh
 fake_evo_answer k8s_list 0 0 "$none"
 rc=0
-"$here/k8s-delete.sh" "$N" >"$work/out" 2>&1 || rc=$?
-want "кластера нет: код" "$rc" 0
+K8S_DEL_WAIT=0 "$here/k8s-delete.sh" "$N" c1 >"$work/out" 2>&1 || rc=$?
+want "кластера нет: исход неизвестен" "$rc" 1
 want "кластера нет: попыток" "$(dels)" 0
 rc=0
 "$here/k8s-delete.sh" prod-cluster >"$work/out" 2>&1 || rc=$?
 want "чужое имя: код" "$rc" 2
+
+# Одноимённый чужой кластер не становится целью удаления. Неполный
+# список и шлюзовый 404 не подтверждают отсутствие своего.
+fresh
+fake_evo_answer k8s_list 0 0 "$(jq -nc --arg n "$N" '{clusters:[{name:$n,id:"other",status:"ACTIVE"}]}')"
+rc=0
+K8S_DEL_WAIT=0 "$here/k8s-delete.sh" "$N" c1 >"$work/out" 2>&1 || rc=$?
+want "одноимённый: исход своего неизвестен" "$rc" 1
+want "одноимённый: попыток" "$(dels)" 0
+fresh
+fake_evo_answer k8s_list 0 0 "$(cl OBJECT_STATUS_RUNNING)"
+fake_evo_answer k8s_list 1 0 "$none"
+fake_evo_answer k8s_delete 0 0 '{"status":"deleting"}'
+fake_evo_answer k8s_get 0 4 '{"error":{"reason":"NOT_FOUND","message":"mk8s API 404: <html>not found</html>"}}'
+rc=0
+K8S_DEL_WAIT=1 "$here/k8s-delete.sh" "$N" c1 >"$work/out" 2>&1 || rc=$?
+want "шлюзовый 404" "$rc" 1
+fresh
+fake_evo_answer k8s_list 0 0 '{}'
+rc=0
+"$here/k8s-delete.sh" "$N" c1 >"$work/out" 2>&1 || rc=$?
+want "неполный список" "$rc" 1
+want "неполный список: попыток" "$(dels)" 0
+rc=0
+"$here/k8s-delete.sh" "$N" >"$work/out" 2>&1 || rc=$?
+want "имя без ID" "$rc" 2
 
 [ "$fail" = 0 ] && echo "k8s-delete: ok"
 exit "$fail"

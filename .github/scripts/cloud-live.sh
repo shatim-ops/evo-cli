@@ -100,6 +100,8 @@ cov() { covered+=("$@"); }                  # изменяющий инстру�
 . "$here/bound-check.sh"
 # shellcheck source-path=SCRIPTDIR source=e2e_quota.sh
 . "$here/e2e_quota.sh"
+# shellcheck source-path=SCRIPTDIR source=cloud_live_ca_receipts.sh
+. "$here/cloud_live_ca_receipts.sh"
 # j — jq по ответу последнего вызова; ответ не JSON не обрывает скрипт.
 j() { jq "$@" "$tmp/r.json" 2>/dev/null || true; }
 
@@ -116,6 +118,11 @@ tc() {
 	rc=$?
 	set -e
 	tc_why
+	# lostCreate восстанавливает возможный ID по имени. Такого ответа
+	# недостаточно для будущей записи или удаления.
+	if [[ ${E2E_OWNED_ONLY:-false} == true && $rc == 0 ]] && jq -e 'has("resource_status") and has("warning")' "$tmp/r.json" >/dev/null; then
+		rc=1 reason=UNCONFIRMED why="утрачен ответ создания; ID из поиска по имени не принят, возможен остаток"
+	fi
 }
 # cl КОМАНДА… — то же для команды CLI: evo --yes --json КОМАНДА (группа,
 # глагол, позиционный аргумент и флаги — по CLISpec); ответ, код, reason и
@@ -166,6 +173,9 @@ opwait() {
 	while :; do
 		tc "${kind}_operation" --arg operation_id="$op" --arg wait_seconds=45
 		if [ "$rc" = 0 ] && [ "$(j -r .done)" = true ]; then
+			if [[ ${E2E_OWNED_ONLY:-false} == true ]] && [[ -z $op || $(j -r '.id // empty') != "$op" ]]; then
+				why="операция не подтвердила свой ID"; return 1
+			fi
 			res_id=$(j -r '.resourceId // .resource_id // empty')
 			mask "$res_id"
 			if [ "$(j -c '.error // null')" != null ]; then
@@ -191,6 +201,45 @@ rand_secret() {
 	mask "$SECRET_VALUE"
 }
 sha() { printf '%s' "$1" | sha256sum | cut -c1-64; }
+# ID только из ответа создания, его операции или точной связи своей ВМ.
+# RUNNER_TEMP доступен страховочному шагу того же job; в Actions остаётся хеш.
+owned_area=$area
+if [[ $area == sweep ]]; then owned_area=${3:-}; fi
+owned_prefix="evo-e2e-$owned_area-$RUN"
+owned_file="${RUNNER_TEMP:-$tmp}/$owned_prefix.ids"
+remember_id() {
+	local kind=$1 id=$2
+	[[ $id =~ ^[A-Za-z0-9_-]+$ && $id != null ]] || { bad "$kind" "нет доказанного ID из создания; возможен остаток"; return 1; }
+	[[ ${E2E_OWNED_ONLY:-false} == true ]] || return 0
+	if [[ $kind == vm && ! $id =~ ^[[:xdigit:]]{8}(-[[:xdigit:]]{4}){3}-[[:xdigit:]]{12}$ ]]; then
+		bad "$kind" "создание не вернуло UUID ВМ; удаление по имени запрещено"; return 1
+	fi
+	if ! grep -Fxq -- "$kind $id" "$owned_file" 2>/dev/null; then
+		(umask 077; printf '%s %s\n' "$kind" "$id" >>"$owned_file") || return 1
+		echo "$kind: SHA-256 ID $(sha "$id")"
+	fi
+}
+remember_vm() {
+	local vid=$1 fid
+	remember_id vm "$vid" || return 1
+	fid=$(jq -er --arg id "$vid" --arg p "${PROJECT:-}" '[.deployments[] | select(.vm_id == $id and .project_id == $p)] | select(length == 1) | .[0].floating_ip_id | strings | select(length > 0)' .evo/state.json 2>/dev/null) || return 0
+	remember_id fip "$fid"
+}
+run_fip() {
+	local vid=$1 ip=$2
+	jq -er --arg v "$vid" --arg ip "$ip" --arg p "$PROJECT" '[.deployments[] | select(.vm_id == $v and .project_id == $p and .vm_ip == $ip)] | select(length == 1) | .[0].floating_ip_id | strings | select(length > 0)' .evo/state.json
+}
+# Создание и удаление SNAT меняют выход всей зоны. Неполный список,
+# неизвестная зона или сторонняя ВМ в этой зоне сохраняют её сеть.
+snat_zone_clear() {
+	local zid rows id zone
+	zid=$(zone_id) && [ -n "$zid" ] || return 1
+	rows=$(inventory vm_list vms | jq -er '.vms | arrays | if all(.[]; (.id | type) == "string" and (.zone | type) == "string" and (.zone | length) > 0) then map([.id,.zone] | @tsv) | join("\n") else error("incomplete VM list") end') || return 1
+	while IFS=$'\t' read -r id zone; do
+		[[ -z $id || ($zone != "$ZONE" && $zone != "$zid") ]] && continue
+		grep -Fxq -- "vm $id" "$owned_file" 2>/dev/null || return 1
+	done <<<"$rows"
+}
 # gone ВИД ПРЕФИКС — ресурсов вида с таким именем нет (для poll: список
 # читается заново на каждой попытке). Список не прочитан (в том числе
 # «список не полон» — API_ERROR) — не «нет»: код 1, poll ждёт дальше.
@@ -249,7 +298,26 @@ lst_run_route() {
 		printf '%s %s\t%s-route\n' "$vpc" "$rid" "$1"
 	elif [ "$seen" != true ]; then
 		route_unknown "маршрут из квитанции ещё не был виден; остаток не подтверждён"
+	else
+		# Маршрут был подтверждён списком (seen=true) и теперь отсутствует в полном списке:
+		# закрываем квитанцию, чтобы последующее удаление VPC прогона не давало 404 в sweep.
+		rm -f "$route_receipt"
 	fi
+}
+
+# Неполный/нечитаемый список не подтверждает исчезновение сохранённого ID.
+inventory() {
+	local tool=$1 field=$2 result
+	shift 2
+	if [[ ${E2E_OWNED_ONLY:-false} != true ]]; then evo tools call "$tool" "$@" --json; return; fi
+	result=$(evo tools call "$tool" "$@" --json) || return 1
+	if [[ ${E2E_OWNED_ONLY:-false} == true ]]; then
+		jq -e --arg f "$field" 'type == "object" and has($f) and
+			((.[$f] | type) == "array" or (.[$f] == null and .count == 0)) and
+			((.next_page_token // .nextPageToken // "") == "") and (.truncated != true) and
+			(all(.[$f][]?; (.id | type) == "string" and (.id | length) > 0))' <<<"$result" >/dev/null || return 1
+	fi
+	printf '%s\n' "$result"
 }
 
 # --- Поиск и удаление ресурсов по префиксу имени ---------------------------
@@ -262,35 +330,35 @@ lst() {
 		jq -r --arg p "$p" '.containers[]? | select((.name // "") | startswith($p)) | "\(.name)\t\(.name)"' <<<"$out" ;;
 	ar) out=$(evo tools call ar_list --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.registries[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	lb) out=$(evo tools call lb_list --json 2>"$tmp/lst.err") &&
+	lb) out=$(inventory lb_list load_balancers 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.load_balancers[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	tg) out=$(evo tools call tg_list --json 2>"$tmp/lst.err") &&
+	tg) out=$(inventory tg_list target_groups 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.target_groups[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	vm) out=$(evo tools call vm_list --json 2>"$tmp/lst.err") &&
+	vm) out=$(inventory vm_list vms 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.vms[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	snat) out=$(evo tools call snat_list --json 2>"$tmp/lst.err") &&
+	snat) out=$(inventory snat_list nat_gateways 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.nat_gateways[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	fip) out=$(evo tools call list_floating_ips --json 2>"$tmp/lst.err") &&
-		jq -r --arg p "fip-$p" '.floating_ips[]? | select(((.name // "") | startswith($p)) and .state != "error_deleting") | "\(.id)\t\(.name)"' <<<"$out" ;;
-	disk) out=$(evo tools call disk_list --json 2>"$tmp/lst.err") &&
-		jq -r --arg p "$p" '.disks[]? | select(((.name // "") | startswith($p)) and (((.attached_to // []) | length) == 0)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	image) out=$(evo tools call image_list --arg type=private --json 2>"$tmp/lst.err") &&
+	fip) out=$(inventory list_floating_ips floating_ips 2>"$tmp/lst.err") &&
+		jq -r --arg p "fip-$p" --arg mode "${E2E_OWNED_ONLY:-false}" '.floating_ips | arrays[] | select(($mode == "true" and $p == "fip-") or (((.name // "") | startswith($p)) and .state != "error_deleting")) | "\(.id)\t\(.name)"' <<<"$out" ;;
+	disk) out=$(inventory disk_list disks 2>"$tmp/lst.err") &&
+		jq -r --arg p "$p" --arg mode "${E2E_OWNED_ONLY:-false}" '.disks | arrays[] | select(($mode == "true" and $p == "") or (((.name // "") | startswith($p)) and (((.attached_to // []) | length) == 0))) | "\(.id)\t\(.name)"' <<<"$out" ;;
+	image) out=$(inventory image_list images --arg type=private 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.images[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
 	route) lst_run_route "$p" ;;
-	subnet) out=$(evo tools call list_subnets --json 2>"$tmp/lst.err") &&
+	subnet) out=$(inventory list_subnets subnets 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.subnets[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	vpc) out=$(evo tools call vpc_list --json 2>"$tmp/lst.err") &&
+	vpc) out=$(inventory vpc_list vpcs 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.vpcs[]? | select((.name // "") | startswith($p)) | "\(.id)\t\(.name)"' <<<"$out" ;;
-	dns) out=$(evo tools call dns_zones --json 2>"$tmp/lst.err") &&
+	dns) out=$(inventory dns_zones zones 2>"$tmp/lst.err") &&
 		# id — «видимость id»: удаление зоны идёт в API её видимости
 		# зона, удаление которой платформа уже приняла (state …DELET…), — не
 		# остаток прогона, а ожидание облака: её показывает deleting_zones
-		jq -r --arg p "$p" '.zones[]? | select(((.name // "") | startswith($p)) or ((.domain // "") | startswith($p))) | select(((.state // "") | ascii_upcase | test("DELET")) | not) | "\(.visibility // "public") \(.id)\t\(.domain // .name)"' <<<"$out" ;;
+		jq -r --arg p "$p" --arg mode "${E2E_OWNED_ONLY:-false}" '.zones[]? | select(((.name // "") | startswith($p)) or ((.domain // "") | startswith($p))) | select(($mode == "true" and $p == "") or (((.state // "") | ascii_upcase | test("DELET")) | not)) | "\(.visibility // "public") \(.id)\t\(.domain // .name)"' <<<"$out" ;;
 	s3) out=$(evo tools call s3_buckets --json 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.buckets[]? | select((.name // "") | startswith($p)) | "\(.name)\t\(.name)"' <<<"$out" ;;
-	secret) out=$(evo tools call secret_list --json 2>"$tmp/lst.err") &&
-		jq -r --arg p "$p" '.secrets[]? | select(((.path // .name // "") | startswith($p))) | "\(.path // .name)\t\(.path // .name)"' <<<"$out" ;;
-	cert) out=$(evo tools call cert_list --json 2>"$tmp/lst.err") &&
+	secret) out=$(inventory secret_list secrets 2>"$tmp/lst.err") &&
+		jq -r --arg p "$p" --arg mode "${E2E_OWNED_ONLY:-false}" '.secrets[]? | select(((.path // .name // "") | startswith($p))) | "\(if $mode == "true" then .id else (.path // .name) end)\t\(.path // .name)"' <<<"$out" ;;
+	cert) out=$(inventory cert_list certificates 2>"$tmp/lst.err") &&
 		jq -r --arg p "$p" '.certificates[]? | select((.name // .displayName // "") | startswith($p)) | "\(.id)\t\(.name // .displayName)"' <<<"$out" ;;
 	# Группы безопасности проб (область ops): только свои, по префиксу.
 	sg) out=$(evo tools call list_security_groups --json 2>"$tmp/lst.err") &&
@@ -355,6 +423,13 @@ lst_tags() {
 	[ -z "$why" ] || { jq -nc --arg m "tags: $why" '{error: {reason: "API_ERROR", message: $m}}' >"$tmp/lst.err"; return 1; }
 	cat "$tmp/tags.l"
 }
+# API Secret Manager v2 адресует удаление путём. Сверяем неизменяемый ID
+# из ответа создания прямо перед вызовом по уникальному пути этой попытки.
+secret_owned() {
+	local path=$1 sid=$2
+	[[ $path == "$owned_prefix/db" ]] && evo tools call secret_get --arg path="$path" --json |
+		jq -e --arg id "$sid" '(.secret.id // .id) == $id' >/dev/null
+}
 # del ВИД ID — удалить один ресурс (ответ не печатается: в нём ID).
 del() {
 	local kind=$1 id=$2
@@ -364,7 +439,12 @@ del() {
 	lb) tc lb_delete --arg id="$id" ;;
 	tg) tc tg_delete --arg id="$id" ;;
 	vm) tc destroy --arg vm_id="$id" ;;
-	snat) tc snat_delete --arg id="$id" ;;
+	snat)
+		if [[ ${E2E_OWNED_ONLY:-false} == true ]] && ! snat_zone_clear; then
+			rc=1 reason="сеть сторонней ВМ в зоне не исключена; свой шлюз оставлен"
+			return
+		fi
+		tc snat_delete --arg id="$id" ;;
 	fip) tc release_floating_ip --arg id="$id" ;;
 	disk) tc disk_delete --arg disk_id="$id" ;;
 	image) tc image_delete --arg image_id="$id" ;;
@@ -384,7 +464,11 @@ del() {
 		evo tools call s3_ls --arg bucket="$id" --json 2>/dev/null | jq -r '.objects[]?.key' >"$tmp/keys" || true
 		while read -r k; do [ -z "$k" ] || tc s3_rm --arg bucket="$id" --arg key="$k"; done <"$tmp/keys"
 		tc s3_bucket_delete --arg bucket="$id" ;;
-	secret) tc secret_delete --arg path="$id" ;;
+	secret)
+		if [[ ${E2E_OWNED_ONLY:-false} == true ]]; then
+			if ! secret_owned "$owned_prefix/db" "$id"; then rc=1 reason="ID секрета по пути не подтверждён"; return; fi
+			tc secret_delete --arg path="$owned_prefix/db"
+		else tc secret_delete --arg path="$id"; fi ;;
 	cert) tc cert_delete --arg id="$id" ;;
 	# У evo нет удаления группы безопасности: прямой DELETE (как правила в
 	# e2e_rules_sweep.sh); код HTTP — в $reason.
@@ -442,6 +526,17 @@ area_kinds() {
 done_only=0
 lst_done() {
 	local p=$2
+	if [[ ${E2E_OWNED_ONLY:-false} == true && $1 != route ]]; then
+		# Проверяем известные ID даже после переименования. Одноимённый
+		# объект без ID из создания не является целью удаления.
+		[[ $p == "$owned_prefix" && -n $owned_area ]] || return 1
+		[[ -s $owned_file ]] || return 0
+		lst "$1" "" >"$tmp/l.all" || return 1
+		awk -F '\t' -v kind="$1" 'NR==FNR {split($0,r," "); if(r[1]==kind) own[r[2]]=1; next} {id=$1; sub(/^private /,"",id); if(id in own) print}' "$owned_file" "$tmp/l.all"
+		return
+	fi
+	# The isolated patch run uses only its original CA/AR receipts.
+	if [[ ${E2E_OWNED_ONLY:-} = true && ($1 = ca || $1 = ar) ]]; then return 0; fi
 	# Имена ресурсов сети продолжаются через дефис. Например, попытка a1
 	# не владеет ВМ попытки a10.
 	if [[ $p == "evo-e2e-net-$RUN" && $1 != route && $1 != sg ]]; then
@@ -458,6 +553,10 @@ lst_done() {
 # асинхронны: балансировщик, ВМ, VPC), затем остаток — провал по каждому.
 sweep() {
 	local p=$1 kinds=${2:-$KINDS} kind id name left t0 until=$(($(date +%s) + 1200))
+	if [[ ${E2E_OWNED_ONLY:-} = true && $p = "evo-e2e-ca-$RUN" && $kinds = "ca ar" ]]; then
+		ca_cleanup_owned
+		return $?
+	fi
 	case "$p" in evo-e2e-*) ;; *)
 		echo "::error::префикс $p не evo-e2e-*: такие ресурсы скрипт не трогает"
 		return 1 ;;
@@ -503,7 +602,13 @@ sweep() {
 		done <"$tmp/l"
 	done
 	case " $kinds " in *" dns "*) deleting_zones "$p" ;; esac
-	[ "$left" = 0 ] && echo "остатков $p* нет"
+	if [[ $left == 0 && ${E2E_OWNED_ONLY:-false} == true ]]; then
+		echo "остатков среди подтверждённых ID не найдено"
+		if [[ ! -e $owned_file.complete ]]; then
+			echo "::error::область прервана или не завершена; возможный ресурс без подтверждённого ID не удалялся"
+			return 1
+		fi
+	elif [[ $left == 0 ]]; then echo "остатков $p* нет"; fi
 	[ "$left" = 0 ]
 }
 
@@ -587,6 +692,7 @@ net_create_group() {
 	fi
 	mv "$net_sg_receipt.new" "$net_sg_receipt" || return 1
 	sg=$(jq -er .group "$net_sg_receipt") || return 1
+	remember_id sg "$sg" || return 1
 	mask "$sg"
 	cp "$tmp/api.json" "$tmp/created-sg.json" || return 1
 	ops_settle "$C1/security-groups/$sg" 120 && net_group_detached || { bad "группа сети" "не подтверждена готовность"; return 1; }
@@ -634,6 +740,7 @@ net_record_opened_rule() {
 	rule=$(jq -er 'select(length == 1) | .[0] | select(.description == "opened via open_ports")
 		| .id | strings | select(test("^[A-Za-z0-9-]{1,64}$"))' "$tmp/net-port.json") || return 1
 	mask "$rule"
+	remember_id rule "$rule" || return 1
 	jq -e --arg r "$rule" 'select(.defaults | index($r) == null) | .rule = $r' "$net_sg_receipt" >"$net_sg_receipt.new" &&
 		mv "$net_sg_receipt.new" "$net_sg_receipt"
 }
@@ -650,6 +757,12 @@ net_group_detached() {
 		'.id == $g and .name == $n and .has_interfaces == false' "$tmp/api.json" >/dev/null
 }
 
+net_group_absent() {
+	[[ $code == 404 ]] || return 1
+	[[ ${E2E_OWNED_ONLY:-false} == true ]] || return 0
+	inventory list_security_groups security_groups | jq -e --arg id "$sg" 'all(.security_groups[]?; .id != $id)' >/dev/null
+}
+
 cleanup_net_group() {
 	local sg rules owned
 	[ -e "$net_sg_receipt" ] || return 0
@@ -659,7 +772,7 @@ cleanup_net_group() {
 	mask "$sg"
 	iam_fresh || return 1
 	if ! net_group_detached; then
-		[ "$code" = 404 ] && return 0
+		net_group_absent && return 0
 		echo "::error::не подтверждены ID, метка и отсутствие интерфейсов группы; уборка остановлена"; return 1
 	fi
 	# Уборка удаляет только созданную группу. Допустимы правило прогона и
@@ -672,7 +785,7 @@ cleanup_net_group() {
 	net_group_detached || return 1
 	api DELETE "$C1/security-groups/$sg"
 	[[ $code == 2?? || $code == 404 ]] || { echo "::error::удаление своей группы: HTTP $code"; return 1; }
-	ops_settle "$C1/security-groups/$sg" 120 gone && [ "$code" = 404 ] || { echo "::error::удаление группы не подтверждено"; return 1; }
+	ops_settle "$C1/security-groups/$sg" 120 gone && net_group_absent || { echo "::error::удаление группы не подтверждено"; return 1; }
 }
 
 prefix="evo-e2e-$area-$RUN"
@@ -814,8 +927,14 @@ dns_linked() { [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && printf '%s' "$why
 # не удалить ни сценарию, ни уборке (rc.1 и rc.2 1.7: зона осталась, уборка
 # 20 мин повторяла тот же USAGE). Код 1 — не отвязана, причина в $why.
 dns_unlink() {
-	local op
+	local op link
 	iam_token || { why="нет токена IAM (KEY_ID, SECRET)"; return 1; }
+	if [[ ${E2E_OWNED_ONLY:-false} == true ]]; then
+		link=$(cat "$owned_file.dns-vpc") && grep -Fxq -- "dns $1" "$owned_file" || { why="нет квитанции зоны и VPC"; return 1; }
+		api GET "https://dns.api.cloud.ru/v1/privateZones/$1"
+		[[ $code == 200 ]] && jq -e --arg id "$1" --arg link "$link" '.id == $id and .linkedVpcIds == [$link]' "$tmp/api.json" >/dev/null ||
+			{ why="набор привязок зоны отличается от созданного; сохранён без изменений"; return 1; }
+	fi
 	api PATCH "https://dns.api.cloud.ru/v1/privateZones/$1" '{"linkedVpcIds":[]}'
 	[ "${code#2}" != "$code" ] || { why="PATCH linkedVpcIds: HTTP $code: $(api_why)"; return 1; }
 	op=$(jq -r '.id // empty' "$tmp/api.json")
@@ -1148,6 +1267,7 @@ area_disk() {
 	vm_ip=$(j -r '.vm_ip // empty')
 	user=$(j -r '.ssh_user // "user1"')
 	vid=$(j -r '.vm_id // empty')
+	remember_vm "$vid" || return 1
 	mask "$vid" "$vm_ip"
 	[ -n "$vm_ip" ] || { bad provision "нет vm_ip: $(j -r .status)"; return 1; }
 	ok provision "$(j -r .status), диск $(j -r .disk_gb) ГБ"
@@ -1163,7 +1283,7 @@ area_disk() {
 		ssh -i .evo/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
 			-o UserKnownHostsFile="$tmp/known_hosts" -o ConnectTimeout=10 "$user@$vm_ip" "$@" 2>"$tmp/ssh.err"
 	}
-	vm_state() { evo tools call vm_get --arg name="$vm" --json 2>/dev/null | jq -r '.state // empty'; }
+	vm_state() { evo tools call vm_get --arg vm_id="$vid" --json 2>/dev/null | jq -r '.state // empty'; }
 	# Проба (решение владельца 04.11, «проба, потом решаем»; rc.2 1.7: SSH к
 	# ВМ disk — 3 из 3 «port 22: Connection timed out» в двух зонах, ВМ
 	# deploy в той же зоне доступна): отвечает ли SSH сразу после provision,
@@ -1198,6 +1318,7 @@ area_disk() {
 	ok "disk_create: зона из CLOUDRU_REGION по имени" "создан — ушёл UUID (D58)"
 	local t0=$SECONDS # ответ disk_create: от него — время до attached (N3)
 	data=$(j -r '.disk_id // .disk.id // empty')
+	remember_id disk "$data" || return 1
 	mask "$data"
 	[ -n "$data" ] || { bad disk_create "нет id диска"; return 1; }
 	ok disk_create "$(j -r .status)"
@@ -1210,7 +1331,7 @@ area_disk() {
 	# диска; живой диск 27.10 был готов через 149 с, а attach ждал 2 мин и
 	# получал 422 «no openstack_id». Сколько ушло от create до attached —
 	# строкой отчёта (t0 — после ответа disk_create).
-	must disk_attach disk_attach --arg disk_id="$data" --arg vm="$vm" || return 1
+	must disk_attach disk_attach --arg disk_id="$data" --arg vm="$vid" || return 1
 	# disk_has ФИЛЬТР — jq -e по disk_list, $id — диск данных, $vm — имя ВМ.
 	disk_has() { evo tools call disk_list --json | jq -e --arg id "$data" --arg vm "$vm" "$1" >/dev/null; }
 	if poll 180 10 disk_has '.disks[] | select(.id == $id) | (.attached_to // []) | length > 0'; then
@@ -1248,7 +1369,7 @@ area_disk() {
 	# кандидата 1.5, run 142, #521). Ждём то же, что перед resize.
 	poll 300 10 settled || true
 	ok "состояние перед disk_detach" "$st"
-	must disk_detach disk_detach --arg disk_id="$data" --arg vm="$vm" || return 1
+	must disk_detach disk_detach --arg disk_id="$data" --arg vm="$vid" || return 1
 	if poll 180 10 disk_has '.disks[] | select(.id == $id) | ((.attached_to // []) | length) == 0 and .state == "available"'; then
 		ok disk_detach "available (до detach: $st)"
 		cov disk_detach
@@ -1277,7 +1398,7 @@ area_disk() {
 		mask "$img"
 		ok image_create "$(j -r .status)"
 		cov image_create
-		[ -n "$img" ] || img=$(lst image "$prefix-img" | cut -f1 | head -1)
+		remember_id image "$img" || return 1
 		[ -n "$img" ] || { bad image_create "нет id образа"; return 1; }
 		img_ready() { evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -e '.ready == true' >/dev/null; }
 		if poll 1800 30 img_ready; then ok "image_get ready" "образ готов"; else bad "image_get ready" "за 30 мин не ready: $(evo tools call image_get --arg image_id="$img" --json 2>/dev/null | jq -c '.zone_states // {}')"; fi
@@ -1313,10 +1434,16 @@ area_disk() {
 		bad "ВМ выключена изнутри" "state $(vm_state) через 5 мин; ssh shutdown: код $sd_rc${sd_err:+, $sd_err}"
 		return 1
 	fi
-	boot=$(evo tools call disk_list --json | jq -r --arg vm "$vm" '[.disks[] | select(.bootable == true and ((.attached_to // []) | index($vm)))][0].id // empty')
+	if ! iam_fresh; then bad "загрузочный диск ВМ" "нет чтения Compute"; return 1; fi
+	api GET "$C1/disks?project_id=$PROJECT&limit=1000"
+	[[ $code == 200 ]] && boot=$(jq -er --arg vm "$vid" --arg name "$vm-boot" '
+		select((.items | type) == "array" and (.total | type) == "number" and .total == (.items | length)) |
+		[.items[] | select(.name == $name and (.vms | length) == 1 and .vms[0].id == $vm and .vms[0].primary == true)] |
+		select(length == 1) | .[0].id | strings' "$tmp/api.json") || { bad "загрузочный диск ВМ" "точная связь с созданной ВМ не подтверждена"; return 1; }
+	remember_id disk "$boot" || return 1
 	mask "$boot"
 	[ -n "$boot" ] || { bad "загрузочный диск ВМ" "не найден в disk_list"; return 1; }
-	must "disk_detach загрузочного" disk_detach --arg disk_id="$boot" --arg vm="$vm" || return 1
+	must "disk_detach загрузочного" disk_detach --arg disk_id="$boot" --arg vm="$vid" || return 1
 	if ! poll 300 10 sh -c "evo tools call disk_list --json | jq -e --arg id '$boot' '.disks[] | select(.id == \$id) | .state == \"available\"' >/dev/null"; then
 		bad "disk_detach загрузочного" "за 5 мин не available"
 		return 1
@@ -1336,7 +1463,7 @@ area_disk() {
 		image_steps || return 1
 	fi
 
-	must "destroy ВМ без загрузочного диска" destroy --arg name="$vm" || return 1
+	must "destroy ВМ без загрузочного диска" destroy --arg vm_id="$vid" || return 1
 	ok destroy "$(j -r .status)"
 	cov destroy
 	# загрузочный диск отключён от ВМ — его удаляет уборка (disk_delete)
@@ -1353,6 +1480,7 @@ subnet_steps() {
 	local v=$1 sn sname="$prefix-sn"
 	must subnet_create subnet_create --arg name="$sname" --arg cidr=10.255.254.0/24 --arg vpc_id="$v" --arg zone="$ZONE" || return 0
 	sn=$(j -r '.subnet_id // empty')
+	remember_id subnet "$sn" || return 1
 	mask "$sn"
 	[ -n "$sn" ] || { bad subnet_create "нет subnet_id в ответе"; return 0; }
 	sn_listed() { evo tools call list_subnets --json | jq -e --arg id "$sn" 'any(.subnets[]?; .id == $id)' >/dev/null; }
@@ -1374,11 +1502,37 @@ subnet_steps() {
 	else bad "subnet_delete повтор" "код $rc, status $(j -r '.status // empty'), $reason"; fi
 }
 
+# Обе формы квитанции создания должны описывать один объект.
+created_id() {
+	local kind=$1 direct=$2 operation=$3 id=${2:-$3}
+	if [[ -n $direct && -n $operation && $direct != "$operation" ]]; then
+		bad "$kind" "ID из создания и операции расходятся; возможен остаток"; return 1
+	fi
+	remember_id "$kind" "$id"
+}
+
 # Сеть: VPC, ВМ без публичного IP за балансировщиком, FIP, правило, маршрут, SNAT.
 # Жизненный цикл маршрута в общем VPC. Потеря квитанции оставляет
 # диагностику для уборки: другой маршрут с той же подсетью не удаляем.
+route_create_has_lost_warning() {
+	jq -e '((.error.warning? // .error.details.warning? // .details.warning? // .warning?) | strings | length > 0)' "$tmp/err" >/dev/null 2>&1 ||
+		jq -e '((.details.warning? // .warning?) | strings | length > 0)' "$tmp/r.json" >/dev/null 2>&1
+}
+route_create_pre_post_error() {
+	if route_create_has_lost_warning; then return 1; fi
+	[[ $why =~ ^(vpc_route_create:\ )?(check\ the\ destination\ is\ free:|проверка,\ что\ назначение\ свободно:) ]]
+}
+route_create_confirmed_refusal() {
+	# Предупреждение lostCreate означает, что запрос мог дойти до сервиса.
+	if route_create_has_lost_warning; then return 1; fi
+	# Коллизия или неверные аргументы до записи (USAGE).
+	if [[ ${reason%%,*} == USAGE ]]; then return 0; fi
+	# Прямой клиентский 4xx от VPC API на POST, кроме 408 (тайм-аут запроса)
+	# и 429 (лимит с возможными повторами): для них повторный POST опасен.
+	[[ $why =~ ^(vpc_route_create:\ )?(create\ route:\ |создание\ маршрута:\ )?vpc\ API\ (400|401|403|404|405|409|412|422): ]]
+}
 route_steps() {
-	local vpc=$1 vm=$2 iface=$3 cidr op rid owned
+	local vpc=$1 vm=$2 iface=$3 cidr op rid owned last_refusal=''
 	if [[ -z $vpc || -z $vm || -z $iface || -e $route_receipt ]]; then
 		bad vpc_route_create "нет цели маршрута или уже начато создание в этом запуске"
 		return 1
@@ -1387,13 +1541,21 @@ route_steps() {
 		record_route_receipt "$vpc" '' '' || return 1
 		tc vpc_route_create --arg vpc_id="$vpc" --arg subnet="$cidr" --arg next_hop_vm_id="$vm" --arg next_hop_interface_id="$iface" --arg description="evo-e2e-net-$RUN-route"
 		if [ "$rc" != 0 ]; then
-			row vpc_route_create отказ "код $rc, $reason"
-			# Коллизия до записи либо явный 4xx от VPC: POST не принят.
-			if [[ ${reason%%,*} == USAGE || $why =~ ^(create\ route:\ |создание\ маршрута:\ )?vpc\ API\ 4[0-9]{2}: ]]; then
+			local detail="код $rc, $reason${why:+: ${why:0:200}}"
+			if route_create_pre_post_error; then
+				rm -f "$route_receipt"
+				row vpc_route_create отказ "до POST ($cidr): $detail"
+				bad vpc_route_create "до POST не прочитан список маршрутов ($detail)"
+				return 1
+			fi
+			if route_create_confirmed_refusal; then
+				row vpc_route_create отказ "подтверждённый отказ сервиса ($cidr): $detail"
+				last_refusal=$detail
 				rm -f "$route_receipt"
 				continue
 			fi
-			bad vpc_route_create "исход запроса неизвестен; повтор не отправлен"
+			row vpc_route_create отказ "$detail"
+			bad vpc_route_create "исход запроса неизвестен; повтор не отправлен ($detail)"
 			return 1
 		fi
 		op=$(j -r '.operation_id // empty')
@@ -1407,6 +1569,7 @@ route_steps() {
 			return 1
 		fi
 		rid=${rid:-$res_id}
+		remember_id route "$rid" || return 1
 		[ -n "$rid" ] || { bad vpc_route_create "нет подтверждённого ID маршрута"; return 1; }
 		record_route_receipt "$vpc" "$op" "$rid" || return 1
 		ok "vpc_route_create $cidr" "операция done"
@@ -1415,6 +1578,7 @@ route_steps() {
 		poll 300 15 route_visible || { bad vpc_route_delete "свой маршрут не подтверждён списком"; return 1; }
 		must vpc_route_delete vpc_route_delete --arg vpc_id="$vpc" --arg route_id="$rid" || return 1
 		if opwait vpc "$(j -r .operation_id)" 600 && poll 300 15 gone route "evo-e2e-net-$RUN"; then
+			rm -f "$route_receipt"
 			ok vpc_route_delete "маршрута нет"
 			cov vpc_route_delete
 			return 0
@@ -1422,7 +1586,7 @@ route_steps() {
 		bad vpc_route_delete "$why"
 		return 1
 	done
-	row vpc_route_create отказ "ни одна тестовая сеть не принята"
+	row vpc_route_create отказ "ни одна тестовая сеть не принята${last_refusal:+ ($last_refusal)}"
 }
 
 net_ports() {
@@ -1473,41 +1637,42 @@ net_ports() {
 }
 
 area_net() {
-	local zid a b fip fip_ip tg lb vpc dvpc ifc op n
+	local zid a b fip fip_ip tg lb vpc dvpc ifc op n aid bid
 	zid=$(zone_id)
 	[ -n "$zid" ] || { bad "зона $ZONE" "не найдена"; return 1; }
 	mkdir -p "$tmp/net" && cd "$tmp/net"
 	! probe_on p41 || probe_p41 "$zid"
 
 	must vpc_create vpc_create --arg name="$prefix-vpc" --arg description="evo e2e live run" || return 1
+	vpc=$(j -r '.vpc_id // empty')
 	op=$(j -r .operation_id)
 	if opwait vpc "$op" 600; then
-		vpc=$res_id
-		[ -n "$vpc" ] || vpc=$(lst vpc "$prefix-vpc" | cut -f1 | head -1)
+		created_id vpc "$vpc" "$res_id" || return 1
+		vpc=${vpc:-$res_id}
 		ok vpc_create "операция done"
 		cov vpc_create
 		if [ -n "$vpc" ] && must vpc_get vpc_get --arg id="$vpc"; then ok vpc_get "$(j -r '.name == "'"$prefix-vpc"'"')"; fi
 		[ -z "$vpc" ] || bound_check vpc_get "$(jq -cn --arg i "$vpc" '{id: $i}')" "allow-project: vpc_get"
 		[ -z "$vpc" ] || subnet_steps "$vpc"
-		if [ -n "$vpc" ] && must vpc_delete vpc_delete --arg id="$vpc"; then
-			if opwait vpc "$(j -r .operation_id)" 600 && poll 300 15 gone vpc "$prefix-vpc"; then
-				ok vpc_delete "VPC нет в vpc_list"
-				cov vpc_delete
-			else bad vpc_delete "$why"; fi
-		fi
-	else bad vpc_create "$why"; fi
+		must "подсеть ВМ B в VPC прогона" subnet_create --arg name="$prefix-backend" --arg cidr=10.255.252.0/24 --arg vpc_id="$vpc" --arg zone="$ZONE" || return 1
+		local backend_subnet
+		backend_subnet=$(j -r '.subnet_id // empty')
+		remember_id subnet "$backend_subnet" || return 1
+	else bad vpc_create "$why"; return 1; fi
 
 	# ВМ A с публичным IP → destroy release_ip=false → адрес свободен.
 	a="$prefix-a"
 	must "provision (публичная)" provision --arg name="$a" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" || return 1
 	fip_ip=$(j -r '.vm_ip // empty')
-	mask "$(j -r '.vm_id // empty')" "$fip_ip"
+	aid=$(j -r '.vm_id // empty')
+	remember_vm "$aid" || return 1
+	mask "$aid" "$fip_ip"
 	[ -n "$fip_ip" ] || { bad "provision (публичная)" "нет vm_ip"; return 1; }
 	cov provision
-	fip=$(evo tools call list_floating_ips --json | jq -r --arg ip "$fip_ip" '[.floating_ips[] | select(.ip_address == $ip)][0].id // empty')
+	fip=$(run_fip "$aid" "$fip_ip") && remember_id fip "$fip" || { bad "FIP ВМ A" "нет точного ID в записи своей ВМ"; return 1; }
 	mask "$fip"
 	[ -n "$fip" ] || { bad "FIP ВМ A" "не найден в list_floating_ips"; return 1; }
-	must "destroy release_ip=false" destroy --arg name="$a" --arg release_ip=false || return 1
+	must "destroy release_ip=false" destroy --arg vm_id="$aid" --arg release_ip=false || return 1
 	cov destroy
 	fip_free() { evo tools call list_floating_ips --json | jq -e --arg id "$fip" '.floating_ips[] | select(.id == $id) | .available == true' >/dev/null; }
 	if poll 300 15 fip_free; then ok "destroy release_ip=false" "FIP остался свободным"; else bad "destroy release_ip=false" "FIP не свободен через 5 мин"; fi
@@ -1524,27 +1689,27 @@ area_net() {
 	if [ "$rc" = 2 ] && [ "${reason%%,*}" = CONFIG_INVALID ] && [ -z "$(lst vm "$prefix-nosn")" ]; then
 		ok "provision: подсети с таким именем нет" "CONFIG_INVALID до записи, ВМ нет (D57)"
 	else bad "provision: подсети с таким именем нет" "код $rc, $reason; ВМ $prefix-nosn: $(lst vm "$prefix-nosn" | wc -l)"; fi
-	local snname
-	snname=$(evo tools call list_subnets --json | jq -r --arg z "$zid" '[.subnets[]? | .name // "" | select(. != "")] as $all
-		| [.subnets[]? | select(.availability_zone_id == $z) | .name // "" | select(. != "") | select(. as $n | [$all[] | ascii_downcase | select(. == ($n | ascii_downcase))] | length == 1)][0] // empty')
+	local snname="$prefix-backend"
+	evo tools call list_subnets --json | jq -e --arg id "$backend_subnet" --arg n "$snname" '
+		[.subnets[] | select(.name == $n)] | length == 1 and .[0].id == $id' >/dev/null ||
+		{ bad provision "подсеть прогона по ID и имени не подтверждена"; return 1; }
 
 	# ВМ B без публичного IP — цель балансировщика; подсеть — по имени (D57).
 	b="$prefix-b"
-	if [ -z "$snname" ]; then
-		gap "provision: подсеть по имени" "в $ZONE нет подсети с единственным в проекте именем"
-		must "provision no_public_ip" provision --arg name="$b" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true || return 1
-	else
-		must "provision no_public_ip, подсеть по имени" provision --arg name="$b" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true --arg subnet_id="$snname" || return 1
-		ok "provision: подсеть по имени" "ВМ создана — ушёл UUID (D57)"
-	fi
-	mask "$(j -r '.vm_id // empty')"
+	must "provision no_public_ip, подсеть по имени" provision --arg name="$b" --arg region="$zid" --arg image="$IMAGE" --arg flavor="$FLAVOR" --arg no_public_ip=true --arg subnet_id="$snname" || return 1
+	ok "provision: подсеть по имени" "ВМ создана — ушёл UUID (D57)"
+	bid=$(j -r '.vm_id // empty')
+	remember_vm "$bid" || return 1
+	mask "$bid"
 	if [ "$(j -r .private)" = true ]; then
 		ok "provision no_public_ip" "private"
 	else bad "provision no_public_ip" "private=$(j -r .private)"; fi
 
-	must tg_create tg_create --arg name="$prefix-tg" --arg vm_id="$(evo tools call vm_get --arg name="$b" --json | jq -r .id)" || return 1
+	must tg_create tg_create --arg name="$prefix-tg" --arg vm_id="$bid" || return 1
+	tg=$(j -r '.tg_id // empty')
 	if opwait lb "$(j -r .operation_id)" 900; then
-		tg=$(lst tg "$prefix-tg" | cut -f1 | head -1)
+		created_id tg "$tg" "$res_id" || return 1
+		tg=${tg:-$res_id}
 		mask "$tg"
 		ok tg_create "операция done"
 		cov tg_create
@@ -1555,16 +1720,17 @@ area_net() {
 	fi
 
 	must lb_create lb_create --arg name="$prefix-lb" --arg target_group_id="$tg" --arg port=80 --arg zone="$ZONE" || return 1
+	lb=$(j -r '.lb_id // empty')
 	if opwait lb "$(j -r .operation_id)" 1500; then
-		lb=$(lst lb "$prefix-lb" | cut -f1 | head -1)
+		created_id lb "$lb" "$res_id" || return 1
+		lb=${lb:-$res_id}
 		mask "$lb"
 		tc lb_get --arg id="$lb"
 		mask "$(j -r '.external_address.ipv4 // empty')"
 		ok lb_create "status $(j -r '.status // "?"'), публичный IP: $(j -r 'if .external_address.ipv4 then "есть" else "нет" end')"
 		cov lb_create
 		[ -z "$lb" ] || bound_check lb_get "$(jq -cn --arg i "$lb" '{id: $i}')" "allow-project: lb_get"
-	else bad lb_create "$why"; fi
-	lb=${lb:-$(lst lb "$prefix-lb" | cut -f1 | head -1)}
+	else bad lb_create "$why"; return 1; fi
 	if [ -n "$lb" ] && must lb_delete lb_delete --arg id="$lb"; then
 		if opwait lb "$(j -r .operation_id)" 900 && poll 300 15 gone lb "$prefix-lb"; then
 			ok lb_delete "балансировщика нет в lb_list"
@@ -1578,17 +1744,17 @@ area_net() {
 		else bad tg_delete "$why"; fi
 	fi
 
-	# Маршрут в дефолтном VPC: next hop — интерфейс ВМ B, пока у неё нет
+	# Маршрут в VPC прогона: next hop — интерфейс ВМ B, пока у неё нет
 	# публичного адреса. 18.10 (run 39152048559) — 400 InvalidArgument без
 	# поля: пробуем две тестовые сети и записываем ответ.
-	dvpc=$(evo tools call vpc_list --json | jq -r '[.vpcs[] | select(.default == true)][0].id // empty')
-	ifc=$(evo tools call vm_get --arg name="$b" --json | jq -r '([.interfaces[] | select(.primary == true)] + .interfaces)[0].id // empty')
+	dvpc=$vpc
+	ifc=$(evo tools call vm_get --arg vm_id="$bid" --json | jq -r '([.interfaces[] | select(.primary == true)] + .interfaces)[0].id // empty')
 	mask "$dvpc" "$ifc"
-	route_steps "$dvpc" "$(evo tools call vm_get --arg name="$b" --json | jq -r '.id // empty')" "$ifc" || return 1
+	route_steps "$dvpc" "$bid" "$ifc" || return 1
 
 	# FIP ВМ A → ВМ B.
-	if must fip_attach fip_attach --arg fip="$fip" --arg vm="$b"; then
-		if poll 180 10 sh -c "evo tools call vm_get --arg name='$b' --json | jq -e --arg ip '$fip_ip' '.public_ip == \$ip' >/dev/null"; then
+	if must fip_attach fip_attach --arg fip="$fip" --arg vm="$bid"; then
+		if poll 180 10 sh -c "evo tools call vm_get --arg vm_id='$bid' --json | jq -e --arg ip '$fip_ip' '.public_ip == \$ip' >/dev/null"; then
 			ok fip_attach "vm_get: public_ip — этот адрес"
 			cov fip_attach
 		else bad fip_attach "public_ip ВМ не тот за 3 мин"; fi
@@ -1600,25 +1766,30 @@ area_net() {
 	n=$(evo tools call snat_list --json | jq --arg z "$zid" --arg n "$ZONE" '[.nat_gateways[]? | select(.availability_zone_id == $z or .availability_zone == $n)] | length')
 	if [ "$n" != 0 ]; then
 		gap "snat_create, snat_delete" "в $ZONE уже есть SNAT-шлюз ($n) — один на зону, чужой не трогаем"
+	elif [[ ${E2E_OWNED_ONLY:-false} == true ]] && ! snat_zone_clear; then
+		gap "snat_create, snat_delete" "влияние на сеть другой ВМ в зоне не исключено"
 	elif must snat_create snat_create --arg name="$prefix-snat" --arg zone="$ZONE"; then
 		ok snat_create "$(j -r .status)"
 		cov snat_create
 		local sid sst
-		sid=$(lst snat "$prefix-snat" | cut -f1 | head -1)
+		sid=$(j -r '.nat_gateway_id // .nat_gateway.id // empty')
+		remember_id snat "$sid" || return 1
 		mask "$sid"
 		# сразу после создания удаление — 422 nat_can_not_be_deleted_from_current_state
 		# (run 39152048559): ждём устойчивого статуса
 		snat_st() { sst=$(evo tools call snat_list --json | jq -r --arg id "$sid" '.nat_gateways[] | select(.id == $id) | .status'); case "$sst" in *creat* | *CREAT* | *pending* | *PENDING* | "") return 1 ;; esac; }
 		poll 600 15 snat_st || true
 		ok "SNAT после создания" "status $sst"
-		if [ -n "$sid" ] && must snat_delete snat_delete --arg id="$sid"; then
+		if [[ ${E2E_OWNED_ONLY:-false} == true ]] && ! snat_zone_clear; then
+			bad snat_delete "влияние на стороннюю ВМ не исключено; свой шлюз оставлен"
+		elif [ -n "$sid" ] && must snat_delete snat_delete --arg id="$sid"; then
 			if poll 300 15 gone snat "$prefix-snat"; then ok snat_delete "шлюза нет в snat_list"; cov snat_delete; else bad snat_delete "шлюз в списке через 5 мин"; fi
 		fi
 	fi
 
 	# destroy ВМ B освобождает и чужой ей по происхождению FIP.
-	must "destroy ВМ B" destroy --arg name="$b" || return 1
-	if poll 300 15 sh -c "evo tools call list_floating_ips --json | jq -e --arg id '$fip' '(.floating_ips | type) == \"array\" and (any(.floating_ips[]; .id == \$id and .state != \"error_deleting\") | not)' >/dev/null"; then
+	must "destroy ВМ B" destroy --arg vm_id="$bid" || return 1
+	if poll 300 15 sh -c "evo tools call list_floating_ips --json | jq -e --arg id '$fip' '(.floating_ips | type) == \"array\" and (any(.floating_ips[]; .id == \$id) | not)' >/dev/null"; then
 		ok "destroy освобождает привязанный FIP" "адреса нет"
 		rm -f "$tmp/fip_id"
 	else
@@ -1632,6 +1803,15 @@ area_net() {
 	if [ -f "$tmp/fip_id" ]; then :; elif ! printf '%s\n' "${covered[@]}" | grep -qx release_floating_ip; then
 		# адрес ушёл вместе с ВМ: release_floating_ip — на свободном адресе ВМ A не проверен
 		gap release_floating_ip "адрес освободил destroy ВМ B; см. job mcp"
+	fi
+	if must "удаление подсети ВМ B" subnet_delete --arg subnet_id="$backend_subnet"; then
+		poll 300 15 gone subnet "$prefix-backend" || { bad subnet_delete "подсеть осталась"; return 1; }
+	fi
+	if [ -n "$vpc" ] && must vpc_delete vpc_delete --arg id="$vpc"; then
+		if opwait vpc "$(j -r .operation_id)" 600 && poll 300 15 gone vpc "$prefix-vpc"; then
+			ok vpc_delete "VPC нет в vpc_list"
+			cov vpc_delete
+		else bad vpc_delete "$why"; fi
 	fi
 }
 
@@ -1715,9 +1895,10 @@ area_dns() {
 	# без DNS-сервера — отказ до вопроса (USAGE), зоны нет. Пустой VPC
 	# прогона DNS-сервера не имеет; он удаляется сразу после проверки.
 	must "vpc_create (без DNS-сервера)" vpc_create --arg name="$prefix-nodns" --arg description="evo e2e live run" || return 1
+	nv=$(j -r '.vpc_id // empty')
 	if opwait vpc "$(j -r .operation_id)" 600; then
-		nv=$res_id
-		[ -n "$nv" ] || nv=$(lst vpc "$prefix-nodns" | cut -f1 | head -1)
+		created_id vpc "$nv" "$res_id" || return 1
+		nv=${nv:-$res_id}
 		mask "$nv"
 		tc dns_zone_create --arg domain="$prefix-nodns.test." --arg type=private --arg vpc_id="$nv"
 		if [ "$rc" = 1 ] && [ "${reason%%,*}" = USAGE ] && [ -z "$(lst dns "$prefix-nodns")" ]; then
@@ -1727,18 +1908,29 @@ area_dns() {
 			opwait vpc "$(j -r .operation_id)" 600 || bad "vpc_delete (без DNS-сервера)" "$why"
 		fi
 	else bad "vpc_create (без DNS-сервера)" "$why"; fi
-	must dns_zone_create dns_zone_create --arg domain="$domain" --arg type=private --arg description="evo e2e live run" || return 1
+	local zone_args=() default_vpc
+	if [[ ${E2E_OWNED_ONLY:-false} == true ]]; then
+		default_vpc=$(inventory vpc_list vpcs | jq -er '[.vpcs[] | select(.default == true)] | select(length == 1) | .[0].id | strings') ||
+			{ bad dns_zone_create "нет подтверждения VPC привязки"; return 1; }
+		(umask 077; printf '%s\n' "$default_vpc" >"$owned_file.dns-vpc") || return 1
+		zone_args+=(--arg vpc_id="$default_vpc")
+	fi
+	must dns_zone_create dns_zone_create --arg domain="$domain" --arg type=private --arg description="evo e2e live run" "${zone_args[@]}" || return 1
+	zid=$(j -r '.zone_id // empty')
 	op=$(j -r .operation_id)
 	cov dns_zone_create
 	# 18.10 (run 39152048559) операция создания приватной зоны не стала
 	# done за 10 мин, хотя зона появилась в списке: ждём зону в списке
-	if opwait dns "$op" 300; then ok "dns_operation создания" "done"; else
+	if opwait dns "$op" 300; then
+		created_id dns "$zid" "$res_id" || return 1
+		zid=${zid:-$res_id}
+		ok "dns_operation создания" "done"
+	else
 		row "dns_operation создания" "не done" "за 5 мин: $why"
 		probe_dns_op "$op"
 	fi
 	poll 300 15 sh -c "evo tools call dns_zones --json | jq -e --arg d '$domain' 'any(.zones[]; (.domain // .name) == \$d)' >/dev/null" || true
-	zid=$(lst dns "$prefix" | cut -f1 | head -1)
-	zid=${zid#* }
+	remember_id dns "$zid" || return 1
 	mask "$zid"
 	[ -n "$zid" ] || { bad dns_zone_create "зоны нет в dns_zones"; return 1; }
 	ok dns_zone_create "зона в dns_zones: $(evo tools call dns_zones --json | jq -c --arg id "$zid" '.zones[] | select(.id == $id) | {visibility, valid, delegated}')"
@@ -1748,14 +1940,19 @@ area_dns() {
 	row "dns_zone_get без type" "$([ "$rc" = 0 ] && echo ответ || echo отказ)" "код $rc, $reason"
 	must dns_record_create dns_record_create --arg zone_id="$zid" --arg type=private --arg name=www --arg record_type=A --arg value=198.18.255.10 --arg ttl=300 || return 1
 	cov dns_record_create
+	rid=$(j -r '.record_id // empty')
 	op=$(j -r .operation_id)
-	if opwait dns "$op" 300; then ok "dns_operation записи" "done"; else
+	if opwait dns "$op" 300; then
+		created_id dns_record "$rid" "$res_id" || return 1
+		rid=${rid:-$res_id}
+		ok "dns_operation записи" "done"
+	else
 		row "dns_operation записи" "не done" "за 5 мин: $why"
 		probe_dns_op "$op"
 	fi
-	rec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json >"$tmp/recs" 2>/dev/null && jq -e '[.records[] | select((.name | startswith("www")) and ((.type // "") | ascii_downcase) == "a")] | length > 0' "$tmp/recs" >/dev/null; }
+	remember_id dns_record "$rid" || return 1
+	rec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json >"$tmp/recs" 2>/dev/null && jq -e --arg id "$rid" '[.records[] | select(.id == $id and (.type | ascii_downcase) == "a")] | length == 1' "$tmp/recs" >/dev/null; }
 	if poll 300 15 rec; then
-		rid=$(jq -r '[.records[] | select((.name | startswith("www")) and ((.type // "") | ascii_downcase) == "a")][0].id // empty' "$tmp/recs")
 		mask "$rid"
 		ok dns_record_create "запись A в dns_records, значение $(jq -r --arg id "$rid" '.records[] | select(.id == $id) | .values | index("198.18.255.10") | if . == null then "другое" else "верное" end' "$tmp/recs")"
 	else
@@ -1766,7 +1963,7 @@ area_dns() {
 	bound_check dns_record_get "$(jq -cn --arg i "$rid" '{record_id: $i, type: "private"}')" "allow-project: dns_record_get" own
 	must dns_record_delete dns_record_delete --arg record_id="$rid" --arg type=private || return 1
 	dns_delete_op записи
-	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" 'any(.records[]; .id == $id) | not' >/dev/null; }
+	norec() { evo tools call dns_records --arg zone_id="$zid" --arg type=private --json 2>/dev/null | jq -e --arg id "$rid" '(.records | type) == "array" and (any(.records[]; .id == $id) | not)' >/dev/null; }
 	if poll 300 15 norec; then ok dns_record_delete "записи нет"; cov dns_record_delete; else bad dns_record_delete "запись осталась через 5 мин"; fi
 	! probe_on dnslink || probe_dnslink "$zid"
 	# Зона без vpc_id связана с VPC по умолчанию (D65), её удаление — отказ
@@ -1819,7 +2016,10 @@ area_s3() {
 
 # Секреты (значения — только sha256) и сертификат: импорт, чтение, удаление.
 area_secrets() {
-	local path="$prefix/db" v1 v2 got cid crt key
+	local path="$prefix/db" v1 v2 got cid crt key sid initial
+	if [[ ${E2E_OWNED_ONLY:-false} == true ]]; then
+		initial=$(lst secret "$path") && [[ -z $initial ]] || { bad secret_create "отсутствие пути до создания не подтверждено"; return 1; }
+	fi
 	rand_secret
 	v1=$SECRET_VALUE
 	rand_secret
@@ -1827,16 +2027,25 @@ area_secrets() {
 	umask 077
 	jq -n --arg p "$path" --arg v "$v1" '{path: $p, value: $v, description: "evo e2e live run"}' >"$tmp/s.json"
 	must secret_create secret_create --args-file "$tmp/s.json" || return 1
+	if [[ ${E2E_OWNED_ONLY:-false} == true ]]; then
+		sid=$(j -r '.secret.id // empty')
+		[[ $(j -r .status) == created ]] && remember_id secret "$sid" && secret_owned "$path" "$sid" ||
+			{ bad secret_create "свой ID по пути не подтверждён"; return 1; }
+	fi
 	[ "$(j -r '.secret | tostring | contains("'"$v1"'")')" = false ] && ok secret_create "значение в ответе не вернулось" && cov secret_create || bad secret_create "значение в ответе"
 	got=$(evo --yes tools call secret_value --arg path="$path" --json 2>/dev/null | jq -r '.value // empty')
 	[ "$(sha "$got")" = "$(sha "$v1")" ] && ok secret_value "v1 совпало (sha256)" || bad secret_value "v1 не совпало"
 	jq -n --arg p "$path" --arg v "$v2" '{path: $p, value: $v}' >"$tmp/s.json"
+	if [[ ${E2E_OWNED_ONLY:-false} == true ]]; then secret_owned "$path" "$sid" || { bad secret_add_version "ID секрета изменился"; return 1; }; fi
 	must secret_add_version secret_add_version --args-file "$tmp/s.json" || return 1
 	rm -f "$tmp/s.json"
 	got=$(evo --yes tools call secret_value --arg path="$path" --json 2>/dev/null | jq -r '.value // empty')
 	[ "$(sha "$got")" = "$(sha "$v2")" ] && ok secret_add_version "последняя версия — v2 (sha256)" && cov secret_add_version || bad secret_add_version "последняя версия не v2"
 	must secret_get secret_get --arg path="$path" && ok secret_get "метаданные прочитаны"
 	[ -n "$(lst secret "$path")" ] && ok secret_list "путь в списке" || bad secret_list "пути нет в secret_list"
+	if [[ ${E2E_OWNED_ONLY:-false} == true ]]; then
+		[[ $(sha "$got") == "$(sha "$v2")" ]] && secret_owned "$path" "$sid" || { bad secret_delete "ID или последняя версия изменилась"; return 1; }
+	fi
 	must secret_delete secret_delete --arg path="$path" || return 1
 	if poll 120 10 gone secret "$path"; then ok secret_delete "секрета нет"; cov secret_delete; else bad secret_delete "секрет в списке"; fi
 	tc secret_value --arg path="$path"
@@ -1875,7 +2084,7 @@ area_secrets() {
 	must cert_import cert_import --args-file "$tmp/c.json" || return 1
 	rm -f "$tmp/c.json"
 	cid=$(j -r '.certificate.id // empty')
-	[ -n "$cid" ] || cid=$(lst cert "$prefix-cert" | cut -f1 | head -1)
+	remember_id cert "$cid" || return 1
 	mask "$cid"
 	[ -n "$cid" ] || { bad cert_import "нет id сертификата"; return 1; }
 	ok cert_import "$(j -r .status)"
@@ -1903,40 +2112,90 @@ area_secrets() {
 	if poll 120 10 gone cert "$prefix-cert"; then ok cert_delete "сертификата нет"; cov cert_delete; else bad cert_delete "сертификат в списке"; fi
 	# Let's Encrypt без делегированной зоны: ждём отказ 400 (реестр CRT-3)
 	tc cert_issue_le --arg name="$prefix-le" --arg dns_names="[\"$prefix.example.com\"]"
+	if [[ ${E2E_OWNED_ONLY:-false} == true && $rc == 0 ]]; then remember_id cert "$(j -r '.certificate.id // .certificate_id // empty')" || return 1; fi
 	row "cert_issue_le без делегированной зоны" "$([ "$rc" = 0 ] && echo принят || echo отказ)" "код $rc, $reason: $(printf '%s' "$why" | cut -c1-160)"
 	cov cert_issue_le
 }
 
 # Artifact Registry и Container Apps: реестр, push образа, приложение.
 area_ca() {
-	local reg="evo-e2e-ca-$RUN" rid host app="$prefix-app" url code img n
+	local reg="evo-e2e-ca-$RUN" rid host app="$prefix-app" url code img n op cid direct
+	local marker= mark_args=()
 	probe_ar_pages
+	if [[ ${E2E_OWNED_ONLY:-} = true ]]; then
+		ca_list_identity ar "$reg" "" absent && ca_save ar intent "" "" || { bad ar_create "имя реестра занято или квитанция недоступна"; return 1; }
+	fi
 	must ar_create ar_create --arg name="$reg" --arg registry_type=DOCKER || return 1
-	if opwait ar "$(j -r .operation_id)" 600; then ok ar_create "операция done"; cov ar_create; else bad ar_create "$why"; return 1; fi
-	rid=$(lst ar "$reg" | cut -f1 | head -1)
+	op=$(j -r '.operation_id // empty')
+	direct=$(j -r '.registry_id // empty')
+	if [[ ${E2E_OWNED_ONLY:-} = true ]]; then
+		[[ $(j -r .status) = creating && $op =~ ^[A-Za-z0-9-]{1,80}$ && $direct =~ ^[A-Za-z0-9-]{0,80}$ ]] &&
+			ca_save ar accepted "$op" "$direct" || { bad ar_create "нет квитанции операции создания"; return 1; }
+	fi
+	if opwait ar "$op" 600; then ok ar_create "операция done"; cov ar_create; else bad ar_create "$why"; return 1; fi
+	if [[ ${E2E_OWNED_ONLY:-} = true ]]; then
+		rid=${direct:-$res_id}
+		ar_ready() { ca_list_identity ar "$reg" "$rid" present && ca_current_card ar "$reg" "$rid"; }
+		[[ $rid =~ ^[A-Za-z0-9-]{1,80}$ && ( -z $res_id || $res_id = "$rid" ) ]] &&
+			ca_save ar owned "$op" "$rid" && poll 60 3 ar_ready ||
+			{ bad ar_create "исходный ID реестра не подтверждён (${ca_list_reason:-ar_get не подтвердил карточку})"; return 1; }
+	else rid=$(lst ar "$reg" | cut -f1 | head -1); fi
 	mask "$rid"
 	host="$reg.cr.cloud.ru"
 	mask "$host"
 	img="$host/evo-e2e:live"
 	docker pull -q nginxinc/nginx-unprivileged:alpine >/dev/null
 	docker tag nginxinc/nginx-unprivileged:alpine "$img"
-	if ! printf '%s' "$SECRET" | docker login "$host" -u "$KEY_ID" --password-stdin >"$tmp/dl" 2>&1; then
-		gap "ca_*" "docker login отказан: $(grep -oE '[45][0-9]{2}[^"]{0,40}' "$tmp/dl" | head -1 | redact)"
-		return 0
-	fi
-	if ! timeout 600 docker push -q "$img" >"$tmp/dp" 2>&1; then
-		gap "ca_*" "push в реестр: $(tail -1 "$tmp/dp" | redact | cut -c1-160) (нет права push у SA или OPS-8)"
-		docker logout "$host" >/dev/null 2>&1 || true
-		return 0
-	fi
+	local push_try push_ok=0 push_rc=0 push_tail=''
+	for push_try in 1 2 3; do
+		if ! printf '%s' "$SECRET" | docker login "$host" -u "$KEY_ID" --password-stdin >"$tmp/dl" 2>&1; then
+			gap "ca_*" "docker login отказан: $(grep -oE '[45][0-9]{2}[^"]{0,40}' "$tmp/dl" | head -1 | redact)"
+			if [[ ${E2E_OWNED_ONLY:-} = true ]]; then return 1; fi
+			return 0
+		fi
+		# Без -q и тремя попытками по 180 с: при OPS-8 зависает финальный PUT,
+		# повтор на уже залитых слоях часто завершается, а вывод показывает этап.
+		if timeout 180 docker push "$img" >"$tmp/dp" 2>&1; then
+			push_ok=1
+			break
+		else
+			push_rc=$?
+		fi
+		push_tail=$(tr '\r' '\n' <"$tmp/dp" | { grep -v '^[[:space:]]*$' || true; } | tail -n 3 | tr '\n' '|' | redact | cut -c1-200)
+		row "push в Artifact Registry #$push_try" отказ "rc=$push_rc${push_tail:+: $push_tail}"
+		if [ "$push_try" -lt 3 ]; then sleep 10; fi
+	done
 	docker logout "$host" >/dev/null 2>&1 || true
-	ok "push в Artifact Registry" "образ загружен"
+	if [ "$push_ok" != 1 ]; then
+		gap "ca_*" "push в реестр (3 попытки, rc=$push_rc): ${push_tail:-пустой вывод} (нет права push у SA или OPS-8)"
+		if [[ ${E2E_OWNED_ONLY:-} = true ]]; then return 1; fi
+		return 0
+	fi
+	ok "push в Artifact Registry" "образ загружен (попытка $push_try)"
 
-	must ca_deploy ca_deploy --arg name="$app" --arg image="$img" --arg port=8080 --arg max_instances=1 || return 1
+	if [[ ${E2E_OWNED_ONLY:-} = true ]]; then
+		ca_list_identity ca "$app" "" absent && ca_save ca intent "" "" || { bad ca_deploy "имя приложения занято или квитанция недоступна"; return 1; }
+		marker=$(ca_marker) || return 1
+		mark_args=(--arg "description=$marker")
+	fi
+	must ca_deploy ca_deploy --arg name="$app" --arg image="$img" --arg port=8080 --arg max_instances=1 "${mark_args[@]}" || return 1
 	ok ca_deploy "$(j -r .status)"
+	if [[ ${E2E_OWNED_ONLY:-} = true ]]; then
+		op=$(j -r '.operation_id // empty')
+		[[ $(j -r .status) = deploying && $(j -r .name) = "$app" && $op =~ ^[A-Za-z0-9-]{1,80}$ ]] && ca_save ca accepted "$op" "" ||
+			{ bad ca_deploy "ответ создания не подтверждает свою операцию"; return 1; }
+		# ca_deploy exposes the operation, not the UID. The owner isolated
+		# the project. Record exactly one new app after the accepted create.
+		poll 180 5 ca_current_card ca "$app" "" && cid=$(jq -er .id "$tmp/ca-card") &&
+			ca_list_identity ca "$app" "$cid" present && ca_save ca owned "$op" "$cid" ||
+			{ bad ca_deploy "UID своего приложения не установлен"; return 1; }
+	fi
 	cov ca_deploy
 	app_url() {
 		evo tools call ca_get --arg name="$app" --json 2>/dev/null >"$tmp/caget" || return 0
+		if [[ ${E2E_OWNED_ONLY:-} = true ]]; then
+			jq -e --arg p "$PROJECT" --arg n "$app" --arg id "$cid" --arg m "$marker" '.projectId==$p and .name==$n and .id==$id and .description==$m' "$tmp/caget" >/dev/null || return 0
+		fi
 		# публичный адрес — configuration.ingress.publicUri (run 39164767739:
 		# первым в ответе идёт internalUri, снаружи недоступный)
 		jq -r '(.configuration.ingress.publicUri // empty) | if . == "" then . elif test("^https?://") then . else "https://" + . end' "$tmp/caget"
@@ -1952,20 +2211,27 @@ area_ca() {
 	if poll 900 20 app_up; then ok "ca_get URL и HTTP" "200, nginx"; else bad "ca_get URL и HTTP" "за 15 мин нет ответа 200 (код ${code:-нет URL}); ca_get: $(ca_shape)"; fi
 	# 18.10: 0 строк сразу после обслуженных запросов; задержка поставки
 	# логов не описана — пустой ответ повторяем через минуту
-	must ca_logs ca_logs --arg name="$app" && {
+	app_logs() {
+		if [[ ${E2E_OWNED_ONLY:-} = true ]]; then ca_current_card ca "$app" "$cid" || { bad ca_logs "принадлежность приложения не подтверждена"; return 1; }; fi
+		must ca_logs ca_logs --arg name="$app"
+	}
+	app_logs && {
 		n=$(j -r '(.logs // []) | length')
 		if [ "$n" = 0 ]; then
 			sleep 60
-			must ca_logs ca_logs --arg name="$app" && n="0, через 60 с $(j -r '(.logs // []) | length')"
+			app_logs && n="0, через 60 с $(j -r '(.logs // []) | length')"
 		fi
 		ok ca_logs "строк $n$(j -r 'if .truncated then ", truncated" else "" end')"
 	}
+	if [[ ${E2E_OWNED_ONLY:-} = true ]]; then ca_current_card ca "$app" "$cid" || { bad ca_stop "UID приложения изменился"; return 1; }; fi
 	must ca_stop ca_stop --arg name="$app" && { ok ca_stop "$(j -r .status)"; cov ca_stop; }
 	sleep 30
+	if [[ ${E2E_OWNED_ONLY:-} = true ]]; then ca_current_card ca "$app" "$cid" || { bad ca_start "UID приложения изменился"; return 1; }; fi
 	must ca_start ca_start --arg name="$app" && {
 		cov ca_start
 		if poll 600 20 app_up; then ok ca_start "снова 200"; else bad ca_start "после start нет 200 за 10 мин (код ${code:-?})"; fi
 	}
+	if [[ ${E2E_OWNED_ONLY:-} = true ]]; then ca_cleanup_owned; return $?; fi
 	must ca_delete ca_delete --arg name="$app" || return 1
 	if poll 600 20 gone ca "$app"; then ok ca_delete "приложения нет"; cov ca_delete; else bad ca_delete "приложение в списке через 10 мин"; fi
 	must ar_delete ar_delete --arg id="$rid" || return 1
@@ -2160,55 +2426,74 @@ area_mcp() {
 		[ "$MCP_MAXTOOK" -le "$MCP_LIMIT" ] || bad "stdio $1: предел вызова" "сеанс $MCP_MAXTOOK с — дольше $MCP_LIMIT с (D69)"
 		[ "$MCP_FOLLOW" = "done" ] || bad "stdio $1: следующий шаг" "$MCP_FOLLOW после $MCP_CALLS вызовов: $(j -c '{status, next_tool}' | redact)"
 	}
-	stdio deploy_plan "$(jq -cn --arg n "$vm" --arg z "$ZONE" --arg i "$IMAGE" --arg f "$FLAVOR" --argjson p "$MCP_PORT" \
-		'{mode:"manual", name:$n, product:"evo-e2e", zone:$z, image:$i, flavor:$f, compose_file:"docker-compose.yml", ports:[$p]}')"
-	local plan
-	plan=$(j -r '.plan_id // empty')
-	[ "$iserr" = false ] && [ -n "$plan" ] && ok "stdio deploy_plan" "₽/мес $(j -r '.cost.total_monthly_rub // "?"')" || { bad "stdio deploy_plan" "isError $iserr, $(j -r '.reason // .error // empty' | redact | cut -c1-200)"; return 1; }
-	stdio deploy_apply "$(jq -cn --arg p "$plan" '{plan_id:$p}')"
-	[ "$(j -r .status)" = confirmation_required ] && [ -z "$(lst vm "$vm")" ] && ok "stdio deploy_apply без confirmed" "confirmation_required, ВМ нет" || bad "stdio deploy_apply без confirmed" "status $(j -r .status)"
-	follow deploy_apply "$(jq -cn --arg p "$plan" '{plan_id:$p, confirmed:true}')"
-	vid=$(j -r '.vm_id // empty')
-	ip=$(j -r '.public_ip // empty')
-	mask "$vid" "$ip"
-	[ "$iserr" = false ] && [ -n "$vid" ] && [ "$(j -r .status)" != creating ] && ok "stdio deploy_apply" "status $(j -r .status), вызовов $MCP_CALLS" && cov deploy_apply || { bad "stdio deploy_apply" "isError $iserr, $(j -r '.reason // .error // empty' | redact | cut -c1-200)"; return 1; }
-	follow deploy "$(jq -cn --arg r "$zid" --arg i "$IMAGE" --arg f "$FLAVOR" '{confirmed:true, region:$r, image:$i, flavor:$f}')"
-	if [ "$iserr" = false ] && [ "$(j -r .status)" = ok ]; then
-		cov deploy
+	mcp_deploy_compose() {
+		stdio deploy_plan "$(jq -cn --arg n "$vm" --arg z "$ZONE" --arg i "$IMAGE" --arg f "$FLAVOR" --argjson p "$MCP_PORT" \
+			'{mode:"manual", name:$n, product:"evo-e2e", zone:$z, image:$i, flavor:$f, compose_file:"docker-compose.yml", ports:[$p]}')"
+		local plan
+		plan=$(j -r '.plan_id // empty')
+		[ "$iserr" = false ] && [ -n "$plan" ] && ok "stdio deploy_plan" "₽/мес $(j -r '.cost.total_monthly_rub // "?"')" || { bad "stdio deploy_plan" "isError $iserr, $(j -r '.reason // .error // empty' | redact | cut -c1-200)"; return 1; }
+		stdio deploy_apply "$(jq -cn --arg p "$plan" '{plan_id:$p}')"
+		[ "$(j -r .status)" = confirmation_required ] && [ -z "$(lst vm "$vm")" ] && ok "stdio deploy_apply без confirmed" "confirmation_required, ВМ нет" || bad "stdio deploy_apply без confirmed" "status $(j -r .status)"
+		if [[ ${E2E_OWNED_ONLY:-false} == true ]]; then
+			local plan_sg
+			[[ $plan =~ ^[A-Za-z0-9_-]+$ ]] && plan_sg=$(jq -er '.network.security_group_id | strings | select(test("^[A-Za-z0-9_-]+$"))' ".evo/plans/$plan.json") &&
+				iam_fresh || { bad "stdio deploy_apply" "не удалось проверить группу из плана"; return 1; }
+			if ! printf '%s' "$TOKEN" | "$here/deploy_sg_detached.sh" "$plan_sg"; then
+				bad "stdio deploy_apply" "группа из плана не подтверждена как свободная; возможна ВМ владельца"
+				return 1
+			fi
+		fi
+		follow deploy_apply "$(jq -cn --arg p "$plan" '{plan_id:$p, confirmed:true}')"
+		vid=$(j -r '.vm_id // empty')
+		ip=$(j -r '.public_ip // empty')
+		mask "$vid" "$ip"
+		[ "$iserr" = false ] && [ -n "$vid" ] && [ "$(j -r .status)" != creating ] && ok "stdio deploy_apply" "status $(j -r .status), вызовов $MCP_CALLS" && cov deploy_apply || { bad "stdio deploy_apply" "isError $iserr, $(j -r '.reason // .error // empty' | redact | cut -c1-200)"; return 1; }
+		remember_vm "$vid" || return 1
+		follow deploy "$(jq -cn --arg r "$zid" --arg i "$IMAGE" --arg f "$FLAVOR" '{confirmed:true, region:$r, image:$i, flavor:$f}')"
 		ip=${ip:-$(evo tools call vm_get --arg vm_id="$vid" --json | jq -r '.public_ip // empty')}
 		mask "$ip"
-		# Сеть ВМ сразу после deploy и при отказе HTTP (mcp 186–192: HTTP нет,
-		# logs — SSH_TIMEOUT, класс не установлен): ВМ, адрес, правила группы
-		# из state на 22 и на порт приложения, ответ портов с раннера.
+		# Сеть ВМ сразу после deploy, при отказе deploy (SSH_TIMEOUT/COMPOSE_FAILED)
+		# и при отказе HTTP (mcp 186–192): ВМ, адрес, правила группы из state/плана
+		# на 22 и на порт приложения, ответ портов с раннера.
 		local sg
-		sg=$(jq -r '.deployments[0].security_group_id // empty' .evo/state.json 2>/dev/null)
+		sg=$(jq -r '.deployments[0].security_group_id // empty' .evo/state.json 2>/dev/null || true)
+		sg=${sg:-${plan_sg:-}}
 		mask "$sg"
 		net_diag() {
 			echo "$1:"
 			"$here/ssh_diag.sh" "$vid" "$ip" "$sg"
 			SSH_PORT=$MCP_PORT RULE_PORT=$MCP_PORT "$here/ssh_diag.sh" "$vid" "$ip" "$sg"
 		}
-		net_diag "сеть ВМ сразу после deploy"
-		if poll 300 10 sh -c "curl -fsS --max-time 10 'http://$ip:$MCP_PORT/' | grep -qi nginx"; then ok "stdio deploy" "HTTP $MCP_PORT: nginx"; else
-			local probe
-			probe=$(j -r '.log // ""' | { grep -E ':[0-9]+ -> ' || true; } | redact | tr '\n' ' ' | cut -c1-200)
-			local tail
-			tail=$(j -r '.log // ""' | grep -v '^[[:space:]]*$' | tail -n 4 | redact | tr '\n' '|' | cut -c1-300)
-			bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин; проба evo в ответе deploy: ${probe:-строк пробы нет}; конец log deploy: ${tail:-пусто}"
-			net_diag "сеть ВМ после 5 мин без HTTP"
+		if [ "$iserr" = false ] && [ "$(j -r .status)" = ok ]; then
+			cov deploy
+			net_diag "сеть ВМ сразу после deploy"
+			if poll 300 10 sh -c "curl -fsS --max-time 10 'http://$ip:$MCP_PORT/' | grep -qi nginx"; then ok "stdio deploy" "HTTP $MCP_PORT: nginx"; else
+				local probe
+				probe=$(j -r '.log // ""' | { grep -E ':[0-9]+ -> ' || true; } | redact | tr '\n' ' ' | cut -c1-200)
+				local tail
+				tail=$(j -r '.log // ""' | grep -v '^[[:space:]]*$' | tail -n 4 | redact | tr '\n' '|' | cut -c1-300)
+				bad "stdio deploy" "нет HTTP на $MCP_PORT за 5 мин; проба evo в ответе deploy: ${probe:-строк пробы нет}; конец log deploy: ${tail:-пусто}"
+				net_diag "сеть ВМ после 5 мин без HTTP"
+			fi
+			[ "$(lst vm "$vm" | wc -l)" = 1 ] && ok "deploy после deploy_apply" "та же ВМ, второй нет" || bad "deploy после deploy_apply" "ВМ с именем $vm: $(lst vm "$vm" | wc -l); всего ВМ $prefix*: $(lst vm "$prefix" | wc -l)"
+		else
+			local err_tail
+			err_tail=$(j -r '.log // .hint // ""' | { grep -v '^[[:space:]]*$' || true; } | tail -n 4 | redact | tr '\n' '|' | cut -c1-300)
+			bad "stdio deploy" "status $(j -r '.status // "-"'), $(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)${err_tail:+; подробности: $err_tail}"
+			net_diag "сеть ВМ при отказе deploy"
 		fi
-		[ "$(lst vm "$vm" | wc -l)" = 1 ] && ok "deploy после deploy_apply" "та же ВМ, второй нет" || bad "deploy после deploy_apply" "ВМ с именем $vm: $(lst vm "$vm" | wc -l); всего ВМ $prefix*: $(lst vm "$prefix" | wc -l)"
-	else bad "stdio deploy" "status $(j -r '.status // "-"'), $(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"; fi
-	bound_check vm_get "$(jq -cn --arg v "$vid" '{vm_id: $v}')" "allow-project: vm_get" own
-	stdio status '{}'
-	[ "$iserr" = false ] && ok "stdio status" "$(j -r '.status // .health // "?"')" || bad "stdio status" "isError"
-	stdio logs '{"tail":20}'
-	[ "$iserr" = false ] && ok "stdio logs" "прочитаны" || bad "stdio logs" "$(j -r '.reason // "-"')"
-	stdio destroy "$(jq -cn --arg v "$vid" '{vm_id:$v}')"
-	[ "$(j -r .status)" = confirmation_required ] && [ "$(j -r '.target.name // empty')" = "$vm" ] && ok "stdio destroy без confirmed" "превью называет ВМ" || bad "stdio destroy без confirmed" "status $(j -r .status)"
-	stdio destroy "$(jq -cn --arg v "$vid" '{vm_id:$v, confirmed:true}')"
-	[ "$iserr" = false ] && ok "stdio destroy vm_id" "$(j -r .status), правила: закрыто $(j -r '(.security_group_rules.closed // []) | length')" && cov destroy || bad "stdio destroy vm_id" "$(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"
-	if poll 600 20 gone vm "$vm"; then ok "ВМ удалена" ""; else bad "ВМ удалена" "в vm_list через 10 мин"; fi
+		bound_check vm_get "$(jq -cn --arg v "$vid" '{vm_id: $v}')" "allow-project: vm_get" own
+		stdio status '{}'
+		[ "$iserr" = false ] && ok "stdio status" "$(j -r '.status // .health // "?"')" || bad "stdio status" "isError"
+		stdio logs '{"tail":20}'
+		[ "$iserr" = false ] && ok "stdio logs" "прочитаны" || bad "stdio logs" "$(j -r '.reason // "-"')"
+		stdio destroy "$(jq -cn --arg v "$vid" '{vm_id:$v}')"
+		[ "$(j -r .status)" = confirmation_required ] && [ "$(j -r '.target.name // empty')" = "$vm" ] && ok "stdio destroy без confirmed" "превью называет ВМ" || bad "stdio destroy без confirmed" "status $(j -r .status)"
+		stdio destroy "$(jq -cn --arg v "$vid" '{vm_id:$v, confirmed:true}')"
+		[ "$iserr" = false ] && ok "stdio destroy vm_id" "$(j -r .status), правила: закрыто $(j -r '(.security_group_rules.closed // []) | length')" && cov destroy || bad "stdio destroy vm_id" "$(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"
+		if poll 600 20 gone vm "$vm"; then ok "ВМ удалена" ""; else bad "ВМ удалена" "в vm_list через 10 мин"; fi
+	}
+	mcp_deploy_compose || failed=1
 
 	# HTTP: provision → destroy по имени.
 	token=$(openssl rand -hex 32)
@@ -2256,8 +2541,10 @@ area_mcp() {
 	hfollow provision "$(jq -cn --arg n "$hvm" --arg r "$zid" --arg i "$IMAGE" --arg f "$FLAVOR" '{name:$n, region:$r, image:$i, flavor:$f, confirmed:true}')"
 	mask "$(j -r '.vm_id // empty')" "$(j -r '.vm_ip // empty')"
 	[ "$iserr" = false ] && [ "$(j -r .status)" = ok ] && ok "http provision" "ВМ создана, вызовов $hcalls" && cov provision || bad "http provision" "isError $iserr, $(j -r '.reason // "-"'): $(j -r '.error // empty' | redact | cut -c1-200)"
-	hfollow destroy "$(jq -cn --arg n "$hvm" '{name:$n, confirmed:true}')"
-	[ "$iserr" = false ] && ok "http destroy name" "$(j -r .status), вызовов $hcalls" || bad "http destroy name" "isError $iserr, $(j -r '.reason // "-"')"
+	vid=$(j -r '.vm_id // empty')
+	[[ $iserr == false && $(j -r .status) == ok ]] && remember_vm "$vid" || return 1
+	hfollow destroy "$(jq -cn --arg v "$vid" '{vm_id:$v, confirmed:true}')"
+	[ "$iserr" = false ] && ok "http destroy vm_id" "$(j -r .status), вызовов $hcalls" || bad "http destroy vm_id" "isError $iserr, $(j -r '.reason // "-"')"
 	if poll 600 20 gone vm "$hvm"; then ok "http: ВМ удалена" ""; else bad "http: ВМ удалена" "в vm_list через 10 мин"; fi
 	kill "$http_pid" 2>/dev/null || true
 
@@ -2267,11 +2554,13 @@ area_mcp() {
 	mask "$(j -r '.vm_id // empty')" "$ip"
 	if [ "$rc" = 0 ] && [ -n "$ip" ]; then
 		local fid
-		fid=$(evo tools call list_floating_ips --json | jq -r --arg ip "$ip" '[.floating_ips[] | select(.ip_address == $ip)][0].id // empty')
+		vid=$(j -r '.vm_id // empty')
+		remember_vm "$vid" && fid=$(run_fip "$vid" "$ip") && remember_id fip "$fid" ||
+			{ bad "FIP ВМ" "нет своей квитанции VM/FIP"; return 1; }
 		mask "$fid"
 		tc release_floating_ip --arg id="$fid"
 		[ "$rc" != 0 ] && ok "release_floating_ip занятого" "отказ: код $rc" || bad "release_floating_ip занятого" "освободил адрес ВМ"
-		must "destroy release_ip=false" destroy --arg name="$prefix-fip" --arg release_ip=false &&
+		must "destroy release_ip=false" destroy --arg vm_id="$vid" --arg release_ip=false &&
 			poll 300 15 sh -c "evo tools call list_floating_ips --json | jq -e --arg id '$fid' '.floating_ips[] | select(.id == \$id) | .available == true' >/dev/null" &&
 			must release_floating_ip release_floating_ip --arg id="$fid" && {
 			ok release_floating_ip "$(j -r .status)"
@@ -4350,7 +4639,9 @@ disk | net | dns | s3 | secrets | ca | stack | mcp | pgnet | ops | opsevo | dbch
 		echo "| Область | Проверка | Итог | Подробности |"
 		echo "|---|---|---|---|"
 	} >>"$summary"
-	"area_$area" || failed=1
+	if "area_$area" && (( failed == 0 )); then
+		[[ ${E2E_OWNED_ONLY:-false} != true ]] || touch "$owned_file.complete"
+	else failed=1; fi
 	;;
 sweep)
 	area=sweep

@@ -34,6 +34,7 @@ evo deploy --yes >deploy1.txt 2>&1 &
 pid=$!
 kh="${RUNNER_TEMP:-/tmp}/deploy-cut-kh"
 ip='' user='' caught='' start=$SECONDS
+vm_proof='' fip_proof=''
 sshlog="${RUNNER_TEMP:-/tmp}/deploy-cut-ssh.err"
 # vm_ssh КОМАНДА — команда на ВМ ключом развёртывания; stdout, код ssh;
 # stderr последнего вызова — в $sshlog (ssh_why). Ключ хоста — при первом
@@ -46,6 +47,16 @@ vm_ssh() {
 # ssh_why — последняя строка stderr ssh через маску: почему ВМ не ответила.
 ssh_why() { tail -1 "$sshlog" 2>/dev/null | redact | cut -c1-200; }
 while kill -0 "$pid" 2>/dev/null && [ $((SECONDS - start)) -lt "$CUT_WAIT" ]; do
+	if [ -s .evo/state.json ] && { [ -z "$vm_proof" ] || [ -z "$fip_proof" ]; }; then
+		if [ -z "$vm_proof" ]; then
+			vm_proof=$(jq -r '.deployments[0].vm_id // empty' .evo/state.json 2>/dev/null)
+			[ -z "$vm_proof" ] || echo "owned vm sha256=$(printf '%s' "$vm_proof" | sha256sum | cut -d' ' -f1)"
+		fi
+		if [ -z "$fip_proof" ]; then
+			fip_proof=$(jq -r '.deployments[0].floating_ip_id // empty' .evo/state.json 2>/dev/null)
+			[ -z "$fip_proof" ] || echo "owned floating_ip sha256=$(printf '%s' "$fip_proof" | sha256sum | cut -d' ' -f1)"
+		fi
+	fi
 	if [ -z "$ip" ] && [ -s .evo/state.json ]; then
 		ip=$(jq -r '.deployments[0].vm_ip // empty' .evo/state.json 2>/dev/null)
 		user=$(jq -r '.deployments[0].ssh_user // "ubuntu"' .evo/state.json 2>/dev/null)
