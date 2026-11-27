@@ -7,6 +7,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -148,6 +149,89 @@ func TestVMResize_SameFlavorIsAlreadyResizedWithoutAQuestion(t *testing.T) {
 			}
 		}
 	}
+}
+
+// 110-09: a stable VM whose card names the flavor of the call by its id
+// is already_resized from the card alone — no read of the catalogue of
+// flavors, no question, no write; a catalogue that cannot be read does not
+// stand in the way. By the name the catalogue is read: the card's name is
+// not the id the call names.
+func TestVMResize_SameFlavorIDAnswersWithoutTheCatalogue(t *testing.T) {
+	for _, st := range []string{"running", "stopped"} {
+		r, w, _ := vmResizeWorld(t, st)
+		w.failNth("ListFlavors", 1, faultTransport)
+		m, text, isErr := callNamed(t, r, "vm_resize", map[string]any{"vm_id": w.id, "flavor": faultFlavor})
+		if isErr || m["status"] != "already_resized" || m["flavor_id"] != faultFlavor || m["state"] != st {
+			t.Errorf("%s: %s", st, text)
+		}
+		for _, op := range w.callLog() {
+			if op == "ListFlavors" {
+				t.Errorf("%s: the catalogue was read: %v", st, w.callLog())
+			}
+		}
+		if n := w.resizeCalls(); n != 0 {
+			t.Errorf("%s: a repeat wrote %d", st, n)
+		}
+	}
+	r, w, _ := vmResizeWorld(t, "running")
+	if m, text, _ := callNamed(t, r, "vm_resize", map[string]any{"vm_id": w.id, "flavor": "low-1-1"}); m["status"] != "already_resized" ||
+		!slices.Contains(w.callLog(), "ListFlavors") {
+		t.Errorf("by the name: %s %v", text, w.callLog())
+	}
+}
+
+// The card answers alone only for a stable VM whose card names its flavor
+// («Риск», conclusion 332): a VM in updating to the target is a change in
+// flight, waited for, not a repeat; a card with no name of its flavor goes
+// the way of the catalogue. The folder's record follows the flavor the
+// card names (followFlavor), by the id as by the name.
+func TestVMResize_SameFlavorIDGuards(t *testing.T) {
+	r, w, _ := vmResizeWorld(t, "updating")
+	m, text, _ := callNamed(t, r, "vm_resize", map[string]any{"vm_id": w.id, "flavor": faultFlavor})
+	if m["status"] == "already_resized" || !slices.Contains(w.callLog(), "ListFlavors") {
+		t.Errorf("a VM in updating to the target: %s %v", text, w.callLog())
+	}
+
+	_, w, dir := vmResizeWorld(t, "running")
+	nameless := &namelessFlavorCard{powerWorld: w}
+	r = New(func(map[string]any) (*engine.Engine, error) {
+		return &engine.Engine{StateDir: dir, Config: config.Config{ProjectID: faultProject, KeyID: "k", Secret: "s"},
+			Auth: staticToken{}, Cloud: nameless, Printer: output.NewWithWriter(&bytes.Buffer{}, output.ModeText, false),
+			Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: 50 * time.Millisecond}}, nil
+	})
+	r.SetStateDir(dir)
+	recordOn(t, dir, w.id)
+	w.setVMFlavor(w.id, resizeUp)
+	m, text, _ = callNamed(t, r, "vm_resize", map[string]any{"vm_id": w.id, "flavor": resizeUp})
+	if m["status"] != "already_resized" || !slices.Contains(w.callLog(), "ListFlavors") {
+		t.Errorf("a card with no name of its flavor: %s %v", text, w.callLog())
+	}
+	if id, name := recordFlavor(t, dir, w.id); id != resizeUp || name != "low-2-4" {
+		t.Errorf("a card with no name: the record names %q %q", id, name)
+	}
+
+	r, w, dir = vmResizeWorld(t, "running")
+	recordOn(t, dir, w.id)
+	w.setVMFlavor(w.id, resizeUp)
+	if m, text, _ := callNamed(t, r, "vm_resize", map[string]any{"vm_id": w.id, "flavor": resizeUp}); m["status"] != "already_resized" ||
+		slices.Contains(w.callLog(), "ListFlavors") {
+		t.Fatalf("by the id: %s %v", text, w.callLog())
+	}
+	if id, name := recordFlavor(t, dir, w.id); id != resizeUp || name != "low-2-4" {
+		t.Errorf("after already_resized by the id the record names %q %q", id, name)
+	}
+}
+
+// namelessFlavorCard is a world whose card of a VM names its flavor by the
+// id only.
+type namelessFlavorCard struct{ *powerWorld }
+
+func (c *namelessFlavorCard) GetVMDetail(ctx context.Context, id string) (*provision.VMDetail, error) {
+	d, err := c.powerWorld.GetVMDetail(ctx, id)
+	if err == nil && d.Flavor != nil {
+		d.Flavor = &provision.Flavor{ID: d.Flavor.ID}
+	}
+	return d, err
 }
 
 // §6.2, rows «running» and «stopped»: the preview names the VM, its state,

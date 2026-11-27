@@ -834,6 +834,14 @@ func (s *Registry) planVMResize() Planner {
 		if err != nil {
 			return nil, err
 		}
+		// A stable VM whose card names the target by its id is on it: the
+		// card alone answers, with no read of the catalogue (110-09). A
+		// card with no name of its flavor goes the way of the catalogue,
+		// which names it for the folder's record (followFlavor).
+		if !vmSettling[vm.State] && vm.Flavor != nil && vm.Flavor.ID == want && vm.Flavor.Name != "" {
+			s.followFlavor(eng, vm.ID, vm.Flavor)
+			return answered(toJSON(vmResizeAnswer(vm, "already_resized")), false), nil
+		}
 		flavors, err := eng.Cloud.ListFlavors(ctx)
 		if err != nil {
 			return nil, err
