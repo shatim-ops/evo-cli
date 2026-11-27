@@ -1,4 +1,4 @@
-"""Exercise an owned Container App inside its existing exclusive-identity reservation."""
+"""Exercise the Container App identified by the direct creation receipt."""
 
 import http.client
 import os
@@ -59,7 +59,7 @@ def ready(host, deadline):
         connection.close()
 
 
-def exercise(rec, lease):
+def exercise(rec):
     mode = next((m for m in apps.MODES if rec.get("name") == apps.app_name(os.environ["P90_SOURCE_RUN"], m)), None)
     require(mode, "unknown receipt scope")
     key = "ca-" + mode
@@ -73,12 +73,11 @@ def exercise(rec, lease):
     # Leave time for the parent to issue ca_delete and confirm its readback.
     until = rec["until"] - 240
 
-    def authorized():
-        require(time.time() < until, "lifecycle window exhausted")
-        lease.require(rec["project"], rec["name"], rec["start"], rec["until"])
+    def check_time():
+        require(rec["start"] <= time.time() < until, "lifecycle window exhausted")
 
     def tool(action, write=False):
-        authorized()
+        check_time()
         flags = ["--yes"] if write else []
         return common.call_evo(*flags, "--project-id", rec["project"], "tools", "call", "ca_" + action,
                                "--arg", "name=" + rec["name"], "--json", timeout=max(1, min(35, until - time.time())))
@@ -104,8 +103,8 @@ def exercise(rec, lease):
         return bool(host) and ready(host, until)
 
     def action(verb):
-        card()
         record(verb + "-intent")
+        card()
         result = tool(verb, write=True)
         accepted = {"stop": "stopping", "start": "starting"}[verb]
         require(result.get("action") == verb and result.get("name") == rec["name"]
@@ -115,7 +114,7 @@ def exercise(rec, lease):
                     "service continuation differs")
         record(verb + "-accepted")
 
-    authorized()
+    check_time()
     record("started", **{k: rec[k] for k in ("resource_id", "create_operation")})
     poll(360, healthy, "first HTTP 200 not observed")
     record("http-ready", first_http=200)

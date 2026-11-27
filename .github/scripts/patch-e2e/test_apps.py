@@ -6,7 +6,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import apps
 
@@ -23,7 +23,7 @@ class ContainerAppsTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         env = patch.dict(os.environ, {"P90_CA_BIN": "/bin/false", "RUNNER_TEMP": tmp.name,
                                      "P90_SOURCE_RUN": "74", "CLOUDRU_PROJECT_ID": PROJECT,
-                                     "P90_CA_IMAGE": IMAGE, "CA_EXCLUSIVE": "true", "OWNER_APPROVED": "true"})
+                                     "P90_CA_IMAGE": IMAGE})
         env.start()
         self.addCleanup(env.stop)
         self.book = {}
@@ -34,7 +34,6 @@ class ContainerAppsTest(unittest.TestCase):
         self.evo = self.replace(apps.common, "call_evo")
         self.replace(apps.common, "ledger").side_effect = lambda: self.book
         self.replace(apps.common, "note").side_effect = save
-        self.lease = Mock(spec=["require"])
 
     def replace(self, owner, key):
         p = patch.object(owner, key, autospec=True)
@@ -43,19 +42,17 @@ class ContainerAppsTest(unittest.TestCase):
 
     def make(self, mode="cli"):
         self.cloud.side_effect = [ABSENT, (200, {"id": OP, "resourceId": APP})]
-        return apps.create("ca-" + mode, mode, PROJECT, "74", IMAGE, self.lease)
+        return apps.create("ca-" + mode, mode, PROJECT, "74", IMAGE)
 
     @staticmethod
     def card(record):
         return {"id": APP, "projectId": PROJECT, "name": record["name"], "description": apps.marker(record["name"])}
 
-    def test_all_live_entries_stop_despite_approval_flag(self):
-        for op in (apps.preflight, apps.run):
-            with self.assertRaisesRegex(apps.ContainerAppsBlocked, "Создание заблокировано"):
-                op()
-        self.book["ca-cli"] = {"kind": "container_app", "status": "create_intent"}
-        with self.assertRaises(apps.ContainerAppsBlocked):
-            apps.cleanup()
+    def test_preflight_validates_project_and_run_offline(self):
+        self.assertEqual(apps.preflight(), (PROJECT, "74"))
+        for field, value in (("CLOUDRU_PROJECT_ID", "invalid"), ("P90_SOURCE_RUN", "../old")):
+            with self.subTest(field=field), patch.dict(os.environ, {field: value}), self.assertRaisesRegex(RuntimeError, "invalid CA scope"):
+                apps.preflight()
         self.cloud.assert_not_called()
         self.evo.assert_not_called()
         self.candidate.assert_not_called()
@@ -77,24 +74,24 @@ class ContainerAppsTest(unittest.TestCase):
         self.cloud.side_effect = wire
         for _ in range(2):
             with self.assertRaises(RuntimeError):
-                apps.create("ca-cli", "cli", PROJECT, "74", IMAGE, self.lease)
+                apps.create("ca-cli", "cli", PROJECT, "74", IMAGE)
         self.assertEqual([c.args[0] for c in self.cloud.call_args_list], ["GET", "POST"])
         self.candidate.assert_not_called()
 
     def test_uid_must_come_from_direct_create_response(self):
         self.cloud.side_effect = [ABSENT, (200, {"id": OP})]
         with self.assertRaises(RuntimeError):
-            apps.create("ca-cli", "cli", PROJECT, "74", IMAGE, self.lease)
+            apps.create("ca-cli", "cli", PROJECT, "74", IMAGE)
         self.assertEqual(self.book["ca-cli"]["create_operation"], OP)
         self.assertNotIn("resource_id", self.book["ca-cli"])
         with self.assertRaises(RuntimeError):
-            apps.finish("ca-cli", self.book["ca-cli"], self.lease)
+            apps.finish("ca-cli", self.book["ca-cli"])
         self.candidate.assert_not_called()
 
     def test_preexisting_namesake_no_post(self):
         self.cloud.return_value = (200, {"name": "p90-ca-74-cli", "id": APP})
         with self.assertRaises(RuntimeError):
-            apps.create("ca-cli", "cli", PROJECT, "74", IMAGE, self.lease)
+            apps.create("ca-cli", "cli", PROJECT, "74", IMAGE)
         self.assertEqual(self.cloud.call_count, 1)
         self.assertEqual(self.book, {})
 
@@ -122,7 +119,7 @@ class ContainerAppsTest(unittest.TestCase):
         for mode in apps.MODES:
             key = "ca-" + mode
             rec = self.make(mode)
-            self.cloud.side_effect = [(200, self.card(rec)), ABSENT]
+            self.cloud.side_effect = [(200, self.card(rec)), (200, self.card(rec)), ABSENT]
             self.evo.return_value = {"containers": []}
             def invoke(channel, op, target, path, timeout):
                 self.assertEqual((channel, target), (mode, rec))
@@ -134,7 +131,7 @@ class ContainerAppsTest(unittest.TestCase):
                 return {"status": "deleting", "name": rec["name"], "operation_id": OP,
                         "next_tool": "ca_get", "next_args": {"name": rec["name"]}}
             self.candidate.side_effect = invoke
-            apps.finish(key, rec, self.lease)
+            apps.finish(key, rec)
             self.assertEqual(self.book[key]["status"], "gone")
             self.assertEqual(self.book[key]["physical_deletes"], 1)
             self.assertTrue(self.book[key]["original_uid_absent"])
@@ -145,10 +142,22 @@ class ContainerAppsTest(unittest.TestCase):
             with self.subTest(field=field):
                 self.cloud.side_effect = [(200, {**self.card(rec), field: new})]
                 with self.assertRaises(RuntimeError):
-                    apps.finish("ca-cli", rec, self.lease)
+                    apps.finish("ca-cli", rec)
         self.candidate.assert_not_called()
 
-    def test_lost_delete_only_readback_with_no_lease_or_repeated_delete(self):
+    def test_replacement_after_intent_preserves_receipt_without_delete(self):
+        rec = self.make()
+        foreign = {**self.card(rec), "id": OP}
+        self.cloud.side_effect = [(200, self.card(rec)), (200, foreign)]
+        with self.assertRaisesRegex(RuntimeError, "identity changed before delete"):
+            apps.cleanup()
+        self.assertEqual(self.book["ca-cli"]["status"], "delete_intent")
+        self.cloud.side_effect = [(200, foreign)]
+        with self.assertRaisesRegex(RuntimeError, "identity changed"):
+            apps.cleanup()
+        self.candidate.assert_not_called()
+
+    def test_lost_delete_only_readback_without_repeated_delete(self):
         rec = self.make()
         self.book["ca-cli"]["status"] = "delete_intent"
         self.cloud.side_effect = [ABSENT]

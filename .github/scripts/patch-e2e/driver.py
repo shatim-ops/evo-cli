@@ -39,18 +39,7 @@ def begin():
 
 
 def preflight():
-    import isolation
     name, module = selected_scenario()
-    if name in ("apps", "misc", "cluster", "core"):
-        grant = isolation.acquire()
-        if grant.fingerprint != os.environ.get("P90_ADMITTED_GRANT"):
-            raise isolation.blocked()
-        import time
-        now = int(time.time())
-        # These suites call name-addressed or cascading operations. Cover the whole
-        # bounded job so the last verified read cannot race another writer.
-        grant.interval(os.environ["CLOUDRU_PROJECT_ID"], now, now + 360 * 60)
-        common.note("isolation", "ca-isolation", grant_sha256=grant.fingerprint)
     if name == "core":
         import network
         network.preflight()
@@ -90,13 +79,6 @@ def cleanup():
         public(name + ": no mutating scenario was entered")
         return
     if book.get("phase:" + name + "-cleanup", {}).get("state") != "checked":
-        if name in ("core", "cluster") and os.environ["P90_MODE"] == "recover":
-            import isolation
-            import time
-            now = int(time.time())
-            # Recovery can be on a later day. Validate a current enforced window
-            # for cascading deletes. Never adopt an object from matching names.
-            isolation.acquire().interval(os.environ["CLOUDRU_PROJECT_ID"], now, now + 55 * 60)
         cleanup_one(name, module)
     public(name + ": cleanup checked against its signed resource receipts")
 
@@ -123,16 +105,13 @@ if __name__ == "__main__":
         main(sys.argv[1:])
     except Exception as error:
         # Exception text from libraries or services may contain private paths, IDs or credentials.
-        if type(error).__name__ == "ContainerAppsBlocked":
-            public("STOP: the Container Apps deletion contract does not bind the request to the owned app ID.")
-        else:
-            # Only fixed local categories and an HTTP code are safe for public summaries.
-            import re
-            text = str(error)
-            iam = re.fullmatch(r"IAM exchange failed, HTTP ([1-5][0-9]{2})", text)
-            known = {"IAM response missing token", "private receipt repository unconfirmed",
-                     "receipt branch unavailable", "incomplete response", "duplicate key in response",
-                     "partial HTTP response", "durable receipt write not confirmed"}
-            reason = "IAM HTTP " + iam[1] if iam else (text if text in known else "consult the private per-ID receipt")
-            public("P90 " + sys.argv[1] + " incomplete: " + reason)
+        # Only fixed local categories and an HTTP code are safe for public summaries.
+        import re
+        text = str(error)
+        iam = re.fullmatch(r"IAM exchange failed, HTTP ([1-5][0-9]{2})", text)
+        known = {"IAM response missing token", "private receipt repository unconfirmed",
+                 "receipt branch unavailable", "incomplete response", "duplicate key in response",
+                 "partial HTTP response", "durable receipt write not confirmed"}
+        reason = "IAM HTTP " + iam[1] if iam else (text if text in known else "consult the private per-ID receipt")
+        public("P90 " + sys.argv[1] + " incomplete: " + reason)
         sys.exit(1)

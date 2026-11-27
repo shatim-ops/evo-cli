@@ -3,7 +3,7 @@ import copy
 import os
 import time
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import apps
 import ca_lifecycle as ca
@@ -17,7 +17,6 @@ IMAGE = "sample.cr.cloud.ru/image@sha256:" + "2" * 64
 class CALifecycleTest(unittest.TestCase):
     def setUp(self):
         self.book, self.calls, self.state = {}, [], "running"
-        self.lease = Mock()
         self.addCleanup(patch.stopall)
         patch.dict(os.environ, {"P90_CA_IMAGE": IMAGE, "P90_CA_BIN": "/bin/false", "P90_SOURCE_RUN": "55",
                                 "CLOUDRU_PROJECT_ID": PROJECT}).start()
@@ -70,36 +69,33 @@ class CALifecycleTest(unittest.TestCase):
     def test_http_log_stop_start_and_readback_both_receipts(self):
         for mode in ("mcp", "cli"):
             self.rec = self.receipt(mode)
-            ca.exercise(self.rec, self.lease)
+            ca.exercise(self.rec)
             entry = self.book["ca-lifecycle:" + mode]
             self.assertEqual((entry["phase"], entry["first_http"], entry["restart_http"], entry["log_lines"]),
                              ("exercised", 200, 200, 1))
-            state = self.lease.require.call_args.args
-            self.assertEqual(state, (PROJECT, self.rec["name"], self.rec["start"], self.rec["until"]))
         self.assertEqual(self.calls, ["stop","start","stop","start"])
         self.assertEqual(self.https.return_value.request.call_count, 4)
         for call in self.https.return_value.request.call_args_list:
             self.assertEqual(call.args, ("GET", "/"))
             self.assertEqual(call.kwargs["headers"], {"Accept-Encoding": "identity", "Connection": "close"})
         with self.assertRaisesRegex(RuntimeError, "already attempted"):
-            ca.exercise(self.rec, self.lease)
+            ca.exercise(self.rec)
 
     def test_no_mutation_when_identity_changes_between_stop_and_start(self):
         self.corrupt = True
         with self.assertRaisesRegex(RuntimeError, "identity changed"):
-            ca.exercise(self.rec, self.lease)
+            ca.exercise(self.rec)
         self.assertEqual(self.calls, ["stop"])
         self.assertNotEqual(self.book["ca-lifecycle:cli"]["phase"], "exercised")
 
-    def test_unverified_reservation_invalid_or_lost_receipt_never_probes(self):
-        self.lease.require.side_effect = RuntimeError("no lease")
-        with self.assertRaisesRegex(RuntimeError, "no lease"):
-            ca.exercise(self.rec,self.lease)
+    def test_expired_window_or_lost_receipt_never_probes(self):
+        with patch.object(ca.time, "time", return_value=self.rec["until"]), self.assertRaisesRegex(RuntimeError, "window exhausted"):
+            ca.exercise(self.rec)
         self.evo.assert_not_called()
         self.https.assert_not_called()
         self.book.clear()
         with self.assertRaisesRegex(RuntimeError, "direct creation receipt missing"):
-            ca.exercise(self.rec,self.lease)
+            ca.exercise(self.rec)
 
     def test_replacement_url_userinfo_ip_redirect_and_custom_domain_rejected(self):
         name = self.rec["name"]
@@ -116,14 +112,14 @@ class CALifecycleTest(unittest.TestCase):
         self.https.assert_not_called()
         self.response.status = 302
         with self.assertRaisesRegex(RuntimeError, "unexpected readiness response"):
-            ca.exercise(self.rec,self.lease)
+            ca.exercise(self.rec)
         self.assertEqual(self.https.call_count, 1)
         self.assertEqual(self.calls, [])
 
     def test_truncated_ready_response_is_not_accepted(self):
         self.response.read.return_value = b"p90-ready"
         with self.assertRaisesRegex(RuntimeError,"body differs"):
-            ca.exercise(self.rec,self.lease)
+            ca.exercise(self.rec)
         self.assertEqual(self.calls, [])
 
 

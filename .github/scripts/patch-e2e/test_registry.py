@@ -1,4 +1,4 @@
-"""Offline tests of the registry receipt, manifest, writer lease and cascade."""
+"""Offline tests of the registry receipt, manifest and cascade."""
 
 import json
 import os
@@ -30,7 +30,6 @@ class RegistryTests(unittest.TestCase):
         self.common.ledger.side_effect = lambda: {k: dict(v) for k, v in self.book.items()}
         self.common.note.side_effect = lambda k, key, **fs: self.book.setdefault(key, {"kind": k}).update(fs)
         self.common.service.side_effect = self.status
-        self.gate = self.start(patch.object(registry.isolation, "for_registry"))
         self.start(patch.object(registry.secrets, "token_hex", return_value="d" * 20))
         self.start(patch.object(registry, "preflight"))
         self.start(patch.object(registry, "build", return_value=self.cfg))
@@ -59,7 +58,6 @@ class RegistryTests(unittest.TestCase):
             self.assertEqual(self.book[registry.KEY]["state"], "create-intent")
             self.assertEqual(params["public"], "false")
             self.assertEqual(params["tariff"], "BASIC")
-            self.gate.assert_called()
             self.present = True
             return {"status": "creating", "operation_id": uid(2)}
         if op == "ar_operation":
@@ -106,7 +104,6 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(self.book[registry.KEY]["state"], "gone")
         self.assertEqual(self.calls.count("ar_create"), 1)
         self.assertEqual(self.calls.count("ar_delete"), 1)
-        self.assertGreaterEqual(self.gate.call_count, 4)
 
     def test_foreign_artifacts_do_not_get_cascaded(self):
         registry.prepare()
@@ -115,19 +112,14 @@ class RegistryTests(unittest.TestCase):
             registry.cleanup()
         self.assertNotIn("ar_delete", self.calls)
 
-    def test_unsettled_app_or_unknown_push_or_lapsed_writer_blocks_cascade(self):
+    def test_unsettled_app_or_unknown_push_blocks_cascade(self):
         registry.prepare()
-        original = self.book[registry.KEY].copy()
         self.book["ca-cli"] = {"kind": "container_app", "status": "created"}
         with self.assertRaisesRegex(RuntimeError, "depends"):
             registry.cleanup()
         del self.book["ca-cli"]
         self.book[registry.KEY]["state"] = "push-intent"
         with self.assertRaisesRegex(RuntimeError, "disposition unknown"):
-            registry.cleanup()
-        self.book[registry.KEY] = original
-        self.gate.side_effect = RuntimeError("lease ended")
-        with self.assertRaisesRegex(RuntimeError, "lease ended"):
             registry.cleanup()
         self.assertNotIn("ar_delete", self.calls)
 

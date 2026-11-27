@@ -1,13 +1,7 @@
-"""Private Container Apps checks using the d7645da5 CLI and MCP entry points.
+"""Check Container Apps in the owner-isolated project approved through the workflow environment.
 
-The candidate's DELETE /v2/containers/{name}?projectId=... has no UID or
-version precondition. The service roles include inherited project-wide writers:
-https://cloud.ru/docs/container-apps-evolution/ug/topics/security .
-
-The stand control plane must issue an enforceable
-identity reservation, valid from the original create intent through readback.
-Merely asking IAM for today's assignments cannot cover a later grant. Without
-that verified grant no create or name-addressed modification is admitted.
+The candidate's DELETE is addressed by project and name. Verify the original
+create receipt against the current app immediately before invoking the candidate.
 """
 
 import http.client
@@ -28,9 +22,6 @@ WINDOW = 30 * 60
 IMAGE = re.compile(r"[a-z0-9][a-z0-9-]*\.cr\.cloud\.ru/(?:[a-z0-9][a-z0-9._-]*/)*[a-z0-9][a-z0-9._-]*@sha256:[0-9a-f]{64}")
 
 
-from isolation import ContainerAppsBlocked, acquire as acquire_exclusive_identity, original as original_grant
-
-
 def require(ok, message):
     if not ok:
         raise RuntimeError(message)
@@ -43,27 +34,21 @@ def uid(value):
         return False
 
 
+def preflight():
+    project, run_id = os.environ["CLOUDRU_PROJECT_ID"], os.environ["P90_SOURCE_RUN"]
+    require(uid(project) and re.fullmatch(r"[1-9][0-9]{0,19}", run_id), "invalid CA scope")
+    return project, run_id
+
+
 def settings(image=None):
-    project = os.environ["CLOUDRU_PROJECT_ID"]
-    run_id = os.environ["P90_SOURCE_RUN"]
+    project, run_id = preflight()
     if image is None:
         import registry
         image = registry.image()
-    require(uid(project) and re.fullmatch(r"[1-9][0-9]{0,19}", run_id), "invalid CA scope")
     require(IMAGE.fullmatch(image), "existing reviewed registry digest required")
     require(os.path.isfile(os.environ["P90_CA_BIN"]) and os.access(os.environ["P90_CA_BIN"], os.X_OK),
             "reviewed candidate CA binary required")
     return project, run_id, image
-
-
-def preflight():
-    lease = acquire_exclusive_identity()
-    project, run_id = os.environ["CLOUDRU_PROJECT_ID"], os.environ["P90_SOURCE_RUN"]
-    require(uid(project) and re.fullmatch(r"[1-9][0-9]{0,19}", run_id), "invalid CA scope")
-    now = int(time.time())
-    for mode in MODES:
-        lease.require(project, app_name(run_id, mode), now, now + 2 * WINDOW)
-    common.note("isolation", "ca-isolation", grant_sha256=lease.fingerprint)
 
 
 def app_name(run_id, mode):
@@ -239,7 +224,7 @@ def read_after_delete(key, rec):
     raise RuntimeError("CA readback incomplete; possible residue")
 
 
-def finish(key, rec, lease):
+def finish(key, rec):
     mode = check_receipt(key, rec)
     if rec["status"] == "gone":
         require(rec.get("original_uid_absent") is True, "incomplete CA disappearance receipt")
@@ -248,14 +233,17 @@ def finish(key, rec, lease):
         read_after_delete(key, rec)
         return
     require(rec["status"] == "created", "unrecognized CA receipt")
-    lease.require(rec["project"], rec["name"], rec["start"], rec["until"])
+    require(time.time() >= rec["start"], "CA cleanup window has not started")
     observe_created(rec)
     budget = 45 if mode == "mcp" else 120
     require(rec["until"] - time.time() > budget + 30, "insufficient CA cleanup window")
     note(key, status="delete_intent", surface=mode)
-    lease.require(rec["project"], rec["name"], rec["start"], rec["until"])
     with tempfile.TemporaryDirectory(dir=os.environ["RUNNER_TEMP"]) as directory:
         wire = str(Path(directory) / "delete-once")
+        # A remote receipt write precedes this final check. A changed identity
+        # leaves the intent visible for recovery without sending a DELETE.
+        code, value = ca_api("GET", rec["name"], rec["project"], rec["until"])
+        require(code == 200 and identity(rec, value), "CA identity changed before delete")
         result = candidate(mode, "delete", rec, wire, budget + 25)
         end = int(time.time() * 1000)
         rows = Path(wire).read_text(encoding="ascii").splitlines()
@@ -277,16 +265,14 @@ def finish(key, rec, lease):
     read_after_delete(key, rec)
 
 
-def create(key, mode, project, run_id, image, lease):
+def create(key, mode, project, run_id, image):
     require(key not in common.ledger(), "CA creation already attempted")
     start = int(time.time())
     rec = {"kind": "container_app", "start": start, "until": start + WINDOW, "project": project,
            "name": app_name(run_id, mode), "image": image, "status": "create_intent"}
-    lease.require(project, rec["name"], start, rec["until"])
     code, existing = ca_api("GET", rec["name"], project, rec["until"])
     require(absent(code, existing), "unused CA identity unconfirmed")
     note(key, **{k: v for k, v in rec.items() if k != "kind"})
-    lease.require(project, rec["name"], start, rec["until"])
     code, op = ca_api("POST", "", project, rec["until"], input_body(rec))
     require(code == 200 and isinstance(op, dict) and not op.get("error"), "CA create outcome unknown")
     fields = {k: op[col] for k, col in (("create_operation", "id"), ("resource_id", "resourceId"))
@@ -298,27 +284,20 @@ def create(key, mode, project, run_id, image, lease):
 
 
 def run():
-    lease = original_grant()
     import registry
     import ca_lifecycle
     project, run_id, image = settings(registry.prepare())
     verify_image(project, image)
     for mode in MODES:
         key = "ca-" + mode
-        rec = create(key, mode, project, run_id, image, lease)
+        rec = create(key, mode, project, run_id, image)
         observe_created(rec)
-        ca_lifecycle.exercise(rec, lease)
-        finish(key, rec, lease)   # No second application until the first is confirmed gone.
+        ca_lifecycle.exercise(rec)
+        finish(key, rec)   # No second application until the first is confirmed gone.
 
 
 def cleanup():
     receipts = common.ledger()
     for key, rec in receipts.items():
         if key in ("ca-cli", "ca-mcp") or rec.get("kind") == "container_app":
-            # Recover a sent DELETE with bounded reads even if the reservation
-            # has since expired. An earlier or uncertain creation is never
-            # resolved with a new, unrelated lease or by matching only a name.
-            lease = None
-            if rec.get("status") not in ("delete_intent", "delete_response", "gone"):
-                lease = original_grant()
-            finish(key, rec, lease)
+            finish(key, rec)

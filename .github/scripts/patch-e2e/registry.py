@@ -16,7 +16,6 @@ import time
 from urllib.parse import urlencode, urlsplit
 
 import common
-import isolation
 from misc import ident, require, tool
 
 
@@ -55,10 +54,6 @@ def note(**fields):
     common.note("artifact-registry", KEY, **fields)
 
 
-def lease(rec, horizon=90):
-    isolation.for_registry(rec["start"], int(time.time()) + horizon)
-
-
 def preflight():
     require(all(shutil.which(x) is not None for x in ("go", "docker")), "registry build prerequisites unavailable")
     ident(os.environ["CLOUDRU_PROJECT_ID"])
@@ -72,7 +67,7 @@ def command(args, *, env, folder, stdin=None, timeout=100):
 
 
 def local_env():
-    # Child processes never inherit the cloud key, GitHub token or signed grant.
+    # Only pass variables required for local builds and Docker.
     allowed = ("PATH", "HOME", "TMPDIR", "GOROOT", "GOCACHE", "XDG_RUNTIME_DIR", "LANG",
                "SSL_CERT_FILE", "SSL_CERT_DIR")
     return {key: os.environ[key] for key in allowed if key in os.environ}
@@ -245,13 +240,12 @@ def image():
 def prepare():
     preflight()
     require(KEY not in common.ledger(), "previous registry intent exists; use recovery")
-    rec = {"name": "p90-" + secrets.token_hex(10), "start": int(time.time())}
+    rec = {"name": "p90-" + secrets.token_hex(10)}
     host = checked_host(rec)
     tag = host + "/" + REPO + ":" + TAG
     with tempfile.TemporaryDirectory() as folder:
         config = build(folder, tag)
         require(not any(row["name"] == rec["name"] for row in scoped_registries().values()), "registry name already in use")
-        lease(rec, 300)
         note(**rec, config=config, state="create-intent")
         out = tool("ar_create", "--yes", name=rec["name"], registry_type="DOCKER", public="false", tariff="BASIC")
         require(out.get("status") == "creating", "no direct registry create receipt")
@@ -273,7 +267,6 @@ def prepare():
                 "owned private registry not ready")
         inventory(rec, False)
         env = docker_login(folder, host)
-        lease(rec, 200)
         note(state="push-intent")
         command(["docker", "push", tag], env=env, folder=folder, timeout=120)
         digest = remote_digest(folder, env, tag, config)
@@ -319,11 +312,9 @@ def cleanup():
         note(state="gone")
         return
     if not rec.get("delete_started"):
-        # The OCI catalog cannot enumerate untagged digests. The independent,
-        # uninterrupted writer grant must cover the whole lifetime of this ID,
-        # including push and the server's cascade; inventory alone is insufficient.
+        # The OCI catalog omits untagged digests. Cleanup relies on the
+        # owner's isolation of this project in addition to the inventory below.
         require(rec.get("state") in ("creating", "pushed"), "push disposition unknown; retain registry")
-        lease(rec, 180)
         account_card(rec)
         pushed = rec["state"] == "pushed"
         inventory(rec, pushed)
@@ -336,7 +327,6 @@ def cleanup():
                 require(remote_digest(folder, env, tag, rec["config"]) == rec["manifest"]
                         and remote_digest(folder, env, pin, rec["config"]) == rec["manifest"],
                         "registry contents changed")
-        lease(rec, 180)
         note(delete_started=True)
         tool("ar_delete", "--yes", id=ident(rec["id"]))
     # On an interrupted delete, address reads are the only recovery operations.

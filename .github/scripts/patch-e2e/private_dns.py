@@ -1,4 +1,4 @@
-"""Private-zone D65/D66 on the release candidate, scoped to one signed DNS write window."""
+"""Private-zone D65/D66 on the release candidate, using the original run’s resource IDs."""
 import json
 import os
 from pathlib import Path
@@ -8,7 +8,6 @@ import tempfile
 import time
 
 import common
-import isolation
 from core import exact_id
 
 
@@ -42,16 +41,7 @@ def mark(key, **fields):
     common.note("network-" + key, "network." + key, **fields)
 
 
-def window():
-    now = int(time.time())
-    start = row(ZONE).get("grant_start", now)
-    need(type(start) is int and start <= now, "invalid initial grant time")
-    isolation.dns_window(start, now + 180)
-
-
 def preflight():
-    now = int(time.time())
-    isolation.dns_window(now, now + 45 * 60)
     project()
     domain()
     need(Path(os.environ["P90_NET_BIN"]).is_file(), "reviewed candidate entry point unavailable")
@@ -119,7 +109,6 @@ def negative(vpc_id):
     need(own.get("returned_directly") is True and own["id"] == exact_id(vpc_id) and own.get("project") == project(),
          "negative case lacks own VPC receipt")
     no_zone = "nodns-" + domain()
-    window()
     listed = inventory(ZONE)
     need(all(no_zone not in (x.get("domain"), x.get("name")) for x in listed.values()), "negative domain occupied")
     out = tool("dns_zone_create", {"domain":no_zone, "type":"private", "vpc_id":vpc_id}, negative_case=True)
@@ -132,7 +121,6 @@ def negative(vpc_id):
 
 
 def fence(key, name, args, method, path, body=None):
-    window()
     spec = dict(Key=key, Host="dns.api.cloud.ru", Path=path, Method=method, Project=project(),
                 Shape="vpcop", Query={}, Expected=body, GroupID="")
     with tempfile.NamedTemporaryFile(mode="w", dir=os.environ["RUNNER_TEMP"]) as af:
@@ -198,15 +186,12 @@ def card(key, rid, zone=None, *, allow_gone=False):
 
 def create(key, vpc, zid=None):
     need(not row(key), "previous create receipt")
-    now = int(time.time())
     if key == ZONE:
-        isolation.dns_window(now, now + 45 * 60)
         body = {"domain":domain(), "name":domain(), "description":MARKER, "project_id":project(), "linkedVpcIds":[vpc]}
         args = {"type":"private", "domain":domain(), "description":MARKER, "vpc_id":vpc}
         # Project default was selected in dry-run. The write names that exact ID.
-        mark(key, project=project(), approved_vpc=vpc, grant_start=now, intent=True)
+        mark(key, project=project(), approved_vpc=vpc, intent=True)
     else:
-        window()
         args = {"type":"private","zone_id":zid,"name":"www","record_type":"A","value":VALUE,"ttl":300}
         body = {"private_zone_id":zid,"name":"www","type":"a","values":[VALUE],"ttl":300}
         mark(key, project=project(), zone_id=zid, intent=True)
@@ -268,7 +253,6 @@ def remove(key, rid, zone=None):
 def cleanup():
     if not row(ZONE) or row(ZONE).get("gone"):
         return
-    window()
     zid = owned(ZONE)
     if row(RECORD) and not row(RECORD).get("gone"):
         remove(RECORD, owned(RECORD), zid)
@@ -278,15 +262,14 @@ def cleanup():
         vpc = exact_id(r.get("approved_vpc"))
         links = z["linkedVpcIds"]
         need(links == [vpc] or r.get("unlink_intent") and links == [], "foreign, missing, or ambiguous VPC link")
-        # With a verified exclusive writer since the zone POST these are
-        # service-generated records of the new zone, never a user's records.
+        # Only the new zone's apex NS/SOA records may remain. Reuse their
+        # recorded IDs when available and verify them again before deletion.
         baseline = static_records(zid)
         if "initial_records" not in r:
             mark(ZONE, initial_records=baseline)
         else:
             need(r["initial_records"] == baseline, "zone acquired other records")
         if links and not r.get("unlink_intent"):
-            window()
             mark(ZONE, unlink_intent=True)
             st, body = common.service("PATCH","dns",COLLECTION[ZONE]+"/"+zid, body={"linkedVpcIds":[]})
             need(st in (200,202,204) and (body is None or isinstance(body, dict)), "unlink not acknowledged")

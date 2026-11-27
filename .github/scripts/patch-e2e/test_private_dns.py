@@ -18,12 +18,11 @@ class PrivateDNS(unittest.TestCase):
         self.cards = {}
         self.ops = {}
         self.writes = []
-        self.window_ok = True
         self.n = 10
         p = patch.dict(os.environ, CLOUDRU_PROJECT_ID=self.pid, P90_SOURCE_RUN="17", P90_NET_BIN=__file__)
         p.start(); self.addCleanup(p.stop)
         for host, fn, value in ((d.common,"ledger",lambda: self.records), (d.common,"note",self.note),
-                                (d.common,"service",self.api), (d.isolation,"dns_window",self.window),
+                                (d.common,"service",self.api),
                                 (d,"fence",self.fence), (d,"tool",self.tool),
                                 (d.time,"sleep",lambda _: self.fail("unexpected poll"))):
             p = patch.object(host, fn, value); p.start(); self.addCleanup(p.stop)
@@ -32,11 +31,6 @@ class PrivateDNS(unittest.TestCase):
     def note(self, kind, key, **fields):
         self.records.setdefault(key,dict(kind=kind)).update(fields)
 
-    def window(self, start, end):
-        if not self.window_ok:
-            raise RuntimeError("no original signed grant")
-        self.assertLess(start,end)
-
     def newop(self, rid):
         self.n += 1
         op = uid(self.n)
@@ -44,7 +38,6 @@ class PrivateDNS(unittest.TestCase):
         return op
 
     def fence(self, key, tool, args, method, path, body=None):
-        d.window()
         self.writes.append((method,path))
         rid = self.zid if key == d.ZONE else self.rid
         if method == "POST":
@@ -100,19 +93,7 @@ class PrivateDNS(unittest.TestCase):
         self.assertTrue(d.row("dns-negative")["refused"] and d.row(d.ZONE)["d66_refused"])
         self.assertTrue(d.row(d.ZONE)["gone"] and d.row(d.RECORD)["gone"])
 
-    def test_failed_or_expired_grant_stops_before_create_and_unlink(self):
-        self.window_ok = False
-        with self.assertRaisesRegex(RuntimeError,"grant"):
-            d.run()
-        self.assertFalse(self.writes)
-        self.window_ok = True
-        d.create(d.ZONE,self.vpc)
-        self.window_ok = False
-        with self.assertRaisesRegex(RuntimeError,"grant"):
-            d.cleanup()
-        self.assertEqual(len(self.writes),1)
-
-    def test_foreign_link_or_foreign_record_blocks_even_under_grant(self):
+    def test_foreign_link_or_foreign_record_blocks_cleanup(self):
         d.create(d.ZONE,self.vpc)
         self.cards[self.zid]["linkedVpcIds"].append(uid(67))
         with self.assertRaisesRegex(RuntimeError,"ambiguous"):
