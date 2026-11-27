@@ -251,8 +251,10 @@ func TestExportMetrics_AllSeriesOrAPIError(t *testing.T) {
 		{"wrapper data", `{"data":[` + row + "]}", 200, 1},
 		{"wrapper result", `{"result":[` + row + "]}", 200, 1},
 		{"empty array", "[]", 200, 0}, {"empty wrapper", `{"data":[]}`, 200, 0},
-		{"no body", "", 200, -1}, {"no page", "null", 200, -1}, {"missing", "{}", 200, -1},
-		{"empty HTTP", "", 204, -1}, {"partial HTTP", "[" + row + "]", 206, -1},
+		{"zero-byte export", "", 200, 0},
+		{"one LF", "\n", 200, -1}, {"CRLF", "\r\n", 200, -1}, {"whitespace", " \t", 200, -1},
+		{"no page", "null", 200, -1}, {"missing", "{}", 200, -1},
+		{"empty HTTP", "", 204, -1}, {"partial HTTP", "[" + row + "]", 206, -1}, {"empty partial HTTP", "", 206, -1},
 		{"array null", "[" + row + ",null]", 200, -1}, {"wrapper null", `{"series":null}`, 200, -1},
 		{"wrong wrapper", `{"series":{}}`, 200, -1}, {"bad last line", row + "\n{", 200, -1},
 		{"null point", `{"metric":{},"values":[null],"timestamps":[1]}`, 200, -1},
@@ -261,6 +263,7 @@ func TestExportMetrics_AllSeriesOrAPIError(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Length", strconv.Itoa(len(tc.body)))
 				w.WriteHeader(tc.status)
 				io.WriteString(w, tc.body)
 			}))
@@ -273,13 +276,40 @@ func TestExportMetrics_AllSeriesOrAPIError(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || len(got) != tc.count {
+			if err != nil || got == nil || len(got) != tc.count {
 				t.Fatalf("series=%v, err=%v", got, err)
 			}
 			for _, s := range got {
 				if !reflect.DeepEqual(s, want) {
 					t.Errorf("series=%+v, want %+v", s, want)
 				}
+			}
+		})
+	}
+}
+
+// A zero-byte export signifies no matches only after the HTTP body is complete.
+func TestExportMetrics_IncompleteZeroByteResponse(t *testing.T) {
+	for _, shape := range []string{"declared byte missing", "unfinished chunks", "partial representation"} {
+		t.Run(shape, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch shape {
+				case "declared byte missing":
+					w.Header().Set("Content-Length", "1")
+				case "unfinished chunks":
+					w.WriteHeader(http.StatusOK)
+					w.(http.Flusher).Flush()
+					panic(http.ErrAbortHandler)
+				case "partial representation":
+					w.Header().Set("Content-Range", "bytes */1")
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			got, err := monitoring.New("tok", "project", server.URL).ExportMetrics(t.Context(), "up", 1, 2)
+			var ce *clierrors.CLIError
+			if got != nil || !errors.As(err, &ce) || ce.Code != clierrors.CodeAPIError {
+				t.Fatalf("incomplete zero-byte response: series=%v, err=%v", got, err)
 			}
 		})
 	}

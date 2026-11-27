@@ -113,6 +113,10 @@ func (c *Client) ExportMetrics(ctx context.Context, match string, startMs, endMs
 	if err := pager.PageStatus(status, data, false, apiError); err != nil {
 		return nil, err
 	}
+	// An export with no matching series can have a complete, zero-byte body.
+	if len(data) == 0 {
+		return []Series{}, nil
+	}
 	return parseSeries(data)
 }
 
