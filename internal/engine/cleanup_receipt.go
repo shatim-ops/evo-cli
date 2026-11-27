@@ -100,10 +100,13 @@ func ambiguousIPReceipt() error {
 // deployment. A profile switch must not convert conflicting evidence into
 // permission to retire the receipt.
 func recordedReceiptProject(sf *state.File, d *state.DeploymentRecord) (string, bool) {
-	if d.ProjectID != "" {
-		return d.ProjectID, true
+	project, consistent := d.RecordedCleanupProject()
+	if !consistent {
+		return "", false
 	}
-	project := d.CleanupProjectID
+	if d.ProjectID != "" {
+		return project, true
+	}
 	for _, r := range d.FloatingIPResolutions {
 		if r.ProjectID == "" {
 			continue

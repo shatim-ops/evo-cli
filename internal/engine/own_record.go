@@ -274,7 +274,7 @@ func (e *Engine) CheckDestroyReceipt(sf *state.File, rec *state.DeploymentRecord
 	if project == "" {
 		return clerrors.ProjectRequired()
 	}
-	if rec.ProjectID != "" && rec.ProjectID != project {
+	if recorded, consistent := rec.RecordedCleanupProject(); !consistent || recorded != "" && recorded != project {
 		return clerrors.New(clerrors.CodeConfigInvalid,
 			i18n.T("Cleanup records belong to different projects.", "Записи уборки относятся к разным проектам."),
 			i18n.T("Ask the person to select each original project and run destroy for its VM ID.", "Попросите пользователя выбрать исходный проект каждой записи и повторить удаление по ID её ВМ."))

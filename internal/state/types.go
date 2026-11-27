@@ -108,6 +108,15 @@ type RuleScanReceipt struct {
 	StartedBy *Maker `json:"started_by,omitempty"`
 }
 
+// RecordedCleanupProject returns the project recorded at deploy or established
+// later for a legacy deployment. Conflicting records cannot authorize cleanup.
+func (d *DeploymentRecord) RecordedCleanupProject() (project string, consistent bool) {
+	if d.ProjectID == "" {
+		return d.CleanupProjectID, true
+	}
+	return d.ProjectID, d.CleanupProjectID == "" || d.CleanupProjectID == d.ProjectID
+}
+
 // NoteRuleScan keeps the original scope until a full scan of that target succeeds.
 func (d *DeploymentRecord) NoteRuleScan(project string, maker *Maker) {
 	if d.PendingRuleScan == nil {

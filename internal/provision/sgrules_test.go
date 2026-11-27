@@ -217,14 +217,19 @@ func TestSecurityGroupRuleCleanupRequiresCompleteListing(t *testing.T) {
 // supplies code and message. Neither alone proves the project is accessible.
 func TestCleanupRuleRead_ProvesMissingParent(t *testing.T) {
 	const base = "/api/v1/security-groups"
+	const rules = base + "/sg-1/rules"
 	const service = `[{"code":"security_group_not_found","message":"Security group with this id is not found"}]`
 	const inventory = `{"items":[{"id":"other","project_id":"project"}],"total":1}`
 	for _, tc := range []struct {
-		name, body, groups    string
-		short, wantRead, gone bool
+		name, body, groups, rangedPath string
+		short, wantRead, gone          bool
 	}{
 		{name: "documented service error", body: service, groups: inventory, wantRead: true, gone: true},
 		{name: "contradictory service code", body: `{"code":"access_denied","message":"security group not found"}`},
+		{name: "duplicate code", body: `{"code":"access_denied","code":"security_group_not_found","message":"security group not found"}`},
+		{name: "gateway field", body: `{"error_msg":"route missing","message":"security group not found"}`},
+		{name: "partial service error", body: service, rangedPath: rules},
+		{name: "partial inventory", body: service, groups: inventory, rangedPath: base, wantRead: true},
 		{name: "wrong resource", body: `[{"code":"security_group_rule_not_found","message":"security group rule with this id is not found"}]`},
 		{name: "ambiguous message", body: `{"message":"not found"}`},
 		{name: "truncated valid JSON", body: service, short: true},
@@ -236,8 +241,15 @@ func TestCleanupRuleRead_ProvesMissingParent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			read := false
 			srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == tc.rangedPath {
+					size := len(tc.body)
+					if r.URL.Path == base {
+						size = len(tc.groups)
+					}
+					w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-%d/%d", size-1, size+1))
+				}
 				switch r.URL.Path {
-				case base + "/sg-1/rules":
+				case rules:
 					if tc.short {
 						w.Header().Set("Content-Length", strconv.Itoa(len(tc.body)+20))
 					}

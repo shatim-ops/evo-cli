@@ -265,7 +265,7 @@ func readListPage(resp *http.Response, path string) ([]byte, error) {
 		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.Tf("failed to read response for %s", "не удалось прочитать ответ %s", path), hintUnexpectedFormat(), err)
 	}
 
-	if resp.StatusCode != http.StatusOK || len(body) > maxListBody || resp.ContentLength > 0 && int64(len(body)) != resp.ContentLength {
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Range") != "" || len(body) > maxListBody || resp.ContentLength > 0 && int64(len(body)) != resp.ContentLength {
 		return nil, invalidListPage(path)
 	}
 	return body, nil
@@ -467,28 +467,56 @@ var errRuleGroupMissing = errors.New("compute reported a missing security group"
 // explicit not-found message can trigger the independent inventory read.
 func ruleGroupMissingReply(resp *http.Response) bool {
 	defer resp.Body.Close()
+	if resp.Header.Get("Content-Range") != "" {
+		return false
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody+1))
 	if err != nil || len(body) > maxErrorBody || (resp.ContentLength > 0 && int64(len(body)) != resp.ContentLength) {
 		return false
 	}
-	var entry struct {
-		Code    json.RawMessage `json:"code"`
-		Message string          `json:"message"`
-	}
-	if err := json.Unmarshal(singleRefusalObject(body), &entry); err != nil {
+	code, message, ok := computeRefusal(body)
+	if !ok {
 		return false
 	}
-	if entry.Code != nil {
-		var code string
-		if json.Unmarshal(entry.Code, &code) != nil || code != "security_group_not_found" {
+	if code != nil {
+		var value string
+		if json.Unmarshal(code, &value) != nil || value != "security_group_not_found" {
 			return false
 		}
 	}
-	switch strings.ToLower(strings.TrimSpace(entry.Message)) {
+	switch message {
 	case "security group not found", "security group with this id is not found":
 		return true
 	}
 	return false
+}
+
+// A gateway field or repeated key makes the source or meaning of the
+// error ambiguous. Unmarshal alone would accept the last value.
+func computeRefusal(body []byte) (code json.RawMessage, message string, ok bool) {
+	object := singleRefusalObject(body)
+	if object == nil {
+		return nil, "", false
+	}
+	dec := json.NewDecoder(bytes.NewReader(object))
+	_, _ = dec.Token() // singleRefusalObject already validated the object.
+	fields := map[string]json.RawMessage{}
+	for dec.More() {
+		key, _ := dec.Token()
+		name := key.(string)
+		if _, duplicate := fields[name]; duplicate || name == "error_msg" {
+			return nil, "", false
+		}
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return nil, "", false
+		}
+		fields[name] = value
+	}
+	if json.Unmarshal(fields["message"], &message) != nil {
+		return nil, "", false
+	}
+	return fields["code"], strings.ToLower(strings.TrimSpace(message)), true
 }
 
 // Compute wraps some resource errors in a one-element array.

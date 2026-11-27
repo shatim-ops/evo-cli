@@ -469,12 +469,14 @@ func (r OpenResult) Note() string {
 // any group: its tcp exposed_ports count.
 func neededBy(sf *state.File, record *state.DeploymentRecord, sgID, key string) *state.DeploymentRecord {
 	proto, port := splitKey(key)
+	project, _ := record.RecordedCleanupProject()
 	for i := range sf.Deployments {
 		d := &sf.Deployments[i]
 		if d.ID == record.ID || d.Status == "destroyed" || d.Status == "destroying" {
 			continue
 		}
-		if record.ProjectID != "" && d.ProjectID != "" && d.ProjectID != record.ProjectID {
+		otherProject, _ := d.RecordedCleanupProject()
+		if project != "" && otherProject != "" && otherProject != project {
 			continue
 		}
 		if d.SecurityGroupID == sgID {
@@ -609,9 +611,10 @@ func Close(ctx context.Context, cloud provision.CloudAPI, sf *state.File, recID,
 	}
 	// A successful exact read still works for old records. A missing parent
 	// needs additional proof that this is the original project and principal.
+	recordedProject, consistent := rec.RecordedCleanupProject()
 	sameOwner, knownOwner := rec.CreatedBy.MatchRuleOwner(maker)
-	wrongScope := knownOwner && !sameOwner || rec.ProjectID != "" && projectID != "" && rec.ProjectID != projectID || rec.CreatedBy.Other(maker)
-	if rec.ProjectID != projectID || !sameOwner {
+	wrongScope := !consistent || recordedProject != "" && projectID != "" && recordedProject != projectID || knownOwner && !sameOwner || rec.CreatedBy.Other(maker)
+	if recordedProject != projectID || !sameOwner {
 		projectID = ""
 	}
 	rules := rec.OpenedRules
@@ -628,9 +631,10 @@ func Close(ctx context.Context, cloud provision.CloudAPI, sf *state.File, recID,
 		if other := neededBy(sf, rec, r.SecurityGroupID, r.Port); !wrongScope && other != nil {
 			r.DeleteError = ""
 			sameOwner, _ := rec.CreatedBy.MatchRuleOwner(other.CreatedBy)
+			otherProject, otherConsistent := other.RecordedCleanupProject()
 			// Keep a shared port open even when the deployments use different
 			// profiles. Only transfer its receipt if that preserves its scope.
-			if rec.ProjectID == other.ProjectID && (sameOwner || rec.CreatedBy == nil && other.CreatedBy == nil) {
+			if otherConsistent && recordedProject == otherProject && (sameOwner || rec.CreatedBy == nil && other.CreatedBy == nil) {
 				addRule(other, r)
 			} else {
 				left = append(left, r)

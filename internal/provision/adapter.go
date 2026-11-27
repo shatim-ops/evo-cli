@@ -364,34 +364,12 @@ func verifyFloatingIPMissing(req *http.Request, resp *http.Response) error {
 // resource. A gateway route, a different resource code, or an ambiguous
 // body cannot settle a potentially billed address.
 func floatingIPMissingReply(body []byte) bool {
-	object := singleRefusalObject(body)
-	if object == nil {
+	code, message, ok := computeRefusal(body)
+	if !ok {
 		return false
 	}
-	// Unmarshal alone would accept the last of two contradictory fields.
-	dec := json.NewDecoder(bytes.NewReader(object))
-	_, _ = dec.Token() // singleRefusalObject already verified the complete object.
-	fields := map[string]json.RawMessage{}
-	for dec.More() {
-		key, _ := dec.Token()
-		name := key.(string)
-		if _, duplicate := fields[name]; duplicate || name == "error_msg" {
-			return false
-		}
-		var value json.RawMessage
-		if err := dec.Decode(&value); err != nil {
-			return false
-		}
-		fields[name] = value
-	}
-	var message string
-	if json.Unmarshal(fields["message"], &message) != nil {
-		return false
-	}
-	message = strings.ToLower(strings.TrimSpace(message))
 	// Code 5 with "Not Found" comes from the gateway. Only the service's
 	// resource-specific form of that numeric error can settle the address.
-	code := fields["code"]
 	if string(code) == "5" {
 		return message == "resource not found"
 	}

@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -288,6 +289,7 @@ type ruleReceiptHTTP struct {
 	t       *testing.T
 	phase   string
 	deletes []string
+	reads   []string
 }
 
 func (c *ruleReceiptHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -307,6 +309,7 @@ func (c *ruleReceiptHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 			f.status = http.StatusAccepted
 		}
 	case r.Method == http.MethodGet && r.URL.Path == receiptGroupPath:
+		c.reads = append(c.reads, "project groups")
 		if r.URL.Query().Get("project_id") != pvProject {
 			c.t.Errorf("wrong project in group list: %v", r.URL.Query())
 		}
@@ -320,6 +323,7 @@ func (c *ruleReceiptHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.Method == http.MethodGet && r.URL.Path == receiptGroupPath+"/other-group/rules":
 		f.body = `{"items":[` + other + `],"total":1}`
 	case r.Method == http.MethodGet && r.URL.Path == own:
+		c.reads = append(c.reads, "owned group rules")
 		switch c.phase {
 		case "deleting":
 			status := "active"
@@ -351,7 +355,7 @@ func (c *ruleReceiptHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 // restart receives only the exact file written after the partial destroy.
 func TestDestroy_ConfirmsRuleReceiptAfterRestart(t *testing.T) {
 	for _, surface := range []string{"CLI text", "CLI JSON", "stdio", "HTTP"} {
-		for _, scenario := range []string{"gone immediately", "gone on retry", "unconfirmed on first call", "deleting then rule gone", "legacy mask only"} {
+		for _, scenario := range []string{"gone immediately", "gone on retry", "unconfirmed on first call", "deleting then rule gone", "legacy mask only", "legacy cleanup project"} {
 			t.Run(surface+"/"+scenario, func(t *testing.T) {
 				w, _ := withJSONWorld(t)
 				probe := &ruleReceiptHTTP{t: t}
@@ -379,6 +383,9 @@ func TestDestroy_ConfirmsRuleReceiptAfterRestart(t *testing.T) {
 				path := state.DefaultPath(w.dir)
 				rec := state.DeploymentRecord{ID: "dep-rules", VMID: parityVM, VMName: "web", ProjectID: pvProject, Status: "running", CreatedBy: eng.Maker(),
 					OpenedRules: []state.SGRule{{ID: "owned-rule", SecurityGroupID: "owned-group", Port: "8081/tcp"}}}
+				if scenario == "legacy cleanup project" {
+					rec.ProjectID, rec.CleanupProjectID = "", pvProject
+				}
 				if scenario == "legacy mask only" {
 					rec.CreatedBy = &state.Maker{KeyID: eng.Maker().KeyID}
 				}
@@ -386,7 +393,7 @@ func TestDestroy_ConfirmsRuleReceiptAfterRestart(t *testing.T) {
 					t.Fatal(err)
 				}
 				phases := []string{"group absent"}
-				if scenario == "gone on retry" {
+				if scenario == "gone on retry" || scenario == "legacy cleanup project" {
 					phases = []string{"deleting", "gateway", "unexplained 404", "forbidden", "incomplete rules", "incomplete groups", "group still listed", "group absent"}
 				} else if scenario == "unconfirmed on first call" {
 					phases = []string{"group still listed", "group absent"}
@@ -414,7 +421,7 @@ func TestDestroy_ConfirmsRuleReceiptAfterRestart(t *testing.T) {
 						}
 						t.Chdir(dir)
 					}
-					probe.phase = phase
+					probe.phase, probe.reads = phase, nil
 					answer := destroyRuleReceipt(t, surface)
 					pending := i < len(phases)-1
 					sf, err := state.Read(path)
@@ -422,6 +429,17 @@ func TestDestroy_ConfirmsRuleReceiptAfterRestart(t *testing.T) {
 						t.Fatal(err)
 					}
 					saved := sf.FindDeployment(rec.ID)
+					if scenario == "legacy cleanup project" {
+						if pending && (len(sf.Deployments) != 1 || saved == nil || saved.ProjectID != "" || saved.CleanupProjectID != pvProject) {
+							t.Fatalf("%s: lost the legacy cleanup project: %+v", phase, saved)
+						}
+						if !pending {
+							first := slices.Index(probe.reads, "owned group rules")
+							if len(sf.Deployments) != 0 || first < 0 || !slices.Contains(probe.reads[first+1:], "project groups") {
+								t.Fatalf("%s: no project inventory after reading the exact group: %v; deployment retained=%t, response=%s", phase, probe.reads, saved != nil, answer)
+							}
+						}
+					}
 					if pending {
 						if saved == nil || len(saved.OpenedRules) != 1 || saved.OpenedRules[0].ID != "owned-rule" || saved.OpenedRules[0].SecurityGroupID != "owned-group" || saved.OpenedRules[0].DeleteError == "" {
 							t.Fatalf("%s: pending receipt lost: %+v, output %s", phase, saved, answer)
@@ -488,6 +506,77 @@ func TestDestroy_ConfirmsRuleReceiptAfterRestart(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// Even a visible VM cannot authorize a rule from another project or maker.
+// Run both preview and confirmation with the same state a restart would read.
+func TestDestroy_RejectsRuleReceiptOutsideRecordedScope(t *testing.T) {
+	for _, scenario := range []string{"other cleanup project", "conflicting projects", "other maker"} {
+		t.Run(scenario, func(t *testing.T) {
+			w, _ := withJSONWorld(t)
+			_, done := recordDeployment(t, w)
+			t.Cleanup(done)
+			path := state.DefaultPath(w.dir)
+			sf, err := state.Read(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e, err := toolEngine(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := sf.ActiveDeployment()
+			d.ProjectID, d.CleanupProjectID, d.CreatedBy = "", pvProject, e.Maker()
+			d.OpenedRules = []state.SGRule{{ID: "owned-rule", SecurityGroupID: "owned-group", Port: "8081/tcp", DeleteError: "unconfirmed"}}
+			switch scenario {
+			case "other cleanup project":
+				d.CleanupProjectID = "other-project"
+			case "conflicting projects":
+				d.ProjectID, d.CleanupProjectID = pvProject, "other-project"
+			case "other maker":
+				d.CreatedBy = state.NewMaker("", "another-fixture-key")
+			}
+			if err := state.Write(path, sf); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, confirmed := range []bool{false, true} {
+				newProcess()
+				flag := "--dry-run"
+				if confirmed {
+					flag = "--yes"
+				}
+				code, out, stderr := runCLI(t, "", "--json", "destroy", flag)
+				refusal, ok := errorEnvelope(stderr)
+				if code == 0 || !ok || refusal.Reason != "CONFIG_INVALID" || strings.Contains(out+stderr, `"status":"confirmed"`) {
+					t.Errorf("CLI %s: exit %d: %s %s", flag, code, out, stderr)
+				}
+				for _, restricted := range []bool{false, true} {
+					agent := mcp.New(toolEngine, "fixture")
+					declareStateDir(agent)
+					if restricted {
+						agent.SetProjectBound()
+					}
+					reply, _ := (roServers{}).stdio(t, agent, "tools/call", map[string]any{"name": "destroy", "arguments": map[string]any{"vm_id": parityVM, "confirmed": confirmed}})
+					reason := "CONFIG_INVALID"
+					if restricted {
+						reason = "NOT_FOUND"
+					}
+					if !reply.isErr || reply.rpcErr != "" || !strings.Contains(reply.text, reason) {
+						t.Errorf("MCP (confirmed=%t restricted=%t): %+v", confirmed, restricted, reply)
+					}
+				}
+				after, err := os.ReadFile(path)
+				writes := w.rt.takeWrites()
+				if err != nil || !bytes.Equal(before, after) || len(writes) != 0 {
+					t.Fatalf("scope refusal (confirmed=%t): state unchanged=%t, writes=%v, read error=%v", confirmed, bytes.Equal(before, after), writes, err)
+				}
+			}
+		})
 	}
 }
 
