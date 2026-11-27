@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -297,10 +298,16 @@ func TestAudit_DestroyAmbiguousName(t *testing.T) {
 type stuckTargetCloud struct {
 	targetCloud
 	ruleDeletes int
+	afterDelete func() error
 }
 
-func (*stuckTargetCloud) DeleteVMInProject(context.Context, string, string) error { return nil }
-func (*stuckTargetCloud) DeleteVM(context.Context, string) error                  { return nil }
+func (c *stuckTargetCloud) DeleteVMInProject(context.Context, string, string) error {
+	if c.afterDelete != nil {
+		return c.afterDelete()
+	}
+	return nil
+}
+func (*stuckTargetCloud) DeleteVM(context.Context, string) error { return nil }
 func (*stuckTargetCloud) GetVM(_ context.Context, id string) (*provision.VM, error) {
 	return &provision.VM{ID: id, Status: "deleting"}, nil
 }
@@ -366,6 +373,41 @@ func TestAudit_DestroyTargetedUnconfirmedIsPartial(t *testing.T) {
 	sf, _ := state.Read(state.DefaultPath(dir))
 	if a := sf.ActiveDeployment(); a != nil {
 		t.Errorf("record left after the re-run: %+v", a)
+	}
+}
+
+func TestDestroyUnconfirmed_SentencesInBothLanguages(t *testing.T) {
+	original := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(original) })
+	const vmID = "0000a1a1-0000-4000-8000-000000000001"
+	for _, tc := range []struct {
+		name, lang, boundary string
+		stateFails           bool
+	}{
+		{"saved RU", i18n.RU, "сохранены. Локальная запись сохранена со статусом destroying.", false},
+		{"failed RU", i18n.RU, "сохранены. Не удалось обновить локальную запись (", true},
+		{"saved EN", i18n.EN, "kept. The local record stays in status destroying.", false},
+		{"failed EN", i18n.EN, "kept. The local state was not updated (", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i18n.SetLang(tc.lang)
+			cloud := &stuckTargetCloud{}
+			r, dir := fastRegistry(t, cloud, provisionCfg)
+			path := state.DefaultPath(dir)
+			record := state.DeploymentRecord{ID: vmID, VMID: vmID, FloatingIPID: "fip-1", Status: "running"}
+			if err := state.Write(path, &state.File{Deployments: []state.DeploymentRecord{record}}); err != nil {
+				t.Fatal(err)
+			}
+			if tc.stateFails {
+				// The VM delete was accepted; the following local update cannot read its record.
+				cloud.afterDelete = func() error { return os.WriteFile(path, []byte("{"), 0600) }
+			}
+			answer, text, failed := callNamed(t, r, "destroy", map[string]any{"vm_id": vmID, "confirmed": true})
+			message, _ := answer["error"].(string)
+			if !failed || answer["status"] != "partial" || answer["reason"] != "API_ERROR" || answer["cleanup_pending"] != true || !strings.Contains(message, tc.boundary) {
+				t.Fatalf("want %q in partial API_ERROR: %s", tc.boundary, text)
+			}
+		})
 	}
 }
 

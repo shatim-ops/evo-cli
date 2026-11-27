@@ -4012,9 +4012,9 @@ func (s *Registry) destroyUnconfirmed(ctx context.Context, statePath, projectID 
 	hint := check + " " + destroyRetry(ctx, target.ID, args, false)
 	switch {
 	case stateErr != nil:
-		msg += i18n.Tf(" The local state was not updated (%v).", "Не удалось обновить локальную запись (%v).", stateErr)
+		msg += i18n.Tf(" The local state was not updated (%v).", " Не удалось обновить локальную запись (%v).", stateErr)
 	case recorded:
-		msg += i18n.T(" The local record stays in status destroying.", "Локальная запись сохранена со статусом destroying.")
+		msg += i18n.T(" The local record stays in status destroying.", " Локальная запись сохранена со статусом destroying.")
 	default:
 		hint = check + i18n.T(" No local cleanup was recorded for this VM.", " Для этой ВМ нет локальной записи об уборке.")
 	}
