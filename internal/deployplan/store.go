@@ -122,6 +122,8 @@ type Plan struct {
 	// one — a person said yes to one more while the first may still come
 	// (floatingip.NameFor). Not saved: the folder's state tells it.
 	FloatingIPName string `json:"-"`
+	// LostFIPs are the unresolved create receipts of this VM in the folder.
+	LostFIPs []state.LostFloatingIP `json:"-"`
 
 	// Internal fields needed by Apply (persisted, no secrets).
 	ComposeFile string            `json:"compose_file,omitempty"`
@@ -223,7 +225,8 @@ func Load(stateDir, planID string) (*Plan, error) {
 			"у плана %q нет expires_at: его составил не deploy_plan; снова выполните deploy_plan"), planID)
 	}
 	if time.Now().After(p.ExpiresAt) {
-		return nil, fmt.Errorf("plan %q expired at %s; run deploy_plan again", planID, p.ExpiresAt.Format(time.RFC3339))
+		return nil, fmt.Errorf(i18n.T("plan %q expired at %s; run deploy_plan again",
+			"срок действия плана %q истёк %s. Снова выполните deploy_plan"), planID, p.ExpiresAt.Format(time.RFC3339))
 	}
 	return &p, nil
 }

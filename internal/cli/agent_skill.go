@@ -34,7 +34,7 @@ description: Manage Cloud.ru Evolution with the evo CLI or the evo MCP server - 
 
 // skillLocalCommands are the local commands (localCommands) the rules name:
 // the ones an agent sends the person to.
-var skillLocalCommands = []string{"evo configure", "evo project use", "evo init", "evo verify", "evo agent setup"}
+var skillLocalCommands = []string{"evo configure", "evo project use", "evo init", "evo verify", "evo agent setup", "evo cleanup receipts", "evo cleanup resolve"}
 
 // skillExamples are the commands the rules show, each a valid command
 // (TestAgentSkill_ExamplesAreValid).
@@ -146,7 +146,11 @@ a command: the tool `+"`vm_list`"+` is `+"`evo vm list`"+`, `+"`vm_get`"+` is `+
    proposes (a create, a delete, a call with `+"`confirmed`"+`) is a new action —
    the person decides. Do not repeat the same call unchanged.
 8. Local commands work on the person's machine and have no MCP tool: ask the
-   person to run %s.
+   person to run %s. If destroy reports an unresolved floating IP receipt, tell the
+   person which deployment needs attention and that the address may still incur charges.
+   On the machine running evo, in the original state directory and project, the owner
+   inspects the receipt, verifies the outcome of that exact request and records it locally.
+   Ask the owner to finish cleanup before attempting another deploy.
 9. A delete of what is not there succeeds: `+"`\"status\": \"already_deleted\"`"+`,
    `+"`\"existed\": false`"+`, exit code %d. A repeat is safe, but a mistyped id reads
    the same: when it matters that the resource was there, check the id with its

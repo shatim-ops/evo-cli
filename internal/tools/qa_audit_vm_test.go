@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/httpretry"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -60,7 +62,7 @@ func (*fipAttachFailsCloud) GetVMDetail(context.Context, string) (*provision.VMD
 	return &provision.VMDetail{Interfaces: []provision.VMInterface{{ID: "if-1", Primary: true}}}, nil
 }
 func (*fipAttachFailsCloud) AttachFloatingIP(context.Context, string, string, string, string) (*provision.FloatingIP, error) {
-	return nil, clerrors.New(clerrors.CodeAPIError, "API returned status 422: interface_can_not_be_changed", "")
+	return nil, &provision.StatusError{Status: 422, Body: "interface_can_not_be_changed"}
 }
 
 // R-02: FIP не привязан — ответ partial с ошибкой, без «SSH: ssh user@IP»
@@ -82,6 +84,34 @@ func TestAudit_Provision_FIPAttachFailsIsPartial(t *testing.T) {
 	rec := stateHasVM(t, dir, "vm-made")
 	if rec.FloatingIPID != "fip-boot" || rec.VMIP != "" {
 		t.Errorf("record = %+v, want floating_ip_id fip-boot and no address", rec)
+	}
+}
+
+// A partial result with a reason still has a message and a recovery hint.
+func TestProvision_FIPAttachPartialLanguage(t *testing.T) {
+	was := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(was) })
+	for _, lang := range []string{i18n.RU, i18n.EN} {
+		t.Run(lang, func(t *testing.T) {
+			i18n.SetLang(lang)
+			cloud := &fipAttachFailsCloud{}
+			r, dir := fastRegistry(t, cloud, provisionCfg)
+			cloud.dir = dir
+			m, text, failed := callNamed(t, r, "provision", map[string]any{"name": "web", "confirmed": true})
+			if !failed || m["status"] != "partial" || m["reason"] != clerrors.CodeAPIError || m["vm_ip"] != "" {
+				t.Fatalf("expected the failed attachment, got %s", text)
+			}
+			want := map[string]string{"message": "billed", "error": "not attached", "hint": "fip_attach"}
+			if lang == i18n.RU {
+				want = map[string]string{"message": "тарифицируется", "error": "не привязан", "hint": "evo vpc fip-attach"}
+			}
+			for field, word := range want {
+				v, _ := m[field].(string)
+				if !strings.Contains(v, word) || answerLanguageIssue(lang, clerrors.CodeAPIError, field, v, nil) != "" {
+					t.Errorf("%s: expected %q in the surface's language, got %q", field, word, v)
+				}
+			}
+		})
 	}
 }
 
@@ -268,10 +298,16 @@ func TestAudit_DestroyAmbiguousName(t *testing.T) {
 type stuckTargetCloud struct {
 	targetCloud
 	ruleDeletes int
+	afterDelete func() error
 }
 
-func (*stuckTargetCloud) DeleteVMInProject(context.Context, string, string) error { return nil }
-func (*stuckTargetCloud) DeleteVM(context.Context, string) error                  { return nil }
+func (c *stuckTargetCloud) DeleteVMInProject(context.Context, string, string) error {
+	if c.afterDelete != nil {
+		return c.afterDelete()
+	}
+	return nil
+}
+func (*stuckTargetCloud) DeleteVM(context.Context, string) error { return nil }
 func (*stuckTargetCloud) GetVM(_ context.Context, id string) (*provision.VM, error) {
 	return &provision.VM{ID: id, Status: "deleting"}, nil
 }
@@ -340,6 +376,41 @@ func TestAudit_DestroyTargetedUnconfirmedIsPartial(t *testing.T) {
 	}
 }
 
+func TestDestroyUnconfirmed_SentencesInBothLanguages(t *testing.T) {
+	original := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(original) })
+	const vmID = "0000a1a1-0000-4000-8000-000000000001"
+	for _, tc := range []struct {
+		name, lang, boundary string
+		stateFails           bool
+	}{
+		{"saved RU", i18n.RU, "сохранены. Локальная запись сохранена со статусом destroying.", false},
+		{"failed RU", i18n.RU, "сохранены. Не удалось обновить локальную запись (", true},
+		{"saved EN", i18n.EN, "kept. The local record stays in status destroying.", false},
+		{"failed EN", i18n.EN, "kept. The local state was not updated (", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i18n.SetLang(tc.lang)
+			cloud := &stuckTargetCloud{}
+			r, dir := fastRegistry(t, cloud, provisionCfg)
+			path := state.DefaultPath(dir)
+			record := state.DeploymentRecord{ID: vmID, VMID: vmID, FloatingIPID: "fip-1", Status: "running"}
+			if err := state.Write(path, &state.File{Deployments: []state.DeploymentRecord{record}}); err != nil {
+				t.Fatal(err)
+			}
+			if tc.stateFails {
+				// The VM delete was accepted; the following local update cannot read its record.
+				cloud.afterDelete = func() error { return os.WriteFile(path, []byte("{"), 0600) }
+			}
+			answer, text, failed := callNamed(t, r, "destroy", map[string]any{"vm_id": vmID, "confirmed": true})
+			message, _ := answer["error"].(string)
+			if !failed || answer["status"] != "partial" || answer["reason"] != "API_ERROR" || answer["cleanup_pending"] != true || !strings.Contains(message, tc.boundary) {
+				t.Fatalf("want %q in partial API_ERROR: %s", tc.boundary, text)
+			}
+		})
+	}
+}
+
 // Ревью Cursor по #89: release_ip=false и удаление не подтвердилось —
 // подсказка повтора сохраняет release_ip=false, иначе повтор с умолчанием
 // release_ip=true освободил бы адрес, который просили оставить.
@@ -381,6 +452,9 @@ func TestAudit_DestroyCurrentUnconfirmedIsPartial(t *testing.T) {
 	}
 	if !isErr || m["status"] != "partial" || m["reason"] != "API_ERROR" {
 		t.Fatalf("want partial API_ERROR, got %s", text)
+	}
+	if out := historyOutcome("destroy", nil, text); out.Result != "unknown" || out.ResourceID != "0000a1a1-0000-4000-8000-000000000001" {
+		t.Fatalf("partial destroy recorded as %+v", out)
 	}
 	if cloud.fipTries != 0 {
 		t.Errorf("FIP released while the VM still exists")

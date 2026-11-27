@@ -7,7 +7,6 @@ package engine
 import (
 	"context"
 
-	"github.com/shatim-ops/evo-cli/internal/config"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -16,10 +15,7 @@ import (
 // Maker is the key evo now runs with, as a deployment record keeps it;
 // nil without a key.
 func (e *Engine) Maker() *state.Maker {
-	if e.Config.KeyID == "" {
-		return nil
-	}
-	return &state.Maker{ServiceAccountID: e.Config.ServiceAccountID, KeyID: config.MaskKeyID(e.Config.KeyID)}
+	return state.NewMaker(e.Config.ServiceAccountID, e.Config.KeyID)
 }
 
 // NotVisibleToThisKey is the refusal for a 404 on a record another key

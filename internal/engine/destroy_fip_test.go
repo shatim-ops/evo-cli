@@ -7,7 +7,9 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	stderrors "errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -38,7 +40,7 @@ func destroyFixture(t *testing.T, rec state.DeploymentRecord) (*Engine, *mockClo
 
 func runningRecord() state.DeploymentRecord {
 	return state.DeploymentRecord{
-		ID: "vm-1", VMID: "vm-1", VMIP: "198.51.100.10", FloatingIPID: "fip-9",
+		ID: "vm-1", VMID: "vm-1", ProjectID: "00000000-0000-0000-0000-000000000001", VMIP: "198.51.100.10", FloatingIPID: "fip-9",
 		SSHUser: "user1", Status: "running", CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 }
@@ -48,13 +50,18 @@ func runningRecord() state.DeploymentRecord {
 func TestDestroy_ReleasesFloatingIPFromState(t *testing.T) {
 	eng, cloud, out := destroyFixture(t, runningRecord())
 
-	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+	var result DestroyResult
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result}); err != nil {
 		t.Fatalf("Destroy: %v", err)
+	}
+	if result.VMID != "vm-1" || result.CleanupPending {
+		t.Fatalf("destroy result: %+v", result)
 	}
 	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-9" {
 		t.Errorf("released FIPs = %v, want [fip-9]", cloud.deletedFIPs)
 	}
-	if !strings.Contains(out.String(), "Floating IP 198.51.100.10 (fip-9) released") {
+	if !strings.Contains(out.String(), "Floating IP 198.51.100.10 (fip-9) released") ||
+		!strings.HasSuffix(strings.TrimSpace(out.String()), "Deployment destroyed successfully.") {
 		t.Errorf("output:\n%s", out.String())
 	}
 	if a := readActive(t, eng.StateDir); a != nil {
@@ -62,7 +69,7 @@ func TestDestroy_ReleasesFloatingIPFromState(t *testing.T) {
 	}
 }
 
-// State written before floating_ip_id existed: the FIP is found by address.
+// Old state: the recorded address and a verified VM binding recover its ID.
 func TestDestroy_OldStateFindsFloatingIPByAddress(t *testing.T) {
 	rec := runningRecord()
 	rec.FloatingIPID = ""
@@ -70,8 +77,16 @@ func TestDestroy_OldStateFindsFloatingIPByAddress(t *testing.T) {
 	cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
 		return []*provision.FloatingIP{
 			{ID: "fip-other", IPAddress: "198.51.100.99"},
-			{ID: "fip-old", IPAddress: "198.51.100.10"},
+			{ID: "fip-old", IPAddress: "198.51.100.10", VM: json.RawMessage(`{"id":"vm-1"}`)},
 		}, nil
+	}
+
+	cloud.deleteVMFn = func(context.Context, string) error {
+		active := readActive(t, eng.StateDir)
+		if active == nil || active.FloatingIPID != "fip-old" {
+			t.Fatalf("the verified ID must be saved before VM deletion: %+v", active)
+		}
+		return nil
 	}
 
 	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
@@ -79,6 +94,39 @@ func TestDestroy_OldStateFindsFloatingIPByAddress(t *testing.T) {
 	}
 	if len(cloud.deletedFIPs) != 1 || cloud.deletedFIPs[0] != "fip-old" {
 		t.Errorf("released FIPs = %v, want [fip-old]", cloud.deletedFIPs)
+	}
+}
+
+// The VM's old address or generated name may have been reused since this
+// receipt was written. Preserve the unresolved target on every retry.
+func TestDestroy_LegacyFloatingIPNeedsCurrentBinding(t *testing.T) {
+	rec := runningRecord()
+	rec.FloatingIPID = ""
+	eng, cloud, out := destroyFixture(t, rec)
+	eng.Printer = output.NewWithWriters(out, io.Discard, output.ModeJSON, false)
+	cloud.listFloatingIPsFn = func(context.Context, string) ([]*provision.FloatingIP, error) {
+		return []*provision.FloatingIP{
+			{ID: "foreign", IPAddress: rec.VMIP, VM: json.RawMessage(`{"id":"other","name":"vm-1"}`)},
+			{ID: "unbound", Name: fipName(rec.VMID)},
+		}, nil
+	}
+	for i := 0; i < 2; i++ {
+		out.Reset()
+		if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+			t.Fatal(err)
+		}
+		var result struct {
+			Status  string
+			Pending bool `json:"cleanup_pending"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		active := readActive(t, eng.StateDir)
+		if result.Status != "partial" || !result.Pending || len(cloud.deletedFIPs) != 0 ||
+			active == nil || active.VMID != rec.VMID || active.FloatingIPID != "" {
+			t.Fatalf("attempt %d: response=%s, releases=%v, receipt=%+v", i+1, out, cloud.deletedFIPs, active)
+		}
 	}
 }
 
@@ -215,5 +263,206 @@ func TestDestroy_RecordOfAnotherProject404Refused(t *testing.T) {
 	}
 	if a := readActive(t, eng.StateDir); a != nil {
 		t.Errorf("deployment left in state: %+v", a)
+	}
+}
+
+// A missing extra address leaves cleanup unconfirmed even after the VM record
+// is retired. A terminal user needs that outcome in the last line.
+func TestDestroy_TextReportsPartialCleanup(t *testing.T) {
+	rec := runningRecord()
+	eng, _, out := destroyFixture(t, rec)
+	path := state.DefaultPath(eng.StateDir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf.LostFloatingIPs = []state.LostFloatingIP{{Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(out.String()), "Resource cleanup is incomplete.") ||
+		strings.Contains(out.String(), "Deployment destroyed successfully.") {
+		t.Fatalf("partial destroy output:\n%s", out)
+	}
+}
+
+func TestDestroy_ExtraAddressRefusalKeepsTargetUntilRetry(t *testing.T) {
+	rec := runningRecord()
+	eng, cloud, out := destroyFixture(t, rec)
+	eng.Printer = output.NewWithWriters(out, io.Discard, output.ModeJSON, false)
+	path := state.DefaultPath(eng.StateDir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sf.LostFloatingIPs = []state.LostFloatingIP{{ID: "fip-extra", Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	released := false
+	cloud.getFloatingIPFn = func(_ context.Context, id string) (*provision.FloatingIP, error) {
+		if id == "fip-extra" && !released {
+			return &provision.FloatingIP{ID: id, Name: "extra", State: "available"}, nil
+		}
+		return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+	}
+	var deny bool
+	attempts := 0
+	cloud.deleteFloatingIPFn = func(_ context.Context, id, _ string) error {
+		if id == "fip-extra" {
+			attempts++
+			if deny {
+				return stderrors.New("release refused")
+			}
+			released = true
+		}
+		return nil
+	}
+	for i, pending := range []bool{true, true, false} {
+		deny = pending
+		out.Reset()
+		var result DestroyResult
+		if err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result}); err != nil {
+			t.Fatal(err)
+		}
+		var answer map[string]any
+		if err := json.Unmarshal(out.Bytes(), &answer); err != nil {
+			t.Fatal(err)
+		}
+		wantStatus := "destroyed"
+		if pending {
+			wantStatus = "partial"
+		}
+		if answer["status"] != wantStatus || answer["cleanup_pending"] != pending || answer["vm_id"] != rec.VMID {
+			t.Fatalf("attempt %d: destroy --json = %v", i, answer)
+		}
+		sf, err = state.Read(path)
+		if err != nil || result.VMID != rec.VMID || result.CleanupPending != pending || (sf.ActiveDeployment() != nil) != pending || (len(sf.LostFloatingIPs) != 0) != pending || attempts != i+1 {
+			t.Fatalf("attempt %d: result=%+v state=%+v releases=%d err=%v", i, result, sf, attempts, err)
+		}
+	}
+}
+
+func TestDestroy_JSONIdentifiesEachIncompleteCleanup(t *testing.T) {
+	for _, cause := range []string{"rule delete", "rule list", "missing extra IP"} {
+		t.Run(cause, func(t *testing.T) {
+			rec := rulesRecord()
+			eng, cloud, out := destroyFixture(t, rec)
+			eng.Printer = output.NewWithWriters(out, io.Discard, output.ModeJSON, false)
+			switch cause {
+			case "rule delete":
+				cloud.deleteRuleFn = func(_ context.Context, _, id string) error {
+					if id == "rule-53" {
+						return stderrors.New("rule in use")
+					}
+					return nil
+				}
+			case "rule list":
+				cloud.listSecurityGroupsFn = func(context.Context, string) ([]*provision.SecurityGroup, error) {
+					return nil, clerrors.New(clerrors.CodeAPIError, "rule list unavailable", "")
+				}
+			case "missing extra IP":
+				path := state.DefaultPath(eng.StateDir)
+				sf := readState(t, eng.StateDir)
+				sf.LostFloatingIPs = []state.LostFloatingIP{{Name: "extra", VMID: rec.VMID, ProjectID: eng.Config.ProjectID}}
+				if err := state.Write(path, sf); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := eng.Destroy(context.Background(), DestroyOptions{Force: true}); err != nil {
+				t.Fatal(err)
+			}
+			var got struct {
+				Status    string
+				Pending   bool                      `json:"cleanup_pending"`
+				VMID      string                    `json:"vm_id"`
+				Rules     struct{ Failed []string } `json:"security_group_rules"`
+				Unchecked string                    `json:"labelled_rules_unchecked"`
+				Missing   []string                  `json:"lost_floating_ips_not_found"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+				t.Fatal(err, out)
+			}
+			if got.Status != "partial" || !got.Pending || got.VMID != rec.VMID {
+				t.Fatalf("partial cleanup of %s: %s", rec.VMID, out)
+			}
+			if (len(got.Rules.Failed) == 1) != (cause == "rule delete") ||
+				(got.Unchecked == "API_ERROR") != (cause == "rule list") ||
+				(strings.Join(got.Missing, ",") == "extra") != (cause == "missing extra IP") {
+				t.Fatalf("unexpected cleanup details: %s", out)
+			}
+		})
+	}
+}
+
+// The API accepts release asynchronously. Only the final read of this
+// particular address can retire its billing receipt.
+func TestDestroy_OwnFloatingIPNeedsFinalRead(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		address *provision.FloatingIP
+		readErr error
+	}{
+		{"still visible", &provision.FloatingIP{ID: "fip-9", State: "deleting"}, nil},
+		{"read refused", nil, clerrors.New(clerrors.CodeAPIError, "read refused", "")},
+		{"unclassified 404", nil, clerrors.Wrap(clerrors.CodeAPIError, "refused", "", &provision.StatusError{Status: 404})},
+		{"empty response", nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := runningRecord()
+			eng, cloud, out := destroyFixture(t, rec)
+			eng.Printer = output.NewWithWriters(out, io.Discard, output.ModeJSON, false)
+			readAfterDelete := 0
+			gone := false
+			cloud.getFloatingIPFn = func(_ context.Context, id string) (*provision.FloatingIP, error) {
+				if id != rec.FloatingIPID {
+					t.Fatalf("read %q, want the recorded address %q", id, rec.FloatingIPID)
+				}
+				if len(cloud.deletedFIPs) > 0 {
+					readAfterDelete++
+				}
+				if gone {
+					return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+				}
+				return tc.address, tc.readErr
+			}
+			for _, status := range []string{"partial", "destroyed"} {
+				gone = status == "destroyed"
+				out.Reset()
+				previousReads := readAfterDelete
+				var result DestroyResult
+				err := eng.Destroy(context.Background(), DestroyOptions{Force: true, Result: &result})
+				if code := clerrors.ExitCode(err); code != 0 {
+					t.Fatalf("%s: exit %d (%v), want 0", status, code, err)
+				}
+				var response struct {
+					Status  string `json:"status"`
+					Pending *bool  `json:"cleanup_pending"`
+				}
+				if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+				wantPending := !gone
+				if response.Status != status || response.Pending == nil || *response.Pending != wantPending ||
+					result.CleanupPending != wantPending || readAfterDelete == previousReads {
+					t.Fatalf("want %s/%v after GET, got %s, result=%+v, reads=%d", status, wantPending, out, result, readAfterDelete)
+				}
+				active := readActive(t, eng.StateDir)
+				if wantPending && (active == nil || active.Status != "destroying" || active.FloatingIPID != rec.FloatingIPID) {
+					t.Fatalf("pending receipt: %+v", active)
+				}
+				if !wantPending && active != nil {
+					t.Fatalf("receipt after confirmed release: %+v", active)
+				}
+				for _, id := range cloud.deletedFIPs {
+					if id != rec.FloatingIPID {
+						t.Fatalf("released %q, want %q", id, rec.FloatingIPID)
+					}
+				}
+			}
+		})
 	}
 }

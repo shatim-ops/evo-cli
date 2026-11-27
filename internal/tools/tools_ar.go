@@ -78,7 +78,10 @@ func (s *Registry) planArCreate(ctx context.Context, args map[string]any) (*Plan
 	}
 	// A taken name made a second registry, rc 0 (release audit, L-18); it
 	// is refused before the consent, as every other create (D29, FB123-4).
-	existing, err := cli.ListRegistries(ctx)
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		return namedResources(cli.ListRegistries(ctx))
+	}
+	existing, err := list(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("check the name is free: list registries: %w", "проверка, что имя свободно: список реестров: %w"), err)
 	}
@@ -107,7 +110,7 @@ func (s *Registry) planArCreate(ctx context.Context, args map[string]any) (*Plan
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "ar_create", cli.ListRegistries, i18n.T("registry", "реестр"), name, nil, "ar_get id", fmt.Errorf(i18n.T("create registry: %w", "создание реестра: %w"), err))
+			return lostCreate(ctx, "ar_create", list, i18n.T("registry", "реестр"), name, nil, "ar_get id", fmt.Errorf(i18n.T("create registry: %w", "создание реестра: %w"), err))
 		}
 		out := map[string]any{
 			"status": "creating", "operation_id": op.ID,

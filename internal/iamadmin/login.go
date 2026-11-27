@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/pager"
 )
 
 // The requests of evo login (B-3, contract B-1, steps 10–18 and the
@@ -60,13 +63,9 @@ func (c *Client) BulkEvaluate(ctx context.Context, checks []Check) ([]bool, erro
 // it only when evaluate answers false, to tell «no right» from «no such
 // action» («Риск», R-49).
 func (c *Client) Actions(ctx context.Context) ([]string, error) {
-	var out []string
-	err := c.list(ctx, "actions", "/api/v1/actions", url.Values{}, "actions", func(m map[string]any) {
-		if n := str(m, "name"); n != "" {
-			out = append(out, n)
-		}
+	return list(ctx, c, "actions", "/api/v1/actions", nil, "actions", "name", func(m map[string]any) (string, error) {
+		return str(m, "name"), stringFields(m, []string{"name"})
 	})
-	return out, err
 }
 
 // Evaluate answers one check.
@@ -94,11 +93,20 @@ func (c *Client) ServiceAccounts(ctx context.Context, projectID, name string) ([
 	if err := setFilter(q, "name", name); err != nil {
 		return nil, err
 	}
-	var out []ServiceAccount
-	err := c.list(ctx, "service accounts", "/api/v2/serviceAccounts", q, "serviceAccounts", func(m map[string]any) {
-		out = append(out, ServiceAccount{ID: str(m, "id"), Name: str(m, "name")})
+	required := []string{"id"}
+	if name != "" {
+		required = append(required, "name") // used to prove whether login should create an account
+	}
+	return list(ctx, c, "service accounts", "/api/v2/serviceAccounts", q, "serviceAccounts", "id", func(m map[string]any) (ServiceAccount, error) {
+		if err := stringFields(m, required, "name"); err != nil {
+			return ServiceAccount{}, err
+		}
+		sa := ServiceAccount{ID: str(m, "id"), Name: str(m, "name")}
+		if name != "" && sa.Name != name {
+			return ServiceAccount{}, pager.Incomplete(i18n.T("IAM returned an account outside the name filter", "IAM вернул аккаунт с другим именем"))
+		}
+		return sa, nil
 	})
-	return out, err
 }
 
 // CreateServiceAccount creates the service account name in a project.
@@ -127,11 +135,9 @@ func (c *Client) RolePermissions(ctx context.Context, resourceID, subjectID, rol
 	if err := setFilter(q, "resource_id", resourceID, "subject_id", subjectID, "role_name", roleName); err != nil {
 		return nil, err
 	}
-	var out []Permission
-	err := c.list(ctx, "permissions", "/api/v3/permissions", q, "permissions", func(m map[string]any) {
-		out = append(out, permissionOf(m))
+	return list(ctx, c, "permissions", "/api/v3/permissions", q, "permissions", "id", func(row map[string]any) (Permission, error) {
+		return readPermission(row, true)
 	})
-	return out, err
 }
 
 // Grant is a permission to create: the role by its name, or by its id
@@ -181,16 +187,24 @@ func (c *Client) RoleID(ctx context.Context, customerID, name string) (string, e
 	if err := setFilter(q, "type", "ROLE_TYPE_PRODUCT", "name", name); err != nil {
 		return "", err
 	}
-	id := ""
-	err := c.list(ctx, "roles", "/api/v1/roles", q, "roles", func(m map[string]any) {
-		if id == "" && str(m, "name") == name {
-			id = str(m, "id")
+	ids, err := list(ctx, c, "roles", "/api/v1/roles", q, "roles", "id", func(m map[string]any) (string, error) {
+		if err := stringFields(m, []string{"id", "name"}); err != nil {
+			return "", err
 		}
+		if str(m, "name") == name {
+			return str(m, "id"), nil
+		}
+		return "", nil
 	})
-	if err == nil && id == "" {
-		err = fmt.Errorf("iam: no product role %s", name)
+	if err != nil {
+		return "", err
 	}
-	return id, err
+	for _, id := range ids {
+		if id != "" {
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("iam: no product role %s", name)
 }
 
 // NewKey is an access key just created: its secret is in this answer only.

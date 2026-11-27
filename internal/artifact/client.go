@@ -90,8 +90,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return nil, 0, fmt.Errorf(i18n.T("artifact-registry request failed: %w", "запрос к artifact-registry не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	return data, resp.StatusCode, nil
+	return httpretry.ReadAPIResponse(req, resp, 0)
 }
 
 func apiError(status int, body []byte) error {
@@ -146,7 +145,9 @@ func (c *Client) doOperation(ctx context.Context, method, path string, query url
 func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 	var all []map[string]any
 	seen := map[string]bool{}
+	followed := map[string]bool{}
 	err := pager.All("artifact-registry: registries", func(token string) (string, error) {
+		followed[token] = true
 		q := c.projectQuery()
 		if token != "" {
 			q.Set("pageToken", token)
@@ -155,18 +156,19 @@ func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 		if err != nil {
 			return "", err
 		}
-		if status < 200 || status >= 300 {
-			return "", apiError(status, data)
+		if err := pager.PageStatus(status, data, token != "", apiError); err != nil {
+			return "", err
 		}
-		var out struct {
-			Registries    []map[string]any `json:"registries"`
-			NextPageToken string           `json:"nextPageToken"`
+		page, next, err := pager.ObjectPage[map[string]any](data, "registries", "nextPageToken")
+		if err != nil {
+			return "", err
 		}
-		if err := json.Unmarshal(data, &out); err != nil {
-			return "", fmt.Errorf(i18n.T("parse registries: %w", "разбор реестров: %w"), err)
+		// Only a fresh token is the service's documented end-of-list exception.
+		if next != "" && followed[next] {
+			return "", pager.RepeatedToken(next)
 		}
 		added := 0
-		for _, r := range out.Registries {
+		for _, r := range page {
 			key := registryKey(r)
 			if key != "" && seen[key] {
 				continue
@@ -177,7 +179,7 @@ func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 			all = append(all, r)
 			added++
 		}
-		if len(out.Registries) == 0 {
+		if len(page) == 0 {
 			return "", nil
 		}
 		// The live API answers the page after the last one with the same
@@ -188,7 +190,7 @@ func (c *Client) ListRegistries(ctx context.Context) ([]map[string]any, error) {
 		if added == 0 {
 			return "", nil
 		}
-		return out.NextPageToken, nil
+		return next, nil
 	})
 	if err != nil {
 		return nil, err

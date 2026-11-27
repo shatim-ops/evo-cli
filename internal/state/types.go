@@ -4,7 +4,13 @@
 
 package state
 
-import "time"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/config"
+)
 
 // DeploymentRecord is the persisted form of a deployment.
 type DeploymentRecord struct {
@@ -12,6 +18,10 @@ type DeploymentRecord struct {
 	VMID         string `json:"vm_id"`
 	VMIP         string `json:"vm_ip"`
 	FloatingIPID string `json:"floating_ip_id,omitempty"` // released by destroy
+	// A legacy receipt that was ambiguous stays pending across empty lists.
+	LegacyFloatingIPPending bool `json:"legacy_floating_ip_pending,omitempty"`
+	// Each entry records the human's independent evidence for one exact receipt.
+	FloatingIPResolutions []FloatingIPResolution `json:"floating_ip_resolutions,omitempty"`
 	// ProjectID is the Cloud.ru project the VM was created in: destroy and
 	// a re-run of deploy work there, whatever project the config now names.
 	// Empty in records from before this field existed.
@@ -72,6 +82,13 @@ type DeploymentRecord struct {
 	// OpenedRules are the rules this deployment created (never ones that
 	// were there before it); destroy deletes them.
 	OpenedRules []SGRule `json:"opened_rules,omitempty"`
+	// PendingRuleScan keeps the VM identity after deletion until the labelled
+	// rule search has completed, even when it has not yielded a single ID.
+	PendingRuleScan *RuleScanReceipt `json:"pending_rule_scan,omitempty"`
+	// CleanupProjectID is set on an older deployment when its VM or its
+	// remaining security groups are positively identified in the project.
+	// Keeping ProjectID unchanged preserves the original address receipt ID.
+	CleanupProjectID string `json:"cleanup_project_id,omitempty"`
 	// PortsAlreadyOpen are ports ("80/tcp") a rule this deployment did not
 	// create already opened when deploy came to them: deploy created and
 	// recorded none, and destroy says it leaves them.
@@ -83,6 +100,44 @@ type DeploymentRecord struct {
 	SSHWait   *SSHWait  `json:"ssh_wait,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// RuleScanReceipt identifies the project and principal of an unfinished search.
+type RuleScanReceipt struct {
+	ProjectID string `json:"project_id"`
+	StartedBy *Maker `json:"started_by,omitempty"`
+}
+
+// RecordedCleanupProject returns the project recorded at deploy or established
+// later for a legacy deployment. Conflicting records cannot authorize cleanup.
+func (d *DeploymentRecord) RecordedCleanupProject() (project string, consistent bool) {
+	if d.ProjectID == "" {
+		return d.CleanupProjectID, true
+	}
+	return d.ProjectID, d.CleanupProjectID == "" || d.CleanupProjectID == d.ProjectID
+}
+
+// NoteRuleScan keeps the original scope until a full scan of that target succeeds.
+func (d *DeploymentRecord) NoteRuleScan(project string, maker *Maker) {
+	if d.PendingRuleScan == nil {
+		d.PendingRuleScan = &RuleScanReceipt{ProjectID: project, StartedBy: maker}
+	}
+}
+
+// FloatingIPResolution records a local reconciliation, not a cloud deletion.
+type FloatingIPResolution struct {
+	// A later verified or ambiguous VM binding invalidates this decision.
+	Contradicted bool `json:"contradicted,omitempty"`
+	// The address observed when the binding identified one exact resource.
+	ConflictingAddressID string    `json:"conflicting_address_id,omitempty"`
+	ProjectID            string    `json:"project_id"`
+	ReceiptID            string    `json:"receipt_id"`
+	Kind                 string    `json:"kind"`
+	Name                 string    `json:"name,omitempty"`
+	Outcome              string    `json:"outcome"`
+	AddressID            string    `json:"address_id,omitempty"`
+	Evidence             string    `json:"evidence"`
+	At                   time.Time `json:"at"`
 }
 
 // SSHWait is a wait of deploy for SSH on the VM of a record.
@@ -97,6 +152,9 @@ type SSHWait struct {
 
 // SGRule is a security-group rule created by a deployment.
 type SGRule struct {
+	// LabelVMID is set when the rule was discovered by its deployment label.
+	// A retry must not delete the ID if that label has changed.
+	LabelVMID       string `json:"label_vm_id,omitempty"`
 	ID              string `json:"id"`
 	SecurityGroupID string `json:"security_group_id"`
 	Port            string `json:"port"` // "80/tcp", "53/udp"
@@ -110,19 +168,19 @@ type File struct {
 	Version     int                `json:"version"`
 	Project     string             `json:"project,omitempty"`
 	Deployments []DeploymentRecord `json:"deployments"`
-	// LostFloatingIPs are the floating IPs a deploy asked the cloud for
-	// with no answer to tell whether it made them: each may exist and be
-	// billed. A mark stays until the address is found by its name (taken
-	// for its VM, or released by destroy) or destroy names it as not
-	// found (D107; «Риск», conclusion 180).
+	// LostFloatingIPs are requests whose addresses may exist and be billed.
+	// Keep the receipt until its own address is identified and adopted or
+	// confirmed gone.
 	LostFloatingIPs []LostFloatingIP `json:"lost_floating_ips,omitempty"`
 }
 
-// LostFloatingIP is the mark of a floating IP whose create got no answer
-// from the cloud: the request may have been accepted. It holds the exact
-// name the create gave the address — the one thing the address is found
-// by, before it is known to exist.
+// LostFloatingIP records a create that may have reached the cloud.
 type LostFloatingIP struct {
+	// Attempt is the unique description sent in the create request. Older records
+	// only identify a name and require manual reconciliation.
+	Attempt string `json:"attempt,omitempty"`
+	// ID was verified against Attempt before the first release.
+	ID        string `json:"id,omitempty"`
 	Name      string `json:"name"`
 	ProjectID string `json:"project_id,omitempty"`
 	// VMName is the VM the address was for; VMID, once that VM exists
@@ -143,6 +201,37 @@ type LostFloatingIP struct {
 type Maker struct {
 	ServiceAccountID string `json:"service_account_id,omitempty"`
 	KeyID            string `json:"key_id,omitempty"`
+	// Used only by SG cleanup. Write/Read keep it in the local state file,
+	// outside publicly serialized deployment records, history and receipts.
+	ruleKeyDigest string
+}
+
+// NewMaker keeps the public key ID masked. A deployment recorded with a raw
+// access key can later establish the same principal even without an account ID.
+func NewMaker(account, keyID string) *Maker {
+	if keyID == "" {
+		return nil
+	}
+	m := &Maker{ServiceAccountID: account, KeyID: config.MaskKeyID(keyID)}
+	if account == "" {
+		sum := sha256.Sum256([]byte(keyID))
+		m.ruleKeyDigest = hex.EncodeToString(sum[:])
+	}
+	return m
+}
+
+// MatchRuleOwner compares exact principals. Matching display masks alone
+// leave same and known false, as do missing makers in legacy records.
+func (m *Maker) MatchRuleOwner(cur *Maker) (same, known bool) {
+	if m != nil && cur != nil {
+		if m.ServiceAccountID != "" && cur.ServiceAccountID != "" {
+			return m.ServiceAccountID == cur.ServiceAccountID, true
+		}
+		if m.ruleKeyDigest != "" && cur.ruleKeyDigest != "" {
+			return m.ruleKeyDigest == cur.ruleKeyDigest, true
+		}
+	}
+	return false, false
 }
 
 // Other tells that cur is surely not the key that made the record: by the

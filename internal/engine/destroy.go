@@ -6,9 +6,12 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"net/http"
+	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,12 +28,21 @@ import (
 
 // DestroyOptions holds parameters for the destroy command.
 type DestroyOptions struct {
+	// Result identifies the target and incomplete cleanup under the state lock.
+	Result *DestroyResult
 	Force  bool // skip confirmation prompt (--force / --yes)
 	DryRun bool // show what would be deleted and stop
 	// Gate, when set, asks for consent to the preview instead of
 	// confirm.Ask: the destroy tool sets it for 'evo destroy', which shows
 	// the preview with the tool's answer as its details (spec REQ-4).
 	Gate func(ctx context.Context, p confirm.Preview) (bool, error)
+}
+
+type DestroyResult struct {
+	VMID               string
+	FloatingIPID       string
+	CleanupPending     bool
+	RuleCleanupPending bool
 }
 
 // gate asks for consent to p: through opts.Gate, else confirm.Ask.
@@ -52,17 +64,22 @@ func (e *Engine) destroyGate(ctx context.Context, opts DestroyOptions, p confirm
 func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, error) {
 	sf, err := state.Read(state.DefaultPath(e.StateDir))
 	if err != nil {
-		return confirm.Preview{}, false, nil
+		if bound, _ := ctx.Value(boundDestroyKey{}).(bool); bound {
+			return confirm.Preview{}, false, unknownBoundDeployment()
+		}
+		return confirm.Preview{}, false, err
 	}
 	pending := sgrules.Pending(sf)
 	active := sf.ActiveDeployment()
+	if err := e.checkDestroyScope(ctx, sf, active, pending); err != nil {
+		return confirm.Preview{}, false, err
+	}
 	switch {
 	case active == nil && len(pending) > 0:
-		return pendingRulesPreview(sf, pending), true, nil
+		_, unchecked := e.retryRuleScans(ctx, sf, pending)
+		return pendingRulesPreview(sf, pending, unchecked), true, nil
 	case active == nil:
 		return confirm.Preview{}, false, nil
-	case len(sf.ActiveDeployments()) > 1:
-		return confirm.Preview{}, false, severalDeployments(sf.ActiveDeployments())
 	}
 	// A VM evo did not make is refused before the question (D73).
 	vm, passed, err := e.checkedRecord(ctx, *active)
@@ -71,6 +88,8 @@ func (e *Engine) DestroyPreview(ctx context.Context) (confirm.Preview, bool, err
 	}
 	shown := e.withNames(ctx, *active, nil, true)
 	labeled, uncheckedErr := e.labeledRules(ctx, sf, active)
+	_, pendingErr := e.retryRuleScans(ctx, sf, pending)
+	uncheckedErr = stderrors.Join(uncheckedErr, pendingErr)
 	return destroyPreview(&shown, sf, pending, labeled, uncheckedErr, e.openLeftOf(ctx, sf, active, pending, labeled), e.projectOf(active), e.projectFrom(active), madeAt(vm), passed), true, nil
 }
 
@@ -86,6 +105,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	}
 	stateFile, err := state.Read(statePath)
 	if err != nil {
+		if bound, _ := ctx.Value(boundDestroyKey{}).(bool); bound {
+			return unknownBoundDeployment()
+		}
 		return err
 	}
 
@@ -93,6 +115,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// Deployments destroyed earlier whose port rules could not be deleted
 	// then: this run tries again.
 	pending := sgrules.Pending(stateFile)
+	if err := e.checkDestroyScope(ctx, stateFile, active, pending); err != nil {
+		return err
+	}
 	if active == nil {
 		if len(pending) > 0 {
 			return e.finishPendingRules(ctx, opts, statePath, stateFile, pending)
@@ -102,13 +127,6 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		}
 		e.Printer.Success(noDeploymentToDestroy())
 		return nil
-	}
-
-	// Several active records (provision next to a deploy, R2-2): deleting the
-	// first and answering "destroyed" would leave the others billed while
-	// the person sees success. Each one goes by its own ID.
-	if all := stateFile.ActiveDeployments(); len(all) > 1 {
-		return severalDeployments(all)
 	}
 
 	// A VM evo did not make is refused before the question (D73).
@@ -125,7 +143,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Without a terminal nobody can answer: confirm.Ask fails with exit code 3
 	// instead of reading EOF as a refusal and exiting 0.
-	labeled, uncheckedErr := e.labeledRules(ctx, stateFile, active)
+	labeled, activeScanErr := e.labeledRules(ctx, stateFile, active)
+	completedScans, pendingErr := e.retryRuleScans(ctx, stateFile, pending)
+	uncheckedErr := stderrors.Join(activeScanErr, pendingErr)
 	proceed, err := e.destroyGate(ctx, opts, destroyPreview(&shown, stateFile, pending, labeled, uncheckedErr, e.openLeftOf(ctx, stateFile, active, pending, labeled), e.projectOf(active), e.projectFrom(active), madeAt(vm), passed))
 	if err != nil {
 		return err
@@ -134,6 +154,17 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		return nil // --dry-run
 	}
 
+	if opts.Result != nil {
+		opts.Result.VMID = active.VMID
+		opts.Result.FloatingIPID = active.FloatingIPID
+		opts.Result.CleanupPending = true
+	}
+
+	// The membership proof for a legacy target must survive the VM DELETE.
+	// Do not alter ProjectID: it is part of the original address receipt ID.
+	if active.ProjectID == "" && active.VMID != "" {
+		active.CleanupProjectID = e.projectOf(active)
+	}
 	// Auth.
 	e.Printer.Step(2, 3, i18n.T("Authenticating...", "Аутентификация..."))
 	tok, err := e.Auth.Token(ctx)
@@ -147,16 +178,30 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 
 	// Delete VM, then its floating IP and the port rules deploy created.
 	e.Printer.Step(3, 3, i18n.T("Deleting VM, floating IP and port rules...", "Удаление ВМ, floating IP и правил портов..."))
+	// Older receipts may lack the address ID. Capture a proven binding while
+	// the VM still exists, and persist it before deletion detaches the IP.
+	fipErr := e.RecordLegacyFloatingIP(ctx, active, vm, floatingip.Of(stateFile, e.projectOf(active), active.VMName, active.VMID)...)
+	if opts.Result != nil {
+		opts.Result.FloatingIPID = active.FloatingIPID
+	}
+	// Persist the labelled IDs with the target while the approval is current.
+	// A retry can reconcile them even if discovery omits a deleting rule.
+	sgrules.TrackLabeled(stateFile, active, labeled)
+	if activeScanErr != nil {
+		active.NoteRuleScan(e.projectOf(active), e.Maker())
+	}
 	prevStatus := active.Status
 	active.Status = "destroying"
 	active.UpdatedAt = time.Now()
 	stateFile.UpsertDeployment(*active)
-	_ = state.Write(statePath, stateFile)
+	if err := state.Write(statePath, stateFile); err != nil {
+		return err
+	}
 
 	if active.VMID == "" {
 		// No ID to delete by: DELETE /vms/ with an empty ID is not a VM.
 		e.Printer.Warning(i18n.T("No VM ID in state; nothing to delete in the cloud", "В state нет ID ВМ; удалять в облаке нечего"))
-	} else if err = e.deleteVMWhenDeletable(ctx, active.VMID); err != nil {
+	} else if err = e.deleteVMWhenDeletable(ctx, active.VMID, e.projectOf(active)); err != nil {
 		// If VM is already gone (VM_NOT_FOUND), that's fine — unless the
 		// record is of another project than the active one: DELETE
 		// /vms/{id} carries no project, so a key that does not see that
@@ -184,7 +229,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 			stateFile.UpsertDeployment(*active)
 			_ = state.Write(statePath, stateFile)
 			if st := provision.HTTPStatus(err); st == http.StatusConflict || st == http.StatusUnprocessableEntity {
-				return e.RefusedVMDelete(ctx, active.VMID, fipRef(active), err, i18n.T(" The deployment record is kept.", " Запись развёртывания сохранена."))
+				return e.RefusedVMDelete(ctx, active, err, i18n.T(" The deployment record is kept.", " Запись развёртывания сохранена."),
+					i18n.Tf("Check VM %q with 'evo vm get' and re-run 'evo destroy' once deletion is possible.", "Проверьте ВМ %q командой 'evo vm get' и повторите 'evo destroy', когда удаление будет возможно.", active.VMID), "evo vpc fip-release")
 			}
 			return err
 		}
@@ -233,7 +279,9 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// The VM is gone but its floating IP is billed until released. On failure
 	// the record stays ("destroying"), so re-running destroy retries.
 	stateFile.UpsertDeployment(*active)
-	fipErr := e.releaseFloatingIP(ctx, active)
+	if fipErr == nil {
+		fipErr = e.releaseFloatingIP(ctx, active)
+	}
 
 	// Port rules only now that the VM is gone: had its delete failed, the
 	// app would still be serving and must keep its ports. A failed rule
@@ -244,25 +292,38 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	if len(left) > 0 {
 		e.Printer.StepDone(notOursText(left))
 	}
-	if fipErr != nil {
+	ipPending := stderrors.Is(fipErr, errFloatingIPReleaseUnconfirmed)
+	if fipErr != nil && !ipPending {
 		_ = state.Write(statePath, stateFile)
 		return fipErr
 	}
 
-	// The addresses asked for this VM with no answer (floatingip): released
-	// when listed by their name, else named in the answer — their marks
-	// close either way, so nothing billed stays unnamed (D107; «Риск»,
-	// conclusion 180, Т3 and Т4).
-	lostReleased, lostMissing := e.releaseLostAddresses(ctx, stateFile, active)
+	// A lost create stays on the deployment until its own address is
+	// identified and the final GET confirms its removal.
+	lostReleased, lostMissing, extraErr := e.releaseLostAddresses(ctx, stateFile, active)
 
+	var addressHint string
+	switch {
+	case ipPending && active.FloatingIPID != "":
+		addressHint = i18n.T("The deployment record keeps this address ID. Run 'evo destroy' again in this directory and project to finish cleanup. Use 'evo cleanup receipts' for separate address requests whose creation was never confirmed.",
+			"ID этого адреса сохранён в записи развёртывания. Чтобы завершить уборку, повторите 'evo destroy' в том же каталоге и проекте. Отдельные заявки, для которых создание адреса не подтвердилось, показывает 'evo cleanup receipts'.")
+	case ipPending || extraErr != nil:
+		addressHint = FloatingIPReceiptHint()
+	}
+
+	if activeScanErr == nil && !ipPending && extraErr == nil {
+		completedScans = append(completedScans, active.ID)
+	}
+	finishRuleScans(stateFile, completedScans)
 	// Clean up state. Retire moves records: active points into the slice.
-	vmID, vmIP := active.VMID, active.VMIP
+	recID, vmID, vmIP, fipID := active.ID, active.VMID, active.VMIP, fipRef(active)
 	for _, id := range append([]string{active.ID}, pending...) {
+		if (ipPending || extraErr != nil) && id == recID {
+			// The receipt and VM ID are needed to retry the address.
+			continue
+		}
 		sgrules.Retire(stateFile, id)
 	}
-	// The rules labelled for the VM that the preview named and no record
-	// here holds (P6): opened for it from another folder.
-	rules.Add(e.closeLabeled(ctx, labeled))
 	if uncheckedErr != nil {
 		e.Printer.Warning(UncheckedRules(uncheckedErr))
 	}
@@ -270,10 +331,27 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		return err
 	}
 
+	cleanupPending := ipPending || extraErr != nil || len(rules.Failed) > 0 || uncheckedErr != nil || len(lostMissing) > 0
+	if opts.Result != nil {
+		opts.Result.CleanupPending = cleanupPending
+		opts.Result.RuleCleanupPending = len(rules.Failed) > 0 || uncheckedErr != nil
+	}
+
 	if e.Printer.IsJSON() {
-		out := map[string]any{"status": "destroyed", "vm_id": vmID, "vm_ip": vmIP}
+		status := "destroyed"
+		if cleanupPending {
+			status = "partial"
+		}
+		out := map[string]any{"status": status, "cleanup_pending": cleanupPending, "vm_id": vmID, "vm_ip": vmIP}
 		if shown.VMName != "" {
 			out["vm_name"] = shown.VMName
+		}
+		if ipPending {
+			out["floating_ip_unconfirmed"] = fipID
+			out["floating_ip_warning"] = fipErr.Error()
+		}
+		if len(rules.Failed) > 0 {
+			out["hint"] = sgrules.RuleRetryHint()
 		}
 		if !rules.Empty() {
 			out["security_group_rules"] = rules
@@ -287,20 +365,33 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		if len(lostReleased) > 0 {
 			out["lost_floating_ips_released"] = lostReleased
 		}
+		if addressHint != "" {
+			out["cleanup_hint"] = addressHint
+		}
+		if extraErr != nil {
+			out["warning"] = extraErr.Error()
+		}
 		if len(lostMissing) > 0 {
 			out["lost_floating_ips_not_found"] = lostMissing
 		}
 		return e.Printer.JSON(out)
 	}
+	if ipPending {
+		e.Printer.Warning(fipErr.Error())
+	}
+	if addressHint != "" {
+		e.Printer.Warning(addressHint)
+	}
+	if cleanupPending {
+		e.Printer.Warning(i18n.T("Resource cleanup is incomplete.", "Уборка ресурсов не завершена."))
+		return nil
+	}
 	e.Printer.Success(i18n.T("Deployment destroyed successfully.", "Развёртывание удалено."))
 	return nil
 }
 
-// releaseLostAddresses releases the floating IPs asked for the VM of rec
-// with no answer (floatingip.Release) and says what it did: released by
-// destroy itself; not listed — named, with where to release it if it comes.
-// A list that cannot be read keeps the marks, with a warning.
-func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) (released, missing []string) {
+// releaseLostAddresses reports released addresses and unresolved create receipts.
+func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *state.DeploymentRecord) (released, missing []string, releaseErr error) {
 	rel, miss, err := floatingip.Release(ctx, e.Cloud, sf, e.projectOf(rec), rec.VMName, rec.VMID, rec.FloatingIPID)
 	for _, m := range rel {
 		released = append(released, m.Name)
@@ -308,14 +399,14 @@ func (e *Engine) releaseLostAddresses(ctx context.Context, sf *state.File, rec *
 	}
 	for _, m := range miss {
 		missing = append(missing, m.Name)
-		e.Printer.Warning(i18n.Tf("floating IP %s, requested %s with no answer, is not listed: if list_floating_ips shows it later, it is billed — whether to release it (release_floating_ip), ask the person",
-			"floating IP %s, запрошенный %s без ответа облака, в списке не найден: если 'evo vpc fips' покажет его позже, он тарифицируется — освобождать ли его ('evo vpc fip-release'), спросите человека", m.Name, m.RequestedAt.Local().Format("02.01.2006 15:04")))
+		e.Printer.Warning(i18n.Tf("floating IP %s, requested %s with no answer, is not listed. The receipt was kept. Check the request and address ID in the cloud before deciding whether to release it",
+			"floating IP %s, запрошенный %s без ответа облака, в списке не найден. Квитанция сохранена. Перед решением об освобождении сверьте запрос и ID адреса в облаке", m.Name, m.RequestedAt.Local().Format("02.01.2006 15:04")))
 	}
 	if err != nil {
-		e.Printer.Warning(i18n.Tf("the floating IPs requested with no answer were not checked (%v); the next destroy checks them again",
-			"floating IP, запрошенные без ответа облака, не проверены (%v); следующий destroy проверит их снова", err))
+		e.Printer.Warning(i18n.Tf("cleanup of the floating IPs requested with no answer is unconfirmed (%v); the next destroy checks the receipts again",
+			"уборка floating IP, запрошенных без ответа облака, не подтверждена (%v). Повтор destroy проверит сохранённые квитанции", err))
 	}
-	return released, missing
+	return released, missing, err
 }
 
 // ErrDeletionUnconfirmed is the cause of the error destroy returns when
@@ -449,30 +540,21 @@ func (e *Engine) labeledRules(ctx context.Context, sf *state.File, rec *state.De
 	return e.LabeledRules(ctx, sf, e.projectOf(rec), rec.VMID, rec.Region, rec.ZoneName)
 }
 
-// closeLabeled deletes the rules labeledRules found, once their VM is gone,
-// and says it as closeRules does.
-func (e *Engine) closeLabeled(ctx context.Context, labeled []sgrules.Planned) sgrules.CloseResult {
-	res := sgrules.CloseLabeled(ctx, e.Cloud, labeled)
-	if len(res.Closed) > 0 {
-		e.Printer.StepDone(i18n.Tf("Closed the security group rules labelled for the VM: ports %s", "Закрыты правила группы безопасности, помеченные для ВМ: порты %s", strings.Join(res.Closed, ", ")))
-	}
-	if len(res.Failed) > 0 {
-		e.Printer.Warning(i18n.Tf("Could not delete the security group rules labelled for the VM for ports %s: delete them in the Cloud.ru console, or call destroy with this VM's id again.",
-			"Не удалось удалить правила группы безопасности, помеченные для ВМ, для портов %s: удалите их в консоли Cloud.ru или повторите destroy с id этой ВМ.", strings.Join(res.Failed, "; ")))
-	}
-	return res
-}
-
 // closeRules deletes the port rules the given deployments created and
 // reports it; see sgrules.Close.
 func (e *Engine) closeRules(ctx context.Context, sf *state.File, ids []string) sgrules.CloseResult {
 	var res sgrules.CloseResult
 	for _, id := range ids {
-		res.Add(sgrules.Close(ctx, e.Cloud, sf, id))
+		res.Add(sgrules.Close(ctx, e.Cloud, sf, id, e.projectOf(sf.FindDeployment(id)), e.Maker()))
 	}
-	if len(res.Closed) > 0 {
-		e.Printer.StepDone(i18n.Tf("Closed ports %s in the security group", "Закрыты порты %s в группе безопасности", strings.Join(res.Closed, ",")))
+	plain := slices.DeleteFunc(slices.Clone(res.Closed), func(label string) bool { return slices.Contains(res.LabeledClosed, label) })
+	if len(plain) > 0 {
+		e.Printer.StepDone(i18n.Tf("Closed ports %s in the security group", "Закрыты порты %s в группе безопасности", strings.Join(plain, ",")))
 	}
+	if len(res.LabeledClosed) > 0 {
+		e.Printer.StepDone(i18n.Tf("Closed the security group rules labelled for the VM: ports %s", "Закрыты правила группы безопасности, помеченные для ВМ: порты %s", strings.Join(res.LabeledClosed, ", ")))
+	}
+
 	for _, k := range res.Kept {
 		e.Printer.StepDone(i18n.T("Kept port ", "Оставлен порт ") + k)
 	}
@@ -488,12 +570,20 @@ func (e *Engine) closeRules(ctx context.Context, sf *state.File, ids []string) s
 // finishPendingRules is destroy with no active deployment, only rules left
 // by an earlier destroy.
 func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, statePath string, sf *state.File, pending []string) error {
-	proceed, err := e.destroyGate(ctx, opts, pendingRulesPreview(sf, pending))
+	completedScans, uncheckedErr := e.retryRuleScans(ctx, sf, pending)
+	proceed, err := e.destroyGate(ctx, opts, pendingRulesPreview(sf, pending, uncheckedErr))
 	if err != nil {
 		return err
 	}
 	if !proceed {
 		return nil // --dry-run
+	}
+	if opts.Result != nil {
+		opts.Result.CleanupPending = true
+		opts.Result.RuleCleanupPending = true
+		if len(pending) == 1 {
+			opts.Result.VMID = sf.FindDeployment(pending[0]).VMID
+		}
 	}
 	tok, err := e.Auth.Token(ctx)
 	if err != nil {
@@ -503,21 +593,41 @@ func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, st
 		ts.SetToken(tok.Value)
 	}
 	e.Printer.Step(1, 1, i18n.T("Deleting port rules left by an earlier destroy...", "Удаление правил портов, оставшихся от прошлого destroy..."))
+	// Persist every approved ID before issuing a rule DELETE.
+	if err := state.Write(statePath, sf); err != nil {
+		return err
+	}
 	rules := e.closeRules(ctx, sf, pending)
+	finishRuleScans(sf, completedScans)
 	for _, id := range pending {
 		sgrules.Retire(sf, id)
 	}
 	if err := state.Write(statePath, sf); err != nil {
 		return err
 	}
+	cleanupPending := len(rules.Failed) > 0 || uncheckedErr != nil
+	if uncheckedErr != nil {
+		e.Printer.Warning(UncheckedRules(uncheckedErr))
+	}
+	if opts.Result != nil {
+		opts.Result.CleanupPending = cleanupPending
+		opts.Result.RuleCleanupPending = len(rules.Failed) > 0 || uncheckedErr != nil
+	}
 	if e.Printer.IsJSON() {
 		status := "destroyed"
-		if len(rules.Failed) > 0 {
+		if cleanupPending {
 			status = "rules_pending"
 		}
-		return e.Printer.JSON(map[string]any{"status": status, "security_group_rules": rules})
+		out := map[string]any{"status": status, "cleanup_pending": cleanupPending, "security_group_rules": rules}
+		if uncheckedErr != nil {
+			out["labelled_rules_unchecked"] = clerrors.Reason(uncheckedErr)
+		}
+		if cleanupPending {
+			out["hint"] = sgrules.RuleRetryHint()
+		}
+		return e.Printer.JSON(out)
 	}
-	if len(rules.Failed) == 0 {
+	if !cleanupPending {
 		e.Printer.Success(i18n.T("Security group rules deleted.", "Правила группы безопасности удалены."))
 	}
 	return nil
@@ -527,52 +637,148 @@ func (e *Engine) finishPendingRules(ctx context.Context, opts DestroyOptions, st
 // deleted the platform may still report the FIP as attached.
 const fipReleaseAttempts = 5
 
-// releaseFloatingIP deletes the deployment's floating IP. The ID comes from
-// state; records written before floating_ip_id existed fall back to looking
-// the address up in list_floating_ips. Nothing to release is not an error.
-func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRecord) error {
-	projectID := e.projectOf(rec)
-	fipID := rec.FloatingIPID
-	// Without an ID: by address, else by the name deploy gives it (its
-	// create response may have been lost, leaving neither in state).
-	if fipID == "" && (rec.VMIP != "" || rec.VMID != "") {
-		fips, err := e.Cloud.ListFloatingIPs(ctx, projectID)
-		if err != nil {
-			return clerrors.Wrap(clerrors.CodeAPIError,
-				i18n.Tf("cannot look up floating IP %s", "не удалось найти floating IP %s", fipLabel(rec.VMIP, fipName(rec.VMID))),
-				i18n.T("The VM is deleted. Re-run 'evo destroy --yes' to release the floating IP, or release it in the Cloud.ru console.",
-					"ВМ удалена. Чтобы освободить floating IP, повторите 'evo destroy --yes' или освободите его в консоли Cloud.ru."),
-				err)
-		}
-		for _, f := range fips {
-			if (rec.VMIP != "" && f.IPAddress == rec.VMIP) || (rec.VMID != "" && f.Name == fipName(rec.VMID)) {
-				fipID = f.ID
-				break
+// RecordLegacyFloatingIP resolves an old receipt before the VM is deleted.
+// A matching name or recorded address selects candidates. Only the current
+// VM binding proves which ID can be released. An empty list cannot retire
+// a receipt for a previously recorded external address or ambiguous candidate.
+func (e *Engine) RecordLegacyFloatingIP(ctx context.Context, rec *state.DeploymentRecord, vm *provision.VM, lost ...state.LostFloatingIP) error {
+	if rec.FloatingIPID != "" || rec.VMID == "" && rec.VMIP == "" && !rec.LegacyFloatingIPPending {
+		return nil
+	}
+	fips, err := e.Cloud.ListFloatingIPs(ctx, e.projectOf(rec))
+	if err != nil {
+		return clerrors.Wrap(clerrors.CodeAPIError,
+			i18n.T("Could not check the recorded floating IP. It may still be billed.",
+				"Не удалось проверить записанный floating IP. Он может оставаться платным."), "", errFloatingIPReleaseUnconfirmed)
+	}
+	resolution := legacyIPResolution(e.projectOf(rec), rec)
+	proved, matched, ambiguous := legacyBinding(rec, vm, fips, lost, resolution)
+	// A previously released ID that still exists is itself a contradiction,
+	// even after a rename or detachment. It supplies no authority to DELETE.
+	releasedStillListed := listsReleasedAddress(fips, resolution)
+	if resolution != nil && (resolution.Contradicted || rec.LegacyFloatingIPPending || releasedStillListed || proved != nil || ambiguous) {
+		resolution.Contradicted = true
+		if resolution.ConflictingAddressID == "" {
+			if releasedStillListed {
+				resolution.ConflictingAddressID = resolution.AddressID
+			} else if proved != nil {
+				resolution.ConflictingAddressID = proved.ID
 			}
 		}
+		rec.LegacyFloatingIPPending = true
+		return clerrors.Wrap(clerrors.CodeAPIError,
+			i18n.T("Current cloud evidence contradicted the recorded outcome. The floating IP may still be billed. Check the receipt and provide fresh independent evidence.",
+				"Данные облака опровергли записанный исход. Плавающий IP может оставаться платным. Проверьте квитанцию и укажите новое независимое свидетельство."), "", errFloatingIPReleaseUnconfirmed)
 	}
+	if ambiguous {
+		rec.LegacyFloatingIPPending = true
+		return clerrors.Wrap(clerrors.CodeAPIError, i18n.T("Conflicting evidence for the deployment's floating IP. The receipt was kept.", "Данные об адресе развёртывания расходятся. Квитанция сохранена."), "", errFloatingIPReleaseUnconfirmed)
+	}
+	if proved != nil {
+		rec.LegacyFloatingIPPending = false
+		rec.FloatingIPID, rec.VMIP = proved.ID, proved.IPAddress
+		return nil
+	}
+	if resolution != nil {
+		return nil
+	}
+	if matched || rec.LegacyFloatingIPPending || rec.ID != "" && recordedExternalIP(rec.VMIP) {
+		rec.LegacyFloatingIPPending = true
+		return clerrors.Wrap(clerrors.CodeAPIError,
+			i18n.T("The floating IP's binding to this VM could not be verified. Check the address in the Cloud.ru console before releasing it.",
+				"Не удалось подтвердить привязку floating IP к этой ВМ. До освобождения проверьте адрес в консоли Cloud.ru."), "", errFloatingIPReleaseUnconfirmed)
+	}
+	return nil
+}
+
+func legacyBinding(rec *state.DeploymentRecord, vm *provision.VM, fips []*provision.FloatingIP, lost []state.LostFloatingIP, resolution *state.FloatingIPResolution) (proved *provision.FloatingIP, matched, ambiguous bool) {
+	// The oldest records have no VM name. An actual VM card read by
+	// the recorded ID may supply the name for candidate selection only.
+	vmName := rec.VMName
+	if vmName == "" && vm != nil && rec.VMID != "" && vm.ID == rec.VMID {
+		vmName = vm.Name
+	}
+	for _, f := range fips {
+		if f == nil {
+			continue
+		}
+		// A legacy decision may predate the first observation of the address
+		// on the VM. Never rewrite that receipt's identity with a live value.
+		fromDecision := resolution != nil && ((resolution.AddressID != "" && resolution.AddressID == f.ID) ||
+			(vm != nil && vm.ID == rec.VMID && vm.FloatingIP != "" && vm.FloatingIP == f.IPAddress))
+		if !fromDecision && !(rec.VMIP != "" && f.IPAddress == rec.VMIP) && !provision.IsEvoFIPOf(f.Name, rec.VMID, vmName) {
+			continue
+		}
+		// A name-only candidate of an explicitly tracked create belongs to
+		// that receipt. Counting its unbound namesake once again here
+		// would manufacture a second receipt after reconciliation.
+		if rec.VMIP != "" || !nameOfLostRequest(rec, lost, f.Name) {
+			matched = true
+		}
+		var bound struct{ ID string }
+		_ = json.Unmarshal(f.VM, &bound)
+		onVM := rec.VMID != "" && bound.ID == rec.VMID
+		// Old responses may name the bound IP only on the VM itself.
+		if !f.Bound() && vm != nil && vm.ID == rec.VMID && vm.FloatingIP != "" && vm.FloatingIP == f.IPAddress {
+			onVM = true
+		}
+		if !onVM || f.ID == "" || f.OnNATGateway() {
+			continue
+		}
+		if proved != nil && proved.ID != f.ID {
+			return nil, matched, true
+		}
+		proved = f
+	}
+	return proved, matched, false
+}
+
+// A private-only VM may have its private address in VMIP. Emptiness or a
+// non-routable address alone is not a receipt for a billed floating IP.
+func recordedExternalIP(address string) bool {
+	if address == "" {
+		return false
+	}
+	ip, err := netip.ParseAddr(address)
+	if err != nil {
+		return true
+	} // keep ambiguous old data for reconciliation
+	ip = ip.Unmap()
+	return ip.IsGlobalUnicast() && !ip.IsPrivate()
+}
+
+func nameOfLostRequest(rec *state.DeploymentRecord, lost []state.LostFloatingIP, name string) bool {
+	for _, m := range lost {
+		if name != "" && m.Name == name {
+			return true
+		}
+	}
+	for _, r := range rec.FloatingIPResolutions {
+		if name != "" && r.Kind == "lost_request" && r.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// releaseFloatingIP releases only a recorded or verified ID.
+func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRecord) error {
+	projectID, fipID := e.projectOf(rec), rec.FloatingIPID
 	if fipID == "" {
 		return nil
 	}
-
 	t := e.timings()
 	var lastErr error
 	for attempt := 0; attempt < fipReleaseAttempts; attempt++ {
 		err := e.Cloud.DeleteFloatingIP(ctx, fipID, projectID)
-		if err == nil {
-			e.Printer.StepDone(i18n.Tf("Floating IP %s released", "Floating IP %s освобождён", fipLabel(rec.VMIP, fipID)))
-			return nil
-		}
-		// 404 — already released: NOT_FOUND (VM_NOT_FOUND before QA-10).
-		var cliErr *clerrors.CLIError
-		if stderrors.As(err, &cliErr) && (cliErr.Code == clerrors.CodeNotFound || cliErr.Code == clerrors.CodeVMNotFound) {
-			e.Printer.StepDone(i18n.T("Floating IP already released", "Floating IP уже освобождён"))
-			return nil
+		if err == nil || floatingip.NotFound(err) {
+			return e.confirmFloatingIPReleased(ctx, fipID, rec.VMIP, err != nil)
 		}
 		lastErr = err
 		if attempt == fipReleaseAttempts-1 {
 			break
 		}
+		e.Printer.StepDone(i18n.Tf("Waiting to release floating IP %s after a refused request", "Ожидание освобождения floating IP %s после отказа", fipLabel(rec.VMIP, fipID)))
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -586,11 +792,40 @@ func (e *Engine) releaseFloatingIP(ctx context.Context, rec *state.DeploymentRec
 		lastErr)
 }
 
+var errFloatingIPReleaseUnconfirmed = stderrors.New("floating IP release not confirmed")
+
+// An accepted DELETE can leave the address billed. A definite GET 404 on
+// its recorded ID confirms release. An uncertain read keeps it for retry.
+func (e *Engine) confirmFloatingIPReleased(ctx context.Context, id, ip string, alreadyGone bool) error {
+	gone, _ := floatingip.Gone(ctx, e.Cloud, id)
+	if gone {
+		if alreadyGone {
+			e.Printer.StepDone(i18n.T("Floating IP already released", "Floating IP уже освобождён"))
+		} else {
+			e.Printer.StepDone(i18n.Tf("Floating IP %s released", "Floating IP %s освобождён", fipLabel(ip, id)))
+		}
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return clerrors.Wrap(clerrors.CodeAPIError,
+		i18n.Tf("Floating IP %s: release not confirmed; it may still be billed.",
+			"Floating IP %s: освобождение не подтверждено, начисления могут продолжаться.", fipLabel(ip, id)),
+		"", errFloatingIPReleaseUnconfirmed)
+}
+
 // projectOf is the project a deployment lives in: the one recorded at
 // deploy, else (records from older versions) the configured one.
 func (e *Engine) projectOf(rec *state.DeploymentRecord) string {
 	if rec.ProjectID != "" {
 		return rec.ProjectID
+	}
+	if rec.CleanupProjectID != "" {
+		return rec.CleanupProjectID
+	}
+	if scan := rec.PendingRuleScan; scan != nil {
+		return scan.ProjectID
 	}
 	return e.Config.ProjectID
 }
@@ -626,8 +861,8 @@ func isTransientServerError(err error) bool {
 // cloud-e2e on 15.10.2026) is billed with its floating IP, and giving up at
 // once left both behind. It retries until Timings.DeletableWaitTimeout, then
 // returns the last refusal.
-func (e *Engine) deleteVMWhenDeletable(ctx context.Context, vmID string) error {
-	return explainDeleteRefusal(vmID, e.waitAndDeleteVM(ctx, vmID))
+func (e *Engine) deleteVMWhenDeletable(ctx context.Context, vmID, projectID string) error {
+	return explainDeleteRefusal(vmID, e.waitAndDeleteVM(ctx, vmID, projectID))
 }
 
 // explainDeleteRefusal names the documented 405 of DELETE /api/v1/vms/{id}
@@ -645,8 +880,12 @@ func explainDeleteRefusal(vmID string, err error) error {
 		err)
 }
 
-func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) (err error) {
-	err = e.Cloud.DeleteVM(ctx, vmID)
+func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID, projectID string) (err error) {
+	remove := e.Cloud.DeleteVM
+	if projectID != "" {
+		remove = func(ctx context.Context, id string) error { return e.Cloud.DeleteVMInProject(ctx, id, projectID) }
+	}
+	err = remove(ctx, vmID)
 	if err == nil || !isNotDeletableYet(err) {
 		return err
 	}
@@ -679,7 +918,7 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) (err error) {
 			return ctx.Err()
 		case <-time.After(t.DeletablePollInterval):
 		}
-		err = e.Cloud.DeleteVM(ctx, vmID)
+		err = remove(ctx, vmID)
 		if err == nil || !(isNotDeletableYet(err) || isTransientServerError(err)) {
 			return err
 		}
@@ -702,10 +941,10 @@ func (e *Engine) waitAndDeleteVM(ctx context.Context, vmID string) (err error) {
 // the VM is read in now and the way out of it (DeleteWayOut, one place with
 // the deletes of the tools), not a guess (release plan 1.6, #558: a VM read
 // in deleting was answered «probably still being created»). In a state it
-// does not leave by itself, the hint names its floating IP fip (id or
-// address, "" for none), which stays billed until released (E11, Grok
-// rc.1). kept is what the caller keeps, appended to the hint.
-func (e *Engine) RefusedVMDelete(ctx context.Context, vmID, fip string, err error, kept string) error {
+// does not leave by itself, identify the address from the receipt. A VM
+// refusal alone does not establish its current binding or charges.
+func (e *Engine) RefusedVMDelete(ctx context.Context, rec *state.DeploymentRecord, err error, kept, retry, releaseTool string) error {
+	vmID := rec.VMID
 	status := ""
 	if vm, gerr := e.Cloud.GetVM(ctx, vmID); gerr == nil && vm != nil {
 		status = vm.Status
@@ -714,23 +953,27 @@ func (e *Engine) RefusedVMDelete(ctx context.Context, vmID, fip string, err erro
 	}
 	if status == "" {
 		return clerrors.Wrap(clerrors.CodeAPIError,
-			i18n.Tf("VM %s cannot be deleted in its current state, and its state could not be read", "ВМ %s нельзя удалить в её текущем состоянии, а её состояние прочитать не удалось", vmID),
-			i18n.Tf("Read it with 'evo vm get %s' (or in the Cloud.ru console) and re-run 'evo destroy' once it is running.",
-				"Прочитайте её состояние ('evo vm get %s' или консоль Cloud.ru) и повторите 'evo destroy', когда она будет работать.", vmID)+kept,
+			i18n.Tf("VM %q cannot be deleted in its current state, and its state could not be read", "ВМ %q нельзя удалить в её текущем состоянии, а её состояние прочитать не удалось", vmID),
+			retry+kept,
 			err)
 	}
 	_, hint := DeleteWayOut(status, vmID)
-	if fip != "" && FinalDeleteState(status) {
-		hint += i18n.Tf(" Its floating IP %s stays bound to it and billed: once the VM is gone, release it with 'evo vpc fip-release %s' (release_floating_ip).",
-			" Её floating IP %s остаётся привязанным и оплачивается: когда ВМ не станет, освободите его — 'evo vpc fip-release %s' (release_floating_ip).", fip, fip)
+	address, _ := netip.ParseAddr(rec.VMIP)
+	address = address.Unmap()
+	if FinalDeleteState(status) && (rec.FloatingIPID != "" || address.IsGlobalUnicast() && !address.IsPrivate()) {
+		hint += i18n.Tf(" This call stopped before releasing the floating IP %q. If the address is still allocated, it may incur charges.",
+			" Вызов остановился до освобождения floating IP %q. Если адрес всё ещё выделен, за него может начисляться плата.", fipRef(rec))
+		if releaseTool != "" {
+			hint += i18n.Tf(" After the VM is gone, ask the person whether to release the address by its verified ID with %s.",
+				" После удаления ВМ спросите человека, освобождать ли адрес по проверенному ID через %s.", releaseTool)
+		}
 	}
-	if hint == "" {
-		hint = i18n.Tf("Cloud.ru refused the delete in this state (waited %s): re-run 'evo destroy' once the VM is running ('evo vm get %s').",
-			"Cloud.ru отказал в удалении в этом состоянии (ждали %s): повторите 'evo destroy', когда ВМ будет работать ('evo vm get %s').",
-			e.timings().DeletableWaitTimeout, vmID)
+
+	if !FinalDeleteState(status) {
+		hint = strings.TrimSpace(hint + " " + retry)
 	}
 	return clerrors.Wrap(clerrors.CodeAPIError,
-		i18n.Tf("VM %s cannot be deleted in state %q", "ВМ %s нельзя удалить в состоянии %q", vmID, status),
+		i18n.Tf("VM %q cannot be deleted in state %q", "ВМ %q нельзя удалить в состоянии %q", vmID, status),
 		hint+kept, err)
 }
 
@@ -751,4 +994,34 @@ func fipRef(rec *state.DeploymentRecord) string {
 		return rec.FloatingIPID
 	}
 	return rec.VMIP
+}
+
+// Only mutates the snapshot. The caller persists the approved IDs before
+// deleting any; an incomplete search remains a receipt even with no rule IDs.
+func (e *Engine) retryRuleScans(ctx context.Context, sf *state.File, ids []string) (completed []string, unchecked error) {
+	for _, id := range ids {
+		rec := sf.FindDeployment(id)
+		if rec.PendingRuleScan == nil {
+			continue
+		}
+		found, err := e.labeledRules(ctx, sf, rec)
+		sgrules.TrackLabeled(sf, rec, found)
+		if err == nil {
+			completed = append(completed, id)
+		} else {
+			unchecked = stderrors.Join(unchecked, err)
+		}
+	}
+	return completed, unchecked
+}
+
+// Keep the scope through consent and exact rule readback, including retries
+// of an older deployment whose project was first recorded by the scan.
+func finishRuleScans(sf *state.File, completed []string) {
+	for _, id := range completed {
+		rec := sf.FindDeployment(id)
+		if rec != nil && len(rec.OpenedRules) == 0 {
+			rec.PendingRuleScan = nil
+		}
+	}
 }

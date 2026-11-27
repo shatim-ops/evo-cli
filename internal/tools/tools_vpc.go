@@ -77,7 +77,10 @@ func (s *Registry) planVpcCreate(ctx context.Context, args map[string]any) (*Pla
 	// A second VPC of the same name: refused before the consent, as every
 	// other create (fault matrix, process audit 1.2.1: a repeated vpc_create
 	// made one more; the VPC spec documents no refusal of a taken name).
-	existing, err := cli.ListVPCs(ctx)
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		return namedResources(cli.ListVPCs(ctx))
+	}
+	existing, err := list(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("check the name is free: list VPCs: %w", "проверка, что имя свободно: список VPC: %w"), err)
 	}
@@ -99,7 +102,7 @@ func (s *Registry) planVpcCreate(ctx context.Context, args map[string]any) (*Pla
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "vpc_create", cli.ListVPCs, "VPC", name, nil, "vpc_list", fmt.Errorf(i18n.T("create vpc: %w", "создание vpc: %w"), err))
+			return lostCreate(ctx, "vpc_create", list, "VPC", name, nil, "vpc_list", fmt.Errorf(i18n.T("create vpc: %w", "создание vpc: %w"), err))
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": i18n.T("Async — poll vpc_operation(operation_id); then vpc_get for the status.",
 			"Асинхронно — опрашивайте evo vpc operation <operation_id>; затем статус покажет evo vpc get.")}
@@ -226,7 +229,7 @@ func (s *Registry) planVpcRouteCreate(ctx context.Context, args map[string]any) 
 		for _, r := range routes {
 			listed = append(listed, map[string]any{"id": r["id"], "name": r["subnet"], "status": r["status"]})
 		}
-		return listed, err
+		return namedResources(listed, err)
 	}
 	existing, err := list(ctx)
 	if err != nil {

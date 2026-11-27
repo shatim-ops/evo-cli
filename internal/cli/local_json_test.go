@@ -41,8 +41,11 @@ var localJSONCases = map[string]localJSONCase{
 	"evo init":         {args: []string{"--non-interactive"}, ok: true},
 	// No deployment recorded: the error is the form checked; the TCP
 	// checks of a recorded one need a host (engine tests).
-	"evo verify":  {ok: false},
-	"evo version": {ok: true},
+	"evo verify":           {ok: false},
+	"evo version":          {ok: true},
+	"evo cleanup receipts": {ok: true},
+	// This directory has no receipt to resolve; its error is also a JSON contract.
+	"evo cleanup resolve": {args: []string{"absent-receipt", "--deployment-id", "absent-deployment", "--outcome", "not_created", "--evidence", "audit-operation-7341"}, ok: false},
 	// The test's transport answers the probe 200.
 	"evo mcp healthcheck": {ok: true},
 	"evo tools list":      {ok: true},
@@ -68,6 +71,7 @@ var localJSONCases = map[string]localJSONCase{
 // script is shell code for eval, the server speaks MCP on stdio.
 var localJSONExempt = map[string]string{
 	"evo project":               "a group: prints its help",
+	"evo cleanup":               "a group: prints its help",
 	"evo tools":                 "a group: prints its help",
 	"evo diag":                  "a group: prints its help",
 	"evo completion":            "a group: prints its help",

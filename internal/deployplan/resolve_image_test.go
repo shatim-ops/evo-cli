@@ -6,9 +6,13 @@ package deployplan
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
@@ -82,24 +86,67 @@ func TestОбщийКаталогПроверяетсяПервым(t *testing.T
 	}
 }
 
-// Нет права читать образы проекта — не повод врать про причину.
-//
-// Честный ответ в этом случае «такого образа нет», а не «не удалось прочитать
-// проект»: с точки зрения вызывающего исход тот же, а вторая формулировка
-// отправляет чинить права там, где, возможно, просто опечатка в имени.
-func TestОтказВПравахНеМешаетОтвету(t *testing.T) {
-	облако := &имитацияОблака{
-		общие:  []*provision.Image{{ID: "id-1", Name: "ubuntu-22.04"}},
-		ошибка: context.DeadlineExceeded,
+// A failed project catalogue read cannot establish absence. Preserve the
+// original error, including the service status used by CLI and MCP.
+func TestSelectImage_ExplicitProjectReadPreservesFailure(t *testing.T) {
+	apiFailure := func(code string, status int) error {
+		return clierrors.Wrap(code, "catalogue read failed", "catalogue hint", &provision.StatusError{Status: status})
 	}
-	_, err := selectImage(context.Background(), облако, "проект-1", "нет-такого")
-	if err == nil {
-		t.Fatal("ожидалась ошибка «образ не найден»")
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"forbidden", apiFailure(clierrors.CodeAuthFailed, http.StatusForbidden)},
+		{"unauthorized", apiFailure(clierrors.CodeAuthExpired, http.StatusUnauthorized)},
+		{"rate_limited", apiFailure(clierrors.CodeAPIRateLimited, http.StatusTooManyRequests)},
+		{"service_failure", apiFailure(clierrors.CodeAPIError, http.StatusBadGateway)},
+		{"gateway_route_404", clierrors.Wrap(clierrors.CodeAPIError, "route unavailable", clierrors.RouteNotFoundHint(),
+			&provision.StatusError{Status: http.StatusNotFound})},
+		{"deadline", context.DeadlineExceeded},
+		{"cancelled", context.Canceled},
+		{"incomplete_page", clierrors.New(clierrors.CodeAPIError, "page incomplete", "")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cloud := &имитацияОблака{ошибка: tc.err}
+			img, err := selectImage(context.Background(), cloud, "project-for-test", "requested-image")
+			if err != tc.err || img.ID != "" || cloud.спрошенПро != "project-for-test" {
+				t.Fatalf("image %q, error %v (want original %v), project %q", img.ID, err, tc.err, cloud.спрошенПро)
+			}
+		})
 	}
-	// Тесты пакета идут на языке по умолчанию (EVO_LANG): «не найден» или
-	// «not found».
-	if msg := err.Error(); !strings.Contains(msg, "not found") && !strings.Contains(msg, "не найден") {
-		t.Errorf("ошибка про другое: %v", err)
+}
+
+func TestSelectImage_ExplicitImageMissingAndMaskedHaveSameAnswer(t *testing.T) {
+	const hidden = "hidden-catalogue-detail"
+	const project = "project-for-test"
+	lookup := func(readErr error) *clierrors.CLIError {
+		t.Helper()
+		_, err := selectImage(context.Background(), &имитацияОблака{ошибка: readErr}, project, "requested-image")
+		var failure *clierrors.CLIError
+		if !errors.As(err, &failure) || failure.Code != clierrors.CodeNotFound || clierrors.ExitCode(err) != clierrors.ExitNotFound {
+			t.Fatalf("error %v, want NOT_FOUND / 4", err)
+		}
+		return failure
+	}
+	absent := lookup(nil)
+	for _, masked := range []error{
+		clierrors.New(clierrors.CodeNotFound, hidden, hidden),
+		&provision.StatusError{Status: http.StatusNotFound, Body: `{"message":"` + hidden + `"}`},
+	} {
+		got := lookup(masked)
+		if !reflect.DeepEqual(got, absent) || got.Err != nil || strings.Contains(got.Error()+got.Hint, project) || strings.Contains(got.Error()+got.Hint, hidden) {
+			t.Fatalf("masked catalogue returned %+v, completed search returned %+v", got, absent)
+		}
+	}
+}
+
+func TestSelectImage_ExplicitProjectRowsMustIdentifyAnImage(t *testing.T) {
+	for _, bad := range []*provision.Image{nil, {}, {Name: "without-id"}, {ID: "without-name"}} {
+		cloud := &имитацияОблака{проектные: []*provision.Image{{ID: "id-matched", Name: "requested-image"}, bad}}
+		img, err := selectImage(context.Background(), cloud, "project-for-test", "requested-image")
+		if clierrors.Reason(err) != clierrors.CodeAPIError || img.ID != "" {
+			t.Fatalf("catalogue with row %+v returned %q, %v", bad, img.ID, err)
+		}
 	}
 }
 

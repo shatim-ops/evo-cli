@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/sgrules"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 const labelVMID = "0000a1a1-0000-4000-8000-000000000001"
@@ -52,6 +54,7 @@ func (c *labelCloud) ListSecurityGroupRules(context.Context, string) ([]*provisi
 }
 func (c *labelCloud) DeleteSecurityGroupRule(_ context.Context, _, id string) error {
 	c.deleted = append(c.deleted, id)
+	c.rules = slices.DeleteFunc(c.rules, func(r *provision.SGRule) bool { return r.ID == id })
 	return nil
 }
 func (*labelCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
@@ -163,12 +166,155 @@ func TestDestroyTargeted_AnUnreadRuleListIsSaid(t *testing.T) {
 			if isErr {
 				t.Fatalf("the VM's delete must go on: %s", text)
 			}
-			if !strings.Contains(text, `"labelled_rules_unchecked": "API_ERROR"`) || !strings.Contains(text, "repeat the same call with the VM's id") {
+			answer := decode(t, text)
+			hint, _ := answer["hint"].(string)
+			if answer["labelled_rules_unchecked"] != "API_ERROR" || !strings.Contains(hint, `destroy with vm_id="`+labelVMID+`"`) || !strings.Contains(text, "not all checked") {
 				t.Errorf("the answer does not say the rules were not checked: %s", text)
 			}
 			if tc.listed && !cloud.vmGone {
 				t.Error("the VM was not deleted")
 			}
 		})
+	}
+}
+
+// The VM had no record in this directory. An accepted rule deletion must
+// leave its own exact IDs on disk for another process, even if the rule
+// is already deleting or its group later cannot be read.
+type pendingLabelCloud struct {
+	*labelCloud
+	dir        string
+	sawReceipt bool
+	readFailed bool
+	requested  bool
+}
+
+func (c *pendingLabelCloud) DeleteSecurityGroupRule(_ context.Context, group, id string) error {
+	c.deleted = append(c.deleted, id)
+	sf, err := state.Read(state.DefaultPath(c.dir))
+	if err != nil {
+		return err
+	}
+	d := sf.FindDeployment(labelVMID)
+	if d != nil && len(d.OpenedRules) == 1 {
+		r := d.OpenedRules[0]
+		c.sawReceipt = r.ID == id && r.SecurityGroupID == group && d.VMID == labelVMID
+	}
+	c.requested = true
+	for _, r := range c.rules {
+		if r.ID == id {
+			r.State = "deleting"
+		}
+	}
+	return nil
+}
+
+func (c *pendingLabelCloud) ListFloatingIPs(ctx context.Context, project string) ([]*provision.FloatingIP, error) {
+	if c.requested {
+		return []*provision.FloatingIP{{ID: "other-address", Name: "fip-" + labelVMID}}, nil
+	}
+	return c.labelCloud.ListFloatingIPs(ctx, project)
+}
+
+func (c *pendingLabelCloud) ListSecurityGroupRules(ctx context.Context, group string) ([]*provision.SGRule, error) {
+	if c.requested && c.readFailed {
+		return nil, clerrors.New(clerrors.CodeAPIError, "inventory failed", "")
+	}
+	return c.labelCloud.ListSecurityGroupRules(ctx, group)
+}
+
+func TestDestroyTargeted_KeepsLabelReceiptUntilCompleteRead(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fail bool
+	}{{"visible", false}, {"unreadable", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &pendingLabelCloud{labelCloud: newLabelCloud(false), readFailed: tc.fail}
+			reg := folderB(t, c)
+			c.dir, _ = reg.stateDir()
+			call := func() map[string]any {
+				t.Helper()
+				r, failed := reg.handlers["destroy"](t.Context(), map[string]any{"vm_id": labelVMID, "confirmed": true})
+				var out map[string]any
+				if failed || json.Unmarshal([]byte(r), &out) != nil {
+					t.Fatalf("destroy: %s", r)
+				}
+				return out
+			}
+			first := call()
+			if first["cleanup_pending"] != true || first["hint"] == nil || !c.sawReceipt || !slices.Equal(c.deleted, []string{"rule-a"}) {
+				t.Fatalf("unconfirmed result=%v before-DELETE receipt=%v deleted=%v", first, c.sawReceipt, c.deleted)
+			}
+			saved, err := state.Read(state.DefaultPath(c.dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := saved.FindDeployment(labelVMID)
+			if d == nil || d.Status != "destroyed" || len(d.OpenedRules) != 1 || d.OpenedRules[0].DeleteError == "" || d.OpenedRules[0].ID != "rule-a" {
+				t.Fatalf("pending state: %+v", d)
+			}
+			c.readFailed = false
+			if still := call(); still["cleanup_pending"] != true || len(c.deleted) != 1 {
+				t.Fatalf("repeated deleting response=%v deletes=%v", still, c.deleted)
+			}
+			// A rule of the same ID re-labelled for someone else is not
+			// ours to delete on retry.
+			c.rules[0].State = "active"
+			c.rules[0].Description = sgrules.RuleLabel("8080", "another-vm")
+			if changed := call(); changed["cleanup_pending"] != true || len(c.deleted) != 1 {
+				t.Fatalf("changed owner response=%v deletes=%v", changed, c.deleted)
+			}
+			c.rules = slices.DeleteFunc(c.rules, func(r *provision.SGRule) bool { return r.ID == "rule-a" })
+			final := call()
+			saved, err = state.Read(state.DefaultPath(c.dir))
+			if err != nil || final["cleanup_pending"] == true || saved.FindDeployment(labelVMID) != nil || !slices.Equal(c.deleted, []string{"rule-a"}) || len(c.rules) != 2 {
+				t.Fatalf("final=%v state=%+v deletes=%v", final, saved, c.deleted)
+			}
+		})
+	}
+}
+
+// No deployment or rule ID was saved in this folder when the VM was
+// deleted. A new call must still be able to find its labelled rules.
+type intermittentLabelCloud struct {
+	*labelCloud
+	readable bool
+}
+
+func (c *intermittentLabelCloud) ListSecurityGroupRules(ctx context.Context, id string) ([]*provision.SGRule, error) {
+	if !c.readable {
+		return nil, clerrors.New(clerrors.CodeAPIError, "inventory unavailable", "")
+	}
+	return c.labelCloud.ListSecurityGroupRules(ctx, id)
+}
+
+func TestDestroyTargeted_RetryUncheckedInventoryWithoutKnownRule(t *testing.T) {
+	cloud := &intermittentLabelCloud{labelCloud: newLabelCloud(true)}
+	registry := folderB(t, cloud)
+	eng, err := registry.newEngine(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := state.DefaultPath(eng.StateDir)
+	for attempt := 0; attempt < 3; attempt++ {
+		cloud.readable = attempt == 2
+		args := map[string]any{"vm_id": labelVMID, "confirmed": true}
+		text, failed := registry.handlers["destroy"](t.Context(), args)
+		var result struct {
+			Pending bool `json:"cleanup_pending"`
+		}
+		if failed || json.Unmarshal([]byte(text), &result) != nil || result.Pending == cloud.readable {
+			t.Fatalf("attempt %d: %s", attempt, text)
+		}
+		sf, err := state.Read(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (sf.FindDeployment(labelVMID) != nil) == cloud.readable {
+			t.Fatalf("attempt %d: state=%v", attempt, sf.Deployments)
+		}
+	}
+	if !slices.Equal(cloud.deleted, []string{"rule-a"}) {
+		t.Fatalf("rule deletes: %v", cloud.deleted)
 	}
 }

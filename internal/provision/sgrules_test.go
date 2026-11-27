@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
@@ -167,5 +168,141 @@ func TestDeleteSecurityGroupRule_EscapesIDs(t *testing.T) {
 	_ = a.DeleteSecurityGroupRule(context.Background(), "sg-1", "../../vms/x")
 	if raw != "/api/v1/security-groups/sg-1/rules/..%2F..%2Fvms%2Fx" {
 		t.Errorf("path %s", raw)
+	}
+}
+
+func TestSecurityGroupRuleCleanupRequiresCompleteListing(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		pages  []string
+		valid  bool
+	}{
+		{"empty", 200, []string{`{"items":[],"total":0}`}, true},
+		{"two pages", 200, []string{`{"items":[{"id":"a"}],"total":2}`, `{"items":[{"id":"b"}],"total":2,"offset":1}`}, true},
+		{"partial HTTP response", 206, []string{`{"items":[],"total":0}`}, false},
+		{"null", 200, []string{`null`}, false},
+		{"missing items", 200, []string{`{"total":0}`}, false},
+		{"null items", 200, []string{`{"items":null,"total":0}`}, false},
+		{"missing total", 200, []string{`{"items":[]}`}, false},
+		{"unidentified rule", 200, []string{`{"items":[null],"total":1}`}, false},
+		{"padded rule ID", 200, []string{`{"items":[{"id":" a "}],"total":1}`}, false},
+		{"extra data", 200, []string{`{"items":[],"total":0}{}`}, false},
+		{"shrinking total", 200, []string{`{"items":[{"id":"a"}],"total":2}`, `{"items":[],"total":1}`}, false},
+		{"wrong offset", 200, []string{`{"items":[{"id":"a"}],"total":2}`, `{"items":[{"id":"b"}],"total":2,"offset":0}`}, false},
+		{"overlap", 200, []string{`{"items":[{"id":"a"}],"total":3}`, `{"items":[{"id":"a"},{"id":"b"}],"total":3}`}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := 0
+			server, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if n >= len(tc.pages) {
+					t.Errorf("unexpected request %s", r.URL.Path)
+					http.Error(w, "extra request", http.StatusBadRequest)
+					return
+				}
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.pages[n])
+				n++
+			})
+			defer server.Close()
+			items, err := ReadSecurityGroupRulesForCleanup(context.Background(), adapter, "sg-1", "")
+			if n != len(tc.pages) || (err == nil) != tc.valid || (err != nil && (items != nil || clierrors.Reason(err) != clierrors.CodeAPIError)) {
+				t.Fatalf("read %d pages, items=%v, err=%v", n, items, err)
+			}
+		})
+	}
+}
+
+// The old emulator used only message. The Compute group-not-found schema
+// supplies code and message. Neither alone proves the project is accessible.
+func TestCleanupRuleRead_ProvesMissingParent(t *testing.T) {
+	const base = "/api/v1/security-groups"
+	const rules = base + "/sg-1/rules"
+	const service = `[{"code":"security_group_not_found","message":"Security group with this id is not found"}]`
+	const inventory = `{"items":[{"id":"other","project_id":"project"}],"total":1}`
+	for _, tc := range []struct {
+		name, body, groups, rangedPath string
+		short, wantRead, gone          bool
+	}{
+		{name: "documented service error", body: service, groups: inventory, wantRead: true, gone: true},
+		{name: "contradictory service code", body: `{"code":"access_denied","message":"security group not found"}`},
+		{name: "duplicate code", body: `{"code":"access_denied","code":"security_group_not_found","message":"security group not found"}`},
+		{name: "gateway field", body: `{"error_msg":"route missing","message":"security group not found"}`},
+		{name: "partial service error", body: service, rangedPath: rules},
+		{name: "partial inventory", body: service, groups: inventory, rangedPath: base, wantRead: true},
+		{name: "wrong resource", body: `[{"code":"security_group_rule_not_found","message":"security group rule with this id is not found"}]`},
+		{name: "ambiguous message", body: `{"message":"not found"}`},
+		{name: "truncated valid JSON", body: service, short: true},
+		{name: "oversized valid JSON", body: service + strings.Repeat(" ", maxErrorBody)},
+		{name: "mixed project inventory", body: service, groups: `{"items":[{"id":"other","project_id":"elsewhere"}],"total":1}`, wantRead: true},
+		{name: "inventory without total", body: service, groups: `{"items":[]}`, wantRead: true},
+		{name: "bare inventory", body: service, groups: `[]`, wantRead: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			read := false
+			srv, a := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == tc.rangedPath {
+					size := len(tc.body)
+					if r.URL.Path == base {
+						size = len(tc.groups)
+					}
+					w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-%d/%d", size-1, size+1))
+				}
+				switch r.URL.Path {
+				case rules:
+					if tc.short {
+						w.Header().Set("Content-Length", strconv.Itoa(len(tc.body)+20))
+					}
+					w.WriteHeader(http.StatusNotFound)
+					_, _ = w.Write([]byte(tc.body))
+				case base:
+					read = true
+					if r.URL.Query().Get("project_id") != "project" || r.URL.Query().Has("name") || r.URL.Query().Has("availability_zone_id") {
+						t.Errorf("inventory must be complete and scoped: %s", r.URL.RawQuery)
+					}
+					_, _ = w.Write([]byte(tc.groups))
+				default:
+					t.Errorf("unexpected request %s", r.URL.Path)
+				}
+			})
+			defer srv.Close()
+			ctx := Narrowed(t.Context(), base, "name", "other")
+			got, err := ReadSecurityGroupRulesForCleanup(ctx, a, "sg-1", "project")
+			if read != tc.wantRead || (err == nil) != tc.gone || len(got) != 0 {
+				t.Fatalf("inventory read=%v, rules=%v, error=%v", read, got, err)
+			}
+		})
+	}
+}
+
+func TestSecurityGroupDiscoveryRequiresCompleteProjectInventory(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		valid  bool
+	}{
+		{"empty", 200, `{"items":[],"total":0}`, true},
+		{"known group", 200, `{"items":[{"id":"g","project_id":"p"}],"total":1}`, true},
+		{"partial", 206, `{"items":[],"total":0}`, false},
+		{"incomplete", 200, `{"items":[],"total":1}`, false},
+		{"null", 200, `null`, false},
+		{"foreign scope", 200, `{"items":[{"id":"g","project_id":"other"}],"total":1}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, adapter := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" || r.URL.Path != "/api/v1/security-groups" || r.URL.Query().Get("project_id") != "p" || r.URL.Query().Has("name") {
+					t.Fatalf("unexpected request %s %s", r.Method, r.URL)
+				}
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			})
+			defer server.Close()
+			ctx := Narrowed(t.Context(), "/api/v1/security-groups", "name", "other")
+			groups, err := ReadSecurityGroupsForCleanup(ctx, adapter, "p")
+			if (err == nil) != tc.valid || err != nil && groups != nil {
+				t.Fatalf("groups=%v err=%v", groups, err)
+			}
+		})
 	}
 }

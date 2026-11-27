@@ -68,3 +68,16 @@ func TestListRegistries_TokenIgnored(t *testing.T) {
 		t.Fatalf("%d requests, want 2: the repeated page ends the list", c)
 	}
 }
+
+func TestListRegistries_RepeatedTokenOnDuplicateTailRefusesList(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		fmt.Fprint(w, `{"registries":[{"id":"one"}],"nextPageToken":"already-followed"}`)
+	}))
+	defer srv.Close()
+	rows, err := New("tok", "proj", srv.URL).ListRegistries(context.Background())
+	if err == nil || rows != nil || calls.Load() != 2 {
+		t.Fatalf("rows=%v err=%v calls=%d", rows, err, calls.Load())
+	}
+}

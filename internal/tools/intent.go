@@ -115,6 +115,14 @@ func (r *Registry) beginIntent(ctx context.Context, name string, args map[string
 			rec.Parties = r.partiesOf(ctx, name, args)
 		}
 		out := historyOutcome(name, args, answer)
+		if name == "deploy" && out.ResourceID != "" {
+			var res struct {
+				Region string `json:"region"`
+			}
+			if json.Unmarshal([]byte(answer), &res) == nil && res.Region != "" {
+				rec.Zone = res.Region
+			}
+		}
 		if ctx.Err() != nil || intent.OutcomeUnknown(answerReason(answer), answerHTTPStatus(answer)) {
 			// No write went out — every client of evo counts its writes,
 			// and so do kubectl, helm and ssh (httpretry.NoteWrite): the
@@ -1100,9 +1108,14 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 			"%s %s%s, начат %s (%s, pid %d): вызов ещё не вернулся, он идёт",
 			tool, name, where, started, quoteCloud(in.Surface), in.PID)
 	}
-	head := i18n.Tf("%s %s%s, started %s (%s, pid %d): the cloud did not answer, the outcome is unknown",
-		"%s %s%s, начат %s (%s, pid %d): облако не ответило, исход неизвестен",
-		tool, name, where, started, quoteCloud(in.Surface), in.PID)
+	outcome := i18n.T("the cloud did not answer, the outcome is unknown", "облако не ответило, исход неизвестен")
+	if in.Tool == "ca_delete" {
+		// The DELETE may have answered before cancellation interrupted the poll.
+		outcome = i18n.T("deletion has not been confirmed", "удаление не подтверждено")
+	}
+	head := i18n.Tf("%s %s%s, started %s (%s, pid %d): %s",
+		"%s %s%s, начат %s (%s, pid %d): %s",
+		tool, name, where, started, quoteCloud(in.Surface), in.PID, outcome)
 	// An operation that goes on: the call that started it ended at its
 	// time limit, and the step its answer named goes on with it.
 	if in.Held && !in.Key.Other(cur) {
@@ -1115,6 +1128,10 @@ func (r *Registry) pendingNote(in intent.Intent, cur *state.Maker) string {
 	if in.Key.Other(cur) {
 		return head + i18n.Tf(" — sent with another key (%s): a call with this key does not close the record; run evo doctor with that key",
 			" — отправлено другим ключом (%s): вызов этим ключом запись не закроет; запустите evo doctor с тем ключом", quoteCloud(in.Key.KeyID))
+	}
+	if in.Tool == "ca_delete" {
+		return head + i18n.T(" — check the app by name with ca_get (evo ca get in the CLI)",
+			" — проверьте приложение по имени через ca_get (в CLI — evo ca get)")
 	}
 	// Every call of the tool is one more change: the same call again does
 	// not settle the record, it changes the resource a second time.

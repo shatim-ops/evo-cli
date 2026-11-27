@@ -47,7 +47,14 @@ func demoCloud() *mockCloudAPI {
 // and its delete line name the VM and the zone, the IDs in parentheses.
 func TestRussian_DestroyNamesVMAndZone(t *testing.T) {
 	russian(t)
-	eng, dir := newTestEngine(t, demoCloud(), newMockDeployer())
+	cloud := demoCloud()
+	eng, dir := newTestEngine(t, cloud, newMockDeployer())
+	cloud.listVMsInProjectFn = func(_ context.Context, project string) ([]*provision.VM, error) {
+		if project != eng.Config.ProjectID {
+			t.Fatalf("unexpected project %q", project)
+		}
+		return []*provision.VM{{ID: demoVMID}}, nil
+	}
 	var buf bytes.Buffer
 	eng.Printer = output.NewWithWriter(&buf, output.ModePlain, false)
 	sf := &state.File{Version: 1}
@@ -78,7 +85,9 @@ func TestDestroy_NamesFallBackToIDs(t *testing.T) {
 	eng.Printer = output.NewWithWriter(&buf, output.ModePlain, false)
 	eng.Auth, eng.Cloud = nil, nil // any cloud access panics
 	sf := &state.File{Version: 1}
-	sf.UpsertDeployment(demoRecord())
+	record := demoRecord()
+	record.ProjectID = eng.Config.ProjectID
+	sf.UpsertDeployment(record)
 	_ = state.Write(state.DefaultPath(dir), sf)
 	if err := eng.Destroy(context.Background(), DestroyOptions{DryRun: true}); err != nil {
 		t.Fatal(err)
@@ -89,7 +98,7 @@ func TestDestroy_NamesFallBackToIDs(t *testing.T) {
 	}
 
 	buf.Reset()
-	rec := demoRecord()
+	rec := record
 	rec.VMName, rec.ZoneName = "web", "ru.AZ-2"
 	sf.UpsertDeployment(rec)
 	_ = state.Write(state.DefaultPath(dir), sf)

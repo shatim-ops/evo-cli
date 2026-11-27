@@ -102,7 +102,10 @@ func newToolsCmd() *cobra.Command {
 Tools that create paid resources or delete data ask for confirmation the same
 way as the other commands: a prompt on a terminal, --yes to confirm in
 advance, --dry-run to see the preview only; without a terminal and without
---yes the call stops with exit code 3.`, `Любая операция MCP-сервера доступна здесь как инструмент.
+--yes the call stops with exit code 3. The CLI uses Russian by default and
+English with EVO_LANG=en for tool descriptions, result messages and diagnostics.
+With --json, evo's messages are in English; JSON keys and status codes stay the
+same. The service's own text is passed through in its original language.`, `Любая операция MCP-сервера доступна здесь как инструмент.
 
   evo tools list [--group vm]
   evo tools describe vm_get
@@ -111,8 +114,10 @@ advance, --dry-run to see the preview only; without a terminal and without
 Инструменты, которые создают платные ресурсы или удаляют данные, спрашивают
 подтверждение так же, как остальные команды: вопрос на терминале, --yes —
 согласие заранее, --dry-run — только превью; без терминала и без --yes вызов
-завершается с кодом 3. Описания инструментов — по-русски (с EVO_LANG=en — по-английски,
-как их видит агент в MCP); ответы инструментов — на английском, как в MCP.`),
+завершается с кодом 3. Описания инструментов, сообщения в результатах
+и диагностика evo по умолчанию русские, с EVO_LANG=en — английские.
+С --json сообщения evo английские. Ключи JSON и коды статусов одинаковы
+в обоих языках. Собственный текст сервиса передаётся на языке источника.`),
 	})
 	cmd.AddCommand(newToolsListCmd(), newToolsDescribeCmd(), newToolsCallCmd())
 	return cmd
@@ -402,6 +407,10 @@ func newToolsCallCmd() *cobra.Command {
 }
 
 const toolsCallHelpRU = `Вызвать инструмент и напечатать его ответ (JSON) как есть.
+Сообщения evo и диагностика по умолчанию русские, с EVO_LANG=en — английские.
+Если инструмент вернул ошибку, его ответ идёт в stdout, а диагностика evo —
+в stderr. С --json тексты evo английские, JSON ошибки идёт только в stderr.
+Ключи JSON, коды и текст самого сервиса сохраняются.
 
 Аргументы берутся из --args-file, затем из --args-json, затем из --arg
 (более поздние перекрывают ранние). Значения --arg приводятся к типам схемы
@@ -421,6 +430,10 @@ const toolsCallHelpRU = `Вызвать инструмент и напечата
 объект не найден, иначе 5.`
 
 const toolsCallHelpEN = `Call a tool and print its JSON result as is.
+By default evo's messages and diagnostics are in Russian; EVO_LANG=en selects
+English. If the tool returns an error, its result goes to stdout and evo's
+diagnostic goes to stderr. With --json evo uses English and sends the JSON
+error to stderr only. Keys, codes and service text are preserved.
 
 Arguments come from --args-file, then --args-json, then --arg (later ones
 win). --arg values are converted by the tool's schema: integer, number and

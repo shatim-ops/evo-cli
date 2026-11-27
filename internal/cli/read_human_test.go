@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
 // readForm are the keys of a read answer that are its form, not a value
@@ -120,9 +121,10 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 			code, out, errOut := runCLI(t, c.stdin, append(append([]string{"--yes"}, extra...), line...)...)
 			done()
 			forgetRun(w)
-			return code, readVolatile(out), readVolatile(errOut)
+			return code, out, errOut
 		}
 		code, jsonOut, jsonErr := run("--json")
+		jsonOut = readVolatile(jsonOut)
 		var answer any
 		if code != 0 || json.Unmarshal([]byte(jsonOut), &answer) != nil {
 			bad = append(bad, fmt.Sprintf("%s: --json fails or is no JSON: exit %d, %s %s", c.path, code, clipLine(jsonOut), clipLine(jsonErr)))
@@ -133,7 +135,7 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 			bad = append(bad, fmt.Sprintf("%s: the human output fails: exit %d, %s", c.path, code, clipLine(errOut)))
 			continue
 		}
-		human := out + errOut
+		human := readVolatile(out) + readVolatile(errOut)
 		// What a stale line of readUnnamed is checked against: when the
 		// line is not seen, the answer and the human output say why — the
 		// value gone from the answer (a probe of doctor cut by its time
@@ -144,6 +146,17 @@ func TestRead_HumanShowsEveryValue(t *testing.T) {
 			key := c.tool.Name + " " + miss.path
 			if shownAsWritten(miss.value, human) {
 				continue
+			}
+			if key == "metrics_history series.timestamps" {
+				// The JSON stores Unix milliseconds; the text prints each
+				// sample in UTC, including the milliseconds.
+				ms, err := strconv.ParseFloat(miss.value, 64)
+				if err == nil && ms == float64(int64(ms)) {
+					stamp := time.UnixMilli(int64(ms)).UTC().Format("2006-01-02T15:04:05.000Z")
+					if strings.Contains(out, "\n"+stamp+" ") {
+						continue
+					}
+				}
 			}
 			if namedBySibling(answer, miss.path, miss.value, human) {
 				verified[key] = true
@@ -301,5 +314,81 @@ func TestShownAsWritten_Forms(t *testing.T) {
 		if got := shownAsWritten(c.value, c.human); got != c.want {
 			t.Errorf("shownAsWritten(%q, %q) = %v, want %v", c.value, c.human, got, c.want)
 		}
+	}
+}
+
+// A recorded floating IP is a resource distinct from the VM. The human
+// row identifies the receipt; the VM address may belong to a different IP.
+func TestStatus_FloatingIPOfRecordedDeployment(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	_, cleanup := recordDeployment(t, w)
+	defer cleanup()
+	defer i18n.SetLang(i18n.Lang())
+	path := state.DefaultPath(w.dir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := sf.ActiveDeployment()
+	id, ip := rec.FloatingIPID, rec.VMIP
+	if id == "" || id == rec.VMID || ip == "" {
+		t.Fatal("fixture must have distinct VM and address IDs and a saved address")
+	}
+	const controlID = "value\"-with\ntwo\tlines"
+	const escapedID = `"value\"-with\ntwo\tlines"`
+	for _, lang := range []struct{ code, label, vmLabel, note string }{
+		{"en", "Recorded floating IP", "VM IP", "address not verified"},
+		{"ru", "Плавающий IP по квитанции", "IP ВМ", "адрес не проверен"},
+	} {
+		t.Run(lang.code, func(t *testing.T) {
+			t.Setenv("EVO_LANG", lang.code)
+			i18n.SetLang(lang.code)
+			for _, tc := range []struct{ name, status, address, id, quotedID string }{
+				{"address and ID", "running", ip, id, strconv.Quote(id)},
+				{"replacement address during cleanup", "destroying", "203.0.113.11", id, strconv.Quote(id)},
+				{"ID only", "creating", "", id, strconv.Quote(id)},
+				{"control characters with address", "running", ip, controlID, escapedID},
+				{"control characters without address", "destroying", "", controlID, escapedID},
+				{"legacy without ID", "running", ip, "", ""},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					rec.Status, rec.VMIP, rec.FloatingIPID = tc.status, tc.address, tc.id
+					if err := state.Write(path, sf); err != nil {
+						t.Fatal(err)
+					}
+					code, out, errOut := runCLI(t, "", "status", "--no-refresh")
+					if code != 0 {
+						t.Fatal(code, errOut)
+					}
+					var rows []string
+					vmRowSeen := false
+					for _, line := range strings.Split(out, "\n") {
+						line = strings.Join(strings.Fields(line), " ")
+						if line == strings.TrimSpace(lang.vmLabel+" "+tc.address) {
+							vmRowSeen = true
+						}
+						if strings.HasPrefix(line, lang.label+" ") {
+							rows = append(rows, line)
+						}
+					}
+					want := ""
+					if tc.id != "" {
+						want = lang.label + " ID " + tc.quotedID + " (" + lang.note + ")"
+					}
+					if !vmRowSeen || strings.Join(rows, "\n") != want {
+						t.Fatalf("VM address row present: %v, receipt row: %q, want %q", vmRowSeen, rows, want)
+					}
+					code, out, errOut = runCLI(t, "", "status", "--no-refresh", "--json")
+					var answer map[string]any
+					if err := json.Unmarshal([]byte(out), &answer); code != 0 || err != nil {
+						t.Fatal(code, err, errOut)
+					}
+					fip, present := answer["floating_ip_id"]
+					if answer["vm_id"] != rec.VMID || answer["vm_ip"] != tc.address || present != (tc.id != "") || (present && fip != tc.id) {
+						t.Fatalf("status JSON does not match the receipt: %+v", answer)
+					}
+				})
+			}
+		})
 	}
 }

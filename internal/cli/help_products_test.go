@@ -27,7 +27,7 @@ func TestRootHelp_GroupsAreTheProducts(t *testing.T) {
 		{"Evolution Object Storage:", []string{"s3"}},
 		{"Secret Management, Certificate Manager:", []string{"secret", "cert"}},
 		{"Мониторинг, аудит, биллинг, доступ:", []string{"metrics", "audit", "billing", "org", "iam"}},
-		{"Сценарии: compose-проект, стек:", []string{"init", "deploy", "status", "logs", "verify", "destroy", "stack"}},
+		{"Сценарии: compose-проект, стек:", []string{"init", "deploy", "status", "logs", "verify", "destroy", "cleanup", "stack"}},
 	}
 	if len(commandGroups) < len(want) {
 		t.Fatalf("групп %d, нужно не меньше %d", len(commandGroups), len(want))

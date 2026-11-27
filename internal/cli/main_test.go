@@ -11,6 +11,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -190,6 +191,29 @@ func TestRun_MissingCredentialsExitTwo(t *testing.T) {
 	}
 }
 
+func recordDestroyFlagVM(t *testing.T, dir string) {
+	t.Helper()
+	const project = "00000000-0000-4000-8000-000000000001"
+	t.Setenv("CLOUDRU_PROJECT_ID", project)
+	sf := &state.File{Version: 1}
+	sf.UpsertDeployment(state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", ProjectID: project, Status: "running"})
+	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
+		t.Fatal(err)
+	}
+	original := httpClient
+	t.Cleanup(func() { httpClient = original })
+	httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/api/v1/interfaces", "/api/v1/security-groups":
+			if r.Method == http.MethodGet && r.URL.Query().Get("project_id") == project {
+				return contractRT{status: http.StatusOK, body: `{"items":[],"total":0}`}.RoundTrip(r)
+			}
+		}
+		t.Errorf("unexpected request from flag test: %s %s", r.Method, r.URL)
+		return nil, fmt.Errorf("unexpected request")
+	})}
+}
+
 // Глобальные --yes/--dry-run доходят до destroy: без терминала и без --yes —
 // код 3, --dry-run — 0 и ВМ на месте, --yes проходит гейт (и упирается в
 // отсутствие кредов, то есть в облако, а не в подтверждение).
@@ -204,11 +228,7 @@ func TestRun_DestroyConfirmationFlags(t *testing.T) {
 	confirm.StdinIsTTY = func() bool { return false }
 	t.Cleanup(func() { confirm.StdinIsTTY = oldTTY })
 
-	sf := &state.File{Version: 1}
-	sf.UpsertDeployment(state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", Status: "running"})
-	if err := state.Write(state.DefaultPath(dir), sf); err != nil {
-		t.Fatal(err)
-	}
+	recordDestroyFlagVM(t, dir)
 
 	for _, c := range []struct {
 		args []string
@@ -234,11 +254,7 @@ func TestRun_DestroyConfirmationFlags(t *testing.T) {
 // help and warns: deploy --force means something else.
 func TestRun_DestroyForceIsDeprecatedYes(t *testing.T) {
 	setupCLI(t)
-	sf := &state.File{Version: 1}
-	sf.UpsertDeployment(state.DeploymentRecord{ID: "vm-1", VMID: "vm-1", Status: "running"})
-	if err := state.Write(state.DefaultPath("."), sf); err != nil {
-		t.Fatal(err)
-	}
+	recordDestroyFlagVM(t, ".")
 	code, _, stderr := runCLI(t, "", "destroy", "--force")
 	if code != clerrors.ExitAuth { // past the gate, no credentials
 		t.Errorf("destroy --force: exit %d, want %d\n%s", code, clerrors.ExitAuth, stderr)

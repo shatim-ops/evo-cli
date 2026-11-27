@@ -102,3 +102,23 @@ func TestAgentSetup_SkillWritesTheCardsOfTheToolsets(t *testing.T) {
 		t.Error("the rules do not say where the cards are")
 	}
 }
+
+func TestGroupCards_TerminalCommandsMatchCLISpec(t *testing.T) {
+	registry := tools.New(nil)
+	for _, group := range tools.Groups() {
+		card, ok := tools.GroupCard(group)
+		if !ok {
+			t.Fatal(group)
+		}
+		for _, tool := range registry.Tools() {
+			if tool.Group != group {
+				continue
+			}
+			command := toolCommandPath(tool)
+			row := "| `" + tool.Name + "` | `" + command + "` |"
+			if command == "" || !strings.Contains(card, row) {
+				t.Errorf("%s: want %s", group, row)
+			}
+		}
+	}
+}

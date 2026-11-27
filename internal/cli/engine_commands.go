@@ -136,7 +136,7 @@ func callEngineTool(cmd *cobra.Command, tool string, args map[string]any, c *too
 		return text, nil
 	}
 	if c.Err != nil {
-		return text, withAnswerDetails(c.Err, text)
+		return text, withAnswerDetails(c.Err, text, tool)
 	}
 	return text, toolError(text, commandHints(cmd, nil))
 }
@@ -147,13 +147,20 @@ func callEngineTool(cmd *cobra.Command, tool string, args map[string]any, c *too
 // (toolError, answerDetails) — and the fields the answer marks untrusted,
 // with the marker (_untrusted): the workload's words stay marked in --json
 // as over MCP (#558: the last lines of docker compose up).
-func withAnswerDetails(err error, text string) error {
+func withAnswerDetails(err error, text, tool string) error {
 	m := parseObject(text)
 	var ce *clerrors.CLIError
 	if m == nil || !stderrors.As(err, &ce) {
 		return err
 	}
 	add := map[string]any{}
+	if tool == "destroy" && m["cleanup_pending"] == true {
+		for _, k := range []string{"vm_id", "floating_ip_id", "cleanup_pending", "status"} {
+			if v, ok := m[k]; ok && !(k == "status" && v == "error") {
+				add[k] = v
+			}
+		}
+	}
 	if m["access_denied"] == true {
 		add["access_denied"], add["http_status"] = m["access_denied"], m["http_status"]
 	}
@@ -578,8 +585,10 @@ func newProjectListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: i18n.T("List the projects the key sees (* — the active one)", "Проекты, которые видит ключ (* — активный)"),
+		Long: i18n.T("List visible projects. If the Organization API returns an HTTP error, this command exits 0 with projects: null and the locally selected project in active. Scripts that need the cloud list should check that projects is an array.",
+			"Проекты, которые видит ключ. При HTTP-ошибке Organization API команда возвращает код 0, projects: null и локально выбранный проект в active. Если скрипту нужен список из облака, проверьте, что projects — массив."),
 		Example: `  evo project list
-  evo project list --json | jq -r '.projects[].id'`,
+  evo project list --json | jq -e '(.projects | type) == "array"'`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printer := output.New(flagJSON, flagNoColor)

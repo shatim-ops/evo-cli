@@ -73,8 +73,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return nil, 0, fmt.Errorf(i18n.T("container-apps request failed: %w", "запрос к container-apps не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	return data, resp.StatusCode, nil
+	return httpretry.ReadAPIResponse(req, resp, 0)
 }
 
 func apiError(status int, body []byte) error {
@@ -169,6 +168,7 @@ func (req CreateContainerReq) carriesEnv() bool {
 // nextPageToken in the answer, pageToken in the next request).
 func (c *Client) List(ctx context.Context) ([]map[string]any, error) {
 	var all []map[string]any
+	var progress pager.ItemProgress
 	err := pager.All("container-apps: containers", func(token string) (string, error) {
 		var q url.Values
 		if token != "" {
@@ -178,18 +178,18 @@ func (c *Client) List(ctx context.Context) ([]map[string]any, error) {
 		if err != nil {
 			return "", err
 		}
-		if st != 200 {
-			return "", apiError(st, data)
+		if err := pager.PageStatus(st, data, token != "", apiError); err != nil {
+			return "", err
 		}
-		var r struct {
-			Data          []map[string]any `json:"data"`
-			NextPageToken string           `json:"nextPageToken"`
-		}
-		if err := json.Unmarshal(data, &r); err != nil {
+		items, next, err := pager.ObjectPage[map[string]any](data, "data", "nextPageToken")
+		if err != nil {
 			return "", fmt.Errorf(i18n.T("parse containers: %w", "разбор контейнеров: %w"), err)
 		}
-		all = append(all, r.Data...)
-		return r.NextPageToken, nil
+		if err := pager.CheckProgress(&progress, items, next, pager.ObjectID); err != nil {
+			return "", err
+		}
+		all = append(all, items...)
+		return next, nil
 	})
 	if err != nil {
 		return nil, err
@@ -347,13 +347,14 @@ func (c *Client) logsPage(ctx context.Context, path string, q url.Values) (*logs
 	if err != nil {
 		return nil, err
 	}
-	if st != 200 {
-		return nil, apiError(st, data)
+	if err := pager.PageStatus(st, data, q.Get("pageToken") != "", apiError); err != nil {
+		return nil, err
 	}
-	var r logsPage
-	if err := json.Unmarshal(data, &r); err != nil {
+	items, next, err := pager.ObjectPage[map[string]any](data, "data", "nextPageToken")
+	if err != nil {
 		return nil, fmt.Errorf(i18n.T("parse logs: %w", "разбор логов: %w"), err)
 	}
+	r := logsPage{Data: items, NextPageToken: next}
 	if b, err := json.Marshal(r.Data); err == nil {
 		r.raw = string(b)
 	}

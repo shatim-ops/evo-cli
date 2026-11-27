@@ -21,8 +21,10 @@ import (
 	"testing"
 
 	"github.com/shatim-ops/evo-cli/internal/config"
+	"github.com/shatim-ops/evo-cli/internal/engine"
 	"github.com/shatim-ops/evo-cli/internal/journal"
 	"github.com/shatim-ops/evo-cli/internal/login"
+	"github.com/shatim-ops/evo-cli/internal/state"
 	"github.com/shatim-ops/evo-cli/internal/tools"
 )
 
@@ -44,6 +46,8 @@ type localDryRun struct {
 	// key sees, a journal with a record, a Compute API of its own (its
 	// base, "" for the world's).
 	world func(t *testing.T, fc *fakeCloud) (compute string)
+	// fixtureArgs prepares local state and supplies arguments tied to that state.
+	fixtureArgs func(*testing.T) []string
 }
 
 // localDryRuns are the local commands (localCommands) → their run under
@@ -55,6 +59,9 @@ var localDryRuns = map[string]localDryRun{
 	"evo configure list":        {args: []string{"configure", "list"}},
 	"evo configure delete":      {args: []string{"configure", "delete", "default"}, writes: true},
 	"evo configure s3":          {args: []string{"configure", "s3", "--tenant-id", "t"}, writes: true},
+	"evo cleanup":               {args: []string{"cleanup"}},
+	"evo cleanup receipts":      {args: []string{"cleanup", "receipts"}},
+	"evo cleanup resolve":       {args: []string{"cleanup", "resolve"}, writes: true, world: worldReceiptProject, fixtureArgs: localReceiptArgs},
 	"evo project":               {args: []string{"project"}},
 	"evo project use":           {args: []string{"project", "use", "22222222-2222-2222-2222-222222222222"}, writes: true, world: worldProjects},
 	"evo init":                  {args: []string{"init", "--non-interactive"}, writes: true, world: worldZones},
@@ -210,6 +217,9 @@ func runLocal(t *testing.T, r localDryRun, dryRun bool) localRun {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if r.fixtureArgs != nil {
+		r.args = append(append([]string{}, r.args...), r.fixtureArgs(t)...)
+	}
 	// The servers of the test are on 127.0.0.1: no proxy of the
 	// environment stands between (a proxy made init fail before its write).
 	direct := http.DefaultTransport.(*http.Transport).Clone()
@@ -290,12 +300,49 @@ func TestLocalCommands_WorldReachesTheWrite(t *testing.T) {
 		r := localDryRuns[p]
 		t.Run(p, func(t *testing.T) {
 			got := runLocal(t, r, false)
-			if len(got.changed) == 0 && len(got.writes) == 0 {
-				t.Errorf("evo %s %s wrote nothing without --dry-run (exit %d): the world refuses it before the write, so its --dry-run line tests nothing\n%.400s\n%.400s",
+			if got.code != 0 || (len(got.changed) == 0 && len(got.writes) == 0) {
+				t.Errorf("evo %s %s did not complete its write without --dry-run (exit %d): a failed command can leave a lock file without performing the intended write\n%.400s\n%.400s",
 					strings.Join(got.flags[1:], " "), strings.Join(r.args, " "), got.code, got.stdout, got.stderr)
 			}
 		})
 	}
+}
+
+// Reconciliation checks the project list even for a documented no-create outcome.
+func worldReceiptProject(t *testing.T, _ *fakeCloud) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/floating-ips" || r.URL.Query().Get("project_id") != "11111111-1111-1111-1111-111111111111" {
+			t.Errorf("unexpected receipt verification request: %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, `{"items":[],"total":0}`)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+// Match the profile of runLocal and start with an unresolved, pre-ID
+// request. Use the receipt ID that the actual listing for this directory returns.
+func localReceiptArgs(t *testing.T) []string {
+	t.Helper()
+	const project = "11111111-1111-1111-1111-111111111111"
+	const deployment = "test-deployment"
+	rec := state.DeploymentRecord{ID: deployment, ProjectID: project, VMID: "test-vm", Status: "destroying"}
+	sf := &state.File{
+		Version: state.CurrentVersion, Deployments: []state.DeploymentRecord{rec},
+		LostFloatingIPs: []state.LostFloatingIP{{Name: "pending-test-address", ProjectID: project, VMID: rec.VMID}},
+	}
+	if err := state.Write(state.DefaultPath("."), sf); err != nil {
+		t.Fatal(err)
+	}
+	eng := engine.Engine{Config: config.Config{ProjectID: project}, StateDir: "."}
+	receipts, err := eng.PendingFloatingIPReceipts(deployment)
+	if err != nil || len(receipts) != 1 {
+		t.Fatalf("fixture returned %d receipts, %v", len(receipts), err)
+	}
+	return []string{receipts[0].ReceiptID, "--deployment-id", deployment, "--outcome", "not_created", "--evidence", "audit-operation-7341"}
 }
 
 // worldProjects: the key sees the project evo project use names.

@@ -216,7 +216,10 @@ func (s *Registry) planTgCreate(ctx context.Context, args map[string]any) (*Plan
 	}
 	// A group of the name: a repeat after a lost answer made a second one
 	// (fault matrix, process audit 1.2.1).
-	existing, err := cli.ListTargetGroups(ctx)
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		return namedResources(cli.ListTargetGroups(ctx))
+	}
+	existing, err := list(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("check the name is free: list target groups: %w", "проверка, что имя свободно: список целевых групп: %w"), err)
 	}
@@ -273,7 +276,7 @@ func (s *Registry) planTgCreate(ctx context.Context, args map[string]any) (*Plan
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "tg_create", cli.ListTargetGroups, i18n.T("target group", "целевая группа"), name, nil, "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
+			return lostCreate(ctx, "tg_create", list, i18n.T("target group", "целевая группа"), name, nil, "tg_list", fmt.Errorf(i18n.T("create target group: %w", "создание целевой группы: %w"), err))
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "note": i18n.T("Async — poll lb_operation(operation_id) until done=true; then tg_list for the id.",
 			"Асинхронно — опрашивайте evo lb operation <operation_id> до done=true; затем id покажет evo tg list.")}
@@ -335,7 +338,10 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 	}
 	// A second balancer of the same name is a second bill: refused before
 	// the consent, as every other create (DECISIONS D21).
-	existing, err := cli.ListNLB(ctx)
+	list := func(ctx context.Context) ([]map[string]any, error) {
+		return namedResources(cli.ListNLB(ctx))
+	}
+	existing, err := list(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("check the name is free: list load balancers: %w", "проверка, что имя свободно: список балансировщиков: %w"), err)
 	}
@@ -432,7 +438,7 @@ func (s *Registry) planLbCreate(ctx context.Context, args map[string]any) (*Plan
 			if err == nil {
 				err = noID("operation")
 			}
-			return lostCreate(ctx, "lb_create", cli.ListNLB, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf(i18n.T("create load balancer: %w", "создание балансировщика: %w"), err))
+			return lostCreate(ctx, "lb_create", list, i18n.T("load balancer", "балансировщик"), name, willCreate, "lb_get id", fmt.Errorf(i18n.T("create load balancer: %w", "создание балансировщика: %w"), err))
 		}
 		out := map[string]any{"status": "creating", "operation_id": op.ID, "created": willCreate, "note": i18n.T("Async — poll lb_operation(operation_id) until done=true; then lb_get for the external IP + status RUNNING.",
 			"Асинхронно — опрашивайте evo lb operation <operation_id> до done=true; затем внешний IP и статус RUNNING покажет evo lb get.")}

@@ -441,6 +441,7 @@ func TestDocsExamples_Links(t *testing.T) {
 		return a
 	}
 	var n int
+	foundMigrationLink := false
 	for _, rel := range userDocs {
 		text := string(mustReadRepo(t, rel))
 		for _, lnk := range markdownLinks(text) {
@@ -449,6 +450,12 @@ func TestDocsExamples_Links(t *testing.T) {
 			}
 			n++
 			target, frag := resolveDocLink(rel, lnk.raw)
+			if rel == "README.md" && lnk.label == "Миграция в CHANGELOG" {
+				foundMigrationLink = true
+				if target != "CHANGELOG.md" || frag != "миграция" {
+					t.Errorf("%s:%d: the 1.9.1 migration link must point to CHANGELOG.md#миграция, got %q", rel, lnk.line, lnk.raw)
+				}
+			}
 			full := filepath.Join(repoRoot, target)
 			st, err := os.Stat(full)
 			if err != nil || st.IsDir() {
@@ -467,17 +474,21 @@ func TestDocsExamples_Links(t *testing.T) {
 			}
 		}
 	}
+	if !foundMigrationLink {
+		t.Error("README.md: missing link to the 1.9.1 migration in CHANGELOG.md")
+	}
 	if n < 20 {
 		t.Fatalf("only %d relative links parsed", n)
 	}
 }
 
 type docLink struct {
-	raw  string
-	line int
+	label string
+	raw   string
+	line  int
 }
 
-var mdLink = regexp.MustCompile(`\[[^\]\n]*\]\(([^)\n]+)\)`)
+var mdLink = regexp.MustCompile(`\[([^\]\n]*)\]\(([^)\n]+)\)`)
 
 func markdownLinks(src string) []docLink {
 	src = strings.ReplaceAll(src, "\r\n", "\n")
@@ -512,8 +523,9 @@ func linksIn(src string, start int) []docLink {
 	var out []docLink
 	for _, m := range mdLink.FindAllStringSubmatchIndex(src, -1) {
 		out = append(out, docLink{
-			raw:  strings.TrimSpace(src[m[2]:m[3]]),
-			line: start + strings.Count(src[:m[2]], "\n"),
+			label: src[m[2]:m[3]],
+			raw:   strings.TrimSpace(src[m[4]:m[5]]),
+			line:  start + strings.Count(src[:m[0]], "\n"),
 		})
 	}
 	return out

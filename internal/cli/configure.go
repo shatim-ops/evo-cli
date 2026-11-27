@@ -26,6 +26,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/confirm"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/pager"
@@ -379,7 +380,16 @@ func listProjectsPage(ctx context.Context, token, pageToken string) ([]orgProjec
 			clerrors.NetworkHint(err, i18n.T("Check your network connection, or pass --project-id", "Проверьте сеть или передайте --project-id")), err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	// Keep the original cap on error details. Successful pages have no size cap here.
+	var limit int64
+	if resp.StatusCode >= 400 {
+		limit = 64 << 10
+	}
+	body, status, err := httpretry.ReadAPIResponse(req, resp, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	err = pager.PageStatus(status, body, pageToken != "", func(status int, body []byte) error {
 		code := clerrors.CodeAPIError
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			code = clerrors.CodeAuthFailed
@@ -388,24 +398,28 @@ func listProjectsPage(ctx context.Context, token, pageToken string) ([]orgProjec
 		var apiErr struct {
 			Message string `json:"message"`
 		}
-		if json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&apiErr) == nil && apiErr.Message != "" {
+		if json.Unmarshal(body, &apiErr) == nil && apiErr.Message != "" {
 			msg += ": " + apiErr.Message
 		}
 		// Observed 2026-10-14: for a service account the API answers
 		// 400 "(user_id) is invalid argument: user not found".
-		return nil, "", clerrors.New(code, msg,
+		return clerrors.New(code, msg,
 			i18n.T("The Organization API may not list projects for this key; pass --project-id (find it in the Cloud.ru console)",
 				"Organization API может не отдавать список проектов для этого ключа; передайте --project-id (он есть в консоли Cloud.ru)"))
+	})
+	if err != nil {
+		return nil, "", err
 	}
-	var body struct {
-		Projects      []orgProject `json:"projects"`
-		NextPageToken string       `json:"next_page_token"`
+	projects, next, err := pager.ObjectPage[orgProject](body, "projects", "next_page_token")
+	if err != nil {
+		return nil, "", err
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, "", clerrors.Wrap(clerrors.CodeAPIError, i18n.T("unexpected response from the Organization API", "неожиданный ответ Organization API"),
-			i18n.T("Pass --project-id", "Передайте --project-id"), err)
+	for _, project := range projects {
+		if strings.TrimSpace(project.ID) == "" {
+			return nil, "", pager.Incomplete(i18n.T("project without an ID", "проект без ID"))
+		}
 	}
-	return body.Projects, body.NextPageToken, nil
+	return projects, next, nil
 }
 
 // chooseProject picks the project for the profile: the only one, the

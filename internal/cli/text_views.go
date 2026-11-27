@@ -6,11 +6,17 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf16"
 
 	"github.com/shatim-ops/evo-cli/internal/i18n"
+	"github.com/shatim-ops/evo-cli/internal/monitoring"
 	"github.com/shatim-ops/evo-cli/internal/output"
 )
 
@@ -84,4 +90,62 @@ func renderExposition(_ *output.Printer, w io.Writer, text string) error {
 		fmt.Fprintln(w, output.SanitizeCell(line))
 	}
 	return nil
+}
+
+// renderMetricSeries shows the labels once per series and streams each
+// sample with its time. The Monitoring API timestamps are Unix milliseconds.
+func renderMetricSeries(p *output.Printer, w io.Writer, text string) error {
+	var a struct {
+		Project, Match, Window string
+		Count                  int
+		Series                 []monitoring.Series
+	}
+	if err := json.Unmarshal([]byte(text), &a); err != nil || a.Series == nil {
+		// Preserve a diagnostic that is not a series answer.
+		fmt.Fprintln(w, output.SanitizeCell(text))
+		return nil
+	}
+	for _, series := range a.Series {
+		if len(series.Values) != len(series.Timestamps) {
+			return errors.New(i18n.T("The metric series has different numbers of timestamps and values.", "В ряду метрики разное число отметок времени и значений."))
+		}
+	}
+	p.Table([]string{i18n.T("PROJECT", "ПРОЕКТ"), i18n.T("MATCH", "СЕЛЕКТОР"), i18n.T("WINDOW", "ПЕРИОД"), i18n.T("SERIES", "РЯДЫ")},
+		[][]string{{a.Project, a.Match, a.Window, strconv.Itoa(a.Count)}})
+	if len(a.Series) == 0 {
+		fmt.Fprintln(w, i18n.T("No metric series.", "Рядов метрик нет."))
+	}
+	for _, series := range a.Series {
+		fmt.Fprintf(w, "\n%s %s\n", i18n.T("Labels:", "Метки:"), metricLabelsJSON(series.Metric))
+		if len(series.Values) == 0 {
+			fmt.Fprintln(w, i18n.T("No samples.", "Измерений нет."))
+			continue
+		}
+		fmt.Fprintln(w, i18n.T("TIME (UTC)                VALUE", "ВРЕМЯ (UTC)               ЗНАЧЕНИЕ"))
+		for i, value := range series.Values {
+			stamp := time.UnixMilli(series.Timestamps[i]).UTC().Format("2006-01-02T15:04:05.000Z")
+			fmt.Fprintf(w, "%s  %s\n", stamp, strconv.FormatFloat(value, 'g', -1, 64))
+		}
+	}
+	return nil
+}
+
+// json.Marshal sorts the label keys and escapes quotes, backslashes and ASCII
+// controls. Escape the remaining non-printable runes as JSON Unicode escapes:
+// replacing them with a printable character would merge distinct label sets.
+func metricLabelsJSON(labels map[string]string) string {
+	data, _ := json.Marshal(labels)
+	var out strings.Builder
+	out.Grow(len(data))
+	for _, r := range string(data) {
+		if unicode.IsPrint(r) {
+			out.WriteRune(r)
+			continue
+		}
+		var pair [2]uint16
+		for _, unit := range utf16.AppendRune(pair[:0], r) {
+			fmt.Fprintf(&out, `\u%04x`, unit)
+		}
+	}
+	return out.String()
 }

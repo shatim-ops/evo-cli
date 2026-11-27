@@ -9,10 +9,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/clock"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // listBudget is the budget of a list of a read answer: n, the objects the
@@ -30,6 +35,7 @@ type listBudget struct{ n, perObject int }
 // fields or rows without a word («Риск», conclusion 49, Р3).
 var answerBudget = map[string]listBudget{
 	// "tool key": {n, budget}, // measured bytes per object
+	"audit_events events":                  {1, 110}, // 87
 	"backup_list backups":                  {2, 330}, // 263
 	"disk_list disks":                      {1, 140}, // 112
 	"dns_zones zones":                      {1, 220}, // 172
@@ -40,7 +46,7 @@ var answerBudget = map[string]listBudget{
 	"image_list images":                    {1, 110}, // 84
 	"k8s_addon_versions releases":          {2, 240}, // 190
 	"k8s_addons addons":                    {1, 230}, // 182
-	"k8s_nodepools node_pools":             {1, 80},  // 64
+	"k8s_nodepools node_pools":             {1, 190}, // 145
 	"k8s_options flavors":                  {1, 110}, // 85
 	"kafka_specs specifications":           {1, 130}, // 99
 	"kafka_versions versions":              {1, 30},  // 22
@@ -52,6 +58,7 @@ var answerBudget = map[string]listBudget{
 	"list_subnets subnets":                 {1, 210}, // 167
 	"list_zones zones":                     {1, 80},  // 62
 	"marketplace_list items":               {4, 260}, // 208
+	"metrics_history series":               {1, 120}, // 89
 	"pg_databases databases":               {1, 20},  // 14
 	"pg_specs specifications":              {1, 180}, // 137
 	"pg_users users":                       {1, 20},  // 14
@@ -238,3 +245,90 @@ func budgetVolatile(s string) string {
 // The parts of the path are split by / or by \ — doubled in JSON, single
 // in the human output on Windows.
 var testDir = regexp.MustCompile(`[^"\s]*?Test\w+?\d+(/|\\+)+\d{3}`)
+
+func TestHistoryRedisReadBudgetOnEachSurface(t *testing.T) {
+	w, _ := withJSONWorld(t)
+	newProcess()
+	code, out, stderr := runCLI(t, "", "--json", "redis", "create", "own", "--cpu", "2", "--ram", "4", "--yes")
+	if code != 0 || !strings.Contains(out, parityVM) {
+		t.Fatal(out, stderr)
+	}
+	at := clock.Now().Add(time.Hour)
+	clock.Now = func() time.Time { return at }
+	old := w.rt.extra
+	cards, pages := 0, 0
+	w.rt.extra = func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet || r.URL.Host != "redis.api.cloud.ru" {
+			return old(r)
+		}
+		switch r.URL.Path {
+		case "/v1/clusters/" + parityVM:
+			cards++
+			return contractRT{status: 200, body: fmt.Sprintf(`{"id":%q,"status":"ERASED"}`, parityVM)}.RoundTrip(r)
+		case "/v1/clusters":
+			pages++
+			id := fmt.Sprintf("00000000-0000-4000-8000-%012d", pages)
+			return contractRT{status: 200, body: fmt.Sprintf(`{"clusters":[{"id":%q}],"next_page_token":"%d"}`, id, pages)}.RoundTrip(r)
+		default:
+			return old(r)
+		}
+	}
+	for _, surface := range []string{"ru", "en", "json", "stdio"} {
+		t.Run(surface, func(t *testing.T) {
+			lang := "ru"
+			if surface == "en" {
+				lang = "en"
+			}
+			t.Setenv("EVO_LANG", lang)
+			defer i18n.SetLang(i18n.Lang())
+			i18n.SetLang(lang)
+			cards, pages = 0, 0
+			newProcess()
+			var answer string
+			switch surface {
+			case "stdio":
+				a := callStdioTool(t, "history", map[string]any{"check": true})
+				if a.isErr || a.rpcErr != "" {
+					t.Fatal(a)
+				}
+				answer = a.text
+			default:
+				args := []string{"history", "--check"}
+				if surface == "json" {
+					args = append(args, "--json")
+				}
+				code, o, e := runCLI(t, "", args...)
+				if code != 0 {
+					t.Fatal(code, o, e)
+				}
+				answer = o
+			}
+			if cards != 1 || pages != 49 {
+				t.Fatalf("GET by ID=%d pages=%d", cards, pages)
+			}
+			if surface == "ru" || surface == "en" {
+				want := "прочитано по id 1,"
+				if surface == "en" {
+					want = "1 read by id,"
+				}
+				if !strings.Contains(answer, want) {
+					t.Errorf("want %q in %s", want, answer)
+				}
+				return
+			}
+			var v struct {
+				Checked   struct{ Read int }
+				CheckNote string `json:"check_note"`
+				Live      []struct {
+					Result string `json:"check_result"`
+				}
+			}
+			if err := json.Unmarshal([]byte(answer), &v); err != nil {
+				t.Fatal(err)
+			}
+			if v.Checked.Read != 1 || len(v.Live) != 1 || v.Live[0].Result != "read_failed" || !strings.Contains(v.CheckNote, "read by id") {
+				t.Errorf("checked result: %+v", v)
+			}
+		})
+	}
+}

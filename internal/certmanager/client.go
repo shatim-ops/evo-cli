@@ -78,8 +78,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 		return nil, 0, fmt.Errorf(i18n.T("certmanager request failed: %w", "запрос к certmanager не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	return data, resp.StatusCode, nil
+	return httpretry.ReadAPIResponse(req, resp, 0)
 }
 
 func apiError(status int, body []byte) error {
@@ -150,13 +149,10 @@ func (c *Client) List(ctx context.Context, o ListOptions) ([]map[string]any, err
 	if err != nil {
 		return nil, err
 	}
-	var out struct {
-		Certificates []map[string]any `json:"certificates"`
-	}
-	if err := c.decode(data, status, &out); err != nil {
+	if err := pager.PageStatus(status, data, false, apiError); err != nil {
 		return nil, err
 	}
-	return out.Certificates, nil
+	return pager.UnpagedObjects[map[string]any](data, "certificates")
 }
 
 // Get returns one certificate by id.
@@ -273,15 +269,15 @@ func (c *Client) Versions(ctx context.Context, id string) (map[string]any, error
 		if err != nil {
 			return "", err
 		}
-		var out struct {
-			Versions      []any  `json:"versions"`
-			NextPageToken string `json:"nextPageToken"`
+		if err := pager.PageStatus(status, data, token != "", apiError); err != nil {
+			return "", err
 		}
-		if err := c.decode(data, status, &out); err != nil {
+		page, next, err := pager.ObjectPage[map[string]any](data, "versions", "nextPageToken")
+		if err != nil {
 			return "", err
 		}
 		fresh := 0
-		for _, v := range out.Versions {
+		for _, v := range page {
 			if key := versionKey(v); key != "" {
 				if seen[key] {
 					continue
@@ -291,10 +287,10 @@ func (c *Client) Versions(ctx context.Context, id string) (map[string]any, error
 			all = append(all, v)
 			fresh++
 		}
-		if len(out.Versions) > 0 && fresh == 0 {
+		if len(page) > 0 && fresh == 0 {
 			return "", pager.NoNewItems(len(all), -1)
 		}
-		return out.NextPageToken, nil
+		return next, nil
 	})
 	what := "certmanager: versions of " + id
 	if err != nil {

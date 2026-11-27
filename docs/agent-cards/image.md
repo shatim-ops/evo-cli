@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `image_list` | `evo image list` | reads |  |
 | `marketplace_list` | `evo marketplace list` | reads |  |
-| `list_images` |  | reads |  |
+| `list_images` | `evo list-images` | reads |  |
 | `image_create` | `evo image create` | creates: id in `image.id`; found with `image_list`; deleted with `image_delete` | `disk_id` ← `disk_list` |
 | `image_get` | `evo image get` | reads | `image` ← `image_list`, `image_id` ← `image_list` |
 | `image_delete` | `evo image delete` | deletes; a repeat answers `already_deleted` | `image_id` ← `image_list` |

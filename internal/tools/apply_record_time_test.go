@@ -54,3 +54,70 @@ func TestDeployApply_RecordIsNotYoungerThanItsVM(t *testing.T) {
 		t.Errorf("a repeat moved the record's date: %s, was %s", again.CreatedAt, rec.CreatedAt)
 	}
 }
+
+// A VM can already have an address while a different request has an
+// unknown outcome. Only the receipt matched by this apply may be closed.
+func TestDeployApply_OnlyClosesMatchedFIPReceipt(t *testing.T) {
+	dir := t.TempDir()
+	path := state.DefaultPath(dir)
+	plan := &deployplan.Plan{ProjectID: "p", VM: deployplan.VMSpec{Name: "web"}}
+	mark := state.LostFloatingIP{Name: "requested", Attempt: "this-call", ProjectID: "p", VMID: "my-vm", VMName: "web"}
+	other := state.LostFloatingIP{Name: "earlier", ProjectID: "p", VMID: "my-vm", VMName: "web"}
+	if err := state.Write(path, &state.File{LostFloatingIPs: []state.LostFloatingIP{mark, other}}); err != nil {
+		t.Fatal(err)
+	}
+	res := &deployplan.ApplyResult{VMID: "my-vm", Status: "running", FloatingIPID: "attached"}
+	if err := recordDeployment(dir, nil, plan, res, res.Status); err != nil {
+		t.Fatal(err)
+	}
+	if sf, err := state.Read(path); err != nil || len(sf.LostFloatingIPs) != 2 {
+		t.Fatalf("unrelated attachment cleared a receipt: %v, %v", sf, err)
+	}
+	res.FIPReceipt = mark
+	res.FIPReceipt.ID, res.FloatingIPID = "own-address", "own-address"
+	if err := recordDeployment(dir, nil, plan, res, res.Status); err != nil {
+		t.Fatal(err)
+	}
+	if sf, err := state.Read(path); err != nil || len(sf.LostFloatingIPs) != 1 || sf.LostFloatingIPs[0].Name != other.Name {
+		t.Fatalf("recovery did not preserve the other receipt: %v, %v", sf, err)
+	}
+}
+
+func TestRecordDeployment_RetainsRuleOwner(t *testing.T) {
+	const id = "vm"
+	original, next := state.NewMaker("", "abcd-source-wxyz"), state.NewMaker("", "abcd-second-wxyz")
+	for _, tc := range []struct {
+		name, vm, project string
+		maker             *state.Maker
+		conflict          bool
+	}{
+		{"same deployment", "vm", "project", original, false},
+		{"older receipt", "vm", "", nil, false},
+		{"other VM", "another", "project", original, true},
+		{"other project", "vm", "other", original, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeRecords(t, dir, state.DeploymentRecord{ID: id, VMID: tc.vm, ProjectID: tc.project, CreatedBy: tc.maker,
+				OpenedRules: []state.SGRule{{ID: "own-rule", SecurityGroupID: "own-sg", Port: "80/tcp"}}})
+			err := recordDeployment(dir, next, &deployplan.Plan{ProjectID: "project"}, &deployplan.ApplyResult{VMID: id}, "running")
+			if (err != nil) != tc.conflict {
+				t.Fatalf("conflicting target: %v", err)
+			}
+			sf, err := state.Read(state.DefaultPath(dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := sf.FindDeployment(id)
+			if d == nil || d.ProjectID != tc.project || d.VMID != tc.vm || len(d.OpenedRules) != 1 || d.OpenedRules[0].ID != "own-rule" {
+				t.Fatalf("receipt changed: %+v", d)
+			}
+			if same, _ := d.CreatedBy.MatchRuleOwner(next); same {
+				t.Fatal("retrying principal gained ownership of old rules")
+			}
+			if same, _ := d.CreatedBy.MatchRuleOwner(original); same != (tc.maker != nil) {
+				t.Fatal("original evidence changed")
+			}
+		})
+	}
+}

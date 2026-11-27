@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -91,7 +90,10 @@ func fetchOIDCTokenOnce(ctx context.Context, tokenURL, keyID, secret string) (to
 		return "", true, err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	data, _, err := httpretry.ReadAPIResponse(req, resp, 1<<20)
+	if err != nil {
+		return "", false, err
+	}
 	if resp.StatusCode != 200 {
 		return "", resp.StatusCode >= 500, fmt.Errorf("OIDC token HTTP %d: %s", resp.StatusCode, string(data[:min(len(data), 200)]))
 	}

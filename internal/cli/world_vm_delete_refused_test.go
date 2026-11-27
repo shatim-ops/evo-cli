@@ -30,7 +30,8 @@ var refusedVMDeleteMisses = map[string]string{}
 // error and hint name the state read and do not guess (that the VM is
 // probably, or still, being created); a state the VM
 // does not leave by itself names support, and, with a deployment whose
-// floating IP stays billed, its release (evo vpc fip-release).
+// floating IP may remain billed, its identity and the release operation
+// available to that caller. No address DELETE may precede VM deletion.
 func TestParityWorld_RefusedVMDeleteNamesTheState(t *testing.T) {
 	w, fake := withJSONWorld(t)
 	cases, _, bad := jsonCases(t)
@@ -102,7 +103,32 @@ func TestParityWorld_RefusedVMDeleteNamesTheState(t *testing.T) {
 				}})
 			}
 			if final && c.state == "deployment recorded" {
-				checks = append(checks, textCheck{"names fip-release", func(s string) bool { return strings.Contains(s, "fip-release") }})
+				for _, surface := range []struct {
+					name, hint, release string
+					fields              map[string]any
+					writes              []string
+				}{
+					{"cli", env.Hint, "evo vpc fip-release", env.Details, r.cliWrites},
+					{"mcp", fmt.Sprint(tool["hint"]), "release_floating_ip", tool, r.toolWrites},
+				} {
+					hint := strings.ToLower(surface.hint)
+					for _, want := range []string{surface.release, parityRecordedFIP, "after the vm is gone", "ask the person", "if the address is still allocated"} {
+						if !strings.Contains(hint, want) {
+							t.Errorf("%s/%s: missing %q in %s", key, surface.name, want, surface.hint)
+						}
+					}
+					if surface.name == "mcp" && strings.Contains(hint, "evo vpc fip-release") {
+						t.Errorf("%s: MCP suggested bypassing its tool boundary: %s", key, surface.hint)
+					}
+					if surface.fields["vm_id"] != parityVM || surface.fields["floating_ip_id"] != parityRecordedFIP || surface.fields["cleanup_pending"] != true {
+						t.Errorf("%s/%s: wrong cleanup evidence: %v", key, surface.name, surface.fields)
+					}
+					for _, write := range surface.writes {
+						if strings.Contains(write, "/floating-ips") {
+							t.Errorf("%s/%s: address changed while VM deletion refused: %s", key, surface.name, write)
+						}
+					}
+				}
 			}
 			for _, ch := range checks {
 				cliOK, mcpOK := ch.ok(cli), ch.ok(mcp)

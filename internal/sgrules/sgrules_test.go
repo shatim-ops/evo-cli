@@ -182,7 +182,7 @@ func TestClose_KeepsRuleNeededByAnotherDeployment(t *testing.T) {
 	if len(plan) != 2 || plan[0].KeptFor != "b" || plan[1].KeptFor != "" {
 		t.Errorf("plan %+v", plan)
 	}
-	res := Close(context.Background(), f, sf, "a")
+	res := Close(context.Background(), f, sf, "a", "", nil)
 	if !reflect.DeepEqual(res.Closed, []string{"443"}) || len(res.Kept) != 1 || len(res.Failed) != 0 {
 		t.Errorf("res %+v", res)
 	}
@@ -215,7 +215,7 @@ func TestClose_OtherGroupOrProtocolDoesNotKeep(t *testing.T) {
 			{ID: "a", SecurityGroupID: "sg-1", OpenedRules: []state.SGRule{{ID: "r80", SecurityGroupID: "sg-1", Port: "80/tcp"}}},
 			other,
 		}}
-		if res := Close(context.Background(), f, sf, "a"); !reflect.DeepEqual(res.Closed, []string{"80"}) {
+		if res := Close(context.Background(), f, sf, "a", "", nil); !reflect.DeepEqual(res.Closed, []string{"80"}) {
 			t.Errorf("%s: %+v", name, res)
 		}
 	}
@@ -229,7 +229,7 @@ func TestClose_LegacyRecordKeepsByExposedPorts(t *testing.T) {
 		{ID: "a", SecurityGroupID: "sg-1", OpenedRules: []state.SGRule{{ID: "r80", SecurityGroupID: "sg-1", Port: "80/tcp"}}},
 		{ID: "old", Status: "running", ExposedPorts: []int{80}},
 	}}
-	res := Close(context.Background(), f, sf, "a")
+	res := Close(context.Background(), f, sf, "a", "", nil)
 	if len(res.Kept) != 1 || len(f.deleted) != 0 {
 		t.Errorf("res %+v deleted %v", res, f.deleted)
 	}
@@ -244,7 +244,7 @@ func TestClose_FailureStaysMarked(t *testing.T) {
 	sf := twoDeployments()
 	sf.Deployments = sf.Deployments[:1] // only a
 
-	res := Close(context.Background(), f, sf, "a")
+	res := Close(context.Background(), f, sf, "a", "", nil)
 	if !reflect.DeepEqual(res.Closed, []string{"80"}) || len(res.Failed) != 1 {
 		t.Errorf("res %+v", res)
 	}
@@ -266,7 +266,7 @@ func TestClose_FailureStaysMarked(t *testing.T) {
 
 	// The next destroy finishes it.
 	delete(f.deleteErr, "r443")
-	res = Close(context.Background(), f, sf, "a")
+	res = Close(context.Background(), f, sf, "a", "", nil)
 	if !reflect.DeepEqual(res.Closed, []string{"443"}) {
 		t.Errorf("retry %+v", res)
 	}
@@ -276,8 +276,8 @@ func TestClose_FailureStaysMarked(t *testing.T) {
 	}
 }
 
-// A hand-edited state with an empty rule ID sends no DELETE .../rules/ and
-// is not kept for a retry that can never work.
+// An incomplete receipt must never send DELETE to a collection or be
+// silently retired: its outcome is still unknown on a later invocation.
 func TestClose_EmptyIDsSendNothing(t *testing.T) {
 	f := newFake()
 	sf := &state.File{Deployments: []state.DeploymentRecord{{ID: "a", OpenedRules: []state.SGRule{
@@ -285,13 +285,17 @@ func TestClose_EmptyIDsSendNothing(t *testing.T) {
 		{ID: "r1", SecurityGroupID: "", Port: "81/tcp"},
 	}}}}
 	f.deleteErr[""] = stderrors.New("DELETE with an empty id was sent")
-	res := Close(context.Background(), f, sf, "a")
-	if len(res.Failed) != 2 || len(f.deleted) != 0 {
-		t.Errorf("res %+v deleted %v", res, f.deleted)
-	}
-	Retire(sf, "a")
-	if len(sf.Deployments) != 0 {
-		t.Errorf("kept %+v", sf.Deployments)
+	for range 2 {
+		res := Close(t.Context(), f, sf, "a", "", nil)
+		if len(res.Failed) != 2 || len(res.Closed) != 0 || len(f.deleted) != 0 {
+			t.Errorf("res %+v deleted %v", res, f.deleted)
+		}
+		Retire(sf, "a")
+		rec := sf.FindDeployment("a")
+		if rec == nil || rec.Status != "destroyed" || len(rec.OpenedRules) != 2 ||
+			rec.OpenedRules[0].SecurityGroupID != "sg-1" || rec.OpenedRules[1].ID != "r1" {
+			t.Fatalf("incomplete receipts lost: %+v", rec)
+		}
 	}
 }
 
@@ -369,6 +373,55 @@ func TestOpen_PortOpensForAnyAddressInTheGivenGroup(t *testing.T) {
 	for _, r := range f.rules["sg-shared"] {
 		if r.RemoteIPPrefix != "0.0.0.0/0" || r.Direction != "ingress" {
 			t.Errorf("rule %+v: want ingress from 0.0.0.0/0", r)
+		}
+	}
+}
+
+func TestClose_RuleOwnerScopeBeforeTransfer(t *testing.T) {
+	for _, tc := range []struct {
+		name, activeProject, nextProject string
+		closed, kept, failed             int
+	}{
+		{"same project", "p", "p", 0, 1, 0},
+		{"unrelated deployment project", "p", "other", 1, 0, 0},
+		{"wrong active profile project", "other", "p", 0, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cloud := newFake()
+			cloud.rules["sg"] = []provision.SGRule{{ID: "owned"}}
+			sf := &state.File{Deployments: []state.DeploymentRecord{
+				{ID: "before", Status: "destroyed", ProjectID: "p", OpenedRules: []state.SGRule{{ID: "owned", SecurityGroupID: "sg", Port: "80/tcp"}}},
+				{ID: "next", Status: "running", ProjectID: tc.nextProject, ExposedPorts: []int{80}},
+			}}
+			got := Close(t.Context(), cloud, sf, "before", tc.activeProject, nil)
+			if len(got.Closed) != tc.closed || len(got.Kept) != tc.kept || len(got.Failed) != tc.failed ||
+				len(sf.FindDeployment("next").OpenedRules) != tc.kept || len(sf.FindDeployment("before").OpenedRules) != tc.failed || len(cloud.deleted) != tc.closed {
+				t.Fatalf("result=%+v before=%+v next=%+v DELETE=%v", got, sf.Deployments[0].OpenedRules, sf.Deployments[1].OpenedRules, cloud.deleted)
+			}
+		})
+	}
+}
+
+func TestClose_KeepSharedPortWithoutReassigningScope(t *testing.T) {
+	for _, next := range []*state.Maker{state.NewMaker("another-account", "next-key"), nil} {
+		cloud := newFake()
+		cloud.rules["sg"] = []provision.SGRule{{ID: "original"}}
+		maker := state.NewMaker("original-account", "first-key")
+		sf := &state.File{Deployments: []state.DeploymentRecord{
+			{ID: "before", Status: "destroyed", ProjectID: "p", CreatedBy: maker,
+				OpenedRules: []state.SGRule{{ID: "original", SecurityGroupID: "sg", Port: "80/tcp"}}},
+			{ID: "next", Status: "running", ProjectID: "p", CreatedBy: next, SecurityGroupID: "sg", SecurityGroupPorts: []string{"80/tcp"}},
+		}}
+		got := Close(t.Context(), cloud, sf, "before", "p", maker)
+		Retire(sf, "before")
+		if len(got.Kept) != 1 || len(sf.FindDeployment("next").OpenedRules) != 0 || sf.FindDeployment("before") == nil ||
+			len(sf.FindDeployment("before").OpenedRules) != 1 || len(cloud.deleted) != 0 {
+			t.Fatalf("shared rule reassigned to an unproved principal: %+v, %+v", got, sf.Deployments)
+		}
+		sf.FindDeployment("next").Status = "destroyed"
+		got = Close(t.Context(), cloud, sf, "before", "p", maker)
+		if len(got.Closed) != 1 || len(cloud.deleted) != 1 || cloud.deleted[0] != "original" {
+			t.Fatalf("original holder could not finish its own cleanup: %+v, %v", got, cloud.deleted)
 		}
 	}
 }

@@ -473,7 +473,7 @@ func scan(dir string) (out []Intent, foreign []string) {
 // line out: what the call that settled it says of the cut one — the
 // caller's to tell (found with the id it made, removed, unknown).
 func Settle(dir string, done Intent, out history.Outcome) (kept []Intent) {
-	if done.Name == "" && done.Target == "" {
+	if out.CleanupPending || (done.Name == "" && done.Target == "") {
 		return nil
 	}
 	for _, in := range Pending(dir) {
@@ -530,7 +530,7 @@ func journal(in Intent, out history.Outcome) {
 	}
 	l := history.Line{Time: clock.Now().UTC().Format(time.RFC3339), Tool: in.Tool, Surface: surface,
 		ProjectID: in.ProjectID, Zone: in.Zone, Name: in.Name, Target: in.Target,
-		Kind: out.Kind, Parent: out.Parent, ResourceID: out.ResourceID, Outcome: out.Result, Reason: out.Reason, OperationID: out.OperationID,
+		CreateReceipt: out.CreateReceipt, Kind: out.Kind, Parent: out.Parent, ResourceID: out.ResourceID, Outcome: out.Result, Reason: out.Reason, OperationID: out.OperationID,
 		IntentID: in.ID, JobID: out.JobID, StateDir: stateDirOf(in.Dir), Key: in.Key}
 	if err := appendLine(history.DirOf(in.Dir), l); err != nil {
 		config.Warn(i18n.Tf("the journal of changes in %s got no line of %s (%v); the call is as it answered",

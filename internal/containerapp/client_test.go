@@ -6,7 +6,10 @@ package containerapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -191,5 +194,40 @@ func TestLogs_APIError(t *testing.T) {
 	_, err := New("tok", "proj", srv.URL).Logs(context.Background(), "app", false, 100)
 	if err == nil || !strings.Contains(err.Error(), "499") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// A complete first page does not authorize a partial result if continuation fails.
+func TestContainerList_RejectsIncompleteContinuation(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"missing continuation", 404, `{}`},
+		{"repeated application", 200, `{"data":[{"id":"first"}]}`},
+		{"unexpected success", 201, `{"data":[]}`},
+		{"null page", 200, `null`},
+		{"null items", 200, `{"data":null}`},
+		{"null row", 200, `{"data":[null]}`},
+		{"invalid cursor", 200, `{"data":[],"nextPageToken":null}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("pageToken") == "" {
+					_, _ = io.WriteString(w, `{"data":[{"id":"first"}],"nextPageToken":"second"}`)
+					return
+				}
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+
+			items, err := New("tok", "p", srv.URL).List(context.Background())
+			var typed *clierrors.CLIError
+			if !errors.As(err, &typed) || typed.Code != clierrors.CodeAPIError || items != nil {
+				t.Fatalf("partial items %v, error %v", items, err)
+			}
+		})
 	}
 }

@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 )
 
 // shapedBody is a body of an answer as a connection gives it: data in
@@ -259,7 +261,7 @@ func TestBodyGivenOn_ReplacedClosesTheAPIs(t *testing.T) {
 			got := RouteNotFoundAsBadGateway(httptestRequest(), resp)
 			b, err := io.ReadAll(got.Body)
 			got.Body.Close()
-			if got.StatusCode != http.StatusBadGateway || err != nil || !strings.Contains(string(b), routeNotFound) {
+			if got.StatusCode != http.StatusBadGateway || err != nil || !strings.Contains(string(b), i18n.T(routeNotFoundEN, routeNotFoundRU)) {
 				t.Errorf("%q, %v: status %d, %q, %v; want the 502 of D63", form, s, got.StatusCode, b, err)
 			}
 			if *closed != 1 {

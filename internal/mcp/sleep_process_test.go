@@ -11,6 +11,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -265,5 +267,69 @@ func TestStdio_CallSurvivesTheProcessStopped(t *testing.T) {
 				t.Errorf("the operation finished while the process was stopped, the answer does not say so — %s", text)
 			}
 		})
+	}
+}
+
+// Cancellation of the stdio server's context represents an interrupt from the
+// process. While stdout is open the final tool result can be delivered.
+func TestCAWait_StdioInterruptedProcessReturnsReadOnlyContinuation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	reads, writes := 0, 0
+	base := httpretry.DefaultBase
+	httpretry.DefaultBase = roundTripper(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/v2/containers/web" {
+			return nil, fmt.Errorf("unexpected route %s", r.URL.Path)
+		}
+		var body string
+		switch r.Method {
+		case http.MethodGet:
+			reads++
+			if writes == 1 && ctx.Err() == nil {
+				cancel()
+				return nil, r.Context().Err()
+			}
+			body = `{"name":"web","status":"DELETING"}`
+		case http.MethodDelete:
+			writes++
+			body = `{"done":false}`
+		default:
+			return nil, fmt.Errorf("unexpected method %s", r.Method)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+	})
+	defer func() { httpretry.DefaultBase = base }()
+	server := provisionServer(t, &provisionCloud{})
+	in, out, done := runStdio(t, ctx, server)
+	write(t, in, `{"jsonrpc":"2.0","method":"tools/call","id":3,"params":{"name":"ca_delete","arguments":{"name":"web","confirmed":true,"wait":true}}}`+"\n")
+	line := nextLine(t, out)
+	var envelope struct {
+		Result struct {
+			IsError bool
+			Content []struct{ Text string }
+		}
+	}
+	if err := json.Unmarshal([]byte(line), &envelope); err != nil || !envelope.Result.IsError || len(envelope.Result.Content) != 1 {
+		t.Fatalf("stdio result %q: %v", line, err)
+	}
+	var got struct {
+		Reason, Name string
+		OperationID  *string        `json:"operation_id"`
+		NextTool     string         `json:"next_tool"`
+		NextArgs     map[string]any `json:"next_args"`
+	}
+	if err := json.Unmarshal([]byte(envelope.Result.Content[0].Text), &got); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitRun(t, done); !errors.Is(err, context.Canceled) {
+		t.Fatalf("shutdown: %v", err)
+	}
+	if got.Reason != "INTERRUPTED" || got.OperationID != nil || got.Name != "web" || got.NextTool != "ca_get" || len(got.NextArgs) != 1 || got.NextArgs["name"] != "web" {
+		t.Fatalf("continuation: %+v", got)
+	}
+	count := reads
+	card := h14AuditCall(t, provisionServer(t, &provisionCloud{}), nil, got.NextTool, got.NextArgs)
+	if reads != count+1 || writes != 1 || card["status"] != "DELETING" {
+		t.Fatalf("read-only continuation: reads=%d writes=%d card=%v", reads, writes, card)
 	}
 }

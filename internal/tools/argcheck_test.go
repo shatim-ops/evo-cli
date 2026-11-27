@@ -134,3 +134,38 @@ func TestRegistry_ConfirmedAsStringRefused(t *testing.T) {
 		t.Errorf("destroy confirmed=\"true\": %s", text)
 	}
 }
+
+// The root rejects misspellings on every tool. Free-form keys belong to a
+// nested dictionary; confirmed on reads stays an ignored compatibility input.
+func TestInputSchema_ClosedRootMatchesArgumentCheck(t *testing.T) {
+	for _, tool := range New(nil).Tools() {
+		if tool.InputSchema["additionalProperties"] != false {
+			t.Errorf("%s: root is open", tool.Name)
+		}
+		args := requiredArgs(tool)
+		if err := CheckArgs(tool, args); err != nil {
+			t.Errorf("%s: valid example: %v", tool.Name, err)
+		}
+		args["not_a_tool_argument"] = true
+		if err := CheckArgs(tool, args); err == nil {
+			t.Errorf("%s: accepted unknown root key", tool.Name)
+		}
+		pattern, _ := tool.InputSchema["patternProperties"].(map[string]any)
+		if takesConsent(tool) {
+			if err := CheckArgs(tool, map[string]any{"confirmed": "yes"}); err == nil {
+				t.Errorf("%s: consent has to be boolean", tool.Name)
+			}
+		} else if pattern["^confirmed$"] != true || CheckArgs(tool, map[string]any{"confirmed": true}) != nil {
+			t.Errorf("%s: harmless confirmed not represented", tool.Name)
+		}
+		for _, key := range []string{"image_metadata", "env"} {
+			props := tool.InputSchema["properties"].(map[string]any)
+			if p, ok := props[key].(map[string]any); ok && p["type"] == "object" {
+				values, _ := p["additionalProperties"].(map[string]any)
+				if values["type"] != "string" || CheckArgs(tool, map[string]any{key: map[string]any{"CUSTOM_KEY": "value"}}) != nil {
+					t.Errorf("%s.%s must remain a dictionary", tool.Name, key)
+				}
+			}
+		}
+	}
+}

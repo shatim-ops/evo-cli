@@ -15,6 +15,9 @@ type localCommand struct {
 // other command is built from a tool's CLISpec. TestParity_CommandsAndTools
 // fails on a command that is neither, and on an entry that is no command.
 var localCommands = []localCommand{
+	{"evo cleanup", "локальная сверка квитанций незавершённой уборки в текущем каталоге"},
+	{"evo cleanup receipts", "читает квитанции плавающих IP в каталоге владельца"},
+	{"evo cleanup resolve", "владелец подтверждает исход конкретного запроса по независимому свидетельству и записывает его в локальный state"},
 	{"evo configure", "пишет ключ доступа в профиль на диске той машины, где стоит evo; MCP-клиент ключей не передаёт по контракту (docs/mcp.md)"},
 	{"evo login", "вход человека в браузере и страница согласия на loopback-порту его машины; ключ записывается в профиль на диске; у MCP-сервера инструмента нет — браузер и порт на машине человека"},
 	{"evo logout", "удаляет ключ, созданный evo login, его же токеном, и профиль на диске той машины, где стоит evo"},

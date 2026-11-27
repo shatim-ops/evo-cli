@@ -84,7 +84,7 @@ type Caller struct {
 	// consent runs on a yes, before the engine writes anything: the gate
 	// writes the intent of the call there (engineGated). Its error refuses
 	// the call.
-	consent func() error
+	consent func(*confirm.Preview) error
 }
 
 // ask is Gate, noting a yes: the tools call it, never Gate itself, so the
@@ -97,7 +97,7 @@ func (c *Caller) ask(ctx context.Context, answer string, human *confirm.Preview)
 	if ok && err == nil {
 		c.answeredYes = true
 		if c.consent != nil && !c.DryRun {
-			if err := c.consent(); err != nil {
+			if err := c.consent(human); err != nil {
 				return false, err
 			}
 		}

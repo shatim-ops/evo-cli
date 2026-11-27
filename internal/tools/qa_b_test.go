@@ -93,6 +93,12 @@ func (c *foreignVMCloud) GetVM(context.Context, string) (*provision.VM, error) {
 func (c *foreignVMCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
 	return []*provision.FloatingIP{{ID: "fip-user", Name: c.fipName, IPAddress: "198.51.100.7", State: "in_use"}}, nil
 }
+func (c *foreignVMCloud) GetFloatingIP(_ context.Context, id string) (*provision.FloatingIP, error) {
+	if id == c.released {
+		return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+	}
+	return &provision.FloatingIP{ID: id}, nil
+}
 func (c *foreignVMCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	c.released = id
 	return nil

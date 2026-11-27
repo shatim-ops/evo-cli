@@ -7,6 +7,7 @@ package tools
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/config"
 	"github.com/shatim-ops/evo-cli/internal/engine"
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
+	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/state"
@@ -52,6 +54,12 @@ func (c *targetCloud) GetVM(context.Context, string) (*provision.VM, error) {
 		return nil, clerrors.New(clerrors.CodeVMNotFound, "gone", "")
 	}
 	return &provision.VM{ID: "0000a1a1-0000-4000-8000-000000000001", Status: firstNonEmptyStr(c.vmStatus, "creating")}, nil
+}
+func (c *targetCloud) GetFloatingIP(_ context.Context, id string) (*provision.FloatingIP, error) {
+	if id == c.releasedFIP {
+		return nil, clerrors.New(clerrors.CodeNotFound, "gone", "")
+	}
+	return &provision.FloatingIP{ID: id}, nil
 }
 func (c *targetCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 	c.fipTries++
@@ -124,6 +132,47 @@ func TestDestroyTargeted_ReleasesFIPFromState(t *testing.T) {
 	}
 }
 
+// The destroy message explains how to verify a missing floating-IP receipt
+// in either language. The receipt remains available for that check.
+func TestDestroyTargeted_MissingAddressReceiptInBothLanguages(t *testing.T) {
+	original := i18n.Lang()
+	t.Cleanup(func() { i18n.SetLang(original) })
+	const vmID = "0000a1a1-0000-4000-8000-000000000001"
+	for _, tc := range []struct{ lang, guidance string }{
+		{i18n.EN, "The receipt was kept. Check the request and address ID in the cloud"},
+		{i18n.RU, "Квитанция сохранена. Перед решением об освобождении сверьте запрос и ID адреса в облаке"},
+	} {
+		t.Run(tc.lang, func(t *testing.T) {
+			i18n.SetLang(tc.lang)
+			cloud := &fipNameCloud{}
+			r, dir := targetRegistry(t, cloud)
+			path := state.DefaultPath(dir)
+			receipt := state.LostFloatingIP{Name: "missing-address", ProjectID: "p", VMID: vmID, VMName: "web", RequestedAt: time.Unix(1792000000, 0).UTC()}
+			foreign := receipt
+			foreign.Name, foreign.ProjectID = "foreign-address", "other"
+			if err := state.Write(path, &state.File{LostFloatingIPs: []state.LostFloatingIP{receipt, foreign}}); err != nil {
+				t.Fatal(err)
+			}
+			text, failed := r.handlers["destroy"](t.Context(), map[string]any{"vm_id": vmID, "confirmed": true})
+			var answer struct {
+				Message        string
+				CleanupPending bool `json:"cleanup_pending"`
+			}
+			if err := json.Unmarshal([]byte(text), &answer); err != nil || failed || !answer.CleanupPending {
+				t.Fatalf("expected outstanding address cleanup, got %s", text)
+			}
+			if !strings.Contains(answer.Message, tc.guidance) || !strings.Contains(answer.Message, receipt.Name) ||
+				strings.Contains(text, foreign.Name) || cloud.releasedFIP != "" {
+				t.Errorf("expected verification of the missing address before release: %s", text)
+			}
+			sf, err := state.Read(path)
+			if err != nil || len(sf.LostFloatingIPs) != 2 || sf.LostFloatingIPs[0] != receipt || sf.LostFloatingIPs[1] != foreign {
+				t.Errorf("receipts after destroy: %v (%v)", sf, err)
+			}
+		})
+	}
+}
+
 // A VM still being created: a clear "come back later", nothing deleted.
 func TestDestroyTargeted_NotDeletableYet(t *testing.T) {
 	cloud := &targetCloud{deleteErr: clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
@@ -166,6 +215,15 @@ func (c *goneCloud) DeleteFloatingIP(_ context.Context, id, _ string) error {
 func TestDestroyTargeted_AlreadyGoneCleansState(t *testing.T) {
 	cloud := &goneCloud{}
 	r, dir := targetRegistry(t, cloud)
+	path := state.DefaultPath(dir)
+	initial, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial.Deployments[0].ProjectID = "p"
+	if err := state.Write(path, initial); err != nil {
+		t.Fatal(err)
+	}
 	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
 	if isErr || !strings.Contains(text, `"status": "already_deleted"`) || !strings.Contains(text, "already deleted") {
 		t.Fatalf("answer = %s", text)
@@ -267,14 +325,14 @@ func TestDestroyTargeted_RecordOfAnotherProject(t *testing.T) {
 // created or changing state … call again in a minute» for a VM read in
 // error_deleting, which will not go by itself. The answer names the state
 // it read and the way out (engine.DeleteWayOut, as the CLI destroy), and
-// the floating IP that stays billed: released with evo vpc fip-release
-// once the VM is gone. The VM's FIP is not touched.
+// the floating IP that may still be billed. The MCP path uses the release
+// tool after checking the outcome. The VM's FIP is not touched.
 func TestDestroyTargeted_RefusedForGoodNamesTheWayOutAndTheFIP(t *testing.T) {
 	cloud := &targetCloud{vmStatus: "error_deleting", deleteErr: clerrors.Wrap(clerrors.CodeAPIError, "API returned status 409", "",
 		&provision.StatusError{Status: 409, Body: `{"code":"vm_can_not_be_deleted"}`})}
 	r, _ := targetRegistry(t, cloud)
 	text, isErr := r.handlers["destroy"](context.Background(), map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true})
-	for _, want := range []string{"error_deleting", "support", "fip-release", "fip-1"} {
+	for _, want := range []string{"error_deleting", "support", "release_floating_ip", "fip-1"} {
 		if !isErr || !strings.Contains(text, want) {
 			t.Errorf("answer does not say %q: %s", want, text)
 		}
@@ -285,4 +343,11 @@ func TestDestroyTargeted_RefusedForGoodNamesTheWayOutAndTheFIP(t *testing.T) {
 	if cloud.fipTries != 0 {
 		t.Errorf("FIP touched while the VM still exists")
 	}
+	// An explicit decision to keep the address still applies on refusal.
+	args := map[string]any{"vm_id": "0000a1a1-0000-4000-8000-000000000001", "confirmed": true, "release_ip": false}
+	text, isErr = r.handlers["destroy"](context.Background(), args)
+	if !isErr || !strings.Contains(text, "fip-1") || strings.Contains(text, "release_floating_ip") || cloud.fipTries != 0 {
+		t.Errorf("refused VM deletion with release_ip=false: %s, address deletes=%d", text, cloud.fipTries)
+	}
+
 }

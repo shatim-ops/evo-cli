@@ -88,8 +88,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return nil, 0, fmt.Errorf(i18n.T("nlb request failed: %w", "запрос к nlb не удался: %w"), err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
-	return data, resp.StatusCode, nil
+	return httpretry.ReadAPIResponse(req, resp, 0)
 }
 
 func apiError(status int, body []byte) error {
@@ -108,6 +107,7 @@ func apiError(status int, body []byte) error {
 // carries next_page_token, the next request sends it as page_token).
 func (c *Client) getList(ctx context.Context, path, field string) ([]map[string]any, error) {
 	var items []map[string]any
+	var progress pager.ItemProgress
 	err := pager.All("nlb: "+field, func(token string) (string, error) {
 		q := url.Values{}
 		if c.projectID != "" {
@@ -120,22 +120,17 @@ func (c *Client) getList(ctx context.Context, path, field string) ([]map[string]
 		if err != nil {
 			return "", err
 		}
-		if status < 200 || status >= 300 {
-			return "", apiError(status, data)
+		if err := pager.PageStatus(status, data, token != "", apiError); err != nil {
+			return "", err
 		}
-		var out map[string]json.RawMessage
-		if err := json.Unmarshal(data, &out); err != nil {
-			return "", fmt.Errorf(i18n.T("parse %s: %w", "разбор %s: %w"), field, err)
+		page, next, err := pager.ObjectPage[map[string]any](data, field, "next_page_token")
+		if err != nil {
+			return "", err
 		}
-		var page []map[string]any
-		if raw, ok := out[field]; ok {
-			_ = json.Unmarshal(raw, &page)
+		if err := pager.CheckProgress(&progress, page, next, pager.ObjectID); err != nil {
+			return "", err
 		}
 		items = append(items, page...)
-		var next string
-		if raw, ok := out["next_page_token"]; ok {
-			_ = json.Unmarshal(raw, &next)
-		}
 		return next, nil
 	})
 	if err != nil {

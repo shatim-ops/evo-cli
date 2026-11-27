@@ -28,7 +28,7 @@ type lostBootFIPCloud struct {
 }
 
 func (c *lostBootFIPCloud) CreateFloatingIP(_ context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
-	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-lost", Name: req.Name, IPAddress: "203.0.113.7", State: "available"})
+	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-lost", Name: req.Name, Description: req.Description, IPAddress: "203.0.113.7", State: "available"})
 	return nil, errors.New("cannot reach Cloud.ru API: connection reset")
 }
 func (c *lostBootFIPCloud) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
@@ -70,7 +70,7 @@ type cancelledBootFIPCloud struct {
 }
 
 func (c *cancelledBootFIPCloud) CreateFloatingIP(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
-	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-cancelled", Name: req.Name, IPAddress: "203.0.113.8", State: "available"})
+	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-cancelled", Name: req.Name, Description: req.Description, IPAddress: "203.0.113.8", State: "available"})
 	c.cancel()
 	return nil, ctx.Err()
 }
@@ -107,7 +107,7 @@ type lateBootFIPCloud struct {
 }
 
 func (c *lateBootFIPCloud) CreateFloatingIP(ctx context.Context, req provision.CreateFloatingIPRequest) (*provision.FloatingIP, error) {
-	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-late", Name: req.Name, IPAddress: "203.0.113.9", State: "available"})
+	c.fips = append(c.fips, &provision.FloatingIP{ID: "fip-late", Name: req.Name, Description: req.Description, IPAddress: "203.0.113.9", State: "available"})
 	c.created = true
 	c.cancel()
 	return nil, ctx.Err()

@@ -206,6 +206,16 @@ func ShowStatus(p *output.Printer, st DeploymentStatus, refreshed bool) {
 	rows = append(rows,
 		[]string{i18n.T("VM ID", "ID ВМ"), shown.VMID},
 		[]string{i18n.T("VM IP", "IP ВМ"), shown.VMIP},
+	)
+	if shown.FloatingIPID != "" {
+		// VMIP can describe a replacement address while FloatingIPID still
+		// names the original resource awaiting cleanup.
+		rows = append(rows, []string{
+			i18n.T("Recorded floating IP", "Плавающий IP по квитанции"),
+			i18n.Tf("ID %q (address not verified)", "ID %q (адрес не проверен)", shown.FloatingIPID),
+		})
+	}
+	rows = append(rows,
 		[]string{"Flavor", recordFlavorText(&shown)},
 		[]string{i18n.T("Region", "Зона"), recordZoneText(&shown)},
 		[]string{i18n.T("Status", "Состояние"), shown.Status},

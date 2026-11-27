@@ -384,6 +384,12 @@ func New(factory EngineFactory) *Registry {
 		t.Decl = decls[t.Name]
 		t.Group = groupOf(t.Name)
 		t.Mutating = isMutating(*t)
+		t.InputSchema["additionalProperties"] = false
+		if !takesConsent(*t) {
+			// checkArgs accepts and ignores confirmed on these tools. Keep
+			// it outside properties, which declares actual consent gates.
+			t.InputSchema["patternProperties"] = map[string]any{"^confirmed$": true}
+		}
 		if takesConsent(*t) && t.Decl.PartialConsent == nil {
 			t.Description += " " + consentText(t.Name)
 		}

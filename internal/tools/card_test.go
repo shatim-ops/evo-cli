@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -43,13 +44,73 @@ func TestGroupCards_CoverEveryToolFromTheDeclarations(t *testing.T) {
 			t.Errorf("%s: the card does not say to wait with %s_operation", g, g)
 		}
 		for _, form := range []string{"confirmed", "--yes"} {
-			if strings.Contains(card, form) {
+			// The history result cleanup_unconfirmed is a verdict, not a consent argument.
+			if strings.Contains(strings.ReplaceAll(card, "`check_result: cleanup_unconfirmed`", ""), form) {
 				t.Errorf("%s: the card carries %q — consent is the evo skill's rule, one place", g, form)
 			}
 		}
 	}
 	if _, ok := GroupCard("no-such-group"); ok {
 		t.Error("a card for a group that is not there")
+	}
+}
+
+// Scope checks to this status. Neither the preceding VM/DB examples nor
+// the other history outcomes assign work on a local cleanup receipt.
+func unconfirmedCleanupNote(card string) string {
+	for _, line := range strings.Split(card, "\n") {
+		if _, clause, found := strings.Cut(strings.ToLower(line), "`check_result: cleanup_unconfirmed`"); found {
+			note, _, _ := strings.Cut(clause, "other values:")
+			return strings.TrimSpace(strings.ReplaceAll(note, "`", ""))
+		}
+	}
+	return ""
+}
+
+func TestAuthCard_HandsLocalReceiptToTheOwner(t *testing.T) {
+	person := `(?:the )?(?:person|owner|user|operator)`
+	approval := regexp.MustCompile(`\b(?:with ` + person + `'s (?:approval|consent)|(?:after|once) ` + person + ` (?:approves|consents)|with (?:approval|consent) from ` + person + `)\b`)
+	check := `(?:check|verify|inspect|review|confirm|resolve) (?:it|(?:the |that )?(?:local )?receipt)\b`
+	handoff := regexp.MustCompile(`(?:^|[,;:])\s*(?:(?:ask|tell|have) ` + person + ` (?:to )?|(?:only )?` + person + ` (?:must|should|may|can) )` + check + ` (?:in|from) (?:the )?(?:original|same) state (?:directory|folder)\b`)
+	selfCheck := regexp.MustCompile(`\b(?:agent|assistant) (?:may |can |should |must |also |independently |itself )*` + check)
+	bypass := regexp.MustCompile(`^\s*(?:otherwise[, ]+)?(?:proceed|continue|follow (?:its|the) cleanup hint) without (?:it|` + person + `'s (?:approval|consent)|(?:approval|consent))\b`)
+	for _, terminal := range []bool{false, true} {
+		card, ok := groupCard("auth", terminal, nil, false)
+		if !ok {
+			t.Fatal("missing auth card")
+		}
+		note := unconfirmedCleanupNote(card)
+		for _, want := range []string{"floating ip", "port rule", "live"} {
+			if !strings.Contains(note, want) {
+				t.Errorf("terminal=%t: cleanup note omits %q", terminal, want)
+			}
+		}
+		// Checking the VM's address and rules is an ordinary read. Approval for
+		// following the cleanup hint does not delegate local evidence to the agent.
+		approved, ownerChecks, previousReceipt := false, false, false
+		for _, sentence := range strings.FieldsFunc(note, func(r rune) bool { return r == '.' || r == ';' }) {
+			if strings.Contains(sentence, "cleanup hint") && approval.MatchString(sentence) {
+				approved = true
+			}
+			if bypass.MatchString(sentence) {
+				t.Errorf("terminal=%t: cleanup may proceed without consent: %s", terminal, sentence)
+			}
+			mentionsReceipt := strings.Contains(sentence, "receipt")
+			// “The agent may check it” can refer to the preceding sentence's receipt.
+			if (mentionsReceipt || previousReceipt) && selfCheck.MatchString(sentence) {
+				t.Errorf("terminal=%t: the card assigns the local receipt to the agent: %s", terminal, sentence)
+			}
+			if mentionsReceipt && handoff.MatchString(sentence) {
+				ownerChecks = true
+			}
+			previousReceipt = mentionsReceipt
+		}
+		if !approved {
+			t.Errorf("terminal=%t: following the cleanup hint must require the person's approval", terminal)
+		}
+		if !ownerChecks {
+			t.Errorf("terminal=%t: the person must check the local receipt in the original state directory", terminal)
+		}
 	}
 }
 
@@ -86,5 +147,38 @@ func TestGroupCards_PrintTheirNotes(t *testing.T) {
 	}
 	if card, _ := GroupCard("vm"); strings.Contains(card, "## Notes") {
 		t.Errorf("vm: a Notes section with no notes:\n%s", card)
+	}
+}
+
+// The operator and the agent both need to interpret a history row without
+// consulting another document. Inspect the note containing the actual status.
+func TestAuthCard_ExplainsUnconfirmedCleanup(t *testing.T) {
+	// Test the positive relationship between the history row and the live
+	// collection. Seeing either word elsewhere does not describe retention.
+	row := `(?:(?:partial destroy|history) (?:row|entry)|partial destroy|row|entry)`
+	retained := regexp.MustCompile(`^(?:(?:keeps|retains) (?:a|the) ` + row + `|(?:a|the) ` + row + ` (?:remains|stays)) in live\b`)
+	action := regexp.MustCompile(`(?:^|[.;:])\s*(?:(?:retry|repeat|rerun|re-run|run|call|use)\b[^.;\n]{0,65}\b(?:destroy|vm_delete|receipts?|cleanup)\b|(?:check|verify|inspect|review)\b[^.;\n]{0,65}\b(?:address|ip|rules?|receipts?|billing|cleanup)\b)`)
+	for _, terminal := range []bool{true, false} {
+		card, ok := groupCard("auth", terminal, nil, false)
+		if !ok {
+			t.Fatal("missing auth card")
+		}
+		note := unconfirmedCleanupNote(card)
+		if note == "" {
+			t.Errorf("terminal=%t: missing cleanup_unconfirmed", terminal)
+			continue
+		}
+		if !retained.MatchString(note) {
+			t.Errorf("terminal=%t: cleanup_unconfirmed must say the partial destroy is kept in live: %s", terminal, note)
+		}
+		if !strings.Contains(note, "rule") {
+			t.Errorf("terminal=%t: missing remaining rule: %s", terminal, note)
+		}
+		if !strings.Contains(note, "address") && !strings.Contains(note, "floating ip") {
+			t.Errorf("terminal=%t: missing remaining address: %s", terminal, note)
+		}
+		if !action.MatchString(note) {
+			t.Errorf("terminal=%t: missing recovery action and target for cleanup_unconfirmed: %s", terminal, note)
+		}
 	}
 }

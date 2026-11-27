@@ -5,14 +5,37 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"sort"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/clock"
 )
+
+// A public operation rejects an oversized wait. An internal call without
+// input validation still cannot inherit ca_delete's longer CLI wait.
+func TestOperation_WaitSecondsStopsAt45(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		reg := New(nil)
+		tool, _ := reg.Lookup("vpc_operation")
+		args := map[string]any{"operation_id": contractID, "wait_seconds": 120}
+		if err := CheckArgs(tool, args); err == nil || !strings.Contains(err.Error(), "wait_seconds") {
+			t.Fatalf("oversized public operation wait: %v", err)
+		}
+		start := time.Now()
+		text, isErr := reg.operation(t.Context(), tool.Name, args, func(context.Context) (any, error) {
+			return map[string]any{"id": contractID, "done": false}, nil
+		})
+		var got map[string]any
+		if isErr || json.Unmarshal([]byte(text), &got) != nil || got["id"] != contractID || got["done"] != false || got["still_running"] != true || !time.Now().Equal(start.Add(45*time.Second)) {
+			t.Fatalf("oversized operation wait returned after %s: %s", time.Since(start), text)
+		}
+	})
+}
 
 // Every *_operation of the registry answers through operation, with the
 // reads of its resource declared in operationReads; each read is a tool of

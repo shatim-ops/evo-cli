@@ -1532,7 +1532,7 @@ var toolsRU = map[string]toolRU{
 		Short: "Удалить приложение Container Apps (асинхронно)",
 		Long:  "Удалить приложение Container Apps по имени. Операция асинхронная.",
 		Args: map[string]string{
-			"wait": deleteWaitRU,
+			"wait": "По умолчанию ждать до 45 с. При явном ожидании — до 2 минут в CLI и до 45 с в MCP. При false вернуть deleting сразу после принятия запроса. При deleting проверяйте то же приложение командой evo ca get <имя> до NOT_FOUND.",
 			"name": "Имя приложения",
 		},
 	},

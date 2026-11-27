@@ -6,6 +6,7 @@ package pager
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -187,5 +188,42 @@ func TestAll_EmptyPageMidListIsNotTheEnd(t *testing.T) {
 	})
 	if err != nil || strings.Join(got, ",") != "a,b" {
 		t.Fatalf("got %q, err %v; want a,b — All stopped at the empty page and cut the list", got, err)
+	}
+}
+
+func TestItemProgress_PreservesPartialOverlapAndUnknownKeys(t *testing.T) {
+	var progress ItemProgress
+	ids := func(ids ...string) []map[string]any {
+		var rows []map[string]any
+		for _, id := range ids {
+			rows = append(rows, map[string]any{"id": id})
+		}
+		return rows
+	}
+	for _, page := range []struct {
+		token string
+		rows  []map[string]any
+	}{
+		{"1", ids("old")}, {"2", nil}, {"3", ids("old", "new")}, {"4", ids("new", "")},
+	} {
+		if err := CheckProgress(&progress, page.rows, page.token, ObjectID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := CheckProgress(&progress, ids("new", "old"), "5", ObjectID)
+	if !errors.Is(err, errIncomplete) {
+		t.Fatalf("fresh token with no new IDs: %v", err)
+	}
+}
+
+func TestNamedKeepsParseContextAndCause(t *testing.T) {
+	cause := Incomplete("null page")
+	err := Named("service: clusters", fmt.Errorf("parse clusters: %w", cause))
+	if !strings.Contains(err.Error(), "service: clusters: parse clusters:") || !errors.Is(err, cause) {
+		t.Fatalf("lost parse context or cause: %v", err)
+	}
+	var coded *clierrors.CLIError
+	if !errors.As(err, &coded) || coded.Code != cause.Code || coded.Hint != cause.Hint {
+		t.Fatalf("lost reason or hint: %v", err)
 	}
 }

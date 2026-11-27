@@ -182,6 +182,17 @@ func TestPreview_NamesWhatTheWriteSends(t *testing.T) {
 			for _, sv := range writeSent(wr) {
 				path, value := sv.path, sv.value
 				key := c.tool.Name + " " + path
+				// The API stores the create receipt in description. Only this
+				// generated value is independent of the person's choices.
+				if path == "description" && strings.HasPrefix(wr, fipCreateWrite) {
+					if (c.tool.Name == "deploy" || c.tool.Name == "deploy_apply" || c.tool.Name == "provision") && fipReceiptValue.MatchString(value) {
+						byClass[unnamedNoise]++
+						continue
+					}
+					// A different FIP description must be named in the preview;
+					// deploy's separate SG-rule description exception is unrelated.
+					key = c.tool.Name + " floating_ip.description"
+				}
 				last := path[strings.LastIndex(path, ".")+1:]
 				if d, ok := bodyUnnamed[key]; ok && d.class == unnamedSecret {
 					seen[key] = true

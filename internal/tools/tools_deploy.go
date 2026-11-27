@@ -287,6 +287,14 @@ func recordDeployment(stateDir string, maker *state.Maker, plan *deployplan.Plan
 		// An adopted VM opens nothing now: the rules an earlier apply
 		// created stay with it, so destroy still deletes them.
 		if old := sf.FindDeployment(res.VMID); old != nil {
+			if len(old.OpenedRules) > 0 {
+				if old.VMID != rec.VMID || old.ProjectID != "" && old.ProjectID != rec.ProjectID {
+					return clierrors.New(clierrors.CodeConfigInvalid, i18n.T("The saved port rules belong to another VM or project.", "Сохранённые правила портов относятся к другой ВМ или проекту."), "")
+				}
+				// An apply retry does not change who opened the saved rules
+				// or establish the missing project of a legacy receipt.
+				rec.CreatedBy, rec.ProjectID = old.CreatedBy, old.ProjectID
+			}
 			rec.CreatedAt = old.CreatedAt
 			// A retry that could not read the VM's interface returns no
 			// floating IP: the one recorded before stays, else destroy
@@ -305,20 +313,16 @@ func recordDeployment(stateDir string, maker *state.Maker, plan *deployplan.Plan
 			rec.OpenedRules = mergeRules(old.OpenedRules, rec.OpenedRules)
 		}
 		sf.UpsertDeployment(rec)
-		// The VM's floating IP whose create got no answer keeps its mark,
-		// for destroy, doctor and the repeat's question; an address the
-		// apply has now ends the marks of its VM name (D107; «Риск»,
-		// conclusion 180, У3).
-		// A mark a person answered stays: the address the apply has now may
-		// be the second one (Т4 of conclusion 180; conclusion 205).
+		// A lost request stays open until this apply identifies the address of
+		// that same attempt. An unrelated address on the VM closes no receipt.
 		switch {
 		case res.LostFloatingIP != "":
-			floatingip.Note(sf, state.LostFloatingIP{Name: res.LostFloatingIP, ProjectID: plan.ProjectID, VMName: plan.VM.Name,
+			floatingip.Note(sf, state.LostFloatingIP{Name: res.LostFloatingIP, Attempt: res.FIPReceipt.Attempt, ProjectID: plan.ProjectID, VMName: plan.VM.Name,
 				VMID: res.VMID, RequestedAt: clock.Now(), CreatedBy: maker})
-		case res.FloatingIPID != "":
+		case res.FIPReceipt.ID != "" && res.FIPReceipt.ID == res.FloatingIPID:
 			for _, m := range floatingip.Of(sf, plan.ProjectID, plan.VM.Name, res.VMID) {
-				if !m.Answered {
-					floatingip.Forget(sf, plan.ProjectID, m.Name)
+				if m.Name == res.FIPReceipt.Name && m.Attempt != "" && m.Attempt == res.FIPReceipt.Attempt {
+					floatingip.Forget(sf, m)
 				}
 			}
 		}
@@ -438,9 +442,8 @@ func (s *Registry) applyDeployPlan(ctx context.Context, args map[string]any, eng
 	// After a person's yes the address of a lost create may still come:
 	// the new one bears another name («Риск», conclusion 205).
 	if sf, err := state.Read(state.DefaultPath(eng.StateDir)); err == nil {
-		if name := provision.FitName(plan.VM.Name, "-fip"); floatingip.NameFor(sf, plan.ProjectID, name, clock.Now()) != name {
-			plan.FloatingIPName = floatingip.NameFor(sf, plan.ProjectID, name, clock.Now())
-		}
+		plan.LostFIPs = floatingip.Of(sf, plan.ProjectID, plan.VM.Name, "")
+		plan.FloatingIPName = floatingip.NameFor(sf, plan.ProjectID, provision.FitName(plan.VM.Name, "-fip"), clock.Now())
 	}
 	res, err := deployplan.ApplyWithTimeout(ctx, eng.Cloud, plan, eng.VMPollTimeout(), until, show)
 	var foreign *deployplan.ForeignVMError

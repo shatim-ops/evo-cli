@@ -123,7 +123,7 @@ func (c *sleptDiskCloud) ListDisks(context.Context, string) ([]map[string]any, e
 func TestDiskWait_GoesOnAfterOneRefusedToken(t *testing.T) {
 	cloud := &sleptDiskCloud{}
 	eng := &engine.Engine{Cloud: cloud, Timings: engine.Timings{VMPollInterval: time.Millisecond, VMPollTimeout: time.Second}}
-	if err := waitDiskAvailable(context.Background(), eng, "d-1", "p"); err != nil {
+	if _, err := waitDiskAvailable(context.Background(), eng, "d-1", "p"); err != nil {
 		t.Fatalf("the disk wait ends at the refused token: %v", err)
 	}
 	if cloud.polls < 3 {
