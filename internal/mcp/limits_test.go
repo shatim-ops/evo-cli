@@ -5,9 +5,17 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/shatim-ops/evo-cli/internal/httpretry"
 )
 
 // Limits of the descriptions in tools/list that some MCP clients cut to
@@ -90,4 +98,69 @@ func propertyDescriptions(path string, schema map[string]any, f func(path, descr
 			propertyDescriptions(at, sub, f)
 		}
 	}
+}
+
+// One slow delete occupies the last available HTTP call slot. After 45 seconds
+// its session stays open, but another session can use that slot for a read.
+func TestCAWait_HTTPBudgetFreesSlotForAnotherSession(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		deletes, reads := 0, 0
+		old := httpretry.DefaultBase
+		httpretry.DefaultBase = roundTripper(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path != "/v2/containers/web" {
+				return nil, fmt.Errorf("unexpected app path %q", r.URL.Path)
+			}
+			var body string
+			switch r.Method {
+			case http.MethodDelete:
+				deletes++
+				body = `{"done":false}`
+			case http.MethodGet:
+				reads++
+				body = `{"name":"web","status":"DELETING"}`
+			default:
+				return nil, fmt.Errorf("unexpected app method %s", r.Method)
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+		})
+		defer func() { httpretry.DefaultBase = old }()
+
+		h := NewHTTPHandler(provisionServer(t, &provisionCloud{}), HTTPOptions{})
+		defer h.Close()
+		h.calls = make(chan struct{}, 1)
+		writer, reader := h.newSession(), h.newSession()
+		call := func(ctx context.Context, session, params string) bool {
+			req := &rpcRequest{JSONRPC: "2.0", Method: "tools/call", ID: json.RawMessage("1"), Params: json.RawMessage(params)}
+			answer, _ := h.dispatch(ctx, session, req)
+			result, ok := answer.Result.(map[string]any)
+			return ok && result["isError"] == false
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+		var accepted bool
+		go func() {
+			defer close(done)
+			accepted = call(ctx, writer, `{"name":"ca_delete","arguments":{"name":"web","wait":true,"confirmed":true}}`)
+		}()
+		defer func() { cancel(); <-done }()
+		synctest.Wait()
+		if deletes != 1 || len(h.calls) != 1 {
+			t.Fatalf("active call: deletes=%d, slots in use=%d", deletes, len(h.calls))
+		}
+		time.Sleep(45 * time.Second)
+		synctest.Wait()
+		select {
+		case <-done:
+		default:
+			t.Fatal("the delete still holds the HTTP call at the 45-second budget")
+		}
+		if !accepted || len(h.calls) != 0 {
+			t.Fatalf("expired wait: success=%v, slots in use=%d", accepted, len(h.calls))
+		}
+		before := reads
+		if !call(t.Context(), reader, `{"name":"ca_get","arguments":{"name":"web"}}`) || reads != before+1 || deletes != 1 {
+			t.Fatalf("other session: additional reads=%d, total deletes=%d", reads-before, deletes)
+		}
+	})
 }

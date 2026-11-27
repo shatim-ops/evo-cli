@@ -1416,7 +1416,7 @@ evo ca delete <name> [flags]
 
 ```
   -h, --help   Справка по delete
-      --wait   Без параметра — ждать до ~45 с. true — ждать исчезновения приложения, false — вернуть deleting сразу после принятия запроса. При deleting проверяйте приложение командой evo ca get <имя> до NOT_FOUND.
+      --wait   По умолчанию ждать до 45 с. При явном ожидании — до 2 минут в CLI и до 45 с в MCP. При false вернуть deleting сразу после принятия запроса. При deleting проверяйте то же приложение командой evo ca get <имя> до NOT_FOUND.
 ```
 
 ### Options inherited from parent commands

@@ -21,7 +21,7 @@ import (
 
 func TestP77H14Families(t *testing.T) {
 	for _, wire := range []string{"stdio", "http"} {
-		for _, tool := range []string{"ar_operation", "cert_operation", "dns_operation", "k8s_operation", "kafka_operation", "lb_operation", "pg_operation", "redis_operation", "vpc_operation", "ca_delete_5s", "ca_delete_50s"} {
+		for _, tool := range []string{"ar_operation", "cert_operation", "dns_operation", "k8s_operation", "kafka_operation", "lb_operation", "pg_operation", "redis_operation", "vpc_operation", "ca_delete_5s", "ca_delete_50s", "ca_delete_visible", "ca_delete_blocked_get", "ca_delete_slow_preflight", "ca_delete_wait_false"} {
 			t.Run(wire+"/"+tool, func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
 					const id = "00000000-0000-4000-8000-000000000031"
@@ -32,6 +32,7 @@ func TestP77H14Families(t *testing.T) {
 					}
 					readyAt := start.Add(readyAfter)
 					reads, writes := 0, 0
+					continuation := false
 					old := httpretry.DefaultBase
 					httpretry.DefaultBase = roundTripper(func(r *http.Request) (*http.Response, error) {
 						status := 200
@@ -47,7 +48,18 @@ func TestP77H14Families(t *testing.T) {
 								body = `{"id":"` + id + `","done":false}`
 							case "GET":
 								reads++
-								if writes > 0 && done {
+								if writes == 0 && tool == "ca_delete_slow_preflight" {
+									time.Sleep(12 * time.Second)
+								}
+								if writes > 0 && !continuation && tool == "ca_delete_blocked_get" {
+									<-r.Context().Done()
+									return nil, r.Context().Err()
+								}
+								if tool == "ca_delete_visible" && time.Now().After(start.Add(2*time.Minute)) {
+									// Fail a broken unbounded waiter without spinning forever in virtual time.
+									return nil, fmt.Errorf("still polling the visible app after two minutes")
+								}
+								if writes > 0 && done && tool != "ca_delete_visible" {
 									status = 404
 									body = `{"message":"not found"}`
 								} else {
@@ -73,10 +85,33 @@ func TestP77H14Families(t *testing.T) {
 						defer handler.Close()
 					}
 					if strings.HasPrefix(tool, "ca_delete_") {
-						result := h14AuditCall(t, server, handler, "ca_delete", map[string]any{"name": "web", "confirmed": true, "wait": true})
-						t.Logf("wait=true; resource gone at %s: t=%s status=%v next_tool=%v DELETE=%d", readyAfter, time.Since(start), result["status"], result["next_tool"], writes)
-						if result["status"] != "deleted" || writes != 1 || time.Now().Before(readyAt) {
-							t.Errorf("expected one complete delete after %s", readyAfter)
+						wait := tool != "ca_delete_wait_false"
+						result := h14AuditCall(t, server, handler, "ca_delete", map[string]any{"name": "web", "confirmed": true, "wait": wait})
+						t.Logf("wait=%v: elapsed=%s status=%v next_tool=%v DELETE=%d", wait, time.Since(start), result["status"], result["next_tool"], writes)
+						if writes != 1 || result["name"] != "web" || result["operation_id"] != id || time.Now().After(start.Add(45*time.Second)) {
+							t.Fatalf("expected a single acknowledged delete within the call budget: %v", result)
+						}
+						if tool == "ca_delete_5s" {
+							if result["status"] != "deleted" || time.Now().Before(readyAt) || result["next_tool"] != nil {
+								t.Fatalf("expected service-confirmed disappearance: %v", result)
+							}
+							return
+						}
+						if wait && time.Now().Before(start.Add(40*time.Second)) {
+							t.Fatal("the explicit wait gave up while the call still had time")
+						}
+						if !wait && (!time.Now().Equal(start) || reads != 1) {
+							t.Fatalf("wait=false polled after acceptance: reads=%d elapsed=%s", reads, time.Since(start))
+						}
+						next, _ := result["next_args"].(map[string]any)
+						if result["status"] != "deleting" || result["next_tool"] != "ca_get" || len(next) != 1 || next["name"] != "web" {
+							t.Fatalf("expected a read of the same app after one delete: %v", result)
+						}
+						continuation = true
+						before := reads
+						card := h14AuditCall(t, server, handler, result["next_tool"].(string), next)
+						if card["name"] != "web" || card["status"] != "DELETING" || reads != before+1 || writes != 1 {
+							t.Fatalf("continuation returned %v after %d more GETs and %d DELETEs", card, reads-before, writes)
 						}
 						return
 					}

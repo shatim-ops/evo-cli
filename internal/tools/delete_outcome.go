@@ -11,6 +11,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	clierrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
@@ -18,8 +19,8 @@ import (
 
 // A delete answers how it ended, not only that it started (D74, as D66 for
 // dns_zone_delete; axis 3: «deleted» is a resource that is gone). The
-// delete reads its operation for up to opWaitMaxSeconds, within the call's
-// budget (D69), the same in the CLI and in MCP: done is deleted, an error is
+// delete reads its operation within the call's budget (D69):
+// done is deleted, an error is
 // a refusal with Cloud.ru's text, a wait the caller cancelled is
 // INTERRUPTED naming the delete already started, an operation still
 // running — or one that cannot be read — is deleting with the tool that
@@ -61,13 +62,20 @@ func deleteOutcome(ctx context.Context, args map[string]any, w deleteWatch) (str
 	if waitOff(args) {
 		return deleting(fields, w)
 	}
-	// Container Apps has no operation ID to poll. With explicit wait=true,
-	// poll the same app until it disappears, sending DELETE only once.
 	wait := deleteOutcomeWait
+	readCtx := ctx
 	if w.tool == "ca_delete" && boolArg(args, "wait", false) {
-		wait = opWaitUntilGone
+		wait = int(2 * time.Minute / time.Second)
+		if _, mcp := budgetLeft(ctx); mcp {
+			wait = opWaitMaxSeconds
+		}
+		// A GET started near the end of the polling window must end with it.
+		// Only the outcome reads inherit this deadline; DELETE has already returned.
+		var cancel context.CancelFunc
+		readCtx, cancel = context.WithTimeout(ctx, time.Duration(wait)*time.Second)
+		defer cancel()
 	}
-	m, err := waitForOpJSON(ctx, wait, w.read)
+	m, err := waitForOpJSON(readCtx, wait, w.read)
 	// A transport can return the MCP cancellation cause instead of context.Canceled.
 	// Only the caller's cancellation interrupts a started delete; a read timeout leaves it pending.
 	if err != nil && ctx.Err() == context.Canceled {
