@@ -14,7 +14,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/provision"
 )
 
-// NotFound also accepts VM_NOT_FOUND from older Compute adapters.
+// NotFound accepts an unclassified DELETE 404 to proceed to a verifying GET.
 func NotFound(err error) bool {
 	var cliErr *clerrors.CLIError
 	return provision.HTTPStatus(err) == http.StatusNotFound ||
@@ -34,14 +34,14 @@ func ServiceNotFound(err error) bool {
 // not settle a billed resource.
 func Gone(ctx context.Context, cloud provision.CloudAPI, id string) (bool, error) {
 	fip, err := cloud.GetFloatingIP(ctx, id)
-	if NotFound(err) {
+	if ServiceNotFound(err) {
 		return true, nil
 	}
 	if err != nil {
 		return false, err
 	}
 	if fip == nil || fip.ID != id {
-		return false, errors.New(i18n.T("floating IP read did not return the requested ID", "чтение floating IP не вернуло запрошенный ID"))
+		return false, clerrors.New(clerrors.CodeAPIError, i18n.T("The service did not return the requested floating IP ID. Its release is unconfirmed.", "Сервис не вернул запрошенный ID плавающего IP. Освобождение не подтверждено."), "")
 	}
 	return false, nil
 }

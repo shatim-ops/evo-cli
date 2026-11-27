@@ -3720,6 +3720,10 @@ func (s *Registry) planDestroyTargeted(ctx context.Context, args map[string]any,
 		}
 		if fipLeft && fipRec.FloatingIPID != "" {
 			out["floating_ip_id"] = fipRec.FloatingIPID
+			if stateErr == nil {
+				msg += i18n.T(". The deployment record keeps this address ID for the next cleanup attempt.",
+					". ID этого адреса сохранён в записи развёртывания для следующей попытки уборки.")
+			}
 		}
 		if fipLeft || extraPending || receiptPending || len(rules.Failed) > 0 || stateErr != nil || uncheckedErr != nil || len(lostMissing) > 0 {
 			out["cleanup_pending"] = true

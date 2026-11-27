@@ -408,6 +408,7 @@ func TestDestroy_OwnFloatingIPNeedsFinalRead(t *testing.T) {
 	}{
 		{"still visible", &provision.FloatingIP{ID: "fip-9", State: "deleting"}, nil},
 		{"read refused", nil, clerrors.New(clerrors.CodeAPIError, "read refused", "")},
+		{"unclassified 404", nil, clerrors.Wrap(clerrors.CodeAPIError, "refused", "", &provision.StatusError{Status: 404})},
 		{"empty response", nil, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

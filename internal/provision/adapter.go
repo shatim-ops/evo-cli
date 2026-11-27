@@ -325,17 +325,87 @@ func (a *CloudRuAdapter) CreateFloatingIP(ctx context.Context, req CreateFloatin
 // GetFloatingIP retrieves a floating IP by ID via GET /api/v1/floating-ips/{id}.
 func (a *CloudRuAdapter) GetFloatingIP(ctx context.Context, id string) (*FloatingIP, error) {
 	path := fmt.Sprintf("/api/v1/floating-ips/%s", seg(id))
-	resp, err := a.doWithRetry(ctx, http.MethodGet, path, nil)
+	resp, err := a.computeRequest(ctx, http.MethodGet, path, nil, verifyFloatingIPMissing)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	body, status, err := httpretry.ReadAPIResponse(resp.Request, resp, maxListBody)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The service did not return a complete floating IP card.", "Сервис не вернул полную карточку плавающего IP."), hintUnexpectedFormat())
+	}
 	var fip FloatingIP
-	if err := json.NewDecoder(resp.Body).Decode(&fip); err != nil {
+	if err := json.Unmarshal(body, &fip); err != nil {
 		return nil, clierrors.Wrap(clierrors.CodeAPIError, i18n.T("failed to decode floating IP response", "не удалось разобрать ответ с данными floating IP"), hintUnexpectedFormat(), err)
 	}
+	if fip.ID == "" || fip.ID != id {
+		return nil, clierrors.New(clierrors.CodeAPIError, i18n.T("The service did not return the requested floating IP ID. Its release is unconfirmed.", "Сервис не вернул запрошенный ID плавающего IP. Освобождение не подтверждено."), hintUnexpectedFormat())
+	}
 	return &fip, nil
+}
+
+func verifyFloatingIPMissing(req *http.Request, resp *http.Response) error {
+	defer resp.Body.Close()
+	body, _, err := httpretry.ReadAPIResponse(req, resp, maxErrorBody)
+	if err != nil {
+		return err
+	}
+	if resp.Header.Get("Content-Range") != "" || !floatingIPMissingReply(body) {
+		return clierrors.New(clierrors.CodeAPIError, i18n.T("The service did not confirm this floating IP is absent.", "Сервис не подтвердил отсутствие этого плавающего IP."), hintUnexpectedFormat())
+	}
+	return nil
+}
+
+// A complete 404 on GET of the recorded address must describe a missing
+// resource. A gateway route, a different resource code, or an ambiguous
+// body cannot settle a potentially billed address.
+func floatingIPMissingReply(body []byte) bool {
+	object := singleRefusalObject(body)
+	if object == nil {
+		return false
+	}
+	// Unmarshal alone would accept the last of two contradictory fields.
+	dec := json.NewDecoder(bytes.NewReader(object))
+	_, _ = dec.Token() // singleRefusalObject already verified the complete object.
+	fields := map[string]json.RawMessage{}
+	for dec.More() {
+		key, _ := dec.Token()
+		name := key.(string)
+		if _, duplicate := fields[name]; duplicate || name == "error_msg" {
+			return false
+		}
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return false
+		}
+		fields[name] = value
+	}
+	var message string
+	if json.Unmarshal(fields["message"], &message) != nil {
+		return false
+	}
+	message = strings.ToLower(strings.TrimSpace(message))
+	// Code 5 with "Not Found" comes from the gateway. Only the service's
+	// resource-specific form of that numeric error can settle the address.
+	code := fields["code"]
+	if string(code) == "5" {
+		return message == "resource not found"
+	}
+	if code != nil {
+		var value string
+		if json.Unmarshal(code, &value) != nil || value != "floating_ip_not_found" {
+			return false
+		}
+	}
+	switch message {
+	case "floating ip not found", "floating ip with this id is not found", "floatingip with this id is not found", "gone":
+		return true
+	}
+	return false
 }
 
 // maxErrorBody bounds how much of an error response is read into a message.
@@ -428,6 +498,11 @@ var computeRetry = httpretry.Policy{DropMethods: []string{http.MethodDelete}, Re
 // one retry loop of evo (process audit 1.2.1, 6.1) — and turns the final
 // answer into evo's errors.
 func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
+	return a.computeRequest(ctx, method, path, body, nil)
+}
+
+// verifyMissing is set by callers that use a 404 as proof of absence.
+func (a *CloudRuAdapter) computeRequest(ctx context.Context, method, path string, body []byte, verifyMissing func(*http.Request, *http.Response) error) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
@@ -460,6 +535,9 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		if resp.Request == nil {
+			resp.Request = req
+		}
 		return resp, nil
 
 	case resp.StatusCode == http.StatusTooManyRequests:
@@ -478,7 +556,11 @@ func (a *CloudRuAdapter) doWithRetry(ctx context.Context, method, path string, b
 
 	case resp.StatusCode == http.StatusNotFound:
 		var evidence error
-		if projectID, _ := ctx.Value(cleanupRuleReadKey{}).(string); projectID != "" && strings.HasSuffix(req.URL.Path, "/rules") {
+		if verifyMissing != nil {
+			if err := verifyMissing(req, resp); err != nil {
+				return nil, err
+			}
+		} else if projectID, _ := ctx.Value(cleanupRuleReadKey{}).(string); projectID != "" && strings.HasSuffix(req.URL.Path, "/rules") {
 			if ruleGroupMissingReply(resp) {
 				evidence = errRuleGroupMissing
 			}

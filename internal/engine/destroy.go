@@ -302,6 +302,15 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	// identified and the final GET confirms its removal.
 	lostReleased, lostMissing, extraErr := e.releaseLostAddresses(ctx, stateFile, active)
 
+	var addressHint string
+	switch {
+	case ipPending && active.FloatingIPID != "":
+		addressHint = i18n.T("The deployment record keeps this address ID. Run 'evo destroy' again in this directory and project to finish cleanup. Use 'evo cleanup receipts' for separate address requests whose creation was never confirmed.",
+			"ID этого адреса сохранён в записи развёртывания. Чтобы завершить уборку, повторите 'evo destroy' в том же каталоге и проекте. Отдельные заявки, для которых создание адреса не подтвердилось, показывает 'evo cleanup receipts'.")
+	case ipPending || extraErr != nil:
+		addressHint = FloatingIPReceiptHint()
+	}
+
 	if activeScanErr == nil && !ipPending && extraErr == nil {
 		completedScans = append(completedScans, active.ID)
 	}
@@ -356,8 +365,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 		if len(lostReleased) > 0 {
 			out["lost_floating_ips_released"] = lostReleased
 		}
-		if ipPending || extraErr != nil {
-			out["cleanup_hint"] = FloatingIPReceiptHint()
+		if addressHint != "" {
+			out["cleanup_hint"] = addressHint
 		}
 		if extraErr != nil {
 			out["warning"] = extraErr.Error()
@@ -370,8 +379,8 @@ func (e *Engine) Destroy(ctx context.Context, opts DestroyOptions) error {
 	if ipPending {
 		e.Printer.Warning(fipErr.Error())
 	}
-	if ipPending || extraErr != nil {
-		e.Printer.Warning(FloatingIPReceiptHint())
+	if addressHint != "" {
+		e.Printer.Warning(addressHint)
 	}
 	if cleanupPending {
 		e.Printer.Warning(i18n.T("Resource cleanup is incomplete.", "Уборка ресурсов не завершена."))
@@ -801,8 +810,8 @@ func (e *Engine) confirmFloatingIPReleased(ctx context.Context, id, ip string, a
 		return ctx.Err()
 	}
 	return clerrors.Wrap(clerrors.CodeAPIError,
-		i18n.Tf("Floating IP %s: release not confirmed; it may still be billed. Re-run 'evo destroy --yes'.",
-			"Floating IP %s: освобождение не подтверждено, начисления могут продолжаться. Повторите 'evo destroy --yes'.", fipLabel(ip, id)),
+		i18n.Tf("Floating IP %s: release not confirmed; it may still be billed.",
+			"Floating IP %s: освобождение не подтверждено, начисления могут продолжаться.", fipLabel(ip, id)),
 		"", errFloatingIPReleaseUnconfirmed)
 }
 

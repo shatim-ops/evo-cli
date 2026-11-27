@@ -8,13 +8,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/engine"
@@ -25,29 +28,60 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/state"
 )
 
-// The normal parity world returns an empty project FIP list. Here an
-// extra address can still be listed after an accepted cleanup request.
-type destroyExtraAddressWorld struct {
+// Use the real scoped Compute list alongside the real card GET and DELETE.
+// The rest of the deploy/destroy setup is shared with the CLI parity tests.
+type destroyAddressList struct {
 	provision.CloudAPI
-	id string
+	compute *provision.CloudRuAdapter
 }
 
-func (w destroyExtraAddressWorld) ListFloatingIPs(context.Context, string) ([]*provision.FloatingIP, error) {
-	return []*provision.FloatingIP{{ID: w.id, Name: "extra", State: "available"}}, nil
+func (w destroyAddressList) ListFloatingIPs(ctx context.Context, project string) ([]*provision.FloatingIP, error) {
+	return w.compute.ListFloatingIPs(ctx, project)
 }
 
-// Exercise both D127 answers through the CLI with a real saved deployment.
-// An accepted DELETE is followed first by a still-visible paid address,
-// then on the next destroy by a GET confirming its disappearance.
+const (
+	missingAddressBody = `[{"code":"floating_ip_not_found","message":"floating IP not found"}]`
+	shortAddressBody   = "short body for declared length"
+	brokenAddressBody  = "body read error"
+)
+
+// Each response has identical, parseable JSON. Only its HTTP framing differs.
+func missingAddressReadback(r *http.Request, body, condition string) (*http.Response, error) {
+	resp, _ := (contractRT{http.StatusNotFound, body}).RoundTrip(r)
+	switch condition {
+	case shortAddressBody:
+		resp.ContentLength++
+	case brokenAddressBody:
+		resp.ContentLength = -1
+		resp.Body = io.NopCloser(io.MultiReader(resp.Body, iotest.ErrReader(io.ErrUnexpectedEOF)))
+	}
+	if resp.ContentLength >= 0 {
+		resp.Header.Set("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
+	}
+	return resp, nil
+}
+
+// The legacy test's positive fixture stays explicit, so a change in which
+// service responses count as evidence remains visible.
 func TestDestroyJSON_OwnAddressConfirmedOnRetry(t *testing.T) {
-	testDestroyPaidAddressOnRetry(t, false)
+	testDestroyPaidAddressOnRetry(t, false, "visible", `{"message":"gone"}`)
 }
 
 func TestDestroyJSON_ExtraAddressConfirmedOnRetry(t *testing.T) {
-	testDestroyPaidAddressOnRetry(t, true)
+	testDestroyPaidAddressOnRetry(t, true, "visible", `{"message":"gone"}`)
 }
 
-func testDestroyPaidAddressOnRetry(t *testing.T, extra bool) {
+func TestDestroyJSON_PaidAddressRequiresCompleteReadback(t *testing.T) {
+	for _, receipt := range []string{"deployment address", "additional address"} {
+		for _, first := range []string{"visible", "forbidden", "gateway", "other resource", shortAddressBody, brokenAddressBody} {
+			t.Run(receipt+"/"+first, func(t *testing.T) {
+				testDestroyPaidAddressOnRetry(t, receipt == "additional address", first, missingAddressBody)
+			})
+		}
+	}
+}
+
+func testDestroyPaidAddressOnRetry(t *testing.T, extra bool, first, successBody string) {
 	t.Helper()
 	w, _ := withJSONWorld(t)
 	_, done := paritySetup["deploy"](t, w)
@@ -56,46 +90,79 @@ func testDestroyPaidAddressOnRetry(t *testing.T, extra bool) {
 		t.Fatalf("deploy: exit %d, %s%s", code, out, errOut)
 	}
 	addressID := parityVM
+	path := state.DefaultPath(w.dir)
+	sf, err := state.Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := sf.ActiveDeployment()
+	neighbor := state.LostFloatingIP{ID: "00000000-0000-4000-8000-000000000009", Name: "extra", VMID: parityStoppedVM, ProjectID: rec.ProjectID}
+	sf.LostFloatingIPs = append(sf.LostFloatingIPs, neighbor)
 	if extra {
 		addressID = "00000000-0000-4000-8000-000000000008"
-		base := toolEngine
-		toolEngine = func(o map[string]any) (*engine.Engine, error) {
-			e, err := base(o)
-			if err == nil {
-				e.Cloud = destroyExtraAddressWorld{e.Cloud, addressID}
-			}
-			return e, err
-		}
-		defer func() { toolEngine = base }()
-		path := state.DefaultPath(w.dir)
-		sf, err := state.Read(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		rec := sf.ActiveDeployment()
-		sf.LostFloatingIPs = []state.LostFloatingIP{{ID: addressID, Name: "extra", VMID: rec.VMID, ProjectID: rec.ProjectID}}
-		if err := state.Write(path, sf); err != nil {
-			t.Fatal(err)
-		}
+		sf.LostFloatingIPs = append(sf.LostFloatingIPs, state.LostFloatingIP{ID: addressID, Name: "extra", VMID: rec.VMID, ProjectID: rec.ProjectID})
 	}
+	if err := state.Write(path, sf); err != nil {
+		t.Fatal(err)
+	}
+	compute := provision.NewCloudRuAdapter(&http.Client{Transport: w.rt}, "")
+	base := toolEngine
+	toolEngine = func(o map[string]any) (*engine.Engine, error) {
+		e, err := base(o)
+		if err == nil {
+			e.Cloud = destroyAddressList{e.Cloud, compute}
+		}
+		return e, err
+	}
+	defer func() { toolEngine = base }()
 	previous := w.rt.extra
 	var deletes, reads int
 	gone := false
 	w.rt.extra = func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path == "/api/v1/floating-ips/"+addressID {
+		switch r.URL.Path {
+		case "/api/v1/floating-ips":
+			if r.Method != http.MethodGet || r.URL.Query().Get("project_id") != rec.ProjectID {
+				t.Fatalf("unexpected request for project addresses: %s %s", r.Method, r.URL)
+			}
+			items := []map[string]any{{"id": neighbor.ID, "name": "extra", "state": "available"}}
+			if !gone {
+				items = append(items, map[string]any{"id": addressID, "name": "extra", "state": "available"})
+			}
+			body, err := json.Marshal(map[string]any{"items": items, "total": len(items)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return contractRT{200, string(body)}.RoundTrip(r)
+		case "/api/v1/floating-ips/" + neighbor.ID:
+			t.Fatalf("destroy accessed a different receipt's address: %s", r.Method)
+		case "/api/v1/floating-ips/" + addressID:
 			switch r.Method {
 			case http.MethodDelete:
-				deletes++
-				return contractRT{status: http.StatusAccepted, body: `{}`}.RoundTrip(r)
-			case http.MethodGet:
-				if deletes > 0 {
-					reads++
-					if gone {
-						return contractRT{status: http.StatusNotFound, body: `{"message":"gone"}`}.RoundTrip(r)
-					}
-					return contractRT{status: http.StatusOK, body: `{"id":"` + addressID + `","state":"deleting"}`}.RoundTrip(r)
+				if r.URL.Query().Get("project_id") != rec.ProjectID {
+					t.Fatal("unscoped address delete")
 				}
-				return contractRT{status: http.StatusOK, body: `{"id":"` + addressID + `","state":"available"}`}.RoundTrip(r)
+				deletes++
+				return contractRT{http.StatusAccepted, `{}`}.RoundTrip(r)
+			case http.MethodGet:
+				if deletes == 0 {
+					return contractRT{200, `{"id":"` + addressID + `","state":"available"}`}.RoundTrip(r)
+				}
+				reads++
+				if gone {
+					return missingAddressReadback(r, successBody, "")
+				}
+				switch first {
+				case "visible":
+					return contractRT{200, `{"id":"` + addressID + `","state":"deleting"}`}.RoundTrip(r)
+				case "forbidden":
+					return contractRT{403, `{"message":"forbidden"}`}.RoundTrip(r)
+				case "gateway":
+					return contractRT{404, `{"error_msg":"Not Found"}`}.RoundTrip(r)
+				case "other resource":
+					return contractRT{404, `[{"code":"vm_not_found","message":"VM not found"}]`}.RoundTrip(r)
+				case shortAddressBody, brokenAddressBody:
+					return missingAddressReadback(r, missingAddressBody, first)
+				}
 			}
 		}
 		if r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/security-groups/") && strings.Contains(r.URL.Path, "/rules/") {
@@ -103,8 +170,15 @@ func testDestroyPaidAddressOnRetry(t *testing.T, extra bool) {
 		}
 		return previous(r)
 	}
-	for _, want := range []string{"partial", "destroyed"} {
+	outcomes := []string{"partial", "destroyed"}
+	if extra && first != "visible" {
+		// Retry also reads the extra address before submitting a new DELETE.
+		// An inconclusive preflight must keep the same durable receipt.
+		outcomes = []string{"partial", "partial", "destroyed"}
+	}
+	for _, want := range outcomes {
 		gone = want == "destroyed"
+		newProcess()
 		before := reads
 		code, out, errOut := runCLI(t, "", "--json", "destroy", "--yes")
 		var result struct {
@@ -113,25 +187,41 @@ func testDestroyPaidAddressOnRetry(t *testing.T, extra bool) {
 			Hint        *string `json:"hint"`
 			CleanupHint *string `json:"cleanup_hint"`
 		}
+		wantDeletes := 1
+		if gone && !extra {
+			wantDeletes++ // the ordinary destroy retries the same recorded ID
+		}
 		if code != 0 || json.Unmarshal([]byte(out), &result) != nil || result.Status != want ||
-			result.Pending == nil || *result.Pending == gone || reads == before {
-			t.Fatalf("%s: exit %d, reads %d, %s%s", want, code, reads-before, out, errOut)
+			result.Pending == nil || *result.Pending == gone || reads == before || deletes != wantDeletes {
+			t.Fatalf("%s: exit %d, %d reads after acceptance, %d deletes (want %d): %s%s", want, code, reads-before, deletes, wantDeletes, out, errOut)
 		}
 		if result.Hint != nil || (!gone && (result.CleanupHint == nil || !strings.Contains(*result.CleanupHint, "evo cleanup receipts"))) ||
 			(gone && result.CleanupHint != nil) {
 			t.Fatalf("%s: expected only the pending address to have a cleanup_hint, got %s", want, out)
 		}
-		sf, err := state.Read(state.DefaultPath(w.dir))
+		sf, err := state.Read(path)
 		if err != nil {
 			t.Fatal(err)
 		}
+		if !slices.Contains(sf.LostFloatingIPs, neighbor) {
+			t.Fatalf("%s: unrelated receipt was changed: %+v", want, sf.LostFloatingIPs)
+		}
 		rec := sf.ActiveDeployment()
-		if extra && ((!gone && (len(sf.LostFloatingIPs) != 1 || sf.LostFloatingIPs[0].ID != addressID)) ||
-			(gone && len(sf.LostFloatingIPs) != 0)) {
+		hasReceipt := slices.ContainsFunc(sf.LostFloatingIPs, func(lost state.LostFloatingIP) bool { return lost.ID == addressID })
+		if extra && (hasReceipt == gone || len(sf.LostFloatingIPs) > 2) {
 			t.Fatalf("%s: extra address receipt %+v", want, sf.LostFloatingIPs)
 		}
 		if (!gone && (rec == nil || rec.FloatingIPID != parityVM)) || (gone && rec != nil) {
-			t.Fatalf("%s: receipt %+v", want, rec)
+			t.Fatalf("%s: deployment receipt %+v", want, rec)
+		}
+		// Read the complete scoped list independently of the card. An
+		// incomplete 404 must not report success while the recorded ID exists.
+		list, err := compute.ListFloatingIPs(t.Context(), neighbor.ProjectID)
+		has := func(id string) bool {
+			return slices.ContainsFunc(list, func(ip *provision.FloatingIP) bool { return ip.ID == id })
+		}
+		if err != nil || !has(neighbor.ID) || has(addressID) == gone {
+			t.Fatalf("%s: unexpected project list %v, %v", want, list, err)
 		}
 	}
 }

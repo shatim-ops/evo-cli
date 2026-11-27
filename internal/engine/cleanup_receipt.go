@@ -379,29 +379,27 @@ func (e *Engine) checkIPProof(ctx context.Context, d *state.DeploymentRecord, m 
 	e.Cloud.SetToken(tok.Value)
 	// Read the project even before accepting an exact-ID 404: a key without
 	// access to the project cannot distinguish a hidden object from a deletion.
+	retryHint := i18n.T("The receipt is still pending. Check access and the address ID, then retry 'evo cleanup resolve' with the same receipt.",
+		"Квитанция остаётся открытой. Сверьте доступ и ID адреса, затем повторите 'evo cleanup resolve' с той же квитанцией.")
 	ips, err := e.Cloud.ListFloatingIPs(ctx, e.projectOf(d))
 	if err != nil {
-		return err
+		return clerrors.Suffix(err, " "+retryHint)
 	}
 	if req.Outcome == "released" {
-		card, err := e.Cloud.GetFloatingIP(ctx, req.AddressID)
-		if err == nil {
-			if card == nil || card.ID != req.AddressID {
-				return clerrors.New(clerrors.CodeAPIError,
-					i18n.T("The service did not identify the requested address. Its release is unconfirmed.", "Сервис не вернул карточку с указанным ID адреса. Освобождение не подтверждено."),
-					i18n.T("The receipt is still pending. Check the original operation.", "Квитанция остаётся незакрытой. Сверьте исходную операцию."))
-			}
+		gone, err := floatingip.Gone(ctx, e.Cloud, req.AddressID)
+		if err != nil {
+			return clerrors.Suffix(err, " "+retryHint)
+		}
+		if !gone {
 			return clerrors.New(clerrors.CodeAPIError,
 				i18n.T("The service still returns the address by its ID. Its release cannot be recorded.", "Сервис всё ещё возвращает адрес по его ID. Записать освобождение адреса нельзя."),
 				i18n.T("The receipt is still pending. Check the original operation.", "Квитанция остаётся незакрытой. Сверьте исходную операцию."))
 		}
-		if !floatingip.ServiceNotFound(err) {
-			return err
-		}
 	}
 	for _, f := range ips {
-		if f == nil {
-			return contradictoryIPProof()
+		if f == nil || f.ID == "" {
+			return clerrors.New(clerrors.CodeAPIError,
+				i18n.T("A project address entry has no ID. The address inventory is incomplete.", "В списке адресов проекта есть запись без ID. Сверка адресов неполна."), retryHint)
 		}
 		// A unique marker in the cloud is positive evidence even if the
 		// address was renamed, attached elsewhere, or duplicated in the list.

@@ -5,6 +5,7 @@
 package provision
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -470,32 +471,40 @@ func ruleGroupMissingReply(resp *http.Response) bool {
 	if err != nil || len(body) > maxErrorBody || (resp.ContentLength > 0 && int64(len(body)) != resp.ContentLength) {
 		return false
 	}
-	type refusal struct {
+	var entry struct {
 		Code    json.RawMessage `json:"code"`
 		Message string          `json:"message"`
 	}
-	var entries []refusal
-	if json.Unmarshal(body, &entries) != nil {
-		var entry refusal
-		if json.Unmarshal(body, &entry) != nil {
-			return false
-		}
-		entries = []refusal{entry}
-	}
-	if len(entries) != 1 {
+	if err := json.Unmarshal(singleRefusalObject(body), &entry); err != nil {
 		return false
 	}
-	if entries[0].Code != nil {
+	if entry.Code != nil {
 		var code string
-		if json.Unmarshal(entries[0].Code, &code) != nil || code != "security_group_not_found" {
+		if json.Unmarshal(entry.Code, &code) != nil || code != "security_group_not_found" {
 			return false
 		}
 	}
-	switch strings.ToLower(strings.TrimSpace(entries[0].Message)) {
+	switch strings.ToLower(strings.TrimSpace(entry.Message)) {
 	case "security group not found", "security group with this id is not found":
 		return true
 	}
 	return false
+}
+
+// Compute wraps some resource errors in a one-element array.
+func singleRefusalObject(body []byte) []byte {
+	body = bytes.TrimSpace(body)
+	if len(body) > 0 && body[0] == '[' {
+		var entries []json.RawMessage
+		if json.Unmarshal(body, &entries) != nil || len(entries) != 1 {
+			return nil
+		}
+		body = entries[0]
+	}
+	if len(body) == 0 || body[0] != '{' || !json.Valid(body) {
+		return nil
+	}
+	return body
 }
 
 // groupAbsentInProject requires an unfiltered, complete list of the recorded

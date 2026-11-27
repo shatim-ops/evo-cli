@@ -65,7 +65,7 @@ func (c *fakeCloud) GetFloatingIP(_ context.Context, id string) (*provision.Floa
 			return f, nil
 		}
 	}
-	return nil, status(404)
+	return nil, clerrors.New(clerrors.CodeNotFound, "floating IP not found", "")
 }
 
 func status(code int) error {

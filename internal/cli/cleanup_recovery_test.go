@@ -7,11 +7,13 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/shatim-ops/evo-cli/internal/confirm"
@@ -317,6 +319,31 @@ func (a receiptAnswer) Read(p []byte) (int, error) {
 	return a.Reader.Read(p)
 }
 
+// A pending deployment with two distinct local receipts, backed by the real
+// Compute adapter. Each CLI invocation builds its own engine from this directory.
+func releasedAddressWorld(t *testing.T) (parityWorld, state.DeploymentRecord, state.LostFloatingIP) {
+	t.Helper()
+	w := withParityWorld(t)
+	path := state.DefaultPath(w.dir)
+	d := state.DeploymentRecord{ID: "dep", ProjectID: pvProject, VMID: parityVM, Status: "destroying"}
+	m := state.LostFloatingIP{Name: "first", Attempt: "first", ProjectID: pvProject, VMID: parityVM}
+	n := m
+	n.Name, n.Attempt = "other", "other"
+	if err := state.Write(path, &state.File{Deployments: []state.DeploymentRecord{d}, LostFloatingIPs: []state.LostFloatingIP{m, n}}); err != nil {
+		t.Fatal(err)
+	}
+	prev := toolEngine
+	toolEngine = func(o map[string]any) (*engine.Engine, error) {
+		e, err := prev(o)
+		if err == nil {
+			e.Cloud = provision.NewCloudRuAdapter(&http.Client{Transport: w.rt}, "")
+		}
+		return e, err
+	}
+	t.Cleanup(func() { toolEngine = prev })
+	return w, d, n
+}
+
 // Both snapshots use the real Compute adapter and the same receipt and ID.
 // The project's list is empty even when GET by ID still finds the address.
 func TestCleanup_ReleasedAddressBeforeConsentAndAtWrite(t *testing.T) {
@@ -339,15 +366,8 @@ func TestCleanup_ReleasedAddressBeforeConsentAndAtWrite(t *testing.T) {
 		{"gone confirmed", "yes", []int{404, 404}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			w := withParityWorld(t)
+			w, d, n := releasedAddressWorld(t)
 			path := state.DefaultPath(w.dir)
-			d := state.DeploymentRecord{ID: "dep", ProjectID: pvProject, VMID: parityVM, Status: "destroying"}
-			m := state.LostFloatingIP{Name: "first", Attempt: "first", ProjectID: pvProject, VMID: parityVM}
-			n := m
-			n.Name, n.Attempt = "other", "other"
-			if err := state.Write(path, &state.File{Deployments: []state.DeploymentRecord{d}, LostFloatingIPs: []state.LostFloatingIP{m, n}}); err != nil {
-				t.Fatal(err)
-			}
 			var steps []string
 			gets := 0
 			w.rt.extra = func(r *http.Request) (*http.Response, error) {
@@ -383,15 +403,6 @@ func TestCleanup_ReleasedAddressBeforeConsentAndAtWrite(t *testing.T) {
 					return nil, nil
 				}
 			}
-			prev := toolEngine
-			toolEngine = func(o map[string]any) (*engine.Engine, error) {
-				e, err := prev(o)
-				if err == nil {
-					e.Cloud = provision.NewCloudRuAdapter(&http.Client{Transport: w.rt}, "")
-				}
-				return e, err
-			}
-			t.Cleanup(func() { toolEngine = prev })
 			code, out, stderr := runCLI(t, "", "--json", "cleanup", "receipts", "--deployment-id", d.ID)
 			if code != 0 {
 				t.Fatal(stderr)
@@ -456,6 +467,130 @@ func TestCleanup_ReleasedAddressBeforeConsentAndAtWrite(t *testing.T) {
 			}
 			if writes := w.rt.takeWrites(); len(writes) != 0 {
 				t.Fatalf("cloud writes: %v", writes)
+			}
+		})
+	}
+}
+
+// A syntactically complete service message cannot settle a receipt if the
+// exact GET or the project list is incomplete. Check before consent and
+// again under the write lock. Two complete readbacks can settle the same receipt.
+func TestCleanup_ReleasedAddressNeedsCompleteReadAfterRestart(t *testing.T) {
+	const address = "00000000-0000-4000-8000-000000000077"
+	const neighborID = "00000000-0000-4000-8000-000000000088"
+	const brokenList, missingRowID = "project list read error", "unidentified project member"
+	for _, tc := range []struct {
+		name        string
+		firstBroken int
+		condition   string
+	}{
+		{"body shorter than Content-Length before consent", 1, shortAddressBody},
+		{"body shorter than Content-Length at write", 2, shortAddressBody},
+		{"body read error before consent", 1, brokenAddressBody},
+		{"body read error at write", 2, brokenAddressBody},
+		{"list read error at write", 2, brokenList},
+		{"list member missing ID at write", 2, missingRowID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, d, neighbor := releasedAddressWorld(t)
+			path := state.DefaultPath(w.dir)
+			exactReads, projectReads := 0, 0
+			complete := false
+			listFault := tc.condition == brokenList || tc.condition == missingRowID
+			w.rt.extra = func(r *http.Request) (*http.Response, error) {
+				if r.Method != http.MethodGet {
+					t.Fatalf("resolve wrote to the cloud: %s %s", r.Method, r.URL.Path)
+				}
+				switch r.URL.Path {
+				case "/api/v1/floating-ips":
+					projectReads++
+					if r.URL.Query().Get("project_id") != d.ProjectID {
+						t.Fatalf("out-of-scope project read: %s", r.URL)
+					}
+					listBody := `{"items":[{"id":"` + neighborID + `","name":"other","description":"other"}],"total":1}`
+					if !complete && listFault && projectReads >= tc.firstBroken {
+						if tc.condition == missingRowID {
+							return consentJSON(200, `{"items":[{"name":"other","description":"other"}],"total":1}`), nil
+						}
+						resp := consentJSON(200, listBody)
+						resp.Body = io.NopCloser(io.MultiReader(resp.Body, iotest.ErrReader(io.ErrClosedPipe)))
+						return resp, nil
+					}
+					return consentJSON(200, listBody), nil
+				case "/api/v1/floating-ips/" + address:
+					exactReads++
+					if exactReads > 2 {
+						t.Fatal("unexpected repeated GET")
+					}
+					condition := ""
+					if !complete && !listFault && exactReads >= tc.firstBroken {
+						condition = tc.condition
+					}
+					return missingAddressReadback(r, missingAddressBody, condition)
+				default:
+					t.Fatalf("resolve read an unrelated resource: %s", r.URL.Path)
+					return nil, nil
+				}
+			}
+			list := func() []engine.FloatingIPReceipt {
+				t.Helper()
+				code, out, stderr := runCLI(t, "", "cleanup", "receipts", "--deployment-id", d.ID, "--json")
+				var got struct{ Receipts []engine.FloatingIPReceipt }
+				if code != 0 || json.Unmarshal([]byte(out), &got) != nil {
+					t.Fatalf("list: exit %d, stdout %s, stderr %s", code, out, stderr)
+				}
+				return got.Receipts
+			}
+			initial := list()
+			if len(initial) != 2 || initial[0].Name != "first" || initial[1].Name != neighbor.Name ||
+				initial[0].ReceiptID == "" || initial[1].ReceiptID == "" || initial[0].ReceiptID == initial[1].ReceiptID {
+				t.Fatalf("expected target and neighbor: %+v", initial)
+			}
+			args := []string{"--json", "cleanup", "resolve", initial[0].ReceiptID, "--deployment-id", d.ID, "--outcome", "released", "--address-id", address, "--evidence", "audit-case-741", "--yes"}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, out, stderr := runCLI(t, "", args...)
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			newProcess()
+			pending := list()
+			refusal, ok := errorEnvelope(stderr)
+			advice := refusal.Message + " " + refusal.Hint
+			confirmed := strings.Contains(stderr, `"status":"confirmed"`)
+			t.Logf("first resolve: exit %d, project/exact GET %d/%d, pending receipts %d, state unchanged %t", code, projectReads, exactReads, len(pending), bytes.Equal(before, after))
+			if code != 5 || !ok || refusal.Reason != "API_ERROR" || out != "" || confirmed != (tc.firstBroken == 2) ||
+				!strings.Contains(advice, "still pending") || !strings.Contains(advice, "evo cleanup resolve") {
+				t.Fatalf("incomplete readback must leave a pending receipt and name the retry: exit %d, stdout %s, stderr %s", code, out, stderr)
+			}
+			// A bad project page can be rejected before rereading the exact ID.
+			checkedID := exactReads == tc.firstBroken || (listFault && exactReads == tc.firstBroken-1)
+			if !checkedID || projectReads != tc.firstBroken || !bytes.Equal(before, after) || len(pending) != 2 ||
+				pending[0].ReceiptID != initial[0].ReceiptID || pending[1].ReceiptID != initial[1].ReceiptID {
+				t.Fatalf("incomplete readback: project/exact GET %d/%d, receipts %d, state unchanged %t", projectReads, exactReads, len(pending), bytes.Equal(before, after))
+			}
+			complete, projectReads, exactReads = true, 0, 0
+			code, out, stderr = runCLI(t, "", args...)
+			result := parseObject(out)
+			if code != 0 || result["status"] != "reconciled" || result["outcome"] != "released" || result["receipt_id"] != initial[0].ReceiptID ||
+				result["deployment_id"] != d.ID || projectReads != 2 || exactReads != 2 {
+				t.Fatalf("complete 404 on retry: exit %d, project/exact GET %d/%d, stdout %s, stderr %s", code, projectReads, exactReads, out, stderr)
+			}
+			newProcess()
+			pending = list()
+			saved, err := state.Read(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolutions := saved.Deployments[0].FloatingIPResolutions
+			writes := w.rt.takeWrites()
+			t.Logf("retry: exit %d, project/exact GET %d/%d, pending receipts %d, total cloud writes %d", code, projectReads, exactReads, len(pending), len(writes))
+			if len(pending) != 1 || pending[0].ReceiptID != initial[1].ReceiptID || len(resolutions) != 1 ||
+				resolutions[0].ReceiptID != initial[0].ReceiptID || resolutions[0].AddressID != address || resolutions[0].Outcome != "released" || len(writes) != 0 {
+				t.Fatalf("retry must settle only the target: pending=%+v resolutions=%+v", pending, resolutions)
 			}
 		})
 	}

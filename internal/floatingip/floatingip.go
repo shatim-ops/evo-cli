@@ -403,7 +403,7 @@ func releaseVerified(ctx context.Context, cloud provision.CloudAPI, m state.Lost
 	// A retry still owns the ID in its receipt, but it may now be in use
 	// by another VM or gateway. Check the card before sending the DELETE.
 	f, err := cloud.GetFloatingIP(ctx, m.ID)
-	if NotFound(err) {
+	if ServiceNotFound(err) {
 		return nil
 	}
 	if err != nil {
