@@ -322,6 +322,15 @@ func (a *CloudRuAdapter) CreateFloatingIP(ctx context.Context, req CreateFloatin
 	return &fip, nil
 }
 
+type cleanupIPReadKey struct{}
+
+// ReadFloatingIPForCleanup requests proof for retiring a persisted receipt.
+// An ordinary lookup can report that a resource was not found without
+// establishing that a billed address in local state has been released.
+func ReadFloatingIPForCleanup(ctx context.Context, cloud CloudAPI, id string) (*FloatingIP, error) {
+	return cloud.GetFloatingIP(context.WithValue(ctx, cleanupIPReadKey{}, true), id)
+}
+
 // GetFloatingIP retrieves a floating IP by ID via GET /api/v1/floating-ips/{id}.
 func (a *CloudRuAdapter) GetFloatingIP(ctx context.Context, id string) (*FloatingIP, error) {
 	path := fmt.Sprintf("/api/v1/floating-ips/%s", seg(id))
@@ -354,7 +363,8 @@ func verifyFloatingIPMissing(req *http.Request, resp *http.Response) error {
 	if err != nil {
 		return err
 	}
-	if resp.Header.Get("Content-Range") != "" || !floatingIPMissingReply(body) {
+	strict, _ := req.Context().Value(cleanupIPReadKey{}).(bool)
+	if resp.Header.Get("Content-Range") != "" || strict && !floatingIPMissingReply(body) {
 		return clierrors.New(clierrors.CodeAPIError, i18n.T("The service did not confirm this floating IP is absent.", "Сервис не подтвердил отсутствие этого плавающего IP."), hintUnexpectedFormat())
 	}
 	return nil

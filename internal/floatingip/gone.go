@@ -33,7 +33,7 @@ func ServiceNotFound(err error) bool {
 // card. A successful DELETE, an incomplete response or a failed read do
 // not settle a billed resource.
 func Gone(ctx context.Context, cloud provision.CloudAPI, id string) (bool, error) {
-	fip, err := cloud.GetFloatingIP(ctx, id)
+	fip, err := provision.ReadFloatingIPForCleanup(ctx, cloud, id)
 	if ServiceNotFound(err) {
 		return true, nil
 	}

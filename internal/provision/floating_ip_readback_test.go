@@ -38,6 +38,7 @@ func TestGetFloatingIP_RequiresCompleteCardOrServiceAbsence(t *testing.T) {
 		{name: "partial service error", status: 404, body: absent, contentRange: "bytes 0-" + strconv.Itoa(len(absent)-1) + "/100", wantReason: clierrors.CodeAPIError},
 		{name: "connection ends after valid service error", status: 404, body: absent, truncated: true, wantReason: clierrors.CodeAPIError},
 		{name: "service resource not found", status: 404, body: `{"code":5,"message":"resource not found"}`, wantReason: clierrors.CodeNotFound},
+		{name: "service absence without receipt proof", status: 404, body: `{"code":5,"message":"not found"}`, wantReason: clierrors.CodeAPIError},
 		{name: "gateway not found", status: 404, body: `{"code":5,"message":"Not Found"}`, wantReason: clierrors.CodeAPIError},
 		{name: "conflicting codes", status: 404, body: `{"code":"project_not_found","code":"floating_ip_not_found","message":"floating IP not found"}`, wantReason: clierrors.CodeAPIError},
 		{name: "conflicting messages", status: 404, body: `[{"message":"route not found","message":"gone"}]`, wantReason: clierrors.CodeAPIError},
@@ -62,7 +63,7 @@ func TestGetFloatingIP_RequiresCompleteCardOrServiceAbsence(t *testing.T) {
 			})
 			defer srv.Close()
 
-			got, err := adapter.GetFloatingIP(t.Context(), id)
+			got, err := ReadFloatingIPForCleanup(t.Context(), adapter, id)
 			if reason := clierrors.Reason(err); reason != tc.wantReason {
 				t.Fatalf("GetFloatingIP: reason %q, want %q (err %v)", reason, tc.wantReason, err)
 			}
