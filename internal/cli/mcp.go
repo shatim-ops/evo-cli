@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/mcp"
 	"github.com/shatim-ops/evo-cli/internal/output"
 	"github.com/shatim-ops/evo-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/updatecheck"
 )
 
 // envBearerToken holds the token clients must present in HTTP mode. It is
@@ -218,6 +220,7 @@ func runMCP(cmd *cobra.Command, httpAddr, authMode string, allowSecretExport, re
 			i18n.T("Drop one of the two flags.", "Уберите один из двух флагов."))
 	}
 	srv := newMCPServer(allowProjects)
+	attachMCPUpdateCheck(cmd.Context(), srv)
 	if err := srv.SetToolsets(toolsets); err != nil {
 		return clerrors.Wrap(clerrors.CodeUsage, i18n.Tf("--toolsets: %v", "--toolsets: %v", err),
 			i18n.T("Groups are listed by 'evo tools list'.", "Группы — в выводе 'evo tools list'."), err)
@@ -287,6 +290,49 @@ func newMCPServer(allowProjects []string) *mcp.Server {
 		srv.SetProjectBound()
 	}
 	return srv
+}
+
+// attachMCPUpdateCheck reads the local update cache synchronously before the
+// MCP server accepts initialize, then starts one background refresh (at most
+// once per 24h) for subsequent sessions. Repeated HTTP initialize calls read
+// in-memory state and deliver the notice at most once per 24h per version.
+func attachMCPUpdateCheck(ctx context.Context, srv *mcp.Server) {
+	if updatecheck.Disabled(version) {
+		return
+	}
+	var current atomic.Pointer[updatecheck.Notice]
+	cached := updatecheck.ReadCached(version)
+	current.Store(&cached)
+
+	go func() {
+		refreshed := updatecheck.RefreshIfStale(ctx, version, 5*time.Second)
+		current.Store(&refreshed)
+	}()
+
+	var mu sync.Mutex
+	var memNotifiedFor string
+	var memNotifiedAt time.Time
+	srv.SetUpdateNotice(func() string {
+		n := current.Load()
+		if n == nil || !n.Available {
+			return ""
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		now := time.Now().UTC()
+		if memNotifiedFor == n.Latest && !memNotifiedAt.IsZero() && now.Sub(memNotifiedAt) < updatecheck.RefreshInterval {
+			return ""
+		}
+		if !updatecheck.ShouldNotifyMCP(*n) {
+			memNotifiedFor = n.Latest
+			memNotifiedAt = now
+			return ""
+		}
+		updatecheck.MarkNotifiedMCP(n.Latest)
+		memNotifiedFor = n.Latest
+		memNotifiedAt = now
+		return updatecheck.FormatMCPInstruction(*n)
+	})
 }
 
 // sessionTargets are the project and the zone of an evo mcp session

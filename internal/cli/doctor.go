@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -19,6 +21,7 @@ import (
 	clerrors "github.com/shatim-ops/evo-cli/internal/errors"
 	"github.com/shatim-ops/evo-cli/internal/i18n"
 	"github.com/shatim-ops/evo-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/updatecheck"
 )
 
 func newDoctorCmd() *cobra.Command {
@@ -28,15 +31,23 @@ func newDoctorCmd() *cobra.Command {
 		Long: i18n.T(`Check the setup: config files and their permissions, where each setting
 comes from, reachability of the IAM and Compute APIs, the credentials,
 kubectl/helm in PATH (needed only by the k8s tools; a warning, not an error),
-and evo's entry in Claude Desktop, if it has one: the evo it starts is there
-and is this one, its profile is there (a warning, not an error).
+evo's entry in Claude Desktop, if it has one: the evo it starts is there
+and is this one, its profile is there (a warning, not an error), and — at
+most once per 24 hours — whether a newer stable release tag is published at
+https://github.com/cloud-ru/evo-cmcp/releases/latest (HEAD redirect only, up
+to 2 s timeout; disabled by EVO_NO_UPDATE_CHECK=1, CI=true, or
+update_check: false in config.yaml; a warning, not an error).
 
 Exits with 2 if the configuration or credentials are broken, 1 if only
 connectivity checks failed.`, `Проверить окружение: файлы настроек и их права, откуда взята каждая
 настройка, доступность IAM и Compute API, ключ доступа, kubectl/helm в PATH
-(нужны только инструментам k8s; их отсутствие — предупреждение, не ошибка) и
+(нужны только инструментам k8s; их отсутствие — предупреждение, не ошибка),
 запись evo в Claude Desktop, если она есть: запускаемый evo на месте и это
-этот evo, её профиль есть (предупреждение, не ошибка).
+этот evo, её профиль есть (предупреждение, не ошибка), а также — не чаще
+раза в 24 часа — наличие нового стабильного тега релиза по
+https://github.com/cloud-ru/evo-cmcp/releases/latest (только HEAD-редирект,
+таймаут до 2 с; отключается EVO_NO_UPDATE_CHECK=1, CI=true или
+update_check: false в config.yaml; предупреждение, не ошибка).
 
 Код выхода 2 — сломаны настройки или ключ, 1 — не прошли только проверки
 связи.`),
@@ -80,6 +91,7 @@ connectivity checks failed.`, `Проверить окружение: файлы
 // CLI's language (D6; Astra's list #1835): the JSON keeps the machine name.
 var checkLabels = map[string][2]string{
 	"version":               {"version", "версия"},
+	"update":                {"update", "обновление"},
 	"config":                {"config", "настройки"},
 	"config dir":            {"config dir", "каталог настроек"},
 	"legacy config":         {"legacy config", "старые настройки"},
@@ -111,6 +123,25 @@ func doctorLocal(own []tools.DoctorCheck) []tools.DoctorCheck {
 		Name: "version", Status: tools.CheckOK,
 		Detail: fmt.Sprintf("evo %s %s/%s", version, runtime.GOOS, runtime.GOARCH),
 	}}
+	if n := updatecheck.RefreshIfStale(context.Background(), version, 2*time.Second); n.HasData {
+		if n.Available {
+			checks = append(checks, tools.DoctorCheck{
+				Name:   "update",
+				Status: tools.CheckWarn,
+				Detail: i18n.Tf(
+					"evo %s is available (installed %s); releases: %s",
+					"доступна версия evo %s (установлена %s); страница релизов: %s",
+					n.Latest, version, updatecheck.ReleaseURL(),
+				),
+			})
+		} else {
+			checks = append(checks, tools.DoctorCheck{
+				Name:   "update",
+				Status: tools.CheckOK,
+				Detail: i18n.Tf("evo %s is up to date", "evo %s — актуальная версия", version),
+			})
+		}
+	}
 	checks = append(checks, otherEvoChecks()...)
 	checks = append(checks, agentEntryChecks()...)
 	checks = append(checks, fileChecks()...)

@@ -220,6 +220,12 @@ stderr, если это не оставляет дефект открытым.
      --certificate-oidc-issuer https://token.actions.githubusercontent.com
    ```
 
+   ```
+   # проверка редиректа latest на новый тег после публикации в cloud-ru/evo-cmcp (с 1.9.2)
+   curl -sI https://github.com/cloud-ru/evo-cmcp/releases/latest | grep -i '^location:'
+   # ожидается: location: https://github.com/cloud-ru/evo-cmcp/releases/tag/vX.Y.Z
+   ```
+
    Впервые — на `1.3.0-rc.1`: все шесть архивов с SBOM в `checksums.txt`,
    `gh attestation verify` проходит (проверено 23.10). Образ пока не
    публикуется (D32: общий MCP-сервер не делаем, только локальная установка),

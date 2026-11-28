@@ -43,6 +43,7 @@ LABEL org.opencontainers.image.title="evo CMCP" \
 # deploy/provision (./.evo/).
 WORKDIR /home/nonroot
 USER nonroot:nonroot
+ENV EVO_NO_UPDATE_CHECK=1
 EXPOSE 8080
 # В distroless нет ни shell, ни curl: бинарь сам опрашивает /healthz.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
