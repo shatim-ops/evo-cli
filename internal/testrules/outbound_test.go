@@ -31,6 +31,13 @@ var linkOnly = map[string]string{
 	"internal/product/product.go: github.com":                "the repository, in evo version and NOTICE",
 }
 
+// allowedOutbound are the explicitly approved non-Cloud.ru endpoints that
+// production code may contact, keyed by exact URL ("file: https://...") so
+// another path on the same host still fails the build (SECURITY.md).
+var allowedOutbound = map[string]string{
+	"internal/updatecheck/updatecheck.go: https://github.com/cloud-ru/evo-cmcp/releases/latest": "HEAD without redirect follow or body, <= 1/24h from evo doctor and evo mcp (SECURITY.md)",
+}
+
 // outboundHost is the host of an address literal ("" when s is none):
 // userinfo and port dropped, a format verb kept as it is.
 func outboundHost(s string) string {
@@ -86,9 +93,11 @@ func TestOutbound_OnlyCloudRuOrDeclaredLinks(t *testing.T) {
 					return true
 				}
 				key := rel + ": " + host
+				urlKey := rel + ": " + s
 				seen[key] = true
-				if linkOnly[key] == "" {
-					found = append(found, key+" ("+fset.Position(lit.Pos()).String()+")")
+				seen[urlKey] = true
+				if linkOnly[key] == "" && allowedOutbound[urlKey] == "" {
+					found = append(found, urlKey+" ("+fset.Position(lit.Pos()).String()+")")
 				}
 				return true
 			})
@@ -105,6 +114,11 @@ func TestOutbound_OnlyCloudRuOrDeclaredLinks(t *testing.T) {
 	for k := range linkOnly {
 		if !seen[k] {
 			t.Errorf("linkOnly names %q, which production code no longer spells: remove the line", k)
+		}
+	}
+	for k := range allowedOutbound {
+		if !seen[k] {
+			t.Errorf("allowedOutbound names %q, which production code no longer spells: remove the line", k)
 		}
 	}
 }

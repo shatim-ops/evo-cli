@@ -125,7 +125,9 @@ type Server struct {
 	reg      *tools.Registry
 	// configNote: see SetConfigNote.
 	configNote func() string
-	inflight   inflight // running tool calls, for cancellation
+	// updateNotice: see SetUpdateNotice.
+	updateNotice func() string
+	inflight     inflight // running tool calls, for cancellation
 
 	// enabled is the --toolsets view: tools/call accepts only these tools;
 	// nil means every tool (the default). listed is what tools/list
@@ -182,6 +184,11 @@ func New(factory EngineFactory, version string) *Server {
 // server started, and the server keeps its start values (evo mcp, R-60).
 // Call it before the server serves.
 func (s *Server) SetConfigNote(note func() string) { s.configNote = note }
+
+// SetUpdateNotice sets an optional function consulted at MCP initialize to
+// append a fixed, English-only update notice to instructions when a newer
+// release is cached. Call it before the server serves.
+func (s *Server) SetUpdateNotice(fn func() string) { s.updateNotice = fn }
 
 // SetProjectBound binds the tools to the project of the server's
 // configuration (evo mcp --allow-project, H9; tools.Registry.SetProjectBound),
@@ -654,8 +661,18 @@ func (s *Server) initializeResult(params json.RawMessage) map[string]any {
 			"title":   product.Name,
 			"version": s.version,
 		},
-		"instructions": serverInstructions,
+		"instructions": s.instructions(),
 	}
+}
+
+func (s *Server) instructions() string {
+	if s.updateNotice == nil {
+		return serverInstructions
+	}
+	if note := strings.TrimSpace(s.updateNotice()); note != "" {
+		return serverInstructions + " " + note
+	}
+	return serverInstructions
 }
 
 // serverInstructions is what the client is told once, at initialize: the

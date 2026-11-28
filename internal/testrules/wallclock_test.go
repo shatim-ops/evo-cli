@@ -49,8 +49,9 @@ var wallClockBounds = map[string]string{
 	"tools/TestK8sNodePoolScale_GoneWhileSettling >":                   "time.Minute/6",
 	"tools/TestJournal_HeldLockDoesNotDelayTheAnswer >":                "2*time.Second/2",
 	"tools/TestQA_StackStatusHonoursShortBudget >":                     "stackCrankInterval/2",
-	"tools/faultRun >":                       "fipPollWait/2",
-	"verify/TestCheck_SlowServiceTimesOut >": "10*time.Second/2",
+	"tools/faultRun >":                                       "fipPollWait/2",
+	"updatecheck/TestSecurity_SlowlorisBoundedByTimeout >":   "10*time.Second/2",
+	"verify/TestCheck_SlowServiceTimesOut >":                 "10*time.Second/2",
 
 	"state/TestLockWait_WaitsForHolder <": "100*time.Millisecond*4/5", // holder sleeps 100 ms
 	"engine/slowVM <":                     "d",                        // the fake's transition

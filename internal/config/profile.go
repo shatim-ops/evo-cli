@@ -85,8 +85,13 @@ type settingsFile struct {
 	// Journal: the session journal of evo is on (D46, internal/journal).
 	// It belongs to the machine, not to a profile: one file for the whole
 	// dogfood, whatever profile a call uses.
-	Journal  bool               `yaml:"journal,omitempty"`
-	Profiles map[string]Profile `yaml:"profiles"`
+	Journal bool `yaml:"journal,omitempty"`
+	// UpdateCheck: whether evo doctor and evo mcp may check
+	// https://github.com/cloud-ru/evo-cmcp/releases/latest for newer releases.
+	// Nil means enabled (default); false disables it on this machine across
+	// all profiles.
+	UpdateCheck *bool              `yaml:"update_check,omitempty"`
+	Profiles    map[string]Profile `yaml:"profiles"`
 }
 
 type credentialsFile struct {
@@ -535,6 +540,14 @@ func DeleteProfile(name string) error {
 func JournalEnabled() bool {
 	s, err := readSettingsFile()
 	return err == nil && s.Journal
+}
+
+// UpdateCheckDisabled reports whether config.yaml explicitly disables update
+// checks via update_check: false. A missing or unreadable file keeps checks
+// enabled without emitting warnings.
+func UpdateCheckDisabled() bool {
+	s, err := readSettingsFile()
+	return err == nil && s.UpdateCheck != nil && !*s.UpdateCheck
 }
 
 // SetJournal turns the session journal on or off in config.yaml, keeping

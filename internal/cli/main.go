@@ -34,6 +34,7 @@ import (
 	"github.com/shatim-ops/evo-cli/internal/product"
 	"github.com/shatim-ops/evo-cli/internal/provision"
 	"github.com/shatim-ops/evo-cli/internal/tools"
+	"github.com/shatim-ops/evo-cli/internal/updatecheck"
 )
 
 // sshDial is the check of port 22 the engines of the CLI make (SSHDial):
@@ -43,6 +44,48 @@ import (
 // decide a test (release plan 1.9, «Тест … ходит в настоящую сеть»; the
 // guard of «Процесс · 1.9 (3)» found this connect).
 var sshDial = engine.DialSSH
+
+// isStderrTTY is overridden in tests to exercise the interactive CLI update notice.
+var isStderrTTY = func() bool { return output.IsTTY(int(os.Stderr.Fd())) }
+
+func isUpdateNoticeExcluded(cmd *cobra.Command) bool {
+	if cmd == nil || cmd.Hidden {
+		return true
+	}
+	// Strip the root binary name ("evo" or "cloudru-vm") and compare full path.
+	path := strings.TrimSpace(cmd.CommandPath())
+	_, sub, ok := strings.Cut(path, " ")
+	if !ok {
+		return true
+	}
+	sub = strings.TrimSpace(sub)
+	switch sub {
+	case "", "mcp", "doctor", "completion", "__complete", "__completeNoDesc",
+		"version", "help", "login", "agent setup", "tools call":
+		return true
+	}
+	for _, prefix := range []string{"mcp ", "completion ", "help "} {
+		if strings.HasPrefix(sub, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// maybePrintUpdateNotice reads only the local update cache (zero network) and
+// prints a single stderr line for interactive non-JSON commands at most once
+// per 24 hours per latest version.
+func maybePrintUpdateNotice(cmd *cobra.Command) {
+	if flagJSON || !isStderrTTY() || isUpdateNoticeExcluded(cmd) {
+		return
+	}
+	n := updatecheck.ReadCached(version)
+	if !n.Available || !updatecheck.ShouldNotifyCLI(n) {
+		return
+	}
+	fmt.Fprintln(cmd.ErrOrStderr(), updatecheck.FormatCLI(n))
+	updatecheck.MarkNotifiedCLI(n.Latest)
+}
 
 // Build identity, passed to Main by cmd/evo (and the legacy cmd/cloudru-vm),
 // whose own variables a release build sets through goreleaser:
@@ -174,6 +217,7 @@ func run(args []string) int {
 	journal.Begin(journal.SurfaceCLI, currentVersion().Version)
 	cmd, err := rootCmd.ExecuteContextC(ctx)
 	if err == nil {
+		maybePrintUpdateNotice(cmd)
 		return clerrors.ExitOK
 	}
 	if ctx.Err() != nil && !stderrors.Is(err, context.Canceled) {

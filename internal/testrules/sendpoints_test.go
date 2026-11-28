@@ -38,8 +38,9 @@ var sendCalls = map[string]bool{"CombinedOutput": true, "Output": true, "Run": t
 // other client goes over httpretry.Transport or httpretry.UserAgent, which
 // count (httpretry.CountWrites).
 var uncountedClients = map[string]string{
-	"internal/verify/verify.go\tget":            "a liveness probe of a port: a GET, which is no write",
-	"internal/cli/mcp.go\tnewMCPHealthcheckCmd": "the healthcheck of evo's own server: a GET of 127.0.0.1",
+	"internal/verify/verify.go\tget":                      "a liveness probe of a port: a GET, which is no write",
+	"internal/cli/mcp.go\tnewMCPHealthcheckCmd":           "the healthcheck of evo's own server: a GET of 127.0.0.1",
+	"internal/updatecheck/updatecheck.go\tfetchLatestTag": "a read-only HEAD of github.com/cloud-ru/evo-cmcp/releases/latest (no writes, no retries, no X-Request-Id)",
 }
 
 // notAChange are the places that tell a request is no write of its call
@@ -181,6 +182,7 @@ func TestSendPoints_EveryWriteIsCounted(t *testing.T) {
 var freshContexts = map[string]string{
 	"internal/cli/main.go\trun":                         "the root of the process; the gate adds the counter per call",
 	"internal/cli/main.go\tnewRootCmd":                  "the root when cobra runs without a context (tests); nothing is sent before the gate",
+	"internal/cli/doctor.go\tdoctorLocal":               "doctor's local checks run no consented call: read-only HEAD of releases/latest bounded to 2s",
 	"internal/cli/completion.go\tcompleteValues":        "shell completion runs no consented call: reads alone",
 	"internal/cli/trees.go\tsecretRef.readRaw":          "reads a secret from the terminal; sends nothing",
 	"internal/cli/configure_s3.go\trunConfigureS3":      "the preview of a local file write; sends nothing",
