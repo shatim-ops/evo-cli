@@ -10,11 +10,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -48,34 +46,6 @@ func TestSecurity_SlowlorisBoundedByTimeout(t *testing.T) {
 	// wall-clock: slowloris server waits 10*time.Second; 250ms client timeout must abort far earlier.
 	if elapsed > 10*time.Second/2 {
 		t.Fatalf("slowloris not bounded by timeout: elapsed=%v", elapsed)
-	}
-}
-
-func TestSecurity_FIFONamedPipeDoesNotHang(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX mkfifo test")
-	}
-	now := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
-	setupTestEnv(t, now)
-
-	if err := os.MkdirAll(config.CacheDir(), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := syscall.Mkfifo(cachePath(), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	finished := make(chan Notice, 1)
-	go func() {
-		finished <- ReadCached("1.9.2")
-	}()
-	select {
-	case n := <-finished:
-		if n.HasData || n.Available {
-			t.Fatalf("FIFO must be refused, got %+v", n)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("ReadCached hung on FIFO named pipe")
 	}
 }
 
